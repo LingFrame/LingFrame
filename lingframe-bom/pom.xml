@@ -1,0 +1,44 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.lingframe</groupId>
+        <artifactId>LingFrame</artifactId>
+        <version>${lingframe.version}</version>
+    </parent>
+
+    <artifactId>lingframe-bom</artifactId>
+    <packaging>pom</packaging>
+
+    <name>lingframe-bom</name>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.lingframe</groupId>
+                <artifactId>lingframe-core</artifactId>
+                <version>${lingframe.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.lingframe</groupId>
+                <artifactId>lingframe-api</artifactId>
+                <version>${lingframe.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.lingframe</groupId>
+                <artifactId>lingframe-spring-boot3-starter</artifactId>
+                <version>${lingframe.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.lingframe</groupId>
+                <artifactId>lingframe-plugin-storage</artifactId>
+                <version>${lingframe.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.lingframe</groupId>
+                <artifactId>lingframe-plugin-cache</artifactId>
+                <version>${lingframe.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>
