@@ -4,20 +4,49 @@
     <parent>
         <groupId>com.lingframe</groupId>
         <artifactId>lingframe-samples</artifactId>
-        <version>${lingframe.version}</version>
+        <version>${revision}</version>
     </parent>
 
     <artifactId>lingframe-sample-host-app</artifactId>
     <packaging>jar</packaging>
 
-    <name>lingframe-sample-host-app</name>
+    <name>LingFrame :: Sample :: Host App</name>
+    <description>示例宿主应用</description>
 
     <dependencies>
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>3.8.1</version>
-            <scope>test</scope>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-spring-boot3-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-plugin-storage</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-plugin-cache</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 </project>

@@ -4,13 +4,14 @@
     <parent>
         <groupId>com.lingframe</groupId>
         <artifactId>LingFrame</artifactId>
-        <version>${lingframe.version}</version>
+        <version>${revision}</version>
     </parent>
 
     <artifactId>lingframe-runtime</artifactId>
     <packaging>pom</packaging>
 
-    <name>lingframe-runtime</name>
+    <name>LingFrame :: Runtime</name>
+    <description>运行时集成层</description>
 
     <modules>
         <module>lingframe-spring-boot3-starter</module>

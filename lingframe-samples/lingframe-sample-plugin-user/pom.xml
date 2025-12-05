@@ -4,20 +4,45 @@
     <parent>
         <groupId>com.lingframe</groupId>
         <artifactId>lingframe-samples</artifactId>
-        <version>${lingframe.version}</version>
+        <version>${revision}</version>
     </parent>
 
     <artifactId>lingframe-sample-plugin-user</artifactId>
     <packaging>jar</packaging>
 
-    <name>lingframe-sample-plugin-user</name>
+    <name>LingFrame :: Sample :: User Plugin</name>
+    <description>示例业务插件（用户管理）</description>
 
     <dependencies>
+        <!-- 仅依赖 API -->
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>3.8.1</version>
-            <scope>test</scope>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-api</artifactId>
+        </dependency>
+
+        <!-- MyBatis Flex 等由宿主提供，这里 provided -->
+        <dependency>
+            <groupId>com.mybatis-flex</groupId>
+            <artifactId>mybatis-flex-spring-boot3-starter</artifactId>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!-- 打成可被加载的插件 JAR -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Plugin-Id>user-plugin</Plugin-Id>
+                            <Plugin-Version>${project.version}</Plugin-Version>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

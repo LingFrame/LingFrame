@@ -4,13 +4,14 @@
     <parent>
         <groupId>com.lingframe</groupId>
         <artifactId>LingFrame</artifactId>
-        <version>${lingframe.version}</version>
+        <version>${revision}</version>
     </parent>
 
     <artifactId>lingframe-plugins-infra</artifactId>
     <packaging>pom</packaging>
 
-    <name>lingframe-plugins-infra</name>
+    <name>LingFrame :: Infrastructure Plugins</name>
+    <description>基础设施插件</description>
 
     <modules>
         <module>lingframe-plugin-storage</module>

@@ -4,20 +4,24 @@
     <parent>
         <groupId>com.lingframe</groupId>
         <artifactId>lingframe-plugins-infra</artifactId>
-        <version>${lingframe.version}</version>
+        <version>${revision}</version>
     </parent>
 
     <artifactId>lingframe-plugin-storage</artifactId>
     <packaging>jar</packaging>
 
-    <name>lingframe-plugin-storage</name>
+    <name>LingFrame :: Plugin :: Storage</name>
+    <description>存储能力插件（数据库访问）</description>
 
     <dependencies>
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>3.8.1</version>
-            <scope>test</scope>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+            <optional>true</optional>
         </dependency>
     </dependencies>
 </project>

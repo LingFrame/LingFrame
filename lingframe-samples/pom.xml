@@ -4,13 +4,14 @@
     <parent>
         <groupId>com.lingframe</groupId>
         <artifactId>LingFrame</artifactId>
-        <version>${lingframe.version}</version>
+        <version>${revision}</version>
     </parent>
 
     <artifactId>lingframe-samples</artifactId>
     <packaging>pom</packaging>
 
-    <name>lingframe-samples</name>
+    <name>LingFrame :: Samples</name>
+    <description>示例应用</description>
 
     <modules>
         <module>lingframe-sample-host-app</module>

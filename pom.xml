@@ -4,16 +4,24 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.lingframe</groupId>
+    <parent>
+        <groupId>com.lingframe</groupId>
+        <artifactId>lingframe-dependencies</artifactId>
+        <version>${revision}</version>
+        <relativePath>lingframe-dependencies</relativePath>
+    </parent>
+
     <artifactId>LingFrame</artifactId>
-    <version>${lingframe.version}</version>
+    <version>${revision}</version>
     <packaging>pom</packaging>
 
     <name>LingFrame</name>
+    <description>下一代 JVM 微内核插件化框架</description>
+    <url>https://github.com/lingframe/lingframe</url>
 
     <modules>
-        <module>lingframe-bom</module>
         <module>lingframe-dependencies</module>
+        <module>lingframe-bom</module>
         <module>lingframe-api</module>
         <module>lingframe-core</module>
         <module>lingframe-runtime</module>
@@ -21,39 +29,17 @@
         <module>lingframe-samples</module>
     </modules>
 
-    <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <lingframe.version>0.0.1</lingframe.version>
-    </properties>
-
-    <repositories>
-        <repository>
-            <id>aliyun</id>
-            <name>Aliyun Maven Repository</name>
-            <url>https://maven.aliyun.com/repository/public</url>
-            <releases>
-                <enabled>true</enabled>
-            </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
-
-    <pluginRepositories>
-        <pluginRepository>
-            <id>aliyun-plugin</id>
-            <name>Aliyun Maven Plugin Repository</name>
-            <url>https://maven.aliyun.com/repository/public</url>
-            <releases>
-                <enabled>true</enabled>
-            </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </pluginRepository>
-    </pluginRepositories>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

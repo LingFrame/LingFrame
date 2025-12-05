@@ -4,21 +4,21 @@
     <parent>
         <groupId>com.lingframe</groupId>
         <artifactId>LingFrame</artifactId>
-        <version>${lingframe.version}</version>
+        <version>${revision}</version>
     </parent>
 
     <artifactId>lingframe-api</artifactId>
-    <version>${lingframe.version}</version>
+    <version>${revision}</version>
     <packaging>jar</packaging>
 
-    <name>lingframe-api</name>
+    <name>LingFrame :: API</name>
+    <description>插件 API 定义与契约</description>
 
     <dependencies>
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>3.8.1</version>
-            <scope>test</scope>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 </project>
