@@ -1,0 +1,12 @@
+# plugin.yml 中应该定义
+plugin:
+  id: user-service
+  version: 1.0.0
+  permissions:
+    - capability: "com.lingframe.plugin.storage.StorageService"
+      access: "READ"
+    - capability: "com.lingframe.plugin.cache.CacheService"
+      access: "WRITE"
+  dependencies:
+    - id: "base-service"
+      minVersion: "1.0.0"

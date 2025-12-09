@@ -20,6 +20,8 @@ public interface PermissionService {
      */
     boolean isAllowed(String pluginId, String capability, AccessType accessType);
 
+    void grant(String pluginId, String capability, AccessType accessType);
+
     /**
      * 获取插件的完整权限配置。
      * <p>

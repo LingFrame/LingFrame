@@ -2,6 +2,7 @@ package com.lingframe.core.security;
 
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.config.LingFrameConfig;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
@@ -21,40 +22,44 @@ public class DefaultPermissionService implements PermissionService {
     // 全局白名单服务 (例如基础的日志服务)
     private static final String GLOBAL_WHITELIST_PREFIX = "com.lingframe.api.";
 
-    public void grant(String pluginId, String capability, AccessType accessType) {
-        permissions.computeIfAbsent(pluginId, k -> new ConcurrentHashMap<>())
-                .put(capability, accessType);
-    }
-
     @Override
     public boolean isAllowed(String pluginId, String capability, AccessType accessType) {
-        // 1. 只有 Core 自身调用（pluginId=null）或白名单服务，默认放行
+        // 1. 白名单放行
         if (pluginId == null || capability.startsWith(GLOBAL_WHITELIST_PREFIX)) {
             return true;
         }
 
         // 2. 查表鉴权
-        Map<String, AccessType> pluginPerms = permissions.get(pluginId);
-        if (pluginPerms == null) {
-            log.warn("DENY: Plugin [{}] has no permissions configured.", pluginId);
-            return false;
+        boolean allowed = checkInternal(pluginId, capability, accessType);
+
+        // 3. 开发模式兜底
+        if (!allowed && LingFrameConfig.isDevMode()) {
+            log.warn("==========================================================================");
+            log.warn("【开发模式警告】 插件 [{}] 越权访问 [{}] ({})。请在 plugin.yml 中声明: {}",
+                    pluginId, capability, accessType, capability);
+            log.warn("==========================================================================");
+            return true; // 开发模式强制放行
         }
 
-        AccessType granted = pluginPerms.get(capability);
-        if (granted == null) {
-            log.warn("DENY: Plugin [{}] tried to access [{}] without permission.", pluginId, capability);
-            return false;
-        }
-
-        // 简单级别判断: WRITE 包含 READ, EXECUTE 独立
-        // 这里简化逻辑：必须完全匹配或者是 WRITE (假设 WRITE > READ)
-        boolean allowed = granted == accessType || (granted == AccessType.WRITE && accessType == AccessType.READ);
-
-        if (!allowed) {
-            log.warn("DENY: Plugin [{}] capability [{}] requires [{}] but has [{}]",
-                    pluginId, capability, accessType, granted);
-        }
         return allowed;
+    }
+
+    private boolean checkInternal(String pluginId, String capability, AccessType accessType) {
+        Map<String, AccessType> pluginPerms = permissions.get(pluginId);
+        if (pluginPerms == null) return false;
+        AccessType granted = pluginPerms.get(capability);
+        if (granted == null) return false;
+
+        // WRITE 包含 READ 权限
+        if (granted == AccessType.WRITE && accessType == AccessType.READ) return true;
+
+        return granted == accessType;
+    }
+
+    @Override
+    public void grant(String pluginId, String capability, AccessType accessType) {
+        permissions.computeIfAbsent(pluginId, k -> new ConcurrentHashMap<>())
+                .put(capability, accessType);
     }
 
     @Override
@@ -64,11 +69,6 @@ public class DefaultPermissionService implements PermissionService {
 
     @Override
     public void audit(String pluginId, String capability, String operation, boolean allowed) {
-        // 生产环境应写入审计日志文件或 DB
-        if (!allowed) {
-            log.warn("[AUDIT] Plugin: {}, Cap: {}, Op: {}, Allowed: {}", pluginId, capability, operation, allowed);
-        } else {
-            log.debug("[AUDIT] Plugin: {}, Cap: {}, Op: {}, Allowed: {}", pluginId, capability, operation, allowed);
-        }
+        // 简单日志，主要使用 AuditManager
     }
 }

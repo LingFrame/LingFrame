@@ -3,6 +3,7 @@ package com.lingframe.core.plugin;
 import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.proxy.SmartServiceProxy;
+import com.lingframe.core.spi.PluginContainer;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Proxy;
@@ -48,13 +49,19 @@ public class PluginSlot {
     public synchronized void upgrade(PluginInstance newInstance, PluginContext pluginContext) {
         // 1. 背压保护：如果历史版本积压过多，拒绝发布
         if (dyingInstances.size() >= MAX_HISTORY_SNAPSHOTS) {
-            throw new IllegalStateException("Too many dying instances. System busy.");
+            log.error("[{}] Too many dying instances. System busy.", pluginId);
+            return;
         }
         PluginInstance oldInstance = activeInstance.get();
 
         // 2. 启动新版本容器
         log.info("[{}] Starting new version: {}", pluginId, newInstance.getVersion());
-        newInstance.getContainer().start(pluginContext);
+        PluginContainer container = newInstance.getContainer();
+        if (container == null) {
+            log.error("[{}] PluginContainer is null", pluginId);
+            return;
+        }
+        container.start(pluginContext);
 
         // 3. 原子切换流量
         activeInstance.set(newInstance);

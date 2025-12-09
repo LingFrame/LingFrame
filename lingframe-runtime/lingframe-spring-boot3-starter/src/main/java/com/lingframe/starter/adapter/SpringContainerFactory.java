@@ -10,10 +10,17 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class SpringContainerFactory implements ContainerFactory {
 
     private final ApplicationContext parentContext;
@@ -23,8 +30,21 @@ public class SpringContainerFactory implements ContainerFactory {
     }
 
     @Override
-    public PluginContainer create(String pluginId, File jarFile, ClassLoader classLoader) {
-        String mainClass = getMainClass(jarFile);
+    public PluginContainer create(String pluginId, File sourceFile, ClassLoader classLoader) {
+        String mainClass;
+
+        if (sourceFile.isDirectory()) {
+            // 【开发模式】扫描目录
+            mainClass = scanMainClass(sourceFile);
+        } else {
+            // 【生产模式】读取 Manifest
+            mainClass = getMainClassFromJar(sourceFile);
+        }
+
+        if (mainClass == null) {
+            log.error("Cannot find Main-Class for plugin: {}", pluginId);
+            return null;
+        }
         try {
             Class<?> sourceClass = classLoader.loadClass(mainClass);
 
@@ -39,21 +59,49 @@ public class SpringContainerFactory implements ContainerFactory {
 
             return new SpringPluginContainer(builder, classLoader);
         } catch (Exception e) {
-            throw new RuntimeException("Create container failed", e);
+            log.error("Create container failed for plugin: {}", pluginId, e);
+            return null;
         }
     }
 
-    private String getMainClass(File jarFile) {
+    private String getMainClassFromJar(File jarFile) {
         try (JarFile jar = new JarFile(jarFile)) {
             Manifest manifest = jar.getManifest();
             Attributes attrs = manifest.getMainAttributes();
-            // 兼容 Spring Boot 打包插件
             String cls = attrs.getValue("Start-Class");
             if (cls == null) cls = attrs.getValue("Main-Class");
-            if (cls == null) throw new IllegalArgumentException("No Main-Class found");
             return cls;
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            log.error("Error reading manifest from jar: {}", jarFile.getAbsolutePath(), e);
+            return null;
+        }
+    }
+
+    /**
+     * 简单扫描目录下的主类
+     * 规则：寻找标注了 @SpringBootApplication 的类
+     */
+    private String scanMainClass(File dir) {
+        try (Stream<Path> stream = Files.walk(dir.toPath())) {
+            return stream
+                    .filter(p -> p.toString().endsWith(".class"))
+                    .map(p -> {
+                        // 简单的将路径转换为类名 (注意：这需要基于 dir 是 classpath root 的假设)
+                        // 例如: /target/classes/com/example/App.class -> com.example.App
+                        String rel = dir.toPath().relativize(p).toString();
+                        return rel.replace(File.separator, ".").replace(".class", "");
+                    })
+                    .filter(className -> {
+                        // 这里不能用 loadClass，因为类加载器还没准备好，而且全量加载太慢
+                        // 简化做法：只匹配类名特征，或假设主类名为 PluginApplication
+                        // 生产级做法应使用 ASM 读取字节码注解
+                        return className.endsWith("Application") || className.endsWith("Plugin");
+                    })
+                    .findFirst()
+                    .orElse(null);
+        } catch (IOException e) {
+            log.error("Failed to scan main class in directory: {}", dir.getAbsolutePath(), e);
+            return null;
         }
     }
 }

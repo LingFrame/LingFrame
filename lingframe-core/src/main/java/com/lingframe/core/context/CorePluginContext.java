@@ -3,17 +3,21 @@ package com.lingframe.core.context;
 import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.event.EventBus;
 import com.lingframe.core.plugin.PluginManager;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Optional;
 
+@Slf4j
 @RequiredArgsConstructor
 public class CorePluginContext implements PluginContext {
 
     private final String pluginId;
     private final PluginManager pluginManager;
     private final PermissionService permissionService;
+    private final EventBus eventBus;
 
     @Override
     public String getPluginId() {
@@ -45,7 +49,7 @@ public class CorePluginContext implements PluginContext {
 
     @Override
     public void publishEvent(LingEvent event) {
-        // TODO: 对接 Core 的 EventBus
-        System.out.println("Event published from " + pluginId + ": " + event);
+        log.info("Event published from {}: {}", pluginId, event);
+        eventBus.publish(event);
     }
 }
