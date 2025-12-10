@@ -2,6 +2,7 @@ package com.lingframe.core.proxy;
 
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
+import com.lingframe.api.context.PluginContextHolder;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
@@ -39,6 +40,8 @@ public class SmartServiceProxy implements InvocationHandler {
 
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+        // 设置上下文
+        PluginContextHolder.set(callerPluginId);
         if (method.getDeclaringClass() == Object.class) return method.invoke(this, args);
 
         // =========================================================
@@ -91,6 +94,7 @@ public class SmartServiceProxy implements InvocationHandler {
             // 5. [Monitor] 关闭调用链
             // =========================================================
             if (isRootTrace) TraceContext.clear();
+            PluginContextHolder.clear(); // 清除上下文
         }
     }
 
