@@ -47,13 +47,41 @@ public class SpringPluginContainer implements PluginContainer {
                 plugin.onStart(pluginContext);
 
                 // 3. 【新增】扫描 @LingService 并注册到 Core
-                scanAndRegisterLingServices();
+                // 等待所有Bean初始化完成后再注册服务
+                scheduleServiceRegistration();
             } catch (Exception e) {
                 log.warn("No LingPlugin entry point found in plugin: {}", pluginContext.getPluginId());
             }
 
         } finally {
             t.setContextClassLoader(old);
+        }
+    }
+
+    /**
+     * 延迟服务注册，确保所有Bean都已初始化完成
+     */
+    private void scheduleServiceRegistration() {
+        // 使用Spring的事件机制，在所有Bean初始化完成后注册服务
+        if (context instanceof ConfigurableApplicationContext cxt) {
+            cxt.addApplicationListener(event -> {
+                if (event instanceof org.springframework.context.event.ContextRefreshedEvent) {
+                    log.info("All beans initialized, registering LingServices for plugin: {}", pluginContext.getPluginId());
+                    scanAndRegisterLingServices();
+                }
+            });
+        } else {
+            // 兜底方案：延迟注册
+            Thread delayRegistrationThread = new Thread(() -> {
+                try {
+                    Thread.sleep(1000); // 等待1秒确保初始化完成
+                    scanAndRegisterLingServices();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            delayRegistrationThread.setDaemon(true);
+            delayRegistrationThread.start();
         }
     }
 

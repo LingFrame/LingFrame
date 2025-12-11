@@ -2,6 +2,7 @@ package com.lingframe.plugin.storage.configuration;
 
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.plugin.storage.proxy.LingDataSourceProxy;
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;
@@ -19,7 +20,7 @@ public class DataSourceWrapperProcessor implements BeanPostProcessor {
     private final ApplicationContext applicationContext;
 
     @Override
-    public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+    public Object postProcessAfterInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
         // 如果 Bean 是 DataSource，就把它包一层
         if (bean instanceof DataSource) {
             log.info(">>>>>> [LingFrame] Wrapping DataSource: {}", beanName);

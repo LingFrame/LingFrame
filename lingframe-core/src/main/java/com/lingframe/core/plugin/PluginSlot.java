@@ -226,9 +226,41 @@ public class PluginSlot {
         }
         // 尝试立即清理一次 (如果正好引用计数为0，直接销毁)
         checkAndKill();
+
+        // 添加超时检查，防止长时间阻塞
+        scheduleForceCleanupIfNecessary();
+    }
+
+    /**
+     * 如果插件实例长时间未能正常销毁，则强制清理
+     */
+    private void scheduleForceCleanupIfNecessary() {
+        // 在单独的线程中检查是否需要强制清理
+        Thread forceCleanupThread = new Thread(() -> {
+            try {
+                Thread.sleep(30000); // 等待30秒
+                dyingInstances.removeIf(instance -> {
+                    if (!instance.isIdle()) {
+                        log.warn("[{}] Force cleaning plugin instance after 30 seconds: {}", pluginId, instance.getVersion());
+                        try {
+                            instance.destroy();
+                        } catch (Exception e) {
+                            log.error("Error force destroying plugin instance", e);
+                        }
+                        return true;
+                    }
+                    return false;
+                });
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        forceCleanupThread.setDaemon(true);
+        forceCleanupThread.setName("lingframe-force-cleanup-" + pluginId);
+        forceCleanupThread.start();
     }
 
     // 【新增内部类】用于缓存可执行的服务对象和方法
-        private record InvokableService(Object bean, Method method) {
+    private record InvokableService(Object bean, Method method) {
     }
 }

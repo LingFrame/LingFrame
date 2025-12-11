@@ -21,11 +21,27 @@ public class PluginClassLoader extends URLClassLoader {
     private static final List<String> FORCE_PARENT_PACKAGES = Arrays.asList(
             "java.", "javax.", "jdk.", "sun.", "com.sun.", "org.w3c.", "org.xml.",
             "com.lingframe.api.", // API 契约必须共享
-            "org.slf4j."          // 日志门面通常共享
+            "org.slf4j.",         // 日志门面通常共享
+            "org.apache.logging.log4j.", // Log4j2
+            "ch.qos.logback.",    // Logback
+            "org.springframework.", // Spring框架相关类
+            "com.fasterxml.jackson.", // Jackson JSON处理
+            "org.yaml.snakeyaml." // SnakeYAML
     );
+
+    // 可配置的额外委派包列表
+    private static volatile List<String> additionalParentPackages = new ArrayList<>();
 
     public PluginClassLoader(URL[] urls, ClassLoader parent) {
         super(urls, parent);
+    }
+
+    /**
+     * 添加额外的强制委派包
+     * @param packages 包名前缀列表
+     */
+    public static void addAdditionalParentPackages(List<String> packages) {
+        additionalParentPackages.addAll(packages);
     }
 
     @Override

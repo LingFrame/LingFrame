@@ -4,6 +4,7 @@ import com.lingframe.core.plugin.PluginManager;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.*;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -56,7 +57,8 @@ public class HotSwapWatcher {
                         try {
                             WatchKey k = p.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY);
                             keyPluginMap.put(k, pluginId);
-                        } catch (Exception e) {
+                        } catch (IOException e) {
+                            log.warn("Failed to watch subdir: {}", p, e);
                         }
                     });
 
@@ -98,16 +100,49 @@ public class HotSwapWatcher {
         if (debounceTask != null && !debounceTask.isDone()) {
             debounceTask.cancel(false);
         }
-        // 延迟 500ms 执行，等待 IDE 编译完成
+        // 延迟 1000ms 执行，等待 IDE 编译完成
         debounceTask = debounceExecutor.schedule(() -> {
             log.info("=================================================");
             log.info("⚡ 检测到源码变更，正在热重载插件: {}", pluginId);
+
+            // 检查是否存在编译错误文件
+            if (hasCompilationErrors(pluginId)) {
+                log.warn("检测到编译错误，跳过热重载: {}", pluginId);
+                log.info("=================================================");
+                return;
+            }
+
             try {
                 pluginManager.reload(pluginId);
             } catch (Exception e) {
                 log.error("Hot reload failed", e);
             }
             log.info("=================================================");
-        }, 500, TimeUnit.MILLISECONDS);
+        }, 1000, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * 检查是否存在编译错误
+     * @param pluginId 插件ID
+     * @return 是否存在编译错误
+     */
+    private boolean hasCompilationErrors(String pluginId) {
+        // 简单实现：检查是否存在 .class 文件
+        // 更完善的实现应该检查编译器输出或错误日志
+        for (Map.Entry<WatchKey, String> entry : keyPluginMap.entrySet()) {
+            if (entry.getValue().equals(pluginId)) {
+                Path dir = (Path) entry.getKey().watchable();
+                try {
+                    // 检查目录中是否存在 .class 文件
+                    return Files.walk(dir)
+                            .filter(path -> path.toString().endsWith(".class"))
+                            .findFirst()
+                            .isEmpty();
+                } catch (IOException e) {
+                    log.warn("无法检查编译状态: {}", dir, e);
+                }
+            }
+        }
+        return false;
     }
 }

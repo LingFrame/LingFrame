@@ -8,6 +8,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.sql.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+
+import net.sf.jsqlparser.JSQLParserException;
+import net.sf.jsqlparser.parser.CCJSqlParserUtil;
+import net.sf.jsqlparser.statement.select.Select;
+import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.update.Update;
+import net.sf.jsqlparser.statement.delete.Delete;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -16,6 +25,40 @@ public class LingPreparedStatementProxy implements PreparedStatement {
     private final PreparedStatement target;
     private final PermissionService permissionService;
     private final String sql; // 预编译的 SQL
+    
+    // 预解析的结果
+    private final AccessType preParsedAccessType;
+    
+    // SQL解析结果缓存 (LRU缓存)
+    private static final int MAX_CACHE_SIZE = 1000;
+    private static final ConcurrentHashMap<String, SqlParseResult> parseCache = new ConcurrentHashMap<>();
+    
+    // 缓存条目过期时间 (毫秒)
+    private static final long CACHE_EXPIRE_TIME = TimeUnit.MINUTES.toMillis(10);
+    
+    // SQL解析结果缓存条目
+    private static class SqlParseResult {
+        final AccessType accessType;
+        final long timestamp;
+        
+        SqlParseResult(AccessType accessType) {
+            this.accessType = accessType;
+            this.timestamp = System.currentTimeMillis();
+        }
+        
+        boolean isExpired() {
+            return System.currentTimeMillis() - timestamp > CACHE_EXPIRE_TIME;
+        }
+    }
+    
+    public LingPreparedStatementProxy(PreparedStatement target, PermissionService permissionService, String sql) {
+        this.target = target;
+        this.permissionService = permissionService;
+        this.sql = sql;
+        
+        // 在构造时预解析SQL类型
+        this.preParsedAccessType = parseSqlForAccessTypeWithCache(sql);
+    }
 
     // --- 核心鉴权逻辑 ---
     private void checkPermission() throws SQLException {
@@ -28,24 +71,105 @@ public class LingPreparedStatementProxy implements PreparedStatement {
             return;
         }
 
-        // 2. 简单的 SQL 解析 (生产环境请用 JSqlParser)
-        String trimmedSql = sql.trim().toUpperCase();
-        AccessType accessType = AccessType.EXECUTE; // 默认
-        if (trimmedSql.startsWith("SELECT")) {
-            accessType = AccessType.READ;
-        } else if (trimmedSql.startsWith("INSERT") || trimmedSql.startsWith("UPDATE") || trimmedSql.startsWith("DELETE")) {
-            accessType = AccessType.WRITE;
-        }
+        // 2. 使用预解析的结果
+        boolean allowed = permissionService.isAllowed(callerPluginId, "storage:sql", preParsedAccessType);
 
-        // 3. 调用 Core 进行鉴权
-        boolean allowed = permissionService.isAllowed(callerPluginId, "storage:sql", accessType);
-
-        // 4. 上报审计 (异步)
+        // 3. 上报审计 (异步)
         permissionService.audit(callerPluginId, "storage:sql", sql, allowed);
 
         if (!allowed) {
             throw new SQLException(new PermissionDeniedException(
                     "Plugin [" + callerPluginId + "] denied access to SQL: " + sql));
+        }
+    }
+    
+    /**
+     * 带缓存的SQL解析
+     * @param sql SQL语句
+     * @return 访问类型
+     */
+    private AccessType parseSqlForAccessTypeWithCache(String sql) {
+        // 检查缓存
+        SqlParseResult cachedResult = parseCache.get(sql);
+        if (cachedResult != null && !cachedResult.isExpired()) {
+            return cachedResult.accessType;
+        }
+        
+        // 缓存未命中或已过期，重新解析
+        AccessType accessType = parseSqlForAccessType(sql);
+        
+        // 更新缓存
+        if (parseCache.size() < MAX_CACHE_SIZE) {
+            parseCache.put(sql, new SqlParseResult(accessType));
+        } else {
+            // 缓存满时清除过期条目
+            parseCache.entrySet().removeIf(entry -> entry.getValue().isExpired());
+            // 如果仍有空间则添加新条目
+            if (parseCache.size() < MAX_CACHE_SIZE) {
+                parseCache.put(sql, new SqlParseResult(accessType));
+            }
+        }
+        
+        return accessType;
+    }
+    
+    /**
+     * 分级SQL解析策略
+     * @param sql SQL语句
+     * @return 访问类型
+     */
+    private AccessType parseSqlForAccessType(String sql) {
+        // 对于简单的SQL语句，直接使用字符串匹配
+        if (isSimpleSql(sql)) {
+            return fallbackParseSql(sql);
+        }
+        
+        // 对于复杂SQL语句，使用JSqlParser
+        try {
+            net.sf.jsqlparser.statement.Statement statement = CCJSqlParserUtil.parse(sql.trim());
+            if (statement instanceof Select) {
+                return AccessType.READ;
+            } else if (statement instanceof Insert || statement instanceof Update || statement instanceof Delete) {
+                return AccessType.WRITE;
+            } else {
+                return AccessType.EXECUTE;
+            }
+        } catch (JSQLParserException e) {
+            log.warn("Failed to parse SQL with JSqlParser, falling back to simple matching: {}", sql);
+            return fallbackParseSql(sql);
+        }
+    }
+    
+    /**
+     * 判断是否为简单SQL语句
+     * @param sql SQL语句
+     * @return 是否为简单SQL
+     */
+    private boolean isSimpleSql(String sql) {
+        // 简单规则：长度小于100且不包含复杂关键字
+        if (sql.length() > 100) {
+            return false;
+        }
+        
+        String upperSql = sql.toUpperCase();
+        // 如果包含复杂关键字，则认为不是简单SQL
+        return !(upperSql.contains("JOIN") || upperSql.contains("UNION") || 
+                upperSql.contains("SUBQUERY") || upperSql.contains("CASE"));
+    }
+    
+    /**
+     * 简单的字符串匹配作为回退方案
+     * @param sql SQL语句
+     * @return 访问类型
+     */
+    private AccessType fallbackParseSql(String sql) {
+        String trimmedSql = sql.trim().toUpperCase();
+        if (trimmedSql.startsWith("SELECT")) {
+            return AccessType.READ;
+        } else if (trimmedSql.startsWith("INSERT") || trimmedSql.startsWith("UPDATE") || trimmedSql.startsWith("DELETE")) {
+            return AccessType.WRITE;
+        } else {
+            return AccessType.EXECUTE;
         }
     }
 

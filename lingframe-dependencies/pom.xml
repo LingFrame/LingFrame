@@ -26,6 +26,8 @@
 
         <!-- 工具库 -->
         <snakeyaml.version>2.2</snakeyaml.version>
+        <!-- SQL 解析器 -->
+        <jsqlparser.version>5.3</jsqlparser.version>
         <guava.version>33.4.8-jre</guava.version>
         <mybatis-flex.version>1.11.4</mybatis-flex.version>
         <pf4j.version>3.14.0</pf4j.version>
@@ -115,6 +117,13 @@
                 <groupId>org.yaml</groupId>
                 <artifactId>snakeyaml</artifactId>
                 <version>${snakeyaml.version}</version>
+            </dependency>
+
+            <!-- SQL 解析器 -->
+            <dependency>
+                <groupId>com.github.jsqlparser</groupId>
+                <artifactId>jsqlparser</artifactId>
+                <version>${jsqlparser.version}</version>
             </dependency>
 
             <!-- MyBatis Flex BOM -->
