@@ -59,6 +59,10 @@ public class PluginSlot {
         }
         PluginInstance oldInstance = activeInstance.get();
 
+        // 先清理缓存再加载新容器
+        serviceMethodCache.clear();
+        log.info("[{}] Service method cache cleared and ready for new version.", pluginId);
+
         // 2. 启动新版本容器
         log.info("[{}] Starting new version: {}", pluginId, newInstance.getVersion());
         PluginContainer container = newInstance.getContainer();
@@ -67,11 +71,6 @@ public class PluginSlot {
             return;
         }
         container.start(pluginContext);
-
-        // 【新增】：更新服务方法缓存
-        // 实际场景：这里需要从 container 中获取注册信息填充 serviceMethodCache
-        serviceMethodCache.clear();
-        log.info("[{}] Service method cache cleared and ready for new version.", pluginId);
 
         // 3. 原子切换流量
         activeInstance.set(newInstance);
