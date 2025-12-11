@@ -1,5 +1,6 @@
 package com.lingframe.service;
 
+import com.lingframe.api.context.PluginContext;
 import com.lingframe.core.plugin.PluginManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -12,6 +13,9 @@ public class DemoService {
     @Autowired
     private PluginManager pluginManager;
 
+    @Autowired
+    private PluginContext pluginContext;
+
     /**
      * 演示通过FQSID调用插件服务
      */
@@ -20,18 +24,17 @@ public class DemoService {
             switch (operation) {
                 case "query":
                     if (params.length > 0) {
-                        // 使用PluginManager直接调用服务
-                        Optional<Object> result = pluginManager.invokeService("host-app", "user-plugin:query_user", params[0]);
-                        return "Query result: " + result.orElse("Not found");
+                        Optional<Object> optional = pluginContext.invoke("user-plugin:query_user", params[0]);
+                        return "Query result: " + optional.orElse("Not found");
                     }
                     break;
                 case "list":
-                    Optional<Object> result = pluginManager.invokeService("host-app", "user-plugin:list_users");
-                    return "List result: " + result.orElse("Empty");
+                    Optional<Object> optional = pluginContext.invoke("user-plugin:list_users");
+                    return "List result: " + optional.orElse("Empty");
                 case "create":
                     if (params.length > 1) {
-                        Optional<Object> createResult = pluginManager.invokeService("host-app", "user-plugin:create_user", params[0], params[1]);
-                        return "Create result: " + createResult.orElse("Failed");
+                        Optional<Object> createOptional = pluginContext.invoke("user-plugin:create_user", params[0], params[1]);
+                        return "List result: " + createOptional.orElse("Empty");
                     }
                     break;
                 default:
@@ -51,7 +54,7 @@ public class DemoService {
         info.append("Installed plugins:\n");
         for (String pluginId : pluginManager.getInstalledPlugins()) {
             info.append("- ").append(pluginId)
-                .append(" (version: ").append(pluginManager.getPluginVersion(pluginId)).append(")\n");
+                    .append(" (version: ").append(pluginManager.getPluginVersion(pluginId)).append(")\n");
         }
         return info.toString();
     }
