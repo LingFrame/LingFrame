@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LingFrame 演示</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        input, select {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .result {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LingFrame 插件框架演示</h1>
+        
+        <div class="section">
+            <h2>插件管理</h2>
+            <button onclick="listPlugins()">列出所有插件</button>
+            <button onclick="reloadUserPlugin()">重载用户插件</button>
+            <div id="plugin-result" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h2>用户服务演示</h2>
+            <div>
+                <button onclick="listUsers()">列出所有用户</button>
+            </div>
+            <div>
+                <input type="text" id="userId" placeholder="用户ID">
+                <button onclick="queryUser()">查询用户</button>
+            </div>
+            <div>
+                <input type="text" id="userName" placeholder="用户名">
+                <input type="text" id="userEmail" placeholder="用户邮箱">
+                <button onclick="createUser()">创建用户</button>
+            </div>
+            <div id="user-result" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        const baseUrl = '/service-demo';
+        
+        async function listPlugins() {
+            try {
+                const response = await fetch('/demo/plugins');
+                const plugins = await response.json();
+                document.getElementById('plugin-result').innerText = JSON.stringify(plugins, null, 2);
+            } catch (error) {
+                document.getElementById('plugin-result').innerText = 'Error: ' + error.message;
+            }
+        }
+        
+        async function reloadUserPlugin() {
+            try {
+                const response = await fetch('/demo/plugin/user-plugin/reload', {
+                    method: 'POST'
+                });
+                const result = await response.text();
+                document.getElementById('plugin-result').innerText = result;
+            } catch (error) {
+                document.getElementById('plugin-result').innerText = 'Error: ' + error.message;
+            }
+        }
+        
+        async function listUsers() {
+            try {
+                const response = await fetch(baseUrl + '/user/list');
+                const result = await response.text();
+                document.getElementById('user-result').innerText = result;
+            } catch (error) {
+                document.getElementById('user-result').innerText = 'Error: ' + error.message;
+            }
+        }
+        
+        async function queryUser() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) {
+                alert('请输入用户ID');
+                return;
+            }
+            
+            try {
+                const response = await fetch(baseUrl + '/user/query?param1=' + encodeURIComponent(userId));
+                const result = await response.text();
+                document.getElementById('user-result').innerText = result;
+            } catch (error) {
+                document.getElementById('user-result').innerText = 'Error: ' + error.message;
+            }
+        }
+        
+        async function createUser() {
+            const userName = document.getElementById('userName').value;
+            const userEmail = document.getElementById('userEmail').value;
+            
+            if (!userName || !userEmail) {
+                alert('请输入用户名和邮箱');
+                return;
+            }
+            
+            try {
+                const response = await fetch(baseUrl + '/user/create?param1=' + encodeURIComponent(userName) + '&param2=' + encodeURIComponent(userEmail));
+                const result = await response.text();
+                document.getElementById('user-result').innerText = result;
+            } catch (error) {
+                document.getElementById('user-result').innerText = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

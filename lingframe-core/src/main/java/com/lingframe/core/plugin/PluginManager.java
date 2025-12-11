@@ -35,7 +35,7 @@ public class PluginManager {
     // 插件槽位表：Key=PluginId, Value=Slot
     private final Map<String, PluginSlot> slots = new ConcurrentHashMap<>();
 
-    // 【新增】协议服务注册表：Key=FQSID (Fully Qualified Service ID), Value=PluginId
+    // 协议服务注册表：Key=FQSID (Fully Qualified Service ID), Value=PluginId
     private final Map<String, String> protocolServiceRegistry = new ConcurrentHashMap<>();
 
     // 全局清理调度器 (单线程即可，任务很轻)

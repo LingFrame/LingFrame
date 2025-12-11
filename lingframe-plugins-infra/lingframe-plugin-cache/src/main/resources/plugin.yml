@@ -1,0 +1,8 @@
+plugin:
+  id: cache-plugin
+  version: 1.0.0
+  permissions:
+    - capability: "cache:redis"
+      access: "WRITE"
+    - capability: "cache:local"
+      access: "WRITE"

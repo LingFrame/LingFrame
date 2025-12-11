@@ -46,7 +46,7 @@ public class SpringPluginContainer implements PluginContainer {
                 log.info("Triggering onStart for plugin: {}", pluginContext.getPluginId());
                 plugin.onStart(pluginContext);
 
-                // 3. 【新增】扫描 @LingService 并注册到 Core
+                // 3. 扫描 @LingService 并注册到 Core
                 // 等待所有Bean初始化完成后再注册服务
                 scheduleServiceRegistration();
             } catch (Exception e) {
@@ -83,6 +83,7 @@ public class SpringPluginContainer implements PluginContainer {
             delayRegistrationThread.setDaemon(true);
             delayRegistrationThread.start();
         }
+        scanAndRegisterLingServices();
     }
 
     /**

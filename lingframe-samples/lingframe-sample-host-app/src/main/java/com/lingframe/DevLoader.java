@@ -8,6 +8,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.util.Optional;
 
 @Slf4j
 @Component
@@ -17,14 +18,13 @@ public class DevLoader implements CommandLineRunner {
     private final PluginManager pluginManager;
 
     @Override
-    public void run(String... args) throws Exception {
-        log.info("DevLoader.run mode = {}", LingFrameConfig.isDevMode());
+    public void run(String... args) {
+        log.info("DevLoader.run mode = {}", Optional.of(LingFrameConfig.isDevMode()).orElse(false));
         // 仅在开发环境执行
         if (!LingFrameConfig.isDevMode()) return;
 
         // 指向插件的编译输出目录 (IDEA 默认是 target/classes)
-        // 注意：这里是硬盘的绝对路径
-        File userPluginDir = new File("lingframe-samples/lingframe-sample-plugin-user/target/classes");
+        File userPluginDir = new File("../lingframe-sample-plugin-user/target/classes");
         log.info("DevLoader.run: userPluginDir = {}", userPluginDir.getAbsolutePath());
 
         if (userPluginDir.exists()) {

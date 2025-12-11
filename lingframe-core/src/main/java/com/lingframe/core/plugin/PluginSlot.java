@@ -109,7 +109,7 @@ public class PluginSlot {
     }
 
     /**
-     * 【新增方法】协议服务调用入口 (由 PluginManager.invokeExtension 调用)
+     * 协议服务调用入口 (由 PluginManager.invokeExtension 调用)
      * 职责：TCCL劫持 + 查找 Bean + 反射调用 + 引用计数
      */
     public Object invokeService(String callerPluginId, String fqsid, Object[] args) throws Exception {
