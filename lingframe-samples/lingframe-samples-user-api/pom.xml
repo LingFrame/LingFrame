@@ -3,21 +3,14 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.lingframe</groupId>
-        <artifactId>LingFrame</artifactId>
+        <artifactId>lingframe-samples</artifactId>
         <version>${revision}</version>
     </parent>
 
-    <artifactId>lingframe-api</artifactId>
+    <artifactId>lingframe-samples-user-api</artifactId>
     <packaging>jar</packaging>
 
-    <name>LingFrame :: API</name>
-    <description>插件 API 定义与契约</description>
+    <name>LingFrame :: Sample :: User Plugin :: API</name>
+    <description>示例业务插件（用户管理）API</description>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <scope>provided</scope>
-        </dependency>
-    </dependencies>
 </project>

@@ -20,6 +20,11 @@
             <artifactId>lingframe-api</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-samples-user-api</artifactId>
+        </dependency>
+
         <!-- MyBatis Flex 等由宿主提供，这里 provided -->
         <dependency>
             <groupId>com.mybatis-flex</groupId>

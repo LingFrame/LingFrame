@@ -29,6 +29,12 @@
             <artifactId>lingframe-plugin-cache</artifactId>
         </dependency>
 
+        <!-- 业务服务API -->
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-samples-user-api</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -49,7 +55,7 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
         </dependency>
-        
+
         <!-- 测试依赖 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

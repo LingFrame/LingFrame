@@ -1,4 +1,4 @@
-package com.lingframe.sample.user;
+package com.lingframe.sample.user.entity;
 
 public class User {
     private String id;
