@@ -12,7 +12,6 @@
     </parent>
 
     <artifactId>LingFrame</artifactId>
-    <version>${revision}</version>
     <packaging>pom</packaging>
 
     <name>LingFrame</name>

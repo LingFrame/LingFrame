@@ -114,7 +114,7 @@ public class PluginManager {
      * @param version  插件版本号
      * @param sourceFile 插件源文件 (Jar 包或目录)
      */
-    public void doInstall(String pluginId, String version, File sourceFile) {
+    private void doInstall(String pluginId, String version, File sourceFile) {
         try {
             // 1. 插件 ID 冲突检查
             if (slots.containsKey(pluginId)) {
