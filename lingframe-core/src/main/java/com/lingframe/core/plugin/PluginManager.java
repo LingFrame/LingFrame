@@ -6,6 +6,7 @@ import com.lingframe.core.classloader.PluginClassLoader;
 import com.lingframe.core.context.CorePluginContext;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.PluginContainer;
@@ -13,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.net.URL;
 import java.util.Map;
 import java.util.Optional;
@@ -317,5 +319,33 @@ public class PluginManager {
         } catch (Exception e) {
             throw new RuntimeException("Failed to create classloader for " + file.getName(), e);
         }
+    }
+
+    /**
+     * [新增] 检查指定插件是否包含某个类型的 Bean
+     * 用于 GlobalProxy 在运行时动态探测
+     */
+    public boolean hasBean(String pluginId, Class<?> beanType) {
+        PluginSlot slot = slots.get(pluginId);
+        if (slot == null) return false;
+
+        // 我们需要深入到 PluginSlot -> PluginInstance -> PluginContainer 去检查
+        // 这需要在 PluginSlot 和 PluginContainer 接口中增加相应方法
+        // 临时方案：直接获取一下试试，看是否返回 null (SpringContainer如果找不到通常返回null)
+        return slot.hasBean(beanType);
+    }
+
+    /**
+     * [重写] 获取服务的全局路由代理 (宿主专用)
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T getGlobalServiceProxy(String callerPluginId, Class<T> serviceType, String targetPluginId) {
+        return (T) Proxy.newProxyInstance(
+                this.getClass().getClassLoader(),
+                new Class[]{serviceType},
+                new GlobalServiceRoutingProxy(
+                        callerPluginId, serviceType, targetPluginId, this
+                )
+        );
     }
 }

@@ -17,6 +17,7 @@
         <module>lingframe-sample-host-app</module>
         <module>lingframe-sample-plugin-user</module>
         <module>lingframe-samples-user-api</module>
+        <module>lingframe-sample-plugin-order</module>
     </modules>
 
     <dependencyManagement>
