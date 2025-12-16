@@ -8,6 +8,7 @@ import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.starter.adapter.SpringContainerFactory;
+import com.lingframe.starter.processor.LingReferenceInjector;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -49,5 +50,11 @@ public class LingFrameAutoConfiguration {
                                            EventBus eventBus) {
         // 给宿主应用一个固定的 ID，例如 "host-app"
         return new CorePluginContext("host-app", pluginManager, permissionService, eventBus);
+    }
+
+    // [新增] 注册 LingReference 注入器
+    @Bean
+    public LingReferenceInjector lingReferenceInjector(PluginManager pluginManager) {
+        return new LingReferenceInjector(pluginManager);
     }
 }

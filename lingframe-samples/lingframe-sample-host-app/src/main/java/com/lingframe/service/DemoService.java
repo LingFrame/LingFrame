@@ -1,5 +1,6 @@
 package com.lingframe.service;
 
+import com.lingframe.api.annotation.LingReference;
 import com.lingframe.api.context.PluginContext;
 import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.sample.user.api.UserService;
@@ -21,7 +22,7 @@ public class DemoService {
     @Autowired
     private PluginContext pluginContext;
 
-    @Autowired
+    @LingReference
     private UserService userService;
 
     /**

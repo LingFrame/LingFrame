@@ -262,4 +262,13 @@ public class PluginSlot {
     // 【新增内部类】用于缓存可执行的服务对象和方法
     private record InvokableService(Object bean, Method method) {
     }
+
+    public boolean hasBean(Class<?> type) {
+        PluginInstance instance = activeInstance.get();
+        if (instance == null || !instance.getContainer().isActive()) return false;
+
+        // 需要在 PluginContainer 接口增加 containsBean(Class) 或者复用 getBean
+        Object bean = instance.getContainer().getBean(type);
+        return bean != null;
+    }
 }
