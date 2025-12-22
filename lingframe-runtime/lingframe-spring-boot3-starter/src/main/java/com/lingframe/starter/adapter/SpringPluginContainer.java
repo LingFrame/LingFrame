@@ -1,11 +1,14 @@
 package com.lingframe.starter.adapter;
 
+import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.LingService;
+import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.plugin.LingPlugin;
 import com.lingframe.core.context.CorePluginContext;
 import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.core.spi.PluginContainer;
+import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
 import lombok.extern.slf4j.Slf4j;
@@ -231,6 +234,35 @@ public class SpringPluginContainer implements PluginContainer {
                     .build());
         }
 
+        // 🔥 1. 智能权限推导
+        String permission;
+        RequiresPermission permAnn = AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class);
+        if (permAnn != null) {
+            permission = permAnn.value();
+        } else {
+            // 如果没有注解，根据 URL 或方法名推导
+            // 例如：POST /user/create -> user:create
+            // 这里简单复用 Strategy，或者你可以写针对 Web 的推导逻辑
+            permission = GovernanceStrategy.inferPermission(method);
+        }
+
+        // 🔥 2. 智能审计推导
+        boolean shouldAudit = false;
+        String auditAction = method.getName();
+        Auditable auditAnn = AnnotatedElementUtils.findMergedAnnotation(method, Auditable.class);
+
+        if (auditAnn != null) {
+            shouldAudit = true;
+            auditAction = auditAnn.action();
+        } else {
+            // Web请求通常如果是 POST/PUT/DELETE 默认审计
+//            String httpMethod = mapping.method().length > 0 ? mapping.method()[0].name() : "GET";
+            if (!"GET".equals(httpMethod)) {
+                shouldAudit = true;
+                auditAction = httpMethod + " " + fullPath;
+            }
+        }
+
         // 4. 构建元数据
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
                 .pluginId(pluginId)
@@ -240,9 +272,12 @@ public class SpringPluginContainer implements PluginContainer {
                 .urlPattern(fullPath)
                 .httpMethod(httpMethod)
                 .parameters(params)
+                .requiredPermission(permission) // 保存推导结果
+                .shouldAudit(shouldAudit)
+                .auditAction(auditAction)
                 .build();
 
-        // 5. 打印验证 & TODO: 注册到 WebInterfaceManager
+        // 5. 打印验证
         log.info("🌍 [LingFrame Web] Found Controller: {} [{}] -> Params: {}",
                 httpMethod, fullPath, params.size());
 

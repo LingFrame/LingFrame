@@ -31,6 +31,7 @@ public class UserServiceImpl implements UserService {
         return Optional.ofNullable(userDatabase.get(userId));
     }
 
+    @Auditable(action = "list_users", resource = "user")
     @LingService(id = "list_users", desc = "列出所有用户")
     @Override
     public List<UserDTO> listUsers() {

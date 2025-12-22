@@ -2,8 +2,10 @@ package com.lingframe.core.plugin;
 
 import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.proxy.SmartServiceProxy;
 import com.lingframe.core.spi.PluginContainer;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Method;
@@ -40,9 +42,18 @@ public class PluginSlot {
 
     private final PermissionService permissionService;
 
-    public PluginSlot(String pluginId, ScheduledExecutorService sharedScheduler, PermissionService permissionService) {
+    private final GovernanceKernel governanceKernel;
+
+    // 🔥【关键】这个引用是动态的，指向当前 Active 的插件实例
+    // Proxy 持有这个引用的对象(Object Reference)，所以当 Slot 内部通过 set() 切换版本时，
+    // Proxy 也能立即感知到变化。
+    @Getter
+    private final AtomicReference<PluginInstance> activeInstanceRef = new AtomicReference<>();
+
+    public PluginSlot(String pluginId, ScheduledExecutorService sharedScheduler, PermissionService permissionService, GovernanceKernel governanceKernel) {
         this.pluginId = pluginId;
         this.permissionService = permissionService;
+        this.governanceKernel = governanceKernel;
         // 清理任务调度器：共享的全局线程池
         // 每 5 秒检查一次是否有可以回收的旧实例
         sharedScheduler.scheduleAtFixedRate(this::checkAndKill, 5, 5, TimeUnit.SECONDS);
@@ -74,6 +85,7 @@ public class PluginSlot {
 
         // 3. 原子切换流量
         activeInstance.set(newInstance);
+        activeInstanceRef.set(newInstance);
         log.info("[{}] Traffic switched to version: {}", pluginId, newInstance.getVersion());
 
         // 4. 将旧版本放入死亡队列
@@ -94,9 +106,15 @@ public class PluginSlot {
                 Proxy.newProxyInstance(
                         this.getClass().getClassLoader(), // 使用 Core 的 ClassLoader
                         new Class<?>[]{interfaceClass},
-                        new SmartServiceProxy(callerPluginId, activeInstance, interfaceClass, permissionService)
-                )
-        );
+                        new SmartServiceProxy(
+                                callerPluginId,// 谁在调
+                                this.pluginId,// 调谁 (targetPluginId 就是当前 Slot 的 ID) 🔥
+                                this.activeInstanceRef,
+                                interfaceClass,
+                                governanceKernel,
+                                permissionService
+                        )
+                ));
     }
 
     /**
@@ -205,7 +223,7 @@ public class PluginSlot {
      * 获取当前活跃版本号
      */
     public String getVersion() {
-        PluginInstance instance = activeInstance.get();
+        PluginInstance instance = activeInstanceRef.get();
         return (instance != null) ? instance.getVersion() : null;
     }
 
@@ -219,6 +237,7 @@ public class PluginSlot {
     public void uninstall() {
         PluginInstance current = activeInstance.getAndSet(null); // 原子置空
         if (current != null) {
+            activeInstanceRef.set(null);
             current.markDying();
             dyingInstances.add(current);
             log.info("[{}] Plugin uninstalled. Version {} moved to dying queue.", pluginId, current.getVersion());
@@ -264,11 +283,15 @@ public class PluginSlot {
     }
 
     public boolean hasBean(Class<?> type) {
-        PluginInstance instance = activeInstance.get();
-        if (instance == null || !instance.getContainer().isActive()) return false;
+        try {
+            PluginInstance instance = activeInstance.get();
+            if (instance == null || !instance.getContainer().isActive()) return false;
 
-        // 需要在 PluginContainer 接口增加 containsBean(Class) 或者复用 getBean
-        Object bean = instance.getContainer().getBean(type);
-        return bean != null;
+            // 需要在 PluginContainer 接口增加 containsBean(Class) 或者复用 getBean
+            Object bean = instance.getContainer().getBean(type);
+            return bean != null;
+        } catch (Exception e) {
+            return false; // 找不到或报错都算 false
+        }
     }
 }

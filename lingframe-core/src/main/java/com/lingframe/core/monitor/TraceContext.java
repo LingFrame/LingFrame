@@ -28,4 +28,25 @@ public class TraceContext {
     public static void clear() {
         TRACE_ID.remove();
     }
+
+    /**
+     * 允许手动设置 TraceId (用于从 Web Header 继承)
+     *
+     */
+    public static void setTraceId(String traceId) {
+        if (traceId != null && !traceId.isBlank()) {
+            TRACE_ID.set(traceId);
+        } else {
+            // 如果传入空，则生成一个新的
+            start();
+        }
+    }
+
+    /**
+     * 为了兼容性，提供 getTraceId 别名
+     */
+    public static String getTraceId() {
+        return TRACE_ID.get();
+    }
+
 }
