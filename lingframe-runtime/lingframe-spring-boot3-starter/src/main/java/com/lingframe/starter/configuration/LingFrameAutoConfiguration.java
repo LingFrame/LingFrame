@@ -4,6 +4,7 @@ import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.context.CorePluginContext;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.ContainerFactory;
@@ -41,6 +42,12 @@ public class LingFrameAutoConfiguration {
         return new EventBus();
     }
 
+    // 组装 GovernanceKernel
+    @Bean
+    public GovernanceKernel governanceKernel(PermissionService permissionService) {
+        return new GovernanceKernel(permissionService);
+    }
+
     @Bean
     public ContainerFactory containerFactory(ApplicationContext parentContext) {
         return new SpringContainerFactory(parentContext);
@@ -48,9 +55,8 @@ public class LingFrameAutoConfiguration {
 
     // 3. PluginManager 依然是核心，但现在它依赖注入进来的组件
     @Bean
-    public PluginManager pluginManager(ContainerFactory containerFactory) {
-        // 注意：这里需要修改 PluginManager 的构造函数来支持注入
-        return new PluginManager(containerFactory);
+    public PluginManager pluginManager(ContainerFactory containerFactory, GovernanceKernel governanceKernel) {
+        return new PluginManager(containerFactory, governanceKernel);
     }
 
     // 4. 【关键】额外注册一个代表宿主的 Context
@@ -74,8 +80,8 @@ public class LingFrameAutoConfiguration {
     }
 
     @Bean
-    public LingWebProxyController lingWebProxyController(WebInterfaceManager manager) {
-        return new LingWebProxyController(manager);
+    public LingWebProxyController lingWebProxyController(WebInterfaceManager manager, GovernanceKernel governanceKernel) {
+        return new LingWebProxyController(manager, governanceKernel);
     }
 
     @Bean

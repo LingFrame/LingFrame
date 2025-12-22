@@ -7,7 +7,8 @@ import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.audit.AuditManager;
-import com.lingframe.core.monitor.TraceContext;
+import com.lingframe.core.kernel.GovernanceKernel;
+import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.plugin.PluginInstance;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import lombok.extern.slf4j.Slf4j;
@@ -24,77 +25,100 @@ import java.util.concurrent.atomic.AtomicReference;
 public class SmartServiceProxy implements InvocationHandler {
 
     private final String callerPluginId; // 谁在调用
+    private final String targetPluginId; // 🔥【新增】目标插件ID
     private final AtomicReference<PluginInstance> activeInstanceRef;
     private final Class<?> serviceInterface;
+    private final GovernanceKernel governanceKernel;// 内核
     private final PermissionService permissionService; // 鉴权服务
 
-    public SmartServiceProxy(String callerPluginId,
+    public SmartServiceProxy(String callerPluginId, String targetPluginId,
                              AtomicReference<PluginInstance> activeInstanceRef,
-                             Class<?> serviceInterface,
+                             Class<?> serviceInterface, GovernanceKernel governanceKernel,
                              PermissionService permissionService) {
         this.callerPluginId = callerPluginId;
+        this.targetPluginId = targetPluginId;
         this.activeInstanceRef = activeInstanceRef;
         this.serviceInterface = serviceInterface;
+        this.governanceKernel = governanceKernel;
         this.permissionService = permissionService;
     }
 
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        // 设置上下文
-        PluginContextHolder.set(callerPluginId);
         if (method.getDeclaringClass() == Object.class) return method.invoke(this, args);
 
-        // =========================================================
-        // 1. [Monitor] 开启调用链监控
-        // =========================================================
-        boolean isRootTrace = (TraceContext.get() == null);
-        String traceId = TraceContext.start();
-        long startTime = System.nanoTime();
+        // === 1. 智能推导阶段 (Strategy Layer) ===
 
-        try {
+        // A. 权限推导
+        String permission;
+        RequiresPermission permAnn = method.getAnnotation(RequiresPermission.class);
+        if (permAnn != null) {
+            permission = permAnn.value();
+        } else {
+            // 根据方法名推测权限 (如 saveUser -> user:write)
+            permission = GovernanceStrategy.inferPermission(method);
+        }
 
-            // =========================================================
-            // 2. [Security] 智能权限检查
-            // =========================================================
-            checkPermissionSmartly(method);
+        // B. 审计推导
+        boolean shouldAudit = false;
+        String auditAction = method.getName();
+        Auditable auditAnn = method.getAnnotation(Auditable.class);
 
-            // =========================================================
-            // 3. [Routing] 获取活跃实例与 TCCL 劫持
-            // =========================================================
-            PluginInstance instance = activeInstanceRef.get();
-            if (instance == null || !instance.getContainer().isActive()) {
-                throw new IllegalStateException("Service unavailable: " + serviceInterface.getName());
+        if (auditAnn != null) {
+            shouldAudit = true;
+            auditAction = auditAnn.action();
+        } else {
+            // 🔥 复活智能审计：如果是写操作，自动审计
+            AccessType accessType = GovernanceStrategy.inferAccessType(method.getName());
+            if (accessType == AccessType.WRITE || accessType == AccessType.EXECUTE) {
+                shouldAudit = true;
+                auditAction = GovernanceStrategy.inferAuditAction(method);
             }
+        }
 
-            instance.enter();
-            Thread currentThread = Thread.currentThread();
-            ClassLoader originalClassLoader = currentThread.getContextClassLoader();
-            currentThread.setContextClassLoader(instance.getContainer().getClassLoader());
+        // === 2. 构建上下文 ===
+        InvocationContext ctx = InvocationContext.builder()
+                .traceId(null) // Kernel 自动处理
+                .callerPluginId(callerPluginId)
+                .pluginId(targetPluginId)
+                .resourceType("RPC")
+                .resourceId(serviceInterface.getName() + ":" + method.getName())
+                .operation(method.getName())
+                .args(args)
+                // 填入推导结果
+                .requiredPermission(permission)
+                .accessType(AccessType.EXECUTE) // RPC 调用通常视为执行
+                .shouldAudit(shouldAudit)
+                .auditAction(auditAction)
+                .build();
 
-            Object result = null;
+        // === 3. 委托内核 ===
+        return governanceKernel.invoke(ctx, () -> {
             try {
-                Object realBean = instance.getContainer().getBean(serviceInterface);
-                result = method.invoke(realBean, args);
-                return result;
-            } finally {
-                currentThread.setContextClassLoader(originalClassLoader);
-                instance.exit();
-
-                // =========================================================
-                // 4. [Audit] 智能审计 (异步)
-                // =========================================================
-                long cost = System.nanoTime() - startTime;
-                recordAuditSmartly(traceId, method, args, result, cost);
+                return doInvoke(method, args);
+            } catch (Throwable e) {
+                throw new RuntimeException(e);
             }
-        } catch (Exception e) {
-            log.error("[LingFrame] Service invocation failed. TraceId={}, Caller={}", traceId, callerPluginId, e);
-            throw e;
+        });
+    }
+
+    private Object doInvoke(Method method, Object[] args) throws Throwable {
+        PluginContextHolder.set(callerPluginId);
+        PluginInstance instance = activeInstanceRef.get();
+        if (instance == null || !instance.getContainer().isActive()) {
+            throw new IllegalStateException("Service unavailable");
+        }
+        instance.enter();
+        Thread t = Thread.currentThread();
+        ClassLoader old = t.getContextClassLoader();
+        t.setContextClassLoader(instance.getContainer().getClassLoader());
+        try {
+            Object bean = instance.getContainer().getBean(serviceInterface);
+            return method.invoke(bean, args);
         } finally {
-            // =========================================================
-            // 5. [Monitor] 关闭调用链
-            // =========================================================
-            if (isRootTrace) TraceContext.clear();
-            PluginContextHolder.clear(); // 清除上下文
+            t.setContextClassLoader(old);
+            instance.exit();
+            PluginContextHolder.clear();
         }
     }
 

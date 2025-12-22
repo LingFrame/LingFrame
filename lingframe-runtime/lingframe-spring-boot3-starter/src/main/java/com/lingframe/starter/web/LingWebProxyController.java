@@ -1,6 +1,9 @@
 package com.lingframe.starter.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lingframe.api.security.AccessType;
+import com.lingframe.core.kernel.GovernanceKernel;
+import com.lingframe.core.kernel.InvocationContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +22,7 @@ import java.util.Map;
 public class LingWebProxyController {
 
     private final WebInterfaceManager webInterfaceManager;
+    private final GovernanceKernel governanceKernel; // 🔥 注入内核
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
 
     // 默认的 ObjectMapper，用于兜底（比如插件没配 Jackson）
@@ -35,59 +39,66 @@ public class LingWebProxyController {
             return;
         }
 
-        // 2. 切换 TCCL (进入插件世界)
-        ClassLoader originalCL = Thread.currentThread().getContextClassLoader();
-        Thread.currentThread().setContextClassLoader(meta.getClassLoader());
+        // 2. 构建上下文
+        InvocationContext ctx = InvocationContext.builder()
+                .traceId(request.getHeader("X-Trace-Id"))
+                .pluginId(meta.getPluginId())
+                .resourceType("WEB")
+                .resourceId(meta.getUrlPattern())
+                .operation(request.getMethod())
+                // 🔥 填入扫描阶段算好的智能元数据
+                .requiredPermission(meta.getRequiredPermission())
+                .shouldAudit(meta.isShouldAudit())
+                .auditAction(meta.getAuditAction())
+                .accessType(AccessType.EXECUTE)
+                // args 暂时为空，稍后在 executor 里回填
+                .build();
 
-        try {
-            // 3. 【核心黑魔法】获取插件的 ObjectMapper
-            // 因为已经在 TCCL 下，且 Bean 也是插件加载的，所以这个 Mapper 能读懂插件的 DTO
-            ObjectMapper pluginMapper = getPluginObjectMapper(meta);
+        // 3. 委托内核执行
+        governanceKernel.invoke(ctx, () -> {
+            ClassLoader originalCL = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader(meta.getClassLoader());
 
-            // 4. 准备参数
-            Object[] args = new Object[meta.getParameters().size()];
+            try {
+                // 3.1 获取插件 ObjectMapper
+                ObjectMapper pluginMapper = getPluginObjectMapper(meta);
 
-            for (int i = 0; i < meta.getParameters().size(); i++) {
-                WebInterfaceMetadata.ParamDef def = meta.getParameters().get(i);
-
-                if (def.getSourceType() == WebInterfaceMetadata.ParamType.REQUEST_BODY) {
-                    // 🔥 自动反序列化
-                    // 读取 Host 的流 -> 用 Plugin 的 Mapper -> 转成 Plugin 的对象
-                    String json = StreamUtils.copyToString(request.getInputStream(), StandardCharsets.UTF_8);
-                    args[i] = pluginMapper.readValue(json, def.getType());
-
-                } else if (def.getSourceType() == WebInterfaceMetadata.ParamType.PATH_VARIABLE) {
-                    // 基础类型转换 (String -> Long/Int)
-                    Map<String, String> vars = pathMatcher.extractUriTemplateVariables(meta.getUrlPattern(), uri);
-                    args[i] = convert(vars.get(def.getName()), def.getType(), pluginMapper);
-
-                } else if (def.getSourceType() == WebInterfaceMetadata.ParamType.REQUEST_PARAM) {
-                    String val = request.getParameter(def.getName());
-                    args[i] = convert(val, def.getType(), pluginMapper);
+                // 3.2 解析参数 (此时已在插件 CL 环境)
+                Object[] args = new Object[meta.getParameters().size()];
+                for (int i = 0; i < meta.getParameters().size(); i++) {
+                    WebInterfaceMetadata.ParamDef def = meta.getParameters().get(i);
+                    if (def.getSourceType() == WebInterfaceMetadata.ParamType.REQUEST_BODY) {
+                        String json = StreamUtils.copyToString(request.getInputStream(), StandardCharsets.UTF_8);
+                        args[i] = pluginMapper.readValue(json, def.getType());
+                    } else if (def.getSourceType() == WebInterfaceMetadata.ParamType.PATH_VARIABLE) {
+                        Map<String, String> vars = pathMatcher.extractUriTemplateVariables(meta.getUrlPattern(), uri);
+                        args[i] = convert(vars.get(def.getName()), def.getType(), pluginMapper);
+                    } else if (def.getSourceType() == WebInterfaceMetadata.ParamType.REQUEST_PARAM) {
+                        String val = request.getParameter(def.getName());
+                        args[i] = convert(val, def.getType(), pluginMapper);
+                    }
                 }
+
+                // 回填 args 以便审计
+                ctx.setArgs(args);
+
+                // 3.3 反射调用
+                Object result = meta.getTargetMethod().invoke(meta.getTargetBean(), args);
+
+                // 3.4 处理返回值
+                if (result != null) {
+                    response.setContentType("application/json;charset=UTF-8");
+                    String jsonResult = pluginMapper.writeValueAsString(result);
+                    response.getWriter().write(jsonResult);
+                }
+                return result;
+
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            } finally {
+                Thread.currentThread().setContextClassLoader(originalCL);
             }
-
-            // 5. 反射调用
-            Object result = meta.getTargetMethod().invoke(meta.getTargetBean(), args);
-
-            // 6. 【核心黑魔法】处理返回值
-            if (result != null) {
-                response.setContentType("application/json;charset=UTF-8");
-                // 🔥 自动序列化
-                // 对象 -> 用 Plugin 的 Mapper -> 转成 JSON String -> 写入 Host Response
-                // 这样 Host 不需要认识这个对象，只需要传输它的 JSON 形式
-                String jsonResult = pluginMapper.writeValueAsString(result);
-                response.getWriter().write(jsonResult);
-            }
-
-        } catch (Exception e) {
-            log.error("Plugin dispatch failed", e);
-            // 这里可以做一个全局异常处理，把异常转成 JSON 返回
-            response.sendError(500, "Plugin Error: " + e.getMessage());
-        } finally {
-            // 7. 还原现场
-            Thread.currentThread().setContextClassLoader(originalCL);
-        }
+        });
     }
 
     /**

@@ -22,6 +22,11 @@ public class WebInterfaceMetadata {
     // 参数定义列表（为了后续“三段式”绑定做准备）
     private List<ParamDef> parameters;
 
+    // 🔥预先计算好的治理元数据
+    private String requiredPermission;
+    private boolean shouldAudit;
+    private String auditAction;
+
     @Data
     @Builder
     public static class ParamDef {

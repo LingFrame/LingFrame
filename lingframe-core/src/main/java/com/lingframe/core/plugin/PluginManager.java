@@ -6,6 +6,7 @@ import com.lingframe.core.classloader.PluginClassLoader;
 import com.lingframe.core.context.CorePluginContext;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.ContainerFactory;
@@ -20,6 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 插件生命周期管理器
@@ -46,6 +48,9 @@ public class PluginManager {
     // 权限服务
     private final PermissionService permissionService;
 
+    // 内核
+    private final GovernanceKernel governanceKernel;
+
     // 记录插件源路径，用于 reload
     private final Map<String, File> pluginSources = new ConcurrentHashMap<>();
 
@@ -54,8 +59,9 @@ public class PluginManager {
     // EventBus 用于插件间通信
     private final EventBus eventBus;
 
-    public PluginManager(ContainerFactory containerFactory) {
+    public PluginManager(ContainerFactory containerFactory, GovernanceKernel governanceKernel) {
         this.containerFactory = containerFactory;
+        this.governanceKernel = governanceKernel;
         // 实际应单例注入
         this.permissionService = new DefaultPermissionService();
         // 初始化热加载器
@@ -112,8 +118,8 @@ public class PluginManager {
      * 安装或升级插件 (核心入口)
      * 支持热替换：如果插件已存在，则触发蓝绿部署流程
      *
-     * @param pluginId 插件唯一标识
-     * @param version  插件版本号
+     * @param pluginId   插件唯一标识
+     * @param version    插件版本号
      * @param sourceFile 插件源文件 (Jar 包或目录)
      */
     private void doInstall(String pluginId, String version, File sourceFile) {
@@ -130,7 +136,8 @@ public class PluginManager {
             PluginInstance instance = new PluginInstance(version, container);
 
             // 获取或创建槽位
-            PluginSlot slot = slots.computeIfAbsent(pluginId, k -> new PluginSlot(k, scheduler, permissionService));
+            PluginSlot slot = slots.computeIfAbsent(pluginId,
+                    k -> new PluginSlot(k, scheduler, permissionService, governanceKernel));
             // 创建上下文
             PluginContext context = new CorePluginContext(pluginId, this, permissionService, eventBus);
 
@@ -168,8 +175,8 @@ public class PluginManager {
     /**
      * 获取插件对外暴露的服务 (动态代理)
      *
-     * @param callerPluginId    插件ID
-     * @param serviceType 服务接口类型
+     * @param callerPluginId 插件ID
+     * @param serviceType    服务接口类型
      * @return 服务代理对象
      */
     public <T> T getService(String callerPluginId, Class<T> serviceType) {
@@ -240,8 +247,8 @@ public class PluginManager {
      * 处理协议调用 (由 CorePluginContext.invoke 调用)
      *
      * @param callerPluginId 调用方插件ID (用于审计)
-     * @param fqsid 全路径服务ID (Plugin ID:Short ID)
-     * @param args 参数列表
+     * @param fqsid          全路径服务ID (Plugin ID:Short ID)
+     * @param args           参数列表
      * @return 方法执行结果
      */
     @SuppressWarnings("unchecked")
@@ -344,8 +351,26 @@ public class PluginManager {
                 this.getClass().getClassLoader(),
                 new Class[]{serviceType},
                 new GlobalServiceRoutingProxy(
-                        callerPluginId, serviceType, targetPluginId, this
+                        callerPluginId,
+                        serviceType,
+                        targetPluginId,
+                        this,
+                        this.governanceKernel,
+                        permissionService
                 )
         );
+    }
+
+    // 供 CorePluginContext 使用（如果需要）
+    public GovernanceKernel getGovernanceKernel() {
+        return governanceKernel;
+    }
+
+    public AtomicReference<PluginInstance> getPluginInstanceRef(String pluginId) {
+        PluginSlot slot = slots.get(pluginId);
+        if (slot == null) {
+            return null;
+        }
+        return slot.getActiveInstanceRef();
     }
 }
