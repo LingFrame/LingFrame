@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
-public class UserExportService implements OrderService {
+public class UserOrderService implements OrderService {
 
     @Auditable(action = "getUserById", resource = "user")
     @Override

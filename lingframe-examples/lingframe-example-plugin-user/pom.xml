@@ -30,6 +30,12 @@
             <artifactId>lingframe-example-order-api</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- MyBatis Flex 等由宿主提供，这里 provided -->
         <dependency>
             <groupId>com.mybatis-flex</groupId>

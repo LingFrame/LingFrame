@@ -1,21 +1,21 @@
 package com.lingframe.example.user.api;
 
-import com.lingframe.example.user.entity.User;
+import com.lingframe.example.user.dto.UserDTO;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface UserService {
 
-    Optional<User> queryUser(String userId);
+    Optional<UserDTO> queryUser(String userId);
 
-    List<User> listUsers();
+    List<UserDTO> listUsers();
 
-    User createUser(String name, String email);
+    UserDTO createUser(String name, String email);
 
-    User updateUser(String id, String name, String email);
+    UserDTO updateUser(String id, String name, String email);
 
     boolean deleteUser(String id);
 
-    void saveUser(User user);
+    void saveUser(UserDTO userDTO);
 }
