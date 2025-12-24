@@ -31,4 +31,7 @@ public class InvocationContext {
     // 现场数据
     private Object[] args;       // 参数
     private Map<String, Object> metadata; // 扩展信息 (IP, UserAgent, RPC Context)
+
+    // 路由标签，用于金丝雀、租户隔离等逻辑
+    private Map<String, String> labels;
 }

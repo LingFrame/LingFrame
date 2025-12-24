@@ -2,15 +2,14 @@ package com.lingframe.core.proxy;
 
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.kernel.GovernanceKernel;
-import com.lingframe.core.plugin.PluginInstance;
 import com.lingframe.core.plugin.PluginManager;
+import com.lingframe.core.plugin.PluginSlot;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 全局服务路由代理
@@ -50,48 +49,20 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
             return method.invoke(this, args);
         }
 
-        // 1. 确定目标插件 ID
-        String finalTargetId = this.targetPluginId;
+        // 1. 实时获取 Slot (支持延迟绑定)
+        String finalId = (targetPluginId != null && !targetPluginId.isEmpty())
+                ? targetPluginId : resolveTargetPluginId();
 
-        // 如果注解没写 ID，则尝试自动发现
-        if (finalTargetId == null || finalTargetId.isBlank()) {
-            finalTargetId = resolveTargetPluginId();
+        PluginSlot slot = (finalId != null) ? pluginManager.getSlot(finalId) : null;
+
+        if (slot == null) {
+            throw new IllegalStateException("Service [" + serviceInterface.getName() + "] is currently offline.");
         }
 
-        if (finalTargetId == null) {
-            throw new IllegalStateException(
-                    "Service unavailable: No active plugin found for " + serviceInterface.getName()
-            );
-        }
-
-        // 2. 🔥【核心】获取目标插件的实时引用
-        // 我们不缓存这个 AtomicReference，而是每次从 Manager 获取 Slot
-        // 这样即使插件被卸载后又重新安装（Slot对象变了），也能找到新的。
-        AtomicReference<PluginInstance> instanceRef = pluginManager.getPluginInstanceRef(finalTargetId);
-
-        if (instanceRef == null || instanceRef.get() == null) {
-            // 如果缓存的 ID 对应的插件挂了，清除缓存再试一次（可选，这里简化处理直接报错）
-            ROUTE_CACHE.remove(serviceInterface);
-            throw new IllegalStateException(
-                    String.format("Service [%s] unavailable: Plugin [%s] is not active.",
-                            serviceInterface.getName(), targetPluginId)
-            );
-        }
-
-        // 3. 构造智能代理 (SmartServiceProxy)
-        // SmartServiceProxy 负责具体的 GovernanceKernel 调用、TCCL 切换、上下文构建
-        // 这里创建对象的开销极小（都是引用传递），符合 JVM 逃逸分析优化场景
-        SmartServiceProxy smartProxy = new SmartServiceProxy(
-                callerPluginId,
-                finalTargetId,
-                instanceRef, // 传入原子引用，确保并发安全
-                serviceInterface,
-                governanceKernel,
-                permissionService
-        );
-
-        // 4. 委托执行
-        return smartProxy.invoke(proxy, method, args);
+        // 2. 统一使用 SmartServiceProxy 执行治理和路由逻辑
+        // 这样即使宿主调用，也能支持金丝雀分流！
+        SmartServiceProxy delegate = new SmartServiceProxy(callerPluginId, slot, serviceInterface, governanceKernel, permissionService);
+        return delegate.invoke(proxy, method, args);
     }
 
     private String resolveTargetPluginId() {

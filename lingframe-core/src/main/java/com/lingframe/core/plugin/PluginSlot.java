@@ -3,6 +3,7 @@ package com.lingframe.core.plugin;
 import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.kernel.GovernanceKernel;
+import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.proxy.SmartServiceProxy;
 import com.lingframe.core.spi.PluginContainer;
 import lombok.Getter;
@@ -10,11 +11,10 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.Comparator;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.Objects;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -23,12 +23,16 @@ import java.util.concurrent.atomic.AtomicReference;
 @Slf4j
 public class PluginSlot {
 
-    private static final int MAX_HISTORY_SNAPSHOTS = 3; // OOM 防御：最多保留3个历史快照
+    // OOM 防御：最多保留5个历史快照
+    private static final int MAX_HISTORY_SNAPSHOTS = 5;
 
+    @Getter
     private final String pluginId;
 
-    // 指向当前最新版本的原子引用
-    private final AtomicReference<PluginInstance> activeInstance = new AtomicReference<>();
+    // 实例池：支持多版本并存 [核心演进]
+    private final CopyOnWriteArrayList<PluginInstance> activePool = new CopyOnWriteArrayList<>();
+    // 默认实例引用 (用于保底路由和兼容旧逻辑)
+    private final AtomicReference<PluginInstance> defaultInstance = new AtomicReference<>();
 
     // 死亡队列：存放待销毁的旧版本
     private final ConcurrentLinkedQueue<PluginInstance> dyingInstances = new ConcurrentLinkedQueue<>();
@@ -47,8 +51,8 @@ public class PluginSlot {
     // 🔥【关键】这个引用是动态的，指向当前 Active 的插件实例
     // Proxy 持有这个引用的对象(Object Reference)，所以当 Slot 内部通过 set() 切换版本时，
     // Proxy 也能立即感知到变化。
-    @Getter
-    private final AtomicReference<PluginInstance> activeInstanceRef = new AtomicReference<>();
+//    @Getter
+//    private final AtomicReference<PluginInstance> activeInstanceRef = new AtomicReference<>();
 
     public PluginSlot(String pluginId, ScheduledExecutorService sharedScheduler, PermissionService permissionService, GovernanceKernel governanceKernel) {
         this.pluginId = pluginId;
@@ -60,21 +64,42 @@ public class PluginSlot {
     }
 
     /**
-     * 蓝绿部署：切换到新版本
+     * 核心路由：支持标签匹配
      */
-    public synchronized void upgrade(PluginInstance newInstance, PluginContext pluginContext) {
+    public PluginInstance selectInstance(InvocationContext ctx) {
+        Map<String, String> requestLabels = ctx.getLabels();
+        if (requestLabels == null || requestLabels.isEmpty()) return defaultInstance.get();
+
+        return activePool.stream()
+                .map(inst -> new ScoredInstance(inst, calculateScore(inst.getLabels(), requestLabels)))
+                .filter(si -> si.score >= 0)
+                .max(Comparator.comparingInt(si -> si.score))
+                .map(si -> si.instance)
+                .orElseGet(defaultInstance::get);
+    }
+
+    private int calculateScore(Map<String, String> instLabels, Map<String, String> reqLabels) {
+        int score = 0;
+        for (Map.Entry<String, String> entry : reqLabels.entrySet()) {
+            String val = instLabels.get(entry.getKey());
+            if (Objects.equals(val, entry.getValue())) score += 10;
+            else if (val != null) return -1;
+        }
+        return score;
+    }
+
+    public synchronized void addInstance(PluginInstance newInstance, PluginContext pluginContext, boolean isDefault) {
         // 1. 背压保护：如果历史版本积压过多，拒绝发布
         if (dyingInstances.size() >= MAX_HISTORY_SNAPSHOTS) {
             log.error("[{}] Too many dying instances. System busy.", pluginId);
             return;
         }
-        PluginInstance oldInstance = activeInstance.get();
 
         // 先清理缓存再加载新容器
-        serviceMethodCache.clear();
+        clearCaches();
         log.info("[{}] Service method cache cleared and ready for new version.", pluginId);
 
-        // 2. 启动新版本容器
+        // 启动新版本容器
         log.info("[{}] Starting new version: {}", pluginId, newInstance.getVersion());
         PluginContainer container = newInstance.getContainer();
         if (container == null) {
@@ -83,17 +108,20 @@ public class PluginSlot {
         }
         container.start(pluginContext);
 
-        // 3. 原子切换流量
-        activeInstance.set(newInstance);
-        activeInstanceRef.set(newInstance);
-        log.info("[{}] Traffic switched to version: {}", pluginId, newInstance.getVersion());
-
-        // 4. 将旧版本放入死亡队列
-        if (oldInstance != null) {
-            oldInstance.markDying();
-            dyingInstances.add(oldInstance);
-            log.info("[{}] Version {} marked for dying", pluginId, oldInstance.getVersion());
+        activePool.add(newInstance);
+        if (isDefault) {
+            PluginInstance old = defaultInstance.getAndSet(newInstance);
+            if (old != null) {
+                moveToDying(old);
+            }
         }
+        log.info("[{}] Instance {} added (Default={})", pluginId, newInstance.getVersion(), isDefault);
+    }
+
+    private synchronized void moveToDying(PluginInstance inst) {
+        inst.markDying();
+        activePool.remove(inst);
+        dyingInstances.add(inst);
     }
 
     /**
@@ -108,8 +136,7 @@ public class PluginSlot {
                         new Class<?>[]{interfaceClass},
                         new SmartServiceProxy(
                                 callerPluginId,// 谁在调
-                                this.pluginId,// 调谁 (targetPluginId 就是当前 Slot 的 ID) 🔥
-                                this.activeInstanceRef,
+                                this,// 调谁 (就是当前 Slot) 🔥
                                 interfaceClass,
                                 governanceKernel,
                                 permissionService
@@ -130,7 +157,8 @@ public class PluginSlot {
      * 职责：TCCL劫持 + 查找 Bean + 反射调用 + 引用计数
      */
     public Object invokeService(String callerPluginId, String fqsid, Object[] args) throws Exception {
-        PluginInstance instance = activeInstance.get();
+        // 协议调用暂走默认实例，或根据 ThreadLocal 标签路由
+        PluginInstance instance = defaultInstance.get();
         if (instance == null || !instance.getContainer().isActive()) {
             throw new IllegalStateException("Service unavailable for FQSID: " + fqsid);
         }
@@ -223,7 +251,7 @@ public class PluginSlot {
      * 获取当前活跃版本号
      */
     public String getVersion() {
-        PluginInstance instance = activeInstanceRef.get();
+        PluginInstance instance = defaultInstance.get();
         return (instance != null) ? instance.getVersion() : null;
     }
 
@@ -235,13 +263,9 @@ public class PluginSlot {
      * 3. 触发一次清理检查
      */
     public void uninstall() {
-        PluginInstance current = activeInstance.getAndSet(null); // 原子置空
-        if (current != null) {
-            activeInstanceRef.set(null);
-            current.markDying();
-            dyingInstances.add(current);
-            log.info("[{}] Plugin uninstalled. Version {} moved to dying queue.", pluginId, current.getVersion());
-        }
+        activePool.forEach(this::moveToDying);
+        defaultInstance.set(null);
+        clearCaches();
         // 尝试立即清理一次 (如果正好引用计数为0，直接销毁)
         checkAndKill();
 
@@ -257,34 +281,39 @@ public class PluginSlot {
         Thread forceCleanupThread = new Thread(() -> {
             try {
                 Thread.sleep(30000); // 等待30秒
-                dyingInstances.removeIf(instance -> {
-                    if (!instance.isIdle()) {
-                        log.warn("[{}] Force cleaning plugin instance after 30 seconds: {}", pluginId, instance.getVersion());
-                        try {
-                            instance.destroy();
-                        } catch (Exception e) {
-                            log.error("Error force destroying plugin instance", e);
-                        }
-                        return true;
-                    }
-                    return false;
-                });
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+            dyingInstances.removeIf(instance -> {
+                log.warn("[{}] Force cleaning plugin instance after 30 seconds: {}", pluginId, instance.getVersion());
+                try {
+                    instance.destroy();
+                } catch (Exception e) {
+                    log.error("Error force destroying plugin instance", e);
+                }
+                return true;
+            });
         });
         forceCleanupThread.setDaemon(true);
         forceCleanupThread.setName("lingframe-force-cleanup-" + pluginId);
         forceCleanupThread.start();
     }
 
+    private void clearCaches() {
+        serviceMethodCache.clear();
+        proxyCache.clear();
+    }
+
     // 【新增内部类】用于缓存可执行的服务对象和方法
     private record InvokableService(Object bean, Method method) {
     }
 
+    private record ScoredInstance(PluginInstance instance, int score) {
+    }
+
     public boolean hasBean(Class<?> type) {
         try {
-            PluginInstance instance = activeInstance.get();
+            PluginInstance instance = defaultInstance.get();
             if (instance == null || !instance.getContainer().isActive()) return false;
 
             // 需要在 PluginContainer 接口增加 containsBean(Class) 或者复用 getBean

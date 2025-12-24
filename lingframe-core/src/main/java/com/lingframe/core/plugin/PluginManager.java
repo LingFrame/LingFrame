@@ -17,11 +17,13 @@ import java.io.File;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * 插件生命周期管理器
@@ -80,7 +82,7 @@ public class PluginManager {
     public void install(String pluginId, String version, File jarFile) {
         log.info("Installing plugin: {} v{}", pluginId, version);
         pluginSources.put(pluginId, jarFile);
-        doInstall(pluginId, version, jarFile);
+        doInstall(pluginId, version, jarFile, true);
     }
 
     /**
@@ -96,7 +98,20 @@ public class PluginManager {
         hotSwapWatcher.register(pluginId, classesDir);
         pluginSources.put(pluginId, classesDir);
 
-        doInstall(pluginId, version, classesDir);
+        doInstall(pluginId, version, classesDir, true);
+    }
+
+    /**
+     * 金丝雀/灰度发布入口
+     *
+     * @param labels 实例的固有标签
+     */
+    public void deployCanary(String pluginId, String version, File source, Map<String, String> labels) {
+        doInstall(pluginId, version, source, false, labels);
+    }
+
+    private void doInstall(String pluginId, String version, File source, boolean isDefault) {
+        doInstall(pluginId, version, source, isDefault, new HashMap<>());
     }
 
     /**
@@ -111,7 +126,7 @@ public class PluginManager {
 
         log.info("Reloading plugin: {}", pluginId);
         // 使用 dev-reload 作为版本号，或者从外部获取
-        doInstall(pluginId, "dev-reload-" + System.currentTimeMillis(), source);
+        doInstall(pluginId, "dev-reload-" + System.currentTimeMillis(), source, true);
     }
 
     /**
@@ -122,7 +137,7 @@ public class PluginManager {
      * @param version    插件版本号
      * @param sourceFile 插件源文件 (Jar 包或目录)
      */
-    private void doInstall(String pluginId, String version, File sourceFile) {
+    private void doInstall(String pluginId, String version, File sourceFile, boolean isDefault, Map<String, String> labels) {
         try {
             // 1. 插件 ID 冲突检查
             if (slots.containsKey(pluginId)) {
@@ -134,6 +149,8 @@ public class PluginManager {
             // SPI 构建容器 (此时仅创建配置，未启动)
             PluginContainer container = containerFactory.create(pluginId, sourceFile, pluginClassLoader);
             PluginInstance instance = new PluginInstance(version, container);
+            // 写入标签
+            instance.getLabels().putAll(labels);
 
             // 获取或创建槽位
             PluginSlot slot = slots.computeIfAbsent(pluginId,
@@ -141,9 +158,8 @@ public class PluginManager {
             // 创建上下文
             PluginContext context = new CorePluginContext(pluginId, this, permissionService, eventBus);
 
-            // 执行升级 (启动新容器 -> 原子切换流量 -> 旧容器进入死亡队列)
-            slot.upgrade(instance, context);
-
+            // 执行新增 (启动新容器 -> 原子切换流量 -> 旧容器进入死亡队列)
+            slot.addInstance(instance, context, isDefault);
         } catch (Exception e) {
             log.error("Failed to install/reload plugin: {} v{}", pluginId, version, e);
             // 抛出运行时异常，通知上层调用失败
@@ -165,7 +181,7 @@ public class PluginManager {
             return;
         }
 
-        // 1. 【新增】从中央注册表移除所有 FQSID
+        // 从中央注册表移除所有 FQSID
         unregisterProtocolServices(pluginId);
 
         // 委托槽位执行优雅下线
@@ -184,8 +200,9 @@ public class PluginManager {
 
         // 遍历所有插件槽位，找到提供此服务的插件
         for (Map.Entry<String, PluginSlot> entry : slots.entrySet()) {
-            String targetPluginId = entry.getKey();
             PluginSlot slot = entry.getValue();
+
+            if (!slot.hasBean(serviceType)) continue;
 
             try {
                 // 通过目标槽位的代理获取服务
@@ -347,6 +364,7 @@ public class PluginManager {
      */
     @SuppressWarnings("unchecked")
     public <T> T getGlobalServiceProxy(String callerPluginId, Class<T> serviceType, String targetPluginId) {
+        // 允许 targetPluginId 为 null 或插件暂未安装
         return (T) Proxy.newProxyInstance(
                 this.getClass().getClassLoader(),
                 new Class[]{serviceType},
@@ -355,22 +373,17 @@ public class PluginManager {
                         serviceType,
                         targetPluginId,
                         this,
-                        this.governanceKernel,
+                        governanceKernel,
                         permissionService
                 )
         );
     }
 
-    // 供 CorePluginContext 使用（如果需要）
-    public GovernanceKernel getGovernanceKernel() {
-        return governanceKernel;
+    /**
+     * 提供给 Proxy 使用的 Slot 访问器
+     */
+    public PluginSlot getSlot(String pluginId) {
+        return slots.get(pluginId);
     }
 
-    public AtomicReference<PluginInstance> getPluginInstanceRef(String pluginId) {
-        PluginSlot slot = slots.get(pluginId);
-        if (slot == null) {
-            return null;
-        }
-        return slot.getActiveInstanceRef();
-    }
 }

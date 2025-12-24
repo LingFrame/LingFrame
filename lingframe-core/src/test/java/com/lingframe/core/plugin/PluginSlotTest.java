@@ -1,6 +1,7 @@
 package com.lingframe.core.plugin;
 
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.security.DefaultPermissionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -8,20 +9,23 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
-class PluginSlotTest {
+public class PluginSlotTest {
 
     private PluginSlot pluginSlot;
     private PermissionService permissionService;
     private ScheduledExecutorService scheduledExecutorService;
+    private GovernanceKernel governanceKernel;
 
     @BeforeEach
     void setUp() {
         String pluginId = "test-plugin";
         permissionService = new DefaultPermissionService();
         scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
-        pluginSlot = new PluginSlot(pluginId, scheduledExecutorService, permissionService);
+        governanceKernel = new GovernanceKernel(permissionService);
+        pluginSlot = new PluginSlot(pluginId, scheduledExecutorService, permissionService, governanceKernel);
     }
 
     @Test

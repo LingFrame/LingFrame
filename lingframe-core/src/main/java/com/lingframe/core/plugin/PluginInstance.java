@@ -3,19 +3,23 @@ package com.lingframe.core.plugin;
 import com.lingframe.core.spi.PluginContainer;
 import lombok.Getter;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 插件实例：代表一个特定版本的插件运行实体
  * 包含：容器引用 + 引用计数器
  */
+@Getter
 public class PluginInstance {
 
-    @Getter
     private final String version;
 
-    @Getter
     private final PluginContainer container;
+
+    // 实例固有标签 (如 {"env": "canary", "tenant": "T1"})
+    private final Map<String, String> labels = new ConcurrentHashMap<>();
 
     // 引用计数器：记录当前正在处理的请求数
     private final AtomicLong activeRequests = new AtomicLong(0);

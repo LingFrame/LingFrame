@@ -10,14 +10,17 @@ import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.plugin.PluginInstance;
+import com.lingframe.core.plugin.PluginSlot;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.WeakHashMap;
 
 /**
  * 智能动态代理：动态路由 + TCCL劫持 + 权限治理 + 链路监控 + 审计
@@ -27,15 +30,15 @@ import java.util.concurrent.atomic.AtomicReference;
 public class SmartServiceProxy implements InvocationHandler {
 
     private final String callerPluginId; // 谁在调用
-    private final String targetPluginId; // 🔥目标插件ID
-    private final AtomicReference<PluginInstance> activeInstanceRef;
+    private final PluginSlot targetSlot; // 核心锚点
     private final Class<?> serviceInterface;
     private final GovernanceKernel governanceKernel;// 内核
     private final PermissionService permissionService; // 鉴权服务
 
     // 🔥元数据缓存：避免每次调用都进行昂贵的跨ClassLoader反射
     // Key: 接口方法对象, Value: 审计注解 (如果没有则存 null)
-    private static final Map<Method, Auditable> AUDIT_CACHE = new ConcurrentHashMap<>();
+    // 使用 WeakHashMap 解决 Method 导致的类加载器泄露
+    private static final Map<Method, Auditable> AUDIT_CACHE = Collections.synchronizedMap(new WeakHashMap<>());
     // 标记对象，用于缓存中表示"无注解"，防止穿透
     private static final Auditable NULL_ANNOTATION = new Auditable() {
         public Class<? extends java.lang.annotation.Annotation> annotationType() {
@@ -51,13 +54,13 @@ public class SmartServiceProxy implements InvocationHandler {
         }
     };
 
-    public SmartServiceProxy(String callerPluginId, String targetPluginId,
-                             AtomicReference<PluginInstance> activeInstanceRef,
-                             Class<?> serviceInterface, GovernanceKernel governanceKernel,
+    public SmartServiceProxy(String callerPluginId,
+                             PluginSlot targetSlot, // 核心锚点,
+                             Class<?> serviceInterface,
+                             GovernanceKernel governanceKernel,
                              PermissionService permissionService) {
         this.callerPluginId = callerPluginId;
-        this.targetPluginId = targetPluginId;
-        this.activeInstanceRef = activeInstanceRef;
+        this.targetSlot = targetSlot;
         this.serviceInterface = serviceInterface;
         this.governanceKernel = governanceKernel;
         this.permissionService = permissionService;
@@ -116,7 +119,7 @@ public class SmartServiceProxy implements InvocationHandler {
         InvocationContext ctx = InvocationContext.builder()
                 .traceId(null) // Kernel 自动处理
                 .callerPluginId(callerPluginId)
-                .pluginId(targetPluginId)
+                .pluginId(targetSlot.getPluginId())
                 .resourceType("RPC")
                 .resourceId(serviceInterface.getName() + ":" + method.getName())
                 .operation(method.getName())
@@ -126,14 +129,30 @@ public class SmartServiceProxy implements InvocationHandler {
                 .accessType(AccessType.EXECUTE) // RPC 调用通常视为执行
                 .shouldAudit(shouldAudit)
                 .auditAction(auditAction)
+                .labels(new HashMap<>())// 实际从线程上下文获取染色标签
                 .build();
 
-        // === 3. 委托内核 ===
+        // === 3. 委托内核 (内存安全闭环) ===
         return governanceKernel.invoke(ctx, () -> {
+            PluginInstance instance = targetSlot.selectInstance(ctx);
+            if (instance == null) throw new IllegalStateException("Service unavailable");
+
+            instance.enter();
+            PluginContextHolder.set(callerPluginId);
+            Thread t = Thread.currentThread();
+            ClassLoader oldCL = t.getContextClassLoader();
+            t.setContextClassLoader(instance.getContainer().getClassLoader());
             try {
-                return doInvoke(method, args);
-            } catch (Throwable e) {
-                throw new RuntimeException(e);
+                Object bean = instance.getContainer().getBean(serviceInterface);
+                try {
+                    return method.invoke(bean, args);
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    throw new RuntimeException(e);
+                }
+            } finally {
+                t.setContextClassLoader(oldCL);
+                PluginContextHolder.clear();
+                instance.exit(); // 防御 ClassLoader 泄漏
             }
         });
     }
@@ -142,10 +161,9 @@ public class SmartServiceProxy implements InvocationHandler {
      * 🔥【核心】跨 ClassLoader 查找实现类上的注解
      */
     private Auditable findAnnotationOnImplementation(Method interfaceMethod) {
-        PluginInstance instance = activeInstanceRef.get();
-        if (instance == null || !instance.getContainer().isActive()) {
-            return null;
-        }
+        // 这里的逻辑必须通过 Slot 获取一个实例来辅助查找类信息
+        PluginInstance instance = targetSlot.selectInstance(InvocationContext.builder().build());
+        if (instance == null) return NULL_ANNOTATION;
 
         // 必须切换到插件的 ClassLoader，否则我们看不见实现类，也无法反射获取它的 Method
         Thread t = Thread.currentThread();
@@ -166,34 +184,14 @@ public class SmartServiceProxy implements InvocationHandler {
             Method implMethod = targetClass.getMethod(interfaceMethod.getName(), interfaceMethod.getParameterTypes());
 
             // 4. 获取注解
-            return implMethod.getAnnotation(Auditable.class);
-
+            Auditable ann = implMethod.getAnnotation(Auditable.class);
+            return (ann != null) ? ann : NULL_ANNOTATION;
         } catch (Exception e) {
             // 比如方法没找到，或者Bean没初始化好，忽略异常，视为无注解
             log.trace("Failed to find implementation annotation for {}", interfaceMethod.getName());
-            return null;
+            return NULL_ANNOTATION;
         } finally {
             t.setContextClassLoader(oldCL);
-        }
-    }
-
-    private Object doInvoke(Method method, Object[] args) throws Throwable {
-        PluginContextHolder.set(callerPluginId);
-        PluginInstance instance = activeInstanceRef.get();
-        if (instance == null || !instance.getContainer().isActive()) {
-            throw new IllegalStateException("Service unavailable");
-        }
-        instance.enter();
-        Thread t = Thread.currentThread();
-        ClassLoader old = t.getContextClassLoader();
-        t.setContextClassLoader(instance.getContainer().getClassLoader());
-        try {
-            Object bean = instance.getContainer().getBean(serviceInterface);
-            return method.invoke(bean, args);
-        } finally {
-            t.setContextClassLoader(old);
-            instance.exit();
-            PluginContextHolder.clear();
         }
     }
 
