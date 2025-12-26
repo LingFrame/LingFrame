@@ -2,6 +2,7 @@ package com.lingframe.starter.web;
 
 import lombok.Builder;
 import lombok.Data;
+import org.springframework.context.ApplicationContext;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -14,6 +15,7 @@ public class WebInterfaceMetadata {
     private Object targetBean;      // 插件里的 Controller Bean 实例
     private Method targetMethod;    // 插件里的目标方法
     private ClassLoader classLoader; // 插件的类加载器
+    private ApplicationContext pluginApplicationContext; // 持有插件的 Spring 上下文
 
     // 路由信息
     private String urlPattern;      // 完整 URL，例如 /p/user-plugin/users/{id}

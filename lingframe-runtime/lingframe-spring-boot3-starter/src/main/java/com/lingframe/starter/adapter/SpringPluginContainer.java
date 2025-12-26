@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.core.ParameterNameDiscoverer;
@@ -109,31 +110,8 @@ public class SpringPluginContainer implements PluginContainer {
      * 延迟服务注册，确保所有Bean都已初始化完成
      */
     private void scheduleServiceRegistration() {
-        // 使用Spring的事件机制，在所有Bean初始化完成后注册服务
-        if (context instanceof ConfigurableApplicationContext cxt) {
-            cxt.addApplicationListener(event -> {
-                if (event instanceof org.springframework.context.event.ContextRefreshedEvent) {
-                    log.info("All beans initialized, registering LingServices for plugin: {}", pluginContext.getPluginId());
-                    // 注册 RPC 服务
-                    scanAndRegisterLingServices();
-                    // 注册 Web Controller
-                    scanAndRegisterControllers();
-                }
-            });
-        } else {
-            // 兜底方案：延迟注册
-            Thread delayRegistrationThread = new Thread(() -> {
-                try {
-                    Thread.sleep(1000); // 等待1秒确保初始化完成
-                    scanAndRegisterLingServices();
-                    scanAndRegisterControllers();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            });
-            delayRegistrationThread.setDaemon(true);
-            delayRegistrationThread.start();
-        }
+        // 直接调用，因为 builder.run() 阻塞直到上下文刷新完毕
+        log.info("All beans initialized, registering LingServices for plugin: {}", pluginContext.getPluginId());
         scanAndRegisterLingServices();
         scanAndRegisterControllers();
     }
@@ -299,6 +277,7 @@ public class SpringPluginContainer implements PluginContainer {
                 .targetBean(bean)
                 .targetMethod(method)
                 .classLoader(this.classLoader)
+                .pluginApplicationContext(this.context) // <--- 传入上下文
                 .urlPattern(fullPath)
                 .httpMethod(httpMethod)
                 .parameters(params)

@@ -15,6 +15,9 @@ public class WebInterfaceManager {
 
     private static WebInterfaceManager INSTANCE;
 
+    // 拆分 Exact Map 和 Ant Pattern Map
+    private final Map<String, WebInterfaceMetadata> exactRouteMap = new ConcurrentHashMap<>();
+    private final Map<String, WebInterfaceMetadata> antPatternMap = new ConcurrentHashMap<>();
     private final Map<String, WebInterfaceMetadata> routeMap = new ConcurrentHashMap<>();
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
 
@@ -46,6 +49,13 @@ public class WebInterfaceManager {
         String url = metadata.getUrlPattern();
         routeMap.put(url, metadata);
 
+        // 拆分存储
+        if (url.contains("*") || url.contains("?") || url.contains("{")) {
+            antPatternMap.put(url, metadata);
+        } else {
+            exactRouteMap.put(url, metadata);
+        }
+
         try {
             // 动态注册到宿主 Spring MVC
             RequestMappingInfo info = RequestMappingInfo
@@ -58,16 +68,20 @@ public class WebInterfaceManager {
 
             log.info("🌍 [LingFrame Web] Mapped: {} -> {}.{}", url, metadata.getPluginId(), metadata.getTargetMethod().getName());
         } catch (Exception e) {
-            log.error("Failed to register web mapping: " + url, e);
+            log.error("Failed to register web mapping: {}", url, e);
         }
     }
 
     public WebInterfaceMetadata match(String path) {
-        if (routeMap.containsKey(path)) return routeMap.get(path);
+        // 1. 优先走精确匹配（ConcurrentHashMap.get 是 O(1)）
+        WebInterfaceMetadata meta = exactRouteMap.get(path);
+        if (meta != null) return meta;
 
-        for (String pattern : routeMap.keySet()) {
-            if (pathMatcher.match(pattern, path)) {
-                return routeMap.get(pattern);
+        // 2. 只有没匹配到，才遍历 Ant Pattern Map (O(N))
+        // 通常 Ant Pattern 的数量远少于总接口数
+        for (Map.Entry<String, WebInterfaceMetadata> entry : antPatternMap.entrySet()) {
+            if (pathMatcher.match(entry.getKey(), path)) {
+                return entry.getValue();
             }
         }
         return null;

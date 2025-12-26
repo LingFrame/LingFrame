@@ -4,11 +4,14 @@ import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.context.CorePluginContext;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.governance.GovernanceArbitrator;
+import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.starter.adapter.SpringContainerFactory;
+import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.starter.web.LingWebProxyController;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -16,6 +19,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
@@ -26,7 +30,20 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import java.lang.reflect.Method;
 
 @Configuration
+@EnableConfigurationProperties(LingFrameProperties.class)
 public class LingFrameAutoConfiguration {
+
+    @Bean
+    public LocalGovernanceRegistry localGovernanceRegistry() {
+        return new LocalGovernanceRegistry();
+    }
+
+    @Bean
+    public GovernanceArbitrator governanceArbitrator(LocalGovernanceRegistry registry,
+                                                     LingFrameProperties properties) {
+        // 将 Spring 配置注入到纯 Java 的内核组件中
+        return new GovernanceArbitrator(registry, properties.getForcePermissions());
+    }
 
     // 1. 将权限服务注册为 Bean (解耦)
     @Bean

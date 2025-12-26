@@ -47,6 +47,13 @@ public class LingReferenceInjector implements BeanPostProcessor {
     private void injectService(Object bean, Field field, LingReference annotation) {
         try {
             field.setAccessible(true);
+
+            // 【防御】如果字段已经有值（比如被 XML 配置或 @Autowired 填充），则跳过
+            if (field.get(bean) != null) {
+                log.debug("Field {} is already injected, skipping LingReference injection.", field.getName());
+                return;
+            }
+
             Class<?> serviceType = field.getType();
             String targetPluginId = annotation.pluginId();
             // 🔥使用构造函数传入的 currentPluginId，而不是写死或猜

@@ -70,5 +70,9 @@ public class DefaultPermissionService implements PermissionService {
     @Override
     public void audit(String pluginId, String capability, String operation, boolean allowed) {
         // 简单日志，主要使用 AuditManager
+        // 桥接到 AuditManager，或者仅记录关键的安全日志
+        if (!allowed) {
+            log.warn("[Security] Access Denied - Plugin: {}, Capability: {}, Operation: {}", pluginId, capability, operation);
+        }
     }
 }

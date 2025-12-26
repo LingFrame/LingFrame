@@ -83,9 +83,13 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
 
         // 遍历所有插件寻找实现
         for (String pluginId : pluginManager.getInstalledPlugins()) {
-            if (pluginManager.hasBean(pluginId, serviceInterface)) {
-                ROUTE_CACHE.put(serviceInterface, pluginId);
-                return pluginId;
+            try {
+                if (pluginManager.hasBean(pluginId, serviceInterface)) {
+                    ROUTE_CACHE.put(serviceInterface, pluginId);
+                    return pluginId;
+                }
+            } catch (Exception e) {
+                log.trace("Error checking bean for plugin {}: {}", pluginId, e.getMessage());
             }
         }
 

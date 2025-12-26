@@ -68,8 +68,8 @@ public class LingWebProxyController {
                 for (int i = 0; i < meta.getParameters().size(); i++) {
                     WebInterfaceMetadata.ParamDef def = meta.getParameters().get(i);
                     if (def.getSourceType() == WebInterfaceMetadata.ParamType.REQUEST_BODY) {
-                        String json = StreamUtils.copyToString(request.getInputStream(), StandardCharsets.UTF_8);
-                        args[i] = pluginMapper.readValue(json, def.getType());
+                        // 直接流式读取，省内存
+                        args[i] = pluginMapper.readValue(request.getInputStream(), def.getType());
                     } else if (def.getSourceType() == WebInterfaceMetadata.ParamType.PATH_VARIABLE) {
                         Map<String, String> vars = pathMatcher.extractUriTemplateVariables(meta.getUrlPattern(), uri);
                         args[i] = convert(vars.get(def.getName()), def.getType(), pluginMapper);
@@ -106,15 +106,10 @@ public class LingWebProxyController {
      */
     private ObjectMapper getPluginObjectMapper(WebInterfaceMetadata meta) {
         try {
-            // targetBean 是插件里的对象，通过它可以拿到插件的 Class，进而操作插件的 Context
-            // 这里假设我们能访问到插件的 ApplicationContext。
-            // 实际上 WebInterfaceMetadata 里最好直接存一个 PluginContext 引用
-            // 暂时用反射或者新实例兜底：
-
-            // 最佳实践：meta 里应该持有一个 PluginContext 引用
-            // 这里演示用 new，实际生产中应该从 meta.getPluginContext().getBean(ObjectMapper.class) 获取
-            return new ObjectMapper();
+            // 从插件自己的容器里拿，保持插件的配置
+            return meta.getPluginApplicationContext().getBean(ObjectMapper.class);
         } catch (Exception e) {
+            // 兜底
             return fallbackMapper;
         }
     }

@@ -27,3 +27,5 @@ replay_pid*
 
 **/target/**
 *flattened**
+/.kiro
+/.vscode
