@@ -1,6 +1,7 @@
 package com.lingframe.core.plugin;
 
 import com.lingframe.core.kernel.GovernanceKernel;
+import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.PluginContainer;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,7 +28,7 @@ class PluginManagerTest {
 
         GovernanceKernel governanceKernel = new GovernanceKernel(null);
 
-        pluginManager = new PluginManager(containerFactory, governanceKernel);
+        pluginManager = new PluginManager(containerFactory, new DefaultPermissionService(), governanceKernel);
     }
 
     @Test

@@ -27,9 +27,27 @@ public class PluginInstance {
     // 标记是否进入“濒死”状态（不再接收新流量）
     private volatile boolean isDying = false;
 
+    // 就绪状态
+    private volatile boolean ready = false;
+
     public PluginInstance(String version, PluginContainer container) {
         this.version = version;
         this.container = container;
+    }
+
+    /**
+     * 标记实例就绪
+     * 通常由 PluginContainer.start() 结束后，或 Spring Context 发布 ContextRefreshedEvent 后调用
+     */
+    public void markReady() {
+        this.ready = true;
+    }
+
+    /**
+     * 检查是否就绪
+     */
+    public boolean isReady() {
+        return ready && container != null && container.isActive();
     }
 
     /**
