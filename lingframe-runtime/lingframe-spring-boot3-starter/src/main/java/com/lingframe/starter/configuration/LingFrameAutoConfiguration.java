@@ -55,8 +55,11 @@ public class LingFrameAutoConfiguration {
 
     // 3. PluginManager 依然是核心，但现在它依赖注入进来的组件
     @Bean
-    public PluginManager pluginManager(ContainerFactory containerFactory, GovernanceKernel governanceKernel) {
-        return new PluginManager(containerFactory, governanceKernel);
+    public PluginManager pluginManager(ContainerFactory containerFactory,
+                                       PermissionService permissionService,
+                                       GovernanceKernel governanceKernel,
+                                       EventBus eventBus) {
+        return new PluginManager(containerFactory, permissionService, governanceKernel, eventBus);
     }
 
     // 4. 【关键】额外注册一个代表宿主的 Context

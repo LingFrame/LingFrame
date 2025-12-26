@@ -8,7 +8,6 @@ import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
-import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.PluginContainer;
 import lombok.extern.slf4j.Slf4j;
@@ -61,14 +60,16 @@ public class PluginManager {
     // EventBus 用于插件间通信
     private final EventBus eventBus;
 
-    public PluginManager(ContainerFactory containerFactory, GovernanceKernel governanceKernel) {
+    public PluginManager(ContainerFactory containerFactory,
+                         PermissionService permissionService,
+                         GovernanceKernel governanceKernel,
+                         EventBus eventBus) {
         this.containerFactory = containerFactory;
+        this.permissionService = permissionService;
         this.governanceKernel = governanceKernel;
-        // 实际应单例注入
-        this.permissionService = new DefaultPermissionService();
         // 初始化热加载器
         this.hotSwapWatcher = new HotSwapWatcher(this);
-        eventBus = new EventBus();
+        this.eventBus = eventBus;
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "lingframe-plugin-cleaner");
             t.setDaemon(true); // 设置为守护线程，防止阻碍 JVM 关闭
@@ -209,6 +210,7 @@ public class PluginManager {
                 return slot.getService(callerPluginId, serviceType);
             } catch (Exception e) {
                 // 继续尝试其他插件
+                log.error("Failed to get service {} from plugin {}: {}", serviceKey, entry.getKey(), e.getMessage(), e);
             }
         }
 

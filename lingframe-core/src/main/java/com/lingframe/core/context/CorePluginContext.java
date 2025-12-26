@@ -19,8 +19,8 @@ import java.util.Optional;
 public class CorePluginContext implements PluginContext {
 
     private final String pluginId;
+
     /**
-     * -- GETTER --
      *  向 Core/Runtime 内部暴露 PluginManager
      *  注意：此方法不在 PluginContext API 接口中，仅供框架内部强转使用
      */

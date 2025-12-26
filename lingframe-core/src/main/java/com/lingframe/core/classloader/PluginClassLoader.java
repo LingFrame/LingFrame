@@ -8,7 +8,7 @@ import java.net.URLClassLoader;
 import java.util.*;
 
 /**
- * 生产级插件类加载器
+ * 插件类加载器
  * 特性：
  * 1. Child-First (优先加载插件内部类)
  * 2. 强制委派白名单 (Core API 必须走父加载器)

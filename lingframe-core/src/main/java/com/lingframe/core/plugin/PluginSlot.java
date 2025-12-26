@@ -15,7 +15,10 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 插件槽位：管理蓝绿发布与自然消亡
@@ -26,12 +29,19 @@ public class PluginSlot {
     // OOM 防御：最多保留5个历史快照
     private static final int MAX_HISTORY_SNAPSHOTS = 5;
 
+    // 专门用于保护槽位状态变更的锁
+    private final ReentrantLock stateLock = new ReentrantLock();
+
+    // 用于记录是否已经调度了强制清理任务
+    private final AtomicBoolean forceCleanupScheduled = new AtomicBoolean(false);
+
     @Getter
     private final String pluginId;
 
     // 实例池：支持多版本并存 [核心演进]
     private final CopyOnWriteArrayList<PluginInstance> activePool = new CopyOnWriteArrayList<>();
     // 默认实例引用 (用于保底路由和兼容旧逻辑)
+    @Getter
     private final AtomicReference<PluginInstance> defaultInstance = new AtomicReference<>();
 
     // 死亡队列：存放待销毁的旧版本
@@ -48,19 +58,50 @@ public class PluginSlot {
 
     private final GovernanceKernel governanceKernel;
 
-    // 🔥【关键】这个引用是动态的，指向当前 Active 的插件实例
-    // Proxy 持有这个引用的对象(Object Reference)，所以当 Slot 内部通过 set() 切换版本时，
-    // Proxy 也能立即感知到变化。
-//    @Getter
-//    private final AtomicReference<PluginInstance> activeInstanceRef = new AtomicReference<>();
+    private final ScheduledExecutorService sharedScheduler;
+
+    // ================= 线程池配置 =================
+    private static final int CORE_POOL_SIZE = Runtime.getRuntime().availableProcessors();
+    private static final int MAX_POOL_SIZE = CORE_POOL_SIZE * 2;
+    private static final int QUEUE_CAPACITY = 100; // 有界队列，防止无限积压导致 OOM
+    private static final long KEEP_ALIVE_TIME = 60L;
+    private static final int DEFAULT_TIMEOUT_MS = 3000; // 默认超时 3 秒
+    // 用于生成线程名的计数器
+    private final AtomicInteger threadNumber = new AtomicInteger(1);
+
+    // 专用执行器，用于运行插件方法（隔离线程池）
+    private final ExecutorService pluginExecutor;
 
     public PluginSlot(String pluginId, ScheduledExecutorService sharedScheduler, PermissionService permissionService, GovernanceKernel governanceKernel) {
         this.pluginId = pluginId;
+        this.sharedScheduler = sharedScheduler;
         this.permissionService = permissionService;
         this.governanceKernel = governanceKernel;
         // 清理任务调度器：共享的全局线程池
         // 每 5 秒检查一次是否有可以回收的旧实例
-        sharedScheduler.scheduleAtFixedRate(this::checkAndKill, 5, 5, TimeUnit.SECONDS);
+        if (sharedScheduler != null) {
+            sharedScheduler.scheduleAtFixedRate(this::checkAndKill, 5, 5, TimeUnit.SECONDS);
+        }
+
+        // 初始化线程池
+        this.pluginExecutor = new ThreadPoolExecutor(
+                CORE_POOL_SIZE,
+                MAX_POOL_SIZE,
+                KEEP_ALIVE_TIME, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(QUEUE_CAPACITY), // 关键：有界队列
+                // 【原生 Java 实现】自定义线程工厂
+                r -> {
+                    Thread t = new Thread(r);
+                    // 设置线程名：plugin-executor-{插件ID}-{序号}
+                    t.setName("plugin-executor-" + pluginId + "-" + threadNumber.getAndIncrement());
+                    // 设置为守护线程，不阻止 JVM 退出
+                    t.setDaemon(true);
+                    // 设置优先级（可选，生产级通常保持默认 NORMAL）
+                    // t.setPriority(Thread.NORM_PRIORITY);
+                    return t;
+                },
+                new ThreadPoolExecutor.AbortPolicy() // 关键：满载时快速失败，不阻塞宿主线程
+        );
     }
 
     /**
@@ -88,40 +129,71 @@ public class PluginSlot {
         return score;
     }
 
-    public synchronized void addInstance(PluginInstance newInstance, PluginContext pluginContext, boolean isDefault) {
-        // 1. 背压保护：如果历史版本积压过多，拒绝发布
+    public void addInstance(PluginInstance newInstance, PluginContext pluginContext, boolean isDefault) {
+        // 1. 【乐观检查】无锁快速背压检查，避免无效启动
         if (dyingInstances.size() >= MAX_HISTORY_SNAPSHOTS) {
-            log.error("[{}] Too many dying instances. System busy.", pluginId);
-            return;
+            throw new IllegalStateException("System busy: Too many dying instances (Fast check failed).");
         }
 
-        // 先清理缓存再加载新容器
-        clearCaches();
-        log.info("[{}] Service method cache cleared and ready for new version.", pluginId);
-
-        // 启动新版本容器
+        // 2. 【无锁启动】耗时操作不占锁
         log.info("[{}] Starting new version: {}", pluginId, newInstance.getVersion());
-        PluginContainer container = newInstance.getContainer();
-        if (container == null) {
-            log.error("[{}] PluginContainer is null", pluginId);
-            return;
-        }
-        container.start(pluginContext);
-
-        activePool.add(newInstance);
-        if (isDefault) {
-            PluginInstance old = defaultInstance.getAndSet(newInstance);
-            if (old != null) {
-                moveToDying(old);
+        try {
+            newInstance.getContainer().start(pluginContext);
+            // 【关键】等待就绪或设置就绪
+            // 这里假设容器启动是同步的，启动完即就绪
+            // 如果是异步启动（如 Web 容器），需要在这里 Future.get() 或监听事件
+            newInstance.markReady();
+        } catch (Exception e) {
+            log.error("[{}] Failed to start new version {}", pluginId, newInstance.getVersion(), e);
+            try {
+                newInstance.destroy();
+            } catch (Exception ignored) {
             }
+            throw new RuntimeException("Plugin start failed.", e);
         }
-        log.info("[{}] Instance {} added (Default={})", pluginId, newInstance.getVersion(), isDefault);
+
+        // 3. 【悲观确认】加锁进行状态切换
+        stateLock.lock();
+        try {
+            // 再次检查背压（防止在启动期间队列满了）
+            if (dyingInstances.size() >= MAX_HISTORY_SNAPSHOTS) {
+                log.warn("[{}] Backpressure hit after startup. Killing newly started instance.", pluginId);
+                try {
+                    newInstance.destroy();
+                } catch (Exception ignored) {
+                }
+                throw new IllegalStateException("System busy: Too many dying instances (Lock check failed).");
+            }
+
+            clearCaches();
+            activePool.add(newInstance);
+
+            if (isDefault) {
+                if (!newInstance.isReady()) {
+                    log.warn("[{}] New version is NOT READY. Keeping old version.", pluginId);
+                    // 如果不 ready，不切换流量，直接把新实例干掉（或留在池子里作为灰度）
+                    // 这里选择简单处理：如果不 Ready，直接销毁，回滚升级
+                    activePool.remove(newInstance);
+                    try {
+                        newInstance.destroy();
+                    } catch (Exception e) { /* ignore */ }
+                    throw new IllegalStateException("New instance failed to become ready.");
+                }
+                PluginInstance old = defaultInstance.getAndSet(newInstance);
+                if (old != null) {
+                    moveToDying(old);// 安全，因为当前线程已持有 stateLock
+                }
+            }
+            log.info("[{}] Version {} switched to Active.", pluginId, newInstance.getVersion());
+        } finally {
+            stateLock.unlock();
+        }
     }
 
-    private synchronized void moveToDying(PluginInstance inst) {
-        inst.markDying();
-        activePool.remove(inst);
-        dyingInstances.add(inst);
+    private void moveToDying(PluginInstance instance) {
+        instance.markDying();
+        activePool.remove(instance);
+        dyingInstances.add(instance);
     }
 
     /**
@@ -153,98 +225,115 @@ public class PluginSlot {
     }
 
     /**
-     * 协议服务调用入口 (由 PluginManager.invokeExtension 调用)
-     * 职责：TCCL劫持 + 查找 Bean + 反射调用 + 引用计数
+     * 协议服务调用入口 (含超时控制与线程隔离)
      */
     public Object invokeService(String callerPluginId, String fqsid, Object[] args) throws Exception {
-        // 协议调用暂走默认实例，或根据 ThreadLocal 标签路由
         PluginInstance instance = defaultInstance.get();
         if (instance == null || !instance.getContainer().isActive()) {
             throw new IllegalStateException("Service unavailable for FQSID: " + fqsid);
         }
 
-        instance.enter(); // 引用计数 +1
-        Thread currentThread = Thread.currentThread();
-        ClassLoader originalClassLoader = currentThread.getContextClassLoader();
+        InvokableService invokable = getInvokableService(fqsid, instance.getContainer());
+        if (invokable == null) {
+            throw new NoSuchMethodException("FQSID not found in slot: " + fqsid);
+        }
+
+        // 注意：主线程不增加引用计数，也不切换 TCCL
+        // 这一切都交给工作线程去完成
+
+        // 1. 创建异步任务
+        Callable<Object> task = () -> {
+            ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+            try {
+                // 【工作线程】设置 TCCL
+                Thread.currentThread().setContextClassLoader(instance.getContainer().getClassLoader());
+
+                // 【工作线程】增加引用计数
+                instance.enter();
+
+                // 【工作线程】执行实际业务逻辑
+                return invokable.method().invoke(invokable.bean(), args);
+
+            } finally {
+                // 【工作线程】减少引用计数 (无论成功/异常/超时中断)
+                instance.exit();
+
+                // 【工作线程】恢复 TCCL
+                Thread.currentThread().setContextClassLoader(originalClassLoader);
+            }
+        };
+
+        // 2. 提交到隔离线程池
+        Future<Object> future = pluginExecutor.submit(task);
 
         try {
-            // 1. TCCL 劫持：确保在正确的类加载器中执行代码
-            currentThread.setContextClassLoader(instance.getContainer().getClassLoader());
+            // 3. 阻塞等待结果（带超时）
+            return future.get(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            // 4. 超时处理：中断工作线程（如果能响应中断的话）
+            future.cancel(true);
+            log.error("[LingFrame] Plugin execution timeout ({}ms). FQSID={}, Caller={}",
+                    DEFAULT_TIMEOUT_MS, fqsid, callerPluginId);
+            throw new RuntimeException("Plugin execution timeout", e);
 
-            // 2. FQSID 查找实际方法和 Bean
-            // 查找缓存中已注册的可执行服务
-            InvokableService invokable = getInvokableService(fqsid, instance.getContainer());
-
-            if (invokable == null) {
-                throw new NoSuchMethodException("FQSID not found in slot: " + fqsid);
+        } catch (ExecutionException e) {
+            // 5. 业务异常处理：解包底层异常
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException) {
+                throw (RuntimeException) cause;
             }
+            throw new RuntimeException("Plugin execution failed", cause);
 
-            // 3. 执行调用
-            return invokable.method().invoke(invokable.bean(), args);
-
-        } catch (Exception e) {
-            log.error("[LingFrame] Protocol service invocation failed. FQSID={}, Caller={}", fqsid, callerPluginId, e);
-            // 统一包装异常，向上抛出
-            throw new RuntimeException("Protocol service invocation error: " + e.getMessage(), e);
-        } finally {
-            // 4. TCCL 恢复与引用计数递减
-            currentThread.setContextClassLoader(originalClassLoader);
-            instance.exit(); // 引用计数 -1
+        } catch (InterruptedException e) {
+            // 6. 线程中断处理
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Plugin execution interrupted", e);
         }
     }
 
     /**
-     * 【内部方法】模拟从 PluginContainer 查找可执行服务
+     * 获取可执行服务，严格执行“注册才能调用”
      */
     private InvokableService getInvokableService(String fqsid, PluginContainer container) {
-        // 由于真正的类扫描和MethodHandle注册在当前文件外，这里是生产环境的简化占位逻辑。
-        return serviceMethodCache.computeIfAbsent(fqsid, k -> {
-            try {
-                // 模拟根据 FQSID 找到目标 Bean 和 Method
-                // 实际应根据 FQSID 逆向解析出 BeanName 和 MethodSignature
-                log.warn("LingFrame 警告：协议服务查找逻辑正在使用模拟数据，FQSID: {}", fqsid);
+        // 1. 优先从缓存获取
+        InvokableService service = serviceMethodCache.get(fqsid);
+        if (service != null) {
+            return service;
+        }
 
-                // 假设 FQSID 是 "user-service:query_by_name"，我们找到一个 ExportFacade Bean
-                String beanName = fqsid.split(":")[0] + "ExportFacade";
-                Object bean = container.getBean(beanName);
+        // 2. 缓存未命中，这是严重错误
+        // 正常情况下，PluginContainer.start() 时会扫描并注册所有服务。
+        // 如果运行时找不到，说明启动流程有问题或 FQSID 拼写错误。
+        log.error("[LingFrame] Critical Error: FQSID [{}] not found in service registry. " +
+                  "This indicates a registration failure during plugin startup.", fqsid);
 
-                if (bean == null) return null;
-
-                // 假设 MethodHandle 已经通过扫描找到并存入
-                // 这里手动查找一个方法作为演示，生产环境应避免 this.getClass()... 查找
-                Method[] methods = bean.getClass().getDeclaredMethods();
-                for (Method m : methods) {
-                    if (m.getName().toLowerCase().contains("query")) { // 找到第一个包含 query 的方法
-                        m.setAccessible(true);
-                        return new InvokableService(bean, m);
-                    }
-                }
-                return null;
-
-            } catch (Exception e) {
-                log.error("Failed to mock find invokable service for FQSID: {}", fqsid, e);
-                return null;
-            }
-        });
+        throw new IllegalStateException("Service not found: " + fqsid +
+                                        ". Please check if the plugin started successfully.");
     }
 
     /**
      * 定时任务：检查并物理销毁旧实例
      */
     private void checkAndKill() {
-        dyingInstances.removeIf(instance -> {
-            // 只有引用计数归零，才真正销毁
-            if (instance.isIdle()) {
-                log.info("[{}] Garbage Collecting version: {}", pluginId, instance.getVersion());
-                try {
-                    instance.destroy();
-                } catch (Exception e) {
-                    log.error("Error destroying plugin instance", e);
-                }
-                return true; // 从队列移除
+        // 使用 tryLock 避免阻塞定时任务线程
+        if (stateLock.tryLock()) {
+            try {
+                dyingInstances.removeIf(instance -> {
+                    if (instance.isIdle()) {
+                        log.info("[{}] Garbage Collecting version: {}", pluginId, instance.getVersion());
+                        try {
+                            instance.destroy();
+                        } catch (Exception e) {
+                            log.error("Error destroying plugin instance", e);
+                        }
+                        return true;
+                    }
+                    return false;
+                });
+            } finally {
+                stateLock.unlock();
             }
-            return false; // 还有流量，暂不销毁
-        });
+        }
     }
 
     /**
@@ -263,40 +352,62 @@ public class PluginSlot {
      * 3. 触发一次清理检查
      */
     public void uninstall() {
-        activePool.forEach(this::moveToDying);
-        defaultInstance.set(null);
-        clearCaches();
-        // 尝试立即清理一次 (如果正好引用计数为0，直接销毁)
-        checkAndKill();
+        stateLock.lock();
+        try {
+            // 1. 切断流量
+            activePool.forEach(this::moveToDying);
+            defaultInstance.set(null);
 
-        // 添加超时检查，防止长时间阻塞
-        scheduleForceCleanupIfNecessary();
+            // 2. 关闭线程池
+            shutdownExecutor();
+
+            // 3. 清理缓存（彻底卸载）
+            clearCaches();
+
+            // 4. 尝试立即清理一次
+            checkAndKill();
+
+            // 5. 调度强制兜底任务（防止旧实例一直不归零）
+            if (forceCleanupScheduled.compareAndSet(false, true)) {
+                // 延迟 30 秒后执行强制清理
+                sharedScheduler.schedule(this::forceKillAll, 30, TimeUnit.SECONDS);
+            }
+        } finally {
+            stateLock.unlock();
+        }
+    }
+
+    private void shutdownExecutor() {
+        if (pluginExecutor != null && !pluginExecutor.isShutdown()) {
+            log.info("[{}] Shutting down plugin executor...", pluginId);
+            pluginExecutor.shutdown(); // 停止接受新任务
+            try {
+                // 等待现有任务结束（最多 10 秒）
+                if (!pluginExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                    log.warn("[{}] Plugin executor did not terminate in time. Forcing shutdown.", pluginId);
+                    pluginExecutor.shutdownNow(); // 强制中断
+                }
+            } catch (InterruptedException e) {
+                pluginExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     /**
-     * 如果插件实例长时间未能正常销毁，则强制清理
+     * 强制清理所有濒死实例（不管引用计数是否归零）
      */
-    private void scheduleForceCleanupIfNecessary() {
-        // 在单独的线程中检查是否需要强制清理
-        Thread forceCleanupThread = new Thread(() -> {
+    private void forceKillAll() {
+        // 这里不需要加锁，因为已经是卸载流程的终点了
+        log.warn("[{}] Force cleanup triggered. Destroying remaining instances.", pluginId);
+        dyingInstances.removeIf(instance -> {
             try {
-                Thread.sleep(30000); // 等待30秒
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                instance.destroy(); // destroy 内部应当是幂等的
+            } catch (Exception e) {
+                log.error("[{}] Error during force destroy of version {}", pluginId, instance.getVersion(), e);
             }
-            dyingInstances.removeIf(instance -> {
-                log.warn("[{}] Force cleaning plugin instance after 30 seconds: {}", pluginId, instance.getVersion());
-                try {
-                    instance.destroy();
-                } catch (Exception e) {
-                    log.error("Error force destroying plugin instance", e);
-                }
-                return true;
-            });
+            return true;
         });
-        forceCleanupThread.setDaemon(true);
-        forceCleanupThread.setName("lingframe-force-cleanup-" + pluginId);
-        forceCleanupThread.start();
     }
 
     private void clearCaches() {
