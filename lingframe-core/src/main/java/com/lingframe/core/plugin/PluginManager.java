@@ -157,7 +157,7 @@ public class PluginManager {
             PluginSlot slot = slots.computeIfAbsent(pluginId,
                     k -> new PluginSlot(k, scheduler, permissionService, governanceKernel));
             // 创建上下文
-            PluginContext context = new CorePluginContext(pluginId, this, permissionService, eventBus);
+            PluginContext context = new CorePluginContext(pluginId, this, permissionService, governanceKernel, eventBus);
 
             // 执行新增 (启动新容器 -> 原子切换流量 -> 旧容器进入死亡队列)
             slot.addInstance(instance, context, isDefault);

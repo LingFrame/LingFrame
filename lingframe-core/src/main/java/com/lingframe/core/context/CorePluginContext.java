@@ -29,10 +29,10 @@ public class CorePluginContext implements PluginContext {
     @Getter
     private final PluginManager pluginManager;
     private final PermissionService permissionService;
-    private final EventBus eventBus;
-
     // 注入治理内核，统一处理鉴权和审计
     private final GovernanceKernel governanceKernel;
+    private final EventBus eventBus;
+
 
     @Override
     public String getPluginId() {

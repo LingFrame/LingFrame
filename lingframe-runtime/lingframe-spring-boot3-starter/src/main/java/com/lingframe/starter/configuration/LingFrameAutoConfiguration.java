@@ -83,9 +83,10 @@ public class LingFrameAutoConfiguration {
     @Bean
     public PluginContext hostPluginContext(PluginManager pluginManager,
                                            PermissionService permissionService,
+                                           GovernanceKernel governanceKernel,
                                            EventBus eventBus) {
         // 给宿主应用一个固定的 ID，例如 "host-app"
-        return new CorePluginContext("host-app", pluginManager, permissionService, eventBus);
+        return new CorePluginContext("host-app", pluginManager, permissionService, governanceKernel, eventBus);
     }
 
     // 注册 LingReference 注入器
