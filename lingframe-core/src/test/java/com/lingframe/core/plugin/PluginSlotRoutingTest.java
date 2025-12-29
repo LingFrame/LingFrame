@@ -23,6 +23,8 @@ class PluginSlotRoutingTest {
                 Executors.newSingleThreadScheduledExecutor(),
                 null,
                 null,
+                null,
+                null,
                 null);
         mockCtx = mock(PluginContext.class);
     }

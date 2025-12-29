@@ -5,21 +5,21 @@ import com.lingframe.api.event.lifecycle.PluginStartedEvent;
 import com.lingframe.api.event.lifecycle.PluginStartingEvent;
 import com.lingframe.api.event.lifecycle.PluginStoppedEvent;
 import com.lingframe.api.event.lifecycle.PluginStoppingEvent;
-import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.proxy.SmartServiceProxy;
 import com.lingframe.core.spi.PluginContainer;
+import com.lingframe.core.spi.PluginServiceInvoker;
+import com.lingframe.core.spi.TrafficRouter;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.Comparator;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -68,6 +68,9 @@ public class PluginSlot {
 
     private final ScheduledExecutorService sharedScheduler;
 
+    private final TrafficRouter router;
+    private final PluginServiceInvoker invoker;
+
     // ================= 线程池配置 =================
     private static final int CORE_POOL_SIZE = Runtime.getRuntime().availableProcessors();
     private static final int MAX_POOL_SIZE = CORE_POOL_SIZE * 2;
@@ -83,12 +86,16 @@ public class PluginSlot {
     public PluginSlot(String pluginId, ScheduledExecutorService sharedScheduler,
                       GovernanceKernel governanceKernel,
                       GovernanceArbitrator governanceArbitrator,
-                      EventBus eventBus) {
+                      EventBus eventBus,
+                      TrafficRouter router,
+                      PluginServiceInvoker invoker) {
         this.pluginId = pluginId;
         this.sharedScheduler = sharedScheduler;
         this.governanceKernel = governanceKernel;
         this.governanceArbitrator = governanceArbitrator;
         this.eventBus = eventBus;
+        this.router = router;
+        this.invoker = invoker;
         // 清理任务调度器：共享的全局线程池
         // 每 5 秒检查一次是否有可以回收的旧实例
         if (sharedScheduler != null) {
@@ -120,25 +127,7 @@ public class PluginSlot {
      * 核心路由：支持标签匹配
      */
     public PluginInstance selectInstance(InvocationContext ctx) {
-        Map<String, String> requestLabels = ctx.getLabels();
-        if (requestLabels == null || requestLabels.isEmpty()) return defaultInstance.get();
-
-        return activePool.stream()
-                .map(inst -> new ScoredInstance(inst, calculateScore(inst.getLabels(), requestLabels)))
-                .filter(si -> si.score >= 0)
-                .max(Comparator.comparingInt(si -> si.score))
-                .map(si -> si.instance)
-                .orElseGet(defaultInstance::get);
-    }
-
-    private int calculateScore(Map<String, String> instLabels, Map<String, String> reqLabels) {
-        int score = 0;
-        for (Map.Entry<String, String> entry : reqLabels.entrySet()) {
-            String val = instLabels.get(entry.getKey());
-            if (Objects.equals(val, entry.getValue())) score += 10;
-            else if (val != null) return -1;
-        }
-        return score;
+        return router.route(activePool, ctx);
     }
 
     public void addInstance(PluginInstance newInstance, PluginContext pluginContext, boolean isDefault) {
@@ -285,54 +274,41 @@ public class PluginSlot {
             throw new NoSuchMethodException("FQSID not found in slot: " + fqsid);
         }
 
-        // 注意：主线程不增加引用计数，也不切换 TCCL
-        // 这一切都交给工作线程去完成
-
-        // 1. 创建异步任务
+        // 捕获当前线程的 TraceID
+        String traceId = TraceContext.get();
+        // 创建异步任务
         Callable<Object> task = () -> {
-            ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+            // 在子线程中重放 TraceID
+            if (traceId != null) TraceContext.setTraceId(traceId);
             try {
-                // 【工作线程】设置 TCCL
-                Thread.currentThread().setContextClassLoader(instance.getContainer().getClassLoader());
-
-                // 【工作线程】增加引用计数
-                instance.enter();
-
-                // 【工作线程】执行实际业务逻辑
-                return invokable.method().invoke(invokable.bean(), args);
-
+                // 委托给 Invoker 执行
+                return invoker.invoke(instance, invokable.bean(), invokable.method(), args);
             } finally {
-                // 【工作线程】减少引用计数 (无论成功/异常/超时中断)
-                instance.exit();
-
-                // 【工作线程】恢复 TCCL
-                Thread.currentThread().setContextClassLoader(originalClassLoader);
+                // 清理子线程 ThreadLocal
+                TraceContext.clear();
             }
         };
 
-        // 2. 提交到隔离线程池
+        // 提交到隔离线程池
         Future<Object> future = pluginExecutor.submit(task);
-
         try {
-            // 3. 阻塞等待结果（带超时）
+            // 阻塞等待结果（带超时）
             return future.get(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            // 4. 超时处理：中断工作线程（如果能响应中断的话）
+            // 超时处理：中断工作线程（如果能响应中断的话）
             future.cancel(true);
             log.error("[LingFrame] Plugin execution timeout ({}ms). FQSID={}, Caller={}",
                     DEFAULT_TIMEOUT_MS, fqsid, callerPluginId);
             throw new RuntimeException("Plugin execution timeout", e);
-
         } catch (ExecutionException e) {
-            // 5. 业务异常处理：解包底层异常
+            // 业务异常处理：解包底层异常
             Throwable cause = e.getCause();
             if (cause instanceof RuntimeException) {
                 throw (RuntimeException) cause;
             }
             throw new RuntimeException("Plugin execution failed", cause);
-
         } catch (InterruptedException e) {
-            // 6. 线程中断处理
+            // 线程中断处理
             Thread.currentThread().interrupt();
             throw new RuntimeException("Plugin execution interrupted", e);
         }
@@ -352,10 +328,10 @@ public class PluginSlot {
         // 正常情况下，PluginContainer.start() 时会扫描并注册所有服务。
         // 如果运行时找不到，说明启动流程有问题或 FQSID 拼写错误。
         log.error("[LingFrame] Critical Error: FQSID [{}] not found in service registry. " +
-                "This indicates a registration failure during plugin startup.", fqsid);
+                  "This indicates a registration failure during plugin startup.", fqsid);
 
         throw new IllegalStateException("Service not found: " + fqsid +
-                ". Please check if the plugin started successfully.");
+                                        ". Please check if the plugin started successfully.");
     }
 
     /**
@@ -396,20 +372,20 @@ public class PluginSlot {
     public void uninstall() {
         stateLock.lock();
         try {
-            // 1. 切断流量
+            // 切断流量
             activePool.forEach(this::moveToDying);
             defaultInstance.set(null);
 
-            // 2. 关闭线程池
+            // 关闭线程池
             shutdownExecutor();
 
-            // 3. 清理缓存（彻底卸载）
+            // 清理缓存（彻底卸载）
             clearCaches();
 
-            // 4. 尝试立即清理一次
+            // 尝试立即清理一次
             checkAndKill();
 
-            // 5. 调度强制兜底任务（防止旧实例一直不归零）
+            // 调度强制兜底任务（防止旧实例一直不归零）
             if (forceCleanupScheduled.compareAndSet(false, true)) {
                 // 延迟 30 秒后执行强制清理
                 sharedScheduler.schedule(this::forceKillAll, 30, TimeUnit.SECONDS);
@@ -453,11 +429,8 @@ public class PluginSlot {
         proxyCache.clear();
     }
 
-    // 【新增内部类】用于缓存可执行的服务对象和方法
+    // 用于缓存可执行的服务对象和方法
     private record InvokableService(Object bean, Method method) {
-    }
-
-    private record ScoredInstance(PluginInstance instance, int score) {
     }
 
     public boolean hasBean(Class<?> type) {

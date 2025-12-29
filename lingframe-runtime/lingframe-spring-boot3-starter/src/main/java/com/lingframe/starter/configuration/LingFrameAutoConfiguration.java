@@ -15,6 +15,10 @@ import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import com.lingframe.core.spi.PluginLoaderFactory;
 import com.lingframe.core.spi.PluginSecurityVerifier;
+import com.lingframe.core.invoker.DefaultPluginServiceInvoker;
+import com.lingframe.core.spi.PluginServiceInvoker;
+import com.lingframe.core.router.LabelMatchRouter;
+import com.lingframe.core.spi.TrafficRouter;
 import com.lingframe.starter.adapter.SpringContainerFactory;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.processor.LingReferenceInjector;
@@ -90,15 +94,27 @@ public class LingFrameAutoConfiguration {
     }
 
     @Bean
+    public TrafficRouter trafficRouter() {
+        return new LabelMatchRouter();
+    }
+
+    @Bean
+    public PluginServiceInvoker pluginServiceInvoker() {
+        return new DefaultPluginServiceInvoker();
+    }
+
+    @Bean
     public PluginManager pluginManager(ContainerFactory containerFactory,
                                        PermissionService permissionService,
                                        GovernanceKernel governanceKernel,
                                        GovernanceArbitrator governanceArbitrator,
                                        PluginLoaderFactory pluginLoaderFactory,
                                        List<PluginSecurityVerifier> verifiers,
-                                       EventBus eventBus) {
+                                       EventBus eventBus,
+                                       TrafficRouter trafficRouter,
+                                       PluginServiceInvoker pluginServiceInvoker) {
         return new PluginManager(containerFactory, permissionService, governanceKernel,
-                governanceArbitrator, pluginLoaderFactory, verifiers, eventBus);
+                governanceArbitrator, pluginLoaderFactory, verifiers, eventBus, trafficRouter, pluginServiceInvoker);
     }
 
     // 额外注册一个代表宿主的 Context

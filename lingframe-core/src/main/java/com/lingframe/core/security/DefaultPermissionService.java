@@ -75,4 +75,14 @@ public class DefaultPermissionService implements PermissionService {
             log.warn("[Security] Access Denied - Plugin: {}, Capability: {}, Operation: {}", pluginId, capability, operation);
         }
     }
+
+    /**
+     * 清理插件的权限数据
+     */
+    @Override
+    public void removePlugin(String pluginId) {
+        if (permissions.remove(pluginId) != null) {
+            log.debug("Removed permissions for plugin: {}", pluginId);
+        }
+    }
 }

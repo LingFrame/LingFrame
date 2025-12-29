@@ -6,8 +6,10 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 热加载监听器
@@ -16,9 +18,13 @@ import java.util.concurrent.*;
 @Slf4j
 public class HotSwapWatcher {
 
-    private final WatchService watchService;
     private final PluginManager pluginManager;
+    private WatchService watchService;
+    // 核心映射：WatchKey -> PluginId
+    // 因为是递归监听，一个 PluginId 会对应多个 WatchKey (每个子目录一个)
     private final Map<WatchKey, String> keyPluginMap = new ConcurrentHashMap<>();
+
+    private final AtomicBoolean isStarted = new AtomicBoolean(false);
 
     // 防抖调度器：防止一次保存触发多次重载
     private final ScheduledExecutorService debounceExecutor = Executors.newSingleThreadScheduledExecutor(
@@ -32,11 +38,20 @@ public class HotSwapWatcher {
 
     public HotSwapWatcher(PluginManager pluginManager) {
         this.pluginManager = pluginManager;
+    }
+
+    /**
+     * 初始化监听服务 (Lazy Init)
+     */
+    private synchronized void ensureInit() {
+        if (isStarted.get()) return;
         try {
             this.watchService = FileSystems.getDefault().newWatchService();
             startWatchLoop();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to init HotSwapWatcher", e);
+            isStarted.set(true);
+            log.info("[HotSwap] WatchService initialized (Lazy).");
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to init WatchService", e);
         }
     }
 
@@ -44,14 +59,15 @@ public class HotSwapWatcher {
      * 注册监听目录
      */
     public void register(String pluginId, File classesDir) {
+        ensureInit(); // 触发懒加载
         try {
             Path path = classesDir.toPath();
-            // 递归注册所有子目录（简化版仅演示根目录和一级子目录，生产环境需递归）
+            // 递归注册所有子目录
             WatchKey key = path.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY, StandardWatchEventKinds.ENTRY_CREATE);
             keyPluginMap.put(key, pluginId);
 
-            // 简单遍历一级子目录注册 (实际需完整递归)
-            Files.walk(path, 5)
+            // 简单遍历一级子目录注册
+            Files.walk(path, 10)
                     .filter(Files::isDirectory)
                     .forEach(p -> {
                         try {
@@ -68,17 +84,56 @@ public class HotSwapWatcher {
         }
     }
 
+    /**
+     * 注销监听
+     * 遍历 Map，移除该插件名下的所有 Key (O(N) 复杂度，但在卸载时可接受)
+     */
+    public void unregister(String pluginId) {
+        if (!isStarted.get()) return;
+
+        log.info("[HotSwap] Unregistering watcher for: {}", pluginId);
+
+        // 使用迭代器安全删除
+        Iterator<Map.Entry<WatchKey, String>> it = keyPluginMap.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<WatchKey, String> entry = it.next();
+            if (entry.getValue().equals(pluginId)) {
+                WatchKey key = entry.getKey();
+                try {
+                    key.cancel(); // 释放操作系统资源
+                } catch (Exception ignored) {
+                }
+                it.remove();  // 移除 Map 条目
+            }
+        }
+    }
+
+    // 关闭服务 (App shutdown 时调用)
+    public synchronized void shutdown() {
+        try {
+            if (watchService != null) watchService.close();
+            debounceExecutor.shutdownNow();
+        } catch (IOException e) {
+            // ignore
+        }
+    }
+
     private void startWatchLoop() {
         Thread t = new Thread(() -> {
             while (true) {
                 try {
-                    WatchKey key = watchService.take();
-                    String pluginId = keyPluginMap.get(key);
+                    if (watchService == null) break;
 
+                    WatchKey key = watchService.take();
+
+                    String pluginId = keyPluginMap.get(key);
                     if (pluginId != null) {
                         // 触发防抖重载
                         scheduleReload(pluginId);
                     }
+
+                    // 清空事件队列，防止死循环
+                    key.pollEvents();
 
                     // 重置 key，如果重置失败说明目录已不可访问
                     if (!key.reset()) {
@@ -86,6 +141,8 @@ public class HotSwapWatcher {
                     }
                 } catch (InterruptedException e) {
                     break;
+                } catch (ClosedWatchServiceException e) {
+                    break; // 服务关闭，退出
                 } catch (Exception e) {
                     log.error("Error in HotSwap loop", e);
                 }

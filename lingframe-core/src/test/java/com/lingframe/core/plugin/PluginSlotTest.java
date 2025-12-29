@@ -16,23 +16,20 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 public class PluginSlotTest {
 
     private PluginSlot pluginSlot;
-    private PermissionService permissionService;
     private ScheduledExecutorService scheduledExecutorService;
-    private GovernanceKernel governanceKernel;
-    private GovernanceArbitrator governanceArbitrator;
 
     @BeforeEach
     void setUp() {
         String pluginId = "test-plugin";
-        permissionService = new DefaultPermissionService();
         scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
-        governanceKernel = new GovernanceKernel(permissionService);
         pluginSlot = new PluginSlot(
                 pluginId,
                 scheduledExecutorService,
-                permissionService,
-                governanceKernel,
-                governanceArbitrator);
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 
     @Test

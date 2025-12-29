@@ -43,4 +43,6 @@ public interface PermissionService {
      * @param allowed 是否允许该操作
      */
     void audit(String pluginId, String capability, String operation, boolean allowed);
+
+    default void removePlugin(String pluginId) {}
 }

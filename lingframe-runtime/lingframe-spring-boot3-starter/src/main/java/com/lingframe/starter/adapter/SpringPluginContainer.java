@@ -51,7 +51,7 @@ public class SpringPluginContainer implements PluginContainer {
     public void start(PluginContext pluginContext) {
         this.pluginContext = pluginContext;
 
-        // 1. TCCL 劫持
+        // TCCL 劫持
         Thread t = Thread.currentThread();
         ClassLoader old = t.getContextClassLoader();
         t.setContextClassLoader(classLoader);
@@ -62,17 +62,17 @@ public class SpringPluginContainer implements PluginContainer {
                     registerBeans(gac, classLoader);
                 }
             });
-            // 2. 启动 Spring
+            // 启动 Spring
             this.context = builder.run();
 
-            // 3. 【关键】寻找并触发 LingPlugin 生命周期
+            // 【关键】寻找并触发 LingPlugin 生命周期
             // 尝试从 Spring 容器中获取实现了 LingPlugin 接口的 Bean
             try {
                 LingPlugin plugin = this.context.getBean(LingPlugin.class);
                 log.info("Triggering onStart for plugin: {}", pluginContext.getPluginId());
                 plugin.onStart(pluginContext);
 
-                // 3. 扫描 @LingService 并注册到 Core
+                // 扫描 @LingService 并注册到 Core
                 // 等待所有Bean初始化完成后再注册服务
                 scheduleServiceRegistration();
             } catch (Exception e) {
@@ -93,10 +93,10 @@ public class SpringPluginContainer implements PluginContainer {
             PluginManager pluginManager = coreCtx.getPluginManager();
             String pluginId = pluginContext.getPluginId();
 
-            // 1. 注册 PluginManager (供插件内部使用)
+            // 注册 PluginManager (供插件内部使用)
             context.registerBean(PluginManager.class, () -> pluginManager);
 
-            // 2. 注册插件专用的 LingReferenceInjector
+            // 注册插件专用的 LingReferenceInjector
             // 这样插件里的 Bean 被注入代理时，callerId 就是插件自己的 ID，而不是 host-app
             context.registerBean(LingReferenceInjector.class, () ->
                     new LingReferenceInjector(pluginManager, pluginId)
@@ -162,21 +162,21 @@ public class SpringPluginContainer implements PluginContainer {
         if (!(pluginContext instanceof CorePluginContext)) return;
         String pluginId = pluginContext.getPluginId();
 
-        // 1. 获取所有 @RestController
+        // 获取所有 @RestController
         Map<String, Object> controllers = context.getBeansWithAnnotation(RestController.class);
 
         for (Object bean : controllers.values()) {
             try {
                 Class<?> targetClass = AopUtils.getTargetClass(bean);
 
-                // 2. 解析类级 @RequestMapping
+                // 解析类级 @RequestMapping
                 String baseUrl = "";
                 RequestMapping classMapping = AnnotatedElementUtils.findMergedAnnotation(targetClass, RequestMapping.class);
                 if (classMapping != null && classMapping.path().length > 0) {
                     baseUrl = classMapping.path()[0];
                 }
 
-                // 3. 遍历方法
+                // 遍历方法
                 String finalBaseUrl = baseUrl;
                 ReflectionUtils.doWithMethods(targetClass, method -> {
                     // 查找 RequestMapping (包含 GetMapping, PostMapping 等)
@@ -195,15 +195,15 @@ public class SpringPluginContainer implements PluginContainer {
      * 解析单个方法并生成元数据
      */
     private void registerControllerMethod(String pluginId, Object bean, Method method, String baseUrl, RequestMapping mapping) {
-        // 1. URL 拼接: /pluginId/classUrl/methodUrl
+        // URL 拼接: /pluginId/classUrl/methodUrl
         String methodUrl = mapping.path().length > 0 ? mapping.path()[0] : "";
         String fullPath = ("/" + pluginId + "/" + baseUrl + "/" + methodUrl).replaceAll("/+", "/");
 
-        // 2. HTTP Method
+        // HTTP Method
         String httpMethod = mapping.method().length > 0 ? mapping.method()[0].name() : "GET"; // 默认 GET
 
-        // 3. 解析参数 (为三段式绑定做准备)
-        // 🔥【修改】获取真实的参数名列表 (开启 -parameters 后这里就能拿到了)
+        // 解析参数 (为三段式绑定做准备)
+        // 🔥获取真实的参数名列表 (开启 -parameters 后这里就能拿到了)
         String[] paramNames = nameDiscoverer.getParameterNames(method);
         Parameter[] parameters = method.getParameters();
 
@@ -214,10 +214,10 @@ public class SpringPluginContainer implements PluginContainer {
             WebInterfaceMetadata.ParamType type = WebInterfaceMetadata.ParamType.UNKNOWN;
 
             // 【核心逻辑】名字获取优先级：
-            // 1. 注解显式指定 @PathVariable("uid")
-            // 2. 编译器保留的参数名 (开启 -parameters 后)
-            // 3. 字节码解析 (ASM)
-            // 4. 原生反射 (arg0)
+            // 注解显式指定 @PathVariable("uid")
+            // 编译器保留的参数名 (开启 -parameters 后)
+            // 字节码解析 (ASM)
+            // 原生反射 (arg0)
             String name = p.getName(); // 默认 arg0
             if (paramNames != null && paramNames.length > i && paramNames[i] != null) {
                 name = paramNames[i];  // 拿到真实名字 id
@@ -242,7 +242,7 @@ public class SpringPluginContainer implements PluginContainer {
                     .build());
         }
 
-        // 🔥 1. 智能权限推导
+        // 🔥 智能权限推导
         String permission;
         RequiresPermission permAnn = AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class);
         if (permAnn != null) {
@@ -254,7 +254,7 @@ public class SpringPluginContainer implements PluginContainer {
             permission = GovernanceStrategy.inferPermission(method);
         }
 
-        // 🔥 2. 智能审计推导
+        // 🔥 智能审计推导
         boolean shouldAudit = false;
         String auditAction = method.getName();
         Auditable auditAnn = AnnotatedElementUtils.findMergedAnnotation(method, Auditable.class);
@@ -271,7 +271,7 @@ public class SpringPluginContainer implements PluginContainer {
             }
         }
 
-        // 4. 构建元数据
+        // 构建元数据
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
                 .pluginId(pluginId)
                 .targetBean(bean)
@@ -286,7 +286,7 @@ public class SpringPluginContainer implements PluginContainer {
                 .auditAction(auditAction)
                 .build();
 
-        // 5. 打印验证
+        // 打印验证
         log.info("🌍 [LingFrame Web] Found Controller: {} [{}] -> Params: {}",
                 httpMethod, fullPath, params.size());
 
@@ -299,13 +299,19 @@ public class SpringPluginContainer implements PluginContainer {
     @Override
     public void stop() {
         if (context != null && context.isActive()) {
-            // 1. 【关键】触发 onStop
+            String pluginId = (pluginContext != null) ? pluginContext.getPluginId() : "unknown";
+            // 【关键】触发 onStop
             try {
                 LingPlugin plugin = this.context.getBean(LingPlugin.class);
-                log.info("Triggering onStop for plugin: {}", pluginContext.getPluginId());
+                log.info("Triggering onStop for plugin: {}", pluginId);
                 plugin.onStop(pluginContext);
             } catch (Exception e) {
                 // 忽略，可能没有入口类
+            }
+
+            // 注销 Web 接口元数据，防止 ClassLoader 泄漏
+            if (WebInterfaceManager.getInstance() != null) {
+                WebInterfaceManager.getInstance().unregister(pluginId);
             }
 
             context.close();

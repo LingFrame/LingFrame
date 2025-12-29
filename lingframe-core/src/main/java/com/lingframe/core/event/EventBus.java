@@ -12,33 +12,50 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Slf4j
 public class EventBus {
 
-    private final Map<Class<? extends LingEvent>, List<LingEventListener<? extends LingEvent>>> listeners =
+    private final Map<Class<? extends LingEvent>, List<ListenerWrapper>> listeners =
             new ConcurrentHashMap<>();
 
-    public <E extends LingEvent> void subscribe(Class<E> eventType, LingEventListener<E> listener) {
+    // 包装器，记录监听器归属的插件ID
+    private record ListenerWrapper(String pluginId, LingEventListener<? extends LingEvent> listener) {
+    }
+
+    /**
+     * 注册监听器
+     */
+    public <E extends LingEvent> void subscribe(String pluginId, Class<E> eventType, LingEventListener<E> listener) {
         listeners.computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>())
-                .add(listener);
+                .add(new ListenerWrapper(pluginId, listener));
+    }
+
+    /**
+     * 卸载插件时，强制移除该插件注册的所有监听器
+     */
+    public void unsubscribeAll(String pluginId) {
+        log.info("Cleaning up event listeners for plugin: {}", pluginId);
+        for (List<ListenerWrapper> list : listeners.values()) {
+            list.removeIf(wrapper -> {
+                boolean match = wrapper.pluginId().equals(pluginId);
+                if (match) {
+                    log.debug("Removed listener: {}", wrapper.listener().getClass().getName());
+                }
+                return match;
+            });
+        }
     }
 
     public <E extends LingEvent> void publish(E event) {
-        List<LingEventListener<? extends LingEvent>> eventListeners = listeners.get(event.getClass());
-        if (eventListeners != null) {
-            for (LingEventListener<? extends LingEvent> listener : eventListeners) {
-                try {
-                    // 检查事件类型是否匹配
-                    if (listener.getClass().isAssignableFrom(event.getClass())) {
-                        @SuppressWarnings("unchecked")
-                        LingEventListener<E> castListener = (LingEventListener<E>) listener;
-                        castListener.onEvent(event);
-                    }
-                } catch (RuntimeException e) {
-                    // 如果是核心业务异常，直接抛出！
-                    log.warn("Event listener threw exception, propagating: {}", e.getMessage());
-                    throw e;
-                } catch (Exception e) {
-                    // 对于 Checked Exception，记录日志
-                    log.error("Error processing event", e);
-                }
+        List<ListenerWrapper> wrappers = listeners.get(event.getClass());
+        if (wrappers == null) return;
+        for (ListenerWrapper wrapper : wrappers) {
+            try {
+                @SuppressWarnings("unchecked")
+                LingEventListener<E> castListener = (LingEventListener<E>) wrapper.listener();
+                castListener.onEvent(event);
+            } catch (RuntimeException e) {
+                log.warn("Event listener threw exception, propagating: {}", e.getMessage());
+                throw e; // Fail-Fast
+            } catch (Exception e) {
+                log.error("Error processing event", e);
             }
         }
     }
