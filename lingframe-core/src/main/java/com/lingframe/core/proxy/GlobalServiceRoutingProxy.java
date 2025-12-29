@@ -1,7 +1,5 @@
 package com.lingframe.core.proxy;
 
-import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.core.plugin.PluginSlot;
@@ -27,20 +25,18 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
     private final String targetPluginId; // 用户指定的插件ID (可选)
     private final PluginManager pluginManager;
     private final GovernanceKernel governanceKernel;
-    private final GovernanceArbitrator governanceArbitrator;
 
     // 缓存：接口 -> 真正提供服务的插件ID (避免每次都遍历)
     private static final Map<Class<?>, String> ROUTE_CACHE = new ConcurrentHashMap<>();
 
     public GlobalServiceRoutingProxy(String callerPluginId, Class<?> serviceInterface,
                                      String targetPluginId, PluginManager pluginManager,
-                                     GovernanceKernel governanceKernel, GovernanceArbitrator governanceArbitrator) {
+                                     GovernanceKernel governanceKernel) {
         this.callerPluginId = callerPluginId;
         this.serviceInterface = serviceInterface;
         this.targetPluginId = targetPluginId;
         this.pluginManager = pluginManager;
         this.governanceKernel = governanceKernel;
-        this.governanceArbitrator = governanceArbitrator;
     }
 
     @Override
@@ -63,7 +59,7 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
         // 2. 统一使用 SmartServiceProxy 执行治理和路由逻辑
         // 这样即使宿主调用，也能支持金丝雀分流！
         SmartServiceProxy delegate = new SmartServiceProxy(callerPluginId, slot,
-                serviceInterface, governanceKernel, governanceArbitrator);
+                serviceInterface, governanceKernel);
         return delegate.invoke(proxy, method, args);
     }
 

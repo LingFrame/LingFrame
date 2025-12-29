@@ -1,5 +1,6 @@
 package com.lingframe.core.spi;
 
+import com.lingframe.core.governance.GovernanceDecision;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.plugin.PluginSlot;
 
@@ -11,21 +12,16 @@ import java.lang.reflect.Method;
 public interface GovernancePolicyProvider {
 
     /**
-     * 判定权限
-     *
-     * @return 返回 权限ID (表示命中)，返回 null (表示我不处理，交给下一个)
-     */
-    String resolvePermission(PluginSlot slot, Method method, InvocationContext ctx);
-
-    /**
-     * 判定审计
-     *
-     * @return 返回 true/false (表示命中)，返回 null (表示不处理)
-     */
-    Boolean shouldAudit(PluginSlot slot, Method method, InvocationContext ctx);
-
-    /**
      * 排序优先级 (越小越优先)
      */
     int getOrder();
+
+    /**
+     * 解析治理决策
+     * @param slot 当前插件槽位
+     * @param method 目标方法
+     * @param ctx 调用上下文
+     * @return 决策结果，如果无法决策返回 null (责任链继续)
+     */
+    GovernanceDecision resolve(PluginSlot slot, Method method, InvocationContext ctx);
 }

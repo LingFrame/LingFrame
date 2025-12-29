@@ -1,4 +1,4 @@
-package com.lingframe.controller;
+package com.lingframe.starter.controller;
 
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.core.governance.LocalGovernanceRegistry;

@@ -1,5 +1,6 @@
 package com.lingframe.core.governance;
 
+import com.lingframe.api.security.AccessType;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.plugin.PluginSlot;
 import com.lingframe.core.spi.GovernancePolicyProvider;
@@ -26,20 +27,21 @@ public class GovernanceArbitrator {
         log.info("GovernanceArbitrator initialized with {} providers", providers.size());
     }
 
-    public String resolvePermission(PluginSlot slot, Method method, InvocationContext ctx) {
+    public GovernanceDecision arbitrate(PluginSlot slot, Method method, InvocationContext ctx) {
         for (GovernancePolicyProvider provider : providers) {
-            String result = provider.resolvePermission(slot, method, ctx);
-            if (result != null) return result;
-        }
-        return "default:execute"; // 绝对兜底
-    }
+            GovernanceDecision decision = provider.resolve(slot, method, ctx);
 
-    public boolean shouldAudit(PluginSlot slot, Method method, InvocationContext ctx) {
-        for (GovernancePolicyProvider provider : providers) {
-            Boolean result = provider.shouldAudit(slot, method, ctx);
-            if (result != null) return result;
+            // 只要决策中包含核心控制信息 (权限或审计)，即视为有效决策 (First Win 策略)
+            if (decision != null && (decision.getRequiredPermission() != null || decision.getAuditEnabled() != null)) {
+                return decision;
+            }
         }
-        return false;
+        // 绝对兜底：防止 NPE，默认放行但需基础权限
+        return GovernanceDecision.builder()
+                .requiredPermission("default:execute")
+                .accessType(AccessType.EXECUTE)
+                .auditEnabled(false)
+                .build();
     }
 
 }

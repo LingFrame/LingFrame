@@ -4,21 +4,18 @@ import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.classloader.DefaultPluginLoaderFactory;
 import com.lingframe.core.context.CorePluginContext;
+import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.governance.GovernanceArbitrator;
+import com.lingframe.core.governance.HostGovernanceRule;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.governance.provider.StandardGovernancePolicyProvider;
+import com.lingframe.core.invoker.DefaultPluginServiceInvoker;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.plugin.PluginManager;
-import com.lingframe.core.security.DefaultPermissionService;
-import com.lingframe.core.spi.ContainerFactory;
-import com.lingframe.core.spi.GovernancePolicyProvider;
-import com.lingframe.core.spi.PluginLoaderFactory;
-import com.lingframe.core.spi.PluginSecurityVerifier;
-import com.lingframe.core.invoker.DefaultPluginServiceInvoker;
-import com.lingframe.core.spi.PluginServiceInvoker;
 import com.lingframe.core.router.LabelMatchRouter;
-import com.lingframe.core.spi.TrafficRouter;
+import com.lingframe.core.security.DefaultPermissionService;
+import com.lingframe.core.spi.*;
 import com.lingframe.starter.adapter.SpringContainerFactory;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.processor.LingReferenceInjector;
@@ -26,8 +23,10 @@ import com.lingframe.starter.web.LingWebProxyController;
 import com.lingframe.starter.web.WebInterfaceManager;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationListener;
@@ -37,10 +36,13 @@ import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Configuration
 @EnableConfigurationProperties(LingFrameProperties.class)
+@ConditionalOnProperty(prefix = "lingframe", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class LingFrameAutoConfiguration {
 
     // 将事件总线注册为 Bean (解耦)
@@ -63,10 +65,25 @@ public class LingFrameAutoConfiguration {
     }
 
     @Bean
-    public StandardGovernancePolicyProvider standardGovernancePolicyProvider(LocalGovernanceRegistry registry,
-                                                                             LingFrameProperties properties) {
-        // 将 Spring 配置注入到纯 Java 的内核组件中
-        return new StandardGovernancePolicyProvider(registry, properties.getForcePermissions());
+    public StandardGovernancePolicyProvider standardGovernancePolicyProvider(
+            LocalGovernanceRegistry registry,
+            LingFrameProperties properties) {
+
+        List<HostGovernanceRule> coreRules = new ArrayList<>();
+        if (properties.getRules() != null) {
+            for (LingFrameProperties.GovernanceRule r : properties.getRules()) {
+                coreRules.add(HostGovernanceRule.builder()
+                        .pattern(r.getPattern())
+                        .permission(r.getPermission())
+                        .accessType(r.getAccess())
+                        .auditEnabled(r.getAudit())
+                        .auditAction(r.getAuditAction())
+                        .timeout(r.getTimeout())
+                        .build());
+            }
+        }
+
+        return new StandardGovernancePolicyProvider(registry, coreRules);
     }
 
     // 组装仲裁器：收集容器中所有的 PolicyProvider
@@ -82,10 +99,9 @@ public class LingFrameAutoConfiguration {
         return new DefaultPermissionService();
     }
 
-    // 组装 GovernanceKernel
     @Bean
-    public GovernanceKernel governanceKernel(PermissionService permissionService) {
-        return new GovernanceKernel(permissionService);
+    public GovernanceKernel governanceKernel(PermissionService permissionService, GovernanceArbitrator arbitrator) {
+        return new GovernanceKernel(permissionService, arbitrator);
     }
 
     @Bean
@@ -107,24 +123,28 @@ public class LingFrameAutoConfiguration {
     public PluginManager pluginManager(ContainerFactory containerFactory,
                                        PermissionService permissionService,
                                        GovernanceKernel governanceKernel,
-                                       GovernanceArbitrator governanceArbitrator,
                                        PluginLoaderFactory pluginLoaderFactory,
                                        List<PluginSecurityVerifier> verifiers,
                                        EventBus eventBus,
                                        TrafficRouter trafficRouter,
                                        PluginServiceInvoker pluginServiceInvoker) {
         return new PluginManager(containerFactory, permissionService, governanceKernel,
-                governanceArbitrator, pluginLoaderFactory, verifiers, eventBus, trafficRouter, pluginServiceInvoker);
+                pluginLoaderFactory, verifiers, eventBus, trafficRouter, pluginServiceInvoker);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "lingframe", name = "dev-mode", havingValue = "true")
+    public HotSwapWatcher hotSwapWatcher(PluginManager pluginManager, EventBus eventBus) {
+        return new HotSwapWatcher(pluginManager, eventBus);
     }
 
     // 额外注册一个代表宿主的 Context
     @Bean
     public PluginContext hostPluginContext(PluginManager pluginManager,
                                            PermissionService permissionService,
-                                           GovernanceKernel governanceKernel,
                                            EventBus eventBus) {
         // 给宿主应用一个固定的 ID，例如 "host-app"
-        return new CorePluginContext("host-app", pluginManager, permissionService, governanceKernel, eventBus);
+        return new CorePluginContext("host-app", pluginManager, permissionService, eventBus);
     }
 
     // 注册 LingReference 注入器
@@ -139,8 +159,9 @@ public class LingFrameAutoConfiguration {
     }
 
     @Bean
-    public LingWebProxyController lingWebProxyController(WebInterfaceManager manager, GovernanceKernel governanceKernel) {
-        return new LingWebProxyController(manager, governanceKernel);
+    public LingWebProxyController lingWebProxyController(WebInterfaceManager manager, PluginManager pluginManager,
+                                                         GovernanceKernel governanceKernel) {
+        return new LingWebProxyController(manager, pluginManager, governanceKernel);
     }
 
     @Bean

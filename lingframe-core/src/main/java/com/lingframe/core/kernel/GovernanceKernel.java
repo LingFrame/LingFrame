@@ -3,10 +3,14 @@ package com.lingframe.core.kernel;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.audit.AuditManager;
+import com.lingframe.core.governance.GovernanceArbitrator;
+import com.lingframe.core.governance.GovernanceDecision;
 import com.lingframe.core.monitor.TraceContext;
+import com.lingframe.core.plugin.PluginSlot;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.lang.reflect.Method;
 import java.util.function.Supplier;
 
 /**
@@ -18,8 +22,17 @@ public class GovernanceKernel {
 
     private final PermissionService permissionService;
 
-    public Object invoke(InvocationContext ctx, Supplier<Object> executor) {
-        // 1. Trace 开启
+    private final GovernanceArbitrator arbitrator;
+
+    /**
+     * 核心拦截入口
+     * @param slot 当前插件槽位 (Host调用时可能为null)
+     * @param method 目标方法
+     * @param ctx 调用上下文
+     * @param executor 真实执行逻辑
+     */
+    public Object invoke(PluginSlot slot, Method method, InvocationContext ctx, Supplier<Object> executor) {
+        // Trace 开启
         boolean isRootTrace = (TraceContext.get() == null);
 
         if (ctx.getTraceId() != null) {
@@ -34,15 +47,20 @@ public class GovernanceKernel {
         boolean success = false;
         Object result = null;
         Throwable error = null;
+
+        // 治理仲裁 (获取上帝视角)
+        GovernanceDecision decision = arbitrator.arbitrate(slot, method, ctx);
+        enrichContext(ctx, decision);
+
         try {
-            // 2. Auth 鉴权
-            // 2.1 检查插件级权限
+            // Auth 鉴权
+            // 检查插件级权限
             // 这一步必须查 Target，因为如果 Target 挂了，谁调都没用
             if (!permissionService.isAllowed(ctx.getPluginId(), "PLUGIN_ENABLE", AccessType.EXECUTE)) {
                 throw new SecurityException("Plugin is disabled: " + ctx.getPluginId());
             }
 
-            // 2.2 核心检查：检查推导出的权限(始终检查 Caller)
+            // 核心检查：检查推导出的权限(始终检查 Caller)
             // 🔥无论是 Web 还是 RPC，永远检查 Caller
             // Web 请求的 Caller 是 "host-gateway"
             // RPC 请求的 Caller 是 "order-plugin"
@@ -65,17 +83,17 @@ public class GovernanceKernel {
                 throw new SecurityException("Access Denied: " + perm);
             }
 
-            // 2.3 检查资源级权限
+            // 检查资源级权限
             if (!permissionService.isAllowed(callerId, ctx.getResourceId(), AccessType.EXECUTE)) {
                 throw new SecurityException("Access Denied: " + ctx.getResourceId());
             }
 
-            // 3. Audit In
+            // Audit In
             if (log.isDebugEnabled()) {
                 log.debug("Kernel Ingress: [{}] {} | Trace={}", ctx.getResourceType(), ctx.getResourceId(), ctx.getTraceId());
             }
 
-            // 4. Execute 真实业务
+            // Execute 真实业务
             result = executor.get();
             success = true;
             return result;
@@ -85,7 +103,7 @@ public class GovernanceKernel {
         } finally {
             long cost = System.nanoTime() - startTime;
 
-            // 5. Audit Out (审计落盘)
+            // Audit Out (审计落盘)
             // 只有标记为 shouldAudit 的请求才记录，避免日志泛滥
             if (ctx.isShouldAudit()) {
                 String action = ctx.getAuditAction();
@@ -111,5 +129,14 @@ public class GovernanceKernel {
                 TraceContext.clear();
             }
         }
+    }
+
+    private void enrichContext(InvocationContext ctx, GovernanceDecision decision) {
+        if (decision == null) return;
+
+        if (decision.getRequiredPermission() != null) ctx.setRequiredPermission(decision.getRequiredPermission());
+        if (decision.getAccessType() != null) ctx.setAccessType(decision.getAccessType());
+        if (decision.getAuditEnabled() != null) ctx.setShouldAudit(decision.getAuditEnabled());
+        if (decision.getAuditAction() != null) ctx.setAuditAction(decision.getAuditAction());
     }
 }

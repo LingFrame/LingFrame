@@ -1,5 +1,8 @@
 package com.lingframe.core.dev;
 
+import com.lingframe.api.event.LingEventListener;
+import com.lingframe.api.event.lifecycle.PluginUninstalledEvent;
+import com.lingframe.core.event.EventBus;
 import com.lingframe.core.plugin.PluginManager;
 import lombok.extern.slf4j.Slf4j;
 
@@ -8,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -16,13 +20,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 职责：监听 target/classes 目录变化，触发插件重载
  */
 @Slf4j
-public class HotSwapWatcher {
+public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent> {
 
     private final PluginManager pluginManager;
+    private final EventBus eventBus;
     private WatchService watchService;
     // 核心映射：WatchKey -> PluginId
     // 因为是递归监听，一个 PluginId 会对应多个 WatchKey (每个子目录一个)
     private final Map<WatchKey, String> keyPluginMap = new ConcurrentHashMap<>();
+
+    // 源码映射：PluginId -> ClassesDir (用于重装)
+    private final Map<String, File> pluginSourceMap = new ConcurrentHashMap<>();
+
+    // 重载保护集合：记录当前正在进行热重载的插件ID
+    // 防止在重载过程中(先uninstall再install)误触发资源回收逻辑
+    private final Set<String> reloadingPlugins = ConcurrentHashMap.newKeySet();
 
     private final AtomicBoolean isStarted = new AtomicBoolean(false);
 
@@ -36,8 +48,11 @@ public class HotSwapWatcher {
     );
     private ScheduledFuture<?> debounceTask;
 
-    public HotSwapWatcher(PluginManager pluginManager) {
+    public HotSwapWatcher(PluginManager pluginManager, EventBus eventBus) {
         this.pluginManager = pluginManager;
+        this.eventBus = eventBus;
+        // 注册自己监听卸载事件
+        this.eventBus.subscribe("lingframe-hotswap", PluginUninstalledEvent.class, this);
     }
 
     /**
@@ -53,6 +68,23 @@ public class HotSwapWatcher {
         } catch (IOException e) {
             throw new RuntimeException("Failed to init WatchService", e);
         }
+    }
+
+    /**
+     * 响应系统卸载事件 (自动清理资源)
+     */
+    @Override
+    public void onEvent(PluginUninstalledEvent event) {
+        String pluginId = event.getPluginId();
+
+        // [Critical] 如果是热重载导致的卸载，不要注销监听！
+        if (reloadingPlugins.contains(pluginId)) {
+            log.debug("[HotSwap] Ignoring uninstall event for reloading plugin: {}", pluginId);
+            return;
+        }
+
+        // 只有用户手动卸载(API)时，才真正停止监听
+        unregister(pluginId);
     }
 
     /**
@@ -169,10 +201,33 @@ public class HotSwapWatcher {
                 return;
             }
 
+            File source = pluginSourceMap.get(pluginId);
+            if (source == null) {
+                log.error("Source lost for plugin: {}", pluginId);
+                return;
+            }
+
             try {
-                pluginManager.reload(pluginId);
+                // 标记正在重载 (保护 WatchKey 不被回收)
+                reloadingPlugins.add(pluginId);
+
+                // 获取旧版本号 (假设不变，或者自动升级 snapshot)
+                String ver = pluginManager.getPluginVersion(pluginId);
+                if (ver == null) ver = "1.0.0-SNAPSHOT";
+
+                // 卸载旧版
+                pluginManager.uninstall(pluginId);
+
+                // 安装新版 (Dev模式)
+                pluginManager.installDev(pluginId, ver, source);
+
+                log.info("⚡ Hot swap completed: {}", pluginId);
+
             } catch (Exception e) {
-                log.error("Hot reload failed", e);
+                log.error("Hot swap failed", e);
+            } finally {
+                // 解除保护
+                reloadingPlugins.remove(pluginId);
             }
             log.info("=================================================");
         }, 1000, TimeUnit.MILLISECONDS);

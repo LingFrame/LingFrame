@@ -41,6 +41,8 @@ public class WebInterfaceMetadata {
         PATH_VARIABLE,
         REQUEST_PARAM,
         REQUEST_BODY,
+        SERVLET_REQUEST,
+        SERVLET_RESPONSE,
         UNKNOWN
     }
 }

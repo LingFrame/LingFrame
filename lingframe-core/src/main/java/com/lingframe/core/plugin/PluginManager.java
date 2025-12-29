@@ -10,19 +10,12 @@ import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.classloader.PluginClassLoader;
 import com.lingframe.core.context.CorePluginContext;
-import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.loader.PluginManifestLoader;
 import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
-import com.lingframe.core.spi.ContainerFactory;
-import com.lingframe.core.spi.PluginContainer;
-import com.lingframe.core.spi.PluginLoaderFactory;
-import com.lingframe.core.spi.PluginSecurityVerifier;
-import com.lingframe.core.spi.PluginServiceInvoker;
-import com.lingframe.core.spi.TrafficRouter;
+import com.lingframe.core.spi.*;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -63,10 +56,7 @@ public class PluginManager {
     // 内核
     private final GovernanceKernel governanceKernel;
 
-    // 治理规则
-    private final GovernanceArbitrator governanceArbitrator;
-
-    private final PluginLoaderFactory loaderFactory;
+    private final PluginLoaderFactory pluginLoaderFactory;
 
     // 安全验证器
     private final List<PluginSecurityVerifier> verifiers;
@@ -74,34 +64,28 @@ public class PluginManager {
     // 记录插件源路径，用于 reload
     private final Map<String, File> pluginSources = new ConcurrentHashMap<>();
 
-    private final HotSwapWatcher hotSwapWatcher;
-
     // EventBus 用于插件间通信
     private final EventBus eventBus;
 
-    private final TrafficRouter router;
-    private final PluginServiceInvoker invoker;
+    private final TrafficRouter trafficRouter;
+    private final PluginServiceInvoker pluginServiceInvoker;
 
     public PluginManager(ContainerFactory containerFactory,
                          PermissionService permissionService,
                          GovernanceKernel governanceKernel,
-                         GovernanceArbitrator governanceArbitrator,
-                         PluginLoaderFactory loaderFactory,
+                         PluginLoaderFactory pluginLoaderFactory,
                          List<PluginSecurityVerifier> verifiers,
                          EventBus eventBus,
-                         TrafficRouter router,
-                         PluginServiceInvoker invoker) {
+                         TrafficRouter trafficRouter,
+                         PluginServiceInvoker pluginServiceInvoker) {
         this.containerFactory = containerFactory;
         this.permissionService = permissionService;
         this.governanceKernel = governanceKernel;
-        this.governanceArbitrator = governanceArbitrator;
-        this.loaderFactory = loaderFactory;
+        this.pluginLoaderFactory = pluginLoaderFactory;
         this.verifiers = verifiers != null ? verifiers : Collections.emptyList(); // 防御性处理
-        // 初始化热加载器
-        this.hotSwapWatcher = new HotSwapWatcher(this);
         this.eventBus = eventBus;
-        this.router = router;
-        this.invoker = invoker;
+        this.trafficRouter = trafficRouter;
+        this.pluginServiceInvoker = pluginServiceInvoker;
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "lingframe-plugin-cleaner");
             t.setDaemon(true); // 设置为守护线程，防止阻碍 JVM 关闭
@@ -126,9 +110,6 @@ public class PluginManager {
             throw new IllegalArgumentException("Invalid classes directory: " + classesDir);
         }
         log.info("Installing plugin in DEV mode: {} (Dir: {})", pluginId, classesDir.getName());
-
-        // 注册热监听
-        hotSwapWatcher.register(pluginId, classesDir);
         pluginSources.put(pluginId, classesDir);
 
         doInstall(pluginId, version, classesDir, true);
@@ -171,6 +152,8 @@ public class PluginManager {
      * @param sourceFile 插件源文件 (Jar 包或目录)
      */
     private void doInstall(String pluginId, String version, File sourceFile, boolean isDefault, Map<String, String> labels) {
+        // 触发安装前置事件 (Hooks)
+        eventBus.publish(new PluginInstallingEvent(pluginId, version, sourceFile));
         try {
             // 执行所有安全验证器
             if (verifiers != null) {
@@ -178,9 +161,6 @@ public class PluginManager {
                     verifier.verify(pluginId, sourceFile); // 失败直接抛异常退出
                 }
             }
-
-            // 触发安装前置事件 (Hooks)
-            eventBus.publish(new PluginInstallingEvent(pluginId, version, sourceFile));
 
             // 插件 ID 冲突检查
             if (slots.containsKey(pluginId)) {
@@ -203,7 +183,7 @@ public class PluginManager {
             definition.setVersion(version);
 
             // 准备隔离环境 (Child-First ClassLoader)
-            ClassLoader pluginClassLoader = loaderFactory.create(sourceFile, this.getClass().getClassLoader());
+            ClassLoader pluginClassLoader = pluginLoaderFactory.create(sourceFile, this.getClass().getClassLoader());
 
             // SPI 构建容器 (此时仅创建配置，未启动)
             PluginContainer container = containerFactory.create(pluginId, sourceFile, pluginClassLoader);
@@ -215,15 +195,16 @@ public class PluginManager {
             // 获取或创建槽位
             PluginSlot slot = slots.computeIfAbsent(pluginId,
                     k -> new PluginSlot(k, scheduler,
-                            governanceKernel, governanceArbitrator, eventBus, router, invoker));
+                            governanceKernel, eventBus, trafficRouter, pluginServiceInvoker));
             // 创建上下文
-            PluginContext context = new CorePluginContext(pluginId, this, permissionService, governanceKernel, eventBus);
+            PluginContext context = new CorePluginContext(pluginId, this, permissionService, eventBus);
 
             // 执行新增 (启动新容器 -> 原子切换流量 -> 旧容器进入死亡队列)
             slot.addInstance(instance, context, isDefault);
 
             // 触发安装完成事件
             eventBus.publish(new PluginInstalledEvent(pluginId, version));
+            log.info("Plugin installed successfully: {}", pluginId);
         } catch (Exception e) {
             log.error("Failed to install/reload plugin: {} v{}", pluginId, version, e);
             // 抛出运行时异常，通知上层调用失败
@@ -253,9 +234,6 @@ public class PluginManager {
 
         // 从中央注册表移除所有 FQSID
         unregisterProtocolServices(pluginId);
-
-        // 清理热加载监听
-        hotSwapWatcher.unregister(pluginId);
 
         // 清理事件监听器
         eventBus.unsubscribeAll(pluginId);
@@ -350,12 +328,33 @@ public class PluginManager {
      */
     @SuppressWarnings("unchecked")
     public <T> Optional<T> invokeService(String callerPluginId, String fqsid, Object... args) {
+        // 查找目标
+        String targetPluginId = protocolServiceRegistry.get(fqsid);
+        if (targetPluginId == null) {
+            log.warn("Service not found in registry: {}", fqsid);
+            return Optional.empty();
+        }
+
+        PluginSlot slot = slots.get(targetPluginId);
+        if (slot == null) {
+            log.warn("Target plugin slot not found: {}", targetPluginId);
+            return Optional.empty();
+        }
+
+        // 获取目标方法 (用于治理仲裁)
+        PluginSlot.InvokableService invokable = slot.getProtocolService(fqsid);
+        if (invokable == null) {
+            log.warn("Method not registered in slot: {}", fqsid);
+            return Optional.empty();
+        }
+
         // 构建上下文
         InvocationContext ctx = InvocationContext.builder()
                 .callerPluginId(callerPluginId)
+                .pluginId(targetPluginId)
                 .resourceType("RPC_HOST_INVOKE")
                 .resourceId(fqsid)
-                .operation("INVOKE")
+                .operation(invokable.method().getName())
                 .args(args)
                 .requiredPermission(fqsid) // 权限即 ServiceID
                 .accessType(AccessType.EXECUTE)
@@ -365,14 +364,7 @@ public class PluginManager {
                 .build();
 
         try {
-            Object result = governanceKernel.invoke(ctx, () -> {
-                // 原有的调用逻辑
-                String targetPluginId = protocolServiceRegistry.get(fqsid);
-                if (targetPluginId == null) throw new IllegalArgumentException("Service not found: " + fqsid);
-
-                PluginSlot slot = slots.get(targetPluginId);
-                if (slot == null) throw new IllegalArgumentException("Slot not found: " + targetPluginId);
-
+            Object result = governanceKernel.invoke(slot, invokable.method(), ctx, () -> {
                 try {
                     return slot.invokeService(callerPluginId, fqsid, args);
                 } catch (Exception e) {
@@ -463,10 +455,13 @@ public class PluginManager {
                         serviceType,
                         targetPluginId,
                         this,
-                        governanceKernel,
-                        governanceArbitrator
+                        governanceKernel
                 )
         );
+    }
+
+    public Collection<String> getAllPluginIds() {
+        return Collections.unmodifiableSet(slots.keySet());
     }
 
     /**

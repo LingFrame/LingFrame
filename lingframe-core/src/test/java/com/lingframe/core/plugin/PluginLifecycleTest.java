@@ -22,7 +22,6 @@ class PluginLifecycleTest {
                 null,
                 null,
                 null,
-                null,
                 null);
 
         // 2. Mock 容器并设置打桩：必须让 isActive 返回 true，否则 destroy() 里的 stop() 不会执行

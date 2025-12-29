@@ -27,7 +27,6 @@ public class SmartServiceProxy implements InvocationHandler {
     private final PluginSlot targetSlot; // 核心锚点
     private final Class<?> serviceInterface;
     private final GovernanceKernel governanceKernel;// 内核
-    private final GovernanceArbitrator governanceArbitrator; // 治理仲裁器
 
     // ================= 性能优化：ThreadLocal 对象池 =================
     // 在同一线程内复用 InvocationContext，避免每次 new 造成的 GC 压力
@@ -39,13 +38,11 @@ public class SmartServiceProxy implements InvocationHandler {
     public SmartServiceProxy(String callerPluginId,
                              PluginSlot targetSlot, // 核心锚点,
                              Class<?> serviceInterface,
-                             GovernanceKernel governanceKernel,
-                             GovernanceArbitrator governanceArbitrator) {
+                             GovernanceKernel governanceKernel) {
         this.callerPluginId = callerPluginId;
         this.targetSlot = targetSlot;
         this.serviceInterface = serviceInterface;
         this.governanceKernel = governanceKernel;
-        this.governanceArbitrator = governanceArbitrator;
     }
 
     @Override
@@ -79,31 +76,25 @@ public class SmartServiceProxy implements InvocationHandler {
                     m -> serviceInterface.getName() + ":" + m.getName());
             ctx.setResourceId(resourceId);
 
-            // 🔥【核心升级】动态治理仲裁
-            // 必须在 Context 填充了 Labels 之后调用，以便 Arbitrator 选择正确的实例版本
-            String permission = governanceArbitrator.resolvePermission(targetSlot, method, ctx);
-            boolean audit = governanceArbitrator.shouldAudit(targetSlot, method, ctx);
-
-            ctx.setRequiredPermission(permission);
-            ctx.setShouldAudit(audit);
             ctx.setAccessType(AccessType.EXECUTE); // 简化处理
             ctx.setAuditAction(resourceId);
 
             // 清理上一次请求可能遗留的 metadata
             ctx.setMetadata(null);
 
-            // 4. 委托内核执行
+            // 委托内核执行
             InvocationContext finalCtx = ctx;
-            return governanceKernel.invoke(ctx, () -> {
+            return governanceKernel.invoke(targetSlot, method, ctx, () -> {
                 PluginInstance instance = targetSlot.selectInstance(finalCtx);
                 if (instance == null) throw new IllegalStateException("Service unavailable");
 
                 instance.enter();
-                PluginContextHolder.set(this.callerPluginId);
+                // 这样如果 B 调用 C，C 看到的 caller 就是 B，而不是 A
+                PluginContextHolder.set(targetSlot.getPluginId());
                 Thread t = Thread.currentThread();
                 ClassLoader oldCL = t.getContextClassLoader();
-                t.setContextClassLoader(instance.getContainer().getClassLoader());
                 try {
+                    t.setContextClassLoader(instance.getContainer().getClassLoader());
                     Object bean = instance.getContainer().getBean(serviceInterface);
                     try {
                         return method.invoke(bean, args);
@@ -116,14 +107,26 @@ public class SmartServiceProxy implements InvocationHandler {
                     instance.exit();
                 }
             });
+        } catch (ProxyExecutionException e) {
+            // 解包并抛出原始异常，对调用者透明
+            throw e.getCause();
         } finally {
-            // 5. 【核心】清理大对象引用，防止内存泄漏
+            // 【核心】清理大对象引用，防止内存泄漏
             // args 可能很大（如上传文件），labels 可能有脏数据，必须清空
             // 注意：这里不要 remove()，目的是为了复用 ctx 对象本身
             ctx.setArgs(null);
             ctx.setLabels(null);
             ctx.setMetadata(null);
             // TraceId 不需要清空，会被下一次 setTraceId 覆盖
+        }
+    }
+
+    /**
+     * 内部异常包装器 (用于穿透 Lambda，Kernel 捕获后会透传回来)
+     */
+    private static class ProxyExecutionException extends RuntimeException {
+        public ProxyExecutionException(Throwable cause) {
+            super(cause);
         }
     }
 

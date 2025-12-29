@@ -24,7 +24,6 @@ class PluginSlotRoutingTest {
                 null,
                 null,
                 null,
-                null,
                 null);
         mockCtx = mock(PluginContext.class);
     }

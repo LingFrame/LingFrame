@@ -23,14 +23,14 @@ class SmartServiceProxyTest {
         GovernanceKernel kernel = mock(GovernanceKernel.class);
 
         // 2. 核心修正：使用 java.util.function.Supplier 匹配 GovernanceKernel.java
-        when(kernel.invoke(any(InvocationContext.class), any(Supplier.class))).thenAnswer(inv -> {
+        when(kernel.invoke(slot, any(Method.class), any(InvocationContext.class), any(Supplier.class))).thenAnswer(inv -> {
             // 获取第二个参数，即 Supplier<Object> executor
             Supplier<Object> executor = inv.getArgument(1);
             return executor.get(); // 执行代理逻辑
         });
 
         // 3. 准备 Proxy 运行环境
-        SmartServiceProxy proxy = new SmartServiceProxy("caller-plugin", slot, Runnable.class, kernel, null);
+        SmartServiceProxy proxy = new SmartServiceProxy("caller-plugin", slot, Runnable.class, kernel);
 
         PluginInstance mockInst = mock(PluginInstance.class);
         PluginContainer mockContainer = mock(PluginContainer.class);

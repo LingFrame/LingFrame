@@ -62,8 +62,6 @@ public class PluginSlot {
 
     private final GovernanceKernel governanceKernel;
 
-    private final GovernanceArbitrator governanceArbitrator;
-
     private final EventBus eventBus;
 
     private final ScheduledExecutorService sharedScheduler;
@@ -85,14 +83,12 @@ public class PluginSlot {
 
     public PluginSlot(String pluginId, ScheduledExecutorService sharedScheduler,
                       GovernanceKernel governanceKernel,
-                      GovernanceArbitrator governanceArbitrator,
                       EventBus eventBus,
                       TrafficRouter router,
                       PluginServiceInvoker invoker) {
         this.pluginId = pluginId;
         this.sharedScheduler = sharedScheduler;
         this.governanceKernel = governanceKernel;
-        this.governanceArbitrator = governanceArbitrator;
         this.eventBus = eventBus;
         this.router = router;
         this.invoker = invoker;
@@ -246,8 +242,7 @@ public class PluginSlot {
                                 callerPluginId,// 谁在调
                                 this,// 调谁 (就是当前 Slot) 🔥
                                 interfaceClass,
-                                governanceKernel,
-                                governanceArbitrator
+                                governanceKernel
                         )
                 ));
     }
@@ -430,7 +425,26 @@ public class PluginSlot {
     }
 
     // 用于缓存可执行的服务对象和方法
-    private record InvokableService(Object bean, Method method) {
+    public record InvokableService(Object bean, Method method) {
+    }
+
+    // 获取注册的方法元数据
+    public InvokableService getProtocolService(String fqsid) {
+        return serviceMethodCache.get(fqsid);
+    }
+
+    // 注册
+    public void registerProtocolService(String fqsid, Object bean, Method method) {
+        serviceMethodCache.put(fqsid, new InvokableService(bean, method));
+    }
+
+    // 执行
+    public Object invokeProtocolService(InvokableService service, Object[] args) throws Exception {
+        PluginInstance instance = selectInstance(null); // Context 已在 Kernel 处理，此处选 Active 即可
+        if (instance == null) throw new IllegalStateException("No active instance");
+
+        // 使用 Invoker 执行
+        return invoker.invoke(instance, service.bean(), service.method(), args);
     }
 
     public boolean hasBean(Class<?> type) {

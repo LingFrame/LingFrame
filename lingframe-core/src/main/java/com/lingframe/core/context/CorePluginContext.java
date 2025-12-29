@@ -3,17 +3,13 @@ package com.lingframe.core.context;
 import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.exception.PermissionDeniedException;
-import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.kernel.GovernanceKernel;
-import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.plugin.PluginManager;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.Collections;
 import java.util.Optional;
 
 @Slf4j
@@ -29,10 +25,7 @@ public class CorePluginContext implements PluginContext {
     @Getter
     private final PluginManager pluginManager;
     private final PermissionService permissionService;
-    // 注入治理内核，统一处理鉴权和审计
-    private final GovernanceKernel governanceKernel;
     private final EventBus eventBus;
-
 
     @Override
     public String getPluginId() {
@@ -63,31 +56,8 @@ public class CorePluginContext implements PluginContext {
             throw new IllegalArgumentException("Service ID cannot be empty.");
         }
 
-        // 构建上下文并委托给 Kernel，确保所有走这个口子的调用都经过统一治理
-        InvocationContext ctx = InvocationContext.builder()
-                .callerPluginId(pluginId)
-                .pluginId(null) // serviceId 是 FQSID，不需要指定 pluginId，由 Kernel 或 Proxy 解析
-                .resourceType("RPC_INTERNAL")
-                .resourceId(serviceId)
-                .operation("INVOKE")
-                .args(args)
-                .requiredPermission(serviceId)
-                .accessType(AccessType.EXECUTE)
-                .shouldAudit(true)
-                .auditAction("PluginInvoke:" + serviceId)
-                .labels(Collections.emptyMap())
-                .build();
         try {
-            // 委托给 Kernel 执行（包含鉴权、Trace、审计）
-            Object result = governanceKernel.invoke(ctx, () -> {
-                // 这里的 lambda 是真正的执行逻辑
-                // 此时 PermissionService 已经在 Kernel 里校验过了
-                return pluginManager.invokeService(pluginId, serviceId, args)
-                        .orElseThrow(() -> new RuntimeException("Service invocation failed (Empty Result) for: " + serviceId));
-            });
-            @SuppressWarnings("unchecked")
-            T typedResult = (T) result;
-            return Optional.ofNullable(typedResult);
+            return pluginManager.invokeService(this.pluginId, serviceId, args);
         } catch (PermissionDeniedException e) {
             throw e; // 权限异常直接抛出
         } catch (Exception e) {

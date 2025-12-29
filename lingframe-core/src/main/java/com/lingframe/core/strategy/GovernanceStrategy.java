@@ -25,6 +25,7 @@ public class GovernanceStrategy {
      * 规则：ServiceName + : + AccessType (如 "UserService:READ")
      */
     public static String inferPermission(Method method) {
+        if (method == null) return "default:unknown";
         String resourceName = method.getDeclaringClass().getSimpleName();
         AccessType type = inferAccessType(method.getName());
         return resourceName + ":" + type.name();

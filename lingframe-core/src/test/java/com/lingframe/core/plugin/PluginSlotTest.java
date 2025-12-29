@@ -28,7 +28,6 @@ public class PluginSlotTest {
                 null,
                 null,
                 null,
-                null,
                 null);
     }
 
