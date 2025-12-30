@@ -24,6 +24,7 @@ import com.lingframe.starter.web.WebInterfaceManager;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -37,6 +38,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Slf4j
@@ -124,12 +126,21 @@ public class LingFrameAutoConfiguration {
                                        PermissionService permissionService,
                                        GovernanceKernel governanceKernel,
                                        PluginLoaderFactory pluginLoaderFactory,
-                                       List<PluginSecurityVerifier> verifiers,
+                                       ObjectProvider<List<PluginSecurityVerifier>> verifiersProvider,
                                        EventBus eventBus,
                                        TrafficRouter trafficRouter,
-                                       PluginServiceInvoker pluginServiceInvoker) {
+                                       PluginServiceInvoker pluginServiceInvoker,
+                                       ObjectProvider<TransactionVerifier> transactionVerifierProvider,
+                                       ObjectProvider<List<ThreadLocalPropagator>> propagatorsProvider) {
+
+        // 获取可选 Bean
+        TransactionVerifier transactionVerifier = transactionVerifierProvider.getIfAvailable();
+        List<ThreadLocalPropagator> propagators = propagatorsProvider.getIfAvailable(Collections::emptyList);
+        List<PluginSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
+
         return new PluginManager(containerFactory, permissionService, governanceKernel,
-                pluginLoaderFactory, verifiers, eventBus, trafficRouter, pluginServiceInvoker);
+                pluginLoaderFactory, verifiers, eventBus, trafficRouter, pluginServiceInvoker,
+                transactionVerifier, propagators);
     }
 
     @Bean

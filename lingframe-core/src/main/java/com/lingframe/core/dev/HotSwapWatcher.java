@@ -41,9 +41,11 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
     // 防抖调度器：防止一次保存触发多次重载
     private final ScheduledExecutorService debounceExecutor = Executors.newSingleThreadScheduledExecutor(
             r -> {
-                Thread t = new Thread(r, "lingframe-hotswap-debounce");
-                t.setDaemon(true);
-                return t;
+                Thread thread = new Thread(r, "lingframe-hotswap-debounce");
+                thread.setDaemon(true);
+                thread.setUncaughtExceptionHandler((t, e) ->
+                        log.error("线程池线程 {} 异常: {}", t.getName(), e.getMessage()));
+                return thread;
             }
     );
     private ScheduledFuture<?> debounceTask;

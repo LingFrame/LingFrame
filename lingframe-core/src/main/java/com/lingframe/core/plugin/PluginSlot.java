@@ -6,23 +6,25 @@ import com.lingframe.api.event.lifecycle.PluginStartingEvent;
 import com.lingframe.api.event.lifecycle.PluginStoppedEvent;
 import com.lingframe.api.event.lifecycle.PluginStoppingEvent;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.governance.GovernanceArbitrator;
+import com.lingframe.core.governance.DefaultTransactionVerifier;
+import com.lingframe.core.invoker.FastPluginServiceInvoker;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.proxy.SmartServiceProxy;
-import com.lingframe.core.spi.PluginContainer;
-import com.lingframe.core.spi.PluginServiceInvoker;
-import com.lingframe.core.spi.TrafficRouter;
+import com.lingframe.core.spi.*;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -69,54 +71,49 @@ public class PluginSlot {
     private final TrafficRouter router;
     private final PluginServiceInvoker invoker;
 
-    // ================= 线程池配置 =================
-    private static final int CORE_POOL_SIZE = Runtime.getRuntime().availableProcessors();
-    private static final int MAX_POOL_SIZE = CORE_POOL_SIZE * 2;
-    private static final int QUEUE_CAPACITY = 100; // 有界队列，防止无限积压导致 OOM
-    private static final long KEEP_ALIVE_TIME = 60L;
+    // 注入事务验证器
+    private final TransactionVerifier transactionVerifier;
+
     private static final int DEFAULT_TIMEOUT_MS = 3000; // 默认超时 3 秒
-    // 用于生成线程名的计数器
-    private final AtomicInteger threadNumber = new AtomicInteger(1);
 
     // 专用执行器，用于运行插件方法（隔离线程池）
     private final ExecutorService pluginExecutor;
 
-    public PluginSlot(String pluginId, ScheduledExecutorService sharedScheduler,
+    // 信号量实现“软隔离” (例如限制每个插件最大并发 10)
+    private final Semaphore bulkhead = new Semaphore(10);
+
+    // 需要注入所有的传播器
+    private final List<ThreadLocalPropagator> propagators = new ArrayList<>();
+
+    public PluginSlot(String pluginId,
+                      ScheduledExecutorService sharedScheduler,
+                      ExecutorService pluginExecutor,
                       GovernanceKernel governanceKernel,
                       EventBus eventBus,
                       TrafficRouter router,
-                      PluginServiceInvoker invoker) {
+                      PluginServiceInvoker invoker,
+                      TransactionVerifier transactionVerifier,
+                      List<ThreadLocalPropagator> propagators) {
         this.pluginId = pluginId;
         this.sharedScheduler = sharedScheduler;
         this.governanceKernel = governanceKernel;
         this.eventBus = eventBus;
         this.router = router;
         this.invoker = invoker;
+        this.transactionVerifier = transactionVerifier != null ?
+                transactionVerifier : new DefaultTransactionVerifier();
+        // 防御性拷贝，防止外部修改
+        if (propagators != null) {
+            this.propagators.addAll(propagators);
+        }
         // 清理任务调度器：共享的全局线程池
         // 每 5 秒检查一次是否有可以回收的旧实例
         if (sharedScheduler != null) {
             sharedScheduler.scheduleAtFixedRate(this::checkAndKill, 5, 5, TimeUnit.SECONDS);
         }
 
-        // 初始化线程池
-        this.pluginExecutor = new ThreadPoolExecutor(
-                CORE_POOL_SIZE,
-                MAX_POOL_SIZE,
-                KEEP_ALIVE_TIME, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(QUEUE_CAPACITY), // 关键：有界队列
-                // 【原生 Java 实现】自定义线程工厂
-                r -> {
-                    Thread t = new Thread(r);
-                    // 设置线程名：plugin-executor-{插件ID}-{序号}
-                    t.setName("plugin-executor-" + pluginId + "-" + threadNumber.getAndIncrement());
-                    // 设置为守护线程，不阻止 JVM 退出
-                    t.setDaemon(true);
-                    // 设置优先级（可选，生产级通常保持默认 NORMAL）
-                    // t.setPriority(Thread.NORM_PRIORITY);
-                    return t;
-                },
-                new ThreadPoolExecutor.AbortPolicy() // 关键：满载时快速失败，不阻塞宿主线程
-        );
+        // 外部注入的共享 executor
+        this.pluginExecutor = pluginExecutor;
     }
 
     /**
@@ -127,18 +124,19 @@ public class PluginSlot {
     }
 
     public void addInstance(PluginInstance newInstance, PluginContext pluginContext, boolean isDefault) {
-        // 1. 【乐观检查】无锁快速背压检查，避免无效启动
+        // 【乐观检查】无锁快速背压检查，避免无效启动
         if (dyingInstances.size() >= MAX_HISTORY_SNAPSHOTS) {
             throw new IllegalStateException("System busy: Too many dying instances (Fast check failed).");
         }
 
-        // 2. 【无锁启动】耗时操作不占锁
+        // 【无锁启动】耗时操作不占锁
         log.info("[{}] Starting new version: {}", pluginId, newInstance.getVersion());
 
         // 🔥Hook 1: Pre-Start 发送 Starting 事件
         // 如果有监听器抛出异常，addInstance 会在此中断，不会执行 container.start()
         eventBus.publish(new PluginStartingEvent(pluginId, newInstance.getVersion()));
 
+        clearCaches();
         try {
             newInstance.getContainer().start(pluginContext);
             // 【关键】等待就绪或设置就绪
@@ -154,7 +152,7 @@ public class PluginSlot {
             throw new RuntimeException("Plugin start failed.", e);
         }
 
-        // 3. 【悲观确认】加锁进行状态切换
+        // 【悲观确认】加锁进行状态切换
         stateLock.lock();
         try {
             // 再次检查背压（防止在启动期间队列满了）
@@ -167,7 +165,6 @@ public class PluginSlot {
                 throw new IllegalStateException("System busy: Too many dying instances (Lock check failed).");
             }
 
-            clearCaches();
             activePool.add(newInstance);
 
             if (isDefault) {
@@ -248,11 +245,19 @@ public class PluginSlot {
     }
 
     /**
-     * 【新增】注册真实的可执行服务 (由 PluginManager 调用)
+     * 注册真实的可执行服务 (由 PluginManager 调用)
      */
     public void registerService(String fqsid, Object bean, Method method) {
-        // method.setAccessible(true); // 如果是 private 方法可能需要
-        serviceMethodCache.put(fqsid, new InvokableService(bean, method));
+        try {
+            // 解除权限检查，提升性能
+            method.setAccessible(true);
+            // 转换为 MethodHandle (比反射快约 2-4 倍)
+            MethodHandle methodHandle = MethodHandles.lookup().unreflect(method).bindTo(bean);
+            serviceMethodCache.put(fqsid, new InvokableService(bean, method, methodHandle));
+            log.debug("Registered optimized service: {}", fqsid);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException("Failed to create MethodHandle for " + fqsid, e);
+        }
     }
 
     /**
@@ -269,20 +274,56 @@ public class PluginSlot {
             throw new NoSuchMethodException("FQSID not found in slot: " + fqsid);
         }
 
+        // 事务/同步判断逻辑
+        // 🔥 生产级实现：通过 SPI 判断
+        boolean isTx = transactionVerifier.isTransactional(
+                invokable.method(),
+                invokable.bean().getClass() // 注意：要传 Bean 的实际类型，因为注解可能在类上
+        );
+        if (isTx) {
+            // 🔥 同步模式：直接在当前线程执行，Spring 事务即可自动传播
+            // 注意：这会绕过线程池隔离，可能导致宿主线程被阻塞，需权衡
+            return executeInternal(instance, invokable, args);
+        }
+
+        // 异步模式：执行上下文搬运
+        // [Step A] 主线程捕获快照
+        Object[] snapshots = new Object[propagators.size()];
+        for (int i = 0; i < propagators.size(); i++) {
+            snapshots[i] = propagators.get(i).capture();
+        }
+
         // 捕获当前线程的 TraceID
         String traceId = TraceContext.get();
         // 创建异步任务
         Callable<Object> task = () -> {
+            // [Step B] 子线程重放快照
+            Object[] backupContexts = new Object[propagators.size()];
             // 在子线程中重放 TraceID
             if (traceId != null) TraceContext.setTraceId(traceId);
             try {
-                // 委托给 Invoker 执行
-                return invoker.invoke(instance, invokable.bean(), invokable.method(), args);
+                for (int i = 0; i < propagators.size(); i++) {
+                    backupContexts[i] = propagators.get(i).replay(snapshots[i]);
+                }
+                // 执行业务
+                return executeInternal(instance, invokable, args);
+            } catch (Throwable e) {
+                if (e instanceof Exception) throw (Exception) e;
+                throw new RuntimeException(e);
             } finally {
+                // [Step C] 子线程清理/恢复
+                for (int i = 0; i < propagators.size(); i++) {
+                    propagators.get(i).restore(backupContexts[i]);
+                }
                 // 清理子线程 ThreadLocal
                 TraceContext.clear();
             }
         };
+
+        // 申请许可证 (实现背压和隔离)
+        if (!bulkhead.tryAcquire(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            throw new RejectedExecutionException("Plugin [" + pluginId + "] is busy (Bulkhead full).");
+        }
 
         // 提交到隔离线程池
         Future<Object> future = pluginExecutor.submit(task);
@@ -306,6 +347,28 @@ public class PluginSlot {
             // 线程中断处理
             Thread.currentThread().interrupt();
             throw new RuntimeException("Plugin execution interrupted", e);
+        } finally {
+            // 释放许可证
+            bulkhead.release();
+        }
+    }
+
+    // 提取公共执行逻辑
+    private Object executeInternal(PluginInstance instance, InvokableService invokable, Object[] args) throws Exception {
+        try {
+            if (invoker instanceof FastPluginServiceInvoker fast) {
+                return fast.invokeFast(instance, invokable.methodHandle(), args);
+            }
+            return invoker.invoke(instance, invokable.bean(), invokable.method(), args);
+        } catch (Throwable t) {
+            if (t instanceof Exception) {
+                throw (Exception) t;
+            } else if (t instanceof Error) {
+                throw (Error) t;
+            } else {
+                // 对于极少数既不是 Exception 也不是 Error 的 Throwable (如自定义子类)
+                throw new RuntimeException("Execution failed with unknown Throwable", t);
+            }
         }
     }
 
@@ -323,10 +386,10 @@ public class PluginSlot {
         // 正常情况下，PluginContainer.start() 时会扫描并注册所有服务。
         // 如果运行时找不到，说明启动流程有问题或 FQSID 拼写错误。
         log.error("[LingFrame] Critical Error: FQSID [{}] not found in service registry. " +
-                  "This indicates a registration failure during plugin startup.", fqsid);
+                "This indicates a registration failure during plugin startup.", fqsid);
 
         throw new IllegalStateException("Service not found: " + fqsid +
-                                        ". Please check if the plugin started successfully.");
+                ". Please check if the plugin started successfully.");
     }
 
     /**
@@ -425,7 +488,7 @@ public class PluginSlot {
     }
 
     // 用于缓存可执行的服务对象和方法
-    public record InvokableService(Object bean, Method method) {
+    public record InvokableService(Object bean, Method method, MethodHandle methodHandle) {
     }
 
     // 获取注册的方法元数据
@@ -435,7 +498,7 @@ public class PluginSlot {
 
     // 注册
     public void registerProtocolService(String fqsid, Object bean, Method method) {
-        serviceMethodCache.put(fqsid, new InvokableService(bean, method));
+        registerService(fqsid, bean, method);
     }
 
     // 执行

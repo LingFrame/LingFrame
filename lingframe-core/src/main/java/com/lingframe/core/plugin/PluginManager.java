@@ -11,6 +11,7 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.classloader.PluginClassLoader;
 import com.lingframe.core.context.CorePluginContext;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.governance.DefaultTransactionVerifier;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.loader.PluginManifestLoader;
@@ -24,9 +25,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.URL;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 插件生命周期管理器
@@ -70,6 +70,22 @@ public class PluginManager {
     private final TrafficRouter trafficRouter;
     private final PluginServiceInvoker pluginServiceInvoker;
 
+    // 事务验证器
+    private final TransactionVerifier transactionVerifier;
+
+    private final List<ThreadLocalPropagator> propagators;
+
+    // 全局执行器，用于运行插件方法（隔离线程池）
+    private final ExecutorService pluginExecutor;
+
+    // ================= 线程池配置 =================
+    private static final int CORE_POOL_SIZE = Runtime.getRuntime().availableProcessors();
+    private static final int MAX_POOL_SIZE = CORE_POOL_SIZE * 2;
+    private static final int QUEUE_CAPACITY = 100; // 有界队列，防止无限积压导致 OOM
+    private static final long KEEP_ALIVE_TIME = 60L;
+    // 用于生成线程名的计数器
+    private final AtomicInteger threadNumber = new AtomicInteger(1);
+
     public PluginManager(ContainerFactory containerFactory,
                          PermissionService permissionService,
                          GovernanceKernel governanceKernel,
@@ -77,7 +93,9 @@ public class PluginManager {
                          List<PluginSecurityVerifier> verifiers,
                          EventBus eventBus,
                          TrafficRouter trafficRouter,
-                         PluginServiceInvoker pluginServiceInvoker) {
+                         PluginServiceInvoker pluginServiceInvoker,
+                         TransactionVerifier transactionVerifier,
+                         List<ThreadLocalPropagator> propagators) {
         this.containerFactory = containerFactory;
         this.permissionService = permissionService;
         this.governanceKernel = governanceKernel;
@@ -86,11 +104,35 @@ public class PluginManager {
         this.eventBus = eventBus;
         this.trafficRouter = trafficRouter;
         this.pluginServiceInvoker = pluginServiceInvoker;
+        this.transactionVerifier = transactionVerifier != null ?
+                transactionVerifier : new DefaultTransactionVerifier();
+        this.propagators = propagators != null ? propagators : Collections.emptyList(); // 防御性处理
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "lingframe-plugin-cleaner");
-            t.setDaemon(true); // 设置为守护线程，防止阻碍 JVM 关闭
-            return t;
+            Thread thread = new Thread(r, "lingframe-plugin-cleaner");
+            thread.setDaemon(true); // 设置为守护线程，防止阻碍 JVM 关闭
+            thread.setUncaughtExceptionHandler((t, e) ->
+                    log.error("线程池线程 {} 异常: {}", t.getName(), e.getMessage()));
+            return thread;
         });
+
+        this.pluginExecutor = new ThreadPoolExecutor(
+                CORE_POOL_SIZE,
+                MAX_POOL_SIZE,
+                KEEP_ALIVE_TIME, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(QUEUE_CAPACITY), // 关键：有界队列
+                // 【原生 Java 实现】自定义线程工厂
+                r -> {
+                    Thread t = new Thread(r);
+                    // 设置线程名：plugin-executor-{序号}
+                    t.setName("plugin-executor-" + threadNumber.getAndIncrement());
+                    // 设置为守护线程，不阻止 JVM 退出
+                    t.setDaemon(true);
+                    // 设置优先级（可选，生产级通常保持默认 NORMAL）
+                    // t.setPriority(Thread.NORM_PRIORITY);
+                    return t;
+                },
+                new ThreadPoolExecutor.AbortPolicy() // 关键：满载时快速失败，不阻塞宿主线程
+        );
     }
 
     /**
@@ -194,8 +236,9 @@ public class PluginManager {
 
             // 获取或创建槽位
             PluginSlot slot = slots.computeIfAbsent(pluginId,
-                    k -> new PluginSlot(k, scheduler,
-                            governanceKernel, eventBus, trafficRouter, pluginServiceInvoker));
+                    k -> new PluginSlot(k, scheduler, pluginExecutor,
+                            governanceKernel, eventBus, trafficRouter, pluginServiceInvoker,
+                            transactionVerifier, propagators));
             // 创建上下文
             PluginContext context = new CorePluginContext(pluginId, this, permissionService, eventBus);
 

@@ -19,9 +19,11 @@ public class AuditManager {
             0L, TimeUnit.MILLISECONDS,
             new LinkedBlockingQueue<>(1000), // 缓冲队列 1000，满了会由 CallerRunsPolicy 处理
             r -> {
-                Thread t = new Thread(r, "lingframe-audit-logger");
-                t.setDaemon(true);
-                return t;
+                Thread thread = new Thread(r, "lingframe-audit-logger");
+                thread.setDaemon(true);
+                thread.setUncaughtExceptionHandler((t, e) ->
+                        log.error("线程池线程 {} 异常: {}", t.getName(), e.getMessage()));
+                return thread;
             },
             new ThreadPoolExecutor.DiscardPolicy() // 队列满则丢弃日志，保全核心业务
     );
