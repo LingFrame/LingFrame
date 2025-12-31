@@ -17,10 +17,6 @@ public class FastPluginServiceInvoker implements PluginServiceInvoker {
 
     @Override
     public Object invoke(PluginInstance instance, Object bean, Method method, Object[] args) throws Exception {
-        // 兼容性接口：如果上层直接传了 Method，我们这里其实拿不到 MethodHandle
-        // 所以我们需要在 PluginSlot 层面透传 MethodHandle，或者修改接口。
-        // 为了不破坏 SPI 接口兼容性，建议在 PluginSlot 内部直接调用，或者扩展 SPI 接口。
-        // 这里演示如果必须走 SPI，如何降级：
         return method.invoke(bean, args);
     }
 

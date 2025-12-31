@@ -41,8 +41,8 @@ public class PluginManager {
 
     private final ContainerFactory containerFactory;
 
-    // 插件槽位表：Key=PluginId, Value=Slot
-    private final Map<String, PluginSlot> slots = new ConcurrentHashMap<>();
+    // 插件运行时表：Key=PluginId, Value=Runtime
+    private final Map<String, PluginRuntime> runtimes = new ConcurrentHashMap<>();
 
     // 协议服务注册表：Key=FQSID (Fully Qualified Service ID), Value=PluginId
     private final Map<String, String> protocolServiceRegistry = new ConcurrentHashMap<>();
@@ -78,6 +78,9 @@ public class PluginManager {
     // 全局执行器，用于运行插件方法（隔离线程池）
     private final ExecutorService pluginExecutor;
 
+    // 插件运行时配置
+    private final PluginRuntimeConfig runtimeConfig;
+
     // ================= 线程池配置 =================
     private static final int CORE_POOL_SIZE = Runtime.getRuntime().availableProcessors();
     private static final int MAX_POOL_SIZE = CORE_POOL_SIZE * 2;
@@ -95,7 +98,8 @@ public class PluginManager {
                          TrafficRouter trafficRouter,
                          PluginServiceInvoker pluginServiceInvoker,
                          TransactionVerifier transactionVerifier,
-                         List<ThreadLocalPropagator> propagators) {
+                         List<ThreadLocalPropagator> propagators,
+                         PluginRuntimeConfig runtimeConfig) {
         this.containerFactory = containerFactory;
         this.permissionService = permissionService;
         this.governanceKernel = governanceKernel;
@@ -107,6 +111,10 @@ public class PluginManager {
         this.transactionVerifier = transactionVerifier != null ?
                 transactionVerifier : new DefaultTransactionVerifier();
         this.propagators = propagators != null ? propagators : Collections.emptyList(); // 防御性处理
+
+        // 🔥 使用配置
+        this.runtimeConfig = runtimeConfig != null ? runtimeConfig : PluginRuntimeConfig.defaults();
+
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread thread = new Thread(r, "lingframe-plugin-cleaner");
             thread.setDaemon(true); // 设置为守护线程，防止阻碍 JVM 关闭
@@ -122,17 +130,36 @@ public class PluginManager {
                 new LinkedBlockingQueue<>(QUEUE_CAPACITY), // 关键：有界队列
                 // 【原生 Java 实现】自定义线程工厂
                 r -> {
-                    Thread t = new Thread(r);
+                    Thread thread = new Thread(r);
                     // 设置线程名：plugin-executor-{序号}
-                    t.setName("plugin-executor-" + threadNumber.getAndIncrement());
+                    thread.setName("plugin-executor-" + threadNumber.getAndIncrement());
                     // 设置为守护线程，不阻止 JVM 退出
-                    t.setDaemon(true);
+                    thread.setDaemon(true);
                     // 设置优先级（可选，生产级通常保持默认 NORMAL）
-                    // t.setPriority(Thread.NORM_PRIORITY);
-                    return t;
+                    // thread.setPriority(Thread.NORM_PRIORITY);
+                    thread.setUncaughtExceptionHandler((t, e) ->
+                            log.error("线程池线程 {} 异常: {}", t.getName(), e.getMessage()));
+                    return thread;
                 },
                 new ThreadPoolExecutor.AbortPolicy() // 关键：满载时快速失败，不阻塞宿主线程
         );
+    }
+
+    // 🔥 保留旧构造函数，向后兼容
+    public PluginManager(ContainerFactory containerFactory,
+                         PermissionService permissionService,
+                         GovernanceKernel governanceKernel,
+                         PluginLoaderFactory pluginLoaderFactory,
+                         List<PluginSecurityVerifier> verifiers,
+                         EventBus eventBus,
+                         TrafficRouter trafficRouter,
+                         PluginServiceInvoker pluginServiceInvoker,
+                         TransactionVerifier transactionVerifier,
+                         List<ThreadLocalPropagator> propagators) {
+        this(containerFactory, permissionService, governanceKernel,
+                pluginLoaderFactory, verifiers, eventBus, trafficRouter,
+                pluginServiceInvoker, transactionVerifier, propagators,
+                PluginRuntimeConfig.defaults());  // 默认配置
     }
 
     /**
@@ -205,8 +232,8 @@ public class PluginManager {
             }
 
             // 插件 ID 冲突检查
-            if (slots.containsKey(pluginId)) {
-                log.warn("[{}] Slot already exists. Preparing for upgrade.", pluginId);
+            if (runtimes.containsKey(pluginId)) {
+                log.warn("[{}] Runtime already exists. Preparing for upgrade.", pluginId);
             }
 
             // 加载 plugin.yml 配置
@@ -229,21 +256,20 @@ public class PluginManager {
 
             // SPI 构建容器 (此时仅创建配置，未启动)
             PluginContainer container = containerFactory.create(pluginId, sourceFile, pluginClassLoader);
-            PluginInstance instance = new PluginInstance(version, container);
+            PluginInstance instance = new PluginInstance(version, container, definition);
             // 写入标签
-            instance.getLabels().putAll(labels);
-            instance.setDefinition(definition); // [设置定义]
+            instance.addLabels(labels);
 
-            // 获取或创建槽位
-            PluginSlot slot = slots.computeIfAbsent(pluginId,
-                    k -> new PluginSlot(k, scheduler, pluginExecutor,
+            // 获取或创建运行时
+            PluginRuntime runtime = runtimes.computeIfAbsent(pluginId,
+                    k -> new PluginRuntime(k, runtimeConfig, scheduler, pluginExecutor,
                             governanceKernel, eventBus, trafficRouter, pluginServiceInvoker,
                             transactionVerifier, propagators));
             // 创建上下文
             PluginContext context = new CorePluginContext(pluginId, this, permissionService, eventBus);
 
-            // 执行新增 (启动新容器 -> 原子切换流量 -> 旧容器进入死亡队列)
-            slot.addInstance(instance, context, isDefault);
+            // 执行新增
+            runtime.addInstance(instance, context, isDefault);
 
             // 触发安装完成事件
             eventBus.publish(new PluginInstalledEvent(pluginId, version));
@@ -265,15 +291,14 @@ public class PluginManager {
         log.info("Uninstalling plugin: {}", pluginId);
         // 🔥Hook 1: Pre-Uninstall (可被拦截，例如防止误删核心插件)
         eventBus.publish(new PluginUninstallingEvent(pluginId));
-
-        PluginSlot slot = slots.remove(pluginId);
-        if (slot == null) {
+        PluginRuntime runtime = runtimes.remove(pluginId);
+        if (runtime == null) {
             log.warn("Plugin not found: {}", pluginId);
             return;
         }
 
-        // 委托槽位执行优雅下线
-        slot.uninstall();
+        // 委托运行时执行优雅下线
+        runtime.shutdown();
 
         // 从中央注册表移除所有 FQSID
         unregisterProtocolServices(pluginId);
@@ -298,15 +323,15 @@ public class PluginManager {
     public <T> T getService(String callerPluginId, Class<T> serviceType) {
         String serviceKey = serviceType.getName();
 
-        // 遍历所有插件槽位，找到提供此服务的插件
-        for (Map.Entry<String, PluginSlot> entry : slots.entrySet()) {
-            PluginSlot slot = entry.getValue();
+        // 遍历所有插件运行时，找到提供此服务的插件
+        for (Map.Entry<String, PluginRuntime> entry : runtimes.entrySet()) {
+            PluginRuntime runtime = entry.getValue();
 
-            if (!slot.hasBean(serviceType)) continue;
+            if (!runtime.hasBean(serviceType)) continue;
 
             try {
-                // 通过目标槽位的代理获取服务
-                return slot.getService(callerPluginId, serviceType);
+                // 通过目标运行时的代理获取服务
+                return runtime.getServiceProxy(callerPluginId, serviceType);
             } catch (Exception e) {
                 // 继续尝试其他插件
                 log.error("Failed to get service {} from plugin {}: {}", serviceKey, entry.getKey(), e.getMessage(), e);
@@ -318,24 +343,24 @@ public class PluginManager {
 
     // 供 CorePluginContext 回调使用
     public <T> T getService(String callerPluginId, String targetPluginId, Class<T> serviceType) {
-        PluginSlot slot = slots.get(targetPluginId);
-        if (slot == null) throw new IllegalArgumentException("Target plugin not found");
-        return slot.getService(callerPluginId, serviceType);
+        PluginRuntime runtime = runtimes.get(targetPluginId);
+        if (runtime == null) throw new IllegalArgumentException("Target plugin not found");
+        return runtime.getServiceProxy(callerPluginId, serviceType);
     }
 
     /**
      * 获取当前已安装的所有插件ID
      */
     public Set<String> getInstalledPlugins() {
-        return slots.keySet();
+        return runtimes.keySet();
     }
 
     /**
      * 获取指定插件当前活跃的版本号
      */
     public String getPluginVersion(String pluginId) {
-        PluginSlot slot = slots.get(pluginId);
-        return (slot != null) ? slot.getVersion() : null;
+        PluginRuntime runtime = runtimes.get(pluginId);
+        return (runtime != null) ? runtime.getVersion() : null;
     }
 
     /**
@@ -345,19 +370,19 @@ public class PluginManager {
     public void shutdown() {
         log.info("Shutting down PluginManager...");
 
-        // 1. 停止清理任务
+        // 停止清理任务
         scheduler.shutdownNow();
 
-        // 2. 并行销毁所有槽位 (加速关闭过程)
-        slots.values().parallelStream().forEach(slot -> {
+        // 并行销毁所有运行时 (加速关闭过程)
+        runtimes.values().parallelStream().forEach(runtime -> {
             try {
-                slot.uninstall(); // 触发销毁逻辑
+                runtime.shutdown(); // 触发销毁逻辑
             } catch (Exception e) {
-                log.error("Error shutting down plugin slot", e);
+                log.error("Error shutting down plugin runtime: {}", runtime.getPluginId(), e);
             }
         });
 
-        slots.clear();
+        runtimes.clear();
         log.info("PluginManager shutdown complete.");
     }
 
@@ -378,16 +403,16 @@ public class PluginManager {
             return Optional.empty();
         }
 
-        PluginSlot slot = slots.get(targetPluginId);
-        if (slot == null) {
-            log.warn("Target plugin slot not found: {}", targetPluginId);
+        PluginRuntime runtime = runtimes.get(targetPluginId);
+        if (runtime == null) {
+            log.warn("Target plugin runtime not found: {}", targetPluginId);
             return Optional.empty();
         }
 
         // 获取目标方法 (用于治理仲裁)
-        PluginSlot.InvokableService invokable = slot.getProtocolService(fqsid);
+        ServiceRegistry.InvokableService invokable = runtime.getServiceRegistry().getService(fqsid);
         if (invokable == null) {
-            log.warn("Method not registered in slot: {}", fqsid);
+            log.warn("Method not registered in runtime: {}", fqsid);
             return Optional.empty();
         }
 
@@ -407,9 +432,9 @@ public class PluginManager {
                 .build();
 
         try {
-            Object result = governanceKernel.invoke(slot, invokable.method(), ctx, () -> {
+            Object result = governanceKernel.invoke(runtime, invokable.method(), ctx, () -> {
                 try {
-                    return slot.invokeService(callerPluginId, fqsid, args);
+                    return runtime.invoke(callerPluginId, fqsid, args);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -435,10 +460,10 @@ public class PluginManager {
         }
         protocolServiceRegistry.put(fqsid, pluginId);
 
-        // 2. 注册到 Slot 的执行缓存 (FQSID -> MethodHandle)
-        PluginSlot slot = slots.get(pluginId);
-        if (slot != null) {
-            slot.registerService(fqsid, bean, method);
+        // 2. 注册到 Runtime 的执行缓存 (FQSID -> MethodHandle)
+        PluginRuntime runtime = runtimes.get(pluginId);
+        if (runtime != null) {
+            runtime.getServiceRegistry().registerService(fqsid, bean, method);
         }
 
         log.info("[{}] Registered Service: {}", pluginId, fqsid);
@@ -458,34 +483,17 @@ public class PluginManager {
     }
 
     /**
-     * 创建插件专用的 Child-First 类加载器
-     */
-    private ClassLoader createPluginClassLoader(File file) {
-        try {
-            URL[] urls = new URL[]{file.toURI().toURL()};
-            // Parent 设置为 PluginManager 的类加载器 (通常是 AppClassLoader)
-            return new PluginClassLoader(urls, this.getClass().getClassLoader());
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create classloader for " + file.getName(), e);
-        }
-    }
-
-    /**
-     * [新增] 检查指定插件是否包含某个类型的 Bean
+     * 检查指定插件是否包含某个类型的 Bean
      * 用于 GlobalProxy 在运行时动态探测
      */
     public boolean hasBean(String pluginId, Class<?> beanType) {
-        PluginSlot slot = slots.get(pluginId);
-        if (slot == null) return false;
-
-        // 我们需要深入到 PluginSlot -> PluginInstance -> PluginContainer 去检查
-        // 这需要在 PluginSlot 和 PluginContainer 接口中增加相应方法
-        // 临时方案：直接获取一下试试，看是否返回 null (SpringContainer如果找不到通常返回null)
-        return slot.hasBean(beanType);
+        PluginRuntime runtime = runtimes.get(pluginId);
+        if (runtime == null) return false;
+        return runtime.hasBean(beanType);
     }
 
     /**
-     * [重写] 获取服务的全局路由代理 (宿主专用)
+     * 获取服务的全局路由代理 (宿主专用)
      */
     @SuppressWarnings("unchecked")
     public <T> T getGlobalServiceProxy(String callerPluginId, Class<T> serviceType, String targetPluginId) {
@@ -504,14 +512,14 @@ public class PluginManager {
     }
 
     public Collection<String> getAllPluginIds() {
-        return Collections.unmodifiableSet(slots.keySet());
+        return Collections.unmodifiableSet(runtimes.keySet());
     }
 
     /**
-     * 提供给 Proxy 使用的 Slot 访问器
+     * 提供给 Proxy 使用的 Runtime 访问器
      */
-    public PluginSlot getSlot(String pluginId) {
-        return slots.get(pluginId);
+    public PluginRuntime getRuntime(String pluginId) {
+        return runtimes.get(pluginId);
     }
 
 }

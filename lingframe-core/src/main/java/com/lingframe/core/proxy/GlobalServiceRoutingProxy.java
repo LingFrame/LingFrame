@@ -2,7 +2,7 @@ package com.lingframe.core.proxy;
 
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.plugin.PluginManager;
-import com.lingframe.core.plugin.PluginSlot;
+import com.lingframe.core.plugin.PluginRuntime;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationHandler;
@@ -46,19 +46,19 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
             return method.invoke(this, args);
         }
 
-        // 1. 实时获取 Slot (支持延迟绑定)
+        // 1. 实时获取 Runtime (支持延迟绑定)
         String finalId = (targetPluginId != null && !targetPluginId.isEmpty())
                 ? targetPluginId : resolveTargetPluginId();
 
-        PluginSlot slot = (finalId != null) ? pluginManager.getSlot(finalId) : null;
+        PluginRuntime runtime = (finalId != null) ? pluginManager.getRuntime(finalId) : null;
 
-        if (slot == null) {
+        if (runtime == null) {
             throw new IllegalStateException("Service [" + serviceInterface.getName() + "] is currently offline.");
         }
 
         // 2. 统一使用 SmartServiceProxy 执行治理和路由逻辑
         // 这样即使宿主调用，也能支持金丝雀分流！
-        SmartServiceProxy delegate = new SmartServiceProxy(callerPluginId, slot,
+        SmartServiceProxy delegate = new SmartServiceProxy(callerPluginId, runtime,
                 serviceInterface, governanceKernel);
         return delegate.invoke(proxy, method, args);
     }

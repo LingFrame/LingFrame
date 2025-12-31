@@ -153,7 +153,7 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
     }
 
     private void startWatchLoop() {
-        Thread t = new Thread(() -> {
+        Thread thread = new Thread(() -> {
             while (true) {
                 try {
                     if (watchService == null) break;
@@ -182,9 +182,11 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
                 }
             }
         });
-        t.setDaemon(true);
-        t.setName("lingframe-hotswap-watcher");
-        t.start();
+        thread.setDaemon(true);
+        thread.setName("lingframe-hotswap-watcher");
+        thread.setUncaughtExceptionHandler((t, e) ->
+                log.error("线程池线程 {} 异常: {}", t.getName(), e.getMessage()));
+        thread.start();
     }
 
     private synchronized void scheduleReload(String pluginId) {

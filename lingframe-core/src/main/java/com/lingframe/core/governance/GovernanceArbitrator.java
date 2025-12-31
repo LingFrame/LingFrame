@@ -2,7 +2,7 @@ package com.lingframe.core.governance;
 
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.plugin.PluginSlot;
+import com.lingframe.core.plugin.PluginRuntime;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import lombok.extern.slf4j.Slf4j;
 
@@ -27,9 +27,9 @@ public class GovernanceArbitrator {
         log.info("GovernanceArbitrator initialized with {} providers", providers.size());
     }
 
-    public GovernanceDecision arbitrate(PluginSlot slot, Method method, InvocationContext ctx) {
+    public GovernanceDecision arbitrate(PluginRuntime runtime, Method method, InvocationContext ctx) {
         for (GovernancePolicyProvider provider : providers) {
-            GovernanceDecision decision = provider.resolve(slot, method, ctx);
+            GovernanceDecision decision = provider.resolve(runtime, method, ctx);
 
             // 只要决策中包含核心控制信息 (权限或审计)，即视为有效决策 (First Win 策略)
             if (decision != null && (decision.getRequiredPermission() != null || decision.getAuditEnabled() != null)) {

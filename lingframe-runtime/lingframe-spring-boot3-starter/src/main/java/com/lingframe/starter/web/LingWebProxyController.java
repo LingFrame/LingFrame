@@ -5,7 +5,7 @@ import com.lingframe.api.security.AccessType;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.plugin.PluginManager;
-import com.lingframe.core.plugin.PluginSlot;
+import com.lingframe.core.plugin.PluginRuntime;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -40,9 +40,9 @@ public class LingWebProxyController {
             return;
         }
 
-        // 获取插件槽位
-        PluginSlot slot = pluginManager.getSlot(meta.getPluginId());
-        if (slot == null) {
+        // 获取插件运行时
+        PluginRuntime runtime = pluginManager.getRuntime(meta.getPluginId());
+        if (runtime == null) {
             response.sendError(503, "Plugin not loaded: " + meta.getPluginId());
             return;
         }
@@ -64,7 +64,7 @@ public class LingWebProxyController {
                 .build();
 
         // 委托内核执行
-        governanceKernel.invoke(slot, meta.getTargetMethod(), ctx, () -> {
+        governanceKernel.invoke(runtime, meta.getTargetMethod(), ctx, () -> {
             ClassLoader originalCL = Thread.currentThread().getContextClassLoader();
             Thread.currentThread().setContextClassLoader(meta.getClassLoader());
 

@@ -6,7 +6,7 @@ import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.GovernanceDecision;
 import com.lingframe.core.monitor.TraceContext;
-import com.lingframe.core.plugin.PluginSlot;
+import com.lingframe.core.plugin.PluginRuntime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -26,12 +26,13 @@ public class GovernanceKernel {
 
     /**
      * 核心拦截入口
-     * @param slot 当前插件槽位 (Host调用时可能为null)
-     * @param method 目标方法
-     * @param ctx 调用上下文
+     *
+     * @param runtime  当前插件运行时 (Host调用时可能为null)
+     * @param method   目标方法
+     * @param ctx      调用上下文
      * @param executor 真实执行逻辑
      */
-    public Object invoke(PluginSlot slot, Method method, InvocationContext ctx, Supplier<Object> executor) {
+    public Object invoke(PluginRuntime runtime, Method method, InvocationContext ctx, Supplier<Object> executor) {
         // Trace 开启
         boolean isRootTrace = (TraceContext.get() == null);
 
@@ -49,7 +50,7 @@ public class GovernanceKernel {
         Throwable error = null;
 
         // 治理仲裁 (获取上帝视角)
-        GovernanceDecision decision = arbitrator.arbitrate(slot, method, ctx);
+        GovernanceDecision decision = arbitrator.arbitrate(runtime, method, ctx);
         enrichContext(ctx, decision);
 
         try {

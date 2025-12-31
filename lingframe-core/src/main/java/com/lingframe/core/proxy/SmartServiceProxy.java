@@ -2,11 +2,10 @@ package com.lingframe.core.proxy;
 
 import com.lingframe.api.context.PluginContextHolder;
 import com.lingframe.api.security.AccessType;
-import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.plugin.PluginInstance;
-import com.lingframe.core.plugin.PluginSlot;
+import com.lingframe.core.plugin.PluginRuntime;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationHandler;
@@ -24,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SmartServiceProxy implements InvocationHandler {
 
     private final String callerPluginId; // 谁在调用
-    private final PluginSlot targetSlot; // 核心锚点
+    private final PluginRuntime targetRuntime; // 核心锚点
     private final Class<?> serviceInterface;
     private final GovernanceKernel governanceKernel;// 内核
 
@@ -36,11 +35,11 @@ public class SmartServiceProxy implements InvocationHandler {
     private static final ConcurrentHashMap<Method, String> RESOURCE_ID_CACHE = new ConcurrentHashMap<>();
 
     public SmartServiceProxy(String callerPluginId,
-                             PluginSlot targetSlot, // 核心锚点,
+                             PluginRuntime targetRuntime, // 核心锚点,
                              Class<?> serviceInterface,
                              GovernanceKernel governanceKernel) {
         this.callerPluginId = callerPluginId;
-        this.targetSlot = targetSlot;
+        this.targetRuntime = targetRuntime;
         this.serviceInterface = serviceInterface;
         this.governanceKernel = governanceKernel;
     }
@@ -62,7 +61,7 @@ public class SmartServiceProxy implements InvocationHandler {
             // Identity
             ctx.setTraceId(null); // 由 Kernel 处理
             ctx.setCallerPluginId(this.callerPluginId);
-            ctx.setPluginId(targetSlot.getPluginId());
+            ctx.setPluginId(targetRuntime.getPluginId());
             ctx.setOperation(method.getName());
             // Runtime Data (每次请求必变)
             ctx.setArgs(args);
@@ -83,14 +82,13 @@ public class SmartServiceProxy implements InvocationHandler {
             ctx.setMetadata(null);
 
             // 委托内核执行
-            InvocationContext finalCtx = ctx;
-            return governanceKernel.invoke(targetSlot, method, ctx, () -> {
-                PluginInstance instance = targetSlot.selectInstance(finalCtx);
+            return governanceKernel.invoke(targetRuntime, method, ctx, () -> {
+                PluginInstance instance = targetRuntime.getInstancePool().getDefault();
                 if (instance == null) throw new IllegalStateException("Service unavailable");
 
                 instance.enter();
                 // 这样如果 B 调用 C，C 看到的 caller 就是 B，而不是 A
-                PluginContextHolder.set(targetSlot.getPluginId());
+                PluginContextHolder.set(targetRuntime.getPluginId());
                 Thread t = Thread.currentThread();
                 ClassLoader oldCL = t.getContextClassLoader();
                 try {
