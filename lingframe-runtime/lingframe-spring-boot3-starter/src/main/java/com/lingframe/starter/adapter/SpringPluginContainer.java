@@ -65,8 +65,6 @@ public class SpringPluginContainer implements PluginContainer {
             // 启动 Spring
             this.context = builder.run();
 
-            // 【关键】寻找并触发 LingPlugin 生命周期
-            // 尝试从 Spring 容器中获取实现了 LingPlugin 接口的 Bean
             try {
                 LingPlugin plugin = this.context.getBean(LingPlugin.class);
                 log.info("Triggering onStart for plugin: {}", pluginContext.getPluginId());
@@ -96,10 +94,14 @@ public class SpringPluginContainer implements PluginContainer {
             // 注册 PluginManager (供插件内部使用)
             context.registerBean(PluginManager.class, () -> pluginManager);
 
+            // 注册 PluginContext 并设为 @Primary (供插件内部使用)
+            context.registerBean(PluginContext.class, () -> coreCtx,
+                    bd -> bd.setPrimary(true));
+
             // 注册插件专用的 LingReferenceInjector
             // 这样插件里的 Bean 被注入代理时，callerId 就是插件自己的 ID，而不是 host-app
             context.registerBean(LingReferenceInjector.class, () ->
-                    new LingReferenceInjector(pluginManager, pluginId)
+                    new LingReferenceInjector(pluginId, pluginManager)
             );
 
             log.info("Injecting core beans for plugin [{}]: PluginManager, LingReferenceInjector", pluginId);

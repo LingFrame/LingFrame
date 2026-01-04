@@ -1,19 +1,25 @@
 package com.lingframe.example.user;
 
 import com.lingframe.api.context.PluginContext;
-import com.lingframe.api.plugin.LingPlugin;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+@Slf4j
 @SpringBootApplication
-public class UserPlugin implements LingPlugin {
+@RequiredArgsConstructor
+public class UserPlugin implements CommandLineRunner {
 
-    @Override
-    public void onStart(PluginContext context) {
-        System.out.println("User plugin started: " + context.getPluginId());
+    private final PluginContext pluginContext;
+
+    public static void main(String[] args) {
+        SpringApplication.run(UserPlugin.class, args);
     }
 
     @Override
-    public void onStop(PluginContext context) {
-        System.out.println("User plugin stopped: " + context.getPluginId());
+    public void run(String... args) throws Exception {
+        log.info("UserPlugin started, pluginId: {}", pluginContext.getPluginId());
     }
 }

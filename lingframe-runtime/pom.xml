@@ -14,6 +14,7 @@
     <description>运行时集成层</description>
 
     <modules>
+        <module>lingframe-native</module>
         <module>lingframe-spring-boot3-starter</module>
     </modules>
 </project>

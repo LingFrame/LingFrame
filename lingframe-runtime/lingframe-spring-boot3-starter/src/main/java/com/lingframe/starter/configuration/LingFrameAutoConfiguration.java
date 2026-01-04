@@ -242,7 +242,7 @@ public class LingFrameAutoConfiguration {
     // 注册 LingReference 注入器
     @Bean
     public LingReferenceInjector lingReferenceInjector(PluginManager pluginManager) {
-        return new LingReferenceInjector(pluginManager, "host-app");
+        return new LingReferenceInjector("host-app", pluginManager);
     }
 
     @Bean

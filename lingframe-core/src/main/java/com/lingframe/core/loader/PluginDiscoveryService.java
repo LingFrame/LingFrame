@@ -39,7 +39,14 @@ public class PluginDiscoveryService {
             if (files != null) {
                 log.info("Starting plugin discovery from {}, count: {}", config.getPluginHome(), files.length);
                 for (File file : files) {
-                    installSingle(loadedPluginIds, file);
+                    try {
+                        // 尝试加载单个插件
+                        installSingle(loadedPluginIds, file);
+                    } catch (Exception e) {
+                        // 🔥捕获异常，只打印日志，不抛出！
+                        // 这样坏插件只会打印报错，不会炸毁主程序
+                        log.error("⚠️ Failed to load plugin from: {}", file.getAbsolutePath(), e);
+                    }
                 }
             }
         }

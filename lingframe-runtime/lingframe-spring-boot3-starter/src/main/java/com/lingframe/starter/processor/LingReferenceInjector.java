@@ -15,12 +15,11 @@ import java.lang.reflect.Field;
 @RequiredArgsConstructor
 public class LingReferenceInjector implements BeanPostProcessor {
 
-    private final PluginManager pluginManager;
-
     private final String currentPluginId; // 🔥记录当前环境的插件ID
 
+    private final PluginManager pluginManager;
+
     /**
-     * 从 postProcessAfterInitialization 改为 postProcessBeforeInitialization
      * 确保在 AOP 代理创建之前，把属性注入到原始对象(Target)中。
      */
     @Override
@@ -60,7 +59,6 @@ public class LingReferenceInjector implements BeanPostProcessor {
             String callerId = (currentPluginId != null) ? currentPluginId : "host-app";
 
             // 创建全局路由代理
-            // 这里的 callerPluginId 先硬编码为 "host-app"，实际可以做得更细
             Object proxy = pluginManager.getGlobalServiceProxy(
                     callerId,
                     serviceType,

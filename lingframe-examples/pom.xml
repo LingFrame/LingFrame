@@ -19,6 +19,7 @@
         <module>lingframe-example-user-api</module>
         <module>lingframe-example-plugin-order</module>
         <module>lingframe-example-order-api</module>
+        <module>lingframe-example-plugin-native</module>
     </modules>
 
     <dependencyManagement>

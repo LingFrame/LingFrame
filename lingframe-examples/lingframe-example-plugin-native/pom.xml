@@ -1,0 +1,23 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.lingframe</groupId>
+        <artifactId>lingframe-examples</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>lingframe-example-plugin-native</artifactId>
+    <packaging>jar</packaging>
+
+    <name>LingFrame :: Example :: Plugin Native</name>
+    <description>示例业务插件（纯Java实现）</description>
+
+    <dependencies>
+        <!-- 仅依赖 API -->
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-api</artifactId>
+        </dependency>
+    </dependencies>
+</project>

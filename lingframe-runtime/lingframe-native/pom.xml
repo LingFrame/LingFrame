@@ -1,0 +1,27 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.lingframe</groupId>
+        <artifactId>lingframe-runtime</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>lingframe-native</artifactId>
+    <packaging>jar</packaging>
+
+    <name>LingFrame :: Native</name>
+    <description>纯 Java 运行时</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+    </dependencies>
+</project>

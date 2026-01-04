@@ -15,7 +15,7 @@
     <packaging>pom</packaging>
 
     <name>LingFrame</name>
-    <description>下一代 JVM 微内核插件化框架</description>
+    <description>现代 JVM 微内核运行时治理框架</description>
     <url>https://github.com/lingframe/lingframe</url>
 
     <modules>

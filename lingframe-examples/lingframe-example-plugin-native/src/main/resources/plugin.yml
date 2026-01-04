@@ -1,9 +1,9 @@
 # --- 基础元数据 (直接在根节点) ---
-id: user-plugin
+id: native-plugin
 version: 1.0.0
 provider: "LingFrame"
-description: "用户插件"
-mainClass: "com.lingframe.example.user.UserPlugin"
+description: "本地插件"
+mainClass: "com.lingframe.example.NativePlugin"
 
 # --- 治理配置 ---
 governance:

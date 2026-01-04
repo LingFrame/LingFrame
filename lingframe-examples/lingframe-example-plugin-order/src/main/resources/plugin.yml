@@ -3,13 +3,13 @@ id: order-plugin
 version: 1.0.0
 provider: "LingFrame"
 description: "订单插件"
-mainClass: "com.lingframe.example.plugin.order.OrderPlugin"
+mainClass: "com.lingframe.example.order.OrderPlugin"
 
 dependencies:
   - id: "user-plugin"
     minVersion: "1.0.0"
 
-# --- 治理配置 (对应 private GovernancePolicy governance) ---
+# --- 治理配置 ---
 governance:
   permissions:
     # 对应 GovernancePolicy.PermissionRule 的字段
