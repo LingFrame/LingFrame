@@ -19,4 +19,9 @@ public class OrderController {
     public UserDTO getUserById(@PathVariable Long userId) {
         return orderServiceImpl.getUserById(userId);
     }
+
+    @GetMapping("/getFromHost")
+    public void getFromHost() {
+        orderServiceImpl.getFromHost();
+    }
 }

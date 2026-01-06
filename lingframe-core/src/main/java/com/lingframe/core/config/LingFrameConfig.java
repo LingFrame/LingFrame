@@ -75,6 +75,38 @@ public class LingFrameConfig {
     @Builder.Default
     private int corePoolSize = Math.max(2, Runtime.getRuntime().availableProcessors());
 
+    // ================= 宿主治理配置 =================
+
+    /**
+     * 是否启用宿主 Bean 治理，默认值为 false
+     * <p>
+     * true: 启用治理，对宿主 Bean 进行权限检查和审计
+     * <p>
+     * false: 禁用治理，宿主 Bean 不受限制
+     */
+    @Builder.Default
+    private boolean hostGovernanceEnabled = false;
+
+    /**
+     * 是否对宿主内部调用进行治理，默认值为 false
+     * <p>
+     * true: 宿主自己调用自己的 Bean 也会被治理
+     * <p>
+     * false: 只有插件调用宿主 Bean 时才会被治理
+     */
+    @Builder.Default
+    private boolean hostGovernanceInternalCalls = false;
+
+    /**
+     * 是否对宿主应用进行权限检查，默认值为 false
+     * <p>
+     * true: 宿主应用也需要通过权限检查
+     * <p>
+     * false: 宿主应用自动拥有所有权限
+     */
+    @Builder.Default
+    private boolean hostCheckPermissions = false;
+
     // ================= 运行时模板 (Runtime Template) =================
 
     /**

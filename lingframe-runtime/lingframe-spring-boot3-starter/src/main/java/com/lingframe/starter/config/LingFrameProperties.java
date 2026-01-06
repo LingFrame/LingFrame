@@ -51,6 +51,12 @@ public class LingFrameProperties {
     private boolean autoScan = true;
 
     /**
+     * 宿主治理配置
+     */
+    @Valid
+    private HostGovernance hostGovernance = new HostGovernance();
+
+    /**
      * 审计相关配置。
      */
     @Valid // [Key] 级联校验
@@ -152,6 +158,42 @@ public class LingFrameProperties {
 
         @DurationUnit(ChronoUnit.MILLIS)
         private Duration bulkheadAcquireTimeout = Duration.ofMillis(3000);
+    }
+
+    @Data
+    public static class HostGovernance {
+        /**
+         * 是否启用宿主 Bean 治理，默认值为 false
+         * <p>
+         * true: 启用治理，对宿主 Bean 进行权限检查和审计
+         * <p>
+         * false: 禁用治理，宿主 Bean 不受限制
+         * <p>
+         * 注意：开启后可能会影响插件的正常运行，建议仅在必要时开启
+         */
+        private boolean enabled = false;
+
+        /**
+         * 是否对宿主内部调用进行治理，默认值为 false
+         * <p>
+         * true: 宿主自己调用自己的 Bean 也会被治理
+         * <p>
+         * false: 只有插件调用宿主 Bean 时才会被治理
+         * <p>
+         * 注意：开启后可能会影响插件的正常运行，建议仅在必要时开启
+         */
+        private boolean governInternalCalls = false;
+
+        /**
+         * 是否对宿主应用进行权限检查，默认值为 false
+         * <p>
+         * true: 宿主应用也需要通过权限检查
+         * <p>
+         * false: 宿主应用自动拥有所有权限
+         * <p>
+         * 注意：开启后可能会影响插件的正常运行，建议仅在必要时开启
+         */
+        private boolean checkPermissions = false;
     }
 
 }

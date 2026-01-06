@@ -22,8 +22,19 @@ public class DefaultPermissionService implements PermissionService {
     // 全局白名单服务 (例如基础的日志服务)
     private static final String GLOBAL_WHITELIST_PREFIX = "com.lingframe.api.";
 
+    // 宿主应用 ID
+    private static final String HOST_PLUGIN_ID = "host-app";
+
     @Override
     public boolean isAllowed(String pluginId, String capability, AccessType accessType) {
+        // 宿主应用根据配置决定是否进行权限检查
+        if (HOST_PLUGIN_ID.equals(pluginId)) {
+            // 如果配置为不检查宿主应用权限，直接放行
+            if (!LingFrameConfig.current().isHostCheckPermissions()) {
+                return true;
+            }
+        }
+
         // 白名单放行
         if (pluginId == null || capability.startsWith(GLOBAL_WHITELIST_PREFIX)) {
             return true;

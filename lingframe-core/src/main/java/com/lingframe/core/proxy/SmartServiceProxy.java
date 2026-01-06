@@ -118,8 +118,6 @@ public class SmartServiceProxy implements InvocationHandler {
             ctx.setLabels(null);
             ctx.setMetadata(null);
             // TraceId 不需要清空，会被下一次 setTraceId 覆盖
-            // 清理 ThreadLocal 引用，防止内存泄漏
-            CTX_POOL.remove();
         }
     }
 

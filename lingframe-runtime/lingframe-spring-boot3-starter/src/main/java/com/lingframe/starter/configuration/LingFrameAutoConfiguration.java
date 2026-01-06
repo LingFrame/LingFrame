@@ -25,6 +25,7 @@ import com.lingframe.plugin.cache.configuration.SpringCacheWrapperProcessor;
 import com.lingframe.plugin.storage.configuration.DataSourceWrapperProcessor;
 import com.lingframe.starter.adapter.SpringContainerFactory;
 import com.lingframe.starter.config.LingFrameProperties;
+import com.lingframe.starter.processor.HostBeanGovernanceProcessor;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.starter.web.LingWebProxyController;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -61,7 +62,9 @@ import java.util.List;
         DataSourceWrapperProcessor.class,
         SpringCacheWrapperProcessor.class,
         CaffeineWrapperProcessor.class,
-        RedisWrapperProcessor.class
+        RedisWrapperProcessor.class,
+        // 宿主业务 Bean 治理层
+        HostBeanGovernanceProcessor.class
 })
 public class LingFrameAutoConfiguration {
 
@@ -169,6 +172,10 @@ public class LingFrameAutoConfiguration {
                 .runtimeConfig(runtimeConfig)
                 // 自动根据 CPU 核心数调整线程池，也可从 properties 读取
                 .corePoolSize(Runtime.getRuntime().availableProcessors())
+                // 宿主治理配置
+                .hostGovernanceEnabled(properties.getHostGovernance().isEnabled())
+                .hostGovernanceInternalCalls(properties.getHostGovernance().isGovernInternalCalls())
+                .hostCheckPermissions(properties.getHostGovernance().isCheckPermissions())
                 .build();
 
         // 初始化静态持有者
