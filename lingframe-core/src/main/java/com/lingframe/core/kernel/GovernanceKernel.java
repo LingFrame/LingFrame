@@ -3,6 +3,8 @@ package com.lingframe.core.kernel;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.audit.AuditManager;
+import com.lingframe.core.event.EventBus;
+import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.GovernanceDecision;
 import com.lingframe.core.monitor.TraceContext;
@@ -24,6 +26,8 @@ public class GovernanceKernel {
 
     private final GovernanceArbitrator arbitrator;
 
+    private final EventBus eventBus;
+
     /**
      * 核心拦截入口
      *
@@ -43,6 +47,15 @@ public class GovernanceKernel {
         }
         // 回填 Context，确保后续 Audit 能拿到最终的 ID
         ctx.setTraceId(TraceContext.get());
+
+        // 深度递增 & 发布 Trace Start
+        TraceContext.increaseDepth();
+        int currentDepth = TraceContext.getDepth();
+
+        // 发布入站日志
+        publishTrace(ctx.getTraceId(), ctx.getPluginId(),
+                String.format("→ INGRESS: %s calls %s", ctx.getCallerPluginId(), ctx.getResourceId()),
+                "IN", currentDepth);
 
         long startTime = System.nanoTime();
         boolean success = false;
@@ -97,9 +110,19 @@ public class GovernanceKernel {
             // Execute 真实业务
             result = executor.get();
             success = true;
+
+            // 发布 Trace Success
+            publishTrace(ctx.getTraceId(), ctx.getPluginId(),
+                    "← RETURN: Success", "OUT", currentDepth);
+
             return result;
         } catch (Throwable e) {
             error = e;
+
+            // 发布 Trace Error
+            publishTrace(ctx.getTraceId(), ctx.getPluginId(),
+                    "✖ ERROR: " + e.getMessage(), "ERROR", currentDepth);
+
             throw e;// 异常抛出给上层处理
         } finally {
             long cost = System.nanoTime() - startTime;
@@ -109,25 +132,46 @@ public class GovernanceKernel {
             if (ctx.isShouldAudit()) {
                 String action = ctx.getAuditAction();
                 if (action == null) action = ctx.getOperation();
+                String caller = ctx.getCallerPluginId() != null ? ctx.getCallerPluginId() : ctx.getPluginId();
 
                 try {
                     AuditManager.asyncRecord(
                             ctx.getTraceId(),
-                            ctx.getCallerPluginId() != null ? ctx.getCallerPluginId() : ctx.getPluginId(), // 记录谁被调用，或者记录 ctx.getCallerPluginId()
+                            caller, // 记录谁被调用，或者记录 ctx.getCallerPluginId()
                             action,
                             ctx.getResourceId(),
                             ctx.getArgs(),
                             success ? result : error,
                             cost
                     );
+
+                    // 发布实时 Audit 事件 (供前端展示)
+                    eventBus.publish(new MonitoringEvents.AuditLogEvent(
+                            ctx.getTraceId(), caller, action, ctx.getResourceId(), success, cost
+                    ));
+
                 } catch (Exception e) {
                     log.error("Audit failed", e);
                 }
             }
 
-            // 6. Trace 清理
+            // 深度递减 & 清理
+            TraceContext.decreaseDepth();
+
+            // Trace 清理
             if (isRootTrace) {
                 TraceContext.clear();
+            }
+        }
+    }
+
+    private void publishTrace(String traceId, String pluginId, String action, String type, int depth) {
+        if (eventBus != null) {
+            try {
+                eventBus.publish(new MonitoringEvents.TraceLogEvent(traceId, pluginId, action, type, depth));
+            } catch (Exception e) {
+                // 吞掉监控异常，不影响业务
+                log.warn("Failed to publish trace event", e);
             }
         }
     }

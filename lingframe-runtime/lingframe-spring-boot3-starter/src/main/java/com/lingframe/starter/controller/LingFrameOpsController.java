@@ -4,11 +4,14 @@ import com.lingframe.api.config.PluginDefinition;
 import com.lingframe.core.loader.PluginManifestLoader;
 import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.starter.config.LingFrameProperties;
+import com.lingframe.starter.service.LogStreamService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.File;
 import java.util.HashMap;
@@ -29,6 +32,8 @@ public class LingFrameOpsController {
 
     private final PluginManager pluginManager;
     private final LingFrameProperties properties;
+
+    private final LogStreamService logStreamService;
 
     /**
      * 查看所有插件状态
@@ -105,5 +110,14 @@ public class LingFrameOpsController {
         }
         pluginManager.reload(pluginId);
         return "Reload triggered for: " + pluginId;
+    }
+
+    /**
+     * SSE 实时日志流端点
+     * Header: text/event-stream
+     */
+    @GetMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamLogs() {
+        return logStreamService.createEmitter();
     }
 }

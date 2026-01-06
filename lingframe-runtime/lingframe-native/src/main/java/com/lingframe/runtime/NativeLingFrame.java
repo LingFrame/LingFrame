@@ -59,7 +59,7 @@ public class NativeLingFrame {
         // 准备核心组件
         DefaultPermissionService permissionService = new DefaultPermissionService();
         GovernanceArbitrator governanceArbitrator = new GovernanceArbitrator(providers);
-        GovernanceKernel governanceKernel = new GovernanceKernel(permissionService, governanceArbitrator);
+        GovernanceKernel governanceKernel = new GovernanceKernel(permissionService, governanceArbitrator, eventBus);
         DefaultPluginLoaderFactory loaderFactory = new DefaultPluginLoaderFactory();
 
         // 准备治理组件

@@ -123,8 +123,9 @@ public class LingFrameAutoConfiguration {
     }
 
     @Bean
-    public GovernanceKernel governanceKernel(PermissionService permissionService, GovernanceArbitrator arbitrator) {
-        return new GovernanceKernel(permissionService, arbitrator);
+    public GovernanceKernel governanceKernel(PermissionService permissionService,
+                                             GovernanceArbitrator arbitrator, EventBus eventBus) {
+        return new GovernanceKernel(permissionService, arbitrator, eventBus);
     }
 
     @Bean

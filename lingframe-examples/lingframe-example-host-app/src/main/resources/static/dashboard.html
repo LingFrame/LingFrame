@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LingFrame Hub | 核心治理中心</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap');
+
+        body {
+            background-color: #f1f5f9;
+            color: #2d3748;
+            font-family: -apple-system, system-ui, sans-serif;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .glass-card {
+            background: #fff;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .active-row {
+            background-color: #eff6ff;
+            border-left: 4px solid #3b82f6 !important;
+        }
+
+        .slider-custom {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(to right, #3b82f6 var(--p), #f59e0b var(--p));
+            outline: none;
+        }
+
+        .slider-custom::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border: 3px solid #475569;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .log-container {
+            background-color: #0f172a;
+            color: #cbd5e1;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+        }
+
+        .trace-tag {
+            color: #a855f7;
+            border: 1px solid #a855f7;
+            padding: 0 3px;
+            border-radius: 2px;
+            font-weight: bold;
+            margin-right: 6px;
+        }
+
+        .btn-toggle {
+            transition: all 0.2s;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+<header class="h-14 bg-white border-b flex items-center justify-between px-8 shadow-sm z-50">
+    <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-slate-800 text-white rounded flex items-center justify-center font-bold">L</div>
+        <h1 class="font-bold text-slate-800 tracking-tight">LingFrame <span class="text-blue-600 font-normal ml-1">治理中心</span>
+        </h1>
+    </div>
+    <div class="flex gap-4 items-center text-[11px] font-mono">
+        <span class="text-green-600 font-bold">● KERNEL READY</span>
+        <span class="text-slate-400">v0.1.0-Preview</span>
+    </div>
+</header>
+
+<main id="app" class="max-w-[1500px] mx-auto w-full p-6 grid grid-cols-12 gap-6 flex-grow">
+
+    <div class="col-span-8 space-y-6">
+
+        <div class="glass-card p-6 border-t-4 border-blue-500">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="font-bold text-slate-800 text-sm">流量分发 <span class="text-blue-500 ml-2">[@{{ activeId
+                    }}]</span></h2>
+                <div class="flex gap-2">
+                    <button @click="resetStats"
+                            class="px-3 py-1.5 border rounded text-[10px] font-bold hover:bg-slate-50">重置统计
+                    </button>
+                    <button @click="toggleAuto" :class="isAuto ? 'bg-red-500' : 'bg-blue-600'"
+                            class="px-4 py-1.5 text-white rounded text-xs font-bold shadow-md">
+                        {{ isAuto ? '停止压测' : '开始压测' }}
+                    </button>
+                </div>
+            </div>
+            <div class="bg-slate-50 p-6 rounded-xl border border-dashed mb-6 text-center">
+                <div class="flex justify-between text-xs font-bold mb-4">
+                    <span class="text-blue-600">稳定版 (V1): {{ 100 - canaryPct }}%</span>
+                    <span class="text-amber-600">灰度版 (V2): {{ canaryPct }}%</span>
+                </div>
+                <input type="range" v-model.number="canaryPct" class="slider-custom"
+                       :style="{'--p': (100-canaryPct)+'%'}">
+            </div>
+            <div class="grid grid-cols-4 gap-4 text-center">
+                <div class="p-3 bg-slate-100 rounded border font-mono">
+                    <div class="text-[9px] text-slate-400 uppercase">Total</div>
+                    <div class="text-xl font-bold">{{ stats.total }}</div>
+                </div>
+                <div class="p-3 bg-blue-50 rounded border border-blue-100 font-mono text-blue-600">
+                    <div class="text-[9px] uppercase opacity-70">V1 Hit</div>
+                    <div class="text-xl font-bold">{{ stats.v1Pct }}%</div>
+                </div>
+                <div class="p-3 bg-amber-50 rounded border border-amber-100 font-mono text-amber-600">
+                    <div class="text-[9px] uppercase opacity-70">V2 Hit</div>
+                    <div class="text-xl font-bold">{{ stats.v2Pct }}%</div>
+                </div>
+                <div class="p-3 bg-slate-50 rounded border font-mono">
+                    <div class="text-[9px] text-slate-400 uppercase">Error</div>
+                    <div class="text-xl font-bold"
+                         :class="Math.abs(stats.v2Pct-canaryPct)>2?'text-red-500':'text-green-500'">
+                        {{ (stats.v2Pct - canaryPct).toFixed(1) }}%
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-card overflow-hidden">
+            <table class="w-full text-xs text-left">
+                <thead class="bg-slate-50 text-slate-400 border-b uppercase text-[10px]">
+                <tr>
+                    <th class="px-4 py-3">插件 ID</th>
+                    <th class="px-4 py-3">状态</th>
+                    <th class="px-4 py-3 text-center">资源管控 (DB / Cache)</th>
+                    <th class="px-4 py-3 text-right">生命周期</th>
+                </tr>
+                </thead>
+                <tbody class="divide-y">
+                <tr v-for="p in plugins" :key="p.id" @click="activeId = p.id" class="cursor-pointer"
+                    :class="activeId === p.id ? 'active-row' : 'hover:bg-slate-50'">
+                    <td class="px-4 py-4">
+                        <div class="font-bold text-slate-800">{{ p.id }}</div>
+                        <div class="text-[9px] text-slate-400 font-mono">{{ p.versions.join(', ') }}</div>
+                    </td>
+                    <td class="px-4 py-4">
+                        <span :class="statusColor(p.status)"
+                              class="px-2 py-0.5 rounded text-[10px] font-bold border">{{ p.status }}</span>
+                    </td>
+                    <td class="px-4 py-4">
+                        <div class="flex gap-2 justify-center scale-90">
+                            <div class="flex gap-1 bg-slate-100 p-1 rounded">
+                                <button @click.stop="p.perms.dbRead = !p.perms.dbRead"
+                                        :class="p.perms.dbRead?'bg-emerald-500 text-white':'bg-slate-300 text-white'"
+                                        class="btn-toggle">DB:R
+                                </button>
+                                <button @click.stop="p.perms.dbWrite = !p.perms.dbWrite"
+                                        :class="p.perms.dbWrite?'bg-emerald-500 text-white':'bg-slate-300 text-white'"
+                                        class="btn-toggle">DB:W
+                                </button>
+                            </div>
+                            <div class="flex gap-1 bg-slate-100 p-1 rounded">
+                                <button @click.stop="p.perms.cacheRead = !p.perms.cacheRead"
+                                        :class="p.perms.cacheRead?'bg-indigo-500 text-white':'bg-slate-300 text-white'"
+                                        class="btn-toggle">CA:R
+                                </button>
+                                <button @click.stop="p.perms.cacheWrite = !p.perms.cacheWrite"
+                                        :class="p.perms.cacheWrite?'bg-indigo-500 text-white':'bg-slate-300 text-white'"
+                                        class="btn-toggle">CA:W
+                                </button>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-4 py-4 text-right space-x-2 text-slate-300">
+                        <i @click.stop="p.status='ACTIVE'" class="fa-solid fa-play hover:text-green-500"
+                           title="激活"></i>
+                        <i @click.stop="p.status='LOADED'" class="fa-solid fa-rotate hover:text-amber-500"
+                           title="重载"></i>
+                        <i @click.stop="p.status='UNLOADED'" class="fa-solid fa-trash hover:text-red-500"
+                           title="卸载"></i>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="col-span-4 space-y-6">
+
+        <div class="glass-card p-5 border-t-4 border-red-500">
+            <h3 class="font-bold text-slate-800 text-sm mb-4 border-b pb-2 flex justify-between items-center">
+                <span><i class="fa-solid fa-shield-halved text-red-500 mr-1"></i> 功能演练中心</span>
+                <span class="text-[9px] bg-slate-100 px-2 py-0.5 rounded uppercase font-bold tracking-wider">Actor: {{ activeId
+                    }}</span>
+            </h3>
+
+            <div class="grid grid-cols-2 gap-2 mb-4">
+                <button @click="simulate('dbRead')"
+                        class="py-2 border bg-slate-50 hover:bg-white rounded text-[10px] font-bold">读数据库
+                </button>
+                <button @click="simulate('dbWrite')"
+                        class="py-2 border bg-slate-50 hover:bg-white rounded text-[10px] font-bold">写数据库
+                </button>
+                <button @click="simulate('cacheRead')"
+                        class="py-2 border bg-slate-50 hover:bg-white rounded text-[10px] font-bold">读缓存层
+                </button>
+                <button @click="simulate('cacheWrite')"
+                        class="py-2 border bg-slate-50 hover:bg-white rounded text-[10px] font-bold">写缓存层
+                </button>
+            </div>
+
+            <div class="bg-slate-50 p-3 rounded-lg border mb-4">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[11px] font-bold text-slate-600">IPC 运行时授权开关</span>
+                    <div @click="ipcEnabled = !ipcEnabled" :class="ipcEnabled ? 'bg-green-500' : 'bg-slate-300'"
+                         class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                        <div :class="ipcEnabled ? 'translate-x-5' : 'translate-x-1'"
+                             class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
+                    </div>
+                </div>
+                <button @click="simulateIPC('user-plugin')"
+                        class="w-full py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded text-[10px] font-bold">
+                    模拟调用: Order ➔ User
+                </button>
+            </div>
+
+            <div v-if="lastAudit"
+                 :class="lastAudit.ok ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'"
+                 class="p-3 rounded border text-[10px] font-mono leading-relaxed shadow-inner">
+                <b>[{{ lastAudit.ok ? 'SUCCESS' : 'DENIED' }}]</b> {{ lastAudit.msg }}
+            </div>
+        </div>
+
+        <div class="glass-card flex flex-col h-[520px] bg-[#0f172a] overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-800 flex justify-between text-slate-400">
+                <span class="text-[10px] font-bold uppercase tracking-widest">Tracing Log</span>
+                <i @click="logs=[]" class="fa-solid fa-eraser cursor-pointer hover:text-white transition-all"></i>
+            </div>
+            <div class="flex-grow log-container p-4 overflow-y-auto" id="log-box">
+                <div v-for="(l, i) in filteredLogs" :key="i" class="mb-3 animate-in slide-in-from-right-1 duration-200">
+                    <div class="flex items-start">
+                        <span class="trace-tag">#{{ l.tid }}</span>
+                        <span :class="l.color" class="flex-grow">
+                                <span v-if="l.indent" class="inline-block" :style="{width: l.indent + 'px'}"></span>
+                                {{ l.content }}
+                            </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+    const {createApp, ref, reactive, computed} = Vue;
+    createApp({
+        setup() {
+            const cycleCount = ref(1);
+            const activeId = ref('order-plugin');
+            const canaryPct = ref(25);
+            const isAuto = ref(false);
+            const ipcEnabled = ref(true);
+            const lastAudit = ref(null);
+            const logs = ref([]);
+            const stats = reactive({total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0});
+            let timer = null;
+
+            const plugins = ref([
+                {
+                    id: 'order-plugin',
+                    versions: ['v1.0.0'],
+                    status: 'ACTIVE',
+                    perms: {dbRead: true, dbWrite: true, cacheRead: true, cacheWrite: true}
+                },
+                {
+                    id: 'user-plugin',
+                    versions: ['v1.0.0', 'v1.1.0-b'],
+                    status: 'ACTIVE',
+                    perms: {dbRead: true, dbWrite: false, cacheRead: true, cacheWrite: true}
+                },
+                {
+                    id: 'pay-service',
+                    versions: ['v0.9.0'],
+                    status: 'UNLOADED',
+                    perms: {dbRead: false, dbWrite: false, cacheRead: false, cacheWrite: false}
+                }
+            ]);
+
+            const activePlugin = computed(() => plugins.value.find(p => p.id === activeId.value));
+            const filteredLogs = computed(() => logs.value.filter(l => l.plugin === activeId.value));
+
+            const pushLog = (tid, plugin, content, color = 'text-slate-400', indent = 0) => {
+                logs.value.unshift({tid, plugin, content, color, indent});
+                if (logs.value.length > 60) logs.value.pop();
+            };
+
+            const executeRequest = (type = 'NORMAL', action = null) => {
+                if (!activePlugin.value || activePlugin.value.status !== 'ACTIVE') return;
+                const tid = Math.random().toString(16).substring(2, 8).toUpperCase();
+                const pid = activeId.value;
+                stats.total++;
+                pushLog(tid, pid, "→ 网关接入外部请求", "text-slate-500");
+                const isCanary = Math.random() * 100 < canaryPct.value;
+                setTimeout(() => {
+                    const ver = isCanary && activePlugin.value.versions[1] ? activePlugin.value.versions[1] : activePlugin.value.versions[0];
+                    pushLog(tid, pid, `  ↳ 路由策略匹配: ${ver}`, isCanary ? 'text-amber-400' : 'text-blue-400', 10);
+                    if (isCanary && activePlugin.value.versions[1]) stats.v2++; else stats.v1++;
+                    updateStats();
+                    if (type === 'AUDIT') {
+                        const hasPerm = activePlugin.value.perms[action];
+                        pushLog(tid, pid, `    ↳ 内核执行资源审计: ${action}`, "text-indigo-400", 20);
+                        setTimeout(() => {
+                            if (hasPerm) {
+                                pushLog(tid, pid, `      ✓ 访问准许 (Approved)`, "text-emerald-500", 30);
+                                lastAudit.value = {ok: true, msg: `[${tid}] 资源 ${action} 访问成功并记入审计日志。`};
+                            } else {
+                                pushLog(tid, pid, `      ✗ 拒绝访问 (Forbidden)`, "text-red-500 font-bold", 30);
+                                lastAudit.value = {
+                                    ok: false,
+                                    msg: `[${tid}] SecurityException: 内核已阻断非授权资源访问。`
+                                };
+                            }
+                        }, 100);
+                    }
+                }, 100);
+            };
+
+            const simulateIPC = (target) => {
+                const tid = Math.random().toString(16).substring(2, 8).toUpperCase();
+                const pid = activeId.value;
+                const canCall = (ipcEnabled.value && pid === 'order-plugin' && target === 'user-plugin');
+                pushLog(tid, pid, `→ [IPC] ${pid} 发起服务请求: ${target}`, "text-amber-300");
+                setTimeout(() => {
+                    pushLog(tid, pid, `  ↳ 内核: 执行 IPC 运行时鉴权...`, "text-slate-500", 10);
+                    setTimeout(() => {
+                        if (canCall) {
+                            pushLog(tid, pid, `    ✓ 鉴权通过, 透传 Context`, "text-emerald-500", 20);
+                            pushLog(tid, target, `      ↳ [Service] ${target} 处理内部请求`, "text-blue-400", 30);
+                            lastAudit.value = {ok: true, msg: `跨插件调用成功：已通过内核代理访问 ${target}。`};
+                        } else {
+                            pushLog(tid, pid, `    ✗ 拦截: IPC 访问策略未放行`, "text-red-500 font-bold", 20);
+                            lastAudit.value = {ok: false, msg: `IPC 失败: 内核已阻断插件间的通信链路。`};
+                        }
+                    }, 100);
+                }, 100);
+            };
+
+            const updateStats = () => {
+                stats.v1Pct = stats.total ? ((stats.v1 / stats.total) * 100).toFixed(1) : 0;
+                stats.v2Pct = stats.total ? ((stats.v2 / stats.total) * 100).toFixed(1) : 0;
+            };
+
+            const toggleAuto = () => {
+                isAuto.value = !isAuto.value;
+                if (isAuto.value) timer = setInterval(executeRequest, 400); else clearInterval(timer);
+            };
+            const simulate = (act) => executeRequest('AUDIT', act);
+            const statusColor = (s) => ({
+                'ACTIVE': 'bg-green-50 text-green-600 border-green-200',
+                'LOADED': 'bg-blue-50 text-blue-600 border-blue-200',
+                'UNLOADED': 'bg-slate-100 text-slate-400 border-slate-200'
+            }[s]);
+            const resetStats = () => {
+                Object.assign(stats, {total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0});
+                logs.value = [];
+                lastAudit.value = null;
+                if (isAuto.value) toggleAuto();
+            };
+
+            return {
+                activeId,
+                canaryPct,
+                isAuto,
+                ipcEnabled,
+                lastAudit,
+                logs,
+                stats,
+                plugins,
+                activePlugin,
+                filteredLogs,
+                toggleAuto,
+                simulate,
+                simulateIPC,
+                statusColor,
+                resetStats
+            };
+        }
+    }).mount('body');
+</script>
+</body>
+</html>
