@@ -1,6 +1,8 @@
 package com.lingframe.core.plugin;
 
 import com.lingframe.api.context.PluginContext;
+import com.lingframe.core.dto.TrafficStatsDTO;
+import com.lingframe.core.enums.PluginStatus;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
@@ -17,8 +19,11 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 /**
  * 插件运行时
@@ -58,6 +63,20 @@ public class PluginRuntime {
     // ===== 协调依赖 =====
     private final TrafficRouter router;
     private final GovernanceKernel governanceKernel;
+
+    // ===== 状态管理 =====
+    @Getter
+    private volatile PluginStatus status = PluginStatus.LOADED;
+
+    // ===== 流量统计 =====
+    private final AtomicLong totalRequests = new AtomicLong(0);
+    private final AtomicLong stableRequests = new AtomicLong(0);  // 稳定版命中
+    private final AtomicLong canaryRequests = new AtomicLong(0);  // 灰度版命中
+    private volatile long statsWindowStart = System.currentTimeMillis();
+
+    // ===== 安装时间 =====
+    @Getter
+    private final long installedAt = System.currentTimeMillis();
 
     public PluginRuntime(String pluginId,
                          PluginRuntimeConfig config,
@@ -100,6 +119,9 @@ public class PluginRuntime {
         // 🔥 注册组件的事件处理器
         registerEventHandlers();
 
+        // 初始状态设为 LOADED
+        this.status = PluginStatus.LOADED;
+
         log.info("[{}] PluginRuntime initialized", pluginId);
     }
 
@@ -139,6 +161,123 @@ public class PluginRuntime {
         });
     }
 
+    // ==================== 状态管理 ====================
+
+    /**
+     * 设置插件状态
+     */
+    public void setStatus(PluginStatus newStatus) {
+        PluginStatus oldStatus = this.status;
+        this.status = newStatus;
+        log.info("[{}] Status changed: {} -> {}", pluginId, oldStatus, newStatus);
+    }
+
+    /**
+     * 激活插件
+     */
+    public void activate() {
+        if (status == PluginStatus.ACTIVE) {
+            log.warn("[{}] Already active", pluginId);
+            return;
+        }
+
+        if (!instancePool.hasAvailableInstance()) {
+            throw new IllegalStateException("No available instance to activate");
+        }
+
+        setStatus(PluginStatus.ACTIVE);
+    }
+
+    /**
+     * 停用插件（保留实例，只是不接收流量）
+     */
+    public void deactivate() {
+        if (status == PluginStatus.LOADED) {
+            log.warn("[{}] Already deactivated", pluginId);
+            return;
+        }
+        setStatus(PluginStatus.LOADED);
+    }
+
+    // ==================== 流量统计 ====================
+
+    /**
+     * 记录请求（在路由后调用）
+     */
+    public void recordRequest(PluginInstance routedInstance) {
+        totalRequests.incrementAndGet();
+
+        PluginInstance defaultInstance = instancePool.getDefault();
+        if (routedInstance == defaultInstance) {
+            stableRequests.incrementAndGet();
+        } else {
+            canaryRequests.incrementAndGet();
+        }
+    }
+
+    /**
+     * 获取流量统计 DTO
+     */
+    public TrafficStatsDTO getTrafficStats() {
+        long total = totalRequests.get();
+        long stable = stableRequests.get();
+        long canary = canaryRequests.get();
+
+        return TrafficStatsDTO.builder()
+                .pluginId(pluginId)
+                .totalRequests(total)
+                .v1Requests(stable)
+                .v2Requests(canary)
+                .v1Percent(total > 0 ? (stable * 100.0 / total) : 0)
+                .v2Percent(total > 0 ? (canary * 100.0 / total) : 0)
+                .windowStartTime(statsWindowStart)
+                .build();
+    }
+
+    /**
+     * 重置统计
+     */
+    public void resetTrafficStats() {
+        totalRequests.set(0);
+        stableRequests.set(0);
+        canaryRequests.set(0);
+        statsWindowStart = System.currentTimeMillis();
+        log.info("[{}] Traffic stats reset", pluginId);
+    }
+
+    // ==================== 版本信息 ====================
+
+    /**
+     * 获取所有已部署版本
+     */
+    public List<String> getAllVersions() {
+        return instancePool.getActiveInstances().stream()
+                .map(inst -> inst.getDefinition().getVersion())
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 获取灰度版本（非默认的第一个版本）
+     */
+    public String getCanaryVersion() {
+        PluginInstance defaultInst = instancePool.getDefault();
+        String defaultVersion = defaultInst != null ? defaultInst.getDefinition().getVersion() : null;
+
+        return instancePool.getActiveInstances().stream()
+                .map(inst -> inst.getDefinition().getVersion())
+                .filter(v -> !Objects.equals(v, defaultVersion))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * 是否有灰度版本
+     */
+    public boolean hasCanaryVersion() {
+        return getCanaryVersion() != null;
+    }
+
     // ==================== 生命周期（委托）====================
 
     /**
@@ -165,7 +304,15 @@ public class PluginRuntime {
      * 执行服务调用
      */
     public Object invoke(String callerPluginId, String fqsid, Object[] args) throws Exception {
+        // 状态检查
+        if (status != PluginStatus.ACTIVE) {
+            throw new IllegalStateException("Plugin not active: " + pluginId);
+        }
+
         PluginInstance instance = routeToAvailableInstance(fqsid);
+
+        // 🔥 记录流量统计
+        recordRequest(instance);
 
         ServiceRegistry.InvokableService service = serviceRegistry.getService(fqsid);
         if (service == null) {
@@ -211,7 +358,9 @@ public class PluginRuntime {
      * 运行时是否可用
      */
     public boolean isAvailable() {
-        return !lifecycleManager.isShutdown() && instancePool.hasAvailableInstance();
+        return status == PluginStatus.ACTIVE &&
+                !lifecycleManager.isShutdown() &&
+                instancePool.hasAvailableInstance();
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.lingframe.core.plugin;
 
+import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.config.PluginDefinition;
 import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.event.lifecycle.PluginInstalledEvent;
@@ -10,11 +11,17 @@ import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.CorePluginContext;
+import com.lingframe.core.dto.CanaryConfigDTO;
+import com.lingframe.core.dto.PluginInfoDTO;
+import com.lingframe.core.dto.TrafficStatsDTO;
+import com.lingframe.core.enums.PluginStatus;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.governance.DefaultTransactionVerifier;
+import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
+import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.spi.*;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +32,7 @@ import java.lang.reflect.Proxy;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * 插件生命周期管理器
@@ -89,6 +97,7 @@ public class PluginManager {
     // ==================== 基础设施 ====================
 
     private final LingFrameConfig lingFrameConfig;
+    private final LocalGovernanceRegistry localGovernanceRegistry;
     private final ScheduledExecutorService scheduler;
     private final ExecutorService pluginExecutor;
     private final AtomicInteger threadNumber = new AtomicInteger(1);
@@ -103,7 +112,8 @@ public class PluginManager {
                          PluginServiceInvoker pluginServiceInvoker,
                          TransactionVerifier transactionVerifier,
                          List<ThreadLocalPropagator> propagators,
-                         LingFrameConfig lingFrameConfig) {
+                         LingFrameConfig lingFrameConfig,
+                         LocalGovernanceRegistry localGovernanceRegistry) {
         // 核心依赖
         this.containerFactory = containerFactory;
         this.pluginLoaderFactory = pluginLoaderFactory;
@@ -133,6 +143,7 @@ public class PluginManager {
 
         // 配置
         this.lingFrameConfig = lingFrameConfig;
+        this.localGovernanceRegistry = localGovernanceRegistry;
 
         // 基础设施
         this.scheduler = createScheduler();
@@ -612,5 +623,166 @@ public class PluginManager {
             executor.shutdownNow();
             Thread.currentThread().interrupt();
         }
+    }
+
+    /**
+     * 获取插件完整信息 (供 Dashboard 使用)
+     */
+    public PluginInfoDTO getPluginInfo(String pluginId) {
+        PluginRuntime runtime = runtimes.get(pluginId);
+        if (runtime == null) {
+            return null;
+        }
+
+        CanaryRouter.CanaryConfig canaryConfig = trafficRouter.getCanaryConfig(pluginId);
+
+        // 获取资源权限
+        PluginInfoDTO.ResourcePermissions perms = getResourcePermissions(pluginId);
+
+        return PluginInfoDTO.builder()
+                .pluginId(pluginId)
+                .status(runtime.getStatus().name())
+                .versions(runtime.getAllVersions())
+                .activeVersion(runtime.getVersion())
+                .canaryPercent(canaryConfig.percent())
+                .canaryVersion(canaryConfig.canaryVersion())
+                .permissions(perms)
+                .installedAt(runtime.getInstalledAt())
+                .build();
+    }
+
+    /**
+     * 获取所有插件信息
+     */
+    public List<PluginInfoDTO> getAllPluginInfos() {
+        return runtimes.keySet().stream()
+                .map(this::getPluginInfo)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 更新插件状态
+     */
+    public void updatePluginStatus(String pluginId, PluginStatus newStatus) {
+        PluginRuntime runtime = runtimes.get(pluginId);
+        if (runtime == null) {
+            throw new IllegalArgumentException("Plugin not found: " + pluginId);
+        }
+
+        PluginStatus current = runtime.getStatus();
+
+        // 状态转换验证
+        if (!isValidTransition(current, newStatus)) {
+            throw new IllegalStateException(
+                    String.format("Invalid status transition: %s -> %s", current, newStatus));
+        }
+
+        switch (newStatus) {
+            case ACTIVE:
+                runtime.setStatus(PluginStatus.STARTING);
+                // 执行激活逻辑
+                runtime.activate();
+                runtime.setStatus(PluginStatus.ACTIVE);
+                break;
+            case LOADED:
+                runtime.setStatus(PluginStatus.STOPPING);
+                // 执行停止逻辑 (但不卸载)
+                runtime.deactivate();
+                runtime.setStatus(PluginStatus.LOADED);
+                break;
+            case UNLOADED:
+                uninstall(pluginId);
+                break;
+            default:
+                throw new IllegalArgumentException("Unsupported status: " + newStatus);
+        }
+
+//        eventBus.publish(new PluginStatusChangedEvent(pluginId, current, newStatus));
+    }
+
+    private boolean isValidTransition(PluginStatus from, PluginStatus to) {
+        // 简化的状态机验证
+        return switch (from) {
+            case UNLOADED -> to == PluginStatus.LOADING || to == PluginStatus.LOADED;
+            case LOADED -> to == PluginStatus.ACTIVE || to == PluginStatus.UNLOADED;
+            case ACTIVE -> to == PluginStatus.LOADED || to == PluginStatus.UNLOADED;
+            default -> false;
+        };
+    }
+
+    /**
+     * 设置灰度配置
+     */
+    public void setCanaryConfig(String pluginId, int percent, String canaryVersion) {
+        if (trafficRouter instanceof CanaryRouter canaryRouter) {
+            canaryRouter.setCanaryConfig(pluginId, percent, canaryVersion);
+        } else {
+            throw new UnsupportedOperationException("TrafficRouter does not support canary");
+        }
+    }
+
+    /**
+     * 获得灰度配置
+     */
+    public CanaryConfigDTO getCanaryConfig(String pluginId) {
+        if (trafficRouter instanceof CanaryRouter canaryRouter) {
+            CanaryRouter.CanaryConfig canaryConfig = canaryRouter.getCanaryConfig(pluginId);
+            return new CanaryConfigDTO(canaryConfig.percent(), canaryConfig.canaryVersion());
+        } else {
+            throw new UnsupportedOperationException("TrafficRouter does not support canary");
+        }
+    }
+
+    /**
+     * 获取流量统计
+     */
+    public TrafficStatsDTO getTrafficStats(String pluginId) {
+        PluginRuntime runtime = runtimes.get(pluginId);
+        if (runtime == null) {
+            throw new IllegalArgumentException("Plugin not found: " + pluginId);
+        }
+        return runtime.getTrafficStats();
+    }
+
+    /**
+     * 重置流量统计
+     */
+    public void resetTrafficStats(String pluginId) {
+        PluginRuntime runtime = runtimes.get(pluginId);
+        if (runtime == null) {
+            throw new IllegalArgumentException("Plugin not found: " + pluginId);
+        }
+        runtime.resetTrafficStats();
+    }
+
+    /**
+     * 获取资源权限配置
+     */
+    private PluginInfoDTO.ResourcePermissions getResourcePermissions(String pluginId) {
+        GovernancePolicy policy = localGovernanceRegistry.getPatch(pluginId);
+
+        PluginInfoDTO.ResourcePermissions.ResourcePermissionsBuilder builder =
+                PluginInfoDTO.ResourcePermissions.builder();
+
+        if (policy != null && policy.getPermissions() != null) {
+            for (GovernancePolicy.PermissionRule rule : policy.getPermissions()) {
+                String perm = rule.getPermissionId();
+                if (perm != null) {
+                    switch (perm) {
+                        case "resource:db:read" -> builder.dbRead(true);
+                        case "resource:db:write" -> builder.dbWrite(true);
+                        case "resource:cache:read" -> builder.cacheRead(true);
+                        case "resource:cache:write" -> builder.cacheWrite(true);
+                        case "resource:db:read:deny" -> builder.dbRead(false);
+                        case "resource:db:write:deny" -> builder.dbWrite(false);
+                        case "resource:cache:read:deny" -> builder.cacheRead(false);
+                        case "resource:cache:write:deny" -> builder.cacheWrite(false);
+                    }
+                }
+            }
+        }
+
+        return builder.build();
     }
 }

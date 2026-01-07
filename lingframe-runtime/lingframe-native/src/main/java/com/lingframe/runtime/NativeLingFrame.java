@@ -7,10 +7,12 @@ import com.lingframe.core.context.CorePluginContext;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.governance.DefaultTransactionVerifier;
 import com.lingframe.core.governance.GovernanceArbitrator;
+import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.invoker.DefaultPluginServiceInvoker;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.loader.PluginDiscoveryService;
 import com.lingframe.core.plugin.PluginManager;
+import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.security.DefaultPermissionService;
@@ -63,12 +65,14 @@ public class NativeLingFrame {
         DefaultPluginLoaderFactory loaderFactory = new DefaultPluginLoaderFactory();
 
         // 准备治理组件
-        LabelMatchRouter trafficRouter = new LabelMatchRouter();
+        CanaryRouter trafficRouter = new CanaryRouter(new LabelMatchRouter());
         DefaultPluginServiceInvoker serviceInvoker = new DefaultPluginServiceInvoker();
         DefaultTransactionVerifier txVerifier = new DefaultTransactionVerifier();
 
         // 创建 Native 专用的容器工厂
         NativeContainerFactory containerFactory = new NativeContainerFactory();
+
+        LocalGovernanceRegistry localGovernanceRegistry = new LocalGovernanceRegistry(eventBus);
 
         // 组装 PluginManager
         // 注意：这里需要传入 Core 需要的所有组件
@@ -83,7 +87,8 @@ public class NativeLingFrame {
                 serviceInvoker,
                 txVerifier,
                 Collections.emptyList(), // 无 ThreadLocal 传播器
-                config
+                config,
+                localGovernanceRegistry
         );
 
         // 注册一个特殊的 "host-app" 上下文

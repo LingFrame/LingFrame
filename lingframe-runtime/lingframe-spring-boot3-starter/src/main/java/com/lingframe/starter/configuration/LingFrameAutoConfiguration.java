@@ -16,6 +16,7 @@ import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.loader.PluginDiscoveryService;
 import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.core.plugin.PluginRuntimeConfig;
+import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.*;
@@ -135,7 +136,7 @@ public class LingFrameAutoConfiguration {
 
     @Bean
     public TrafficRouter trafficRouter() {
-        return new LabelMatchRouter();
+        return new CanaryRouter(new LabelMatchRouter());
     }
 
     @Bean
@@ -196,7 +197,8 @@ public class LingFrameAutoConfiguration {
                                        PluginServiceInvoker pluginServiceInvoker,
                                        ObjectProvider<TransactionVerifier> transactionVerifierProvider,
                                        ObjectProvider<List<ThreadLocalPropagator>> propagatorsProvider,
-                                       LingFrameConfig lingFrameConfig) {
+                                       LingFrameConfig lingFrameConfig,
+                                       LocalGovernanceRegistry localGovernanceRegistry) {
 
         // 获取可选 Bean
         TransactionVerifier transactionVerifier = transactionVerifierProvider.getIfAvailable();
@@ -205,7 +207,7 @@ public class LingFrameAutoConfiguration {
 
         return new PluginManager(containerFactory, permissionService, governanceKernel,
                 pluginLoaderFactory, verifiers, eventBus, trafficRouter, pluginServiceInvoker,
-                transactionVerifier, propagators, lingFrameConfig);
+                transactionVerifier, propagators, lingFrameConfig, localGovernanceRegistry);
     }
 
     /**

@@ -16,7 +16,7 @@ lingframe:
     - lingframe-examples/lingframe-example-plugin-order
     - lingframe-examples/lingframe-example-plugin-user
   host-governance:
-    enabled: true
+    enabled: false
     govern-internal-calls: true
     check-permissions: true
 

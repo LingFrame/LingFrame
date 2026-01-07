@@ -4,6 +4,7 @@ import com.lingframe.api.config.PluginDefinition;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.spi.*;
 import lombok.NonNull;
@@ -64,6 +65,9 @@ public class PluginManagerTest {
     @Mock
     private TransactionVerifier transactionVerifier;
 
+    @Mock
+    private LocalGovernanceRegistry localGovernanceRegistry;
+
     private PluginManager pluginManager;
 
     @BeforeEach
@@ -95,7 +99,8 @@ public class PluginManagerTest {
                 pluginServiceInvoker,
                 transactionVerifier,
                 Collections.emptyList(),
-                lingFrameConfig
+                lingFrameConfig,
+                localGovernanceRegistry
         );
     }
 
@@ -1024,7 +1029,8 @@ public class PluginManagerTest {
                 pluginServiceInvoker,
                 transactionVerifier,
                 Collections.emptyList(),
-                lingFrameConfig
+                lingFrameConfig,
+                localGovernanceRegistry
         );
     }
 
@@ -1108,7 +1114,8 @@ public class PluginManagerTest {
                     pluginServiceInvoker,
                     transactionVerifier,
                     Collections.emptyList(),
-                    lingFrameConfig
+                    lingFrameConfig,
+                    localGovernanceRegistry
             );
 
             try {
@@ -1145,7 +1152,8 @@ public class PluginManagerTest {
                     containerFactory, permissionService, governanceKernel,
                     pluginLoaderFactory, List.of(selectiveVerifier),
                     eventBus, trafficRouter, pluginServiceInvoker,
-                    transactionVerifier, Collections.emptyList(), lingFrameConfig
+                    transactionVerifier, Collections.emptyList(), lingFrameConfig,
+                    localGovernanceRegistry
             );
 
             try {

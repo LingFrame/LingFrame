@@ -1,5 +1,6 @@
 package com.lingframe.starter.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.starter.model.LogStreamVO;
@@ -7,10 +8,11 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 
@@ -53,6 +55,9 @@ public class LogStreamService {
         scheduler.scheduleAtFixedRate(this::sendHeartbeat, 15, 15, TimeUnit.SECONDS);
     }
 
+    /**
+     * 创建新的 SSE 连接
+     */
     public SseEmitter createEmitter() {
         // timeout = 0 表示不过期 (由心跳维持)
         SseEmitter emitter = new SseEmitter(0L);
@@ -62,7 +67,7 @@ public class LogStreamService {
         emitter.onError((e) -> removeEmitter(emitter));
 
         emitters.add(emitter);
-        log.debug("New SSE connection. Current active: {}", emitters.size());
+        log.info("New SSE connection. Current active: {}", emitters.size());
         return emitter;
     }
 
@@ -100,13 +105,18 @@ public class LogStreamService {
 
         // 异步提交给分发线程，不阻塞当前业务线程 (Core Kernel)
         dispatcher.submit(() -> {
+            List<SseEmitter> dead = new ArrayList<>();
             for (SseEmitter emitter : emitters) {
                 try {
-                    emitter.send(SseEmitter.event().name("log-event").data(vo));
-                } catch (IOException | IllegalStateException e) {
-                    removeEmitter(emitter);
+                    emitter.send(SseEmitter.event()
+                            .name("log-event")
+                            .data(vo, MediaType.APPLICATION_JSON));
+                } catch (Exception e) {
+                    log.debug("SSE send failed: {}", e.getMessage());
+                    dead.add(emitter);
                 }
             }
+            emitters.removeAll(dead);
         });
     }
 
