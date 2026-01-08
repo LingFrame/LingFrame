@@ -26,6 +26,7 @@
         <module>lingframe-runtime</module>
         <module>lingframe-plugins-infra</module>
         <module>lingframe-examples</module>
+        <module>lingframe-dashboard</module>
     </modules>
 
     <build>

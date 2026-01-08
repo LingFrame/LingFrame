@@ -1,7 +1,6 @@
 package com.lingframe.core.plugin;
 
 import com.lingframe.api.context.PluginContext;
-import com.lingframe.core.dto.TrafficStatsDTO;
 import com.lingframe.core.enums.PluginStatus;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.kernel.GovernanceKernel;
@@ -69,9 +68,13 @@ public class PluginRuntime {
     private volatile PluginStatus status = PluginStatus.LOADED;
 
     // ===== 流量统计 =====
+    @Getter
     private final AtomicLong totalRequests = new AtomicLong(0);
+    @Getter
     private final AtomicLong stableRequests = new AtomicLong(0);  // 稳定版命中
+    @Getter
     private final AtomicLong canaryRequests = new AtomicLong(0);  // 灰度版命中
+    @Getter
     private volatile long statsWindowStart = System.currentTimeMillis();
 
     // ===== 安装时间 =====
@@ -213,25 +216,6 @@ public class PluginRuntime {
         } else {
             canaryRequests.incrementAndGet();
         }
-    }
-
-    /**
-     * 获取流量统计 DTO
-     */
-    public TrafficStatsDTO getTrafficStats() {
-        long total = totalRequests.get();
-        long stable = stableRequests.get();
-        long canary = canaryRequests.get();
-
-        return TrafficStatsDTO.builder()
-                .pluginId(pluginId)
-                .totalRequests(total)
-                .v1Requests(stable)
-                .v2Requests(canary)
-                .v1Percent(total > 0 ? (stable * 100.0 / total) : 0)
-                .v2Percent(total > 0 ? (canary * 100.0 / total) : 0)
-                .windowStartTime(statsWindowStart)
-                .build();
     }
 
     /**

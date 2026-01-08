@@ -2,7 +2,6 @@ package com.lingframe.core.spi;
 
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.plugin.PluginInstance;
-import com.lingframe.core.router.CanaryRouter;
 
 import java.util.List;
 
@@ -16,10 +15,6 @@ public interface TrafficRouter {
     // 供 CanaryRouter 实现
     default void setCanaryConfig(String pluginId, int percent, String canaryVersion) {
         // 默认空实现，CanaryRouter 会覆盖
-    }
-
-    default CanaryRouter.CanaryConfig getCanaryConfig(String pluginId) {
-        return null;
     }
 
     default int getCanaryPercent(String pluginId) {

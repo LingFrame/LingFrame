@@ -1,8 +1,12 @@
-package com.lingframe.core.dto;
+package com.lingframe.dashboard.dto;
 
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder

@@ -1,4 +1,4 @@
-package com.lingframe.core.router;
+package com.lingframe.dashboard.router;
 
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.plugin.PluginInstance;
@@ -10,6 +10,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
+/**
+ * 金丝雀灰度路由实现
+ */
 @Slf4j
 public class CanaryRouter implements TrafficRouter {
 
@@ -81,6 +84,7 @@ public class CanaryRouter implements TrafficRouter {
     /**
      * 获取灰度比例
      */
+    @Override
     public int getCanaryPercent(String pluginId) {
         CanaryConfig config = canaryConfigs.get(pluginId);
         return config != null ? config.percent : 0;

@@ -35,6 +35,11 @@
             <!-- 运行时集成 -->
             <dependency>
                 <groupId>com.lingframe</groupId>
+                <artifactId>lingframe-native</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.lingframe</groupId>
                 <artifactId>lingframe-spring-boot3-starter</artifactId>
                 <version>${revision}</version>
             </dependency>
@@ -48,6 +53,13 @@
             <dependency>
                 <groupId>com.lingframe</groupId>
                 <artifactId>lingframe-plugin-cache</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- 可视化治理中心 -->
+            <dependency>
+                <groupId>com.lingframe</groupId>
+                <artifactId>lingframe-dashboard</artifactId>
                 <version>${revision}</version>
             </dependency>
         </dependencies>

@@ -20,6 +20,8 @@
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- 添加编译参数 -->
+        <maven.compiler.parameters>true</maven.compiler.parameters>
 
         <!-- Spring Boot 版本 -->
         <spring-boot.version>3.5.6</spring-boot.version>
@@ -87,6 +89,11 @@
             <!-- 运行时集成 -->
             <dependency>
                 <groupId>com.lingframe</groupId>
+                <artifactId>lingframe-native</artifactId>
+                <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.lingframe</groupId>
                 <artifactId>lingframe-spring-boot3-starter</artifactId>
                 <version>${revision}</version>
             </dependency>
@@ -100,6 +107,13 @@
             <dependency>
                 <groupId>com.lingframe</groupId>
                 <artifactId>lingframe-plugin-cache</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- 可视化治理中心 -->
+            <dependency>
+                <groupId>com.lingframe</groupId>
+                <artifactId>lingframe-dashboard</artifactId>
                 <version>${revision}</version>
             </dependency>
 

@@ -19,4 +19,6 @@ lingframe:
     enabled: false
     govern-internal-calls: true
     check-permissions: true
+  dashboard:
+    enabled: true
 

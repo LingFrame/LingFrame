@@ -1,8 +1,8 @@
-package com.lingframe.starter.controller;
+package com.lingframe.dashboard.controller;
 
 import com.lingframe.api.config.GovernancePolicy;
-import com.lingframe.core.dto.ApiResponse;
-import com.lingframe.core.dto.ResourcePermissionDTO;
+import com.lingframe.dashboard.dto.ApiResponse;
+import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,9 +14,14 @@ import java.util.Map;
 @Slf4j
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/lingframe/governance")
+@RequestMapping("/lingframe/dashboard/governance")
 @CrossOrigin(origins = "*")  // 开发阶段允许跨域
-@ConditionalOnProperty(prefix = "lingframe", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(
+        prefix = "lingframe.dashboard",
+        name = "enabled",
+        havingValue = "true",
+        matchIfMissing = false
+)
 public class GovernanceController {
 
     private final LocalGovernanceRegistry registry;
@@ -37,7 +42,7 @@ public class GovernanceController {
     /**
      * 获取指定插件的治理策略
      */
-    @GetMapping("/patch/{pluginId}")
+    @GetMapping("/{pluginId}")
     public ApiResponse<GovernancePolicy> getPatch(@PathVariable String pluginId) {
         try {
             GovernancePolicy policy = registry.getPatch(pluginId);
@@ -67,7 +72,7 @@ public class GovernanceController {
     /**
      * 更新资源权限 (简化接口，供 Dashboard 使用)
      */
-    @PostMapping("/plugins/{pluginId}/permissions")
+    @PostMapping("/{pluginId}/permissions")
     public ApiResponse<ResourcePermissionDTO> updatePermissions(
             @PathVariable String pluginId,
             @RequestBody ResourcePermissionDTO dto) {

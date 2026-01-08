@@ -12,7 +12,6 @@ import com.lingframe.core.invoker.DefaultPluginServiceInvoker;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.loader.PluginDiscoveryService;
 import com.lingframe.core.plugin.PluginManager;
-import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.security.DefaultPermissionService;
@@ -65,7 +64,6 @@ public class NativeLingFrame {
         DefaultPluginLoaderFactory loaderFactory = new DefaultPluginLoaderFactory();
 
         // 准备治理组件
-        CanaryRouter trafficRouter = new CanaryRouter(new LabelMatchRouter());
         DefaultPluginServiceInvoker serviceInvoker = new DefaultPluginServiceInvoker();
         DefaultTransactionVerifier txVerifier = new DefaultTransactionVerifier();
 
@@ -83,7 +81,7 @@ public class NativeLingFrame {
                 loaderFactory,
                 Collections.singletonList(new DangerousApiVerifier()), // 默认安全验证
                 eventBus,
-                trafficRouter,
+                new LabelMatchRouter(),
                 serviceInvoker,
                 txVerifier,
                 Collections.emptyList(), // 无 ThreadLocal 传播器

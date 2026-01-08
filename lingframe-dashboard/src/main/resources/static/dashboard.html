@@ -10,9 +10,7 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap');
 
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
         body {
             background-color: #0f172a;
@@ -20,9 +18,7 @@
             font-family: -apple-system, system-ui, sans-serif;
         }
 
-        .font-mono {
-            font-family: 'JetBrains Mono', monospace;
-        }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
 
         /* 侧边栏 */
         .sidebar {
@@ -44,11 +40,7 @@
             border-left: 3px solid transparent;
         }
 
-        .sidebar-item:hover {
-            background: #334155;
-            color: #fff;
-        }
-
+        .sidebar-item:hover { background: #334155; color: #fff; }
         .sidebar-item.active {
             background: linear-gradient(90deg, rgba(59, 130, 246, 0.1) 0%, transparent 100%);
             color: #3b82f6;
@@ -78,18 +70,12 @@
             transition: all 0.2s;
         }
 
-        .plugin-item:hover {
-            background: #334155;
-        }
-
+        .plugin-item:hover { background: #334155; }
         .plugin-item.active {
             background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, transparent 100%);
             border-left: 3px solid #3b82f6;
         }
-
-        .plugin-item:last-child {
-            border-bottom: none;
-        }
+        .plugin-item:last-child { border-bottom: none; }
 
         /* 滑块 */
         .slider-custom {
@@ -157,30 +143,11 @@
         }
 
         /* 状态标签 */
-        .status-active {
-            background: #065f46;
-            color: #34d399;
-        }
-
-        .status-loaded {
-            background: #1e40af;
-            color: #60a5fa;
-        }
-
-        .status-unloaded {
-            background: #374151;
-            color: #9ca3af;
-        }
-
-        .status-loading {
-            background: #854d0e;
-            color: #fcd34d;
-        }
-
-        .status-error {
-            background: #7f1d1d;
-            color: #fca5a5;
-        }
+        .status-active { background: #065f46; color: #34d399; }
+        .status-loaded { background: #1e40af; color: #60a5fa; }
+        .status-unloaded { background: #374151; color: #9ca3af; }
+        .status-loading { background: #854d0e; color: #fcd34d; }
+        .status-error { background: #7f1d1d; color: #fca5a5; }
 
         /* 权限按钮 */
         .perm-btn {
@@ -192,20 +159,9 @@
             cursor: pointer;
         }
 
-        .perm-btn.on {
-            background: #059669;
-            color: #fff;
-        }
-
-        .perm-btn.off {
-            background: #475569;
-            color: #94a3b8;
-        }
-
-        .perm-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+        .perm-btn.on { background: #059669; color: #fff; }
+        .perm-btn.off { background: #475569; color: #94a3b8; }
+        .perm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* 指标卡片 */
         .metric-card {
@@ -227,12 +183,11 @@
             align-items: center;
             justify-content: center;
             gap: 6px;
+            cursor: pointer;
+            border: none;
         }
 
-        .action-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* 模态框 */
         .modal-overlay {
@@ -263,20 +218,9 @@
             text-transform: uppercase;
         }
 
-        .env-dev {
-            background: #1e40af;
-            color: #93c5fd;
-        }
-
-        .env-test {
-            background: #7c2d12;
-            color: #fdba74;
-        }
-
-        .env-prod {
-            background: #7f1d1d;
-            color: #fca5a5;
-        }
+        .env-dev { background: #1e40af; color: #93c5fd; }
+        .env-test { background: #7c2d12; color: #fdba74; }
+        .env-prod { background: #7f1d1d; color: #fca5a5; }
 
         /* 加载状态 */
         .loading-overlay {
@@ -287,6 +231,7 @@
             align-items: center;
             justify-content: center;
             z-index: 10;
+            border-radius: 12px;
         }
 
         .spinner {
@@ -299,9 +244,7 @@
         }
 
         @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
+            to { transform: rotate(360deg); }
         }
 
         /* 连接状态 */
@@ -311,27 +254,13 @@
             border-radius: 50%;
         }
 
-        .connection-dot.connected {
-            background: #22c55e;
-            animation: pulse 2s infinite;
-        }
-
-        .connection-dot.disconnected {
-            background: #ef4444;
-        }
-
-        .connection-dot.connecting {
-            background: #f59e0b;
-            animation: pulse 1s infinite;
-        }
+        .connection-dot.connected { background: #22c55e; animation: pulse 2s infinite; }
+        .connection-dot.disconnected { background: #ef4444; }
+        .connection-dot.connecting { background: #f59e0b; animation: pulse 1s infinite; }
 
         @keyframes pulse {
-            0%, 100% {
-                opacity: 1;
-            }
-            50% {
-                opacity: 0.5;
-            }
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
 
         /* Toast 通知 */
@@ -356,88 +285,31 @@
             animation: slideIn 0.3s ease;
         }
 
-        .toast-success {
-            background: #065f46;
-            color: #34d399;
-            border: 1px solid #059669;
-        }
-
-        .toast-error {
-            background: #7f1d1d;
-            color: #fca5a5;
-            border: 1px solid #dc2626;
-        }
-
-        .toast-info {
-            background: #1e40af;
-            color: #93c5fd;
-            border: 1px solid #3b82f6;
-        }
+        .toast-success { background: #065f46; color: #34d399; border: 1px solid #059669; }
+        .toast-error { background: #7f1d1d; color: #fca5a5; border: 1px solid #dc2626; }
+        .toast-info { background: #1e40af; color: #93c5fd; border: 1px solid #3b82f6; }
 
         @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
 
         /* 滚动条 */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: #1e293b;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: #475569;
-            border-radius: 3px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #64748b;
-        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 
         /* 响应式 */
-        @media (max-width: 1280px) {
-            .sidebar {
-                width: 200px;
-            }
-        }
-
+        @media (max-width: 1280px) { .sidebar { width: 200px; } }
         @media (max-width: 1024px) {
-            .sidebar {
-                position: fixed;
-                left: -240px;
-                top: 0;
-                bottom: 0;
-                z-index: 50;
-                transition: left 0.3s;
-            }
-
-            .sidebar.open {
-                left: 0;
-            }
-
-            .main-area {
-                margin-left: 0 !important;
-            }
+            .sidebar { position: fixed; left: -240px; top: 0; bottom: 0; z-index: 50; transition: left 0.3s; }
+            .sidebar.open { left: 0; }
+            .main-area { margin-left: 0 !important; }
         }
-
         @media (max-width: 768px) {
-            .metric-grid {
-                grid-template-columns: repeat(2, 1fr) !important;
-            }
-
-            .content-grid {
-                grid-template-columns: 1fr !important;
-            }
+            .metric-grid { grid-template-columns: repeat(2, 1fr) !important; }
+            .content-grid { grid-template-columns: 1fr !important; }
         }
     </style>
 </head>
@@ -485,12 +357,10 @@
     <aside class="sidebar" :class="{ open: sidebarOpen }">
         <div class="p-5 border-b border-slate-700">
             <div class="flex items-center gap-3">
-                <div class="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center font-bold text-white">
-                    L
-                </div>
+                <div class="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center font-bold text-white">L</div>
                 <div>
                     <h1 class="font-bold text-white text-sm">LingFrame</h1>
-                    <p class="text-[10px] text-slate-500">V0.1.0-Preview</p>
+                    <p class="text-[10px] text-slate-500">治理中心 v0.2.0</p>
                 </div>
             </div>
         </div>
@@ -498,8 +368,7 @@
         <!-- 环境选择 -->
         <div class="p-4 border-b border-slate-700">
             <label class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">当前环境</label>
-            <select v-model="currentEnv"
-                    class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white">
+            <select v-model="currentEnv" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white">
                 <option value="dev">开发环境</option>
                 <option value="test">测试环境</option>
                 <option value="prod">生产环境</option>
@@ -511,7 +380,7 @@
             <div class="text-[10px] text-slate-500 uppercase tracking-wider px-5 mb-2">核心功能</div>
             <div class="sidebar-item active">
                 <i class="fa-solid fa-gauge-high w-4"></i>
-                <span class="text-sm">治理中心</span>
+                <span class="text-sm">流量治理</span>
             </div>
         </nav>
 
@@ -537,7 +406,7 @@
                     <i class="fa-solid fa-bars"></i>
                 </button>
                 <div class="flex items-center gap-3">
-                    <span class="text-sm font-medium text-white">治理中心</span>
+                    <span class="text-sm font-medium text-white">流量治理</span>
                     <i class="fa-solid fa-chevron-right text-slate-600 text-xs"></i>
                     <span class="text-sm text-slate-400">{{ activeId || '未选择' }}</span>
                 </div>
@@ -567,12 +436,10 @@
                             <span class="text-xs text-slate-500">{{ plugins.length }} 个</span>
                         </div>
 
-                        <!-- 加载状态 -->
-                        <div v-if="loading.plugins && plugins.length === 0" class="loading-overlay rounded-b-xl">
+                        <div v-if="loading.plugins && plugins.length === 0" class="loading-overlay">
                             <div class="spinner"></div>
                         </div>
 
-                        <!-- 空状态 -->
                         <div v-if="!loading.plugins && plugins.length === 0" class="p-8 text-center">
                             <i class="fa-solid fa-puzzle-piece text-3xl text-slate-600 mb-3"></i>
                             <p class="text-sm text-slate-500">暂无已安装插件</p>
@@ -607,27 +474,30 @@
 
                     <!-- 流量分发 -->
                     <div class="card relative">
-                        <div v-if="loading.canary" class="loading-overlay rounded-xl">
+                        <div v-if="loading.canary" class="loading-overlay">
                             <div class="spinner"></div>
                         </div>
 
                         <div class="card-header">
                             <div class="flex items-center gap-3">
                                 <h3 class="font-bold text-sm text-white">流量分发</h3>
-                                <span v-if="!activePlugin"
-                                      class="text-[10px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">未选择</span>
-                                <span v-else-if="!canOperate"
-                                      class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded">未激活</span>
-                                <span v-else-if="canCanary"
-                                      class="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">灰度中</span>
-                                <span v-else
-                                      class="text-[10px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">单版本</span>
+                                <span v-if="!activePlugin" class="text-[10px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">未选择</span>
+                                <span v-else-if="!canOperate" class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded">未激活</span>
+                                <span v-else-if="canCanary" class="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">灰度中</span>
+                                <span v-else class="text-[10px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">单版本</span>
                             </div>
                             <div class="flex gap-2">
                                 <button @click="resetStats" :disabled="!activeId || loading.stats"
                                         class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
                                     <i class="fa-solid fa-rotate-right"></i>
                                     重置
+                                </button>
+                                <button @click="toggleAuto"
+                                        :disabled="!canOperate"
+                                        :class="isAuto ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'"
+                                        class="action-btn text-white text-xs">
+                                    <i :class="isAuto ? 'fa-solid fa-stop' : 'fa-solid fa-play'"></i>
+                                    {{ isAuto ? '停止' : '压测' }}
                                 </button>
                             </div>
                         </div>
@@ -657,8 +527,7 @@
                                     <input type="range" value="0" disabled class="slider-disabled">
                                     <p class="text-xs text-slate-500 mt-3 text-center">
                                         <i class="fa-solid fa-info-circle mr-1"></i>
-                                        {{ !activePlugin ? '请先选择插件' : !canOperate ? '插件未激活' : '当前插件仅有单一版本'
-                                        }}
+                                        {{ !activePlugin ? '请先选择插件' : !canOperate ? '插件未激活' : '当前插件仅有单一版本' }}
                                     </p>
                                 </template>
                             </div>
@@ -667,29 +536,23 @@
                             <div class="metric-grid grid grid-cols-4 gap-3">
                                 <div class="metric-card">
                                     <div class="text-[10px] text-slate-500 uppercase mb-1">Total</div>
-                                    <div class="text-xl font-bold text-white font-mono">{{ stats.totalRequests || 0 }}
-                                    </div>
+                                    <div class="text-xl font-bold text-white font-mono">{{ stats.total }}</div>
                                 </div>
                                 <div class="metric-card border-blue-500/30">
                                     <div class="text-[10px] text-blue-400 uppercase mb-1">V1 Hit</div>
-                                    <div class="text-xl font-bold text-blue-400 font-mono">
-                                        {{ formatPercent(stats.v1Percent) }}%
-                                    </div>
+                                    <div class="text-xl font-bold text-blue-400 font-mono">{{ stats.v1Pct }}%</div>
                                 </div>
                                 <div class="metric-card" :class="canCanary && canOperate ? 'border-amber-500/30' : ''">
-                                    <div class="text-[10px] uppercase mb-1"
-                                         :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">V2 Hit
-                                    </div>
-                                    <div class="text-xl font-bold font-mono"
-                                         :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">
-                                        {{ canCanary && canOperate ? formatPercent(stats.v2Percent) + '%' : 'N/A' }}
+                                    <div class="text-[10px] uppercase mb-1" :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">V2 Hit</div>
+                                    <div class="text-xl font-bold font-mono" :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">
+                                        {{ canCanary && canOperate ? stats.v2Pct + '%' : 'N/A' }}
                                     </div>
                                 </div>
                                 <div class="metric-card">
                                     <div class="text-[10px] text-slate-500 uppercase mb-1">Drift</div>
                                     <div class="text-xl font-bold font-mono"
-                                         :class="canCanary && canOperate ? (Math.abs(stats.v2Percent - canaryPct) > 2 ? 'text-red-400' : 'text-green-400') : 'text-slate-500'">
-                                        {{ canCanary && canOperate ? formatDrift(stats.v2Percent - canaryPct) : 'N/A' }}
+                                         :class="canCanary && canOperate ? (Math.abs(stats.v2Pct - canaryPct) > 2 ? 'text-red-400' : 'text-green-400') : 'text-slate-500'">
+                                        {{ canCanary && canOperate ? formatDrift(stats.v2Pct - canaryPct) : 'N/A' }}
                                     </div>
                                 </div>
                             </div>
@@ -697,7 +560,7 @@
                     </div>
 
                     <!-- 日志追踪 -->
-                    <div class="card flex flex-col" style="height: 360px;">
+                    <div class="card flex flex-col relative" style="height: 360px;">
                         <div class="card-header flex-shrink-0">
                             <div class="flex items-center gap-3">
                                 <h3 class="font-bold text-sm text-white">追踪日志</h3>
@@ -723,11 +586,10 @@
                             </div>
                         </div>
                         <div ref="logContainer" @scroll="handleLogScroll"
-                             class="log-container flex-grow overflow-y-auto p-4 relative">
+                             class="log-container flex-grow overflow-y-auto p-4">
                             <div v-if="displayLogs.length === 0" class="text-slate-500 text-center py-12">
                                 <i class="fa-solid fa-inbox text-3xl mb-3 block"></i>
-                                <span class="text-xs">{{ sseStatus === 'connected' ? '等待日志...' : '连接中...'
-                                    }}</span>
+                                <span class="text-xs">{{ sseStatus === 'connected' ? '等待日志...' : '连接中...' }}</span>
                             </div>
                             <div v-for="l in displayLogs" :key="l.id" class="log-line">
                                 <span class="trace-tag">#{{ l.traceId?.substring(0, 6) || '------' }}</span>
@@ -737,12 +599,10 @@
                                     {{ getPluginShortName(l.pluginId) }}
                                 </span>
                                 <span :class="getLogColor(l)" class="flex-grow">
-                                    <span v-if="l.depth" class="inline-block"
-                                          :style="{width: (l.depth * 12) + 'px'}"></span>
+                                    <span v-if="l.depth" class="inline-block" :style="{width: (l.depth * 12) + 'px'}"></span>
                                     {{ l.content }}
                                 </span>
-                                <span class="text-[9px] text-slate-600 flex-shrink-0">{{ formatTime(l.timestamp)
-                                    }}</span>
+                                <span class="text-[9px] text-slate-600 flex-shrink-0">{{ formatTime(l.timestamp) }}</span>
                             </div>
                         </div>
                         <div v-if="isUserScrolling" @click="scrollToTop"
@@ -757,7 +617,7 @@
 
                     <!-- 插件控制 -->
                     <div class="card relative">
-                        <div v-if="loading.status" class="loading-overlay rounded-xl">
+                        <div v-if="loading.status" class="loading-overlay">
                             <div class="spinner"></div>
                         </div>
 
@@ -765,7 +625,6 @@
                             <h3 class="font-bold text-sm text-white">插件控制</h3>
                         </div>
                         <div class="p-4">
-                            <!-- 未选择提示 -->
                             <div v-if="!activePlugin" class="text-center py-6">
                                 <i class="fa-solid fa-hand-pointer text-2xl text-slate-600 mb-2"></i>
                                 <p class="text-xs text-slate-500">请在左侧选择插件</p>
@@ -805,19 +664,19 @@
                                     <label class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">资源权限</label>
                                     <div class="grid grid-cols-2 gap-2">
                                         <button @click="togglePerm('dbRead')" :disabled="loading.permissions"
-                                                :class="activePlugin?.permissions?.dbRead ? 'perm-btn on' : 'perm-btn off'">
+                                                :class="activePlugin?.permissions?.dbRead !== false ? 'perm-btn on' : 'perm-btn off'">
                                             <i class="fa-solid fa-database mr-1"></i> DB 读
                                         </button>
                                         <button @click="togglePerm('dbWrite')" :disabled="loading.permissions"
-                                                :class="activePlugin?.permissions?.dbWrite ? 'perm-btn on' : 'perm-btn off'">
+                                                :class="activePlugin?.permissions?.dbWrite !== false ? 'perm-btn on' : 'perm-btn off'">
                                             <i class="fa-solid fa-database mr-1"></i> DB 写
                                         </button>
                                         <button @click="togglePerm('cacheRead')" :disabled="loading.permissions"
-                                                :class="activePlugin?.permissions?.cacheRead ? 'perm-btn on' : 'perm-btn off'">
+                                                :class="activePlugin?.permissions?.cacheRead !== false ? 'perm-btn on' : 'perm-btn off'">
                                             <i class="fa-solid fa-bolt mr-1"></i> Cache 读
                                         </button>
                                         <button @click="togglePerm('cacheWrite')" :disabled="loading.permissions"
-                                                :class="activePlugin?.permissions?.cacheWrite ? 'perm-btn on' : 'perm-btn off'">
+                                                :class="activePlugin?.permissions?.cacheWrite !== false ? 'perm-btn on' : 'perm-btn off'">
                                             <i class="fa-solid fa-bolt mr-1"></i> Cache 写
                                         </button>
                                     </div>
@@ -826,7 +685,80 @@
                         </div>
                     </div>
 
-                    <!-- 快速信息 -->
+                    <!-- 功能演练 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="font-bold text-sm text-white">功能演练</h3>
+                            <span :class="canOperate ? 'text-green-400' : 'text-red-400'" class="text-[10px] font-bold">
+                                {{ canOperate ? '● READY' : '○ INACTIVE' }}
+                            </span>
+                        </div>
+                        <div class="p-4">
+                            <div v-if="!canOperate" class="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4 text-center">
+                                <i class="fa-solid fa-exclamation-circle text-red-400 mb-1"></i>
+                                <p class="text-xs text-red-400">插件未激活，请先激活</p>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 mb-4">
+                                <button @click="simulate('dbRead')" :disabled="!canOperate || loading.simulate"
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                    <i class="fa-solid fa-database"></i> 读DB
+                                </button>
+                                <button @click="simulate('dbWrite')" :disabled="!canOperate || loading.simulate"
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                    <i class="fa-solid fa-pen"></i> 写DB
+                                </button>
+                                <button @click="simulate('cacheRead')" :disabled="!canOperate || loading.simulate"
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                    <i class="fa-solid fa-bolt"></i> 读Cache
+                                </button>
+                                <button @click="simulate('cacheWrite')" :disabled="!canOperate || loading.simulate"
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                    <i class="fa-solid fa-bolt"></i> 写Cache
+                                </button>
+                            </div>
+
+                            <!-- IPC 测试 -->
+                            <div class="border-t border-slate-700 pt-4">
+                                <div class="flex items-center justify-between mb-3">
+                                    <span class="text-xs font-medium text-slate-400">IPC 授权</span>
+                                    <div @click="ipcEnabled = !ipcEnabled"
+                                         :class="ipcEnabled ? 'bg-green-500' : 'bg-slate-600'"
+                                         class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                                        <div :class="ipcEnabled ? 'translate-x-5' : 'translate-x-1'"
+                                             class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
+                                    </div>
+                                </div>
+                                <button @click="simulateIPC" :disabled="!canOperate || loading.simulate"
+                                        class="w-full action-btn bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-600/30 text-xs">
+                                    <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                                    IPC: {{ activeId || '-' }} → {{ ipcTarget }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 审计结果 -->
+                    <div v-if="lastAudit"
+                         :class="lastAudit.allowed ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'"
+                         class="card border p-4">
+                        <div class="flex justify-between items-start">
+                            <div class="flex items-center gap-2">
+                                <i :class="lastAudit.allowed ? 'fa-solid fa-check-circle text-green-400' : 'fa-solid fa-times-circle text-red-400'"></i>
+                                <span class="font-bold text-xs" :class="lastAudit.allowed ? 'text-green-400' : 'text-red-400'">
+                                    {{ lastAudit.allowed ? 'SUCCESS' : 'DENIED' }}
+                                </span>
+                            </div>
+                            <button @click="lastAudit = null" class="text-slate-500 hover:text-white">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <p class="text-xs mt-2 font-mono" :class="lastAudit.allowed ? 'text-green-300' : 'text-red-300'">
+                            [{{ lastAudit.traceId?.substring(0, 8) }}] {{ lastAudit.message }}
+                        </p>
+                    </div>
+
+                    <!-- 插件信息 -->
                     <div v-if="activePlugin" class="card">
                         <div class="card-header">
                             <h3 class="font-bold text-sm text-white">插件信息</h3>
@@ -838,8 +770,7 @@
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-slate-500">状态</span>
-                                <span :class="getStatusClass(activePlugin.status)"
-                                      class="px-2 py-0.5 rounded text-[10px]">
+                                <span :class="getStatusClass(activePlugin.status)" class="px-2 py-0.5 rounded text-[10px]">
                                     {{ activePlugin.status }}
                                 </span>
                             </div>
@@ -853,30 +784,6 @@
                             </div>
                         </div>
                     </div>
-
-                    <!-- 最近审计 -->
-                    <div v-if="recentAudits.length > 0" class="card">
-                        <div class="card-header">
-                            <h3 class="font-bold text-sm text-white">最近审计</h3>
-                            <button @click="recentAudits = []" class="text-slate-500 hover:text-white">
-                                <i class="fa-solid fa-xmark"></i>
-                            </button>
-                        </div>
-                        <div class="max-h-[200px] overflow-y-auto">
-                            <div v-for="audit in recentAudits.slice(0, 5)" :key="audit.id"
-                                 :class="audit.tag === 'OK' ? 'border-l-green-500' : 'border-l-red-500'"
-                                 class="p-3 border-b border-slate-700 border-l-2 text-xs">
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="font-mono text-slate-400">#{{ audit.traceId?.substring(0, 6) }}</span>
-                                    <span :class="audit.tag === 'OK' ? 'text-green-400' : 'text-red-400'"
-                                          class="font-bold">
-                                        {{ audit.tag }}
-                                    </span>
-                                </div>
-                                <p class="text-slate-300 truncate">{{ audit.content }}</p>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
             </div>
@@ -885,10 +792,10 @@
 </div>
 
 <script>
-    const {createApp, ref, reactive, computed, watch, onMounted, onUnmounted, nextTick} = Vue;
+    const { createApp, ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } = Vue;
 
     // API 配置
-    const API_BASE = '/lingframe';
+    const API_BASE = '/lingframe/dashboard';
 
     createApp({
         setup() {
@@ -896,8 +803,11 @@
             const plugins = ref([]);
             const activeId = ref(null);
             const canaryPct = ref(0);
+            const isAuto = ref(false);
+            const ipcEnabled = ref(true);
+            const ipcTarget = ref('user-plugin');
             const logs = ref([]);
-            const recentAudits = ref([]);
+            const lastAudit = ref(null);
             const logViewMode = ref('current');
             const logContainer = ref(null);
             const isUserScrolling = ref(false);
@@ -907,20 +817,15 @@
             const sseStatus = ref('disconnected');
             const toasts = ref([]);
 
-            const stats = reactive({
-                totalRequests: 0,
-                v1Requests: 0,
-                v2Requests: 0,
-                v1Percent: 0,
-                v2Percent: 0
-            });
+            const stats = reactive({ total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
 
             const loading = reactive({
                 plugins: false,
                 status: false,
                 canary: false,
                 permissions: false,
-                stats: false
+                stats: false,
+                simulate: false
             });
 
             const modal = reactive({
@@ -932,11 +837,11 @@
                 onConfirm: null
             });
 
-            const envLabels = {dev: '开发', test: '测试', prod: '生产'};
+            const envLabels = { dev: '开发', test: '测试', prod: '生产' };
 
             let eventSource = null;
             let timeTimer = null;
-            let statsTimer = null;
+            let stressTimer = null;
             let logIdCounter = 0;
             let toastIdCounter = 0;
 
@@ -960,7 +865,7 @@
             // ==================== Toast 通知 ====================
             const showToast = (message, type = 'info') => {
                 const id = ++toastIdCounter;
-                toasts.value.push({id, message, type});
+                toasts.value.push({ id, message, type });
                 setTimeout(() => {
                     toasts.value = toasts.value.filter(t => t.id !== id);
                 }, 3000);
@@ -977,15 +882,9 @@
                 async post(path, body = {}) {
                     const res = await fetch(API_BASE + path, {
                         method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(body)
                     });
-                    const data = await res.json();
-                    if (!data.success) throw new Error(data.message);
-                    return data.data;
-                },
-                async delete(path) {
-                    const res = await fetch(API_BASE + path, {method: 'DELETE'});
                     const data = await res.json();
                     if (!data.success) throw new Error(data.message);
                     return data.data;
@@ -996,7 +895,7 @@
             const refreshPlugins = async () => {
                 loading.plugins = true;
                 try {
-                    plugins.value = await api.get('/ops/plugins');
+                    plugins.value = await api.get('/plugins');
                 } catch (e) {
                     showToast('获取插件列表失败: ' + e.message, 'error');
                 } finally {
@@ -1005,20 +904,30 @@
             };
 
             const selectPlugin = async (pluginId) => {
+                if (isAuto.value) {
+                    toggleAuto(); // 停止压测
+                }
                 activeId.value = pluginId;
                 const plugin = plugins.value.find(p => p.pluginId === pluginId);
                 if (plugin) {
                     canaryPct.value = plugin.canaryPercent || 0;
                 }
-                await fetchStats();
+                // 重置统计
+                Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
+                lastAudit.value = null;
+
+                // 设置 IPC 目标为其他插件
+                const otherPlugin = plugins.value.find(p => p.pluginId !== pluginId && p.status === 'ACTIVE');
+                if (otherPlugin) {
+                    ipcTarget.value = otherPlugin.pluginId;
+                }
             };
 
             const updateStatus = async (newStatus) => {
                 if (!activeId.value) return;
                 loading.status = true;
                 try {
-                    const updated = await api.post(`/ops/plugins/${activeId.value}/status`, {status: newStatus});
-                    // 更新本地状态
+                    const updated = await api.post(`/plugins/${activeId.value}/status`, { status: newStatus });
                     const idx = plugins.value.findIndex(p => p.pluginId === activeId.value);
                     if (idx !== -1 && updated) {
                         plugins.value[idx] = updated;
@@ -1039,7 +948,7 @@
                 modal.onConfirm = async () => {
                     modal.loading = true;
                     try {
-                        await api.post(`/ops/uninstall/${activeId.value}`);
+                        await api.post(`/plugins/uninstall/${activeId.value}`);
                         plugins.value = plugins.value.filter(p => p.pluginId !== activeId.value);
                         activeId.value = null;
                         showToast('插件已卸载', 'success');
@@ -1062,7 +971,7 @@
                 if (!activeId.value || !canCanary.value) return;
                 loading.canary = true;
                 try {
-                    await api.post(`/ops/plugins/${activeId.value}/canary`, {
+                    await api.post(`/plugins/${activeId.value}/canary`, {
                         percent: canaryPct.value,
                         canaryVersion: activePlugin.value?.canaryVersion
                     });
@@ -1079,18 +988,18 @@
                 if (!activePlugin.value) return;
 
                 const currentPerms = activePlugin.value.permissions || {};
+                const currentValue = currentPerms[perm] !== false;
                 const newPerms = {
-                    dbRead: currentPerms.dbRead ?? true,
-                    dbWrite: currentPerms.dbWrite ?? true,
-                    cacheRead: currentPerms.cacheRead ?? true,
-                    cacheWrite: currentPerms.cacheWrite ?? true,
-                    [perm]: !currentPerms[perm]
+                    dbRead: currentPerms.dbRead !== false,
+                    dbWrite: currentPerms.dbWrite !== false,
+                    cacheRead: currentPerms.cacheRead !== false,
+                    cacheWrite: currentPerms.cacheWrite !== false,
+                    [perm]: !currentValue
                 };
 
                 loading.permissions = true;
                 try {
-                    await api.post(`/governance/plugins/${activeId.value}/permissions`, newPerms);
-                    // 更新本地状态
+                    await api.post(`/governance/${activeId.value}/permissions`, newPerms);
                     const idx = plugins.value.findIndex(p => p.pluginId === activeId.value);
                     if (idx !== -1) {
                         plugins.value[idx].permissions = newPerms;
@@ -1103,32 +1012,96 @@
                 }
             };
 
-            // ==================== 统计数据 ====================
-            const fetchStats = async () => {
-                if (!activeId.value) return;
-                loading.stats = true;
+            // ==================== 功能演练 ====================
+            const simulate = async (resourceType) => {
+                if (!canOperate.value) {
+                    showToast('插件未激活', 'error');
+                    return;
+                }
+
+                loading.simulate = true;
                 try {
-                    const data = await api.get(`/ops/plugins/${activeId.value}/stats`);
-                    Object.assign(stats, data);
+                    const result = await api.post(`/simulate/plugins/${activeId.value}/resource`, {
+                        resourceType
+                    });
+                    lastAudit.value = result;
+
+                    if (result.allowed) {
+                        showToast(`${resourceType} 访问成功`, 'success');
+                    } else {
+                        showToast(result.message, 'error');
+                    }
                 } catch (e) {
-                    // 静默失败，可能插件不存在
+                    showToast('模拟失败: ' + e.message, 'error');
                 } finally {
-                    loading.stats = false;
+                    loading.simulate = false;
                 }
             };
 
-            const resetStats = async () => {
-                if (!activeId.value) return;
-                loading.stats = true;
-                try {
-                    await api.post(`/ops/plugins/${activeId.value}/stats/reset`);
-                    Object.assign(stats, {totalRequests: 0, v1Requests: 0, v2Requests: 0, v1Percent: 0, v2Percent: 0});
-                    showToast('统计已重置', 'success');
-                } catch (e) {
-                    showToast('重置失败: ' + e.message, 'error');
-                } finally {
-                    loading.stats = false;
+            const simulateIPC = async () => {
+                if (!canOperate.value) {
+                    showToast('源插件未激活', 'error');
+                    return;
                 }
+
+                loading.simulate = true;
+                try {
+                    const result = await api.post(`/simulate/plugins/${activeId.value}/ipc`, {
+                        targetPluginId: ipcTarget.value,
+                        ipcEnabled: ipcEnabled.value
+                    });
+                    lastAudit.value = result;
+
+                    if (result.allowed) {
+                        showToast('IPC 调用成功', 'success');
+                    } else {
+                        showToast(result.message, 'error');
+                    }
+                } catch (e) {
+                    showToast('IPC 模拟失败: ' + e.message, 'error');
+                } finally {
+                    loading.simulate = false;
+                }
+            };
+
+            // ==================== 压测模式 ====================
+            const toggleAuto = () => {
+                if (!canOperate.value) {
+                    showToast('插件未激活', 'error');
+                    return;
+                }
+
+                isAuto.value = !isAuto.value;
+
+                if (isAuto.value) {
+                    // 开始压测
+                    stressTimer = setInterval(async () => {
+                        try {
+                            const result = await api.post(`/simulate/plugins/${activeId.value}/stress`, {
+                                count: 5
+                            });
+                            // 更新统计
+                            stats.total += result.totalRequests;
+                            stats.v1 += result.v1Requests;
+                            stats.v2 += result.v2Requests;
+                            stats.v1Pct = stats.total > 0 ? ((stats.v1 / stats.total) * 100).toFixed(1) : 0;
+                            stats.v2Pct = stats.total > 0 ? ((stats.v2 / stats.total) * 100).toFixed(1) : 0;
+                        } catch (e) {
+                            console.error('Stress test error', e);
+                        }
+                    }, 500);
+                } else {
+                    // 停止压测
+                    if (stressTimer) {
+                        clearInterval(stressTimer);
+                        stressTimer = null;
+                    }
+                }
+            };
+
+            const resetStats = () => {
+                Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
+                lastAudit.value = null;
             };
 
             // ==================== SSE 日志流 ====================
@@ -1138,16 +1111,23 @@
                 }
 
                 sseStatus.value = 'connecting';
-                eventSource = new EventSource(API_BASE + '/ops/stream');
+                eventSource = new EventSource(API_BASE + '/stream');
 
                 eventSource.onopen = () => {
                     sseStatus.value = 'connected';
                     console.log('SSE connected');
                 };
 
+                // 🔥 添加通用消息监听器
+                eventSource.onmessage = (e) => {
+                    console.log('SSE onmessage:', e);
+                };
+
                 eventSource.addEventListener('log-event', (e) => {
+                    console.log('SSE log-event received:', e.data);  // 🔥 调试
                     try {
                         const data = JSON.parse(e.data);
+                        console.log('Parsed data:', data);  // 🔥 调试
                         addLog(data);
                     } catch (err) {
                         console.warn('Failed to parse log event', err);
@@ -1155,12 +1135,13 @@
                 });
 
                 eventSource.addEventListener('ping', () => {
-                    // 心跳，保持连接
+                    // 心跳
+                    console.log('SSE ping received');  // 🔥 调试
                 });
 
                 eventSource.onerror = () => {
                     sseStatus.value = 'disconnected';
-                    console.log('SSE disconnected, will reconnect...');
+                    console.log('SSE disconnected, reconnecting...');
                     setTimeout(connectSSE, 3000);
                 };
             };
@@ -1180,14 +1161,6 @@
                 logs.value.unshift(log);
                 if (logs.value.length > 200) {
                     logs.value.pop();
-                }
-
-                // 审计日志单独收集
-                if (data.type === 'AUDIT') {
-                    recentAudits.value.unshift(log);
-                    if (recentAudits.value.length > 10) {
-                        recentAudits.value.pop();
-                    }
                 }
 
                 // 自动滚动
@@ -1215,17 +1188,13 @@
 
             const scrollToTop = () => {
                 if (logContainer.value) {
-                    logContainer.value.scrollTo({top: 0, behavior: 'smooth'});
+                    logContainer.value.scrollTo({ top: 0, behavior: 'smooth' });
                     isUserScrolling.value = false;
                 }
             };
 
             const updateTime = () => {
-                currentTime.value = new Date().toLocaleTimeString('zh-CN', {hour12: false});
-            };
-
-            const formatPercent = (val) => {
-                return (val || 0).toFixed(1);
+                currentTime.value = new Date().toLocaleTimeString('zh-CN', { hour12: false });
             };
 
             const formatDrift = (val) => {
@@ -1236,7 +1205,7 @@
             const formatTime = (ts) => {
                 if (!ts) return '--:--:--';
                 const d = new Date(ts);
-                return d.toLocaleTimeString('zh-CN', {hour12: false});
+                return d.toLocaleTimeString('zh-CN', { hour12: false });
             };
 
             const getStatusClass = (status) => ({
@@ -1268,10 +1237,13 @@
 
             const getLogColor = (log) => {
                 if (log.tag === 'FAIL' || log.tag === 'ERROR') return 'text-red-400';
-                if (log.tag === 'OK') return 'text-green-400';
+                if (log.tag === 'OK' || log.tag === 'COMPLETE') return 'text-green-400';
                 if (log.type === 'AUDIT') return 'text-indigo-400';
                 if (log.tag === 'IN') return 'text-blue-400';
                 if (log.tag === 'OUT') return 'text-amber-400';
+                if (log.tag === 'CANARY') return 'text-amber-400';
+                if (log.tag === 'STABLE') return 'text-blue-400';
+                if (log.tag === 'START' || log.tag === 'SUMMARY') return 'text-purple-400';
                 return 'text-slate-400';
             };
 
@@ -1282,23 +1254,18 @@
 
                 refreshPlugins();
                 connectSSE();
-
-                // 定时刷新统计
-                statsTimer = setInterval(() => {
-                    if (activeId.value) fetchStats();
-                }, 5000);
             });
 
             onUnmounted(() => {
                 if (timeTimer) clearInterval(timeTimer);
-                if (statsTimer) clearInterval(statsTimer);
+                if (stressTimer) clearInterval(stressTimer);
                 if (eventSource) eventSource.close();
             });
 
             return {
                 // 状态
-                plugins, activeId, canaryPct, logs, recentAudits,
-                logViewMode, logContainer, isUserScrolling, sidebarOpen,
+                plugins, activeId, canaryPct, isAuto, ipcEnabled, ipcTarget,
+                logs, lastAudit, logViewMode, logContainer, isUserScrolling, sidebarOpen,
                 currentEnv, currentTime, sseStatus, sseStatusText,
                 stats, loading, modal, toasts, envLabels,
 
@@ -1308,9 +1275,9 @@
                 // 方法
                 refreshPlugins, selectPlugin, updateStatus, requestUnload,
                 confirmModalAction, updateCanaryConfig, togglePerm,
-                fetchStats, resetStats, clearLogs,
+                simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
                 handleLogScroll, scrollToTop,
-                formatPercent, formatDrift, formatTime,
+                formatDrift, formatTime,
                 getStatusClass, getPluginShortName, getPluginTagClass, getLogColor
             };
         }

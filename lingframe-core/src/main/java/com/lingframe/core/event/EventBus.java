@@ -50,8 +50,7 @@ public class EventBus {
             try {
                 @SuppressWarnings("unchecked")
                 LingEventListener<E> castListener = (LingEventListener<E>) wrapper.listener();
-                // 添加类型检查，防止 ClassCastException
-                if (castListener != null && castListener.getClass().isInstance(event)) {
+                if (castListener != null) {
                     castListener.onEvent(event);
                 }
             } catch (RuntimeException e) {

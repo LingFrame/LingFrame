@@ -1,0 +1,12 @@
+order-plugin: !!com.lingframe.api.config.GovernancePolicy
+  audits: [
+    ]
+  permissions:
+  - methodPattern: '*'
+    permissionId: resource:db:read:deny
+  - methodPattern: '*'
+    permissionId: resource:db:write
+  - methodPattern: '*'
+    permissionId: resource:cache:read
+  - methodPattern: '*'
+    permissionId: resource:cache:write

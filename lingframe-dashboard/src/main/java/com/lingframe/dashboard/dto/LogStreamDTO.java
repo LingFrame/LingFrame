@@ -1,11 +1,11 @@
-package com.lingframe.starter.model;
+package com.lingframe.dashboard.dto;
 
 import lombok.Builder;
 import lombok.Data;
 
 @Data
 @Builder
-public class LogStreamVO {
+public class LogStreamDTO {
     private String type;      // TRACE / AUDIT
     private String traceId;
     private String pluginId;

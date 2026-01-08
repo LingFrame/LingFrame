@@ -18,6 +18,11 @@
             <artifactId>lingframe-spring-boot3-starter</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-dashboard</artifactId>
+        </dependency>
+
         <!-- 业务服务 API -->
         <dependency>
             <groupId>com.lingframe</groupId>
