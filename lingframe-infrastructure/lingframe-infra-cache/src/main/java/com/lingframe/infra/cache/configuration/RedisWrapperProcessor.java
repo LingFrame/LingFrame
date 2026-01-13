@@ -11,6 +11,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.data.redis.core.RedisTemplate;
 
 @Slf4j
@@ -18,6 +20,8 @@ import org.springframework.data.redis.core.RedisTemplate;
 @ConditionalOnClass(RedisTemplate.class)
 // ✅ 核心强制：框架开启即生效
 @ConditionalOnProperty(prefix = "lingframe", name = "enabled", havingValue = "true", matchIfMissing = true)
+// ✅ 确保 LingFrame 的包装器最先执行
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class RedisWrapperProcessor implements BeanPostProcessor, ApplicationContextAware {
 
     private ApplicationContext applicationContext;
@@ -48,7 +52,8 @@ public class RedisWrapperProcessor implements BeanPostProcessor, ApplicationCont
     }
 
     @Override
-    public Object postProcessBeforeInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
+    public Object postProcessBeforeInitialization(@NonNull Object bean, @NonNull String beanName)
+            throws BeansException {
         return bean;
     }
 

@@ -39,12 +39,27 @@ public class LingConnectionProxy implements Connection {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> T unwrap(Class<T> iface) throws SQLException {
+        // 如果请求的是 Connection 接口，返回代理本身
+        if (iface.isAssignableFrom(getClass())) {
+            return (T) this;
+        }
+        // 如果请求的是 LingConnectionProxy 本身
+        if (iface.isAssignableFrom(LingConnectionProxy.class)) {
+            return (T) this;
+        }
+        // 其他情况委托给 target（可能是特定数据库驱动的接口）
+        // 注意：这里可能暴露原始对象，但某些 ORM 框架需要此功能
         return target.unwrap(iface);
     }
 
     @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
+        // 代理本身实现了 Connection 接口
+        if (iface.isAssignableFrom(getClass())) {
+            return true;
+        }
         return target.isWrapperFor(iface);
     }
 
@@ -121,13 +136,15 @@ public class LingConnectionProxy implements Connection {
     }
 
     @Override
-    public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency) throws SQLException {
-        return new LingPreparedStatementProxy(target.prepareStatement(sql, resultSetType, resultSetConcurrency), permissionService, sql);
+    public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency)
+            throws SQLException {
+        return new LingPreparedStatementProxy(target.prepareStatement(sql, resultSetType, resultSetConcurrency),
+                permissionService, sql);
     }
 
     @Override
     public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency) throws SQLException {
-//        return target.prepareCall(sql, resultSetType, resultSetConcurrency);
+        // return target.prepareCall(sql, resultSetType, resultSetConcurrency);
         throw new SQLFeatureNotSupportedException("CallableStatement is disabled.");
     }
 
@@ -172,18 +189,25 @@ public class LingConnectionProxy implements Connection {
     }
 
     @Override
-    public Statement createStatement(int resultSetType, int resultSetConcurrency, int resultSetHoldability) throws SQLException {
-        return new LingStatementProxy(target.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability), permissionService);
+    public Statement createStatement(int resultSetType, int resultSetConcurrency, int resultSetHoldability)
+            throws SQLException {
+        return new LingStatementProxy(target.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability),
+                permissionService);
     }
 
     @Override
-    public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency, int resultSetHoldability) throws SQLException {
-        return new LingPreparedStatementProxy(target.prepareStatement(sql, resultSetType, resultSetConcurrency, resultSetHoldability), permissionService, sql);
+    public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency,
+            int resultSetHoldability) throws SQLException {
+        return new LingPreparedStatementProxy(
+                target.prepareStatement(sql, resultSetType, resultSetConcurrency, resultSetHoldability),
+                permissionService, sql);
     }
 
     @Override
-    public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency, int resultSetHoldability) throws SQLException {
-//        return target.prepareCall(sql, resultSetType, resultSetConcurrency, resultSetHoldability);
+    public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency,
+            int resultSetHoldability) throws SQLException {
+        // return target.prepareCall(sql, resultSetType, resultSetConcurrency,
+        // resultSetHoldability);
         throw new SQLFeatureNotSupportedException("CallableStatement is disabled.");
     }
 
@@ -284,8 +308,9 @@ public class LingConnectionProxy implements Connection {
 
     @Override
     public CallableStatement prepareCall(String sql) throws SQLException {
-//        return target.prepareCall(sql);
-        throw new SQLFeatureNotSupportedException("CallableStatement (Stored Procedures) is disabled in LingFrame Security Mode to prevent privilege escalation.");
+        // return target.prepareCall(sql);
+        throw new SQLFeatureNotSupportedException(
+                "CallableStatement (Stored Procedures) is disabled in LingFrame Security Mode to prevent privilege escalation.");
     }
 
     @Override

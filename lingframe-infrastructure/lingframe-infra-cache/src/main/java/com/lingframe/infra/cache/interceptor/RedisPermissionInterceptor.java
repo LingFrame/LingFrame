@@ -31,8 +31,21 @@ public class RedisPermissionInterceptor implements MethodInterceptor {
         // 获取调用方（当前插件ID）
         String callerPluginId = PluginContextHolder.get();
 
-        // 如果没有上下文（比如宿主启动时的自检），或者调用的是 Object 的基础方法（toString等），直接放行
-        if (callerPluginId == null || isObjectMethod(methodName)) {
+        // 如果没有上下文（比如宿主启动时的自检），或者调用的是 Object 的基础方法（toString等）
+        if (isObjectMethod(methodName)) {
+            return invocation.proceed();
+        }
+
+        // 检查宿主治理开关
+        if (callerPluginId == null) {
+            if (permissionService.isHostGovernanceEnabled()) {
+                log.error("Security Alert: Redis operation without PluginContext (Host governance ENABLED). Method: {}",
+                        methodName);
+                throw new PermissionDeniedException(
+                        "Access Denied: Host governance is enabled but no context provided for Redis operation: "
+                                + methodName);
+            }
+            // 宿主治理关闭：默认放行
             return invocation.proceed();
         }
 
@@ -56,7 +69,8 @@ public class RedisPermissionInterceptor implements MethodInterceptor {
 
         if (!allowed) {
             log.warn("Plugin [{}] denied access to Redis: {}", callerPluginId, methodName);
-            throw new PermissionDeniedException("Plugin [" + callerPluginId + "] denied access to Redis operation: " + methodName);
+            throw new PermissionDeniedException(
+                    "Plugin [" + callerPluginId + "] denied access to Redis operation: " + methodName);
         }
 
         // 执行原方法

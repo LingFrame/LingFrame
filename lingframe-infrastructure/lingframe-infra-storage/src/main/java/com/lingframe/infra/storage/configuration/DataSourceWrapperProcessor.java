@@ -10,6 +10,8 @@ import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 
 import javax.sql.DataSource;
 
@@ -19,6 +21,8 @@ import javax.sql.DataSource;
 @ConditionalOnClass(DataSource.class)
 // ✅ 跟随框架总开关：框架开启，我就必须开启
 @ConditionalOnProperty(prefix = "lingframe", name = "enabled", havingValue = "true", matchIfMissing = true)
+// ✅ 确保 LingFrame 的包装器最先执行，防止被其他 BeanPostProcessor 绕过
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class DataSourceWrapperProcessor implements BeanPostProcessor {
 
     private final ApplicationContext applicationContext;
@@ -27,6 +31,12 @@ public class DataSourceWrapperProcessor implements BeanPostProcessor {
     public Object postProcessAfterInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
         // 如果 Bean 是 DataSource，就把它包一层
         if (bean instanceof DataSource) {
+            // 防止重复包装
+            if (bean instanceof LingDataSourceProxy) {
+                log.debug("[LingFrame] DataSource {} already wrapped, skipping", beanName);
+                return bean;
+            }
+
             log.info(">>>>>> [LingFrame] Wrapping DataSource: {}", beanName);
 
             // 从 Core 获取 PermissionService (这里假设 PermissionService Bean 可见)

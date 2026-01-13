@@ -1,6 +1,7 @@
 package com.lingframe.core.security;
 
 import com.lingframe.api.security.AccessType;
+import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.config.LingFrameConfig;
@@ -73,22 +74,8 @@ public class DefaultPermissionService implements PermissionService {
         if (granted == null)
             return false;
 
-        // 权限等级模型 - WRITE 包含 READ，EXECUTE 是最高级别
-        // 权限级别: NONE < READ < WRITE < EXECUTE
-        int grantedLevel = getPermissionLevel(granted);
-        int requiredLevel = getPermissionLevel(accessType);
-        return grantedLevel >= requiredLevel;
-    }
-
-    /**
-     * 获取权限级别数值
-     */
-    private int getPermissionLevel(AccessType accessType) {
-        return switch (accessType) {
-            case READ -> 1;
-            case WRITE -> 2;
-            case EXECUTE -> 3;
-        };
+        // 使用 AccessType 的层级比较方法
+        return granted.satisfies(accessType);
     }
 
     @Override
@@ -108,8 +95,12 @@ public class DefaultPermissionService implements PermissionService {
     }
 
     @Override
-    public Object getPermission(String pluginId, String capability) {
-        return permissions.getOrDefault(pluginId, Map.of()).get(capability);
+    public PermissionInfo getPermission(String pluginId, String capability) {
+        AccessType accessType = permissions.getOrDefault(pluginId, Map.of()).get(capability);
+        if (accessType == null) {
+            return null;
+        }
+        return PermissionInfo.permanent(pluginId, capability, accessType, "runtime-grant");
     }
 
     @Override

@@ -31,17 +31,16 @@ public interface PermissionService {
     }
 
     /**
-     * 获取插件的完整权限配置。
+     * 获取插件的权限信息。
      * <p>
-     * 注意：此方法返回的权限配置可能包含敏感信息，应谨慎使用，通常只供 Core 内部或特定管理工具使用。
+     * 返回指定插件对某项能力的权限详情，包括访问类型、授予时间、过期时间等。
      * </p>
-     * 
+     *
      * @param pluginId   插件ID
      * @param capability 能力标识
-     * @return 权限配置对象，如果不存在则返回 null 或空对象
+     * @return 权限信息，如果不存在则返回 null
      */
-    // TODO: 定义 Permission 配置对象，目前先返回 Object
-    Object getPermission(String pluginId, String capability);
+    PermissionInfo getPermission(String pluginId, String capability);
 
     /**
      * 记录审计日志。

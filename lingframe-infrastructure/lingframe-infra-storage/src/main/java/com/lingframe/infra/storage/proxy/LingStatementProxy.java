@@ -54,7 +54,8 @@ public class LingStatementProxy implements Statement {
             // 检查是否启用了宿主治理
             if (permissionService.isHostGovernanceEnabled()) {
                 // 宿主治理开启：拒绝无上下文的操作
-                log.error("Security Alert: SQL execution without PluginContext (Host governance ENABLED). SQL: {}", sql);
+                log.error("Security Alert: SQL execution without PluginContext (Host governance ENABLED). SQL: {}",
+                        sql);
                 throw new SQLException("Access Denied: Host governance is enabled but no context provided.");
             }
             // 宿主治理关闭：默认放行 (Host Privilege)
@@ -268,6 +269,8 @@ public class LingStatementProxy implements Statement {
 
     @Override
     public int[] executeBatch() throws SQLException {
+        // 权限已在 addBatch(sql) 时逐条检查，此处无需重复检查
+        // Statement.addBatch(sql) 必须传入 SQL，已被拦截
         return target.executeBatch();
     }
 
@@ -348,12 +351,19 @@ public class LingStatementProxy implements Statement {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> T unwrap(Class<T> iface) throws SQLException {
+        if (iface.isAssignableFrom(getClass())) {
+            return (T) this;
+        }
         return target.unwrap(iface);
     }
 
     @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
+        if (iface.isAssignableFrom(getClass())) {
+            return true;
+        }
         return target.isWrapperFor(iface);
     }
 }

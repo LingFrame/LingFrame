@@ -34,12 +34,22 @@ public class LingDataSourceProxy implements DataSource {
 
     // --- 下面是必须实现的委托方法 ---
     @Override
+    @SuppressWarnings("unchecked")
     public <T> T unwrap(Class<T> iface) throws SQLException {
+        if (iface.isAssignableFrom(getClass())) {
+            return (T) this;
+        }
+        if (iface.isAssignableFrom(LingDataSourceProxy.class)) {
+            return (T) this;
+        }
         return target.unwrap(iface);
     }
 
     @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
+        if (iface.isAssignableFrom(getClass())) {
+            return true;
+        }
         return target.isWrapperFor(iface);
     }
 
