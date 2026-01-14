@@ -1,6 +1,5 @@
 package com.lingframe.dashboard.converter;
 
-import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;

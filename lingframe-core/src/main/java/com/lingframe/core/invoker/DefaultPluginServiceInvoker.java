@@ -2,6 +2,9 @@ package com.lingframe.core.invoker;
 
 import com.lingframe.core.plugin.PluginInstance;
 import com.lingframe.core.spi.PluginServiceInvoker;
+import com.lingframe.core.exception.ServiceUnavailableException;
+import com.lingframe.core.exception.InvocationException;
+import com.lingframe.api.exception.InvalidArgumentException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationTargetException;
@@ -14,7 +17,8 @@ public class DefaultPluginServiceInvoker implements PluginServiceInvoker {
     public Object invoke(PluginInstance instance, Object bean, Method method, Object[] args) throws Exception {
         // 引用计数保护
         if (!instance.tryEnter()) {
-            throw new IllegalStateException("Plugin instance is not ready or already destroyed");
+            throw new ServiceUnavailableException(instance.getPluginId(),
+                    "Plugin instance is not ready or already destroyed");
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
 
@@ -32,8 +36,9 @@ public class DefaultPluginServiceInvoker implements PluginServiceInvoker {
         } catch (InvocationTargetException e) {
             // 透传业务异常
             Throwable target = e.getTargetException();
-            if (target instanceof Exception) throw (Exception) target;
-            throw new RuntimeException(target);
+            if (target instanceof Exception)
+                throw (Exception) target;
+            throw new InvocationException("Target exception", target);
         } finally {
             // 资源恢复
             Thread.currentThread().setContextClassLoader(originalClassLoader);
@@ -48,9 +53,10 @@ public class DefaultPluginServiceInvoker implements PluginServiceInvoker {
         Class<?>[] parameterTypes = method.getParameterTypes();
 
         // 检查参数数量
-        if (args == null) args = new Object[0];
+        if (args == null)
+            args = new Object[0];
         if (args.length != parameterTypes.length) {
-            throw new IllegalArgumentException(String.format(
+            throw new InvalidArgumentException("args", String.format(
                     "调用失败：参数数量不匹配。方法 [%s] 需要 %d 个参数，实际传入 %d 个。",
                     method.getName(), parameterTypes.length, args.length), e);
         }
@@ -70,28 +76,27 @@ public class DefaultPluginServiceInvoker implements PluginServiceInvoker {
 
                 errorReport.append(String.format(
                         """
-                                
+
                                   ❌ 第 %d 个参数不匹配:\
-                                
+
                                      - 期望类型: %s\
-                                
+
                                      - 实际类型: %s\
-                                
+
                                      - 实际传值: %s\
-                                
+
                                      - 诊断提示: %s\
                                 """,
                         i + 1,
                         expectedType.getSimpleName(), // 或者是 expected.getName() 看你需要多详细
                         (actualArg == null ? "null" : actualArg.getClass().getSimpleName()),
                         actualArg,
-                        hint
-                ));
+                        hint));
             }
         }
 
         if (foundMismatch) {
-            throw new IllegalArgumentException(String.format(
+            throw new InvalidArgumentException("args", String.format(
                     "调用插件服务 [%s] 失败，参数类型不匹配！%s",
                     method.getName(), errorReport), e);
         }
@@ -122,8 +127,7 @@ public class DefaultPluginServiceInvoker implements PluginServiceInvoker {
             return String.format(
                     "🔥 类加载器冲突！目标类由 [%s] 加载，但传入对象由 [%s] 加载。",
                     getClassLoaderName(expected),
-                    getClassLoaderName(actualType)
-            );
+                    getClassLoaderName(actualType));
         }
 
         // 情况 D: 完全风马牛不相及
@@ -149,15 +153,24 @@ public class DefaultPluginServiceInvoker implements PluginServiceInvoker {
     }
 
     private Class<?> wrap(Class<?> type) {
-        if (!type.isPrimitive()) return type;
-        if (type == int.class) return Integer.class;
-        if (type == long.class) return Long.class;
-        if (type == double.class) return Double.class;
-        if (type == float.class) return Float.class;
-        if (type == boolean.class) return Boolean.class;
-        if (type == byte.class) return Byte.class;
-        if (type == short.class) return Short.class;
-        if (type == char.class) return Character.class;
+        if (!type.isPrimitive())
+            return type;
+        if (type == int.class)
+            return Integer.class;
+        if (type == long.class)
+            return Long.class;
+        if (type == double.class)
+            return Double.class;
+        if (type == float.class)
+            return Float.class;
+        if (type == boolean.class)
+            return Boolean.class;
+        if (type == byte.class)
+            return Byte.class;
+        if (type == short.class)
+            return Short.class;
+        if (type == char.class)
+            return Character.class;
         return type;
     }
 }

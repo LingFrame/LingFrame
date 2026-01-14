@@ -1,5 +1,6 @@
 package com.lingframe.api.config;
 
+import com.lingframe.api.exception.InvalidArgumentException;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -57,10 +58,10 @@ public class PluginDefinition implements Serializable {
      */
     public void validate() {
         if (id == null || id.isBlank()) {
-            throw new IllegalArgumentException("Plugin id cannot be blank");
+            throw new InvalidArgumentException("id", "Plugin id cannot be blank");
         }
         if (version == null || version.isBlank()) {
-            throw new IllegalArgumentException("Plugin version cannot be blank");
+            throw new InvalidArgumentException("version", "Plugin version cannot be blank");
         }
     }
 

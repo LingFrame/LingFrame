@@ -1,5 +1,6 @@
 package com.lingframe.core.security;
 
+import com.lingframe.api.exception.LingException;
 import jakarta.annotation.Nonnull;
 import lombok.extern.slf4j.Slf4j;
 import org.objectweb.asm.*;
@@ -17,13 +18,11 @@ public class AsmDangerousApiScanner {
     private static final Set<String> FORBIDDEN_METHODS = Set.of(
             "java/lang/System.exit(I)V",
             "java/lang/Runtime.exit(I)V",
-            "java/lang/Runtime.halt(I)V"
-    );
+            "java/lang/Runtime.halt(I)V");
 
     private static final Set<String> WARN_METHODS = Set.of(
             "java/lang/Runtime.exec",
-            "java/lang/ProcessBuilder.start"
-    );
+            "java/lang/ProcessBuilder.start");
 
     public static ScanResult scan(File source) throws IOException {
         if (source.isDirectory()) {
@@ -61,10 +60,11 @@ public class AsmDangerousApiScanner {
     }
 
     private static void scanDirRecursive(File root, File dir,
-                                         List<Violation> errors,
-                                         List<Violation> warnings) throws IOException {
+            List<Violation> errors,
+            List<Violation> warnings) throws IOException {
         File[] files = dir.listFiles();
-        if (files == null) return;
+        if (files == null)
+            return;
 
         for (File file : files) {
             if (file.isDirectory()) {
@@ -79,8 +79,8 @@ public class AsmDangerousApiScanner {
     }
 
     private static void scanClass(String className, InputStream is,
-                                  List<Violation> errors,
-                                  List<Violation> warnings) throws IOException {
+            List<Violation> errors,
+            List<Violation> warnings) throws IOException {
         ClassReader reader = new ClassReader(is);
         reader.accept(new ClassVisitor(Opcodes.ASM9) {
 
@@ -88,17 +88,17 @@ public class AsmDangerousApiScanner {
 
             @Override
             public void visit(int version, int access, String name, String signature,
-                              String superName, String[] interfaces) {
+                    String superName, String[] interfaces) {
                 this.currentClass = name;
             }
 
             @Override
             public MethodVisitor visitMethod(int access, String name, String descriptor,
-                                             String signature, String[] exceptions) {
+                    String signature, String[] exceptions) {
                 return new MethodVisitor(Opcodes.ASM9) {
                     @Override
                     public void visitMethodInsn(int opcode, String owner, String methodName,
-                                                String desc, boolean isInterface) {
+                            String desc, boolean isInterface) {
                         String fullMethod = owner + "." + methodName + desc;
                         String methodPrefix = owner + "." + methodName;
 
@@ -108,8 +108,7 @@ public class AsmDangerousApiScanner {
                                     currentClass,
                                     fullMethod,
                                     ViolationType.CRITICAL,
-                                    "Forbidden API: This call would terminate the JVM"
-                            ));
+                                    "Forbidden API: This call would terminate the JVM"));
                         }
 
                         // 检查警告的方法
@@ -119,8 +118,7 @@ public class AsmDangerousApiScanner {
                                         currentClass,
                                         fullMethod,
                                         ViolationType.WARNING,
-                                        "Potentially dangerous API: Process execution"
-                                ));
+                                        "Potentially dangerous API: Process execution"));
                                 break;
                             }
                         }
@@ -140,8 +138,7 @@ public class AsmDangerousApiScanner {
             String className,
             String apiCall,
             ViolationType type,
-            String message
-    ) {
+            String message) {
         @Nonnull
         @Override
         public String toString() {
@@ -165,7 +162,7 @@ public class AsmDangerousApiScanner {
                         .map(Violation::toString)
                         .reduce((a, b) -> a + "\n" + b)
                         .orElse("");
-                throw new SecurityException("Plugin security check failed:\n" + msg);
+                throw new LingException("Plugin security check failed:\n" + msg);
             }
         }
 

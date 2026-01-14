@@ -19,6 +19,9 @@ import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
 import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.spi.*;
+import com.lingframe.core.exception.ServiceNotFoundException;
+import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.core.exception.InvocationException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -97,17 +100,17 @@ public class PluginManager {
     private final AtomicInteger threadNumber = new AtomicInteger(1);
 
     public PluginManager(ContainerFactory containerFactory,
-                         PermissionService permissionService,
-                         GovernanceKernel governanceKernel,
-                         PluginLoaderFactory pluginLoaderFactory,
-                         List<PluginSecurityVerifier> verifiers,
-                         EventBus eventBus,
-                         TrafficRouter trafficRouter,
-                         PluginServiceInvoker pluginServiceInvoker,
-                         TransactionVerifier transactionVerifier,
-                         List<ThreadLocalPropagator> propagators,
-                         LingFrameConfig lingFrameConfig,
-                         LocalGovernanceRegistry localGovernanceRegistry) {
+            PermissionService permissionService,
+            GovernanceKernel governanceKernel,
+            PluginLoaderFactory pluginLoaderFactory,
+            List<PluginSecurityVerifier> verifiers,
+            EventBus eventBus,
+            TrafficRouter trafficRouter,
+            PluginServiceInvoker pluginServiceInvoker,
+            TransactionVerifier transactionVerifier,
+            List<ThreadLocalPropagator> propagators,
+            LingFrameConfig lingFrameConfig,
+            LocalGovernanceRegistry localGovernanceRegistry) {
         // 核心依赖
         this.containerFactory = containerFactory;
         this.pluginLoaderFactory = pluginLoaderFactory;
@@ -170,7 +173,7 @@ public class PluginManager {
         pluginDefinition.validate();
 
         if (!classesDir.exists() || !classesDir.isDirectory()) {
-            throw new IllegalArgumentException("Invalid classes directory: " + classesDir);
+            throw new InvalidArgumentException("classesDir", "Invalid classes directory: " + classesDir);
         }
 
         String pluginId = pluginDefinition.getId();
@@ -286,7 +289,7 @@ public class PluginManager {
         }
 
         if (candidates.isEmpty()) {
-            throw new IllegalArgumentException("Service not found: " + serviceType.getName());
+            throw new ServiceNotFoundException(serviceType.getName());
         }
 
         if (candidates.size() > 1) {
@@ -303,8 +306,7 @@ public class PluginManager {
             log.debug("Service {} resolved to plugin {}", serviceType.getSimpleName(), targetPluginId);
             return proxy;
         } catch (Exception e) {
-            throw new IllegalArgumentException(
-                    "Failed to get service " + serviceType.getName() + " from " + targetPluginId, e);
+            throw new ServiceNotFoundException(serviceType.getName(), targetPluginId);
         }
     }
 
@@ -318,7 +320,7 @@ public class PluginManager {
         return (T) Proxy.newProxyInstance(
                 // 🔥🔥🔥 关键修复：使用接口所在的 ClassLoader 🔥🔥🔥
                 serviceType.getClassLoader(),
-                new Class[]{serviceType},
+                new Class[] { serviceType },
                 new GlobalServiceRoutingProxy(callerPluginId, serviceType, targetPluginId, this, governanceKernel));
     }
 
@@ -371,13 +373,13 @@ public class PluginManager {
                 try {
                     return runtime.invoke(callerPluginId, fqsid, args);
                 } catch (Exception e) {
-                    throw new RuntimeException(e);
+                    throw new InvocationException("Invocation failed", e);
                 }
             });
             return Optional.ofNullable((T) result);
         } catch (Exception e) {
             log.error("Invoke failed", e);
-            throw new RuntimeException("Protocol service invoke failed", e);
+            throw new InvocationException("Protocol service invoke failed", e);
         }
     }
 
@@ -478,7 +480,7 @@ public class PluginManager {
      * 支持热替换：如果插件已存在，则触发蓝绿部署流程
      */
     private void doInstall(PluginDefinition pluginDefinition, File sourceFile,
-                           boolean isDefault, Map<String, String> labels) {
+            boolean isDefault, Map<String, String> labels) {
         String pluginId = pluginDefinition.getId();
         String version = pluginDefinition.getVersion();
         eventBus.publish(new PluginInstallingEvent(pluginId, version, sourceFile));

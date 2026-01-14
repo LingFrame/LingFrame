@@ -4,6 +4,8 @@ import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.event.lifecycle.*;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.exception.PluginInstallException;
+import com.lingframe.core.exception.ServiceUnavailableException;
 import com.lingframe.core.plugin.event.RuntimeEvent;
 import com.lingframe.core.plugin.event.RuntimeEventBus;
 import jakarta.annotation.Nonnull;
@@ -25,8 +27,8 @@ public class PluginLifecycleManager {
     private final String pluginId;
     private final PluginRuntimeConfig config;
     private final InstancePool instancePool;
-    private final RuntimeEventBus internalEventBus;  // 内部事件总线
-    private final EventBus externalEventBus;         // 外部事件总线
+    private final RuntimeEventBus internalEventBus; // 内部事件总线
+    private final EventBus externalEventBus; // 外部事件总线
     private final ScheduledExecutorService scheduler;
 
     private final ReentrantLock stateLock = new ReentrantLock();
@@ -34,11 +36,11 @@ public class PluginLifecycleManager {
     private final AtomicBoolean shutdown = new AtomicBoolean(false);
 
     public PluginLifecycleManager(String pluginId,
-                                  InstancePool instancePool,
-                                  RuntimeEventBus internalEventBus,
-                                  EventBus externalEventBus,
-                                  ScheduledExecutorService scheduler,
-                                  PluginRuntimeConfig config) {
+            InstancePool instancePool,
+            RuntimeEventBus internalEventBus,
+            EventBus externalEventBus,
+            ScheduledExecutorService scheduler,
+            PluginRuntimeConfig config) {
         this.pluginId = pluginId;
         this.instancePool = instancePool;
         this.internalEventBus = internalEventBus;
@@ -60,7 +62,7 @@ public class PluginLifecycleManager {
 
         // 快速背压检查
         if (!instancePool.canAddInstance()) {
-            throw new IllegalStateException("System busy: Too many dying instances");
+            throw new ServiceUnavailableException(pluginId, "System busy: Too many dying instances");
         }
 
         String version = newInstance.getVersion();
@@ -79,7 +81,7 @@ public class PluginLifecycleManager {
         } catch (Exception e) {
             log.error("[{}] Failed to start version {}", pluginId, version, e);
             safeDestroy(newInstance);
-            throw new RuntimeException("Plugin start failed", e);
+            throw new PluginInstallException(pluginId, "Plugin start failed", e);
         }
 
         // 加锁切换状态
@@ -89,14 +91,14 @@ public class PluginLifecycleManager {
             if (!instancePool.canAddInstance()) {
                 log.warn("[{}] Backpressure hit after startup", pluginId);
                 safeDestroy(newInstance);
-                throw new IllegalStateException("System busy: Too many dying instances");
+                throw new ServiceUnavailableException(pluginId, "System busy: Too many dying instances");
             }
 
             // 检查就绪状态
             if (isDefault && !newInstance.isReady()) {
                 log.warn("[{}] New version is NOT READY", pluginId);
                 safeDestroy(newInstance);
-                throw new IllegalStateException("New instance failed to become ready");
+                throw new PluginInstallException(pluginId, "New instance failed to become ready");
             }
 
             // 添加到池并处理旧实例
@@ -192,8 +194,7 @@ public class PluginLifecycleManager {
                     this::cleanupIdleInstances,
                     config.getDyingCheckIntervalSeconds(),
                     config.getDyingCheckIntervalSeconds(),
-                    TimeUnit.SECONDS
-            );
+                    TimeUnit.SECONDS);
         }
     }
 
@@ -208,8 +209,7 @@ public class PluginLifecycleManager {
                 scheduler.schedule(
                         this::forceCleanupAll,
                         config.getForceCleanupDelaySeconds(),
-                        TimeUnit.SECONDS
-                );
+                        TimeUnit.SECONDS);
             } catch (RejectedExecutionException e) {
                 log.debug("[{}] Scheduler rejected, executing immediately", pluginId);
                 forceCleanupAll();
@@ -272,7 +272,7 @@ public class PluginLifecycleManager {
 
     private void checkNotShutdown() {
         if (shutdown.get()) {
-            throw new IllegalStateException("Lifecycle manager is shutdown");
+            throw new ServiceUnavailableException(pluginId, "Lifecycle manager is shutdown");
         }
     }
 
@@ -282,15 +282,13 @@ public class PluginLifecycleManager {
         return new LifecycleStats(
                 shutdown.get(),
                 forceCleanupScheduled.get(),
-                instancePool.getDyingCount()
-        );
+                instancePool.getDyingCount());
     }
 
     public record LifecycleStats(
             boolean isShutdown,
             boolean forceCleanupScheduled,
-            int dyingCount
-    ) {
+            int dyingCount) {
         @Override
         @Nonnull
         public String toString() {

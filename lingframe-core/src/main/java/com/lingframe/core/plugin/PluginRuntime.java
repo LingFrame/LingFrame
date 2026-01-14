@@ -12,6 +12,7 @@ import com.lingframe.core.spi.PluginServiceInvoker;
 import com.lingframe.core.spi.ThreadLocalPropagator;
 import com.lingframe.core.spi.TrafficRouter;
 import com.lingframe.core.spi.TransactionVerifier;
+import com.lingframe.core.exception.ServiceUnavailableException;
 import jakarta.annotation.Nonnull;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -71,9 +72,9 @@ public class PluginRuntime {
     @Getter
     private final AtomicLong totalRequests = new AtomicLong(0);
     @Getter
-    private final AtomicLong stableRequests = new AtomicLong(0);  // 稳定版命中
+    private final AtomicLong stableRequests = new AtomicLong(0); // 稳定版命中
     @Getter
-    private final AtomicLong canaryRequests = new AtomicLong(0);  // 灰度版命中
+    private final AtomicLong canaryRequests = new AtomicLong(0); // 灰度版命中
     @Getter
     private volatile long statsWindowStart = System.currentTimeMillis();
 
@@ -82,15 +83,15 @@ public class PluginRuntime {
     private final long installedAt = System.currentTimeMillis();
 
     public PluginRuntime(String pluginId,
-                         PluginRuntimeConfig config,
-                         ScheduledExecutorService scheduler,
-                         ExecutorService executor,
-                         GovernanceKernel governanceKernel,
-                         EventBus externalEventBus,
-                         TrafficRouter router,
-                         PluginServiceInvoker invoker,
-                         TransactionVerifier transactionVerifier,
-                         List<ThreadLocalPropagator> propagators) {
+            PluginRuntimeConfig config,
+            ScheduledExecutorService scheduler,
+            ExecutorService executor,
+            GovernanceKernel governanceKernel,
+            EventBus externalEventBus,
+            TrafficRouter router,
+            PluginServiceInvoker invoker,
+            TransactionVerifier transactionVerifier,
+            List<ThreadLocalPropagator> propagators) {
         this.pluginId = pluginId;
         this.config = config != null ? config : PluginRuntimeConfig.defaults();
         this.router = router;
@@ -108,16 +109,14 @@ public class PluginRuntime {
                 invoker,
                 transactionVerifier,
                 propagators,
-                this.config
-        );
+                this.config);
         this.lifecycleManager = new PluginLifecycleManager(
                 pluginId,
                 instancePool,
-                internalEventBus,      // 内部事件
-                externalEventBus,      // 外部事件
+                internalEventBus, // 内部事件
+                externalEventBus, // 外部事件
                 scheduler,
-                this.config
-        );
+                this.config);
 
         // 🔥 注册组件的事件处理器
         registerEventHandlers();
@@ -150,7 +149,8 @@ public class PluginRuntime {
         // 调用指标
         internalEventBus.subscribe(RuntimeEvent.InvocationCompleted.class, event -> {
             // TODO: 上报到监控系统
-            // metricsCollector.recordInvocation(event.fqsid(), event.durationMs(), event.success());
+            // metricsCollector.recordInvocation(event.fqsid(), event.durationMs(),
+            // event.success());
             log.trace("[{}] Invocation completed: {} in {}ms, success={}",
                     pluginId, event.fqsid(), event.durationMs(), event.success());
         });
@@ -185,7 +185,7 @@ public class PluginRuntime {
         }
 
         if (!instancePool.hasAvailableInstance()) {
-            throw new IllegalStateException("No available instance to activate");
+            throw new ServiceUnavailableException(pluginId, "No available instance to activate");
         }
 
         setStatus(PluginStatus.ACTIVE);
@@ -290,7 +290,7 @@ public class PluginRuntime {
     public Object invoke(String callerPluginId, String fqsid, Object[] args) throws Exception {
         // 状态检查
         if (status != PluginStatus.ACTIVE) {
-            throw new IllegalStateException("Plugin not active: " + pluginId);
+            throw new ServiceUnavailableException(pluginId, "Plugin not active");
         }
 
         PluginInstance instance = routeToAvailableInstance(fqsid);
@@ -328,12 +328,10 @@ public class PluginRuntime {
      * 获取服务代理
      */
     public <T> T getServiceProxy(String callerPluginId, Class<T> interfaceClass) {
-        return serviceRegistry.getOrCreateProxy(interfaceClass, k ->
-                Proxy.newProxyInstance(
-                        getClass().getClassLoader(),
-                        new Class<?>[]{interfaceClass},
-                        new SmartServiceProxy(callerPluginId, this, interfaceClass, governanceKernel)
-                ));
+        return serviceRegistry.getOrCreateProxy(interfaceClass, k -> Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] { interfaceClass },
+                new SmartServiceProxy(callerPluginId, this, interfaceClass, governanceKernel)));
     }
 
     // ==================== 状态查询 ====================
@@ -380,24 +378,23 @@ public class PluginRuntime {
                 instancePool.getStats(),
                 serviceRegistry.getStats(),
                 invocationExecutor.getStats(),
-                lifecycleManager.getStats()
-        );
+                lifecycleManager.getStats());
     }
 
     // ==================== 内部方法 ====================
 
     private void validateInstance(PluginInstance instance) {
         if (instance == null) {
-            throw new IllegalStateException("No available instance: " + pluginId);
+            throw new ServiceUnavailableException(pluginId, "No available instance");
         }
         if (instance.isDying()) {
-            throw new IllegalStateException("Instance is dying: " + pluginId);
+            throw new ServiceUnavailableException(pluginId, "Instance is dying");
         }
         if (!instance.isReady()) {
-            throw new IllegalStateException("Instance not ready: " + pluginId);
+            throw new ServiceUnavailableException(pluginId, "Instance not ready");
         }
         if (!instance.getContainer().isActive()) {
-            throw new IllegalStateException("Container inactive: " + pluginId);
+            throw new ServiceUnavailableException(pluginId, "Container inactive");
         }
     }
 
@@ -410,15 +407,13 @@ public class PluginRuntime {
             InstancePool.PoolStats pool,
             ServiceRegistry.RegistryStats registry,
             InvocationExecutor.ExecutorStats executor,
-            PluginLifecycleManager.LifecycleStats lifecycle
-    ) {
+            PluginLifecycleManager.LifecycleStats lifecycle) {
         @Nonnull
         @Override
         public String toString() {
             return String.format(
                     "RuntimeStats{plugin='%s', available=%s, version='%s', %s, %s, %s, %s}",
-                    pluginId, available, version, pool, registry, executor, lifecycle
-            );
+                    pluginId, available, version, pool, registry, executor, lifecycle);
         }
     }
 

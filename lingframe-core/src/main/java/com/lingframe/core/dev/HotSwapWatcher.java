@@ -5,6 +5,7 @@ import com.lingframe.api.event.LingEventListener;
 import com.lingframe.api.event.lifecycle.PluginUninstalledEvent;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.plugin.PluginManager;
+import com.lingframe.core.exception.PluginInstallException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -45,11 +46,9 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
             r -> {
                 Thread thread = new Thread(r, "lingframe-hotswap-debounce");
                 thread.setDaemon(true);
-                thread.setUncaughtExceptionHandler((t, e) ->
-                        log.error("线程池线程 {} 异常: {}", t.getName(), e.getMessage()));
+                thread.setUncaughtExceptionHandler((t, e) -> log.error("线程池线程 {} 异常: {}", t.getName(), e.getMessage()));
                 return thread;
-            }
-    );
+            });
     private ScheduledFuture<?> debounceTask;
 
     public HotSwapWatcher(PluginManager pluginManager, EventBus eventBus) {
@@ -63,14 +62,15 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
      * 初始化监听服务 (Lazy Init)
      */
     private synchronized void ensureInit() {
-        if (isStarted.get()) return;
+        if (isStarted.get())
+            return;
         try {
             this.watchService = FileSystems.getDefault().newWatchService();
             startWatchLoop();
             isStarted.set(true);
             log.info("[HotSwap] WatchService initialized (Lazy).");
         } catch (IOException e) {
-            throw new RuntimeException("Failed to init WatchService", e);
+            throw new PluginInstallException("hotswap", "Failed to init WatchService", e);
         }
     }
 
@@ -99,7 +99,8 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
         try {
             Path path = classesDir.toPath();
             // 递归注册所有子目录
-            WatchKey key = path.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY, StandardWatchEventKinds.ENTRY_CREATE);
+            WatchKey key = path.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY,
+                    StandardWatchEventKinds.ENTRY_CREATE);
             keyPluginMap.put(key, pluginId);
 
             // 简单遍历一级子目录注册
@@ -125,7 +126,8 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
      * 遍历 Map，移除该插件名下的所有 Key (O(N) 复杂度，但在卸载时可接受)
      */
     public void unregister(String pluginId) {
-        if (!isStarted.get()) return;
+        if (!isStarted.get())
+            return;
 
         log.info("[HotSwap] Unregistering watcher for: {}", pluginId);
 
@@ -139,7 +141,7 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
                     key.cancel(); // 释放操作系统资源
                 } catch (Exception ignored) {
                 }
-                it.remove();  // 移除 Map 条目
+                it.remove(); // 移除 Map 条目
             }
         }
     }
@@ -147,7 +149,8 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
     // 关闭服务 (App shutdown 时调用)
     public synchronized void shutdown() {
         try {
-            if (watchService != null) watchService.close();
+            if (watchService != null)
+                watchService.close();
             debounceExecutor.shutdownNow();
         } catch (IOException e) {
             // ignore
@@ -158,7 +161,8 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
         Thread thread = new Thread(() -> {
             while (true) {
                 try {
-                    if (watchService == null) break;
+                    if (watchService == null)
+                        break;
 
                     WatchKey key = watchService.take();
 
@@ -186,8 +190,7 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
         });
         thread.setDaemon(true);
         thread.setName("lingframe-hotswap-watcher");
-        thread.setUncaughtExceptionHandler((t, e) ->
-                log.error("线程池线程 {} 异常: {}", t.getName(), e.getMessage()));
+        thread.setUncaughtExceptionHandler((t, e) -> log.error("线程池线程 {} 异常: {}", t.getName(), e.getMessage()));
         thread.start();
     }
 

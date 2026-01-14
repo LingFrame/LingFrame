@@ -3,6 +3,7 @@ package com.lingframe.starter.util;
 import com.lingframe.api.config.PluginDefinition;
 import com.lingframe.core.loader.PluginManifestLoader;
 import jakarta.annotation.Nonnull;
+import com.lingframe.core.exception.PluginInstallException;
 import lombok.extern.slf4j.Slf4j;
 import org.objectweb.asm.*;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -113,7 +114,7 @@ public class AsmMainClassScanner {
 
         @Override
         public void visit(int version, int access, String name, String signature,
-                          String superName, String[] interfaces) {
+                String superName, String[] interfaces) {
             super.visit(version, access, name, signature, superName, interfaces);
         }
 
@@ -128,10 +129,10 @@ public class AsmMainClassScanner {
 
         @Override
         public MethodVisitor visitMethod(int access, String name, String descriptor,
-                                         String signature, String[] exceptions) {
+                String signature, String[] exceptions) {
             // 检查是否有 main 方法
             if ("main".equals(name) && "([Ljava/lang/String;)V".equals(descriptor)
-                && (access & Opcodes.ACC_PUBLIC) != 0 && (access & Opcodes.ACC_STATIC) != 0) {
+                    && (access & Opcodes.ACC_PUBLIC) != 0 && (access & Opcodes.ACC_STATIC) != 0) {
                 hasMainMethod = true;
             }
             return super.visitMethod(access, name, descriptor, signature, exceptions);
@@ -145,7 +146,7 @@ public class AsmMainClassScanner {
     /**
      * 验证主类有效性（通过反射验证）
      *
-     * @param mainClass 主类全限定名
+     * @param mainClass   主类全限定名
      * @param classLoader 类加载器
      * @return 是否有效
      */
@@ -159,11 +160,11 @@ public class AsmMainClassScanner {
             // 检查 main 方法
             boolean hasMainMethod = Arrays.stream(clazz.getMethods())
                     .anyMatch(m -> m.getName().equals("main")
-                                   && java.lang.reflect.Modifier.isPublic(m.getModifiers())
-                                   && java.lang.reflect.Modifier.isStatic(m.getModifiers())
-                                   && m.getParameterCount() == 1
-                                   && m.getParameterTypes()[0] == String[].class
-                                   && m.getReturnType() == void.class);
+                            && java.lang.reflect.Modifier.isPublic(m.getModifiers())
+                            && java.lang.reflect.Modifier.isStatic(m.getModifiers())
+                            && m.getParameterCount() == 1
+                            && m.getParameterTypes()[0] == String[].class
+                            && m.getReturnType() == void.class);
 
             return hasAnnotation && hasMainMethod;
         } catch (ClassNotFoundException e) {
@@ -175,15 +176,15 @@ public class AsmMainClassScanner {
     /**
      * 发现主类（统一入口）
      *
-     * @param pluginId 插件 ID
-     * @param source 插件源文件
+     * @param pluginId    插件 ID
+     * @param source      插件源文件
      * @param classLoader 类加载器
      * @return 主类全限定名
      * @throws IllegalStateException 未找到或验证失败时抛出
      */
     @Nonnull
     public static String discoverMainClass(String pluginId, File source,
-                                           ClassLoader classLoader) {
+            ClassLoader classLoader) {
         String mainClass = null;
         PluginDefinition def = PluginManifestLoader.parseDefinition(source);
         if (def != null) {
@@ -202,19 +203,19 @@ public class AsmMainClassScanner {
 
         // 验证主类
         if (mainClass == null) {
-            throw new IllegalStateException(
+            throw new PluginInstallException(
+                    pluginId,
                     String.format("Cannot find Main-Class for plugin: %s. " +
-                                  "Please specify 'mainClass' in plugin.yml or ensure @SpringBootApplication annotation is present.",
-                            pluginId)
-            );
+                            "Please specify 'mainClass' in plugin.yml or ensure @SpringBootApplication annotation is present.",
+                            pluginId));
         }
 
         if (!validateMainClass(mainClass, classLoader)) {
-            throw new IllegalStateException(
+            throw new PluginInstallException(
+                    pluginId,
                     String.format("Invalid main class for plugin %s: %s. " +
-                                  "Must have @SpringBootApplication annotation and public static void main(String[] args) method.",
-                            pluginId, mainClass)
-            );
+                            "Must have @SpringBootApplication annotation and public static void main(String[] args) method.",
+                            pluginId, mainClass));
         }
 
         return mainClass;

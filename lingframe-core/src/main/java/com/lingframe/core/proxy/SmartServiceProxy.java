@@ -4,6 +4,8 @@ import com.lingframe.api.context.PluginContextHolder;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.exception.ServiceUnavailableException;
+import com.lingframe.core.exception.InvocationException;
 import com.lingframe.core.plugin.PluginInstance;
 import com.lingframe.core.plugin.PluginRuntime;
 import lombok.extern.slf4j.Slf4j;
@@ -35,9 +37,9 @@ public class SmartServiceProxy implements InvocationHandler {
     private static final ConcurrentHashMap<Method, String> RESOURCE_ID_CACHE = new ConcurrentHashMap<>();
 
     public SmartServiceProxy(String callerPluginId,
-                             PluginRuntime targetRuntime, // 核心锚点,
-                             Class<?> serviceInterface,
-                             GovernanceKernel governanceKernel) {
+            PluginRuntime targetRuntime, // 核心锚点,
+            Class<?> serviceInterface,
+            GovernanceKernel governanceKernel) {
         this.callerPluginId = callerPluginId;
         this.targetRuntime = targetRuntime;
         this.serviceInterface = serviceInterface;
@@ -46,7 +48,8 @@ public class SmartServiceProxy implements InvocationHandler {
 
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        if (method.getDeclaringClass() == Object.class) return method.invoke(this, args);
+        if (method.getDeclaringClass() == Object.class)
+            return method.invoke(this, args);
 
         // 从 ThreadLocal 获取/复用 InvocationContext
         InvocationContext ctx = CTX_POOL.get();
@@ -84,10 +87,12 @@ public class SmartServiceProxy implements InvocationHandler {
             // 委托内核执行
             return governanceKernel.invoke(targetRuntime, method, ctx, () -> {
                 PluginInstance instance = targetRuntime.getInstancePool().getDefault();
-                if (instance == null) throw new IllegalStateException("Service unavailable");
+                if (instance == null)
+                    throw new ServiceUnavailableException(serviceInterface.getName(), "Service unavailable");
 
                 if (!instance.tryEnter()) {
-                    throw new IllegalStateException("Plugin instance is not ready or already destroyed");
+                    throw new ServiceUnavailableException(serviceInterface.getName(),
+                            "Plugin instance is not ready or already destroyed");
                 }
                 // 这样如果 B 调用 C，C 看到的 caller 就是 B，而不是 A
                 PluginContextHolder.set(targetRuntime.getPluginId());
@@ -99,7 +104,7 @@ public class SmartServiceProxy implements InvocationHandler {
                     try {
                         return method.invoke(bean, args);
                     } catch (IllegalAccessException | InvocationTargetException e) {
-                        throw new RuntimeException(e);
+                        throw new InvocationException("Invocation failed", e);
                     }
                 } finally {
                     t.setContextClassLoader(oldCL);

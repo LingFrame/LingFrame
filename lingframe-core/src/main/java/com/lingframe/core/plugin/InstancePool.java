@@ -2,6 +2,7 @@ package com.lingframe.core.plugin;
 
 import com.lingframe.core.plugin.event.RuntimeEvent;
 import com.lingframe.core.plugin.event.RuntimeEventBus;
+import com.lingframe.api.exception.InvalidArgumentException;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
@@ -106,7 +107,7 @@ public class InstancePool {
      */
     public PluginInstance addInstance(PluginInstance instance, boolean isDefault) {
         if (instance == null) {
-            throw new IllegalArgumentException("Instance cannot be null");
+            throw new InvalidArgumentException("instance", "Instance cannot be null");
         }
 
         activePool.add(instance);
@@ -148,7 +149,7 @@ public class InstancePool {
      * @return 销毁的实例数量
      */
     public int cleanupIdleInstances(Consumer<PluginInstance> destroyer) {
-        int[] count = {0};
+        int[] count = { 0 };
 
         dyingQueue.removeIf(instance -> {
             if (instance.isIdle()) {
@@ -222,8 +223,7 @@ public class InstancePool {
         return new PoolStats(
                 activePool.size(),
                 dyingQueue.size(),
-                defaultInstance.get() != null
-        );
+                defaultInstance.get() != null);
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.lingframe.core.classloader;
 
 import lombok.extern.slf4j.Slf4j;
+import com.lingframe.core.exception.ClassLoaderException;
 
 import java.io.IOException;
 import java.net.URL;
@@ -97,7 +98,7 @@ public class PluginClassLoader extends URLClassLoader {
     public Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
         // ✅ 关闭状态检查
         if (closed) {
-            throw new IllegalStateException(
+            throw new ClassLoaderException(pluginId, name,
                     String.format("ClassLoader for plugin [%s] has been closed, cannot load class: %s",
                             pluginId, name));
         }

@@ -11,6 +11,10 @@ import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.core.plugin.PluginRuntime;
 import com.lingframe.dashboard.converter.PluginInfoConverter;
 import com.lingframe.dashboard.dto.PluginInfoDTO;
+import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.api.exception.PluginNotFoundException;
+import com.lingframe.core.exception.PluginInstallException;
+import com.lingframe.core.exception.ServiceUnavailableException;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
 import com.lingframe.dashboard.router.CanaryRouter;
@@ -52,12 +56,12 @@ public class DashboardService {
         try {
             PluginDefinition def = PluginManifestLoader.parseDefinition(file);
             if (def == null) {
-                throw new IllegalArgumentException("Not a valid plugin package: " + file.getName());
+                throw new InvalidArgumentException("file", "Not a valid plugin package: " + file.getName());
             }
             pluginManager.install(def, file);
             return getPluginInfo(def.getId());
         } catch (Exception e) {
-            throw new IllegalArgumentException("Failed to install plugin: " + e.getMessage(), e);
+            throw new PluginInstallException("unknown", "Failed to install plugin: " + e.getMessage(), e);
         }
     }
 
@@ -65,7 +69,7 @@ public class DashboardService {
         try {
             pluginManager.uninstall(pluginId);
         } catch (Exception e) {
-            throw new IllegalArgumentException("Failed to uninstall plugin: " + e.getMessage(), e);
+            throw new PluginInstallException(pluginId, "Failed to uninstall plugin: " + e.getMessage(), e);
         }
     }
 
@@ -74,21 +78,21 @@ public class DashboardService {
             pluginManager.reload(pluginId);
             return getPluginInfo(pluginId);
         } catch (Exception e) {
-            throw new IllegalArgumentException("Failed to reload plugin: " + e.getMessage(), e);
+            throw new PluginInstallException(pluginId, "Failed to reload plugin: " + e.getMessage(), e);
         }
     }
 
     public PluginInfoDTO updateStatus(String pluginId, PluginStatus newStatus) {
         PluginRuntime runtime = pluginManager.getRuntime(pluginId);
         if (runtime == null) {
-            throw new IllegalArgumentException("Plugin not found: " + pluginId);
+            throw new PluginNotFoundException(pluginId);
         }
 
         PluginStatus current = runtime.getStatus();
 
         // 状态转换验证
         if (!isValidTransition(current, newStatus)) {
-            throw new IllegalStateException(
+            throw new ServiceUnavailableException(pluginId,
                     String.format("Invalid status transition: %s -> %s", current, newStatus));
         }
 
@@ -109,7 +113,7 @@ public class DashboardService {
                 pluginManager.uninstall(pluginId);
                 break;
             default:
-                throw new IllegalArgumentException("Unsupported status: " + newStatus);
+                throw new InvalidArgumentException("status", "Unsupported status: " + newStatus);
         }
 
         return getPluginInfo(pluginId);
@@ -118,7 +122,7 @@ public class DashboardService {
     public void setCanaryConfig(String pluginId, int percent, String canaryVersion) {
         PluginRuntime runtime = pluginManager.getRuntime(pluginId);
         if (runtime == null) {
-            throw new IllegalArgumentException("Plugin not found: " + pluginId);
+            throw new PluginNotFoundException(pluginId);
         }
         canaryRouter.setCanaryConfig(pluginId, percent, canaryVersion);
     }
@@ -126,7 +130,7 @@ public class DashboardService {
     public TrafficStatsDTO getTrafficStats(String pluginId) {
         PluginRuntime runtime = pluginManager.getRuntime(pluginId);
         if (runtime == null) {
-            throw new IllegalArgumentException("Plugin not found: " + pluginId);
+            throw new PluginNotFoundException(pluginId);
         }
         return converter.toTrafficStats(runtime);
     }
@@ -134,7 +138,7 @@ public class DashboardService {
     public void resetTrafficStats(String pluginId) {
         PluginRuntime runtime = pluginManager.getRuntime(pluginId);
         if (runtime == null) {
-            throw new IllegalArgumentException("Plugin not found: " + pluginId);
+            throw new PluginNotFoundException(pluginId);
         }
         runtime.resetTrafficStats();
     }

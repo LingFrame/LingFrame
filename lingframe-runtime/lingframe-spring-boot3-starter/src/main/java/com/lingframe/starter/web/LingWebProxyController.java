@@ -9,6 +9,7 @@ import com.lingframe.core.plugin.PluginRuntime;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import com.lingframe.core.exception.InvocationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Controller;
@@ -105,7 +106,7 @@ public class LingWebProxyController {
                 }
                 return result;// 返回给 Kernel 做记录
             } catch (Exception e) {
-                throw new RuntimeException(e);
+                throw new InvocationException("Web dispatch failed", e);
             } finally {
                 Thread.currentThread().setContextClassLoader(originalCL);
             }
@@ -129,16 +130,21 @@ public class LingWebProxyController {
 
     // 简单的类型转换器
     private Object convert(String val, Class<?> type, ObjectMapper mapper) {
-        if (val == null) return null;
-        if (type == String.class) return val;
+        if (val == null)
+            return null;
+        if (type == String.class)
+            return val;
         // 借用 Jackson 做基础类型转换，它很擅长这个
         try {
             return mapper.convertValue(val, type);
         } catch (Exception e) {
             // 降级处理
-            if (type == Integer.class || type == int.class) return Integer.valueOf(val);
-            if (type == Long.class || type == long.class) return Long.valueOf(val);
-            if (type == Boolean.class || type == boolean.class) return Boolean.valueOf(val);
+            if (type == Integer.class || type == int.class)
+                return Integer.valueOf(val);
+            if (type == Long.class || type == long.class)
+                return Long.valueOf(val);
+            if (type == Boolean.class || type == boolean.class)
+                return Boolean.valueOf(val);
             return val;
         }
     }

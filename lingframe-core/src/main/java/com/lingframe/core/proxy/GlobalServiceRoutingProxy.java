@@ -1,6 +1,7 @@
 package com.lingframe.core.proxy;
 
 import com.lingframe.core.kernel.GovernanceKernel;
+import com.lingframe.core.exception.ServiceUnavailableException;
 import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.core.plugin.PluginRuntime;
 import lombok.extern.slf4j.Slf4j;
@@ -31,8 +32,8 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
     private final Map<Class<?>, String> ROUTE_CACHE = new ConcurrentHashMap<>();
 
     public GlobalServiceRoutingProxy(String callerPluginId, Class<?> serviceInterface,
-                                     String targetPluginId, PluginManager pluginManager,
-                                     GovernanceKernel governanceKernel) {
+            String targetPluginId, PluginManager pluginManager,
+            GovernanceKernel governanceKernel) {
         this.callerPluginId = callerPluginId;
         this.serviceInterface = serviceInterface;
         this.targetPluginId = targetPluginId;
@@ -49,12 +50,13 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
 
         // 实时获取 Runtime (支持延迟绑定)
         String finalId = (targetPluginId != null && !targetPluginId.isEmpty())
-                ? targetPluginId : resolveTargetPluginId();
+                ? targetPluginId
+                : resolveTargetPluginId();
 
         PluginRuntime runtime = (finalId != null) ? pluginManager.getRuntime(finalId) : null;
 
         if (runtime == null) {
-            throw new IllegalStateException("Service [" + serviceInterface.getName() + "] is currently offline.");
+            throw new ServiceUnavailableException(serviceInterface.getName(), "Service is currently offline");
         }
 
         // 统一使用 SmartServiceProxy 执行治理和路由逻辑

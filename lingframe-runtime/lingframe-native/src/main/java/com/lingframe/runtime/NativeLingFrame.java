@@ -18,6 +18,7 @@ import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import com.lingframe.runtime.adapter.NativeContainerFactory;
 import lombok.extern.slf4j.Slf4j;
+import com.lingframe.core.exception.ServiceUnavailableException;
 
 import java.util.Collections;
 import java.util.List;
@@ -75,7 +76,7 @@ public class NativeLingFrame {
         // 组装 PluginManager
         // 注意：这里需要传入 Core 需要的所有组件
         PluginManager pluginManager = new PluginManager(
-                containerFactory,       // <--- 注入 Native 实现
+                containerFactory, // <--- 注入 Native 实现
                 permissionService,
                 governanceKernel,
                 loaderFactory,
@@ -86,8 +87,7 @@ public class NativeLingFrame {
                 txVerifier,
                 Collections.emptyList(), // 无 ThreadLocal 传播器
                 config,
-                localGovernanceRegistry
-        );
+                localGovernanceRegistry);
 
         // 注册一个特殊的 "host-app" 上下文
         HOST_CONTEXT = new CorePluginContext("host-app", pluginManager, permissionService, eventBus);
@@ -119,7 +119,7 @@ public class NativeLingFrame {
      */
     public static PluginContext getHostContext() {
         if (!started.get()) {
-            throw new IllegalStateException("LingFrame not started");
+            throw new ServiceUnavailableException("host-app", "LingFrame not started");
         }
         return HOST_CONTEXT;
     }

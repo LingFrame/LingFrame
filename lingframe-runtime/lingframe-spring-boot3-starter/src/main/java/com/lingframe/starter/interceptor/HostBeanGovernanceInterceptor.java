@@ -8,6 +8,7 @@ import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.strategy.GovernanceStrategy;
+import com.lingframe.core.exception.InvocationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aopalliance.intercept.MethodInterceptor;
@@ -58,7 +59,7 @@ public class HostBeanGovernanceInterceptor implements MethodInterceptor {
             log.debug("[Governance Interceptor] No plugin context, using host as caller: {}", callerPluginId);
         } else {
             log.debug("[Governance Interceptor] Plugin {} calling host method: {}.{}",
-                     callerPluginId, method.getDeclaringClass().getSimpleName(), method.getName());
+                    callerPluginId, method.getDeclaringClass().getSimpleName(), method.getName());
         }
 
         // 如果配置为不对宿主应用进行权限检查，直接执行
@@ -78,7 +79,7 @@ public class HostBeanGovernanceInterceptor implements MethodInterceptor {
             try {
                 return invocation.proceed();
             } catch (Throwable t) {
-                throw new RuntimeException(t);
+                throw new InvocationException("Host bean invocation failed", t);
             }
         });
     }
@@ -108,8 +109,8 @@ public class HostBeanGovernanceInterceptor implements MethodInterceptor {
             // 默认审计写操作
             String methodName = method.getName();
             if (methodName.startsWith("create") || methodName.startsWith("update") ||
-                methodName.startsWith("delete") || methodName.startsWith("save") ||
-                methodName.startsWith("add") || methodName.startsWith("remove")) {
+                    methodName.startsWith("delete") || methodName.startsWith("save") ||
+                    methodName.startsWith("add") || methodName.startsWith("remove")) {
                 shouldAudit = true;
             }
         }
@@ -140,6 +141,6 @@ public class HostBeanGovernanceInterceptor implements MethodInterceptor {
      */
     private boolean isObjectMethod(String name) {
         return "toString".equals(name) || "hashCode".equals(name) ||
-               "equals".equals(name) || "getClass".equals(name);
+                "equals".equals(name) || "getClass".equals(name);
     }
 }

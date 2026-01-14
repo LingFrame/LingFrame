@@ -7,6 +7,7 @@ import com.lingframe.core.plugin.event.RuntimeEvent;
 import com.lingframe.core.plugin.event.RuntimeEventBus;
 import com.lingframe.core.spi.PluginServiceInvoker;
 import com.lingframe.core.spi.ThreadLocalPropagator;
+import com.lingframe.core.exception.InvocationException;
 import com.lingframe.core.spi.TransactionVerifier;
 import jakarta.annotation.Nonnull;
 import lombok.Setter;
@@ -33,21 +34,20 @@ public class InvocationExecutor {
     private final int acquireTimeoutMs;
 
     @Setter
-    private RuntimeEventBus eventBus;  // 可选，用于发布调用事件
+    private RuntimeEventBus eventBus; // 可选，用于发布调用事件
 
     public InvocationExecutor(String pluginId,
-                              ExecutorService executor,
-                              PluginServiceInvoker invoker,
-                              TransactionVerifier transactionVerifier,
-                              List<ThreadLocalPropagator> propagators,
-                              int bulkheadPermits,
-                              int timeoutMs,
-                              int acquireTimeoutMs) {
+            ExecutorService executor,
+            PluginServiceInvoker invoker,
+            TransactionVerifier transactionVerifier,
+            List<ThreadLocalPropagator> propagators,
+            int bulkheadPermits,
+            int timeoutMs,
+            int acquireTimeoutMs) {
         this.pluginId = pluginId;
         this.executor = executor;
         this.invoker = invoker;
-        this.transactionVerifier = transactionVerifier != null ?
-                transactionVerifier : new DefaultTransactionVerifier();
+        this.transactionVerifier = transactionVerifier != null ? transactionVerifier : new DefaultTransactionVerifier();
         ;
         this.propagators = propagators != null ? new ArrayList<>(propagators) : new ArrayList<>();
         this.bulkhead = new Semaphore(bulkheadPermits);
@@ -59,11 +59,11 @@ public class InvocationExecutor {
      * 使用配置构造
      */
     public InvocationExecutor(String pluginId,
-                              ExecutorService executor,
-                              PluginServiceInvoker invoker,
-                              TransactionVerifier transactionVerifier,
-                              List<ThreadLocalPropagator> propagators,
-                              PluginRuntimeConfig config) {
+            ExecutorService executor,
+            PluginServiceInvoker invoker,
+            TransactionVerifier transactionVerifier,
+            List<ThreadLocalPropagator> propagators,
+            PluginRuntimeConfig config) {
         this(pluginId, executor, invoker, transactionVerifier, propagators,
                 config.getBulkheadMaxConcurrent(),
                 config.getDefaultTimeoutMs(),
@@ -71,10 +71,10 @@ public class InvocationExecutor {
     }
 
     public Object execute(PluginInstance instance,
-                          ServiceRegistry.InvokableService service,
-                          Object[] args,
-                          String callerPluginId,
-                          String fqsid) throws Exception {
+            ServiceRegistry.InvokableService service,
+            Object[] args,
+            String callerPluginId,
+            String fqsid) throws Exception {
 
         // 发布调用开始事件
         publishEvent(new RuntimeEvent.InvocationStarted(pluginId, fqsid, callerPluginId));
@@ -114,16 +114,15 @@ public class InvocationExecutor {
      * @return 调用结果
      */
     public Object doExecute(PluginInstance instance,
-                            ServiceRegistry.InvokableService service,
-                            Object[] args,
-                            String callerPluginId,
-                            String fqsid) throws Exception {
+            ServiceRegistry.InvokableService service,
+            Object[] args,
+            String callerPluginId,
+            String fqsid) throws Exception {
 
         // 判断是否需要同步执行（事务场景）
         boolean isTx = transactionVerifier.isTransactional(
                 service.method(),
-                service.bean().getClass()
-        );
+                service.bean().getClass());
 
         if (isTx) {
             // 同步模式：直接在当前线程执行，保持事务传播
@@ -138,8 +137,8 @@ public class InvocationExecutor {
      * 同步执行（事务场景）
      */
     public Object executeSync(PluginInstance instance,
-                              ServiceRegistry.InvokableService service,
-                              Object[] args) throws Exception {
+            ServiceRegistry.InvokableService service,
+            Object[] args) throws Exception {
         return executeInternal(instance, service, args);
     }
 
@@ -147,10 +146,10 @@ public class InvocationExecutor {
      * 异步执行（线程隔离）
      */
     public Object executeAsync(PluginInstance instance,
-                               ServiceRegistry.InvokableService service,
-                               Object[] args,
-                               String callerPluginId,
-                               String fqsid) throws Exception {
+            ServiceRegistry.InvokableService service,
+            Object[] args,
+            String callerPluginId,
+            String fqsid) throws Exception {
 
         // 捕获上下文快照
         ContextSnapshot snapshot = captureContext();
@@ -208,10 +207,10 @@ public class InvocationExecutor {
             if (cause instanceof Exception) {
                 throw (Exception) cause;
             }
-            throw new RuntimeException("Plugin execution failed", cause);
+            throw new InvocationException("Plugin execution failed", cause);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("Plugin execution interrupted", e);
+            throw new InvocationException("Plugin execution interrupted", e);
         }
     }
 
@@ -219,8 +218,8 @@ public class InvocationExecutor {
      * 内部执行逻辑
      */
     private Object executeInternal(PluginInstance instance,
-                                   ServiceRegistry.InvokableService service,
-                                   Object[] args) throws Exception {
+            ServiceRegistry.InvokableService service,
+            Object[] args) throws Exception {
         try {
             if (invoker instanceof FastPluginServiceInvoker fast) {
                 return fast.invokeFast(instance, service.methodHandle(), args);
@@ -232,7 +231,7 @@ public class InvocationExecutor {
             } else if (t instanceof Error) {
                 throw (Error) t;
             } else {
-                throw new RuntimeException("Execution failed", t);
+                throw new InvocationException("Execution failed", t);
             }
         }
     }
@@ -271,8 +270,7 @@ public class InvocationExecutor {
                 bulkhead.availablePermits(),
                 bulkhead.getQueueLength(),
                 timeoutMs,
-                acquireTimeoutMs
-        );
+                acquireTimeoutMs);
     }
 
     // ==================== 内部类 ====================
@@ -340,15 +338,13 @@ public class InvocationExecutor {
             int availablePermits,
             int queueLength,
             int timeoutMs,
-            int acquireTimeoutMs
-    ) {
+            int acquireTimeoutMs) {
         @Override
         @Nonnull
         public String toString() {
             return String.format(
                     "ExecutorStats{available=%d, queued=%d, timeout=%dms}",
-                    availablePermits, queueLength, timeoutMs
-            );
+                    availablePermits, queueLength, timeoutMs);
         }
     }
 }

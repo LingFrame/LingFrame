@@ -1,6 +1,8 @@
 package com.lingframe.core.classloader;
 
 import com.lingframe.core.spi.PluginLoaderFactory;
+import com.lingframe.core.exception.ClassLoaderException;
+import com.lingframe.api.exception.InvalidArgumentException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -38,7 +40,7 @@ public class DefaultPluginLoaderFactory implements PluginLoaderFactory {
 
             return pluginCL;
         } catch (MalformedURLException e) {
-            throw new RuntimeException("创建 PluginClassLoader 失败: " + pluginId, e);
+            throw new ClassLoaderException(pluginId, sourceFile.getPath(), "创建 PluginClassLoader 失败", e);
         }
     }
 
@@ -57,12 +59,12 @@ public class DefaultPluginLoaderFactory implements PluginLoaderFactory {
     private URL[] resolveUrls(File sourceFile) throws MalformedURLException {
         if (sourceFile.isDirectory()) {
             // 开发模式：classes 目录
-            return new URL[]{sourceFile.toURI().toURL()};
+            return new URL[] { sourceFile.toURI().toURL() };
         } else if (sourceFile.getName().endsWith(".jar")) {
             // 生产模式：JAR 包
-            return new URL[]{sourceFile.toURI().toURL()};
+            return new URL[] { sourceFile.toURI().toURL() };
         } else {
-            throw new IllegalArgumentException("不支持的源文件类型: " + sourceFile);
+            throw new InvalidArgumentException("sourceFile", "不支持的源文件类型: " + sourceFile);
         }
     }
 }

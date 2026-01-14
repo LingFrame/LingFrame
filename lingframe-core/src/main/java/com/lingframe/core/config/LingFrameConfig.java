@@ -27,15 +27,23 @@ public class LingFrameConfig {
 
     private static volatile LingFrameConfig INSTANCE;
 
+    // 默认配置（懒加载单例，线程安全 - Lazy Holder 模式）
+    private static final class DefaultConfigHolder {
+        static final LingFrameConfig DEFAULT = LingFrameConfig.builder().build();
+    }
+
     /**
      * 获取全局配置实例 (静态方法，随处可调)
+     * <p>
+     * 线程安全说明：如果未初始化，返回线程安全的默认配置单例
      */
     public static LingFrameConfig current() {
-        if (INSTANCE == null) {
-            // 兜底：如果没有初始化（比如单元测试），返回一个默认值，防止空指针
-            return LingFrameConfig.builder().build();
+        LingFrameConfig config = INSTANCE;
+        if (config == null) {
+            // 未初始化时返回固定的默认配置，保证行为一致性
+            return DefaultConfigHolder.DEFAULT;
         }
-        return INSTANCE;
+        return config;
     }
 
     /**

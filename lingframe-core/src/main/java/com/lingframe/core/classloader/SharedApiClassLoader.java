@@ -1,5 +1,7 @@
 package com.lingframe.core.classloader;
 
+import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.core.exception.ClassLoaderException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -94,7 +96,7 @@ public class SharedApiClassLoader extends URLClassLoader {
      */
     public void addApiJar(File apiJar) {
         if (apiJar == null || !apiJar.exists()) {
-            throw new IllegalArgumentException("API JAR 不存在: " + apiJar);
+            throw new InvalidArgumentException("apiJar", "API JAR 不存在: " + apiJar);
         }
 
         String jarPath = apiJar.getAbsolutePath();
@@ -109,7 +111,7 @@ public class SharedApiClassLoader extends URLClassLoader {
         try {
             checkClassConflicts(apiJar);
         } catch (Exception e) {
-            throw new IllegalStateException("API JAR 冲突检测失败: " + jarPath, e);
+            throw new ClassLoaderException(null, jarPath, "API JAR 冲突检测失败", e);
         }
 
         // 添加 URL
@@ -118,7 +120,7 @@ public class SharedApiClassLoader extends URLClassLoader {
             loadedJars.add(jarPath);
             log.info("📦 [SharedApi] JAR 已加载: {}", apiJar.getName());
         } catch (MalformedURLException e) {
-            throw new IllegalStateException("无法添加 API JAR: " + jarPath, e);
+            throw new ClassLoaderException(null, jarPath, "无法添加 API JAR", e);
         }
     }
 
@@ -131,7 +133,7 @@ public class SharedApiClassLoader extends URLClassLoader {
      */
     public void addApiClassesDir(File classesDir) {
         if (classesDir == null || !classesDir.exists() || !classesDir.isDirectory()) {
-            throw new IllegalArgumentException("classes 目录无效: " + classesDir);
+            throw new InvalidArgumentException("classesDir", "classes 目录无效: " + classesDir);
         }
 
         String dirPath = classesDir.getAbsolutePath();
@@ -151,7 +153,7 @@ public class SharedApiClassLoader extends URLClassLoader {
             loadedJars.add(dirPath);
             log.info("📦 [SharedApi] classes 目录已加载: {}", classesDir.getName());
         } catch (MalformedURLException e) {
-            throw new IllegalStateException("无法添加 classes 目录: " + dirPath, e);
+            throw new ClassLoaderException(null, dirPath, "无法添加 classes 目录", e);
         }
     }
 

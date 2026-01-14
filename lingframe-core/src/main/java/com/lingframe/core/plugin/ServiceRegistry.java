@@ -4,6 +4,9 @@ import com.lingframe.core.plugin.event.RuntimeEvent;
 import com.lingframe.core.plugin.event.RuntimeEventBus;
 import jakarta.annotation.Nonnull;
 import lombok.extern.slf4j.Slf4j;
+import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.core.exception.ServiceNotFoundException;
+import com.lingframe.core.exception.InvocationException;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -70,13 +73,13 @@ public class ServiceRegistry {
      */
     public boolean registerService(String fqsid, Object bean, Method method) {
         if (fqsid == null || fqsid.isBlank()) {
-            throw new IllegalArgumentException("FQSID cannot be null or blank");
+            throw new InvalidArgumentException("fqsid", "FQSID cannot be null or blank");
         }
         if (bean == null) {
-            throw new IllegalArgumentException("Bean cannot be null");
+            throw new InvalidArgumentException("bean", "Bean cannot be null");
         }
         if (method == null) {
-            throw new IllegalArgumentException("Method cannot be null");
+            throw new InvalidArgumentException("method", "Method cannot be null");
         }
 
         try {
@@ -98,7 +101,7 @@ public class ServiceRegistry {
             return true;
 
         } catch (IllegalAccessException e) {
-            throw new RuntimeException("Failed to create MethodHandle for " + fqsid, e);
+            throw new InvocationException("Failed to create MethodHandle for " + fqsid, e);
         }
     }
 
@@ -144,7 +147,7 @@ public class ServiceRegistry {
         InvokableService service = serviceCache.get(fqsid);
         if (service == null) {
             log.error("[{}] Service not found: {}", pluginId, fqsid);
-            throw new IllegalStateException("Service not found: " + fqsid);
+            throw new ServiceNotFoundException(fqsid);
         }
         return service;
     }

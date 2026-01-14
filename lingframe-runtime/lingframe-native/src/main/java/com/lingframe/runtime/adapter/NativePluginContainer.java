@@ -6,6 +6,9 @@ import com.lingframe.api.plugin.LingPlugin;
 import com.lingframe.core.context.CorePluginContext;
 import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.core.spi.PluginContainer;
+import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.core.exception.PluginInstallException;
+import com.lingframe.core.exception.PluginRuntimeException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -40,20 +43,21 @@ public class NativePluginContainer implements PluginContainer {
     private final Map<Class<?>, Object> singletons = new ConcurrentHashMap<>();
 
     public NativePluginContainer(String pluginId, Class<?> mainClass,
-                                 ClassLoader classLoader, File sourceFile) {
+            ClassLoader classLoader, File sourceFile) {
         this.pluginId = pluginId;
         this.classLoader = classLoader;
         this.sourceFile = sourceFile;
         try {
             // 强校验：Native 模式下，主类必须实现 LingPlugin 接口
             if (!LingPlugin.class.isAssignableFrom(mainClass)) {
-                throw new IllegalArgumentException("Native plugin main class must implement LingPlugin: " + mainClass.getName());
+                throw new InvalidArgumentException("mainClass",
+                        "Native plugin main class must implement LingPlugin: " + mainClass.getName());
             }
             // 实例化插件入口类并放入单例池
             this.pluginInstance = (LingPlugin) mainClass.getDeclaredConstructor().newInstance();
             this.singletons.put(mainClass, pluginInstance);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to create native plugin instance", e);
+            throw new PluginInstallException(pluginId, "Failed to create native plugin instance", e);
         }
     }
 
@@ -74,7 +78,7 @@ public class NativePluginContainer implements PluginContainer {
             scanAndRegisterServices(context);
         } catch (Exception e) {
             this.active = false;
-            throw new RuntimeException("Failed to start native plugin: " + pluginId, e);
+            throw new PluginInstallException(pluginId, "Failed to start native plugin", e);
         } finally {
             t.setContextClassLoader(old);
         }
@@ -82,7 +86,8 @@ public class NativePluginContainer implements PluginContainer {
 
     @Override
     public void stop() {
-        if (!active) return;
+        if (!active)
+            return;
         log.info("[{}] Stopping native plugin...", pluginId);
         try {
             pluginInstance.onStop(savedContext);
@@ -108,7 +113,8 @@ public class NativePluginContainer implements PluginContainer {
 
         for (Class<?> clazz : classes) {
             // 只扫描普通类
-            if (clazz.isInterface() || Modifier.isAbstract(clazz.getModifiers())) continue;
+            if (clazz.isInterface() || Modifier.isAbstract(clazz.getModifiers()))
+                continue;
 
             // 检查方法上的注解
             for (Method method : clazz.getMethods()) {
@@ -127,7 +133,7 @@ public class NativePluginContainer implements PluginContainer {
                 try {
                     return k.getDeclaredConstructor().newInstance();
                 } catch (Exception e) {
-                    throw new RuntimeException("Failed to create bean for " + k.getName(), e);
+                    throw new PluginRuntimeException(pluginId, "Failed to create bean for " + k.getName(), e);
                 }
             });
 
@@ -187,7 +193,8 @@ public class NativePluginContainer implements PluginContainer {
     private Optional<Class<?>> loadClassSafely(String className) {
         try {
             // 排除 module-info 和 package-info
-            if (className.equals("module-info") || className.endsWith("package-info")) return Optional.empty();
+            if (className.equals("module-info") || className.endsWith("package-info"))
+                return Optional.empty();
             return Optional.of(classLoader.loadClass(className));
         } catch (Throwable e) {
             // 忽略 NoClassDefFoundError 等，因为插件可能依赖了 provided 的库但还没加载

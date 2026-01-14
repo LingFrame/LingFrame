@@ -6,6 +6,8 @@ import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.plugin.PluginManager;
+import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.core.exception.InvocationException;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,7 +55,7 @@ public class CorePluginContext implements PluginContext {
     @Override
     public <T> Optional<T> invoke(String serviceId, Object... args) {
         if (serviceId == null || serviceId.isEmpty()) {
-            throw new IllegalArgumentException("Service ID cannot be empty.");
+            throw new InvalidArgumentException("serviceId", "Service ID cannot be empty.");
         }
 
         try {
@@ -62,7 +64,7 @@ public class CorePluginContext implements PluginContext {
             throw e; // 权限异常直接抛出
         } catch (Exception e) {
             log.error("Service invocation failed for [{}]: {}", serviceId, e.getMessage(), e);
-            throw new RuntimeException("Service invoke failed: " + e.getMessage(), e);
+            throw new InvocationException("Service invoke failed: " + e.getMessage(), e);
         }
     }
 

@@ -8,6 +8,7 @@ import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.GovernanceDecision;
 import com.lingframe.core.monitor.TraceContext;
+import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.core.plugin.PluginRuntime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -71,7 +72,7 @@ public class GovernanceKernel {
             // 检查插件级权限
             // 这一步必须查 Target，因为如果 Target 挂了，谁调都没用
             if (!permissionService.isAllowed(ctx.getPluginId(), "PLUGIN_ENABLE", AccessType.EXECUTE)) {
-                throw new SecurityException("Plugin is disabled: " + ctx.getPluginId());
+                throw new PermissionDeniedException(ctx.getPluginId(), "PLUGIN_ENABLE");
             }
 
             // 核心检查：检查推导出的权限(始终检查 Caller)
@@ -94,17 +95,18 @@ public class GovernanceKernel {
 
             if (!permissionService.isAllowed(callerId, perm, type)) {
                 log.warn("⛔ Permission Denied: Plugin=[{}] needs=[{}] type=[{}]", callerId, perm, type);
-                throw new SecurityException("Access Denied: " + perm);
+                throw new PermissionDeniedException(callerId, perm, type);
             }
 
             // 检查资源级权限
             if (!permissionService.isAllowed(callerId, ctx.getResourceId(), AccessType.EXECUTE)) {
-                throw new SecurityException("Access Denied: " + ctx.getResourceId());
+                throw new PermissionDeniedException(callerId, ctx.getResourceId(), AccessType.EXECUTE);
             }
 
             // Audit In
             if (log.isDebugEnabled()) {
-                log.debug("Kernel Ingress: [{}] {} | Trace={}", ctx.getResourceType(), ctx.getResourceId(), ctx.getTraceId());
+                log.debug("Kernel Ingress: [{}] {} | Trace={}", ctx.getResourceType(), ctx.getResourceId(),
+                        ctx.getTraceId());
             }
 
             // Execute 真实业务
@@ -131,7 +133,8 @@ public class GovernanceKernel {
             // 只有标记为 shouldAudit 的请求才记录，避免日志泛滥
             if (ctx.isShouldAudit()) {
                 String action = ctx.getAuditAction();
-                if (action == null) action = ctx.getOperation();
+                if (action == null)
+                    action = ctx.getOperation();
                 String caller = ctx.getCallerPluginId() != null ? ctx.getCallerPluginId() : ctx.getPluginId();
 
                 try {
@@ -142,13 +145,11 @@ public class GovernanceKernel {
                             ctx.getResourceId(),
                             ctx.getArgs(),
                             success ? result : error,
-                            cost
-                    );
+                            cost);
 
                     // 发布实时 Audit 事件 (供前端展示)
                     eventBus.publish(new MonitoringEvents.AuditLogEvent(
-                            ctx.getTraceId(), caller, action, ctx.getResourceId(), success, cost
-                    ));
+                            ctx.getTraceId(), caller, action, ctx.getResourceId(), success, cost));
 
                 } catch (Exception e) {
                     log.error("Audit failed", e);
@@ -177,11 +178,16 @@ public class GovernanceKernel {
     }
 
     private void enrichContext(InvocationContext ctx, GovernanceDecision decision) {
-        if (decision == null) return;
+        if (decision == null)
+            return;
 
-        if (decision.getRequiredPermission() != null) ctx.setRequiredPermission(decision.getRequiredPermission());
-        if (decision.getAccessType() != null) ctx.setAccessType(decision.getAccessType());
-        if (decision.getAuditEnabled() != null) ctx.setShouldAudit(decision.getAuditEnabled());
-        if (decision.getAuditAction() != null) ctx.setAuditAction(decision.getAuditAction());
+        if (decision.getRequiredPermission() != null)
+            ctx.setRequiredPermission(decision.getRequiredPermission());
+        if (decision.getAccessType() != null)
+            ctx.setAccessType(decision.getAccessType());
+        if (decision.getAuditEnabled() != null)
+            ctx.setShouldAudit(decision.getAuditEnabled());
+        if (decision.getAuditAction() != null)
+            ctx.setAuditAction(decision.getAuditAction());
     }
 }

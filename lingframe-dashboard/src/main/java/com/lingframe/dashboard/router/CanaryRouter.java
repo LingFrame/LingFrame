@@ -2,7 +2,9 @@ package com.lingframe.dashboard.router;
 
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.plugin.PluginInstance;
+import com.lingframe.core.spi.CanaryConfigurable;
 import com.lingframe.core.spi.TrafficRouter;
+import com.lingframe.api.exception.InvalidArgumentException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -12,11 +14,13 @@ import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 金丝雀灰度路由实现
+ * <p>
+ * 同时实现 TrafficRouter（路由决策）和 CanaryConfigurable（配置管理）
  */
 @Slf4j
-public class CanaryRouter implements TrafficRouter {
+public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
 
-    private final TrafficRouter delegate;  // 原有的 LabelMatchRouter
+    private final TrafficRouter delegate; // 原有的 LabelMatchRouter
 
     // 灰度配置：pluginId -> percent (0-100)
     private final Map<String, CanaryConfig> canaryConfigs = new ConcurrentHashMap<>();
@@ -62,7 +66,7 @@ public class CanaryRouter implements TrafficRouter {
      */
     public void setCanaryConfig(String pluginId, int percent, String canaryVersion) {
         if (percent < 0 || percent > 100) {
-            throw new IllegalArgumentException("Canary percent must be 0-100");
+            throw new InvalidArgumentException("percent", "Canary percent must be 0-100");
         }
 
         if (percent == 0) {

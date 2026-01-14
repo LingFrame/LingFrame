@@ -10,6 +10,9 @@ import com.lingframe.core.plugin.PluginInstance;
 import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.core.plugin.PluginRuntime;
 import com.lingframe.dashboard.dto.SimulateResultDTO;
+import com.lingframe.api.exception.PluginNotFoundException;
+import com.lingframe.core.exception.ServiceUnavailableException;
+import com.lingframe.core.exception.InvocationException;
 import com.lingframe.dashboard.dto.StressResultDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,11 +31,11 @@ public class SimulateService {
     public SimulateResultDTO simulateResource(String pluginId, String resourceType) {
         PluginRuntime runtime = pluginManager.getRuntime(pluginId);
         if (runtime == null) {
-            throw new IllegalArgumentException("插件不存在: " + pluginId);
+            throw new PluginNotFoundException(pluginId);
         }
 
         if (!runtime.isAvailable()) {
-            throw new IllegalStateException("插件未激活: " + pluginId);
+            throw new ServiceUnavailableException(pluginId, "插件未激活");
         }
 
         String traceId = generateTraceId();
@@ -89,11 +92,11 @@ public class SimulateService {
     public SimulateResultDTO simulateIpc(String pluginId, String targetPluginId, boolean ipcEnabled) {
         PluginRuntime sourceRuntime = pluginManager.getRuntime(pluginId);
         if (sourceRuntime == null) {
-            throw new IllegalArgumentException("源插件不存在: " + pluginId);
+            throw new PluginNotFoundException(pluginId);
         }
 
         if (!sourceRuntime.isAvailable()) {
-            throw new IllegalStateException("源插件未激活: " + pluginId);
+            throw new ServiceUnavailableException(pluginId, "源插件未激活");
         }
 
         PluginRuntime targetRuntime = pluginManager.getRuntime(targetPluginId);
@@ -169,11 +172,11 @@ public class SimulateService {
     public StressResultDTO stressTest(String pluginId) {
         PluginRuntime runtime = pluginManager.getRuntime(pluginId);
         if (runtime == null) {
-            throw new IllegalArgumentException("插件不存在: " + pluginId);
+            throw new PluginNotFoundException(pluginId);
         }
 
         if (!runtime.isAvailable()) {
-            throw new IllegalStateException("插件未激活: " + pluginId);
+            throw new ServiceUnavailableException(pluginId, "插件未激活");
         }
 
         // 单次路由
@@ -219,7 +222,7 @@ public class SimulateService {
         try {
             return SimulateService.class.getDeclaredMethod("simulatePlaceholder");
         } catch (NoSuchMethodException e) {
-            throw new RuntimeException(e);
+            throw new InvocationException("Failed to get simulate method", e);
         }
     }
 

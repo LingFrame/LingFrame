@@ -2,6 +2,7 @@ package com.lingframe.core.invoker;
 
 import com.lingframe.core.plugin.PluginInstance;
 import com.lingframe.core.spi.PluginServiceInvoker;
+import com.lingframe.core.exception.ServiceUnavailableException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.invoke.MethodHandle;
@@ -23,7 +24,8 @@ public class FastPluginServiceInvoker implements PluginServiceInvoker {
      */
     public Object invokeFast(PluginInstance instance, MethodHandle methodHandle, Object[] args) throws Throwable {
         if (!instance.tryEnter()) {
-            throw new IllegalStateException("Plugin instance is not ready or already destroyed");
+            throw new ServiceUnavailableException(instance.getPluginId(),
+                    "Plugin instance is not ready or already destroyed");
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
 
