@@ -74,47 +74,13 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- 核心模块 -->
+            <!-- 导入 LingFrame BOM，统一管理 LingFrame 模块版本 -->
             <dependency>
                 <groupId>com.lingframe</groupId>
-                <artifactId>lingframe-core</artifactId>
+                <artifactId>lingframe-bom</artifactId>
                 <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.lingframe</groupId>
-                <artifactId>lingframe-api</artifactId>
-                <version>${revision}</version>
-            </dependency>
-
-            <!-- 运行时集成 -->
-            <dependency>
-                <groupId>com.lingframe</groupId>
-                <artifactId>lingframe-native</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.lingframe</groupId>
-                <artifactId>lingframe-spring-boot3-starter</artifactId>
-                <version>${revision}</version>
-            </dependency>
-
-            <!-- 基础设施层 -->
-            <dependency>
-                <groupId>com.lingframe</groupId>
-                <artifactId>lingframe-infra-storage</artifactId>
-                <version>${revision}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.lingframe</groupId>
-                <artifactId>lingframe-infra-cache</artifactId>
-                <version>${revision}</version>
-            </dependency>
-
-            <!-- 可视化治理中心 -->
-            <dependency>
-                <groupId>com.lingframe</groupId>
-                <artifactId>lingframe-dashboard</artifactId>
-                <version>${revision}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
 
             <!-- Spring Boot BOM -->

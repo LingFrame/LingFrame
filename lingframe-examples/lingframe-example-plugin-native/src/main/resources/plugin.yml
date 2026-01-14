@@ -7,13 +7,17 @@ mainClass: "com.lingframe.example.NativePlugin"
 
 # --- 治理配置 ---
 governance:
-  permissions:
-    # 对应 GovernancePolicy.PermissionRule 的字段
-    - methodPattern: "storage:sql"   # 原 capability
-      permissionId: "READ"           # 原 access
-    - methodPattern: "cache:redis"
-      permissionId: "WRITE"
+  # ACL 入站规则 (StandardGovernancePolicyProvider 使用)
+  permissions: []
+
+  # 插件能力申请 (PluginManager 使用)
+  capabilities:
+    - capability: "storage:sql"
+      accessType: "READ"
+    - capability: "cache:redis"
+      accessType: "WRITE"
 
 # --- 自定义扩展/依赖 (对应 Map<String, Object> properties) ---
 properties:
   mark: "test"
+
