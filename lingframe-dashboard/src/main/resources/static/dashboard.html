@@ -5,1446 +5,491 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LingFrame Hub | 核心治理中心</title>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- 本地资源 -->
+    <script src="js/vue.global.prod.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap');
-
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            background-color: #0f172a;
-            color: #e2e8f0;
-            font-family: -apple-system, system-ui, sans-serif;
-        }
-
-        .font-mono {
-            font-family: 'JetBrains Mono', monospace;
-        }
-
-        /* 侧边栏 */
-        .sidebar {
-            width: 240px;
-            background: #1e293b;
-            border-right: 1px solid #334155;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .sidebar-item {
-            padding: 12px 20px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            color: #94a3b8;
-            transition: all 0.2s;
-            cursor: pointer;
-            border-left: 3px solid transparent;
-        }
-
-        .sidebar-item:hover {
-            background: #334155;
-            color: #fff;
-        }
-
-        .sidebar-item.active {
-            background: linear-gradient(90deg, rgba(59, 130, 246, 0.1) 0%, transparent 100%);
-            color: #3b82f6;
-            border-left-color: #3b82f6;
-        }
-
-        /* 卡片 */
-        .card {
-            background: #1e293b;
-            border-radius: 12px;
-            border: 1px solid #334155;
-        }
-
-        .card-header {
-            padding: 16px 20px;
-            border-bottom: 1px solid #334155;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        /* 插件列表项 */
-        .plugin-item {
-            padding: 16px 20px;
-            border-bottom: 1px solid #334155;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .plugin-item:hover {
-            background: #334155;
-        }
-
-        .plugin-item.active {
-            background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, transparent 100%);
-            border-left: 3px solid #3b82f6;
-        }
-
-        .plugin-item:last-child {
-            border-bottom: none;
-        }
-
-        /* 滑块 */
-        .slider-custom {
-            -webkit-appearance: none;
-            width: 100%;
-            height: 8px;
-            border-radius: 4px;
-            background: linear-gradient(to right, #3b82f6 var(--p), #f59e0b var(--p));
-            outline: none;
-        }
-
-        .slider-custom::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 20px;
-            height: 20px;
-            background: #fff;
-            border: 3px solid #475569;
-            border-radius: 50%;
-            cursor: pointer;
-        }
-
-        .slider-disabled {
-            -webkit-appearance: none;
-            width: 100%;
-            height: 8px;
-            border-radius: 4px;
-            background: #334155;
-            outline: none;
-            cursor: not-allowed;
-        }
-
-        .slider-disabled::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 20px;
-            height: 20px;
-            background: #64748b;
-            border: 3px solid #475569;
-            border-radius: 50%;
-            cursor: not-allowed;
-        }
-
-        /* 日志区域 */
-        .log-container {
-            background: #0f172a;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
-        }
-
-        .log-line {
-            padding: 6px 0;
-            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
-            display: flex;
-            align-items: flex-start;
-            gap: 8px;
-        }
-
-        .trace-tag {
-            color: #a855f7;
-            border: 1px solid #a855f7;
-            padding: 1px 4px;
-            border-radius: 3px;
-            font-weight: bold;
-            font-size: 9px;
-            flex-shrink: 0;
-        }
-
-        /* 状态标签 */
-        .status-active {
-            background: #065f46;
-            color: #34d399;
-        }
-
-        .status-loaded {
-            background: #1e40af;
-            color: #60a5fa;
-        }
-
-        .status-unloaded {
-            background: #374151;
-            color: #9ca3af;
-        }
-
-        .status-loading {
-            background: #854d0e;
-            color: #fcd34d;
-        }
-
-        .status-error {
-            background: #7f1d1d;
-            color: #fca5a5;
-        }
-
-        /* 权限按钮 */
-        .perm-btn {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: bold;
-            transition: all 0.2s;
-            cursor: pointer;
-        }
-
-        .perm-btn.on {
-            background: #059669;
-            color: #fff;
-        }
-
-        .perm-btn.off {
-            background: #475569;
-            color: #94a3b8;
-        }
-
-        .perm-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        /* 指标卡片 */
-        .metric-card {
-            background: #0f172a;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            padding: 16px;
-            text-align: center;
-        }
-
-        /* 操作按钮 */
-        .action-btn {
-            padding: 10px 16px;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: 600;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            cursor: pointer;
-            border: none;
-        }
-
-        .action-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        /* 模态框 */
-        .modal-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.7);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-        }
-
-        .modal-content {
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 12px;
-            padding: 24px;
-            max-width: 400px;
-            width: 90%;
-        }
-
-        /* 环境标签 */
-        .env-badge {
-            padding: 4px 12px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-
-        .env-dev {
-            background: #1e40af;
-            color: #93c5fd;
-        }
-
-        .env-test {
-            background: #7c2d12;
-            color: #fdba74;
-        }
-
-        .env-prod {
-            background: #7f1d1d;
-            color: #fca5a5;
-        }
-
-        /* 加载状态 */
-        .loading-overlay {
-            position: absolute;
-            inset: 0;
-            background: rgba(15, 23, 42, 0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10;
-            border-radius: 12px;
-        }
-
-        .spinner {
-            width: 32px;
-            height: 32px;
-            border: 3px solid #334155;
-            border-top-color: #3b82f6;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* 连接状态 */
-        .connection-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-        }
-
-        .connection-dot.connected {
-            background: #22c55e;
-            animation: pulse 2s infinite;
-        }
-
-        .connection-dot.disconnected {
-            background: #ef4444;
-        }
-
-        .connection-dot.connecting {
-            background: #f59e0b;
-            animation: pulse 1s infinite;
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.5;
-            }
-        }
-
-        /* Toast 通知 */
-        .toast-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 200;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .toast {
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            animation: slideIn 0.3s ease;
-        }
-
-        .toast-success {
-            background: #065f46;
-            color: #34d399;
-            border: 1px solid #059669;
-        }
-
-        .toast-error {
-            background: #7f1d1d;
-            color: #fca5a5;
-            border: 1px solid #dc2626;
-        }
-
-        .toast-info {
-            background: #1e40af;
-            color: #93c5fd;
-            border: 1px solid #3b82f6;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        /* 滚动条 */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: #1e293b;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: #475569;
-            border-radius: 3px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #64748b;
-        }
-
-        /* 响应式 */
-        @media (max-width: 1280px) {
-            .sidebar {
-                width: 200px;
-            }
-        }
-
-        @media (max-width: 1024px) {
-            .sidebar {
-                position: fixed;
-                left: -240px;
-                top: 0;
-                bottom: 0;
-                z-index: 50;
-                transition: left 0.3s;
-            }
-
-            .sidebar.open {
-                left: 0;
-            }
-
-            .main-area {
-                margin-left: 0 !important;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .metric-grid {
-                grid-template-columns: repeat(2, 1fr) !important;
-            }
-
-            .content-grid {
-                grid-template-columns: 1fr !important;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="css/fontawesome.min.css">
+    <link rel="stylesheet" href="css/jetbrains-mono.css">
+    <link rel="stylesheet" href="css/dashboard.css">
 </head>
 
 <body class="h-screen flex overflow-hidden">
 
-<div id="app" class="flex w-full h-full">
+    <div id="app" class="flex w-full h-full">
 
-    <!-- Toast 通知 -->
-    <div class="toast-container">
-        <div v-for="(toast, index) in toasts" :key="toast.id" :class="['toast', 'toast-' + toast.type]">
-            <i :class="toast.type === 'success' ? 'fa-solid fa-check-circle' :
+        <!-- Toast 通知 -->
+        <div class="toast-container">
+            <div v-for="(toast, index) in toasts" :key="toast.id" :class="['toast', 'toast-' + toast.type]">
+                <i :class="toast.type === 'success' ? 'fa-solid fa-check-circle' :
                        toast.type === 'error' ? 'fa-solid fa-times-circle' : 'fa-solid fa-info-circle'"></i>
-            {{ toast.message }}
-        </div>
-    </div>
-
-    <!-- 确认模态框 -->
-    <div v-if="modal.show" class="modal-overlay" @click.self="modal.show = false">
-        <div class="modal-content">
-            <div class="flex items-center gap-3 mb-4">
-                <div class="w-10 h-10 rounded-full flex items-center justify-center bg-red-500/20 text-red-400">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
-                </div>
-                <div>
-                    <h3 class="font-bold text-white">{{ modal.title }}</h3>
-                    <p class="text-sm text-slate-400">{{ modal.message }}</p>
-                </div>
+                {{ toast.message }}
             </div>
-            <div class="flex gap-3 justify-end">
-                <button @click="modal.show = false"
+        </div>
+
+        <!-- 确认模态框 -->
+        <div v-if="modal.show" class="modal-overlay" @click.self="modal.show = false">
+            <div class="modal-content">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center bg-red-500/20 text-red-400">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white">{{ modal.title }}</h3>
+                        <p class="text-sm text-slate-400">{{ modal.message }}</p>
+                    </div>
+                </div>
+                <div class="flex gap-3 justify-end">
+                    <button @click="modal.show = false"
                         class="px-4 py-2 rounded-lg text-sm font-medium bg-slate-700 hover:bg-slate-600 text-white">
-                    取消
-                </button>
-                <button @click="confirmModalAction" :disabled="modal.loading"
+                        取消
+                    </button>
+                    <button @click="confirmModalAction" :disabled="modal.loading"
                         class="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 hover:bg-red-500 text-white flex items-center gap-2">
                         <span v-if="modal.loading" class="spinner"
-                              style="width:14px;height:14px;border-width:2px;"></span>
-                    确认{{ modal.actionText }}
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 侧边栏 -->
-    <aside class="sidebar" :class="{ open: sidebarOpen }">
-        <div class="p-5 border-b border-slate-700">
-            <div class="flex items-center gap-3">
-                <div
-                        class="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center font-bold text-white">
-                    L
-                </div>
-                <div>
-                    <h1 class="font-bold text-white text-sm">LingFrame</h1>
-                    <p class="text-[10px] text-slate-500">V0.1.0-Preview</p>
+                            style="width:14px;height:14px;border-width:2px;"></span>
+                        确认{{ modal.actionText }}
+                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- 环境选择 -->
-        <div class="p-4 border-b border-slate-700">
-            <label class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">当前环境</label>
-            <select v-model="currentEnv"
-                    class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white">
-                <option value="dev">开发环境</option>
-                <option value="test">测试环境</option>
-                <option value="prod">生产环境</option>
-            </select>
-        </div>
-
-        <!-- 导航菜单 -->
-        <nav class="flex-grow py-4">
-            <div class="text-[10px] text-slate-500 uppercase tracking-wider px-5 mb-2">核心功能</div>
-            <div class="sidebar-item active">
-                <i class="fa-solid fa-gauge-high w-4"></i>
-                <span class="text-sm">治理中心</span>
-            </div>
-        </nav>
-
-        <!-- 底部状态 -->
-        <div class="p-4 border-t border-slate-700">
-            <div class="flex items-center gap-2 text-xs">
-                <span :class="['connection-dot', sseStatus]"></span>
-                <span class="text-slate-400">{{ sseStatusText }}</span>
-            </div>
-            <div class="text-[10px] text-slate-500 mt-1">
-                插件数: {{ plugins.length }} | 日志: {{ logs.length }}
-            </div>
-        </div>
-    </aside>
-
-    <!-- 主区域 -->
-    <main class="flex-grow flex flex-col overflow-hidden main-area">
-
-        <!-- 顶部栏 -->
-        <header
-                class="h-14 bg-slate-800/50 border-b border-slate-700 flex items-center justify-between px-6 flex-shrink-0">
-            <div class="flex items-center gap-4">
-                <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden text-slate-400 hover:text-white">
-                    <i class="fa-solid fa-bars"></i>
-                </button>
+        <!-- 侧边栏 -->
+        <aside class="sidebar" :class="{ open: sidebarOpen }">
+            <div class="p-5 border-b border-slate-700">
                 <div class="flex items-center gap-3">
-                    <span class="text-sm font-medium text-white">治理中心</span>
-                    <i class="fa-solid fa-chevron-right text-slate-600 text-xs"></i>
-                    <span class="text-sm text-slate-400">{{ activeId || '未选择' }}</span>
+                    <div
+                        class="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center font-bold text-white">
+                        L
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-white text-sm">LingFrame</h1>
+                        <p class="text-[10px] text-slate-500">V0.1.0-Preview</p>
+                    </div>
                 </div>
             </div>
-            <div class="flex items-center gap-4">
-                <button @click="refreshPlugins" :disabled="loading.plugins"
+
+            <!-- 环境选择 -->
+            <div class="p-4 border-b border-slate-700">
+                <label class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">当前环境</label>
+                <select v-model="currentEnv"
+                    class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white">
+                    <option value="dev">开发环境</option>
+                    <option value="test">测试环境</option>
+                    <option value="prod">生产环境</option>
+                </select>
+            </div>
+
+            <!-- 导航菜单 -->
+            <nav class="flex-grow py-4">
+                <div class="text-[10px] text-slate-500 uppercase tracking-wider px-5 mb-2">核心功能</div>
+                <div class="sidebar-item active">
+                    <i class="fa-solid fa-gauge-high w-4"></i>
+                    <span class="text-sm">治理中心</span>
+                </div>
+            </nav>
+
+            <!-- 底部状态 -->
+            <div class="p-4 border-t border-slate-700">
+                <div class="flex items-center gap-2 text-xs">
+                    <span :class="['connection-dot', sseStatus]"></span>
+                    <span class="text-slate-400">{{ sseStatusText }}</span>
+                </div>
+                <div class="text-[10px] text-slate-500 mt-1">
+                    插件数: {{ plugins.length }} | 日志: {{ logs.length }}
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主区域 -->
+        <main class="flex-grow flex flex-col overflow-hidden main-area">
+
+            <!-- 顶部栏 -->
+            <header
+                class="h-14 bg-slate-800/50 border-b border-slate-700 flex items-center justify-between px-6 flex-shrink-0">
+                <div class="flex items-center gap-4">
+                    <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden text-slate-400 hover:text-white">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div class="flex items-center gap-3">
+                        <span class="text-sm font-medium text-white">治理中心</span>
+                        <i class="fa-solid fa-chevron-right text-slate-600 text-xs"></i>
+                        <span class="text-sm text-slate-400">{{ activeId || '未选择' }}</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button @click="refreshPlugins" :disabled="loading.plugins"
                         class="text-slate-400 hover:text-white transition-all">
-                    <i :class="['fa-solid fa-arrows-rotate', loading.plugins ? 'animate-spin' : '']"></i>
-                </button>
-                <span :class="['env-badge', 'env-' + currentEnv]">{{ envLabels[currentEnv] }}</span>
-                <div class="flex items-center gap-2 text-xs text-slate-400">
-                    <i class="fa-solid fa-clock"></i>
-                    <span>{{ currentTime }}</span>
+                        <i :class="['fa-solid fa-arrows-rotate', loading.plugins ? 'animate-spin' : '']"></i>
+                    </button>
+                    <span :class="['env-badge', 'env-' + currentEnv]">{{ envLabels[currentEnv] }}</span>
+                    <div class="flex items-center gap-2 text-xs text-slate-400">
+                        <i class="fa-solid fa-clock"></i>
+                        <span>{{ currentTime }}</span>
+                    </div>
                 </div>
-            </div>
-        </header>
+            </header>
 
-        <!-- 内容区 -->
-        <div class="flex-grow overflow-auto p-6">
-            <div class="content-grid grid grid-cols-12 gap-6 max-w-[1600px] mx-auto">
+            <!-- 内容区 -->
+            <div class="flex-grow overflow-auto p-6">
+                <div class="content-grid grid grid-cols-12 gap-6 max-w-[1600px] mx-auto">
 
-                <!-- 左列：插件列表 -->
-                <div class="col-span-12 lg:col-span-3">
-                    <div class="card h-full relative">
-                        <div class="card-header">
-                            <h3 class="font-bold text-sm text-white">插件列表</h3>
-                            <span class="text-xs text-slate-500">{{ plugins.length }} 个</span>
-                        </div>
+                    <!-- 左列：插件列表 -->
+                    <div class="col-span-12 lg:col-span-3">
+                        <div class="card h-full relative">
+                            <div class="card-header">
+                                <h3 class="font-bold text-sm text-white">插件列表</h3>
+                                <span class="text-xs text-slate-500">{{ plugins.length }} 个</span>
+                            </div>
 
-                        <div v-if="loading.plugins && plugins.length === 0" class="loading-overlay">
-                            <div class="spinner"></div>
-                        </div>
+                            <div v-if="loading.plugins && plugins.length === 0" class="loading-overlay">
+                                <div class="spinner"></div>
+                            </div>
 
-                        <div v-if="!loading.plugins && plugins.length === 0" class="p-8 text-center">
-                            <i class="fa-solid fa-puzzle-piece text-3xl text-slate-600 mb-3"></i>
-                            <p class="text-sm text-slate-500">暂无已安装插件</p>
-                        </div>
+                            <div v-if="!loading.plugins && plugins.length === 0" class="p-8 text-center">
+                                <i class="fa-solid fa-puzzle-piece text-3xl text-slate-600 mb-3"></i>
+                                <p class="text-sm text-slate-500">暂无已安装插件</p>
+                            </div>
 
-                        <div class="max-h-[600px] overflow-y-auto">
-                            <div v-for="p in plugins" :key="p.pluginId" @click="selectPlugin(p.pluginId)"
-                                 :class="['plugin-item', activeId === p.pluginId ? 'active' : '']">
-                                <div class="flex justify-between items-start mb-2">
-                                    <span class="font-medium text-white text-sm">{{ p.pluginId }}</span>
-                                    <span
+                            <div class="max-h-[600px] overflow-y-auto">
+                                <div v-for="p in plugins" :key="p.pluginId" @click="selectPlugin(p.pluginId)"
+                                    :class="['plugin-item', activeId === p.pluginId ? 'active' : '']">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <span class="font-medium text-white text-sm">{{ p.pluginId }}</span>
+                                        <span
                                             :class="['text-[10px] px-2 py-0.5 rounded-full', getStatusClass(p.status)]">
                                             {{ p.status }}
                                         </span>
-                                </div>
-                                <div class="flex gap-2 flex-wrap">
+                                    </div>
+                                    <div class="flex gap-2 flex-wrap">
                                         <span class="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
                                             {{ p.activeVersion || p.versions?.[0] || 'unknown' }}
                                         </span>
-                                    <span v-if="p.canaryVersion"
-                                          class="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">
+                                        <span v-if="p.canaryVersion"
+                                            class="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">
                                             {{ p.canaryVersion }}
                                         </span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- 中列：流量控制 + 日志 -->
-                <div class="col-span-12 lg:col-span-6 space-y-6">
+                    <!-- 中列：流量控制 + 日志 -->
+                    <div class="col-span-12 lg:col-span-6 space-y-6">
 
-                    <!-- 流量分发 -->
-                    <div class="card relative">
-                        <div v-if="loading.canary" class="loading-overlay">
-                            <div class="spinner"></div>
-                        </div>
-
-                        <div class="card-header">
-                            <div class="flex items-center gap-3">
-                                <h3 class="font-bold text-sm text-white">流量分发</h3>
-                                <span v-if="!activePlugin"
-                                      class="text-[10px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">未选择</span>
-                                <span v-else-if="!canOperate"
-                                      class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded">未激活</span>
-                                <span v-else-if="canCanary"
-                                      class="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">灰度中</span>
-                                <span v-else
-                                      class="text-[10px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">单版本</span>
+                        <!-- 流量分发 -->
+                        <div class="card relative">
+                            <div v-if="loading.canary" class="loading-overlay">
+                                <div class="spinner"></div>
                             </div>
-                            <div class="flex gap-2">
-                                <button @click="resetStats" :disabled="!activeId || loading.stats"
+
+                            <div class="card-header">
+                                <div class="flex items-center gap-3">
+                                    <h3 class="font-bold text-sm text-white">流量分发</h3>
+                                    <span v-if="!activePlugin"
+                                        class="text-[10px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">未选择</span>
+                                    <span v-else-if="!canOperate"
+                                        class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded">未激活</span>
+                                    <span v-else-if="canCanary"
+                                        class="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">灰度中</span>
+                                    <span v-else
+                                        class="text-[10px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">单版本</span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button @click="resetStats" :disabled="!activeId || loading.stats"
                                         class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
-                                    <i class="fa-solid fa-rotate-right"></i>
-                                    重置
-                                </button>
-                                <button @click="toggleAuto" :disabled="!canOperate"
+                                        <i class="fa-solid fa-rotate-right"></i>
+                                        重置
+                                    </button>
+                                    <button @click="toggleAuto" :disabled="!canOperate"
                                         :class="isAuto ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'"
                                         class="action-btn text-white text-xs">
-                                    <i :class="isAuto ? 'fa-solid fa-stop' : 'fa-solid fa-play'"></i>
-                                    {{ isAuto ? '停止' : '压测' }}
-                                </button>
+                                        <i :class="isAuto ? 'fa-solid fa-stop' : 'fa-solid fa-play'"></i>
+                                        {{ isAuto ? '停止' : '压测' }}
+                                    </button>
+                                </div>
                             </div>
-                        </div>
 
-                        <div class="p-5">
-                            <!-- 灰度滑块 -->
-                            <div class="mb-6">
-                                <template v-if="canCanary && canOperate">
-                                    <div class="flex justify-between text-xs font-medium mb-3">
+                            <div class="p-5">
+                                <!-- 灰度滑块 -->
+                                <div class="mb-6">
+                                    <template v-if="canCanary && canOperate">
+                                        <div class="flex justify-between text-xs font-medium mb-3">
                                             <span class="text-blue-400">
                                                 <i class="fa-solid fa-cube mr-1"></i>
                                                 稳定版 {{ activePlugin?.activeVersion }}: {{ 100 - canaryPct }}%
                                             </span>
-                                        <span class="text-amber-400">
+                                            <span class="text-amber-400">
                                                 灰度版 {{ activePlugin?.canaryVersion }}: {{ canaryPct }}%
                                                 <i class="fa-solid fa-flask ml-1"></i>
                                             </span>
-                                    </div>
-                                    <input type="range" v-model.number="canaryPct" @change="updateCanaryConfig"
-                                           class="slider-custom" :style="{'--p': (100-canaryPct)+'%'}">
-                                </template>
-                                <template v-else>
-                                    <div class="flex justify-between text-xs font-medium mb-3 text-slate-500">
-                                        <span>稳定版 {{ activePlugin?.activeVersion || '-' }}: 100%</span>
-                                        <span>灰度版: 不可用</span>
-                                    </div>
-                                    <input type="range" value="0" disabled class="slider-disabled">
-                                    <p class="text-xs text-slate-500 mt-3 text-center">
-                                        <i class="fa-solid fa-info-circle mr-1"></i>
-                                        {{ !activePlugin ? '请先选择插件' : !canOperate ? '插件未激活' : '当前插件仅有单一版本'
-                                        }}
-                                    </p>
-                                </template>
-                            </div>
-
-                            <!-- 指标卡片 -->
-                            <div class="metric-grid grid grid-cols-4 gap-3">
-                                <div class="metric-card">
-                                    <div class="text-[10px] text-slate-500 uppercase mb-1">Total</div>
-                                    <div class="text-xl font-bold text-white font-mono">{{ stats.total }}</div>
-                                </div>
-                                <div class="metric-card border-blue-500/30">
-                                    <div class="text-[10px] text-blue-400 uppercase mb-1">V1 Hit</div>
-                                    <div class="text-xl font-bold text-blue-400 font-mono">{{ stats.v1Pct }}%</div>
-                                </div>
-                                <div class="metric-card"
-                                     :class="canCanary && canOperate ? 'border-amber-500/30' : ''">
-                                    <div class="text-[10px] uppercase mb-1"
-                                         :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">V2
-                                        Hit
-                                    </div>
-                                    <div class="text-xl font-bold font-mono"
-                                         :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">
-                                        {{ canCanary && canOperate ? stats.v2Pct + '%' : 'N/A' }}
-                                    </div>
-                                </div>
-                                <div class="metric-card">
-                                    <div class="text-[10px] text-slate-500 uppercase mb-1">Drift</div>
-                                    <div class="text-xl font-bold font-mono"
-                                         :class="canCanary && canOperate ? (Math.abs(stats.v2Pct - canaryPct) > 2 ? 'text-red-400' : 'text-green-400') : 'text-slate-500'">
-                                        {{ canCanary && canOperate ? formatDrift(stats.v2Pct - canaryPct) : 'N/A' }}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 日志追踪 -->
-                    <div class="card flex flex-col relative" style="height: 360px;">
-                        <div class="card-header flex-shrink-0">
-                            <div class="flex items-center gap-3">
-                                <h3 class="font-bold text-sm text-white">追踪日志</h3>
-                                <div :class="['connection-dot', sseStatus]" :title="sseStatusText"></div>
-                                <div class="flex bg-slate-800 rounded-lg overflow-hidden">
-                                    <button @click="logViewMode = 'current'"
-                                            :class="logViewMode === 'current' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
-                                            class="px-3 py-1 text-[10px] font-bold transition-all">
-                                        当前
-                                    </button>
-                                    <button @click="logViewMode = 'all'"
-                                            :class="logViewMode === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
-                                            class="px-3 py-1 text-[10px] font-bold transition-all">
-                                        全部
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="flex items-center gap-3 text-slate-500">
-                                    <span class="text-[10px] font-mono">{{ displayLogs.length }}/{{ logs.length
-                                        }}</span>
-                                <button @click="clearLogs" class="hover:text-white transition-all">
-                                    <i class="fa-solid fa-eraser"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div ref="logContainer" @scroll="handleLogScroll"
-                             class="log-container flex-grow overflow-y-auto p-4">
-                            <div v-if="displayLogs.length === 0" class="text-slate-500 text-center py-12">
-                                <i class="fa-solid fa-inbox text-3xl mb-3 block"></i>
-                                <span class="text-xs">{{ sseStatus === 'connected' ? '等待日志...' : '连接中...'
-                                    }}</span>
-                            </div>
-                            <div v-for="l in displayLogs" :key="l.id" class="log-line">
-                                <span class="trace-tag">#{{ l.traceId?.substring(0, 6) || '------' }}</span>
-                                <span v-if="logViewMode === 'all'" :class="getPluginTagClass(l.pluginId)"
-                                      class="text-[9px] px-1.5 py-0.5 rounded font-bold flex-shrink-0">
-                                        {{ getPluginShortName(l.pluginId) }}
-                                    </span>
-                                <span :class="getLogColor(l)" class="flex-grow">
-                                        <span v-if="l.depth" class="inline-block"
-                                              :style="{width: (l.depth * 12) + 'px'}"></span>
-                                        {{ l.content }}
-                                    </span>
-                                <span class="text-[9px] text-slate-600 flex-shrink-0">{{ formatTime(l.timestamp)
-                                    }}</span>
-                            </div>
-                        </div>
-                        <div v-if="isUserScrolling" @click="scrollToTop"
-                             class="absolute bottom-4 right-4 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs cursor-pointer hover:bg-blue-500 transition-all shadow-lg">
-                            <i class="fa-solid fa-arrow-up mr-1"></i> 新日志
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 右列：控制面板 -->
-                <div class="col-span-12 lg:col-span-3 space-y-6">
-
-                    <!-- 插件控制 -->
-                    <div class="card relative">
-                        <div v-if="loading.status" class="loading-overlay">
-                            <div class="spinner"></div>
-                        </div>
-
-                        <div class="card-header">
-                            <h3 class="font-bold text-sm text-white">插件控制</h3>
-                        </div>
-                        <div class="p-4">
-                            <div v-if="!activePlugin" class="text-center py-6">
-                                <i class="fa-solid fa-hand-pointer text-2xl text-slate-600 mb-2"></i>
-                                <p class="text-xs text-slate-500">请在左侧选择插件</p>
-                            </div>
-
-                            <template v-else>
-                                <!-- 生命周期 -->
-                                <div class="mb-4">
-                                    <label
-                                            class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">生命周期</label>
-                                    <div class="grid grid-cols-3 gap-2">
-                                        <button @click="updateStatus('ACTIVE')"
-                                                :disabled="activePlugin?.status === 'ACTIVE'"
-                                                :class="activePlugin?.status === 'ACTIVE' ? 'bg-green-600' : 'bg-slate-700 hover:bg-slate-600'"
-                                                class="action-btn text-white text-xs">
-                                            <i class="fa-solid fa-play"></i>
-                                            激活
-                                        </button>
-                                        <button @click="updateStatus('LOADED')"
-                                                :disabled="activePlugin?.status === 'LOADED'"
-                                                :class="activePlugin?.status === 'LOADED' ? 'bg-blue-600' : 'bg-slate-700 hover:bg-slate-600'"
-                                                class="action-btn text-white text-xs">
-                                            <i class="fa-solid fa-rotate"></i>
-                                            重载
-                                        </button>
-                                        <button @click="requestUnload"
-                                                :disabled="activePlugin?.status === 'UNLOADED'"
-                                                :class="activePlugin?.status === 'UNLOADED' ? 'bg-red-600' : 'bg-slate-700 hover:bg-slate-600'"
-                                                class="action-btn text-white text-xs">
-                                            <i class="fa-solid fa-power-off"></i>
-                                            卸载
-                                        </button>
-                                    </div>
+                                        </div>
+                                        <input type="range" v-model.number="canaryPct" @change="updateCanaryConfig"
+                                            class="slider-custom" :style="{'--p': (100-canaryPct)+'%'}">
+                                    </template>
+                                    <template v-else>
+                                        <div class="flex justify-between text-xs font-medium mb-3 text-slate-500">
+                                            <span>稳定版 {{ activePlugin?.activeVersion || '-' }}: 100%</span>
+                                            <span>灰度版: 不可用</span>
+                                        </div>
+                                        <input type="range" value="0" disabled class="slider-disabled">
+                                        <p class="text-xs text-slate-500 mt-3 text-center">
+                                            <i class="fa-solid fa-info-circle mr-1"></i>
+                                            {{ !activePlugin ? '请先选择插件' : !canOperate ? '插件未激活' : '当前插件仅有单一版本'
+                                            }}
+                                        </p>
+                                    </template>
                                 </div>
 
-                                <!-- 资源权限 -->
-                                <div class="mb-4">
-                                    <label
-                                            class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">资源权限</label>
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <button @click="togglePerm('dbRead')" :disabled="loading.permissions"
-                                                :class="activePlugin?.permissions?.dbRead !== false ? 'perm-btn on' : 'perm-btn off'">
-                                            <i class="fa-solid fa-database mr-1"></i> DB 读
-                                        </button>
-                                        <button @click="togglePerm('dbWrite')" :disabled="loading.permissions"
-                                                :class="activePlugin?.permissions?.dbWrite !== false ? 'perm-btn on' : 'perm-btn off'">
-                                            <i class="fa-solid fa-database mr-1"></i> DB 写
-                                        </button>
-                                        <button @click="togglePerm('cacheRead')" :disabled="loading.permissions"
-                                                :class="activePlugin?.permissions?.cacheRead !== false ? 'perm-btn on' : 'perm-btn off'">
-                                            <i class="fa-solid fa-bolt mr-1"></i> Cache 读
-                                        </button>
-                                        <button @click="togglePerm('cacheWrite')" :disabled="loading.permissions"
-                                                :class="activePlugin?.permissions?.cacheWrite !== false ? 'perm-btn on' : 'perm-btn off'">
-                                            <i class="fa-solid fa-bolt mr-1"></i> Cache 写
-                                        </button>
+                                <!-- 指标卡片 -->
+                                <div class="metric-grid grid grid-cols-4 gap-3">
+                                    <div class="metric-card">
+                                        <div class="text-[10px] text-slate-500 uppercase mb-1">Total</div>
+                                        <div class="text-xl font-bold text-white font-mono">{{ stats.total }}</div>
                                     </div>
-                                </div>
-                            </template>
-                        </div>
-                    </div>
-
-                    <!-- 功能演练 -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h3 class="font-bold text-sm text-white">功能演练</h3>
-                            <span :class="canOperate ? 'text-green-400' : 'text-red-400'"
-                                  class="text-[10px] font-bold">
-                                    {{ canOperate ? '● READY' : '○ INACTIVE' }}
-                                </span>
-                        </div>
-                        <div class="p-4">
-                            <div v-if="!canOperate"
-                                 class="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4 text-center">
-                                <i class="fa-solid fa-exclamation-circle text-red-400 mb-1"></i>
-                                <p class="text-xs text-red-400">插件未激活，请先激活</p>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-2 mb-4">
-                                <button @click="simulate('dbRead')" :disabled="!canOperate || loading.simulate"
-                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
-                                    <i class="fa-solid fa-database"></i> 读DB
-                                </button>
-                                <button @click="simulate('dbWrite')" :disabled="!canOperate || loading.simulate"
-                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
-                                    <i class="fa-solid fa-pen"></i> 写DB
-                                </button>
-                                <button @click="simulate('cacheRead')" :disabled="!canOperate || loading.simulate"
-                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
-                                    <i class="fa-solid fa-bolt"></i> 读Cache
-                                </button>
-                                <button @click="simulate('cacheWrite')" :disabled="!canOperate || loading.simulate"
-                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
-                                    <i class="fa-solid fa-bolt"></i> 写Cache
-                                </button>
-                            </div>
-
-                            <!-- IPC 测试 -->
-                            <div class="border-t border-slate-700 pt-4">
-                                <div class="flex items-center justify-between mb-3">
-                                    <span class="text-xs font-medium text-slate-400">IPC 授权</span>
-                                    <div @click="ipcEnabled = !ipcEnabled"
-                                         :class="ipcEnabled ? 'bg-green-500' : 'bg-slate-600'"
-                                         class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
-                                        <div :class="ipcEnabled ? 'translate-x-5' : 'translate-x-1'"
-                                             class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform">
+                                    <div class="metric-card border-blue-500/30">
+                                        <div class="text-[10px] text-blue-400 uppercase mb-1">V1 Hit</div>
+                                        <div class="text-xl font-bold text-blue-400 font-mono">{{ stats.v1Pct }}%</div>
+                                    </div>
+                                    <div class="metric-card"
+                                        :class="canCanary && canOperate ? 'border-amber-500/30' : ''">
+                                        <div class="text-[10px] uppercase mb-1"
+                                            :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">V2
+                                            Hit
+                                        </div>
+                                        <div class="text-xl font-bold font-mono"
+                                            :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">
+                                            {{ canCanary && canOperate ? stats.v2Pct + '%' : 'N/A' }}
+                                        </div>
+                                    </div>
+                                    <div class="metric-card">
+                                        <div class="text-[10px] text-slate-500 uppercase mb-1">Drift</div>
+                                        <div class="text-xl font-bold font-mono"
+                                            :class="canCanary && canOperate ? (Math.abs(stats.v2Pct - canaryPct) > 2 ? 'text-red-400' : 'text-green-400') : 'text-slate-500'">
+                                            {{ canCanary && canOperate ? formatDrift(stats.v2Pct - canaryPct) : 'N/A' }}
                                         </div>
                                     </div>
                                 </div>
-                                <button @click="simulateIPC" :disabled="!canOperate || loading.simulate"
-                                        class="w-full action-btn bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-600/30 text-xs">
-                                    <i class="fa-solid fa-arrow-right-arrow-left"></i>
-                                    IPC: {{ activeId || '-' }} → {{ ipcTarget }}
-                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 日志追踪 -->
+                        <div class="card flex flex-col relative" style="height: 360px;">
+                            <div class="card-header flex-shrink-0">
+                                <div class="flex items-center gap-3">
+                                    <h3 class="font-bold text-sm text-white">追踪日志</h3>
+                                    <div :class="['connection-dot', sseStatus]" :title="sseStatusText"></div>
+                                    <div class="flex bg-slate-800 rounded-lg overflow-hidden">
+                                        <button @click="logViewMode = 'current'"
+                                            :class="logViewMode === 'current' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
+                                            class="px-3 py-1 text-[10px] font-bold transition-all">
+                                            当前
+                                        </button>
+                                        <button @click="logViewMode = 'all'"
+                                            :class="logViewMode === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
+                                            class="px-3 py-1 text-[10px] font-bold transition-all">
+                                            全部
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3 text-slate-500">
+                                    <span class="text-[10px] font-mono">{{ displayLogs.length }}/{{ logs.length
+                                        }}</span>
+                                    <button @click="clearLogs" class="hover:text-white transition-all">
+                                        <i class="fa-solid fa-eraser"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div ref="logContainer" @scroll="handleLogScroll"
+                                class="log-container flex-grow overflow-y-auto p-4">
+                                <div v-if="displayLogs.length === 0" class="text-slate-500 text-center py-12">
+                                    <i class="fa-solid fa-inbox text-3xl mb-3 block"></i>
+                                    <span class="text-xs">{{ sseStatus === 'connected' ? '等待日志...' : '连接中...'
+                                        }}</span>
+                                </div>
+                                <div v-for="l in displayLogs" :key="l.id" class="log-line">
+                                    <span class="trace-tag">#{{ l.traceId?.substring(0, 6) || '------' }}</span>
+                                    <span v-if="logViewMode === 'all'" :class="getPluginTagClass(l.pluginId)"
+                                        class="text-[9px] px-1.5 py-0.5 rounded font-bold flex-shrink-0">
+                                        {{ getPluginShortName(l.pluginId) }}
+                                    </span>
+                                    <span :class="getLogColor(l)" class="flex-grow">
+                                        <span v-if="l.depth" class="inline-block"
+                                            :style="{width: (l.depth * 12) + 'px'}"></span>
+                                        {{ l.content }}
+                                    </span>
+                                    <span class="text-[9px] text-slate-600 flex-shrink-0">{{ formatTime(l.timestamp)
+                                        }}</span>
+                                </div>
+                            </div>
+                            <div v-if="isUserScrolling" @click="scrollToTop"
+                                class="absolute bottom-4 right-4 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs cursor-pointer hover:bg-blue-500 transition-all shadow-lg">
+                                <i class="fa-solid fa-arrow-up mr-1"></i> 新日志
                             </div>
                         </div>
                     </div>
 
-                    <!-- 审计结果 -->
-                    <div v-if="lastAudit"
-                         :class="lastAudit.allowed ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'"
-                         class="card border p-4">
-                        <div class="flex justify-between items-start">
-                            <div class="flex items-center gap-2">
-                                <i
+                    <!-- 右列：控制面板 -->
+                    <div class="col-span-12 lg:col-span-3 space-y-6">
+
+                        <!-- 插件控制 -->
+                        <div class="card relative">
+                            <div v-if="loading.status" class="loading-overlay">
+                                <div class="spinner"></div>
+                            </div>
+
+                            <div class="card-header">
+                                <h3 class="font-bold text-sm text-white">插件控制</h3>
+                            </div>
+                            <div class="p-4">
+                                <div v-if="!activePlugin" class="text-center py-6">
+                                    <i class="fa-solid fa-hand-pointer text-2xl text-slate-600 mb-2"></i>
+                                    <p class="text-xs text-slate-500">请在左侧选择插件</p>
+                                </div>
+
+                                <template v-else>
+                                    <!-- 生命周期 -->
+                                    <div class="mb-4">
+                                        <label
+                                            class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">生命周期</label>
+                                        <div class="grid grid-cols-3 gap-2">
+                                            <button @click="updateStatus('ACTIVE')"
+                                                :disabled="activePlugin?.status === 'ACTIVE'"
+                                                :class="activePlugin?.status === 'ACTIVE' ? 'bg-green-600' : 'bg-slate-700 hover:bg-slate-600'"
+                                                class="action-btn text-white text-xs">
+                                                <i class="fa-solid fa-play"></i>
+                                                激活
+                                            </button>
+                                            <button @click="updateStatus('LOADED')"
+                                                :disabled="activePlugin?.status === 'LOADED'"
+                                                :class="activePlugin?.status === 'LOADED' ? 'bg-blue-600' : 'bg-slate-700 hover:bg-slate-600'"
+                                                class="action-btn text-white text-xs">
+                                                <i class="fa-solid fa-rotate"></i>
+                                                重载
+                                            </button>
+                                            <button @click="requestUnload"
+                                                :disabled="activePlugin?.status === 'UNLOADED'"
+                                                :class="activePlugin?.status === 'UNLOADED' ? 'bg-red-600' : 'bg-slate-700 hover:bg-slate-600'"
+                                                class="action-btn text-white text-xs">
+                                                <i class="fa-solid fa-power-off"></i>
+                                                卸载
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- 资源权限 -->
+                                    <div class="mb-4">
+                                        <label
+                                            class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">资源权限</label>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <button @click="togglePerm('dbRead')" :disabled="loading.permissions"
+                                                :class="activePlugin?.permissions?.dbRead !== false ? 'perm-btn on' : 'perm-btn off'">
+                                                <i class="fa-solid fa-database mr-1"></i> DB 读
+                                            </button>
+                                            <button @click="togglePerm('dbWrite')" :disabled="loading.permissions"
+                                                :class="activePlugin?.permissions?.dbWrite !== false ? 'perm-btn on' : 'perm-btn off'">
+                                                <i class="fa-solid fa-database mr-1"></i> DB 写
+                                            </button>
+                                            <button @click="togglePerm('cacheRead')" :disabled="loading.permissions"
+                                                :class="activePlugin?.permissions?.cacheRead !== false ? 'perm-btn on' : 'perm-btn off'">
+                                                <i class="fa-solid fa-bolt mr-1"></i> Cache 读
+                                            </button>
+                                            <button @click="togglePerm('cacheWrite')" :disabled="loading.permissions"
+                                                :class="activePlugin?.permissions?.cacheWrite !== false ? 'perm-btn on' : 'perm-btn off'">
+                                                <i class="fa-solid fa-bolt mr-1"></i> Cache 写
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- 功能演练 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="font-bold text-sm text-white">功能演练</h3>
+                                <span :class="canOperate ? 'text-green-400' : 'text-red-400'"
+                                    class="text-[10px] font-bold">
+                                    {{ canOperate ? '● READY' : '○ INACTIVE' }}
+                                </span>
+                            </div>
+                            <div class="p-4">
+                                <div v-if="!canOperate"
+                                    class="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4 text-center">
+                                    <i class="fa-solid fa-exclamation-circle text-red-400 mb-1"></i>
+                                    <p class="text-xs text-red-400">插件未激活，请先激活</p>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-2 mb-4">
+                                    <button @click="simulate('dbRead')" :disabled="!canOperate || loading.simulate"
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                        <i class="fa-solid fa-database"></i> 读DB
+                                    </button>
+                                    <button @click="simulate('dbWrite')" :disabled="!canOperate || loading.simulate"
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                        <i class="fa-solid fa-pen"></i> 写DB
+                                    </button>
+                                    <button @click="simulate('cacheRead')" :disabled="!canOperate || loading.simulate"
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                        <i class="fa-solid fa-bolt"></i> 读Cache
+                                    </button>
+                                    <button @click="simulate('cacheWrite')" :disabled="!canOperate || loading.simulate"
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                        <i class="fa-solid fa-bolt"></i> 写Cache
+                                    </button>
+                                </div>
+
+                                <!-- IPC 测试 -->
+                                <div class="border-t border-slate-700 pt-4">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <span class="text-xs font-medium text-slate-400">IPC 授权</span>
+                                        <div @click="ipcEnabled = !ipcEnabled"
+                                            :class="ipcEnabled ? 'bg-green-500' : 'bg-slate-600'"
+                                            class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                                            <div :class="ipcEnabled ? 'translate-x-5' : 'translate-x-1'"
+                                                class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button @click="simulateIPC" :disabled="!canOperate || loading.simulate"
+                                        class="w-full action-btn bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-600/30 text-xs">
+                                        <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                                        IPC: {{ activeId || '-' }} → {{ ipcTarget }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 审计结果 -->
+                        <div v-if="lastAudit"
+                            :class="lastAudit.allowed ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'"
+                            class="card border p-4">
+                            <div class="flex justify-between items-start">
+                                <div class="flex items-center gap-2">
+                                    <i
                                         :class="lastAudit.allowed ? 'fa-solid fa-check-circle text-green-400' : 'fa-solid fa-times-circle text-red-400'"></i>
-                                <span class="font-bold text-xs"
-                                      :class="lastAudit.allowed ? 'text-green-400' : 'text-red-400'">
+                                    <span class="font-bold text-xs"
+                                        :class="lastAudit.allowed ? 'text-green-400' : 'text-red-400'">
                                         {{ lastAudit.allowed ? 'SUCCESS' : 'DENIED' }}
                                     </span>
+                                </div>
+                                <button @click="lastAudit = null" class="text-slate-500 hover:text-white">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
                             </div>
-                            <button @click="lastAudit = null" class="text-slate-500 hover:text-white">
-                                <i class="fa-solid fa-xmark"></i>
-                            </button>
+                            <p class="text-xs mt-2 font-mono"
+                                :class="lastAudit.allowed ? 'text-green-300' : 'text-red-300'">
+                                [{{ lastAudit.traceId?.substring(0, 8) }}] {{ lastAudit.message }}
+                            </p>
                         </div>
-                        <p class="text-xs mt-2 font-mono"
-                           :class="lastAudit.allowed ? 'text-green-300' : 'text-red-300'">
-                            [{{ lastAudit.traceId?.substring(0, 8) }}] {{ lastAudit.message }}
-                        </p>
                     </div>
 
-                    <!-- 插件信息 -->
-                    <!--<div v-if="activePlugin" class="card">
-                    <div class="card-header">
-                        <h3 class="font-bold text-sm text-white">插件信息</h3>
-                    </div>
-                    <div class="p-4 space-y-3 text-xs">
-                        <div class="flex justify-between">
-                            <span class="text-slate-500">ID</span>
-                            <span class="text-white font-mono">{{ activePlugin.pluginId }}</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-500">状态</span>
-                            <span :class="getStatusClass(activePlugin.status)"
-                                  class="px-2 py-0.5 rounded text-[10px]">
-                                {{ activePlugin.status }}
-                            </span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-500">版本数</span>
-                            <span class="text-white">{{ activePlugin.versions?.length || 1 }}</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-500">灰度比例</span>
-                            <span class="text-white">{{ activePlugin.canaryPercent || 0 }}%</span>
-                        </div>
-                    </div>
-                </div>-->
                 </div>
-
             </div>
-        </div>
-    </main>
-</div>
+        </main>
+    </div>
 
-<script>
-    const {createApp, ref, reactive, computed, watch, onMounted, onUnmounted, nextTick} = Vue;
-
-    // API 配置
-    const API_BASE = '/lingframe/dashboard';
-
-    createApp({
-        setup() {
-            // ==================== 状态 ====================
-            const plugins = ref([]);
-            const activeId = ref(null);
-            const canaryPct = ref(0);
-            const isAuto = ref(false);
-            const ipcEnabled = ref(true);
-            const ipcTarget = ref('user-plugin');
-            const logs = ref([]);
-            const lastAudit = ref(null);
-            const logViewMode = ref('current');
-            const logContainer = ref(null);
-            const isUserScrolling = ref(false);
-            const sidebarOpen = ref(false);
-            const currentEnv = ref('dev');
-            const currentTime = ref('');
-            const sseStatus = ref('disconnected');
-            const toasts = ref([]);
-
-            const stats = reactive({total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0});
-
-            const loading = reactive({
-                plugins: false,
-                status: false,
-                canary: false,
-                permissions: false,
-                stats: false,
-                simulate: false
-            });
-
-            const modal = reactive({
-                show: false,
-                title: '',
-                message: '',
-                actionText: '',
-                loading: false,
-                onConfirm: null
-            });
-
-            const envLabels = {dev: '开发', test: '测试', prod: '生产'};
-
-            let eventSource = null;
-            let timeTimer = null;
-            let stressTimer = null;
-            let logIdCounter = 0;
-            let toastIdCounter = 0;
-
-            // ==================== 计算属性 ====================
-            const activePlugin = computed(() => plugins.value.find(p => p.pluginId === activeId.value));
-            const canCanary = computed(() => activePlugin.value?.versions?.length >= 2);
-            const canOperate = computed(() => activePlugin.value?.status === 'ACTIVE');
-            const sseStatusText = computed(() => ({
-                connected: 'SSE 已连接',
-                connecting: 'SSE 连接中...',
-                disconnected: 'SSE 断开'
-            }[sseStatus.value]));
-
-            const displayLogs = computed(() => {
-                if (logViewMode.value === 'current' && activeId.value) {
-                    return logs.value.filter(l => l.pluginId === activeId.value);
-                }
-                return logs.value;
-            });
-
-            // ==================== Toast 通知 ====================
-            const showToast = (message, type = 'info') => {
-                const id = ++toastIdCounter;
-                toasts.value.push({id, message, type});
-                setTimeout(() => {
-                    toasts.value = toasts.value.filter(t => t.id !== id);
-                }, 3000);
-            };
-
-            // ==================== API 调用 ====================
-            const api = {
-                async get(path) {
-                    const res = await fetch(API_BASE + path);
-                    const data = await res.json();
-                    if (!data.success) throw new Error(data.message);
-                    return data.data;
-                },
-                async post(path, body = {}) {
-                    const res = await fetch(API_BASE + path, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(body)
-                    });
-                    const data = await res.json();
-                    if (!data.success) throw new Error(data.message);
-                    return data.data;
-                }
-            };
-
-            // ==================== 插件操作 ====================
-            const refreshPlugins = async () => {
-                loading.plugins = true;
-                try {
-                    plugins.value = await api.get('/plugins');
-                } catch (e) {
-                    showToast('获取插件列表失败: ' + e.message, 'error');
-                } finally {
-                    loading.plugins = false;
-                }
-            };
-
-            const selectPlugin = async (pluginId) => {
-                if (isAuto.value) {
-                    toggleAuto(); // 停止压测
-                }
-                activeId.value = pluginId;
-                const plugin = plugins.value.find(p => p.pluginId === pluginId);
-                if (plugin) {
-                    canaryPct.value = plugin.canaryPercent || 0;
-                }
-                // 重置统计
-                Object.assign(stats, {total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0});
-                lastAudit.value = null;
-
-                // 设置 IPC 目标为其他插件
-                const otherPlugin = plugins.value.find(p => p.pluginId !== pluginId && p.status === 'ACTIVE');
-                if (otherPlugin) {
-                    ipcTarget.value = otherPlugin.pluginId;
-                }
-            };
-
-            const updateStatus = async (newStatus) => {
-                if (!activeId.value) return;
-                loading.status = true;
-                try {
-                    const updated = await api.post(`/plugins/${activeId.value}/status`, {status: newStatus});
-                    const idx = plugins.value.findIndex(p => p.pluginId === activeId.value);
-                    if (idx !== -1 && updated) {
-                        plugins.value[idx] = updated;
-                    }
-                    showToast(`状态已更新为 ${newStatus}`, 'success');
-                } catch (e) {
-                    showToast('状态更新失败: ' + e.message, 'error');
-                } finally {
-                    loading.status = false;
-                }
-            };
-
-            const requestUnload = () => {
-                if (!activePlugin.value) return;
-                modal.title = '确认卸载插件';
-                modal.message = `即将卸载 "${activeId.value}"，这将中断所有请求。`;
-                modal.actionText = '卸载';
-                modal.onConfirm = async () => {
-                    modal.loading = true;
-                    try {
-                        await api.post(`/plugins/uninstall/${activeId.value}`);
-                        plugins.value = plugins.value.filter(p => p.pluginId !== activeId.value);
-                        activeId.value = null;
-                        showToast('插件已卸载', 'success');
-                    } catch (e) {
-                        showToast('卸载失败: ' + e.message, 'error');
-                    } finally {
-                        modal.loading = false;
-                        modal.show = false;
-                    }
-                };
-                modal.show = true;
-            };
-
-            const confirmModalAction = () => {
-                if (modal.onConfirm) modal.onConfirm();
-            };
-
-            // ==================== 灰度配置 ====================
-            const updateCanaryConfig = async () => {
-                if (!activeId.value || !canCanary.value) return;
-                loading.canary = true;
-                try {
-                    await api.post(`/plugins/${activeId.value}/canary`, {
-                        percent: canaryPct.value,
-                        canaryVersion: activePlugin.value?.canaryVersion
-                    });
-                    showToast(`灰度比例已设置为 ${canaryPct.value}%`, 'success');
-                } catch (e) {
-                    showToast('灰度配置失败: ' + e.message, 'error');
-                } finally {
-                    loading.canary = false;
-                }
-            };
-
-            // ==================== 权限操作 ====================
-            const togglePerm = async (perm) => {
-                if (!activePlugin.value) return;
-
-                const currentPerms = activePlugin.value.permissions || {};
-                const currentValue = currentPerms[perm] !== false;
-                const newPerms = {
-                    dbRead: currentPerms.dbRead !== false,
-                    dbWrite: currentPerms.dbWrite !== false,
-                    cacheRead: currentPerms.cacheRead !== false,
-                    cacheWrite: currentPerms.cacheWrite !== false,
-                    [perm]: !currentValue
-                };
-
-                loading.permissions = true;
-                try {
-                    await api.post(`/governance/${activeId.value}/permissions`, newPerms);
-                    const idx = plugins.value.findIndex(p => p.pluginId === activeId.value);
-                    if (idx !== -1) {
-                        plugins.value[idx].permissions = newPerms;
-                    }
-                    showToast(`${perm} ${newPerms[perm] ? '已开启' : '已关闭'}`, 'success');
-                } catch (e) {
-                    showToast('权限更新失败: ' + e.message, 'error');
-                } finally {
-                    loading.permissions = false;
-                }
-            };
-
-            // ==================== 功能演练 ====================
-            const simulate = async (resourceType) => {
-                if (!canOperate.value) {
-                    showToast('插件未激活', 'error');
-                    return;
-                }
-
-                loading.simulate = true;
-                try {
-                    const result = await api.post(`/simulate/plugins/${activeId.value}/resource`, {
-                        resourceType
-                    });
-                    lastAudit.value = result;
-
-                    if (result.allowed) {
-                        showToast(`${resourceType} 访问成功`, 'success');
-                    } else {
-                        showToast(result.message, 'error');
-                    }
-                } catch (e) {
-                    showToast('模拟失败: ' + e.message, 'error');
-                } finally {
-                    loading.simulate = false;
-                }
-            };
-
-            const simulateIPC = async () => {
-                if (!canOperate.value) {
-                    showToast('源插件未激活', 'error');
-                    return;
-                }
-
-                loading.simulate = true;
-                try {
-                    const result = await api.post(`/simulate/plugins/${activeId.value}/ipc`, {
-                        targetPluginId: ipcTarget.value,
-                        ipcEnabled: ipcEnabled.value
-                    });
-                    lastAudit.value = result;
-
-                    if (result.allowed) {
-                        showToast('IPC 调用成功', 'success');
-                    } else {
-                        showToast(result.message, 'error');
-                    }
-                } catch (e) {
-                    showToast('IPC 模拟失败: ' + e.message, 'error');
-                } finally {
-                    loading.simulate = false;
-                }
-            };
-
-            // ==================== 压测模式 ====================
-            const toggleAuto = () => {
-                if (!canOperate.value) {
-                    showToast('插件未激活', 'error');
-                    return;
-                }
-
-                isAuto.value = !isAuto.value;
-
-                if (isAuto.value) {
-                    // 开始压测
-                    stressTimer = setInterval(async () => {
-                        try {
-                            const result = await api.post(`/simulate/plugins/${activeId.value}/stress`);
-                            // 更新统计
-                            stats.total += result.totalRequests;
-                            stats.v1 += result.v1Requests;
-                            stats.v2 += result.v2Requests;
-                            stats.v1Pct = stats.total > 0 ? ((stats.v1 / stats.total) * 100).toFixed(1) : 0;
-                            stats.v2Pct = stats.total > 0 ? ((stats.v2 / stats.total) * 100).toFixed(1) : 0;
-                        } catch (e) {
-                            console.error('Stress test error', e);
-                        }
-                    }, 1000);
-                } else {
-                    // 停止压测
-                    if (stressTimer) {
-                        clearInterval(stressTimer);
-                        stressTimer = null;
-                    }
-                }
-            };
-
-            const resetStats = () => {
-                Object.assign(stats, {total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0});
-                lastAudit.value = null;
-            };
-
-            // ==================== SSE 日志流 ====================
-            const connectSSE = () => {
-                if (eventSource) {
-                    eventSource.close();
-                }
-
-                sseStatus.value = 'connecting';
-                eventSource = new EventSource(API_BASE + '/stream');
-
-                eventSource.onopen = () => {
-                    sseStatus.value = 'connected';
-                    console.log(new Date(), 'SSE connected');  // 🔥 调试
-                };
-
-                // 🔥 添加通用消息监听器
-                eventSource.onmessage = (e) => {
-                    console.log('SSE onmessage:', e);
-                };
-
-                eventSource.addEventListener('log-event', (e) => {
-                    console.log('SSE log-event received:', e.data);  // 🔥 调试
-                    try {
-                        const data = JSON.parse(e.data);
-                        console.log('Parsed data:', data);  // 🔥 调试
-                        addLog(data);
-                    } catch (err) {
-                        console.warn('Failed to parse log event', err);
-                    }
-                });
-
-                eventSource.addEventListener('ping', () => {
-                    // 心跳
-                    console.log('SSE ping received');  // 🔥 调试
-                });
-
-                eventSource.onerror = () => {
-                    sseStatus.value = 'disconnected';
-                    console.log('SSE disconnected, reconnecting...');
-                    setTimeout(connectSSE, 3000);
-                };
-            };
-
-            const addLog = (data) => {
-                const log = {
-                    id: ++logIdCounter,
-                    traceId: data.traceId,
-                    pluginId: data.pluginId,
-                    content: data.content,
-                    type: data.type,
-                    tag: data.tag,
-                    depth: data.depth || 0,
-                    timestamp: data.timestamp
-                };
-
-                logs.value.unshift(log);
-                if (logs.value.length > 200) {
-                    logs.value.pop();
-                }
-
-                // 自动滚动
-                if (!isUserScrolling.value && logContainer.value) {
-                    nextTick(() => {
-                        logContainer.value.scrollTop = 0;
-                    });
-                }
-            };
-
-            const clearLogs = () => {
-                if (logViewMode.value === 'current' && activeId.value) {
-                    logs.value = logs.value.filter(l => l.pluginId !== activeId.value);
-                } else {
-                    logs.value = [];
-                }
-            };
-
-            // ==================== 辅助函数 ====================
-            const handleLogScroll = () => {
-                if (logContainer.value) {
-                    isUserScrolling.value = logContainer.value.scrollTop > 50;
-                }
-            };
-
-            const scrollToTop = () => {
-                if (logContainer.value) {
-                    logContainer.value.scrollTo({top: 0, behavior: 'smooth'});
-                    isUserScrolling.value = false;
-                }
-            };
-
-            const updateTime = () => {
-                currentTime.value = new Date().toLocaleTimeString('zh-CN', {hour12: false});
-            };
-
-            const formatDrift = (val) => {
-                const v = val || 0;
-                return (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
-            };
-
-            const formatTime = (ts) => {
-                if (!ts) return '--:--:--';
-                const d = new Date(ts);
-                return d.toLocaleTimeString('zh-CN', {hour12: false});
-            };
-
-            const getStatusClass = (status) => ({
-                'ACTIVE': 'status-active',
-                'LOADED': 'status-loaded',
-                'UNLOADED': 'status-unloaded',
-                'LOADING': 'status-loading',
-                'STARTING': 'status-loading',
-                'ERROR': 'status-error'
-            }[status] || 'status-unloaded');
-
-            const getPluginShortName = (pid) => {
-                if (!pid) return '---';
-                const parts = pid.split('-');
-                return parts[0]?.substring(0, 3).toUpperCase() || pid.substring(0, 3).toUpperCase();
-            };
-
-            const getPluginTagClass = (pid) => {
-                const colors = [
-                    'bg-blue-500/20 text-blue-400',
-                    'bg-amber-500/20 text-amber-400',
-                    'bg-green-500/20 text-green-400',
-                    'bg-purple-500/20 text-purple-400',
-                    'bg-pink-500/20 text-pink-400'
-                ];
-                const idx = plugins.value.findIndex(p => p.pluginId === pid);
-                return colors[idx % colors.length] || colors[0];
-            };
-
-            const getLogColor = (log) => {
-                if (log.tag === 'FAIL' || log.tag === 'ERROR') return 'text-red-400';
-                if (log.tag === 'OK' || log.tag === 'COMPLETE') return 'text-green-400';
-                if (log.type === 'AUDIT') return 'text-indigo-400';
-                if (log.tag === 'IN') return 'text-blue-400';
-                if (log.tag === 'OUT') return 'text-amber-400';
-                if (log.tag === 'CANARY') return 'text-amber-400';
-                if (log.tag === 'STABLE') return 'text-blue-400';
-                if (log.tag === 'START' || log.tag === 'SUMMARY') return 'text-purple-400';
-                return 'text-slate-400';
-            };
-
-            // ==================== 生命周期 ====================
-            onMounted(() => {
-                updateTime();
-                timeTimer = setInterval(updateTime, 1000);
-
-                refreshPlugins();
-                console.log(new Date(), 'start connecting sse')
-                connectSSE();
-            });
-
-            onUnmounted(() => {
-                if (timeTimer) clearInterval(timeTimer);
-                if (stressTimer) clearInterval(stressTimer);
-                if (eventSource) eventSource.close();
-            });
-
-            return {
-                // 状态
-                plugins, activeId, canaryPct, isAuto, ipcEnabled, ipcTarget,
-                logs, lastAudit, logViewMode, logContainer, isUserScrolling, sidebarOpen,
-                currentEnv, currentTime, sseStatus, sseStatusText,
-                stats, loading, modal, toasts, envLabels,
-
-                // 计算属性
-                activePlugin, canCanary, canOperate, displayLogs,
-
-                // 方法
-                refreshPlugins, selectPlugin, updateStatus, requestUnload,
-                confirmModalAction, updateCanaryConfig, togglePerm,
-                simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
-                handleLogScroll, scrollToTop,
-                formatDrift, formatTime,
-                getStatusClass, getPluginShortName, getPluginTagClass, getLogColor
-            };
-        }
-    }).mount('#app');
-</script>
+    <script src="js/dashboard.js"></script>
 </body>
 
 </html>
