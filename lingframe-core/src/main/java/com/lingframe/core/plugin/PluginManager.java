@@ -17,6 +17,7 @@ import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
+import com.lingframe.core.resource.BasicResourceGuard;
 import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.spi.*;
 import com.lingframe.core.exception.ServiceNotFoundException;
@@ -91,6 +92,10 @@ public class PluginManager {
     private final List<PluginSecurityVerifier> verifiers;
     private final List<ThreadLocalPropagator> propagators;
 
+    // ==================== 资源管理 ====================
+
+    private final ResourceGuard resourceGuard;
+
     // ==================== 基础设施 ====================
 
     private final LingFrameConfig lingFrameConfig;
@@ -110,7 +115,8 @@ public class PluginManager {
             TransactionVerifier transactionVerifier,
             List<ThreadLocalPropagator> propagators,
             LingFrameConfig lingFrameConfig,
-            LocalGovernanceRegistry localGovernanceRegistry) {
+            LocalGovernanceRegistry localGovernanceRegistry,
+            ResourceGuard resourceGuard) {
         // 核心依赖
         this.containerFactory = containerFactory;
         this.pluginLoaderFactory = pluginLoaderFactory;
@@ -142,6 +148,9 @@ public class PluginManager {
         // 配置
         this.lingFrameConfig = lingFrameConfig;
         this.localGovernanceRegistry = localGovernanceRegistry;
+
+        // 资源管理（防御性处理：如未注入则使用默认实现）
+        this.resourceGuard = resourceGuard != null ? resourceGuard : new BasicResourceGuard();
 
         // 基础设施
         this.scheduler = createScheduler();
@@ -248,10 +257,22 @@ public class PluginManager {
         pluginSources.remove(pluginId);
         pluginDefinitionMap.remove(pluginId);
 
+        // 获取 ClassLoader 用于资源清理
+        PluginInstance defaultInstance = runtime.getInstancePool().getDefault();
+        ClassLoader pluginClassLoader = defaultInstance != null && defaultInstance.getContainer() != null
+                ? defaultInstance.getContainer().getClassLoader()
+                : null;
+
         runtime.shutdown();
         unregisterProtocolServices(pluginId);
         eventBus.unsubscribeAll(pluginId);
         permissionService.removePlugin(pluginId);
+
+        // 资源清理和泄漏检测
+        if (pluginClassLoader != null) {
+            resourceGuard.cleanup(pluginId, pluginClassLoader);
+            resourceGuard.detectLeak(pluginId, pluginClassLoader);
+        }
 
         // Hook 2: Post-Uninstall (清理配置、删除临时文件)
         eventBus.publish(new PluginUninstalledEvent(pluginId));

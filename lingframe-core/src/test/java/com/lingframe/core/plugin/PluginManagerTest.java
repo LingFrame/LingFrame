@@ -100,7 +100,8 @@ public class PluginManagerTest {
                 transactionVerifier,
                 Collections.emptyList(),
                 lingFrameConfig,
-                localGovernanceRegistry
+                localGovernanceRegistry,
+                null // ResourceGuard - 使用默认实现
         );
     }
 
@@ -228,8 +229,7 @@ public class PluginManagerTest {
             doThrow(new RuntimeException("Start failed")).when(container).start(any());
             when(containerFactory.create(eq("plugin-a"), any(), any())).thenReturn(container);
 
-            assertThrows(RuntimeException.class, () ->
-                    pluginManager.installDev(definition, pluginDir));
+            assertThrows(RuntimeException.class, () -> pluginManager.installDev(definition, pluginDir));
         }
 
         @Test
@@ -238,8 +238,7 @@ public class PluginManagerTest {
             File invalidDir = new File("/non/existent/path");
             PluginDefinition definition = createDefinition("plugin-a", "1.0.0");
 
-            assertThrows(IllegalArgumentException.class, () ->
-                    pluginManager.installDev(definition, invalidDir));
+            assertThrows(IllegalArgumentException.class, () -> pluginManager.installDev(definition, invalidDir));
         }
 
         @Test
@@ -248,8 +247,7 @@ public class PluginManagerTest {
             File pluginDir = createPluginDir("plugin-a");
             PluginDefinition definition = new PluginDefinition(); // 缺少 id 和 version
 
-            assertThrows(IllegalArgumentException.class, () ->
-                    pluginManager.installDev(definition, pluginDir));
+            assertThrows(IllegalArgumentException.class, () -> pluginManager.installDev(definition, pluginDir));
         }
     }
 
@@ -519,7 +517,7 @@ public class PluginManagerTest {
         @Test
         @DisplayName("卸载插件 A 不应影响插件 B")
         void uninstallAShouldNotAffectB() throws Exception {
-            for (String pluginId : new String[]{"plugin-a", "plugin-b"}) {
+            for (String pluginId : new String[] { "plugin-a", "plugin-b" }) {
                 File pluginDir = createPluginDir(pluginId);
                 PluginDefinition definition = createDefinition(pluginId, "1.0.0");
                 PluginContainer container = createMockContainer();
@@ -780,8 +778,7 @@ public class PluginManagerTest {
             when(containerFactory.create(eq("plugin-b"), any(), any())).thenReturn(containerB);
 
             // 安装崩溃插件
-            assertThrows(RuntimeException.class, () ->
-                    pluginManager.installDev(defB, pluginDirB));
+            assertThrows(RuntimeException.class, () -> pluginManager.installDev(defB, pluginDirB));
 
             // 验证插件 A 不受影响
             PluginRuntime runtimeA = pluginManager.getRuntime("plugin-a");
@@ -844,8 +841,7 @@ public class PluginManagerTest {
                     .thenThrow(new RuntimeException("ClassLoader creation failed!"));
 
             // 尝试安装
-            assertThrows(RuntimeException.class, () ->
-                    pluginManager.installDev(defB, pluginDirB));
+            assertThrows(RuntimeException.class, () -> pluginManager.installDev(defB, pluginDirB));
 
             // 验证插件 A 不受影响
             PluginRuntime runtimeA = pluginManager.getRuntime("plugin-a");
@@ -871,8 +867,7 @@ public class PluginManagerTest {
                 File pluginDirB = createPluginDir("plugin-b");
                 PluginDefinition defB = createDefinition("plugin-b", "1.0.0");
 
-                assertThrows(RuntimeException.class, () ->
-                        managerWithVerifier.installDev(defB, pluginDirB));
+                assertThrows(RuntimeException.class, () -> managerWithVerifier.installDev(defB, pluginDirB));
 
                 // 验证 A 不受影响
                 assertNotNull(managerWithVerifier.getRuntime("plugin-a"));
@@ -936,8 +931,7 @@ public class PluginManagerTest {
                     .thenReturn(container2);
 
             PluginDefinition def2 = createDefinition("plugin-a", "2.0.0");
-            assertThrows(RuntimeException.class, () ->
-                    pluginManager.installDev(def2, pluginDir));
+            assertThrows(RuntimeException.class, () -> pluginManager.installDev(def2, pluginDir));
 
             // 验证旧版本仍然可用
             PluginRuntime runtime = pluginManager.getRuntime("plugin-a");
@@ -1030,8 +1024,8 @@ public class PluginManagerTest {
                 transactionVerifier,
                 Collections.emptyList(),
                 lingFrameConfig,
-                localGovernanceRegistry
-        );
+                localGovernanceRegistry,
+                null);
     }
 
     // ==================== 异常边界测试 ====================
@@ -1047,8 +1041,7 @@ public class PluginManagerTest {
             PluginDefinition def = createDefinition("plugin-a", "1.0.0");
             when(containerFactory.create(eq("plugin-a"), any(), any())).thenReturn(null);
 
-            assertThrows(Exception.class, () ->
-                    pluginManager.installDev(def, pluginDir));
+            assertThrows(Exception.class, () -> pluginManager.installDev(def, pluginDir));
         }
 
         @Test
@@ -1058,8 +1051,7 @@ public class PluginManagerTest {
             PluginDefinition def = createDefinition("plugin-a", "1.0.0");
             when(pluginLoaderFactory.create(eq("plugin-a"), any(), any())).thenReturn(null);
 
-            assertThrows(Exception.class, () ->
-                    pluginManager.installDev(def, pluginDir));
+            assertThrows(Exception.class, () -> pluginManager.installDev(def, pluginDir));
         }
 
         @Test
@@ -1115,8 +1107,8 @@ public class PluginManagerTest {
                     transactionVerifier,
                     Collections.emptyList(),
                     lingFrameConfig,
-                    localGovernanceRegistry
-            );
+                    localGovernanceRegistry,
+                    null);
 
             try {
                 File pluginDir = createPluginDir("evil-plugin");
@@ -1125,8 +1117,8 @@ public class PluginManagerTest {
                 when(containerFactory.create(eq("evil-plugin"), any(), any())).thenReturn(container);
 
                 // 应该被安全检查拒绝
-                SecurityException ex = assertThrows(SecurityException.class, () ->
-                        secureManager.installDev(def, pluginDir));
+                SecurityException ex = assertThrows(SecurityException.class,
+                        () -> secureManager.installDev(def, pluginDir));
 
                 assertTrue(ex.getMessage().contains("System.exit") ||
                         ex.getCause().getMessage().contains("System.exit"));
@@ -1153,8 +1145,7 @@ public class PluginManagerTest {
                     pluginLoaderFactory, List.of(selectiveVerifier),
                     eventBus, trafficRouter, pluginServiceInvoker,
                     transactionVerifier, Collections.emptyList(), lingFrameConfig,
-                    localGovernanceRegistry
-            );
+                    localGovernanceRegistry, null);
 
             try {
                 // 先安装正常插件
@@ -1168,8 +1159,7 @@ public class PluginManagerTest {
                 File evilDir = createPluginDir("evil-plugin");
                 PluginDefinition evilDef = createDefinition("evil-plugin", "1.0.0");
 
-                assertThrows(RuntimeException.class, () ->
-                        secureManager.installDev(evilDef, evilDir));
+                assertThrows(RuntimeException.class, () -> secureManager.installDev(evilDef, evilDir));
 
                 // 正常插件不受影响
                 assertNotNull(secureManager.getRuntime("good-plugin"));

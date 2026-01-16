@@ -205,16 +205,18 @@ public class LingFrameAutoConfiguration {
             ObjectProvider<TransactionVerifier> transactionVerifierProvider,
             ObjectProvider<List<ThreadLocalPropagator>> propagatorsProvider,
             LingFrameConfig lingFrameConfig,
-            LocalGovernanceRegistry localGovernanceRegistry) {
+            LocalGovernanceRegistry localGovernanceRegistry,
+            ObjectProvider<ResourceGuard> resourceGuardProvider) {
 
         // 获取可选 Bean
         TransactionVerifier transactionVerifier = transactionVerifierProvider.getIfAvailable();
         List<ThreadLocalPropagator> propagators = propagatorsProvider.getIfAvailable(Collections::emptyList);
         List<PluginSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
+        ResourceGuard resourceGuard = resourceGuardProvider.getIfAvailable();
 
         return new PluginManager(containerFactory, permissionService, governanceKernel,
                 pluginLoaderFactory, verifiers, eventBus, trafficRouter, pluginServiceInvoker,
-                transactionVerifier, propagators, lingFrameConfig, localGovernanceRegistry);
+                transactionVerifier, propagators, lingFrameConfig, localGovernanceRegistry, resourceGuard);
     }
 
     /**

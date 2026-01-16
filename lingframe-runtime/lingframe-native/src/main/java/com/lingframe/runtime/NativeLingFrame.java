@@ -87,7 +87,8 @@ public class NativeLingFrame {
                 txVerifier,
                 Collections.emptyList(), // 无 ThreadLocal 传播器
                 config,
-                localGovernanceRegistry);
+                localGovernanceRegistry,
+                null); // ResourceGuard - 使用默认实现
 
         // 注册一个特殊的 "host-app" 上下文
         HOST_CONTEXT = new CorePluginContext("host-app", pluginManager, permissionService, eventBus);
