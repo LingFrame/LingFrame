@@ -2,6 +2,8 @@ package com.lingframe.dashboard.service;
 
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
+import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.kernel.GovernanceKernel;
@@ -27,6 +29,7 @@ public class SimulateService {
     private final PluginManager pluginManager;
     private final GovernanceKernel governanceKernel;
     private final EventBus eventBus;
+    private final PermissionService permissionService;
 
     public SimulateResultDTO simulateResource(String pluginId, String resourceType) {
         PluginRuntime runtime = pluginManager.getRuntime(pluginId);
@@ -55,7 +58,7 @@ public class SimulateService {
                 .auditAction("SIMULATE:" + resourceType.toUpperCase())
                 .build();
 
-        boolean allowed = false;
+        boolean allowed;
         String message;
 
         try {
@@ -67,7 +70,14 @@ public class SimulateService {
 
             allowed = true;
             message = resourceType + " 访问成功";
-            publishTrace(traceId, pluginId, "    ✓ 权限验证通过", "OK", 3);
+
+            // 检测是否因开发模式豁免而通过
+            if (isDevModeBypass(pluginId, mapPermission(resourceType), mapAccessType(resourceType))) {
+                message += " (⚠️开发模式豁免)";
+                publishTrace(traceId, pluginId, "    ! 权限不足，仅因开发模式放行", "WARN", 3);
+            } else {
+                publishTrace(traceId, pluginId, "    ✓ 权限验证通过", "OK", 3);
+            }
 
         } catch (SecurityException e) {
             allowed = false;
@@ -134,11 +144,22 @@ public class SimulateService {
             try {
                 publishTrace(traceId, pluginId, "  ↳ 内核鉴权中...", "IN", 2);
 
+                // 🔥 模拟真实调用的路由和统计
+                PluginInstance routed = targetRuntime.routeToAvailableInstance("simulate-ipc");
+                targetRuntime.recordRequest(routed);
+
                 governanceKernel.invoke(targetRuntime, getSimulateMethod(), ctx, () -> "OK");
 
                 allowed = true;
-                message = "IPC 调用成功";
-                publishTrace(traceId, pluginId, "    ✓ 鉴权通过, 透传 Context", "OK", 3);
+                message = "IPC 调用成功 (" + routed.getDefinition().getVersion() + ")";
+
+                // 检测是否因开发模式豁免而通过
+                if (isDevModeBypass(pluginId, "ipc:" + targetPluginId, AccessType.EXECUTE)) {
+                    message += " (⚠️开发模式豁免)";
+                    publishTrace(traceId, pluginId, "    ! 权限不足，仅因开发模式放行", "WARN", 3);
+                } else {
+                    publishTrace(traceId, pluginId, "    ✓ 鉴权通过, 透传 Context", "OK", 3);
+                }
 
                 publishTrace(traceId, targetPluginId, "← [IPC] 收到来自 " + pluginId + " 的请求", "IN", 1);
                 publishTrace(traceId, targetPluginId, "  ↳ 处理请求...", "OUT", 2);
@@ -252,5 +273,18 @@ public class SimulateService {
             case "cacheRead", "cacheWrite" -> Capabilities.CACHE_LOCAL;
             default -> "resource:unknown";
         };
+    }
+
+    private boolean isDevModeBypass(String pluginId, String capability, AccessType accessType) {
+        // 如果我们不在开发模式，就不存在豁免
+        if (!LingFrameConfig.current().isDevMode()) {
+            return false;
+        }
+        // 检查实际权限配置
+        var info = permissionService.getPermission(pluginId, capability);
+        if (info == null) {
+            return true; // 没有授权，却执行成功了 -> 豁免
+        }
+        return !info.satisfies(accessType); // 有授权但不够 -> 豁免
     }
 }

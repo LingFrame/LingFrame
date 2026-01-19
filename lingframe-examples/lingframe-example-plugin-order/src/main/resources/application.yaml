@@ -1,0 +1,12 @@
+spring:
+  jpa:
+    open-in-view: false
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:lingframe;DB_CLOSE_DELAY=-1;MODE=MySQL
+    username: sa
+    password:
+
+  # 演示用：使用简单的 ConcurrentMapCacheManager
+  cache:
+    type: simple

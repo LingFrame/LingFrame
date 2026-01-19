@@ -58,8 +58,9 @@ public class DashboardAutoConfiguration {
     public SimulateService simulateService(
             PluginManager pluginManager,
             GovernanceKernel governanceKernel,
-            EventBus eventBus) {
-        return new SimulateService(pluginManager, governanceKernel, eventBus);
+            EventBus eventBus,
+            PermissionService permissionService) {
+        return new SimulateService(pluginManager, governanceKernel, eventBus, permissionService);
     }
 
     @Bean

@@ -363,7 +363,7 @@ createApp({
             };
 
             logs.value.unshift(log);
-            if (logs.value.length > 200) {
+            if (logs.value.length > 1000) {
                 logs.value.pop();
             }
 
@@ -424,7 +424,7 @@ createApp({
         const getPluginShortName = (pid) => {
             if (!pid) return '---';
             const parts = pid.split('-');
-            return parts[0]?.substring(0, 3).toUpperCase() || pid.substring(0, 3).toUpperCase();
+            return parts[0]?.toUpperCase() || pid.toUpperCase();
         };
 
         const getPluginTagClass = (pid) => {
@@ -459,7 +459,32 @@ createApp({
             refreshPlugins();
             console.log(new Date(), 'start connecting sse')
             connectSSE();
+
+            // 初始化同步：默认触发一次以确保后端与前端一致
+            // 也可以选择先获取后端配置，这里为了演示简单直接覆写后端
+            updateEnvMode(currentEnv.value);
         });
+
+        // ==================== 监听环境切换 ====================
+        watch(currentEnv, (newVal) => {
+            updateEnvMode(newVal);
+        });
+
+        const updateEnvMode = async (env) => {
+            try {
+                // 如果是 prod，则 devMode = false；否则 true
+                // 这里为了演示，只有显式选 prod 才是生产模式
+                await api.post('/simulate/config/mode', { testEnv: env });
+
+                const isProd = env === 'prod';
+                const color = isProd ? 'success' : 'info';
+                const modeText = isProd ? '生产模式 (拒绝无权限访问)' : '开发模式 (仅警告无权限访问)';
+
+                showToast(`环境已切换: ${modeText}`, color);
+            } catch (e) {
+                showToast('环境切换失败: ' + e.message, 'error');
+            }
+        };
 
         onUnmounted(() => {
             if (timeTimer) clearInterval(timeTimer);

@@ -1,11 +1,10 @@
 package com.lingframe.example.order.service;
 
 import com.lingframe.api.annotation.LingReference;
-import com.lingframe.api.context.PluginContext;
 import com.lingframe.example.order.api.UserQueryService;
+import com.lingframe.example.order.dto.OrderDTO;
 import com.lingframe.example.order.dto.UserDTO;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -15,17 +14,15 @@ public class OrderServiceImpl {
     @LingReference
     private UserQueryService userQueryService;
 
-    @Autowired
-    private PluginContext hostPluginContext;
-
-    public UserDTO getUserById(Long userId) {
-        log.info("getUserById, userId: {}", userId);
+    public OrderDTO getOrderById(Long userId) {
+        log.info("getOrderById, userId: {}", userId);
+        OrderDTO orderDTO = new OrderDTO();
         UserDTO userDTO = userQueryService.findById(userId).orElse(null);
-        log.info("getUserById, userDTO: {}", userDTO);
-        return userDTO;
+        log.info("getOrderById, userDTO: {}", userDTO);
+        if (userDTO != null) {
+            orderDTO.setUserName(userDTO.getUserName());
+        }
+        return orderDTO;
     }
 
-    public void getFromHost() {
-        log.info("从主机插件获取服务: {}", hostPluginContext.getPluginId());
-    }
 }

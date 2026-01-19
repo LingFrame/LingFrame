@@ -141,19 +141,6 @@ public class PluginController {
         }
     }
 
-    @PostMapping("/{pluginId}/permissions")
-    public ApiResponse<Void> updatePermissions(
-            @PathVariable String pluginId,
-            @RequestBody ResourcePermissionDTO request) {
-        try {
-            dashboardService.updatePermissions(pluginId, request);
-            return ApiResponse.ok("权限已更新", null);
-        } catch (Exception e) {
-            log.error("Failed to update permissions: {}", pluginId, e);
-            return ApiResponse.error("权限更新失败: " + e.getMessage());
-        }
-    }
-
     @GetMapping("/{pluginId}/stats")
     public ApiResponse<TrafficStatsDTO> getStats(@PathVariable String pluginId) {
         try {

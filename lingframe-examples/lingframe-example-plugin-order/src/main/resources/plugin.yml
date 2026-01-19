@@ -3,7 +3,7 @@ id: order-plugin
 version: 1.0.0
 provider: "LingFrame"
 description: "订单插件"
-mainClass: "com.lingframe.example.order.OrderPlugin"
+mainClass: "com.lingframe.example.order.OrderApplication"
 
 # --- 治理配置 ---
 governance:

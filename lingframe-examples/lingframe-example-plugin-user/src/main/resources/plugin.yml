@@ -3,7 +3,7 @@ id: user-plugin
 version: 1.0.0
 provider: "LingFrame"
 description: "用户插件"
-mainClass: "com.lingframe.example.user.UserPlugin"
+mainClass: "com.lingframe.example.user.UserApplication"
 
 # --- 治理配置 ---
 governance:

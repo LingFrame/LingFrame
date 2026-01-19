@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS t_order
+(
+    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id    BIGINT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO t_order (user_id)
+VALUES (1);
+INSERT INTO t_order (user_id)
+VALUES (2);

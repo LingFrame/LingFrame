@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LingFrame Hub | 核心治理中心</title>
+    <title>灵珑 | 核心治理中心</title>
     <!-- 本地资源 -->
     <script src="js/vue.global.prod.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -35,16 +35,16 @@
                     </div>
                     <div>
                         <h3 class="font-bold text-white">{{ modal.title }}</h3>
-                        <p class="text-sm text-slate-400">{{ modal.message }}</p>
+                        <p class="text-base text-slate-400">{{ modal.message }}</p>
                     </div>
                 </div>
                 <div class="flex gap-3 justify-end">
                     <button @click="modal.show = false"
-                        class="px-4 py-2 rounded-lg text-sm font-medium bg-slate-700 hover:bg-slate-600 text-white">
+                        class="px-4 py-2 rounded-lg text-base font-medium bg-slate-700 hover:bg-slate-600 text-white">
                         取消
                     </button>
                     <button @click="confirmModalAction" :disabled="modal.loading"
-                        class="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 hover:bg-red-500 text-white flex items-center gap-2">
+                        class="px-4 py-2 rounded-lg text-base font-medium bg-red-600 hover:bg-red-500 text-white flex items-center gap-2">
                         <span v-if="modal.loading" class="spinner"
                             style="width:14px;height:14px;border-width:2px;"></span>
                         确认{{ modal.actionText }}
@@ -62,17 +62,17 @@
                         L
                     </div>
                     <div>
-                        <h1 class="font-bold text-white text-sm">LingFrame</h1>
-                        <p class="text-[10px] text-slate-500">V0.1.0-Preview</p>
+                        <h1 class="font-bold text-white text-lg">LingFrame</h1>
+                        <p class="text-xs text-slate-500">V0.1.0-Preview</p>
                     </div>
                 </div>
             </div>
 
             <!-- 环境选择 -->
             <div class="p-4 border-b border-slate-700">
-                <label class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">当前环境</label>
+                <label class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">当前环境</label>
                 <select v-model="currentEnv"
-                    class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white">
+                    class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-base text-white">
                     <option value="dev">开发环境</option>
                     <option value="test">测试环境</option>
                     <option value="prod">生产环境</option>
@@ -81,20 +81,20 @@
 
             <!-- 导航菜单 -->
             <nav class="flex-grow py-4">
-                <div class="text-[10px] text-slate-500 uppercase tracking-wider px-5 mb-2">核心功能</div>
+                <div class="text-sm text-slate-500 uppercase tracking-wider px-5 mb-2">核心功能</div>
                 <div class="sidebar-item active">
                     <i class="fa-solid fa-gauge-high w-4"></i>
-                    <span class="text-sm">治理中心</span>
+                    <span class="text-base">治理中心</span>
                 </div>
             </nav>
 
             <!-- 底部状态 -->
             <div class="p-4 border-t border-slate-700">
-                <div class="flex items-center gap-2 text-xs">
+                <div class="flex items-center gap-2 text-sm">
                     <span :class="['connection-dot', sseStatus]"></span>
                     <span class="text-slate-400">{{ sseStatusText }}</span>
                 </div>
-                <div class="text-[10px] text-slate-500 mt-1">
+                <div class="text-sm text-slate-500 mt-1">
                     插件数: {{ plugins.length }} | 日志: {{ logs.length }}
                 </div>
             </div>
@@ -111,9 +111,9 @@
                         <i class="fa-solid fa-bars"></i>
                     </button>
                     <div class="flex items-center gap-3">
-                        <span class="text-sm font-medium text-white">治理中心</span>
-                        <i class="fa-solid fa-chevron-right text-slate-600 text-xs"></i>
-                        <span class="text-sm text-slate-400">{{ activeId || '未选择' }}</span>
+                        <span class="text-base font-medium text-white">治理中心</span>
+                        <i class="fa-solid fa-chevron-right text-slate-600 text-sm"></i>
+                        <span class="text-base text-slate-400">{{ activeId || '未选择' }}</span>
                     </div>
                 </div>
                 <div class="flex items-center gap-4">
@@ -122,7 +122,7 @@
                         <i :class="['fa-solid fa-arrows-rotate', loading.plugins ? 'animate-spin' : '']"></i>
                     </button>
                     <span :class="['env-badge', 'env-' + currentEnv]">{{ envLabels[currentEnv] }}</span>
-                    <div class="flex items-center gap-2 text-xs text-slate-400">
+                    <div class="flex items-center gap-2 text-sm text-slate-400">
                         <i class="fa-solid fa-clock"></i>
                         <span>{{ currentTime }}</span>
                     </div>
@@ -137,8 +137,8 @@
                     <div class="col-span-12 lg:col-span-3">
                         <div class="card h-full relative">
                             <div class="card-header">
-                                <h3 class="font-bold text-sm text-white">插件列表</h3>
-                                <span class="text-xs text-slate-500">{{ plugins.length }} 个</span>
+                                <h3 class="font-bold text-base text-white">插件列表</h3>
+                                <span class="text-sm text-slate-500">{{ plugins.length }} 个</span>
                             </div>
 
                             <div v-if="loading.plugins && plugins.length === 0" class="loading-overlay">
@@ -147,25 +147,24 @@
 
                             <div v-if="!loading.plugins && plugins.length === 0" class="p-8 text-center">
                                 <i class="fa-solid fa-puzzle-piece text-3xl text-slate-600 mb-3"></i>
-                                <p class="text-sm text-slate-500">暂无已安装插件</p>
+                                <p class="text-base text-slate-500">暂无已安装插件</p>
                             </div>
 
-                            <div class="max-h-[600px] overflow-y-auto">
+                            <div class="max-h-[800px] overflow-y-auto">
                                 <div v-for="p in plugins" :key="p.pluginId" @click="selectPlugin(p.pluginId)"
                                     :class="['plugin-item', activeId === p.pluginId ? 'active' : '']">
                                     <div class="flex justify-between items-start mb-2">
-                                        <span class="font-medium text-white text-sm">{{ p.pluginId }}</span>
-                                        <span
-                                            :class="['text-[10px] px-2 py-0.5 rounded-full', getStatusClass(p.status)]">
+                                        <span class="font-medium text-white text-base">{{ p.pluginId }}</span>
+                                        <span :class="['text-xs px-2 py-0.5 rounded-full', getStatusClass(p.status)]">
                                             {{ p.status }}
                                         </span>
                                     </div>
                                     <div class="flex gap-2 flex-wrap">
-                                        <span class="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
+                                        <span class="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
                                             {{ p.activeVersion || p.versions?.[0] || 'unknown' }}
                                         </span>
                                         <span v-if="p.canaryVersion"
-                                            class="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">
+                                            class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">
                                             {{ p.canaryVersion }}
                                         </span>
                                     </div>
@@ -185,25 +184,25 @@
 
                             <div class="card-header">
                                 <div class="flex items-center gap-3">
-                                    <h3 class="font-bold text-sm text-white">流量分发</h3>
+                                    <h3 class="font-bold text-base text-white">流量分发</h3>
                                     <span v-if="!activePlugin"
-                                        class="text-[10px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">未选择</span>
+                                        class="text-xs bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">未选择</span>
                                     <span v-else-if="!canOperate"
-                                        class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded">未激活</span>
+                                        class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded">未激活</span>
                                     <span v-else-if="canCanary"
-                                        class="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">灰度中</span>
+                                        class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">灰度中</span>
                                     <span v-else
-                                        class="text-[10px] bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">单版本</span>
+                                        class="text-xs bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">单版本</span>
                                 </div>
                                 <div class="flex gap-2">
                                     <button @click="resetStats" :disabled="!activeId || loading.stats"
-                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
                                         <i class="fa-solid fa-rotate-right"></i>
                                         重置
                                     </button>
                                     <button @click="toggleAuto" :disabled="!canOperate"
                                         :class="isAuto ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'"
-                                        class="action-btn text-white text-xs">
+                                        class="action-btn text-white text-sm">
                                         <i :class="isAuto ? 'fa-solid fa-stop' : 'fa-solid fa-play'"></i>
                                         {{ isAuto ? '停止' : '压测' }}
                                     </button>
@@ -214,7 +213,7 @@
                                 <!-- 灰度滑块 -->
                                 <div class="mb-6">
                                     <template v-if="canCanary && canOperate">
-                                        <div class="flex justify-between text-xs font-medium mb-3">
+                                        <div class="flex justify-between text-sm font-medium mb-3">
                                             <span class="text-blue-400">
                                                 <i class="fa-solid fa-cube mr-1"></i>
                                                 稳定版 {{ activePlugin?.activeVersion }}: {{ 100 - canaryPct }}%
@@ -228,12 +227,12 @@
                                             class="slider-custom" :style="{'--p': (100-canaryPct)+'%'}">
                                     </template>
                                     <template v-else>
-                                        <div class="flex justify-between text-xs font-medium mb-3 text-slate-500">
+                                        <div class="flex justify-between text-sm font-medium mb-3 text-slate-500">
                                             <span>稳定版 {{ activePlugin?.activeVersion || '-' }}: 100%</span>
                                             <span>灰度版: 不可用</span>
                                         </div>
                                         <input type="range" value="0" disabled class="slider-disabled">
-                                        <p class="text-xs text-slate-500 mt-3 text-center">
+                                        <p class="text-sm text-slate-500 mt-3 text-center">
                                             <i class="fa-solid fa-info-circle mr-1"></i>
                                             {{ !activePlugin ? '请先选择插件' : !canOperate ? '插件未激活' : '当前插件仅有单一版本'
                                             }}
@@ -244,16 +243,16 @@
                                 <!-- 指标卡片 -->
                                 <div class="metric-grid grid grid-cols-4 gap-3">
                                     <div class="metric-card">
-                                        <div class="text-[10px] text-slate-500 uppercase mb-1">Total</div>
+                                        <div class="text-xs text-slate-500 uppercase mb-1">Total</div>
                                         <div class="text-xl font-bold text-white font-mono">{{ stats.total }}</div>
                                     </div>
                                     <div class="metric-card border-blue-500/30">
-                                        <div class="text-[10px] text-blue-400 uppercase mb-1">V1 Hit</div>
+                                        <div class="text-xs text-blue-400 uppercase mb-1">V1 Hit</div>
                                         <div class="text-xl font-bold text-blue-400 font-mono">{{ stats.v1Pct }}%</div>
                                     </div>
                                     <div class="metric-card"
                                         :class="canCanary && canOperate ? 'border-amber-500/30' : ''">
-                                        <div class="text-[10px] uppercase mb-1"
+                                        <div class="text-xs uppercase mb-1"
                                             :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">V2
                                             Hit
                                         </div>
@@ -263,7 +262,7 @@
                                         </div>
                                     </div>
                                     <div class="metric-card">
-                                        <div class="text-[10px] text-slate-500 uppercase mb-1">Drift</div>
+                                        <div class="text-xs text-slate-500 uppercase mb-1">Drift</div>
                                         <div class="text-xl font-bold font-mono"
                                             :class="canCanary && canOperate ? (Math.abs(stats.v2Pct - canaryPct) > 2 ? 'text-red-400' : 'text-green-400') : 'text-slate-500'">
                                             {{ canCanary && canOperate ? formatDrift(stats.v2Pct - canaryPct) : 'N/A' }}
@@ -274,26 +273,26 @@
                         </div>
 
                         <!-- 日志追踪 -->
-                        <div class="card flex flex-col relative" style="height: 360px;">
+                        <div class="card flex flex-col relative" style="height: 500px;">
                             <div class="card-header flex-shrink-0">
                                 <div class="flex items-center gap-3">
-                                    <h3 class="font-bold text-sm text-white">追踪日志</h3>
+                                    <h3 class="font-bold text-base text-white">追踪日志</h3>
                                     <div :class="['connection-dot', sseStatus]" :title="sseStatusText"></div>
                                     <div class="flex bg-slate-800 rounded-lg overflow-hidden">
                                         <button @click="logViewMode = 'current'"
                                             :class="logViewMode === 'current' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
-                                            class="px-3 py-1 text-[10px] font-bold transition-all">
+                                            class="px-3 py-1 text-xs font-bold transition-all">
                                             当前
                                         </button>
                                         <button @click="logViewMode = 'all'"
                                             :class="logViewMode === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
-                                            class="px-3 py-1 text-[10px] font-bold transition-all">
+                                            class="px-3 py-1 text-xs font-bold transition-all">
                                             全部
                                         </button>
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-3 text-slate-500">
-                                    <span class="text-[10px] font-mono">{{ displayLogs.length }}/{{ logs.length
+                                    <span class="text-xs font-mono">{{ displayLogs.length }}/{{ logs.length
                                         }}</span>
                                     <button @click="clearLogs" class="hover:text-white transition-all">
                                         <i class="fa-solid fa-eraser"></i>
@@ -304,13 +303,13 @@
                                 class="log-container flex-grow overflow-y-auto p-4">
                                 <div v-if="displayLogs.length === 0" class="text-slate-500 text-center py-12">
                                     <i class="fa-solid fa-inbox text-3xl mb-3 block"></i>
-                                    <span class="text-xs">{{ sseStatus === 'connected' ? '等待日志...' : '连接中...'
+                                    <span class="text-sm">{{ sseStatus === 'connected' ? '等待日志...' : '连接中...'
                                         }}</span>
                                 </div>
                                 <div v-for="l in displayLogs" :key="l.id" class="log-line">
-                                    <span class="trace-tag">#{{ l.traceId?.substring(0, 6) || '------' }}</span>
+                                    <span class="trace-tag">#{{ l.traceId || '------' }}</span>
                                     <span v-if="logViewMode === 'all'" :class="getPluginTagClass(l.pluginId)"
-                                        class="text-[9px] px-1.5 py-0.5 rounded font-bold flex-shrink-0">
+                                        class="text-[11px] px-1.5 py-0.5 rounded font-bold flex-shrink-0">
                                         {{ getPluginShortName(l.pluginId) }}
                                     </span>
                                     <span :class="getLogColor(l)" class="flex-grow">
@@ -318,12 +317,12 @@
                                             :style="{width: (l.depth * 12) + 'px'}"></span>
                                         {{ l.content }}
                                     </span>
-                                    <span class="text-[9px] text-slate-600 flex-shrink-0">{{ formatTime(l.timestamp)
+                                    <span class="text-[11px] text-slate-600 flex-shrink-0">{{ formatTime(l.timestamp)
                                         }}</span>
                                 </div>
                             </div>
                             <div v-if="isUserScrolling" @click="scrollToTop"
-                                class="absolute bottom-4 right-4 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs cursor-pointer hover:bg-blue-500 transition-all shadow-lg">
+                                class="absolute bottom-4 right-4 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm cursor-pointer hover:bg-blue-500 transition-all shadow-lg">
                                 <i class="fa-solid fa-arrow-up mr-1"></i> 新日志
                             </div>
                         </div>
@@ -339,38 +338,38 @@
                             </div>
 
                             <div class="card-header">
-                                <h3 class="font-bold text-sm text-white">插件控制</h3>
+                                <h3 class="font-bold text-base text-white">插件控制</h3>
                             </div>
                             <div class="p-4">
                                 <div v-if="!activePlugin" class="text-center py-6">
                                     <i class="fa-solid fa-hand-pointer text-2xl text-slate-600 mb-2"></i>
-                                    <p class="text-xs text-slate-500">请在左侧选择插件</p>
+                                    <p class="text-sm text-slate-500">请在左侧选择插件</p>
                                 </div>
 
                                 <template v-else>
                                     <!-- 生命周期 -->
                                     <div class="mb-4">
                                         <label
-                                            class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">生命周期</label>
+                                            class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">生命周期</label>
                                         <div class="grid grid-cols-3 gap-2">
                                             <button @click="updateStatus('ACTIVE')"
                                                 :disabled="activePlugin?.status === 'ACTIVE'"
                                                 :class="activePlugin?.status === 'ACTIVE' ? 'bg-green-600' : 'bg-slate-700 hover:bg-slate-600'"
-                                                class="action-btn text-white text-xs">
+                                                class="action-btn text-white text-sm">
                                                 <i class="fa-solid fa-play"></i>
                                                 激活
                                             </button>
                                             <button @click="updateStatus('LOADED')"
                                                 :disabled="activePlugin?.status === 'LOADED'"
                                                 :class="activePlugin?.status === 'LOADED' ? 'bg-blue-600' : 'bg-slate-700 hover:bg-slate-600'"
-                                                class="action-btn text-white text-xs">
+                                                class="action-btn text-white text-sm">
                                                 <i class="fa-solid fa-rotate"></i>
                                                 重载
                                             </button>
                                             <button @click="requestUnload"
                                                 :disabled="activePlugin?.status === 'UNLOADED'"
                                                 :class="activePlugin?.status === 'UNLOADED' ? 'bg-red-600' : 'bg-slate-700 hover:bg-slate-600'"
-                                                class="action-btn text-white text-xs">
+                                                class="action-btn text-white text-sm">
                                                 <i class="fa-solid fa-power-off"></i>
                                                 卸载
                                             </button>
@@ -380,7 +379,7 @@
                                     <!-- 资源权限 -->
                                     <div class="mb-4">
                                         <label
-                                            class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 block">资源权限</label>
+                                            class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">资源权限</label>
                                         <div class="grid grid-cols-2 gap-2">
                                             <button @click="togglePerm('dbRead')" :disabled="loading.permissions"
                                                 :class="activePlugin?.permissions?.dbRead !== false ? 'perm-btn on' : 'perm-btn off'">
@@ -407,9 +406,8 @@
                         <!-- 功能演练 -->
                         <div class="card">
                             <div class="card-header">
-                                <h3 class="font-bold text-sm text-white">功能演练</h3>
-                                <span :class="canOperate ? 'text-green-400' : 'text-red-400'"
-                                    class="text-[10px] font-bold">
+                                <h3 class="font-bold text-base text-white">功能演练</h3>
+                                <span :class="canOperate ? 'text-green-400' : 'text-red-400'" class="text-xs font-bold">
                                     {{ canOperate ? '● READY' : '○ INACTIVE' }}
                                 </span>
                             </div>
@@ -417,24 +415,24 @@
                                 <div v-if="!canOperate"
                                     class="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4 text-center">
                                     <i class="fa-solid fa-exclamation-circle text-red-400 mb-1"></i>
-                                    <p class="text-xs text-red-400">插件未激活，请先激活</p>
+                                    <p class="text-sm text-red-400">插件未激活，请先激活</p>
                                 </div>
 
                                 <div class="grid grid-cols-2 gap-2 mb-4">
                                     <button @click="simulate('dbRead')" :disabled="!canOperate || loading.simulate"
-                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
                                         <i class="fa-solid fa-database"></i> 读DB
                                     </button>
                                     <button @click="simulate('dbWrite')" :disabled="!canOperate || loading.simulate"
-                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
                                         <i class="fa-solid fa-pen"></i> 写DB
                                     </button>
                                     <button @click="simulate('cacheRead')" :disabled="!canOperate || loading.simulate"
-                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
                                         <i class="fa-solid fa-bolt"></i> 读Cache
                                     </button>
                                     <button @click="simulate('cacheWrite')" :disabled="!canOperate || loading.simulate"
-                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-xs">
+                                        class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
                                         <i class="fa-solid fa-bolt"></i> 写Cache
                                     </button>
                                 </div>
@@ -442,7 +440,7 @@
                                 <!-- IPC 测试 -->
                                 <div class="border-t border-slate-700 pt-4">
                                     <div class="flex items-center justify-between mb-3">
-                                        <span class="text-xs font-medium text-slate-400">IPC 授权</span>
+                                        <span class="text-sm font-medium text-slate-400">IPC 授权</span>
                                         <div @click="ipcEnabled = !ipcEnabled"
                                             :class="ipcEnabled ? 'bg-green-500' : 'bg-slate-600'"
                                             class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
@@ -452,7 +450,7 @@
                                         </div>
                                     </div>
                                     <button @click="simulateIPC" :disabled="!canOperate || loading.simulate"
-                                        class="w-full action-btn bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-600/30 text-xs">
+                                        class="w-full action-btn bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-600/30 text-sm">
                                         <i class="fa-solid fa-arrow-right-arrow-left"></i>
                                         IPC: {{ activeId || '-' }} → {{ ipcTarget }}
                                     </button>
@@ -468,7 +466,7 @@
                                 <div class="flex items-center gap-2">
                                     <i
                                         :class="lastAudit.allowed ? 'fa-solid fa-check-circle text-green-400' : 'fa-solid fa-times-circle text-red-400'"></i>
-                                    <span class="font-bold text-xs"
+                                    <span class="font-bold text-sm"
                                         :class="lastAudit.allowed ? 'text-green-400' : 'text-red-400'">
                                         {{ lastAudit.allowed ? 'SUCCESS' : 'DENIED' }}
                                     </span>
@@ -477,9 +475,9 @@
                                     <i class="fa-solid fa-xmark"></i>
                                 </button>
                             </div>
-                            <p class="text-xs mt-2 font-mono"
+                            <p class="text-sm mt-2 font-mono"
                                 :class="lastAudit.allowed ? 'text-green-300' : 'text-red-300'">
-                                [{{ lastAudit.traceId?.substring(0, 8) }}] {{ lastAudit.message }}
+                                [{{ lastAudit.traceId }}] {{ lastAudit.message }}
                             </p>
                         </div>
                     </div>

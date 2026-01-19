@@ -4,14 +4,10 @@ import com.lingframe.api.context.PluginContextHolder;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.exception.ServiceUnavailableException;
-import com.lingframe.core.exception.InvocationException;
-import com.lingframe.core.plugin.PluginInstance;
 import com.lingframe.core.plugin.PluginRuntime;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Map;
@@ -58,58 +54,42 @@ public class SmartServiceProxy implements InvocationHandler {
             ctx = InvocationContext.builder().build();
             CTX_POOL.set(ctx);
         }
+        final InvocationContext finalCtx = ctx;
 
         try {
-            // 【关键】重置/填充上下文属性 (利用 @Data 生成的 setter)
+            // 【关键】重置/填充上下文属性
             // Identity
-            ctx.setTraceId(null); // 由 Kernel 处理
-            ctx.setCallerPluginId(this.callerPluginId);
-            ctx.setPluginId(targetRuntime.getPluginId());
-            ctx.setOperation(method.getName());
+            finalCtx.setTraceId(null); // 由 Kernel 处理
+            finalCtx.setCallerPluginId(this.callerPluginId);
+            finalCtx.setPluginId(targetRuntime.getPluginId());
+            finalCtx.setOperation(method.getName());
             // Runtime Data (每次请求必变)
-            ctx.setArgs(args);
+            finalCtx.setArgs(args);
             // Resource
-            ctx.setResourceType("RPC");
+            finalCtx.setResourceType("RPC");
             // Labels
             Map<String, String> labels = PluginContextHolder.getLabels();
-            ctx.setLabels(labels != null ? labels : Collections.emptyMap());
+            finalCtx.setLabels(labels != null ? labels : Collections.emptyMap());
 
             String resourceId = RESOURCE_ID_CACHE.computeIfAbsent(method,
                     m -> serviceInterface.getName() + ":" + m.getName());
-            ctx.setResourceId(resourceId);
+            finalCtx.setResourceId(resourceId);
 
-            ctx.setAccessType(AccessType.EXECUTE); // 简化处理
-            ctx.setAuditAction(resourceId);
+            finalCtx.setAccessType(AccessType.EXECUTE); // 简化处理
+            finalCtx.setAuditAction(resourceId);
 
             // 清理上一次请求可能遗留的 metadata
-            ctx.setMetadata(null);
+            finalCtx.setMetadata(null);
 
+            String fqsid = finalCtx.getResourceId(); // ResourceId 格式正是 Interface:Method
             // 委托内核执行
-            return governanceKernel.invoke(targetRuntime, method, ctx, () -> {
-                PluginInstance instance = targetRuntime.getInstancePool().getDefault();
-                if (instance == null)
-                    throw new ServiceUnavailableException(serviceInterface.getName(), "Service unavailable");
-
-                if (!instance.tryEnter()) {
-                    throw new ServiceUnavailableException(serviceInterface.getName(),
-                            "Plugin instance is not ready or already destroyed");
-                }
-                // 这样如果 B 调用 C，C 看到的 caller 就是 B，而不是 A
-                PluginContextHolder.set(targetRuntime.getPluginId());
-                Thread t = Thread.currentThread();
-                ClassLoader oldCL = t.getContextClassLoader();
+            return governanceKernel.invoke(targetRuntime, method, finalCtx, () -> {
                 try {
-                    t.setContextClassLoader(instance.getContainer().getClassLoader());
-                    Object bean = instance.getContainer().getBean(serviceInterface);
-                    try {
-                        return method.invoke(bean, args);
-                    } catch (IllegalAccessException | InvocationTargetException e) {
-                        throw new InvocationException("Invocation failed", e);
-                    }
-                } finally {
-                    t.setContextClassLoader(oldCL);
-                    PluginContextHolder.clear();
-                    instance.exit();
+                    // 🔥 修正：调用 Runtime 的标准入口，确保走路由、统计和隔离
+                    // args 在这里是安全的，因为 Kernel 没有修改它
+                    return targetRuntime.invoke(finalCtx.getCallerPluginId(), fqsid, finalCtx.getArgs());
+                } catch (Exception e) {
+                    throw new ProxyExecutionException(e);
                 }
             });
         } catch (ProxyExecutionException e) {
@@ -119,9 +99,9 @@ public class SmartServiceProxy implements InvocationHandler {
             // 【核心】清理大对象引用，防止内存泄漏
             // args 可能很大（如上传文件），labels 可能有脏数据，必须清空
             // 注意：这里不要 remove()，目的是为了复用 ctx 对象本身
-            ctx.setArgs(null);
-            ctx.setLabels(null);
-            ctx.setMetadata(null);
+            finalCtx.setArgs(null);
+            finalCtx.setLabels(null);
+            finalCtx.setMetadata(null);
             // TraceId 不需要清空，会被下一次 setTraceId 覆盖
         }
     }
