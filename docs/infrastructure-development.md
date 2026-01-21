@@ -230,7 +230,7 @@ public ValueWrapper get(@NonNull Object key) {
 
 | 类型 | 能力标识 | 说明 |
 |------|----------|------|
-| Spring Cache | `cache:spring` | 统一抽象层 |
+| Spring Cache | `cache:local` | 统一抽象层 |
 | Redis | `cache:redis` | RedisTemplate 拦截 |
 | Caffeine | `cache:local` | 本地缓存 |
 

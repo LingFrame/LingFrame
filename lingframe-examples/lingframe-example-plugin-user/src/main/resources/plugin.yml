@@ -14,7 +14,7 @@ governance:
     capabilities:
       - capability: "storage:sql"      # Capability Resource
         accessType: "READ"             # Access Type
-      - capability: "cache:spring"
+      - capability: "cache:local"
         accessType: "WRITE"
 
 # --- 自定义扩展/依赖 (对应 Map<String, Object> properties) ---

@@ -198,7 +198,7 @@ c.l.core.exception.PermissionDeniedException: Plugin [user-plugin] requires [sto
 
 ### 2. 体验缓存加速（Cache 代理）
 
-User 插件声明了 `cache:spring` 的 `WRITE` 权限。
+User 插件声明了 `cache:local` 的 `WRITE` 权限。
 
 **第一次查询**（触发 SQL 查询并写入缓存）：
 
@@ -222,7 +222,7 @@ curl "http://localhost:8888/user/queryUser?userId=1"
 观察日志：
 ```text
 Cache HIT: users::1
-Audit: Plugin [user-plugin] accessed [cache:spring] (ALLOWED)
+Audit: Plugin [user-plugin] accessed [cache:local] (ALLOWED)
 ```
 
 ### 3. 【真实案例】连宿主初始化都会被拦截？

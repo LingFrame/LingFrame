@@ -26,12 +26,11 @@ import com.lingframe.infra.cache.configuration.SpringCacheWrapperProcessor;
 import com.lingframe.infra.storage.configuration.DataSourceWrapperProcessor;
 import com.lingframe.starter.adapter.SpringContainerFactory;
 import com.lingframe.starter.config.LingFrameProperties;
-import com.lingframe.starter.interceptor.LingWebGovernanceInterceptor;
+import com.lingframe.starter.filter.LingWebGovernanceFilter;
 import com.lingframe.starter.processor.HostBeanGovernanceProcessor;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.starter.web.WebInterfaceManager;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationRunner;
@@ -44,8 +43,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.event.ContextRefreshedEvent;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.util.ArrayList;
@@ -286,22 +284,20 @@ public class LingFrameAutoConfiguration {
     }
 
     @Bean
-    public LingWebGovernanceInterceptor lingWebGovernanceInterceptor(
-            PermissionService permissionService,
+    public FilterRegistrationBean<LingWebGovernanceFilter> lingWebGovernanceFilter(
+            GovernanceKernel governanceKernel,
+            PluginManager pluginManager,
             WebInterfaceManager webInterfaceManager,
             LingFrameProperties properties,
-            EventBus eventBus) {
-        return new LingWebGovernanceInterceptor(permissionService, webInterfaceManager, properties, eventBus);
-    }
-
-    @Bean
-    public WebMvcConfigurer lingWebMvcConfigurer(LingWebGovernanceInterceptor interceptor) {
-        return new WebMvcConfigurer() {
-            @Override
-            public void addInterceptors(@NonNull InterceptorRegistry registry) {
-                registry.addInterceptor(interceptor);
-            }
-        };
+            @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping) {
+        FilterRegistrationBean<LingWebGovernanceFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(
+                new LingWebGovernanceFilter(governanceKernel, pluginManager, webInterfaceManager, properties,
+                        handlerMapping));
+        registration.addUrlPatterns("/*");
+        registration.setOrder(1); // 高优先级
+        registration.setName("lingWebGovernanceFilter");
+        return registration;
     }
 
     @Bean
