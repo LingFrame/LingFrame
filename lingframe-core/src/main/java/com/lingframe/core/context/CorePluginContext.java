@@ -48,6 +48,7 @@ public class CorePluginContext implements PluginContext {
             T service = pluginManager.getService(pluginId, serviceClass);
             return Optional.ofNullable(service);
         } catch (Exception e) {
+            log.warn("Service get failed.", e);
             return Optional.empty();
         }
     }

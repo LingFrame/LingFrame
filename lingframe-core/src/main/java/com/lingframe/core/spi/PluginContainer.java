@@ -39,6 +39,11 @@ public interface PluginContainer {
     Object getBean(String beanName);
 
     /**
+     * 获取容器内所有 Bean 的名称
+     */
+    String[] getBeanNames();
+
+    /**
      * 获取插件专用的类加载器 (用于 TCCL 劫持)
      */
     ClassLoader getClassLoader();

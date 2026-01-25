@@ -341,6 +341,13 @@ public class SpringPluginContainer implements PluginContainer {
     }
 
     @Override
+    public String[] getBeanNames() {
+        if (!isActive())
+            return new String[0];
+        return context.getBeanDefinitionNames();
+    }
+
+    @Override
     public ClassLoader getClassLoader() {
         return this.classLoader;
     }

@@ -16,10 +16,19 @@ import com.lingframe.api.exception.PluginNotFoundException;
 import com.lingframe.core.exception.ServiceUnavailableException;
 import com.lingframe.core.exception.InvocationException;
 import com.lingframe.dashboard.dto.StressResultDTO;
+import com.lingframe.core.spi.PluginContainer;
+import com.lingframe.core.strategy.GovernanceStrategy;
+import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Controller;
+import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.RestController;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
@@ -32,6 +41,25 @@ public class SimulateService {
     private final PermissionService permissionService;
 
     public SimulateResultDTO simulateResource(String pluginId, String resourceType) {
+        // 🔥 尝试智能推导：寻找现有代码中的最佳替身
+        AccessType targetAccess = mapAccessType(resourceType);
+        Method candidate = findSimulationCandidate(pluginId, targetAccess);
+
+        if (candidate != null) {
+            // 找到了替身，执行方法级模拟 (High Fidelity)
+            String className = candidate.getDeclaringClass().getName();
+            String methodName = candidate.getName();
+
+            SimulateResultDTO result = simulateMethod(pluginId, className, methodName);
+
+            // 追加提示信息，让用户感知到智能化
+            return result.toBuilder()
+                    .message(result.getMessage() + " [智能定位: " + candidate.getDeclaringClass().getSimpleName() + "."
+                            + methodName + "]")
+                    .build();
+        }
+
+        // 没找到替身，回退到通用模拟 (Low Fidelity)
         PluginRuntime runtime = pluginManager.getRuntime(pluginId);
         if (runtime == null) {
             throw new PluginNotFoundException(pluginId);
@@ -44,6 +72,7 @@ public class SimulateService {
         String traceId = generateTraceId();
 
         publishTrace(traceId, pluginId, "→ 模拟请求: " + resourceType, "IN", 1);
+        publishTrace(traceId, pluginId, "  ! 未找到典型业务方法，执行通用基线检查", "WARN", 1);
 
         InvocationContext ctx = InvocationContext.builder()
                 .traceId(traceId)
@@ -245,6 +274,174 @@ public class SimulateService {
         } catch (NoSuchMethodException e) {
             throw new InvocationException("Failed to get simulate method", e);
         }
+    }
+
+    /**
+     * 模拟特定方法的调用
+     * 🔥 通过反射加载真实方法元数据，从而支持注解级权限校验
+     */
+    public SimulateResultDTO simulateMethod(String pluginId, String className, String methodName) {
+        PluginRuntime runtime = pluginManager.getRuntime(pluginId);
+        if (runtime == null) {
+            throw new PluginNotFoundException(pluginId);
+        }
+
+        if (!runtime.isAvailable()) {
+            throw new ServiceUnavailableException(pluginId, "插件未激活");
+        }
+
+        String traceId = generateTraceId();
+        publishTrace(traceId, pluginId, "→ 模拟方法: " + methodName, "IN", 1);
+
+        boolean allowed;
+        String message;
+
+        try {
+            // 1. 获取插件类加载器
+            ClassLoader pluginLoader = runtime.getInstancePool().getDefault()
+                    .getContainer().getClassLoader();
+
+            // 2. 加载真实类和方法
+            Class<?> targetClass = pluginLoader.loadClass(className);
+            // 简化处理：假设是无参方法，或仅根据名称匹配（生产环境应支持参数签名）
+            Method targetMethod = findMethodByName(targetClass, methodName);
+
+            // 3. 构建上下文
+            InvocationContext ctx = InvocationContext.builder()
+                    .traceId(traceId)
+                    .pluginId(pluginId)
+                    .callerPluginId("platform-simulator")
+                    .resourceType("METHOD")
+                    .resourceId(className + "#" + methodName)
+                    .operation(methodName)
+                    .accessType(AccessType.EXECUTE) // 默认 EXECUTE，内核会重新推导
+                    .shouldAudit(true)
+                    .auditAction("SIMULATE:METHOD")
+                    .build();
+
+            // 4. 调用内核（传真方法，执行假逻辑）
+            publishTrace(traceId, pluginId, "  ↳ 内核精细化鉴权...", "IN", 2);
+
+            governanceKernel.invoke(runtime, targetMethod, ctx, () -> {
+                return "Simulated " + methodName + " success";
+            });
+
+            allowed = true;
+            message = "方法 " + methodName + " 访问允许";
+            publishTrace(traceId, pluginId, "    ✓ 鉴权通过 (含注解检查)", "OK", 3);
+
+        } catch (ClassNotFoundException e) {
+            allowed = false;
+            message = "类不存在: " + className;
+            publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
+        } catch (NoSuchMethodException e) {
+            allowed = false;
+            message = "方法不存在: " + methodName;
+            publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
+        } catch (SecurityException e) {
+            allowed = false;
+            message = "访问被拒绝: " + e.getMessage();
+            publishTrace(traceId, pluginId, "    ✗ " + message, "FAIL", 3);
+        } catch (Exception e) {
+            allowed = false;
+            message = "模拟异常: " + e.getMessage();
+            publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
+        }
+
+        return SimulateResultDTO.builder()
+                .traceId(traceId)
+                .pluginId(pluginId)
+                .resourceType("METHOD")
+                .allowed(allowed)
+                .message(message)
+                .timestamp(System.currentTimeMillis())
+                .build();
+    }
+
+    private Method findMethodByName(Class<?> clazz, String name) throws NoSuchMethodException {
+        // 简单查找逻辑，仅用于演示。生产环境需处理重载。
+        for (Method m : clazz.getDeclaredMethods()) {
+            if (m.getName().equals(name)) {
+                return m;
+            }
+        }
+        throw new NoSuchMethodException(name);
+    }
+
+    private Method findSimulationCandidate(String pluginId, AccessType targetAccess) {
+        try {
+            PluginRuntime runtime = pluginManager.getRuntime(pluginId);
+            if (runtime == null || !runtime.isAvailable()) {
+                return null;
+            }
+
+            PluginContainer container = runtime.getInstancePool().getDefault().getContainer();
+            String[] beanNames = container.getBeanNames();
+
+            // 候选池：找到所有符合 AccessType 的方法
+            List<Method> candidates = new ArrayList<>();
+
+            for (String beanName : beanNames) {
+                Object bean = container.getBean(beanName);
+                if (bean == null)
+                    continue;
+
+                Class<?> beanClass = bean.getClass();
+
+                // 只扫描控制器和服务类 (避免无关 Bean 干扰)
+                if (isBusinessBean(beanClass)) {
+                    for (Method m : beanClass.getDeclaredMethods()) {
+                        // 1. 类型匹配 (WRITE vs WRITE)
+                        if (GovernanceStrategy.inferAccessType(m.getName()) == targetAccess) {
+                            candidates.add(m);
+                        }
+                    }
+                }
+            }
+
+            // 择优策略：优先选择 Service 层 + 带有 @RequiresPermission 注解的方法
+            return candidates.stream()
+                    .max(Comparator.comparingInt(this::calculateScore))
+                    .orElse(null);
+
+        } catch (Exception e) {
+            log.warn("Failed to find simulation candidate: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 计算候选方法的权重分数
+     * 规则：
+     * 1. 有注解 > 无注解 (+100)
+     * 2. Service 层 > Component 层 > Controller 层 (+50 / +30 / +10)
+     */
+    private int calculateScore(Method m) {
+        int score = 0;
+
+        // 维度 1: 显式权限定义 (最重要)
+        if (m.isAnnotationPresent(com.lingframe.api.annotation.RequiresPermission.class)) {
+            score += 100;
+        }
+
+        // 维度 2: 架构分层优先级
+        Class<?> clazz = m.getDeclaringClass();
+        if (clazz.isAnnotationPresent(Service.class)) {
+            score += 50;
+        } else if (clazz.isAnnotationPresent(Component.class)) {
+            score += 30; // 为了兼容某些用 @Component 也就是 Service 的情况
+        } else if (clazz.isAnnotationPresent(Controller.class) || clazz.isAnnotationPresent(RestController.class)) {
+            score += 10;
+        }
+
+        return score;
+    }
+
+    private boolean isBusinessBean(Class<?> clazz) {
+        return clazz.isAnnotationPresent(Service.class) ||
+                clazz.isAnnotationPresent(Component.class) ||
+                clazz.isAnnotationPresent(Controller.class) ||
+                clazz.isAnnotationPresent(RestController.class);
     }
 
     @SuppressWarnings("unused")

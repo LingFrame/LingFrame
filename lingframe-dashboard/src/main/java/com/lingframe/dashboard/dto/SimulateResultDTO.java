@@ -4,7 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 @Data
-@Builder
+@Builder(toBuilder = true)
 public class SimulateResultDTO {
     private String traceId;
     private String pluginId;

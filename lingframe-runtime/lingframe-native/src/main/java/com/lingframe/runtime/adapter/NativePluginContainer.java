@@ -222,6 +222,11 @@ public class NativePluginContainer implements PluginContainer {
     }
 
     @Override
+    public String[] getBeanNames() {
+        return new String[0];
+    }
+
+    @Override
     public ClassLoader getClassLoader() {
         return classLoader;
     }
