@@ -12,5 +12,7 @@ public class SimulateResultDTO {
     private String resourceType;
     private boolean allowed;
     private String message;
+    private String ruleSource; // 规则来源 (e.g. "Patch", "Annotation")
+    private boolean devModeBypass; // 是否因开发模式豁免
     private long timestamp;
 }

@@ -38,13 +38,12 @@ public class LocalGovernanceRegistry {
         save();
         log.info("[LingFrame] Governance patch updated for plugin: {}", pluginId);
         // 通知机制留空，SmartServiceProxy 会实时读取
-//        eventBus.publish(new GovernancePatchUpdatedEvent(pluginId, policy));
+        // eventBus.publish(new GovernancePatchUpdatedEvent(pluginId, policy));
     }
 
     public GovernancePolicy getPatch(String pluginId) {
         return patchMap.get(pluginId);
     }
-
 
     public Map<String, GovernancePolicy> getAllPatches() {
         return patchMap;
@@ -52,11 +51,14 @@ public class LocalGovernanceRegistry {
 
     private void load() {
         File file = new File(storePath);
-        if (!file.exists()) return;
+        if (!file.exists())
+            return;
 
         try (FileReader reader = new FileReader(file)) {
             LoaderOptions options = new LoaderOptions();
-            Yaml yaml = new Yaml(options);
+            // 允许 com.lingframe 包下的 Tag (修复 Global tag is not allowed 错误)
+            options.setTagInspector(tag -> tag.getClassName().startsWith("com.lingframe"));
+            Yaml yaml = new Yaml(new org.yaml.snakeyaml.constructor.Constructor(options));
             Map<String, GovernancePolicy> loaded = yaml.load(reader);
             if (loaded != null) {
                 patchMap.putAll(loaded);

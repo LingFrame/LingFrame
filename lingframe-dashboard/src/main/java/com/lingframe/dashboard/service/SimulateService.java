@@ -1,5 +1,6 @@
 package com.lingframe.dashboard.service;
 
+import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
@@ -43,14 +44,15 @@ public class SimulateService {
     public SimulateResultDTO simulateResource(String pluginId, String resourceType) {
         // 🔥 尝试智能推导：寻找现有代码中的最佳替身
         AccessType targetAccess = mapAccessType(resourceType);
-        Method candidate = findSimulationCandidate(pluginId, targetAccess);
+        String targetCapability = mapPermission(resourceType);
+        Method candidate = findSimulationCandidate(pluginId, targetAccess, targetCapability);
 
         if (candidate != null) {
             // 找到了替身，执行方法级模拟 (High Fidelity)
             String className = candidate.getDeclaringClass().getName();
             String methodName = candidate.getName();
 
-            SimulateResultDTO result = simulateMethod(pluginId, className, methodName);
+            SimulateResultDTO result = simulateMethod(pluginId, className, methodName, targetAccess);
 
             // 追加提示信息，让用户感知到智能化
             return result.toBuilder()
@@ -89,6 +91,7 @@ public class SimulateService {
 
         boolean allowed;
         String message;
+        boolean devBypass = false;
 
         try {
             publishTrace(traceId, pluginId, "  ↳ 内核权限校验...", "IN", 2);
@@ -102,8 +105,9 @@ public class SimulateService {
 
             // 检测是否因开发模式豁免而通过
             if (isDevModeBypass(pluginId, mapPermission(resourceType), mapAccessType(resourceType))) {
+                devBypass = true;
                 message += " (⚠️开发模式豁免)";
-                publishTrace(traceId, pluginId, "    ! 权限不足，仅因开发模式放行", "WARN", 3);
+                publishTrace(traceId, pluginId, "    ! 权限不足，仅因开发模式放行 (Source: " + ctx.getRuleSource() + ")", "WARN", 3);
             } else {
                 publishTrace(traceId, pluginId, "    ✓ 权限验证通过", "OK", 3);
             }
@@ -124,6 +128,8 @@ public class SimulateService {
                 .resourceType(resourceType)
                 .allowed(allowed)
                 .message(message)
+                .ruleSource(ctx.getRuleSource())
+                .devModeBypass(devBypass)
                 .timestamp(System.currentTimeMillis())
                 .build();
     }
@@ -280,7 +286,8 @@ public class SimulateService {
      * 模拟特定方法的调用
      * 🔥 通过反射加载真实方法元数据，从而支持注解级权限校验
      */
-    public SimulateResultDTO simulateMethod(String pluginId, String className, String methodName) {
+    public SimulateResultDTO simulateMethod(String pluginId, String className, String methodName,
+            AccessType targetAccess) {
         PluginRuntime runtime = pluginManager.getRuntime(pluginId);
         if (runtime == null) {
             throw new PluginNotFoundException(pluginId);
@@ -295,6 +302,8 @@ public class SimulateService {
 
         boolean allowed;
         String message;
+        InvocationContext ctx = null;
+        boolean devBypass = false;
 
         try {
             // 1. 获取插件类加载器
@@ -306,15 +315,15 @@ public class SimulateService {
             // 简化处理：假设是无参方法，或仅根据名称匹配（生产环境应支持参数签名）
             Method targetMethod = findMethodByName(targetClass, methodName);
 
-            // 3. 构建上下文
-            InvocationContext ctx = InvocationContext.builder()
+            // 3. 构建上下文 - callerPluginId 设为被测插件，这样权限检查针对正确的主体
+            ctx = InvocationContext.builder()
                     .traceId(traceId)
                     .pluginId(pluginId)
-                    .callerPluginId("platform-simulator")
+                    .callerPluginId(pluginId) // 模拟插件自己调用自己的方法
                     .resourceType("METHOD")
                     .resourceId(className + "#" + methodName)
                     .operation(methodName)
-                    .accessType(AccessType.EXECUTE) // 默认 EXECUTE，内核会重新推导
+                    .accessType(targetAccess) // 使用传递的目标 AccessType
                     .shouldAudit(true)
                     .auditAction("SIMULATE:METHOD")
                     .build();
@@ -328,7 +337,35 @@ public class SimulateService {
 
             allowed = true;
             message = "方法 " + methodName + " 访问允许";
-            publishTrace(traceId, pluginId, "    ✓ 鉴权通过 (含注解检查)", "OK", 3);
+
+            // 🔥 统一检测开发模式豁免逻辑
+            // 优先从注解读取 capability，其次使用 context 中的 requiredPermission
+            String capability = null;
+            AccessType inferredAccess = ctx.getAccessType();
+
+            var annotation = targetMethod.getAnnotation(RequiresPermission.class);
+            if (annotation != null) {
+                capability = annotation.value();
+                // inferredAccess 由 context 决定，不再重新推导
+            } else if (ctx.getRequiredPermission() != null && !ctx.getRequiredPermission().isBlank()) {
+                capability = ctx.getRequiredPermission();
+            }
+
+            // 如果找到了需要检查的 capability，则进行豁免检测
+            if (capability != null) {
+                if (isDevModeBypass(pluginId, capability, inferredAccess)) {
+                    devBypass = true;
+                    message += " (⚠️开发模式豁免)";
+                    publishTrace(traceId, pluginId,
+                            "    ! 权限不足，仅因开发模式放行 (Source: " + (ctx != null ? ctx.getRuleSource() : "Unknown") + ")",
+                            "WARN", 3);
+                } else {
+                    publishTrace(traceId, pluginId, "    ✓ 鉴权通过 (含注解检查)", "OK", 3);
+                }
+            } else {
+                // 无任何权限声明
+                publishTrace(traceId, pluginId, "    ✓ 鉴权通过 (无显式权限声明)", "OK", 3);
+            }
 
         } catch (ClassNotFoundException e) {
             allowed = false;
@@ -354,6 +391,8 @@ public class SimulateService {
                 .resourceType("METHOD")
                 .allowed(allowed)
                 .message(message)
+                .ruleSource(ctx != null ? ctx.getRuleSource() : null)
+                .devModeBypass(devBypass)
                 .timestamp(System.currentTimeMillis())
                 .build();
     }
@@ -368,7 +407,7 @@ public class SimulateService {
         throw new NoSuchMethodException(name);
     }
 
-    private Method findSimulationCandidate(String pluginId, AccessType targetAccess) {
+    private Method findSimulationCandidate(String pluginId, AccessType targetAccess, String targetCapability) {
         try {
             PluginRuntime runtime = pluginManager.getRuntime(pluginId);
             if (runtime == null || !runtime.isAvailable()) {
@@ -399,10 +438,27 @@ public class SimulateService {
                 }
             }
 
-            // 择优策略：优先选择 Service 层 + 带有 @RequiresPermission 注解的方法
-            return candidates.stream()
-                    .max(Comparator.comparingInt(this::calculateScore))
-                    .orElse(null);
+            // 🔥 治理中心优先策略：只返回 capability 完全匹配的方法
+            // 如果找不到匹配的，宁可不用智能候选，走通用路径
+            List<Method> capabilityMatched = candidates.stream()
+                    .filter(m -> {
+                        if (m.isAnnotationPresent(com.lingframe.api.annotation.RequiresPermission.class)) {
+                            String capability = m.getAnnotation(com.lingframe.api.annotation.RequiresPermission.class)
+                                    .value();
+                            return capability.equals(targetCapability);
+                        }
+                        return false;
+                    })
+                    .toList();
+
+            if (!capabilityMatched.isEmpty()) {
+                return capabilityMatched.stream()
+                        .max(Comparator.comparingInt(m -> calculateScore(m, targetCapability)))
+                        .orElse(null);
+            }
+
+            // 没有找到 capability 匹配的方法，返回 null，走通用模拟路径
+            return null;
 
         } catch (Exception e) {
             log.warn("Failed to find simulation candidate: {}", e.getMessage());
@@ -413,13 +469,22 @@ public class SimulateService {
     /**
      * 计算候选方法的权重分数
      * 规则：
-     * 1. 有注解 > 无注解 (+100)
-     * 2. Service 层 > Component 层 > Controller 层 (+50 / +30 / +10)
+     * 1. Capability 匹配 (+200)
+     * 2. 有注解 > 无注解 (+100)
+     * 3. Service 层 > Component 层 > Controller 层 (+50 / +30 / +10)
      */
-    private int calculateScore(Method m) {
+    private int calculateScore(Method m, String targetCapability) {
         int score = 0;
 
-        // 维度 1: 显式权限定义 (最重要)
+        // 维度 0: Capability 匹配 (最最重要！)
+        if (m.isAnnotationPresent(com.lingframe.api.annotation.RequiresPermission.class)) {
+            String capability = m.getAnnotation(com.lingframe.api.annotation.RequiresPermission.class).value();
+            if (capability.equals(targetCapability)) {
+                score += 200; // 完全匹配，优先级最高
+            }
+        }
+
+        // 维度 1: 显式权限定义
         if (m.isAnnotationPresent(com.lingframe.api.annotation.RequiresPermission.class)) {
             score += 100;
         }

@@ -57,7 +57,7 @@ public class AuditManager {
      * 异步记录审计日志
      */
     public static void asyncRecord(String traceId, String callerPluginId, String action, String resource,
-            Object[] args, Object result, long cost) {
+                                   Object[] args, Object result, long cost) {
         // 增加防御性 try-catch，防止提交任务本身抛出异常
         try {
             // 使用独立线程池执行，避免阻塞业务线程
@@ -74,8 +74,8 @@ public class AuditManager {
 
                     log.info(
                             "[AUDIT] TraceId={}, Plugin={}, Action={}, Resource={}, Cost={}ms, Result={}, Args={}, Data={}",
-                            traceId, callerPluginId, action, resource, cost / 1_000_000, success ? "Success" : "Void",
-                            argsStr, resultStr);
+                            traceId, callerPluginId, action, resource, String.format("%.3f", cost / 1_000_000.0),
+                            success ? "Success" : "Void", argsStr, resultStr);
                 } catch (Exception e) {
                     log.warn("Audit log failed", e);
                 }

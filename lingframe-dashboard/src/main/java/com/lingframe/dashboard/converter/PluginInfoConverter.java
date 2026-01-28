@@ -47,10 +47,15 @@ public class PluginInfoConverter {
     }
 
     private PluginInfoDTO.ResourcePermissions extractPermissions(String pluginId, PermissionService permissionService) {
-        boolean dbRead = permissionService.isAllowed(pluginId, Capabilities.STORAGE_SQL, AccessType.READ);
-        boolean dbWrite = permissionService.isAllowed(pluginId, Capabilities.STORAGE_SQL, AccessType.WRITE);
-        boolean cacheRead = permissionService.isAllowed(pluginId, Capabilities.CACHE_LOCAL, AccessType.READ);
-        boolean cacheWrite = permissionService.isAllowed(pluginId, Capabilities.CACHE_LOCAL, AccessType.WRITE);
+        // 直接查询权限配置，不受开发模式影响
+        var sqlPermission = permissionService.getPermission(pluginId, Capabilities.STORAGE_SQL);
+        var cachePermission = permissionService.getPermission(pluginId, Capabilities.CACHE_LOCAL);
+
+        // 根据 AccessType 判断读写权限
+        boolean dbRead = sqlPermission != null && sqlPermission.satisfies(AccessType.READ);
+        boolean dbWrite = sqlPermission != null && sqlPermission.satisfies(AccessType.WRITE);
+        boolean cacheRead = cachePermission != null && cachePermission.satisfies(AccessType.READ);
+        boolean cacheWrite = cachePermission != null && cachePermission.satisfies(AccessType.WRITE);
 
         return PluginInfoDTO.ResourcePermissions.builder()
                 .dbRead(dbRead)

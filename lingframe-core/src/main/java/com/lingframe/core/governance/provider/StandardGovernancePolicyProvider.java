@@ -61,6 +61,7 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
                         .auditEnabled(r.getAuditEnabled())
                         .auditAction(r.getAuditAction())
                         .timeout(r.getTimeout())
+                        .source("Host Rule")
                         .build();
             }
         }
@@ -68,7 +69,7 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
         // === P1: 动态补丁 (HotFix) ===
         if (localRegistry != null) {
             GovernancePolicy patch = localRegistry.getPatch(pid);
-            GovernanceDecision d1 = matchPolicy(patch, mName);
+            GovernanceDecision d1 = matchPolicy(patch, mName, "Patch");
             if (d1 != null)
                 return d1;
         }
@@ -77,7 +78,8 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
         if (runtime != null) {
             PluginInstance instance = runtime.getInstancePool().getDefault();
             if (instance != null && instance.getDefinition() != null) {
-                GovernanceDecision d2 = matchPolicy(instance.getDefinition().getGovernance(), mName);
+                GovernanceDecision d2 = matchPolicy(instance.getDefinition().getGovernance(), mName,
+                        "Plugin Definition");
                 if (d2 != null)
                     return d2;
             }
@@ -90,10 +92,12 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
         RequiresPermission permAnn = method.getAnnotation(RequiresPermission.class);
         if (permAnn != null) {
             builder.requiredPermission(permAnn.value());
+            builder.source("Annotation");
             // 如果注解有 access 属性可在此处读取，目前使用默认或推导
         } else {
             // 智能推导权限 (仅作为默认值)
             builder.requiredPermission(GovernanceStrategy.inferPermission(method));
+            builder.source("Inference");
         }
 
         // 审计注解
@@ -111,7 +115,7 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
 
     // --- 辅助方法 ---
 
-    private GovernanceDecision matchPolicy(GovernancePolicy policy, String methodName) {
+    private GovernanceDecision matchPolicy(GovernancePolicy policy, String methodName, String sourceName) {
         if (policy == null)
             return null;
 
@@ -142,6 +146,7 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
                     .requiredPermission(perm)
                     .auditEnabled(audit)
                     .auditAction(action)
+                    .source(sourceName)
                     .build();
         }
         return null;

@@ -59,6 +59,15 @@ public final class Capabilities {
      */
     public static final String IPC_INVOKE = "ipc:invoke";
 
+    // ==================== 插件管理 ====================
+    /**
+     * 插件启用权限
+     * <p>
+     * 允许插件被启用和执行。所有活跃插件都应该拥有此权限。
+     * </p>
+     */
+    public static final String PLUGIN_ENABLE = "PLUGIN_ENABLE";
+
     private Capabilities() {
         // 防止实例化
     }

@@ -15,6 +15,12 @@ package com.lingframe.api.security;
  */
 public enum AccessType {
     /**
+     * 明确拒绝 - 表示权限被明确禁止
+     * 用于治理中心主动关闭权限的场景
+     */
+    NONE(0),
+
+    /**
      * 读取权限 - 最低级别
      */
     READ(1),
@@ -55,6 +61,10 @@ public enum AccessType {
      * @return 如果当前权限级别 >= 所需权限级别，返回 true
      */
     public boolean satisfies(AccessType required) {
+        // NONE 不满足任何权限需求（包括 NONE 本身）
+        if (this == NONE) {
+            return false;
+        }
         return this.level >= required.level;
     }
 

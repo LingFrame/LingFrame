@@ -193,15 +193,51 @@ createApp({
         const togglePerm = async (perm) => {
             if (!activePlugin.value) return;
 
+            console.log('========== togglePerm ==========');
+            console.log('点击的权限:', perm);
+            console.log('当前插件:', activePlugin.value.pluginId);
+            console.log('当前权限状态:', JSON.stringify(activePlugin.value.permissions));
+
             const currentPerms = activePlugin.value.permissions || {};
             const currentValue = currentPerms[perm] !== false;
+            const newValue = !currentValue;
+
+            console.log(`${perm}: currentValue=${currentValue}, newValue=${newValue}`);
+
+            // 构建新的权限状态
             const newPerms = {
                 dbRead: currentPerms.dbRead !== false,
                 dbWrite: currentPerms.dbWrite !== false,
                 cacheRead: currentPerms.cacheRead !== false,
                 cacheWrite: currentPerms.cacheWrite !== false,
-                [perm]: !currentValue
+                [perm]: newValue
             };
+
+            console.log('初始 newPerms:', JSON.stringify(newPerms));
+
+            // 权限级联逻辑：WRITE 包含 READ
+            // 1. 如果开启"写"权限，自动开启"读"权限
+            if (perm === 'dbWrite' && newValue) {
+                newPerms.dbRead = true;
+                console.log('级联: dbWrite 开启 -> dbRead 也开启');
+            }
+            if (perm === 'cacheWrite' && newValue) {
+                newPerms.cacheRead = true;
+                console.log('级联: cacheWrite 开启 -> cacheRead 也开启');
+            }
+
+            // 2. 如果关闭"读"权限，自动关闭"写"权限
+            if (perm === 'dbRead' && !newValue) {
+                newPerms.dbWrite = false;
+                console.log('级联: dbRead 关闭 -> dbWrite 也关闭');
+            }
+            if (perm === 'cacheRead' && !newValue) {
+                newPerms.cacheWrite = false;
+                console.log('级联: cacheRead 关闭 -> cacheWrite 也关闭');
+            }
+
+            console.log('最终 newPerms:', JSON.stringify(newPerms));
+            console.log('发送到后端的 API: /governance/' + activeId.value + '/permissions');
 
             loading.permissions = true;
             try {
@@ -210,9 +246,24 @@ createApp({
                 if (idx !== -1) {
                     plugins.value[idx].permissions = newPerms;
                 }
-                showToast(`${perm} ${newPerms[perm] ? '已开启' : '已关闭'}`, 'success');
+
+                // 改进提示信息，说明级联效果
+                let message = `${perm} ${newValue ? '已开启' : '已关闭'}`;
+                if (perm === 'dbWrite' && newValue && !currentPerms.dbRead) {
+                    message += '（同时开启 dbRead）';
+                } else if (perm === 'cacheWrite' && newValue && !currentPerms.cacheRead) {
+                    message += '（同时开启 cacheRead）';
+                } else if (perm === 'dbRead' && !newValue && currentPerms.dbWrite) {
+                    message += '（同时关闭 dbWrite）';
+                } else if (perm === 'cacheRead' && !newValue && currentPerms.cacheWrite) {
+                    message += '（同时关闭 cacheWrite）';
+                }
+
+                showToast(message, 'success');
+                console.log('权限更新成功');
             } catch (e) {
                 showToast('权限更新失败: ' + e.message, 'error');
+                console.error('权限更新失败:', e);
             } finally {
                 loading.permissions = false;
             }

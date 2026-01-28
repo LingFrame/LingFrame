@@ -1,6 +1,7 @@
 package com.lingframe.core.kernel;
 
 import com.lingframe.api.security.AccessType;
+import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.event.EventBus;
@@ -71,8 +72,8 @@ public class GovernanceKernel {
             // Auth 鉴权
             // 检查插件级权限
             // 这一步必须查 Target，因为如果 Target 挂了，谁调都没用
-            if (!permissionService.isAllowed(ctx.getPluginId(), "PLUGIN_ENABLE", AccessType.EXECUTE)) {
-                throw new PermissionDeniedException(ctx.getPluginId(), "PLUGIN_ENABLE");
+            if (!permissionService.isAllowed(ctx.getPluginId(), Capabilities.PLUGIN_ENABLE, AccessType.EXECUTE)) {
+                throw new PermissionDeniedException(ctx.getPluginId(), Capabilities.PLUGIN_ENABLE);
             }
 
             // 核心检查：检查推导出的权限(始终检查 Caller)
@@ -94,13 +95,10 @@ public class GovernanceKernel {
             AccessType type = ctx.getAccessType() != null ? ctx.getAccessType() : AccessType.EXECUTE;
 
             if (!permissionService.isAllowed(callerId, perm, type)) {
-                log.warn("⛔ Permission Denied: Plugin=[{}] needs=[{}] type=[{}]", callerId, perm, type);
+                String source = (decision != null && decision.getSource() != null) ? decision.getSource() : "Unknown";
+                log.warn("⛔ Permission Denied: Plugin=[{}] needs=[{}] type=[{}] (Rule Source: {})",
+                        callerId, perm, type, source);
                 throw new PermissionDeniedException(callerId, perm, type);
-            }
-
-            // 检查资源级权限
-            if (!permissionService.isAllowed(callerId, ctx.getResourceId(), AccessType.EXECUTE)) {
-                throw new PermissionDeniedException(callerId, ctx.getResourceId(), AccessType.EXECUTE);
             }
 
             // Audit In
@@ -181,13 +179,16 @@ public class GovernanceKernel {
         if (decision == null)
             return;
 
-        if (decision.getRequiredPermission() != null)
+        // 🔥 只有 ctx 未设置时才应用 decision 的值，尊重调用方的预设
+        if (decision.getRequiredPermission() != null && ctx.getRequiredPermission() == null)
             ctx.setRequiredPermission(decision.getRequiredPermission());
-        if (decision.getAccessType() != null)
+        if (decision.getAccessType() != null && ctx.getAccessType() == null)
             ctx.setAccessType(decision.getAccessType());
         if (decision.getAuditEnabled() != null)
             ctx.setShouldAudit(decision.getAuditEnabled());
-        if (decision.getAuditAction() != null)
+        if (decision.getAuditAction() != null && ctx.getAuditAction() == null)
             ctx.setAuditAction(decision.getAuditAction());
+        if (decision.getSource() != null)
+            ctx.setRuleSource(decision.getSource());
     }
 }

@@ -13,6 +13,7 @@ import java.time.Duration;
 @Data
 @Builder
 public class GovernanceDecision {
+    private String source; // 决策来源 (e.g. "Patch", "Annotation", "Inference")
     private String requiredPermission;
     private AccessType accessType;
     private Boolean auditEnabled;

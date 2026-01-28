@@ -38,21 +38,26 @@ public class DefaultPermissionService implements PermissionService {
 
     @Override
     public boolean isAllowed(String pluginId, String capability, AccessType accessType) {
+        log.debug("[鉴权] 检查权限: pluginId={}, capability={}, accessType={}", pluginId, capability, accessType);
+
         // 宿主应用根据配置决定是否进行权限检查
         if (HOST_PLUGIN_ID.equals(pluginId)) {
             // 如果配置为不检查宿主应用权限，直接放行
             if (!LingFrameConfig.current().isHostCheckPermissions()) {
+                log.debug("[鉴权] 宿主应用放行");
                 return true;
             }
         }
 
         // 白名单放行
         if (pluginId == null || capability.startsWith(GLOBAL_WHITELIST_PREFIX)) {
+            log.debug("[鉴权] 白名单放行");
             return true;
         }
 
         // 查表鉴权
         boolean allowed = checkInternal(pluginId, capability, accessType);
+        log.info("[鉴权] 权限表查询结果: {}", allowed);
 
         // 开发模式兜底
         if (!allowed && LingFrameConfig.current().isDevMode()) {
@@ -68,30 +73,42 @@ public class DefaultPermissionService implements PermissionService {
 
     private boolean checkInternal(String pluginId, String capability, AccessType accessType) {
         Map<String, AccessType> pluginPerms = permissions.get(pluginId);
-        if (pluginPerms == null)
+        log.info("[鉴权-内部] pluginId={}, 权限表内容: {}", pluginId, pluginPerms);
+
+        if (pluginPerms == null) {
+            log.info("[鉴权-内部] 插件无任何权限 -> false");
             return false;
+        }
+
         AccessType granted = pluginPerms.get(capability);
-        if (granted == null)
+        log.info("[鉴权-内部] 查询 capability={}, 授予的权限: {}", capability, granted);
+
+        if (granted == null) {
+            log.info("[鉴权-内部] 该 capability 无权限 -> false");
             return false;
+        }
 
         // 使用 AccessType 的层级比较方法
-        return granted.satisfies(accessType);
+        boolean result = granted.satisfies(accessType);
+        log.info("[鉴权-内部] granted({}).satisfies(required({})) = {}", granted, accessType, result);
+        return result;
     }
 
     @Override
     public void grant(String pluginId, String capability, AccessType accessType) {
+        log.info("[PermissionService] 授予权限: pluginId={}, capability={}, accessType={}",
+                pluginId, capability, accessType);
         permissions.computeIfAbsent(pluginId, k -> new ConcurrentHashMap<>())
                 .put(capability, accessType);
-        log.debug("Granted permission: plugin={}, capability={}, access={}", pluginId, capability, accessType);
+        log.info("[PermissionService] 权限已保存，当前插件权限: {}", permissions.get(pluginId));
     }
 
     @Override
     public void revoke(String pluginId, String capability) {
-        Map<String, AccessType> pluginPerms = permissions.get(pluginId);
-        if (pluginPerms != null) {
-            pluginPerms.remove(capability);
-            log.debug("Revoked permission: plugin={}, capability={}", pluginId, capability);
-        }
+        log.info("[PermissionService] 禁止权限: pluginId={}, capability={}", pluginId, capability);
+        permissions.computeIfAbsent(pluginId, k -> new ConcurrentHashMap<>())
+                .put(capability, AccessType.NONE);
+        log.info("[PermissionService] 权限已设置为 NONE，当前插件权限: {}", permissions.get(pluginId));
     }
 
     @Override

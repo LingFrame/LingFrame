@@ -470,6 +470,11 @@
                                         :class="lastAudit.allowed ? 'text-green-400' : 'text-red-400'">
                                         {{ lastAudit.allowed ? 'SUCCESS' : 'DENIED' }}
                                     </span>
+                                    <!-- 开发模式豁免标签 -->
+                                    <span v-if="lastAudit.devModeBypass"
+                                        class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 ml-2 animate-pulse">
+                                        <i class="fa-solid fa-shield-cat mr-1"></i> DEV PASS
+                                    </span>
                                 </div>
                                 <button @click="lastAudit = null" class="text-slate-500 hover:text-white">
                                     <i class="fa-solid fa-xmark"></i>
@@ -479,6 +484,18 @@
                                 :class="lastAudit.allowed ? 'text-green-300' : 'text-red-300'">
                                 [{{ lastAudit.traceId }}] {{ lastAudit.message }}
                             </p>
+                            <!-- 规则来源展示 -->
+                            <div v-if="lastAudit.ruleSource"
+                                class="mt-2 pt-2 border-t border-slate-700/50 text-xs text-slate-500 flex items-center gap-2">
+                                <span class="flex items-center gap-1">
+                                    <i class="fa-solid fa-gavel"></i>
+                                    Rule Source:
+                                </span>
+                                <span
+                                    class="font-mono text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
+                                    {{ lastAudit.ruleSource }}
+                                </span>
+                            </div>
                         </div>
                     </div>
 

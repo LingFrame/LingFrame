@@ -99,9 +99,9 @@ public class LogStreamService {
      * 处理内核 Audit 日志事件
      */
     private void handleAudit(MonitoringEvents.AuditLogEvent event) {
-        String content = String.format("%s on %s - %s (%dms)",
+        String content = String.format("%s on %s - %s (%.3fms)",
                 event.getAction(), event.getResource(),
-                event.isSuccess() ? "SUCCESS" : "DENIED", event.getCost() / 1000);
+                event.isSuccess() ? "SUCCESS" : "DENIED", event.getCost() / 1_000_000.0);
 
         LogStreamDTO logStreamDTO = LogStreamDTO.builder()
                 .type("AUDIT")
