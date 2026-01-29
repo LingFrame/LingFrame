@@ -1,10 +1,14 @@
 package com.lingframe.starter.web;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.support.GenericApplicationContext;
+import org.springframework.beans.factory.support.GenericBeanDefinition;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -29,12 +33,14 @@ public class WebInterfaceManager {
     private final Map<String, RequestMappingInfo> mappingInfoMap = new ConcurrentHashMap<>();
 
     private RequestMappingHandlerMapping hostMapping;
+    private ConfigurableApplicationContext hostContext;
 
     /**
      * 初始化方法，由 AutoConfiguration 调用
      */
-    public void init(RequestMappingHandlerMapping mapping) {
+    public void init(RequestMappingHandlerMapping mapping, ConfigurableApplicationContext hostContext) {
         this.hostMapping = mapping;
+        this.hostContext = hostContext;
         log.info("🌍 [LingFrame Web] WebInterfaceManager initialized with native registration");
     }
 
@@ -42,7 +48,7 @@ public class WebInterfaceManager {
      * 注册插件 Controller 方法到 Spring MVC
      */
     public void register(WebInterfaceMetadata metadata) {
-        if (hostMapping == null) {
+        if (hostMapping == null || hostContext == null) {
             log.warn("WebInterfaceManager not initialized, skipping registration: {}", metadata.getUrlPattern());
             return;
         }
@@ -56,14 +62,36 @@ public class WebInterfaceManager {
         }
 
         try {
-            // 构建 RequestMappingInfo
+            // 1. 将插件 Bean 注册到宿主 Context (供 SpringDoc 发现)
+            // 使用 BeanDefinition + InstanceSupplier 确保 SpringDoc 能读取到注解元数据
+            // 关键：必须使用原始类 (Target Class) 而不是代理类，否则注解可能丢失
+            Class<?> userClass = AopUtils.getTargetClass(metadata.getTargetBean());
+            String proxyBeanName = metadata.getPluginId() + ":" + userClass.getName();
+
+            if (hostContext instanceof GenericApplicationContext gac && !gac.containsBeanDefinition(proxyBeanName)) {
+                GenericBeanDefinition bd = new GenericBeanDefinition();
+                bd.setBeanClass(userClass);
+                bd.setInstanceSupplier(metadata::getTargetBean);
+                bd.setScope("singleton");
+                // 标记为 Primary 或其他特征可能有助于发现，但暂不加
+                gac.registerBeanDefinition(proxyBeanName, bd);
+                log.info("🔥 [LingFrame Web] Registered Plugin Bean for SpringDoc: {} (Class: {})", proxyBeanName,
+                        userClass.getName());
+            } else {
+                log.debug("Plugin Bean already registered: {}", proxyBeanName);
+            }
+
+            // 2. 构建 RequestMappingInfo
             RequestMappingInfo info = RequestMappingInfo
                     .paths(metadata.getUrlPattern())
                     .methods(RequestMethod.valueOf(metadata.getHttpMethod()))
                     .build();
 
-            // 直接注册插件 Controller Bean 和 Method 到 Spring MVC
-            hostMapping.registerMapping(info, metadata.getTargetBean(), metadata.getTargetMethod());
+            // 3. 直接注册插件 Controller Bean 和 Method 到 Spring MVC
+            // 关键修复：使用 Bean Name (String) 注册，而不是实例。
+            // 这样 SpringDoc 在扫描时会通过 Bean Name 找到我们在上面注册的 GenericBeanDefinition，
+            // 进而读取到 setBeanClass(userClass) 设置的原始类，从而正确解析注解。
+            hostMapping.registerMapping(info, proxyBeanName, metadata.getTargetMethod());
 
             // 存储映射关系
             metadataMap.put(routeKey, metadata);
@@ -92,7 +120,7 @@ public class WebInterfaceManager {
             if (meta.getPluginId().equals(pluginId)) {
                 keysToRemove.add(key);
 
-                // 从 Spring MVC 注销
+                // 1. 从 Spring MVC 注销
                 RequestMappingInfo info = mappingInfoMap.get(key);
                 if (info != null) {
                     try {
@@ -100,6 +128,14 @@ public class WebInterfaceManager {
                         log.debug("Unregistered mapping: {}", key);
                     } catch (Exception e) {
                         log.warn("Failed to unregister mapping: {}", key, e);
+                    }
+                }
+
+                // 2. 从宿主 Context 移除 Bean (防止内存泄漏)
+                if (hostContext instanceof GenericApplicationContext gac) {
+                    String proxyBeanName = meta.getPluginId() + ":" + meta.getTargetBean().getClass().getName();
+                    if (gac.containsBeanDefinition(proxyBeanName)) {
+                        gac.removeBeanDefinition(proxyBeanName);
                     }
                 }
             }

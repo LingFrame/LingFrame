@@ -17,6 +17,7 @@ import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.loader.PluginDiscoveryService;
 import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.core.plugin.PluginRuntimeConfig;
+import org.springframework.context.ConfigurableApplicationContext;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.*;
@@ -306,7 +307,9 @@ public class LingFrameAutoConfiguration {
             @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping hostMapping) {
         return event -> {
             if (event.getApplicationContext().getParent() == null) { // 仅 Host 容器执行
-                manager.init(hostMapping);
+                if (event.getApplicationContext() instanceof ConfigurableApplicationContext cac) {
+                    manager.init(hostMapping, cac);
+                }
             }
         };
     }
