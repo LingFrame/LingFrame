@@ -125,7 +125,7 @@ public class DashboardService {
                 // 初始化治理策略（如果不存在或为空）
                 var policy = governanceRegistry.getPatch(pluginId);
                 if (policy == null || policy.getCapabilities() == null || policy.getCapabilities().isEmpty()) {
-                    log.info("[Dashboard] 初始化插件默认权限配置: {}", pluginId);
+                    log.info("[Dashboard] Initializing default permissions for plugin: {}", pluginId);
 
                     // 创建默认权限配置（全部开启）
                     List<GovernancePolicy.CapabilityRule> defaultCapabilities = Arrays.asList(
@@ -153,18 +153,18 @@ public class DashboardService {
                     permissionService.grant(pluginId, Capabilities.CACHE_LOCAL, AccessType.WRITE);
                     permissionService.grant(pluginId, Capabilities.PLUGIN_ENABLE, AccessType.EXECUTE);
 
-                    log.info("[Dashboard] 默认权限已初始化并持久化");
+                    log.info("[Dashboard] Default permissions initialized and persisted");
                 } else {
-                    log.info("[Dashboard] 插件已有治理策略，从文件加载权限配置");
+                    log.info("[Dashboard] Plugin has governance policy, loading permissions from file");
 
                     // 从治理策略加载权限并同步到运行时
                     for (var rule : policy.getCapabilities()) {
                         try {
                             AccessType accessType = AccessType.valueOf(rule.getAccessType());
                             permissionService.grant(pluginId, rule.getCapability(), accessType);
-                            log.info("[Dashboard] 已加载权限: {} -> {}", rule.getCapability(), accessType);
+                            log.info("[Dashboard] Loaded permission: {} -> {}", rule.getCapability(), accessType);
                         } catch (Exception e) {
-                            log.warn("[Dashboard] 加载权限失败: {} -> {}, 错误: {}",
+                            log.warn("[Dashboard] Failed to load permission: {} -> {}, error: {}",
                                     rule.getCapability(), rule.getAccessType(), e.getMessage());
                         }
                     }
@@ -214,16 +214,16 @@ public class DashboardService {
     }
 
     public void updatePermissions(String pluginId, ResourcePermissionDTO dto) {
-        log.info("========== 开始更新权限 ==========");
-        log.info("插件ID: {}", pluginId);
-        log.info("接收到的权限: dbRead={}, dbWrite={}, cacheRead={}, cacheWrite={}",
+        log.info("========== Starting Permission Update ==========");
+        log.info("Plugin ID: {}", pluginId);
+        log.info("Received permissions: dbRead={}, dbWrite={}, cacheRead={}, cacheWrite={}",
                 dto.isDbRead(), dto.isDbWrite(), dto.isCacheRead(), dto.isCacheWrite());
 
         // 1. 计算目标权限
         AccessType sqlAccess = determineAccessType(dto.isDbRead(), dto.isDbWrite());
         AccessType cacheAccess = determineAccessType(dto.isCacheRead(), dto.isCacheWrite());
 
-        log.info("计算后的权限: SQL={}, Cache={}", sqlAccess, cacheAccess);
+        log.info("Calculated permissions: SQL={}, Cache={}", sqlAccess, cacheAccess);
 
         // 2. 同步到运行时权限服务
         permissionService.grant(pluginId, Capabilities.STORAGE_SQL, sqlAccess);
@@ -287,7 +287,7 @@ public class DashboardService {
         policy.setCapabilities(new ArrayList<>(ruleMap.values()));
         governanceRegistry.updatePatch(pluginId, policy);
 
-        log.info("权限更新完成并已持久化");
+        log.info("Permission update completed and persisted");
         log.info("========================================");
     }
 

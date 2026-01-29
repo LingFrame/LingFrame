@@ -1,5 +1,6 @@
 package com.lingframe.dashboard.converter;
 
+import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
@@ -15,7 +16,8 @@ public class PluginInfoConverter {
 
     public PluginInfoDTO toDTO(PluginRuntime runtime,
             CanaryRouter canaryRouter,
-            PermissionService permissionService) {
+            PermissionService permissionService,
+            GovernancePolicy policy) {
         String pluginId = runtime.getPluginId();
 
         return PluginInfoDTO.builder()
@@ -25,7 +27,7 @@ public class PluginInfoConverter {
                 .activeVersion(runtime.getVersion())
                 .canaryPercent(canaryRouter.getCanaryPercent(pluginId))
                 .canaryVersion(runtime.getCanaryVersion())
-                .permissions(extractPermissions(pluginId, permissionService))
+                .permissions(extractPermissions(pluginId, permissionService, policy))
                 .installedAt(runtime.getInstalledAt())
                 .build();
     }
@@ -46,7 +48,8 @@ public class PluginInfoConverter {
                 .build();
     }
 
-    private PluginInfoDTO.ResourcePermissions extractPermissions(String pluginId, PermissionService permissionService) {
+    private PluginInfoDTO.ResourcePermissions extractPermissions(String pluginId, PermissionService permissionService,
+            GovernancePolicy policy) {
         // 直接查询权限配置，不受开发模式影响
         var sqlPermission = permissionService.getPermission(pluginId, Capabilities.STORAGE_SQL);
         var cachePermission = permissionService.getPermission(pluginId, Capabilities.CACHE_LOCAL);
@@ -57,11 +60,22 @@ public class PluginInfoConverter {
         boolean cacheRead = cachePermission != null && cachePermission.satisfies(AccessType.READ);
         boolean cacheWrite = cachePermission != null && cachePermission.satisfies(AccessType.WRITE);
 
+        // 提取 IPC 权限
+        java.util.List<String> ipcServices = new java.util.ArrayList<>();
+        if (policy != null && policy.getCapabilities() != null) {
+            for (GovernancePolicy.CapabilityRule rule : policy.getCapabilities()) {
+                if (rule.getCapability().startsWith("ipc:")) {
+                    ipcServices.add(rule.getCapability().substring(4)); // 去掉 ipc: 前缀
+                }
+            }
+        }
+
         return PluginInfoDTO.ResourcePermissions.builder()
                 .dbRead(dbRead)
                 .dbWrite(dbWrite)
                 .cacheRead(cacheRead)
                 .cacheWrite(cacheWrite)
+                .ipcServices(ipcServices)
                 .build();
     }
 }

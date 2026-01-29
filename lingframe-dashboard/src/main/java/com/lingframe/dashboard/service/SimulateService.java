@@ -54,9 +54,10 @@ public class SimulateService {
 
             SimulateResultDTO result = simulateMethod(pluginId, className, methodName, targetAccess);
 
-            // 追加提示信息，让用户感知到智能化
+            // Append hint to let user perceive intelligence
             return result.toBuilder()
-                    .message(result.getMessage() + " [智能定位: " + candidate.getDeclaringClass().getSimpleName() + "."
+                    .message(result.getMessage() + " [Smart Locate: " + candidate.getDeclaringClass().getSimpleName()
+                            + "."
                             + methodName + "]")
                     .build();
         }
@@ -68,13 +69,13 @@ public class SimulateService {
         }
 
         if (!runtime.isAvailable()) {
-            throw new ServiceUnavailableException(pluginId, "插件未激活");
+            throw new ServiceUnavailableException(pluginId, "Plugin not active");
         }
 
         String traceId = generateTraceId();
 
-        publishTrace(traceId, pluginId, "→ 模拟请求: " + resourceType, "IN", 1);
-        publishTrace(traceId, pluginId, "  ! 未找到典型业务方法，执行通用基线检查", "WARN", 1);
+        publishTrace(traceId, pluginId, "→ Simulate Request: " + resourceType, "IN", 1);
+        publishTrace(traceId, pluginId, "  ! Business method not found, performing generic baseline check", "WARN", 1);
 
         InvocationContext ctx = InvocationContext.builder()
                 .traceId(traceId)
@@ -94,31 +95,33 @@ public class SimulateService {
         boolean devBypass = false;
 
         try {
-            publishTrace(traceId, pluginId, "  ↳ 内核权限校验...", "IN", 2);
+            publishTrace(traceId, pluginId, "  ↳ Kernel authorization check...", "IN", 2);
 
             governanceKernel.invoke(runtime, getSimulateMethod(), ctx, () -> {
                 return "Simulated " + resourceType + " success";
             });
 
             allowed = true;
-            message = resourceType + " 访问成功";
+            message = resourceType + " Access Success";
 
             // 检测是否因开发模式豁免而通过
             if (isDevModeBypass(pluginId, mapPermission(resourceType), mapAccessType(resourceType))) {
                 devBypass = true;
-                message += " (⚠️开发模式豁免)";
-                publishTrace(traceId, pluginId, "    ! 权限不足，仅因开发模式放行 (Source: " + ctx.getRuleSource() + ")", "WARN", 3);
+                message += " (⚠️ Dev Mode Bypass)";
+                publishTrace(traceId, pluginId,
+                        "    ! Permission insufficient, bypassed by Dev Mode (Source: " + ctx.getRuleSource() + ")",
+                        "WARN", 3);
             } else {
-                publishTrace(traceId, pluginId, "    ✓ 权限验证通过", "OK", 3);
+                publishTrace(traceId, pluginId, "    ✓ Permission verified", "OK", 3);
             }
 
         } catch (SecurityException e) {
             allowed = false;
-            message = "访问被拒绝: " + e.getMessage();
+            message = "Access Denied: " + e.getMessage();
             publishTrace(traceId, pluginId, "    ✗ " + message, "FAIL", 3);
         } catch (Exception e) {
             allowed = false;
-            message = "执行失败: " + e.getMessage();
+            message = "Execution Failed: " + e.getMessage();
             publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
         }
 
@@ -141,27 +144,27 @@ public class SimulateService {
         }
 
         if (!sourceRuntime.isAvailable()) {
-            throw new ServiceUnavailableException(pluginId, "源插件未激活");
+            throw new ServiceUnavailableException(pluginId, "Source plugin not active");
         }
 
         PluginRuntime targetRuntime = pluginManager.getRuntime(targetPluginId);
         String traceId = generateTraceId();
 
-        publishTrace(traceId, pluginId, "→ [IPC] 发起调用: " + targetPluginId, "IN", 1);
+        publishTrace(traceId, pluginId, "→ [IPC] Call initiated: " + targetPluginId, "IN", 1);
 
         boolean allowed = false;
         String message;
 
         if (targetRuntime == null) {
-            message = "目标插件不存在";
+            message = "Target plugin not found";
             publishTrace(traceId, pluginId, "  ✗ " + message, "ERROR", 2);
         } else if (!targetRuntime.isAvailable()) {
-            message = "目标插件未激活";
+            message = "Target plugin not active";
             publishTrace(traceId, pluginId, "  ✗ " + message, "ERROR", 2);
         } else if (!ipcEnabled) {
-            message = "IPC 授权已关闭";
-            publishTrace(traceId, pluginId, "  ↳ 内核鉴权中...", "IN", 2);
-            publishTrace(traceId, pluginId, "    ✗ IPC 访问策略未放行", "FAIL", 3);
+            message = "IPC authorization disabled";
+            publishTrace(traceId, pluginId, "  ↳ Kernel authorization check...", "IN", 2);
+            publishTrace(traceId, pluginId, "    ✗ IPC access policy denied", "FAIL", 3);
         } else {
             InvocationContext ctx = InvocationContext.builder()
                     .traceId(traceId)
@@ -177,7 +180,7 @@ public class SimulateService {
                     .build();
 
             try {
-                publishTrace(traceId, pluginId, "  ↳ 内核鉴权中...", "IN", 2);
+                publishTrace(traceId, pluginId, "  ↳ Kernel authorization check...", "IN", 2);
 
                 // 🔥 模拟真实调用的路由和统计
                 PluginInstance routed = targetRuntime.routeToAvailableInstance("simulate-ipc");
@@ -186,26 +189,26 @@ public class SimulateService {
                 governanceKernel.invoke(targetRuntime, getSimulateMethod(), ctx, () -> "OK");
 
                 allowed = true;
-                message = "IPC 调用成功 (" + routed.getDefinition().getVersion() + ")";
+                message = "IPC Call Success (" + routed.getDefinition().getVersion() + ")";
 
-                // 检测是否因开发模式豁免而通过
+                // Detect if bypassed by dev mode
                 if (isDevModeBypass(pluginId, "ipc:" + targetPluginId, AccessType.EXECUTE)) {
-                    message += " (⚠️开发模式豁免)";
-                    publishTrace(traceId, pluginId, "    ! 权限不足，仅因开发模式放行", "WARN", 3);
+                    message += " (⚠️ Dev Mode Bypass)";
+                    publishTrace(traceId, pluginId, "    ! Permission insufficient, bypassed by Dev Mode", "WARN", 3);
                 } else {
-                    publishTrace(traceId, pluginId, "    ✓ 鉴权通过, 透传 Context", "OK", 3);
+                    publishTrace(traceId, pluginId, "    ✓ Authorized, Context propagated", "OK", 3);
                 }
 
-                publishTrace(traceId, targetPluginId, "← [IPC] 收到来自 " + pluginId + " 的请求", "IN", 1);
-                publishTrace(traceId, targetPluginId, "  ↳ 处理请求...", "OUT", 2);
+                publishTrace(traceId, targetPluginId, "← [IPC] Received request from " + pluginId, "IN", 1);
+                publishTrace(traceId, targetPluginId, "  ↳ Processing request...", "OUT", 2);
 
             } catch (SecurityException e) {
                 allowed = false;
-                message = "IPC 被拦截: " + e.getMessage();
+                message = "IPC Intercepted: " + e.getMessage();
                 publishTrace(traceId, pluginId, "    ✗ " + message, "FAIL", 3);
             } catch (Exception e) {
                 allowed = false;
-                message = "IPC 执行失败: " + e.getMessage();
+                message = "IPC Execution Failed: " + e.getMessage();
                 publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
             }
         }
@@ -245,9 +248,9 @@ public class SimulateService {
         String version = instance.getDefinition().getVersion();
         String tag = isCanary ? "CANARY" : "STABLE";
 
-        // 发布 Trace
+        // Publish Trace
         publishTrace(generateTraceId(), pluginId,
-                String.format("→ 路由到: %s (%s)", version, tag), tag, 1);
+                String.format("→ Routed to: %s (%s)", version, tag), tag, 1);
 
         return StressResultDTO.builder()
                 .pluginId(pluginId)
@@ -298,7 +301,7 @@ public class SimulateService {
         }
 
         String traceId = generateTraceId();
-        publishTrace(traceId, pluginId, "→ 模拟方法: " + methodName, "IN", 1);
+        publishTrace(traceId, pluginId, "→ Simulate Method: " + methodName, "IN", 1);
 
         boolean allowed;
         String message;
@@ -328,15 +331,15 @@ public class SimulateService {
                     .auditAction("SIMULATE:METHOD")
                     .build();
 
-            // 4. 调用内核（传真方法，执行假逻辑）
-            publishTrace(traceId, pluginId, "  ↳ 内核精细化鉴权...", "IN", 2);
+            // 4. Call Kernel (execute fake logic)
+            publishTrace(traceId, pluginId, "  ↳ Kernel fine-grained auth...", "IN", 2);
 
             governanceKernel.invoke(runtime, targetMethod, ctx, () -> {
                 return "Simulated " + methodName + " success";
             });
 
             allowed = true;
-            message = "方法 " + methodName + " 访问允许";
+            message = "Method " + methodName + " allowed";
 
             // 🔥 统一检测开发模式豁免逻辑
             // 优先从注解读取 capability，其次使用 context 中的 requiredPermission
@@ -355,33 +358,34 @@ public class SimulateService {
             if (capability != null) {
                 if (isDevModeBypass(pluginId, capability, inferredAccess)) {
                     devBypass = true;
-                    message += " (⚠️开发模式豁免)";
+                    message += " (⚠️ Dev Mode Bypass)";
                     publishTrace(traceId, pluginId,
-                            "    ! 权限不足，仅因开发模式放行 (Source: " + (ctx != null ? ctx.getRuleSource() : "Unknown") + ")",
+                            "    ! Permission insufficient, bypassed by Dev Mode (Source: "
+                                    + (ctx != null ? ctx.getRuleSource() : "Unknown") + ")",
                             "WARN", 3);
                 } else {
-                    publishTrace(traceId, pluginId, "    ✓ 鉴权通过 (含注解检查)", "OK", 3);
+                    publishTrace(traceId, pluginId, "    ✓ Permission verified (Annotation check)", "OK", 3);
                 }
             } else {
-                // 无任何权限声明
-                publishTrace(traceId, pluginId, "    ✓ 鉴权通过 (无显式权限声明)", "OK", 3);
+                // No permission declared
+                publishTrace(traceId, pluginId, "    ✓ Permission verified (No explicit permission declared)", "OK", 3);
             }
 
         } catch (ClassNotFoundException e) {
             allowed = false;
-            message = "类不存在: " + className;
+            message = "Class not found: " + className;
             publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
         } catch (NoSuchMethodException e) {
             allowed = false;
-            message = "方法不存在: " + methodName;
+            message = "Method not found: " + methodName;
             publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
         } catch (SecurityException e) {
             allowed = false;
-            message = "访问被拒绝: " + e.getMessage();
+            message = "Access Denied: " + e.getMessage();
             publishTrace(traceId, pluginId, "    ✗ " + message, "FAIL", 3);
         } catch (Exception e) {
             allowed = false;
-            message = "模拟异常: " + e.getMessage();
+            message = "Simulation Exception: " + e.getMessage();
             publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
         }
 

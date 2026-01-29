@@ -52,7 +52,7 @@ public class SharedApiManager {
     public void preloadFromConfig() {
         List<String> apiPaths = config.getPreloadApiJars();
         if (apiPaths == null || apiPaths.isEmpty()) {
-            log.debug("未配置预加载路径，跳过共享 API 初始化");
+            log.debug("Preload path not configured, skipping shared API initialization");
             return;
         }
 
@@ -63,7 +63,7 @@ public class SharedApiManager {
             try {
                 loadPath(path, pluginHomeDir, sharedApiCL);
             } catch (Exception e) {
-                log.error("❌ [SharedApi] 加载失败: {}", path, e);
+                log.error("❌ [SharedApi] Load failed: {}", path, e);
             }
         }
 
@@ -73,7 +73,7 @@ public class SharedApiManager {
             PluginClassLoader.addSharedApiPackages(sharedPackages);
         }
 
-        log.info("📦 [SharedApi] 初始化完成 - 已加载: {} 个，共享类: {} 个，共享包: {}",
+        log.info("📦 [SharedApi] Initialization complete - Loaded: {}, Shared classes: {}, Shared packages: {}",
                 sharedApiCL.getLoadedJarCount(), sharedApiCL.getSharedClassCount(), sharedPackages);
     }
 
@@ -95,7 +95,7 @@ public class SharedApiManager {
 
         File file = resolvePath(path, pluginHomeDir);
         if (file == null || !file.exists()) {
-            log.warn("⚠️ [SharedApi] 路径不存在: {}", path);
+            log.warn("⚠️ [SharedApi] Path not found: {}", path);
             return;
         }
 
@@ -103,9 +103,9 @@ public class SharedApiManager {
             loadDirectory(file, sharedApiCL);
         } else if (file.getName().endsWith(".jar")) {
             sharedApiCL.addApiJar(file);
-            log.info("📦 [SharedApi] JAR 已加载: {}", file.getName());
+            log.info("📦 [SharedApi] JAR loaded: {}", file.getName());
         } else {
-            log.warn("⚠️ [SharedApi] 不支持的文件类型: {}", path);
+            log.warn("⚠️ [SharedApi] Unsupported file type: {}", path);
         }
     }
 
@@ -119,9 +119,10 @@ public class SharedApiManager {
             File classesDir = new File(dir, "target/classes");
             if (classesDir.exists() && classesDir.isDirectory()) {
                 sharedApiCL.addApiClassesDir(classesDir);
-                log.info("📦 [SharedApi] Maven 模块已加载: {}/target/classes", dir.getName());
+                log.info("📦 [SharedApi] Maven module loaded: {}/target/classes", dir.getName());
             } else {
-                log.warn("⚠️ [SharedApi] Maven 模块 target/classes 不存在: {}，请先执行 mvn compile", dir.getName());
+                log.warn("⚠️ [SharedApi] Maven module target/classes missing: {}, please run mvn compile first",
+                        dir.getName());
             }
             return;
         }
@@ -133,13 +134,13 @@ public class SharedApiManager {
             for (File jar : jarFiles) {
                 sharedApiCL.addApiJar(jar);
             }
-            log.info("📦 [SharedApi] 目录扫描完成: {} (共 {} 个 JAR)", dir.getName(), jarFiles.length);
+            log.info("📦 [SharedApi] Directory scan complete: {} ({} JARs found)", dir.getName(), jarFiles.length);
             return;
         }
 
         // 3. 作为 classes 目录处理
         sharedApiCL.addApiClassesDir(dir);
-        log.info("📦 [SharedApi] classes 目录已加载: {}", dir.getName());
+        log.info("📦 [SharedApi] classes directory loaded: {}", dir.getName());
     }
 
     /**
@@ -162,7 +163,7 @@ public class SharedApiManager {
         // 解析目录
         File dir = resolvePath(dirPart, pluginHomeDir);
         if (dir == null || !dir.exists() || !dir.isDirectory()) {
-            log.warn("⚠️ [SharedApi] 通配符基目录不存在: {}", dirPart);
+            log.warn("⚠️ [SharedApi] Wildcard base directory not found: {}", dirPart);
             return;
         }
 
@@ -172,7 +173,7 @@ public class SharedApiManager {
         // 扫描匹配的文件/目录
         File[] matches = dir.listFiles((d, name) -> matcher.matches(Paths.get(name)));
         if (matches == null || matches.length == 0) {
-            log.warn("⚠️ [SharedApi] 没有匹配的文件: {}", pattern);
+            log.warn("⚠️ [SharedApi] No matching files found: {}", pattern);
             return;
         }
 
@@ -186,10 +187,10 @@ public class SharedApiManager {
                 }
                 count++;
             } catch (Exception e) {
-                log.error("❌ [SharedApi] 加载失败: {}", match.getName(), e);
+                log.error("❌ [SharedApi] Load failed: {}", match.getName(), e);
             }
         }
-        log.info("📦 [SharedApi] 通配符匹配: {} (共 {} 个)", pattern, count);
+        log.info("📦 [SharedApi] Wildcard matched: {} ({} found)", pattern, count);
     }
 
     /**
@@ -206,10 +207,10 @@ public class SharedApiManager {
             } else {
                 sharedApiCL.addApiJar(file);
             }
-            log.info("📦 [SharedApi] 动态添加: {}", file.getName());
+            log.info("📦 [SharedApi] Dynamically added: {}", file.getName());
             return true;
         } catch (Exception e) {
-            log.error("❌ [SharedApi] 动态添加失败: {}", file.getName(), e);
+            log.error("❌ [SharedApi] Dynamic add failed: {}", file.getName(), e);
             return false;
         }
     }

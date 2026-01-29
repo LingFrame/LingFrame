@@ -46,7 +46,8 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
             r -> {
                 Thread thread = new Thread(r, "lingframe-hotswap-debounce");
                 thread.setDaemon(true);
-                thread.setUncaughtExceptionHandler((t, e) -> log.error("线程池线程 {} 异常: {}", t.getName(), e.getMessage()));
+                thread.setUncaughtExceptionHandler(
+                        (t, e) -> log.error("Thread pool thread {} exception: {}", t.getName(), e.getMessage()));
                 return thread;
             });
     private ScheduledFuture<?> debounceTask;
@@ -190,7 +191,8 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
         });
         thread.setDaemon(true);
         thread.setName("lingframe-hotswap-watcher");
-        thread.setUncaughtExceptionHandler((t, e) -> log.error("线程池线程 {} 异常: {}", t.getName(), e.getMessage()));
+        thread.setUncaughtExceptionHandler(
+                (t, e) -> log.error("Thread pool thread {} exception: {}", t.getName(), e.getMessage()));
         thread.start();
     }
 
@@ -201,11 +203,11 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
         // 延迟 1000ms 执行，等待 IDE 编译完成
         debounceTask = debounceExecutor.schedule(() -> {
             log.info("=================================================");
-            log.info("⚡ 检测到源码变更，正在热重载插件: {}", pluginId);
+            log.info("⚡ Source change detected, hot reloading plugin: {}", pluginId);
 
             // 检查是否存在编译错误文件
             if (hasCompilationErrors(pluginId)) {
-                log.warn("检测到编译错误，跳过热重载: {}", pluginId);
+                log.warn("Compilation error detected, skipping hot reload: {}", pluginId);
                 log.info("=================================================");
                 return;
             }
@@ -263,7 +265,7 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
                             .findFirst()
                             .isEmpty();
                 } catch (IOException e) {
-                    log.warn("无法检查编译状态: {}", dir, e);
+                    log.warn("Failed to check compilation status: {}", dir, e);
                 }
             }
         }

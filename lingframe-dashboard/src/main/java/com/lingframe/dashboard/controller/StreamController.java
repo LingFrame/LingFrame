@@ -17,12 +17,7 @@ import java.io.IOException;
 @RequestMapping("/lingframe/dashboard")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
-@ConditionalOnProperty(
-        prefix = "lingframe.dashboard",
-        name = "enabled",
-        havingValue = "true",
-        matchIfMissing = false
-)
+@ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class StreamController {
 
     private final LogStreamService logStreamService;
@@ -47,7 +42,7 @@ public class StreamController {
         SseEmitter emitter = logStreamService.createEmitter();
         long endTime = System.nanoTime();
 
-        log.info("SSE连接创建耗时: {}ms", (endTime - startTime) / 1_000_000);
+        log.info("SSE connection creation time: {}ms", (endTime - startTime) / 1_000_000);
 
         return ResponseEntity.ok()
                 .header("X-SSE-Init-Time", String.valueOf((endTime - startTime) / 1_000_000))

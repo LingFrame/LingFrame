@@ -36,7 +36,7 @@ public class DefaultPluginLoaderFactory implements PluginLoaderFactory {
 
             // ✅ 创建插件 ClassLoader
             PluginClassLoader pluginCL = new PluginClassLoader(pluginId, urls, parent);
-            log.debug("[{}] 创建 PluginClassLoader, parent={}", pluginId, parent);
+            log.debug("[{}] Creating PluginClassLoader, parent={}", pluginId, parent);
 
             return pluginCL;
         } catch (MalformedURLException e) {

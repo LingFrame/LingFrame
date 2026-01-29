@@ -76,11 +76,11 @@ public class BasicResourceGuard implements ResourceGuard {
             }
 
             if (ref.get() != null) {
-                log.warn("⚠️ [{}] ClassLoader 未被回收，可能存在内存泄漏！" +
-                        "建议使用分析工具（如 Eclipse MAT）检查引用链。",
+                log.warn("⚠️ [{}] ClassLoader not collected, potential memory leak detected! " +
+                        "Suggest using analysis tools (e.g., Eclipse MAT) to check reference chains.",
                         pluginId);
             } else {
-                log.debug("[{}] ClassLoader 已被正常回收", pluginId);
+                log.debug("[{}] ClassLoader collected successfully", pluginId);
             }
         }, LEAK_DETECTION_DELAY_SECONDS, TimeUnit.SECONDS);
     }

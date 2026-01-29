@@ -57,7 +57,7 @@ public class SharedApiClassLoader extends URLClassLoader {
     public static synchronized SharedApiClassLoader getInstance(ClassLoader hostClassLoader) {
         if (INSTANCE == null) {
             INSTANCE = new SharedApiClassLoader(hostClassLoader);
-            log.info("📦 [LingFrame] SharedApiClassLoader 已初始化");
+            log.info("📦 [LingFrame] SharedApiClassLoader initialized");
         }
         return INSTANCE;
     }
@@ -77,7 +77,7 @@ public class SharedApiClassLoader extends URLClassLoader {
             try {
                 INSTANCE.close();
             } catch (Exception e) {
-                log.warn("关闭 SharedApiClassLoader 时出错", e);
+                log.warn("Error closing SharedApiClassLoader", e);
             }
             INSTANCE = null;
         }
@@ -103,7 +103,7 @@ public class SharedApiClassLoader extends URLClassLoader {
 
         // 防止重复加载
         if (loadedJars.contains(jarPath)) {
-            log.debug("API JAR 已加载，跳过: {}", jarPath);
+            log.debug("API JAR already loaded, skipping: {}", jarPath);
             return;
         }
 
@@ -118,7 +118,7 @@ public class SharedApiClassLoader extends URLClassLoader {
         try {
             addURL(apiJar.toURI().toURL());
             loadedJars.add(jarPath);
-            log.info("📦 [SharedApi] JAR 已加载: {}", apiJar.getName());
+            log.info("📦 [SharedApi] JAR loaded: {}", apiJar.getName());
         } catch (MalformedURLException e) {
             throw new ClassLoaderException(null, jarPath, "无法添加 API JAR", e);
         }
@@ -140,7 +140,7 @@ public class SharedApiClassLoader extends URLClassLoader {
 
         // 防止重复加载
         if (loadedJars.contains(dirPath)) {
-            log.debug("classes 目录已加载，跳过: {}", dirPath);
+            log.debug("classes directory already loaded, skipping: {}", dirPath);
             return;
         }
 
@@ -151,7 +151,7 @@ public class SharedApiClassLoader extends URLClassLoader {
             // 添加 URL
             addURL(classesDir.toURI().toURL());
             loadedJars.add(dirPath);
-            log.info("📦 [SharedApi] classes 目录已加载: {}", classesDir.getName());
+            log.info("📦 [SharedApi] classes directory loaded: {}", classesDir.getName());
         } catch (MalformedURLException e) {
             throw new ClassLoaderException(null, dirPath, "无法添加 classes 目录", e);
         }
@@ -175,7 +175,7 @@ public class SharedApiClassLoader extends URLClassLoader {
 
                 String existingSource = classSourceMap.get(className);
                 if (existingSource != null) {
-                    log.warn("⚠️ 类冲突: {} 已由 {} 加载", className, existingSource);
+                    log.warn("⚠️ Class conflict: {} already loaded by {}", className, existingSource);
                 } else {
                     classSourceMap.put(className, sourceName);
                 }
@@ -196,7 +196,7 @@ public class SharedApiClassLoader extends URLClassLoader {
                         // 检查是否已被其他 JAR 加载
                         String existingSource = classSourceMap.get(className);
                         if (existingSource != null) {
-                            log.warn("⚠️ 类冲突: {} 已由 {} 加载，{} 中的版本将被忽略",
+                            log.warn("⚠️ Class conflict: {} already loaded by {}, version in {} will be ignored",
                                     className, existingSource, jarName);
                         } else {
                             classSourceMap.put(className, jarName);

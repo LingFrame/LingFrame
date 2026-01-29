@@ -4,6 +4,7 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.enums.PluginStatus;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.DashboardService;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -163,7 +164,7 @@ public class PluginController {
     }
 
     // 内部类：请求体
-    @lombok.Data
+    @Data
     public static class PluginStatusRequest {
         private PluginStatus status;
     }

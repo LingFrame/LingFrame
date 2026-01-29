@@ -24,7 +24,8 @@ public class AuditManager {
             r -> {
                 Thread thread = new Thread(r, "lingframe-audit-logger");
                 thread.setDaemon(true);
-                thread.setUncaughtExceptionHandler((t, e) -> log.error("线程池线程 {} 异常: {}", t.getName(), e.getMessage()));
+                thread.setUncaughtExceptionHandler(
+                        (t, e) -> log.error("Thread pool thread {} exception: {}", t.getName(), e.getMessage()));
                 return thread;
             },
             // 自定义拒绝策略：丢弃日志但记录告警
@@ -57,7 +58,7 @@ public class AuditManager {
      * 异步记录审计日志
      */
     public static void asyncRecord(String traceId, String callerPluginId, String action, String resource,
-                                   Object[] args, Object result, long cost) {
+            Object[] args, Object result, long cost) {
         // 增加防御性 try-catch，防止提交任务本身抛出异常
         try {
             // 使用独立线程池执行，避免阻塞业务线程
