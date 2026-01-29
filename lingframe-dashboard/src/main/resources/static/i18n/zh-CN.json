@@ -1,0 +1,118 @@
+{
+  "title": "灵珑 | 核心治理中心",
+  "version": "V0.1.0-Preview",
+  "sidebar": {
+    "currentEnv": "当前环境",
+    "envDev": "开发环境",
+    "envTest": "测试环境",
+    "envProd": "生产环境",
+    "coreFeatures": "核心功能",
+    "governance": "治理中心",
+    "sseConnected": "SSE 已连接",
+    "sseConnecting": "SSE 连接中...",
+    "sseDisconnected": "SSE 断开",
+    "pluginCount": "插件数",
+    "logCount": "日志"
+  },
+  "header": {
+    "notSelected": "未选择"
+  },
+  "envLabels": {
+    "dev": "开发",
+    "test": "测试",
+    "prod": "生产"
+  },
+  "pluginList": {
+    "title": "插件列表",
+    "count": "{n} 个",
+    "empty": "暂无已安装插件"
+  },
+  "traffic": {
+    "title": "流量分发",
+    "notSelected": "未选择",
+    "inactive": "未激活",
+    "canary": "灰度中",
+    "singleVersion": "单版本",
+    "stable": "稳定版",
+    "canaryVersion": "灰度版",
+    "unavailable": "不可用",
+    "reset": "重置",
+    "stress": "压测",
+    "stop": "停止",
+    "selectPlugin": "请先选择插件",
+    "pluginInactive": "插件未激活",
+    "onlyOneVersion": "当前插件仅有单一版本"
+  },
+  "logs": {
+    "title": "追踪日志",
+    "current": "当前",
+    "all": "全部",
+    "waiting": "等待日志...",
+    "connecting": "连接中...",
+    "newLogs": "新日志"
+  },
+  "control": {
+    "title": "插件控制",
+    "selectPlugin": "请在左侧选择插件",
+    "lifecycle": "生命周期",
+    "activate": "激活",
+    "reload": "重载",
+    "unload": "卸载",
+    "permissions": "资源权限",
+    "dbRead": "DB 读",
+    "dbWrite": "DB 写",
+    "cacheRead": "Cache 读",
+    "cacheWrite": "Cache 写"
+  },
+  "demo": {
+    "title": "功能演练",
+    "ready": "READY",
+    "inactive": "INACTIVE",
+    "pluginNotActive": "插件未激活，请先激活",
+    "readDb": "读DB",
+    "writeDb": "写DB",
+    "readCache": "读Cache",
+    "writeCache": "写Cache",
+    "ipcAuth": "IPC 授权"
+  },
+  "audit": {
+    "success": "SUCCESS",
+    "denied": "DENIED",
+    "devPass": "DEV PASS",
+    "ruleSource": "Rule Source"
+  },
+  "modal": {
+    "cancel": "取消",
+    "confirm": "确认",
+    "confirmUnload": "确认卸载插件",
+    "unloadWarning": "即将卸载 \"{pluginId}\"，这将中断所有请求。",
+    "unloadAction": "卸载"
+  },
+  "toast": {
+    "getPluginsFailed": "获取插件列表失败",
+    "statusUpdated": "状态已更新为 {status}",
+    "statusUpdateFailed": "状态更新失败",
+    "pluginUnloaded": "插件已卸载",
+    "unloadFailed": "卸载失败",
+    "canarySet": "灰度比例已设置为 {percent}%",
+    "canaryFailed": "灰度配置失败",
+    "permEnabled": "{perm} 已开启",
+    "permDisabled": "{perm} 已关闭",
+    "permUpdateFailed": "权限更新失败",
+    "ipcEnabled": "IPC 授权 已开启",
+    "ipcDisabled": "IPC 授权 已关闭",
+    "ipcUpdateFailed": "IPC 授权更新失败",
+    "accessSuccess": "{type} 访问成功",
+    "simulateFailed": "模拟失败",
+    "ipcSuccess": "IPC 调用成功",
+    "ipcSimulateFailed": "IPC 模拟失败",
+    "pluginNotActive": "插件未激活",
+    "sourcePluginNotActive": "源插件未激活",
+    "envSwitched": "环境已切换: {mode}",
+    "envSwitchFailed": "环境切换失败",
+    "prodMode": "生产模式 (拒绝无权限访问)",
+    "devMode": "开发模式 (仅警告无权限访问)",
+    "alsoEnabled": "（同时开启 {perm}）",
+    "alsoDisabled": "（同时关闭 {perm}）"
+  }
+}

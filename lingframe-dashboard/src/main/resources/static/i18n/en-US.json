@@ -1,0 +1,118 @@
+{
+    "title": "LingFrame | Governance Center",
+    "version": "V0.1.0-Preview",
+    "sidebar": {
+        "currentEnv": "Current Env",
+        "envDev": "Development",
+        "envTest": "Testing",
+        "envProd": "Production",
+        "coreFeatures": "Core Features",
+        "governance": "Governance",
+        "sseConnected": "SSE Connected",
+        "sseConnecting": "SSE Connecting...",
+        "sseDisconnected": "SSE Disconnected",
+        "pluginCount": "Plugins",
+        "logCount": "Logs"
+    },
+    "header": {
+        "notSelected": "Not Selected"
+    },
+    "envLabels": {
+        "dev": "Dev",
+        "test": "Test",
+        "prod": "Prod"
+    },
+    "pluginList": {
+        "title": "Plugin List",
+        "count": "{n} plugins",
+        "empty": "No plugins installed"
+    },
+    "traffic": {
+        "title": "Traffic Control",
+        "notSelected": "Not Selected",
+        "inactive": "Inactive",
+        "canary": "Canary",
+        "singleVersion": "Single Version",
+        "stable": "Stable",
+        "canaryVersion": "Canary",
+        "unavailable": "Unavailable",
+        "reset": "Reset",
+        "stress": "Stress",
+        "stop": "Stop",
+        "selectPlugin": "Please select a plugin",
+        "pluginInactive": "Plugin is inactive",
+        "onlyOneVersion": "Only one version available"
+    },
+    "logs": {
+        "title": "Trace Logs",
+        "current": "Current",
+        "all": "All",
+        "waiting": "Waiting for logs...",
+        "connecting": "Connecting...",
+        "newLogs": "New Logs"
+    },
+    "control": {
+        "title": "Plugin Control",
+        "selectPlugin": "Select a plugin from the list",
+        "lifecycle": "Lifecycle",
+        "activate": "Activate",
+        "reload": "Reload",
+        "unload": "Unload",
+        "permissions": "Permissions",
+        "dbRead": "DB Read",
+        "dbWrite": "DB Write",
+        "cacheRead": "Cache Read",
+        "cacheWrite": "Cache Write"
+    },
+    "demo": {
+        "title": "Feature Demo",
+        "ready": "READY",
+        "inactive": "INACTIVE",
+        "pluginNotActive": "Plugin not active, please activate first",
+        "readDb": "Read DB",
+        "writeDb": "Write DB",
+        "readCache": "Read Cache",
+        "writeCache": "Write Cache",
+        "ipcAuth": "IPC Auth"
+    },
+    "audit": {
+        "success": "SUCCESS",
+        "denied": "DENIED",
+        "devPass": "DEV PASS",
+        "ruleSource": "Rule Source"
+    },
+    "modal": {
+        "cancel": "Cancel",
+        "confirm": "Confirm",
+        "confirmUnload": "Confirm Unload Plugin",
+        "unloadWarning": "About to unload \"{pluginId}\", this will interrupt all requests.",
+        "unloadAction": "Unload"
+    },
+    "toast": {
+        "getPluginsFailed": "Failed to get plugin list",
+        "statusUpdated": "Status updated to {status}",
+        "statusUpdateFailed": "Failed to update status",
+        "pluginUnloaded": "Plugin unloaded",
+        "unloadFailed": "Unload failed",
+        "canarySet": "Canary ratio set to {percent}%",
+        "canaryFailed": "Canary config failed",
+        "permEnabled": "{perm} enabled",
+        "permDisabled": "{perm} disabled",
+        "permUpdateFailed": "Permission update failed",
+        "ipcEnabled": "IPC Auth enabled",
+        "ipcDisabled": "IPC Auth disabled",
+        "ipcUpdateFailed": "IPC Auth update failed",
+        "accessSuccess": "{type} access successful",
+        "simulateFailed": "Simulation failed",
+        "ipcSuccess": "IPC call successful",
+        "ipcSimulateFailed": "IPC simulation failed",
+        "pluginNotActive": "Plugin not active",
+        "sourcePluginNotActive": "Source plugin not active",
+        "envSwitched": "Environment switched: {mode}",
+        "envSwitchFailed": "Environment switch failed",
+        "prodMode": "Production Mode (deny unauthorized access)",
+        "devMode": "Dev Mode (warn only for unauthorized access)",
+        "alsoEnabled": " (also enabled {perm})",
+        "alsoDisabled": " (also disabled {perm})"
+    }
+}

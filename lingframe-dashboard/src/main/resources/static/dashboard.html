@@ -11,6 +11,23 @@
     <link rel="stylesheet" href="css/fontawesome.min.css">
     <link rel="stylesheet" href="css/jetbrains-mono.css">
     <link rel="stylesheet" href="css/dashboard.css">
+    <style>
+        .lang-switch {
+            background-color: #1e293b;
+            color: #94a3b8;
+            border: 1px solid #334155;
+            border-radius: 0.375rem;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .lang-switch:hover {
+            color: #fff;
+            border-color: #475569;
+        }
+    </style>
 </head>
 
 <body class="h-screen flex overflow-hidden">
@@ -41,13 +58,13 @@
                 <div class="flex gap-3 justify-end">
                     <button @click="modal.show = false"
                         class="px-4 py-2 rounded-lg text-base font-medium bg-slate-700 hover:bg-slate-600 text-white">
-                        取消
+                        {{ t('modal.cancel') }}
                     </button>
                     <button @click="confirmModalAction" :disabled="modal.loading"
                         class="px-4 py-2 rounded-lg text-base font-medium bg-red-600 hover:bg-red-500 text-white flex items-center gap-2">
                         <span v-if="modal.loading" class="spinner"
                             style="width:14px;height:14px;border-width:2px;"></span>
-                        确认{{ modal.actionText }}
+                        {{ modal.actionText }}
                     </button>
                 </div>
             </div>
@@ -63,28 +80,30 @@
                     </div>
                     <div>
                         <h1 class="font-bold text-white text-lg">LingFrame</h1>
-                        <p class="text-xs text-slate-500">V0.1.0-Preview</p>
+                        <p class="text-xs text-slate-500">{{ t('version') }}</p>
                     </div>
                 </div>
             </div>
 
             <!-- 环境选择 -->
             <div class="p-4 border-b border-slate-700">
-                <label class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">当前环境</label>
+                <label class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">{{ t('sidebar.currentEnv')
+                    }}</label>
                 <select v-model="currentEnv"
                     class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-base text-white">
-                    <option value="dev">开发环境</option>
-                    <option value="test">测试环境</option>
-                    <option value="prod">生产环境</option>
+                    <option value="dev">{{ t('sidebar.envDev') }}</option>
+                    <option value="test">{{ t('sidebar.envTest') }}</option>
+                    <option value="prod">{{ t('sidebar.envProd') }}</option>
                 </select>
             </div>
 
             <!-- 导航菜单 -->
             <nav class="flex-grow py-4">
-                <div class="text-sm text-slate-500 uppercase tracking-wider px-5 mb-2">核心功能</div>
+                <div class="text-sm text-slate-500 uppercase tracking-wider px-5 mb-2">{{ t('sidebar.coreFeatures') }}
+                </div>
                 <div class="sidebar-item active">
                     <i class="fa-solid fa-gauge-high w-4"></i>
-                    <span class="text-base">治理中心</span>
+                    <span class="text-base">{{ t('sidebar.governance') }}</span>
                 </div>
             </nav>
 
@@ -95,7 +114,8 @@
                     <span class="text-slate-400">{{ sseStatusText }}</span>
                 </div>
                 <div class="text-sm text-slate-500 mt-1">
-                    插件数: {{ plugins.length }} | 日志: {{ logs.length }}
+                    {{ t('sidebar.pluginCount') }}: {{ plugins.length }} | {{ t('sidebar.logCount') }}: {{ logs.length
+                    }}
                 </div>
             </div>
         </aside>
@@ -111,17 +131,21 @@
                         <i class="fa-solid fa-bars"></i>
                     </button>
                     <div class="flex items-center gap-3">
-                        <span class="text-base font-medium text-white">治理中心</span>
+                        <span class="text-base font-medium text-white">{{ t('sidebar.governance') }}</span>
                         <i class="fa-solid fa-chevron-right text-slate-600 text-sm"></i>
-                        <span class="text-base text-slate-400">{{ activeId || '未选择' }}</span>
+                        <span class="text-base text-slate-400">{{ activeId || t('header.notSelected') }}</span>
                     </div>
                 </div>
                 <div class="flex items-center gap-4">
+                    <select v-model="locale" @change="switchLocale(locale)" class="lang-switch">
+                        <option v-for="(label, key) in supportedLocales" :value="key" :key="key">{{ label }}</option>
+                    </select>
+
                     <button @click="refreshPlugins" :disabled="loading.plugins"
                         class="text-slate-400 hover:text-white transition-all">
                         <i :class="['fa-solid fa-arrows-rotate', loading.plugins ? 'animate-spin' : '']"></i>
                     </button>
-                    <span :class="['env-badge', 'env-' + currentEnv]">{{ envLabels[currentEnv] }}</span>
+                    <span :class="['env-badge', 'env-' + currentEnv]">{{ t('envLabels.' + currentEnv) }}</span>
                     <div class="flex items-center gap-2 text-sm text-slate-400">
                         <i class="fa-solid fa-clock"></i>
                         <span>{{ currentTime }}</span>
@@ -137,8 +161,9 @@
                     <div class="col-span-12 lg:col-span-3">
                         <div class="card h-full relative">
                             <div class="card-header">
-                                <h3 class="font-bold text-base text-white">插件列表</h3>
-                                <span class="text-sm text-slate-500">{{ plugins.length }} 个</span>
+                                <h3 class="font-bold text-base text-white">{{ t('pluginList.title') }}</h3>
+                                <span class="text-sm text-slate-500">{{ t('pluginList.count', { n: plugins.length })
+                                    }}</span>
                             </div>
 
                             <div v-if="loading.plugins && plugins.length === 0" class="loading-overlay">
@@ -147,7 +172,7 @@
 
                             <div v-if="!loading.plugins && plugins.length === 0" class="p-8 text-center">
                                 <i class="fa-solid fa-puzzle-piece text-3xl text-slate-600 mb-3"></i>
-                                <p class="text-base text-slate-500">暂无已安装插件</p>
+                                <p class="text-base text-slate-500">{{ t('pluginList.empty') }}</p>
                             </div>
 
                             <div class="max-h-[800px] overflow-y-auto">
@@ -184,27 +209,30 @@
 
                             <div class="card-header">
                                 <div class="flex items-center gap-3">
-                                    <h3 class="font-bold text-base text-white">流量分发</h3>
+                                    <h3 class="font-bold text-base text-white">{{ t('traffic.title') }}</h3>
                                     <span v-if="!activePlugin"
-                                        class="text-xs bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">未选择</span>
+                                        class="text-xs bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">{{
+                                        t('traffic.notSelected') }}</span>
                                     <span v-else-if="!canOperate"
-                                        class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded">未激活</span>
+                                        class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded">{{
+                                        t('traffic.inactive') }}</span>
                                     <span v-else-if="canCanary"
-                                        class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">灰度中</span>
-                                    <span v-else
-                                        class="text-xs bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">单版本</span>
+                                        class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">{{
+                                        t('traffic.canary') }}</span>
+                                    <span v-else class="text-xs bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">{{
+                                        t('traffic.singleVersion') }}</span>
                                 </div>
                                 <div class="flex gap-2">
                                     <button @click="resetStats" :disabled="!activeId || loading.stats"
                                         class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
                                         <i class="fa-solid fa-rotate-right"></i>
-                                        重置
+                                        {{ t('traffic.reset') }}
                                     </button>
                                     <button @click="toggleAuto" :disabled="!canOperate"
                                         :class="isAuto ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'"
                                         class="action-btn text-white text-sm">
                                         <i :class="isAuto ? 'fa-solid fa-stop' : 'fa-solid fa-play'"></i>
-                                        {{ isAuto ? '停止' : '压测' }}
+                                        {{ isAuto ? t('traffic.stop') : t('traffic.stress') }}
                                     </button>
                                 </div>
                             </div>
@@ -216,10 +244,12 @@
                                         <div class="flex justify-between text-sm font-medium mb-3">
                                             <span class="text-blue-400">
                                                 <i class="fa-solid fa-cube mr-1"></i>
-                                                稳定版 {{ activePlugin?.activeVersion }}: {{ 100 - canaryPct }}%
+                                                {{ t('traffic.stable') }} {{ activePlugin?.activeVersion }}: {{ 100 -
+                                                canaryPct }}%
                                             </span>
                                             <span class="text-amber-400">
-                                                灰度版 {{ activePlugin?.canaryVersion }}: {{ canaryPct }}%
+                                                {{ t('traffic.canaryVersion') }} {{ activePlugin?.canaryVersion }}: {{
+                                                canaryPct }}%
                                                 <i class="fa-solid fa-flask ml-1"></i>
                                             </span>
                                         </div>
@@ -228,14 +258,16 @@
                                     </template>
                                     <template v-else>
                                         <div class="flex justify-between text-sm font-medium mb-3 text-slate-500">
-                                            <span>稳定版 {{ activePlugin?.activeVersion || '-' }}: 100%</span>
-                                            <span>灰度版: 不可用</span>
+                                            <span>{{ t('traffic.stable') }} {{ activePlugin?.activeVersion || '-' }}:
+                                                100%</span>
+                                            <span>{{ t('traffic.canaryVersion') }}: {{ t('traffic.unavailable')
+                                                }}</span>
                                         </div>
                                         <input type="range" value="0" disabled class="slider-disabled">
                                         <p class="text-sm text-slate-500 mt-3 text-center">
                                             <i class="fa-solid fa-info-circle mr-1"></i>
-                                            {{ !activePlugin ? '请先选择插件' : !canOperate ? '插件未激活' : '当前插件仅有单一版本'
-                                            }}
+                                            {{ !activePlugin ? t('traffic.selectPlugin') : !canOperate ?
+                                            t('traffic.pluginInactive') : t('traffic.onlyOneVersion') }}
                                         </p>
                                     </template>
                                 </div>
@@ -276,18 +308,18 @@
                         <div class="card flex flex-col relative" style="height: 500px;">
                             <div class="card-header flex-shrink-0">
                                 <div class="flex items-center gap-3">
-                                    <h3 class="font-bold text-base text-white">追踪日志</h3>
+                                    <h3 class="font-bold text-base text-white">{{ t('logs.title') }}</h3>
                                     <div :class="['connection-dot', sseStatus]" :title="sseStatusText"></div>
                                     <div class="flex bg-slate-800 rounded-lg overflow-hidden">
                                         <button @click="logViewMode = 'current'"
                                             :class="logViewMode === 'current' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
                                             class="px-3 py-1 text-xs font-bold transition-all">
-                                            当前
+                                            {{ t('logs.current') }}
                                         </button>
                                         <button @click="logViewMode = 'all'"
                                             :class="logViewMode === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
                                             class="px-3 py-1 text-xs font-bold transition-all">
-                                            全部
+                                            {{ t('logs.all') }}
                                         </button>
                                     </div>
                                 </div>
@@ -303,8 +335,8 @@
                                 class="log-container flex-grow overflow-y-auto p-4">
                                 <div v-if="displayLogs.length === 0" class="text-slate-500 text-center py-12">
                                     <i class="fa-solid fa-inbox text-3xl mb-3 block"></i>
-                                    <span class="text-sm">{{ sseStatus === 'connected' ? '等待日志...' : '连接中...'
-                                        }}</span>
+                                    <span class="text-sm">{{ sseStatus === 'connected' ? t('logs.waiting') :
+                                        t('logs.connecting') }}</span>
                                 </div>
                                 <div v-for="l in displayLogs" :key="l.id" class="log-line">
                                     <span class="trace-tag">#{{ l.traceId || '------' }}</span>
@@ -323,7 +355,7 @@
                             </div>
                             <div v-if="isUserScrolling" @click="scrollToTop"
                                 class="absolute bottom-4 right-4 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm cursor-pointer hover:bg-blue-500 transition-all shadow-lg">
-                                <i class="fa-solid fa-arrow-up mr-1"></i> 新日志
+                                <i class="fa-solid fa-arrow-up mr-1"></i> {{ t('logs.newLogs') }}
                             </div>
                         </div>
                     </div>
@@ -338,64 +370,64 @@
                             </div>
 
                             <div class="card-header">
-                                <h3 class="font-bold text-base text-white">插件控制</h3>
+                                <h3 class="font-bold text-base text-white">{{ t('control.title') }}</h3>
                             </div>
                             <div class="p-4">
                                 <div v-if="!activePlugin" class="text-center py-6">
                                     <i class="fa-solid fa-hand-pointer text-2xl text-slate-600 mb-2"></i>
-                                    <p class="text-sm text-slate-500">请在左侧选择插件</p>
+                                    <p class="text-sm text-slate-500">{{ t('control.selectPlugin') }}</p>
                                 </div>
 
                                 <template v-else>
                                     <!-- 生命周期 -->
                                     <div class="mb-4">
-                                        <label
-                                            class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">生命周期</label>
+                                        <label class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">{{
+                                            t('control.lifecycle') }}</label>
                                         <div class="grid grid-cols-3 gap-2">
                                             <button @click="updateStatus('ACTIVE')"
                                                 :disabled="activePlugin?.status === 'ACTIVE'"
                                                 :class="activePlugin?.status === 'ACTIVE' ? 'bg-green-600' : 'bg-slate-700 hover:bg-slate-600'"
                                                 class="action-btn text-white text-sm">
                                                 <i class="fa-solid fa-play"></i>
-                                                激活
+                                                {{ t('control.activate') }}
                                             </button>
                                             <button @click="updateStatus('LOADED')"
                                                 :disabled="activePlugin?.status === 'LOADED'"
                                                 :class="activePlugin?.status === 'LOADED' ? 'bg-blue-600' : 'bg-slate-700 hover:bg-slate-600'"
                                                 class="action-btn text-white text-sm">
                                                 <i class="fa-solid fa-rotate"></i>
-                                                重载
+                                                {{ t('control.reload') }}
                                             </button>
                                             <button @click="requestUnload"
                                                 :disabled="activePlugin?.status === 'UNLOADED'"
                                                 :class="activePlugin?.status === 'UNLOADED' ? 'bg-red-600' : 'bg-slate-700 hover:bg-slate-600'"
                                                 class="action-btn text-white text-sm">
                                                 <i class="fa-solid fa-power-off"></i>
-                                                卸载
+                                                {{ t('control.unload') }}
                                             </button>
                                         </div>
                                     </div>
 
                                     <!-- 资源权限 -->
                                     <div class="mb-4">
-                                        <label
-                                            class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">资源权限</label>
+                                        <label class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">{{
+                                            t('control.permissions') }}</label>
                                         <div class="grid grid-cols-2 gap-2">
                                             <button @click="togglePerm('dbRead')" :disabled="loading.permissions"
                                                 :class="activePlugin?.permissions?.dbRead !== false ? 'perm-btn on' : 'perm-btn off'">
-                                                <i class="fa-solid fa-database mr-1"></i> DB 读
+                                                <i class="fa-solid fa-database mr-1"></i> {{ t('control.dbRead') }}
                                             </button>
                                             <button @click="togglePerm('dbWrite')" :disabled="loading.permissions"
                                                 :class="activePlugin?.permissions?.dbWrite !== false ? 'perm-btn on' : 'perm-btn off'">
-                                                <i class="fa-solid fa-database mr-1"></i> DB 写
+                                                <i class="fa-solid fa-database mr-1"></i> {{ t('control.dbWrite') }}
                                             </button>
                                             <button @click="togglePerm('cacheRead')" :disabled="loading.permissions"
                                                 :class="activePlugin?.permissions?.cacheRead !== false ? 'perm-btn on' : 'perm-btn off'">
-                                                <i class="fa-solid fa-bolt mr-1"></i> Cache 读
+                                                <i class="fa-solid fa-bolt mr-1"></i> {{ t('control.cacheRead') }}
                                             </button>
                                             <button @click="togglePerm('cacheWrite')" :disabled="loading.permissions"
                                                 :class="activePlugin?.permissions?.cacheWrite !== false ? 'perm-btn on' : 'perm-btn off'">
-                                                <i class="fa-solid fa-bolt mr-1"></i> Cache 写
+                                                <i class="fa-solid fa-bolt mr-1"></i> {{ t('control.cacheWrite') }}
                                             </button>
                                         </div>
                                     </div>
@@ -406,41 +438,41 @@
                         <!-- 功能演练 -->
                         <div class="card">
                             <div class="card-header">
-                                <h3 class="font-bold text-base text-white">功能演练</h3>
+                                <h3 class="font-bold text-base text-white">{{ t('demo.title') }}</h3>
                                 <span :class="canOperate ? 'text-green-400' : 'text-red-400'" class="text-xs font-bold">
-                                    {{ canOperate ? '● READY' : '○ INACTIVE' }}
+                                    {{ canOperate ? t('demo.ready') : t('demo.inactive') }}
                                 </span>
                             </div>
                             <div class="p-4">
                                 <div v-if="!canOperate"
                                     class="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4 text-center">
                                     <i class="fa-solid fa-exclamation-circle text-red-400 mb-1"></i>
-                                    <p class="text-sm text-red-400">插件未激活，请先激活</p>
+                                    <p class="text-sm text-red-400">{{ t('demo.pluginNotActive') }}</p>
                                 </div>
 
                                 <div class="grid grid-cols-2 gap-2 mb-4">
                                     <button @click="simulate('dbRead')" :disabled="!canOperate || loading.simulate"
                                         class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
-                                        <i class="fa-solid fa-database"></i> 读DB
+                                        <i class="fa-solid fa-database"></i> {{ t('demo.readDb') }}
                                     </button>
                                     <button @click="simulate('dbWrite')" :disabled="!canOperate || loading.simulate"
                                         class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
-                                        <i class="fa-solid fa-pen"></i> 写DB
+                                        <i class="fa-solid fa-pen"></i> {{ t('demo.writeDb') }}
                                     </button>
                                     <button @click="simulate('cacheRead')" :disabled="!canOperate || loading.simulate"
                                         class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
-                                        <i class="fa-solid fa-bolt"></i> 读Cache
+                                        <i class="fa-solid fa-bolt"></i> {{ t('demo.readCache') }}
                                     </button>
                                     <button @click="simulate('cacheWrite')" :disabled="!canOperate || loading.simulate"
                                         class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
-                                        <i class="fa-solid fa-bolt"></i> 写Cache
+                                        <i class="fa-solid fa-bolt"></i> {{ t('demo.writeCache') }}
                                     </button>
                                 </div>
 
                                 <!-- IPC 测试 -->
                                 <div class="border-t border-slate-700 pt-4">
                                     <div class="flex items-center justify-between mb-3">
-                                        <span class="text-sm font-medium text-slate-400">IPC 授权</span>
+                                        <span class="text-sm font-medium text-slate-400">{{ t('demo.ipcAuth') }}</span>
                                         <div @click="toggleIpc" :class="ipcEnabled ? 'bg-green-500' : 'bg-slate-600'"
                                             class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
                                             <div :class="ipcEnabled ? 'translate-x-5' : 'translate-x-1'"
@@ -467,12 +499,12 @@
                                         :class="lastAudit.allowed ? 'fa-solid fa-check-circle text-green-400' : 'fa-solid fa-times-circle text-red-400'"></i>
                                     <span class="font-bold text-sm"
                                         :class="lastAudit.allowed ? 'text-green-400' : 'text-red-400'">
-                                        {{ lastAudit.allowed ? 'SUCCESS' : 'DENIED' }}
+                                        {{ lastAudit.allowed ? t('audit.success') : t('audit.denied') }}
                                     </span>
                                     <!-- 开发模式豁免标签 -->
                                     <span v-if="lastAudit.devModeBypass"
                                         class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 ml-2 animate-pulse">
-                                        <i class="fa-solid fa-shield-cat mr-1"></i> DEV PASS
+                                        <i class="fa-solid fa-shield-cat mr-1"></i> {{ t('audit.devPass') }}
                                     </span>
                                 </div>
                                 <button @click="lastAudit = null" class="text-slate-500 hover:text-white">
@@ -488,7 +520,7 @@
                                 class="mt-2 pt-2 border-t border-slate-700/50 text-xs text-slate-500 flex items-center gap-2">
                                 <span class="flex items-center gap-1">
                                     <i class="fa-solid fa-gavel"></i>
-                                    Rule Source:
+                                    {{ t('audit.ruleSource') }}:
                                 </span>
                                 <span
                                     class="font-mono text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
