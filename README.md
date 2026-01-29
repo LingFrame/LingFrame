@@ -1,4 +1,4 @@
-# LingFrame · LingFrame
+# LingFrame · 灵珑
 
 ![Status](https://img.shields.io/badge/Status-Core_Implemented-green)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue)
