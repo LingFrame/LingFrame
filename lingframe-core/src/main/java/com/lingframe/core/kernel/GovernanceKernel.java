@@ -107,15 +107,53 @@ public class GovernanceKernel {
                         ctx.getTraceId());
             }
 
-            // Execute 真实业务
-            result = executor.get();
-            success = true;
+            // Execute 真实业务 (支持重试)
+            int retryCount = (decision != null && decision.getRetryCount() != null) ? decision.getRetryCount() : 0;
+            int attempts = 0;
 
-            // 发布 Trace Success
-            publishTrace(ctx.getTraceId(), ctx.getPluginId(),
-                    "← RETURN: Success", "OUT", currentDepth);
+            while (true) {
+                try {
+                    attempts++;
+                    result = executor.get();
+                    success = true;
 
-            return result;
+                    // 发布 Trace Success
+                    publishTrace(ctx.getTraceId(), ctx.getPluginId(),
+                            "← RETURN: Success", "OUT", currentDepth);
+
+                    return result;
+                } catch (Throwable e) {
+                    error = e;
+                    // 如果还有重试机会，且不是权限类严重错误
+                    if (attempts <= retryCount && !(e instanceof PermissionDeniedException)) {
+                        log.warn("[{}] Execution failed, retrying ({}/{}). Error: {}",
+                                ctx.getResourceId(), attempts, retryCount, e.getMessage());
+                        continue;
+                    }
+
+                    // 重试耗尽，检查降级
+                    if (decision != null && decision.getFallbackValue() != null) {
+                        log.info("[{}] Fallback triggered. Returning: {}", ctx.getResourceId(),
+                                decision.getFallbackValue());
+                        publishTrace(ctx.getTraceId(), ctx.getPluginId(),
+                                "← FALLBACK: " + decision.getFallbackValue(), "OUT", currentDepth);
+                        // 降级视为业务成功，或者是特殊的"降级成功"
+                        // 这里我们标记 success=false (业务失败)，或者需要一个新的状态?
+                        // Audit Log 可能需要区分。
+                        success = false; // 严格来说业务失败了
+                        result = decision.getFallbackValue(); // 但为了避免抛出异常，我们返回结果
+
+                        // 修正：如果降级成功，我们不想 finally 里的 audit 记录为 error，
+                        // 但 error 变量已经赋值了。
+                        // 让我们把 error 置空，表示被处理了。
+                        error = null;
+                        return result;
+                        // 注意：这里 return 会去执行 finally
+                    }
+
+                    throw e; // 继续抛出
+                }
+            }
         } catch (Throwable e) {
             error = e;
 
@@ -190,5 +228,7 @@ public class GovernanceKernel {
             ctx.setAuditAction(decision.getAuditAction());
         if (decision.getSource() != null)
             ctx.setRuleSource(decision.getSource());
+        if (decision.getTimeout() != null && ctx.getTimeout() == null)
+            ctx.setTimeout((int) decision.getTimeout().toMillis());
     }
 }

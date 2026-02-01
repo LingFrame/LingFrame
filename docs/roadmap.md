@@ -53,11 +53,12 @@
 - ✅ 灰度发布（CanaryRouter）
 
 ### 待实现
+- ⏳ **基础设施：上下文传播（Context Propagation）**
+- ⏳ 超时控制（Timeout）
 - ⏳ 熔断（Circuit Breaker）
 - ⏳ 降级（Fallback）
 - ⏳ 重试（Retry）
 - ⏳ 限流（Rate Limiting）
-- ⏳ 超时控制（Timeout）
 
 ---
 

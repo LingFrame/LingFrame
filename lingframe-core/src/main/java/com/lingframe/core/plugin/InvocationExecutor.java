@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
+import com.lingframe.api.context.PluginContextHolder;
 
 /**
  * 服务调用执行器
@@ -34,7 +35,10 @@ public class InvocationExecutor {
     private final int acquireTimeoutMs;
 
     @Setter
-    private RuntimeEventBus eventBus; // 可选，用于发布调用事件
+    private RuntimeEventBus eventBus; // 可选，用于发布调用事件（内部）
+
+    @Setter
+    private com.lingframe.core.event.EventBus monitorBus; // 可选，用于发布监控事件（外部）
 
     public InvocationExecutor(String pluginId,
             ExecutorService executor,
@@ -68,6 +72,33 @@ public class InvocationExecutor {
                 config.getBulkheadMaxConcurrent(),
                 config.getDefaultTimeoutMs(),
                 config.getBulkheadAcquireTimeoutMs());
+    }
+
+    private final java.util.Map<String, com.lingframe.core.resilience.CircuitBreaker> circuitBreakers = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private com.lingframe.core.resilience.CircuitBreaker getOrGenericCircuitBreaker(String fqsid) {
+        return circuitBreakers.computeIfAbsent(fqsid,
+                k -> new com.lingframe.core.resilience.SlidingWindowCircuitBreaker(
+                        k,
+                        50, // 50% 失败率
+                        50, // 50% 慢调用率
+                        2000, // 2s 算慢调用
+                        100, // 窗口大小 100
+                        10, // 最小请求数 10
+                        5000, // 熔断后等待 5s
+                        monitorBus // 注入 System EventBus
+                ));
+    }
+
+    private final java.util.Map<String, com.lingframe.core.resilience.RateLimiter> rateLimiters = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private com.lingframe.core.resilience.RateLimiter getOrGenericRateLimiter(String fqsid) {
+        return rateLimiters.computeIfAbsent(fqsid,
+                k -> new com.lingframe.core.resilience.TokenBucketRateLimiter(
+                        k,
+                        500.0, // 500 QPS
+                        500.0 // Burst capacity
+                ));
     }
 
     public Object execute(PluginInstance instance,
@@ -130,7 +161,7 @@ public class InvocationExecutor {
         }
 
         // 异步模式：线程隔离执行
-        return executeAsync(instance, service, args, callerPluginId, fqsid);
+        return executeAsync(instance, service, args, callerPluginId, fqsid, null);
     }
 
     /**
@@ -149,7 +180,20 @@ public class InvocationExecutor {
             ServiceRegistry.InvokableService service,
             Object[] args,
             String callerPluginId,
-            String fqsid) throws Exception {
+            String fqsid,
+            Integer timeoutOverride) throws Exception {
+
+        // 1. 限流检查
+        com.lingframe.core.resilience.RateLimiter limiter = getOrGenericRateLimiter(fqsid);
+        if (!limiter.tryAcquire()) {
+            throw new com.lingframe.core.exception.CallNotPermittedException(fqsid, "RateLimit exceeded");
+        }
+
+        // 2. 熔断检查
+        com.lingframe.core.resilience.CircuitBreaker breaker = getOrGenericCircuitBreaker(fqsid);
+        if (!breaker.tryAcquirePermission()) {
+            throw new com.lingframe.core.exception.CallNotPermittedException(fqsid, "CircuitBreaker is OPEN");
+        }
 
         // 捕获上下文快照
         ContextSnapshot snapshot = captureContext();
@@ -175,17 +219,26 @@ public class InvocationExecutor {
                     "Plugin [" + pluginId + "] is busy (Bulkhead full). FQSID: " + fqsid);
         }
 
-        // 提交任务并等待结果
+        long startTime = System.nanoTime();
         try {
             Future<Object> future = executor.submit(task);
-            return waitForResult(future, fqsid, callerPluginId);
+            Object result = waitForResult(future, fqsid, callerPluginId, timeoutOverride);
+
+            // 成功记录
+            long duration = System.nanoTime() - startTime;
+            breaker.onSuccess(duration, TimeUnit.NANOSECONDS);
+
+            return result;
+        } catch (Exception e) {
+            // 失败记录
+            long duration = System.nanoTime() - startTime;
+            breaker.onError(duration, TimeUnit.NANOSECONDS, e);
+            throw e;
         } finally {
-            // 确保信号量释放，并妥善处理释放过程中的异常
-            // 防止 release() 抛出的异常覆盖原始异常
+            // 确保信号量释放
             try {
                 bulkhead.release();
             } catch (IllegalStateException e) {
-                // 记录日志但不抛出，防止掩盖原始异常
                 log.warn("[{}] Failed to release bulkhead permit for FQSID: {}", pluginId, fqsid, e);
             }
         }
@@ -194,9 +247,11 @@ public class InvocationExecutor {
     /**
      * 等待异步结果
      */
-    private Object waitForResult(Future<Object> future, String fqsid, String callerPluginId) throws Exception {
+    private Object waitForResult(Future<Object> future, String fqsid, String callerPluginId, Integer timeoutOverride)
+            throws Exception {
+        int timeout = (timeoutOverride != null && timeoutOverride > 0) ? timeoutOverride : this.timeoutMs;
         try {
-            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+            return future.get(timeout, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             future.cancel(true);
             log.error("[{}] Execution timeout ({}ms). FQSID={}, Caller={}",
@@ -280,11 +335,17 @@ public class InvocationExecutor {
      */
     private static class ContextSnapshot {
         private final String traceId;
+        private final String pluginId;
+        private final java.util.Map<String, String> labels;
         private final Object[] snapshots;
         private final List<ThreadLocalPropagator> propagators;
 
         ContextSnapshot(String traceId, Object[] snapshots, List<ThreadLocalPropagator> propagators) {
             this.traceId = traceId;
+            this.pluginId = PluginContextHolder.get();
+            this.labels = PluginContextHolder.getLabels() != null
+                    ? java.util.Map.copyOf(PluginContextHolder.getLabels())
+                    : java.util.Collections.emptyMap();
             this.snapshots = snapshots;
             this.propagators = propagators;
         }
@@ -298,13 +359,20 @@ public class InvocationExecutor {
                 TraceContext.setTraceId(traceId);
             }
 
+            // 设置 PluginContext
+            String oldPluginId = PluginContextHolder.get();
+            java.util.Map<String, String> oldLabels = PluginContextHolder.getLabels();
+
+            PluginContextHolder.set(pluginId);
+            PluginContextHolder.setLabels(labels);
+
             // 重放其他上下文
             Object[] backups = new Object[propagators.size()];
             for (int i = 0; i < propagators.size(); i++) {
                 backups[i] = propagators.get(i).replay(snapshots[i]);
             }
 
-            return new Scope(backups, propagators);
+            return new Scope(backups, propagators, oldPluginId, oldLabels);
         }
 
         /**
@@ -313,10 +381,15 @@ public class InvocationExecutor {
         static class Scope implements AutoCloseable {
             private final Object[] backups;
             private final List<ThreadLocalPropagator> propagators;
+            private final String oldPluginId;
+            private final java.util.Map<String, String> oldLabels;
 
-            Scope(Object[] backups, List<ThreadLocalPropagator> propagators) {
+            Scope(Object[] backups, List<ThreadLocalPropagator> propagators, String oldPluginId,
+                    java.util.Map<String, String> oldLabels) {
                 this.backups = backups;
                 this.propagators = propagators;
+                this.oldPluginId = oldPluginId;
+                this.oldLabels = oldLabels;
             }
 
             @Override
@@ -327,6 +400,14 @@ public class InvocationExecutor {
                 }
                 // 清理 TraceId
                 TraceContext.clear();
+
+                // 恢复 PluginContext
+                if (oldPluginId != null) {
+                    PluginContextHolder.set(oldPluginId);
+                    PluginContextHolder.setLabels(oldLabels);
+                } else {
+                    PluginContextHolder.clear();
+                }
             }
         }
     }

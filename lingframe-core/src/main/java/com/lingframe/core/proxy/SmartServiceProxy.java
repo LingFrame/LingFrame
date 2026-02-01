@@ -87,7 +87,7 @@ public class SmartServiceProxy implements InvocationHandler {
                 try {
                     // 🔥 修正：调用 Runtime 的标准入口，确保走路由、统计和隔离
                     // args 在这里是安全的，因为 Kernel 没有修改它
-                    return targetRuntime.invoke(finalCtx.getCallerPluginId(), fqsid, finalCtx.getArgs());
+                    return targetRuntime.invoke(finalCtx);
                 } catch (Exception e) {
                     throw new ProxyExecutionException(e);
                 }

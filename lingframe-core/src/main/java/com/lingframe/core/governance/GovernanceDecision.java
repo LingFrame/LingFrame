@@ -19,6 +19,8 @@ public class GovernanceDecision {
     private Boolean auditEnabled;
     private String auditAction;
     private Duration timeout;
+    private Integer retryCount;
+    private String fallbackValue;
 
     // 快速构建空对象
     public static GovernanceDecision empty() {
