@@ -30,6 +30,8 @@
 | **审计追踪**          | `@Auditable` 注解 + 异步审计日志，完整调用链记录 | `AuditManager`                        |
 | **能力仲裁**          | Core 作为唯一仲裁者，代理所有跨模块调用   | `ServiceRegistry`, `SmartServiceProxy` |
 | **服务路由**          | `@LingService` + `@LingReference` 实现 FQSID 路由 | `LingReferenceInjector`, `GlobalServiceRoutingProxy` |
+| **韧性治理**          | 熔断、限流、隔离、重试、降级              | `SlidingWindowCircuitBreaker`, `TokenBucketRateLimiter` |
+| **上下文传播**        | 跨线程/跨插件的 TraceId 与环境信息传递    | `ThreadLocalPropagator`, `PluginContextHolder` |
 | **模块隔离**          | 三层 ClassLoader + Spring 父子上下文      | `SharedApiClassLoader`, `PluginClassLoader`, `SpringPluginContainer` |
 | **热重载**            | 蓝绿部署 + 文件监听，无需重启应用         | `PluginManager`, `InstancePool`, `HotSwapWatcher` |
 
@@ -246,7 +248,7 @@ lingframe/
 | :---------- | :-------------------------------------------------- | :------------ |
 | **Phase 1** | 核心治理：权限、审计、模块隔离                      | ✅ **已完成** |
 | **Phase 2** | 可视化：Dashboard 治理中心                          | ✅ **基本完成** |
-| **Phase 3** | 弹性治理：熔断、降级、重试、限流                    | 🔄 进行中     |
+| **Phase 3** | 弹性治理：熔断、降级、重试、限流                    | ✅ **核心实现** |
 | **Phase 4** | 可观测性：指标采集、调用链可视化                    | ⏳ 计划中     |
 | **Phase 5** | 基础设施扩展：消息代理、搜索代理                    | ⏳ 计划中     |
 

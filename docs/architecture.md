@@ -145,6 +145,32 @@ LingFrame 借鉴操作系统的设计思想：
 - 所有能力调用必须经过 Core 代理和鉴权
 - 在 `plugin.yml` 中声明所需权限
 
+## 核心治理机制
+
+### 1. 韧性治理 (Resilience)
+
+LingFrame 在内核层集成了轻量级的韧性模式，保护宿主应用免受插件故障的影响：
+
+| 机制 | 实现类 | 说明 |
+| :--- | :--- | :--- |
+| **熔断 (Circuit Breaker)** | `SlidingWindowCircuitBreaker` | 滑动窗口统计失败率/慢调用率，自动熔断不健康的插件服务，防止雪崩。 |
+| **限流 (Rate Limiting)** | `TokenBucketRateLimiter` | 基于令牌桶算法，限制插件服务的调用频率 (QPS)。 |
+| **隔离 (Bulkhead)** | `SemaphoreBulkhead` | 限制并发调用数，防止单个插件耗尽线程池资源。 |
+| **重试 (Retry)** | `GovernanceKernel` (内置) | 对瞬态故障进行自动重试，支持最大重试次数配置。 |
+| **降级 (Fallback)** | `GovernanceKernel` (内置) | 当服务不可用或熔断时，返回预设的兜底值。 |
+
+### 2. 上下文传播 (Context Propagation)
+
+为了在跨线程（如异步调用）和跨插件调用中保持上下文的一致性，LingFrame 实现了 `ThreadLocalPropagator` 机制：
+
+- **自动快照**：在主线程捕获所有注册的 `ThreadLocal` 状态（TraceId, PluginId, Labels 等）。
+- **自动恢复**：在子线程执行任务前恢复上下文。
+- **自动清理**：任务结束后清理上下文，防止泄漏。
+
+**核心组件**：
+- `PluginContextHolder`：持有当前运行的插件 ID 和标签。
+- `TraceContext`：持有全链路追踪 ID。
+
 ## 数据流
 
 ### 业务模块调用基础设施
