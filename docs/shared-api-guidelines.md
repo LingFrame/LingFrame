@@ -1,83 +1,83 @@
-# 共享 API 设计规范
+# Shared API Design Guidelines
 
-## 架构概述
+## Architecture Overview
 
 ```
-宿主 ClassLoader (AppClassLoader)
+Host ClassLoader (AppClassLoader)
     ↓ parent
-SharedApiClassLoader (共享 API 层)
+SharedApiClassLoader (Shared API Layer)
     ↓ parent
-PluginClassLoader (插件实现层)
+PluginClassLoader (Plugin Implementation Layer)
 ```
 
-## 核心设计原则
+## Core Design Principles
 
-### 1. API 由消费方提供（消费者驱动契约）
+### 1. API Provided by Consumer (Consumer-Driven Contract)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     消费者驱动契约模式                        │
+│                 Consumer-Driven Contract Pattern             │
 └─────────────────────────────────────────────────────────────┘
 
-场景：Order 插件需要查询用户信息
+Scenario: Order Plugin needs to query user info
 
-┌─────────────┐     需要能力      ┌─────────────┐
-│  Order 插件  │ ───────────────▶ │  User 插件   │
-│  (消费者)    │                  │  (生产者)    │
+┌─────────────┐     Needs Capability     ┌─────────────┐
+│ Order Plugin│ ───────────────▶ │ User Plugin  │
+│ (Consumer)  │                  │ (Producer)   │
 └─────────────┘                  └─────────────┘
        │                               ▲
-       │ 1. 定义所需接口               │ 2. 实现消费者定义的接口
+       │ 1. Define required interface     │ 2. Implement interface defined by Consumer
        ▼                               │
 ┌─────────────────────────────────────────────────────────────┐
-│                      order-api 模块                          │
-│          (由消费者 Order 插件定义和维护)                       │
+│                    order-api Module                         │
+│       (Defined and maintained by Consumer Order Plugin)     │
 │                                                              │
-│   public interface UserQueryService {                        │
-│       Optional<UserDTO> findById(String userId);             │
+│   public interface UserQueryService {                       │
+│       Optional<UserDTO> findById(String userId);            │
 │   }                                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**核心原则**：
-- API 接口由**消费方**定义和维护（谁需要能力，谁定义接口）
-- 生产方**实现**消费方定义的接口（谁有能力，谁提供实现）
-- 消费方最了解自己需要什么功能，接口设计更贴合实际需求
+**Core Principles**:
+- API interface is defined and maintained by **Consumer** (Who needs the capability, defines the interface).
+- Producer **implements** the interface defined by Consumer (Who has the capability, provides implementation).
+- Consumer knows best what functionality it needs, so interface design fits actual needs better.
 
-**为什么这样设计？**
-- 传统模式：User 插件定义 `UserService`，所有消费者适配生产者的接口
-- 消费者驱动：Order 插件定义 `UserQueryService`（只包含它需要的方法），User 插件适配消费者需求
-- 优势：解耦更彻底，消费者不依赖生产者的全量接口，可独立演进
+**Why this design?**
+- Traditional Pattern: User Plugin defines `UserService`, all consumers adapt to Producer's interface.
+- Consumer-Driven: Order Plugin defines `UserQueryService` (containing only methods it needs), User Plugin adapts to Consumer's need.
+- Advantage: Decoupling is more thorough, Consumer does not depend on Producer's full interface, allowing independent evolution.
 
 ---
 
-## API 模块结构
+## API Module Structure
 
-### 2. API 模块只包含接口和 DTO
+### 2. API Module Only Contains Interfaces and DTOs
 
-消费者（Order 插件）定义它需要的接口，生产者（User 插件）实现：
+Consumer (Order Plugin) defines interfaces it needs, Producer (User Plugin) implements them:
 
 ```
-order-api/                              # 消费者 Order 插件的 API 模块
+order-api/                              # API Module of Consumer Order Plugin
 ├── src/main/java/com/example/order/
 │   ├── api/
-│   │   ├── UserQueryService.java      # Order 需要的用户查询能力（由 User 插件实现）
-│   │   └── PaymentService.java        # Order 需要的支付能力（由 Payment 插件实现）
+│   │   ├── UserQueryService.java      # User query capability needed by Order (Implemented by User Plugin)
+│   │   └── PaymentService.java        # Payment capability needed by Order (Implemented by Payment Plugin)
 │   └── dto/
-│       ├── UserDTO.java               # 用户数据传输对象
+│       ├── UserDTO.java               # User Data Transfer Object
 │       └── PaymentResultDTO.java
 └── pom.xml
 ```
 
-**不应该包含**：
-- ❌ 业务逻辑实现
-- ❌ 数据库访问代码
-- ❌ Spring 组件（@Service, @Repository 等）
-- ❌ 治理逻辑（熔断、重试等）
+**Should NOT Contain**:
+- ❌ Business Logic Implementation
+- ❌ Database Access Code
+- ❌ Spring Components (@Service, @Repository, etc.)
+- ❌ Governance Logic (Circuit Breaking, Retry, etc.)
 
-### 3. DTO 设计规范
+### 3. DTO Design Guidelines
 
 ```java
-// ✅ 正确：简单 POJO，可序列化
+// ✅ Correct: Simple POJO, Serializable
 @Data
 public class OrderDTO implements Serializable {
     private Long id;
@@ -86,19 +86,19 @@ public class OrderDTO implements Serializable {
     private LocalDateTime createTime;
 }
 
-// ❌ 错误：包含业务逻辑或复杂依赖
+// ❌ Incorrect: Contains business logic or complex dependencies
 public class OrderDTO {
-    private Order order;  // 不要引用实体类
-    public void process() { ... }  // 不要有业务方法
+    private Order order;  // Do not reference entity class
+    public void process() { ... }  // No business methods
 }
 ```
 
-### 3. 避免重量级依赖
+### 3. Avoid Heavy Dependencies
 
-API 模块的依赖应该尽量精简：
+API module dependencies should be minimal:
 
 ```xml
-<!-- ✅ 推荐的依赖 -->
+<!-- ✅ Recommended Dependencies -->
 <dependencies>
     <dependency>
         <groupId>org.projectlombok</groupId>
@@ -107,80 +107,80 @@ API 模块的依赖应该尽量精简：
     </dependency>
 </dependencies>
 
-<!-- ❌ 避免的依赖 -->
-<!-- 不要引入 Spring、数据库驱动等重量级依赖 -->
+<!-- ❌ Avoid Dependencies -->
+<!-- Do not introduce Spring, DB drivers, etc. -->
 ```
 
-## API 演进原则
+## API Evolution Principles
 
-### 4. 向后兼容（强烈推荐）
+### 4. Backward Compatibility (Highly Recommended)
 
 ```java
-// ✅ 正确：只增加，不修改
+// ✅ Correct: Add only, do not modify
 interface OrderService {
-    Order getOrder(Long id);           // v1 保留
-    List<Order> batchGet(List<Long> ids); // v2 新增
+    Order getOrder(Long id);           // v1 Kept
+    List<Order> batchGet(List<Long> ids); // v2 Added
 }
 
-// ❌ 错误：修改现有方法签名
+// ❌ Incorrect: Modify existing method signature
 interface OrderService {
-    OrderDTO getOrder(String orderId); // 破坏兼容！
+    OrderDTO getOrder(String orderId); // Breaks compatibility!
 }
 ```
 
-### 5. 破坏性变更使用版本化包名
+### 5. Use Versioned Package Names for Breaking Changes
 
 ```java
-// 版本 1
+// Version 1
 package com.example.order.api.v1;
 public interface OrderService { ... }
 
-// 版本 2（不兼容）
+// Version 2 (Incompatible)
 package com.example.order.api.v2;
 public interface OrderService { ... }
 ```
 
-两个版本可以共存于 SharedApiClassLoader。
+Both versions can coexist in SharedApiClassLoader.
 
-## 灰度发布支持
+## Canary Release Support
 
-| 场景 | 支持 | 处理方式 |
-|------|------|----------|
-| 新增 API 方法 | ✅ | 增量添加 JAR |
-| 破坏性变更 | ✅ | 版本化包名 |
-| 新旧插件共存 | ✅ | API 向后兼容 |
+| Scenario | Supported | Handling Method |
+| -------- | --------- | --------------- |
+| Add API Method | ✅ | Incrementally add JAR |
+| Breaking Change | ✅ | Versioned Package Name |
+| Coexistence of Old/New Plugins | ✅ | API Backward Compatibility |
 
-### 灰度流程示例
+### Canary Flow Example
 
 ```
 T0: PluginA-v1 + API-v1
-T1: 添加 API-v2，部署 PluginA-v2（v1/v2 共存）
-T2: 验证通过，卸载 PluginA-v1
+T1: Add API-v2, Deploy PluginA-v2 (v1/v2 Coexist)
+T2: Verify pass, Uninstall PluginA-v1
 ```
 
-## 配置示例
+## Configuration Example
 
 ```yaml
 lingframe:
   preload-api-jars:
-    - api/order-api-*.jar      # 通配符加载多版本
-    - api/user-api/            # 目录自动扫描
-    - lingframe-examples/lingframe-example-order-api  # Maven 模块（开发模式）
+    - api/order-api-*.jar      # Wildcard load multiple versions
+    - api/user-api/            # Directory auto scan
+    - lingframe-examples/lingframe-example-order-api  # Maven Module (Dev Mode)
 ```
 
-## 常见问题
+## FAQ
 
 ### Q: ClassNotFoundException / NoClassDefFoundError
 
-**原因**：API 未正确加载到 SharedApiClassLoader
+**Cause**: API not correctly loaded into SharedApiClassLoader
 
-**检查**：
-1. 确认 `preload-api-jars` 配置正确
-2. 确认 JAR/目录路径存在
-3. 查看启动日志中的 `📦 [SharedApi]` 输出
+**Check**:
+1. Confirm `preload-api-jars` configuration is correct.
+2. Confirm JAR/Directory path exists.
+3. Check startup logs for `📦 [SharedApi]` output.
 
 ### Q: ClassCastException
 
-**原因**：同一个类被不同 ClassLoader 加载
+**Cause**: Same class loaded by different ClassLoaders
 
-**解决**：确保 API 类只在 SharedApiClassLoader 中加载，不要在插件 JAR 中重复打包
+**Solution**: Ensure API classes are ONLY loaded in SharedApiClassLoader, do not package them repeatedly in Plugin JARs.

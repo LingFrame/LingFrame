@@ -1,57 +1,57 @@
-# Infrastructure Plugin Development Guide
+# 基础设施插件开发指南
 
-This document introduces the **Infrastructure Layer** in LingFrame's three-tier architecture and its development methods.
+本文档介绍 LingFrame 三层架构中的**基础设施层**及其开发方式。
 
-## Three-Tier Architecture Review
+## 三层架构回顾
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                 Core (Governance Kernel)                 │
-│      Auth Arbitration · Audit · Scheduling · Isolation    │
+│                    Core（治理内核）                      │
+│         权限仲裁 · 审计记录 · 能力调度 · 上下文隔离        │
 └────────────────────────────┬────────────────────────────┘
                              ▼
 ┌─────────────────────────────────────────────────────────┐
-│           Infrastructure (Infra Layer)           │  ← This Document
-│            Storage · Cache · Message · Search             │
+│           Infrastructure（基础设施层）           │  ← 本文档
+│              存储 · 缓存 · 消息 · 搜索                   │
 └────────────────────────────┬────────────────────────────┘
                              ▼
 ┌─────────────────────────────────────────────────────────┐
-│             Business Plugins (Business Layer)            │
-│          User Center · Order Service · Payment            │
+│             Business Plugins（业务层）                   │
+│              用户中心 · 订单服务 · 支付模块               │
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Infrastructure Proxy Responsibilities
+## 基础设施代理的职责
 
-The Infrastructure Proxy is the **Middle Layer** of the three-tier architecture, responsible for:
+基础设施代理是三层架构的**中间层**，负责：
 
-1. **Encapsulate Bottom Capabilities**: Database, Cache, Message Queue, etc.
-2. **Fine-grained Permission Interception**: Perform permission checks at the API level.
-3. **Audit Reporting**: Report operation records to Core.
-4. **Transparent to Business Modules**: Business modules use infrastructure imperceptibly.
+1. **封装底层能力**：数据库、缓存、消息队列等
+2. **细粒度权限拦截**：在 API 层面进行权限检查
+3. **审计上报**：将操作记录上报给 Core
+4. **对业务模块透明**：业务模块无感知地使用基础设施
 
-## Implemented Infrastructure Proxies
+## 已实现的基础设施代理
 
-### lingframe-infra-storage (Storage Proxy)
+### lingframe-infra-storage（存储代理）
 
-Provides database access capabilities, implementing SQL-level permission control via a proxy chain.
+提供数据库访问能力，通过代理链实现 SQL 级权限控制。
 
-#### Proxy Chain Structure
+#### 代理链结构
 
 ```
-Business Module calls DataSource.getConnection()
+业务模块调用 DataSource.getConnection()
     │
     ▼
 ┌─────────────────────────────────────┐
 │ LingDataSourceProxy                 │
-│ - Wraps original DataSource         │
-│ - Returns LingConnectionProxy       │
+│ - 包装原始 DataSource               │
+│ - 返回 LingConnectionProxy          │
 └─────────────────┬───────────────────┘
                   │
                   ▼
 ┌─────────────────────────────────────┐
 │ LingConnectionProxy                 │
-│ - Wraps original Connection         │
+│ - 包装原始 Connection               │
 │ - createStatement() → LingStatementProxy
 │ - prepareStatement() → LingPreparedStatementProxy
 └─────────────────┬───────────────────┘
@@ -60,16 +60,16 @@ Business Module calls DataSource.getConnection()
 ┌─────────────────────────────────────┐
 │ LingStatementProxy                  │
 │ LingPreparedStatementProxy          │
-│ - Intercept execute/executeQuery/executeUpdate
-│ - Parse SQL Type (SELECT/INSERT/UPDATE/DELETE)
-│ - Call PermissionService to check permission
-│ - Report Audit Log                  │
+│ - 拦截 execute/executeQuery/executeUpdate
+│ - 解析 SQL 类型（SELECT/INSERT/UPDATE/DELETE）
+│ - 调用 PermissionService 检查权限   │
+│ - 上报审计日志                       │
 └─────────────────────────────────────┘
 ```
 
-#### Core Implementation
+#### 核心实现
 
-**DataSourceWrapperProcessor**: Auto-wrap DataSource via BeanPostProcessor
+**DataSourceWrapperProcessor**：通过 BeanPostProcessor 自动包装 DataSource
 
 ```java
 @Component
@@ -86,23 +86,23 @@ public class DataSourceWrapperProcessor implements BeanPostProcessor {
 }
 ```
 
-**LingPreparedStatementProxy**: SQL-level Permission Check
+**LingPreparedStatementProxy**：SQL 级权限检查
 
 ```java
 public class LingPreparedStatementProxy implements PreparedStatement {
 
     private void checkPermission() throws SQLException {
-        // 1. Get Caller Plugin ID
+        // 1. 获取调用方插件ID
         String callerPluginId = PluginContextHolder.get();
         if (callerPluginId == null) return;
 
-        // 2. Parse SQL Type
+        // 2. 解析 SQL 类型
         AccessType accessType = parseSqlForAccessType(sql);
 
-        // 3. Permission Check
+        // 3. 权限检查
         boolean allowed = permissionService.isAllowed(callerPluginId, "storage:sql", accessType);
 
-        // 4. Audit Report
+        // 4. 审计上报
         permissionService.audit(callerPluginId, "storage:sql", sql, allowed);
 
         if (!allowed) {
@@ -118,21 +118,21 @@ public class LingPreparedStatementProxy implements PreparedStatement {
 }
 ```
 
-#### SQL Type Parsing
+#### SQL 类型解析
 
-Supports two parsing strategies:
+支持两种解析策略：
 
-1. **Simple Match**: Short SQL string matching
-2. **JSqlParser**: Complex SQL syntax parsing
+1. **简单匹配**：短 SQL 直接字符串匹配
+2. **JSqlParser**：复杂 SQL 使用语法解析
 
 ```java
 private AccessType parseSqlForAccessType(String sql) {
-    // Simple SQL direct matching
+    // 简单 SQL 直接匹配
     if (isSimpleSql(sql)) {
         return fallbackParseSql(sql);
     }
 
-    // Complex SQL using JSqlParser
+    // 复杂 SQL 使用 JSqlParser
     Statement statement = CCJSqlParserUtil.parse(sql);
     if (statement instanceof Select) return AccessType.READ;
     if (statement instanceof Insert || Update || Delete) return AccessType.WRITE;
@@ -140,43 +140,43 @@ private AccessType parseSqlForAccessType(String sql) {
 }
 ```
 
-### lingframe-infra-cache (Cache Proxy)
+### lingframe-infra-cache（缓存代理）
 
-Provides cache access capabilities, supporting Spring Cache, Caffeine, and Redis, implementing permission control via proxies and interceptors.
+提供缓存访问能力，支持 Spring Cache、Caffeine 和 Redis，通过代理和拦截器实现权限控制。
 
-#### Proxy Chain Structure
+#### 代理链结构
 
 ```
-Business Module calls cacheManager.getCache("users")
+业务模块调用 cacheManager.getCache("users")
     │
     ▼
 ┌─────────────────────────────────────┐
 │ LingCacheManagerProxy               │
-│ - Wraps CacheManager                │
-│ - Returns LingSpringCacheProxy      │
+│ - 包装 CacheManager                 │
+│ - 返回 LingSpringCacheProxy         │
 └─────────────────┬───────────────────┘
                   │
                   ▼
 ┌─────────────────────────────────────┐
 │ LingSpringCacheProxy                │
-│ - Intercept get/put/evict/clear     │
-│ - Permission Check + Audit Report    │
+│ - 拦截 get/put/evict/clear          │
+│ - 权限检查 + 审计上报                │
 └─────────────────────────────────────┘
 
-Business Module calls redisTemplate.opsForValue().set(...)
+业务模块调用 redisTemplate.opsForValue().set(...)
     │
     ▼
 ┌─────────────────────────────────────┐
 │ RedisPermissionInterceptor          │
-│ - AOP Intercept RedisTemplate methods│
-│ - Infer Operation Type (READ/WRITE)  │
-│ - Permission Check + Audit Report    │
+│ - AOP 拦截 RedisTemplate 方法       │
+│ - 推导操作类型（READ/WRITE）         │
+│ - 权限检查 + 审计上报                │
 └─────────────────────────────────────┘
 ```
 
-#### Core Implementation
+#### 核心实现
 
-**RedisPermissionInterceptor**: Redis Operation Permission Interception
+**RedisPermissionInterceptor**：Redis 操作权限拦截
 
 ```java
 @Override
@@ -184,13 +184,13 @@ public Object invoke(MethodInvocation invocation) throws Throwable {
     String callerPluginId = PluginContextHolder.get();
     String methodName = invocation.getMethod().getName();
     
-    // Infer Operation Type
+    // 推导操作类型
     AccessType accessType = inferAccessType(methodName);
     
-    // Permission Check
+    // 权限检查
     boolean allowed = permissionService.isAllowed(callerPluginId, "cache:redis", accessType);
     
-    // Audit Report
+    // 审计上报
     permissionService.audit(callerPluginId, "cache:redis", methodName, allowed);
     
     if (!allowed) {
@@ -210,7 +210,7 @@ private AccessType inferAccessType(String methodName) {
 }
 ```
 
-**LingSpringCacheProxy**: Spring Cache Common Proxy
+**LingSpringCacheProxy**：Spring Cache 通用代理
 
 ```java
 @Override
@@ -226,17 +226,17 @@ public ValueWrapper get(@NonNull Object key) {
 }
 ```
 
-#### Supported Cache Types
+#### 支持的缓存类型
 
-| Type | Capability ID | Description |
-| ---- | ------------- | ----------- |
-| Spring Cache | `cache:local` | Unified Abstraction Layer |
-| Redis | `cache:redis` | RedisTemplate Interception |
-| Caffeine | `cache:local` | Local Cache |
+| 类型 | 能力标识 | 说明 |
+|------|----------|------|
+| Spring Cache | `cache:local` | 统一抽象层 |
+| Redis | `cache:redis` | RedisTemplate 拦截 |
+| Caffeine | `cache:local` | 本地缓存 |
 
-## Developing New Infrastructure Proxies
+## 开发新的基础设施代理
 
-### 1. Create Module
+### 1. 创建模块
 
 ```xml
 <project>
@@ -256,9 +256,9 @@ public ValueWrapper get(@NonNull Object key) {
 </project>
 ```
 
-### 2. Implement Proxy Pattern
+### 2. 实现代理模式
 
-The core of an infrastructure proxy is the **Proxy Pattern**:
+基础设施代理的核心是**代理模式**：
 
 ```java
 public class LingXxxProxy implements XxxInterface {
@@ -268,26 +268,26 @@ public class LingXxxProxy implements XxxInterface {
 
     @Override
     public Result doSomething(Args args) {
-        // 1. Get Caller
+        // 1. 获取调用方
         String callerPluginId = PluginContextHolder.get();
 
-        // 2. Permission Check
+        // 2. 权限检查
         if (!permissionService.isAllowed(callerPluginId, "xxx:capability", accessType)) {
             throw new PermissionDeniedException(...);
         }
 
-        // 3. Audit Report
+        // 3. 审计上报
         permissionService.audit(callerPluginId, "xxx:capability", operation, true);
 
-        // 4. Execute Real Operation
+        // 4. 执行真实操作
         return target.doSomething(args);
     }
 }
 ```
 
-### 3. Auto-Wrap Bean
+### 3. 自动包装 Bean
 
-Use BeanPostProcessor for automatic wrapping:
+使用 BeanPostProcessor 自动包装：
 
 ```java
 @Component
@@ -303,19 +303,19 @@ public class XxxWrapperProcessor implements BeanPostProcessor {
 }
 ```
 
-### 4. Define Capability ID
+### 4. 定义能力标识
 
-Infrastructure proxies need to define clear capability identifiers (capability):
+基础设施代理需要定义清晰的能力标识（capability）：
 
-| Plugin  | Capability ID     | Description |
-| ------- | ----------------- | ----------- |
-| storage | `storage:sql`     | SQL Execution |
-| cache   | `cache:redis`     | Redis Operation |
-| cache   | `cache:local`     | Local Cache |
-| message | `message:send`    | Send Message |
-| message | `message:consume` | Consume Message |
+| 插件    | 能力标识          | 说明       |
+| ------- | ----------------- | ---------- |
+| storage | `storage:sql`     | SQL 执行   |
+| cache   | `cache:redis`     | Redis 操作 |
+| cache   | `cache:local`     | 本地缓存   |
+| message | `message:send`    | 发送消息   |
+| message | `message:consume` | 消费消息   |
 
-Business modules declare required capabilities in `plugin.yml`:
+业务模块在 `plugin.yml` 中声明所需能力：
 
 ```yaml
 id: my-plugin
@@ -330,14 +330,14 @@ governance:
       permissionId: "WRITE"
 ```
 
-## Relationship with Business Modules
+## 与业务模块的关系
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Business Module                       │
+│                    业务模块                              │
 │  userRepository.findById(id)                            │
 │         │                                               │
-│         │ (Transparent Call)                             │
+│         │ (透明调用)                                     │
 │         ▼                                               │
 │  ┌─────────────────────────────────────────────────┐   │
 │  │              MyBatis / JPA                       │   │
@@ -347,19 +347,19 @@ governance:
                          │ (JDBC)
                          ▼
 ┌─────────────────────────────────────────────────────────┐
-│                 Infrastructure Proxy (Storage)           │
+│                 基础设施代理 (Storage)                   │
 │  ┌─────────────────────────────────────────────────┐   │
 │  │ LingDataSourceProxy → LingConnectionProxy       │   │
 │  │     → LingPreparedStatementProxy                │   │
 │  │                                                  │   │
-│  │ 1. Get callerPluginId                           │   │
-│  │ 2. Parse SQL Type                                │   │
-│  │ 3. Call PermissionService.isAllowed()           │   │
-│  │ 4. Audit Reporting                               │   │
+│  │ 1. 获取 callerPluginId                          │   │
+│  │ 2. 解析 SQL 类型                                 │   │
+│  │ 3. 调用 PermissionService.isAllowed()           │   │
+│  │ 4. 审计上报                                      │   │
 │  └─────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
                          │
-                         │ (Permission Query)
+                         │ (权限查询)
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │                       Core                              │
@@ -368,10 +368,10 @@ governance:
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Best Practices
+## 最佳实践
 
-1. **Proxy Transparency**: Business plugins should not be aware of the proxy's existence.
-2. **Capability ID Standardization**: Use `Plugin:Operation` format.
-3. **Fine-grained Control**: Intercept at the closest point to the operation.
-4. **Async Audit**: Audit should not block business flow.
-5. **Cache Optimization**: SQL parsing results can be cached.
+1. **代理透明**：业务插件无需感知代理存在
+2. **能力标识规范**：使用 `插件:操作` 格式
+3. **细粒度控制**：在最接近操作的地方拦截
+4. **异步审计**：审计不阻塞业务流程
+5. **缓存优化**：SQL 解析结果可缓存

@@ -1,10 +1,10 @@
-# 业务模块开发指南
+# Business Module Development Guide
 
-本文档介绍如何开发 LingFrame 业务模块。
+This document introduces how to develop LingFrame business modules (plugins).
 
-## 创建插件项目
+## Create Plugin Project
 
-### 1. Maven 配置
+### 1. Maven Configuration
 
 ```xml
 <project>
@@ -31,7 +31,7 @@
 </project>
 ```
 
-### 2. 插件入口类
+### 2. Plugin Entry Class
 
 ```java
 package com.example.myplugin;
@@ -45,34 +45,34 @@ public class MyPlugin implements LingPlugin {
 
     @Override
     public void onStart(PluginContext context) {
-        System.out.println("插件启动: " + context.getPluginId());
+        System.out.println("Plugin Started: " + context.getPluginId());
     }
 
     @Override
     public void onStop(PluginContext context) {
-        System.out.println("插件停止: " + context.getPluginId());
+        System.out.println("Plugin Stopped: " + context.getPluginId());
     }
 }
 ```
 
-### 3. 插件元数据
+### 3. Plugin Metadata
 
-创建 `src/main/resources/plugin.yml`：
+Create `src/main/resources/plugin.yml`:
 
 ```yaml
-# 基础元数据
+# Basic Metadata
 id: my-plugin
 version: 1.0.0
 provider: "My Company"
-description: "我的插件"
+description: "My Plugin"
 mainClass: "com.example.myplugin.MyPlugin"
 
-# 依赖声明（可选）
+# Dependencies (Optional)
 dependencies:
   - id: "base-plugin"
     minVersion: "1.0.0"
 
-# 治理配置
+# Governance Configuration
 governance:
   permissions:
     - methodPattern: "storage:sql"
@@ -85,25 +85,25 @@ governance:
       action: "DELETE_OPERATION"
       enabled: true
 
-# 自定义属性（可选）
+# Custom Properties (Optional)
 properties:
   custom-config: "value"
   timeout: 5000
 ```
 
-## 暴露服务
+## Expose Service
 
-使用 `@LingService` 注解暴露服务。
+Use `@LingService` annotation to expose services.
 
-**消费者驱动契约**：接口由消费者定义，生产者实现。例如 Order 模块定义 `UserQueryService`，User 模块实现它：
+**Consumer-Driven Contract**: Interfaces are defined by consumers and implemented by producers. For example, Order module defines `UserQueryService`, and User module implements it:
 
 ```java
-// ========== 消费者定义接口（在 order-api 模块中）==========
+// ========== Consumer Defines Interface (in order-api module) ==========
 public interface UserQueryService {
     Optional<UserDTO> findById(String userId);
 }
 
-// ========== 生产者实现接口（在 user-plugin 模块中）==========
+// ========== Producer Implements Interface (in user-plugin module) ==========
 package com.example.user.service;
 
 import com.lingframe.api.annotation.Auditable;
@@ -114,18 +114,18 @@ import org.springframework.stereotype.Component;
 @Component
 public class UserQueryServiceImpl implements UserQueryService {
 
-    @LingService(id = "find_user", desc = "根据ID查询用户")
+    @LingService(id = "find_user", desc = "Query user by ID")
     @Override
     public Optional<UserDTO> findById(String userId) {
         return userRepository.findById(userId).map(this::toDTO);
     }
 }
 
-// 另一个服务示例：带权限和审计
+// Another example: With permission and audit
 @Component  
 public class UserAdminServiceImpl implements UserAdminService {
 
-    @LingService(id = "create_user", desc = "创建新用户", timeout = 5000)
+    @LingService(id = "create_user", desc = "Create new user", timeout = 5000)
     @RequiresPermission("user:write")
     @Auditable(action = "CREATE_USER", resource = "user")
     @Override
@@ -135,82 +135,82 @@ public class UserAdminServiceImpl implements UserAdminService {
 }
 ```
 
-### @LingService 属性
+### @LingService Properties
 
-| 属性      | 说明                  | 默认值 |
-| --------- | --------------------- | ------ |
-| `id`      | 服务短 ID，组成 FQSID | 必填   |
-| `desc`    | 服务描述              | 空     |
-| `timeout` | 超时时间（毫秒）      | 3000   |
+| Property | Description | Default |
+| -------- | ----------- | ------- |
+| `id` | Service Short ID, forms FQSID | Required |
+| `desc` | Service Description | Empty |
+| `timeout` | Timeout (ms) | 3000 |
 
-### FQSID 格式
+### FQSID Format
 
-服务的全局唯一标识：`pluginId:serviceId`
+Global Unique Service Identifier: `pluginId:serviceId`
 
-例如：`user-plugin:find_user`
+Example: `user-plugin:find_user`
 
-## 调用其他插件服务
+## Call Other Plugin Services
 
-LingFrame 提供三种服务调用方式，推荐优先级如下：
+LingFrame provides three invocation methods, with the following recommended priority:
 
-### 方式一：@LingReference 注入（强烈推荐）
+### Method 1: @LingReference Injection (Highly Recommended)
 
-这是最接近 Spring 原生体验的调用方式。
+This is the closest to native Spring experience.
 
-**消费者驱动契约**：Order 插件（消费者）定义它需要的接口，User/Payment 插件（生产者）实现：
+**Consumer-Driven Contract**: Order Plugin (Consumer) defines the interface it needs, User/Payment Plugin (Producer) implements it:
 
 ```java
-// ========== 第1步：消费者定义接口（在 order-api 模块中）==========
-// 位置：order-api/src/main/java/com/example/order/api/
+// ========== Step 1: Consumer Defines Interface (in order-api module) ==========
+// Location: order-api/src/main/java/com/example/order/api/
 
-// Order 插件定义它需要的用户查询能力
+// Order Plugin defines the user query capability it needs
 public interface UserQueryService {
     Optional<UserDTO> findById(String userId);
 }
 
-// Order 插件定义它需要的支付能力
+// Order Plugin defines the payment capability it needs
 public interface PaymentService {
     PaymentResult processPayment(String userId, BigDecimal amount);
 }
 
-// ========== 第2步：生产者实现接口（在各自插件中）==========
-// User 插件实现 Order 定义的 UserQueryService
-// 位置：user-plugin/src/main/java/.../UserQueryServiceImpl.java
+// ========== Step 2: Producer Implements Interface (in respective plugins) ==========
+// User Plugin implements UserQueryService defined by Order
+// Location: user-plugin/src/main/java/.../UserQueryServiceImpl.java
 @Component
 public class UserQueryServiceImpl implements UserQueryService {
-    @LingService(id = "find_user", desc = "查询用户")
+    @LingService(id = "find_user", desc = "Query User")
     @Override
     public Optional<UserDTO> findById(String userId) {
         return userRepository.findById(userId).map(this::toDTO);
     }
 }
 
-// Payment 插件实现 Order 定义的 PaymentService
-// 位置：payment-plugin/src/main/java/.../PaymentServiceImpl.java
+// Payment Plugin implements PaymentService defined by Order
+// Location: payment-plugin/src/main/java/.../PaymentServiceImpl.java
 @Component
 public class PaymentServiceImpl implements PaymentService {
-    @LingService(id = "process_payment", desc = "处理支付", timeout = 5000)
+    @LingService(id = "process_payment", desc = "Process Payment", timeout = 5000)
     @Override
     public PaymentResult processPayment(String userId, BigDecimal amount) {
         return paymentGateway.charge(userId, amount);
     }
 }
 
-// ========== 第3步：消费者使用自己定义的接口 ==========
-// 位置：order-plugin/src/main/java/.../OrderService.java
+// ========== Step 3: Consumer Uses Interface Defined by Itself ==========
+// Location: order-plugin/src/main/java/.../OrderService.java
 @Component
 public class OrderService {
 
     @LingReference
-    private UserQueryService userQueryService;  // 自动注入，由 User 插件实现
+    private UserQueryService userQueryService;  // Auto injected, implemented by User Plugin
 
     @LingReference
-    private PaymentService paymentService;  // 自动注入，由 Payment 插件实现
+    private PaymentService paymentService;  // Auto injected, implemented by Payment Plugin
 
     public Order createOrder(String userId, List<Item> items) {
-        // 直接调用，框架自动路由到生产者的实现
+        // Direct call, framework auto-routes to producer implementation
         UserDTO user = userQueryService.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
+                .orElseThrow(() -> new RuntimeException("User not found"));
 
         BigDecimal total = calculateTotal(items);
         PaymentResult result = paymentService.processPayment(userId, total);
@@ -220,16 +220,16 @@ public class OrderService {
 }
 ```
 
-**@LingReference 优点：**
-- 代码最简洁，接近 Spring 原生体验
-- 支持延迟绑定，插件未启动时也能创建代理
-- 自动路由到最新版本插件
-- 支持可选的 pluginId 指定和超时配置
-- 通过 GlobalServiceRoutingProxy 实现智能路由
+**@LingReference Pros:**
+- Cleanest code, closest to Spring native experience.
+- Supports lazy binding, proxy created even if plugin not started.
+- Auto-routes to latest plugin version.
+- Supports optional pluginId specification and timeout configuration.
+- Smart routing via GlobalServiceRoutingProxy.
 
-### 方式二：PluginContext.getService()
+### Method 2: PluginContext.getService()
 
-适合需要显式错误处理的场景：
+Suitable where explicit error handling is needed:
 
 ```java
 @Component
@@ -239,23 +239,23 @@ public class OrderService {
     private PluginContext context;
 
     public Order createOrder(String userId, List<Item> items) {
-        // 获取消费者定义的接口的实现（由 User 插件提供）
+        // Get implementation of the interface defined by Consumer (Provided by User Plugin)
         Optional<UserQueryService> userQueryService = context.getService(UserQueryService.class);
         
         if (userQueryService.isEmpty()) {
-            throw new RuntimeException("用户查询服务不可用");
+            throw new RuntimeException("User Query Service Unavailable");
         }
         
         UserDTO user = userQueryService.get().findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
+                .orElseThrow(() -> new RuntimeException("User not found"));
         return new Order(user, items);
     }
 }
 ```
 
-### 方式三：PluginContext.invoke() FQSID 调用
+### Method 3: PluginContext.invoke() FQSID Call
 
-适合松耦合场景，不需要接口依赖：
+Suitable for loose coupling, no interface dependency:
 
 ```java
 @Component
@@ -265,11 +265,11 @@ public class OrderService {
     private PluginContext context;
 
     public Order createOrder(String userId, List<Item> items) {
-        // 通过 FQSID 直接调用生产者的服务
+        // Direct call to producer service via FQSID
         Optional<UserDTO> user = context.invoke("user-plugin:find_user", userId);
         
         if (user.isEmpty()) {
-            throw new RuntimeException("用户不存在");
+            throw new RuntimeException("User not found");
         }
         
         return new Order(user.get(), items);
@@ -277,50 +277,50 @@ public class OrderService {
 }
 ```
 
-## 权限声明
+## Permission Declaration
 
-### 显式声明
+### Explicit Declaration
 
 ```java
 @RequiresPermission("user:export")
 public void exportUsers() { ... }
 ```
 
-### 智能推导
+### Smart Inference
 
-框架会根据方法名前缀自动推导权限：
+Framework automatically infers permission based on method name prefix:
 
-| 前缀                                           | AccessType |
-| ---------------------------------------------- | ---------- |
-| `get`, `find`, `query`, `list`, `select`       | READ       |
-| `create`, `save`, `insert`, `update`, `delete` | WRITE      |
-| 其他                                           | EXECUTE    |
+| Prefix | AccessType |
+| ------ | ---------- |
+| `get`, `find`, `query`, `list`, `select` | READ |
+| `create`, `save`, `insert`, `update`, `delete` | WRITE |
+| Others | EXECUTE |
 
-### 开发模式
+### Development Mode
 
-开发时可在配置文件中开启宽松模式，权限不足仅警告：
+Enable loose mode in configuration during development, permission denied only warns:
 
 ```yaml
 lingframe:
   dev-mode: true
 ```
 
-## 审计日志
+## Audit Log
 
-### 显式声明
+### Explicit Declaration
 
 ```java
 @Auditable(action = "EXPORT_DATA", resource = "user")
 public void exportUsers() { ... }
 ```
 
-### 自动审计
+### Auto Audit
 
-写操作（WRITE）和执行操作（EXECUTE）会自动记录审计日志。
+Write operations (WRITE) and Execute operations (EXECUTE) are automatically audited.
 
-## 事件通信
+## Event Communication
 
-### 发布事件
+### Publish Event
 
 ```java
 public class UserCreatedEvent implements LingEvent {
@@ -335,11 +335,11 @@ public class UserCreatedEvent implements LingEvent {
     }
 }
 
-// 发布
+// Publish
 context.publishEvent(new UserCreatedEvent("123"));
 ```
 
-### 监听事件
+### Listen Event
 
 ```java
 @Component
@@ -347,25 +347,25 @@ public class UserEventListener implements LingEventListener<UserCreatedEvent> {
 
     @Override
     public void onEvent(UserCreatedEvent event) {
-        System.out.println("用户创建: " + event.getUserId());
+        System.out.println("User Created: " + event.getUserId());
     }
 }
 ```
 
-## 打包部署
+## Package & Deploy
 
-### 生产模式
+### Production Mode
 
 ```bash
 mvn clean package
-# 生成 target/my-plugin.jar
+# Generates target/my-plugin.jar
 ```
 
-将 JAR 放入宿主应用的 plugins 目录，框架会自动扫描并加载。
+Place JAR in host application's `plugins` directory, framework will auto scan and load.
 
-### 开发模式
+### Development Mode
 
-在宿主应用的配置文件中指向编译输出目录：
+Point to compilation output directory in host app configuration:
 
 ```yaml
 lingframe:
@@ -374,53 +374,53 @@ lingframe:
     - "../my-plugin/target/classes"
 ```
 
-修改代码后重新编译，HotSwapWatcher 会自动检测 target/classes 中的变化并热重载。
+After modifying code and recompiling, HotSwapWatcher auto-detects changes in `target/classes` and hot reloads.
 
-## 框架治理能力
+## Framework Governance Capabilities
 
-以下能力由 **LingFrame 核心**提供，业务模块无需自行实现：
+The following capabilities are provided by **LingFrame Core**, business modules do not need to implement them:
 
-| 能力 | 说明 | 插件需要做什么 |
-|------|------|----------------|
-| 熔断 | 服务不可用时自动熔断 | 无需处理 |
-| 降级 | 熔断后返回降级响应 | 可选：提供 `@Fallback` 方法 |
-| 重试 | 失败自动重试 | 无需处理 |
-| 超时 | 调用超时控制 | 可在 `@LingService` 中配置 |
-| 限流 | 请求频率限制 | 无需处理 |
-| 监控 | 调用链路追踪 | 无需处理 |
+| Capability | Description | What Plugin Needs To Do |
+| ---------- | ----------- | ----------------------- |
+| Circuit Breaking | Auto break when service unavailable | Nothing |
+| Degrade | Return fallback response after break | Optional: Provide `@Fallback` method |
+| Retry | Auto retry on failure | Nothing |
+| Timeout | Call timeout control | Configurable in `@LingService` |
+| Rate Limiting | Request frequency limit | Nothing |
+| Monitoring | Tracing | Nothing |
 
-**好处**：业务模块只需关注业务逻辑，治理策略可通过配置动态调整。
+**Benefit**: Business modules only focus on business logic, governance policies can be dynamically adjusted via configuration.
 
-## 最佳实践
+## Best Practices
 
-1. **消费者驱动契约**：消费者定义接口，生产者实现（详见 [共享 API 设计规范](shared-api-guidelines.md)）
-2. **服务调用优先级**：@LingReference > getService() > invoke()
-3. **依赖最小化**：插件只依赖 `lingframe-api`，不要依赖 `lingframe-core`
-4. **权限声明**：在 `plugin.yml` 中声明所需权限
-5. **服务粒度**：一个 `@LingService` 对应一个业务操作
-6. **异常处理**：使用 `LingException` 及其子类
-7. **日志规范**：使用 SLF4J，避免直接 System.out
-8. **接口设计**：消费者定义精简的接口，只包含自己需要的方法
+1. **Consumer-Driven Contract**: Consumer defines interface, producer implements (See [Shared API Guidelines](shared-api-guidelines.md)).
+2. **Invocation Priority**: @LingReference > getService() > invoke().
+3. **Minimize Dependencies**: Plugins should only depend on `lingframe-api`, not `lingframe-core`.
+4. **Permission Declaration**: Declare required permissions in `plugin.yml`.
+5. **Service Granularity**: One `@LingService` per business operation.
+6. **Exception Handling**: Use `LingException` and its subclasses.
+7. **Logging Standard**: Use SLF4J, avoid System.out.
+8. **Interface Design**: Consumer defines lean interfaces containing only required methods.
 
-## 常见问题
+## FAQ
 
 ### ClassNotFoundException
 
-检查类加载器隔离，确保依赖的类在插件 JAR 中或父加载器可见。
+Check ClassLoader isolation, ensure dependent classes are in plugin JAR or visible to parent loader.
 
-### 权限被拒绝
+### Permission Denied
 
-1. 检查 `plugin.yml` 中的权限声明
-2. 开发时开启 `lingframe.dev-mode: true`
+1. Check permission declaration in `plugin.yml`.
+2. Enable `lingframe.dev-mode: true` during development.
 
-### @LingReference 注入失败
+### @LingReference Injection Failed
 
-1. 确保目标插件已启动并注册了对应的服务 Bean
-2. 检查接口类型是否匹配
-3. 如果指定了 pluginId，确保插件ID正确
+1. Ensure target plugin is started and registered corresponding Service Bean.
+2. Check interface type match.
+3. If pluginId is specified, ensure it is correct.
 
-### 热重载不生效
+### Hot Swap Not Working
 
-1. 确保配置了 `lingframe.dev-mode: true`
-2. 确保在 `plugin-roots` 中配置了插件的 target/classes 目录
-3. 重新编译后等待 500ms（防抖延迟）
+1. Ensure `lingframe.dev-mode: true` is configured.
+2. Ensure `plugin-roots` points to plugin's `target/classes` directory.
+3. Wait 500ms after recompilation (Debounce delay).

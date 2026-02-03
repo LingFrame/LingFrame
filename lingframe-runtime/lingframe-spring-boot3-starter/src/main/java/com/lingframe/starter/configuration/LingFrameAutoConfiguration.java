@@ -45,6 +45,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.util.ArrayList;
@@ -128,13 +129,13 @@ public class LingFrameAutoConfiguration {
 
     @Bean
     public GovernanceKernel governanceKernel(PermissionService permissionService,
-            GovernanceArbitrator arbitrator, EventBus eventBus) {
+                                             GovernanceArbitrator arbitrator, EventBus eventBus) {
         return new GovernanceKernel(permissionService, arbitrator, eventBus);
     }
 
     @Bean
     public ContainerFactory containerFactory(ApplicationContext parentContext,
-            WebInterfaceManager webInterfaceManager) {
+                                             WebInterfaceManager webInterfaceManager) {
         return new SpringContainerFactory(parentContext, webInterfaceManager);
     }
 
@@ -195,18 +196,18 @@ public class LingFrameAutoConfiguration {
 
     @Bean
     public PluginManager pluginManager(ContainerFactory containerFactory,
-            PermissionService permissionService,
-            GovernanceKernel governanceKernel,
-            PluginLoaderFactory pluginLoaderFactory,
-            ObjectProvider<List<PluginSecurityVerifier>> verifiersProvider,
-            EventBus eventBus,
-            TrafficRouter trafficRouter,
-            PluginServiceInvoker pluginServiceInvoker,
-            ObjectProvider<TransactionVerifier> transactionVerifierProvider,
-            ObjectProvider<List<ThreadLocalPropagator>> propagatorsProvider,
-            LingFrameConfig lingFrameConfig,
-            LocalGovernanceRegistry localGovernanceRegistry,
-            ObjectProvider<ResourceGuard> resourceGuardProvider) {
+                                       PermissionService permissionService,
+                                       GovernanceKernel governanceKernel,
+                                       PluginLoaderFactory pluginLoaderFactory,
+                                       ObjectProvider<List<PluginSecurityVerifier>> verifiersProvider,
+                                       EventBus eventBus,
+                                       TrafficRouter trafficRouter,
+                                       PluginServiceInvoker pluginServiceInvoker,
+                                       ObjectProvider<TransactionVerifier> transactionVerifierProvider,
+                                       ObjectProvider<List<ThreadLocalPropagator>> propagatorsProvider,
+                                       LingFrameConfig lingFrameConfig,
+                                       LocalGovernanceRegistry localGovernanceRegistry,
+                                       ObjectProvider<ResourceGuard> resourceGuardProvider) {
 
         // 获取可选 Bean
         TransactionVerifier transactionVerifier = transactionVerifierProvider.getIfAvailable();
@@ -267,8 +268,8 @@ public class LingFrameAutoConfiguration {
     // 额外注册一个代表宿主的 Context
     @Bean
     public PluginContext hostPluginContext(PluginManager pluginManager,
-            PermissionService permissionService,
-            EventBus eventBus) {
+                                           PermissionService permissionService,
+                                           EventBus eventBus) {
         // 给宿主应用一个固定的 ID，例如 "host-app"
         return new CorePluginContext("host-app", pluginManager, permissionService, eventBus);
     }
@@ -304,11 +305,12 @@ public class LingFrameAutoConfiguration {
     @Bean
     public ApplicationListener<ContextRefreshedEvent> lingWebInitializer(
             WebInterfaceManager manager,
-            @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping hostMapping) {
+            @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping hostMapping,
+            RequestMappingHandlerAdapter adapter) {
         return event -> {
             if (event.getApplicationContext().getParent() == null) { // 仅 Host 容器执行
                 if (event.getApplicationContext() instanceof ConfigurableApplicationContext cac) {
-                    manager.init(hostMapping, cac);
+                    manager.init(hostMapping, adapter, cac);
                 }
             }
         };

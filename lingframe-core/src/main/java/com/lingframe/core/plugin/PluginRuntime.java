@@ -13,8 +13,8 @@ import com.lingframe.core.spi.ThreadLocalPropagator;
 import com.lingframe.core.spi.TrafficRouter;
 import com.lingframe.core.spi.TransactionVerifier;
 import com.lingframe.core.exception.ServiceUnavailableException;
-import jakarta.annotation.Nonnull;
 import lombok.Getter;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Proxy;
@@ -461,7 +461,7 @@ public class PluginRuntime {
             ServiceRegistry.RegistryStats registry,
             InvocationExecutor.ExecutorStats executor,
             PluginLifecycleManager.LifecycleStats lifecycle) {
-        @Nonnull
+        @NonNull
         @Override
         public String toString() {
             return String.format(

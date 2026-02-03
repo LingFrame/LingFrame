@@ -11,9 +11,9 @@
 
 ## 你可以从这里开始
 
-- **技术入口**：深入治理细节与架构 👉 [technical-entry.md](docs/technical-entry.md)
-- **实用入口**：快速上手与灰度发布 👉 [practical-entry.md](docs/practical-entry.md)
-- **快速试用**：👉 [getting-started.md](docs/getting-started.md)
+- **技术入口**：深入治理细节与架构 👉 [technical-entry.md](docs/zh-CN/technical-entry.md)
+- **实用入口**：快速上手与灰度发布 👉 [practical-entry.md](docs/zh-CN/practical-entry.md)
+- **快速试用**：👉 [getting-started.md](docs/zh-CN/getting-started.md)
 - **核心立场**：👉 [MANIFESTO.md](MANIFESTO.md)
 - **设计原则与边界选择**：👉 [WHY.md](WHY.md)
 
@@ -22,7 +22,7 @@
 
 ---
 
-![LingFrame Dashboard 示例](./docs/images/dashboard.png)
+![LingFrame Dashboard 示例](./docs/images/dashboard.zh-CN.png)
 
 ---
 

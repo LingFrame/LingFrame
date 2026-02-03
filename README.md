@@ -22,7 +22,7 @@ LingFrame allows you to pause at any stage.
 
 ---
 
-![LingFrame Dashboard Example](./docs/images/dashboard.en.png)
+![LingFrame Dashboard Example](./docs/images/dashboard.png)
 
 *Real-time plugin governance dashboard: monitor status, canary traffic, and audit logs.*
 

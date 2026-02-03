@@ -1,28 +1,28 @@
-# Architecture Design
+# 架构设计
 
-This document describes the core architecture design and implementation principles of LingFrame.
+本文档介绍 LingFrame 的核心架构设计和实现原理。
 
-## Design Philosophy
+## 设计理念
 
-LingFrame draws inspiration from operating system design principles:
+LingFrame 借鉴操作系统的设计思想：
 
-- **Microkernel**: Core is responsible only for scheduling and arbitration, containing no business logic.
-- **Zero Trust**: Business modules cannot directly access infrastructure; they must go through the Core proxy.
-- **Capability Isolation**: Each plugin runs in an independent ClassLoader and Spring Context.
+- **微内核**：Core 只负责调度和仲裁，不包含业务逻辑
+- **零信任**：业务模块不能直接访问基础设施，必须经过 Core 代理
+- **能力隔离**：每个插件在独立的类加载器和 Spring 上下文中运行
 
-## Three-Tier Architecture
+## 三层架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      Host Application                        │
 │                                                              │
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │                 Core (Governance Kernel)                │  │
+│  │                 Core（治理内核）                        │  │
 │  │                                                        │  │
 │  │   PluginManager · PermissionService · EventBus        │  │
 │  │   AuditManager · TraceContext · GovernanceStrategy    │  │
 │  │                                                        │  │
-│  │   Resp: Lifecycle Mgmt · Auth Gov · Capability Sched · Context Isolation │  │
+│  │   职责：生命周期管理 · 权限治理 · 能力调度 · 上下文隔离  │  │
 │  └────────────────────────┬──────────────────────────────┘  │
 │                           │                                  │
 │         ┌─────────────────┼─────────────────┐               │
@@ -31,7 +31,7 @@ LingFrame draws inspiration from operating system design principles:
 │  │  Storage    │   │   Cache     │   │  Message    │       │
 │  │  Plugin     │   │   Plugin    │   │  Plugin     │       │
 │  │             │   │             │   │             │       │
-│  │ Infra Layer  │   │ Infra Layer  │   │ Infra Layer  │       │
+│  │ 基础设施层   │   │ 基础设施层   │   │ 基础设施层   │       │
 │  └──────┬──────┘   └──────┬──────┘   └──────┬──────┘       │
 │         │                 │                 │               │
 │         └─────────────────┼─────────────────┘               │
@@ -42,121 +42,121 @@ LingFrame draws inspiration from operating system design principles:
 │  │   User      │   │   Order     │   │  Payment    │       │
 │  │  Plugin     │   │   Plugin    │   │  Plugin     │       │
 │  │             │   │             │   │             │       │
-│  │ Business Layer│   │ Business Layer│   │ Business Layer│       │
+│  │  业务模块层  │   │  业务模块层  │   │  业务模块层  │       │
 │  └─────────────┘   └─────────────┘   └─────────────┘       │
 │                                                              │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### Layer 1: Core (Governance Kernel)
+### 第一层：Core（治理内核）
 
-**Module**: `lingframe-core`
+**模块**：`lingframe-core`
 
-**Responsibilities**:
+**职责**：
 
-- Plugin Cycle Management (Install, Uninstall, Hot Swap)
-- Governance (Permission Check, Authorization, Audit)
-- Service Routing (FQSID Routing Table)
-- Context Isolation (ClassLoader, Spring Context)
+- 插件生命周期管理（安装、卸载、热重载）
+- 权限治理（检查、授权、审计）
+- 服务路由（FQSID 路由表）
+- 上下文隔离（类加载器、Spring 上下文）
 
-**Key Principles**:
+**关键原则**：
 
-- Core is the sole arbiter.
-- Provides no business capabilities, only scheduling and control.
-- All cross-plugin calls must pass through Core.
+- Core 是唯一仲裁者
+- 不提供业务能力，只负责调度和控制
+- 所有跨插件调用必须经过 Core
 
-**Core Components**:
+**核心组件**：
 
-| Component                 | Responsibility             |
-| ------------------------- | -------------------------- |
-| `PluginManager`           | Plugin Install/Uninstall/Routing |
-| `PluginRuntime`           | Plugin Runtime Environment |
-| `InstancePool`            | Blue-Green Deployment & Versioning |
-| `ServiceRegistry`         | Service Registry           |
-| `InvocationExecutor`      | Invocation Executor        |
-| `PluginLifecycleManager`  | Lifecycle Management       |
-| `PermissionService`       | Permission Check & Authorization |
-| `AuditManager`            | Audit Logging              |
-| `EventBus`                | Event Publish/Subscribe    |
-| `GovernanceKernel`        | Governance Kernel          |
+| 组件                      | 职责                   |
+| ------------------------ | ---------------------- |
+| `PluginManager`          | 插件安装/卸载/服务路由 |
+| `PluginRuntime`          | 插件运行时环境         |
+| `InstancePool`           | 蓝绿部署和版本管理     |
+| `ServiceRegistry`        | 服务注册表             |
+| `InvocationExecutor`     | 调用执行器             |
+| `PluginLifecycleManager` | 生命周期管理           |
+| `PermissionService`      | 权限检查和授权         |
+| `AuditManager`           | 审计日志记录           |
+| `EventBus`               | 事件发布订阅           |
+| `GovernanceKernel`       | 治理内核               |
 
-### Layer 2: Infrastructure (Infrastructure Layer)
+### 第二层：Infrastructure（基础设施层）
 
-**Module**: `lingframe-infrastructure/*`
+**模块**：`lingframe-infrastructure/*`
 
-**Responsibilities**:
+**职责**：
 
-- Encapsulate underlying capabilities (Database, Cache, Message Queue).
-- Fine-grained permission interception.
-- Audit reporting.
+- 封装底层能力（数据库、缓存、消息队列）
+- 细粒度权限拦截
+- 审计上报
 
-**Implemented**:
+**已实现**：
 
-| Module                       | Description                | Capability ID |
-| ---------------------------- | -------------------------- | ------------- |
-| `lingframe-infra-storage`    | DB Access, SQL-level ACL   | `storage:sql` |
-| `lingframe-infra-cache`      | Cache Access (TODO)        | `cache:redis` |
+| 模块                         | 说明                       | 能力标识      |
+| -------------------------- | -------------------------- | ------------- |
+| `lingframe-infra-storage`  | 数据库访问，SQL 级权限控制 | `storage:sql` |
+| `lingframe-infra-cache`    | 缓存访问（待实现）         | `cache:redis` |
 
-**Working Principle**:
+**工作原理**：
 
-Infrastructure plugins intercept underlying calls via a **proxy chain**:
+基础设施插件通过**代理链**拦截底层调用：
 
 ```
-Business Plugin calls userRepository.findById()
+业务插件调用 userRepository.findById()
     │
-    ▼ (Transparent, via MyBatis/JPA)
+    ▼ (透明，通过 MyBatis/JPA)
 ┌─────────────────────────────────────┐
-│ Storage Plugin (Infrastructure)      │
+│ Storage Plugin (基础设施层)          │
 │                                      │
 │ LingDataSourceProxy                  │
 │   └→ LingConnectionProxy             │
-│       ├→ LingStatementProxy          │  ← Normal Statement
+│       ├→ LingStatementProxy          │  ← 普通 Statement
 │       └→ LingPreparedStatementProxy  │  ← PreparedStatement
 │                                      │
-│ Interception: execute/executeQuery/Update  │
-│ 1. PluginContextHolder.get() Get Caller
-│ 2. Parse SQL Type (SELECT/INSERT...) │
-│ 3. permissionService.isAllowed() Auth│
-│ 4. permissionService.audit() Audit   │
+│ 拦截点：execute/executeQuery/Update  │
+│ 1. PluginContextHolder.get() 获取调用方
+│ 2. 解析 SQL 类型 (SELECT/INSERT...)  │
+│ 3. permissionService.isAllowed() 鉴权│
+│ 4. permissionService.audit() 审计    │
 └─────────────────────────────────────┘
     │
-    ▼ (Permission Query)
+    ▼ (权限查询)
 ┌─────────────────────────────────────┐
 │ Core                                 │
 │ DefaultPermissionService.isAllowed() │
 └─────────────────────────────────────┘
 ```
 
-> See [Infrastructure Proxy Development](infrastructure-development.md) for details.
+> 详细开发指南见 [基础设施代理开发](infrastructure-development.md)
 
-### Layer 3: Business Plugins (Business Layer)
+### 第三层：Business Plugins（业务层）
 
-**Module**: User-developed plugins
+**模块**：用户开发的插件
 
-**Responsibilities**:
+**职责**：
 
-- Implement business logic.
-- Access infrastructure via `PluginContext`.
-- Expose services via `@LingService`.
+- 实现业务逻辑
+- 通过 `PluginContext` 访问基础设施
+- 通过 `@LingService` 暴露服务
 
-**Key Principles**:
+**关键原则**：
 
-- **Zero Trust**: Cannot directly access Database, Cache, etc.
-- All capability calls must pass through Core proxy and authorization.
-- Declare required permissions in `plugin.yml`.
+- **零信任**：不能直接访问数据库、缓存等
+- 所有能力调用必须经过 Core 代理和鉴权
+- 在 `plugin.yml` 中声明所需权限
 
-## Data Flow
+## 数据流
 
-### Business Module Calls Infrastructure
+### 业务模块调用基础设施
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Business Plugin (User Plugin)                                │
+│ Business Plugin (用户插件)                                   │
 │                                                              │
 │   userRepository.findById(id)                               │
 │         │                                                    │
 └─────────┼────────────────────────────────────────────────────┘
-          │ JDBC Call
+          │ JDBC 调用
           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ Infrastructure Plugin (Storage)                              │
@@ -167,7 +167,7 @@ Business Plugin calls userRepository.findById()
 │         │     │                                              │
 │         │     ├─→ PluginContextHolder.get() → "user-plugin" │
 │         │     │                                              │
-│         │     ├─→ preParsedAccessType (Parsed at construction)│
+│         │     ├─→ preParsedAccessType (构造时已解析)         │
 │         │     │                                              │
 │         │     ├─→ permissionService.isAllowed(              │
 │         │     │       "user-plugin", "storage:sql", READ)   │
@@ -184,30 +184,31 @@ Business Plugin calls userRepository.findById()
 │                                                              │
 │   DefaultPermissionService.isAllowed()                      │
 │         │                                                    │
-│         ├─→ Check Whitelist                                  │
-│         ├─→ Query Permission Table                           │
-│         └─→ Dev Mode Fallback                                │
+│         ├─→ 检查白名单                                       │
+│         ├─→ 查询权限表                                       │
+│         └─→ 开发模式兜底                                     │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-> Note: `LingPreparedStatementProxy` pre-parses SQL type at construction and caches it. `LingStatementProxy` parses SQL at each execution.
+> 注：`LingPreparedStatementProxy` 在构造时预解析 SQL 类型并缓存，执行时直接使用。
+> `LingStatementProxy` 则在每次执行时解析传入的 SQL。
 
-### Cross-Module Calls (Method 1: @LingReference Injection - Recommended)
+### 业务模块间调用（方式一：@LingReference 注入 - 推荐）
 
-**Consumer-Driven Contract**: Order Plugin (Consumer) defines `UserQueryService` interface, User Plugin (Producer) implements it.
+**消费者驱动契约**：Order 插件（消费者）定义 `UserQueryService` 接口，User 插件（生产者）实现
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Order Plugin (Consumer)                                      │
+│ Order Plugin（消费者）                                       │
 │                                                              │
-│   // Order defines the interface it needs (in order-api)     │
+│   // Order 定义它需要的接口（在 order-api 中）               │
 │   interface UserQueryService { UserDTO findById(userId); }  │
 │                                                              │
 │   @LingReference                                             │
 │   private UserQueryService userQueryService;                │
 │                                                              │
-│   userQueryService.findById(userId);  // Direct Call        │
+│   userQueryService.findById(userId);  // 直接调用           │
 │         │                                                    │
 └─────────┼────────────────────────────────────────────────────┘
           │
@@ -215,51 +216,51 @@ Business Plugin calls userRepository.findById()
 ┌─────────────────────────────────────────────────────────────┐
 │ Core                                                         │
 │                                                              │
-│   GlobalServiceRoutingProxy.invoke() (JDK Dynamic Proxy)    │
+│   GlobalServiceRoutingProxy.invoke() (JDK 动态代理)         │
 │         │                                                    │
-│         ├─→ resolveTargetPluginId() Resolve Target Plugin   │
-│         │     ├─→ Check pluginId in annotation              │
-│         │     └─→ Iterate all plugins for implementation (Cached)│
+│         ├─→ resolveTargetPluginId() 解析目标插件            │
+│         │     ├─→ 检查注解指定的 pluginId                   │
+│         │     └─→ 遍历所有插件查找接口实现（带缓存）         │
 │         │                                                    │
 │         ├─→ pluginManager.getRuntime(pluginId)              │
 │         │                                                    │
 │         ▼                                                    │
-│   SmartServiceProxy.invoke() (Delegate to Smart Proxy)      │
+│   SmartServiceProxy.invoke() (委托给智能代理)               │
 │         │                                                    │
 │         ├─→ PluginContextHolder.set(callerPluginId)         │
-│         ├─→ TraceContext.start() Start Tracing              │
-│         ├─→ checkPermissionSmartly() Permission Check       │
-│         │     ├─→ @RequiresPermission Explicit Declaration  │
-│         │     └─→ GovernanceStrategy.inferPermission() Infer│
+│         ├─→ TraceContext.start() 开启链路追踪               │
+│         ├─→ checkPermissionSmartly() 权限检查               │
+│         │     ├─→ @RequiresPermission 显式声明              │
+│         │     └─→ GovernanceStrategy.inferPermission() 推导 │
 │         │                                                    │
-│         ├─→ activeInstanceRef.get() Get Active Instance     │
-│         ├─→ instance.enter() (Ref Count +1)                  │
-│         ├─→ TCCL Hijack                                      │
+│         ├─→ activeInstanceRef.get() 获取活跃实例            │
+│         ├─→ instance.enter() (引用计数+1)                    │
+│         ├─→ TCCL 劫持                                        │
 │         ├─→ method.invoke(realBean, args)                   │
-│         ├─→ TCCL Restore                                     │
-│         ├─→ instance.exit() (Ref Count -1)                   │
-│         └─→ recordAuditSmartly() Smart Audit                │
+│         ├─→ TCCL 恢复                                        │
+│         ├─→ instance.exit() (引用计数-1)                     │
+│         └─→ recordAuditSmartly() 智能审计                   │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
           │
           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ User Plugin (Producer)                                       │
+│ User Plugin（生产者）                                        │
 │                                                              │
-│   // Implements the interface defined by Consumer            │
+│   // 实现消费者定义的接口                                    │
 │   public class UserQueryServiceImpl implements UserQueryService {
-│       @LingService(id = "find_user", desc = "Query User")   │
+│       @LingService(id = "find_user", desc = "查询用户")     │
 │       public UserDTO findById(String userId) { ... }        │
 │   }                                                          │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Cross-Module Calls (Method 2: FQSID Protocol)
+### 业务模块间调用（方式二：FQSID 协议调用）
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Order Plugin (Consumer)                                      │
+│ Order Plugin（消费者）                                       │
 │                                                              │
 │   context.invoke("user-plugin:find_user", userId)           │
 │         │                                                    │
@@ -272,44 +273,44 @@ Business Plugin calls userRepository.findById()
 │   CorePluginContext.invoke()                                │
 │         │                                                    │
 │         ├─→ GovernanceStrategy.inferAccessType() → EXECUTE  │
-│         ├─→ permissionService.isAllowed() Permission Check   │
+│         ├─→ permissionService.isAllowed() 权限检查           │
 │         │                                                    │
 │         ▼                                                    │
 │   PluginManager.invokeService()                             │
 │         │                                                    │
-│         ├─→ protocolServiceRegistry.get(fqsid) Find Route    │
+│         ├─→ protocolServiceRegistry.get(fqsid) 查找路由      │
 │         │                                                    │
 │         ▼                                                    │
 │   PluginRuntime.invokeService()                             │
 │         │                                                    │
-│         ├─→ instance.enter() (Ref Count +1)                  │
-│         ├─→ TCCL Hijack                                      │
-│         ├─→ serviceMethodCache.get(fqsid) Get Method         │
-│         ├─→ method.invoke() Reflection Invoke                │
-│         ├─→ TCCL Restore                                     │
-│         └─→ instance.exit() (Ref Count -1)                   │
+│         ├─→ instance.enter() (引用计数+1)                    │
+│         ├─→ TCCL 劫持                                        │
+│         ├─→ serviceMethodCache.get(fqsid) 获取方法           │
+│         ├─→ method.invoke() 反射调用                         │
+│         ├─→ TCCL 恢复                                        │
+│         └─→ instance.exit() (引用计数-1)                     │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
           │
           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ User Plugin (Producer)                                       │
+│ User Plugin（生产者）                                        │
 │                                                              │
-│   @LingService(id = "find_user", desc = "Query User")       │
+│   @LingService(id = "find_user", desc = "查询用户")         │
 │   public UserDTO findById(String userId) { ... }            │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Cross-Module Calls (Method 3: Interface Proxy)
+### 业务模块间调用（方式三：接口代理调用）
 
-**Consumer-Driven Contract**: Order defines `UserQueryService`, gets implementation via `getService()`.
+**消费者驱动契约**：Order 定义 `UserQueryService` 接口，通过 getService() 获取实现
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Order Plugin (Consumer)                                      │
+│ Order Plugin（消费者）                                       │
 │                                                              │
-│   // Get implementation of the interface defined by Consumer │
+│   // 获取消费者自己定义的接口实现                            │
 │   UserQueryService userService = context.getService(UserQueryService.class).get();
 │   userService.findById(userId);                             │
 │         │                                                    │
@@ -319,29 +320,29 @@ Business Plugin calls userRepository.findById()
 ┌─────────────────────────────────────────────────────────────┐
 │ Core                                                         │
 │                                                              │
-│   SmartServiceProxy.invoke() (JDK Dynamic Proxy)            │
+│   SmartServiceProxy.invoke() (JDK 动态代理)                  │
 │         │                                                    │
 │         ├─→ PluginContextHolder.set(callerPluginId)         │
-│         ├─→ TraceContext.start() Start Tracing              │
-│         ├─→ checkPermissionSmartly() Permission Check       │
-│         │     ├─→ @RequiresPermission Explicit Declaration  │
-│         │     └─→ GovernanceStrategy.inferPermission() Infer│
+│         ├─→ TraceContext.start() 开启链路追踪               │
+│         ├─→ checkPermissionSmartly() 权限检查               │
+│         │     ├─→ @RequiresPermission 显式声明              │
+│         │     └─→ GovernanceStrategy.inferPermission() 推导 │
 │         │                                                    │
-│         ├─→ activeInstanceRef.get() Get Active Instance     │
-│         ├─→ instance.enter() (Ref Count +1)                  │
-│         ├─→ TCCL Hijack                                      │
+│         ├─→ activeInstanceRef.get() 获取活跃实例            │
+│         ├─→ instance.enter() (引用计数+1)                    │
+│         ├─→ TCCL 劫持                                        │
 │         ├─→ method.invoke(realBean, args)                   │
-│         ├─→ TCCL Restore                                     │
-│         ├─→ instance.exit() (Ref Count -1)                   │
-│         └─→ recordAuditSmartly() Smart Audit                │
+│         ├─→ TCCL 恢复                                        │
+│         ├─→ instance.exit() (引用计数-1)                     │
+│         └─→ recordAuditSmartly() 智能审计                   │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
           │
           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ User Plugin (Producer)                                       │
+│ User Plugin（生产者）                                        │
 │                                                              │
-│   // Implements the interface defined by Consumer            │
+│   // 实现消费者定义的接口                                    │
 │   public class UserQueryServiceImpl implements UserQueryService {
 │       public UserDTO findById(String userId) { ... }        │
 │   }                                                          │
@@ -349,110 +350,110 @@ Business Plugin calls userRepository.findById()
 └─────────────────────────────────────────────────────────────┘
 ```
 
-> Differences:
+> 三种服务调用方式的区别：
 >
-> - **@LingReference Injection** (Recommended): Auto-injected by `LingReferenceInjector`, uses `GlobalServiceRoutingProxy` for lazy binding and smart routing.
-> - **invoke(fqsid)**: Inspects `@LingService` methods via FQSID string.
-> - **getService(Class)**: Gets dynamic proxy of interface, auto-routes to implementation.
+> - **@LingReference 注入**（推荐）：通过 LingReferenceInjector 自动注入，使用 GlobalServiceRoutingProxy 实现延迟绑定和智能路由
+> - **invoke(fqsid)**：通过 FQSID 字符串调用 `@LingService` 标注的方法
+> - **getService(Class)**：获取接口的动态代理，调用时自动路由到实现类
 
-## Service Invocation Details
+## 服务调用方式详解
 
-### @LingReference Mechanism (Recommended)
+### @LingReference 注入机制（推荐）
 
-`@LingReference` is the recommended way, providing the closest experience to native Spring:
+@LingReference 是 LingFrame 推荐的服务调用方式，提供最接近 Spring 原生的开发体验：
 
-#### Working Principle
+#### 工作原理
 
 ```
-Host App Start
+宿主应用启动
     │
     ▼
 LingReferenceInjector (BeanPostProcessor)
     │
-    ├─→ Scan all Beans for @LingReference fields
+    ├─→ 扫描所有 Bean 的 @LingReference 字段
     │
-    ├─→ Call PluginManager.getGlobalServiceProxy()
+    ├─→ 调用 PluginManager.getGlobalServiceProxy()
     │     │
-    │     └─→ Create GlobalServiceRoutingProxy
+    │     └─→ 创建 GlobalServiceRoutingProxy
     │
-    └─→ Inject proxy object into field via reflection
+    └─→ 通过反射注入代理对象到字段
 ```
 
-#### Lazy Binding
+#### 延迟绑定机制
 
 ```
-@LingReference Field Call
+@LingReference 字段调用
     │
     ▼
 GlobalServiceRoutingProxy.invoke()
     │
-    ├─→ resolveTargetPluginId() Dynamic Resolve
-    │     ├─→ Check annotation pluginId
-    │     ├─→ Query Route Cache (ROUTE_CACHE)
-    │     └─→ Iterate plugins for implementation
+    ├─→ resolveTargetPluginId() 动态解析目标插件
+    │     ├─→ 检查注解指定的 pluginId
+    │     ├─→ 查询路由缓存 (ROUTE_CACHE)
+    │     └─→ 遍历所有插件查找接口实现
     │
-    ├─→ pluginManager.getRuntime(pluginId) Get Runtime
+    ├─→ pluginManager.getRuntime(pluginId) 获取运行时
     │
-    └─→ Delegate to SmartServiceProxy for governance
+    └─→ 委托给 SmartServiceProxy 执行治理逻辑
 ```
 
-#### Example
+#### 使用示例
 
 ```java
-// Order Plugin (Consumer) defines the interface it needs (in order-api module)
-// Path: order-api/src/main/java/com/example/order/api/UserQueryService.java
+// Order 插件（消费者）定义它需要的接口（在 order-api 模块中）
+// 位置：order-api/src/main/java/com/example/order/api/UserQueryService.java
 public interface UserQueryService {
     Optional<UserDTO> findById(String userId);
 }
 
-// User Plugin (Producer) implements the interface
-// Path: user-plugin/src/main/java/com/example/user/service/UserQueryServiceImpl.java
+// User 插件（生产者）实现消费者定义的接口
+// 位置：user-plugin/src/main/java/com/example/user/service/UserQueryServiceImpl.java
 @Component
 public class UserQueryServiceImpl implements UserQueryService {
-    @LingService(id = "find_user_by_id", desc = "Query User by ID")
+    @LingService(id = "find_user_by_id", desc = "根据ID查询用户")
     @Override
     public Optional<UserDTO> findById(String userId) {
         return userRepository.findById(userId).map(this::toDTO);
     }
 }
 
-// Usage in Order Plugin
+// Order 插件中使用自己定义的接口
 @RestController
 public class OrderController {
     
-    // Inject the interface defined by Consumer, implemented by User Plugin
+    // 注入消费者自己定义的接口，由 User 插件实现
     @LingReference
     private UserQueryService userQueryService;
     
     @GetMapping("/orders/{userId}")
     public List<Order> getUserOrders(@PathVariable String userId) {
-        // Direct call, framework routes to User Plugin implementation
+        // 直接调用，框架自动路由到 User 插件的实现
         UserDTO user = userQueryService.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("用户不存在"));
         
         return orderService.findByUser(user);
     }
 }
 ```
 
-#### Configuration
+#### 配置选项
 
-| Property   | Description                             | Default |
-| ---------- | --------------------------------------- | ------- |
-| `pluginId` | Target plugin ID. Auto-discover if empty| Empty   |
-| `timeout`  | Timeout (ms)                            | 3000    |
+| 属性       | 说明                                    | 默认值 |
+| ---------- | --------------------------------------- | ------ |
+| `pluginId` | 指定目标插件ID，为空时自动发现          | 空     |
+| `timeout`  | 调用超时时间（毫秒）                    | 3000   |
 
-#### Advantages
+#### 优势特性
 
-1. **Lazy Binding**: Proxy created effectively even if plugin is not started; routes dynamically at runtime.
-2. **Smart Routing**: Auto-routes to latest plugin version; supports Blue-Green.
-3. **Cache Optimization**: Interface-to-plugin mapping is cached.
-4. **Fault Isolation**: Explicit exception if plugin is offline.
-5. **Dev Friendly**: Closest to Spring native experience.
+1. **延迟绑定**：插件未启动时也能创建代理，运行时动态路由
+2. **智能路由**：自动路由到最新版本插件，支持蓝绿部署
+3. **缓存优化**：接口到插件的映射关系会被缓存，避免重复查找
+4. **故障隔离**：插件下线时抛出明确异常，不影响其他功能
+5. **开发友好**：最接近 Spring 原生体验，学习成本最低
 
-### FQSID Protocol Call
+### FQSID 协议调用
 
-Suitable for loose coupling, no interface dependency:
+适合松耦合场景，不需要接口依赖：
 
 ```java
 @Service
@@ -461,11 +462,11 @@ public class OrderService {
     private PluginContext context;
     
     public Order createOrder(String userId) {
-        // Call Service via FQSID directly, returns Optional
+        // 通过 FQSID 直接调用生产者的服务，返回 Optional
         Optional<UserDTO> user = context.invoke("user-plugin:find_user", userId);
         
         if (user.isEmpty()) {
-            throw new BusinessException("User not found");
+            throw new BusinessException("用户不存在");
         }
         
         return new Order(user.get());
@@ -473,9 +474,9 @@ public class OrderService {
 }
 ```
 
-### Interface Proxy Call
+### 接口代理调用
 
-Suitable where explicit error handling is needed:
+适合需要显式错误处理的场景（消费者定义接口，生产者实现）：
 
 ```java
 @Service
@@ -484,43 +485,43 @@ public class OrderService {
     private PluginContext context;
     
     public Order createOrder(String userId) {
-        // Get interface implementation (Provided by User Plugin)
+        // 获取消费者定义的接口实现（由 User 插件提供）
         Optional<UserQueryService> userQueryService = context.getService(UserQueryService.class);
         
         if (userQueryService.isEmpty()) {
-            throw new ServiceUnavailableException("User Query Service unavailable");
+            throw new ServiceUnavailableException("用户查询服务不可用");
         }
         
         UserDTO user = userQueryService.get().findById(userId)
-                .orElseThrow(() -> new BusinessException("User not found"));
+                .orElseThrow(() -> new BusinessException("用户不存在"));
         return new Order(user);
     }
 }
 ```
 
-### Invocation Guide
+### 调用方式选择指南
 
-| Scenario                 | Recommended        | Reason                         |
+| 场景                     | 推荐方式           | 原因                           |
 | ------------------------ | ------------------ | ------------------------------ |
-| Host calls Plugin        | @LingReference     | Simple, Lazy Binding           |
-| Plugin calls Plugin (Strong)| @LingReference  | Type-safe, IDE friendly        |
-| Plugin calls Plugin (Loose)| FQSID Protocol     | No interface dependency        |
-| Explicit Error Handling  | Interface Proxy    | Handle unavailability gracefully|
-| Dynamic Discovery        | Interface Proxy    | Get available services at runtime|
-| Optional call            | @LingReference     | Supports null check (Optional) |
+| 宿主应用调用插件服务     | @LingReference     | 最简洁，支持延迟绑定           |
+| 插件间强依赖调用         | @LingReference     | 类型安全，IDE 友好             |
+| 插件间松耦合调用         | FQSID 协议         | 不需要接口依赖                 |
+| 需要显式错误处理         | 接口代理           | 可以优雅处理服务不可用情况     |
+| 动态服务发现             | 接口代理           | 运行时动态获取可用服务         |
+| 可选功能调用             | @LingReference     | 支持 null 检查，不会启动时报错 |
 
-## Isolation Mechanism
+## 隔离机制
 
-### ClassLoader Isolation
+### 类加载隔离
 
-LingFrame uses a three-tier ClassLoader architecture to solve type consistency for shared APIs:
+LingFrame 采用三层 ClassLoader 架构，解决插件间共享 API 的类型一致性问题：
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    AppClassLoader                            │
-│                    (Host App)                                │
+│                    (宿主应用)                                 │
 │                                                              │
-│   lingframe-api (Contract)                                   │
+│   lingframe-api (框架契约)                                   │
 │   lingframe-core                                             │
 │   Spring Boot                                                │
 │                                                              │
@@ -529,9 +530,9 @@ LingFrame uses a three-tier ClassLoader architecture to solve type consistency f
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                 SharedApiClassLoader                         │
-│                 (Shared API Layer)                           │
+│                 (共享 API 层)                                │
 │                                                              │
-│   order-api.jar (Shared Interface & DTO)                     │
+│   order-api.jar (插件间共享的接口和 DTO)                     │
 │   user-api.jar                                               │
 │   ...                                                        │
 │                                                              │
@@ -543,37 +544,37 @@ LingFrame uses a three-tier ClassLoader architecture to solve type consistency f
 │PluginCL A  │   │PluginCL B  │   │PluginCL C  │
 │             │   │             │   │             │
 │ Child-First │   │ Child-First │   │ Child-First │
-│ Load Self   │   │ Load Self   │   │ Load Self   │
+│ 优先加载自己 │   │ 优先加载自己 │   │ 优先加载自己 │
 └─────────────┘   └─────────────┘   └─────────────┘
 ```
 
-**Shared API Configuration** (`application.yaml`):
+**配置共享 API**（`application.yaml`）：
 
 ```yaml
 lingframe:
   preload-api-jars:
-    - libs/order-api.jar              # JAR File
-    - lingframe-examples/order-api    # Maven Module Dir
-    - libs/*-api.jar                  # Wildcard
+    - libs/order-api.jar              # JAR 文件
+    - lingframe-examples/order-api    # Maven 模块目录
+    - libs/*-api.jar                  # 通配符匹配
 ```
 
-**Whitelist Delegation** (Force Parent Load):
+**白名单委派**（强制走父加载器）：
 
 - `java.*`, `javax.*`, `jdk.*`, `sun.*`
-- `com.lingframe.api.*` (Framework Contract)
-- `org.slf4j.*` (Logging Facade)
-- **All classes in SharedApiClassLoader** (Auto-detected)
+- `com.lingframe.api.*`（框架契约层）
+- `org.slf4j.*`（日志门面）
+- **SharedApiClassLoader 中的所有类**（自动检测）
 
-> See [Shared API Guidelines](shared-api-guidelines.md)
+> 详见 [共享 API 设计规范](shared-api-guidelines.md)
 
-### Spring Context Isolation
+### Spring 上下文隔离
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              Parent Context (Host App)                       │
+│              Parent Context (宿主应用)                        │
 │                                                              │
 │   PluginManager, ContainerFactory, PermissionService        │
-│   Common Beans...                                            │
+│   公共 Bean...                                               │
 │                                                              │
 └────────────────────────┬────────────────────────────────────┘
                          │ parent
@@ -583,89 +584,89 @@ lingframe:
 │ Child Ctx A │   │ Child Ctx B │   │ Child Ctx C │
 │ (Plugin A)  │   │ (Plugin B)  │   │ (Plugin C)  │
 │             │   │             │   │             │
-│ Indep Beans │   │ Indep Beans │   │ Indep Beans │
-│ Indep Config│   │ Indep Config│   │ Indep Config│
+│ 独立 Bean   │   │ 独立 Bean   │   │ 独立 Bean   │
+│ 独立配置    │   │ 独立配置    │   │ 独立配置    │
 └─────────────┘   └─────────────┘   └─────────────┘
 ```
 
-## Lifecycle
+## 生命周期
 
-### Plugin Installation Flow
+### 插件安装流程
 
 ```
 PluginManager.install(pluginId, version, jarFile)
     │
-    ├─→ Security Verify (DangerousApiVerifier)
+    ├─→ 安全验证 (DangerousApiVerifier)
     │
-    ├─→ createPluginClassLoader(file)     // Child-First CL
+    ├─→ createPluginClassLoader(file)     // Child-First 类加载器
     │
-    ├─→ containerFactory.create()          // SPI Create Container
+    ├─→ containerFactory.create()          // SPI 创建容器
     │
-    ├─→ Create PluginInstance
+    ├─→ 创建 PluginInstance
     │
-    ├─→ Get or Create PluginRuntime
+    ├─→ 获取或创建 PluginRuntime
     │
-    ├─→ runtime.addInstance(instance, context, isDefault)  // Blue-Green
+    ├─→ runtime.addInstance(instance, context, isDefault)  // 蓝绿部署
     │       │
-    │       ├─→ instancePool.add(instance)     // Add to Pool
-    │       ├─→ container.start(context)       // Start Spring Child Ctx
-    │       ├─→ serviceRegistry.register()     // Register @LingService
-    │       ├─→ plugin.onStart(context)        // Lifecycle Callback
-    │       └─→ instancePool.setDefault(instance)  // Set as Default
+    │       ├─→ instancePool.add(instance)     // 添加到实例池
+    │       ├─→ container.start(context)       // 启动 Spring 子上下文
+    │       ├─→ serviceRegistry.register()     // 注册 @LingService
+    │       ├─→ plugin.onStart(context)        // 生命周期回调
+    │       └─→ instancePool.setDefault(instance)  // 设置为默认实例
     │
-    └─→ Old version enters dying queue, destroy after ref count zero
+    └─→ 旧版本进入死亡队列，等待引用计数归零后销毁
 ```
 
-### Blue-Green Deployment
+### 蓝绿部署
 
 ```
-Timeline ─────────────────────────────────────────────────────→
+时间线 ─────────────────────────────────────────────────────→
 
-v1.0 Running
+v1.0 运行中
     │
-    │  New Version Install Request
+    │  新版本安装请求
     ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ v1.0 (active)                                                │
-│ Processing Requests                                           │
+│ 继续处理请求                                                  │
 │                                                              │
-│                    v2.0 Starting...                          │
+│                    v2.0 启动中...                            │
 │                    ┌─────────────────────────────────────┐  │
-│                    │ Create ClassLoader                   │  │
-│                    │ Start Spring Context                 │  │
-│                    │ Register @LingService                │  │
+│                    │ 创建 ClassLoader                     │  │
+│                    │ 启动 Spring Context                  │  │
+│                    │ 注册 @LingService                    │  │
 │                    └─────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
     │
-    │  Atomic Switch
+    │  原子切换
     ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ v2.0 (active)                                                │
-│ Accepting New Requests                                        │
+│ 接收新请求                                                    │
 │                                                              │
 │ v1.0 (dying)                                                 │
-│ Draining Requests, Ref Count Decreasing                       │
+│ 处理剩余请求，引用计数递减                                     │
 └─────────────────────────────────────────────────────────────┘
     │
-    │  Ref Count Zero
+    │  引用计数归零
     ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ v2.0 (active)                                                │
 │                                                              │
-│ v1.0 Destroy                                                 │
+│ v1.0 销毁                                                    │
 │ - plugin.onStop()                                           │
 │ - Spring Context.close()                                    │
-│ - ClassLoader Release                                       │
+│ - ClassLoader 释放                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Module Mapping
+## 模块对应关系
 
-| Layer          | Maven Module                     | Description          |
+| 架构层         | Maven 模块                       | 说明                 |
 | -------------- | -------------------------------- | -------------------- |
-| Core           | `lingframe-core`                 | Governance Kernel    |
-| Core           | `lingframe-api`                  | Contract (Interface) |
-| Core           | `lingframe-spring-boot3-starter` | Spring Boot Integration|
-| Infrastructure | `lingframe-infra-storage`      | Storage Proxy        |
-| Infrastructure | `lingframe-infra-cache`        | Cache Proxy          |
-| Business       | User Plugins                     | Business Logic       |
+| Core           | `lingframe-core`                 | 治理内核实现         |
+| Core           | `lingframe-api`                  | 契约层（接口、注解） |
+| Core           | `lingframe-spring-boot3-starter` | Spring Boot 集成     |
+| Infrastructure | `lingframe-infra-storage`      | 存储代理             |
+| Infrastructure | `lingframe-infra-cache`        | 缓存代理             |
+| Business       | 用户插件                         | 业务逻辑实现         |

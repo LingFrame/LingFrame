@@ -2,19 +2,25 @@ package com.lingframe.starter.web;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
+import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.method.ControllerAdviceBean;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.beans.factory.support.GenericBeanDefinition;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Web 接口动态管理器（原生注册版）
@@ -33,13 +39,17 @@ public class WebInterfaceManager {
     private final Map<String, RequestMappingInfo> mappingInfoMap = new ConcurrentHashMap<>();
 
     private RequestMappingHandlerMapping hostMapping;
+    private RequestMappingHandlerAdapter hostAdapter;
     private ConfigurableApplicationContext hostContext;
 
     /**
      * 初始化方法，由 AutoConfiguration 调用
      */
-    public void init(RequestMappingHandlerMapping mapping, ConfigurableApplicationContext hostContext) {
+    public void init(RequestMappingHandlerMapping mapping,
+                     RequestMappingHandlerAdapter adapter,
+                     ConfigurableApplicationContext hostContext) {
         this.hostMapping = mapping;
+        this.hostAdapter = adapter;
         this.hostContext = hostContext;
         log.info("🌍 [LingFrame Web] WebInterfaceManager initialized with native registration");
     }
@@ -115,10 +125,12 @@ public class WebInterfaceManager {
         log.info("♻️ [LingFrame Web] Unregistering interfaces for plugin: {}", pluginId);
 
         List<String> keysToRemove = new ArrayList<>();
+        AtomicReference<ClassLoader> pluginLoader = new AtomicReference<>();  // 记录插件 ClassLoader 用于清理
 
         metadataMap.forEach((key, meta) -> {
             if (meta.getPluginId().equals(pluginId)) {
                 keysToRemove.add(key);
+                pluginLoader.set(meta.getClassLoader());  // 取一个就行（所有接口同 Loader）
 
                 // 1. 从 Spring MVC 注销
                 RequestMappingInfo info = mappingInfoMap.get(key);
@@ -145,6 +157,11 @@ public class WebInterfaceManager {
         for (String key : keysToRemove) {
             metadataMap.remove(key);
             mappingInfoMap.remove(key);
+        }
+
+        // 深度清理 HandlerAdapter 缓存，防止 Metaspace 泄漏
+        if (hostAdapter != null && pluginLoader.get() != null) {
+            clearAdapterCaches(pluginLoader.get());
         }
 
         log.info("♻️ [LingFrame Web] Unregistered {} interfaces for plugin: {}", keysToRemove.size(), pluginId);
@@ -197,5 +214,50 @@ public class WebInterfaceManager {
      */
     private String buildRouteKey(WebInterfaceMetadata metadata) {
         return metadata.getHttpMethod() + "#" + metadata.getUrlPattern();
+    }
+
+    /**
+     * 反射清理 Adapter 的插件相关缓存
+     */
+    private void clearAdapterCaches(ClassLoader pluginLoader) {
+        try {
+            // 清理普通缓存 (ConcurrentHashMap<Class<?>, ?>)
+            clearCache("sessionAttributesHandlerCache", pluginLoader);
+            clearCache("initBinderCache", pluginLoader);
+            clearCache("modelAttributeCache", pluginLoader);
+
+            // 清理 Advice 缓存 (LinkedHashMap<ControllerAdviceBean, Set<Method>>)
+            clearAdviceCache("initBinderAdviceCache", pluginLoader);
+            clearAdviceCache("modelAttributeAdviceCache", pluginLoader);
+
+            log.debug("Cleared HandlerAdapter caches for plugin ClassLoader: {}", pluginLoader);
+        } catch (Exception e) {
+            log.warn("Failed to clear HandlerAdapter caches", e);
+        }
+    }
+
+    private void clearCache(String fieldName, ClassLoader pluginLoader) throws Exception {
+        Field field = ReflectionUtils.findField(hostAdapter.getClass(), fieldName);
+        if (field == null) return;
+        ReflectionUtils.makeAccessible(field);
+        @SuppressWarnings("unchecked")
+        Map<Class<?>, ?> cache = (Map<Class<?>, ?>) ReflectionUtils.getField(field, hostAdapter);
+        if (cache != null) {
+            cache.keySet().removeIf(clazz -> clazz != null && clazz.getClassLoader() == pluginLoader);
+        }
+    }
+
+    private void clearAdviceCache(String fieldName, ClassLoader pluginLoader) throws Exception {
+        Field field = ReflectionUtils.findField(hostAdapter.getClass(), fieldName);
+        if (field == null) return;
+        ReflectionUtils.makeAccessible(field);
+        @SuppressWarnings("unchecked")
+        Map<ControllerAdviceBean, Set<Method>> cache = (Map<ControllerAdviceBean, Set<Method>>) ReflectionUtils.getField(field, hostAdapter);
+        if (cache != null) {
+            cache.keySet().removeIf(advice -> {
+                Class<?> type = advice.getBeanType();
+                return type != null && type.getClassLoader() == pluginLoader;
+            });
+        }
     }
 }

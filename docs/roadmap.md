@@ -1,90 +1,92 @@
-# 路线图
+# Roadmap
 
-本文档描述 LingFrame 的演进路线。
+This document describes the evolution roadmap of LingFrame.
 
-> 💡 当前已实现的功能请参考 [架构设计](architecture.md)
+> 💡 For currently implemented features, please refer to [Architecture Design](architecture.md)
 
-## 定位
+## Positioning
 
-> **JVM 级运行时治理内核（Runtime Governance Kernel）**
+> **JVM Runtime Governance Kernel**
 
-核心能力：
+Core Capabilities:
 
-- **行为可见**（Observability）
-- **行为可控**（Controllability）
-- **行为可审计**（Auditability）
-
----
-
-## Phase 1：三层架构 ✅ 已完成
-
-**目标**：验证 JVM 内治理的可行性
-
-- ✅ 模块生命周期管理
-- ✅ Child-First 类加载隔离
-- ✅ Spring 父子上下文隔离
-- ✅ 三层 ClassLoader 架构（SharedApiClassLoader）
-- ✅ 服务路由（@LingService + @LingReference）
-- ✅ 基础权限治理
-- ✅ 基础设施代理（Storage / Cache）
+- **Observability**
+- **Controllability**
+- **Auditability**
 
 ---
 
-## Phase 2：可视化治理 ✅ 基本完成
+## Phase 1: Three-Tier Architecture ✅ Completed
 
-**目标**：可视化操作入口
+**Goal**: Verify feasibility of in-JVM governance
 
-- ✅ Dashboard 模块管理
-- ✅ 模块状态控制（启动/停止/热重载）
-- ✅ 权限动态调整
-- ✅ 灰度发布配置
-- ⏳ Dashboard UI 打磨
-
----
-
-## Phase 3：完整治理能力 ✅ 核心实现
-
-**目标**：全面的运行时治理
-
-### 已实现
-- ✅ 权限控制（@RequiresPermission）
-- ✅ 安全审计（@Auditable）
-- ✅ 全链路追踪（TraceContext）
-- ✅ 灰度发布（CanaryRouter）
-- ✅ **韧性治理**（熔断/限流/降级/重试）
-- ✅ **上下文传播**（Context Propagation）
-
-### 待实现
-- ⏳ 超时控制 (Timeout) - *优化中*
+- ✅ Module Lifecycle Management
+- ✅ Child-First ClassLoader Isolation
+- ✅ Spring Parent-Child Context Isolation
+- ✅ Three-Tier ClassLoader Architecture (SharedApiClassLoader)
+- ✅ Service Routing (@LingService + @LingReference)
+- ✅ Basic Permission Governance
+- ✅ Infrastructure Proxy (Storage / Cache)
 
 ---
 
-## Phase 4：可观测性 ⏳ 计划中
+## Phase 2: Visual Governance ✅ Basic Completion
 
-**目标**：全面监控能力
+**Goal**: Visual Operation Entry
 
-### 系统指标
-- CPU / 内存使用率
-- JVM 各项指标（GC、堆、线程）
-- 系统负载
-
-### 模块指标
-- 各模块调用次数、成功率、耗时
-- 模块资源占用
-- 异常统计
-
-### 技术方案
-- 集成 Micrometer
-- 支持 Prometheus 采集
-- 自定义 Metrics 扩展
+- ✅ Dashboard Module Management
+- ✅ Module Status Control (Start/Stop/Hot Swap)
+- ✅ Dynamic Permission Adjustment
+- ✅ Canary Release Configuration
+- ⏳ Dashboard UI Polish
 
 ---
 
-## Phase 5：生态完善 ⏳ 计划中
+## Phase 3: Complete Governance Capabilities 🔄 In Progress
 
-**目标**：完整的基础设施代理生态
+**Goal**: Comprehensive Runtime Governance
 
-- ⏳ 消息代理（Kafka / RabbitMQ）
-- ⏳ 搜索代理（Elasticsearch）
-- ⏳ 更多基础设施代理
-- ⏳ 完整示例和教程
+### Implemented
+- ✅ Permission Control (@RequiresPermission)
+- ✅ Security Audit (@Auditable)
+- ✅ Full Tracing (TraceContext)
+- ✅ Canary Release (CanaryRouter)
+
+### To Be Implemented
+- ⏳ Circuit Breaker
+- ⏳ Fallback
+- ⏳ Retry
+- ⏳ Rate Limiting
+- ⏳ Timeout Control
+
+---
+
+## Phase 4: Observability ⏳ Planned
+
+**Goal**: Comprehensive Monitoring Capabilities
+
+### System Metrics
+- CPU / Memory Usage
+- JVM Metrics (GC, Heap, Thread)
+- System Load
+
+### Module Metrics
+- Call Count, Success Rate, Latency per Module
+- Module Resource Usage
+- Exception Statistics
+
+### Technical Solution
+- Integrate Micrometer
+- Support Prometheus Collection
+- Custom Metrics Extension
+
+---
+
+## Phase 5: Ecosystem Perfection ⏳ Planned
+
+**Goal**: Complete Infrastructure Proxy Ecosystem
+
+- ⏳ Message Proxy (Kafka / RabbitMQ)
+- ⏳ Search Proxy (Elasticsearch)
+- ⏳ More Infrastructure Proxies
+- ⏳ Complete Examples and Tutorials

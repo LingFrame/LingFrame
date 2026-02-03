@@ -1,7 +1,7 @@
 package com.lingframe.core.security;
 
 import com.lingframe.api.exception.LingException;
-import jakarta.annotation.Nonnull;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.objectweb.asm.*;
 
@@ -139,7 +139,7 @@ public class AsmDangerousApiScanner {
             String apiCall,
             ViolationType type,
             String message) {
-        @Nonnull
+        @NonNull
         @Override
         public String toString() {
             return String.format("[%s] %s in %s: %s", type, apiCall, className, message);

@@ -1,16 +1,16 @@
-# 贡献指南
+# Contributing Guide
 
-感谢你对 LingFrame 的关注！
+Thank you for your interest in LingFrame!
 
-## 快速开始
+## Quick Start
 
-### 环境要求
+### Prerequisites
 
 - JDK 21+
 - Maven 3.8+
-- IDE：IntelliJ IDEA（推荐）
+- IDE: IntelliJ IDEA (Recommended)
 
-### 构建项目
+### Build Project
 
 ```bash
 git clone https://github.com/lingframe/lingframe.git
@@ -18,7 +18,7 @@ cd lingframe
 mvn clean install -DskipTests
 ```
 
-### 运行示例
+### Run Example
 
 ```bash
 cd lingframe-examples/lingframe-example-host-app
@@ -27,111 +27,111 @@ mvn spring-boot:run
 
 ---
 
-## 架构必读
+## Architecture Must-Read
 
-> ⚠️ **请务必理解这些原则，否则 PR 可能被拒绝**
+> ⚠️ **Please understand these principles, otherwise your PR might be rejected.**
 
-### 核心原则
+### Core Principles
 
-| 原则 | 说明 |
-|------|------|
-| **零信任** | 业务模块不能直接访问 DB/Redis，必须经过 Core 代理 |
-| **微内核** | Core 只做调度仲裁，不包含业务逻辑 |
-| **契约优先** | 所有交互通过 `lingframe-api` 接口 |
-| **生态无关** | Core 是纯 Java，不依赖 Spring/ORM |
+| Principle | Description |
+|-----------|-------------|
+| **Zero Trust** | Business modules cannot access DB/Redis directly, must go through Core proxy. |
+| **Microkernel** | Core only handles scheduling and arbitration, no business logic. |
+| **Contract First** | All interactions via `lingframe-api` interfaces. |
+| **Ecosystem Agnostic** | Core is pure Java, does not depend on Spring/ORM. |
 
-### 模块职责
+### Module Responsibilities
 
-| 模块 | 职责 | 依赖规则 |
-|------|------|----------|
-| `lingframe-api` | 契约层 | 无外部依赖 |
-| `lingframe-core` | 治理内核 | **禁止**依赖 Spring |
-| `lingframe-runtime` | 生态适配 | 桥接 Core 和 Spring |
-| `lingframe-dashboard` | 可视化 | 依赖 Spring Web |
+| Module | Responsibility | Dependency Rule |
+|--------|----------------|-----------------|
+| `lingframe-api` | Contract Layer | No external dependencies. |
+| `lingframe-core` | Governance Kernel | **FORBIDDEN** to depend on Spring. |
+| `lingframe-runtime` | Ecosystem Adapter | Bridges Core and Spring. |
+| `lingframe-dashboard` | Visualization | Depends on Spring Web. |
 
-### 设计原则
+### Design Principles
 
-- **SRP**：每个类只做一件事
-- **DIP**：依赖抽象，不依赖具体实现
-- **OCP**：通过扩展点增加功能
-
----
-
-## 从哪里开始？
-
-### 新手友好任务
-
-在 [Issues](../../issues) 中查找以下标签：
-
-| 标签 | 适合人群 |
-|------|----------|
-| `good first issue` | 第一次贡献 |
-| `help wanted` | 需要帮助 |
-| `documentation` | 文档改进 |
-
-### 当前需要帮助的方向
-
-- ⏳ 单元测试补充
-- ⏳ 消息代理（Kafka/RabbitMQ）
-- ⏳ 文档完善
+- **SRP**: Single Responsibility Principle.
+- **DIP**: Dependency Inversion Principle.
+- **OCP**: Open/Closed Principle.
 
 ---
 
-## 贡献流程
+## Where to Start?
 
-### 1. 认领任务
+### Good First Issues
 
-在 Issue 下留言："我想认领这个任务"
+Look for these labels in [Issues](../../issues):
 
-### 2. 开发
+| Label | Suitable For |
+|-------|--------------|
+| `good first issue` | First-time contributors |
+| `help wanted` | Need help |
+| `documentation` | Documentation improvements |
+
+### Areas Needing Help
+
+- ⏳ Unit Test Coverage
+- ⏳ Message Proxy (Kafka/RabbitMQ)
+- ⏳ Documentation Polish
+
+---
+
+## Contribution Flow
+
+### 1. Pick a Task
+
+Comment on an Issue: "I would like to work on this."
+
+### 2. Develop
 
 ```bash
-# Fork 后克隆
+# Clone after Fork
 git clone https://github.com/YOUR_USERNAME/lingframe.git
 
-# 创建分支
+# Create Branch
 git checkout -b feature/your-feature
 
-# 开发并提交
+# Develop and Commit
 git commit -m "feat: add your feature"
 git push origin feature/your-feature
 ```
 
-### 3. 提交 PR
+### 3. Submit PR
 
-- [ ] 代码编译通过：`mvn clean compile`
-- [ ] 测试通过：`mvn test`
-- [ ] 描述清楚改动内容
+- [ ] Build Passes: `mvn clean compile`
+- [ ] Tests Pass: `mvn test`
+- [ ] Describe changes clearly
 
 ---
 
-## 代码规范
+## Code Guidelines
 
-### 命名约定
+### Naming Conventions
 
-| 类型 | 规则 | 示例 |
-|------|------|------|
-| 接口 | 描述性名称 | `PluginContext` |
-| 实现类 | `Default` 前缀 | `DefaultPermissionService` |
-| 代理类 | `Proxy` 后缀 | `SmartServiceProxy` |
-| 工厂类 | `Factory` 后缀 | `SpringContainerFactory` |
+| Type | Rule | Example |
+|------|------|---------|
+| Interface | Descriptive Name | `PluginContext` |
+| Implementation | `Default` Prefix | `DefaultPermissionService` |
+| Proxy | `Proxy` Suffix | `SmartServiceProxy` |
+| Factory | `Factory` Suffix | `SpringContainerFactory` |
 
-### 代码风格
+### Code Style
 
-- 4 空格缩进
-- 类和方法添加 Javadoc
-- 使用 Lombok 减少样板代码
-- 使用 SLF4J 日志
+- 4 spaces indentation
+- Javadoc for classes and methods
+- Use Lombok to reduce boilerplate
+- Use SLF4J for logging
 
-### 测试要求
+### Test Requirements
 
-- 核心逻辑必须有单元测试
-- 测试类命名：`XxxTest.java`
-- 使用 JUnit 5 + Mockito
+- Core logic must have unit tests
+- Test class naming: `XxxTest.java`
+- Use JUnit 5 + Mockito
 
-### 提交信息
+### Commit Messages
 
-使用 [Conventional Commits](https://www.conventionalcommits.org/)：
+Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
 feat: add permission check for SQL execution
@@ -141,20 +141,20 @@ docs: update quick start guide
 
 ---
 
-## 问题反馈
+## Feedback
 
-| 类型 | 渠道 |
-|------|------|
+| Type | Channel |
+|------|---------|
 | Bug | [Issues](../../issues) |
-| 功能建议 | [Discussions](../../discussions) |
-| 安全问题 | 私信维护者 |
+| Feature Request | [Discussions](../../discussions) |
+| Security | Message Maintainers |
 
 ---
 
-## 行为准则
+## Code of Conduct
 
-- 尊重每一位贡献者
-- 保持友善和专业
-- 接受建设性的批评
+- Respect every contributor.
+- Be friendly and professional.
+- Accept constructive criticism.
 
-感谢你的贡献！🎉
+Thank you for your contribution! 🎉

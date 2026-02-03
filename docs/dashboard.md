@@ -1,22 +1,22 @@
-# Dashboard 可视化治理中心
+# Dashboard: Visual Governance Center
 
-LingFrame Dashboard 是一个可选的高阶功能，提供可视化的插件管理和治理界面。
+LingFrame Dashboard is an optional advanced feature that provides a visual interface for plugin management and governance.
 
-## 功能概览
+## Features Overview
 
-| 功能 | 说明 |
-|------|------|
-| **模块管理** | 列表、详情、安装、卸载、热重载 |
-| **状态控制** | 启动、停止、激活模块 |
-| **权限治理** | 动态调整模块资源权限（DB/Cache 读写） |
-| **灰度发布** | 配置灰度流量比例和版本 |
-| **流量统计** | 查看调用次数、成功率、耗时 |
-| **模拟测试** | 资源访问模拟、IPC 模拟、压力测试 |
-| **日志流** | 实时查看模块日志（SSE） |
+| Feature | Description |
+| ------- | ----------- |
+| **Module Management** | List, Detail, Install, Uninstall, Hot Swap |
+| **Status Control** | Start, Stop, Activate Modules |
+| **Permission Governance** | Dynamically adjust module resource permissions (DB/Cache Read/Write) |
+| **Canary Deployment** | Configure canary traffic percentage and version |
+| **Traffic Statistics** | View call count, success rate, latency |
+| **Simulation Testing** | Resource Access Simulation, IPC Simulation, Stress Testing |
+| **Log Stream** | Real-time module log viewing (SSE) |
 
-## 集成步骤
+## Integration Steps
 
-### 1. 添加依赖
+### 1. Add Dependency
 
 ```xml
 <dependency>
@@ -26,7 +26,7 @@ LingFrame Dashboard 是一个可选的高阶功能，提供可视化的插件管
 </dependency>
 ```
 
-### 2. 启用 Dashboard
+### 2. Enable Dashboard
 
 ```yaml
 lingframe:
@@ -34,31 +34,31 @@ lingframe:
     enabled: true
 ```
 
-![LingFrame Dashboard 示例](./images/dashboard.png)
-*图示：插件管理面板，展示实时状态、灰度流量和审计日志。*
+![LingFrame Dashboard Example](./images/dashboard.png)
+*Figure: Plugin Management Panel, showing real-time status, canary traffic, and audit logs.*
 
-## API 端点
+## API Endpoints
 
-Dashboard 启用后，以下 REST API 可用：
+Once Dashboard is enabled, the following REST APIs are available:
 
-### 模块管理
+### Module Management
 
-| 方法 | 端点 | 说明 |
-|------|------|------|
-| GET | `/lingframe/dashboard/plugins` | 获取所有模块列表 |
-| GET | `/lingframe/dashboard/plugins/{pluginId}` | 获取模块详情 |
-| POST | `/lingframe/dashboard/plugins/install` | 上传安装 JAR 包 |
-| DELETE | `/lingframe/dashboard/plugins/uninstall/{pluginId}` | 卸载模块 |
-| POST | `/lingframe/dashboard/plugins/{pluginId}/reload` | 热重载（开发模式） |
-| POST | `/lingframe/dashboard/plugins/{pluginId}/status` | 更新模块状态 |
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| GET    | `/lingframe/dashboard/plugins` | Get list of all modules |
+| GET    | `/lingframe/dashboard/plugins/{pluginId}` | Get module details |
+| POST   | `/lingframe/dashboard/plugins/install` | Upload and install JAR |
+| DELETE | `/lingframe/dashboard/plugins/uninstall/{pluginId}` | Uninstall module |
+| POST   | `/lingframe/dashboard/plugins/{pluginId}/reload` | Hot Swap (Dev Mode) |
+| POST   | `/lingframe/dashboard/plugins/{pluginId}/status` | Update module status |
 
-### 灰度发布
+### Canary Deployment
 
-| 方法 | 端点 | 说明 |
-|------|------|------|
-| POST | `/lingframe/dashboard/plugins/{pluginId}/canary` | 配置灰度策略 |
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| POST   | `/lingframe/dashboard/plugins/{pluginId}/canary` | Configure canary strategy |
 
-请求体示例：
+Request Body Example:
 ```json
 {
   "percent": 10,
@@ -66,45 +66,45 @@ Dashboard 启用后，以下 REST API 可用：
 }
 ```
 
-### 治理规则
+### Governance Rules
 
-| 方法 | 端点 | 说明 |
-|------|------|------|
-| GET | `/lingframe/dashboard/governance/rules` | 获取所有治理规则 |
-| GET | `/lingframe/dashboard/governance/{pluginId}` | 获取模块治理策略 |
-| POST | `/lingframe/dashboard/governance/patch/{pluginId}` | 更新治理策略 |
-| POST | `/lingframe/dashboard/governance/{pluginId}/permissions` | 更新资源权限 |
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| GET    | `/lingframe/dashboard/governance/rules` | Get all governance rules |
+| GET    | `/lingframe/dashboard/governance/{pluginId}` | Get module governance policy |
+| POST   | `/lingframe/dashboard/governance/patch/{pluginId}` | Update governance policy |
+| POST   | `/lingframe/dashboard/governance/{pluginId}/permissions` | Update resource permissions |
 
-### 流量统计
+### Traffic Statistics
 
-| 方法 | 端点 | 说明 |
-|------|------|------|
-| GET | `/lingframe/dashboard/plugins/{pluginId}/stats` | 获取流量统计 |
-| POST | `/lingframe/dashboard/plugins/{pluginId}/stats/reset` | 重置统计 |
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| GET    | `/lingframe/dashboard/plugins/{pluginId}/stats` | Get traffic stats |
+| POST   | `/lingframe/dashboard/plugins/{pluginId}/stats/reset` | Reset stats |
 
-### 模拟测试
+### Simulation Testing
 
-| 方法 | 端点 | 说明 |
-|------|------|------|
-| POST | `/lingframe/dashboard/simulate/plugins/{pluginId}/resource` | 模拟资源访问 |
-| POST | `/lingframe/dashboard/simulate/plugins/{pluginId}/ipc` | 模拟 IPC 调用 |
-| POST | `/lingframe/dashboard/simulate/plugins/{pluginId}/stress` | 压力测试 |
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| POST   | `/lingframe/dashboard/simulate/plugins/{pluginId}/resource` | Simulate resource access |
+| POST   | `/lingframe/dashboard/simulate/plugins/{pluginId}/ipc` | Simulate IPC call |
+| POST   | `/lingframe/dashboard/simulate/plugins/{pluginId}/stress` | Stress test |
 
-## 使用示例
+## Usage Examples
 
-### 查看插件列表
+### View Plugin List
 
 ```bash
 curl http://localhost:8888/lingframe/dashboard/plugins
 ```
 
-### 热重载插件
+### Hot Swap Plugin
 
 ```bash
 curl -X POST http://localhost:8888/lingframe/dashboard/plugins/order-plugin/reload
 ```
 
-### 配置灰度发布
+### Configure Canary Deployment
 
 ```bash
 curl -X POST http://localhost:8888/lingframe/dashboard/plugins/order-plugin/canary \
@@ -112,8 +112,8 @@ curl -X POST http://localhost:8888/lingframe/dashboard/plugins/order-plugin/cana
   -d '{"percent": 20, "canaryVersion": "2.0.0"}'
 ```
 
-## 注意事项
+## Considerations
 
-1. **仅用于开发/测试环境**：生产环境建议通过配置中心管理
-2. **安全考虑**：默认允许跨域，生产环境需配置认证
-3. **热重载**：仅在 `dev-mode: true` 时可用
+1. **Dev/Test Environment Only**: In production, it is recommended to manage via configuration center.
+2. **Security**: CORS allowed by default; configure authentication for production.
+3. **Hot Swap**: Available only when `dev-mode: true`.

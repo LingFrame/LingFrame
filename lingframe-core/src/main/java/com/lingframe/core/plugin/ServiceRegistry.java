@@ -2,7 +2,7 @@ package com.lingframe.core.plugin;
 
 import com.lingframe.core.plugin.event.RuntimeEvent;
 import com.lingframe.core.plugin.event.RuntimeEventBus;
-import jakarta.annotation.Nonnull;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.exception.ServiceNotFoundException;
@@ -284,7 +284,7 @@ public class ServiceRegistry {
      */
     public record RegistryStats(int serviceCount, int proxyCacheSize) {
         @Override
-        @Nonnull
+        @NonNull
         public String toString() {
             return String.format("RegistryStats{services=%d, proxies=%d}",
                     serviceCount, proxyCacheSize);

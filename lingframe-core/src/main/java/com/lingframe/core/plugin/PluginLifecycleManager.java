@@ -8,7 +8,7 @@ import com.lingframe.core.exception.PluginInstallException;
 import com.lingframe.core.exception.ServiceUnavailableException;
 import com.lingframe.core.plugin.event.RuntimeEvent;
 import com.lingframe.core.plugin.event.RuntimeEventBus;
-import jakarta.annotation.Nonnull;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.RejectedExecutionException;
@@ -290,7 +290,7 @@ public class PluginLifecycleManager {
             boolean forceCleanupScheduled,
             int dyingCount) {
         @Override
-        @Nonnull
+        @NonNull
         public String toString() {
             return String.format("LifecycleStats{shutdown=%s, forceCleanup=%s, dying=%d}",
                     isShutdown, forceCleanupScheduled, dyingCount);

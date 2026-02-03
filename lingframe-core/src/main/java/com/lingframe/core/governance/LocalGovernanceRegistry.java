@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.Constructor;
 import org.yaml.snakeyaml.representer.Representer;
 
 import java.io.File;
@@ -63,7 +64,7 @@ public class LocalGovernanceRegistry {
             LoaderOptions options = new LoaderOptions();
             // 允许 com.lingframe 包下的 Tag (修复 Global tag is not allowed 错误)
             options.setTagInspector(tag -> tag.getClassName().startsWith("com.lingframe"));
-            Yaml yaml = new Yaml(new org.yaml.snakeyaml.constructor.Constructor(options));
+            Yaml yaml = new Yaml(new Constructor(options));
             Map<String, GovernancePolicy> loaded = yaml.load(reader);
             if (loaded != null) {
                 patchMap.putAll(loaded);

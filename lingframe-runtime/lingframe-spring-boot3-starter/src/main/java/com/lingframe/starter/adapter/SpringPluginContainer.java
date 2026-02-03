@@ -102,6 +102,9 @@ public class SpringPluginContainer implements PluginContainer {
             context.registerBean(LingReferenceInjector.class, () -> new LingReferenceInjector(pluginId, pluginManager));
 
             log.info("Injecting core beans for plugin [{}]: PluginManager, LingReferenceInjector", pluginId);
+
+            // 自动配置插件独立数据源
+            PluginDataSourceRegistrar.register(context, pluginClassLoader, pluginId);
         }
     }
 

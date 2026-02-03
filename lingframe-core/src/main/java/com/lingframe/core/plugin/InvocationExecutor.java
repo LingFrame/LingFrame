@@ -9,7 +9,7 @@ import com.lingframe.core.spi.PluginServiceInvoker;
 import com.lingframe.core.spi.ThreadLocalPropagator;
 import com.lingframe.core.exception.InvocationException;
 import com.lingframe.core.spi.TransactionVerifier;
-import jakarta.annotation.Nonnull;
+import lombok.NonNull;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -421,7 +421,7 @@ public class InvocationExecutor {
             int timeoutMs,
             int acquireTimeoutMs) {
         @Override
-        @Nonnull
+        @NonNull
         public String toString() {
             return String.format(
                     "ExecutorStats{available=%d, queued=%d, timeout=%dms}",

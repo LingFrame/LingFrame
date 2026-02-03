@@ -1,7 +1,7 @@
-# LingFrame（灵珑）
+# LingFrame
 
-**为 Spring Boot 提供插件化架构与不停机灰度发布的 JVM 运行时框架**
-*在此之上，内建完整的权限控制与安全审计能力*
+**JVM Runtime Framework providing Plugin Architecture and Zero-Downtime Canary Release for Spring Boot**
+*Built-in complete permission control and security audit capabilities*
 
 ![Status](https://img.shields.io/badge/Status-Core_Implemented-green)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue)
@@ -11,123 +11,123 @@
 
 ---
 
-## 🚑 LingFrame 能立刻帮你解决什么？
+## 🚑 What can LingFrame solve for you immediately?
 
-> **不改整体架构，也能让系统更安全地上线新功能**
+> **Launch new features safely without changing the overall architecture**
 
-* ✅ **插件化拆分业务模块**，不稳定功能与核心系统隔离
-* 🚦 **不停机灰度 / 金丝雀发布**，新功能只对部分用户生效
-* 🔁 **快速回滚**，插件级别启停，无需重新发版
-* 🧵 **全链路追踪与审计日志**，问题可定位、责任可追溯
+* ✅ **Plugin-based Business Module Splitting**: Isolate unstable features from the core system.
+* 🚦 **Zero-Downtime Canary Release**: New features only affect a subset of users.
+* 🔁 **Fast Rollback**: Enable/Disable plugins without redeploying.
+* 🧵 **Full Tracing & Audit Log**: Traceable issues and accountability.
 
-> LingFrame 不是用来“设计得更优雅”，
-> 而是用来**让系统少炸、可控、能活下来**。
-
----
-
-## 🧩 插件化 Spring Boot（核心能力）
-
-LingFrame 将 **完整的 Spring Boot 上下文** 作为插件运行：
-
-* 每个插件拥有独立 ClassLoader
-* 独立生命周期（加载 / 启动 / 停止 / 卸载）
-* 可按需启用、禁用、替换
-* 不需要拆成微服务，也不引入网络开销
-
-**你可以把它理解为：**
-
-> 👉「**可热插拔的 Spring Boot 模块**」
-
-### 典型用途
-
-* 把 **实验性 / 高风险功能** 放进插件
-* 把 **第三方 / 二次开发代码** 与主系统隔离
-* 把 **低频功能** 按需加载，降低系统复杂度
+> LingFrame is not for "elegant design",
+> It is for **making the system fail less, be controllable, and survive**.
 
 ---
 
-## 🚦 不停机灰度发布 / 金丝雀能力
+## 🧩 Plugin-based Spring Boot (Core Capability)
 
-LingFrame 内建插件级流量控制能力：
+LingFrame runs **Complete Spring Boot Context** as a plugin:
 
-* 插件实例池
-* 灰度 / 金丝雀发布
-* 标签路由
-* 插件版本并存
+* Independent ClassLoader per plugin
+* Independent Lifecycle (Load / Start / Stop / Uninstall)
+* Enable, Disable, Replace on demand
+* No need to split into microservices, no network overhead
 
-你可以做到：
+**You can understand it as:**
 
-* 新插件 **只对 5% 用户生效**
-* 出问题 **立刻回滚到旧插件**
-* 整个过程 **无需重启应用**
+> 👉 "**Hot-Pluggable Spring Boot Modules**"
 
-> 对开发和运维来说，这是**保命能力**。
+### Typical Use Cases
 
----
-
-## 🧵 全链路追踪与调用审计（默认开启）
-
-LingFrame 会记录：
-
-* 插件 → 插件
-* 插件 → 基础设施（DB / Cache / MQ）
-* 插件 → 宿主应用
-
-每一次跨模块调用，都会留下：
-
-* 调用来源
-* 调用目标
-* 执行耗时
-* 权限判定结果
-* 审计日志
-
-> 出问题时，你不再靠猜。
+* Put **Experimental / High-Risk Features** in plugins via LingFrame.
+* Isolate **Third-Party / Secondary Development Code** from the main system.
+* Load **Low-Frequency Features** on demand to reduce complexity.
 
 ---
 
-## 🛡️ 进阶能力：运行时治理（长期价值）
+## 🚦 Zero-Downtime Canary Release
 
-当系统规模和复杂度上升后，LingFrame 提供完整的**治理内核**：
+LingFrame built-in plugin-level traffic control:
 
-* 🔐 **权限控制**：所有跨模块调用必须经过鉴权
-* ⚖️ **能力仲裁**：Core 作为唯一调用代理，禁止绕过
-* 🧾 **安全审计**：满足合规、风控、事后追责需求
-* 🔒 **零信任模型**：插件默认不可信
+* Plugin Instance Pool
+* Canary / Grey Release
+* Label Routing
+* Plugin Version Coexistence
 
-> 这些能力不是第一次使用的理由，
-> 但会在系统变复杂时，**救你一命**。
+You can achieve:
+
+* New plugin **only affects 5% of users**
+* **Rollback immediately** if issues arise
+* **No restart required** during the process
+
+> For Ops and Devs, this is a **Life-Saving Capability**.
 
 ---
 
-## 🧠 核心理念：先活下来，再建立秩序
+## 🧵 Tracing and Audit (Enabled by Default)
+
+LingFrame records:
+
+* Plugin → Plugin
+* Plugin → Infrastructure (DB / Cache / MQ)
+* Plugin → Host App
+
+Every cross-module call leaves:
+
+* Caller
+* Target
+* Execution Time
+* Permission Result
+* Audit Log
+
+> No more guessing when issues happen.
+
+---
+
+## 🛡️ Advanced Capabilities: Runtime Governance (Long-term Value)
+
+As system scale and complexity rise, LingFrame provides a complete **Governance Kernel**:
+
+* 🔐 **Permission Control**: All cross-module calls must be authorized.
+* ⚖️ **Capability Arbitration**: Core acts as the sole proxy, preventing bypass.
+* 🧾 **Security Audit**: Meet compliance, risk control, and accountability needs.
+* 🔒 **Zero Trust Model**: Plugins are untrusted by default.
+
+> These are not reasons to use it on day one,
+> But will **save your life** when the system gets complex.
+
+---
+
+## 🧠 Core Philosophy: Survive First, Then Establish Order
 
 ```text
 ┌───────────────────────────────────────────────┐
-│            Core（治理与运行时内核）             │
-│   权限 · 审计 · 调用仲裁 · 链路追踪             │
+│            Core (Governance Kernel)             │
+│   Auth · Audit · Arbitration · Tracing          │
 └───────────────────────┬───────────────────────┘
                         ▼
 ┌───────────────────────────────────────────────┐
-│          Infrastructure（基础设施代理）        │
-│     DB / Cache / MQ / Search 统一受控          │
+│          Infrastructure (Infra Proxy)           │
+│     DB / Cache / MQ / Search Unified Control    │
 └───────────────────────┬───────────────────────┘
                         ▼
 ┌───────────────────────────────────────────────┐
-│           Business Plugins（业务插件）          │
-│      可灰度 · 可回滚 · 可隔离                   │
+│           Business Plugins (Business Layer)     │
+│      Canary · Rollback · Isolated               │
 └───────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🚀 5 分钟上手（最短路径）
+## 🚀 5-Minute Quick Start (Shortest Path)
 
-### 环境要求
+### Prerequisites
 
 * Java 21+
 * Maven 3.8+
 
-### 启动宿主应用
+### Start Host Application
 
 ```bash
 git clone https://github.com/lingframe/lingframe.git
@@ -138,7 +138,7 @@ cd lingframe-examples/lingframe-example-host-app
 mvn spring-boot:run
 ```
 
-### 启用插件机制
+### Enable Plugin Mechanism
 
 ```yaml
 lingframe:
@@ -148,14 +148,14 @@ lingframe:
   auto-scan: true
 ```
 
-![LingFrame Dashboard 示例](./images/dashboard.png)
-*图示：插件管理面板，展示实时状态、灰度流量和审计日志。*
+![LingFrame Dashboard Example](./images/dashboard.png)
+*Figure: Plugin Management Panel, showing real-time status, canary traffic and audit logs.*
 
 ---
 
-## 🧩 创建你的第一个插件
+## 🧩 Create Your First Plugin
 
-### 定义接口（消费者驱动）
+### Define Interface (Consumer Driven)
 
 ```java
 public interface UserQueryService {
@@ -163,7 +163,7 @@ public interface UserQueryService {
 }
 ```
 
-### 插件实现
+### Plugin Implementation
 
 ```java
 @SpringBootApplication
@@ -186,7 +186,7 @@ public class UserQueryServiceImpl implements UserQueryService {
 }
 ```
 
-### 插件元数据
+### Plugin Metadata
 
 ```yaml
 id: user-plugin
@@ -197,7 +197,7 @@ mainClass: com.example.UserPlugin
 
 ---
 
-## 🔄 跨插件调用（自动治理）
+## 🔄 Cross-Plugin Call (Auto Governance)
 
 ```java
 @Component
@@ -214,21 +214,21 @@ public class OrderService {
 }
 ```
 
-> 所有调用都会自动经过：
-> 权限校验 · 审计 · 链路追踪 · 路由决策
+> All calls automatically pass through:
+> Permission Check · Audit · Tracing · Routing Decision
 
 ---
 
-## 👤 适合谁使用？
+## 👤 Who is it for?
 
-* 想要 **插件化改造单体应用** 的团队
-* 需要 **不停机发布 / 灰度能力** 的系统
-* 有 **二次开发 / 第三方扩展** 需求的平台
-* 系统开始变复杂，但还不想上微服务
+* Teams wanting to **Retrofit Monoliths with Plugins**
+* Systems needing **Zero-Downtime Release / Canary**
+* Platforms with **Secondary Dev / Third-Party Extension** needs
+* Systems getting complex but not ready for Microservices
 
 ---
 
-## 📦 项目结构
+## 📦 Project Structure
 
 ```text
 lingframe/
@@ -243,14 +243,14 @@ lingframe/
 
 ---
 
-## 🤝 参与贡献
+## 🤝 Contributing
 
-* 功能开发
-* 示例完善
-* 文档补充
-* 架构讨论
+* Feature Development
+* Example Improvement
+* Documentation
+* Architecture Discussion
 
-👉 查看 [Issues](../../issues) / [Discussions](../../discussions)
+👉 View [Issues](../../issues) / [Discussions](../../discussions)
 
 ---
 
@@ -260,7 +260,7 @@ Apache License 2.0
 
 ---
 
-### 最后一句（刻意留下的）
+### Final Words
 
-> **LingFrame 不要求你一开始就“治理一切”。**
-> **它只是让你在系统失控之前，多一次选择的机会。**
+> **LingFrame does not require you to "govern everything" from the start.**
+> **It just gives you one more choice before the system gets out of control.**

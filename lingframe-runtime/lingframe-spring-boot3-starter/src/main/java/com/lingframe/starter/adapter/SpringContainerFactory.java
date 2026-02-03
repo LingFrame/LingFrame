@@ -48,7 +48,8 @@ public class SpringContainerFactory implements ContainerFactory {
                     .bannerMode(Banner.Mode.OFF)
                     .web(WebApplicationType.NONE) // 禁止插件启动 Tomcat
                     .properties("spring.main.allow-bean-definition-overriding=true") // 允许覆盖 Bean
-                    .properties("spring.application.name=plugin-" + pluginId); // 独立应用名
+                    .properties("spring.application.name=plugin-" + pluginId) // 独立应用名
+                    .properties("spring.sql.init.mode=never"); // 禁用 Spring Boot 自动 SQL 初始化
 
             return new SpringPluginContainer(builder, classLoader, webInterfaceManager, serviceExcludedPackages);
 
