@@ -2,6 +2,11 @@ server:
   port: 8888
 
 spring:
+  # 修复 Spring Boot 2.6+ 与 SpringDoc 1.x 的兼容性问题
+  # 避免 "Expected lookupPath in request attribute" 错误
+  mvc:
+    path match:
+      matching-strategy: ant_path_matcher
   h2:
     console:
       enabled: true
