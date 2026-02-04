@@ -2,6 +2,7 @@ package com.lingframe.core.security;
 
 import com.lingframe.api.exception.LingException;
 import lombok.NonNull;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.objectweb.asm.*;
 
@@ -15,14 +16,21 @@ import java.util.jar.*;
 @Slf4j
 public class AsmDangerousApiScanner {
 
-    private static final Set<String> FORBIDDEN_METHODS = Set.of(
-            "java/lang/System.exit(I)V",
-            "java/lang/Runtime.exit(I)V",
-            "java/lang/Runtime.halt(I)V");
+    private static final Set<String> FORBIDDEN_METHODS;
+    private static final Set<String> WARN_METHODS;
 
-    private static final Set<String> WARN_METHODS = Set.of(
-            "java/lang/Runtime.exec",
-            "java/lang/ProcessBuilder.start");
+    static {
+        Set<String> forbidden = new HashSet<>();
+        forbidden.add("java/lang/System.exit(I)V");
+        forbidden.add("java/lang/Runtime.exit(I)V");
+        forbidden.add("java/lang/Runtime.halt(I)V");
+        FORBIDDEN_METHODS = Collections.unmodifiableSet(forbidden);
+
+        Set<String> warn = new HashSet<>();
+        warn.add("java/lang/Runtime.exec");
+        warn.add("java/lang/ProcessBuilder.start");
+        WARN_METHODS = Collections.unmodifiableSet(warn);
+    }
 
     public static ScanResult scan(File source) throws IOException {
         if (source.isDirectory()) {
@@ -134,11 +142,13 @@ public class AsmDangerousApiScanner {
         CRITICAL, WARNING
     }
 
-    public record Violation(
-            String className,
-            String apiCall,
-            ViolationType type,
-            String message) {
+    @Value
+    public static class Violation {
+        String className;
+        String apiCall;
+        ViolationType type;
+        String message;
+
         @NonNull
         @Override
         public String toString() {
@@ -146,7 +156,12 @@ public class AsmDangerousApiScanner {
         }
     }
 
-    public record ScanResult(List<Violation> errors, List<Violation> warnings) {
+    @Value
+    public static class ScanResult {
+        @NonNull
+        List<Violation> errors;
+        @NonNull
+        List<Violation> warnings;
 
         public boolean hasCriticalViolations() {
             return !errors.isEmpty();

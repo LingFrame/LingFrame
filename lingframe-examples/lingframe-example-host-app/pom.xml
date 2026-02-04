@@ -15,7 +15,7 @@
     <dependencies>
         <dependency>
             <groupId>com.lingframe</groupId>
-            <artifactId>lingframe-spring-boot3-starter</artifactId>
+            <artifactId>lingframe-spring-boot2-starter</artifactId>
         </dependency>
 
         <dependency>
@@ -63,10 +63,10 @@
         <!-- SpringDoc for API Documentation -->
         <dependency>
             <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <artifactId>springdoc-openapi-ui</artifactId>
         </dependency>
 
-        <dependency>
+        <!--<dependency>
             <groupId>com.github.xiaoymin</groupId>
             <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
             <exclusions>
@@ -75,7 +75,7 @@
                     <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                 </exclusion>
             </exclusions>
-        </dependency>
+        </dependency>-->
     </dependencies>
 
     <build>

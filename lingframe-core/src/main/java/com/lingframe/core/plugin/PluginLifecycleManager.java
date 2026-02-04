@@ -2,13 +2,17 @@ package com.lingframe.core.plugin;
 
 import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.event.LingEvent;
-import com.lingframe.api.event.lifecycle.*;
+import com.lingframe.api.event.lifecycle.PluginStartedEvent;
+import com.lingframe.api.event.lifecycle.PluginStartingEvent;
+import com.lingframe.api.event.lifecycle.PluginStoppedEvent;
+import com.lingframe.api.event.lifecycle.PluginStoppingEvent;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.exception.PluginInstallException;
 import com.lingframe.core.exception.ServiceUnavailableException;
 import com.lingframe.core.plugin.event.RuntimeEvent;
 import com.lingframe.core.plugin.event.RuntimeEventBus;
 import lombok.NonNull;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.RejectedExecutionException;
@@ -285,10 +289,16 @@ public class PluginLifecycleManager {
                 instancePool.getDyingCount());
     }
 
-    public record LifecycleStats(
-            boolean isShutdown,
-            boolean forceCleanupScheduled,
-            int dyingCount) {
+    @Value
+    public static class LifecycleStats{
+        boolean isShutdown;
+        boolean forceCleanupScheduled;
+        int dyingCount;
+
+        public boolean isShutdown(){return isShutdown;}
+        public boolean forceCleanupScheduled(){return forceCleanupScheduled;}
+        public int dyingCount(){return dyingCount;}
+
         @Override
         @NonNull
         public String toString() {

@@ -3,8 +3,9 @@ package com.lingframe.dashboard.service;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.dashboard.dto.LogStreamDTO;
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;

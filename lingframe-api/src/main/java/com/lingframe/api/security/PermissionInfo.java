@@ -13,52 +13,80 @@ import java.util.Optional;
  *
  * @author LingFrame
  */
-public record PermissionInfo(
-        /**
-         * 插件 ID
-         */
-        String pluginId,
 
-        /**
-         * 能力标识，如 "storage:sql", "cache:redis"
-         */
-        String capability,
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.With;
 
-        /**
-         * 授予的访问类型
-         */
-        AccessType accessType,
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class PermissionInfo implements Serializable {
+    private static final long serialVersionUID = 1L;
 
-        /**
-         * 权限授予时间
-         */
-        Instant grantedAt,
+    /**
+     * 插件 ID
+     */
+    private String pluginId;
 
-        /**
-         * 权限过期时间（可选）
-         * null 表示永不过期
-         */
-        Instant expiresAt,
+    /**
+     * 能力标识，如 "storage:sql", "cache:redis"
+     */
+    private String capability;
 
-        /**
-         * 权限来源描述
-         * 如 "plugin.yml", "runtime-grant", "admin-console"
-         */
-        String source) implements Serializable {
+    /**
+     * 授予的访问类型
+     */
+    private AccessType accessType;
+
+    /**
+     * 权限授予时间
+     */
+    @With
+    private Instant grantedAt;
+
+    /**
+     * 权限过期时间（可选）
+     * null 表示永不过期
+     */
+    @With
+    private Instant expiresAt;
+
+    /**
+     * 权限来源描述
+     * 如 "plugin.yml", "runtime-grant", "admin-console"
+     */
+    private String source;
 
     /**
      * 创建一个永不过期的权限信息
      */
     public static PermissionInfo permanent(String pluginId, String capability, AccessType accessType, String source) {
-        return new PermissionInfo(pluginId, capability, accessType, Instant.now(), null, source);
+        return PermissionInfo.builder()
+                .pluginId(pluginId)
+                .capability(capability)
+                .accessType(accessType)
+                .grantedAt(Instant.now())
+                .source(source)
+                .build();
     }
 
     /**
      * 创建一个有过期时间的权限信息
      */
     public static PermissionInfo withExpiry(String pluginId, String capability, AccessType accessType,
-            Instant expiresAt, String source) {
-        return new PermissionInfo(pluginId, capability, accessType, Instant.now(), expiresAt, source);
+                                            Instant expiresAt, String source) {
+        return PermissionInfo.builder()
+                .pluginId(pluginId)
+                .capability(capability)
+                .accessType(accessType)
+                .grantedAt(Instant.now())
+                .expiresAt(expiresAt)
+                .source(source)
+                .build();
     }
 
     /**

@@ -1,8 +1,8 @@
 package com.lingframe.infra.cache.proxy;
 
 import com.lingframe.api.security.PermissionService;
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
-import org.jspecify.annotations.NonNull;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 

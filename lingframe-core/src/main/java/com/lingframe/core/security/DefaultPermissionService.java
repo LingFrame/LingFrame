@@ -10,6 +10,7 @@ import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.monitor.TraceContext;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -114,7 +115,7 @@ public class DefaultPermissionService implements PermissionService {
 
     @Override
     public PermissionInfo getPermission(String pluginId, String capability) {
-        AccessType accessType = permissions.getOrDefault(pluginId, Map.of()).get(capability);
+        AccessType accessType = permissions.getOrDefault(pluginId, Collections.emptyMap()).get(capability);
         if (accessType == null) {
             return null;
         }

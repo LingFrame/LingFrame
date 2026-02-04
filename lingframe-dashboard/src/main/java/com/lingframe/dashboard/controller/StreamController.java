@@ -1,7 +1,7 @@
 package com.lingframe.dashboard.controller;
 
 import com.lingframe.dashboard.service.LogStreamService;
-import jakarta.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

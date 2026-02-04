@@ -320,11 +320,11 @@ public class PluginManager {
         if (candidates.size() > 1) {
             Collections.sort(candidates);
             log.warn("Multiple implementations found for {}: {}. Using {}",
-                    serviceType.getSimpleName(), candidates, candidates.getFirst());
+                    serviceType.getSimpleName(), candidates, candidates.get(0));
         }
 
         // 获取服务（单个或多个取第一个）
-        String targetPluginId = candidates.getFirst();
+        String targetPluginId = candidates.get(0);
         try {
             T proxy = runtimes.get(targetPluginId).getServiceProxy(callerPluginId, serviceType);
             serviceCache.put(serviceType, targetPluginId);

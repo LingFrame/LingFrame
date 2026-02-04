@@ -61,11 +61,12 @@ public class LocalGovernanceRegistry {
             return;
 
         try (FileReader reader = new FileReader(file)) {
-            LoaderOptions options = new LoaderOptions();
-            // 允许 com.lingframe 包下的 Tag (修复 Global tag is not allowed 错误)
-            options.setTagInspector(tag -> tag.getClassName().startsWith("com.lingframe"));
-            Yaml yaml = new Yaml(new Constructor(options));
-            Map<String, GovernancePolicy> loaded = yaml.load(reader);
+            // 使用最基本的YAML解析
+            Yaml yaml = new Yaml();
+
+            // 指定目标类型
+            Map<String, GovernancePolicy> loaded = yaml.loadAs(reader, Map.class);
+
             if (loaded != null) {
                 patchMap.putAll(loaded);
             }

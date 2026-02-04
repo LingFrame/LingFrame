@@ -3,13 +3,14 @@ package com.lingframe.infra.cache.proxy;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Policy;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
+import com.google.errorprone.annotations.CompatibleWith;
 import com.lingframe.api.context.PluginContextHolder;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import lombok.RequiredArgsConstructor;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
+import org.checkerframework.checker.nullness.qual.NonNull;
+import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Map;
 import java.util.Set;
@@ -35,7 +36,7 @@ public class LingCaffeineCacheProxy<K, V> implements Cache<K, V> {
     }
 
     @Override
-    public @Nullable V getIfPresent(K key) {
+    public @Nullable V getIfPresent(@CompatibleWith("K") @NonNull Object key) {
         checkPermission("getIfPresent");
         return target.getIfPresent(key);
     }
@@ -47,14 +48,14 @@ public class LingCaffeineCacheProxy<K, V> implements Cache<K, V> {
     }
 
     @Override
-    public Map<K, V> getAllPresent(@NonNull Iterable<? extends K> keys) {
+    public Map<K, V> getAllPresent(@NonNull Iterable<@NonNull ?> keys) {
         checkPermission("getAllPresent");
         return target.getAllPresent(keys);
     }
 
     @Override
     public Map<K, V> getAll(@NonNull Iterable<? extends K> keys,
-                            @NonNull Function<? super Set<? extends K>, ? extends Map<? extends K, ? extends V>> mappingFunction) {
+                            @NonNull Function<Iterable<? extends @NonNull K>, @NonNull Map<K, V>> mappingFunction) {
         checkPermission("getAll");
         return target.getAll(keys, mappingFunction);
     }
@@ -72,13 +73,13 @@ public class LingCaffeineCacheProxy<K, V> implements Cache<K, V> {
     }
 
     @Override
-    public void invalidate(K key) {
+    public void invalidate(@CompatibleWith("K") @NonNull Object key) {
         checkPermission("invalidate");
         target.invalidate(key);
     }
 
     @Override
-    public void invalidateAll(@NonNull Iterable<? extends K> keys) {
+    public void invalidateAll(@NonNull Iterable<@NonNull ?> keys) {
         checkPermission("invalidateAll");
         target.invalidateAll(keys);
     }

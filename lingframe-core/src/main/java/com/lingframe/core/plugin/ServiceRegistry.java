@@ -3,6 +3,7 @@ package com.lingframe.core.plugin;
 import com.lingframe.core.plugin.event.RuntimeEvent;
 import com.lingframe.core.plugin.event.RuntimeEventBus;
 import lombok.NonNull;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.exception.ServiceNotFoundException;
@@ -11,6 +12,8 @@ import com.lingframe.core.exception.InvocationException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -72,7 +75,7 @@ public class ServiceRegistry {
      * @return 是否为新注册（false 表示覆盖）
      */
     public boolean registerService(String fqsid, Object bean, Method method) {
-        if (fqsid == null || fqsid.isBlank()) {
+        if (fqsid == null || fqsid.trim().isEmpty()) {
             throw new InvalidArgumentException("fqsid", "FQSID cannot be null or blank");
         }
         if (bean == null) {
@@ -163,7 +166,7 @@ public class ServiceRegistry {
      * 获取所有注册的 FQSID
      */
     public Set<String> getAllServiceIds() {
-        return Set.copyOf(serviceCache.keySet());
+        return Collections.unmodifiableSet(new HashSet<>(serviceCache.keySet()));
     }
 
     /**
@@ -249,7 +252,19 @@ public class ServiceRegistry {
     /**
      * 可调用的服务（包含优化后的 MethodHandle）
      */
-    public record InvokableService(Object bean, Method method, MethodHandle methodHandle) {
+    @Value
+    public static class InvokableService {
+
+        Object bean;
+        Method method;
+        MethodHandle methodHandle;
+
+        public Object bean() {return bean;}
+
+        public Method method() {return method;}
+
+        public MethodHandle methodHandle() {return methodHandle;}
+
 
         /**
          * 使用 MethodHandle 快速调用
@@ -276,13 +291,32 @@ public class ServiceRegistry {
     /**
      * 服务定义（用于批量注册）
      */
-    public record ServiceDefinition(Object bean, Method method) {
+    @Value
+    public static class ServiceDefinition {
+        Object bean;
+        Method method;
+
+        public Object bean() {return bean;}
+
+        public Method method() {return method;}
+
+        public ServiceDefinition(Object bean, Method method) {
+            this.bean = bean;
+            this.method = method;
+        }
     }
 
     /**
      * 注册表统计信息
      */
-    public record RegistryStats(int serviceCount, int proxyCacheSize) {
+    @Value
+    public static class RegistryStats {
+        int serviceCount;
+        int proxyCacheSize;
+
+        public int serviceCount() { return serviceCount; }
+        public int proxyCacheSize() { return proxyCacheSize; }
+
         @Override
         @NonNull
         public String toString() {

@@ -40,7 +40,7 @@
             </dependency>
             <dependency>
                 <groupId>com.lingframe</groupId>
-                <artifactId>lingframe-spring-boot3-starter</artifactId>
+                <artifactId>lingframe-spring-boot2-starter</artifactId>
                 <version>${revision}</version>
             </dependency>
 
