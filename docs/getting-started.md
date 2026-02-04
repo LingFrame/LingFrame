@@ -4,7 +4,7 @@ This guide helps you quickly understand and use LingFrame.
 
 ## Prerequisites
 
-- JDK 21+
+- JDK 17+
 - Maven 3.8+
 
 ## 5-Minute Hello World

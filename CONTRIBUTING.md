@@ -6,7 +6,7 @@ Thank you for your interest in LingFrame!
 
 ### Prerequisites
 
-- JDK 21+
+- JDK 17+
 - Maven 3.8+
 - IDE: IntelliJ IDEA (Recommended)
 

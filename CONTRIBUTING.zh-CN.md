@@ -6,7 +6,7 @@
 
 ### 环境要求
 
-- JDK 21+
+- JDK 17+
 - Maven 3.8+
 - IDE：IntelliJ IDEA（推荐）
 

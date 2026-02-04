@@ -10,7 +10,7 @@ Core Capabilities: Plugin Isolation + Permission Governance + Audit Tracing + Ho
 
 ## Tech Stack
 
-- Java 21+
+- Java 17+
 - Spring Boot 3.5.6
 - Maven 3.8+
 

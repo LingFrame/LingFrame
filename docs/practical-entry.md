@@ -5,7 +5,7 @@
 
 ![Status](https://img.shields.io/badge/Status-Core_Implemented-green)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue)
-![Java](https://img.shields.io/badge/Java-21-orange)
+![Java](https://img.shields.io/badge/Java-17-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
 
@@ -124,7 +124,7 @@ As system scale and complexity rise, LingFrame provides a complete **Governance 
 
 ### Prerequisites
 
-* Java 21+
+* Java 17+
 * Maven 3.8+
 
 ### Start Host Application

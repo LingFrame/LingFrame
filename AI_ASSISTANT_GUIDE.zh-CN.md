@@ -10,7 +10,7 @@
 
 ## 技术栈
 
-- Java 21+
+- Java 17+
 - Spring Boot 3.5.6
 - Maven 3.8+
 

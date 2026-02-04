@@ -4,7 +4,7 @@
 
 ![Status](https://img.shields.io/badge/Status-Core_Implemented-green)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue)
-![Java](https://img.shields.io/badge/Java-21-orange)
+![Java](https://img.shields.io/badge/Java-17-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen)
 [![Help Wanted](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
 
@@ -89,7 +89,7 @@
 
 ### Prerequisites
 
-- Java 21+
+- Java 17+
 - Maven 3.8+
 
 ### Build Project

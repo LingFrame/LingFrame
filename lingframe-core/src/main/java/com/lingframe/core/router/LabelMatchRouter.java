@@ -23,7 +23,7 @@ public class LabelMatchRouter implements TrafficRouter {
         // 如果没有请求标签
         if (requestLabels == null || requestLabels.isEmpty()) {
             if (candidates.size() == 1) {
-                return candidates.getFirst();
+                return candidates.get(0);
             }
             // 尝试权重路由
             return doWeightedRoute(candidates);
@@ -35,7 +35,7 @@ public class LabelMatchRouter implements TrafficRouter {
                 .filter(si -> si.score >= 0) // 过滤掉不匹配的 (score = -1)
                 .max(Comparator.comparingInt(si -> si.score))
                 .map(si -> si.instance)
-                .orElse(candidates.getFirst());
+                .orElse(candidates.get(0));
     }
 
     private PluginInstance doWeightedRoute(List<PluginInstance> candidates) {
@@ -50,7 +50,7 @@ public class LabelMatchRouter implements TrafficRouter {
         }
 
         if (totalWeight <= 0) {
-            return candidates.getFirst();
+            return candidates.get(0);
         }
 
         int random = java.util.concurrent.ThreadLocalRandom.current().nextInt(totalWeight);
@@ -61,7 +61,7 @@ public class LabelMatchRouter implements TrafficRouter {
                 return candidates.get(i);
             }
         }
-        return candidates.getFirst();
+        return candidates.get(0);
     }
 
     private int getWeight(PluginInstance instance) {

@@ -45,7 +45,7 @@
 
 ### ⚠️ 技术边界与限制
 - **仅限单进程**：专为单体应用改造设计，而非分布式微服务框架。
-- **兼容性**：基于 JDK 21 (LTS) 和 Spring Boot 3.x 构建。
+- **兼容性**：基于 JDK 17 (LTS) 和 Spring Boot 3.x 构建。
 - **待实现功能** (Phase 3)：熔断 (Circuit Breaking)、限流 (Rate Limiting) 和降级 (Fallback) 机制已定义但尚未完全投入使用。
 
 ### 🛠 基础设施

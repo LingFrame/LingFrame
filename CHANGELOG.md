@@ -45,7 +45,7 @@ All notable changes to this project will be documented in this file.
 
 ### ⚠️ Technical Boundaries & Limitations
 - **Single Process Only**: Designed for monolithic modification, not a distributed microservice framework.
-- **Compatibility**: Built for JDK 21 (LTS) and Spring Boot 3.x.
+- **Compatibility**: Built for JDK 17 (LTS) and Spring Boot 3.x.
 - **Pending Features** (Phase 3): Circuit Breaking, Rate Limiting, and Fallback mechanisms are defined but not yet fully operational.
 
 ### 🛠 Infrastructure

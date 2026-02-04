@@ -4,7 +4,7 @@
 
 ## 环境准备
 
-- JDK 21+
+- JDK 17+
 - Maven 3.8+
 
 ## 5 分钟 Hello World
