@@ -15,6 +15,25 @@
 
     <modules>
         <module>lingframe-native</module>
-        <module>lingframe-spring-boot2-starter</module>
+        <module>lingframe-spring-boot-starter</module>
     </modules>
+
+    <profiles>
+        <profile>
+            <id>spring-boot2</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <modules>
+                <module>lingframe-spring-boot2-starter</module>
+            </modules>
+        </profile>
+        <profile>
+            <id>spring-boot3</id>
+            <modules>
+                <module>lingframe-spring-boot3-starter</module>
+            </modules>
+        </profile>
+    </profiles>
 </project>
+

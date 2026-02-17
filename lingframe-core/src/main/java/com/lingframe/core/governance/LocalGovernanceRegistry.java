@@ -2,12 +2,10 @@ package com.lingframe.core.governance;
 
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.util.YamlCompatUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.yaml.snakeyaml.DumperOptions;
-import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.Constructor;
-import org.yaml.snakeyaml.representer.Representer;
 
 import java.io.File;
 import java.io.FileReader;
@@ -55,18 +53,15 @@ public class LocalGovernanceRegistry {
         return patchMap;
     }
 
+    @SuppressWarnings("unchecked")
     private void load() {
         File file = new File(storePath);
         if (!file.exists())
             return;
 
         try (FileReader reader = new FileReader(file)) {
-            // 使用最基本的YAML解析
-            Yaml yaml = new Yaml();
-
-            // 指定目标类型
+            Yaml yaml = YamlCompatUtils.createLoaderYaml();
             Map<String, GovernancePolicy> loaded = yaml.loadAs(reader, Map.class);
-
             if (loaded != null) {
                 patchMap.putAll(loaded);
             }
@@ -87,8 +82,7 @@ public class LocalGovernanceRegistry {
             options.setPrettyFlow(true);
             options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
 
-            // 使用 SnakeYAML 序列化 Map
-            Yaml yaml = new Yaml(new Representer(new DumperOptions()), options);
+            Yaml yaml = YamlCompatUtils.createSafeYaml(options);
             yaml.dump(patchMap, writer);
         } catch (IOException e) {
             log.error("Failed to save governance patches", e);

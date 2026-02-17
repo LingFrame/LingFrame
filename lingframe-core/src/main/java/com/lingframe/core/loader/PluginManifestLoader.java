@@ -1,6 +1,7 @@
 package com.lingframe.core.loader;
 
 import com.lingframe.api.config.PluginDefinition;
+import com.lingframe.core.util.YamlCompatUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.yaml.snakeyaml.Yaml;
 
@@ -68,7 +69,7 @@ public class PluginManifestLoader {
     }
 
     private static PluginDefinition load(InputStream inputStream) {
-        Yaml yaml = new Yaml();
+        Yaml yaml = YamlCompatUtils.createLoaderYaml();
 
         // 使用 try-with-resources 确保流正确关闭
         try (InputStream is = inputStream) {

@@ -12,6 +12,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 public class LabelMatchRouter implements TrafficRouter {
@@ -56,7 +57,7 @@ public class LabelMatchRouter implements TrafficRouter {
             return candidates.get(0);
         }
 
-        int random = java.util.concurrent.ThreadLocalRandom.current().nextInt(totalWeight);
+        int random = ThreadLocalRandom.current().nextInt(totalWeight);
         int current = 0;
         for (int i = 0; i < candidates.size(); i++) {
             current += weights[i];

@@ -15,11 +15,6 @@
     <dependencies>
         <dependency>
             <groupId>com.lingframe</groupId>
-            <artifactId>lingframe-spring-boot2-starter</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>com.lingframe</groupId>
             <artifactId>lingframe-dashboard</artifactId>
         </dependency>
 
@@ -59,24 +54,46 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+    </dependencies>
 
-        <!-- SpringDoc for API Documentation -->
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-ui</artifactId>
-        </dependency>
+    <profiles>
+        <profile>
+            <id>spring-boot2</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>com.lingframe</groupId>
+                    <artifactId>lingframe-spring-boot2-starter</artifactId>
+                </dependency>
+                <!-- SpringDoc for Boot 2 -->
+                <dependency>
+                    <groupId>org.springdoc</groupId>
+                    <artifactId>springdoc-openapi-ui</artifactId>
+                </dependency>
+            </dependencies>
+        </profile>
 
-        <!--<dependency>
-            <groupId>com.github.xiaoymin</groupId>
-            <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
-            <exclusions>
-                <exclusion>
+        <profile>
+            <id>spring-boot3</id>
+            <properties>
+                <java.version>17</java.version>
+            </properties>
+            <dependencies>
+                <dependency>
+                    <groupId>com.lingframe</groupId>
+                    <artifactId>lingframe-spring-boot3-starter</artifactId>
+                </dependency>
+                <!-- SpringDoc for Boot 3 -->
+                <dependency>
                     <groupId>org.springdoc</groupId>
                     <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>-->
-    </dependencies>
+                    <version>2.2.0</version>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
 
     <build>
         <plugins>
