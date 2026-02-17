@@ -74,24 +74,16 @@ public class DefaultPluginServiceInvoker implements PluginServiceInvoker {
                 foundMismatch = true;
                 String hint = analyzeMismatchCause(expectedType, actualArg);
 
-                errorReport.append(String.format(
-                        """
-
-                                  ❌ 第 %d 个参数不匹配:\
-
-                                     - 期望类型: %s\
-
-                                     - 实际类型: %s\
-
-                                     - 实际传值: %s\
-
-                                     - 诊断提示: %s\
-                                """,
-                        i + 1,
-                        expectedType.getSimpleName(), // 或者是 expected.getName() 看你需要多详细
-                        (actualArg == null ? "null" : actualArg.getClass().getSimpleName()),
-                        actualArg,
-                        hint));
+                errorReport.append("\n")
+                        .append("  ❌ 第 ").append(i + 1).append(" 个参数不匹配:\n")
+                        .append("\n")
+                        .append("     - 期望类型: ").append(expectedType.getSimpleName()).append("\n")
+                        .append("\n")
+                        .append("     - 实际类型: ").append(actualArg == null ? "null" : actualArg.getClass().getSimpleName()).append("\n")
+                        .append("\n")
+                        .append("     - 实际传值: ").append(actualArg).append("\n")
+                        .append("\n")
+                        .append("     - 诊断提示: ").append(hint).append("\n");
             }
         }
 

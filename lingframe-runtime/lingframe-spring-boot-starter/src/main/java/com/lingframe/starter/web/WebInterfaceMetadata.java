@@ -29,4 +29,14 @@ public class WebInterfaceMetadata {
     private String requiredPermission;
     private boolean shouldAudit;
     private String auditAction;
+
+    /**
+     * 🔥 卸载时清理引用，帮助 GC
+     */
+    public void clearReferences() {
+        this.targetBean = null;
+        this.targetMethod = null;
+        this.classLoader = null;
+        this.pluginApplicationContext = null;
+    }
 }

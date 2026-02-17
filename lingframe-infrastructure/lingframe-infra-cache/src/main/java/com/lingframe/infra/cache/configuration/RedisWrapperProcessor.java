@@ -2,8 +2,8 @@ package com.lingframe.infra.cache.configuration;
 
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.infra.cache.interceptor.RedisPermissionInterceptor;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.NonNull;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanPostProcessor;
@@ -20,8 +20,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 @ConditionalOnClass(RedisTemplate.class)
 // ✅ 核心强制：框架开启即生效
 @ConditionalOnProperty(prefix = "lingframe", name = "enabled", havingValue = "true", matchIfMissing = true)
-// ✅ 确保 LingFrame 的包装器最先执行
-@Order(Ordered.HIGHEST_PRECEDENCE)
 public class RedisWrapperProcessor implements BeanPostProcessor, ApplicationContextAware {
 
     private ApplicationContext applicationContext;
@@ -52,8 +50,7 @@ public class RedisWrapperProcessor implements BeanPostProcessor, ApplicationCont
     }
 
     @Override
-    public Object postProcessBeforeInitialization(@NonNull Object bean, @NonNull String beanName)
-            throws BeansException {
+    public Object postProcessBeforeInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
         return bean;
     }
 

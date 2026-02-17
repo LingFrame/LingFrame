@@ -2,6 +2,9 @@ package com.lingframe.starter.web;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
+import org.springframework.beans.factory.support.GenericBeanDefinition;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.method.ControllerAdviceBean;
@@ -9,9 +12,6 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.support.GenericApplicationContext;
-import org.springframework.beans.factory.support.GenericBeanDefinition;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -78,7 +78,8 @@ public class WebInterfaceManager {
             Class<?> userClass = AopUtils.getTargetClass(metadata.getTargetBean());
             String proxyBeanName = metadata.getPluginId() + ":" + userClass.getName();
 
-            if (hostContext instanceof GenericApplicationContext gac && !gac.containsBeanDefinition(proxyBeanName)) {
+            if (hostContext instanceof GenericApplicationContext && !((GenericApplicationContext) hostContext).containsBeanDefinition(proxyBeanName)) {
+                GenericApplicationContext gac = (GenericApplicationContext) hostContext;
                 GenericBeanDefinition bd = new GenericBeanDefinition();
                 bd.setBeanClass(userClass);
                 bd.setInstanceSupplier(metadata::getTargetBean);
@@ -119,52 +120,69 @@ public class WebInterfaceManager {
      * 注销插件的所有接口
      */
     public void unregister(String pluginId) {
-        if (hostMapping == null)
-            return;
+        if (hostMapping == null) return;
 
         log.info("♻️ [LingFrame Web] Unregistering interfaces for plugin: {}", pluginId);
 
         List<String> keysToRemove = new ArrayList<>();
-        AtomicReference<ClassLoader> pluginLoader = new AtomicReference<>();  // 记录插件 ClassLoader 用于清理
+        AtomicReference<ClassLoader> pluginLoader = new AtomicReference<>();
+        List<String> beanNamesToRemove = new ArrayList<>();  // 收集要移除的 bean 名
 
         metadataMap.forEach((key, meta) -> {
             if (meta.getPluginId().equals(pluginId)) {
                 keysToRemove.add(key);
-                pluginLoader.set(meta.getClassLoader());  // 取一个就行（所有接口同 Loader）
+                pluginLoader.set(meta.getClassLoader());
 
                 // 1. 从 Spring MVC 注销
                 RequestMappingInfo info = mappingInfoMap.get(key);
                 if (info != null) {
                     try {
                         hostMapping.unregisterMapping(info);
-                        log.debug("Unregistered mapping: {}", key);
                     } catch (Exception e) {
                         log.warn("Failed to unregister mapping: {}", key, e);
                     }
                 }
 
-                // 2. 从宿主 Context 移除 Bean (防止内存泄漏)
-                if (hostContext instanceof GenericApplicationContext gac) {
-                    String proxyBeanName = meta.getPluginId() + ":" + meta.getTargetBean().getClass().getName();
-                    if (gac.containsBeanDefinition(proxyBeanName)) {
-                        gac.removeBeanDefinition(proxyBeanName);
-                    }
+                // 2. 🔥 修复：使用与 register 相同的逻辑计算 bean 名
+                if (hostContext instanceof GenericApplicationContext) {
+                    Class<?> userClass = AopUtils.getTargetClass(meta.getTargetBean());
+                    String proxyBeanName = meta.getPluginId() + ":" + userClass.getName();
+                    beanNamesToRemove.add(proxyBeanName);
                 }
             }
         });
 
+        // 3. 🔥 修复：从宿主 Context 移除 Bean 定义
+        if (hostContext instanceof GenericApplicationContext) {
+            GenericApplicationContext gac = (GenericApplicationContext) hostContext;
+            for (String beanName : beanNamesToRemove) {
+                try {
+                    if (gac.containsBeanDefinition(beanName)) {
+                        gac.removeBeanDefinition(beanName);
+                        log.debug("Removed bean definition: {}", beanName);
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to remove bean: {}", beanName, e);
+                }
+            }
+        }
+
         // 清理本地缓存
         for (String key : keysToRemove) {
-            metadataMap.remove(key);
+            WebInterfaceMetadata meta = metadataMap.remove(key);
+            if (meta != null) {
+                meta.clearReferences();  // ← 主动断开引用
+            }
             mappingInfoMap.remove(key);
         }
 
-        // 深度清理 HandlerAdapter 缓存，防止 Metaspace 泄漏
+        // 深度清理 HandlerAdapter 缓存
         if (hostAdapter != null && pluginLoader.get() != null) {
             clearAdapterCaches(pluginLoader.get());
         }
 
-        log.info("♻️ [LingFrame Web] Unregistered {} interfaces for plugin: {}", keysToRemove.size(), pluginId);
+        log.info("♻️ [LingFrame Web] Unregistered {} interfaces for plugin: {}",
+                keysToRemove.size(), pluginId);
     }
 
     /**

@@ -261,9 +261,7 @@ public class HotSwapWatcher implements LingEventListener<PluginUninstalledEvent>
                 try {
                     // 检查目录中是否存在 .class 文件
                     return Files.walk(dir)
-                            .filter(path -> path.toString().endsWith(".class"))
-                            .findFirst()
-                            .isEmpty();
+                            .noneMatch(path -> path.toString().endsWith(".class"));
                 } catch (IOException e) {
                     log.warn("Failed to check compilation status: {}", dir, e);
                 }

@@ -21,7 +21,7 @@ public class NativeContainerFactory implements ContainerFactory {
             throw new InvalidArgumentException("pluginId", "PluginDefinition not found for plugin: " + pluginId);
         }
         String mainClassName = definition.getMainClass();
-        if (mainClassName == null || mainClassName.isBlank()) {
+        if (mainClassName == null || mainClassName.trim().isEmpty()) {
             log.error("[{}] Cannot resolve Main-Class from source: {}", pluginId, sourceFile);
             throw new InvalidArgumentException("mainClass", "Main-Class not found for plugin: " + pluginId);
         }

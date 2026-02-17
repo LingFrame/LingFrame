@@ -57,10 +57,10 @@ public class PluginDefinition implements Serializable {
      * 验证
      */
     public void validate() {
-        if (id == null || id.isBlank()) {
+        if (id == null || id.trim().isEmpty()) {
             throw new InvalidArgumentException("id", "Plugin id cannot be blank");
         }
-        if (version == null || version.isBlank()) {
+        if (version == null || version.trim().isEmpty()) {
             throw new InvalidArgumentException("version", "Plugin version cannot be blank");
         }
     }

@@ -16,36 +16,56 @@
         <revision>0.1.0-Preview</revision>
 
         <!-- Java -->
-        <java.version>17</java.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- 添加编译参数 -->
         <maven.compiler.parameters>true</maven.compiler.parameters>
 
-        <!-- Spring Boot 版本 -->
-        <spring-boot.version>3.5.6</spring-boot.version>
-
-        <!-- 工具库 -->
-        <snakeyaml.version>2.2</snakeyaml.version>
-        <!-- SQL 解析器 -->
-        <jsqlparser.version>5.3</jsqlparser.version>
-        <guava.version>33.4.8-jre</guava.version>
-        <mybatis-flex.version>1.11.4</mybatis-flex.version>
-        <mysql.version>8.3.0</mysql.version>
-        <hikaricp.version>5.1.0</hikaricp.version>
+        <!-- 工具库 - 通用版本 -->
+        <mysql.version>8.0.33</mysql.version>
+        <mybatis-flex.version>1.8.7</mybatis-flex.version>
+        <jsqlparser.version>1.4</jsqlparser.version>
+        <guava.version>31.1-jre</guava.version>
+        <hikaricp.version>5.0.1</hikaricp.version>
         <lombok.version>1.18.30</lombok.version>
-        <slf4j.version>2.0.17</slf4j.version>
-        <caffeine.version>3.2.1</caffeine.version>
         <asm.version>9.6</asm.version>
-
-        <springdoc.version>2.8.9</springdoc.version>
-        <knife4j.version>4.4.0</knife4j.version>
+        <springdoc.version>1.7.0</springdoc.version>
+        <knife4j.version>4.3.0</knife4j.version>
 
         <!-- 测试 -->
-        <junit-jupiter.version>5.10.1</junit-jupiter.version>
-        <mockito.version>5.8.0</mockito.version>
+        <junit-jupiter.version>5.9.3</junit-jupiter.version>
+        <mockito.version>5.3.1</mockito.version>
     </properties>
+
+    <profiles>
+        <!-- Spring Boot 2 Profile (默认) -->
+        <profile>
+            <id>spring-boot2</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <java.version>1.8</java.version>
+                <spring-boot.version>2.7.18</spring-boot.version>
+                <snakeyaml.version>1.33</snakeyaml.version>
+                <slf4j.version>1.7.36</slf4j.version>
+                <caffeine.version>2.9.3</caffeine.version>
+            </properties>
+        </profile>
+
+        <!-- Spring Boot 3 Profile -->
+        <profile>
+            <id>spring-boot3</id>
+            <properties>
+                <java.version>17</java.version>
+                <spring-boot.version>3.5.10</spring-boot.version>
+                <snakeyaml.version>2.2</snakeyaml.version>
+                <slf4j.version>2.0.13</slf4j.version>
+                <caffeine.version>3.1.8</caffeine.version>
+            </properties>
+        </profile>
+    </profiles>
 
     <repositories>
         <repository>
@@ -155,11 +175,11 @@
             <!-- SpringDoc for API Documentation -->
             <dependency>
                 <groupId>org.springdoc</groupId>
-                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <artifactId>springdoc-openapi-ui</artifactId>
                 <version>${springdoc.version}</version>
             </dependency>
 
-            <dependency>
+            <!--<dependency>
                 <groupId>com.github.xiaoymin</groupId>
                 <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
                 <version>${knife4j.version}</version>
@@ -169,7 +189,7 @@
                         <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                     </exclusion>
                 </exclusions>
-            </dependency>
+            </dependency>-->
 
             <!-- Lombok -->
             <dependency>

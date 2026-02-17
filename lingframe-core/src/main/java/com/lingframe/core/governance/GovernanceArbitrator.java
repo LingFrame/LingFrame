@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.lang.reflect.Method;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 治理仲裁器 (责任链核心)
@@ -23,7 +24,7 @@ public class GovernanceArbitrator {
         // 构造时进行排序：Order 小的在前
         this.providers = providers.stream()
                 .sorted(Comparator.comparingInt(GovernancePolicyProvider::getOrder))
-                .toList();
+                .collect(Collectors.toList());
         log.info("GovernanceArbitrator initialized with {} providers", providers.size());
     }
 

@@ -1,5 +1,6 @@
 package com.lingframe.core.plugin.event;
 
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -79,9 +80,18 @@ public class RuntimeEventBus {
         void unsubscribe();
     }
 
-    private record EventListener<E extends RuntimeEvent>(
-            Class<E> eventType,
-            Consumer<E> handler
-    ) {
+    @Value
+    public class EventListener<E extends RuntimeEvent> {
+        Class<E> eventType;
+        Consumer<E> handler;
+
+        // 可以添加便利方法
+        public void accept(E event) {
+            handler.accept(event);
+        }
+
+        public boolean supports(Class<?> type) {
+            return eventType.isAssignableFrom(type);
+        }
     }
 }

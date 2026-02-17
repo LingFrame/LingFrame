@@ -13,6 +13,7 @@ import org.mockito.quality.Strictness;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.concurrent.*;
@@ -46,7 +47,7 @@ public class InvocationExecutorTest {
         realInvoker = (instance, bean, method, args) -> {
             try {
                 return method.invoke(bean, args);
-            } catch (java.lang.reflect.InvocationTargetException e) {
+            } catch (InvocationTargetException e) {
                 // 解包并重新抛出原始异常
                 Throwable cause = e.getCause();
                 if (cause instanceof Exception) {

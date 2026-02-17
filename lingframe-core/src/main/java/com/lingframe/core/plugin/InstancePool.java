@@ -4,8 +4,10 @@ import com.lingframe.core.plugin.event.RuntimeEvent;
 import com.lingframe.core.plugin.event.RuntimeEventBus;
 import com.lingframe.api.exception.InvalidArgumentException;
 import lombok.NonNull;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -204,7 +206,7 @@ public class InstancePool {
         defaultInstance.set(null);
 
         // 将所有活跃实例移入死亡队列
-        List<PluginInstance> toBeDying = List.copyOf(activePool);
+        List<PluginInstance> toBeDying = new ArrayList<>(activePool);
         for (PluginInstance instance : toBeDying) {
             moveToDying(instance);
         }
@@ -228,7 +230,16 @@ public class InstancePool {
     /**
      * 池统计信息
      */
-    public record PoolStats(int activeCount, int dyingCount, boolean hasDefault) {
+    @Value
+    public static class PoolStats {
+        int activeCount;
+        int dyingCount;
+        boolean hasDefault;
+
+        public int activeCount(){return activeCount;}
+        public int dyingCount(){return dyingCount;}
+        public boolean hasDefault(){return hasDefault;}
+
         @Override
         @NonNull
         public String toString() {

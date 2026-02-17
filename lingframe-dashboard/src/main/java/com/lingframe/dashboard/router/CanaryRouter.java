@@ -5,6 +5,7 @@ import com.lingframe.core.plugin.PluginInstance;
 import com.lingframe.core.spi.CanaryConfigurable;
 import com.lingframe.core.spi.TrafficRouter;
 import com.lingframe.api.exception.InvalidArgumentException;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -113,6 +114,10 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
         return candidates.isEmpty() ? null : candidates.get(0);
     }
 
-    public record CanaryConfig(int percent, String canaryVersion) {
+
+    @Value
+    public static class CanaryConfig {
+        int percent;
+        String canaryVersion;
     }
 }

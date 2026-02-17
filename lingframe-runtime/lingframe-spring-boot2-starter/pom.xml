@@ -1,0 +1,40 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.lingframe</groupId>
+        <artifactId>lingframe-runtime</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>lingframe-spring-boot2-starter</artifactId>
+    <packaging>jar</packaging>
+
+    <name>LingFrame :: Spring Boot 2 Starter</name>
+    <description>Spring Boot 2 运行时</description>
+
+    <properties>
+        <java.version>1.8</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+    </properties>
+
+    <dependencies>
+        <!-- 公共核心 (所有 Bean 定义、工具类、适配器等通过此传递) -->
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Boot 2 Servlet API (提供 javax.servlet) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+    </dependencies>
+</project>

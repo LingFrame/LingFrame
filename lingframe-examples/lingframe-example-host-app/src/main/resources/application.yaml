@@ -2,6 +2,11 @@ server:
   port: 8888
 
 spring:
+  # 修复 Spring Boot 2.6+ 与 SpringDoc 1.x 的兼容性问题
+  # 避免 "Expected lookupPath in request attribute" 错误
+  mvc:
+    path match:
+      matching-strategy: ant_path_matcher
   h2:
     console:
       enabled: true
@@ -48,9 +53,16 @@ springdoc:
     path: /swagger-ui.html
     tags-sorter: alpha
     operations-sorter: alpha
-# knife4j的增强配置，不需要增强可以不配
-knife4j:
-  enable: true
-  setting:
-    # Knife4j默认显示中文(zh-CN),如果开发者想直接显示英文(en-US)，在通过该配置进行设置即可
-    language: zh_cn
+  group-configs:
+    - group: 00-all
+      display-name: 00. All APIs
+      paths-to-match: /**
+    - group: 01-core
+      display-name: 01. Core (Dashboard)
+      paths-to-match: /**/dashboard/**
+    - group: 02-host
+      display-name: 02. Host Application
+      paths-to-exclude: /**/dashboard/**, /*-plugin/**
+    - group: 03-plugins
+      display-name: 03. Plugins
+      paths-to-match: /**-plugin/**

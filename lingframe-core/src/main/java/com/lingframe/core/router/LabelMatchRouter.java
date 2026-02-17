@@ -3,12 +3,16 @@ package com.lingframe.core.router;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.plugin.PluginInstance;
 import com.lingframe.core.spi.TrafficRouter;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 public class LabelMatchRouter implements TrafficRouter {
@@ -53,7 +57,7 @@ public class LabelMatchRouter implements TrafficRouter {
             return candidates.get(0);
         }
 
-        int random = java.util.concurrent.ThreadLocalRandom.current().nextInt(totalWeight);
+        int random = ThreadLocalRandom.current().nextInt(totalWeight);
         int current = 0;
         for (int i = 0; i < candidates.size(); i++) {
             current += weights[i];
@@ -98,6 +102,14 @@ public class LabelMatchRouter implements TrafficRouter {
         return score;
     }
 
-    private record ScoredInstance(PluginInstance instance, int score) {
+    @Value
+    @Getter(AccessLevel.NONE)  // 不生成标准 getter
+    public class ScoredInstance {
+        PluginInstance instance;
+        int score;
+
+        // Record 风格的访问器
+        public PluginInstance instance() { return instance; }
+        public int score() { return score; }
     }
 }
