@@ -57,7 +57,7 @@ public class PluginDataSourceRegistrar {
 
         // 检查插件是否配置了独立数据源
         String dataSourceUrl = env.getProperty(PROP_DATASOURCE_URL);
-        if (dataSourceUrl == null || dataSourceUrl.isBlank()) {
+        if (dataSourceUrl == null || dataSourceUrl.trim().isEmpty()) {
             log.debug("[{}] Plugin spring.datasource.url not configured, skipping auto-datasource registration",
                     pluginId);
             return;
@@ -85,7 +85,8 @@ public class PluginDataSourceRegistrar {
 
         // 检查 schema.sql 是否存在（只查找插件自身资源，不委派给父 ClassLoader）
         URL schemaUrl;
-        if (classLoader instanceof URLClassLoader urlClassLoader) {
+        if (classLoader instanceof URLClassLoader) {
+            URLClassLoader urlClassLoader = (URLClassLoader) classLoader;
             // URLClassLoader.findResource 不委派给父 ClassLoader
             schemaUrl = urlClassLoader.findResource(DEFAULT_SCHEMA_LOCATION);
         } else {

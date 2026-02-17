@@ -3,10 +3,11 @@ package com.lingframe.dashboard.service;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.dashboard.dto.LogStreamDTO;
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -23,7 +24,7 @@ import java.util.concurrent.*;
  */
 @Slf4j
 @RequiredArgsConstructor
-public class LogStreamService {
+public class LogStreamService implements InitializingBean, DisposableBean {
 
     private final EventBus eventBus;
     /**
@@ -37,8 +38,7 @@ public class LogStreamService {
     private final ExecutorService dispatcher = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "ling-sse-dispatcher");
         t.setDaemon(true);
-        t.setUncaughtExceptionHandler((thread, ex) ->
-                log.error("SSE dispatcher thread error", ex));
+        t.setUncaughtExceptionHandler((thread, ex) -> log.error("SSE dispatcher thread error", ex));
         return t;
     });
 
@@ -48,13 +48,12 @@ public class LogStreamService {
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "ling-sse-heartbeat");
         t.setDaemon(true);
-        t.setUncaughtExceptionHandler((thread, ex) ->
-                log.error("SSE heartbeat thread error", ex));
+        t.setUncaughtExceptionHandler((thread, ex) -> log.error("SSE heartbeat thread error", ex));
         return t;
     });
 
-    @PostConstruct
-    public void init() {
+    @Override
+    public void afterPropertiesSet() {
         // 订阅内核事件
         eventBus.subscribe("lingframe-dashboard", MonitoringEvents.TraceLogEvent.class, this::handleTrace);
         eventBus.subscribe("lingframe-dashboard", MonitoringEvents.AuditLogEvent.class, this::handleAudit);
@@ -75,6 +74,14 @@ public class LogStreamService {
         emitter.onError((e) -> removeEmitter(emitter));
 
         emitters.add(emitter);
+
+        // 立即发送初始事件，触发 response flush
+        try {
+            emitter.send(SseEmitter.event().name("connected").data("ok"));
+        } catch (Exception e) {
+            log.warn("Failed to send initial SSE event", e);
+        }
+
         log.info("New SSE connection. Active: {}", emitters.size());
         return emitter;
     }
@@ -118,7 +125,8 @@ public class LogStreamService {
      * 广播日志事件给所有连接
      */
     public void broadcast(LogStreamDTO logStreamDTO) {
-        if (emitters.isEmpty()) return;
+        if (emitters.isEmpty())
+            return;
 
         // 异步提交给分发线程，不阻塞当前业务线程 (Core Kernel)
         dispatcher.submit(() -> {
@@ -140,7 +148,8 @@ public class LogStreamService {
      * 发送心跳事件给所有连接
      */
     private void sendHeartbeat() {
-        if (emitters.isEmpty()) return;
+        if (emitters.isEmpty())
+            return;
         dispatcher.submit(() -> {
             List<SseEmitter> dead = new ArrayList<>();
             for (SseEmitter emitter : emitters) {
@@ -165,8 +174,8 @@ public class LogStreamService {
     /**
      * 服务销毁时，清理所有连接
      */
-    @PreDestroy
-    public void cleanup() {
+    @Override
+    public void destroy() {
         dispatcher.shutdownNow();
         scheduler.shutdownNow();
         emitters.forEach(SseEmitter::complete);

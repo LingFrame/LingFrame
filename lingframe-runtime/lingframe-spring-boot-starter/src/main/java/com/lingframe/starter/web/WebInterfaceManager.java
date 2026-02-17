@@ -3,6 +3,9 @@ package com.lingframe.starter.web;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.beans.factory.support.GenericBeanDefinition;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.method.ControllerAdviceBean;
@@ -10,9 +13,6 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.support.GenericApplicationContext;
-import org.springframework.beans.factory.support.GenericBeanDefinition;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -90,7 +90,8 @@ public class WebInterfaceManager {
             Class<?> userClass = AopUtils.getTargetClass(metadata.getTargetBean());
             String proxyBeanName = metadata.getPluginId() + ":" + userClass.getName();
 
-            if (hostContext instanceof GenericApplicationContext gac && !gac.containsBeanDefinition(proxyBeanName)) {
+            if (hostContext instanceof GenericApplicationContext && !((GenericApplicationContext) hostContext).containsBeanDefinition(proxyBeanName)) {
+                GenericApplicationContext gac = (GenericApplicationContext) hostContext;
                 GenericBeanDefinition bd = new GenericBeanDefinition();
                 bd.setBeanClass(userClass);
                 bd.setInstanceSupplier(metadata::getTargetBean);
@@ -131,14 +132,13 @@ public class WebInterfaceManager {
      * 注销插件的所有接口
      */
     public void unregister(String pluginId) {
-        if (hostMapping == null)
-            return;
+        if (hostMapping == null) return;
 
         log.info("♻️ [LingFrame Web] Unregistering interfaces for plugin: {}", pluginId);
 
         List<String> keysToRemove = new ArrayList<>();
         AtomicReference<ClassLoader> pluginLoader = new AtomicReference<>();
-        List<String> beanNamesToRemove = new ArrayList<>(); // 收集要移除的 bean 名
+        List<String> beanNamesToRemove = new ArrayList<>();  // 收集要移除的 bean 名
 
         metadataMap.forEach((key, meta) -> {
             if (meta.getPluginId().equals(pluginId)) {
@@ -208,7 +208,8 @@ public class WebInterfaceManager {
             clearAdapterCaches(pluginLoader.get());
         }
 
-        log.info("♻️ [LingFrame Web] Unregistered {} interfaces for plugin: {}", keysToRemove.size(), pluginId);
+        log.info("♻️ [LingFrame Web] Unregistered {} interfaces for plugin: {}",
+                keysToRemove.size(), pluginId);
     }
 
     /**

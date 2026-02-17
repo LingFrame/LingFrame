@@ -123,7 +123,7 @@ public class DashboardService {
                 runtime.setStatus(PluginStatus.ACTIVE);
 
                 // 初始化治理策略（如果不存在或为空）
-                var policy = governanceRegistry.getPatch(pluginId);
+                GovernancePolicy policy = governanceRegistry.getPatch(pluginId);
                 if (policy == null || policy.getCapabilities() == null || policy.getCapabilities().isEmpty()) {
                     log.info("[Dashboard] Initializing default permissions for plugin: {}", pluginId);
 
@@ -158,7 +158,7 @@ public class DashboardService {
                     log.info("[Dashboard] Plugin has governance policy, loading permissions from file");
 
                     // 从治理策略加载权限并同步到运行时
-                    for (var rule : policy.getCapabilities()) {
+                    for (GovernancePolicy.CapabilityRule rule : policy.getCapabilities()) {
                         try {
                             AccessType accessType = AccessType.valueOf(rule.getAccessType());
                             permissionService.grant(pluginId, rule.getCapability(), accessType);
@@ -230,7 +230,7 @@ public class DashboardService {
         permissionService.grant(pluginId, Capabilities.CACHE_LOCAL, cacheAccess);
 
         // 3. 同步到治理策略并持久化
-        var policy = governanceRegistry.getPatch(pluginId);
+        GovernancePolicy policy = governanceRegistry.getPatch(pluginId);
         if (policy == null) {
             policy = new GovernancePolicy();
         }
@@ -313,12 +313,19 @@ public class DashboardService {
     }
 
     private boolean isValidTransition(PluginStatus from, PluginStatus to) {
-        // 简化的状态机验证
-        return switch (from) {
-            case UNLOADED -> to == PluginStatus.LOADING || to == PluginStatus.LOADED;
-            case LOADED -> to == PluginStatus.ACTIVE || to == PluginStatus.UNLOADED;
-            case ACTIVE -> to == PluginStatus.LOADED || to == PluginStatus.UNLOADED;
-            default -> false;
-        };
+        if (from == null || to == null) {
+            return false;
+        }
+
+        switch (from) {
+            case UNLOADED:
+                return to == PluginStatus.LOADING || to == PluginStatus.LOADED;
+            case LOADED:
+                return to == PluginStatus.ACTIVE || to == PluginStatus.UNLOADED;
+            case ACTIVE:
+                return to == PluginStatus.LOADED || to == PluginStatus.UNLOADED;
+            default:
+                return false;
+        }
     }
 }

@@ -34,7 +34,7 @@ public class TraceContext {
      *
      */
     public static void setTraceId(String traceId) {
-        if (traceId != null && !traceId.isBlank()) {
+        if (traceId != null && !traceId.trim().isEmpty()) {
             TRACE_ID.set(traceId);
         } else {
             // 如果传入空，则生成一个新的

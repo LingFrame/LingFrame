@@ -16,6 +16,7 @@ import com.lingframe.core.spi.TransactionVerifier;
 import com.lingframe.core.exception.ServiceUnavailableException;
 import lombok.Getter;
 import lombok.NonNull;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Proxy;
@@ -440,14 +441,44 @@ public class PluginRuntime {
 
     // ==================== 统计信息 ====================
 
-    public record RuntimeStats(
-            String pluginId,
-            boolean available,
-            String version,
-            InstancePool.PoolStats pool,
-            ServiceRegistry.RegistryStats registry,
-            InvocationExecutor.ExecutorStats executor,
-            PluginLifecycleManager.LifecycleStats lifecycle) {
+    @Value
+    public static class RuntimeStats {
+        String pluginId;
+        boolean available;
+        String version;
+        InstancePool.PoolStats pool;
+        ServiceRegistry.RegistryStats registry;
+        InvocationExecutor.ExecutorStats executor;
+        PluginLifecycleManager.LifecycleStats lifecycle;
+
+        public String pluginId() {
+            return pluginId;
+        }
+
+        public boolean available() {
+            return available;
+        }
+
+        public String version() {
+            return version;
+        }
+
+        public InstancePool.PoolStats pool() {
+            return pool;
+        }
+
+        public ServiceRegistry.RegistryStats registry() {
+            return registry;
+        }
+
+        public InvocationExecutor.ExecutorStats executor() {
+            return executor;
+        }
+
+        public PluginLifecycleManager.LifecycleStats lifecycle() {
+            return lifecycle;
+        }
+
         @NonNull
         @Override
         public String toString() {

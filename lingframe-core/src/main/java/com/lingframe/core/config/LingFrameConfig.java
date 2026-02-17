@@ -50,6 +50,11 @@ public class LingFrameConfig {
      * 初始化全局实例 (由 Starter 启动时调用一次)
      */
     public static void init(LingFrameConfig config) {
+        if (INSTANCE != null) {
+            // 防止插件加载 Spring 上下文时覆盖宿主的全局配置
+            // 例如：Host 已开启 DevMode，插件启动默认配置为 false，若覆盖则导致 DevMode 失效
+            return;
+        }
         INSTANCE = config;
     }
 

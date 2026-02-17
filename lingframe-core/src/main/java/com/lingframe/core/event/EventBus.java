@@ -2,6 +2,7 @@ package com.lingframe.core.event;
 
 import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.event.LingEventListener;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -16,7 +17,13 @@ public class EventBus {
             new ConcurrentHashMap<>();
 
     // 包装器，记录监听器归属的插件ID
-    private record ListenerWrapper(String pluginId, LingEventListener<? extends LingEvent> listener) {
+    @Value
+    public static class ListenerWrapper {
+        String pluginId;
+        LingEventListener<? extends LingEvent> listener;
+
+        public String pluginId(){return pluginId;}
+        public LingEventListener listener(){return listener;}
     }
 
     /**

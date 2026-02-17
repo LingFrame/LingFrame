@@ -5,8 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -23,11 +22,12 @@ public class DefaultTransactionVerifier implements TransactionVerifier {
     private final Map<Method, Boolean> cache = new ConcurrentHashMap<>();
 
     // 目标注解的类名白名单
-    private static final Set<String> TX_ANNOTATION_NAMES = Set.of(
-            "org.springframework.transaction.annotation.Transactional", // Spring
-            "javax.transaction.Transactional",                          // JTA (Old)
-            "jakarta.transaction.Transactional"                         // JTA (New)
-    );
+    private static final Set<String> TX_ANNOTATION_NAMES =
+            Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+                    "org.springframework.transaction.annotation.Transactional",  // Spring
+                    "javax.transaction.Transactional",                           // JTA (Old)
+                    "jakarta.transaction.Transactional"                          // JTA (New)
+            )));
 
     @Override
     public boolean isTransactional(Method method, Class<?> targetClass) {

@@ -1,8 +1,6 @@
 package com.lingframe.starter.config;
 
 import com.lingframe.api.security.AccessType;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.convert.DurationUnit;
@@ -83,26 +81,22 @@ public class LingFrameProperties {
     /**
      * 宿主治理配置
      */
-    @Valid
     private HostGovernance hostGovernance = new HostGovernance();
 
     /**
      * 审计相关配置。
      */
-    @Valid // [Key] 级联校验
     private Audit audit = new Audit();
 
     /**
      * 治理规则列表。
      * 用于配置具体的鉴权、流控和审计策略。
      */
-    @Valid // [Key] 级联校验 List 里的每个元素
     private List<GovernanceRule> rules = new ArrayList<>();
 
     /**
      * 统一管理内核运行时配置
      */
-    @Valid
     private Runtime runtime = new Runtime();
 
     @Data
@@ -134,7 +128,6 @@ public class LingFrameProperties {
          * 资源标识符匹配模式 (AntPath 风格)。
          * 示例: "com.example.*Service#delete*"
          */
-        @NotEmpty(message = "治理规则的 pattern 不能为空")
         private String pattern;
 
         /**

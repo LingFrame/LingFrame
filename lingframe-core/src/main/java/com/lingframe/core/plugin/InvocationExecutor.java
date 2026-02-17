@@ -11,6 +11,7 @@ import com.lingframe.core.exception.InvocationException;
 import com.lingframe.core.spi.TransactionVerifier;
 import lombok.NonNull;
 import lombok.Setter;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -231,7 +232,8 @@ public class InvocationExecutor {
         }
 
         try {
-            if (invoker instanceof FastPluginServiceInvoker fast) {
+            if (invoker instanceof FastPluginServiceInvoker) {
+                FastPluginServiceInvoker fast = (FastPluginServiceInvoker) invoker;
                 return fast.invokeFast(instance, service.methodHandle(), args);
             }
             return invoker.invoke(instance, service.bean(), service.method(), args);
@@ -364,11 +366,18 @@ public class InvocationExecutor {
     /**
      * 执行器统计信息
      */
-    public record ExecutorStats(
-            int availablePermits,
-            int queueLength,
-            int timeoutMs,
-            int acquireTimeoutMs) {
+    @Value
+    public static class ExecutorStats {
+        int availablePermits;
+        int queueLength;
+        int timeoutMs;
+        int acquireTimeoutMs;
+
+        public int availablePermits() { return availablePermits; }
+        public int queueLength() { return queueLength; }
+        public int timeoutMs() { return timeoutMs; }
+        public int acquireTimeoutMs() { return acquireTimeoutMs;}
+
         @Override
         @NonNull
         public String toString() {

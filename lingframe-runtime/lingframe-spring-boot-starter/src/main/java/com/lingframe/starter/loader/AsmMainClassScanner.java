@@ -1,14 +1,15 @@
-package com.lingframe.starter.util;
+package com.lingframe.starter.loader;
 
 import com.lingframe.api.config.PluginDefinition;
 import com.lingframe.core.loader.PluginManifestLoader;
-import jakarta.annotation.Nonnull;
 import com.lingframe.core.exception.PluginInstallException;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.objectweb.asm.*;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import java.io.*;
+import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -160,8 +161,8 @@ public class AsmMainClassScanner {
             // 检查 main 方法
             boolean hasMainMethod = Arrays.stream(clazz.getMethods())
                     .anyMatch(m -> m.getName().equals("main")
-                            && java.lang.reflect.Modifier.isPublic(m.getModifiers())
-                            && java.lang.reflect.Modifier.isStatic(m.getModifiers())
+                            && Modifier.isPublic(m.getModifiers())
+                            && Modifier.isStatic(m.getModifiers())
                             && m.getParameterCount() == 1
                             && m.getParameterTypes()[0] == String[].class
                             && m.getReturnType() == void.class);
@@ -182,7 +183,7 @@ public class AsmMainClassScanner {
      * @return 主类全限定名
      * @throws IllegalStateException 未找到或验证失败时抛出
      */
-    @Nonnull
+    @NonNull
     public static String discoverMainClass(String pluginId, File source,
             ClassLoader classLoader) {
         String mainClass = null;

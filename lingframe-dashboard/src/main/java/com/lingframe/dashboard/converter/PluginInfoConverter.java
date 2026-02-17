@@ -3,6 +3,7 @@ package com.lingframe.dashboard.converter;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
+import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.plugin.PluginRuntime;
 import com.lingframe.dashboard.dto.PluginInfoDTO;
@@ -51,8 +52,8 @@ public class PluginInfoConverter {
     private PluginInfoDTO.ResourcePermissions extractPermissions(String pluginId, PermissionService permissionService,
             GovernancePolicy policy) {
         // 直接查询权限配置，不受开发模式影响
-        var sqlPermission = permissionService.getPermission(pluginId, Capabilities.STORAGE_SQL);
-        var cachePermission = permissionService.getPermission(pluginId, Capabilities.CACHE_LOCAL);
+        PermissionInfo sqlPermission = permissionService.getPermission(pluginId, Capabilities.STORAGE_SQL);
+        PermissionInfo cachePermission = permissionService.getPermission(pluginId, Capabilities.CACHE_LOCAL);
 
         // 根据 AccessType 判断读写权限
         boolean dbRead = sqlPermission != null && sqlPermission.satisfies(AccessType.READ);

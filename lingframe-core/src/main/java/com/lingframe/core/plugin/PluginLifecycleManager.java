@@ -2,7 +2,10 @@ package com.lingframe.core.plugin;
 
 import com.lingframe.api.context.PluginContext;
 import com.lingframe.api.event.LingEvent;
-import com.lingframe.api.event.lifecycle.*;
+import com.lingframe.api.event.lifecycle.PluginStartedEvent;
+import com.lingframe.api.event.lifecycle.PluginStartingEvent;
+import com.lingframe.api.event.lifecycle.PluginStoppedEvent;
+import com.lingframe.api.event.lifecycle.PluginStoppingEvent;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.exception.PluginInstallException;
 import com.lingframe.core.exception.ServiceUnavailableException;
@@ -10,6 +13,7 @@ import com.lingframe.core.plugin.event.RuntimeEvent;
 import com.lingframe.core.plugin.event.RuntimeEventBus;
 import com.lingframe.core.spi.ResourceGuard;
 import lombok.NonNull;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.ref.WeakReference;
@@ -39,12 +43,12 @@ public class PluginLifecycleManager {
     private final AtomicBoolean shutdown = new AtomicBoolean(false);
 
     public PluginLifecycleManager(String pluginId,
-            InstancePool instancePool,
-            RuntimeEventBus internalEventBus,
-            EventBus externalEventBus,
-            ScheduledExecutorService scheduler,
-            PluginRuntimeConfig config,
-            ResourceGuard resourceGuard) {
+                                  InstancePool instancePool,
+                                  RuntimeEventBus internalEventBus,
+                                  EventBus externalEventBus,
+                                  ScheduledExecutorService scheduler,
+                                  PluginRuntimeConfig config,
+                                  ResourceGuard resourceGuard) {
         this.pluginId = pluginId;
         this.instancePool = instancePool;
         this.internalEventBus = internalEventBus;
@@ -273,8 +277,8 @@ public class PluginLifecycleManager {
                 resourceGuard.detectLeak(pluginId, cl);
 
                 // 🔥 关键：关闭 ClassLoader 释放 JAR 文件句柄
-                if (cl instanceof AutoCloseable closeable) {
-                    closeable.close();
+                if (cl instanceof AutoCloseable) {
+                    ((AutoCloseable) cl).close();
                     log.info("[{}] ClassLoader closed for version {}", pluginId, version);
                 }
             } catch (Exception e) {
@@ -345,10 +349,24 @@ public class PluginLifecycleManager {
                 instancePool.getDyingCount());
     }
 
-    public record LifecycleStats(
-            boolean isShutdown,
-            boolean forceCleanupScheduled,
-            int dyingCount) {
+    @Value
+    public static class LifecycleStats {
+        boolean isShutdown;
+        boolean forceCleanupScheduled;
+        int dyingCount;
+
+        public boolean isShutdown() {
+            return isShutdown;
+        }
+
+        public boolean forceCleanupScheduled() {
+            return forceCleanupScheduled;
+        }
+
+        public int dyingCount() {
+            return dyingCount;
+        }
+
         @Override
         @NonNull
         public String toString() {

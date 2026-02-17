@@ -3,6 +3,7 @@ package com.lingframe.dashboard.service;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
+import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
@@ -26,11 +27,13 @@ import org.springframework.web.bind.annotation.RestController;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -346,11 +349,11 @@ public class SimulateService {
             String capability = null;
             AccessType inferredAccess = ctx.getAccessType();
 
-            var annotation = targetMethod.getAnnotation(RequiresPermission.class);
+            RequiresPermission annotation = targetMethod.getAnnotation(RequiresPermission.class);
             if (annotation != null) {
                 capability = annotation.value();
                 // inferredAccess 由 context 决定，不再重新推导
-            } else if (ctx.getRequiredPermission() != null && !ctx.getRequiredPermission().isBlank()) {
+            } else if (ctx.getRequiredPermission() != null && !ctx.getRequiredPermission().trim().isEmpty()) {
                 capability = ctx.getRequiredPermission();
             }
 
@@ -453,7 +456,7 @@ public class SimulateService {
                         }
                         return false;
                     })
-                    .toList();
+                    .collect(Collectors.toList());
 
             if (!capabilityMatched.isEmpty()) {
                 return capabilityMatched.stream()
@@ -518,27 +521,54 @@ public class SimulateService {
     }
 
     private String mapResourceType(String type) {
-        return switch (type) {
-            case "dbRead", "dbWrite" -> "DATABASE";
-            case "cacheRead", "cacheWrite" -> "CACHE";
-            default -> "RESOURCE";
-        };
+        if (type == null) {
+            return "RESOURCE";
+        }
+
+        switch (type) {
+            case "dbRead":
+            case "dbWrite":
+                return "DATABASE";
+            case "cacheRead":
+            case "cacheWrite":
+                return "CACHE";
+            default:
+                return "RESOURCE";
+        }
     }
 
     private AccessType mapAccessType(String type) {
-        return switch (type) {
-            case "dbRead", "cacheRead" -> AccessType.READ;
-            case "dbWrite", "cacheWrite" -> AccessType.WRITE;
-            default -> AccessType.EXECUTE;
-        };
+        if (type == null) {
+            return AccessType.EXECUTE;
+        }
+
+        switch (type) {
+            case "dbRead":
+            case "cacheRead":
+                return AccessType.READ;
+            case "dbWrite":
+            case "cacheWrite":
+                return AccessType.WRITE;
+            default:
+                return AccessType.EXECUTE;
+        }
     }
 
     private String mapPermission(String type) {
-        return switch (type) {
-            case "dbRead", "dbWrite" -> Capabilities.STORAGE_SQL;
-            case "cacheRead", "cacheWrite" -> Capabilities.CACHE_LOCAL;
-            default -> "resource:unknown";
-        };
+        if (type == null) {
+            return "resource:unknown";
+        }
+
+        switch (type) {
+            case "dbRead":
+            case "dbWrite":
+                return Capabilities.STORAGE_SQL;
+            case "cacheRead":
+            case "cacheWrite":
+                return Capabilities.CACHE_LOCAL;
+            default:
+                return "resource:unknown";
+        }
     }
 
     private boolean isDevModeBypass(String pluginId, String capability, AccessType accessType) {
@@ -547,7 +577,7 @@ public class SimulateService {
             return false;
         }
         // 检查实际权限配置
-        var info = permissionService.getPermission(pluginId, capability);
+        PermissionInfo info = permissionService.getPermission(pluginId, capability);
         if (info == null) {
             return true; // 没有授权，却执行成功了 -> 豁免
         }

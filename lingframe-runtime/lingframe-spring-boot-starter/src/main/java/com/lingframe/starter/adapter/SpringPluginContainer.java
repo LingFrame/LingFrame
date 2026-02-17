@@ -18,14 +18,16 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.core.io.support.SpringFactoriesLoader;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Collections;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -47,12 +49,22 @@ public class SpringPluginContainer implements PluginContainer {
     // 保存 Context 以便 stop 时使用
     private PluginContext pluginContext;
 
-    public SpringPluginContainer(SpringApplicationBuilder builder, ClassLoader classLoader,
-                                 WebInterfaceManager webInterfaceManager, List<String> excludedPackages) {
+    // 🔥 新增：持有宿主 Context 引用，用于清理
+    private final ConfigurableApplicationContext hostContext;
+    private final RequestMappingHandlerAdapter hostAdapter;
+
+    public SpringPluginContainer(SpringApplicationBuilder builder,
+                                 ClassLoader classLoader,
+                                 WebInterfaceManager webInterfaceManager,
+                                 List<String> excludedPackages,
+                                 ConfigurableApplicationContext hostContext,
+                                 RequestMappingHandlerAdapter hostAdapter) {
         this.builder = builder;
         this.classLoader = classLoader;
         this.webInterfaceManager = webInterfaceManager;
         this.excludedPackages = excludedPackages != null ? excludedPackages : Collections.emptyList();
+        this.hostContext = hostContext;
+        this.hostAdapter = hostAdapter;
     }
 
     @Override
@@ -66,7 +78,8 @@ public class SpringPluginContainer implements PluginContainer {
         try {
             // 添加初始化器：在 Spring 启动前注册关键组件
             builder.initializers(applicationContext -> {
-                if (applicationContext instanceof GenericApplicationContext gac) {
+                if (applicationContext instanceof GenericApplicationContext) {
+                    GenericApplicationContext gac = (GenericApplicationContext) applicationContext;
                     registerBeans(gac, classLoader);
                 }
             });
@@ -96,7 +109,8 @@ public class SpringPluginContainer implements PluginContainer {
      * 手动注册核心 Bean
      */
     private void registerBeans(GenericApplicationContext context, ClassLoader pluginClassLoader) {
-        if (pluginContext instanceof CorePluginContext coreCtx) {
+        if (pluginContext instanceof CorePluginContext) {
+            CorePluginContext coreCtx = (CorePluginContext)pluginContext;
             PluginManager pluginManager = coreCtx.getPluginManager();
             String pluginId = pluginContext.getPluginId();
 
@@ -347,8 +361,8 @@ public class SpringPluginContainer implements PluginContainer {
                             .getDeclaredField("retrieverCache");
                     retrieverCacheField.setAccessible(true);
                     Object cache = retrieverCacheField.get(multicaster);
-                    if (cache instanceof Map<?, ?> cacheMap) {
-                        cacheMap.clear();
+                    if (cache instanceof Map<?, ?>) {
+                        ((Map<?, ?>)cache).clear();
                         log.debug("[{}] Cleared ApplicationEventMulticaster.retrieverCache", pluginId);
                     }
                 }
@@ -362,8 +376,8 @@ public class SpringPluginContainer implements PluginContainer {
                     Field retrieverCacheField = multicaster.getClass().getDeclaredField("retrieverCache");
                     retrieverCacheField.setAccessible(true);
                     Object cache = retrieverCacheField.get(multicaster);
-                    if (cache instanceof Map<?, ?> cacheMap) {
-                        cacheMap.clear();
+                    if (cache instanceof Map<?, ?>) {
+                        ((Map<?, ?>)cache).clear();
                         log.debug("[{}] Cleared ApplicationEventMulticaster.retrieverCache (direct)", pluginId);
                     }
                 } catch (Exception ex) {
@@ -383,6 +397,52 @@ public class SpringPluginContainer implements PluginContainer {
         this.pluginContext = null;
         this.webInterfaceManager = null;
         this.excludedPackages = null;
+        this.pluginContext = null;
+    }
+
+    /**
+     * 清理 SpringFactoriesLoader 的静态缓存
+     * 这是插件 ClassLoader 泄漏的主要原因之一
+     */
+    private void clearSpringFactoriesCache(ClassLoader pluginClassLoader) {
+        try {
+            // Spring Framework 5.x / 6.x
+            Field cacheField = ReflectionUtils.findField(
+                    org.springframework.core.io.support.SpringFactoriesLoader.class,
+                    "cache"
+            );
+            if (cacheField != null) {
+                ReflectionUtils.makeAccessible(cacheField);
+                Map<?, ?> cache = (Map<?, ?>) ReflectionUtils.getField(cacheField, null);
+                if (cache != null) {
+                    cache.remove(pluginClassLoader);
+                    log.debug("Cleared SpringFactoriesLoader cache for: {}", pluginClassLoader);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to clear SpringFactoriesLoader cache", e);
+        }
+
+        try {
+            // Spring Boot 3.x 可能有额外的 forDefaultResourceLocation 缓存
+            // SpringFactoriesLoader 内部可能有多个缓存字段，全部清理
+            Field[] fields = SpringFactoriesLoader.class.getDeclaredFields();
+            for (Field field : fields) {
+                if (Map.class.isAssignableFrom(field.getType()) &&
+                    Modifier.isStatic(field.getModifiers())) {
+                    ReflectionUtils.makeAccessible(field);
+                    Map<?, ?> map = (Map<?, ?>) ReflectionUtils.getField(field, null);
+                    if (map != null) {
+                        Object removed = map.remove(pluginClassLoader);
+                        if (removed != null) {
+                            log.debug("Cleared static cache field '{}' for plugin ClassLoader", field.getName());
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to clear additional SpringFactoriesLoader caches", e);
+        }
     }
 
     @Override

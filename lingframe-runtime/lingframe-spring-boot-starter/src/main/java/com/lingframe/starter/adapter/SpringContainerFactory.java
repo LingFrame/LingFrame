@@ -4,14 +4,16 @@ import com.lingframe.core.exception.PluginInstallException;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.PluginContainer;
 import com.lingframe.starter.config.LingFrameProperties;
-import com.lingframe.starter.util.AsmMainClassScanner;
+import com.lingframe.starter.loader.AsmMainClassScanner;
 import com.lingframe.starter.web.WebInterfaceManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.Banner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 
 import java.io.File;
 import java.util.List;
@@ -20,12 +22,14 @@ import java.util.List;
 public class SpringContainerFactory implements ContainerFactory {
 
     private final boolean devMode;
+    private final ApplicationContext parentContext;
     private final WebInterfaceManager webInterfaceManager;
     private final List<String> serviceExcludedPackages;
 
     public SpringContainerFactory(ApplicationContext parentContext, WebInterfaceManager webInterfaceManager) {
         LingFrameProperties props = parentContext.getBean(LingFrameProperties.class);
         this.devMode = props.isDevMode();
+        this.parentContext = parentContext;
         this.serviceExcludedPackages = props.getServiceExcludedPackages();
         this.webInterfaceManager = webInterfaceManager;
     }
@@ -57,7 +61,22 @@ public class SpringContainerFactory implements ContainerFactory {
                             "org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration," +
                             "org.springframework.boot.actuate.autoconfigure.endpoint.jmx.JmxEndpointAutoConfiguration");
 
-            return new SpringPluginContainer(builder, classLoader, webInterfaceManager, serviceExcludedPackages);
+            // 🔥 获取宿主的 Adapter（用于清理缓存）
+            RequestMappingHandlerAdapter hostAdapter = null;
+            try {
+                hostAdapter = parentContext.getBean(RequestMappingHandlerAdapter.class);
+            } catch (Exception e) {
+                log.debug("No RequestMappingHandlerAdapter found in host context");
+            }
+
+            return new SpringPluginContainer(
+                    builder,
+                    classLoader,
+                    webInterfaceManager,
+                    serviceExcludedPackages,
+                    (ConfigurableApplicationContext) parentContext, // 🔥 传入宿主 Context
+                    hostAdapter // 🔥 传入宿主 Adapter
+            );
 
         } catch (Exception e) {
             log.error("[{}] Create container failed", pluginId, e);

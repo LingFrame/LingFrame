@@ -4,8 +4,8 @@ import com.lingframe.api.annotation.LingReference;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.interceptor.HostBeanGovernanceInterceptor;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.NonNull;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanPostProcessor;
@@ -17,6 +17,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -228,8 +229,8 @@ public class HostBeanGovernanceProcessor implements BeanPostProcessor, Applicati
      * 检查类是否有 @LingReference 注解的字段
      */
     private boolean hasLingReference(Class<?> clazz) {
-        java.lang.reflect.Field[] fields = clazz.getDeclaredFields();
-        for (java.lang.reflect.Field field : fields) {
+        Field[] fields = clazz.getDeclaredFields();
+        for (Field field : fields) {
             if (field.isAnnotationPresent(LingReference.class)) {
                 return true;
             }

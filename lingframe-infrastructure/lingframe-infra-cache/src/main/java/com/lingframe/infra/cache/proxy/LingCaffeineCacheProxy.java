@@ -7,78 +7,85 @@ import com.lingframe.api.context.PluginContextHolder;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
-import lombok.RequiredArgsConstructor;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 
-@RequiredArgsConstructor
+/**
+ * Caffeine Cache 治理代理
+ * <p>
+ * 内部使用原始类型 Cache 委托，以同时兼容 Caffeine 2.x 和 3.x 的泛型签名变化。
+ */
+@SuppressWarnings({ "unchecked", "rawtypes" })
 public class LingCaffeineCacheProxy<K, V> implements Cache<K, V> {
 
-    private final Cache<K, V> target;
+    private final Cache target;
     private final PermissionService permissionService;
+
+    public LingCaffeineCacheProxy(Cache<K, V> typedTarget, PermissionService permissionService) {
+        this.target = typedTarget;
+        this.permissionService = permissionService;
+    }
 
     private void checkPermission(String operation) {
         String callerPluginId = PluginContextHolder.get();
-        if (callerPluginId == null) return;
+        if (callerPluginId == null)
+            return;
 
         boolean allowed = permissionService.isAllowed(callerPluginId, "cache:local", AccessType.WRITE);
         permissionService.audit(callerPluginId, "cache:local", operation, allowed);
 
         if (!allowed) {
-            throw new PermissionDeniedException("Plugin [" + callerPluginId + "] denied access to local cache operation: " + operation);
+            throw new PermissionDeniedException(
+                    "Plugin [" + callerPluginId + "] denied access to local cache operation: " + operation);
         }
     }
 
     @Override
-    public @Nullable V getIfPresent(K key) {
+    public V getIfPresent(Object key) {
         checkPermission("getIfPresent");
-        return target.getIfPresent(key);
+        return (V) target.getIfPresent(key);
     }
 
     @Override
-    public V get(K key, @NonNull Function<? super K, ? extends V> mappingFunction) {
+    public V get(K key, Function<? super K, ? extends V> mappingFunction) {
         checkPermission("get");
-        return target.get(key, mappingFunction);
+        return (V) target.get(key, mappingFunction);
     }
 
     @Override
-    public Map<K, V> getAllPresent(@NonNull Iterable<? extends K> keys) {
+    public Map<K, V> getAllPresent(Iterable keys) {
         checkPermission("getAllPresent");
         return target.getAllPresent(keys);
     }
 
     @Override
-    public Map<K, V> getAll(@NonNull Iterable<? extends K> keys,
-                            @NonNull Function<? super Set<? extends K>, ? extends Map<? extends K, ? extends V>> mappingFunction) {
+    public Map<K, V> getAll(Iterable keys, Function mappingFunction) {
         checkPermission("getAll");
         return target.getAll(keys, mappingFunction);
     }
 
     @Override
-    public void put(K key, @NonNull V value) {
+    public void put(K key, V value) {
         checkPermission("put");
         target.put(key, value);
     }
 
     @Override
-    public void putAll(@NonNull Map<? extends K, ? extends V> map) {
+    public void putAll(Map<? extends K, ? extends V> map) {
         checkPermission("putAll");
         target.putAll(map);
     }
 
     @Override
-    public void invalidate(K key) {
+    public void invalidate(Object key) {
         checkPermission("invalidate");
         target.invalidate(key);
     }
 
     @Override
-    public void invalidateAll(@NonNull Iterable<? extends K> keys) {
+    public void invalidateAll(Iterable keys) {
         checkPermission("invalidateAll");
         target.invalidateAll(keys);
     }

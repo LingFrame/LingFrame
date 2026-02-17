@@ -31,8 +31,7 @@ public class WebInterfaceMetadata {
     private String auditAction;
 
     /**
-     * 清除所有强引用，防止 ClassLoader 泄漏
-     * 在插件卸载时调用
+     * 🔥 卸载时清理引用，帮助 GC
      */
     public void clearReferences() {
         this.targetBean = null;

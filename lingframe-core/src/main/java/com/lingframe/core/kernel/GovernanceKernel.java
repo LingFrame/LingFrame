@@ -87,7 +87,7 @@ public class GovernanceKernel {
 
             // 如果 Adapter 没推导出权限，则默认检查 resourceId
             String perm = ctx.getRequiredPermission();
-            if (perm == null || perm.isBlank()) {
+            if (perm == null || perm.trim().isEmpty()) {
                 perm = ctx.getResourceId();
             }
 

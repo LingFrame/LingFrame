@@ -11,11 +11,13 @@ import com.lingframe.core.plugin.PluginInstance;
 import com.lingframe.core.plugin.PluginRuntime;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import com.lingframe.core.strategy.GovernanceStrategy;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * 标准治理策略提供者
@@ -28,7 +30,10 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
     // 预编译的宿主规则 (提升匹配性能)
     private final List<CompiledRule> hostRules;
 
-    private record CompiledRule(Pattern pattern, HostGovernanceRule rule) {
+    @Value
+    public static class CompiledRule {
+        Pattern pattern;
+        HostGovernanceRule rule;
     }
 
     public StandardGovernancePolicyProvider(LocalGovernanceRegistry localRegistry,
@@ -36,7 +41,7 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
         this.localRegistry = localRegistry;
         this.hostRules = rawRules.stream()
                 .map(r -> new CompiledRule(compilePattern(r.getPattern()), r))
-                .toList();
+                .collect(Collectors.toList());
     }
 
     @Override

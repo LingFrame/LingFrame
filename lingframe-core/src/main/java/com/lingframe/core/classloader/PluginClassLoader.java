@@ -1,10 +1,9 @@
 package com.lingframe.core.classloader;
 
-import lombok.extern.slf4j.Slf4j;
 import com.lingframe.core.exception.ClassLoaderException;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
-import java.lang.reflect.InaccessibleObjectException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
@@ -228,8 +227,8 @@ public class PluginClassLoader extends URLClassLoader {
                     java.lang.reflect.Field pathField = ucp.getClass().getDeclaredField("path");
                     pathField.setAccessible(true);
                     Object path = pathField.get(ucp);
-                    if (path instanceof List<?> list) {
-                        list.clear();
+                    if (path instanceof List<?>) {
+                        ((List<?>) path).clear();
                     }
                 } catch (NoSuchFieldException ignored) {
                     // JVM 版本不同，字段可能不存在
@@ -240,8 +239,8 @@ public class PluginClassLoader extends URLClassLoader {
                     java.lang.reflect.Field loadersField = ucp.getClass().getDeclaredField("loaders");
                     loadersField.setAccessible(true);
                     Object loaders = loadersField.get(ucp);
-                    if (loaders instanceof List<?> list) {
-                        list.clear();
+                    if (loaders instanceof List<?>) {
+                        ((List<?>) loaders).clear();
                     }
                 } catch (NoSuchFieldException ignored) {
                     // JVM 版本不同
@@ -252,8 +251,8 @@ public class PluginClassLoader extends URLClassLoader {
                     java.lang.reflect.Field lmapField = ucp.getClass().getDeclaredField("lmap");
                     lmapField.setAccessible(true);
                     Object lmap = lmapField.get(ucp);
-                    if (lmap instanceof Map<?, ?> map) {
-                        map.clear();
+                    if (lmap instanceof Map<?, ?>) {
+                        ((Map<?, ?>) lmap).clear();
                     }
                 } catch (NoSuchFieldException ignored) {
                     // JVM 版本不同
@@ -261,9 +260,6 @@ public class PluginClassLoader extends URLClassLoader {
 
                 log.debug("[{}] URLClassPath internal caches cleared", pluginId);
             }
-        } catch (InaccessibleObjectException e) {
-            log.debug("[{}] Cannot cleanup URLClassPath caches: module access denied. " +
-                    "Add '--add-opens java.base/jdk.internal.loader=ALL-UNNAMED' if needed.", pluginId);
         } catch (Exception e) {
             log.debug("[{}] Failed to cleanup URLClassPath: {}", pluginId, e.getMessage());
         }

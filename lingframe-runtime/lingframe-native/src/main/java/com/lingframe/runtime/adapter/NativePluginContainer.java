@@ -108,7 +108,9 @@ public class NativePluginContainer implements PluginContainer {
     // ==================== 服务扫描与注册逻辑 ====================
 
     private void scanAndRegisterServices(PluginContext context) {
-        if (!(context instanceof CorePluginContext coreCtx)) {
+        CorePluginContext coreCtx = null;
+        if (!(context instanceof CorePluginContext )) {
+            coreCtx  = (CorePluginContext) context;
             log.warn("[{}] Context is not CorePluginContext, skipping service registration.", pluginId);
             return;
         }
