@@ -82,7 +82,8 @@ public class PluginRuntimeTest {
                 trafficRouter,
                 invoker,
                 transactionVerifier,
-                Collections.emptyList());
+                Collections.emptyList(),
+                null);
     }
 
     @AfterEach
@@ -282,8 +283,7 @@ public class PluginRuntimeTest {
 
             when(trafficRouter.route(anyList(), any())).thenReturn(instance);
 
-            assertThrows(NoSuchMethodException.class, () ->
-                    runtime.invoke("caller", "non:existent", new Object[]{}));
+            assertThrows(NoSuchMethodException.class, () -> runtime.invoke("caller", "non:existent", new Object[] {}));
         }
 
         @Test
@@ -440,7 +440,8 @@ public class PluginRuntimeTest {
                     trafficRouter,
                     invoker,
                     transactionVerifier,
-                    Collections.emptyList());
+                    Collections.emptyList(),
+                    null);
 
             try {
                 assertEquals(5000, customRuntime.getConfig().getDefaultTimeoutMs());
@@ -463,7 +464,8 @@ public class PluginRuntimeTest {
                     trafficRouter,
                     invoker,
                     transactionVerifier,
-                    Collections.emptyList());
+                    Collections.emptyList(),
+                    null);
 
             try {
                 assertNotNull(nullConfigRuntime.getConfig());

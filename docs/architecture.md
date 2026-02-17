@@ -29,7 +29,7 @@ LingFrame draws inspiration from operating system design principles:
 │         ▼                 ▼                 ▼               │
 │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐       │
 │  │  Storage    │   │   Cache     │   │  Message    │       │
-│  │  Plugin     │   │   Plugin    │   │  Plugin     │       │
+│  │  Proxy     │   │   Proxy    │   │  Proxy     │       │
 │  │             │   │             │   │             │       │
 │  │ Infra Layer  │   │ Infra Layer  │   │ Infra Layer  │       │
 │  └──────┬──────┘   └──────┬──────┘   └──────┬──────┘       │
@@ -568,25 +568,33 @@ lingframe:
 
 ### Spring Context Isolation
 
+Each plugin runs in a **completely isolated** Spring ApplicationContext:
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              Parent Context (Host App)                       │
+│              Host Context (Host App)                         │
 │                                                              │
 │   PluginManager, ContainerFactory, PermissionService        │
 │   Common Beans...                                            │
 │                                                              │
-└────────────────────────┬────────────────────────────────────┘
-                         │ parent
-         ┌───────────────┼───────────────┐
-         ▼               ▼               ▼
+└─────────────────────────────────────────────────────────────┘
+
 ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-│ Child Ctx A │   │ Child Ctx B │   │ Child Ctx C │
+│  Context A  │   │  Context B  │   │  Context C  │
 │ (Plugin A)  │   │ (Plugin B)  │   │ (Plugin C)  │
 │             │   │             │   │             │
 │ Indep Beans │   │ Indep Beans │   │ Indep Beans │
 │ Indep Config│   │ Indep Config│   │ Indep Config│
 └─────────────┘   └─────────────┘   └─────────────┘
 ```
+
+> **Design Note**: Plugin contexts are NOT child contexts of the host.
+> This is intentional for:
+> 1. **Zero Trust**: Plugins cannot directly access host beans via `@Autowired`
+> 2. **Clean Unload**: No parent-child references that could cause ClassLoader leaks
+> 3. **True Isolation**: Each plugin is a self-contained Spring Boot application
+>
+> Core beans (`PluginManager`, `PluginContext`) are manually injected via `registerBeans()`.
 
 ## Lifecycle
 

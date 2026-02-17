@@ -91,6 +91,33 @@ public class LingFrameConfig {
     @Builder.Default
     private int corePoolSize = Math.max(2, Runtime.getRuntime().availableProcessors());
 
+    // ================= 插件线程池预算 =================
+
+    /**
+     * 全局插件线程总预算（所有插件共享此配额）
+     * <p>
+     * 每个插件创建独立线程池时，从此预算中扣减。
+     * 卸载时归还。防止插件线程数不可控膨胀。
+     */
+    @Builder.Default
+    private int globalMaxPluginThreads = Runtime.getRuntime().availableProcessors() * 4;
+
+    /**
+     * 单个插件线程池硬上限
+     * <p>
+     * 即使插件 plugin.yml 中配置了更高的值，也不会超过此上限。
+     */
+    @Builder.Default
+    private int maxThreadsPerPlugin = 8;
+
+    /**
+     * 单个插件默认线程数
+     * <p>
+     * 当插件未在 plugin.yml 中指定线程数时，使用此默认值。
+     */
+    @Builder.Default
+    private int defaultThreadsPerPlugin = 2;
+
     // ================= 宿主治理配置 =================
 
     /**

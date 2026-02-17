@@ -15,7 +15,16 @@
         "logCount": "Logs"
     },
     "header": {
-        "notSelected": "Not Selected"
+        "notSelected": "Not Selected",
+        "upload": "Upload Plugin"
+    },
+    "upload": {
+        "title": "Upload Plugin",
+        "dragText": "Click or Drag jar file here",
+        "supportText": "Only .jar files supported",
+        "uploading": "Uploading",
+        "confirm": "Start Upload",
+        "errorType": "Invalid file type, please upload .jar file"
     },
     "envLabels": {
         "dev": "Dev",
@@ -113,6 +122,10 @@
         "prodMode": "Production Mode (deny unauthorized access)",
         "devMode": "Dev Mode (warn only for unauthorized access)",
         "alsoEnabled": " (also enabled {perm})",
-        "alsoDisabled": " (also disabled {perm})"
+        "alsoDisabled": " (also disabled {perm})",
+        "installSuccess": "Plugin installed successfully",
+        "installFailed": "Plugin install failed",
+        "reloadSuccess": "Plugin reloaded successfully",
+        "reloadFailed": "Plugin reload failed"
     }
 }

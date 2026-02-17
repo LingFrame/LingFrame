@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import com.lingframe.core.exception.ClassLoaderException;
 
 import java.io.IOException;
+import java.lang.reflect.InaccessibleObjectException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
@@ -191,13 +192,80 @@ public class PluginClassLoader extends URLClassLoader {
         try {
             // 调用父类的 close() 释放 JAR 文件句柄
             super.close();
-            log.info("[{}] ClassLoader closed successfully", pluginId);
 
-            // Windows 特殊处理：提示 GC 尽快回收
-            System.gc();
+            // 🔥 清理 URLClassPath 内部缓存（loaders, path 等）
+            // super.close() 已关闭文件句柄，但某些 JVM 实现可能在 URLClassPath 中残留引用
+            cleanupInternalCaches();
+
+            log.info("[{}] ClassLoader closed successfully", pluginId);
+            // 💡 不再在此处调用 System.gc()
+            // GC 提示由 BasicResourceGuard 在所有清理完成后统一触发，
+            // 此处调用没有实际效果（引用链尚未完全切断）
         } catch (IOException e) {
             log.error("[{}] Error closing ClassLoader", pluginId, e);
             throw e;
+        }
+    }
+
+    /**
+     * 清理 URLClassLoader 内部缓存
+     * <p>
+     * URLClassLoader 内部的 URLClassPath 可能持有已打开的 JarFile 引用和 URL 列表。
+     * super.close() 会关闭文件句柄，但不一定清空集合引用。
+     * 此方法通过反射确保内部引用被彻底清理。
+     * </p>
+     */
+    private void cleanupInternalCaches() {
+        try {
+            // 获取 URLClassLoader.ucp (URLClassPath) 字段
+            java.lang.reflect.Field ucpField = URLClassLoader.class.getDeclaredField("ucp");
+            ucpField.setAccessible(true);
+            Object ucp = ucpField.get(this);
+
+            if (ucp != null) {
+                // 清理 URLClassPath.path (ArrayList<URL>)
+                try {
+                    java.lang.reflect.Field pathField = ucp.getClass().getDeclaredField("path");
+                    pathField.setAccessible(true);
+                    Object path = pathField.get(ucp);
+                    if (path instanceof List<?> list) {
+                        list.clear();
+                    }
+                } catch (NoSuchFieldException ignored) {
+                    // JVM 版本不同，字段可能不存在
+                }
+
+                // 清理 URLClassPath.loaders (ArrayList<Loader>)
+                try {
+                    java.lang.reflect.Field loadersField = ucp.getClass().getDeclaredField("loaders");
+                    loadersField.setAccessible(true);
+                    Object loaders = loadersField.get(ucp);
+                    if (loaders instanceof List<?> list) {
+                        list.clear();
+                    }
+                } catch (NoSuchFieldException ignored) {
+                    // JVM 版本不同
+                }
+
+                // 清理 URLClassPath.lmap (HashMap<String, Loader>)
+                try {
+                    java.lang.reflect.Field lmapField = ucp.getClass().getDeclaredField("lmap");
+                    lmapField.setAccessible(true);
+                    Object lmap = lmapField.get(ucp);
+                    if (lmap instanceof Map<?, ?> map) {
+                        map.clear();
+                    }
+                } catch (NoSuchFieldException ignored) {
+                    // JVM 版本不同
+                }
+
+                log.debug("[{}] URLClassPath internal caches cleared", pluginId);
+            }
+        } catch (InaccessibleObjectException e) {
+            log.debug("[{}] Cannot cleanup URLClassPath caches: module access denied. " +
+                    "Add '--add-opens java.base/jdk.internal.loader=ALL-UNNAMED' if needed.", pluginId);
+        } catch (Exception e) {
+            log.debug("[{}] Failed to cleanup URLClassPath: {}", pluginId, e.getMessage());
         }
     }
 

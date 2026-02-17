@@ -22,24 +22,33 @@ import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.context.support.AbstractApplicationContext;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.MutablePropertySources;
+
 @Slf4j
 public class SpringPluginContainer implements PluginContainer {
 
-    private final SpringApplicationBuilder builder;
+    // 🔥 非 final：stop() 时必须清空，否则 builder 持有 ResourceLoader → ClassLoader 引用链
+    private SpringApplicationBuilder builder;
     private ConfigurableApplicationContext context;
-    private final ClassLoader classLoader;
-    private final WebInterfaceManager webInterfaceManager;
-    private final List<String> excludedPackages;
+    private ClassLoader classLoader; // 非 final，以便在 stop() 中清除
+    private WebInterfaceManager webInterfaceManager;
+    private List<String> excludedPackages;
     // 保存 Context 以便 stop 时使用
     private PluginContext pluginContext;
 
     public SpringPluginContainer(SpringApplicationBuilder builder, ClassLoader classLoader,
-            WebInterfaceManager webInterfaceManager, List<String> excludedPackages) {
+                                 WebInterfaceManager webInterfaceManager, List<String> excludedPackages) {
         this.builder = builder;
         this.classLoader = classLoader;
         this.webInterfaceManager = webInterfaceManager;
@@ -241,7 +250,7 @@ public class SpringPluginContainer implements PluginContainer {
      * 解析单个方法并生成元数据（简化版，不再解析参数）
      */
     private void registerControllerMethod(String pluginId, Object bean, Method method,
-            String baseUrl, RequestMapping mapping) {
+                                          String baseUrl, RequestMapping mapping) {
         // URL 拼接: /pluginId/classUrl/methodUrl
         String methodUrl = mapping.path().length > 0 ? mapping.path()[0] : "";
         String fullPath = ("/" + pluginId + "/" + baseUrl + "/" + methodUrl).replaceAll("/+", "/");
@@ -311,9 +320,69 @@ public class SpringPluginContainer implements PluginContainer {
                 webInterfaceManager.unregister(pluginId);
             }
 
+            // 🔥 清理 Environment 的 PropertySource，防止 OriginTrackedValue 泄漏
+            try {
+                Environment rawEnv = context.getEnvironment();
+                if (rawEnv instanceof ConfigurableEnvironment) {
+                    ConfigurableEnvironment env = (ConfigurableEnvironment) rawEnv;
+                    MutablePropertySources sources = env.getPropertySources();
+                    // 复制名称列表避免 ConcurrentModificationException
+                    List<String> names = new ArrayList<>();
+                    sources.forEach(ps -> names.add(ps.getName()));
+                    names.forEach(sources::remove);
+                    log.debug("[{}] Cleared {} PropertySources from plugin Environment", pluginId, names.size());
+                }
+            } catch (Exception e) {
+                log.debug("[{}] Failed to clear PropertySources: {}", pluginId, e.getMessage());
+            }
+
+            // 🔥 清理 ApplicationEventMulticaster.retrieverCache，防止
+            // AvailabilityChangeEvent.source 泄漏
+            try {
+                Object multicaster = context
+                        .getBean(AbstractApplicationContext.APPLICATION_EVENT_MULTICASTER_BEAN_NAME);
+                if (multicaster != null) {
+                    // 获取 AbstractApplicationEventMulticaster.retrieverCache 字段
+                    Field retrieverCacheField = multicaster.getClass().getSuperclass()
+                            .getDeclaredField("retrieverCache");
+                    retrieverCacheField.setAccessible(true);
+                    Object cache = retrieverCacheField.get(multicaster);
+                    if (cache instanceof Map<?, ?> cacheMap) {
+                        cacheMap.clear();
+                        log.debug("[{}] Cleared ApplicationEventMulticaster.retrieverCache", pluginId);
+                    }
+                }
+            } catch (NoSuchBeanDefinitionException e) {
+                log.trace("[{}] No ApplicationEventMulticaster bean found", pluginId);
+            } catch (NoSuchFieldException e) {
+                // 尝试直接在当前类查找
+                try {
+                    Object multicaster = context
+                            .getBean(AbstractApplicationContext.APPLICATION_EVENT_MULTICASTER_BEAN_NAME);
+                    Field retrieverCacheField = multicaster.getClass().getDeclaredField("retrieverCache");
+                    retrieverCacheField.setAccessible(true);
+                    Object cache = retrieverCacheField.get(multicaster);
+                    if (cache instanceof Map<?, ?> cacheMap) {
+                        cacheMap.clear();
+                        log.debug("[{}] Cleared ApplicationEventMulticaster.retrieverCache (direct)", pluginId);
+                    }
+                } catch (Exception ex) {
+                    log.trace("[{}] retrieverCache field not accessible: {}", pluginId, ex.getMessage());
+                }
+            } catch (Exception e) {
+                log.debug("[{}] Failed to clear ApplicationEventMulticaster cache: {}", pluginId, e.getMessage());
+            }
+
             context.close();
         }
-        this.context = null;
+
+        // 🔥 关键：清除所有对插件的引用，防止泄漏
+        this.builder = null; // SpringApplicationBuilder 持有 ResourceLoader → ClassLoader
+        this.context = null; // ApplicationContext 持有 BeanFactory → 所有 Bean → Class → ClassLoader
+        this.classLoader = null;
+        this.pluginContext = null;
+        this.webInterfaceManager = null;
+        this.excludedPackages = null;
     }
 
     @Override

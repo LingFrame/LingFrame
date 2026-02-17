@@ -129,13 +129,13 @@ public class LingFrameAutoConfiguration {
 
     @Bean
     public GovernanceKernel governanceKernel(PermissionService permissionService,
-                                             GovernanceArbitrator arbitrator, EventBus eventBus) {
+            GovernanceArbitrator arbitrator, EventBus eventBus) {
         return new GovernanceKernel(permissionService, arbitrator, eventBus);
     }
 
     @Bean
     public ContainerFactory containerFactory(ApplicationContext parentContext,
-                                             WebInterfaceManager webInterfaceManager) {
+            WebInterfaceManager webInterfaceManager) {
         return new SpringContainerFactory(parentContext, webInterfaceManager);
     }
 
@@ -186,6 +186,10 @@ public class LingFrameAutoConfiguration {
                 .hostCheckPermissions(properties.getHostGovernance().isCheckPermissions())
                 // 共享 API 配置
                 .preloadApiJars(properties.getPreloadApiJars())
+                // 插件线程池预算
+                .globalMaxPluginThreads(rtProps.getGlobalMaxPluginThreads())
+                .maxThreadsPerPlugin(rtProps.getMaxThreadsPerPlugin())
+                .defaultThreadsPerPlugin(rtProps.getDefaultThreadsPerPlugin())
                 .build();
 
         // 初始化静态持有者
@@ -196,18 +200,18 @@ public class LingFrameAutoConfiguration {
 
     @Bean
     public PluginManager pluginManager(ContainerFactory containerFactory,
-                                       PermissionService permissionService,
-                                       GovernanceKernel governanceKernel,
-                                       PluginLoaderFactory pluginLoaderFactory,
-                                       ObjectProvider<List<PluginSecurityVerifier>> verifiersProvider,
-                                       EventBus eventBus,
-                                       TrafficRouter trafficRouter,
-                                       PluginServiceInvoker pluginServiceInvoker,
-                                       ObjectProvider<TransactionVerifier> transactionVerifierProvider,
-                                       ObjectProvider<List<ThreadLocalPropagator>> propagatorsProvider,
-                                       LingFrameConfig lingFrameConfig,
-                                       LocalGovernanceRegistry localGovernanceRegistry,
-                                       ObjectProvider<ResourceGuard> resourceGuardProvider) {
+            PermissionService permissionService,
+            GovernanceKernel governanceKernel,
+            PluginLoaderFactory pluginLoaderFactory,
+            ObjectProvider<List<PluginSecurityVerifier>> verifiersProvider,
+            EventBus eventBus,
+            TrafficRouter trafficRouter,
+            PluginServiceInvoker pluginServiceInvoker,
+            ObjectProvider<TransactionVerifier> transactionVerifierProvider,
+            ObjectProvider<List<ThreadLocalPropagator>> propagatorsProvider,
+            LingFrameConfig lingFrameConfig,
+            LocalGovernanceRegistry localGovernanceRegistry,
+            ObjectProvider<ResourceGuard> resourceGuardProvider) {
 
         // 获取可选 Bean
         TransactionVerifier transactionVerifier = transactionVerifierProvider.getIfAvailable();
@@ -268,8 +272,8 @@ public class LingFrameAutoConfiguration {
     // 额外注册一个代表宿主的 Context
     @Bean
     public PluginContext hostPluginContext(PluginManager pluginManager,
-                                           PermissionService permissionService,
-                                           EventBus eventBus) {
+            PermissionService permissionService,
+            EventBus eventBus) {
         // 给宿主应用一个固定的 ID，例如 "host-app"
         return new CorePluginContext("host-app", pluginManager, permissionService, eventBus);
     }

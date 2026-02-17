@@ -18,12 +18,12 @@ import java.util.concurrent.atomic.AtomicLong;
 @Slf4j
 public class PluginInstance {
 
-    @Getter
-    private final PluginContainer container;
+    // 🔥 非 final：destroy() 时必须置 null 断开 → ClassLoader 引用链
+    private volatile PluginContainer container;
 
     // 插件完整定义 (包含治理配置、扩展参数等)
-    @Getter
-    private final PluginDefinition definition;
+    // 🔥 非 final：destroy() 时必须置 null
+    private volatile PluginDefinition definition;
 
     // 实例固有标签 (如 {"env": "canary", "tenant": "T1"})
     private final Map<String, String> labels = new ConcurrentHashMap<>();
@@ -50,12 +50,22 @@ public class PluginInstance {
         definition.validate();
     }
 
+    public PluginContainer getContainer() {
+        return container;
+    }
+
+    public PluginDefinition getDefinition() {
+        return definition;
+    }
+
     public String getVersion() {
-        return definition.getVersion();
+        PluginDefinition def = definition;
+        return def != null ? def.getVersion() : "<destroyed>";
     }
 
     public String getPluginId() {
-        return definition.getId();
+        PluginDefinition def = definition;
+        return def != null ? def.getId() : "<destroyed>";
     }
 
     /**
@@ -102,11 +112,12 @@ public class PluginInstance {
      * 检查是否就绪
      */
     public boolean isReady() {
+        PluginContainer c = container;
         return ready
                 && !dying
                 && !destroyed
-                && container != null
-                && container.isActive();
+                && c != null
+                && c.isActive();
     }
 
     /**
@@ -167,24 +178,29 @@ public class PluginInstance {
      */
     public synchronized void destroy() {
         if (destroyed) {
-            log.debug("Plugin instance {} already destroyed, skipping", definition.getVersion());
             return;
         }
 
+        String version = getVersion();
         this.dying = true;
         this.ready = false;
         this.destroyed = true;
 
-        if (container != null && container.isActive()) {
+        PluginContainer c = this.container;
+        if (c != null && c.isActive()) {
             try {
-                container.stop();
-                log.info("Plugin instance {} destroyed successfully", definition.getVersion());
+                c.stop();
+                log.info("Plugin instance {} destroyed successfully", version);
             } catch (Exception e) {
-                log.error("Error destroying plugin instance {}: {}", definition.getVersion(), e.getMessage(), e);
+                log.error("Error destroying plugin instance {}: {}", version, e.getMessage(), e);
             }
         }
 
         labels.clear();
+
+        // 🔥 关键：主动断开引用链 container → ClassLoader, definition → metadata
+        this.container = null;
+        this.definition = null;
     }
 
     /**
@@ -193,6 +209,6 @@ public class PluginInstance {
     @Override
     public String toString() {
         return String.format("PluginInstance{version='%s', ready=%s, dying=%s, destroyed=%s, activeRequests=%d}",
-                definition.getVersion(), ready, dying, destroyed, activeRequests.get());
+                getVersion(), ready, dying, destroyed, activeRequests.get());
     }
 }

@@ -85,6 +85,11 @@ public class PluginManagerTest {
         when(runtimeConfig.getBulkheadMaxConcurrent()).thenReturn(50);
         when(runtimeConfig.getBulkheadAcquireTimeoutMs()).thenReturn(1000);
 
+        // 线程池预算配置
+        when(lingFrameConfig.getGlobalMaxPluginThreads()).thenReturn(32);
+        when(lingFrameConfig.getMaxThreadsPerPlugin()).thenReturn(8);
+        when(lingFrameConfig.getDefaultThreadsPerPlugin()).thenReturn(2);
+
         // 设置 PluginLoaderFactory mock
         when(pluginLoaderFactory.create(anyString(), any(), any()))
                 .thenReturn(Thread.currentThread().getContextClassLoader());

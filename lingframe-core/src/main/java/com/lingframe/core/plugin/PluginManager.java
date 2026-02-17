@@ -101,8 +101,20 @@ public class PluginManager {
     private final LingFrameConfig lingFrameConfig;
     private final LocalGovernanceRegistry localGovernanceRegistry;
     private final ScheduledExecutorService scheduler;
-    private final ExecutorService pluginExecutor;
     private final AtomicInteger threadNumber = new AtomicInteger(1);
+
+    // ==================== 线程池预算管理 ====================
+
+    /**
+     * 全局线程预算剩余配额
+     */
+    private final AtomicInteger globalThreadBudget;
+
+    /**
+     * 每个插件实际分配的线程数：Key=PluginId, Value=分配线程数
+     * 用于卸载时归还预算
+     */
+    private final Map<String, Integer> pluginThreadAllocations = new ConcurrentHashMap<>();
 
     public PluginManager(ContainerFactory containerFactory,
             PermissionService permissionService,
@@ -154,7 +166,7 @@ public class PluginManager {
 
         // 基础设施
         this.scheduler = createScheduler();
-        this.pluginExecutor = createExecutor();
+        this.globalThreadBudget = new AtomicInteger(lingFrameConfig.getGlobalMaxPluginThreads());
     }
 
     // ==================== 安装 API ====================
@@ -252,31 +264,37 @@ public class PluginManager {
             return;
         }
 
+        // 🔥 关键：在 shutdown 之前获取 ClassLoader 引用
+        // 因为 shutdown 后 container 会将 classLoader 置 null
+        ClassLoader pluginClassLoader = null;
+        PluginInstance defaultInst = runtime.getInstancePool().getDefault();
+        if (defaultInst != null && defaultInst.getContainer() != null) {
+            pluginClassLoader = defaultInst.getContainer().getClassLoader();
+        }
+
         // 清理各种状态
         serviceCache.entrySet().removeIf(e -> e.getValue().equals(pluginId));
+        // 🔥 额外清理：移除由该插件 ClassLoader 加载的 Class Key，防止 Class → ClassLoader 引用链残留
+        if (pluginClassLoader != null) {
+            final ClassLoader cl = pluginClassLoader;
+            serviceCache.entrySet().removeIf(e -> e.getKey().getClassLoader() == cl);
+        }
         pluginSources.remove(pluginId);
         pluginDefinitionMap.remove(pluginId);
-
-        // 获取 ClassLoader 用于资源清理
-        PluginInstance defaultInstance = runtime.getInstancePool().getDefault();
-        ClassLoader pluginClassLoader = defaultInstance != null && defaultInstance.getContainer() != null
-                ? defaultInstance.getContainer().getClassLoader()
-                : null;
 
         try {
             runtime.shutdown();
         } catch (Exception e) {
             log.warn("Error shutting down runtime for plugin: {}", pluginId, e);
         }
+        // 归还线程预算
+        reclaimThreadBudget(pluginId);
+
         unregisterProtocolServices(pluginId);
         eventBus.unsubscribeAll(pluginId);
         permissionService.removePlugin(pluginId);
 
-        // 资源清理和泄漏检测
-        if (pluginClassLoader != null) {
-            resourceGuard.cleanup(pluginId, pluginClassLoader);
-            resourceGuard.detectLeak(pluginId, pluginClassLoader);
-        }
+        // 资源清理和泄漏检测现在由 PluginLifecycleManager.destroyInstance 触发
 
         // Hook 2: Post-Uninstall (清理配置、删除临时文件)
         eventBus.publish(new PluginUninstalledEvent(pluginId));
@@ -461,8 +479,8 @@ public class PluginManager {
     public void shutdown() {
         log.info("Shutting down PluginManager...");
 
-        // 停止调度器
-        shutdownExecutor(scheduler);
+        // 停止调度器 (使用 shutdownNow 取消延迟任务)
+        shutdownExecutorNow(scheduler);
 
         // 关闭所有运行时
         for (PluginRuntime runtime : runtimes.values()) {
@@ -473,14 +491,24 @@ public class PluginManager {
             }
         }
 
+        // 关闭资源守卫
+        if (resourceGuard != null) {
+            try {
+                resourceGuard.shutdown();
+            } catch (Exception e) {
+                log.error("Error shutting down ResourceGuard", e);
+            }
+        }
+
         // 清理状态
         runtimes.clear();
         serviceCache.clear();
         protocolServiceRegistry.clear();
         pluginSources.clear();
 
-        // 关闭线程池
-        shutdownExecutor(pluginExecutor);
+        // 归还所有线程预算 (各插件线程池已由 runtime.shutdown() 关闭)
+        pluginThreadAllocations.clear();
+        globalThreadBudget.set(lingFrameConfig.getGlobalMaxPluginThreads());
 
         log.info("PluginManager shutdown complete.");
     }
@@ -586,11 +614,13 @@ public class PluginManager {
     }
 
     private PluginRuntime createRuntime(String pluginId) {
+        ExecutorService pluginExec = createPluginExecutor(pluginId);
         return new PluginRuntime(
                 pluginId, lingFrameConfig.getRuntimeConfig(),
-                scheduler, pluginExecutor,
+                scheduler, pluginExec,
                 governanceKernel, eventBus, trafficRouter,
-                pluginServiceInvoker, transactionVerifier, propagators);
+                pluginServiceInvoker, transactionVerifier, propagators,
+                resourceGuard);
     }
 
     private void cleanupOnFailure(ClassLoader classLoader, PluginContainer container) {
@@ -632,20 +662,72 @@ public class PluginManager {
         });
     }
 
-    private ExecutorService createExecutor() {
+    /**
+     * 为单个插件创建独立线程池（三重约束）
+     * <ol>
+     * <li>不超过单插件硬上限 (maxThreadsPerPlugin)</li>
+     * <li>不超过全局剩余预算 (globalThreadBudget)</li>
+     * <li>最少保底 1 个线程</li>
+     * </ol>
+     */
+    private ExecutorService createPluginExecutor(String pluginId) {
+        int requested = lingFrameConfig.getDefaultThreadsPerPlugin();
+        int maxPerPlugin = lingFrameConfig.getMaxThreadsPerPlugin();
+
+        // 约束 1：不超过单插件硬上限
+        int actual = Math.min(requested, maxPerPlugin);
+
+        // 约束 2：不超过全局剩余预算（CAS 扣减）
+        int allocated = 0;
+        while (true) {
+            int remaining = globalThreadBudget.get();
+            allocated = Math.min(actual, remaining);
+            // 约束 3：最少保底 1 个线程
+            allocated = Math.max(allocated, 1);
+            int newRemaining = remaining - allocated;
+            if (newRemaining < 0)
+                newRemaining = 0;
+            if (globalThreadBudget.compareAndSet(remaining, newRemaining)) {
+                break;
+            }
+        }
+
+        if (allocated < requested) {
+            log.warn("[{}] Thread pool constrained: requested={}, allocated={}, globalRemaining={}",
+                    pluginId, requested, allocated, globalThreadBudget.get());
+        }
+
+        // 记录分配量，卸载时归还
+        pluginThreadAllocations.put(pluginId, allocated);
+
+        log.info("[{}] Created per-plugin thread pool: size={}, globalRemaining={}",
+                pluginId, allocated, globalThreadBudget.get());
+
         return new ThreadPoolExecutor(
-                lingFrameConfig.getCorePoolSize(),
-                lingFrameConfig.getCorePoolSize() * 2,
+                allocated, allocated,
                 KEEP_ALIVE_TIME, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(QUEUE_CAPACITY),
                 r -> {
-                    Thread t = new Thread(r, "plugin-executor-" + threadNumber.getAndIncrement());
+                    Thread t = new Thread(r, "plugin-" + pluginId + "-" + threadNumber.getAndIncrement());
                     t.setDaemon(true);
                     t.setUncaughtExceptionHandler(
-                            (thread, e) -> log.error("Executor thread {} error: {}", thread.getName(), e.getMessage()));
+                            (thread, e) -> log.error("Plugin executor thread {} error: {}",
+                                    thread.getName(), e.getMessage()));
                     return t;
                 },
                 new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    /**
+     * 归还插件线程预算
+     */
+    private void reclaimThreadBudget(String pluginId) {
+        Integer allocated = pluginThreadAllocations.remove(pluginId);
+        if (allocated != null && allocated > 0) {
+            globalThreadBudget.addAndGet(allocated);
+            log.info("[{}] Reclaimed thread budget: returned={}, globalRemaining={}",
+                    pluginId, allocated, globalThreadBudget.get());
+        }
     }
 
     private void shutdownExecutor(ExecutorService executor) {
@@ -657,6 +739,17 @@ public class PluginManager {
             }
         } catch (InterruptedException e) {
             executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void shutdownExecutorNow(ExecutorService executor) {
+        executor.shutdownNow(); // 直接尝试取消所有任务
+        try {
+            if (!executor.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                log.warn("Executor did not terminate during shutdownNow");
+            }
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
     }

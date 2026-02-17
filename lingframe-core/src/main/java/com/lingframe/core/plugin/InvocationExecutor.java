@@ -220,6 +220,16 @@ public class InvocationExecutor {
     private Object executeInternal(PluginInstance instance,
             ServiceRegistry.InvokableService service,
             Object[] args) throws Exception {
+
+        // 1. 捕获当前 TCCL
+        Thread currentThread = Thread.currentThread();
+        ClassLoader originalClassLoader = currentThread.getContextClassLoader();
+
+        // 2. 设置插件 TCCL (如果容器可用)
+        if (instance.getContainer() != null && instance.getContainer().getClassLoader() != null) {
+            currentThread.setContextClassLoader(instance.getContainer().getClassLoader());
+        }
+
         try {
             if (invoker instanceof FastPluginServiceInvoker fast) {
                 return fast.invokeFast(instance, service.methodHandle(), args);
@@ -233,6 +243,9 @@ public class InvocationExecutor {
             } else {
                 throw new InvocationException("Execution failed", t);
             }
+        } finally {
+            // 3. 恢复原始 TCCL
+            currentThread.setContextClassLoader(originalClassLoader);
         }
     }
 
@@ -271,6 +284,23 @@ public class InvocationExecutor {
                 bulkhead.getQueueLength(),
                 timeoutMs,
                 acquireTimeoutMs);
+    }
+
+    /**
+     * 关闭执行器，清理内部引用并强制终止线程池
+     * <p>
+     * 每个插件拥有独立线程池，卸载时 shutdownNow() 强制释放
+     * Lambda 闭包中捕获的 PluginInstance → ClassLoader 引用链。
+     * </p>
+     */
+    public void shutdown() {
+        this.eventBus = null;
+        this.propagators.clear();
+        // 强制终止插件独立线程池，释放所有闭包引用
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdownNow();
+        }
+        log.debug("[{}] InvocationExecutor shutdown, thread pool terminated", pluginId);
     }
 
     // ==================== 内部类 ====================

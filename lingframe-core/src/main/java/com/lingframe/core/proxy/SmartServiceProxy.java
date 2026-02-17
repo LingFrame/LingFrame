@@ -30,7 +30,8 @@ public class SmartServiceProxy implements InvocationHandler {
     private static final ThreadLocal<InvocationContext> CTX_POOL = ThreadLocal.withInitial(() -> null);
 
     // 缓存静态元数据 (如 ResourceId)，不再缓存动态权限
-    private static final ConcurrentHashMap<Method, String> RESOURCE_ID_CACHE = new ConcurrentHashMap<>();
+    // 🔥 使用实例级缓存而非 static，避免 Method Key 持有 Class → ClassLoader 引用导致泄漏
+    private final Map<Method, String> resourceIdCache = new ConcurrentHashMap<>();
 
     public SmartServiceProxy(String callerPluginId,
             PluginRuntime targetRuntime, // 核心锚点,
@@ -71,7 +72,7 @@ public class SmartServiceProxy implements InvocationHandler {
             Map<String, String> labels = PluginContextHolder.getLabels();
             finalCtx.setLabels(labels != null ? labels : Collections.emptyMap());
 
-            String resourceId = RESOURCE_ID_CACHE.computeIfAbsent(method,
+            String resourceId = resourceIdCache.computeIfAbsent(method,
                     m -> serviceInterface.getName() + ":" + m.getName());
             finalCtx.setResourceId(resourceId);
 

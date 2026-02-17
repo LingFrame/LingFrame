@@ -9,6 +9,7 @@ import com.lingframe.core.plugin.event.RuntimeEvent;
 import com.lingframe.core.plugin.event.RuntimeEventBus;
 import com.lingframe.core.proxy.SmartServiceProxy;
 import com.lingframe.core.spi.PluginServiceInvoker;
+import com.lingframe.core.spi.ResourceGuard;
 import com.lingframe.core.spi.ThreadLocalPropagator;
 import com.lingframe.core.spi.TrafficRouter;
 import com.lingframe.core.spi.TransactionVerifier;
@@ -45,20 +46,18 @@ public class PluginRuntime {
     private final PluginRuntimeConfig config;
 
     // 内部事件总线
-    private final RuntimeEventBus internalEventBus;
+    // 🔥 非 final：shutdown() 时置 null 断开引用链
+    private volatile RuntimeEventBus internalEventBus;
 
     // ===== 核心组件 =====
-    @Getter
-    private final InstancePool instancePool;
+    // 🔥 全部 volatile，shutdown() 后置 null 断开 → ClassLoader 引用链
+    private volatile InstancePool instancePool;
 
-    @Getter
-    private final ServiceRegistry serviceRegistry;
+    private volatile ServiceRegistry serviceRegistry;
 
-    @Getter
-    private final InvocationExecutor invocationExecutor;
+    private volatile InvocationExecutor invocationExecutor;
 
-    @Getter
-    private final PluginLifecycleManager lifecycleManager;
+    private volatile PluginLifecycleManager lifecycleManager;
 
     // ===== 协调依赖 =====
     private final TrafficRouter router;
@@ -91,7 +90,8 @@ public class PluginRuntime {
             TrafficRouter router,
             PluginServiceInvoker invoker,
             TransactionVerifier transactionVerifier,
-            List<ThreadLocalPropagator> propagators) {
+            List<ThreadLocalPropagator> propagators,
+            ResourceGuard resourceGuard) {
         this.pluginId = pluginId;
         this.config = config != null ? config : PluginRuntimeConfig.defaults();
         this.router = router;
@@ -116,7 +116,8 @@ public class PluginRuntime {
                 internalEventBus, // 内部事件
                 externalEventBus, // 外部事件
                 scheduler,
-                this.config);
+                this.config,
+                resourceGuard);
 
         // 🔥 注册组件的事件处理器
         registerEventHandlers();
@@ -125,6 +126,24 @@ public class PluginRuntime {
         this.status = PluginStatus.LOADED;
 
         log.info("[{}] PluginRuntime initialized", pluginId);
+    }
+
+    // ===== 🔥 手动 Getter（字段不再是 final，不能用 @Getter）=====
+
+    public InstancePool getInstancePool() {
+        return instancePool;
+    }
+
+    public ServiceRegistry getServiceRegistry() {
+        return serviceRegistry;
+    }
+
+    public InvocationExecutor getInvocationExecutor() {
+        return invocationExecutor;
+    }
+
+    public PluginLifecycleManager getLifecycleManager() {
+        return lifecycleManager;
     }
 
     /**
@@ -276,10 +295,31 @@ public class PluginRuntime {
      */
     public void shutdown() {
         log.info("[{}] Shutting down PluginRuntime", pluginId);
+
+        // 1. 关闭生命周期管理器（销毁所有实例 → 关闭容器 → 释放资源）
         lifecycleManager.shutdown();
 
-        // 🔥 清理事件总线
+        // 2. 🔥 清理事件总线（切断所有事件监听器的引用）
         internalEventBus.clear();
+
+        // 3. 🔥 显式清理服务注册表（清除 Bean/Method/MethodHandle 引用）
+        serviceRegistry.clear();
+
+        // 4. 🔥 关闭调用执行器（中断可能的线程池任务）
+        if (invocationExecutor != null)
+            invocationExecutor.shutdown();
+
+        // 5. 🔥 标记状态
+        this.status = PluginStatus.UNINSTALLED;
+
+        // 6. 🔥🔥 关键：主动断开全部子组件引用链，使 GC 能回收 ClassLoader
+        this.instancePool = null;
+        this.serviceRegistry = null;
+        this.invocationExecutor = null;
+        this.lifecycleManager = null;
+        this.internalEventBus = null;
+
+        log.info("[{}] PluginRuntime shutdown complete (all references released)", pluginId);
     }
 
     // ==================== 协调逻辑 ====================

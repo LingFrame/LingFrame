@@ -43,6 +43,14 @@ createApp({
             onConfirm: null
         });
 
+        const uploadModal = reactive({
+            show: false,
+            file: null,
+            isDragging: false,
+            uploading: false,
+            progress: 0
+        });
+
         const envLabels = { dev: '开发', test: '测试', prod: '生产' };
 
         let eventSource = null;
@@ -186,7 +194,124 @@ createApp({
             if (modal.onConfirm) modal.onConfirm();
         };
 
-        // ==================== 灰度配置 ====================
+        // ==================== 上传插件 ====================
+        const openUploadModal = () => {
+            uploadModal.show = true;
+            uploadModal.file = null;
+            uploadModal.progress = 0;
+            uploadModal.uploading = false;
+        };
+
+        const closeUploadModal = () => {
+            if (!uploadModal.uploading) {
+                uploadModal.show = false;
+            }
+        };
+
+        const handleFileSelect = (event) => {
+            const file = event.target.files[0];
+            if (file) validateAndSetFile(file);
+            event.target.value = ''; // Reset
+        };
+
+        const handleFileDrop = (event) => {
+            uploadModal.isDragging = false;
+            const file = event.dataTransfer.files[0];
+            if (file) validateAndSetFile(file);
+        };
+
+        const validateAndSetFile = (file) => {
+            if (!file.name.endsWith('.jar')) {
+                showToast(t('upload.errorType'), 'error');
+                return;
+            }
+            uploadModal.file = file;
+        };
+
+        const formatSize = (bytes) => {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        };
+
+        const startUpload = async () => {
+            if (!uploadModal.file) return;
+
+            uploadModal.uploading = true;
+            uploadModal.progress = 0;
+
+            // 模拟进度条 (因为 fetch API 不支持原生上传进度)
+            const progressTimer = setInterval(() => {
+                if (uploadModal.progress < 90) {
+                    uploadModal.progress += Math.floor(Math.random() * 10) + 1;
+                }
+            }, 200);
+
+            try {
+                const formData = new FormData();
+                formData.append('file', uploadModal.file);
+
+                const res = await fetch(API_BASE + '/plugins/install', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                clearInterval(progressTimer);
+                uploadModal.progress = 100;
+
+                if (!data.success) throw new Error(data.message);
+
+                showToast(t('toast.installSuccess'), 'success');
+                closeUploadModal();
+                refreshPlugins(); // 刷新列表
+            } catch (e) {
+                clearInterval(progressTimer);
+                uploadModal.progress = 0;
+                showToast(t('toast.installFailed') + ': ' + e.message, 'error');
+            } finally {
+                uploadModal.uploading = false;
+            }
+        };
+
+        const reloadPlugin = async (pluginId) => {
+            loading.plugins = true; // 复用 plugins loading
+            try {
+                await api.post(`/plugins/${pluginId}/reload`);
+                showToast(t('toast.reloadSuccess'), 'success');
+                refreshPlugins();
+            } catch (e) {
+                showToast(t('toast.reloadFailed') + ': ' + e.message, 'error');
+            } finally {
+                loading.plugins = false;
+            }
+        };
+
+        const requestUnloadWithName = (pluginId) => {
+            modal.title = t('modal.confirmUnload');
+            modal.message = t('modal.unloadWarning', { pluginId });
+            modal.actionText = t('modal.unloadAction');
+            modal.onConfirm = async () => {
+                modal.loading = true;
+                try {
+                    await api.delete(`/plugins/uninstall/${pluginId}`);
+                    plugins.value = plugins.value.filter(p => p.pluginId !== pluginId);
+                    if (activeId.value === pluginId) {
+                        activeId.value = null;
+                        Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 }); // Reset stats
+                    }
+                    showToast(t('toast.pluginUnloaded'), 'success');
+                } catch (e) {
+                    showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
+                } finally {
+                    modal.loading = false;
+                    modal.show = false;
+                }
+            };
+            modal.show = true;
+        };
         const updateCanaryConfig = async () => {
             if (!activeId.value || !canCanary.value) return;
             loading.canary = true;
@@ -659,7 +784,7 @@ createApp({
             plugins, activeId, canaryPct, isAuto, ipcEnabled, ipcTarget,
             logs, lastAudit, logViewMode, logContainer, isUserScrolling, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
-            stats, loading, modal, toasts, envLabels,
+            stats, loading, modal, toasts, envLabels, uploadModal,
 
             // 计算属性
             activePlugin, canCanary, canOperate, displayLogs,
@@ -669,8 +794,9 @@ createApp({
             confirmModalAction, updateCanaryConfig, togglePerm, toggleIpc,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
             handleLogScroll, scrollToTop,
-            formatDrift, formatTime,
-            getStatusClass, getPluginShortName, getPluginTagClass, getLogColor
+            formatDrift, formatTime, formatSize,
+            getStatusClass, getPluginShortName, getPluginTagClass, getLogColor,
+            openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, reloadPlugin, requestUnloadWithName
         };
     }
 }).mount('#app');

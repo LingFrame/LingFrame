@@ -27,9 +27,9 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
     private final PluginManager pluginManager;
     private final GovernanceKernel governanceKernel;
 
-    // 缓存：接口 -> 真正提供服务的插件ID (避免每次都遍历)
-    // 实例级别缓存，防止多实例场景下缓存污染
-    private final Map<Class<?>, String> ROUTE_CACHE = new ConcurrentHashMap<>();
+    // 缓存：接口类名 -> 真正提供服务的插件ID (避免每次都遍历)
+    // 🔥 使用类名作为 Key 而非 Class 对象，避免持有 ClassLoader 引用导致泄漏
+    private final Map<String, String> routeCache = new ConcurrentHashMap<>();
 
     public GlobalServiceRoutingProxy(String callerPluginId, Class<?> serviceInterface,
             String targetPluginId, PluginManager pluginManager,
@@ -72,21 +72,24 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
             return targetPluginId;
         }
 
+        // 🔥 使用类名作为缓存 Key，避免持有 Class 引用
+        String interfaceName = serviceInterface.getName();
+
         // 查缓存
-        if (ROUTE_CACHE.containsKey(serviceInterface)) {
-            String cachedId = ROUTE_CACHE.get(serviceInterface);
+        String cachedId = routeCache.get(interfaceName);
+        if (cachedId != null) {
             // 简单校验插件是否还活着
             if (pluginManager.getInstalledPlugins().contains(cachedId)) {
                 return cachedId;
             }
-            ROUTE_CACHE.remove(serviceInterface); // 缓存失效
+            routeCache.remove(interfaceName); // 缓存失效
         }
 
         // 遍历所有插件寻找实现
         for (String pluginId : pluginManager.getInstalledPlugins()) {
             try {
                 if (pluginManager.hasBean(pluginId, serviceInterface)) {
-                    ROUTE_CACHE.put(serviceInterface, pluginId);
+                    routeCache.put(interfaceName, pluginId);
                     return pluginId;
                 }
             } catch (Exception e) {

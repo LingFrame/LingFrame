@@ -188,6 +188,23 @@ public class LingFrameProperties {
 
         @DurationUnit(ChronoUnit.MILLIS)
         private Duration bulkheadAcquireTimeout = Duration.ofMillis(3000);
+
+        // --- 插件线程池预算 ---
+
+        /**
+         * 全局插件线程总预算（所有插件共享此配额）
+         */
+        private int globalMaxPluginThreads = java.lang.Runtime.getRuntime().availableProcessors() * 4;
+
+        /**
+         * 单个插件线程池硬上限
+         */
+        private int maxThreadsPerPlugin = 8;
+
+        /**
+         * 单个插件默认线程数
+         */
+        private int defaultThreadsPerPlugin = 2;
     }
 
     @Data

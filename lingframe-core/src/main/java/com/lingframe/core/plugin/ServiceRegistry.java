@@ -215,12 +215,16 @@ public class ServiceRegistry {
     // ==================== 生命周期 ====================
 
     /**
-     * 清空所有缓存
+     * 清空所有缓存，并主动断开 InvokableService 的引用链
      */
     public void clear() {
         int serviceCount = serviceCache.size();
         int proxyCount = proxyCache.size();
 
+        // 🔥 主动 nullify 每个 InvokableService，切断 bean/method → Class → ClassLoader 引用
+        for (InvokableService service : serviceCache.values()) {
+            service.nullify();
+        }
         serviceCache.clear();
         proxyCache.clear();
 
@@ -248,28 +252,73 @@ public class ServiceRegistry {
 
     /**
      * 可调用的服务（包含优化后的 MethodHandle）
+     * <p>
+     * 非 record：支持 {@link #nullify()} 主动断开引用链，
+     * 避免 bean/method/methodHandle → Class → ClassLoader 残留。
+     * </p>
      */
-    public record InvokableService(Object bean, Method method, MethodHandle methodHandle) {
+    public static class InvokableService {
+
+        private volatile Object bean;
+        private volatile Method method;
+        private volatile MethodHandle methodHandle;
+
+        public InvokableService(Object bean, Method method, MethodHandle methodHandle) {
+            this.bean = bean;
+            this.method = method;
+            this.methodHandle = methodHandle;
+        }
 
         /**
          * 使用 MethodHandle 快速调用
          */
         public Object invokeFast(Object... args) throws Throwable {
-            return methodHandle.invokeWithArguments(args);
+            MethodHandle mh = this.methodHandle;
+            if (mh == null)
+                throw new IllegalStateException("Service has been nullified");
+            return mh.invokeWithArguments(args);
         }
 
         /**
          * 使用反射调用（兼容模式）
          */
         public Object invokeReflect(Object... args) throws Exception {
-            return method.invoke(bean, args);
+            Method m = this.method;
+            Object b = this.bean;
+            if (m == null || b == null)
+                throw new IllegalStateException("Service has been nullified");
+            return m.invoke(b, args);
         }
 
         /**
          * 获取方法签名
          */
         public String getSignature() {
-            return method.getDeclaringClass().getSimpleName() + "." + method.getName();
+            Method m = this.method;
+            if (m == null)
+                return "<nullified>";
+            return m.getDeclaringClass().getSimpleName() + "." + m.getName();
+        }
+
+        /**
+         * 主动断开所有引用，释放 bean → Class → ClassLoader 链
+         */
+        public void nullify() {
+            this.bean = null;
+            this.method = null;
+            this.methodHandle = null;
+        }
+
+        public Object bean() {
+            return bean;
+        }
+
+        public Method method() {
+            return method;
+        }
+
+        public MethodHandle methodHandle() {
+            return methodHandle;
         }
     }
 

@@ -32,4 +32,13 @@ public interface ResourceGuard {
      * @param classLoader 插件的 ClassLoader（将被包装为 WeakReference）
      */
     void detectLeak(String pluginId, ClassLoader classLoader);
+
+    /**
+     * 关闭资源守卫
+     * <p>
+     * 在框架关闭时调用，用于清理后台线程等资源
+     * </p>
+     */
+    default void shutdown() {
+    }
 }

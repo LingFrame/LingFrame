@@ -15,7 +15,16 @@
     "logCount": "日志"
   },
   "header": {
-    "notSelected": "未选择"
+    "notSelected": "未选择",
+    "upload": "上传插件"
+  },
+  "upload": {
+    "title": "上传插件",
+    "dragText": "点击或拖拽 jar 包到此处",
+    "supportText": "仅支持 .jar 格式文件",
+    "uploading": "上传中",
+    "confirm": "开始上传",
+    "errorType": "文件格式错误，请上传 .jar 文件"
   },
   "envLabels": {
     "dev": "开发",
@@ -113,6 +122,11 @@
     "prodMode": "生产模式 (拒绝无权限访问)",
     "devMode": "开发模式 (仅警告无权限访问)",
     "alsoEnabled": "（同时开启 {perm}）",
-    "alsoDisabled": "（同时关闭 {perm}）"
+    "alsoEnabled": "（同时开启 {perm}）",
+    "alsoDisabled": "（同时关闭 {perm}）",
+    "installSuccess": "插件安装成功",
+    "installFailed": "插件安装失败",
+    "reloadSuccess": "插件重载成功",
+    "reloadFailed": "插件重载失败"
   }
 }

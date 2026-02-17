@@ -11,7 +11,6 @@ import org.springframework.boot.Banner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import java.io.File;
@@ -20,13 +19,11 @@ import java.util.List;
 @Slf4j
 public class SpringContainerFactory implements ContainerFactory {
 
-    private final ApplicationContext parentContext;
     private final boolean devMode;
     private final WebInterfaceManager webInterfaceManager;
     private final List<String> serviceExcludedPackages;
 
     public SpringContainerFactory(ApplicationContext parentContext, WebInterfaceManager webInterfaceManager) {
-        this.parentContext = parentContext;
         LingFrameProperties props = parentContext.getBean(LingFrameProperties.class);
         this.devMode = props.isDevMode();
         this.serviceExcludedPackages = props.getServiceExcludedPackages();
@@ -42,14 +39,23 @@ public class SpringContainerFactory implements ContainerFactory {
             Class<?> sourceClass = classLoader.loadClass(mainClass);
 
             SpringApplicationBuilder builder = new SpringApplicationBuilder()
-                    .parent((ConfigurableApplicationContext) parentContext) // 父子上下文
+                    // 🔥 不设置父容器，实现完全隔离
+                    // 原因：
+                    // 1. 父子容器关系导致宿主 BeanFactory 持有子容器引用，造成 ClassLoader 泄漏
+                    // 2. 零信任设计：插件不应直接访问宿主 Bean，应通过 PluginContext
+                    // 3. 核心 Bean (PluginManager, PluginContext) 已在 registerBeans() 中手动注入
                     .resourceLoader(new DefaultResourceLoader(classLoader)) // 使用隔离加载器
                     .sources(sourceClass)
                     .bannerMode(Banner.Mode.OFF)
                     .web(WebApplicationType.NONE) // 禁止插件启动 Tomcat
                     .properties("spring.main.allow-bean-definition-overriding=true") // 允许覆盖 Bean
                     .properties("spring.application.name=plugin-" + pluginId) // 独立应用名
-                    .properties("spring.sql.init.mode=never"); // 禁用 Spring Boot 自动 SQL 初始化
+                    .properties("spring.sql.init.mode=never") // 禁用 Spring Boot 自动 SQL 初始化
+                    // 显式排除 JMX 相关自动配置，防止 MBean 名称冲突
+                    .properties("spring.autoconfigure.exclude=" +
+                            "org.springframework.boot.autoconfigure.admin.SpringApplicationAdminJmxAutoConfiguration," +
+                            "org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration," +
+                            "org.springframework.boot.actuate.autoconfigure.endpoint.jmx.JmxEndpointAutoConfiguration");
 
             return new SpringPluginContainer(builder, classLoader, webInterfaceManager, serviceExcludedPackages);
 

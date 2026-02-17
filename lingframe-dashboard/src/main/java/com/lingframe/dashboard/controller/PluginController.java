@@ -19,12 +19,7 @@ import java.util.List;
 @RequestMapping("/lingframe/dashboard/plugins")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
-@ConditionalOnProperty(
-        prefix = "lingframe.dashboard",
-        name = "enabled",
-        havingValue = "true",
-        matchIfMissing = false
-)
+@ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class PluginController {
 
     private final LingFrameConfig lingFrameConfig;
@@ -84,9 +79,11 @@ public class PluginController {
             }
 
             // 保存文件
-            File pluginDir = new File(lingFrameConfig.getPluginHome());
-            if (!pluginDir.exists()) pluginDir.mkdirs();
+            File pluginDir = new File(lingFrameConfig.getPluginHome()).getAbsoluteFile();
+            if (!pluginDir.exists())
+                pluginDir.mkdirs();
             File targetFile = new File(pluginDir, originalFilename);
+            log.info("Saving uploaded plugin to: {}", targetFile.getAbsolutePath());
             file.transferTo(targetFile);
             // 安装插件
             PluginInfoDTO info = dashboardService.installPlugin(targetFile);

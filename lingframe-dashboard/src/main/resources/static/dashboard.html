@@ -136,7 +136,15 @@
                         <span class="text-base text-slate-400">{{ activeId || t('header.notSelected') }}</span>
                     </div>
                 </div>
+                <!-- 顶部工具栏右侧 -->
                 <div class="flex items-center gap-4">
+                    <!-- 上传插件按钮 -->
+                    <button @click="openUploadModal"
+                        class="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm transition-all shadow-lg hover:shadow-blue-500/20">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>{{ t('header.upload') }}</span>
+                    </button>
+
                     <select v-model="locale" @change="switchLocale(locale)" class="lang-switch">
                         <option v-for="(label, key) in supportedLocales" :value="key" :key="key">{{ label }}</option>
                     </select>
@@ -153,7 +161,66 @@
                 </div>
             </header>
 
-            <!-- 内容区 -->
+            <!-- 上传模态框 -->
+            <div v-if="uploadModal.show" class="modal-overlay" @click.self="closeUploadModal">
+                <div class="modal-content" style="max-width: 500px;">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-white text-lg">{{ t('upload.title') }}</h3>
+                        <button @click="closeUploadModal" class="text-slate-400 hover:text-white">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+
+                    <div class="upload-area border-2 border-dashed border-slate-600 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-slate-700/30 transition-all"
+                        @click="$refs.fileInput.click()" @dragover.prevent @drop.prevent="handleFileDrop"
+                        :class="{'border-blue-500 bg-slate-700/30': uploadModal.isDragging}">
+
+                        <input type="file" ref="fileInput" class="hidden" accept=".jar" @change="handleFileSelect">
+
+                        <div v-if="!uploadModal.file">
+                            <i class="fa-solid fa-cloud-arrow-up text-4xl text-slate-500 mb-3"></i>
+                            <p class="text-white font-medium mb-1">{{ t('upload.dragText') }}</p>
+                            <p class="text-sm text-slate-500">{{ t('upload.supportText') }}</p>
+                        </div>
+                        <div v-else class="text-left">
+                            <div class="flex items-center gap-3 bg-slate-700 p-3 rounded-lg mb-2">
+                                <i class="fa-solid fa-file-zipper text-blue-400 text-xl"></i>
+                                <div class="flex-grow overflow-hidden">
+                                    <p class="text-white text-sm font-medium truncate">{{ uploadModal.file.name }}</p>
+                                    <p class="text-xs text-slate-400">{{ formatSize(uploadModal.file.size) }}</p>
+                                </div>
+                                <button @click.stop="uploadModal.file = null" class="text-slate-400 hover:text-red-400">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 进度条 -->
+                    <div v-if="uploadModal.uploading" class="mt-4">
+                        <div class="flex justify-between text-xs text-slate-400 mb-1">
+                            <span>{{ t('upload.uploading') }}...</span>
+                            <span>{{ uploadModal.progress }}%</span>
+                        </div>
+                        <div class="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                            <div class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                :style="{width: uploadModal.progress + '%'}"></div>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3 justify-end mt-6">
+                        <button @click="closeUploadModal"
+                            class="px-4 py-2 rounded-lg text-base font-medium bg-slate-700 hover:bg-slate-600 text-white">
+                            {{ t('modal.cancel') }}
+                        </button>
+                        <button @click="startUpload" :disabled="!uploadModal.file || uploadModal.uploading"
+                            class="px-4 py-2 rounded-lg text-base font-medium bg-blue-600 hover:bg-blue-500 text-white flex items-center gap-2">
+                            <span v-if="uploadModal.uploading" class="spinner w-4 h-4 border-2"></span>
+                            {{ t('upload.confirm') }}
+                        </button>
+                    </div>
+                </div>
+            </div>
             <div class="flex-grow overflow-auto p-6">
                 <div class="content-grid grid grid-cols-12 gap-6 max-w-[1600px] mx-auto">
 
@@ -179,19 +246,40 @@
                                 <div v-for="p in plugins" :key="p.pluginId" @click="selectPlugin(p.pluginId)"
                                     :class="['plugin-item', activeId === p.pluginId ? 'active' : '']">
                                     <div class="flex justify-between items-start mb-2">
-                                        <span class="font-medium text-white text-base">{{ p.pluginId }}</span>
-                                        <span :class="['text-xs px-2 py-0.5 rounded-full', getStatusClass(p.status)]">
+                                        <span class="font-medium text-white text-base truncate pr-2"
+                                            :title="p.pluginId">{{
+                                            p.pluginId }}</span>
+                                        <span
+                                            :class="['text-xs px-2 py-0.5 rounded-full flex-shrink-0', getStatusClass(p.status)]">
                                             {{ p.status }}
                                         </span>
                                     </div>
-                                    <div class="flex gap-2 flex-wrap">
-                                        <span class="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
-                                            {{ p.activeVersion || p.versions?.[0] || 'unknown' }}
-                                        </span>
-                                        <span v-if="p.canaryVersion"
-                                            class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">
-                                            {{ p.canaryVersion }}
-                                        </span>
+                                    <div class="flex justify-between items-center">
+                                        <div class="flex gap-2 flex-wrap">
+                                            <span class="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
+                                                {{ p.activeVersion || p.versions?.[0] || 'unknown' }}
+                                            </span>
+                                            <span v-if="p.canaryVersion"
+                                                class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">
+                                                {{ p.canaryVersion }}
+                                            </span>
+                                        </div>
+
+                                        <!-- 插件操作按钮 (仅当选中且鼠标悬停时显示，或者一直显示简化版) -->
+                                        <div class="flex gap-1" v-if="activeId === p.pluginId">
+                                            <!-- 开发模式热重载 -->
+                                            <button v-if="currentEnv === 'dev'" @click.stop="reloadPlugin(p.pluginId)"
+                                                class="p-1.5 text-slate-400 hover:text-blue-400 transition-colors"
+                                                :title="t('control.reload')">
+                                                <i class="fa-solid fa-rotate"></i>
+                                            </button>
+                                            <!-- 卸载 -->
+                                            <button @click.stop="requestUnloadWithName(p.pluginId)"
+                                                class="p-1.5 text-slate-400 hover:text-red-400 transition-colors"
+                                                :title="t('control.unload')">
+                                                <i class="fa-solid fa-trash-can"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

@@ -1,6 +1,6 @@
 # --- 基础元数据 (直接在根节点) ---
 id: order-plugin
-version: 1.0.0
+version: 1.0.1
 provider: "LingFrame"
 description: "订单插件"
 mainClass: "com.lingframe.example.order.OrderApplication"
@@ -17,7 +17,7 @@ governance:
     - capability: "cache:local"
       accessType: "WRITE"      # 使用本地缓存，与 Dashboard 对齐
 
-# --- 自定义扩展/依赖 (对应 Map<String, Object> properties) ---
+# --- 金丝雀配置 ---
 properties:
-  mark: "test"
+  canary: true
 

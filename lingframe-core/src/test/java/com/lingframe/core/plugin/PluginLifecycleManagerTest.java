@@ -54,10 +54,11 @@ public class PluginLifecycleManagerTest {
         lifecycleManager = new PluginLifecycleManager(
                 PLUGIN_ID,
                 instancePool,
-                internalEventBus,      // 🔥 内部事件总线
-                externalEventBus,      // 🔥 外部事件总线
+                internalEventBus, // 🔥 内部事件总线
+                externalEventBus, // 🔥 外部事件总线
                 scheduler,
-                config
+                config,
+                null // ResourceGuard（测试中不需要）
         );
     }
 
@@ -166,8 +167,7 @@ public class PluginLifecycleManagerTest {
 
             PluginInstance instance = new PluginInstance(container, definition);
 
-            assertThrows(RuntimeException.class, () ->
-                    lifecycleManager.addInstance(instance, pluginContext, true));
+            assertThrows(RuntimeException.class, () -> lifecycleManager.addInstance(instance, pluginContext, true));
         }
 
         @Test
@@ -177,8 +177,8 @@ public class PluginLifecycleManagerTest {
 
             PluginInstance instance = createMockInstance("1.0.0");
 
-            assertThrows(ServiceUnavailableException.class, () ->
-                    lifecycleManager.addInstance(instance, pluginContext, true));
+            assertThrows(ServiceUnavailableException.class,
+                    () -> lifecycleManager.addInstance(instance, pluginContext, true));
         }
 
         @Test
@@ -194,8 +194,8 @@ public class PluginLifecycleManagerTest {
 
             PluginInstance newInstance = createMockInstance("new");
 
-            assertThrows(ServiceUnavailableException.class, () ->
-                    lifecycleManager.addInstance(newInstance, pluginContext, true));
+            assertThrows(ServiceUnavailableException.class,
+                    () -> lifecycleManager.addInstance(newInstance, pluginContext, true));
         }
     }
 
@@ -318,8 +318,7 @@ public class PluginLifecycleManagerTest {
             AtomicInteger eventCount = new AtomicInteger(0);
             internalEventBus.subscribe(
                     com.lingframe.core.plugin.event.RuntimeEvent.InstanceUpgrading.class,
-                    e -> eventCount.incrementAndGet()
-            );
+                    e -> eventCount.incrementAndGet());
 
             PluginInstance instance = createMockInstance("1.0.0");
             lifecycleManager.addInstance(instance, pluginContext, true);
@@ -333,8 +332,7 @@ public class PluginLifecycleManagerTest {
             AtomicInteger eventCount = new AtomicInteger(0);
             internalEventBus.subscribe(
                     com.lingframe.core.plugin.event.RuntimeEvent.RuntimeShuttingDown.class,
-                    e -> eventCount.incrementAndGet()
-            );
+                    e -> eventCount.incrementAndGet());
 
             lifecycleManager.shutdown();
 

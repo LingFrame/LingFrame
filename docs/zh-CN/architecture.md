@@ -29,7 +29,7 @@ LingFrame 借鉴操作系统的设计思想：
 │         ▼                 ▼                 ▼               │
 │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐       │
 │  │  Storage    │   │   Cache     │   │  Message    │       │
-│  │  Plugin     │   │   Plugin    │   │  Plugin     │       │
+│  │  Proxy     │   │   Proxy    │   │  Proxy     │       │
 │  │             │   │             │   │             │       │
 │  │ 基础设施层   │   │ 基础设施层   │   │ 基础设施层   │       │
 │  └──────┬──────┘   └──────┬──────┘   └──────┬──────┘       │
@@ -69,7 +69,7 @@ LingFrame 借鉴操作系统的设计思想：
 
 | 组件                      | 职责                   |
 | ------------------------ | ---------------------- |
-| `PluginManager`          | 插件安装/卸载/服务路由 |
+| `PluginManager`          | 插件安装/卸载/路由     |
 | `PluginRuntime`          | 插件运行时环境         |
 | `InstancePool`           | 蓝绿部署和版本管理     |
 | `ServiceRegistry`        | 服务注册表             |
@@ -401,13 +401,13 @@ GlobalServiceRoutingProxy.invoke()
 
 ```java
 // Order 插件（消费者）定义它需要的接口（在 order-api 模块中）
-// 位置：order-api/src/main/java/com/example/order/api/UserQueryService.java
+// 路径：order-api/src/main/java/com/example/order/api/UserQueryService.java
 public interface UserQueryService {
     Optional<UserDTO> findById(String userId);
 }
 
 // User 插件（生产者）实现消费者定义的接口
-// 位置：user-plugin/src/main/java/com/example/user/service/UserQueryServiceImpl.java
+// 路径：user-plugin/src/main/java/com/example/user/service/UserQueryServiceImpl.java
 @Component
 public class UserQueryServiceImpl implements UserQueryService {
     @LingService(id = "find_user_by_id", desc = "根据ID查询用户")
@@ -417,11 +417,11 @@ public class UserQueryServiceImpl implements UserQueryService {
     }
 }
 
-// Order 插件中使用自己定义的接口
+// Order 插件中使用消费者定义的接口
 @RestController
 public class OrderController {
     
-    // 注入消费者自己定义的接口，由 User 插件实现
+    // 注入消费者定义的接口，由 User 插件实现
     @LingReference
     private UserQueryService userQueryService;
     
@@ -462,7 +462,7 @@ public class OrderService {
     private PluginContext context;
     
     public Order createOrder(String userId) {
-        // 通过 FQSID 直接调用生产者的服务，返回 Optional
+        // 通过 FQSID 直接调用服务，返回 Optional
         Optional<UserDTO> user = context.invoke("user-plugin:find_user", userId);
         
         if (user.isEmpty()) {
@@ -485,7 +485,7 @@ public class OrderService {
     private PluginContext context;
     
     public Order createOrder(String userId) {
-        // 获取消费者定义的接口实现（由 User 插件提供）
+        // 获取接口实现（由 User 插件提供）
         Optional<UserQueryService> userQueryService = context.getService(UserQueryService.class);
         
         if (userQueryService.isEmpty()) {
@@ -503,12 +503,12 @@ public class OrderService {
 
 | 场景                     | 推荐方式           | 原因                           |
 | ------------------------ | ------------------ | ------------------------------ |
-| 宿主应用调用插件服务     | @LingReference     | 最简洁，支持延迟绑定           |
-| 插件间强依赖调用         | @LingReference     | 类型安全，IDE 友好             |
-| 插件间松耦合调用         | FQSID 协议         | 不需要接口依赖                 |
-| 需要显式错误处理         | 接口代理           | 可以优雅处理服务不可用情况     |
-| 动态服务发现             | 接口代理           | 运行时动态获取可用服务         |
-| 可选功能调用             | @LingReference     | 支持 null 检查，不会启动时报错 |
+| 宿主调用插件             | @LingReference     | 简单，延迟绑定                 |
+| 插件调用插件（强依赖）   | @LingReference     | 类型安全，IDE 友好             |
+| 插件调用插件（松耦合）   | FQSID 协议         | 无接口依赖                     |
+| 显式错误处理             | 接口代理           | 优雅处理不可用情况             |
+| 动态发现                 | 接口代理           | 运行时获取可用服务             |
+| 可选调用                 | @LingReference     | 支持 null 检查（Optional）     |
 
 ## 隔离机制
 
@@ -569,25 +569,33 @@ lingframe:
 
 ### Spring 上下文隔离
 
+每个插件运行在**完全隔离**的 Spring ApplicationContext 中：
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              Parent Context (宿主应用)                        │
+│              Host Context (宿主应用)                         │
 │                                                              │
 │   PluginManager, ContainerFactory, PermissionService        │
 │   公共 Bean...                                               │
 │                                                              │
-└────────────────────────┬────────────────────────────────────┘
-                         │ parent
-         ┌───────────────┼───────────────┐
-         ▼               ▼               ▼
+└─────────────────────────────────────────────────────────────┘
+
 ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-│ Child Ctx A │   │ Child Ctx B │   │ Child Ctx C │
+│  Context A  │   │  Context B  │   │  Context C  │
 │ (Plugin A)  │   │ (Plugin B)  │   │ (Plugin C)  │
 │             │   │             │   │             │
 │ 独立 Bean   │   │ 独立 Bean   │   │ 独立 Bean   │
 │ 独立配置    │   │ 独立配置    │   │ 独立配置    │
 └─────────────┘   └─────────────┘   └─────────────┘
 ```
+
+> **设计说明**：插件上下文**不是**宿主的子上下文。
+> 这是刻意设计的，原因：
+> 1. **零信任**：插件不能通过 `@Autowired` 直接访问宿主 Bean
+> 2. **干净卸载**：无父子引用，避免 ClassLoader 泄漏
+> 3. **真正隔离**：每个插件是独立的 Spring Boot 应用
+>
+> Core Bean（`PluginManager`、`PluginContext`）通过 `registerBeans()` 手动注入。
 
 ## 生命周期
 
@@ -664,9 +672,9 @@ v1.0 运行中
 
 | 架构层         | Maven 模块                       | 说明                 |
 | -------------- | -------------------------------- | -------------------- |
-| Core           | `lingframe-core`                 | 治理内核实现         |
-| Core           | `lingframe-api`                  | 契约层（接口、注解） |
+| Core           | `lingframe-core`                 | 治理内核             |
+| Core           | `lingframe-api`                  | 契约（接口）         |
 | Core           | `lingframe-spring-boot3-starter` | Spring Boot 集成     |
 | Infrastructure | `lingframe-infra-storage`      | 存储代理             |
 | Infrastructure | `lingframe-infra-cache`        | 缓存代理             |
-| Business       | 用户插件                         | 业务逻辑实现         |
+| Business       | 用户插件                         | 业务逻辑             |

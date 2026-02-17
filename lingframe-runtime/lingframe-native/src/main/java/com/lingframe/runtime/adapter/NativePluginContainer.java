@@ -31,8 +31,8 @@ import java.util.stream.Stream;
 public class NativePluginContainer implements PluginContainer {
 
     private final String pluginId;
-    private final LingPlugin pluginInstance;
-    private final ClassLoader classLoader;
+    private LingPlugin pluginInstance; // 非 final，以便在 stop() 中清除
+    private ClassLoader classLoader; // 非 final，以便在 stop() 中清除
 
     private final File sourceFile; // 源码/Jar路径，用于扫描
 
@@ -96,6 +96,12 @@ public class NativePluginContainer implements PluginContainer {
         }
         // 清理单例池，帮助 GC
         singletons.clear();
+
+        // 🔥 关键：清除对 ClassLoader 等的引用，防止泄漏
+        this.savedContext = null;
+        this.pluginInstance = null;
+        this.classLoader = null;
+
         active = false;
     }
 
