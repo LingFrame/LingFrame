@@ -10,7 +10,6 @@ import com.lingframe.core.plugin.PluginManager;
 import com.lingframe.core.spi.PluginContainer;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.processor.LingReferenceInjector;
-import com.lingframe.starter.util.PluginCleanupHelper;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
 import lombok.extern.slf4j.Slf4j;
@@ -328,14 +327,7 @@ public class SpringPluginContainer implements PluginContainer {
                 webInterfaceManager.unregister(pluginId);
             }
 
-            // 🔥 关闭前清理（ShutdownHook、LiveBeansView）
-            PluginCleanupHelper.preCloseCleanup(this.context);
-
             context.close();
-        }
-        // 🔥 关闭后清理（所有静态缓存 + 宿主引用）
-        if (classLoader != null) {
-            PluginCleanupHelper.postCloseCleanup(classLoader, hostContext, hostAdapter);
         }
 
         // 🔥 主动断开引用

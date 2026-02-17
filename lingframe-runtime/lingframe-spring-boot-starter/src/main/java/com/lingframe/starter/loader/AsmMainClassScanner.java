@@ -1,4 +1,4 @@
-package com.lingframe.starter.util;
+package com.lingframe.starter.loader;
 
 import com.lingframe.api.config.PluginDefinition;
 import com.lingframe.core.loader.PluginManifestLoader;
@@ -161,11 +161,11 @@ public class AsmMainClassScanner {
             // 检查 main 方法
             boolean hasMainMethod = Arrays.stream(clazz.getMethods())
                     .anyMatch(m -> m.getName().equals("main")
-                                   && Modifier.isPublic(m.getModifiers())
-                                   && Modifier.isStatic(m.getModifiers())
-                                   && m.getParameterCount() == 1
-                                   && m.getParameterTypes()[0] == String[].class
-                                   && m.getReturnType() == void.class);
+                            && Modifier.isPublic(m.getModifiers())
+                            && Modifier.isStatic(m.getModifiers())
+                            && m.getParameterCount() == 1
+                            && m.getParameterTypes()[0] == String[].class
+                            && m.getReturnType() == void.class);
 
             return hasAnnotation && hasMainMethod;
         } catch (ClassNotFoundException e) {

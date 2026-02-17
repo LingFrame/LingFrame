@@ -4,7 +4,7 @@ import com.lingframe.core.exception.PluginInstallException;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.PluginContainer;
 import com.lingframe.starter.config.LingFrameProperties;
-import com.lingframe.starter.util.AsmMainClassScanner;
+import com.lingframe.starter.loader.AsmMainClassScanner;
 import com.lingframe.starter.web.WebInterfaceManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.Banner;
@@ -65,8 +65,8 @@ public class SpringContainerFactory implements ContainerFactory {
                     classLoader,
                     webInterfaceManager,
                     serviceExcludedPackages,
-                    (ConfigurableApplicationContext) parentContext,  // 🔥 传入宿主 Context
-                    hostAdapter                                       // 🔥 传入宿主 Adapter
+                    (ConfigurableApplicationContext) parentContext, // 🔥 传入宿主 Context
+                    hostAdapter // 🔥 传入宿主 Adapter
             );
 
         } catch (Exception e) {
