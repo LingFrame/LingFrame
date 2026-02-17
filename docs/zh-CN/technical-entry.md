@@ -2,12 +2,6 @@
 
 **让 JVM 应用具备操作系统般的控制和治理能力**
 
-![Status](https://img.shields.io/badge/Status-Core_Implemented-green)
-![License](https://img.shields.io/badge/License-Apache_2.0-blue)
-![Java](https://img.shields.io/badge/Java-21-orange)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen)
-[![Help Wanted](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
-
 > 🟢 **核心框架已实现** — 权限治理、审计追踪、能力仲裁、模块隔离等核心功能已可用。
 
 ---
@@ -89,15 +83,23 @@
 
 ### 环境要求
 
-- Java 21+
+- Java 17+
 - Maven 3.8+
 
 ### 构建项目
 
 ```bash
-# 克隆仓库
-git clone https://github.com/lingframe/lingframe.git
-cd lingframe
+# 克隆仓库（选择任意仓库）
+# AtomGit（推荐）
+git clone https://atomgit.com/lingframe/LingFrame.git
+
+# Gitee（国内镜像）
+git clone https://gitee.com/knight6236/lingframe.git
+
+# GitHub（国际）
+git clone https://github.com/LingFrame/LingFrame.git
+
+cd LingFrame
 
 # 编译安装
 mvn clean install -DskipTests

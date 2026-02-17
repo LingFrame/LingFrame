@@ -749,7 +749,7 @@ public class PluginManagerTest {
             var instances = runtime.getInstancePool().getActiveInstances();
             assertEquals(1, instances.size());
 
-            PluginInstance instance = instances.getFirst();
+            PluginInstance instance = instances.get(0);
             assertEquals("2.0.0-canary", instance.getVersion());
             assertEquals("canary", instance.getLabels().get("env"));
         }

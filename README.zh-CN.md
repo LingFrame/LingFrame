@@ -2,8 +2,15 @@
 
 ![Status](https://img.shields.io/badge/Status-Core_Implemented-green)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue)
-![Java](https://img.shields.io/badge/Java-21-orange)
+![Java](https://img.shields.io/badge/Java-17-orange)
+![Java](https://img.shields.io/badge/Java-8-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-2.7.18-brightgreen)
+
+[![AtomGit G-Star](https://img.shields.io/badge/AtomGit-G--Star_孵化项目-silver?logo=git&logoColor=white)](https://atomgit.com/lingframe/LingFrame)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-black?logo=github&logoColor=white)](https://github.com/LingFrame/LingFrame)
+[![Gitee](https://img.shields.io/badge/Gitee-Repository-red?logo=gitee&logoColor=white)](https://gitee.com/knight6236/lingframe)
+
 [![Help Wanted](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LingFrame/LingFrame)
 
@@ -103,8 +110,8 @@ LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理�
 
 ## 技术边界（简述）
 
-- JVM：JDK 21 / JDK 8（后续兼容支持）
-- Spring Boot：3.x / 2.x（后续兼容支持）
+- JVM：JDK 17 / JDK 8
+- Spring Boot：3.x / 2.x
 - 单进程内插件隔离与治理
 - 明确区分：**接口稳定性 ≠ 实现稳定性**
 
@@ -122,3 +129,14 @@ LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理�
 
 如果你只是走到这里停下，  
 那也完全没有关系。
+
+---
+
+## 致谢
+
+[![AtomGit](docs/images/AtomGit.svg)](https://atomgit.com/lingframe/LingFrame)
+
+本项目是 **AtomGit G-Star 孵化项目**。  
+感谢 [AtomGit](https://atomgit.com) 平台对开源项目的支持与推广。
+
+

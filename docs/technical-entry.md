@@ -2,12 +2,6 @@
 
 **Empower JVM Apps with OS-like Control and Governance**
 
-![Status](https://img.shields.io/badge/Status-Core_Implemented-green)
-![License](https://img.shields.io/badge/License-Apache_2.0-blue)
-![Java](https://img.shields.io/badge/Java-21-orange)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen)
-[![Help Wanted](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
-
 > 🟢 **Core Framework Implemented** — Permission Governance, Audit Tracing, Capability Arbitration, Module Isolation core features are now available.
 
 ---
@@ -89,15 +83,23 @@
 
 ### Prerequisites
 
-- Java 21+
+- Java 17+
 - Maven 3.8+
 
 ### Build Project
 
 ```bash
-# Clone Repository
-git clone https://github.com/lingframe/lingframe.git
-cd lingframe
+# Clone Repository (Choose any)
+# GitHub (International, Recommended)
+git clone https://github.com/LingFrame/LingFrame.git
+
+# AtomGit (China)
+git clone https://atomgit.com/lingframe/LingFrame.git
+
+# Gitee (China Mirror)
+git clone https://gitee.com/knight6236/lingframe.git
+
+cd LingFrame
 
 # Build and Install
 mvn clean install -DskipTests

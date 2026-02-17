@@ -371,7 +371,7 @@ mvn clean package
 lingframe:
   dev-mode: true
   plugin-roots:
-    - "../my-plugin/target/classes"
+    - "../my-plugin"
 ```
 
 修改代码后重新编译，HotSwapWatcher 会自动检测 target/classes 中的变化并热重载。

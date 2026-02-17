@@ -4,16 +4,30 @@
 
 ## 环境准备
 
-- JDK 21+
+- JDK 17+
 - Maven 3.8+
 
 ## 5 分钟 Hello World
 
 ### 1. 构建项目
 
+**获取源码**（选择任意仓库）：
+
 ```bash
-git clone https://github.com/lingframe/lingframe.git
-cd lingframe
+# AtomGit（推荐）
+git clone https://atomgit.com/lingframe/LingFrame.git
+
+# Gitee（国内镜像）
+git clone https://gitee.com/knight6236/lingframe.git
+
+# GitHub（国际）
+git clone https://github.com/LingFrame/LingFrame.git
+```
+
+**构建**：
+
+```bash
+cd LingFrame
 mvn clean install -DskipTests
 ```
 
@@ -28,10 +42,10 @@ mvn spring-boot:run
 
 ```bash
 # 查询用户列表（user-plugin 提供的服务）
-curl http://localhost:8888/user/listUsers
+curl http://localhost:8888/user-plugin/user/listUsers
 
 # 查询单个用户
-curl "http://localhost:8888/user/queryUser?userId=1"
+curl "http://localhost:8888/user-plugin/user/queryUser?userId=1"
 ```
 
 恭喜！你已经成功运行了第一个 LingFrame 应用！
@@ -185,7 +199,7 @@ User 插件在配置文件 `plugin.yml` 中声明了对数据库的 `READ` 权�
 调用创建用户接口（执行 INSERT SQL）：
 
 ```bash
-curl -X POST "http://localhost:8888/user/createUser?name=Attacker&email=hacker@test.com"
+curl -X POST "http://localhost:8888/user-plugin/user/createUser?name=Attacker&email=hacker@test.com"
 ```
 
 **预期结果**：
@@ -203,7 +217,7 @@ User 插件声明了 `cache:local` 的 `WRITE` 权限。
 **第一次查询**（触发 SQL 查询并写入缓存）：
 
 ```bash
-curl "http://localhost:8888/user/queryUser?userId=1"
+curl "http://localhost:8888/user-plugin/user/queryUser?userId=1"
 ```
 
 观察日志：
@@ -216,7 +230,7 @@ Audit: Plugin [user-plugin] accessed [storage:sql] (ALLOWED)
 **第二次查询**（命中缓存，无 SQL）：
 
 ```bash
-curl "http://localhost:8888/user/queryUser?userId=1"
+curl "http://localhost:8888/user-plugin/user/queryUser?userId=1"
 ```
 
 观察日志：

@@ -6,15 +6,24 @@ Thank you for your interest in LingFrame!
 
 ### Prerequisites
 
-- JDK 21+
+- JDK 17+
 - Maven 3.8+
 - IDE: IntelliJ IDEA (Recommended)
 
 ### Build Project
 
 ```bash
-git clone https://github.com/lingframe/lingframe.git
-cd lingframe
+# Clone Repository (Choose any)
+# GitHub (International, Recommended)
+git clone https://github.com/LingFrame/LingFrame.git
+
+# AtomGit (China)
+git clone https://atomgit.com/lingframe/LingFrame.git
+
+# Gitee (China Mirror)
+git clone https://gitee.com/knight6236/lingframe.git
+
+cd LingFrame
 mvn clean install -DskipTests
 ```
 

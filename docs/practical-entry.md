@@ -3,12 +3,6 @@
 **JVM Runtime Framework providing Plugin Architecture and Zero-Downtime Canary Release for Spring Boot**
 *Built-in complete permission control and security audit capabilities*
 
-![Status](https://img.shields.io/badge/Status-Core_Implemented-green)
-![License](https://img.shields.io/badge/License-Apache_2.0-blue)
-![Java](https://img.shields.io/badge/Java-21-orange)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
-
 ---
 
 ## 🚑 What can LingFrame solve for you immediately?
@@ -124,14 +118,23 @@ As system scale and complexity rise, LingFrame provides a complete **Governance 
 
 ### Prerequisites
 
-* Java 21+
+* Java 17+
 * Maven 3.8+
 
 ### Start Host Application
 
 ```bash
-git clone https://github.com/lingframe/lingframe.git
-cd lingframe
+# Clone Repository (Choose any)
+# GitHub (International, Recommended)
+git clone https://github.com/LingFrame/LingFrame.git
+
+# AtomGit (China)
+git clone https://atomgit.com/lingframe/LingFrame.git
+
+# Gitee (China Mirror)
+git clone https://gitee.com/knight6236/lingframe.git
+
+cd LingFrame
 mvn clean install -DskipTests
 
 cd lingframe-examples/lingframe-example-host-app

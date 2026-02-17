@@ -2,8 +2,15 @@
 
 ![Status](https://img.shields.io/badge/Status-Core_Implemented-green)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue)
-![Java](https://img.shields.io/badge/Java-21-orange)
+![Java](https://img.shields.io/badge/Java-17-orange)
+![Java](https://img.shields.io/badge/Java-8-orange)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-2.7.18-brightgreen)
+
+[![AtomGit G-Star](https://img.shields.io/badge/AtomGit-G--Star_Incubated-silver?logo=git&logoColor=white)](https://atomgit.com/lingframe/LingFrame)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-black?logo=github&logoColor=white)](https://github.com/LingFrame/LingFrame)
+[![Gitee](https://img.shields.io/badge/Gitee-Repository-red?logo=gitee&logoColor=white)](https://gitee.com/knight6236/lingframe)
+
 [![Help Wanted](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LingFrame/LingFrame)
 
@@ -103,8 +110,8 @@ LingFrame's purpose is to provide possibilities for **"retraction" and "reorgani
 
 ## Technical Boundaries (Overview)
 
-- JVM: JDK 21 / JDK 8 (future compatibility support)
-- Spring Boot: 3.x / 2.x (future compatibility support)
+- JVM: JDK 17 / JDK 8
+- Spring Boot: 3.x / 2.x
 - Single-process plugin isolation and governance
 - Clear distinction: **Interface stability ≠ Implementation stability**
 
@@ -121,3 +128,12 @@ She just helps put things back in place while the system is still willing to be 
 
 If you just stop here,  
 that's perfectly fine.
+
+---
+
+## Acknowledgments
+
+[![AtomGit](docs/images/AtomGit.svg)](https://atomgit.com/lingframe/LingFrame)
+
+This project is an **AtomGit G-Star Incubated Project**.  
+Thanks to [AtomGit](https://atomgit.com) for supporting and promoting open source projects.

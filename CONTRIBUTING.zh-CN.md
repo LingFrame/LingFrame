@@ -6,15 +6,24 @@
 
 ### 环境要求
 
-- JDK 21+
+- JDK 17+
 - Maven 3.8+
 - IDE：IntelliJ IDEA（推荐）
 
 ### 构建项目
 
 ```bash
-git clone https://github.com/lingframe/lingframe.git
-cd lingframe
+# 克隆仓库（选择任意仓库）
+# AtomGit（推荐）
+git clone https://atomgit.com/lingframe/LingFrame.git
+
+# Gitee（国内镜像）
+git clone https://gitee.com/knight6236/lingframe.git
+
+# GitHub（国际）
+git clone https://github.com/LingFrame/LingFrame.git
+
+cd LingFrame
 mvn clean install -DskipTests
 ```
 

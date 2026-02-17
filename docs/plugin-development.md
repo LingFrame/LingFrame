@@ -371,7 +371,7 @@ Point to compilation output directory in host app configuration:
 lingframe:
   dev-mode: true
   plugin-roots:
-    - "../my-plugin/target/classes"
+    - "../my-plugin"
 ```
 
 After modifying code and recompiling, HotSwapWatcher auto-detects changes in `target/classes` and hot reloads.

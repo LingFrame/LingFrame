@@ -30,3 +30,6 @@ replay_pid*
 /.kiro
 /.vscode
 /config
+docs/blog-post-devto-en.md
+docs/blog-post-devto-zh.md
+docs/images/lingframe-cover.png

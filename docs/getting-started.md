@@ -4,16 +4,30 @@ This guide helps you quickly understand and use LingFrame.
 
 ## Prerequisites
 
-- JDK 21+
+- JDK 17+
 - Maven 3.8+
 
 ## 5-Minute Hello World
 
 ### 1. Build Project
 
+**Get Source Code** (Choose any repository):
+
 ```bash
-git clone https://github.com/lingframe/lingframe.git
-cd lingframe
+# GitHub (International, Recommended)
+git clone https://github.com/LingFrame/LingFrame.git
+
+# AtomGit (China)
+git clone https://atomgit.com/lingframe/LingFrame.git
+
+# Gitee (China Mirror)
+git clone https://gitee.com/knight6236/lingframe.git
+```
+
+**Build**:
+
+```bash
+cd LingFrame
 mvn clean install -DskipTests
 ```
 
@@ -28,10 +42,10 @@ mvn spring-boot:run
 
 ```bash
 # Query user list (Provided by user-plugin)
-curl http://localhost:8888/user/listUsers
+curl http://localhost:8888/user-plugin/user/listUsers
 
 # Query single user
-curl "http://localhost:8888/user/queryUser?userId=1"
+curl "http://localhost:8888/user-plugin/user/queryUser?userId=1"
 ```
 
 Congratulations! You have successfully run your first LingFrame application!
@@ -185,7 +199,7 @@ User Plugin declared `READ` permission for database in `plugin.yml`, but did NOT
 Call Create User API (Executes INSERT SQL):
 
 ```bash
-curl -X POST "http://localhost:8888/user/createUser?name=Attacker&email=hacker@test.com"
+curl -X POST "http://localhost:8888/user-plugin/user/createUser?name=Attacker&email=hacker@test.com"
 ```
 
 **Expected Result**:
@@ -203,7 +217,7 @@ User Plugin declared `WRITE` permission for `cache:local`.
 **First Query** (Trigger SQL query and write to cache):
 
 ```bash
-curl "http://localhost:8888/user/queryUser?userId=1"
+curl "http://localhost:8888/user-plugin/user/queryUser?userId=1"
 ```
 
 Observe Log:
@@ -216,7 +230,7 @@ Audit: Plugin [user-plugin] accessed [storage:sql] (ALLOWED)
 **Second Query** (Cache Hit, No SQL):
 
 ```bash
-curl "http://localhost:8888/user/queryUser?userId=1"
+curl "http://localhost:8888/user-plugin/user/queryUser?userId=1"
 ```
 
 Observe Log:
