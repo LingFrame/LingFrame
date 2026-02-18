@@ -29,4 +29,10 @@ public class HostGovernanceRule {
 
     /** 超时时间 */
     private Duration timeout;
+
+    /** 重试次数 */
+    private Integer retryCount;
+
+    /** 降级返回值 (String) */
+    private String fallbackValue;
 }

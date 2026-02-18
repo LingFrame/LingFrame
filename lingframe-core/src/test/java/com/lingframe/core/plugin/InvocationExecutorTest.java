@@ -72,8 +72,7 @@ public class InvocationExecutorTest {
                 realInvoker,
                 transactionVerifier,
                 Collections.emptyList(),
-                config
-        );
+                config);
     }
 
     @AfterEach
@@ -98,7 +97,8 @@ public class InvocationExecutorTest {
         return instance;
     }
 
-    private ServiceRegistry.InvokableService createService(Object bean, String methodName, Class<?>... paramTypes) throws Exception {
+    private ServiceRegistry.InvokableService createService(Object bean, String methodName, Class<?>... paramTypes)
+            throws Exception {
         Method method = bean.getClass().getMethod(methodName, paramTypes);
         method.setAccessible(true);
         MethodHandle handle = MethodHandles.lookup().unreflect(method).bindTo(bean);
@@ -136,7 +136,7 @@ public class InvocationExecutorTest {
             TestService bean = new TestService();
             ServiceRegistry.InvokableService service = createService(bean, "hello", String.class);
 
-            Object result = invocationExecutor.executeSync(instance, service, new Object[]{"World"});
+            Object result = invocationExecutor.executeSync(instance, service, new Object[] { "World" });
 
             assertEquals("Hello, World", result);
         }
@@ -149,7 +149,7 @@ public class InvocationExecutorTest {
             ServiceRegistry.InvokableService service = createService(bean, "hello", String.class);
 
             Object result = invocationExecutor.executeAsync(
-                    instance, service, new Object[]{"World"}, "caller", "test:hello");
+                    instance, service, new Object[] { "World" }, "caller", "test:hello", null);
 
             assertEquals("Hello, World", result);
         }
@@ -167,7 +167,7 @@ public class InvocationExecutorTest {
             // 标记为事务方法
             when(transactionVerifier.isTransactional(any(), any())).thenReturn(true);
 
-            invocationExecutor.execute(instance, service, new Object[]{executionThread}, "caller", "test:track");
+            invocationExecutor.execute(instance, service, new Object[] { executionThread }, "caller", "test:track");
 
             // 应该在当前线程执行
             assertEquals(Thread.currentThread(), executionThread.get());
@@ -185,7 +185,7 @@ public class InvocationExecutorTest {
             // 标记为非事务方法
             when(transactionVerifier.isTransactional(any(), any())).thenReturn(false);
 
-            invocationExecutor.execute(instance, service, new Object[]{executionThread}, "caller", "test:track");
+            invocationExecutor.execute(instance, service, new Object[] { executionThread }, "caller", "test:track");
 
             // 应该在其他线程执行
             assertNotNull(executionThread.get());
@@ -205,7 +205,7 @@ public class InvocationExecutorTest {
             // 创建一个超时时间很短的执行器
             PluginRuntimeConfig shortTimeoutConfig = PluginRuntimeConfig.builder()
                     .bulkheadMaxConcurrent(5)
-                    .defaultTimeoutMs(200)  // 200ms 超时
+                    .defaultTimeoutMs(200) // 200ms 超时
                     .bulkheadAcquireTimeoutMs(500)
                     .build();
 
@@ -215,17 +215,15 @@ public class InvocationExecutorTest {
                     realInvoker,
                     transactionVerifier,
                     Collections.emptyList(),
-                    shortTimeoutConfig
-            );
+                    shortTimeoutConfig);
 
             PluginInstance instance = createMockInstance("1.0.0");
             TestService bean = new TestService();
             ServiceRegistry.InvokableService service = createService(bean, "slowMethod", long.class);
 
             // 方法 sleep 500ms，但超时设置为 200ms
-            assertThrows(TimeoutException.class, () ->
-                    shortTimeoutExecutor.executeAsync(
-                            instance, service, new Object[]{500L}, "caller", "test:slow"));
+            assertThrows(TimeoutException.class, () -> shortTimeoutExecutor.executeAsync(
+                    instance, service, new Object[] { 500L }, "caller", "test:slow", null));
         }
 
         @Test
@@ -237,7 +235,7 @@ public class InvocationExecutorTest {
 
             // 方法 sleep 50ms，超时设置为 1000ms
             Object result = invocationExecutor.executeAsync(
-                    instance, service, new Object[]{50L}, "caller", "test:slow");
+                    instance, service, new Object[] { 50L }, "caller", "test:slow", null);
 
             assertEquals("done after 50ms", result);
         }
@@ -256,13 +254,12 @@ public class InvocationExecutorTest {
             PluginRuntimeConfig config = PluginRuntimeConfig.builder()
                     .bulkheadMaxConcurrent(2)
                     .defaultTimeoutMs(5000)
-                    .bulkheadAcquireTimeoutMs(50)  // 50ms 等待
+                    .bulkheadAcquireTimeoutMs(50) // 50ms 等待
                     .build();
 
             InvocationExecutor limitedExecutor = new InvocationExecutor(
                     PLUGIN_ID, executor, realInvoker, transactionVerifier,
-                    Collections.emptyList(), config
-            );
+                    Collections.emptyList(), config);
 
             PluginInstance instance = createMockInstance("1.0.0");
             TestService bean = new TestService();
@@ -282,8 +279,7 @@ public class InvocationExecutorTest {
                             canFinish.await(10, TimeUnit.SECONDS);
                             return "done";
                         }
-                    }, "controlled"
-            );
+                    }, "controlled");
 
             // 启动 2 个长时间任务占满舱壁
             ExecutorService testPool = Executors.newFixedThreadPool(3);
@@ -291,7 +287,7 @@ public class InvocationExecutorTest {
                 testPool.submit(() -> {
                     try {
                         limitedExecutor.executeAsync(
-                                instance, controlledService, new Object[]{}, "caller", "test:controlled");
+                                instance, controlledService, new Object[] {}, "caller", "test:controlled", null);
                     } catch (Exception ignored) {
                     }
                 });
@@ -302,9 +298,8 @@ public class InvocationExecutorTest {
             assertEquals(2, startedCount.get());
 
             // 第 3 个请求应该被拒绝（因为舱壁满了，且等待超时很短）
-            assertThrows(RejectedExecutionException.class, () ->
-                    limitedExecutor.executeAsync(
-                            instance, controlledService, new Object[]{}, "caller", "test:controlled"));
+            assertThrows(RejectedExecutionException.class, () -> limitedExecutor.executeAsync(
+                    instance, controlledService, new Object[] {}, "caller", "test:controlled", null));
 
             // 清理
             canFinish.countDown();
@@ -329,7 +324,8 @@ public class InvocationExecutorTest {
 
             // 执行多次
             for (int i = 0; i < 10; i++) {
-                invocationExecutor.executeAsync(instance, service, new Object[]{"test"}, "caller", "test:hello");
+                invocationExecutor.executeAsync(instance, service, new Object[] { "test" }, "caller", "test:hello",
+                        null);
             }
 
             // 许可应该全部释放回来
@@ -377,7 +373,7 @@ public class InvocationExecutorTest {
             TestService bean = new TestService();
             ServiceRegistry.InvokableService service = createService(bean, "hello", String.class);
 
-            int threadCount = 10;  // 减少线程数，因为舱壁只有 5
+            int threadCount = 10; // 减少线程数，因为舱壁只有 5
             ExecutorService testExecutor = Executors.newFixedThreadPool(threadCount);
             CountDownLatch doneLatch = new CountDownLatch(threadCount);
             AtomicInteger successCount = new AtomicInteger(0);
@@ -388,8 +384,8 @@ public class InvocationExecutorTest {
                 testExecutor.submit(() -> {
                     try {
                         Object result = invocationExecutor.executeAsync(
-                                instance, service, new Object[]{"User" + index},
-                                "caller", "test:hello");
+                                instance, service, new Object[] { "User" + index },
+                                "caller", "test:hello", null);
                         if (result != null && result.toString().startsWith("Hello")) {
                             successCount.incrementAndGet();
                         }
@@ -431,8 +427,8 @@ public class InvocationExecutorTest {
                 testExecutor.submit(() -> {
                     try {
                         invocationExecutor.executeAsync(
-                                instance, service, new Object[]{"User" + index},
-                                "caller", "test:hello");
+                                instance, service, new Object[] { "User" + index },
+                                "caller", "test:hello", null);
                     } catch (Exception ignored) {
                     } finally {
                         doneLatch.countDown();
@@ -469,12 +465,10 @@ public class InvocationExecutorTest {
                         public String throwError() {
                             throw new IllegalArgumentException("Business error");
                         }
-                    }, "throwError"
-            );
+                    }, "throwError");
 
-            Exception thrown = assertThrows(IllegalArgumentException.class, () ->
-                    invocationExecutor.executeAsync(
-                            instance, service, new Object[]{}, "caller", "test:error"));
+            Exception thrown = assertThrows(IllegalArgumentException.class, () -> invocationExecutor.executeAsync(
+                    instance, service, new Object[] {}, "caller", "test:error", null));
 
             assertEquals("Business error", thrown.getMessage());
         }

@@ -35,4 +35,7 @@ public class InvocationContext {
 
     // 路由标签，用于金丝雀、租户隔离等逻辑
     private Map<String, String> labels;
+
+    // 弹性治理参数
+    private Integer timeout; // 超时时间 (ms)
 }
