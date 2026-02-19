@@ -30,11 +30,6 @@ All notable changes to this project will be documented in this file.
   - `TraceContext` for propagating request metadata across plugin boundaries.
 - **Traffic Routing**:
   - `LabelMatchRouter` implementation for canary releases and tag-based traffic routing.
-- **Resilience & Reliability**:
-  - **Circuit Breaker**: `SlidingWindowCircuitBreaker` implementation.
-  - **Rate Limiting**: `TokenBucketRateLimiter` implementation.
-  - **Retry & Fallback**: Automatic retry and fallback mechanisms in `GovernanceKernel`.
-  - **Context Propagation**: `ThreadLocalPropagator` and `PluginContextHolder` to pass context (e.g., TraceId, Labels) across thread and plugin boundaries.
 
 #### Dashboard & Operations
 - **Visual Management**: Web-based Dashboard (preview) for monitoring plugin status and managing configurations.
@@ -51,7 +46,7 @@ All notable changes to this project will be documented in this file.
 ### ⚠️ Technical Boundaries & Limitations
 - **Single Process Only**: Designed for monolithic modification, not a distributed microservice framework.
 - **Compatibility**: Built for JDK 17 (LTS) and Spring Boot 3.x.
-- **Pending Features** (Phase 3): Timeout control and further resilience parameter tuning. (Observability is scheduled for Phase 4)
+- **Pending Features** (Phase 3): Circuit Breaking, Rate Limiting, and Fallback mechanisms are defined but not yet fully operational.
 
 ### 🛠 Infrastructure
 - Established standard Maven multi-module project structure (`core`, `api`, `dashboard`, `runtime`, `infrastructure`).

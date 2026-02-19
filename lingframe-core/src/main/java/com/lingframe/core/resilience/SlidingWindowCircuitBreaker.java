@@ -3,11 +3,11 @@ package com.lingframe.core.resilience;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import lombok.extern.slf4j.Slf4j;
+
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 滑动窗口熔断器 (简化版)
@@ -42,20 +42,18 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
     private final AtomicInteger permittedNumberOfCallsInHalfOpenState = new AtomicInteger(10);
     private final AtomicInteger successfulCallsInHalfOpenState = new AtomicInteger(0);
 
-    private final ReentrantLock lock = new ReentrantLock();
-
     private final EventBus eventBus;
 
     public SlidingWindowCircuitBreaker(String name, int failureRateThreshold, int slowCallRateThreshold,
-            long slowCallDurationThresholdMs, int slidingWindowSize, int minimumNumberOfCalls,
-            long waitDurationInOpenStateMs) {
+                                       long slowCallDurationThresholdMs, int slidingWindowSize, int minimumNumberOfCalls,
+                                       long waitDurationInOpenStateMs) {
         this(name, failureRateThreshold, slowCallRateThreshold, slowCallDurationThresholdMs, slidingWindowSize,
                 minimumNumberOfCalls, waitDurationInOpenStateMs, null);
     }
 
     public SlidingWindowCircuitBreaker(String name, int failureRateThreshold, int slowCallRateThreshold,
-            long slowCallDurationThresholdMs, int slidingWindowSize, int minimumNumberOfCalls,
-            long waitDurationInOpenStateMs, EventBus eventBus) {
+                                       long slowCallDurationThresholdMs, int slidingWindowSize, int minimumNumberOfCalls,
+                                       long waitDurationInOpenStateMs, EventBus eventBus) {
         this.name = name;
         this.failureRateThreshold = failureRateThreshold;
         this.slowCallRateThreshold = slowCallRateThreshold;

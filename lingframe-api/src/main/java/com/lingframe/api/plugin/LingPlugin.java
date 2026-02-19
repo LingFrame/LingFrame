@@ -4,7 +4,8 @@ import com.lingframe.api.context.PluginContext;
 
 /**
  * 插件生命周期接口
- * 所有插件的主入口类必须实现此接口
+ * <p>
+ * 所有插件的主入口类必须实现此接口（Springboot插件可以不实现）
  * 
  * @author LingFrame
  */

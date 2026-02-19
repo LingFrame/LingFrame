@@ -1,10 +1,15 @@
 package com.lingframe.core.plugin;
 
+import com.lingframe.core.exception.CallNotPermittedException;
 import com.lingframe.core.governance.DefaultTransactionVerifier;
 import com.lingframe.core.invoker.FastPluginServiceInvoker;
 import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.plugin.event.RuntimeEvent;
 import com.lingframe.core.plugin.event.RuntimeEventBus;
+import com.lingframe.core.resilience.CircuitBreaker;
+import com.lingframe.core.resilience.RateLimiter;
+import com.lingframe.core.resilience.SlidingWindowCircuitBreaker;
+import com.lingframe.core.resilience.TokenBucketRateLimiter;
 import com.lingframe.core.spi.PluginServiceInvoker;
 import com.lingframe.core.spi.ThreadLocalPropagator;
 import com.lingframe.core.exception.InvocationException;
@@ -15,8 +20,11 @@ import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
+
 import com.lingframe.api.context.PluginContextHolder;
 
 /**
@@ -42,13 +50,13 @@ public class InvocationExecutor {
     private com.lingframe.core.event.EventBus monitorBus; // 可选，用于发布监控事件（外部）
 
     public InvocationExecutor(String pluginId,
-            ExecutorService executor,
-            PluginServiceInvoker invoker,
-            TransactionVerifier transactionVerifier,
-            List<ThreadLocalPropagator> propagators,
-            int bulkheadPermits,
-            int timeoutMs,
-            int acquireTimeoutMs) {
+                              ExecutorService executor,
+                              PluginServiceInvoker invoker,
+                              TransactionVerifier transactionVerifier,
+                              List<ThreadLocalPropagator> propagators,
+                              int bulkheadPermits,
+                              int timeoutMs,
+                              int acquireTimeoutMs) {
         this.pluginId = pluginId;
         this.executor = executor;
         this.invoker = invoker;
@@ -64,22 +72,22 @@ public class InvocationExecutor {
      * 使用配置构造
      */
     public InvocationExecutor(String pluginId,
-            ExecutorService executor,
-            PluginServiceInvoker invoker,
-            TransactionVerifier transactionVerifier,
-            List<ThreadLocalPropagator> propagators,
-            PluginRuntimeConfig config) {
+                              ExecutorService executor,
+                              PluginServiceInvoker invoker,
+                              TransactionVerifier transactionVerifier,
+                              List<ThreadLocalPropagator> propagators,
+                              PluginRuntimeConfig config) {
         this(pluginId, executor, invoker, transactionVerifier, propagators,
                 config.getBulkheadMaxConcurrent(),
                 config.getDefaultTimeoutMs(),
                 config.getBulkheadAcquireTimeoutMs());
     }
 
-    private final java.util.Map<String, com.lingframe.core.resilience.CircuitBreaker> circuitBreakers = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, CircuitBreaker> circuitBreakers = new ConcurrentHashMap<>();
 
-    private com.lingframe.core.resilience.CircuitBreaker getOrGenericCircuitBreaker(String fqsid) {
+    private CircuitBreaker getOrGenericCircuitBreaker(String fqsid) {
         return circuitBreakers.computeIfAbsent(fqsid,
-                k -> new com.lingframe.core.resilience.SlidingWindowCircuitBreaker(
+                k -> new SlidingWindowCircuitBreaker(
                         k,
                         50, // 50% 失败率
                         50, // 50% 慢调用率
@@ -91,11 +99,11 @@ public class InvocationExecutor {
                 ));
     }
 
-    private final java.util.Map<String, com.lingframe.core.resilience.RateLimiter> rateLimiters = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, RateLimiter> rateLimiters = new ConcurrentHashMap<>();
 
-    private com.lingframe.core.resilience.RateLimiter getOrGenericRateLimiter(String fqsid) {
+    private RateLimiter getOrGenericRateLimiter(String fqsid) {
         return rateLimiters.computeIfAbsent(fqsid,
-                k -> new com.lingframe.core.resilience.TokenBucketRateLimiter(
+                k -> new TokenBucketRateLimiter(
                         k,
                         500.0, // 500 QPS
                         500.0 // Burst capacity
@@ -103,10 +111,10 @@ public class InvocationExecutor {
     }
 
     public Object execute(PluginInstance instance,
-            ServiceRegistry.InvokableService service,
-            Object[] args,
-            String callerPluginId,
-            String fqsid) throws Exception {
+                          ServiceRegistry.InvokableService service,
+                          Object[] args,
+                          String callerPluginId,
+                          String fqsid) throws Exception {
 
         // 发布调用开始事件
         publishEvent(new RuntimeEvent.InvocationStarted(pluginId, fqsid, callerPluginId));
@@ -146,10 +154,10 @@ public class InvocationExecutor {
      * @return 调用结果
      */
     public Object doExecute(PluginInstance instance,
-            ServiceRegistry.InvokableService service,
-            Object[] args,
-            String callerPluginId,
-            String fqsid) throws Exception {
+                            ServiceRegistry.InvokableService service,
+                            Object[] args,
+                            String callerPluginId,
+                            String fqsid) throws Exception {
 
         // 判断是否需要同步执行（事务场景）
         boolean isTx = transactionVerifier.isTransactional(
@@ -169,8 +177,8 @@ public class InvocationExecutor {
      * 同步执行（事务场景）
      */
     public Object executeSync(PluginInstance instance,
-            ServiceRegistry.InvokableService service,
-            Object[] args) throws Exception {
+                              ServiceRegistry.InvokableService service,
+                              Object[] args) throws Exception {
         return executeInternal(instance, service, args);
     }
 
@@ -178,22 +186,22 @@ public class InvocationExecutor {
      * 异步执行（线程隔离）
      */
     public Object executeAsync(PluginInstance instance,
-            ServiceRegistry.InvokableService service,
-            Object[] args,
-            String callerPluginId,
-            String fqsid,
-            Integer timeoutOverride) throws Exception {
+                               ServiceRegistry.InvokableService service,
+                               Object[] args,
+                               String callerPluginId,
+                               String fqsid,
+                               Integer timeoutOverride) throws Exception {
 
         // 1. 限流检查
-        com.lingframe.core.resilience.RateLimiter limiter = getOrGenericRateLimiter(fqsid);
+        RateLimiter limiter = getOrGenericRateLimiter(fqsid);
         if (!limiter.tryAcquire()) {
-            throw new com.lingframe.core.exception.CallNotPermittedException(fqsid, "RateLimit exceeded");
+            throw new CallNotPermittedException(fqsid, "RateLimit exceeded");
         }
 
         // 2. 熔断检查
-        com.lingframe.core.resilience.CircuitBreaker breaker = getOrGenericCircuitBreaker(fqsid);
+        CircuitBreaker breaker = getOrGenericCircuitBreaker(fqsid);
         if (!breaker.tryAcquirePermission()) {
-            throw new com.lingframe.core.exception.CallNotPermittedException(fqsid, "CircuitBreaker is OPEN");
+            throw new CallNotPermittedException(fqsid, "CircuitBreaker is OPEN");
         }
 
         // 捕获上下文快照
@@ -274,8 +282,8 @@ public class InvocationExecutor {
      * 内部执行逻辑
      */
     private Object executeInternal(PluginInstance instance,
-            ServiceRegistry.InvokableService service,
-            Object[] args) throws Exception {
+                                   ServiceRegistry.InvokableService service,
+                                   Object[] args) throws Exception {
 
         // 1. 捕获当前 TCCL
         Thread currentThread = Thread.currentThread();
@@ -368,7 +376,7 @@ public class InvocationExecutor {
     private static class ContextSnapshot {
         private final String traceId;
         private final String pluginId;
-        private final java.util.Map<String, String> labels;
+        private final Map<String, String> labels;
         private final Object[] snapshots;
         private final List<ThreadLocalPropagator> propagators;
 
@@ -376,8 +384,8 @@ public class InvocationExecutor {
             this.traceId = traceId;
             this.pluginId = PluginContextHolder.get();
             this.labels = PluginContextHolder.getLabels() != null
-                    ? java.util.Map.copyOf(PluginContextHolder.getLabels())
-                    : java.util.Collections.emptyMap();
+                    ? PluginContextHolder.getLabels()
+                    : Collections.emptyMap();
             this.snapshots = snapshots;
             this.propagators = propagators;
         }
@@ -393,7 +401,7 @@ public class InvocationExecutor {
 
             // 设置 PluginContext
             String oldPluginId = PluginContextHolder.get();
-            java.util.Map<String, String> oldLabels = PluginContextHolder.getLabels();
+            Map<String, String> oldLabels = PluginContextHolder.getLabels();
 
             PluginContextHolder.set(pluginId);
             PluginContextHolder.setLabels(labels);
@@ -417,7 +425,7 @@ public class InvocationExecutor {
             private final java.util.Map<String, String> oldLabels;
 
             Scope(Object[] backups, List<ThreadLocalPropagator> propagators, String oldPluginId,
-                    java.util.Map<String, String> oldLabels) {
+                  java.util.Map<String, String> oldLabels) {
                 this.backups = backups;
                 this.propagators = propagators;
                 this.oldPluginId = oldPluginId;
@@ -454,10 +462,21 @@ public class InvocationExecutor {
         int timeoutMs;
         int acquireTimeoutMs;
 
-        public int availablePermits() { return availablePermits; }
-        public int queueLength() { return queueLength; }
-        public int timeoutMs() { return timeoutMs; }
-        public int acquireTimeoutMs() { return acquireTimeoutMs;}
+        public int availablePermits() {
+            return availablePermits;
+        }
+
+        public int queueLength() {
+            return queueLength;
+        }
+
+        public int timeoutMs() {
+            return timeoutMs;
+        }
+
+        public int acquireTimeoutMs() {
+            return acquireTimeoutMs;
+        }
 
         @Override
         @NonNull

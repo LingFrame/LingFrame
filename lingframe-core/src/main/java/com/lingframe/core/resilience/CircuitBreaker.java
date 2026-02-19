@@ -1,5 +1,7 @@
 package com.lingframe.core.resilience;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * 熔断器接口
  */
@@ -13,12 +15,12 @@ public interface CircuitBreaker {
     /**
      * 记录成功
      */
-    void onSuccess(long duration, java.util.concurrent.TimeUnit durationUnit);
+    void onSuccess(long duration, TimeUnit durationUnit);
 
     /**
      * 记录失败
      */
-    void onError(long duration, java.util.concurrent.TimeUnit durationUnit, Throwable throwable);
+    void onError(long duration, TimeUnit durationUnit, Throwable throwable);
 
     /**
      * 获取当前状态

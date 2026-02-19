@@ -25,22 +25,20 @@ class PluginClassLoaderTest {
         @Test
         @DisplayName("不同插件之间应隔离类加载")
         void testIsolation() {
-            PluginClassLoader pc1 = new PluginClassLoader("plugin-1", new URL[] {}, ClassLoader.getSystemClassLoader());
-            PluginClassLoader pc2 = new PluginClassLoader("plugin-2", new URL[] {}, ClassLoader.getSystemClassLoader());
 
-            try {
-                // 尝试加载不存在的类应该抛出 ClassNotFoundException
-                pc1.loadClass("com.example.NonExistentClass");
-                fail("Should throw ClassNotFoundException");
-            } catch (ClassNotFoundException e) {
-                // 符合预期
-            } finally {
+            try (PluginClassLoader pc1 = new PluginClassLoader("plugin-1", new URL[]{},
+                    ClassLoader.getSystemClassLoader());
+                 PluginClassLoader pc2 = new PluginClassLoader("plugin-2", new URL[]{},
+                         ClassLoader.getSystemClassLoader())) {
                 try {
-                    pc1.close();
-                    pc2.close();
-                } catch (Exception e) {
-                    // ignore
+                    // 尝试加载不存在的类应该抛出 ClassNotFoundException
+                    pc1.loadClass("com.example.NonExistentClass");
+                    fail("Should throw ClassNotFoundException");
+                } catch (ClassNotFoundException e) {
+                    // 符合预期
                 }
+            } catch (Exception e) {
+                // ignore
             }
         }
     }
@@ -52,7 +50,7 @@ class PluginClassLoaderTest {
         @Test
         @DisplayName("关闭后不应能加载类或资源")
         void testClosedState() throws Exception {
-            PluginClassLoader pcl = new PluginClassLoader("plugin-closed", new URL[] {},
+            PluginClassLoader pcl = new PluginClassLoader("plugin-closed", new URL[]{},
                     ClassLoader.getSystemClassLoader());
             pcl.close();
             assertTrue(pcl.isClosed());

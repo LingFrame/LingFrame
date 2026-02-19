@@ -16,7 +16,14 @@ public class TokenBucketRateLimiter implements RateLimiter {
     // 状态
     private final AtomicReference<State> state;
 
-    private record State(double tokens, long lastRefillTime) {
+    private static class State {
+        double tokens;
+        long lastRefillTime;
+
+        State(double tokens, long lastRefillTime) {
+            this.tokens = tokens;
+            this.lastRefillTime = lastRefillTime;
+        }
     }
 
     public TokenBucketRateLimiter(String name, double ratePerSecond, double maxTokens) {

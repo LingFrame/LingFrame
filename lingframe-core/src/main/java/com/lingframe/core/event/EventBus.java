@@ -22,8 +22,13 @@ public class EventBus {
         String pluginId;
         LingEventListener<? extends LingEvent> listener;
 
-        public String pluginId(){return pluginId;}
-        public LingEventListener listener(){return listener;}
+        public String pluginId() {
+            return pluginId;
+        }
+
+        public LingEventListener listener() {
+            return listener;
+        }
     }
 
     /**

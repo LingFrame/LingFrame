@@ -84,16 +84,16 @@ public class PluginRuntime {
     private final long installedAt = System.currentTimeMillis();
 
     public PluginRuntime(String pluginId,
-            PluginRuntimeConfig config,
-            ScheduledExecutorService scheduler,
-            ExecutorService executor,
-            GovernanceKernel governanceKernel,
-            EventBus externalEventBus,
-            TrafficRouter router,
-            PluginServiceInvoker invoker,
-            TransactionVerifier transactionVerifier,
-            List<ThreadLocalPropagator> propagators,
-            ResourceGuard resourceGuard) {
+                         PluginRuntimeConfig config,
+                         ScheduledExecutorService scheduler,
+                         ExecutorService executor,
+                         GovernanceKernel governanceKernel,
+                         EventBus externalEventBus,
+                         TrafficRouter router,
+                         PluginServiceInvoker invoker,
+                         TransactionVerifier transactionVerifier,
+                         List<ThreadLocalPropagator> propagators,
+                         ResourceGuard resourceGuard) {
         this.pluginId = pluginId;
         this.config = config != null ? config : PluginRuntimeConfig.defaults();
         this.router = router;
@@ -157,27 +157,6 @@ public class PluginRuntime {
         serviceRegistry.registerEventHandlers(internalEventBus);
         invocationExecutor.setEventBus(internalEventBus);
         invocationExecutor.setMonitorBus(monitorBus);
-
-        // 注入外部监控总线
-        // externalEventBus is passed in constructor but not stored as field?
-        // Constructor: EventBus externalEventBus (L90)
-        // L117 passed to lifecycleManager.
-        // I need to check if externalEventBus is available here.
-        // It is NOT a field of PluginRuntime! L90 arg.
-        // L40-83 fields don't show it.
-        // But registerEventHandlers is called inside Constructor (L122).
-        // BUT registerEventHandlers does NOT take arguments.
-        // So it cannot access externalEventBus arg from constructor?
-        // Wait, Constructor calls registerEventHandlers() (L122).
-        // Inside Constructor, externalEventBus scope is valid?
-        // No, registerEventHandlers is a private method.
-        // Does it access externalEventBus?
-        // NO, it's not a field.
-        // So I must add externalEventBus as a field or pass it to
-        // registerEventHandlers.
-
-        // Plan: Add externalEventBus field to PluginRuntime.
-        // OR: setMonitorBus inside constructor directly.
 
         // 🔥 可以添加更多监听器，如指标收集
         registerMetricsHandlers();
@@ -424,7 +403,7 @@ public class PluginRuntime {
     public <T> T getServiceProxy(String callerPluginId, Class<T> interfaceClass) {
         return serviceRegistry.getOrCreateProxy(interfaceClass, k -> Proxy.newProxyInstance(
                 getClass().getClassLoader(),
-                new Class<?>[] { interfaceClass },
+                new Class<?>[]{interfaceClass},
                 new SmartServiceProxy(callerPluginId, this, interfaceClass, governanceKernel)));
     }
 
@@ -435,8 +414,8 @@ public class PluginRuntime {
      */
     public boolean isAvailable() {
         return status == PluginStatus.ACTIVE &&
-                !lifecycleManager.isShutdown() &&
-                instancePool.hasAvailableInstance();
+               !lifecycleManager.isShutdown() &&
+               instancePool.hasAvailableInstance();
     }
 
     /**

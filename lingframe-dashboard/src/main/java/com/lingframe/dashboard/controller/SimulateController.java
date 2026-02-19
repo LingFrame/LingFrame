@@ -3,6 +3,7 @@ package com.lingframe.dashboard.controller;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.SimulateService;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -59,7 +60,7 @@ public class SimulateController {
     }
 
     // 内部类：请求体
-    @lombok.Data
+    @Data
     public static class ModeRequest {
         private String testEnv; // dev, prod
     }
@@ -77,12 +78,12 @@ public class SimulateController {
     }
 
     // 内部类：请求体
-    @lombok.Data
+    @Data
     public static class ResourceRequest {
         private String resourceType;// dbRead, dbWrite, cacheRead, cacheWrite
     }
 
-    @lombok.Data
+    @Data
     public static class IpcRequest {
         private String targetPluginId;
         private boolean ipcEnabled;

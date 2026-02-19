@@ -4,6 +4,7 @@ import com.lingframe.core.exception.ClassLoaderException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
@@ -217,14 +218,14 @@ public class PluginClassLoader extends URLClassLoader {
     private void cleanupInternalCaches() {
         try {
             // 获取 URLClassLoader.ucp (URLClassPath) 字段
-            java.lang.reflect.Field ucpField = URLClassLoader.class.getDeclaredField("ucp");
+            Field ucpField = URLClassLoader.class.getDeclaredField("ucp");
             ucpField.setAccessible(true);
             Object ucp = ucpField.get(this);
 
             if (ucp != null) {
                 // 清理 URLClassPath.path (ArrayList<URL>)
                 try {
-                    java.lang.reflect.Field pathField = ucp.getClass().getDeclaredField("path");
+                    Field pathField = ucp.getClass().getDeclaredField("path");
                     pathField.setAccessible(true);
                     Object path = pathField.get(ucp);
                     if (path instanceof List<?>) {
@@ -236,7 +237,7 @@ public class PluginClassLoader extends URLClassLoader {
 
                 // 清理 URLClassPath.loaders (ArrayList<Loader>)
                 try {
-                    java.lang.reflect.Field loadersField = ucp.getClass().getDeclaredField("loaders");
+                    Field loadersField = ucp.getClass().getDeclaredField("loaders");
                     loadersField.setAccessible(true);
                     Object loaders = loadersField.get(ucp);
                     if (loaders instanceof List<?>) {
@@ -248,7 +249,7 @@ public class PluginClassLoader extends URLClassLoader {
 
                 // 清理 URLClassPath.lmap (HashMap<String, Loader>)
                 try {
-                    java.lang.reflect.Field lmapField = ucp.getClass().getDeclaredField("lmap");
+                    Field lmapField = ucp.getClass().getDeclaredField("lmap");
                     lmapField.setAccessible(true);
                     Object lmap = lmapField.get(ucp);
                     if (lmap instanceof Map<?, ?>) {
@@ -273,7 +274,7 @@ public class PluginClassLoader extends URLClassLoader {
     }
 
     /**
-     * 获取插件ID
+     * 获取插件 ID
      */
     public String getPluginId() {
         return pluginId;
