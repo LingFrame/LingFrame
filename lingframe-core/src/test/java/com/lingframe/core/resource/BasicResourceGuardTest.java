@@ -31,8 +31,8 @@ class BasicResourceGuardTest {
 
     @AfterEach
     void tearDown() {
-        if (resourceGuard instanceof BasicResourceGuard brg) {
-            brg.shutdown();
+        if (resourceGuard instanceof BasicResourceGuard) {
+            resourceGuard.shutdown();
         }
     }
 

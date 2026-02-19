@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -133,12 +134,13 @@ public class ServiceRegistryTest {
         void batchRegistrationShouldSucceed() throws Exception {
             TestService bean = new TestService();
 
-            Map<String, ServiceRegistry.ServiceDefinition> services = Map.of(
-                    "test:hello", new ServiceRegistry.ServiceDefinition(
-                            bean, TestService.class.getMethod("hello", String.class)),
-                    "test:add", new ServiceRegistry.ServiceDefinition(
-                            bean, TestService.class.getMethod("add", int.class, int.class))
-            );
+            Map<String, ServiceRegistry.ServiceDefinition> services =
+                    new HashMap<String, ServiceRegistry.ServiceDefinition>() {{
+                        put("test:hello", new ServiceRegistry.ServiceDefinition(
+                                bean, TestService.class.getMethod("hello", String.class)));
+                        put("test:add", new ServiceRegistry.ServiceDefinition(
+                                bean, TestService.class.getMethod("add", int.class, int.class)));
+                    }};
 
             int count = registry.registerServices(services);
 

@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -43,7 +44,7 @@ public class PluginManifestLoader {
             return null;
         }
 
-        try (InputStream is = new FileInputStream(ymlFile)) {
+        try (InputStream is = Files.newInputStream(ymlFile.toPath())) {
             return load(is);
         } catch (Exception e) {
             log.debug("Found directory {} but failed to parse plugin.yml", dir.getName(), e);

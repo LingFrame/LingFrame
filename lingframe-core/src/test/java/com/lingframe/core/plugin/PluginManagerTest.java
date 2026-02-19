@@ -523,7 +523,7 @@ public class PluginManagerTest {
         @Test
         @DisplayName("卸载插件 A 不应影响插件 B")
         void uninstallAShouldNotAffectB() throws Exception {
-            for (String pluginId : new String[] { "plugin-a", "plugin-b" }) {
+            for (String pluginId : new String[]{"plugin-a", "plugin-b"}) {
                 File pluginDir = createPluginDir(pluginId);
                 PluginDefinition definition = createDefinition(pluginId, "1.0.0");
                 PluginContainer container = createMockContainer();
@@ -688,7 +688,7 @@ public class PluginManagerTest {
             assertNotNull(runtime);
 
             // ✅ 使用 getActiveInstances() 获取所有实例
-            var instances = runtime.getInstancePool().getActiveInstances();
+            List<PluginInstance> instances = runtime.getInstancePool().getActiveInstances();
             assertFalse(instances.isEmpty());
 
             // 查找金丝雀实例
@@ -719,7 +719,9 @@ public class PluginManagerTest {
 
             // 部署金丝雀
             PluginDefinition canaryDef = createDefinition("plugin-a", "2.0.0-canary");
-            pluginManager.deployCanary(canaryDef, pluginDir, Map.of("env", "canary"));
+            Map<String, String> labels = new HashMap<>();
+            labels.put("env", "canary");
+            pluginManager.deployCanary(canaryDef, pluginDir, labels);
 
             PluginRuntime runtime = pluginManager.getRuntime("plugin-a");
 
@@ -740,7 +742,8 @@ public class PluginManagerTest {
             when(containerFactory.create(eq("plugin-a"), any(), any())).thenReturn(container);
 
             PluginDefinition canaryDef = createDefinition("plugin-a", "2.0.0-canary");
-            Map<String, String> labels = Map.of("env", "canary");
+            Map<String, String> labels = new HashMap<>();
+            labels.put("env", "canary");
 
             pluginManager.deployCanary(canaryDef, pluginDir, labels);
 
@@ -751,7 +754,7 @@ public class PluginManagerTest {
             assertNull(runtime.getInstancePool().getDefault());
 
             // 但实例应该存在于活跃列表中
-            var instances = runtime.getInstancePool().getActiveInstances();
+            List<PluginInstance> instances = runtime.getInstancePool().getActiveInstances();
             assertEquals(1, instances.size());
 
             PluginInstance instance = instances.get(0);
@@ -1110,7 +1113,7 @@ public class PluginManagerTest {
                     permissionService,
                     governanceKernel,
                     pluginLoaderFactory,
-                    List.of(dangerousApiVerifier),
+                    Collections.singletonList(dangerousApiVerifier),
                     eventBus,
                     trafficRouter,
                     pluginServiceInvoker,
@@ -1131,7 +1134,7 @@ public class PluginManagerTest {
                         () -> secureManager.installDev(def, pluginDir));
 
                 assertTrue(ex.getMessage().contains("System.exit") ||
-                        ex.getCause().getMessage().contains("System.exit"));
+                           ex.getCause().getMessage().contains("System.exit"));
 
                 // 验证插件未被安装
                 assertNull(secureManager.getRuntime("evil-plugin"));
@@ -1152,7 +1155,7 @@ public class PluginManagerTest {
 
             PluginManager secureManager = new PluginManager(
                     containerFactory, permissionService, governanceKernel,
-                    pluginLoaderFactory, List.of(selectiveVerifier),
+                    pluginLoaderFactory, Collections.singletonList(selectiveVerifier),
                     eventBus, trafficRouter, pluginServiceInvoker,
                     transactionVerifier, Collections.emptyList(), lingFrameConfig,
                     localGovernanceRegistry, null);

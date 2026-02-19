@@ -295,7 +295,7 @@ public class PluginLifecycleManager {
 
         // 🔥 ClassLoader GC 检测增强：延迟检查确认回收状态
         WeakReference<ClassLoader> clRef = new WeakReference<>(cl);
-        cl = null; // 主动断开本地引用
+        // 主动断开本地引用
         final String ver = version;
         if (scheduler != null && !scheduler.isShutdown()) {
             try {

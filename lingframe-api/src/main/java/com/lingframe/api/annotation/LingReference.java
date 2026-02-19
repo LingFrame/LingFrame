@@ -4,7 +4,7 @@ import java.lang.annotation.*;
 
 /**
  * 灵珑服务引用
- * 用于在宿主应用中无感注入插件提供的服务接口。
+ * 用于注入跨模块提供的服务接口。
  * * 示例：
  * @LingReference
  * private UserService userService;

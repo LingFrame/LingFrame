@@ -7,6 +7,7 @@ import com.lingframe.starter.interceptor.HostBeanGovernanceInterceptor;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -189,7 +190,7 @@ public class HostBeanGovernanceProcessor implements BeanPostProcessor, Applicati
         }
 
         // 2. 排除已经被代理的 Bean
-        if (org.springframework.aop.support.AopUtils.isAopProxy(bean)) {
+        if (AopUtils.isAopProxy(bean)) {
             return false;
         }
 
@@ -199,7 +200,7 @@ public class HostBeanGovernanceProcessor implements BeanPostProcessor, Applicati
         }
 
         // 4. 检查是否有业务注解
-        Class<?> targetClass = org.springframework.aop.support.AopUtils.getTargetClass(bean);
+        Class<?> targetClass = AopUtils.getTargetClass(bean);
         for (Class<? extends Annotation> annotationType : GOVERNANCE_ANNOTATIONS) {
             if (targetClass.isAnnotationPresent(annotationType)) {
                 return true;

@@ -63,6 +63,7 @@ public class PluginRuntime {
     // ===== 协调依赖 =====
     private final TrafficRouter router;
     private final GovernanceKernel governanceKernel;
+    private final EventBus monitorBus; // 外部监控总线
 
     // ===== 状态管理 =====
     @Getter
@@ -83,20 +84,21 @@ public class PluginRuntime {
     private final long installedAt = System.currentTimeMillis();
 
     public PluginRuntime(String pluginId,
-            PluginRuntimeConfig config,
-            ScheduledExecutorService scheduler,
-            ExecutorService executor,
-            GovernanceKernel governanceKernel,
-            EventBus externalEventBus,
-            TrafficRouter router,
-            PluginServiceInvoker invoker,
-            TransactionVerifier transactionVerifier,
-            List<ThreadLocalPropagator> propagators,
-            ResourceGuard resourceGuard) {
+                         PluginRuntimeConfig config,
+                         ScheduledExecutorService scheduler,
+                         ExecutorService executor,
+                         GovernanceKernel governanceKernel,
+                         EventBus externalEventBus,
+                         TrafficRouter router,
+                         PluginServiceInvoker invoker,
+                         TransactionVerifier transactionVerifier,
+                         List<ThreadLocalPropagator> propagators,
+                         ResourceGuard resourceGuard) {
         this.pluginId = pluginId;
         this.config = config != null ? config : PluginRuntimeConfig.defaults();
         this.router = router;
         this.governanceKernel = governanceKernel;
+        this.monitorBus = externalEventBus; // 保存引用
 
         // 🔥 创建内部事件总线
         this.internalEventBus = new RuntimeEventBus(pluginId);
@@ -154,12 +156,14 @@ public class PluginRuntime {
         instancePool.registerEventHandlers(internalEventBus);
         serviceRegistry.registerEventHandlers(internalEventBus);
         invocationExecutor.setEventBus(internalEventBus);
+        invocationExecutor.setMonitorBus(monitorBus);
 
         // 🔥 可以添加更多监听器，如指标收集
         registerMetricsHandlers();
 
-        log.debug("[{}] Event handlers registered, total subscriptions: {}",
-                pluginId, internalEventBus.getSubscriptionCount());
+        log.debug("[{}] Event handlers registered, total subscriptions: {}", pluginId,
+                internalEventBus.getSubscriptionCount());
+
     }
 
     /**
@@ -328,13 +332,30 @@ public class PluginRuntime {
     /**
      * 执行服务调用
      */
+    /**
+     * 执行服务调用 (Legacy)
+     */
     public Object invoke(String callerPluginId, String fqsid, Object[] args) throws Exception {
+        InvocationContext ctx = InvocationContext.builder()
+                .pluginId(pluginId)
+                .resourceId(fqsid)
+                .args(args)
+                .callerPluginId(callerPluginId)
+                .build();
+        return invoke(ctx);
+    }
+
+    /**
+     * 执行服务调用 (Context Aware)
+     */
+    public Object invoke(InvocationContext ctx) throws Exception {
         // 状态检查
         if (status != PluginStatus.ACTIVE) {
             throw new ServiceUnavailableException(pluginId, "Plugin not active");
         }
 
-        PluginInstance instance = routeToAvailableInstance(fqsid);
+        String fqsid = ctx.getResourceId();
+        PluginInstance instance = routeToAvailableInstance(fqsid, ctx);
 
         // 🔥 记录流量统计
         recordRequest(instance);
@@ -344,17 +365,28 @@ public class PluginRuntime {
             throw new NoSuchMethodException("Service not found: " + fqsid);
         }
 
-        return invocationExecutor.execute(instance, service, args, callerPluginId, fqsid);
+        return invocationExecutor.executeAsync(instance, service, ctx.getArgs(),
+                ctx.getCallerPluginId(), fqsid, ctx.getTimeout());
     }
 
     /**
-     * 路由到可用实例
+     * 路由到可用实例 (Legacy)
      */
     public PluginInstance routeToAvailableInstance(String resourceId) {
-        InvocationContext ctx = InvocationContext.builder()
-                .pluginId(pluginId)
-                .resourceId(resourceId)
-                .build();
+        return routeToAvailableInstance(resourceId, null);
+    }
+
+    /**
+     * 路由到可用实例 (Context Aware)
+     */
+    public PluginInstance routeToAvailableInstance(String resourceId, InvocationContext ctx) {
+        // 如果没有传入 Context，则创建一个临时的 (兼容旧代码)
+        if (ctx == null) {
+            ctx = InvocationContext.builder()
+                    .pluginId(pluginId)
+                    .resourceId(resourceId)
+                    .build();
+        }
 
         PluginInstance instance = router.route(instancePool.getActiveInstances(), ctx);
         if (instance == null) {
@@ -371,7 +403,7 @@ public class PluginRuntime {
     public <T> T getServiceProxy(String callerPluginId, Class<T> interfaceClass) {
         return serviceRegistry.getOrCreateProxy(interfaceClass, k -> Proxy.newProxyInstance(
                 getClass().getClassLoader(),
-                new Class<?>[] { interfaceClass },
+                new Class<?>[]{interfaceClass},
                 new SmartServiceProxy(callerPluginId, this, interfaceClass, governanceKernel)));
     }
 
@@ -382,8 +414,8 @@ public class PluginRuntime {
      */
     public boolean isAvailable() {
         return status == PluginStatus.ACTIVE &&
-                !lifecycleManager.isShutdown() &&
-                instancePool.hasAvailableInstance();
+               !lifecycleManager.isShutdown() &&
+               instancePool.hasAvailableInstance();
     }
 
     /**

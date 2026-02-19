@@ -19,10 +19,12 @@ import java.util.concurrent.atomic.AtomicLong;
 public class PluginInstance {
 
     // 🔥 非 final：destroy() 时必须置 null 断开 → ClassLoader 引用链
+    @Getter
     private volatile PluginContainer container;
 
     // 插件完整定义 (包含治理配置、扩展参数等)
     // 🔥 非 final：destroy() 时必须置 null
+    @Getter
     private volatile PluginDefinition definition;
 
     // 实例固有标签 (如 {"env": "canary", "tenant": "T1"})
@@ -48,14 +50,6 @@ public class PluginInstance {
         this.definition = Objects.requireNonNull(definition, "definition cannot be null");
 
         definition.validate();
-    }
-
-    public PluginContainer getContainer() {
-        return container;
-    }
-
-    public PluginDefinition getDefinition() {
-        return definition;
     }
 
     public String getVersion() {
