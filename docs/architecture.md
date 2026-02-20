@@ -7,19 +7,19 @@ This document describes the core architecture design and implementation principl
 LingFrame draws inspiration from operating system design principles:
 
 - **Microkernel**: Core is responsible only for scheduling and arbitration, containing no business logic.
-- **Zero Trust**: Business modules cannot directly access infrastructure; they must go through the Core proxy.
-- **Capability Isolation**: Each plugin runs in an independent ClassLoader and Spring Context.
+- **Zero Trust**: Business units cannot directly access infrastructure; they must go through the Core proxy.
+- **Capability Isolation**: Each ling runs in an independent ClassLoader and Spring Context.
 
 ## Three-Tier Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Host Application                        │
+│                      LingCore Application                        │
 │                                                              │
 │  ┌───────────────────────────────────────────────────────┐  │
 │  │                 Core (Governance Kernel)                │  │
 │  │                                                        │  │
-│  │   PluginManager · PermissionService · EventBus        │  │
+│  │   LingManager · PermissionService · EventBus        │  │
 │  │   AuditManager · TraceContext · GovernanceStrategy    │  │
 │  │                                                        │  │
 │  │   Resp: Lifecycle Mgmt · Auth Gov · Capability Sched · Context Isolation │  │
@@ -40,7 +40,7 @@ LingFrame draws inspiration from operating system design principles:
 │         ▼                 ▼                 ▼               │
 │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐       │
 │  │   User      │   │   Order     │   │  Payment    │       │
-│  │  Plugin     │   │   Plugin    │   │  Plugin     │       │
+│  │  ling     │   │   ling    │   │  ling     │       │
 │  │             │   │             │   │             │       │
 │  │ Business Layer│   │ Business Layer│   │ Business Layer│       │
 │  └─────────────┘   └─────────────┘   └─────────────┘       │
@@ -50,11 +50,11 @@ LingFrame draws inspiration from operating system design principles:
 
 ### Layer 1: Core (Governance Kernel)
 
-**Module**: `lingframe-core`
+**Unit**: `lingframe-core`
 
 **Responsibilities**:
 
-- Plugin Cycle Management (Install, Uninstall, Hot Swap)
+- ling Cycle Management (Install, Uninstall, Hot Swap)
 - Governance (Permission Check, Authorization, Audit)
 - Service Routing (FQSID Routing Table)
 - Context Isolation (ClassLoader, Spring Context)
@@ -63,18 +63,18 @@ LingFrame draws inspiration from operating system design principles:
 
 - Core is the sole arbiter.
 - Provides no business capabilities, only scheduling and control.
-- All cross-plugin calls must pass through Core.
+- All cross-ling calls must pass through Core.
 
 **Core Components**:
 
 | Component                 | Responsibility             |
 | ------------------------- | -------------------------- |
-| `PluginManager`           | Plugin Install/Uninstall/Routing |
-| `PluginRuntime`           | Plugin Runtime Environment |
+| `LingManager`           | ling Install/Uninstall/Routing |
+| `LingRuntime`           | ling Runtime Environment |
 | `InstancePool`            | Blue-Green Deployment & Versioning |
 | `ServiceRegistry`         | Service Registry           |
 | `InvocationExecutor`      | Invocation Executor        |
-| `PluginLifecycleManager`  | Lifecycle Management       |
+| `LingLifecycleManager`  | Lifecycle Management       |
 | `PermissionService`       | Permission Check & Authorization |
 | `AuditManager`            | Audit Logging              |
 | `EventBus`                | Event Publish/Subscribe    |
@@ -82,7 +82,7 @@ LingFrame draws inspiration from operating system design principles:
 
 ### Layer 2: Infrastructure (Infrastructure Layer)
 
-**Module**: `lingframe-infrastructure/*`
+**Unit**: `lingframe-infrastructure/*`
 
 **Responsibilities**:
 
@@ -92,21 +92,21 @@ LingFrame draws inspiration from operating system design principles:
 
 **Implemented**:
 
-| Module                       | Description                | Capability ID |
+| Unit                       | Description                | Capability ID |
 | ---------------------------- | -------------------------- | ------------- |
 | `lingframe-infra-storage`    | DB Access, SQL-level ACL   | `storage:sql` |
 | `lingframe-infra-cache`      | Cache Access (TODO)        | `cache:redis` |
 
 **Working Principle**:
 
-Infrastructure plugins intercept underlying calls via a **proxy chain**:
+Infrastructure Lings intercept underlying calls via a **proxy chain**:
 
 ```
-Business Plugin calls userRepository.findById()
+Business ling calls userRepository.findById()
     │
     ▼ (Transparent, via MyBatis/JPA)
 ┌─────────────────────────────────────┐
-│ Storage Plugin (Infrastructure)      │
+│ Storage ling (Infrastructure)      │
 │                                      │
 │ LingDataSourceProxy                  │
 │   └→ LingConnectionProxy             │
@@ -114,7 +114,7 @@ Business Plugin calls userRepository.findById()
 │       └→ LingPreparedStatementProxy  │  ← PreparedStatement
 │                                      │
 │ Interception: execute/executeQuery/Update  │
-│ 1. PluginContextHolder.get() Get Caller
+│ 1. LingContextHolder.get() Get Caller
 │ 2. Parse SQL Type (SELECT/INSERT...) │
 │ 3. permissionService.isAllowed() Auth│
 │ 4. permissionService.audit() Audit   │
@@ -129,29 +129,29 @@ Business Plugin calls userRepository.findById()
 
 > See [Infrastructure Proxy Development](infrastructure-development.md) for details.
 
-### Layer 3: Business Plugins (Business Layer)
+### Layer 3: Business Lings (Business Layer)
 
-**Module**: User-developed plugins
+**Unit**: User-developed Lings
 
 **Responsibilities**:
 
 - Implement business logic.
-- Access infrastructure via `PluginContext`.
+- Access infrastructure via `LingContext`.
 - Expose services via `@LingService`.
 
 **Key Principles**:
 
 - **Zero Trust**: Cannot directly access Database, Cache, etc.
 - All capability calls must pass through Core proxy and authorization.
-- Declare required permissions in `plugin.yml`.
+- Declare required permissions in `ling.yml`.
 
 ## Data Flow
 
-### Business Module Calls Infrastructure
+### Business Unit Calls Infrastructure
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Business Plugin (User Plugin)                                │
+│ Business ling (User ling)                                │
 │                                                              │
 │   userRepository.findById(id)                               │
 │         │                                                    │
@@ -159,18 +159,18 @@ Business Plugin calls userRepository.findById()
           │ JDBC Call
           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ Infrastructure Plugin (Storage)                              │
+│ Infrastructure ling (Storage)                              │
 │                                                              │
 │   LingPreparedStatementProxy.executeQuery()                 │
 │         │                                                    │
 │         ├─→ checkPermission()                               │
 │         │     │                                              │
-│         │     ├─→ PluginContextHolder.get() → "user-plugin" │
+│         │     ├─→ LingContextHolder.get() → "user-ling" │
 │         │     │                                              │
 │         │     ├─→ preParsedAccessType (Parsed at construction)│
 │         │     │                                              │
 │         │     ├─→ permissionService.isAllowed(              │
-│         │     │       "user-plugin", "storage:sql", READ)   │
+│         │     │       "user-ling", "storage:sql", READ)   │
 │         │     │                                              │
 │         │     └─→ permissionService.audit(...)              │
 │         │                                                    │
@@ -193,13 +193,13 @@ Business Plugin calls userRepository.findById()
 
 > Note: `LingPreparedStatementProxy` pre-parses SQL type at construction and caches it. `LingStatementProxy` parses SQL at each execution.
 
-### Cross-Module Calls (Method 1: @LingReference Injection - Recommended)
+### Cross-Unit Calls (Method 1: @LingReference Injection - Recommended)
 
-**Consumer-Driven Contract**: Order Plugin (Consumer) defines `UserQueryService` interface, User Plugin (Producer) implements it.
+**Consumer-Driven Contract**: Order ling (Consumer) defines `UserQueryService` interface, User ling (Producer) implements it.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Order Plugin (Consumer)                                      │
+│ Order ling (Consumer)                                      │
 │                                                              │
 │   // Order defines the interface it needs (in order-api)     │
 │   interface UserQueryService { UserDTO findById(userId); }  │
@@ -217,16 +217,16 @@ Business Plugin calls userRepository.findById()
 │                                                              │
 │   GlobalServiceRoutingProxy.invoke() (JDK Dynamic Proxy)    │
 │         │                                                    │
-│         ├─→ resolveTargetPluginId() Resolve Target Plugin   │
-│         │     ├─→ Check pluginId in annotation              │
-│         │     └─→ Iterate all plugins for implementation (Cached)│
+│         ├─→ resolveTargetLingId() Resolve Target ling   │
+│         │     ├─→ Check lingId in annotation              │
+│         │     └─→ Iterate all Lings for implementation (Cached)│
 │         │                                                    │
-│         ├─→ pluginManager.getRuntime(pluginId)              │
+│         ├─→ LingManager.getRuntime(lingId)              │
 │         │                                                    │
 │         ▼                                                    │
 │   SmartServiceProxy.invoke() (Delegate to Smart Proxy)      │
 │         │                                                    │
-│         ├─→ PluginContextHolder.set(callerPluginId)         │
+│         ├─→ LingContextHolder.set(callerLingId)         │
 │         ├─→ TraceContext.start() Start Tracing              │
 │         ├─→ checkPermissionSmartly() Permission Check       │
 │         │     ├─→ @RequiresPermission Explicit Declaration  │
@@ -244,7 +244,7 @@ Business Plugin calls userRepository.findById()
           │
           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ User Plugin (Producer)                                       │
+│ User ling (Producer)                                       │
 │                                                              │
 │   // Implements the interface defined by Consumer            │
 │   public class UserQueryServiceImpl implements UserQueryService {
@@ -255,13 +255,13 @@ Business Plugin calls userRepository.findById()
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Cross-Module Calls (Method 2: FQSID Protocol)
+### Cross-Unit Calls (Method 2: FQSID Protocol)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Order Plugin (Consumer)                                      │
+│ Order ling (Consumer)                                      │
 │                                                              │
-│   context.invoke("user-plugin:find_user", userId)           │
+│   context.invoke("user-ling:find_user", userId)           │
 │         │                                                    │
 └─────────┼────────────────────────────────────────────────────┘
           │
@@ -269,18 +269,18 @@ Business Plugin calls userRepository.findById()
 ┌─────────────────────────────────────────────────────────────┐
 │ Core                                                         │
 │                                                              │
-│   CorePluginContext.invoke()                                │
+│   CoreLingContext.invoke()                                │
 │         │                                                    │
 │         ├─→ GovernanceStrategy.inferAccessType() → EXECUTE  │
 │         ├─→ permissionService.isAllowed() Permission Check   │
 │         │                                                    │
 │         ▼                                                    │
-│   PluginManager.invokeService()                             │
+│   LingManager.invokeService()                             │
 │         │                                                    │
 │         ├─→ protocolServiceRegistry.get(fqsid) Find Route    │
 │         │                                                    │
 │         ▼                                                    │
-│   PluginRuntime.invokeService()                             │
+│   LingRuntime.invokeService()                             │
 │         │                                                    │
 │         ├─→ instance.enter() (Ref Count +1)                  │
 │         ├─→ TCCL Hijack                                      │
@@ -293,7 +293,7 @@ Business Plugin calls userRepository.findById()
           │
           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ User Plugin (Producer)                                       │
+│ User ling (Producer)                                       │
 │                                                              │
 │   @LingService(id = "find_user", desc = "Query User")       │
 │   public UserDTO findById(String userId) { ... }            │
@@ -301,13 +301,13 @@ Business Plugin calls userRepository.findById()
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Cross-Module Calls (Method 3: Interface Proxy)
+### Cross-Unit Calls (Method 3: Interface Proxy)
 
 **Consumer-Driven Contract**: Order defines `UserQueryService`, gets implementation via `getService()`.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Order Plugin (Consumer)                                      │
+│ Order ling (Consumer)                                      │
 │                                                              │
 │   // Get implementation of the interface defined by Consumer │
 │   UserQueryService userService = context.getService(UserQueryService.class).get();
@@ -321,7 +321,7 @@ Business Plugin calls userRepository.findById()
 │                                                              │
 │   SmartServiceProxy.invoke() (JDK Dynamic Proxy)            │
 │         │                                                    │
-│         ├─→ PluginContextHolder.set(callerPluginId)         │
+│         ├─→ LingContextHolder.set(callerLingId)         │
 │         ├─→ TraceContext.start() Start Tracing              │
 │         ├─→ checkPermissionSmartly() Permission Check       │
 │         │     ├─→ @RequiresPermission Explicit Declaration  │
@@ -339,7 +339,7 @@ Business Plugin calls userRepository.findById()
           │
           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ User Plugin (Producer)                                       │
+│ User ling (Producer)                                       │
 │                                                              │
 │   // Implements the interface defined by Consumer            │
 │   public class UserQueryServiceImpl implements UserQueryService {
@@ -364,14 +364,14 @@ Business Plugin calls userRepository.findById()
 #### Working Principle
 
 ```
-Host App Start
+LINGCORE App Start
     │
     ▼
 LingReferenceInjector (BeanPostProcessor)
     │
     ├─→ Scan all Beans for @LingReference fields
     │
-    ├─→ Call PluginManager.getGlobalServiceProxy()
+    ├─→ Call LingManager.getGlobalServiceProxy()
     │     │
     │     └─→ Create GlobalServiceRoutingProxy
     │
@@ -386,12 +386,12 @@ LingReferenceInjector (BeanPostProcessor)
     ▼
 GlobalServiceRoutingProxy.invoke()
     │
-    ├─→ resolveTargetPluginId() Dynamic Resolve
-    │     ├─→ Check annotation pluginId
+    ├─→ resolveTargetLingId() Dynamic Resolve
+    │     ├─→ Check annotation lingId
     │     ├─→ Query Route Cache (ROUTE_CACHE)
-    │     └─→ Iterate plugins for implementation
+    │     └─→ Iterate Lings for implementation
     │
-    ├─→ pluginManager.getRuntime(pluginId) Get Runtime
+    ├─→ LingManager.getRuntime(lingId) Get Runtime
     │
     └─→ Delegate to SmartServiceProxy for governance
 ```
@@ -399,14 +399,14 @@ GlobalServiceRoutingProxy.invoke()
 #### Example
 
 ```java
-// Order Plugin (Consumer) defines the interface it needs (in order-api module)
+// Order ling (Consumer) defines the interface it needs (in order-api unit)
 // Path: order-api/src/main/java/com/example/order/api/UserQueryService.java
 public interface UserQueryService {
     Optional<UserDTO> findById(String userId);
 }
 
-// User Plugin (Producer) implements the interface
-// Path: user-plugin/src/main/java/com/example/user/service/UserQueryServiceImpl.java
+// User ling (Producer) implements the interface
+// Path: user-ling/src/main/java/com/example/user/service/UserQueryServiceImpl.java
 @Component
 public class UserQueryServiceImpl implements UserQueryService {
     @LingService(id = "find_user_by_id", desc = "Query User by ID")
@@ -416,17 +416,17 @@ public class UserQueryServiceImpl implements UserQueryService {
     }
 }
 
-// Usage in Order Plugin
+// Usage in Order ling
 @RestController
 public class OrderController {
     
-    // Inject the interface defined by Consumer, implemented by User Plugin
+    // Inject the interface defined by Consumer, implemented by User ling
     @LingReference
     private UserQueryService userQueryService;
     
     @GetMapping("/orders/{userId}")
     public List<Order> getUserOrders(@PathVariable String userId) {
-        // Direct call, framework routes to User Plugin implementation
+        // Direct call, framework routes to User ling implementation
         UserDTO user = userQueryService.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         
@@ -439,15 +439,15 @@ public class OrderController {
 
 | Property   | Description                             | Default |
 | ---------- | --------------------------------------- | ------- |
-| `pluginId` | Target plugin ID. Auto-discover if empty| Empty   |
+| `lingId` | Target ling ID. Auto-discover if empty| Empty   |
 | `timeout`  | Timeout (ms)                            | 3000    |
 
 #### Advantages
 
-1. **Lazy Binding**: Proxy created effectively even if plugin is not started; routes dynamically at runtime.
-2. **Smart Routing**: Auto-routes to latest plugin version; supports Blue-Green.
-3. **Cache Optimization**: Interface-to-plugin mapping is cached.
-4. **Fault Isolation**: Explicit exception if plugin is offline.
+1. **Lazy Binding**: Proxy created effectively even if ling is not started; routes dynamically at runtime.
+2. **Smart Routing**: Auto-routes to latest ling version; supports Blue-Green.
+3. **Cache Optimization**: Interface-to-ling mapping is cached.
+4. **Fault Isolation**: Explicit exception if ling is offline.
 5. **Dev Friendly**: Closest to Spring native experience.
 
 ### FQSID Protocol Call
@@ -458,11 +458,11 @@ Suitable for loose coupling, no interface dependency:
 @Service
 public class OrderService {
     @Autowired
-    private PluginContext context;
+    private LingContext context;
     
     public Order createOrder(String userId) {
         // Call Service via FQSID directly, returns Optional
-        Optional<UserDTO> user = context.invoke("user-plugin:find_user", userId);
+        Optional<UserDTO> user = context.invoke("user-ling:find_user", userId);
         
         if (user.isEmpty()) {
             throw new BusinessException("User not found");
@@ -481,10 +481,10 @@ Suitable where explicit error handling is needed:
 @Service
 public class OrderService {
     @Autowired
-    private PluginContext context;
+    private LingContext context;
     
     public Order createOrder(String userId) {
-        // Get interface implementation (Provided by User Plugin)
+        // Get interface implementation (Provided by User ling)
         Optional<UserQueryService> userQueryService = context.getService(UserQueryService.class);
         
         if (userQueryService.isEmpty()) {
@@ -502,9 +502,9 @@ public class OrderService {
 
 | Scenario                 | Recommended        | Reason                         |
 | ------------------------ | ------------------ | ------------------------------ |
-| Host calls Plugin        | @LingReference     | Simple, Lazy Binding           |
-| Plugin calls Plugin (Strong)| @LingReference  | Type-safe, IDE friendly        |
-| Plugin calls Plugin (Loose)| FQSID Protocol     | No interface dependency        |
+| LINGCORE calls ling        | @LingReference     | Simple, Lazy Binding           |
+| ling calls ling (Strong)| @LingReference  | Type-safe, IDE friendly        |
+| ling calls ling (Loose)| FQSID Protocol     | No interface dependency        |
 | Explicit Error Handling  | Interface Proxy    | Handle unavailability gracefully|
 | Dynamic Discovery        | Interface Proxy    | Get available services at runtime|
 | Optional call            | @LingReference     | Supports null check (Optional) |
@@ -518,7 +518,7 @@ LingFrame uses a three-tier ClassLoader architecture to solve type consistency f
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    AppClassLoader                            │
-│                    (Host App)                                │
+│                    (LINGCORE App)                                │
 │                                                              │
 │   lingframe-api (Contract)                                   │
 │   lingframe-core                                             │
@@ -540,7 +540,7 @@ LingFrame uses a three-tier ClassLoader architecture to solve type consistency f
          ┌───────────────┼───────────────┐
          ▼               ▼               ▼
 ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-│PluginCL A  │   │PluginCL B  │   │PluginCL C  │
+│LingCL A  │   │LingCL B  │   │LingCL C  │
 │             │   │             │   │             │
 │ Child-First │   │ Child-First │   │ Child-First │
 │ Load Self   │   │ Load Self   │   │ Load Self   │
@@ -553,7 +553,7 @@ LingFrame uses a three-tier ClassLoader architecture to solve type consistency f
 lingframe:
   preload-api-jars:
     - libs/order-api.jar              # JAR File
-    - lingframe-examples/order-api    # Maven Module Dir
+    - lingframe-examples/order-api    # Maven Unit Dir
     - libs/*-api.jar                  # Wildcard
 ```
 
@@ -568,57 +568,57 @@ lingframe:
 
 ### Spring Context Isolation
 
-Each plugin runs in a **completely isolated** Spring ApplicationContext:
+Each ling runs in a **completely isolated** Spring ApplicationContext:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              Host Context (Host App)                         │
+│              LINGCORE Context (LINGCORE App)                         │
 │                                                              │
-│   PluginManager, ContainerFactory, PermissionService        │
+│   LingManager, ContainerFactory, PermissionService        │
 │   Common Beans...                                            │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
 │  Context A  │   │  Context B  │   │  Context C  │
-│ (Plugin A)  │   │ (Plugin B)  │   │ (Plugin C)  │
+│ (ling A)  │   │ (ling B)  │   │ (ling C)  │
 │             │   │             │   │             │
 │ Indep Beans │   │ Indep Beans │   │ Indep Beans │
 │ Indep Config│   │ Indep Config│   │ Indep Config│
 └─────────────┘   └─────────────┘   └─────────────┘
 ```
 
-> **Design Note**: Plugin contexts are NOT child contexts of the host.
+> **Design Note**: ling contexts are NOT child contexts of the LINGCORE.
 > This is intentional for:
-> 1. **Zero Trust**: Plugins cannot directly access host beans via `@Autowired`
+> 1. **Zero Trust**: Lings cannot directly access LingCore beans via `@Autowired`
 > 2. **Clean Unload**: No parent-child references that could cause ClassLoader leaks
-> 3. **True Isolation**: Each plugin is a self-contained Spring Boot application
+> 3. **True Isolation**: Each ling is a self-contained Spring Boot application
 >
-> Core beans (`PluginManager`, `PluginContext`) are manually injected via `registerBeans()`.
+> Core beans (`LingManager`, `LingContext`) are manually injected via `registerBeans()`.
 
 ## Lifecycle
 
-### Plugin Installation Flow
+### ling Installation Flow
 
 ```
-PluginManager.install(pluginId, version, jarFile)
+LingManager.install(lingId, version, jarFile)
     │
     ├─→ Security Verify (DangerousApiVerifier)
     │
-    ├─→ createPluginClassLoader(file)     // Child-First CL
+    ├─→ createLingClassLoader(file)     // Child-First CL
     │
     ├─→ containerFactory.create()          // SPI Create Container
     │
-    ├─→ Create PluginInstance
+    ├─→ Create LingInstance
     │
-    ├─→ Get or Create PluginRuntime
+    ├─→ Get or Create LingRuntime
     │
     ├─→ runtime.addInstance(instance, context, isDefault)  // Blue-Green
     │       │
     │       ├─→ instancePool.add(instance)     // Add to Pool
     │       ├─→ container.start(context)       // Start Spring Child Ctx
     │       ├─→ serviceRegistry.register()     // Register @LingService
-    │       ├─→ plugin.onStart(context)        // Lifecycle Callback
+    │       ├─→ ling.onStart(context)        // Lifecycle Callback
     │       └─→ instancePool.setDefault(instance)  // Set as Default
     │
     └─→ Old version enters dying queue, destroy after ref count zero
@@ -661,19 +661,19 @@ v1.0 Running
 │ v2.0 (active)                                                │
 │                                                              │
 │ v1.0 Destroy                                                 │
-│ - plugin.onStop()                                           │
+│ - ling.onStop()                                           │
 │ - Spring Context.close()                                    │
 │ - ClassLoader Release                                       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Module Mapping
+## Unit Mapping
 
-| Layer          | Maven Module                     | Description          |
+| Layer          | Maven Unit                     | Description          |
 | -------------- | -------------------------------- | -------------------- |
 | Core           | `lingframe-core`                 | Governance Kernel    |
 | Core           | `lingframe-api`                  | Contract (Interface) |
 | Core           | `lingframe-spring-boot3-starter` | Spring Boot Integration|
 | Infrastructure | `lingframe-infra-storage`      | Storage Proxy        |
 | Infrastructure | `lingframe-infra-cache`        | Cache Proxy          |
-| Business       | User Plugins                     | Business Logic       |
+| Business       | User Lings                     | Business Logic       |

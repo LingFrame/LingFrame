@@ -31,7 +31,7 @@ LingFrame allows you to pause at any stage.
 
 ![LingFrame Dashboard Example](./docs/images/dashboard.png)
 
-*Real-time plugin governance dashboard: monitor status, canary traffic, and audit logs.*
+*Real-time ling governance dashboard: monitor status, canary traffic, and audit logs.*
 
 ---
 
@@ -70,8 +70,8 @@ Thus, LingFrame was born.
 In many real-world systems, the issue isn't a lack of features, but:
 
 - The system is still running, but no one dares to change it
-- Module boundaries fade, couplings become untraceable
-- After introducing plugins, isolation stays structural only
+- Unit boundaries fade, couplings become untraceable
+- After introducing Lings, isolation stays structural only
 - Restarts aren't unacceptable, but **unpredictable**
 
 LingFrame addresses one core problem:
@@ -99,7 +99,7 @@ This is a phase that rejects pandering and begins choices.
 
 - A **JVM runtime governance framework**
 - A **structural tool for legacy systems**
-- A **system that allows plugins but doesn't tolerate their chaos**
+- A **system that allows Lings but doesn't tolerate their chaos**
 
 It's not a microservices replacement,  
 nor a modularization silver bullet.
@@ -112,7 +112,7 @@ LingFrame's purpose is to provide possibilities for **"retraction" and "reorgani
 
 - JVM: JDK 17 / JDK 8
 - Spring Boot: 3.x / 2.x
-- Single-process plugin isolation and governance
+- Single-process ling isolation and governance
 - Clear distinction: **Interface stability ≠ Implementation stability**
 
 LingFrame doesn't hide complexity—  

@@ -8,25 +8,25 @@ import com.lingframe.api.exception.LingException;
 public class ServiceNotFoundException extends LingException {
 
     private final String serviceName;
-    private final String pluginId;
+    private final String lingId;
 
     public ServiceNotFoundException(String serviceName) {
         super("Service not found: " + serviceName);
         this.serviceName = serviceName;
-        this.pluginId = null;
+        this.lingId = null;
     }
 
-    public ServiceNotFoundException(String serviceName, String pluginId) {
-        super("Service not found: " + serviceName + " in plugin: " + pluginId);
+    public ServiceNotFoundException(String serviceName, String lingId) {
+        super("Service not found: " + serviceName + " in ling: " + lingId);
         this.serviceName = serviceName;
-        this.pluginId = pluginId;
+        this.lingId = lingId;
     }
 
     public String getServiceName() {
         return serviceName;
     }
 
-    public String getPluginId() {
-        return pluginId;
+    public String getLingId() {
+        return lingId;
     }
 }

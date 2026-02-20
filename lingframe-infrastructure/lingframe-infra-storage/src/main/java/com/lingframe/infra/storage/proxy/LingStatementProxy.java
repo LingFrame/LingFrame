@@ -1,6 +1,6 @@
 package com.lingframe.infra.storage.proxy;
 
-import com.lingframe.api.context.PluginContextHolder;
+import com.lingframe.api.context.LingContextHolder;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
@@ -48,24 +48,24 @@ public class LingStatementProxy implements Statement {
 
     // --- 鉴权逻辑：与 PreparedStatement 类似，只是 SQL 是参数传进来的 ---
     private void checkPermission(String sql) throws SQLException {
-        String callerPluginId = PluginContextHolder.get();
-        // 无上下文：宿主操作
-        if (callerPluginId == null) {
-            // 检查是否启用了宿主治理
-            if (permissionService.isHostGovernanceEnabled()) {
-                // 宿主治理开启：拒绝无上下文的操作
-                log.error("Security Alert: SQL execution without PluginContext (Host governance ENABLED). SQL: {}",
+        String callerLingId = LingContextHolder.get();
+        // 无上下文：灵核操作
+        if (callerLingId == null) {
+            // 检查是否启用了灵核治理
+            if (permissionService.isLingCoreGovernanceEnabled()) {
+                // 灵核治理开启：拒绝无上下文的操作
+                log.error("Security Alert: SQL execution without LingContext (LINGCORE governance ENABLED). SQL: {}",
                         sql);
-                throw new SQLException("Access Denied: Host governance is enabled but no context provided.");
+                throw new SQLException("Access Denied: LINGCORE governance is enabled but no context provided.");
             }
-            // 宿主治理关闭：默认放行 (Host Privilege)
-            log.debug("SQL execution without PluginContext (Host governance disabled). ALLOWED. SQL: {}", sql);
+            // 灵核治理关闭：默认放行 (LINGCORE Privilege)
+            log.debug("SQL execution without LingContext (LINGCORE governance disabled). ALLOWED. SQL: {}", sql);
             return;
         }
 
         AccessType accessType = parseSqlForAccessTypeWithCache(sql);
-        boolean allowed = permissionService.isAllowed(callerPluginId, "storage:sql", accessType);
-        permissionService.audit(callerPluginId, "storage:sql", sql, allowed);
+        boolean allowed = permissionService.isAllowed(callerLingId, "storage:sql", accessType);
+        permissionService.audit(callerLingId, "storage:sql", sql, allowed);
 
         if (!allowed) {
             throw new SQLException(new PermissionDeniedException("Access Denied: " + sql));

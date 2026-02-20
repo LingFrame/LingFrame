@@ -17,7 +17,7 @@ import javax.sql.DataSource;
 
 @Slf4j
 @RequiredArgsConstructor
-// 如果宿主没引 JDBC 依赖，这个类直接跳过，不会报错，也不会生效。
+// 如果灵核没引 JDBC 依赖，这个类直接跳过，不会报错，也不会生效。
 @ConditionalOnClass(DataSource.class)
 // ✅ 跟随框架总开关：框架开启，我就必须开启
 @ConditionalOnProperty(prefix = "lingframe", name = "enabled", havingValue = "true", matchIfMissing = true)
@@ -40,7 +40,7 @@ public class DataSourceWrapperProcessor implements BeanPostProcessor {
             log.info(">>>>>> [LingFrame] Wrapping DataSource: {}", beanName);
 
             // 从 Core 获取 PermissionService (这里假设 PermissionService Bean 可见)
-            // 注意：因为基础设施插件与 Core 在类加载器上通常有一定隔离，这里需要确保 API 包是共享的
+            // 注意：因为基础设施单元与 Core 在类加载器上通常有一定隔离，这里需要确保 API 包是共享的
             PermissionService permissionService = applicationContext.getBean(PermissionService.class);
 
             return new LingDataSourceProxy((DataSource) bean, permissionService);

@@ -11,15 +11,15 @@
         "sseConnected": "SSE Connected",
         "sseConnecting": "SSE Connecting...",
         "sseDisconnected": "SSE Disconnected",
-        "pluginCount": "Plugins",
+        "lingCount": "Lings",
         "logCount": "Logs"
     },
     "header": {
         "notSelected": "Not Selected",
-        "upload": "Upload Plugin"
+        "upload": "Upload Ling"
     },
     "upload": {
-        "title": "Upload Plugin",
+        "title": "Upload Ling",
         "dragText": "Click or Drag jar file here",
         "supportText": "Only .jar files supported",
         "uploading": "Uploading",
@@ -31,10 +31,10 @@
         "test": "Test",
         "prod": "Prod"
     },
-    "pluginList": {
-        "title": "Plugin List",
-        "count": "{n} plugins",
-        "empty": "No plugins installed"
+    "lingList": {
+        "title": "Ling List",
+        "count": "{n} lings",
+        "empty": "No lings installed"
     },
     "traffic": {
         "title": "Traffic Control",
@@ -48,8 +48,8 @@
         "reset": "Reset",
         "stress": "Stress",
         "stop": "Stop",
-        "selectPlugin": "Please select a plugin",
-        "pluginInactive": "Plugin is inactive",
+        "selectLing": "Please select a ling",
+        "lingInactive": "Ling is inactive",
         "onlyOneVersion": "Only one version available"
     },
     "logs": {
@@ -61,8 +61,8 @@
         "newLogs": "New Logs"
     },
     "control": {
-        "title": "Plugin Control",
-        "selectPlugin": "Select a plugin from the list",
+        "title": "Ling Control",
+        "selectLing": "Select a ling from the list",
         "lifecycle": "Lifecycle",
         "activate": "Activate",
         "reload": "Reload",
@@ -77,7 +77,7 @@
         "title": "Feature Demo",
         "ready": "READY",
         "inactive": "INACTIVE",
-        "pluginNotActive": "Plugin not active, please activate first",
+        "lingNotActive": "Ling not active, please activate first",
         "readDb": "Read DB",
         "writeDb": "Write DB",
         "readCache": "Read Cache",
@@ -93,15 +93,15 @@
     "modal": {
         "cancel": "Cancel",
         "confirm": "Confirm",
-        "confirmUnload": "Confirm Unload Plugin",
-        "unloadWarning": "About to unload \"{pluginId}\", this will interrupt all requests.",
+        "confirmUnload": "Confirm Unload Ling",
+        "unloadWarning": "About to unload \"{lingId}\", this will interrupt all requests.",
         "unloadAction": "Unload"
     },
     "toast": {
-        "getPluginsFailed": "Failed to get plugin list",
+        "getLingsFailed": "Failed to get ling list",
         "statusUpdated": "Status updated to {status}",
         "statusUpdateFailed": "Failed to update status",
-        "pluginUnloaded": "Plugin unloaded",
+        "lingUnloaded": "Ling unloaded",
         "unloadFailed": "Unload failed",
         "canarySet": "Canary ratio set to {percent}%",
         "canaryFailed": "Canary config failed",
@@ -115,17 +115,17 @@
         "simulateFailed": "Simulation failed",
         "ipcSuccess": "IPC call successful",
         "ipcSimulateFailed": "IPC simulation failed",
-        "pluginNotActive": "Plugin not active",
-        "sourcePluginNotActive": "Source plugin not active",
+        "lingNotActive": "Ling not active",
+        "sourceLingNotActive": "Source ling not active",
         "envSwitched": "Environment switched: {mode}",
         "envSwitchFailed": "Environment switch failed",
         "prodMode": "Production Mode (deny unauthorized access)",
         "devMode": "Dev Mode (warn only for unauthorized access)",
         "alsoEnabled": " (also enabled {perm})",
         "alsoDisabled": " (also disabled {perm})",
-        "installSuccess": "Plugin installed successfully",
-        "installFailed": "Plugin install failed",
-        "reloadSuccess": "Plugin reloaded successfully",
-        "reloadFailed": "Plugin reload failed"
+        "installSuccess": "Ling installed successfully",
+        "installFailed": "Ling install failed",
+        "reloadSuccess": "Ling reloaded successfully",
+        "reloadFailed": "Ling reload failed"
     }
 }

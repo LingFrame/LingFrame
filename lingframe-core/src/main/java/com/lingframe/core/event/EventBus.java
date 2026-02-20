@@ -16,14 +16,14 @@ public class EventBus {
     private final Map<Class<? extends LingEvent>, List<ListenerWrapper>> listeners =
             new ConcurrentHashMap<>();
 
-    // 包装器，记录监听器归属的插件ID
+    // 包装器，记录监听器归属的单元ID
     @Value
     public static class ListenerWrapper {
-        String pluginId;
+        String lingId;
         LingEventListener<? extends LingEvent> listener;
 
-        public String pluginId() {
-            return pluginId;
+        public String lingId() {
+            return lingId;
         }
 
         public LingEventListener listener() {
@@ -34,19 +34,19 @@ public class EventBus {
     /**
      * 注册监听器
      */
-    public <E extends LingEvent> void subscribe(String pluginId, Class<E> eventType, LingEventListener<E> listener) {
+    public <E extends LingEvent> void subscribe(String lingId, Class<E> eventType, LingEventListener<E> listener) {
         listeners.computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>())
-                .add(new ListenerWrapper(pluginId, listener));
+                .add(new ListenerWrapper(lingId, listener));
     }
 
     /**
-     * 卸载插件时，强制移除该插件注册的所有监听器
+     * 卸载单元时，强制移除该单元注册的所有监听器
      */
-    public void unsubscribeAll(String pluginId) {
-        log.info("Cleaning up event listeners for plugin: {}", pluginId);
+    public void unsubscribeAll(String lingId) {
+        log.info("Cleaning up event listeners for ling: {}", lingId);
         for (List<ListenerWrapper> list : listeners.values()) {
             list.removeIf(wrapper -> {
-                boolean match = wrapper.pluginId().equals(pluginId);
+                boolean match = wrapper.lingId().equals(lingId);
                 if (match) {
                     log.debug("Removed listener: {}", wrapper.listener().getClass().getName());
                 }

@@ -6,7 +6,7 @@
 
 **LingFrame** = JVM Runtime Governance Framework
 
-Core Capabilities: Plugin Isolation + Permission Governance + Audit Tracing + Hot Swap
+Core Capabilities: ling Isolation + Permission Governance + Audit Tracing + Hot Swap
 
 ## Tech Stack
 
@@ -17,16 +17,16 @@ Core Capabilities: Plugin Isolation + Permission Governance + Audit Tracing + Ho
 ## Architecture Principles (Must Follow)
 
 ### Core Design
-1. **Zero Trust**: Business modules cannot access DB/Redis directly, must go through Core proxy.
+1. **Zero Trust**: Business units cannot access DB/Redis directly, must go through Core proxy.
 2. **Microkernel**: Core only handles scheduling and arbitration, no business logic.
 3. **Contract First**: All interactions via `lingframe-api` interfaces.
-4. **Context Isolation**: Independent ClassLoader + Spring Child Context per module.
-5. **FQSID Routing**: Services identified globally by `pluginId:serviceId`.
+4. **Context Isolation**: Independent ClassLoader + Spring Child Context per unit.
+5. **FQSID Routing**: Services identified globally by `lingId:serviceId`.
 
-### Module Responsibilities
+### Unit Responsibilities
 - **lingframe-core**: Pure Java implementation, **No Framework Dependency** (No Spring, No ORM).
 - **lingframe-runtime**: Ecosystem adapter layer, e.g., `spring-boot3-starter` adapts Spring.
-- **lingframe-api**: Contract layer, depended on by both Core and Plugins.
+- **lingframe-api**: Contract layer, depended on by both Core and Lings.
 
 ### Design Principles
 - **Single Responsibility (SRP)**: Each class does one thing.
@@ -36,18 +36,18 @@ Core Capabilities: Plugin Isolation + Permission Governance + Audit Tracing + Ho
 
 ## Coding Standards
 
-### Modifying Core Module
+### Modifying Core Unit
 - **FORBIDDEN** to introduce Spring, Hibernate, MyBatis dependencies.
 - **FORBIDDEN** to directly `new` concrete implementations, use factory or injection.
 - Public APIs must be defined in `lingframe-api`.
 
-### Modifying Runtime Module
+### Modifying Runtime Unit
 - Adapter layer bridges Core and specific frameworks.
 - Use `@Configuration` to assemble Core components.
 
-### Module Development
+### Unit Development
 - Depend only on `lingframe-api`, **FORBIDDEN** to depend on `lingframe-core`.
-- Use `@LingReference` to inject other module services, **NOT** `@Autowired`.
+- Use `@LingReference` to inject other unit services, **NOT** `@Autowired`.
 - Use `@LingService` to expose services.
 
 ### Permission Declaration
@@ -73,11 +73,11 @@ Core Capabilities: Plugin Isolation + Permission Governance + Audit Tracing + Ho
 
 | Class | Responsibility |
 |-------|----------------|
-| `PluginManager` | Plugin Install/Uninstall/Routing |
-| `PluginRuntime` | Runtime environment for a single plugin |
+| `LingManager` | ling Install/Uninstall/Routing |
+| `LingRuntime` | Runtime environment for a single ling |
 | `InstancePool` | Blue-Green deployment, version switching |
-| `SharedApiClassLoader` | Loads shared APIs between plugins |
-| `PluginClassLoader` | Plugin ClassLoader (Child-First) |
+| `SharedApiClassLoader` | Loads shared APIs between Lings |
+| `LingClassLoader` | ling ClassLoader (Child-First) |
 | `ServiceRegistry` | Service Registry |
 | `InvocationExecutor` | Invocation Executor |
 | `GovernanceKernel` | Governance Kernel |
@@ -87,34 +87,34 @@ Core Capabilities: Plugin Isolation + Permission Governance + Audit Tracing + Ho
 ## Three-Tier ClassLoader
 
 ```
-AppClassLoader (Host)
+AppClassLoader (LINGCORE)
     ↓ parent
 SharedApiClassLoader (Shared API)
     ↓ parent
-PluginClassLoader (Plugin, Child-First)
+LingClassLoader (ling, Child-First)
 ```
 
 ## Key Configuration Formats
 
-### Host Application (application.yaml)
+### LingCore Application (application.yaml)
 
 ```yaml
 lingframe:
   enabled: true
   dev-mode: true                    # Dev mode, loose permissions
-  plugin-home: "plugins"            # JAR directory
-  plugin-roots:                     # Plugin root directory (Dev)
-    - "../my-plugin"
+  Ling-home: "Lings"            # JAR directory
+  Ling-roots:                     # ling root directory (Dev)
+    - "../my-ling"
   preload-api-jars:                 # Shared API JARs
     - "shared-api/*.jar"
 ```
 
-### Plugin Metadata (plugin.yml)
+### ling Metadata (ling.yml)
 
 ```yaml
-id: my-plugin                       # No plugin: root node!
+id: my-ling                       # No ling: root node!
 version: 1.0.0
-mainClass: "com.example.MyPlugin"
+mainClass: "com.example.MyLing"
 governance:
   permissions:
     - methodPattern: "storage:sql"  # Not capability
@@ -126,12 +126,12 @@ governance:
 | Mistake | Correct |
 |---------|---------|
 | `devMode: true` | `dev-mode: true` (kebab-case) |
-| `plugin.yml` has `plugin:` root | Direct properties, no root node |
-| Plugin depends on `lingframe-core` | Depend only on `lingframe-api` |
-| Use `@Autowired` for other plugins | Use `@LingReference` |
-| Looking for `PluginSlot` class | Does not exist, use `PluginRuntime` |
+| `ling.yml` has `ling:` root | Direct properties, no root node |
+| ling depends on `lingframe-core` | Depend only on `lingframe-api` |
+| Use `@Autowired` for other Lings | Use `@LingReference` |
+| Looking for `LingSlot` class | Does not exist, use `LingRuntime` |
 
-## Module Structure
+## Unit Structure
 
 ```
 lingframe/
@@ -150,7 +150,7 @@ lingframe/
 
 ```bash
 mvn clean install -DskipTests          # Build
-mvn spring-boot:run -pl lingframe-examples/lingframe-example-host-app  # Run Example
+mvn spring-boot:run -pl lingframe-examples/lingframe-example-lingcore-app  # Run Example
 ```
 
 ## Documentation Index
@@ -158,7 +158,7 @@ mvn spring-boot:run -pl lingframe-examples/lingframe-example-host-app  # Run Exa
 | Document | Purpose |
 |----------|---------|
 | [getting-started.md](docs/getting-started.md) | 5-Minute Quick Start |
-| [plugin-development.md](docs/plugin-development.md) | Module Development |
+| [ling-development.md](docs/ling-development.md) | Unit Development |
 | [shared-api-guidelines.md](docs/shared-api-guidelines.md) | API Design Guidelines |
 | [architecture.md](docs/architecture.md) | Architecture Details |
 | [infrastructure-development.md](docs/infrastructure-development.md) | Infrastructure Proxy |

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 
 <head>
@@ -115,7 +115,7 @@
                     <span class="text-slate-400">{{ sseStatusText }}</span>
                 </div>
                 <div class="text-sm text-slate-500 mt-1">
-                    {{ t('sidebar.pluginCount') }}: {{ plugins.length }} | {{ t('sidebar.logCount') }}: {{ logs.length
+                    {{ t('sidebar.lingCount') }}: {{ lings.length }} | {{ t('sidebar.logCount') }}: {{ logs.length
                     }}
                 </div>
             </div>
@@ -139,7 +139,7 @@
                 </div>
                 <!-- 顶部工具栏右侧 -->
                 <div class="flex items-center gap-4">
-                    <!-- 上传插件按钮 -->
+                    <!-- 上传单元按钮 -->
                     <button @click="openUploadModal"
                         class="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm transition-all shadow-lg hover:shadow-blue-500/20">
                         <i class="fa-solid fa-cloud-arrow-up"></i>
@@ -150,9 +150,9 @@
                         <option v-for="(label, key) in supportedLocales" :value="key" :key="key">{{ label }}</option>
                     </select>
 
-                    <button @click="refreshPlugins" :disabled="loading.plugins"
+                    <button @click="refreshLings" :disabled="loading.lings"
                         class="text-slate-400 hover:text-white transition-all">
-                        <i :class="['fa-solid fa-arrows-rotate', loading.plugins ? 'animate-spin' : '']"></i>
+                        <i :class="['fa-solid fa-arrows-rotate', loading.lings ? 'animate-spin' : '']"></i>
                     </button>
                     <span :class="['env-badge', 'env-' + currentEnv]">{{ t('envLabels.' + currentEnv) }}</span>
                     <div class="flex items-center gap-2 text-sm text-slate-400">
@@ -225,31 +225,31 @@
             <div class="flex-grow overflow-auto p-6">
                 <div class="content-grid grid grid-cols-12 gap-6 max-w-[1600px] mx-auto">
 
-                    <!-- 左列：插件列表 -->
+                    <!-- 左列：单元列表 -->
                     <div class="col-span-12 lg:col-span-3">
                         <div class="card h-full relative">
                             <div class="card-header">
-                                <h3 class="font-bold text-base text-white">{{ t('pluginList.title') }}</h3>
-                                <span class="text-sm text-slate-500">{{ t('pluginList.count', { n: plugins.length })
+                                <h3 class="font-bold text-base text-white">{{ t('lingList.title') }}</h3>
+                                <span class="text-sm text-slate-500">{{ t('lingList.count', { n: lings.length })
                                     }}</span>
                             </div>
 
-                            <div v-if="loading.plugins && plugins.length === 0" class="loading-overlay">
+                            <div v-if="loading.lings && lings.length === 0" class="loading-overlay">
                                 <div class="spinner"></div>
                             </div>
 
-                            <div v-if="!loading.plugins && plugins.length === 0" class="p-8 text-center">
+                            <div v-if="!loading.lings && lings.length === 0" class="p-8 text-center">
                                 <i class="fa-solid fa-puzzle-piece text-3xl text-slate-600 mb-3"></i>
-                                <p class="text-base text-slate-500">{{ t('pluginList.empty') }}</p>
+                                <p class="text-base text-slate-500">{{ t('lingList.empty') }}</p>
                             </div>
 
                             <div class="max-h-[800px] overflow-y-auto">
-                                <div v-for="p in plugins" :key="p.pluginId" @click="selectPlugin(p.pluginId)"
-                                    :class="['plugin-item', activeId === p.pluginId ? 'active' : '']">
+                                <div v-for="p in lings" :key="p.lingId" @click="selectLing(p.lingId)"
+                                    :class="['Ling-item', activeId === p.lingId ? 'active' : '']">
                                     <div class="flex justify-between items-start mb-2">
                                         <span class="font-medium text-white text-base truncate pr-2"
-                                            :title="p.pluginId">{{
-                                            p.pluginId }}</span>
+                                            :title="p.lingId">{{
+                                            p.lingId }}</span>
                                         <span
                                             :class="['text-xs px-2 py-0.5 rounded-full flex-shrink-0', getStatusClass(p.status)]">
                                             {{ p.status }}
@@ -266,16 +266,16 @@
                                             </span>
                                         </div>
 
-                                        <!-- 插件操作按钮 (仅当选中且鼠标悬停时显示，或者一直显示简化版) -->
-                                        <div class="flex gap-1" v-if="activeId === p.pluginId">
+                                        <!-- 单元操作按钮 (仅当选中且鼠标悬停时显示，或者一直显示简化版) -->
+                                        <div class="flex gap-1" v-if="activeId === p.lingId">
                                             <!-- 开发模式热重载 -->
-                                            <button v-if="currentEnv === 'dev'" @click.stop="reloadPlugin(p.pluginId)"
+                                            <button v-if="currentEnv === 'dev'" @click.stop="reloadLing(p.lingId)"
                                                 class="p-1.5 text-slate-400 hover:text-blue-400 transition-colors"
                                                 :title="t('control.reload')">
                                                 <i class="fa-solid fa-rotate"></i>
                                             </button>
                                             <!-- 卸载 -->
-                                            <button @click.stop="requestUnloadWithName(p.pluginId)"
+                                            <button @click.stop="requestUnloadWithName(p.lingId)"
                                                 class="p-1.5 text-slate-400 hover:text-red-400 transition-colors"
                                                 :title="t('control.unload')">
                                                 <i class="fa-solid fa-trash-can"></i>
@@ -299,7 +299,7 @@
                             <div class="card-header">
                                 <div class="flex items-center gap-3">
                                     <h3 class="font-bold text-base text-white">{{ t('traffic.title') }}</h3>
-                                    <span v-if="!activePlugin"
+                                    <span v-if="!activeLing"
                                         class="text-xs bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">{{
                                         t('traffic.notSelected') }}</span>
                                     <span v-else-if="!canOperate"
@@ -333,11 +333,11 @@
                                         <div class="flex justify-between text-sm font-medium mb-3">
                                             <span class="text-blue-400">
                                                 <i class="fa-solid fa-cube mr-1"></i>
-                                                {{ t('traffic.stable') }} {{ activePlugin?.activeVersion }}: {{ 100 -
+                                                {{ t('traffic.stable') }} {{ activeLing?.activeVersion }}: {{ 100 -
                                                 canaryPct }}%
                                             </span>
                                             <span class="text-amber-400">
-                                                {{ t('traffic.canaryVersion') }} {{ activePlugin?.canaryVersion }}: {{
+                                                {{ t('traffic.canaryVersion') }} {{ activeLing?.canaryVersion }}: {{
                                                 canaryPct }}%
                                                 <i class="fa-solid fa-flask ml-1"></i>
                                             </span>
@@ -347,7 +347,7 @@
                                     </template>
                                     <template v-else>
                                         <div class="flex justify-between text-sm font-medium mb-3 text-slate-500">
-                                            <span>{{ t('traffic.stable') }} {{ activePlugin?.activeVersion || '-' }}:
+                                            <span>{{ t('traffic.stable') }} {{ activeLing?.activeVersion || '-' }}:
                                                 100%</span>
                                             <span>{{ t('traffic.canaryVersion') }}: {{ t('traffic.unavailable')
                                                 }}</span>
@@ -355,8 +355,8 @@
                                         <input type="range" value="0" disabled class="slider-disabled">
                                         <p class="text-sm text-slate-500 mt-3 text-center">
                                             <i class="fa-solid fa-info-circle mr-1"></i>
-                                            {{ !activePlugin ? t('traffic.selectPlugin') : !canOperate ?
-                                            t('traffic.pluginInactive') : t('traffic.onlyOneVersion') }}
+                                            {{ !activeLing ? t('traffic.selectLing') : !canOperate ?
+                                            t('traffic.lingInactive') : t('traffic.onlyOneVersion') }}
                                         </p>
                                     </template>
                                 </div>
@@ -429,9 +429,9 @@
                                 </div>
                                 <div v-for="l in displayLogs" :key="l.id" class="log-line">
                                     <span class="trace-tag">#{{ l.traceId || '------' }}</span>
-                                    <span v-if="logViewMode === 'all'" :class="getPluginTagClass(l.pluginId)"
+                                    <span v-if="logViewMode === 'all'" :class="getLingTagClass(l.lingId)"
                                         class="text-[11px] px-1.5 py-0.5 rounded font-bold flex-shrink-0">
-                                        {{ getPluginShortName(l.pluginId) }}
+                                        {{ getLingShortName(l.lingId) }}
                                     </span>
                                     <span :class="getLogColor(l)" class="flex-grow">
                                         <span v-if="l.depth" class="inline-block"
@@ -452,7 +452,7 @@
                     <!-- 右列：控制面板 -->
                     <div class="col-span-12 lg:col-span-3 space-y-6">
 
-                        <!-- 插件控制 -->
+                        <!-- 单元控制 -->
                         <div class="card relative">
                             <div v-if="loading.status" class="loading-overlay">
                                 <div class="spinner"></div>
@@ -462,9 +462,9 @@
                                 <h3 class="font-bold text-base text-white">{{ t('control.title') }}</h3>
                             </div>
                             <div class="p-4">
-                                <div v-if="!activePlugin" class="text-center py-6">
+                                <div v-if="!activeLing" class="text-center py-6">
                                     <i class="fa-solid fa-hand-pointer text-2xl text-slate-600 mb-2"></i>
-                                    <p class="text-sm text-slate-500">{{ t('control.selectPlugin') }}</p>
+                                    <p class="text-sm text-slate-500">{{ t('control.selectLing') }}</p>
                                 </div>
 
                                 <template v-else>
@@ -474,22 +474,22 @@
                                             t('control.lifecycle') }}</label>
                                         <div class="grid grid-cols-3 gap-2">
                                             <button @click="updateStatus('ACTIVE')"
-                                                :disabled="activePlugin?.status === 'ACTIVE'"
-                                                :class="activePlugin?.status === 'ACTIVE' ? 'bg-green-600' : 'bg-slate-700 hover:bg-slate-600'"
+                                                :disabled="activeLing?.status === 'ACTIVE'"
+                                                :class="activeLing?.status === 'ACTIVE' ? 'bg-green-600' : 'bg-slate-700 hover:bg-slate-600'"
                                                 class="action-btn text-white text-sm">
                                                 <i class="fa-solid fa-play"></i>
                                                 {{ t('control.activate') }}
                                             </button>
                                             <button @click="updateStatus('LOADED')"
-                                                :disabled="activePlugin?.status === 'LOADED'"
-                                                :class="activePlugin?.status === 'LOADED' ? 'bg-blue-600' : 'bg-slate-700 hover:bg-slate-600'"
+                                                :disabled="activeLing?.status === 'LOADED'"
+                                                :class="activeLing?.status === 'LOADED' ? 'bg-blue-600' : 'bg-slate-700 hover:bg-slate-600'"
                                                 class="action-btn text-white text-sm">
                                                 <i class="fa-solid fa-rotate"></i>
                                                 {{ t('control.reload') }}
                                             </button>
                                             <button @click="requestUnload"
-                                                :disabled="activePlugin?.status === 'UNLOADED'"
-                                                :class="activePlugin?.status === 'UNLOADED' ? 'bg-red-600' : 'bg-slate-700 hover:bg-slate-600'"
+                                                :disabled="activeLing?.status === 'UNLOADED'"
+                                                :class="activeLing?.status === 'UNLOADED' ? 'bg-red-600' : 'bg-slate-700 hover:bg-slate-600'"
                                                 class="action-btn text-white text-sm">
                                                 <i class="fa-solid fa-power-off"></i>
                                                 {{ t('control.unload') }}
@@ -503,19 +503,19 @@
                                             t('control.permissions') }}</label>
                                         <div class="grid grid-cols-2 gap-2">
                                             <button @click="togglePerm('dbRead')" :disabled="loading.permissions"
-                                                :class="activePlugin?.permissions?.dbRead !== false ? 'perm-btn on' : 'perm-btn off'">
+                                                :class="activeLing?.permissions?.dbRead !== false ? 'perm-btn on' : 'perm-btn off'">
                                                 <i class="fa-solid fa-database mr-1"></i> {{ t('control.dbRead') }}
                                             </button>
                                             <button @click="togglePerm('dbWrite')" :disabled="loading.permissions"
-                                                :class="activePlugin?.permissions?.dbWrite !== false ? 'perm-btn on' : 'perm-btn off'">
+                                                :class="activeLing?.permissions?.dbWrite !== false ? 'perm-btn on' : 'perm-btn off'">
                                                 <i class="fa-solid fa-database mr-1"></i> {{ t('control.dbWrite') }}
                                             </button>
                                             <button @click="togglePerm('cacheRead')" :disabled="loading.permissions"
-                                                :class="activePlugin?.permissions?.cacheRead !== false ? 'perm-btn on' : 'perm-btn off'">
+                                                :class="activeLing?.permissions?.cacheRead !== false ? 'perm-btn on' : 'perm-btn off'">
                                                 <i class="fa-solid fa-bolt mr-1"></i> {{ t('control.cacheRead') }}
                                             </button>
                                             <button @click="togglePerm('cacheWrite')" :disabled="loading.permissions"
-                                                :class="activePlugin?.permissions?.cacheWrite !== false ? 'perm-btn on' : 'perm-btn off'">
+                                                :class="activeLing?.permissions?.cacheWrite !== false ? 'perm-btn on' : 'perm-btn off'">
                                                 <i class="fa-solid fa-bolt mr-1"></i> {{ t('control.cacheWrite') }}
                                             </button>
                                         </div>
@@ -536,7 +536,7 @@
                                 <div v-if="!canOperate"
                                     class="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4 text-center">
                                     <i class="fa-solid fa-exclamation-circle text-red-400 mb-1"></i>
-                                    <p class="text-sm text-red-400">{{ t('demo.pluginNotActive') }}</p>
+                                    <p class="text-sm text-red-400">{{ t('demo.lingNotActive') }}</p>
                                 </div>
 
                                 <div class="grid grid-cols-2 gap-2 mb-4">

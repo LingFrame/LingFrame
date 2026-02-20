@@ -11,15 +11,15 @@
     "sseConnected": "SSE 已连接",
     "sseConnecting": "SSE 连接中...",
     "sseDisconnected": "SSE 断开",
-    "pluginCount": "插件数",
+    "lingCount": "单元数",
     "logCount": "日志"
   },
   "header": {
     "notSelected": "未选择",
-    "upload": "上传插件"
+    "upload": "上传单元"
   },
   "upload": {
-    "title": "上传插件",
+    "title": "上传单元",
     "dragText": "点击或拖拽 jar 包到此处",
     "supportText": "仅支持 .jar 格式文件",
     "uploading": "上传中",
@@ -31,10 +31,10 @@
     "test": "测试",
     "prod": "生产"
   },
-  "pluginList": {
-    "title": "插件列表",
+  "lingList": {
+    "title": "单元列表",
     "count": "{n} 个",
-    "empty": "暂无已安装插件"
+    "empty": "暂无已安装单元"
   },
   "traffic": {
     "title": "流量分发",
@@ -48,9 +48,9 @@
     "reset": "重置",
     "stress": "压测",
     "stop": "停止",
-    "selectPlugin": "请先选择插件",
-    "pluginInactive": "插件未激活",
-    "onlyOneVersion": "当前插件仅有单一版本"
+    "selectLing": "请先选择单元",
+    "lingInactive": "单元未激活",
+    "onlyOneVersion": "当前单元仅有单一版本"
   },
   "logs": {
     "title": "追踪日志",
@@ -61,8 +61,8 @@
     "newLogs": "新日志"
   },
   "control": {
-    "title": "插件控制",
-    "selectPlugin": "请在左侧选择插件",
+    "title": "单元控制",
+    "selectLing": "请在左侧选择单元",
     "lifecycle": "生命周期",
     "activate": "激活",
     "reload": "重载",
@@ -77,7 +77,7 @@
     "title": "功能演练",
     "ready": "READY",
     "inactive": "INACTIVE",
-    "pluginNotActive": "插件未激活，请先激活",
+    "lingNotActive": "单元未激活，请先激活",
     "readDb": "读DB",
     "writeDb": "写DB",
     "readCache": "读Cache",
@@ -93,15 +93,15 @@
   "modal": {
     "cancel": "取消",
     "confirm": "确认",
-    "confirmUnload": "确认卸载插件",
-    "unloadWarning": "即将卸载 \"{pluginId}\"，这将中断所有请求。",
+    "confirmUnload": "确认卸载单元",
+    "unloadWarning": "即将卸载 \"{lingId}\"，这将中断所有请求。",
     "unloadAction": "卸载"
   },
   "toast": {
-    "getPluginsFailed": "获取插件列表失败",
+    "getLingsFailed": "获取单元列表失败",
     "statusUpdated": "状态已更新为 {status}",
     "statusUpdateFailed": "状态更新失败",
-    "pluginUnloaded": "插件已卸载",
+    "lingUnloaded": "单元已卸载",
     "unloadFailed": "卸载失败",
     "canarySet": "灰度比例已设置为 {percent}%",
     "canaryFailed": "灰度配置失败",
@@ -115,8 +115,8 @@
     "simulateFailed": "模拟失败",
     "ipcSuccess": "IPC 调用成功",
     "ipcSimulateFailed": "IPC 模拟失败",
-    "pluginNotActive": "插件未激活",
-    "sourcePluginNotActive": "源插件未激活",
+    "lingNotActive": "单元未激活",
+    "sourceLingNotActive": "源单元未激活",
     "envSwitched": "环境已切换: {mode}",
     "envSwitchFailed": "环境切换失败",
     "prodMode": "生产模式 (拒绝无权限访问)",
@@ -124,9 +124,9 @@
     "alsoEnabled": "（同时开启 {perm}）",
     "alsoEnabled": "（同时开启 {perm}）",
     "alsoDisabled": "（同时关闭 {perm}）",
-    "installSuccess": "插件安装成功",
-    "installFailed": "插件安装失败",
-    "reloadSuccess": "插件重载成功",
-    "reloadFailed": "插件重载失败"
+    "installSuccess": "单元安装成功",
+    "installFailed": "单元安装失败",
+    "reloadSuccess": "单元重载成功",
+    "reloadFailed": "单元重载失败"
   }
 }

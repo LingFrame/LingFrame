@@ -1,6 +1,6 @@
 package com.lingframe.core.config;
 
-import com.lingframe.core.plugin.PluginRuntimeConfig;
+import com.lingframe.core.ling.LingRuntimeConfig;
 import lombok.Builder;
 import lombok.Data;
 import lombok.ToString;
@@ -51,8 +51,8 @@ public class LingFrameConfig {
      */
     public static void init(LingFrameConfig config) {
         if (INSTANCE != null) {
-            // 防止插件加载 Spring 上下文时覆盖宿主的全局配置
-            // 例如：Host 已开启 DevMode，插件启动默认配置为 false，若覆盖则导致 DevMode 失效
+            // 防止单元加载 Spring 上下文时覆盖灵核的全局配置
+            // 例如：LINGCORE 已开启 DevMode，单元启动默认配置为 false，若覆盖则导致 DevMode 失效
             return;
         }
         INSTANCE = config;
@@ -73,84 +73,84 @@ public class LingFrameConfig {
     private boolean devMode = false;
 
     /**
-     * 启动时是否自动扫描并加载 home 目录下的插件。
+     * 启动时是否自动扫描并加载 home 目录下的单元。
      */
     @Builder.Default
     private boolean autoScan = true;
 
     /**
-     * 插件存放根目录
+     * 单元存放根目录
      */
     @Builder.Default
-    private String pluginHome = "plugins";
+    private String lingHome = "Lings";
 
     /**
-     * 插件额外目录
+     * 单元额外目录
      */
     @Builder.Default
-    private List<String> pluginRoots = Collections.emptyList();
+    private List<String> lingRoots = Collections.emptyList();
 
     /**
-     * 核心线程数 (用于 PluginManager 的后台调度器)
+     * 核心线程数 (用于 LingManager 的后台调度器)
      */
     @Builder.Default
     private int corePoolSize = Math.max(2, Runtime.getRuntime().availableProcessors());
 
-    // ================= 插件线程池预算 =================
+    // ================= 单元线程池预算 =================
 
     /**
-     * 全局插件线程总预算（所有插件共享此配额）
+     * 全局单元线程总预算（所有单元共享此配额）
      * <p>
-     * 每个插件创建独立线程池时，从此预算中扣减。
-     * 卸载时归还。防止插件线程数不可控膨胀。
+     * 每个单元创建独立线程池时，从此预算中扣减。
+     * 卸载时归还。防止单元线程数不可控膨胀。
      */
     @Builder.Default
-    private int globalMaxPluginThreads = Runtime.getRuntime().availableProcessors() * 4;
+    private int globalMaxLingThreads = Runtime.getRuntime().availableProcessors() * 4;
 
     /**
-     * 单个插件线程池硬上限
+     * 单个单元线程池硬上限
      * <p>
-     * 即使插件 plugin.yml 中配置了更高的值，也不会超过此上限。
+     * 即使单元 ling.yml 中配置了更高的值，也不会超过此上限。
      */
     @Builder.Default
-    private int maxThreadsPerPlugin = 8;
+    private int maxThreadsPerLing = 8;
 
     /**
-     * 单个插件默认线程数
+     * 单个单元默认线程数
      * <p>
-     * 当插件未在 plugin.yml 中指定线程数时，使用此默认值。
+     * 当单元未在 ling.yml 中指定线程数时，使用此默认值。
      */
     @Builder.Default
-    private int defaultThreadsPerPlugin = 2;
+    private int defaultThreadsPerLing = 2;
 
-    // ================= 宿主治理配置 =================
+    // ================= 灵核治理配置 =================
 
     /**
-     * 是否启用宿主 Bean 治理，默认值为 false
+     * 是否启用灵核 Bean 治理，默认值为 false
      * <p>
-     * true: 启用治理，对宿主 Bean 进行权限检查和审计
+     * true: 启用治理，对灵核 Bean 进行权限检查和审计
      * <p>
-     * false: 禁用治理，宿主 Bean 不受限制
+     * false: 禁用治理，灵核 Bean 不受限制
      */
     @Builder.Default
-    private boolean hostGovernanceEnabled = false;
+    private boolean lingCoreGovernanceEnabled = false;
 
     /**
-     * 是否对宿主内部调用进行治理，默认值为 false
+     * 是否对灵核内部调用进行治理，默认值为 false
      * <p>
-     * true: 宿主自己调用自己的 Bean 也会被治理
+     * true: 灵核自己调用自己的 Bean 也会被治理
      * <p>
-     * false: 只有插件调用宿主 Bean 时才会被治理
+     * false: 只有单元调用灵核 Bean 时才会被治理
      */
     @Builder.Default
-    private boolean hostGovernanceInternalCalls = false;
+    private boolean lingCoreGovernanceInternalCalls = false;
 
     /**
-     * 是否对宿主应用进行权限检查，默认值为 false
+     * 是否对灵核应用进行权限检查，默认值为 false
      * <p>
-     * true: 宿主应用也需要通过权限检查
+     * true: 灵核应用也需要通过权限检查
      * <p>
-     * false: 宿主应用自动拥有所有权限
+     * false: 灵核应用自动拥有所有权限
      */
     @Builder.Default
     private boolean hostCheckPermissions = false;
@@ -161,12 +161,12 @@ public class LingFrameConfig {
      * 预加载的 API JAR 文件路径列表
      * <p>
      * 这些 JAR 会在启动时加载到 SharedApiClassLoader 中，
-     * 实现跨插件的 API 类共享
+     * 实现跨单元的 API 类共享
      * <p>
      * 路径支持：
      * - 绝对路径: /path/to/api.jar
-     * - 相对路径: libs/order-api.jar (相对于 pluginHome)
-     * - Maven 模块: lingframe-examples/lingframe-example-order-api (开发模式)
+     * - 相对路径: libs/order-api.jar (相对于 lingHome)
+     * - Maven 单元: lingframe-examples/lingframe-example-order-api (开发模式)
      */
     @Builder.Default
     private List<String> preloadApiJars = new ArrayList<>();
@@ -174,10 +174,10 @@ public class LingFrameConfig {
     // ================= 运行时模板 (Runtime Template) =================
 
     /**
-     * 插件运行时的默认配置模板
-     * (当创建新插件实例时，会应用此配置)
+     * 单元运行时的默认配置模板
+     * (当创建新单元实例时，会应用此配置)
      */
     @Builder.Default
-    private PluginRuntimeConfig runtimeConfig = PluginRuntimeConfig.defaults();
+    private LingRuntimeConfig runtimeConfig = LingRuntimeConfig.defaults();
 
 }

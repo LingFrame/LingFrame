@@ -19,12 +19,12 @@ public class SimulateController {
 
     private final SimulateService simulateService;
 
-    @PostMapping("/plugins/{pluginId}/resource")
+    @PostMapping("/lings/{lingId}/resource")
     public ApiResponse<SimulateResultDTO> simulateResource(
-            @PathVariable String pluginId,
+            @PathVariable String lingId,
             @RequestBody ResourceRequest request) {
         try {
-            SimulateResultDTO result = simulateService.simulateResource(pluginId, request.getResourceType());
+            SimulateResultDTO result = simulateService.simulateResource(lingId, request.getResourceType());
             return ApiResponse.ok(result);
         } catch (Exception e) {
             log.error("Simulate resource failed", e);
@@ -32,13 +32,13 @@ public class SimulateController {
         }
     }
 
-    @PostMapping("/plugins/{pluginId}/ipc")
+    @PostMapping("/lings/{lingId}/ipc")
     public ApiResponse<SimulateResultDTO> simulateIpc(
-            @PathVariable String pluginId,
+            @PathVariable String lingId,
             @RequestBody IpcRequest request) {
         try {
             SimulateResultDTO result = simulateService.simulateIpc(
-                    pluginId, request.getTargetPluginId(), request.isIpcEnabled());
+                    lingId, request.getTargetLingId(), request.isIpcEnabled());
             return ApiResponse.ok(result);
         } catch (Exception e) {
             log.error("Simulate IPC failed", e);
@@ -65,11 +65,11 @@ public class SimulateController {
         private String testEnv; // dev, prod
     }
 
-    @PostMapping("/plugins/{pluginId}/stress")
+    @PostMapping("/lings/{lingId}/stress")
     public ApiResponse<StressResultDTO> stressTest(
-            @PathVariable String pluginId) {
+            @PathVariable String lingId) {
         try {
-            StressResultDTO result = simulateService.stressTest(pluginId);
+            StressResultDTO result = simulateService.stressTest(lingId);
             return ApiResponse.ok(result);
         } catch (Exception e) {
             log.error("Stress test failed", e);
@@ -85,7 +85,7 @@ public class SimulateController {
 
     @Data
     public static class IpcRequest {
-        private String targetPluginId;
+        private String targetLingId;
         private boolean ipcEnabled;
     }
 }

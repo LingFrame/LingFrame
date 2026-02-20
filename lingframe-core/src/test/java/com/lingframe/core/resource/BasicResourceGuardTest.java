@@ -47,7 +47,7 @@ class BasicResourceGuardTest {
             ClassLoader testClassLoader = getClass().getClassLoader();
 
             // 不应抛出异常
-            assertDoesNotThrow(() -> resourceGuard.cleanup("test-plugin", testClassLoader));
+            assertDoesNotThrow(() -> resourceGuard.cleanup("test-ling", testClassLoader));
         }
 
         @Test
@@ -56,11 +56,11 @@ class BasicResourceGuardTest {
             // 使用一个空的 ClassLoader
             ClassLoader emptyLoader = new URLClassLoader(new URL[0], null);
 
-            assertDoesNotThrow(() -> resourceGuard.cleanup("test-plugin", emptyLoader));
+            assertDoesNotThrow(() -> resourceGuard.cleanup("test-ling", emptyLoader));
         }
 
         @Test
-        @DisplayName("应该反注册由插件 ClassLoader 加载的 JDBC 驱动")
+        @DisplayName("应该反注册由单元 ClassLoader 加载的 JDBC 驱动")
         void shouldDeregisterJdbcDrivers() throws SQLException {
             // 创建测试用 ClassLoader
             URLClassLoader testLoader = new URLClassLoader(new URL[0], getClass().getClassLoader());
@@ -70,7 +70,7 @@ class BasicResourceGuardTest {
             // 这里只验证方法能正常执行
 
             int driverCountBefore = countDrivers();
-            resourceGuard.cleanup("test-plugin", testLoader);
+            resourceGuard.cleanup("test-ling", testLoader);
             int driverCountAfter = countDrivers();
 
             // 由于我们没有真正注册驱动，数量应该相同
@@ -97,7 +97,7 @@ class BasicResourceGuardTest {
         void shouldExecuteWithoutException() {
             ClassLoader testClassLoader = getClass().getClassLoader();
 
-            assertDoesNotThrow(() -> resourceGuard.detectLeak("test-plugin", testClassLoader));
+            assertDoesNotThrow(() -> resourceGuard.detectLeak("test-ling", testClassLoader));
         }
 
         @Test
@@ -107,7 +107,7 @@ class BasicResourceGuardTest {
             URLClassLoader disposableLoader = new URLClassLoader(new URL[0], null);
 
             // 调用泄漏检测
-            resourceGuard.detectLeak("test-plugin", disposableLoader);
+            resourceGuard.detectLeak("test-ling", disposableLoader);
 
             // 释放引用
             disposableLoader = null;

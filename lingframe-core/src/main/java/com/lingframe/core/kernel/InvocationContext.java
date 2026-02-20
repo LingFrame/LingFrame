@@ -14,8 +14,8 @@ import java.util.Map;
 public class InvocationContext {
     // 身份信息
     private String traceId; // 全局链路追踪 ID
-    private String pluginId; // 目标插件 ID
-    private String callerPluginId; // 调用方插件 ID
+    private String lingId; // 目标单元 ID
+    private String callerLingId; // 调用方单元 ID
 
     // 资源信息
     private String resourceType; // "WEB" 或 "RPC"

@@ -1,4 +1,4 @@
-# Infrastructure Plugin Development Guide
+# Infrastructure ling Development Guide
 
 This document introduces the **Infrastructure Layer** in LingFrame's three-tier architecture and its development methods.
 
@@ -16,7 +16,7 @@ This document introduces the **Infrastructure Layer** in LingFrame's three-tier 
 └────────────────────────────┬────────────────────────────┘
                              ▼
 ┌─────────────────────────────────────────────────────────┐
-│             Business Plugins (Business Layer)            │
+│             Business Lings (Business Layer)            │
 │          User Center · Order Service · Payment            │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -28,7 +28,7 @@ The Infrastructure Proxy is the **Middle Layer** of the three-tier architecture,
 1. **Encapsulate Bottom Capabilities**: Database, Cache, Message Queue, etc.
 2. **Fine-grained Permission Interception**: Perform permission checks at the API level.
 3. **Audit Reporting**: Report operation records to Core.
-4. **Transparent to Business Modules**: Business modules use infrastructure imperceptibly.
+4. **Transparent to Business Units**: Business units use infrastructure imperceptibly.
 
 ## Implemented Infrastructure Proxies
 
@@ -39,7 +39,7 @@ Provides database access capabilities, implementing SQL-level permission control
 #### Proxy Chain Structure
 
 ```
-Business Module calls DataSource.getConnection()
+Business Unit calls DataSource.getConnection()
     │
     ▼
 ┌─────────────────────────────────────┐
@@ -92,18 +92,18 @@ public class DataSourceWrapperProcessor implements BeanPostProcessor {
 public class LingPreparedStatementProxy implements PreparedStatement {
 
     private void checkPermission() throws SQLException {
-        // 1. Get Caller Plugin ID
-        String callerPluginId = PluginContextHolder.get();
-        if (callerPluginId == null) return;
+        // 1. Get Caller ling ID
+        String callerLingId = LingContextHolder.get();
+        if (callerLingId == null) return;
 
         // 2. Parse SQL Type
         AccessType accessType = parseSqlForAccessType(sql);
 
         // 3. Permission Check
-        boolean allowed = permissionService.isAllowed(callerPluginId, "storage:sql", accessType);
+        boolean allowed = permissionService.isAllowed(callerLingId, "storage:sql", accessType);
 
         // 4. Audit Report
-        permissionService.audit(callerPluginId, "storage:sql", sql, allowed);
+        permissionService.audit(callerLingId, "storage:sql", sql, allowed);
 
         if (!allowed) {
             throw new SQLException(new PermissionDeniedException(...));
@@ -147,7 +147,7 @@ Provides cache access capabilities, supporting Spring Cache, Caffeine, and Redis
 #### Proxy Chain Structure
 
 ```
-Business Module calls cacheManager.getCache("users")
+Business Unit calls cacheManager.getCache("users")
     │
     ▼
 ┌─────────────────────────────────────┐
@@ -163,7 +163,7 @@ Business Module calls cacheManager.getCache("users")
 │ - Permission Check + Audit Report    │
 └─────────────────────────────────────┘
 
-Business Module calls redisTemplate.opsForValue().set(...)
+Business Unit calls redisTemplate.opsForValue().set(...)
     │
     ▼
 ┌─────────────────────────────────────┐
@@ -181,17 +181,17 @@ Business Module calls redisTemplate.opsForValue().set(...)
 ```java
 @Override
 public Object invoke(MethodInvocation invocation) throws Throwable {
-    String callerPluginId = PluginContextHolder.get();
+    String callerLingId = LingContextHolder.get();
     String methodName = invocation.getMethod().getName();
     
     // Infer Operation Type
     AccessType accessType = inferAccessType(methodName);
     
     // Permission Check
-    boolean allowed = permissionService.isAllowed(callerPluginId, "cache:redis", accessType);
+    boolean allowed = permissionService.isAllowed(callerLingId, "cache:redis", accessType);
     
     // Audit Report
-    permissionService.audit(callerPluginId, "cache:redis", methodName, allowed);
+    permissionService.audit(callerLingId, "cache:redis", methodName, allowed);
     
     if (!allowed) {
         throw new PermissionDeniedException(...);
@@ -236,7 +236,7 @@ public ValueWrapper get(@NonNull Object key) {
 
 ## Developing New Infrastructure Proxies
 
-### 1. Create Module
+### 1. Create Unit
 
 ```xml
 <project>
@@ -269,15 +269,15 @@ public class LingXxxProxy implements XxxInterface {
     @Override
     public Result doSomething(Args args) {
         // 1. Get Caller
-        String callerPluginId = PluginContextHolder.get();
+        String callerLingId = LingContextHolder.get();
 
         // 2. Permission Check
-        if (!permissionService.isAllowed(callerPluginId, "xxx:capability", accessType)) {
+        if (!permissionService.isAllowed(callerLingId, "xxx:capability", accessType)) {
             throw new PermissionDeniedException(...);
         }
 
         // 3. Audit Report
-        permissionService.audit(callerPluginId, "xxx:capability", operation, true);
+        permissionService.audit(callerLingId, "xxx:capability", operation, true);
 
         // 4. Execute Real Operation
         return target.doSomething(args);
@@ -307,7 +307,7 @@ public class XxxWrapperProcessor implements BeanPostProcessor {
 
 Infrastructure proxies need to define clear capability identifiers (capability):
 
-| Plugin  | Capability ID     | Description |
+| ling  | Capability ID     | Description |
 | ------- | ----------------- | ----------- |
 | storage | `storage:sql`     | SQL Execution |
 | cache   | `cache:redis`     | Redis Operation |
@@ -315,12 +315,12 @@ Infrastructure proxies need to define clear capability identifiers (capability):
 | message | `message:send`    | Send Message |
 | message | `message:consume` | Consume Message |
 
-Business modules declare required capabilities in `plugin.yml`:
+Business units declare required capabilities in `ling.yml`:
 
 ```yaml
-id: my-plugin
+id: my-ling
 version: 1.0.0
-mainClass: "com.example.MyPlugin"
+mainClass: "com.example.MyLing"
 
 governance:
   permissions:
@@ -330,11 +330,11 @@ governance:
       permissionId: "WRITE"
 ```
 
-## Relationship with Business Modules
+## Relationship with Business Units
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Business Module                       │
+│                    Business Unit                       │
 │  userRepository.findById(id)                            │
 │         │                                               │
 │         │ (Transparent Call)                             │
@@ -352,7 +352,7 @@ governance:
 │  │ LingDataSourceProxy → LingConnectionProxy       │   │
 │  │     → LingPreparedStatementProxy                │   │
 │  │                                                  │   │
-│  │ 1. Get callerPluginId                           │   │
+│  │ 1. Get callerLingId                           │   │
 │  │ 2. Parse SQL Type                                │   │
 │  │ 3. Call PermissionService.isAllowed()           │   │
 │  │ 4. Audit Reporting                               │   │
@@ -363,15 +363,15 @@ governance:
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │                       Core                              │
-│  PermissionService.isAllowed(pluginId, capability, type)│
+│  PermissionService.isAllowed(lingId, capability, type)│
 │  AuditManager.asyncRecord(...)                          │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ## Best Practices
 
-1. **Proxy Transparency**: Business plugins should not be aware of the proxy's existence.
-2. **Capability ID Standardization**: Use `Plugin:Operation` format.
+1. **Proxy Transparency**: Business Lings should not be aware of the proxy's existence.
+2. **Capability ID Standardization**: Use `ling:Operation` format.
 3. **Fine-grained Control**: Intercept at the closest point to the operation.
 4. **Async Audit**: Audit should not block business flow.
 5. **Cache Optimization**: SQL parsing results can be cached.

@@ -17,21 +17,21 @@ import java.util.jar.JarFile;
 
 /**
  * 共享 API ClassLoader
- * 职责：作为宿主 ClassLoader 和插件 ClassLoader 之间的中间层，
- * 加载各插件共享的 API 包（接口 + DTO），实现跨插件类共享
+ * 职责：作为灵核 ClassLoader 和单元 ClassLoader 之间的中间层，
+ * 加载各单元共享的 API 包（接口 + DTO），实现跨单元类共享
  * <p>
  * 类加载层级：
  * 
  * <pre>
- * 宿主 ClassLoader (JDK, Spring, lingframe-api, 宿主业务)
+ * 灵核 ClassLoader (JDK, Spring, lingframe-api, 灵核业务)
  *         ↓ parent
- * SharedApiClassLoader (各插件的 -api.jar)
+ * SharedApiClassLoader (各单元的 -api.jar)
  *         ↓ parent
- * PluginClassLoader (各插件的实现)
+ * LingClassLoader (各单元的实现)
  * </pre>
  * <p>
  * 安全设计：
- * 1. 只有宿主/框架可以添加 API JAR，插件不能自行添加
+ * 1. 只有灵核/框架可以添加 API JAR，单元不能自行添加
  * 2. 加载前检查类是否已存在，防止覆盖
  * 3. 记录已加载的 API JAR，防止重复加载
  */
@@ -49,9 +49,9 @@ public class SharedApiClassLoader extends URLClassLoader {
 
     /**
      * 获取单例实例
-     * 首次调用时创建，使用宿主 ClassLoader 作为 parent
+     * 首次调用时创建，使用灵核 ClassLoader 作为 parent
      *
-     * @param hostClassLoader 宿主 ClassLoader
+     * @param hostClassLoader 灵核 ClassLoader
      * @return 共享 API ClassLoader 实例
      */
     public static synchronized SharedApiClassLoader getInstance(ClassLoader hostClassLoader) {
@@ -236,7 +236,7 @@ public class SharedApiClassLoader extends URLClassLoader {
     }
 
     /**
-     * 获取所有共享类的包前缀（用于 PluginClassLoader 委派）
+     * 获取所有共享类的包前缀（用于 LingClassLoader 委派）
      * 返回去重后的包名前缀列表
      */
     public Set<String> getSharedPackagePrefixes() {

@@ -47,20 +47,20 @@ public class BasicResourceGuard implements ResourceGuard {
     }
 
     @Override
-    public void cleanup(String pluginId, ClassLoader classLoader) {
-        log.info("[{}] Starting resource cleanup...", pluginId);
+    public void cleanup(String lingId, ClassLoader classLoader) {
+        log.info("[{}] Starting resource cleanup...", lingId);
 
         // 反注册 JDBC 驱动
         int driverCount = deregisterJdbcDrivers(classLoader);
         if (driverCount > 0) {
-            log.info("[{}] Deregistered {} JDBC driver(s)", pluginId, driverCount);
+            log.info("[{}] Deregistered {} JDBC driver(s)", lingId, driverCount);
         }
 
-        log.info("[{}] Resource cleanup completed", pluginId);
+        log.info("[{}] Resource cleanup completed", lingId);
     }
 
     @Override
-    public void detectLeak(String pluginId, ClassLoader classLoader) {
+    public void detectLeak(String lingId, ClassLoader classLoader) {
         // 使用 WeakReference 检测 ClassLoader 是否被回收
         WeakReference<ClassLoader> ref = new WeakReference<>(classLoader);
 
@@ -78,9 +78,9 @@ public class BasicResourceGuard implements ResourceGuard {
             if (ref.get() != null) {
                 log.warn("⚠️ [{}] ClassLoader not collected, potential memory leak detected! " +
                         "Suggest using analysis tools (e.g., Eclipse MAT) to check reference chains.",
-                        pluginId);
+                        lingId);
             } else {
-                log.debug("[{}] ClassLoader collected successfully", pluginId);
+                log.debug("[{}] ClassLoader collected successfully", lingId);
             }
         }, LEAK_DETECTION_DELAY_SECONDS, TimeUnit.SECONDS);
     }
@@ -90,10 +90,10 @@ public class BasicResourceGuard implements ResourceGuard {
      * <p>
      * JDBC 驱动通过 DriverManager.registerDriver() 注册后，
      * 会被静态集合持有，导致 ClassLoader 无法被回收。
-     * 此方法遍历所有已注册驱动，反注册由插件 ClassLoader 加载的驱动。
+     * 此方法遍历所有已注册驱动，反注册由单元 ClassLoader 加载的驱动。
      * </p>
      *
-     * @param classLoader 插件 ClassLoader
+     * @param classLoader 单元 ClassLoader
      * @return 反注册的驱动数量
      */
     private int deregisterJdbcDrivers(ClassLoader classLoader) {
@@ -104,7 +104,7 @@ public class BasicResourceGuard implements ResourceGuard {
             Driver driver = drivers.nextElement();
             ClassLoader driverClassLoader = driver.getClass().getClassLoader();
 
-            // 只反注册由插件 ClassLoader 加载的驱动
+            // 只反注册由单元 ClassLoader 加载的驱动
             if (driverClassLoader == classLoader) {
                 try {
                     DriverManager.deregisterDriver(driver);

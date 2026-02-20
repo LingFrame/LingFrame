@@ -10,7 +10,7 @@
     <artifactId>lingframe-example-order-api</artifactId>
     <packaging>jar</packaging>
 
-    <name>LingFrame :: Example :: Order Plugin :: API</name>
-    <description>示例业务插件（订单管理）API</description>
+    <name>LingFrame :: Example :: Order ling :: API</name>
+    <description>示例业务单元（订单管理）API</description>
 
 </project>

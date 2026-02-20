@@ -10,16 +10,16 @@ All notable changes to this project will be documented in this file.
 ### 🚀 New Features
 
 #### Core Architecture (JVM Runtime Governance)
-- **Three-Tier ClassLoader Architecture**: Implemented `HostClassLoader` -> `SharedApiClassLoader` -> `PluginClassLoader` hierarchy to ensure strict isolation while allowing controlled sharing.
-- **Child-First Class Loading**: Plugins load their own dependencies first to prevent "Dependency Hell" with the host application.
-- **Spring Context Isolation**: Each plugin runs in its own Spring `ApplicationContext`, ensuring bean isolation and distinct lifecycles.
+- **Three-Tier ClassLoader Architecture**: Implemented `HostClassLoader` -> `SharedApiClassLoader` -> `LingClassLoader` hierarchy to ensure strict isolation while allowing controlled sharing.
+- **Child-First Class Loading**: Lings load their own dependencies first to prevent "Dependency Hell" with the LingCore application.
+- **Spring Context Isolation**: Each ling runs in its own Spring `ApplicationContext`, ensuring bean isolation and distinct lifecycles.
 
-#### Plugin System
-- **Lifecycle Management**: Full support for `LOAD`, `START`, `STOP`, `UNLOAD`, and hot-reload capabilities via `PluginManager`.
-- **Manifest Configuration**: Defined `plugin.yml` standard for declaring metadata, dependencies, and required capabilities.
+#### ling System
+- **Lifecycle Management**: Full support for `LOAD`, `START`, `STOP`, `UNLOAD`, and hot-reload capabilities via `LingManager`.
+- **Manifest Configuration**: Defined `ling.yml` standard for declaring metadata, dependencies, and required capabilities.
 - **Service Export/Import**:
   - `@LingService`: Export beans as cross-boundary services.
-  - `@LingReference`: Inject services from other plugins or the host.
+  - `@LingReference`: Inject services from other Lings or the LINGCORE.
 
 #### Governance & Security
 - **Permission Control**:
@@ -27,15 +27,15 @@ All notable changes to this project will be documented in this file.
   - Added `@RequiresPermission` for fine-grained, method-level authorization.
 - **Audit & Trace**:
   - `@Auditable` annotation for recording sensitive operations.
-  - `TraceContext` for propagating request metadata across plugin boundaries.
+  - `TraceContext` for propagating request metadata across ling boundaries.
 - **Traffic Routing**:
   - `LabelMatchRouter` implementation for canary releases and tag-based traffic routing.
 
 #### Dashboard & Operations
-- **Visual Management**: Web-based Dashboard (preview) for monitoring plugin status and managing configurations.
+- **Visual Management**: Web-based Dashboard (preview) for monitoring ling status and managing configurations.
 - **Dynamic Control**:
-  - Start/Stop plugins via UI/API.
-  - Hot-reload plugins without restarting the JVM.
+  - Start/Stop Lings via UI/API.
+  - Hot-reload Lings without restarting the JVM.
   - Adjust permission policies at runtime.
 
 #### Infrastructure SPI
@@ -49,5 +49,5 @@ All notable changes to this project will be documented in this file.
 - **Pending Features** (Phase 3): Circuit Breaking, Rate Limiting, and Fallback mechanisms are defined but not yet fully operational.
 
 ### 🛠 Infrastructure
-- Established standard Maven multi-module project structure (`core`, `api`, `dashboard`, `runtime`, `infrastructure`).
-- Integrated `maven-compiler-plugin` and `flatten-maven-plugin` for build standardization.
+- Established standard Maven multi-unit project structure (`core`, `api`, `dashboard`, `runtime`, `infrastructure`).
+- Integrated `maven-compiler-Ling` and `flatten-maven-Ling` for build standardization.

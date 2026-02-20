@@ -8,7 +8,7 @@ package com.lingframe.api.security;
  * </p>
  * <p>
  * 规则：高级别权限自动包含低级别权限。
- * 例如：拥有 WRITE 权限的插件自动拥有 READ 权限。
+ * 例如：拥有 WRITE 权限的单元自动拥有 READ 权限。
  * </p>
  *
  * @author LingFrame

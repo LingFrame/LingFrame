@@ -2,7 +2,7 @@ package com.lingframe.core.governance;
 
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.plugin.PluginRuntime;
+import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,7 +28,7 @@ public class GovernanceArbitrator {
         log.info("GovernanceArbitrator initialized with {} providers", providers.size());
     }
 
-    public GovernanceDecision arbitrate(PluginRuntime runtime, Method method, InvocationContext ctx) {
+    public GovernanceDecision arbitrate(LingRuntime runtime, Method method, InvocationContext ctx) {
         for (GovernancePolicyProvider provider : providers) {
             GovernanceDecision decision = provider.resolve(runtime, method, ctx);
 

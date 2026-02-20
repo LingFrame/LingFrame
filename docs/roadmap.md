@@ -20,7 +20,7 @@ Core Capabilities:
 
 **Goal**: Verify feasibility of in-JVM governance
 
-- ✅ Module Lifecycle Management
+- ✅ Unit Lifecycle Management
 - ✅ Child-First ClassLoader Isolation
 - ✅ Spring Parent-Child Context Isolation
 - ✅ Three-Tier ClassLoader Architecture (SharedApiClassLoader)
@@ -34,8 +34,8 @@ Core Capabilities:
 
 **Goal**: Visual Operation Entry
 
-- ✅ Dashboard Module Management
-- ✅ Module Status Control (Start/Stop/Hot Swap)
+- ✅ Dashboard Unit Management
+- ✅ Unit Status Control (Start/Stop/Hot Swap)
 - ✅ Dynamic Permission Adjustment
 - ✅ Canary Release Configuration
 - ⏳ Dashboard UI Polish
@@ -70,9 +70,9 @@ Core Capabilities:
 - JVM Metrics (GC, Heap, Thread)
 - System Load
 
-### Module Metrics
-- Call Count, Success Rate, Latency per Module
-- Module Resource Usage
+### Unit Metrics
+- Call Count, Success Rate, Latency per Unit
+- Unit Resource Usage
 - Exception Statistics
 
 ### Technical Solution

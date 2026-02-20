@@ -1,10 +1,10 @@
 package com.lingframe.core.proxy;
 
-import com.lingframe.api.context.PluginContextHolder;
+import com.lingframe.api.context.LingContextHolder;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.plugin.PluginRuntime;
+import com.lingframe.core.ling.LingRuntime;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationHandler;
@@ -20,8 +20,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class SmartServiceProxy implements InvocationHandler {
 
-    private final String callerPluginId; // 谁在调用
-    private final PluginRuntime targetRuntime; // 核心锚点
+    private final String callerLingId; // 谁在调用
+    private final LingRuntime targetRuntime; // 核心锚点
     private final Class<?> serviceInterface;
     private final GovernanceKernel governanceKernel;// 内核
 
@@ -33,11 +33,11 @@ public class SmartServiceProxy implements InvocationHandler {
     // 🔥 使用实例级缓存而非 static，避免 Method Key 持有 Class → ClassLoader 引用导致泄漏
     private final Map<Method, String> resourceIdCache = new ConcurrentHashMap<>();
 
-    public SmartServiceProxy(String callerPluginId,
-            PluginRuntime targetRuntime, // 核心锚点,
+    public SmartServiceProxy(String callerLingId,
+            LingRuntime targetRuntime, // 核心锚点,
             Class<?> serviceInterface,
             GovernanceKernel governanceKernel) {
-        this.callerPluginId = callerPluginId;
+        this.callerLingId = callerLingId;
         this.targetRuntime = targetRuntime;
         this.serviceInterface = serviceInterface;
         this.governanceKernel = governanceKernel;
@@ -61,15 +61,15 @@ public class SmartServiceProxy implements InvocationHandler {
             // 【关键】重置/填充上下文属性
             // Identity
             finalCtx.setTraceId(null); // 由 Kernel 处理
-            finalCtx.setCallerPluginId(this.callerPluginId);
-            finalCtx.setPluginId(targetRuntime.getPluginId());
+            finalCtx.setCallerLingId(this.callerLingId);
+            finalCtx.setLingId(targetRuntime.getLingId());
             finalCtx.setOperation(method.getName());
             // Runtime Data (每次请求必变)
             finalCtx.setArgs(args);
             // Resource
             finalCtx.setResourceType("RPC");
             // Labels
-            Map<String, String> labels = PluginContextHolder.getLabels();
+            Map<String, String> labels = LingContextHolder.getLabels();
             finalCtx.setLabels(labels != null ? labels : Collections.emptyMap());
 
             String resourceId = resourceIdCache.computeIfAbsent(method,

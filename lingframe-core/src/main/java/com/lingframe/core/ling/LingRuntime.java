@@ -1,0 +1,527 @@
+package com.lingframe.core.ling;
+
+import com.lingframe.api.context.LingContext;
+import com.lingframe.core.enums.LingStatus;
+import com.lingframe.core.event.EventBus;
+import com.lingframe.core.kernel.GovernanceKernel;
+import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.ling.event.RuntimeEvent;
+import com.lingframe.core.ling.event.RuntimeEventBus;
+import com.lingframe.core.proxy.SmartServiceProxy;
+import com.lingframe.core.spi.LingServiceInvoker;
+import com.lingframe.core.spi.ResourceGuard;
+import com.lingframe.core.spi.ThreadLocalPropagator;
+import com.lingframe.core.spi.TrafficRouter;
+import com.lingframe.core.spi.TransactionVerifier;
+import com.lingframe.core.exception.ServiceUnavailableException;
+import lombok.Getter;
+import lombok.NonNull;
+import lombok.Value;
+import lombok.extern.slf4j.Slf4j;
+
+import java.lang.reflect.Proxy;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
+
+/**
+ * 单元运行时
+ * <p>
+ * 代表一个单元的完整运行环境，协调各子组件工作。
+ * <p>
+ * 职责：
+ * 1. 组件的创建和组装
+ * 2. 跨组件的协调逻辑
+ * 3. 提供统一的运行时状态查询
+ */
+@Slf4j
+public class LingRuntime {
+
+    @Getter
+    private final String lingId;
+
+    @Getter
+    private final LingRuntimeConfig config;
+
+    // 内部事件总线
+    // 🔥 非 final：shutdown() 时置 null 断开引用链
+    private volatile RuntimeEventBus internalEventBus;
+
+    // ===== 核心组件 =====
+    // 🔥 全部 volatile，shutdown() 后置 null 断开 → ClassLoader 引用链
+    private volatile InstancePool instancePool;
+
+    private volatile ServiceRegistry serviceRegistry;
+
+    private volatile InvocationExecutor invocationExecutor;
+
+    private volatile LingLifecycleManager lifecycleManager;
+
+    // ===== 协调依赖 =====
+    private final TrafficRouter router;
+    private final GovernanceKernel governanceKernel;
+    private final EventBus monitorBus; // 外部监控总线
+
+    // ===== 状态管理 =====
+    @Getter
+    private volatile LingStatus status = LingStatus.LOADED;
+
+    // ===== 流量统计 =====
+    @Getter
+    private final AtomicLong totalRequests = new AtomicLong(0);
+    @Getter
+    private final AtomicLong stableRequests = new AtomicLong(0); // 稳定版命中
+    @Getter
+    private final AtomicLong canaryRequests = new AtomicLong(0); // 灰度版命中
+    @Getter
+    private volatile long statsWindowStart = System.currentTimeMillis();
+
+    // ===== 安装时间 =====
+    @Getter
+    private final long installedAt = System.currentTimeMillis();
+
+    public LingRuntime(String lingId,
+            LingRuntimeConfig config,
+            ScheduledExecutorService scheduler,
+            ExecutorService executor,
+            GovernanceKernel governanceKernel,
+            EventBus externalEventBus,
+            TrafficRouter router,
+            LingServiceInvoker invoker,
+            TransactionVerifier transactionVerifier,
+            List<ThreadLocalPropagator> propagators,
+            ResourceGuard resourceGuard) {
+        this.lingId = lingId;
+        this.config = config != null ? config : LingRuntimeConfig.defaults();
+        this.router = router;
+        this.governanceKernel = governanceKernel;
+        this.monitorBus = externalEventBus; // 保存引用
+
+        // 🔥 创建内部事件总线
+        this.internalEventBus = new RuntimeEventBus(lingId);
+
+        // 创建组件
+        this.instancePool = new InstancePool(lingId, this.config.getMaxHistorySnapshots());
+        this.serviceRegistry = new ServiceRegistry(lingId);
+        this.invocationExecutor = new InvocationExecutor(
+                lingId,
+                executor,
+                invoker,
+                transactionVerifier,
+                propagators,
+                this.config);
+        this.lifecycleManager = new LingLifecycleManager(
+                lingId,
+                instancePool,
+                internalEventBus, // 内部事件
+                externalEventBus, // 外部事件
+                scheduler,
+                this.config,
+                resourceGuard);
+
+        // 🔥 注册组件的事件处理器
+        registerEventHandlers();
+
+        // 初始状态设为 LOADED
+        this.status = LingStatus.LOADED;
+
+        log.info("[{}] LingRuntime initialized", lingId);
+    }
+
+    // ===== 🔥 手动 Getter（字段不再是 final，不能用 @Getter）=====
+
+    public InstancePool getInstancePool() {
+        return instancePool;
+    }
+
+    public ServiceRegistry getServiceRegistry() {
+        return serviceRegistry;
+    }
+
+    public InvocationExecutor getInvocationExecutor() {
+        return invocationExecutor;
+    }
+
+    public LingLifecycleManager getLifecycleManager() {
+        return lifecycleManager;
+    }
+
+    /**
+     * 注册各组件的事件处理器
+     */
+    private void registerEventHandlers() {
+        instancePool.registerEventHandlers(internalEventBus);
+        serviceRegistry.registerEventHandlers(internalEventBus);
+        invocationExecutor.setEventBus(internalEventBus);
+        invocationExecutor.setMonitorBus(monitorBus);
+
+        // 🔥 可以添加更多监听器，如指标收集
+        registerMetricsHandlers();
+
+        log.debug("[{}] Event handlers registered, total subscriptions: {}", lingId,
+                internalEventBus.getSubscriptionCount());
+
+    }
+
+    /**
+     * 注册指标收集处理器（示例）
+     */
+    private void registerMetricsHandlers() {
+        // 调用指标
+        internalEventBus.subscribe(RuntimeEvent.InvocationCompleted.class, event -> {
+            // TODO: 上报到监控系统
+            // metricsCollector.recordInvocation(event.fqsid(), event.durationMs(),
+            // event.success());
+            log.trace("[{}] Invocation completed: {} in {}ms, success={}",
+                    lingId, event.fqsid(), event.durationMs(), event.success());
+        });
+
+        // 拒绝指标
+        internalEventBus.subscribe(RuntimeEvent.InvocationRejected.class, event -> {
+            // TODO: 上报到监控系统
+            // metricsCollector.recordRejection(event.fqsid(), event.reason());
+            log.warn("[{}] Invocation rejected: {} reason={}",
+                    lingId, event.fqsid(), event.reason());
+        });
+    }
+
+    // ==================== 状态管理 ====================
+
+    /**
+     * 设置单元状态
+     */
+    public void setStatus(LingStatus newStatus) {
+        LingStatus oldStatus = this.status;
+        this.status = newStatus;
+        log.info("[{}] Status changed: {} -> {}", lingId, oldStatus, newStatus);
+    }
+
+    /**
+     * 激活单元
+     */
+    public void activate() {
+        if (status == LingStatus.ACTIVE) {
+            log.warn("[{}] Already active", lingId);
+            return;
+        }
+
+        if (!instancePool.hasAvailableInstance()) {
+            throw new ServiceUnavailableException(lingId, "No available instance to activate");
+        }
+
+        setStatus(LingStatus.ACTIVE);
+    }
+
+    /**
+     * 停用单元（保留实例，只是不接收流量）
+     */
+    public void deactivate() {
+        if (status == LingStatus.LOADED) {
+            log.warn("[{}] Already deactivated", lingId);
+            return;
+        }
+        setStatus(LingStatus.LOADED);
+    }
+
+    // ==================== 流量统计 ====================
+
+    /**
+     * 记录请求（在路由后调用）
+     */
+    public void recordRequest(LingInstance routedInstance) {
+        totalRequests.incrementAndGet();
+
+        LingInstance defaultInstance = instancePool.getDefault();
+        if (routedInstance == defaultInstance) {
+            stableRequests.incrementAndGet();
+        } else {
+            canaryRequests.incrementAndGet();
+        }
+    }
+
+    /**
+     * 重置统计
+     */
+    public void resetTrafficStats() {
+        totalRequests.set(0);
+        stableRequests.set(0);
+        canaryRequests.set(0);
+        statsWindowStart = System.currentTimeMillis();
+        log.info("[{}] Traffic stats reset", lingId);
+    }
+
+    // ==================== 版本信息 ====================
+
+    /**
+     * 获取所有已部署版本
+     */
+    public List<String> getAllVersions() {
+        return instancePool.getActiveInstances().stream()
+                .map(inst -> inst.getDefinition().getVersion())
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 获取灰度版本（非默认的第一个版本）
+     */
+    public String getCanaryVersion() {
+        LingInstance defaultInst = instancePool.getDefault();
+        String defaultVersion = defaultInst != null ? defaultInst.getDefinition().getVersion() : null;
+
+        return instancePool.getActiveInstances().stream()
+                .map(inst -> inst.getDefinition().getVersion())
+                .filter(v -> !Objects.equals(v, defaultVersion))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * 是否有灰度版本
+     */
+    public boolean hasCanaryVersion() {
+        return getCanaryVersion() != null;
+    }
+
+    // ==================== 生命周期（委托）====================
+
+    /**
+     * 添加实例
+     */
+    public void addInstance(LingInstance instance, LingContext context, boolean isDefault) {
+        lifecycleManager.addInstance(instance, context, isDefault);
+    }
+
+    /**
+     * 关闭运行时
+     */
+    public void shutdown() {
+        // 幂等守卫：已 shutdown 则直接返回
+        if (lifecycleManager == null) {
+            return;
+        }
+        log.info("[{}] Shutting down LingRuntime", lingId);
+
+        // 1. 关闭生命周期管理器（销毁所有实例 → 关闭容器 → 释放资源）
+        lifecycleManager.shutdown();
+
+        // 2. 🔥 清理事件总线（切断所有事件监听器的引用）
+        internalEventBus.clear();
+
+        // 3. 🔥 显式清理服务注册表（清除 Bean/Method/MethodHandle 引用）
+        serviceRegistry.clear();
+
+        // 4. 🔥 关闭调用执行器（中断可能的线程池任务）
+        if (invocationExecutor != null)
+            invocationExecutor.shutdown();
+
+        // 5. 🔥 标记状态
+        this.status = LingStatus.UNINSTALLED;
+
+        // 6. 🔥🔥 关键：主动断开全部子组件引用链，使 GC 能回收 ClassLoader
+        this.instancePool = null;
+        this.serviceRegistry = null;
+        this.invocationExecutor = null;
+        this.lifecycleManager = null;
+        this.internalEventBus = null;
+
+        log.info("[{}] LingRuntime shutdown complete (all references released)", lingId);
+    }
+
+    // ==================== 协调逻辑 ====================
+
+    /**
+     * 执行服务调用
+     */
+    /**
+     * 执行服务调用 (Legacy)
+     */
+    public Object invoke(String callerLingId, String fqsid, Object[] args) throws Exception {
+        InvocationContext ctx = InvocationContext.builder()
+                .lingId(lingId)
+                .resourceId(fqsid)
+                .args(args)
+                .callerLingId(callerLingId)
+                .build();
+        return invoke(ctx);
+    }
+
+    /**
+     * 执行服务调用 (Context Aware)
+     */
+    public Object invoke(InvocationContext ctx) throws Exception {
+        // 状态检查
+        if (status != LingStatus.ACTIVE) {
+            throw new ServiceUnavailableException(lingId, "Ling not active");
+        }
+
+        String fqsid = ctx.getResourceId();
+        LingInstance instance = routeToAvailableInstance(fqsid, ctx);
+
+        // 🔥 记录流量统计
+        recordRequest(instance);
+
+        ServiceRegistry.InvokableService service = serviceRegistry.getService(fqsid);
+        if (service == null) {
+            throw new NoSuchMethodException("Service not found: " + fqsid);
+        }
+
+        return invocationExecutor.executeAsync(instance, service, ctx.getArgs(),
+                ctx.getCallerLingId(), fqsid, ctx.getTimeout());
+    }
+
+    /**
+     * 路由到可用实例 (Legacy)
+     */
+    public LingInstance routeToAvailableInstance(String resourceId) {
+        return routeToAvailableInstance(resourceId, null);
+    }
+
+    /**
+     * 路由到可用实例 (Context Aware)
+     */
+    public LingInstance routeToAvailableInstance(String resourceId, InvocationContext ctx) {
+        // 如果没有传入 Context，则创建一个临时的 (兼容旧代码)
+        if (ctx == null) {
+            ctx = InvocationContext.builder()
+                    .lingId(lingId)
+                    .resourceId(resourceId)
+                    .build();
+        }
+
+        LingInstance instance = router.route(instancePool.getActiveInstances(), ctx);
+        if (instance == null) {
+            instance = instancePool.getDefault();
+        }
+
+        validateInstance(instance);
+        return instance;
+    }
+
+    /**
+     * 获取服务代理
+     */
+    public <T> T getServiceProxy(String callerLingId, Class<T> interfaceClass) {
+        return serviceRegistry.getOrCreateProxy(interfaceClass, k -> Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] { interfaceClass },
+                new SmartServiceProxy(callerLingId, this, interfaceClass, governanceKernel)));
+    }
+
+    // ==================== 状态查询 ====================
+
+    /**
+     * 运行时是否可用
+     */
+    public boolean isAvailable() {
+        return status == LingStatus.ACTIVE &&
+                !lifecycleManager.isShutdown() &&
+                instancePool.hasAvailableInstance();
+    }
+
+    /**
+     * 获取当前版本
+     */
+    public String getVersion() {
+        return instancePool.getVersion();
+    }
+
+    /**
+     * 检查是否有指定类型的 Bean
+     */
+    public boolean hasBean(Class<?> type) {
+        LingInstance instance = instancePool.getDefault();
+        if (instance == null || !instance.getContainer().isActive()) {
+            return false;
+        }
+        try {
+            return instance.getContainer().getBean(type) != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 获取运行时统计
+     */
+    public RuntimeStats getStats() {
+        return new RuntimeStats(
+                lingId,
+                isAvailable(),
+                getVersion(),
+                instancePool.getStats(),
+                serviceRegistry.getStats(),
+                invocationExecutor.getStats(),
+                lifecycleManager.getStats());
+    }
+
+    // ==================== 内部方法 ====================
+
+    private void validateInstance(LingInstance instance) {
+        if (instance == null) {
+            throw new ServiceUnavailableException(lingId, "No available instance");
+        }
+        if (instance.isDying()) {
+            throw new ServiceUnavailableException(lingId, "Instance is dying");
+        }
+        if (!instance.isReady()) {
+            throw new ServiceUnavailableException(lingId, "Instance not ready");
+        }
+        if (!instance.getContainer().isActive()) {
+            throw new ServiceUnavailableException(lingId, "Container inactive");
+        }
+    }
+
+    // ==================== 统计信息 ====================
+
+    @Value
+    public static class RuntimeStats {
+        String lingId;
+        boolean available;
+        String version;
+        InstancePool.PoolStats pool;
+        ServiceRegistry.RegistryStats registry;
+        InvocationExecutor.ExecutorStats executor;
+        LingLifecycleManager.LifecycleStats lifecycle;
+
+        public String lingId() {
+            return lingId;
+        }
+
+        public boolean available() {
+            return available;
+        }
+
+        public String version() {
+            return version;
+        }
+
+        public InstancePool.PoolStats pool() {
+            return pool;
+        }
+
+        public ServiceRegistry.RegistryStats registry() {
+            return registry;
+        }
+
+        public InvocationExecutor.ExecutorStats executor() {
+            return executor;
+        }
+
+        public LingLifecycleManager.LifecycleStats lifecycle() {
+            return lifecycle;
+        }
+
+        @NonNull
+        @Override
+        public String toString() {
+            return String.format(
+                    "RuntimeStats{ling='%s', available=%s, version='%s', %s, %s, %s, %s}",
+                    lingId, available, version, pool, registry, executor, lifecycle);
+        }
+    }
+
+}

@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class TrafficStatsDTO {
-    private String pluginId;
+    private String lingId;
     private long totalRequests;
     private long v1Requests;
     private long v2Requests;

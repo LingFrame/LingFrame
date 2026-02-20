@@ -35,7 +35,7 @@ class DefaultPermissionServiceTest {
         @Test
         @DisplayName("应允许访问全局白名单 API")
         void shouldAllowGlobalWhitelist() {
-            assertTrue(permissionService.isAllowed("any-plugin", "com.lingframe.api.SomeApi", AccessType.READ));
+            assertTrue(permissionService.isAllowed("any-ling", "com.lingframe.api.SomeApi", AccessType.READ));
         }
     }
 
@@ -45,38 +45,38 @@ class DefaultPermissionServiceTest {
         @Test
         @DisplayName("授予和检查权限应正常工作")
         void shouldGrantAndCheckPermission() {
-            String pluginId = "test-plugin";
+            String lingId = "test-ling";
             String capability = "test-capability";
             AccessType accessType = AccessType.WRITE;
 
             // 初始时应该没有权限
-            assertFalse(permissionService.isAllowed(pluginId, capability, accessType));
+            assertFalse(permissionService.isAllowed(lingId, capability, accessType));
 
             // 授予权限
-            permissionService.grant(pluginId, capability, accessType);
+            permissionService.grant(lingId, capability, accessType);
 
             // 现在应该有权限了
-            assertTrue(permissionService.isAllowed(pluginId, capability, accessType));
+            assertTrue(permissionService.isAllowed(lingId, capability, accessType));
 
             // READ 权限应该被 WRITE 权限覆盖 (假设层级关系或者具体实现允许)
-            assertTrue(permissionService.isAllowed(pluginId, capability, AccessType.READ));
+            assertTrue(permissionService.isAllowed(lingId, capability, AccessType.READ));
         }
 
         @Test
         @DisplayName("获取权限应返回已授予的权限")
         void shouldGetPermission() {
-            String pluginId = "test-plugin";
+            String lingId = "test-ling";
             String capability = "test-capability";
             AccessType accessType = AccessType.WRITE;
 
             // 初始时应该返回 null
-            assertNull(permissionService.getPermission(pluginId, capability));
+            assertNull(permissionService.getPermission(lingId, capability));
 
             // 授予权限
-            permissionService.grant(pluginId, capability, accessType);
+            permissionService.grant(lingId, capability, accessType);
 
             // 现在应该能获取到权限
-            assertNotNull(permissionService.getPermission(pluginId, capability));
+            assertNotNull(permissionService.getPermission(lingId, capability));
         }
     }
 
@@ -86,13 +86,13 @@ class DefaultPermissionServiceTest {
         @Test
         @DisplayName("开发模式下应默认允许所有访问")
         void shouldAllowAllInDevMode() {
-            String pluginId = "test-plugin";
+            String lingId = "test-ling";
             String capability = "test-capability";
             AccessType accessType = AccessType.WRITE;
 
             // 开发模式下，即使没有权限也应该返回 true
             LingFrameConfig.current().setDevMode(true);
-            assertTrue(permissionService.isAllowed(pluginId, capability, accessType));
+            assertTrue(permissionService.isAllowed(lingId, capability, accessType));
         }
     }
 }

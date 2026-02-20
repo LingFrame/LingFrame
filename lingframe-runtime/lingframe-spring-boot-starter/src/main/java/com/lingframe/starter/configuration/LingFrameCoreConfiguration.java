@@ -1,22 +1,22 @@
 package com.lingframe.starter.configuration;
 
-import com.lingframe.api.context.PluginContext;
+import com.lingframe.api.context.LingContext;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.classloader.DefaultPluginLoaderFactory;
+import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.classloader.SharedApiManager;
 import com.lingframe.core.config.LingFrameConfig;
-import com.lingframe.core.context.CorePluginContext;
+import com.lingframe.core.context.CoreLingContext;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.governance.GovernanceArbitrator;
-import com.lingframe.core.governance.HostGovernanceRule;
+import com.lingframe.core.governance.LingCoreGovernanceRule;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.governance.provider.StandardGovernancePolicyProvider;
-import com.lingframe.core.invoker.DefaultPluginServiceInvoker;
+import com.lingframe.core.invoker.DefaultLingServiceInvoker;
 import com.lingframe.core.kernel.GovernanceKernel;
-import com.lingframe.core.loader.PluginDiscoveryService;
-import com.lingframe.core.plugin.PluginManager;
-import com.lingframe.core.plugin.PluginRuntimeConfig;
+import com.lingframe.core.loader.LingDiscoveryService;
+import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.*;
@@ -26,7 +26,7 @@ import com.lingframe.infra.cache.configuration.SpringCacheWrapperProcessor;
 import com.lingframe.infra.storage.configuration.DataSourceWrapperProcessor;
 import com.lingframe.starter.adapter.SpringContainerFactory;
 import com.lingframe.starter.config.LingFrameProperties;
-import com.lingframe.starter.processor.HostBeanGovernanceProcessor;
+import com.lingframe.starter.processor.LingCoreBeanGovernanceProcessor;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.starter.web.WebInterfaceManager;
 import lombok.extern.slf4j.Slf4j;
@@ -65,7 +65,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
         SpringCacheWrapperProcessor.class,
         CaffeineWrapperProcessor.class,
         RedisWrapperProcessor.class,
-        HostBeanGovernanceProcessor.class
+        LingCoreBeanGovernanceProcessor.class
 })
 public class LingFrameCoreConfiguration {
 
@@ -83,9 +83,9 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean(PluginLoaderFactory.class)
-    public PluginLoaderFactory defaultPluginLoaderFactory() {
-        return new DefaultPluginLoaderFactory();
+    @ConditionalOnMissingBean(LingLoaderFactory.class)
+    public LingLoaderFactory defaultLingLoaderFactory() {
+        return new DefaultLingLoaderFactory();
     }
 
     @Bean
@@ -93,10 +93,10 @@ public class LingFrameCoreConfiguration {
             LocalGovernanceRegistry registry,
             LingFrameProperties properties) {
 
-        List<HostGovernanceRule> coreRules = new ArrayList<>();
+        List<LingCoreGovernanceRule> coreRules = new ArrayList<>();
         if (properties.getRules() != null) {
             for (LingFrameProperties.GovernanceRule r : properties.getRules()) {
-                coreRules.add(HostGovernanceRule.builder()
+                coreRules.add(LingCoreGovernanceRule.builder()
                         .pattern(r.getPattern())
                         .permission(r.getPermission())
                         .accessType(r.getAccess())
@@ -139,14 +139,14 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
-    public PluginServiceInvoker pluginServiceInvoker() {
-        return new DefaultPluginServiceInvoker();
+    public LingServiceInvoker lingServiceInvoker() {
+        return new DefaultLingServiceInvoker();
     }
 
     @Bean
     public LingFrameConfig lingFrameConfig(LingFrameProperties properties) {
         LingFrameProperties.Runtime rtProps = properties.getRuntime();
-        PluginRuntimeConfig runtimeConfig = PluginRuntimeConfig.builder()
+        LingRuntimeConfig runtimeConfig = LingRuntimeConfig.builder()
                 .maxHistorySnapshots(rtProps.getMaxHistorySnapshots())
                 .forceCleanupDelaySeconds((int) rtProps.getForceCleanupDelay().getSeconds())
                 .dyingCheckIntervalSeconds((int) rtProps.getDyingCheckInterval().getSeconds())
@@ -162,13 +162,13 @@ public class LingFrameCoreConfiguration {
         LingFrameConfig lingFrameConfig = LingFrameConfig.builder()
                 .devMode(properties.isDevMode())
                 .autoScan(properties.isAutoScan())
-                .pluginHome(properties.getPluginHome())
-                .pluginRoots(properties.getPluginRoots())
+                .lingHome(properties.getLingHome())
+                .lingRoots(properties.getLingRoots())
                 .runtimeConfig(runtimeConfig)
                 .corePoolSize(Runtime.getRuntime().availableProcessors())
-                .hostGovernanceEnabled(properties.getHostGovernance().isEnabled())
-                .hostGovernanceInternalCalls(properties.getHostGovernance().isGovernInternalCalls())
-                .hostCheckPermissions(properties.getHostGovernance().isCheckPermissions())
+                .lingCoreGovernanceEnabled(properties.getLingCoreGovernance().isEnabled())
+                .lingCoreGovernanceInternalCalls(properties.getLingCoreGovernance().isGovernInternalCalls())
+                .hostCheckPermissions(properties.getLingCoreGovernance().isCheckPermissions())
                 .preloadApiJars(properties.getPreloadApiJars())
                 .build();
 
@@ -178,14 +178,14 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
-    public PluginManager pluginManager(ContainerFactory containerFactory,
+    public LingManager lingManager(ContainerFactory containerFactory,
             PermissionService permissionService,
             GovernanceKernel governanceKernel,
-            PluginLoaderFactory pluginLoaderFactory,
-            ObjectProvider<List<PluginSecurityVerifier>> verifiersProvider,
+            LingLoaderFactory lingLoaderFactory,
+            ObjectProvider<List<LingSecurityVerifier>> verifiersProvider,
             EventBus eventBus,
             TrafficRouter trafficRouter,
-            PluginServiceInvoker pluginServiceInvoker,
+            LingServiceInvoker lingServiceInvoker,
             ObjectProvider<TransactionVerifier> transactionVerifierProvider,
             ObjectProvider<List<ThreadLocalPropagator>> propagatorsProvider,
             LingFrameConfig lingFrameConfig,
@@ -194,17 +194,17 @@ public class LingFrameCoreConfiguration {
 
         TransactionVerifier transactionVerifier = transactionVerifierProvider.getIfAvailable();
         List<ThreadLocalPropagator> propagators = propagatorsProvider.getIfAvailable(Collections::emptyList);
-        List<PluginSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
+        List<LingSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
         ResourceGuard resourceGuard = resourceGuardProvider.getIfAvailable();
 
-        return new PluginManager(containerFactory, permissionService, governanceKernel,
-                pluginLoaderFactory, verifiers, eventBus, trafficRouter, pluginServiceInvoker,
+        return new LingManager(containerFactory, permissionService, governanceKernel,
+                lingLoaderFactory, verifiers, eventBus, trafficRouter, lingServiceInvoker,
                 transactionVerifier, propagators, lingFrameConfig, localGovernanceRegistry, resourceGuard);
     }
 
     @Bean
-    public PluginDiscoveryService pluginDiscoveryService(LingFrameConfig config, PluginManager pluginManager) {
-        return new PluginDiscoveryService(config, pluginManager);
+    public LingDiscoveryService lingDiscoveryService(LingFrameConfig config, LingManager lingManager) {
+        return new LingDiscoveryService(config, lingManager);
     }
 
     @Bean
@@ -214,8 +214,8 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
-    public ApplicationRunner pluginScannerRunner(
-            PluginDiscoveryService discoveryService,
+    public ApplicationRunner lingScannerRunner(
+            LingDiscoveryService discoveryService,
             SharedApiManager sharedApiManager) {
         return args -> {
             if (!BOOTSTRAP_DONE.compareAndSet(false, true)) {
@@ -228,20 +228,20 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     @ConditionalOnProperty(prefix = "lingframe", name = "dev-mode", havingValue = "true")
-    public HotSwapWatcher hotSwapWatcher(PluginManager pluginManager, EventBus eventBus) {
-        return new HotSwapWatcher(pluginManager, eventBus);
+    public HotSwapWatcher hotSwapWatcher(LingManager lingManager, EventBus eventBus) {
+        return new HotSwapWatcher(lingManager, eventBus);
     }
 
     @Bean
-    public PluginContext hostPluginContext(PluginManager pluginManager,
+    public LingContext hostLingContext(LingManager lingManager,
             PermissionService permissionService,
             EventBus eventBus) {
-        return new CorePluginContext("host-app", pluginManager, permissionService, eventBus);
+        return new CoreLingContext("lingcore-app", lingManager, permissionService, eventBus);
     }
 
     @Bean
     public LingReferenceInjector lingReferenceInjector() {
-        return new LingReferenceInjector("host-app");
+        return new LingReferenceInjector("lingcore-app");
     }
 
     @Bean

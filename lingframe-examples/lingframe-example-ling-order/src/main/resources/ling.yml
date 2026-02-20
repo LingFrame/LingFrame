@@ -1,0 +1,23 @@
+# --- 基础元数据 (直接在根节点) ---
+id: order-ling
+version: 1.0.0
+provider: "LingFrame"
+description: "订单单元"
+mainClass: "com.lingframe.example.order.OrderApplication"
+
+# --- 治理配置 ---
+governance:
+  # ACL 入站规则 (StandardGovernancePolicyProvider 使用)
+  permissions: []
+
+  # 单元能力申请 (LingManager 使用)
+  capabilities:
+    - capability: "storage:sql"
+      accessType: "WRITE"      # 需要读写权限
+    - capability: "cache:local"
+      accessType: "WRITE"      # 使用本地缓存，与 Dashboard 对齐
+
+# --- 金丝雀配置 ---
+#properties:
+#  canary: true
+

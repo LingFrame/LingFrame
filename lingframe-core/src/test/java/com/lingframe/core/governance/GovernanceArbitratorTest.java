@@ -1,7 +1,7 @@
 package com.lingframe.core.governance;
 
 import com.lingframe.api.security.AccessType;
-import com.lingframe.core.plugin.PluginRuntime;
+import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,7 +31,7 @@ class GovernanceArbitratorTest {
     @Mock
     private GovernancePolicyProvider provider2;
     @Mock
-    private PluginRuntime runtime;
+    private LingRuntime runtime;
 
     private Method method;
 

@@ -4,13 +4,13 @@ import com.lingframe.api.security.AccessType;
 
 /**
  * 权限拒绝异常
- * 当插件尝试执行未经授权的操作时抛出此异常。
+ * 当单元尝试执行未经授权的操作时抛出此异常。
  * 
  * @author LingFrame
  */
 public class PermissionDeniedException extends LingException {
 
-    private String pluginId;
+    private String lingId;
     private String capability;
     private AccessType accessType;
 
@@ -22,22 +22,22 @@ public class PermissionDeniedException extends LingException {
         super(message, cause);
     }
 
-    public PermissionDeniedException(String pluginId, String capability) {
-        super("Access denied: plugin=" + pluginId + ", capability=" + capability);
-        this.pluginId = pluginId;
+    public PermissionDeniedException(String lingId, String capability) {
+        super("Access denied: ling=" + lingId + ", capability=" + capability);
+        this.lingId = lingId;
         this.capability = capability;
     }
 
-    public PermissionDeniedException(String pluginId, String capability, AccessType accessType) {
-        super(String.format("Access denied: plugin=%s, capability=%s, accessType=%s",
-                pluginId, capability, accessType));
-        this.pluginId = pluginId;
+    public PermissionDeniedException(String lingId, String capability, AccessType accessType) {
+        super(String.format("Access denied: ling=%s, capability=%s, accessType=%s",
+                lingId, capability, accessType));
+        this.lingId = lingId;
         this.capability = capability;
         this.accessType = accessType;
     }
 
-    public String getPluginId() {
-        return pluginId;
+    public String getLingId() {
+        return lingId;
     }
 
     public String getCapability() {

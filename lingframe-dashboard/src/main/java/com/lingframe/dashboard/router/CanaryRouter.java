@@ -1,7 +1,7 @@
 package com.lingframe.dashboard.router;
 
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.plugin.PluginInstance;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.CanaryConfigurable;
 import com.lingframe.core.spi.TrafficRouter;
 import com.lingframe.api.exception.InvalidArgumentException;
@@ -23,7 +23,7 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
 
     private final TrafficRouter delegate; // 原有的 LabelMatchRouter
 
-    // 灰度配置：pluginId -> percent (0-100)
+    // 灰度配置：lingId -> percent (0-100)
     private final Map<String, CanaryConfig> canaryConfigs = new ConcurrentHashMap<>();
 
     public CanaryRouter(TrafficRouter delegate) {
@@ -31,7 +31,7 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
     }
 
     @Override
-    public PluginInstance route(List<PluginInstance> candidates, InvocationContext context) {
+    public LingInstance route(List<LingInstance> candidates, InvocationContext context) {
         if (candidates == null || candidates.isEmpty()) {
             return null;
         }
@@ -40,8 +40,8 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
             return candidates.get(0);
         }
 
-        String pluginId = context != null ? context.getPluginId() : null;
-        CanaryConfig config = pluginId != null ? canaryConfigs.get(pluginId) : null;
+        String lingId = context != null ? context.getLingId() : null;
+        CanaryConfig config = lingId != null ? canaryConfigs.get(lingId) : null;
 
         // 有灰度配置，按比例路由
         if (config != null && config.percent > 0) {
@@ -49,7 +49,7 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
 
             if (routeToCanary) {
                 // 找灰度实例（非默认的，或匹配特定版本）
-                PluginInstance canaryInstance = findCanaryInstance(candidates, config.canaryVersion);
+                LingInstance canaryInstance = findCanaryInstance(candidates, config.canaryVersion);
                 if (canaryInstance != null) {
                     return canaryInstance;
                 }
@@ -65,40 +65,40 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
     /**
      * 设置灰度配置
      */
-    public void setCanaryConfig(String pluginId, int percent, String canaryVersion) {
+    public void setCanaryConfig(String lingId, int percent, String canaryVersion) {
         if (percent < 0 || percent > 100) {
             throw new InvalidArgumentException("percent", "Canary percent must be 0-100");
         }
 
         if (percent == 0) {
-            canaryConfigs.remove(pluginId);
-            log.info("[{}] Canary disabled", pluginId);
+            canaryConfigs.remove(lingId);
+            log.info("[{}] Canary disabled", lingId);
         } else {
-            canaryConfigs.put(pluginId, new CanaryConfig(percent, canaryVersion));
-            log.info("[{}] Canary config: {}% -> {}", pluginId, percent, canaryVersion);
+            canaryConfigs.put(lingId, new CanaryConfig(percent, canaryVersion));
+            log.info("[{}] Canary config: {}% -> {}", lingId, percent, canaryVersion);
         }
     }
 
     /**
      * 获取灰度配置
      */
-    public CanaryConfig getCanaryConfig(String pluginId) {
-        return canaryConfigs.get(pluginId);
+    public CanaryConfig getCanaryConfig(String lingId) {
+        return canaryConfigs.get(lingId);
     }
 
     /**
      * 获取灰度比例
      */
     @Override
-    public int getCanaryPercent(String pluginId) {
-        CanaryConfig config = canaryConfigs.get(pluginId);
+    public int getCanaryPercent(String lingId) {
+        CanaryConfig config = canaryConfigs.get(lingId);
         return config != null ? config.percent : 0;
     }
 
-    private PluginInstance findCanaryInstance(List<PluginInstance> candidates, String canaryVersion) {
+    private LingInstance findCanaryInstance(List<LingInstance> candidates, String canaryVersion) {
         // 优先匹配指定版本
         if (canaryVersion != null) {
-            for (PluginInstance inst : candidates) {
+            for (LingInstance inst : candidates) {
                 if (canaryVersion.equals(inst.getDefinition().getVersion())) {
                     return inst;
                 }
@@ -109,7 +109,7 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
         return candidates.size() > 1 ? candidates.get(1) : null;
     }
 
-    private PluginInstance findStableInstance(List<PluginInstance> candidates) {
+    private LingInstance findStableInstance(List<LingInstance> candidates) {
         // 第一个通常是默认/稳定版
         return candidates.isEmpty() ? null : candidates.get(0);
     }

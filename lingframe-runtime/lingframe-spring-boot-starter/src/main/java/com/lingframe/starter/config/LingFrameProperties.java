@@ -33,32 +33,32 @@ public class LingFrameProperties {
     private boolean devMode = false;
 
     /**
-     * 启动时是否自动扫描并加载 home 目录下的插件。
+     * 启动时是否自动扫描并加载 home 目录下的单元。
      */
     private boolean autoScan = true;
 
     /**
-     * 插件存放根目录。
+     * 单元存放根目录。
      * 支持绝对路径和相对路径。
      */
-    private String pluginHome = "plugins";
+    private String lingHome = "Lings";
 
     /**
      * 预加载的 API JAR 文件路径列表
      * <p>
      * 这些 JAR 会在启动时加载到 SharedApiClassLoader 中，
-     * 实现跨插件的 API 类共享
+     * 实现跨单元的 API 类共享
      * <p>
      * 路径支持：
      * - 绝对路径: /path/to/api.jar
-     * - 相对路径: libs/order-api.jar (相对于 pluginHome)
+     * - 相对路径: libs/order-api.jar (相对于 lingHome)
      */
     private List<String> preloadApiJars = new ArrayList<>();
 
     /**
-     * 插件额外目录
+     * 单元额外目录
      */
-    private List<String> pluginRoots = new ArrayList<>();
+    private List<String> lingRoots = new ArrayList<>();
 
     /**
      * 服务注册排除包前缀列表
@@ -79,9 +79,9 @@ public class LingFrameProperties {
     private List<String> serviceExcludedPackages = new ArrayList<>();
 
     /**
-     * 宿主治理配置
+     * 灵核治理配置
      */
-    private HostGovernance hostGovernance = new HostGovernance();
+    private LingCoreGovernance lingCoreGovernance = new LingCoreGovernance();
 
     /**
      * 审计相关配置。
@@ -182,56 +182,56 @@ public class LingFrameProperties {
         @DurationUnit(ChronoUnit.MILLIS)
         private Duration bulkheadAcquireTimeout = Duration.ofMillis(3000);
 
-        // --- 插件线程池预算 ---
+        // --- 单元线程池预算 ---
 
         /**
-         * 全局插件线程总预算（所有插件共享此配额）
+         * 全局单元线程总预算（所有单元共享此配额）
          */
-        private int globalMaxPluginThreads = java.lang.Runtime.getRuntime().availableProcessors() * 4;
+        private int globalMaxLingThreads = java.lang.Runtime.getRuntime().availableProcessors() * 4;
 
         /**
-         * 单个插件线程池硬上限
+         * 单个单元线程池硬上限
          */
-        private int maxThreadsPerPlugin = 8;
+        private int maxThreadsPerLing = 8;
 
         /**
-         * 单个插件默认线程数
+         * 单个单元默认线程数
          */
-        private int defaultThreadsPerPlugin = 2;
+        private int defaultThreadsPerLing = 2;
     }
 
     @Data
-    public static class HostGovernance {
+    public static class LingCoreGovernance {
         /**
-         * 是否启用宿主 Bean 治理，默认值为 false
+         * 是否启用灵核 Bean 治理，默认值为 false
          * <p>
-         * true: 启用治理，对宿主 Bean 进行权限检查和审计
+         * true: 启用治理，对灵核 Bean 进行权限检查和审计
          * <p>
-         * false: 禁用治理，宿主 Bean 不受限制
+         * false: 禁用治理，灵核 Bean 不受限制
          * <p>
-         * 注意：开启后可能会影响插件的正常运行，建议仅在必要时开启
+         * 注意：开启后可能会影响单元的正常运行，建议仅在必要时开启
          */
         private boolean enabled = false;
 
         /**
-         * 是否对宿主内部调用进行治理，默认值为 false
+         * 是否对灵核内部调用进行治理，默认值为 false
          * <p>
-         * true: 宿主自己调用自己的 Bean 也会被治理
+         * true: 灵核自己调用自己的 Bean 也会被治理
          * <p>
-         * false: 只有插件调用宿主 Bean 时才会被治理
+         * false: 只有单元调用灵核 Bean 时才会被治理
          * <p>
-         * 注意：开启后可能会影响插件的正常运行，建议仅在必要时开启
+         * 注意：开启后可能会影响单元的正常运行，建议仅在必要时开启
          */
         private boolean governInternalCalls = false;
 
         /**
-         * 是否对宿主应用进行权限检查，默认值为 false
+         * 是否对灵核应用进行权限检查，默认值为 false
          * <p>
-         * true: 宿主应用也需要通过权限检查
+         * true: 灵核应用也需要通过权限检查
          * <p>
-         * false: 宿主应用自动拥有所有权限
+         * false: 灵核应用自动拥有所有权限
          * <p>
-         * 注意：开启后可能会影响插件的正常运行，建议仅在必要时开启
+         * 注意：开启后可能会影响单元的正常运行，建议仅在必要时开启
          */
         private boolean checkPermissions = false;
     }

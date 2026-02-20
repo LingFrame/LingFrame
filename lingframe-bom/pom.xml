@@ -1,4 +1,4 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+﻿<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
@@ -15,12 +15,12 @@
     </properties>
 
     <!--
-        BOM 仅暴露 LingFrame 模块，不暴露第三方依赖
+        BOM 仅暴露 LingFrame 单元，不暴露第三方依赖
         外部项目如需要完整依赖管理，可 import lingframe-dependencies
     -->
     <dependencyManagement>
         <dependencies>
-            <!-- 核心模块 -->
+            <!-- 核心单元 -->
             <dependency>
                 <groupId>com.lingframe</groupId>
                 <artifactId>lingframe-core</artifactId>

@@ -1,8 +1,8 @@
 package com.lingframe.starter.loader;
 
-import com.lingframe.api.config.PluginDefinition;
-import com.lingframe.core.loader.PluginManifestLoader;
-import com.lingframe.core.exception.PluginInstallException;
+import com.lingframe.api.config.LingDefinition;
+import com.lingframe.core.loader.LingManifestLoader;
+import com.lingframe.core.exception.LingInstallException;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.objectweb.asm.*;
@@ -17,7 +17,7 @@ import java.util.jar.*;
 import java.util.stream.Stream;
 
 /**
- * 使用 ASM 扫描插件主类
+ * 使用 ASM 扫描单元主类
  * 精确识别 @SpringBootApplication 注解和 main 方法
  */
 @Slf4j
@@ -26,7 +26,7 @@ public class AsmMainClassScanner {
     /**
      * 扫描主类（支持目录和 JAR）
      *
-     * @param source 插件源文件（目录或 JAR）
+     * @param source 单元源文件（目录或 JAR）
      * @return 主类全限定名，未找到返回 null
      */
     public static String scanMainClass(File source) throws IOException {
@@ -177,17 +177,17 @@ public class AsmMainClassScanner {
     /**
      * 发现主类（统一入口）
      *
-     * @param pluginId    插件 ID
-     * @param source      插件源文件
+     * @param lingId    单元 ID
+     * @param source      单元源文件
      * @param classLoader 类加载器
      * @return 主类全限定名
      * @throws IllegalStateException 未找到或验证失败时抛出
      */
     @NonNull
-    public static String discoverMainClass(String pluginId, File source,
+    public static String discoverMainClass(String lingId, File source,
             ClassLoader classLoader) {
         String mainClass = null;
-        PluginDefinition def = PluginManifestLoader.parseDefinition(source);
+        LingDefinition def = LingManifestLoader.parseDefinition(source);
         if (def != null) {
             mainClass = def.getMainClass();
         } else {
@@ -195,28 +195,28 @@ public class AsmMainClassScanner {
             try {
                 mainClass = scanMainClass(source);
                 if (mainClass != null) {
-                    log.debug("Discovered main class for plugin {}: {}", pluginId, mainClass);
+                    log.debug("Discovered main class for ling {}: {}", lingId, mainClass);
                 }
             } catch (IOException e) {
-                log.error("Failed to scan main class for plugin {}: {}", pluginId, source.getAbsolutePath(), e);
+                log.error("Failed to scan main class for ling {}: {}", lingId, source.getAbsolutePath(), e);
             }
         }
 
         // 验证主类
         if (mainClass == null) {
-            throw new PluginInstallException(
-                    pluginId,
-                    String.format("Cannot find Main-Class for plugin: %s. " +
-                            "Please specify 'mainClass' in plugin.yml or ensure @SpringBootApplication annotation is present.",
-                            pluginId));
+            throw new LingInstallException(
+                    lingId,
+                    String.format("Cannot find Main-Class for ling: %s. " +
+                            "Please specify 'mainClass' in ling.yml or ensure @SpringBootApplication annotation is present.",
+                            lingId));
         }
 
         if (!validateMainClass(mainClass, classLoader)) {
-            throw new PluginInstallException(
-                    pluginId,
-                    String.format("Invalid main class for plugin %s: %s. " +
+            throw new LingInstallException(
+                    lingId,
+                    String.format("Invalid main class for ling %s: %s. " +
                             "Must have @SpringBootApplication annotation and public static void main(String[] args) method.",
-                            pluginId, mainClass));
+                            lingId, mainClass));
         }
 
         return mainClass;

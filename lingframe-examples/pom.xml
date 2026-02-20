@@ -14,12 +14,12 @@
     <description>示例应用</description>
 
     <modules>
-        <module>lingframe-example-host-app</module>
-        <module>lingframe-example-plugin-user</module>
-        <module>lingframe-example-plugin-user-canary</module>
-        <module>lingframe-example-plugin-order</module>
+        <module>lingframe-example-lingcore-app</module>
+        <module>lingframe-example-ling-user</module>
+        <module>lingframe-example-ling-user-canary</module>
+        <module>lingframe-example-ling-order</module>
         <module>lingframe-example-order-api</module>
-        <module>lingframe-example-plugin-native</module>
+        <module>lingframe-example-ling-native</module>
     </modules>
 
     <dependencyManagement>
