@@ -2,17 +2,17 @@
 
 **Empower JVM Apps with OS-like Control and Governance**
 
-> 🟢 **Core Framework Implemented** — Permission Governance, Audit Tracing, Capability Arbitration, Module Isolation core features are now available.
+> 🟢 **Core Framework Implemented** — Permission Governance, Audit Tracing, Capability Arbitration, Unit Isolation, and **Resilience Governance (Retry, Circuit-Breaking)** are available.
 
 ---
 
 ## 📖 What is LingFrame?
 
-**LingFrame** is a **JVM Runtime Governance Framework**, focused on solving **Permission Control**, **Audit Tracing**, and **Capability Arbitration** issues in cross-module calls within Java applications.
+**LingFrame** is a **JVM Runtime Governance Framework**, focused on solving **Permission Control**, **Audit Tracing**, and **Capability Arbitration** issues in cross-unit calls within Java applications.
 
-> ⚠️ We use modular isolation as a technical means for governance, but the core value lies in **Runtime Governance Capabilities** — ensuring every cross-module call undergoes permission checks and audit recording.
+> ⚠️ We use modular isolation as a technical means for governance, but the core value lies in **Runtime Governance Capabilities** — ensuring every cross-unit call undergoes permission checks and audit recording.
 
-**Core Capabilities**: **Permission Governance** · **Audit Tracing** · **Capability Arbitration** · **Module Isolation**
+**Core Capabilities**: **Permission Governance** · **Audit Tracing** · **Capability Arbitration** · **Unit Isolation**
 
 ---
 
@@ -22,10 +22,11 @@
 | --------------------- | ----------------------------------------- | ------------------------------------- |
 | **Permission Governance** | Smart Inference + `@RequiresPermission`, all calls authorized | `GovernanceKernel`, `GovernanceStrategy` |
 | **Audit Tracing**     | `@Auditable` + Async Audit Log, Full Trace | `AuditManager`                        |
-| **Capability Arbitration**| Core is sole arbiter, proxying all cross-module calls | `ServiceRegistry`, `SmartServiceProxy` |
+| **Capability Arbitration**| Core is sole arbiter, proxying all cross-unit calls | `ServiceRegistry`, `SmartServiceProxy` |
 | **Service Routing**   | `@LingService` + `@LingReference`, FQSID Routing | `LingReferenceInjector`, `GlobalServiceRoutingProxy` |
-| **Module Isolation**  | Three-Tier ClassLoader + Spring Parent-Child Context | `SharedApiClassLoader`, `PluginClassLoader`, `SpringPluginContainer` |
-| **Hot Swap**          | Blue-Green Deploy + File Watcher, No Restart | `PluginManager`, `InstancePool`, `HotSwapWatcher` |
+| **Unit Isolation**  | Three-Tier ClassLoader + Spring Parent-Child Context | `SharedApiClassLoader`, `LingClassLoader`, `SpringLingContainer` |
+| **Hot Swap**          | Blue-Green Deploy + File Watcher, No Restart | `LingManager`, `InstancePool`, `HotSwapWatcher` |
+| **Resilience**        | Circuit Breaking, Retry, Rate Limiting    | `GovernanceKernel`, `SlidingWindowCircuitBreaker`, `TokenBucketRateLimiter` |
 
 ---
 
@@ -33,10 +34,10 @@
 
 | Pain Point             | Current Dilemma                       | LingFrame Solution         |
 | :--------------------- | :------------------------------------ | :------------------------- |
-| **Lack of Authorization**| Modules call directly, no checks      | All calls proxied by Core for auth |
+| **Lack of Authorization**| Units call directly, no checks      | All calls proxied by Core for auth |
 | **Untraceable Operations**| Hard to trace calls after failure    | Built-in Audit Log, Full Trace |
 | **Blurred Boundaries** | Extension logic coupled with kernel   | Three-Tier Architecture + Isolation |
-| **No Unified Governance** | Business modules access DB/Redis directly | Unified infrastructure access arbitration |
+| **No Unified Governance** | Business units access DB/Redis directly | Unified infrastructure access arbitration |
 
 ---
 
@@ -45,10 +46,10 @@
 | Scenario               | Typical Requirement                             |
 | ---------------------- | ----------------------------------------------- |
 | **Enterprise App**     | Fine-grained permission control and full audit  |
-| **Multi-Module System**| Unified governance and isolation for calls      |
+| **Multi-Unit System**| Unified governance and isolation for calls      |
 | **Secondary Dev Platform**| Restrict and audit third-party code          |
 | **SaaS Multi-Tenant**  | Isolate and load tenant features on demand      |
-| **Monolith Modularization**| Split monolith into independent, clear modules |
+| **Monolith Modularization**| Split monolith into independent, clear units |
 
 ---
 
@@ -74,7 +75,7 @@
 **Key Design Principles**:
 
 1. **Core is Sole Arbiter**: Provides no business capability, only Auth, Audit, and Proxy.
-2. **Zero Trust Call**: All cross-module calls must be proxied and authorized by Core, no bypass.
+2. **Zero Trust Call**: All cross-unit calls must be proxied and authorized by Core, no bypass.
 3. **Complete Audit Chain**: Every call is traceable, supporting accountability and compliance.
 
 ---
@@ -104,12 +105,12 @@ cd LingFrame
 # Build and Install
 mvn clean install -DskipTests
 
-# Run Example Host App
-cd lingframe-examples/lingframe-example-host-app
+# Run Example LINGCORE App
+cd lingframe-examples/lingframe-example-lingcore-app
 mvn spring-boot:run
 ```
 
-### Host Application Configuration
+### LingCore Application Configuration
 
 Configure LingFrame in `application.yaml`:
 
@@ -117,9 +118,9 @@ Configure LingFrame in `application.yaml`:
 lingframe:
   enabled: true
   dev-mode: true                    # Dev mode, warn only on permission denied
-  plugin-home: "plugins"            # Plugin JAR directory
-  plugin-roots:                     # Plugin Source directory (Dev mode)
-    - "../my-plugin"
+  ling-home: "lings"            # ling JAR directory
+  ling-roots:                     # ling Source directory (Dev mode)
+    - "../my-ling"
   auto-scan: true
   
   audit:
@@ -132,24 +133,24 @@ lingframe:
     bulkhead-max-concurrent: 10
 ```
 
-### Create Business Module
+### Create Business Unit
 
 LingFrame uses **Consumer-Driven Contract**: Consumer defines interface, Producer implements it.
 
 ```java
-// ========== Consumer (Order Plugin) defines required interface ==========
+// ========== Consumer (Order ling) defines required interface ==========
 // Location: order-api/src/main/java/.../UserQueryService.java
 public interface UserQueryService {
     Optional<UserDTO> findById(String userId);
 }
 
-// ========== Producer (User Plugin) implements the interface ==========
-// Location: user-plugin/src/main/java/.../UserQueryServiceImpl.java
+// ========== Producer (User ling) implements the interface ==========
+// Location: user-ling/src/main/java/.../UserQueryServiceImpl.java
 @SpringBootApplication
-public class UserPlugin implements LingPlugin {
+public class UserLing implements Ling {
     @Override
-    public void onStart(PluginContext context) {
-        System.out.println("Plugin started: " + context.getPluginId());
+    public void onStart(LingContext context) {
+        System.out.println("Ling started: " + context.getLingId());
     }
 }
 
@@ -164,14 +165,14 @@ public class UserQueryServiceImpl implements UserQueryService {
 }
 ```
 
-Module Metadata `plugin.yml`:
+Unit Metadata `ling.yml`:
 
 ```yaml
-id: user-plugin
+id: user-ling
 version: 1.0.0
 provider: "My Company"
-description: "User Module"
-mainClass: "com.example.UserPlugin"
+description: "User Unit"
+mainClass: "com.example.UserLing"
 
 governance:
   permissions:
@@ -179,16 +180,16 @@ governance:
       permissionId: "READ"
 ```
 
-### Cross-Module Service Call (Via Kernel Proxy)
+### Cross-Unit Service Call (Via Kernel Proxy)
 
 ```java
 // Method 1: @LingReference Injection (Highly Recommended)
-// Order Plugin uses interface defined by itself, implemented by User Plugin
+// Order ling uses interface defined by itself, implemented by User ling
 @Component
 public class OrderService {
     
     @LingReference
-    private UserQueryService userQueryService;  // Framework auto-routes to User Plugin implementation
+    private UserQueryService userQueryService;  // Framework auto-routes to User ling implementation
     
     public Order createOrder(String userId) {
         // This call passes through Core Permission Check and Audit
@@ -198,11 +199,11 @@ public class OrderService {
     }
 }
 
-// Method 2: PluginContext.getService()
+// Method 2: LingContext.getService()
 Optional<UserQueryService> service = context.getService(UserQueryService.class);
 
 // Method 3: FQSID Protocol Call
-Optional<UserDTO> user = context.invoke("user-plugin:find_user", userId);
+Optional<UserDTO> user = context.invoke("user-ling:find_user", userId);
 ```
 
 ---
@@ -212,16 +213,16 @@ Optional<UserDTO> user = context.invoke("user-plugin:find_user", userId);
 ```
 lingframe/
 ├── lingframe-api/              # Contract Layer (Interface, Annotation, Exception)
-├── lingframe-core/             # Governance Kernel (Auth, Audit, Module Mgmt)
+├── lingframe-core/             # Governance Kernel (Auth, Audit, Unit Mgmt)
 ├── lingframe-runtime/          # Runtime Integration
 │   └── lingframe-spring-boot3-starter/  # Spring Boot 3.x Integration
 ├── lingframe-infrastructure/   # Infrastructure Layer
 │   ├── lingframe-infra-storage/   # Storage Proxy, SQL-level Permission
 │   └── lingframe-infra-cache/     # Cache Proxy
 ├── lingframe-examples/         # Examples
-│   ├── lingframe-example-host-app/     # Host App
-│   ├── lingframe-example-plugin-user/  # User Module
-│   └── lingframe-example-plugin-order/ # Order Module
+│   ├── lingframe-example-lingcore-app/     # LINGCORE App
+│   ├── lingframe-example-ling-user/  # User Unit
+│   └── lingframe-example-ling-order/ # Order Unit
 ├── lingframe-dependencies/     # Dependency Management
 └── lingframe-bom/              # BOM provided to external
 ```
@@ -238,7 +239,7 @@ lingframe/
 | **Audit Tracing**     | Extension| None     | None       | ✅ Built-in       |
 | **Capability Arbitration**| Service Registry| None | Extension Point | ✅ Core Forced Proxy |
 | **Spring Native**     | Adapter  | Manual   | Extra Work | ✅ Parent-Child Context |
-| **Positioning**       | Modularity| Extension| Plugin Sys | **Runtime Governance** |
+| **Positioning**       | Modularity| Extension| ling Sys | **Runtime Governance** |
 
 ---
 
@@ -248,7 +249,7 @@ lingframe/
 | :---------- | :-------------------------------------------------- | :------------ |
 | **Phase 1** | Core Governance: Auth, Audit, Isolation             | ✅ **Done**   |
 | **Phase 2** | Visualization: Dashboard Governance Center          | ✅ **Basic Done**|
-| **Phase 3** | Elastic Governance: Circuit Break, Degrade, Retry, Rate Limit | 🔄 In Progress |
+| **Phase 3** | Elastic Governance: Circuit Break, Degrade, Retry, Rate Limit | ✅ **Done**    |
 | **Phase 4** | Observability: Metrics, Trace Visualization         | ⏳ Planned    |
 | **Phase 5** | Infra Extension: Message Proxy, Search Proxy        | ⏳ Planned    |
 
@@ -257,7 +258,7 @@ lingframe/
 ## 📚 Documentation
 
 - [Quick Start](getting-started.md) - 5 Minute Start
-- [Module Development Guide](plugin-development.md) - Develop Business Modules
+- [Unit Development Guide](ling-development.md) - Develop Business Units
 - [Shared API Guidelines](shared-api-guidelines.md) - API Design Best Practices
 - [Infrastructure Development](infrastructure-development.md) - Develop Infra Proxies
 - [Dashboard](dashboard.md) - Visual Governance Center

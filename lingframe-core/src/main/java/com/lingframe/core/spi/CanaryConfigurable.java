@@ -12,36 +12,36 @@ public interface CanaryConfigurable {
     /**
      * 设置金丝雀配置
      *
-     * @param pluginId      插件ID
+     * @param lingId      单元ID
      * @param percent       金丝雀流量百分比 (0-100)
      * @param canaryVersion 金丝雀版本号
      */
-    void setCanaryConfig(String pluginId, int percent, String canaryVersion);
+    void setCanaryConfig(String lingId, int percent, String canaryVersion);
 
     /**
      * 获取金丝雀流量百分比
      *
-     * @param pluginId 插件ID
+     * @param lingId 单元ID
      * @return 百分比 (0 表示无金丝雀)
      */
-    int getCanaryPercent(String pluginId);
+    int getCanaryPercent(String lingId);
 
     /**
      * 获取金丝雀版本号
      *
-     * @param pluginId 插件ID
+     * @param lingId 单元ID
      * @return 版本号，如果没有则返回 null
      */
-    default String getCanaryVersion(String pluginId) {
+    default String getCanaryVersion(String lingId) {
         return null;
     }
 
     /**
      * 清除金丝雀配置
      *
-     * @param pluginId 插件ID
+     * @param lingId 单元ID
      */
-    default void clearCanaryConfig(String pluginId) {
-        setCanaryConfig(pluginId, 0, null);
+    default void clearCanaryConfig(String lingId) {
+        setCanaryConfig(lingId, 0, null);
     }
 }

@@ -2,12 +2,12 @@ package com.lingframe.starter.filter;
 
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
-import com.lingframe.api.context.PluginContextHolder;
+import com.lingframe.api.context.LingContextHolder;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.plugin.PluginManager;
-import com.lingframe.core.plugin.PluginRuntime;
+import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -33,12 +33,12 @@ import java.util.HashMap;
 public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
     private final GovernanceKernel governanceKernel;
-    private final PluginManager pluginManager;
+    private final LingManager lingManager;
     private final WebInterfaceManager webInterfaceManager;
     private final LingFrameProperties properties;
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
 
-    private static final String HOST_PLUGIN_ID = "host-app";
+    private static final String HOST_Ling_ID = "lingcore-app";
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -52,29 +52,29 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             return;
         }
 
-        WebInterfaceMetadata pluginMeta = webInterfaceManager.getMetadata(handlerMethod);
-        boolean isPluginRequest = (pluginMeta != null);
+        WebInterfaceMetadata lingMeta = webInterfaceManager.getMetadata(handlerMethod);
+        boolean isLingRequest = (lingMeta != null);
 
-        if (!isPluginRequest && !properties.getHostGovernance().isEnabled()) {
+        if (!isLingRequest && !properties.getLingCoreGovernance().isEnabled()) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String pluginId = isPluginRequest ? pluginMeta.getPluginId() : HOST_PLUGIN_ID;
+        String lingId = isLingRequest ? lingMeta.getLingId() : HOST_Ling_ID;
 
         ClassLoader originalCL = null;
-        if (isPluginRequest) {
+        if (isLingRequest) {
             originalCL = Thread.currentThread().getContextClassLoader();
-            Thread.currentThread().setContextClassLoader(pluginMeta.getClassLoader());
+            Thread.currentThread().setContextClassLoader(lingMeta.getClassLoader());
         }
 
-        PluginContextHolder.set(pluginId);
+        LingContextHolder.set(lingId);
 
         try {
             Method method = handlerMethod.getMethod();
-            InvocationContext ctx = buildInvocationContext(request, method, pluginId, pluginMeta);
+            InvocationContext ctx = buildInvocationContext(request, method, lingId, lingMeta);
 
-            PluginRuntime runtime = isPluginRequest ? pluginManager.getRuntime(pluginId) : null;
+            LingRuntime runtime = isLingRequest ? lingManager.getRuntime(lingId) : null;
 
             governanceKernel.invoke(runtime, method, ctx, () -> {
                 try {
@@ -97,7 +97,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             if (originalCL != null) {
                 Thread.currentThread().setContextClassLoader(originalCL);
             }
-            PluginContextHolder.clear();
+            LingContextHolder.clear();
         }
     }
 
@@ -114,7 +114,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
     }
 
     private InvocationContext buildInvocationContext(HttpServletRequest request, Method method,
-            String pluginId, WebInterfaceMetadata meta) {
+            String lingId, WebInterfaceMetadata meta) {
         String permission;
         RequiresPermission permAnn = AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class);
         if (permAnn != null) {
@@ -160,8 +160,8 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
         return InvocationContext.builder()
                 .traceId(request.getHeader("X-Trace-Id"))
-                .pluginId(pluginId)
-                .callerPluginId("http-gateway")
+                .lingId(lingId)
+                .callerLingId("http-gateway")
                 .resourceType("HTTP")
                 .resourceId(request.getMethod() + " " + request.getRequestURI())
                 .operation(method.getName())

@@ -15,17 +15,17 @@ import java.util.Set;
  * 职责：管理 SharedApiClassLoader 中的共享 API，支持启动时预加载和动态添加
  * <p>
  * 架构设计：三层 ClassLoader 结构
- * 
+ *
  * <pre>
- * 宿主 ClassLoader (AppClassLoader)
+ * 灵核 ClassLoader (AppClassLoader)
  *     ↓ parent
  * SharedApiClassLoader (共享 API 层)
  *     ↓ parent
- * PluginClassLoader (插件实现层)
+ * LingClassLoader (单元实现层)
  * </pre>
  * <p>
  * 配置 preload-api-jars 指定共享 API 路径，支持：
- * - JAR 文件、Maven 模块目录、JAR 目录、通配符模式
+ * - JAR 文件、Maven 单元目录、JAR 目录、通配符模式
  */
 @Slf4j
 public class SharedApiManager {
@@ -57,20 +57,21 @@ public class SharedApiManager {
         }
 
         SharedApiClassLoader sharedApiCL = getSharedApiClassLoader();
-        File pluginHomeDir = new File(config.getPluginHome());
+        File lingHomeDir = new File(config.getLingHome());
 
         for (String path : apiPaths) {
             try {
-                loadPath(path, pluginHomeDir, sharedApiCL);
+                log.info("🔍 [SharedApi] Preloading path: {}", new File(path).getAbsolutePath());
+                loadPath(path, lingHomeDir, sharedApiCL);
             } catch (Exception e) {
                 log.error("❌ [SharedApi] Load failed: {}", path, e);
             }
         }
 
-        // 将共享 API 包前缀注册到 PluginClassLoader，使其强制委派给 SharedApiClassLoader
+        // 将共享 API 包前缀注册到 LingClassLoader，使其强制委派给 SharedApiClassLoader
         Set<String> sharedPackages = sharedApiCL.getSharedPackagePrefixes();
         if (!sharedPackages.isEmpty()) {
-            PluginClassLoader.addSharedApiPackages(sharedPackages);
+            LingClassLoader.addSharedApiPackages(sharedPackages);
         }
 
         log.info("📦 [SharedApi] Initialization complete - Loaded: {}, Shared classes: {}, Shared packages: {}",
@@ -82,18 +83,18 @@ public class SharedApiManager {
      * 支持:
      * - JAR 文件
      * - classes 目录 (直接包含 .class 文件)
-     * - Maven 模块目录 (包含 pom.xml 且有 target/classes)
+     * - Maven 单元目录 (包含 pom.xml 且有 target/classes)
      * - JAR 目录 (包含多个 JAR，自动扫描所有 *.jar)
      * - 通配符模式 (如 libs/*-api.jar)
      */
-    private void loadPath(String path, File pluginHomeDir, SharedApiClassLoader sharedApiCL) {
+    private void loadPath(String path, File lingHomeDir, SharedApiClassLoader sharedApiCL) {
         // 🔥 支持通配符模式
         if (containsWildcard(path)) {
-            loadWildcardPath(path, pluginHomeDir, sharedApiCL);
+            loadWildcardPath(path, lingHomeDir, sharedApiCL);
             return;
         }
 
-        File file = resolvePath(path, pluginHomeDir);
+        File file = resolvePath(path, lingHomeDir);
         if (file == null || !file.exists()) {
             log.warn("⚠️ [SharedApi] Path not found: {}", path);
             return;
@@ -113,15 +114,15 @@ public class SharedApiManager {
      * 加载目录（自动检测目录类型）
      */
     private void loadDirectory(File dir, SharedApiClassLoader sharedApiCL) {
-        // 1. 检查是否是 Maven 模块目录
+        // 1. 检查是否是 Maven 单元目录
         File pomFile = new File(dir, "pom.xml");
         if (pomFile.exists()) {
             File classesDir = new File(dir, "target/classes");
             if (classesDir.exists() && classesDir.isDirectory()) {
                 sharedApiCL.addApiClassesDir(classesDir);
-                log.info("📦 [SharedApi] Maven module loaded: {}/target/classes", dir.getName());
+                log.info("📦 [SharedApi] Maven unit loaded: {}/target/classes", dir.getName());
             } else {
-                log.warn("⚠️ [SharedApi] Maven module target/classes missing: {}, please run mvn compile first",
+                log.warn("⚠️ [SharedApi] Maven unit target/classes missing: {}, please run mvn compile first",
                         dir.getName());
             }
             return;
@@ -152,16 +153,16 @@ public class SharedApiManager {
 
     /**
      * 加载通配符匹配的路径
-     * 支持: libs/*-api.jar, modules/
+     * 支持: libs/*-api.jar, units/
      */
-    private void loadWildcardPath(String pattern, File pluginHomeDir, SharedApiClassLoader sharedApiCL) {
+    private void loadWildcardPath(String pattern, File lingHomeDir, SharedApiClassLoader sharedApiCL) {
         // 分离目录部分和文件名模式
         int lastSep = Math.max(pattern.lastIndexOf('/'), pattern.lastIndexOf('\\'));
         String dirPart = lastSep > 0 ? pattern.substring(0, lastSep) : ".";
         String filePattern = lastSep > 0 ? pattern.substring(lastSep + 1) : pattern;
 
         // 解析目录
-        File dir = resolvePath(dirPart, pluginHomeDir);
+        File dir = resolvePath(dirPart, lingHomeDir);
         if (dir == null || !dir.exists() || !dir.isDirectory()) {
             log.warn("⚠️ [SharedApi] Wildcard base directory not found: {}", dirPart);
             return;
@@ -245,10 +246,10 @@ public class SharedApiManager {
     }
 
     /**
-     * 解析路径（支持绝对路径、相对 CWD 路径、相对 pluginHome 路径）
+     * 解析路径（支持绝对路径、相对 CWD 路径、相对 lingHome 路径）
      * 始终返回规范化的绝对路径
      */
-    private File resolvePath(String path, File pluginHomeDir) {
+    private File resolvePath(String path, File lingHomeDir) {
         if (path == null || path.trim().isEmpty()) {
             return null;
         }
@@ -266,14 +267,14 @@ public class SharedApiManager {
             return getTypeSafeFile(file);
         }
 
-        // 3. 尝试相对于 pluginHomeDir
-        File pluginFile = new File(pluginHomeDir, path);
-        if (pluginFile.exists()) {
-            return getTypeSafeFile(pluginFile);
+        // 3. 尝试相对于 lingHomeDir
+        File lingFile = new File(lingHomeDir, path);
+        if (lingFile.exists()) {
+            return getTypeSafeFile(lingFile);
         }
 
-        // 4. 都不存在，返回相对于 pluginHome 的路径（用于后续报错）
-        return getTypeSafeFile(pluginFile);
+        // 4. 都不存在，返回相对于 lingHome 的路径（用于后续报错）
+        return getTypeSafeFile(lingFile);
     }
 
     private File getTypeSafeFile(File file) {

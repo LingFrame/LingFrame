@@ -34,18 +34,18 @@ mvn clean install -DskipTests
 ### 2. Start Example Application
 
 ```bash
-cd lingframe-examples/lingframe-example-host-app
+cd lingframe-examples/lingframe-example-lingcore-app
 mvn spring-boot:run
 ```
 
-### 3. Test Plugin Service
+### 3. Test ling Service
 
 ```bash
-# Query user list (Provided by user-plugin)
-curl http://localhost:8888/user-plugin/user/listUsers
+# Query user list (Provided by user-ling)
+curl http://localhost:8888/user-ling/user/listUsers
 
 # Query single user
-curl "http://localhost:8888/user-plugin/user/queryUser?userId=1"
+curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
 ```
 
 Congratulations! You have successfully run your first LingFrame application!
@@ -75,13 +75,13 @@ Congratulations! You have successfully run your first LingFrame application!
 
 ### Key Principles
 
-1. **Zero Trust**: Business modules can only access infrastructure via Core.
-2. **Context Isolation**: Each module has an independent Spring Child Context.
-3. **FQSID Routing**: Services are identified by global unique `pluginId:serviceId`.
+1. **Zero Trust**: Business units can only access infrastructure via Core.
+2. **Context Isolation**: Each unit has an independent Spring Child Context.
+3. **FQSID Routing**: Services are identified by global unique `lingId:serviceId`.
 
 ---
 
-## Create Host Application
+## Create LingCore Application
 
 ### 1. Add Dependency
 
@@ -97,9 +97,9 @@ Congratulations! You have successfully run your first LingFrame application!
 
 ```java
 @SpringBootApplication
-public class HostApplication {
+public class LingCoreApplication {
     public static void main(String[] args) {
-        SpringApplication.run(HostApplication.class, args);
+        SpringApplication.run(LingCoreApplication.class, args);
     }
 }
 ```
@@ -120,14 +120,14 @@ lingframe:
   preload-api-jars:
     - lingframe-examples/lingframe-example-order-api
   
-  # Plugin Directory
-  plugin-home: plugins              # Production: JAR directory
-  plugin-roots:                     # Development: Source code directory
-    - lingframe-examples/lingframe-example-plugin-order
-    - lingframe-examples/lingframe-example-plugin-user
+  # ling Directory
+  ling-home: lings              # Production: JAR directory
+  ling-roots:                     # Development: Source code directory
+    - lingframe-examples/lingframe-example-ling-order
+    - lingframe-examples/lingframe-example-ling-user
   
-  # Host Governance (Optional)
-  host-governance:
+  # LingCore governance (Optional)
+  ling-core-governance:
     enabled: false
 
 # Advanced Feature: Visual Dashboard (Optional, default disabled)
@@ -135,19 +135,19 @@ lingframe:
 #   enabled: true
 ```
 
-### 4. Call Plugin Service in Host
+### 4. Call ling Service in LINGCORE
 
-Use `@LingReference` to auto-inject plugin services. LingFrame uses **Consumer-Driven Contracts**:
+Use `@LingReference` to auto-inject ling services. LingFrame uses **Consumer-Driven Contracts**:
 
 ```java
-// Host App (Consumer) defines the interface it needs
-// Location: host-api/.../OrderQueryService.java
+// LINGCORE App (Consumer) defines the interface it needs
+// Location: LINGCORE-api/.../OrderQueryService.java
 public interface OrderQueryService {
     List<OrderDTO> findByUserId(Long userId);
 }
 
-// Order Plugin (Producer) implements the interface defined by Host
-// Location: order-plugin/.../OrderQueryServiceImpl.java
+// Order ling (Producer) implements the interface defined by LINGCORE
+// Location: order-ling/.../OrderQueryServiceImpl.java
 @Component
 public class OrderQueryServiceImpl implements OrderQueryService {
     @LingService(id = "find_orders_by_user", desc = "Query User Orders")
@@ -157,13 +157,13 @@ public class OrderQueryServiceImpl implements OrderQueryService {
     }
 }
 
-// Host App uses the interface it defined
+// LINGCORE App uses the interface it defined
 @RestController
 @RequiredArgsConstructor
 public class OrderController {
 
     @LingReference
-    private OrderQueryService orderQueryService;  // Framework auto-routes to Order Plugin
+    private OrderQueryService orderQueryService;  // Framework auto-routes to Order ling
 
     @GetMapping("/orders/user/{userId}")
     public List<OrderDTO> getUserOrders(@PathVariable Long userId) {
@@ -178,15 +178,15 @@ public class OrderController {
 
 ```
 lingframe-examples/
-├── lingframe-example-host-app        # Host Application
+├── lingframe-example-lingcore-app        # LingCore Application
 ├── lingframe-example-order-api       # Shared API (Interface defined by Consumer)
-├── lingframe-example-plugin-order    # Order Module
-└── lingframe-example-plugin-user     # User Module (Provides /user/* API)
+├── lingframe-example-ling-order    # Order Unit
+└── lingframe-example-ling-user     # User Unit (Provides /user/* API)
 ```
 
-## Create Business Module
+## Create Business Unit
 
-See [Module Development Guide](plugin-development.md)
+See [Unit Development Guide](ling-development.md)
 
 ## Security Governance Demo (Killer Feature)
 
@@ -194,12 +194,12 @@ The example project has built-in governance policies. You can experience LingFra
 
 ### 1. Attempt Illegal Write (SQL Interception)
 
-User Plugin declared `READ` permission for database in `plugin.yml`, but did NOT declare `WRITE` permission.
+User ling declared `READ` permission for database in `ling.yml`, but did NOT declare `WRITE` permission.
 
 Call Create User API (Executes INSERT SQL):
 
 ```bash
-curl -X POST "http://localhost:8888/user-plugin/user/createUser?name=Attacker&email=hacker@test.com"
+curl -X POST "http://localhost:8888/user-ling/user/createUser?name=Attacker&email=hacker@test.com"
 ```
 
 **Expected Result**:
@@ -207,51 +207,51 @@ curl -X POST "http://localhost:8888/user-plugin/user/createUser?name=Attacker&em
 - Observe exception in console log:
 
 ```text
-c.l.core.exception.PermissionDeniedException: Plugin [user-plugin] requires [storage:sql] with [WRITE] access, but only allowed: [READ]
+c.l.core.exception.PermissionDeniedException: ling [user-ling] requires [storage:sql] with [WRITE] access, but only allowed: [READ]
 ```
 
 ### 2. Experience Cache Acceleration (Cache Proxy)
 
-User Plugin declared `WRITE` permission for `cache:local`.
+User ling declared `WRITE` permission for `cache:local`.
 
 **First Query** (Trigger SQL query and write to cache):
 
 ```bash
-curl "http://localhost:8888/user-plugin/user/queryUser?userId=1"
+curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
 ```
 
 Observe Log:
 ```text
 Executing SQL: SELECT * FROM t_user WHERE id = ?
 Cache PUT: users::1
-Audit: Plugin [user-plugin] accessed [storage:sql] (ALLOWED)
+Audit: ling [user-ling] accessed [storage:sql] (ALLOWED)
 ```
 
 **Second Query** (Cache Hit, No SQL):
 
 ```bash
-curl "http://localhost:8888/user-plugin/user/queryUser?userId=1"
+curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
 ```
 
 Observe Log:
 ```text
 Cache HIT: users::1
-Audit: Plugin [user-plugin] accessed [cache:local] (ALLOWED)
+Audit: ling [user-ling] accessed [cache:local] (ALLOWED)
 ```
 
-### 3. [Real World Case] Host Initialization Intercepted?
+### 3. [Real World Case] LINGCORE Initialization Intercepted?
 
-In early versions, LingFrame's security policy was so strict that it even intercepted Spring Boot's startup SQL initialization script (`schema.sql`), throwing `Security Alert: SQL execution without PluginContext...`. This proves the **no-blind-spot coverage** of the governance kernel—even I/O operations during framework startup cannot escape it.
+In early versions, LingFrame's security policy was so strict that it even intercepted Spring Boot's startup SQL initialization script (`schema.sql`), throwing `Security Alert: SQL execution without LingContext...`. This proves the **no-blind-spot coverage** of the governance kernel—even I/O operations during framework startup cannot escape it.
 
 ![Startup Interception](images/initDB.png)
 
-> Current versions check if host governance is enabled to ensure developer experience.
+> Current versions check if LingCore governance is enabled to ensure developer experience.
 
 ---
 
 ## Next Steps
 
-- [Module Development Guide](plugin-development.md) - Learn how to develop business modules
+- [Unit Development Guide](ling-development.md) - Learn how to develop business units
 - [Shared API Guidelines](shared-api-guidelines.md) - API Design Best Practices
 - [Dashboard Visual Governance](dashboard.md) - Advanced Optional Feature
 - [Architecture Design](architecture.md) - Deep dive into governance principles

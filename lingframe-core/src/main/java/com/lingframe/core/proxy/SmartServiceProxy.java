@@ -1,10 +1,10 @@
 package com.lingframe.core.proxy;
 
-import com.lingframe.api.context.PluginContextHolder;
+import com.lingframe.api.context.LingContextHolder;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.plugin.PluginRuntime;
+import com.lingframe.core.ling.LingRuntime;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationHandler;
@@ -20,24 +20,27 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class SmartServiceProxy implements InvocationHandler {
 
-    private final String callerPluginId; // 谁在调用
-    private final PluginRuntime targetRuntime; // 核心锚点
+    private final String callerLingId; // 谁在调用
+    private final LingRuntime targetRuntime; // 核心锚点
     private final Class<?> serviceInterface;
     private final GovernanceKernel governanceKernel;// 内核
 
     // ================= 性能优化：ThreadLocal 对象池 =================
     // 在同一线程内复用 InvocationContext，避免每次 new 造成的 GC 压力
+    // ⚠️警告：为了极致性能，这里故意没有调用 remove()。这意味着它会与线程（如 HTTP 工作线程）同寿命。
+    // 必须确保 InvocationContext 不要被随意塞入由 LingClassLoader 加载的类实例，否则会引发严重泄漏。
+    // 每次 invoke 结束时，必须执行清理（最终的 finally 块），切断大对象和强引用！
     private static final ThreadLocal<InvocationContext> CTX_POOL = ThreadLocal.withInitial(() -> null);
 
     // 缓存静态元数据 (如 ResourceId)，不再缓存动态权限
     // 🔥 使用实例级缓存而非 static，避免 Method Key 持有 Class → ClassLoader 引用导致泄漏
     private final Map<Method, String> resourceIdCache = new ConcurrentHashMap<>();
 
-    public SmartServiceProxy(String callerPluginId,
-            PluginRuntime targetRuntime, // 核心锚点,
+    public SmartServiceProxy(String callerLingId,
+            LingRuntime targetRuntime, // 核心锚点,
             Class<?> serviceInterface,
             GovernanceKernel governanceKernel) {
-        this.callerPluginId = callerPluginId;
+        this.callerLingId = callerLingId;
         this.targetRuntime = targetRuntime;
         this.serviceInterface = serviceInterface;
         this.governanceKernel = governanceKernel;
@@ -61,15 +64,15 @@ public class SmartServiceProxy implements InvocationHandler {
             // 【关键】重置/填充上下文属性
             // Identity
             finalCtx.setTraceId(null); // 由 Kernel 处理
-            finalCtx.setCallerPluginId(this.callerPluginId);
-            finalCtx.setPluginId(targetRuntime.getPluginId());
+            finalCtx.setCallerLingId(this.callerLingId);
+            finalCtx.setLingId(targetRuntime.getLingId());
             finalCtx.setOperation(method.getName());
             // Runtime Data (每次请求必变)
             finalCtx.setArgs(args);
             // Resource
             finalCtx.setResourceType("RPC");
             // Labels
-            Map<String, String> labels = PluginContextHolder.getLabels();
+            Map<String, String> labels = LingContextHolder.getLabels();
             finalCtx.setLabels(labels != null ? labels : Collections.emptyMap());
 
             String resourceId = resourceIdCache.computeIfAbsent(method,
@@ -113,6 +116,13 @@ public class SmartServiceProxy implements InvocationHandler {
     private static class ProxyExecutionException extends RuntimeException {
         public ProxyExecutionException(Throwable cause) {
             super(cause);
+        }
+
+        @Override
+        public synchronized Throwable fillInStackTrace() {
+            // 优化：禁用异常栈收集。这个异常仅仅是作为穿透 Callable/Lambda 的载体，
+            // 收集当前代理层的栈没有业务意义，禁用以获得极致性能。
+            return this;
         }
     }
 

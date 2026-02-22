@@ -13,7 +13,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 
 @Slf4j
-// ✅ 技术栈探测：宿主有 caffeine
+// ✅ 技术栈探测：灵核有 caffeine
 @ConditionalOnClass(Cache.class)
 // ✅ 核心强制：框架开启即生效
 @ConditionalOnProperty(prefix = "lingframe", name = "enabled", havingValue = "true", matchIfMissing = true)

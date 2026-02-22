@@ -1,0 +1,68 @@
+server:
+  port: 8888
+
+spring:
+  # 修复 Spring Boot 2.6+ 与 SpringDoc 1.x 的兼容性问题
+  # 避免 "Expected lookupPath in request attribute" 错误
+  mvc:
+    path match:
+      matching-strategy: ant_path_matcher
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    open-in-view: false
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:lingframe;DB_CLOSE_DELAY=-1;MODE=MySQL
+    username: sa
+    password:
+
+  # 演示用：使用简单的 ConcurrentMapCacheManager
+  cache:
+    type: simple
+
+lingframe:
+  enabled: true
+  dev-mode: true
+  preload-api-jars:
+    - lingframe-examples/lingframe-example-order-api
+  ling-home: lings
+  ling-roots:
+    - lingframe-examples/lingframe-example-ling-order
+    - lingframe-examples/lingframe-example-ling-user
+    - lingframe-examples/lingframe-example-ling-user-canary
+  ling-core-governance:
+    enabled: false
+    govern-internal-calls: true
+    check-permissions: true
+  # 开启 Dashboard 功能
+  dashboard:
+    enabled: true
+
+# SpringDoc OpenAPI 配置
+springdoc:
+  # 禁用 SpringDoc 缓存以支持单元动态加载
+  cache:
+    disabled: true
+  packages-to-scan: com.lingframe
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  group-configs:
+    - group: 00-all
+      display-name: 00. All APIs
+      paths-to-match: /**
+    - group: 01-core
+      display-name: 01. Core (Dashboard)
+      paths-to-match: /**/dashboard/**
+    - group: 02-LINGCORE
+      display-name: 02. LINGCORE Application
+      paths-to-exclude: /**/dashboard/**, /*-Ling/**
+    - group: 03-Lings
+      display-name: 03. Lings
+      paths-to-match: /**-Ling/**

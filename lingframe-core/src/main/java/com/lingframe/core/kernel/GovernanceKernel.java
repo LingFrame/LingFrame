@@ -10,7 +10,7 @@ import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.GovernanceDecision;
 import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.api.exception.PermissionDeniedException;
-import com.lingframe.core.plugin.PluginRuntime;
+import com.lingframe.core.ling.LingRuntime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -33,12 +33,12 @@ public class GovernanceKernel {
     /**
      * 核心拦截入口
      *
-     * @param runtime  当前插件运行时 (Host调用时可能为null)
+     * @param runtime  当前单元运行时 (Host调用时可能为null)
      * @param method   目标方法
      * @param ctx      调用上下文
      * @param executor 真实执行逻辑
      */
-    public Object invoke(PluginRuntime runtime, Method method, InvocationContext ctx, Supplier<Object> executor) {
+    public Object invoke(LingRuntime runtime, Method method, InvocationContext ctx, Supplier<Object> executor) {
         // Trace 开启
         boolean isRootTrace = (TraceContext.get() == null);
 
@@ -55,8 +55,8 @@ public class GovernanceKernel {
         int currentDepth = TraceContext.getDepth();
 
         // 发布入站日志
-        publishTrace(ctx.getTraceId(), ctx.getPluginId(),
-                String.format("→ INGRESS: %s calls %s", ctx.getCallerPluginId(), ctx.getResourceId()),
+        publishTrace(ctx.getTraceId(), ctx.getLingId(),
+                String.format("→ INGRESS: %s calls %s", ctx.getCallerLingId(), ctx.getResourceId()),
                 "IN", currentDepth);
 
         long startTime = System.nanoTime();
@@ -70,19 +70,19 @@ public class GovernanceKernel {
 
         try {
             // Auth 鉴权
-            // 检查插件级权限
+            // 检查单元级权限
             // 这一步必须查 Target，因为如果 Target 挂了，谁调都没用
-            if (!permissionService.isAllowed(ctx.getPluginId(), Capabilities.PLUGIN_ENABLE, AccessType.EXECUTE)) {
-                throw new PermissionDeniedException(ctx.getPluginId(), Capabilities.PLUGIN_ENABLE);
+            if (!permissionService.isAllowed(ctx.getLingId(), Capabilities.Ling_ENABLE, AccessType.EXECUTE)) {
+                throw new PermissionDeniedException(ctx.getLingId(), Capabilities.Ling_ENABLE);
             }
 
             // 核心检查：检查推导出的权限(始终检查 Caller)
             // 🔥无论是 Web 还是 RPC，永远检查 Caller
-            // Web 请求的 Caller 是 "host-gateway"
-            // RPC 请求的 Caller 是 "order-plugin"
-            String callerId = ctx.getCallerPluginId();
+            // Web 请求的 Caller 是 "lingcore-gateway"
+            // RPC 请求的 Caller 是 "order-ling"
+            String callerId = ctx.getCallerLingId();
             if (callerId == null) {
-                callerId = ctx.getPluginId();
+                callerId = ctx.getLingId();
             }
 
             // 如果 Adapter 没推导出权限，则默认检查 resourceId
@@ -96,7 +96,7 @@ public class GovernanceKernel {
 
             if (!permissionService.isAllowed(callerId, perm, type)) {
                 String source = (decision != null && decision.getSource() != null) ? decision.getSource() : "Unknown";
-                log.warn("⛔ Permission Denied: Plugin=[{}] needs=[{}] type=[{}] (Rule Source: {})",
+                log.warn("⛔ Permission Denied: ling=[{}] needs=[{}] type=[{}] (Rule Source: {})",
                         callerId, perm, type, source);
                 throw new PermissionDeniedException(callerId, perm, type);
             }
@@ -118,7 +118,7 @@ public class GovernanceKernel {
                     success = true;
 
                     // 发布 Trace Success
-                    publishTrace(ctx.getTraceId(), ctx.getPluginId(),
+                    publishTrace(ctx.getTraceId(), ctx.getLingId(),
                             "← RETURN: Success", "OUT", currentDepth);
 
                     return result;
@@ -135,7 +135,7 @@ public class GovernanceKernel {
                     if (decision != null && decision.getFallbackValue() != null) {
                         log.info("[{}] Fallback triggered. Returning: {}", ctx.getResourceId(),
                                 decision.getFallbackValue());
-                        publishTrace(ctx.getTraceId(), ctx.getPluginId(),
+                        publishTrace(ctx.getTraceId(), ctx.getLingId(),
                                 "← FALLBACK: " + decision.getFallbackValue(), "OUT", currentDepth);
                         // 降级视为业务成功，或者是特殊的"降级成功"
                         // 这里我们标记 success=false (业务失败)，或者需要一个新的状态?
@@ -158,7 +158,7 @@ public class GovernanceKernel {
             error = e;
 
             // 发布 Trace Error
-            publishTrace(ctx.getTraceId(), ctx.getPluginId(),
+            publishTrace(ctx.getTraceId(), ctx.getLingId(),
                     "✖ ERROR: " + e.getMessage(), "ERROR", currentDepth);
 
             throw e;// 异常抛出给上层处理
@@ -171,12 +171,12 @@ public class GovernanceKernel {
                 String action = ctx.getAuditAction();
                 if (action == null)
                     action = ctx.getOperation();
-                String caller = ctx.getCallerPluginId() != null ? ctx.getCallerPluginId() : ctx.getPluginId();
+                String caller = ctx.getCallerLingId() != null ? ctx.getCallerLingId() : ctx.getLingId();
 
                 try {
                     AuditManager.asyncRecord(
                             ctx.getTraceId(),
-                            caller, // 记录谁被调用，或者记录 ctx.getCallerPluginId()
+                            caller, // 记录谁被调用，或者记录 ctx.getCallerLingId()
                             action,
                             ctx.getResourceId(),
                             ctx.getArgs(),
@@ -202,10 +202,10 @@ public class GovernanceKernel {
         }
     }
 
-    private void publishTrace(String traceId, String pluginId, String action, String type, int depth) {
+    private void publishTrace(String traceId, String lingId, String action, String type, int depth) {
         if (eventBus != null) {
             try {
-                eventBus.publish(new MonitoringEvents.TraceLogEvent(traceId, pluginId, action, type, depth));
+                eventBus.publish(new MonitoringEvents.TraceLogEvent(traceId, lingId, action, type, depth));
             } catch (Exception e) {
                 // 吞掉监控异常，不影响业务
                 log.warn("Failed to publish trace event", e);

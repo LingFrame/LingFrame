@@ -16,7 +16,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.data.redis.core.RedisTemplate;
 
 @Slf4j
-// ✅ 技术栈探测：宿主有 RedisTemplate 类
+// ✅ 技术栈探测：灵核有 RedisTemplate 类
 @ConditionalOnClass(RedisTemplate.class)
 // ✅ 核心强制：框架开启即生效
 @ConditionalOnProperty(prefix = "lingframe", name = "enabled", havingValue = "true", matchIfMissing = true)

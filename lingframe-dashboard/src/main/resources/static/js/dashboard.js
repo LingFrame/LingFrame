@@ -6,12 +6,12 @@ const API_BASE = '/lingframe/dashboard';
 createApp({
     setup() {
         // ==================== 状态 ====================
-        const plugins = ref([]);
+        const lings = ref([]);
         const activeId = ref(null);
         const canaryPct = ref(0);
         const isAuto = ref(false);
         const ipcEnabled = ref(true);
-        const ipcTarget = ref('user-plugin');
+        const ipcTarget = ref('user-ling');
         const logs = ref([]);
         const lastAudit = ref(null);
         const logViewMode = ref('current');
@@ -26,7 +26,7 @@ createApp({
         const stats = reactive({ total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
 
         const loading = reactive({
-            plugins: false,
+            lings: false,
             status: false,
             canary: false,
             permissions: false,
@@ -60,9 +60,9 @@ createApp({
         let toastIdCounter = 0;
 
         // ==================== 计算属性 ====================
-        const activePlugin = computed(() => plugins.value.find(p => p.pluginId === activeId.value));
-        const canCanary = computed(() => activePlugin.value?.versions?.length >= 2);
-        const canOperate = computed(() => activePlugin.value?.status === 'ACTIVE');
+        const activeLing = computed(() => lings.value.find(p => p.lingId === activeId.value));
+        const canCanary = computed(() => activeLing.value?.versions?.length >= 2);
+        const canOperate = computed(() => activeLing.value?.status === 'ACTIVE');
         const sseStatusText = computed(() => ({
             connected: t('sidebar.sseConnected'),
             connecting: t('sidebar.sseConnecting'),
@@ -71,7 +71,7 @@ createApp({
 
         const displayLogs = computed(() => {
             if (logViewMode.value === 'current' && activeId.value) {
-                return logs.value.filter(l => l.pluginId === activeId.value);
+                return logs.value.filter(l => l.lingId === activeId.value);
             }
             return logs.value;
         });
@@ -115,36 +115,36 @@ createApp({
             }
         };
 
-        // ==================== 插件操作 ====================
-        const refreshPlugins = async () => {
-            loading.plugins = true;
+        // ==================== 单元操作 ====================
+        const refreshLings = async () => {
+            loading.lings = true;
             try {
-                plugins.value = await api.get('/plugins');
+                lings.value = await api.get('/lings');
             } catch (e) {
-                showToast(t('toast.getPluginsFailed') + ': ' + e.message, 'error');
+                showToast(t('toast.getLingsFailed') + ': ' + e.message, 'error');
             } finally {
-                loading.plugins = false;
+                loading.lings = false;
             }
         };
 
-        const selectPlugin = async (pluginId) => {
+        const selectLing = async (lingId) => {
             // ... (Same logic, no strings to change inside normally) ...
             if (isAuto.value) {
                 toggleAuto(); // 停止压测
             }
-            activeId.value = pluginId;
-            const plugin = plugins.value.find(p => p.pluginId === pluginId);
-            if (plugin) {
-                canaryPct.value = plugin.canaryPercent || 0;
+            activeId.value = lingId;
+            const ling = lings.value.find(p => p.lingId === lingId);
+            if (ling) {
+                canaryPct.value = ling.canaryPercent || 0;
             }
             // 重置统计
             Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
             lastAudit.value = null;
 
-            // 设置 IPC 目标为其他插件
-            const otherPlugin = plugins.value.find(p => p.pluginId !== pluginId && p.status === 'ACTIVE');
-            if (otherPlugin) {
-                ipcTarget.value = otherPlugin.pluginId;
+            // 设置 IPC 目标为其他单元
+            const otherLing = lings.value.find(p => p.lingId !== lingId && p.status === 'ACTIVE');
+            if (otherLing) {
+                ipcTarget.value = otherLing.lingId;
             }
 
             // 同步 IPC 开关状态
@@ -155,10 +155,10 @@ createApp({
             if (!activeId.value) return;
             loading.status = true;
             try {
-                const updated = await api.post(`/plugins/${activeId.value}/status`, { status: newStatus });
-                const idx = plugins.value.findIndex(p => p.pluginId === activeId.value);
+                const updated = await api.post(`/lings/${activeId.value}/status`, { status: newStatus });
+                const idx = lings.value.findIndex(p => p.lingId === activeId.value);
                 if (idx !== -1 && updated) {
-                    plugins.value[idx] = updated;
+                    lings.value[idx] = updated;
                 }
                 showToast(t('toast.statusUpdated', { status: newStatus }), 'success');
             } catch (e) {
@@ -169,17 +169,17 @@ createApp({
         };
 
         const requestUnload = () => {
-            if (!activePlugin.value) return;
+            if (!activeLing.value) return;
             modal.title = t('modal.confirmUnload');
-            modal.message = t('modal.unloadWarning', { pluginId: activeId.value });
+            modal.message = t('modal.unloadWarning', { lingId: activeId.value });
             modal.actionText = t('modal.unloadAction');
             modal.onConfirm = async () => {
                 modal.loading = true;
                 try {
-                    await api.delete(`/plugins/uninstall/${activeId.value}`);
-                    plugins.value = plugins.value.filter(p => p.pluginId !== activeId.value);
+                    await api.delete(`/lings/uninstall/${activeId.value}`);
+                    lings.value = lings.value.filter(p => p.lingId !== activeId.value);
                     activeId.value = null;
-                    showToast(t('toast.pluginUnloaded'), 'success');
+                    showToast(t('toast.lingUnloaded'), 'success');
                 } catch (e) {
                     showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
                 } finally {
@@ -194,7 +194,7 @@ createApp({
             if (modal.onConfirm) modal.onConfirm();
         };
 
-        // ==================== 上传插件 ====================
+        // ==================== 上传单元 ====================
         const openUploadModal = () => {
             uploadModal.show = true;
             uploadModal.file = null;
@@ -253,7 +253,7 @@ createApp({
                 const formData = new FormData();
                 formData.append('file', uploadModal.file);
 
-                const res = await fetch(API_BASE + '/plugins/install', {
+                const res = await fetch(API_BASE + '/lings/install', {
                     method: 'POST',
                     body: formData
                 });
@@ -266,7 +266,7 @@ createApp({
 
                 showToast(t('toast.installSuccess'), 'success');
                 closeUploadModal();
-                refreshPlugins(); // 刷新列表
+                refreshLings(); // 刷新列表
             } catch (e) {
                 clearInterval(progressTimer);
                 uploadModal.progress = 0;
@@ -276,33 +276,33 @@ createApp({
             }
         };
 
-        const reloadPlugin = async (pluginId) => {
-            loading.plugins = true; // 复用 plugins loading
+        const reloadLing = async (lingId) => {
+            loading.lings = true; // 复用 lings loading
             try {
-                await api.post(`/plugins/${pluginId}/reload`);
+                await api.post(`/lings/${lingId}/reload`);
                 showToast(t('toast.reloadSuccess'), 'success');
-                refreshPlugins();
+                refreshLings();
             } catch (e) {
                 showToast(t('toast.reloadFailed') + ': ' + e.message, 'error');
             } finally {
-                loading.plugins = false;
+                loading.lings = false;
             }
         };
 
-        const requestUnloadWithName = (pluginId) => {
+        const requestUnloadWithName = (lingId) => {
             modal.title = t('modal.confirmUnload');
-            modal.message = t('modal.unloadWarning', { pluginId });
+            modal.message = t('modal.unloadWarning', { lingId });
             modal.actionText = t('modal.unloadAction');
             modal.onConfirm = async () => {
                 modal.loading = true;
                 try {
-                    await api.delete(`/plugins/uninstall/${pluginId}`);
-                    plugins.value = plugins.value.filter(p => p.pluginId !== pluginId);
-                    if (activeId.value === pluginId) {
+                    await api.delete(`/lings/uninstall/${lingId}`);
+                    lings.value = lings.value.filter(p => p.lingId !== lingId);
+                    if (activeId.value === lingId) {
                         activeId.value = null;
                         Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 }); // Reset stats
                     }
-                    showToast(t('toast.pluginUnloaded'), 'success');
+                    showToast(t('toast.lingUnloaded'), 'success');
                 } catch (e) {
                     showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
                 } finally {
@@ -316,9 +316,9 @@ createApp({
             if (!activeId.value || !canCanary.value) return;
             loading.canary = true;
             try {
-                await api.post(`/plugins/${activeId.value}/canary`, {
+                await api.post(`/lings/${activeId.value}/canary`, {
                     percent: canaryPct.value,
-                    canaryVersion: activePlugin.value?.canaryVersion
+                    canaryVersion: activeLing.value?.canaryVersion
                 });
                 showToast(t('toast.canarySet', { percent: canaryPct.value }), 'success');
             } catch (e) {
@@ -330,11 +330,11 @@ createApp({
 
         // ==================== 权限操作 ====================
         const togglePerm = async (perm) => {
-            if (!activePlugin.value) return;
+            if (!activeLing.value) return;
 
             // ... (logs skipped for brevity) ...
 
-            const currentPerms = activePlugin.value.permissions || {};
+            const currentPerms = activeLing.value.permissions || {};
             const currentValue = currentPerms[perm] !== false;
             const newValue = !currentValue;
 
@@ -366,9 +366,9 @@ createApp({
             loading.permissions = true;
             try {
                 await api.post(`/governance/${activeId.value}/permissions`, newPerms);
-                const idx = plugins.value.findIndex(p => p.pluginId === activeId.value);
+                const idx = lings.value.findIndex(p => p.lingId === activeId.value);
                 if (idx !== -1) {
-                    plugins.value[idx].permissions = newPerms;
+                    lings.value[idx].permissions = newPerms;
                 }
 
                 // 改进提示信息，说明级联效果
@@ -393,22 +393,22 @@ createApp({
 
         const syncIpcSwitch = () => {
             // ...
-            if (!activePlugin.value || !ipcTarget.value) {
+            if (!activeLing.value || !ipcTarget.value) {
                 ipcEnabled.value = false;
                 return;
             }
-            const currentPerms = activePlugin.value.permissions || {};
+            const currentPerms = activeLing.value.permissions || {};
             const services = currentPerms.ipcServices || [];
             ipcEnabled.value = services.includes(ipcTarget.value);
         };
 
         const toggleIpc = async () => {
             // ... (Toggle logic) ...
-            if (!activePlugin.value || !ipcTarget.value) return;
+            if (!activeLing.value || !ipcTarget.value) return;
 
             // 切换状态
             const newValue = !ipcEnabled.value;
-            const currentPerms = activePlugin.value.permissions || {};
+            const currentPerms = activeLing.value.permissions || {};
             const currentServices = currentPerms.ipcServices || [];
 
             // 更新服务列表
@@ -434,9 +434,9 @@ createApp({
                 await api.post(`/governance/${activeId.value}/permissions`, newPerms);
 
                 // 更新本地状态
-                const idx = plugins.value.findIndex(p => p.pluginId === activeId.value);
+                const idx = lings.value.findIndex(p => p.lingId === activeId.value);
                 if (idx !== -1) {
-                    plugins.value[idx].permissions = newPerms;
+                    lings.value[idx].permissions = newPerms;
                 }
                 ipcEnabled.value = newValue; // 更新开关视觉
 
@@ -452,13 +452,13 @@ createApp({
         // ==================== 功能演练 ====================
         const simulate = async (resourceType) => {
             if (!canOperate.value) {
-                showToast(t('toast.pluginNotActive'), 'error');
+                showToast(t('toast.lingNotActive'), 'error');
                 return;
             }
 
             loading.simulate = true;
             try {
-                const result = await api.post(`/simulate/plugins/${activeId.value}/resource`, {
+                const result = await api.post(`/simulate/lings/${activeId.value}/resource`, {
                     resourceType
                 });
                 lastAudit.value = result;
@@ -477,14 +477,14 @@ createApp({
 
         const simulateIPC = async () => {
             if (!canOperate.value) {
-                showToast(t('toast.sourcePluginNotActive'), 'error');
+                showToast(t('toast.sourceLingNotActive'), 'error');
                 return;
             }
 
             loading.simulate = true;
             try {
-                const result = await api.post(`/simulate/plugins/${activeId.value}/ipc`, {
-                    targetPluginId: ipcTarget.value,
+                const result = await api.post(`/simulate/lings/${activeId.value}/ipc`, {
+                    targetLingId: ipcTarget.value,
                     ipcEnabled: ipcEnabled.value
                 });
                 lastAudit.value = result;
@@ -504,7 +504,7 @@ createApp({
         // ==================== 压测模式 ====================
         const toggleAuto = () => {
             if (!canOperate.value) {
-                showToast(t('toast.pluginNotActive'), 'error');
+                showToast(t('toast.lingNotActive'), 'error');
                 return;
             }
 
@@ -514,7 +514,7 @@ createApp({
                 // 开始压测
                 stressTimer = setInterval(async () => {
                     try {
-                        const result = await api.post(`/simulate/plugins/${activeId.value}/stress`);
+                        const result = await api.post(`/simulate/lings/${activeId.value}/stress`);
                         // 更新统计
                         stats.total += result.totalRequests;
                         stats.v1 += result.v1Requests;
@@ -586,7 +586,7 @@ createApp({
             const log = {
                 id: ++logIdCounter,
                 traceId: data.traceId,
-                pluginId: data.pluginId,
+                lingId: data.lingId,
                 content: data.content,
                 type: data.type,
                 tag: data.tag,
@@ -609,7 +609,7 @@ createApp({
 
         const clearLogs = () => {
             if (logViewMode.value === 'current' && activeId.value) {
-                logs.value = logs.value.filter(l => l.pluginId !== activeId.value);
+                logs.value = logs.value.filter(l => l.lingId !== activeId.value);
             } else {
                 logs.value = [];
             }
@@ -653,13 +653,13 @@ createApp({
             'ERROR': 'status-error'
         }[status] || 'status-unloaded');
 
-        const getPluginShortName = (pid) => {
+        const getLingShortName = (pid) => {
             if (!pid) return '---';
             const parts = pid.split('-');
             return parts[0]?.toUpperCase() || pid.toUpperCase();
         };
 
-        const getPluginTagClass = (pid) => {
+        const getLingTagClass = (pid) => {
             const colors = [
                 'bg-blue-500/20 text-blue-400',
                 'bg-amber-500/20 text-amber-400',
@@ -667,7 +667,7 @@ createApp({
                 'bg-purple-500/20 text-purple-400',
                 'bg-pink-500/20 text-pink-400'
             ];
-            const idx = plugins.value.findIndex(p => p.pluginId === pid);
+            const idx = lings.value.findIndex(p => p.lingId === pid);
             return colors[idx % colors.length] || colors[0];
         };
 
@@ -741,7 +741,7 @@ createApp({
             // Delay title update slightly to ensure messages are loaded
             nextTick(() => { document.title = t('title'); });
 
-            refreshPlugins();
+            refreshLings();
             console.log(new Date(), 'start connecting sse')
             connectSSE();
 
@@ -781,22 +781,22 @@ createApp({
             locale, supportedLocales, switchLocale, t,
 
             // 状态
-            plugins, activeId, canaryPct, isAuto, ipcEnabled, ipcTarget,
+            lings, activeId, canaryPct, isAuto, ipcEnabled, ipcTarget,
             logs, lastAudit, logViewMode, logContainer, isUserScrolling, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
             stats, loading, modal, toasts, envLabels, uploadModal,
 
             // 计算属性
-            activePlugin, canCanary, canOperate, displayLogs,
+            activeLing, canCanary, canOperate, displayLogs,
 
             // 方法
-            refreshPlugins, selectPlugin, updateStatus, requestUnload,
+            refreshLings, selectLing, updateStatus, requestUnload,
             confirmModalAction, updateCanaryConfig, togglePerm, toggleIpc,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
             handleLogScroll, scrollToTop,
             formatDrift, formatTime, formatSize,
-            getStatusClass, getPluginShortName, getPluginTagClass, getLogColor,
-            openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, reloadPlugin, requestUnloadWithName
+            getStatusClass, getLingShortName, getLingTagClass, getLogColor,
+            openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, reloadLing, requestUnloadWithName
         };
     }
 }).mount('#app');

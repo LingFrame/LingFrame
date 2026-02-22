@@ -7,7 +7,7 @@ import java.util.Optional;
 /**
  * 权限信息记录
  * <p>
- * 描述一个插件获得的某项能力权限的详细信息。
+ * 描述一个单元获得的某项能力权限的详细信息。
  * 用于替代 PermissionService.getPermission() 的 Object 返回类型。
  * </p>
  *
@@ -28,9 +28,9 @@ public class PermissionInfo implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
-     * 插件 ID
+     * 单元 ID
      */
-    private String pluginId;
+    private String lingId;
 
     /**
      * 能力标识，如 "storage:sql", "cache:redis"
@@ -57,16 +57,16 @@ public class PermissionInfo implements Serializable {
 
     /**
      * 权限来源描述
-     * 如 "plugin.yml", "runtime-grant", "admin-console"
+     * 如 "ling.yml", "runtime-grant", "admin-console"
      */
     private String source;
 
     /**
      * 创建一个永不过期的权限信息
      */
-    public static PermissionInfo permanent(String pluginId, String capability, AccessType accessType, String source) {
+    public static PermissionInfo permanent(String lingId, String capability, AccessType accessType, String source) {
         return PermissionInfo.builder()
-                .pluginId(pluginId)
+                .lingId(lingId)
                 .capability(capability)
                 .accessType(accessType)
                 .grantedAt(Instant.now())
@@ -77,10 +77,10 @@ public class PermissionInfo implements Serializable {
     /**
      * 创建一个有过期时间的权限信息
      */
-    public static PermissionInfo withExpiry(String pluginId, String capability, AccessType accessType,
+    public static PermissionInfo withExpiry(String lingId, String capability, AccessType accessType,
                                             Instant expiresAt, String source) {
         return PermissionInfo.builder()
-                .pluginId(pluginId)
+                .lingId(lingId)
                 .capability(capability)
                 .accessType(accessType)
                 .grantedAt(Instant.now())

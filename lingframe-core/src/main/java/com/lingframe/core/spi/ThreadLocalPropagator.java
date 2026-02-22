@@ -2,7 +2,7 @@ package com.lingframe.core.spi;
 
 /**
  * 上下文传播器 SPI
- * 用于在跨线程（跨插件）调用时，搬运 ThreadLocal 数据
+ * 用于在跨线程（跨单元）调用时，搬运 ThreadLocal 数据
  */
 public interface ThreadLocalPropagator<T> {
 

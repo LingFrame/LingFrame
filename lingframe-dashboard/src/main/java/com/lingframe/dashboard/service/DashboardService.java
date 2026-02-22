@@ -1,20 +1,20 @@
 package com.lingframe.dashboard.service;
 
 import com.lingframe.api.config.GovernancePolicy;
-import com.lingframe.api.config.PluginDefinition;
+import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.enums.PluginStatus;
+import com.lingframe.core.enums.LingStatus;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
-import com.lingframe.core.loader.PluginManifestLoader;
-import com.lingframe.core.plugin.PluginManager;
-import com.lingframe.core.plugin.PluginRuntime;
-import com.lingframe.dashboard.converter.PluginInfoConverter;
-import com.lingframe.dashboard.dto.PluginInfoDTO;
+import com.lingframe.core.loader.LingManifestLoader;
+import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.dashboard.converter.LingInfoConverter;
+import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.api.exception.InvalidArgumentException;
-import com.lingframe.api.exception.PluginNotFoundException;
-import com.lingframe.core.exception.PluginInstallException;
+import com.lingframe.api.exception.LingNotFoundException;
+import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.exception.ServiceUnavailableException;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
@@ -30,40 +30,40 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DashboardService {
 
-    private final PluginManager pluginManager;
+    private final LingManager lingManager;
     private final LocalGovernanceRegistry governanceRegistry;
     private final CanaryRouter canaryRouter;
-    private final PluginInfoConverter converter;
+    private final LingInfoConverter converter;
     private final PermissionService permissionService;
 
-    public List<PluginInfoDTO> getAllPluginInfos() {
-        return pluginManager.getInstalledPlugins().stream()
-                .map(pluginManager::getRuntime)
+    public List<LingInfoDTO> getAllLingInfos() {
+        return lingManager.getInstalledLings().stream()
+                .map(lingManager::getRuntime)
                 .filter(Objects::nonNull)
                 .map(runtime -> {
-                    GovernancePolicy policy = getEffectivePolicy(runtime.getPluginId());
+                    GovernancePolicy policy = getEffectivePolicy(runtime.getLingId());
                     return converter.toDTO(runtime, canaryRouter, permissionService, policy);
                 })
                 .collect(Collectors.toList());
     }
 
-    public PluginInfoDTO getPluginInfo(String pluginId) {
-        PluginRuntime runtime = pluginManager.getRuntime(pluginId);
+    public LingInfoDTO getLingInfo(String lingId) {
+        LingRuntime runtime = lingManager.getRuntime(lingId);
         if (runtime == null) {
             return null;
         }
-        GovernancePolicy policy = getEffectivePolicy(pluginId);
+        GovernancePolicy policy = getEffectivePolicy(lingId);
         return converter.toDTO(runtime, canaryRouter, permissionService, policy);
     }
 
-    private GovernancePolicy getEffectivePolicy(String pluginId) {
+    private GovernancePolicy getEffectivePolicy(String lingId) {
         // 优先获取动态补丁
-        GovernancePolicy policy = governanceRegistry.getPatch(pluginId);
+        GovernancePolicy policy = governanceRegistry.getPatch(lingId);
         if (policy != null) {
             return policy;
         }
         // 降级使用静态定义
-        PluginRuntime runtime = pluginManager.getRuntime(pluginId);
+        LingRuntime runtime = lingManager.getRuntime(lingId);
         if (runtime != null && runtime.getInstancePool().getDefault() != null
                 && runtime.getInstancePool().getDefault().getDefinition() != null) {
             return runtime.getInstancePool().getDefault().getDefinition().getGovernance();
@@ -71,61 +71,61 @@ public class DashboardService {
         return null; // 无策略
     }
 
-    public PluginInfoDTO installPlugin(File file) {
+    public LingInfoDTO installLing(File file) {
         try {
-            PluginDefinition def = PluginManifestLoader.parseDefinition(file);
+            LingDefinition def = LingManifestLoader.parseDefinition(file);
             if (def == null) {
-                throw new InvalidArgumentException("file", "Not a valid plugin package: " + file.getName());
+                throw new InvalidArgumentException("file", "Not a valid ling package: " + file.getName());
             }
-            pluginManager.install(def, file);
-            return getPluginInfo(def.getId());
+            lingManager.install(def, file);
+            return getLingInfo(def.getId());
         } catch (Exception e) {
-            throw new PluginInstallException("unknown", "Failed to install plugin: " + e.getMessage(), e);
+            throw new LingInstallException("unknown", "Failed to install ling: " + e.getMessage(), e);
         }
     }
 
-    public void uninstallPlugin(String pluginId) {
+    public void uninstallLing(String lingId) {
         try {
-            pluginManager.uninstall(pluginId);
+            lingManager.uninstall(lingId);
         } catch (Exception e) {
-            throw new PluginInstallException(pluginId, "Failed to uninstall plugin: " + e.getMessage(), e);
+            throw new LingInstallException(lingId, "Failed to uninstall ling: " + e.getMessage(), e);
         }
     }
 
-    public PluginInfoDTO reloadPlugin(String pluginId) {
+    public LingInfoDTO reloadLing(String lingId) {
         try {
-            pluginManager.reload(pluginId);
-            return getPluginInfo(pluginId);
+            lingManager.reload(lingId);
+            return getLingInfo(lingId);
         } catch (Exception e) {
-            throw new PluginInstallException(pluginId, "Failed to reload plugin: " + e.getMessage(), e);
+            throw new LingInstallException(lingId, "Failed to reload ling: " + e.getMessage(), e);
         }
     }
 
-    public PluginInfoDTO updateStatus(String pluginId, PluginStatus newStatus) {
-        PluginRuntime runtime = pluginManager.getRuntime(pluginId);
+    public LingInfoDTO updateStatus(String lingId, LingStatus newStatus) {
+        LingRuntime runtime = lingManager.getRuntime(lingId);
         if (runtime == null) {
-            throw new PluginNotFoundException(pluginId);
+            throw new LingNotFoundException(lingId);
         }
 
-        PluginStatus current = runtime.getStatus();
+        LingStatus current = runtime.getStatus();
 
         // 状态转换验证
         if (!isValidTransition(current, newStatus)) {
-            throw new ServiceUnavailableException(pluginId,
+            throw new ServiceUnavailableException(lingId,
                     String.format("Invalid status transition: %s -> %s", current, newStatus));
         }
 
         switch (newStatus) {
             case ACTIVE:
-                runtime.setStatus(PluginStatus.STARTING);
+                runtime.setStatus(LingStatus.STARTING);
                 // 执行激活逻辑
                 runtime.activate();
-                runtime.setStatus(PluginStatus.ACTIVE);
+                runtime.setStatus(LingStatus.ACTIVE);
 
                 // 初始化治理策略（如果不存在或为空）
-                GovernancePolicy policy = governanceRegistry.getPatch(pluginId);
+                GovernancePolicy policy = governanceRegistry.getPatch(lingId);
                 if (policy == null || policy.getCapabilities() == null || policy.getCapabilities().isEmpty()) {
-                    log.info("[Dashboard] Initializing default permissions for plugin: {}", pluginId);
+                    log.info("[Dashboard] Initializing default permissions for ling: {}", lingId);
 
                     // 创建默认权限配置（全部开启）
                     List<GovernancePolicy.CapabilityRule> defaultCapabilities = Arrays.asList(
@@ -138,7 +138,7 @@ public class DashboardService {
                                     .accessType(AccessType.WRITE.name())
                                     .build(),
                             GovernancePolicy.CapabilityRule.builder()
-                                    .capability(Capabilities.PLUGIN_ENABLE)
+                                    .capability(Capabilities.Ling_ENABLE)
                                     .accessType(AccessType.EXECUTE.name())
                                     .build());
 
@@ -146,22 +146,22 @@ public class DashboardService {
                         policy = new GovernancePolicy();
                     }
                     policy.setCapabilities(defaultCapabilities);
-                    governanceRegistry.updatePatch(pluginId, policy);
+                    governanceRegistry.updatePatch(lingId, policy);
 
                     // 同步到运行时权限服务
-                    permissionService.grant(pluginId, Capabilities.STORAGE_SQL, AccessType.WRITE);
-                    permissionService.grant(pluginId, Capabilities.CACHE_LOCAL, AccessType.WRITE);
-                    permissionService.grant(pluginId, Capabilities.PLUGIN_ENABLE, AccessType.EXECUTE);
+                    permissionService.grant(lingId, Capabilities.STORAGE_SQL, AccessType.WRITE);
+                    permissionService.grant(lingId, Capabilities.CACHE_LOCAL, AccessType.WRITE);
+                    permissionService.grant(lingId, Capabilities.Ling_ENABLE, AccessType.EXECUTE);
 
                     log.info("[Dashboard] Default permissions initialized and persisted");
                 } else {
-                    log.info("[Dashboard] Plugin has governance policy, loading permissions from file");
+                    log.info("[Dashboard] ling has governance policy, loading permissions from file");
 
                     // 从治理策略加载权限并同步到运行时
                     for (GovernancePolicy.CapabilityRule rule : policy.getCapabilities()) {
                         try {
                             AccessType accessType = AccessType.valueOf(rule.getAccessType());
-                            permissionService.grant(pluginId, rule.getCapability(), accessType);
+                            permissionService.grant(lingId, rule.getCapability(), accessType);
                             log.info("[Dashboard] Loaded permission: {} -> {}", rule.getCapability(), accessType);
                         } catch (Exception e) {
                             log.warn("[Dashboard] Failed to load permission: {} -> {}, error: {}",
@@ -171,51 +171,51 @@ public class DashboardService {
                 }
                 break;
             case LOADED:
-                runtime.setStatus(PluginStatus.STOPPING);
+                runtime.setStatus(LingStatus.STOPPING);
                 // 执行停止逻辑 (但不卸载)
                 runtime.deactivate();
-                runtime.setStatus(PluginStatus.LOADED);
-                // 撤销插件启用权限
-                permissionService.revoke(pluginId, Capabilities.PLUGIN_ENABLE);
-                log.info("[Dashboard] Revoked PLUGIN_ENABLE permission from {}", pluginId);
+                runtime.setStatus(LingStatus.LOADED);
+                // 撤销单元启用权限
+                permissionService.revoke(lingId, Capabilities.Ling_ENABLE);
+                log.info("[Dashboard] Revoked Ling_ENABLE permission from {}", lingId);
                 break;
             case UNLOADED:
-                pluginManager.uninstall(pluginId);
+                lingManager.uninstall(lingId);
                 break;
             default:
                 throw new InvalidArgumentException("status", "Unsupported status: " + newStatus);
         }
 
-        return getPluginInfo(pluginId);
+        return getLingInfo(lingId);
     }
 
-    public void setCanaryConfig(String pluginId, int percent, String canaryVersion) {
-        PluginRuntime runtime = pluginManager.getRuntime(pluginId);
+    public void setCanaryConfig(String lingId, int percent, String canaryVersion) {
+        LingRuntime runtime = lingManager.getRuntime(lingId);
         if (runtime == null) {
-            throw new PluginNotFoundException(pluginId);
+            throw new LingNotFoundException(lingId);
         }
-        canaryRouter.setCanaryConfig(pluginId, percent, canaryVersion);
+        canaryRouter.setCanaryConfig(lingId, percent, canaryVersion);
     }
 
-    public TrafficStatsDTO getTrafficStats(String pluginId) {
-        PluginRuntime runtime = pluginManager.getRuntime(pluginId);
+    public TrafficStatsDTO getTrafficStats(String lingId) {
+        LingRuntime runtime = lingManager.getRuntime(lingId);
         if (runtime == null) {
-            throw new PluginNotFoundException(pluginId);
+            throw new LingNotFoundException(lingId);
         }
         return converter.toTrafficStats(runtime);
     }
 
-    public void resetTrafficStats(String pluginId) {
-        PluginRuntime runtime = pluginManager.getRuntime(pluginId);
+    public void resetTrafficStats(String lingId) {
+        LingRuntime runtime = lingManager.getRuntime(lingId);
         if (runtime == null) {
-            throw new PluginNotFoundException(pluginId);
+            throw new LingNotFoundException(lingId);
         }
         runtime.resetTrafficStats();
     }
 
-    public void updatePermissions(String pluginId, ResourcePermissionDTO dto) {
+    public void updatePermissions(String lingId, ResourcePermissionDTO dto) {
         log.info("========== Starting Permission Update ==========");
-        log.info("Plugin ID: {}", pluginId);
+        log.info("Ling ID: {}", lingId);
         log.info("Received permissions: dbRead={}, dbWrite={}, cacheRead={}, cacheWrite={}",
                 dto.isDbRead(), dto.isDbWrite(), dto.isCacheRead(), dto.isCacheWrite());
 
@@ -226,11 +226,11 @@ public class DashboardService {
         log.info("Calculated permissions: SQL={}, Cache={}", sqlAccess, cacheAccess);
 
         // 2. 同步到运行时权限服务
-        permissionService.grant(pluginId, Capabilities.STORAGE_SQL, sqlAccess);
-        permissionService.grant(pluginId, Capabilities.CACHE_LOCAL, cacheAccess);
+        permissionService.grant(lingId, Capabilities.STORAGE_SQL, sqlAccess);
+        permissionService.grant(lingId, Capabilities.CACHE_LOCAL, cacheAccess);
 
         // 3. 同步到治理策略并持久化
-        GovernancePolicy policy = governanceRegistry.getPatch(pluginId);
+        GovernancePolicy policy = governanceRegistry.getPatch(lingId);
         if (policy == null) {
             policy = new GovernancePolicy();
         }
@@ -254,8 +254,8 @@ public class DashboardService {
                 .capability(Capabilities.CACHE_LOCAL)
                 .accessType(cacheAccess.name())
                 .build());
-        ruleMap.put(Capabilities.PLUGIN_ENABLE, GovernancePolicy.CapabilityRule.builder()
-                .capability(Capabilities.PLUGIN_ENABLE)
+        ruleMap.put(Capabilities.Ling_ENABLE, GovernancePolicy.CapabilityRule.builder()
+                .capability(Capabilities.Ling_ENABLE)
                 .accessType(AccessType.EXECUTE.name())
                 .build());
 
@@ -272,20 +272,20 @@ public class DashboardService {
             toRemove.forEach(ruleMap::remove);
 
             // 添加新的 IPC 权限
-            for (String targetPluginId : dto.getIpcServices()) {
-                String capability = "ipc:" + targetPluginId;
+            for (String targetLingId : dto.getIpcServices()) {
+                String capability = "ipc:" + targetLingId;
                 ruleMap.put(capability, GovernancePolicy.CapabilityRule.builder()
                         .capability(capability)
                         .accessType(AccessType.EXECUTE.name()) // IPC 默认为 EXECUTE
                         .build());
                 // 同时授权到运行时
-                permissionService.grant(pluginId, capability, AccessType.EXECUTE);
+                permissionService.grant(lingId, capability, AccessType.EXECUTE);
             }
         }
 
         // 4. 设置回策略
         policy.setCapabilities(new ArrayList<>(ruleMap.values()));
-        governanceRegistry.updatePatch(pluginId, policy);
+        governanceRegistry.updatePatch(lingId, policy);
 
         log.info("Permission update completed and persisted");
         log.info("========================================");
@@ -312,18 +312,18 @@ public class DashboardService {
         return AccessType.NONE;
     }
 
-    private boolean isValidTransition(PluginStatus from, PluginStatus to) {
+    private boolean isValidTransition(LingStatus from, LingStatus to) {
         if (from == null || to == null) {
             return false;
         }
 
         switch (from) {
             case UNLOADED:
-                return to == PluginStatus.LOADING || to == PluginStatus.LOADED;
+                return to == LingStatus.LOADING || to == LingStatus.LOADED;
             case LOADED:
-                return to == PluginStatus.ACTIVE || to == PluginStatus.UNLOADED;
+                return to == LingStatus.ACTIVE || to == LingStatus.UNLOADED;
             case ACTIVE:
-                return to == PluginStatus.LOADED || to == PluginStatus.UNLOADED;
+                return to == LingStatus.LOADED || to == LingStatus.UNLOADED;
             default:
                 return false;
         }

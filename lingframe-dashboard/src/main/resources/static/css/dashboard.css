@@ -60,24 +60,24 @@ body {
     align-items: center;
 }
 
-/* 插件列表项 */
-.plugin-item {
+/* 单元列表项 */
+.Ling-item {
     padding: 16px 20px;
     border-bottom: 1px solid #334155;
     cursor: pointer;
     transition: all 0.2s;
 }
 
-.plugin-item:hover {
+.Ling-item:hover {
     background: #334155;
 }
 
-.plugin-item.active {
+.Ling-item.active {
     background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, transparent 100%);
     border-left: 3px solid #3b82f6;
 }
 
-.plugin-item:last-child {
+.Ling-item:last-child {
     border-bottom: none;
 }
 

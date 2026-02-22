@@ -1,4 +1,4 @@
-# 基础设施插件开发指南
+# 基础设施单元开发指南
 
 本文档介绍 LingFrame 三层架构中的**基础设施层**及其开发方式。
 
@@ -16,8 +16,8 @@
 └────────────────────────────┬────────────────────────────┘
                              ▼
 ┌─────────────────────────────────────────────────────────┐
-│             Business Plugins（业务层）                   │
-│              用户中心 · 订单服务 · 支付模块               │
+│             Business Lings（业务层）                   │
+│              用户中心 · 订单服务 · 支付单元               │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -28,7 +28,7 @@
 1. **封装底层能力**：数据库、缓存、消息队列等
 2. **细粒度权限拦截**：在 API 层面进行权限检查
 3. **审计上报**：将操作记录上报给 Core
-4. **对业务模块透明**：业务模块无感知地使用基础设施
+4. **对业务单元透明**：业务单元无感知地使用基础设施
 
 ## 已实现的基础设施代理
 
@@ -39,7 +39,7 @@
 #### 代理链结构
 
 ```
-业务模块调用 DataSource.getConnection()
+业务单元调用 DataSource.getConnection()
     │
     ▼
 ┌─────────────────────────────────────┐
@@ -92,18 +92,18 @@ public class DataSourceWrapperProcessor implements BeanPostProcessor {
 public class LingPreparedStatementProxy implements PreparedStatement {
 
     private void checkPermission() throws SQLException {
-        // 1. 获取调用方插件ID
-        String callerPluginId = PluginContextHolder.get();
-        if (callerPluginId == null) return;
+        // 1. 获取调用方单元ID
+        String callerLingId = LingContextHolder.get();
+        if (callerLingId == null) return;
 
         // 2. 解析 SQL 类型
         AccessType accessType = parseSqlForAccessType(sql);
 
         // 3. 权限检查
-        boolean allowed = permissionService.isAllowed(callerPluginId, "storage:sql", accessType);
+        boolean allowed = permissionService.isAllowed(callerLingId, "storage:sql", accessType);
 
         // 4. 审计上报
-        permissionService.audit(callerPluginId, "storage:sql", sql, allowed);
+        permissionService.audit(callerLingId, "storage:sql", sql, allowed);
 
         if (!allowed) {
             throw new SQLException(new PermissionDeniedException(...));
@@ -147,7 +147,7 @@ private AccessType parseSqlForAccessType(String sql) {
 #### 代理链结构
 
 ```
-业务模块调用 cacheManager.getCache("users")
+业务单元调用 cacheManager.getCache("users")
     │
     ▼
 ┌─────────────────────────────────────┐
@@ -163,7 +163,7 @@ private AccessType parseSqlForAccessType(String sql) {
 │ - 权限检查 + 审计上报                │
 └─────────────────────────────────────┘
 
-业务模块调用 redisTemplate.opsForValue().set(...)
+业务单元调用 redisTemplate.opsForValue().set(...)
     │
     ▼
 ┌─────────────────────────────────────┐
@@ -181,17 +181,17 @@ private AccessType parseSqlForAccessType(String sql) {
 ```java
 @Override
 public Object invoke(MethodInvocation invocation) throws Throwable {
-    String callerPluginId = PluginContextHolder.get();
+    String callerLingId = LingContextHolder.get();
     String methodName = invocation.getMethod().getName();
     
     // 推导操作类型
     AccessType accessType = inferAccessType(methodName);
     
     // 权限检查
-    boolean allowed = permissionService.isAllowed(callerPluginId, "cache:redis", accessType);
+    boolean allowed = permissionService.isAllowed(callerLingId, "cache:redis", accessType);
     
     // 审计上报
-    permissionService.audit(callerPluginId, "cache:redis", methodName, allowed);
+    permissionService.audit(callerLingId, "cache:redis", methodName, allowed);
     
     if (!allowed) {
         throw new PermissionDeniedException(...);
@@ -236,7 +236,7 @@ public ValueWrapper get(@NonNull Object key) {
 
 ## 开发新的基础设施代理
 
-### 1. 创建模块
+### 1. 创建单元
 
 ```xml
 <project>
@@ -269,15 +269,15 @@ public class LingXxxProxy implements XxxInterface {
     @Override
     public Result doSomething(Args args) {
         // 1. 获取调用方
-        String callerPluginId = PluginContextHolder.get();
+        String callerLingId = LingContextHolder.get();
 
         // 2. 权限检查
-        if (!permissionService.isAllowed(callerPluginId, "xxx:capability", accessType)) {
+        if (!permissionService.isAllowed(callerLingId, "xxx:capability", accessType)) {
             throw new PermissionDeniedException(...);
         }
 
         // 3. 审计上报
-        permissionService.audit(callerPluginId, "xxx:capability", operation, true);
+        permissionService.audit(callerLingId, "xxx:capability", operation, true);
 
         // 4. 执行真实操作
         return target.doSomething(args);
@@ -307,7 +307,7 @@ public class XxxWrapperProcessor implements BeanPostProcessor {
 
 基础设施代理需要定义清晰的能力标识（capability）：
 
-| 插件    | 能力标识          | 说明       |
+| 单元    | 能力标识          | 说明       |
 | ------- | ----------------- | ---------- |
 | storage | `storage:sql`     | SQL 执行   |
 | cache   | `cache:redis`     | Redis 操作 |
@@ -315,12 +315,12 @@ public class XxxWrapperProcessor implements BeanPostProcessor {
 | message | `message:send`    | 发送消息   |
 | message | `message:consume` | 消费消息   |
 
-业务模块在 `plugin.yml` 中声明所需能力：
+业务单元在 `ling.yml` 中声明所需能力：
 
 ```yaml
-id: my-plugin
+id: my-ling
 version: 1.0.0
-mainClass: "com.example.MyPlugin"
+mainClass: "com.example.MyLing"
 
 governance:
   permissions:
@@ -330,11 +330,11 @@ governance:
       permissionId: "WRITE"
 ```
 
-## 与业务模块的关系
+## 与业务单元的关系
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    业务模块                              │
+│                    业务单元                              │
 │  userRepository.findById(id)                            │
 │         │                                               │
 │         │ (透明调用)                                     │
@@ -352,7 +352,7 @@ governance:
 │  │ LingDataSourceProxy → LingConnectionProxy       │   │
 │  │     → LingPreparedStatementProxy                │   │
 │  │                                                  │   │
-│  │ 1. 获取 callerPluginId                          │   │
+│  │ 1. 获取 callerLingId                          │   │
 │  │ 2. 解析 SQL 类型                                 │   │
 │  │ 3. 调用 PermissionService.isAllowed()           │   │
 │  │ 4. 审计上报                                      │   │
@@ -363,15 +363,15 @@ governance:
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │                       Core                              │
-│  PermissionService.isAllowed(pluginId, capability, type)│
+│  PermissionService.isAllowed(lingId, capability, type)│
 │  AuditManager.asyncRecord(...)                          │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ## 最佳实践
 
-1. **代理透明**：业务插件无需感知代理存在
-2. **能力标识规范**：使用 `插件:操作` 格式
+1. **代理透明**：业务单元无需感知代理存在
+2. **能力标识规范**：使用 `单元:操作` 格式
 3. **细粒度控制**：在最接近操作的地方拦截
 4. **异步审计**：审计不阻塞业务流程
 5. **缓存优化**：SQL 解析结果可缓存

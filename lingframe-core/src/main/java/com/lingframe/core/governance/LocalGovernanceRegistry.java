@@ -37,16 +37,16 @@ public class LocalGovernanceRegistry {
     /**
      * 更新动态补丁 (由 Runtime 层的 Controller 调用)
      */
-    public void updatePatch(String pluginId, GovernancePolicy policy) {
-        patchMap.put(pluginId, policy);
+    public void updatePatch(String lingId, GovernancePolicy policy) {
+        patchMap.put(lingId, policy);
         save();
-        log.info("[LingFrame] Governance patch updated for plugin: {}", pluginId);
+        log.info("[LingFrame] Governance patch updated for ling: {}", lingId);
         // 通知机制留空，SmartServiceProxy 会实时读取
-        // eventBus.publish(new GovernancePatchUpdatedEvent(pluginId, policy));
+        // eventBus.publish(new GovernancePatchUpdatedEvent(lingId, policy));
     }
 
-    public GovernancePolicy getPatch(String pluginId) {
-        return patchMap.get(pluginId);
+    public GovernancePolicy getPatch(String lingId) {
+        return patchMap.get(lingId);
     }
 
     public Map<String, GovernancePolicy> getAllPatches() {

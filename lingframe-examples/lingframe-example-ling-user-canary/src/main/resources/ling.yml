@@ -1,0 +1,24 @@
+# --- 基础元数据 (直接在根节点) ---
+id: user-ling
+version: 1.1.0-canary
+provider: "LingFrame"
+description: "用户单元 (金丝雀版本) - 用于灰度发布测试"
+mainClass: "com.lingframe.example.user.canary.UserCanaryApplication"
+
+# --- 治理配置 ---
+governance:
+    # ACL 入站规则 (StandardGovernancePolicyProvider 使用)
+    permissions: []
+
+    # 单元能力申请 (LingManager 使用)
+    capabilities:
+      - capability: "storage:sql"
+        accessType: "WRITE"
+      - capability: "cache:local"
+        accessType: "WRITE"
+      - capability: "ipc:order-ling"
+        accessType: "EXECUTE"
+
+# --- 金丝雀配置 ---
+properties:
+  canary: true

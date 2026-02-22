@@ -1,7 +1,7 @@
 package com.lingframe.core.router;
 
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.plugin.PluginInstance;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.TrafficRouter;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -18,7 +18,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public class LabelMatchRouter implements TrafficRouter {
 
     @Override
-    public PluginInstance route(List<PluginInstance> candidates, InvocationContext context) {
+    public LingInstance route(List<LingInstance> candidates, InvocationContext context) {
         if (candidates == null || candidates.isEmpty())
             return null;
 
@@ -42,12 +42,12 @@ public class LabelMatchRouter implements TrafficRouter {
                 .orElse(candidates.get(0));
     }
 
-    private PluginInstance doWeightedRoute(List<PluginInstance> candidates) {
+    private LingInstance doWeightedRoute(List<LingInstance> candidates) {
         int totalWeight = 0;
         int[] weights = new int[candidates.size()];
 
         for (int i = 0; i < candidates.size(); i++) {
-            PluginInstance inst = candidates.get(i);
+            LingInstance inst = candidates.get(i);
             int weight = getWeight(inst);
             weights[i] = weight;
             totalWeight += weight;
@@ -68,7 +68,7 @@ public class LabelMatchRouter implements TrafficRouter {
         return candidates.get(0);
     }
 
-    private int getWeight(PluginInstance instance) {
+    private int getWeight(LingInstance instance) {
         // 默认权重 100
         int defaultWeight = 100;
 
@@ -79,7 +79,7 @@ public class LabelMatchRouter implements TrafficRouter {
                 try {
                     return Integer.parseInt(val.toString());
                 } catch (NumberFormatException e) {
-                    log.warn("Invalid trafficWeight for plugin {}: {}", instance.getVersion(), val);
+                    log.warn("Invalid trafficWeight for ling {}: {}", instance.getVersion(), val);
                 }
             }
         }
@@ -105,11 +105,11 @@ public class LabelMatchRouter implements TrafficRouter {
     @Value
     @Getter(AccessLevel.NONE)  // 不生成标准 getter
     public class ScoredInstance {
-        PluginInstance instance;
+        LingInstance instance;
         int score;
 
         // Record 风格的访问器
-        public PluginInstance instance() { return instance; }
+        public LingInstance instance() { return instance; }
         public int score() { return score; }
     }
 }

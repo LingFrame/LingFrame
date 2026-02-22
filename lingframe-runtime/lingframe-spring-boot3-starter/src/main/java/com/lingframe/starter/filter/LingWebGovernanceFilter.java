@@ -2,12 +2,12 @@ package com.lingframe.starter.filter;
 
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
-import com.lingframe.api.context.PluginContextHolder;
+import com.lingframe.api.context.LingContextHolder;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.plugin.PluginManager;
-import com.lingframe.core.plugin.PluginRuntime;
+import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -33,7 +33,7 @@ import java.util.HashMap;
 
 /**
  * 统一 Web 层治理过滤器
- * 处理宿主和插件 Controller 的 HTTP 请求
+ * 处理灵核和单元 Controller 的 HTTP 请求
  * 通过 GovernanceKernel.invoke() 统一执行权限检查、审计和追踪
  */
 @Slf4j
@@ -41,12 +41,12 @@ import java.util.HashMap;
 public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
     private final GovernanceKernel governanceKernel;
-    private final PluginManager pluginManager;
+    private final LingManager lingManager;
     private final WebInterfaceManager webInterfaceManager;
     private final LingFrameProperties properties;
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
 
-    private static final String HOST_PLUGIN_ID = "host-app";
+    private static final String HOST_Ling_ID = "lingcore-app";
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request,
@@ -62,36 +62,36 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             return;
         }
 
-        // 2. 判断是插件请求还是宿主请求
-        WebInterfaceMetadata pluginMeta = webInterfaceManager.getMetadata(handlerMethod);
-        boolean isPluginRequest = (pluginMeta != null);
+        // 2. 判断是单元请求还是灵核请求
+        WebInterfaceMetadata lingMeta = webInterfaceManager.getMetadata(handlerMethod);
+        boolean isLingRequest = (lingMeta != null);
 
-        // 宿主请求：检查是否启用宿主治理
-        if (!isPluginRequest && !properties.getHostGovernance().isEnabled()) {
+        // 灵核请求：检查是否启用灵核治理
+        if (!isLingRequest && !properties.getLingCoreGovernance().isEnabled()) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        // 3. 确定 pluginId
-        String pluginId = isPluginRequest ? pluginMeta.getPluginId() : HOST_PLUGIN_ID;
+        // 3. 确定 lingId
+        String lingId = isLingRequest ? lingMeta.getLingId() : HOST_Ling_ID;
 
-        // 4. ClassLoader 切换（仅插件请求）
+        // 4. ClassLoader 切换（仅单元请求）
         ClassLoader originalCL = null;
-        if (isPluginRequest) {
+        if (isLingRequest) {
             originalCL = Thread.currentThread().getContextClassLoader();
-            Thread.currentThread().setContextClassLoader(pluginMeta.getClassLoader());
+            Thread.currentThread().setContextClassLoader(lingMeta.getClassLoader());
         }
 
-        // 5. 设置插件上下文
-        PluginContextHolder.set(pluginId);
+        // 5. 设置单元上下文
+        LingContextHolder.set(lingId);
 
         try {
             // 6. 构建治理上下文
             Method method = handlerMethod.getMethod();
-            InvocationContext ctx = buildInvocationContext(request, method, pluginId, pluginMeta);
+            InvocationContext ctx = buildInvocationContext(request, method, lingId, lingMeta);
 
-            // 7. 获取 PluginRuntime（插件请求时）
-            PluginRuntime runtime = isPluginRequest ? pluginManager.getRuntime(pluginId) : null;
+            // 7. 获取 LingRuntime（单元请求时）
+            LingRuntime runtime = isLingRequest ? lingManager.getRuntime(lingId) : null;
 
             // 8. 通过 GovernanceKernel.invoke() 统一执行
             governanceKernel.invoke(runtime, method, ctx, () -> {
@@ -117,8 +117,8 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             if (originalCL != null) {
                 Thread.currentThread().setContextClassLoader(originalCL);
             }
-            // 清理插件上下文
-            PluginContextHolder.clear();
+            // 清理单元上下文
+            LingContextHolder.clear();
         }
     }
 
@@ -141,7 +141,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
      * 构建治理上下文
      */
     private InvocationContext buildInvocationContext(HttpServletRequest request, Method method,
-            String pluginId, WebInterfaceMetadata meta) {
+            String lingId, WebInterfaceMetadata meta) {
         // 智能权限推导
         String permission;
         RequiresPermission permAnn = AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class);
@@ -179,8 +179,8 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
         return InvocationContext.builder()
                 .traceId(request.getHeader("X-Trace-Id"))
-                .pluginId(pluginId)
-                .callerPluginId("http-gateway") // Web 请求来源标记
+                .lingId(lingId)
+                .callerLingId("http-gateway") // Web 请求来源标记
                 .resourceType("HTTP")
                 .resourceId(request.getMethod() + " " + request.getRequestURI())
                 .operation(method.getName())
