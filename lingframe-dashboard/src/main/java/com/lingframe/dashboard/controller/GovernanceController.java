@@ -37,15 +37,15 @@ public class GovernanceController {
     }
 
     /**
-     * 获取指定插件的治理策略
+     * 获取指定单元的治理策略
      */
-    @GetMapping("/{pluginId}")
-    public ApiResponse<GovernancePolicy> getPatch(@PathVariable String pluginId) {
+    @GetMapping("/{lingId}")
+    public ApiResponse<GovernancePolicy> getPatch(@PathVariable String lingId) {
         try {
-            GovernancePolicy policy = registry.getPatch(pluginId);
+            GovernancePolicy policy = registry.getPatch(lingId);
             return ApiResponse.ok(policy);
         } catch (Exception e) {
-            log.error("Failed to get patch for: {}", pluginId, e);
+            log.error("Failed to get patch for: {}", lingId, e);
             return ApiResponse.error("获取策略失败: " + e.getMessage());
         }
     }
@@ -53,15 +53,15 @@ public class GovernanceController {
     /**
      * 更新治理策略 (完整策略对象)
      */
-    @PostMapping("/patch/{pluginId}")
+    @PostMapping("/patch/{lingId}")
     public ApiResponse<GovernancePolicy> updatePatch(
-            @PathVariable String pluginId,
+            @PathVariable String lingId,
             @RequestBody GovernancePolicy policy) {
         try {
-            registry.updatePatch(pluginId, policy);
+            registry.updatePatch(lingId, policy);
             return ApiResponse.ok("策略已更新", policy);
         } catch (Exception e) {
-            log.error("Failed to update patch for: {}", pluginId, e);
+            log.error("Failed to update patch for: {}", lingId, e);
             return ApiResponse.error("策略更新失败: " + e.getMessage());
         }
     }
@@ -70,15 +70,15 @@ public class GovernanceController {
      * 更新资源权限 (简化接口，供 Dashboard 使用)
      * 调用 DashboardService 以使用 PermissionService.grant/revoke
      */
-    @PostMapping("/{pluginId}/permissions")
+    @PostMapping("/{lingId}/permissions")
     public ApiResponse<ResourcePermissionDTO> updatePermissions(
-            @PathVariable String pluginId,
+            @PathVariable String lingId,
             @RequestBody ResourcePermissionDTO dto) {
         try {
-            dashboardService.updatePermissions(pluginId, dto);
+            dashboardService.updatePermissions(lingId, dto);
             return ApiResponse.ok("权限已更新", dto);
         } catch (Exception e) {
-            log.error("Failed to update permissions for: {}", pluginId, e);
+            log.error("Failed to update permissions for: {}", lingId, e);
             return ApiResponse.error("权限更新失败: " + e.getMessage());
         }
     }

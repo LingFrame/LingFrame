@@ -1,0 +1,23 @@
+# --- 基础元数据 (直接在根节点) ---
+id: native-ling
+version: 1.0.0
+provider: "LingFrame"
+description: "本地单元"
+mainClass: "com.lingframe.example.NativeLing"
+
+# --- 治理配置 ---
+governance:
+  # ACL 入站规则 (StandardGovernancePolicyProvider 使用)
+  permissions: []
+
+  # 单元能力申请 (LingManager 使用)
+  capabilities:
+    - capability: "storage:sql"
+      accessType: "READ"
+    - capability: "cache:redis"
+      accessType: "WRITE"
+
+# --- 自定义扩展/依赖 (对应 Map<String, Object> properties) ---
+properties:
+  mark: "test"
+

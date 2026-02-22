@@ -26,9 +26,9 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Web 接口动态管理器（原生注册版）
  * 职责：
- * 1. 将插件 Controller 方法直接注册到宿主 Spring MVC
+ * 1. 将单元 Controller 方法直接注册到灵核 Spring MVC
  * 2. 维护 HandlerMethod -> Metadata 映射，供 Interceptor 查询
- * 3. 插件卸载时彻底清理路由，防止内存泄漏
+ * 3. 单元卸载时彻底清理路由，防止内存泄漏
  */
 @Slf4j
 public class WebInterfaceManager {
@@ -56,7 +56,7 @@ public class WebInterfaceManager {
     }
 
     /**
-     * 注册插件 Controller 方法到 Spring MVC
+     * 注册单元 Controller 方法到 Spring MVC
      */
     public void register(WebInterfaceMetadata metadata) {
         if (hostMapping == null || hostContext == null) {
@@ -84,11 +84,11 @@ public class WebInterfaceManager {
         }
 
         try {
-            // 1. 将插件 Bean 注册到宿主 Context (供 SpringDoc 发现)
+            // 1. 将单元 Bean 注册到灵核 Context (供 SpringDoc 发现)
             // 使用 BeanDefinition + InstanceSupplier 确保 SpringDoc 能读取到注解元数据
             // 关键：必须使用原始类 (Target Class) 而不是代理类，否则注解可能丢失
             Class<?> userClass = AopUtils.getTargetClass(metadata.getTargetBean());
-            String proxyBeanName = metadata.getPluginId() + ":" + userClass.getName();
+            String proxyBeanName = metadata.getLingId() + ":" + userClass.getName();
 
             if (hostContext instanceof GenericApplicationContext && !((GenericApplicationContext) hostContext).containsBeanDefinition(proxyBeanName)) {
                 GenericApplicationContext gac = (GenericApplicationContext) hostContext;
@@ -98,10 +98,10 @@ public class WebInterfaceManager {
                 bd.setScope("singleton");
                 // 标记为 Primary 或其他特征可能有助于发现，但暂不加
                 gac.registerBeanDefinition(proxyBeanName, bd);
-                log.info("🔥 [LingFrame Web] Registered Plugin Bean for SpringDoc: {} (Class: {})", proxyBeanName,
+                log.info("🔥 [LingFrame Web] Registered ling Bean for SpringDoc: {} (Class: {})", proxyBeanName,
                         userClass.getName());
             } else {
-                log.debug("Plugin Bean already registered: {}", proxyBeanName);
+                log.debug("Ling Bean already registered: {}", proxyBeanName);
             }
 
             // 2. 构建 RequestMappingInfo
@@ -110,7 +110,7 @@ public class WebInterfaceManager {
                     .methods(RequestMethod.valueOf(metadata.getHttpMethod()))
                     .build();
 
-            // 3. 直接注册插件 Controller Bean 和 Method 到 Spring MVC
+            // 3. 直接注册单元 Controller Bean 和 Method 到 Spring MVC
             // 关键修复：使用 Bean Name (String) 注册，而不是实例。
             // 这样 SpringDoc 在扫描时会通过 Bean Name 找到我们在上面注册的 GenericBeanDefinition，
             // 进而读取到 setBeanClass(userClass) 设置的原始类，从而正确解析注解。
@@ -122,28 +122,28 @@ public class WebInterfaceManager {
 
             log.info("🌍 [LingFrame Web] Registered: {} {} -> {}.{}",
                     metadata.getHttpMethod(), metadata.getUrlPattern(),
-                    metadata.getPluginId(), metadata.getTargetMethod().getName());
+                    metadata.getLingId(), metadata.getTargetMethod().getName());
         } catch (Exception e) {
             log.error("Failed to register web mapping: {} {}", metadata.getHttpMethod(), metadata.getUrlPattern(), e);
         }
     }
 
     /**
-     * 注销插件的所有接口
+     * 注销单元的所有接口
      */
-    public void unregister(String pluginId) {
+    public void unregister(String lingId) {
         if (hostMapping == null) return;
 
-        log.info("♻️ [LingFrame Web] Unregistering interfaces for plugin: {}", pluginId);
+        log.info("♻️ [LingFrame Web] Unregistering interfaces for ling: {}", lingId);
 
         List<String> keysToRemove = new ArrayList<>();
-        AtomicReference<ClassLoader> pluginLoader = new AtomicReference<>();
+        AtomicReference<ClassLoader> lingLoader = new AtomicReference<>();
         List<String> beanNamesToRemove = new ArrayList<>();  // 收集要移除的 bean 名
 
         metadataMap.forEach((key, meta) -> {
-            if (meta.getPluginId().equals(pluginId)) {
+            if (meta.getLingId().equals(lingId)) {
                 keysToRemove.add(key);
-                pluginLoader.set(meta.getClassLoader());
+                lingLoader.set(meta.getClassLoader());
 
                 // 1. 从 Spring MVC 注销
                 RequestMappingInfo info = mappingInfoMap.get(key);
@@ -158,13 +158,13 @@ public class WebInterfaceManager {
                 // 2. 🔥 修复：使用与 register 相同的逻辑计算 bean 名
                 if (hostContext instanceof GenericApplicationContext) {
                     Class<?> userClass = AopUtils.getTargetClass(meta.getTargetBean());
-                    String proxyBeanName = meta.getPluginId() + ":" + userClass.getName();
+                    String proxyBeanName = meta.getLingId() + ":" + userClass.getName();
                     beanNamesToRemove.add(proxyBeanName);
                 }
             }
         });
 
-        // 3. 🔥 修复：从宿主 Context 移除 Bean 定义
+        // 3. 🔥 修复：从灵核 Context 移除 Bean 定义
         if (hostContext instanceof GenericApplicationContext) {
             GenericApplicationContext gac = (GenericApplicationContext) hostContext;
             for (String beanName : beanNamesToRemove) {
@@ -204,12 +204,12 @@ public class WebInterfaceManager {
         }
 
         // 深度清理 HandlerAdapter 缓存
-        if (hostAdapter != null && pluginLoader.get() != null) {
-            clearAdapterCaches(pluginLoader.get());
+        if (hostAdapter != null && lingLoader.get() != null) {
+            clearAdapterCaches(lingLoader.get());
         }
 
-        log.info("♻️ [LingFrame Web] Unregistered {} interfaces for plugin: {}",
-                keysToRemove.size(), pluginId);
+        log.info("♻️ [LingFrame Web] Unregistered {} interfaces for ling: {}",
+                keysToRemove.size(), lingId);
     }
 
     /**
@@ -291,26 +291,26 @@ public class WebInterfaceManager {
     }
 
     /**
-     * 反射清理 Adapter 的插件相关缓存
+     * 反射清理 Adapter 的单元相关缓存
      */
-    private void clearAdapterCaches(ClassLoader pluginLoader) {
+    private void clearAdapterCaches(ClassLoader lingLoader) {
         try {
             // 清理普通缓存 (ConcurrentHashMap<Class<?>, ?>)
-            clearCache("sessionAttributesHandlerCache", pluginLoader);
-            clearCache("initBinderCache", pluginLoader);
-            clearCache("modelAttributeCache", pluginLoader);
+            clearCache("sessionAttributesHandlerCache", lingLoader);
+            clearCache("initBinderCache", lingLoader);
+            clearCache("modelAttributeCache", lingLoader);
 
             // 清理 Advice 缓存 (LinkedHashMap<ControllerAdviceBean, Set<Method>>)
-            clearAdviceCache("initBinderAdviceCache", pluginLoader);
-            clearAdviceCache("modelAttributeAdviceCache", pluginLoader);
+            clearAdviceCache("initBinderAdviceCache", lingLoader);
+            clearAdviceCache("modelAttributeAdviceCache", lingLoader);
 
-            log.debug("Cleared HandlerAdapter caches for plugin ClassLoader: {}", pluginLoader);
+            log.debug("Cleared HandlerAdapter caches for ling ClassLoader: {}", lingLoader);
         } catch (Exception e) {
             log.warn("Failed to clear HandlerAdapter caches", e);
         }
     }
 
-    private void clearCache(String fieldName, ClassLoader pluginLoader) throws Exception {
+    private void clearCache(String fieldName, ClassLoader lingLoader) throws Exception {
         Field field = ReflectionUtils.findField(hostAdapter.getClass(), fieldName);
         if (field == null)
             return;
@@ -318,11 +318,11 @@ public class WebInterfaceManager {
         @SuppressWarnings("unchecked")
         Map<Class<?>, ?> cache = (Map<Class<?>, ?>) ReflectionUtils.getField(field, hostAdapter);
         if (cache != null) {
-            cache.keySet().removeIf(clazz -> clazz != null && clazz.getClassLoader() == pluginLoader);
+            cache.keySet().removeIf(clazz -> clazz != null && clazz.getClassLoader() == lingLoader);
         }
     }
 
-    private void clearAdviceCache(String fieldName, ClassLoader pluginLoader) throws Exception {
+    private void clearAdviceCache(String fieldName, ClassLoader lingLoader) throws Exception {
         Field field = ReflectionUtils.findField(hostAdapter.getClass(), fieldName);
         if (field == null)
             return;
@@ -333,7 +333,7 @@ public class WebInterfaceManager {
         if (cache != null) {
             cache.keySet().removeIf(advice -> {
                 Class<?> type = advice.getBeanType();
-                return type != null && type.getClassLoader() == pluginLoader;
+                return type != null && type.getClassLoader() == lingLoader;
             });
         }
     }

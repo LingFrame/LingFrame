@@ -55,18 +55,18 @@ public final class Capabilities {
 
     // ==================== IPC ====================
     /**
-     * 跨插件调用
+     * 跨单元调用
      */
     public static final String IPC_INVOKE = "ipc:invoke";
 
-    // ==================== 插件管理 ====================
+    // ==================== 单元管理 ====================
     /**
-     * 插件启用权限
+     * 单元启用权限
      * <p>
-     * 允许插件被启用和执行。所有活跃插件都应该拥有此权限。
+     * 允许单元被启用和执行。所有活跃单元都应该拥有此权限。
      * </p>
      */
-    public static final String PLUGIN_ENABLE = "PLUGIN_ENABLE";
+    public static final String Ling_ENABLE = "Ling_ENABLE";
 
     private Capabilities() {
         // 防止实例化

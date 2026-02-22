@@ -27,45 +27,45 @@ public class DefaultPermissionService implements PermissionService {
         this.eventBus = eventBus;
     }
 
-    // 简单的权限表: Map<PluginId, Map<Capability, AccessType>>
+    // 简单的权限表: Map<LingId, Map<Capability, AccessType>>
     // 实际生产中应从数据库或配置文件加载
     private final Map<String, Map<String, AccessType>> permissions = new ConcurrentHashMap<>();
 
     // 全局白名单服务 (例如基础的日志服务)
     private static final String GLOBAL_WHITELIST_PREFIX = "com.lingframe.api.";
 
-    // 宿主应用 ID
-    private static final String HOST_PLUGIN_ID = "host-app";
+    // 灵核应用 ID
+    private static final String HOST_Ling_ID = "lingcore-app";
 
     @Override
-    public boolean isAllowed(String pluginId, String capability, AccessType accessType) {
-        log.debug("[Auth] Checking permission: pluginId={}, capability={}, accessType={}", pluginId, capability,
+    public boolean isAllowed(String lingId, String capability, AccessType accessType) {
+        log.debug("[Auth] Checking permission: lingId={}, capability={}, accessType={}", lingId, capability,
                 accessType);
 
-        // 宿主应用根据配置决定是否进行权限检查
-        if (HOST_PLUGIN_ID.equals(pluginId)) {
-            // 如果配置为不检查宿主应用权限，直接放行
+        // 灵核应用根据配置决定是否进行权限检查
+        if (HOST_Ling_ID.equals(lingId)) {
+            // 如果配置为不检查灵核应用权限，直接放行
             if (!LingFrameConfig.current().isHostCheckPermissions()) {
-                log.debug("[Auth] Host application bypassed");
+                log.debug("[Auth] LINGCORE application bypassed");
                 return true;
             }
         }
 
         // 白名单放行
-        if (pluginId == null || capability.startsWith(GLOBAL_WHITELIST_PREFIX)) {
+        if (lingId == null || capability.startsWith(GLOBAL_WHITELIST_PREFIX)) {
             log.debug("[Auth] Whitelist bypassed");
             return true;
         }
 
         // 查表鉴权
-        boolean allowed = checkInternal(pluginId, capability, accessType);
+        boolean allowed = checkInternal(lingId, capability, accessType);
         log.info("[Auth] Permission table check result: {}", allowed);
 
         // 开发模式兜底
         if (!allowed && LingFrameConfig.current().isDevMode()) {
             log.warn("==========================================================================");
-            log.warn("[DEV WARNING] Plugin [{}] unauthorized access [{}] ({}). Please declare in plugin.yml: {}",
-                    pluginId, capability, accessType, capability);
+            log.warn("[DEV WARNING] ling [{}] unauthorized access [{}] ({}). Please declare in ling.yml: {}",
+                    lingId, capability, accessType, capability);
             log.warn("==========================================================================");
             return true; // 开发模式强制放行
         }
@@ -73,16 +73,16 @@ public class DefaultPermissionService implements PermissionService {
         return allowed;
     }
 
-    private boolean checkInternal(String pluginId, String capability, AccessType accessType) {
-        Map<String, AccessType> pluginPerms = permissions.get(pluginId);
-        log.info("[Auth-Internal] pluginId={}, table content: {}", pluginId, pluginPerms);
+    private boolean checkInternal(String lingId, String capability, AccessType accessType) {
+        Map<String, AccessType> lingPerms = permissions.get(lingId);
+        log.info("[Auth-Internal] lingId={}, table content: {}", lingId, lingPerms);
 
-        if (pluginPerms == null) {
-            log.info("[Auth-Internal] Plugin has no permissions -> false");
+        if (lingPerms == null) {
+            log.info("[Auth-Internal] ling has no permissions -> false");
             return false;
         }
 
-        AccessType granted = pluginPerms.get(capability);
+        AccessType granted = lingPerms.get(capability);
         log.info("[Auth-Internal] Query capability={}, granted: {}", capability, granted);
 
         if (granted == null) {
@@ -97,36 +97,36 @@ public class DefaultPermissionService implements PermissionService {
     }
 
     @Override
-    public void grant(String pluginId, String capability, AccessType accessType) {
-        log.info("[PermissionService] Granting permission: pluginId={}, capability={}, accessType={}",
-                pluginId, capability, accessType);
-        permissions.computeIfAbsent(pluginId, k -> new ConcurrentHashMap<>())
+    public void grant(String lingId, String capability, AccessType accessType) {
+        log.info("[PermissionService] Granting permission: lingId={}, capability={}, accessType={}",
+                lingId, capability, accessType);
+        permissions.computeIfAbsent(lingId, k -> new ConcurrentHashMap<>())
                 .put(capability, accessType);
-        log.info("[PermissionService] Permission saved, current permissions: {}", permissions.get(pluginId));
+        log.info("[PermissionService] Permission saved, current permissions: {}", permissions.get(lingId));
     }
 
     @Override
-    public void revoke(String pluginId, String capability) {
-        log.info("[PermissionService] Revoking permission: pluginId={}, capability={}", pluginId, capability);
-        permissions.computeIfAbsent(pluginId, k -> new ConcurrentHashMap<>())
+    public void revoke(String lingId, String capability) {
+        log.info("[PermissionService] Revoking permission: lingId={}, capability={}", lingId, capability);
+        permissions.computeIfAbsent(lingId, k -> new ConcurrentHashMap<>())
                 .put(capability, AccessType.NONE);
-        log.info("[PermissionService] Permission set to NONE, current permissions: {}", permissions.get(pluginId));
+        log.info("[PermissionService] Permission set to NONE, current permissions: {}", permissions.get(lingId));
     }
 
     @Override
-    public PermissionInfo getPermission(String pluginId, String capability) {
-        AccessType accessType = permissions.getOrDefault(pluginId, Collections.emptyMap()).get(capability);
+    public PermissionInfo getPermission(String lingId, String capability) {
+        AccessType accessType = permissions.getOrDefault(lingId, Collections.emptyMap()).get(capability);
         if (accessType == null) {
             return null;
         }
-        return PermissionInfo.permanent(pluginId, capability, accessType, "runtime-grant");
+        return PermissionInfo.permanent(lingId, capability, accessType, "runtime-grant");
     }
 
     @Override
-    public void audit(String pluginId, String capability, String operation, boolean allowed) {
+    public void audit(String lingId, String capability, String operation, boolean allowed) {
         // 日志记录
         if (!allowed) {
-            log.warn("[Security] Access Denied - Plugin: {}, Capability: {}, Operation: {}", pluginId, capability,
+            log.warn("[Security] Access Denied - ling: {}, Capability: {}, Operation: {}", lingId, capability,
                     operation);
         }
 
@@ -136,7 +136,7 @@ public class DefaultPermissionService implements PermissionService {
         // 1. 持久化审计记录 (异步写入日志/ES/DB)
         AuditManager.asyncRecord(
                 traceId,
-                pluginId,
+                lingId,
                 allowed ? "ALLOWED" : "DENIED",
                 capability,
                 new Object[] { truncateOperation(operation) },
@@ -147,7 +147,7 @@ public class DefaultPermissionService implements PermissionService {
         if (eventBus != null) {
             eventBus.publish(new MonitoringEvents.AuditLogEvent(
                     traceId,
-                    pluginId,
+                    lingId,
                     allowed ? "ALLOWED" : "DENIED",
                     capability + ":" + truncateOperation(operation),
                     allowed,
@@ -165,17 +165,17 @@ public class DefaultPermissionService implements PermissionService {
     }
 
     /**
-     * 清理插件的权限数据
+     * 清理单元的权限数据
      */
     @Override
-    public void removePlugin(String pluginId) {
-        if (permissions.remove(pluginId) != null) {
-            log.debug("Removed permissions for plugin: {}", pluginId);
+    public void removeLing(String lingId) {
+        if (permissions.remove(lingId) != null) {
+            log.debug("Removed permissions for ling: {}", lingId);
         }
     }
 
     @Override
-    public boolean isHostGovernanceEnabled() {
-        return LingFrameConfig.current().isHostGovernanceEnabled();
+    public boolean isLingCoreGovernanceEnabled() {
+        return LingFrameConfig.current().isLingCoreGovernanceEnabled();
     }
 }
