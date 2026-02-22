@@ -3,11 +3,11 @@
 ## 架构概述
 
 ```
-宿主 ClassLoader (AppClassLoader)
+灵核 ClassLoader (AppClassLoader)
     ↓ parent
 SharedApiClassLoader (共享 API 层)
     ↓ parent
-PluginClassLoader (插件实现层)
+LingClassLoader (单元实现层)
 ```
 
 ## 核心设计原则
@@ -19,18 +19,18 @@ PluginClassLoader (插件实现层)
 │                     消费者驱动契约模式                        │
 └─────────────────────────────────────────────────────────────┘
 
-场景：Order 插件需要查询用户信息
+场景：Order 单元需要查询用户信息
 
 ┌─────────────┐     需要能力      ┌─────────────┐
-│  Order 插件  │ ───────────────▶ │  User 插件   │
+│  Order 单元  │ ───────────────▶ │  User 单元   │
 │  (消费者)    │                  │  (生产者)    │
 └─────────────┘                  └─────────────┘
        │                               ▲
        │ 1. 定义所需接口               │ 2. 实现消费者定义的接口
        ▼                               │
 ┌─────────────────────────────────────────────────────────────┐
-│                      order-api 模块                          │
-│          (由消费者 Order 插件定义和维护)                       │
+│                      order-api 单元                          │
+│          (由消费者 Order 单元定义和维护)                       │
 │                                                              │
 │   public interface UserQueryService {                        │
 │       Optional<UserDTO> findById(String userId);             │
@@ -44,24 +44,24 @@ PluginClassLoader (插件实现层)
 - 消费方最了解自己需要什么功能，接口设计更贴合实际需求
 
 **为什么这样设计？**
-- 传统模式：User 插件定义 `UserService`，所有消费者适配生产者的接口
-- 消费者驱动：Order 插件定义 `UserQueryService`（只包含它需要的方法），User 插件适配消费者需求
+- 传统模式：User 单元定义 `UserService`，所有消费者适配生产者的接口
+- 消费者驱动：Order 单元定义 `UserQueryService`（只包含它需要的方法），User 单元适配消费者需求
 - 优势：解耦更彻底，消费者不依赖生产者的全量接口，可独立演进
 
 ---
 
-## API 模块结构
+## API 单元结构
 
-### 2. API 模块只包含接口和 DTO
+### 2. API 单元只包含接口和 DTO
 
-消费者（Order 插件）定义它需要的接口，生产者（User 插件）实现：
+消费者（Order 单元）定义它需要的接口，生产者（User 单元）实现：
 
 ```
-order-api/                              # 消费者 Order 插件的 API 模块
+order-api/                              # 消费者 Order 单元的 API 单元
 ├── src/main/java/com/example/order/
 │   ├── api/
-│   │   ├── UserQueryService.java      # Order 需要的用户查询能力（由 User 插件实现）
-│   │   └── PaymentService.java        # Order 需要的支付能力（由 Payment 插件实现）
+│   │   ├── UserQueryService.java      # Order 需要的用户查询能力（由 User 单元实现）
+│   │   └── PaymentService.java        # Order 需要的支付能力（由 Payment 单元实现）
 │   └── dto/
 │       ├── UserDTO.java               # 用户数据传输对象
 │       └── PaymentResultDTO.java
@@ -95,7 +95,7 @@ public class OrderDTO {
 
 ### 3. 避免重量级依赖
 
-API 模块的依赖应该尽量精简：
+API 单元的依赖应该尽量精简：
 
 ```xml
 <!-- ✅ 推荐的依赖 -->
@@ -148,14 +148,14 @@ public interface OrderService { ... }
 |------|------|----------|
 | 新增 API 方法 | ✅ | 增量添加 JAR |
 | 破坏性变更 | ✅ | 版本化包名 |
-| 新旧插件共存 | ✅ | API 向后兼容 |
+| 新旧单元共存 | ✅ | API 向后兼容 |
 
 ### 灰度流程示例
 
 ```
-T0: PluginA-v1 + API-v1
-T1: 添加 API-v2，部署 PluginA-v2（v1/v2 共存）
-T2: 验证通过，卸载 PluginA-v1
+T0: LingA-v1 + API-v1
+T1: 添加 API-v2，部署 LingA-v2（v1/v2 共存）
+T2: 验证通过，卸载 LingA-v1
 ```
 
 ## 配置示例
@@ -165,7 +165,7 @@ lingframe:
   preload-api-jars:
     - api/order-api-*.jar      # 通配符加载多版本
     - api/user-api/            # 目录自动扫描
-    - lingframe-examples/lingframe-example-order-api  # Maven 模块（开发模式）
+    - lingframe-examples/lingframe-example-order-api  # Maven 单元（开发模式）
 ```
 
 ## 常见问题
@@ -183,4 +183,4 @@ lingframe:
 
 **原因**：同一个类被不同 ClassLoader 加载
 
-**解决**：确保 API 类只在 SharedApiClassLoader 中加载，不要在插件 JAR 中重复打包
+**解决**：确保 API 类只在 SharedApiClassLoader 中加载，不要在单元 JAR 中重复打包

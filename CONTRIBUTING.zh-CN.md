@@ -30,7 +30,7 @@ mvn clean install -DskipTests
 ### 运行示例
 
 ```bash
-cd lingframe-examples/lingframe-example-host-app
+cd lingframe-examples/lingframe-example-lingcore-app
 mvn spring-boot:run
 ```
 
@@ -44,14 +44,14 @@ mvn spring-boot:run
 
 | 原则 | 说明 |
 |------|------|
-| **零信任** | 业务模块不能直接访问 DB/Redis，必须经过 Core 代理 |
+| **零信任** | 业务单元不能直接访问 DB/Redis，必须经过 Core 代理 |
 | **微内核** | Core 只做调度仲裁，不包含业务逻辑 |
 | **契约优先** | 所有交互通过 `lingframe-api` 接口 |
 | **生态无关** | Core 是纯 Java，不依赖 Spring/ORM |
 
-### 模块职责
+### 单元职责
 
-| 模块 | 职责 | 依赖规则 |
+| 单元 | 职责 | 依赖规则 |
 |------|------|----------|
 | `lingframe-api` | 契约层 | 无外部依赖 |
 | `lingframe-core` | 治理内核 | **禁止**依赖 Spring |
@@ -120,7 +120,7 @@ git push origin feature/your-feature
 
 | 类型 | 规则 | 示例 |
 |------|------|------|
-| 接口 | 描述性名称 | `PluginContext` |
+| 接口 | 描述性名称 | `LingContext` |
 | 实现类 | `Default` 前缀 | `DefaultPermissionService` |
 | 代理类 | `Proxy` 后缀 | `SmartServiceProxy` |
 | 工厂类 | `Factory` 后缀 | `SpringContainerFactory` |
@@ -144,7 +144,7 @@ git push origin feature/your-feature
 
 ```
 feat: add permission check for SQL execution
-fix: fix classloader memory leak on plugin unload
+fix: fix classloader memory leak on ling unload
 docs: update quick start guide
 ```
 

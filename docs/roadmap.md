@@ -20,7 +20,7 @@ Core Capabilities:
 
 **Goal**: Verify feasibility of in-JVM governance
 
-- ✅ Module Lifecycle Management
+- ✅ Unit Lifecycle Management
 - ✅ Child-First ClassLoader Isolation
 - ✅ Spring Parent-Child Context Isolation
 - ✅ Three-Tier ClassLoader Architecture (SharedApiClassLoader)
@@ -34,15 +34,15 @@ Core Capabilities:
 
 **Goal**: Visual Operation Entry
 
-- ✅ Dashboard Module Management
-- ✅ Module Status Control (Start/Stop/Hot Swap)
+- ✅ Dashboard Unit Management
+- ✅ Unit Status Control (Start/Stop/Hot Swap)
 - ✅ Dynamic Permission Adjustment
 - ✅ Canary Release Configuration
 - ⏳ Dashboard UI Polish
 
 ---
 
-## Phase 3: Complete Governance Capabilities 🔄 In Progress
+## Phase 3: Complete Governance Capabilities ✅ Completed
 
 **Goal**: Comprehensive Runtime Governance
 
@@ -51,13 +51,11 @@ Core Capabilities:
 - ✅ Security Audit (@Auditable)
 - ✅ Full Tracing (TraceContext)
 - ✅ Canary Release (CanaryRouter)
-
-### To Be Implemented
-- ⏳ Circuit Breaker
-- ⏳ Fallback
-- ⏳ Retry
-- ⏳ Rate Limiting
-- ⏳ Timeout Control
+- ✅ Circuit Breaker (SlidingWindowCircuitBreaker)
+- ✅ Rate Limiting (TokenBucketRateLimiter)
+- ✅ Timeout Control & Fallback (SmartServiceProxy integrated)
+- ✅ Retry (GovernanceKernel integrated)
+- ✅ Complex Routing (LabelMatchRouter with Weight-based and Tag-based routing)
 
 ---
 
@@ -70,9 +68,9 @@ Core Capabilities:
 - JVM Metrics (GC, Heap, Thread)
 - System Load
 
-### Module Metrics
-- Call Count, Success Rate, Latency per Module
-- Module Resource Usage
+### Unit Metrics
+- Call Count, Success Rate, Latency per Unit
+- Unit Resource Usage
 - Exception Statistics
 
 ### Technical Solution
@@ -82,10 +80,15 @@ Core Capabilities:
 
 ---
 
-## Phase 5: Ecosystem Perfection ⏳ Planned
+## Phase 5: Ecosystem Perfection 🔄 In Progress
 
-**Goal**: Complete Infrastructure Proxy Ecosystem
+**Goal**: Complete Infrastructure Proxy Ecosystem and Exoskeleton Extensions
 
+### Implemented
+- ✅ Ecosystem SPIs (LingInvocationFilter, ServiceExporter, LingContextCustomizer, LingDeployService)
+- ✅ Developer Experience (Auto-activate units after installation in devMode)
+
+### To Be Implemented
 - ⏳ Message Proxy (Kafka / RabbitMQ)
 - ⏳ Search Proxy (Elasticsearch)
 - ⏳ More Infrastructure Proxies

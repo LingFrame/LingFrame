@@ -60,9 +60,9 @@ class LocalGovernanceRegistryTest {
                     .methodPattern("com.example.*")
                     .build());
 
-            registry.updatePatch("plugin-1", policy);
+            registry.updatePatch("Ling-1", policy);
 
-            GovernancePolicy retrieved = registry.getPatch("plugin-1");
+            GovernancePolicy retrieved = registry.getPatch("Ling-1");
             assertNotNull(retrieved);
             assertFalse(retrieved.getPermissions().isEmpty());
             assertEquals("perm-1", retrieved.getPermissions().get(0).getPermissionId());
@@ -84,7 +84,7 @@ class LocalGovernanceRegistryTest {
             policy.getPermissions().add(GovernancePolicy.PermissionRule.builder()
                     .permissionId("perm-2")
                     .build());
-            registry.updatePatch("plugin-2", policy);
+            registry.updatePatch("Ling-2", policy);
 
             // 创建新的 Registry 实例模拟重启
             LocalGovernanceRegistry newRegistry = new LocalGovernanceRegistry(eventBus, configFile.getAbsolutePath());
@@ -93,7 +93,7 @@ class LocalGovernanceRegistryTest {
             // 但为了模拟"重启"后读取，我们直接断言即可
             // 如果构造函数中的load()已经读取了，那么getPatch应该能拿到数据
 
-            GovernancePolicy loadedPolicy = newRegistry.getPatch("plugin-2");
+            GovernancePolicy loadedPolicy = newRegistry.getPatch("Ling-2");
             assertNotNull(loadedPolicy);
             assertFalse(loadedPolicy.getPermissions().isEmpty());
             assertEquals("perm-2", loadedPolicy.getPermissions().get(0).getPermissionId());

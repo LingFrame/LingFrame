@@ -177,13 +177,13 @@ public class AsmDangerousApiScanner {
                         .map(Violation::toString)
                         .reduce((a, b) -> a + "\n" + b)
                         .orElse("");
-                throw new LingException("Plugin security check failed:\n" + msg);
+                throw new LingException("Ling security check failed:\n" + msg);
             }
         }
 
         public void logWarnings() {
             if (hasWarnings()) {
-                log.warn("Plugin security warnings:");
+                log.warn("Ling security warnings:");
                 warnings.forEach(w -> log.warn("  {}", w));
             }
         }

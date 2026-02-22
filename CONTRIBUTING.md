@@ -30,7 +30,7 @@ mvn clean install -DskipTests
 ### Run Example
 
 ```bash
-cd lingframe-examples/lingframe-example-host-app
+cd lingframe-examples/lingframe-example-lingcore-app
 mvn spring-boot:run
 ```
 
@@ -44,14 +44,14 @@ mvn spring-boot:run
 
 | Principle | Description |
 |-----------|-------------|
-| **Zero Trust** | Business modules cannot access DB/Redis directly, must go through Core proxy. |
+| **Zero Trust** | Business units cannot access DB/Redis directly, must go through Core proxy. |
 | **Microkernel** | Core only handles scheduling and arbitration, no business logic. |
 | **Contract First** | All interactions via `lingframe-api` interfaces. |
 | **Ecosystem Agnostic** | Core is pure Java, does not depend on Spring/ORM. |
 
-### Module Responsibilities
+### Unit Responsibilities
 
-| Module | Responsibility | Dependency Rule |
+| Unit | Responsibility | Dependency Rule |
 |--------|----------------|-----------------|
 | `lingframe-api` | Contract Layer | No external dependencies. |
 | `lingframe-core` | Governance Kernel | **FORBIDDEN** to depend on Spring. |
@@ -120,7 +120,7 @@ git push origin feature/your-feature
 
 | Type | Rule | Example |
 |------|------|---------|
-| Interface | Descriptive Name | `PluginContext` |
+| Interface | Descriptive Name | `LingContext` |
 | Implementation | `Default` Prefix | `DefaultPermissionService` |
 | Proxy | `Proxy` Suffix | `SmartServiceProxy` |
 | Factory | `Factory` Suffix | `SpringContainerFactory` |
@@ -144,7 +144,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
 feat: add permission check for SQL execution
-fix: fix classloader memory leak on plugin unload
+fix: fix classloader memory leak on ling unload
 docs: update quick start guide
 ```
 

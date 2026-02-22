@@ -4,11 +4,11 @@ import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.core.governance.GovernanceDecision;
-import com.lingframe.core.governance.HostGovernanceRule;
+import com.lingframe.core.governance.LingCoreGovernanceRule;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.plugin.PluginInstance;
-import com.lingframe.core.plugin.PluginRuntime;
+import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import lombok.Value;
@@ -21,23 +21,23 @@ import java.util.stream.Collectors;
 
 /**
  * 标准治理策略提供者
- * 优先级：P0(Host) > P1(Patch) > P2(Plugin) > P3(Annotation) > P4(Infer)
+ * 优先级：P0(LINGCORE) > P1(Patch) > P2(ling) > P3(Annotation) > P4(Infer)
  */
 @Slf4j
 public class StandardGovernancePolicyProvider implements GovernancePolicyProvider {
 
     private final LocalGovernanceRegistry localRegistry;
-    // 预编译的宿主规则 (提升匹配性能)
+    // 预编译的灵核规则 (提升匹配性能)
     private final List<CompiledRule> hostRules;
 
     @Value
     public static class CompiledRule {
         Pattern pattern;
-        HostGovernanceRule rule;
+        LingCoreGovernanceRule rule;
     }
 
     public StandardGovernancePolicyProvider(LocalGovernanceRegistry localRegistry,
-            List<HostGovernanceRule> rawRules) {
+            List<LingCoreGovernanceRule> rawRules) {
         this.localRegistry = localRegistry;
         this.hostRules = rawRules.stream()
                 .map(r -> new CompiledRule(compilePattern(r.getPattern()), r))
@@ -50,23 +50,23 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
     }
 
     @Override
-    public GovernanceDecision resolve(PluginRuntime runtime, Method method, InvocationContext ctx) {
-        String pid = (runtime != null) ? runtime.getPluginId() : "unknown";
+    public GovernanceDecision resolve(LingRuntime runtime, Method method, InvocationContext ctx) {
+        String pid = (runtime != null) ? runtime.getLingId() : "unknown";
         String mName = method.getName();
-        // 全限定名匹配键: pluginId.methodName (可扩展为包含类名)
+        // 全限定名匹配键: lingId.methodName (可扩展为包含类名)
         String fullSign = pid + "." + mName;
 
-        // === P0: 宿主 YAML 强制规则 (最高优先级) ===
+        // === P0: 灵核 YAML 强制规则 (最高优先级) ===
         for (CompiledRule cr : hostRules) {
             if (cr.pattern.matcher(fullSign).matches()) {
-                HostGovernanceRule r = cr.rule;
+                LingCoreGovernanceRule r = cr.rule;
                 return GovernanceDecision.builder()
                         .requiredPermission(r.getPermission())
                         .accessType(r.getAccessType())
                         .auditEnabled(r.getAuditEnabled())
                         .auditAction(r.getAuditAction())
                         .timeout(r.getTimeout())
-                        .source("Host Rule")
+                        .source("LINGCORE Rule")
                         .build();
             }
         }
@@ -79,12 +79,12 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
                 return d1;
         }
 
-        // === P2: 插件定义 (plugin.yml) ===
+        // === P2: 单元定义 (ling.yml) ===
         if (runtime != null) {
-            PluginInstance instance = runtime.getInstancePool().getDefault();
+            LingInstance instance = runtime.getInstancePool().getDefault();
             if (instance != null && instance.getDefinition() != null) {
                 GovernanceDecision d2 = matchPolicy(instance.getDefinition().getGovernance(), mName,
-                        "Plugin Definition");
+                        "Ling Definition");
                 if (d2 != null)
                     return d2;
             }

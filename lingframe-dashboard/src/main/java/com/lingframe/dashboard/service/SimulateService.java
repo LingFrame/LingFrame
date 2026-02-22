@@ -10,15 +10,15 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.plugin.PluginInstance;
-import com.lingframe.core.plugin.PluginManager;
-import com.lingframe.core.plugin.PluginRuntime;
+import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.dashboard.dto.SimulateResultDTO;
-import com.lingframe.api.exception.PluginNotFoundException;
+import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.core.exception.ServiceUnavailableException;
 import com.lingframe.core.exception.InvocationException;
 import com.lingframe.dashboard.dto.StressResultDTO;
-import com.lingframe.core.spi.PluginContainer;
+import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Controller;
@@ -39,23 +39,23 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SimulateService {
 
-    private final PluginManager pluginManager;
+    private final LingManager lingManager;
     private final GovernanceKernel governanceKernel;
     private final EventBus eventBus;
     private final PermissionService permissionService;
 
-    public SimulateResultDTO simulateResource(String pluginId, String resourceType) {
+    public SimulateResultDTO simulateResource(String lingId, String resourceType) {
         // 🔥 尝试智能推导：寻找现有代码中的最佳替身
         AccessType targetAccess = mapAccessType(resourceType);
         String targetCapability = mapPermission(resourceType);
-        Method candidate = findSimulationCandidate(pluginId, targetAccess, targetCapability);
+        Method candidate = findSimulationCandidate(lingId, targetAccess, targetCapability);
 
         if (candidate != null) {
             // 找到了替身，执行方法级模拟 (High Fidelity)
             String className = candidate.getDeclaringClass().getName();
             String methodName = candidate.getName();
 
-            SimulateResultDTO result = simulateMethod(pluginId, className, methodName, targetAccess);
+            SimulateResultDTO result = simulateMethod(lingId, className, methodName, targetAccess);
 
             // Append hint to let user perceive intelligence
             return result.toBuilder()
@@ -66,24 +66,24 @@ public class SimulateService {
         }
 
         // 没找到替身，回退到通用模拟 (Low Fidelity)
-        PluginRuntime runtime = pluginManager.getRuntime(pluginId);
+        LingRuntime runtime = lingManager.getRuntime(lingId);
         if (runtime == null) {
-            throw new PluginNotFoundException(pluginId);
+            throw new LingNotFoundException(lingId);
         }
 
         if (!runtime.isAvailable()) {
-            throw new ServiceUnavailableException(pluginId, "Plugin not active");
+            throw new ServiceUnavailableException(lingId, "Ling not active");
         }
 
         String traceId = generateTraceId();
 
-        publishTrace(traceId, pluginId, "→ Simulate Request: " + resourceType, "IN", 1);
-        publishTrace(traceId, pluginId, "  ! Business method not found, performing generic baseline check", "WARN", 1);
+        publishTrace(traceId, lingId, "→ Simulate Request: " + resourceType, "IN", 1);
+        publishTrace(traceId, lingId, "  ! Business method not found, performing generic baseline check", "WARN", 1);
 
         InvocationContext ctx = InvocationContext.builder()
                 .traceId(traceId)
-                .pluginId(pluginId)
-                .callerPluginId(pluginId) // 模拟该插件作为调用方
+                .lingId(lingId)
+                .callerLingId(lingId) // 模拟该单元作为调用方
                 .resourceType(mapResourceType(resourceType))
                 .resourceId("simulate:" + resourceType)
                 .operation("simulate_" + resourceType)
@@ -98,7 +98,7 @@ public class SimulateService {
         boolean devBypass = false;
 
         try {
-            publishTrace(traceId, pluginId, "  ↳ Kernel authorization check...", "IN", 2);
+            publishTrace(traceId, lingId, "  ↳ Kernel authorization check...", "IN", 2);
 
             governanceKernel.invoke(runtime, getSimulateMethod(), ctx, () -> {
                 return "Simulated " + resourceType + " success";
@@ -108,29 +108,29 @@ public class SimulateService {
             message = resourceType + " Access Success";
 
             // 检测是否因开发模式豁免而通过
-            if (isDevModeBypass(pluginId, mapPermission(resourceType), mapAccessType(resourceType))) {
+            if (isDevModeBypass(lingId, mapPermission(resourceType), mapAccessType(resourceType))) {
                 devBypass = true;
                 message += " (⚠️ Dev Mode Bypass)";
-                publishTrace(traceId, pluginId,
+                publishTrace(traceId, lingId,
                         "    ! Permission insufficient, bypassed by Dev Mode (Source: " + ctx.getRuleSource() + ")",
                         "WARN", 3);
             } else {
-                publishTrace(traceId, pluginId, "    ✓ Permission verified", "OK", 3);
+                publishTrace(traceId, lingId, "    ✓ Permission verified", "OK", 3);
             }
 
         } catch (SecurityException e) {
             allowed = false;
             message = "Access Denied: " + e.getMessage();
-            publishTrace(traceId, pluginId, "    ✗ " + message, "FAIL", 3);
+            publishTrace(traceId, lingId, "    ✗ " + message, "FAIL", 3);
         } catch (Exception e) {
             allowed = false;
             message = "Execution Failed: " + e.getMessage();
-            publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
+            publishTrace(traceId, lingId, "    ✗ " + message, "ERROR", 3);
         }
 
         return SimulateResultDTO.builder()
                 .traceId(traceId)
-                .pluginId(pluginId)
+                .lingId(lingId)
                 .resourceType(resourceType)
                 .allowed(allowed)
                 .message(message)
@@ -140,53 +140,53 @@ public class SimulateService {
                 .build();
     }
 
-    public SimulateResultDTO simulateIpc(String pluginId, String targetPluginId, boolean ipcEnabled) {
-        PluginRuntime sourceRuntime = pluginManager.getRuntime(pluginId);
+    public SimulateResultDTO simulateIpc(String lingId, String targetLingId, boolean ipcEnabled) {
+        LingRuntime sourceRuntime = lingManager.getRuntime(lingId);
         if (sourceRuntime == null) {
-            throw new PluginNotFoundException(pluginId);
+            throw new LingNotFoundException(lingId);
         }
 
         if (!sourceRuntime.isAvailable()) {
-            throw new ServiceUnavailableException(pluginId, "Source plugin not active");
+            throw new ServiceUnavailableException(lingId, "Source ling not active");
         }
 
-        PluginRuntime targetRuntime = pluginManager.getRuntime(targetPluginId);
+        LingRuntime targetRuntime = lingManager.getRuntime(targetLingId);
         String traceId = generateTraceId();
 
-        publishTrace(traceId, pluginId, "→ [IPC] Call initiated: " + targetPluginId, "IN", 1);
+        publishTrace(traceId, lingId, "→ [IPC] Call initiated: " + targetLingId, "IN", 1);
 
         boolean allowed = false;
         String message;
 
         if (targetRuntime == null) {
-            message = "Target plugin not found";
-            publishTrace(traceId, pluginId, "  ✗ " + message, "ERROR", 2);
+            message = "Target ling not found";
+            publishTrace(traceId, lingId, "  ✗ " + message, "ERROR", 2);
         } else if (!targetRuntime.isAvailable()) {
-            message = "Target plugin not active";
-            publishTrace(traceId, pluginId, "  ✗ " + message, "ERROR", 2);
+            message = "Target ling not active";
+            publishTrace(traceId, lingId, "  ✗ " + message, "ERROR", 2);
         } else if (!ipcEnabled) {
             message = "IPC authorization disabled";
-            publishTrace(traceId, pluginId, "  ↳ Kernel authorization check...", "IN", 2);
-            publishTrace(traceId, pluginId, "    ✗ IPC access policy denied", "FAIL", 3);
+            publishTrace(traceId, lingId, "  ↳ Kernel authorization check...", "IN", 2);
+            publishTrace(traceId, lingId, "    ✗ IPC access policy denied", "FAIL", 3);
         } else {
             InvocationContext ctx = InvocationContext.builder()
                     .traceId(traceId)
-                    .pluginId(targetPluginId)
-                    .callerPluginId(pluginId)
+                    .lingId(targetLingId)
+                    .callerLingId(lingId)
                     .resourceType("IPC")
-                    .resourceId("ipc:" + pluginId + "->" + targetPluginId)
+                    .resourceId("ipc:" + lingId + "->" + targetLingId)
                     .operation("ipc_call")
                     .accessType(AccessType.EXECUTE)
-                    .requiredPermission("ipc:" + targetPluginId)
+                    .requiredPermission("ipc:" + targetLingId)
                     .shouldAudit(true)
                     .auditAction("IPC_CALL")
                     .build();
 
             try {
-                publishTrace(traceId, pluginId, "  ↳ Kernel authorization check...", "IN", 2);
+                publishTrace(traceId, lingId, "  ↳ Kernel authorization check...", "IN", 2);
 
                 // 🔥 模拟真实调用的路由和统计
-                PluginInstance routed = targetRuntime.routeToAvailableInstance("simulate-ipc");
+                LingInstance routed = targetRuntime.routeToAvailableInstance("simulate-ipc");
                 targetRuntime.recordRequest(routed);
 
                 governanceKernel.invoke(targetRuntime, getSimulateMethod(), ctx, () -> "OK");
@@ -195,31 +195,31 @@ public class SimulateService {
                 message = "IPC Call Success (" + routed.getDefinition().getVersion() + ")";
 
                 // Detect if bypassed by dev mode
-                if (isDevModeBypass(pluginId, "ipc:" + targetPluginId, AccessType.EXECUTE)) {
+                if (isDevModeBypass(lingId, "ipc:" + targetLingId, AccessType.EXECUTE)) {
                     message += " (⚠️ Dev Mode Bypass)";
-                    publishTrace(traceId, pluginId, "    ! Permission insufficient, bypassed by Dev Mode", "WARN", 3);
+                    publishTrace(traceId, lingId, "    ! Permission insufficient, bypassed by Dev Mode", "WARN", 3);
                 } else {
-                    publishTrace(traceId, pluginId, "    ✓ Authorized, Context propagated", "OK", 3);
+                    publishTrace(traceId, lingId, "    ✓ Authorized, Context propagated", "OK", 3);
                 }
 
-                publishTrace(traceId, targetPluginId, "← [IPC] Received request from " + pluginId, "IN", 1);
-                publishTrace(traceId, targetPluginId, "  ↳ Processing request...", "OUT", 2);
+                publishTrace(traceId, targetLingId, "← [IPC] Received request from " + lingId, "IN", 1);
+                publishTrace(traceId, targetLingId, "  ↳ Processing request...", "OUT", 2);
 
             } catch (SecurityException e) {
                 allowed = false;
                 message = "IPC Intercepted: " + e.getMessage();
-                publishTrace(traceId, pluginId, "    ✗ " + message, "FAIL", 3);
+                publishTrace(traceId, lingId, "    ✗ " + message, "FAIL", 3);
             } catch (Exception e) {
                 allowed = false;
                 message = "IPC Execution Failed: " + e.getMessage();
-                publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
+                publishTrace(traceId, lingId, "    ✗ " + message, "ERROR", 3);
             }
         }
 
         return SimulateResultDTO.builder()
                 .traceId(traceId)
-                .pluginId(pluginId)
-                .targetPluginId(targetPluginId)
+                .lingId(lingId)
+                .targetLingId(targetLingId)
                 .resourceType("IPC")
                 .allowed(allowed)
                 .message(message)
@@ -231,32 +231,32 @@ public class SimulateService {
      * 压测单次路由
      * 由前端 setInterval 控制频率，后端每次只执行一次路由
      */
-    public StressResultDTO stressTest(String pluginId) {
-        PluginRuntime runtime = pluginManager.getRuntime(pluginId);
+    public StressResultDTO stressTest(String lingId) {
+        LingRuntime runtime = lingManager.getRuntime(lingId);
         if (runtime == null) {
-            throw new PluginNotFoundException(pluginId);
+            throw new LingNotFoundException(lingId);
         }
 
         if (!runtime.isAvailable()) {
-            throw new ServiceUnavailableException(pluginId, "插件未激活");
+            throw new ServiceUnavailableException(lingId, "单元未激活");
         }
 
         // 单次路由
-        PluginInstance instance = runtime.routeToAvailableInstance("stress-test");
+        LingInstance instance = runtime.routeToAvailableInstance("stress-test");
         runtime.recordRequest(instance);
 
-        PluginInstance defaultInstance = runtime.getInstancePool().getDefault();
+        LingInstance defaultInstance = runtime.getInstancePool().getDefault();
         boolean isCanary = (instance != defaultInstance);
 
         String version = instance.getDefinition().getVersion();
         String tag = isCanary ? "CANARY" : "STABLE";
 
         // Publish Trace
-        publishTrace(generateTraceId(), pluginId,
+        publishTrace(generateTraceId(), lingId,
                 String.format("→ Routed to: %s (%s)", version, tag), tag, 1);
 
         return StressResultDTO.builder()
-                .pluginId(pluginId)
+                .lingId(lingId)
                 .totalRequests(1)
                 .v1Requests(isCanary ? 0 : 1)
                 .v2Requests(isCanary ? 1 : 0)
@@ -272,9 +272,9 @@ public class SimulateService {
                 + Integer.toHexString(ThreadLocalRandom.current().nextInt(0xFFFF)).toUpperCase();
     }
 
-    private void publishTrace(String traceId, String pluginId, String action, String type, int depth) {
+    private void publishTrace(String traceId, String lingId, String action, String type, int depth) {
         try {
-            eventBus.publish(new MonitoringEvents.TraceLogEvent(traceId, pluginId, action, type, depth));
+            eventBus.publish(new MonitoringEvents.TraceLogEvent(traceId, lingId, action, type, depth));
         } catch (Exception e) {
             log.warn("Failed to publish trace: {}", e.getMessage());
         }
@@ -292,19 +292,19 @@ public class SimulateService {
      * 模拟特定方法的调用
      * 🔥 通过反射加载真实方法元数据，从而支持注解级权限校验
      */
-    public SimulateResultDTO simulateMethod(String pluginId, String className, String methodName,
+    public SimulateResultDTO simulateMethod(String lingId, String className, String methodName,
             AccessType targetAccess) {
-        PluginRuntime runtime = pluginManager.getRuntime(pluginId);
+        LingRuntime runtime = lingManager.getRuntime(lingId);
         if (runtime == null) {
-            throw new PluginNotFoundException(pluginId);
+            throw new LingNotFoundException(lingId);
         }
 
         if (!runtime.isAvailable()) {
-            throw new ServiceUnavailableException(pluginId, "插件未激活");
+            throw new ServiceUnavailableException(lingId, "单元未激活");
         }
 
         String traceId = generateTraceId();
-        publishTrace(traceId, pluginId, "→ Simulate Method: " + methodName, "IN", 1);
+        publishTrace(traceId, lingId, "→ Simulate Method: " + methodName, "IN", 1);
 
         boolean allowed;
         String message;
@@ -312,20 +312,20 @@ public class SimulateService {
         boolean devBypass = false;
 
         try {
-            // 1. 获取插件类加载器
-            ClassLoader pluginLoader = runtime.getInstancePool().getDefault()
+            // 1. 获取单元类加载器
+            ClassLoader lingLoader = runtime.getInstancePool().getDefault()
                     .getContainer().getClassLoader();
 
             // 2. 加载真实类和方法
-            Class<?> targetClass = pluginLoader.loadClass(className);
+            Class<?> targetClass = lingLoader.loadClass(className);
             // 简化处理：假设是无参方法，或仅根据名称匹配（生产环境应支持参数签名）
             Method targetMethod = findMethodByName(targetClass, methodName);
 
-            // 3. 构建上下文 - callerPluginId 设为被测插件，这样权限检查针对正确的主体
+            // 3. 构建上下文 - callerLingId 设为被测单元，这样权限检查针对正确的主体
             ctx = InvocationContext.builder()
                     .traceId(traceId)
-                    .pluginId(pluginId)
-                    .callerPluginId(pluginId) // 模拟插件自己调用自己的方法
+                    .lingId(lingId)
+                    .callerLingId(lingId) // 模拟单元自己调用自己的方法
                     .resourceType("METHOD")
                     .resourceId(className + "#" + methodName)
                     .operation(methodName)
@@ -335,7 +335,7 @@ public class SimulateService {
                     .build();
 
             // 4. Call Kernel (execute fake logic)
-            publishTrace(traceId, pluginId, "  ↳ Kernel fine-grained auth...", "IN", 2);
+            publishTrace(traceId, lingId, "  ↳ Kernel fine-grained auth...", "IN", 2);
 
             governanceKernel.invoke(runtime, targetMethod, ctx, () -> {
                 return "Simulated " + methodName + " success";
@@ -359,42 +359,42 @@ public class SimulateService {
 
             // 如果找到了需要检查的 capability，则进行豁免检测
             if (capability != null) {
-                if (isDevModeBypass(pluginId, capability, inferredAccess)) {
+                if (isDevModeBypass(lingId, capability, inferredAccess)) {
                     devBypass = true;
                     message += " (⚠️ Dev Mode Bypass)";
-                    publishTrace(traceId, pluginId,
+                    publishTrace(traceId, lingId,
                             "    ! Permission insufficient, bypassed by Dev Mode (Source: "
                                     + (ctx != null ? ctx.getRuleSource() : "Unknown") + ")",
                             "WARN", 3);
                 } else {
-                    publishTrace(traceId, pluginId, "    ✓ Permission verified (Annotation check)", "OK", 3);
+                    publishTrace(traceId, lingId, "    ✓ Permission verified (Annotation check)", "OK", 3);
                 }
             } else {
                 // No permission declared
-                publishTrace(traceId, pluginId, "    ✓ Permission verified (No explicit permission declared)", "OK", 3);
+                publishTrace(traceId, lingId, "    ✓ Permission verified (No explicit permission declared)", "OK", 3);
             }
 
         } catch (ClassNotFoundException e) {
             allowed = false;
             message = "Class not found: " + className;
-            publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
+            publishTrace(traceId, lingId, "    ✗ " + message, "ERROR", 3);
         } catch (NoSuchMethodException e) {
             allowed = false;
             message = "Method not found: " + methodName;
-            publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
+            publishTrace(traceId, lingId, "    ✗ " + message, "ERROR", 3);
         } catch (SecurityException e) {
             allowed = false;
             message = "Access Denied: " + e.getMessage();
-            publishTrace(traceId, pluginId, "    ✗ " + message, "FAIL", 3);
+            publishTrace(traceId, lingId, "    ✗ " + message, "FAIL", 3);
         } catch (Exception e) {
             allowed = false;
             message = "Simulation Exception: " + e.getMessage();
-            publishTrace(traceId, pluginId, "    ✗ " + message, "ERROR", 3);
+            publishTrace(traceId, lingId, "    ✗ " + message, "ERROR", 3);
         }
 
         return SimulateResultDTO.builder()
                 .traceId(traceId)
-                .pluginId(pluginId)
+                .lingId(lingId)
                 .resourceType("METHOD")
                 .allowed(allowed)
                 .message(message)
@@ -414,14 +414,14 @@ public class SimulateService {
         throw new NoSuchMethodException(name);
     }
 
-    private Method findSimulationCandidate(String pluginId, AccessType targetAccess, String targetCapability) {
+    private Method findSimulationCandidate(String lingId, AccessType targetAccess, String targetCapability) {
         try {
-            PluginRuntime runtime = pluginManager.getRuntime(pluginId);
+            LingRuntime runtime = lingManager.getRuntime(lingId);
             if (runtime == null || !runtime.isAvailable()) {
                 return null;
             }
 
-            PluginContainer container = runtime.getInstancePool().getDefault().getContainer();
+            LingContainer container = runtime.getInstancePool().getDefault().getContainer();
             String[] beanNames = container.getBeanNames();
 
             // 候选池：找到所有符合 AccessType 的方法
@@ -571,13 +571,13 @@ public class SimulateService {
         }
     }
 
-    private boolean isDevModeBypass(String pluginId, String capability, AccessType accessType) {
+    private boolean isDevModeBypass(String lingId, String capability, AccessType accessType) {
         // 如果我们不在开发模式，就不存在豁免
         if (!LingFrameConfig.current().isDevMode()) {
             return false;
         }
         // 检查实际权限配置
-        PermissionInfo info = permissionService.getPermission(pluginId, capability);
+        PermissionInfo info = permissionService.getPermission(lingId, capability);
         if (info == null) {
             return true; // 没有授权，却执行成功了 -> 豁免
         }

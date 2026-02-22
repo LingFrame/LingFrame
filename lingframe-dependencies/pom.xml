@@ -13,7 +13,7 @@
     <properties>
         <!-- LingFrame 版本 -->
         <!-- 使用 Maven CI Friendly 变量 -->
-        <revision>0.1.0-Preview</revision>
+        <revision>0.2.0</revision>
 
         <!-- Java -->
         <maven.compiler.source>${java.version}</maven.compiler.source>
@@ -35,7 +35,7 @@
 
         <!-- 测试 -->
         <junit-jupiter.version>5.9.3</junit-jupiter.version>
-        <mockito.version>5.3.1</mockito.version>
+        <mockito.version>4.11.0</mockito.version>
     </properties>
 
     <profiles>
@@ -59,10 +59,13 @@
             <id>spring-boot3</id>
             <properties>
                 <java.version>17</java.version>
-                <spring-boot.version>3.5.10</spring-boot.version>
+                <spring-boot.version>3.5.6</spring-boot.version>
                 <snakeyaml.version>2.2</snakeyaml.version>
                 <slf4j.version>2.0.13</slf4j.version>
                 <caffeine.version>3.1.8</caffeine.version>
+
+                <junit-jupiter.version>5.9.3</junit-jupiter.version>
+                <mockito.version>5.3.1</mockito.version>
             </properties>
         </profile>
     </profiles>
@@ -83,8 +86,8 @@
 
     <pluginRepositories>
         <pluginRepository>
-            <id>aliyun-plugin</id>
-            <name>Aliyun Maven Plugin Repository</name>
+            <id>aliyun-ling</id>
+            <name>Aliyun Maven ling Repository</name>
             <url>https://maven.aliyun.com/repository/public</url>
             <releases>
                 <enabled>true</enabled>
@@ -97,7 +100,7 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- 导入 LingFrame BOM，统一管理 LingFrame 模块版本 -->
+            <!-- 导入 LingFrame BOM，统一管理 LingFrame 单元版本 -->
             <dependency>
                 <groupId>com.lingframe</groupId>
                 <artifactId>lingframe-bom</artifactId>
@@ -224,14 +227,14 @@
     <build>
         <pluginManagement>
             <plugins>
-                <!-- Flatten Plugin -->
+                <!-- Flatten ling -->
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>flatten-maven-plugin</artifactId>
                     <version>1.5.0</version>
                 </plugin>
 
-                <!-- Compiler Plugin -->
+                <!-- Compiler ling -->
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
@@ -250,14 +253,14 @@
                     </configuration>
                 </plugin>
 
-                <!-- Spring Boot Plugin -->
+                <!-- Spring Boot ling -->
                 <plugin>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
                     <version>${spring-boot.version}</version>
                 </plugin>
 
-                <!-- Jar Plugin -->
+                <!-- Jar ling -->
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-jar-plugin</artifactId>

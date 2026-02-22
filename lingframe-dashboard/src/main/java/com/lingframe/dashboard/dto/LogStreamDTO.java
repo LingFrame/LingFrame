@@ -8,7 +8,7 @@ import lombok.Data;
 public class LogStreamDTO {
     private String type;      // TRACE / AUDIT
     private String traceId;
-    private String pluginId;
+    private String lingId;
     private String content;
     private String tag;       // 辅助标签 (OK, FAIL, IN, OUT)
     private int depth;        // 缩进深度

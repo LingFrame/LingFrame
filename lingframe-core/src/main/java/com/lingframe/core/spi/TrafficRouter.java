@@ -1,7 +1,7 @@
 package com.lingframe.core.spi;
 
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.plugin.PluginInstance;
+import com.lingframe.core.ling.LingInstance;
 
 import java.util.List;
 
@@ -24,5 +24,5 @@ public interface TrafficRouter {
      * @param context    调用上下文
      * @return 选中的目标实例
      */
-    PluginInstance route(List<PluginInstance> candidates, InvocationContext context);
+    LingInstance route(List<LingInstance> candidates, InvocationContext context);
 }

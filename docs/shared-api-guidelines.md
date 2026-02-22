@@ -3,11 +3,11 @@
 ## Architecture Overview
 
 ```
-Host ClassLoader (AppClassLoader)
+LINGCORE ClassLoader (AppClassLoader)
     ↓ parent
 SharedApiClassLoader (Shared API Layer)
     ↓ parent
-PluginClassLoader (Plugin Implementation Layer)
+LingClassLoader (ling Implementation Layer)
 ```
 
 ## Core Design Principles
@@ -19,18 +19,18 @@ PluginClassLoader (Plugin Implementation Layer)
 │                 Consumer-Driven Contract Pattern             │
 └─────────────────────────────────────────────────────────────┘
 
-Scenario: Order Plugin needs to query user info
+Scenario: Order ling needs to query user info
 
 ┌─────────────┐     Needs Capability     ┌─────────────┐
-│ Order Plugin│ ───────────────▶ │ User Plugin  │
+│ Order ling│ ───────────────▶ │ User ling  │
 │ (Consumer)  │                  │ (Producer)   │
 └─────────────┘                  └─────────────┘
        │                               ▲
        │ 1. Define required interface     │ 2. Implement interface defined by Consumer
        ▼                               │
 ┌─────────────────────────────────────────────────────────────┐
-│                    order-api Module                         │
-│       (Defined and maintained by Consumer Order Plugin)     │
+│                    order-api Unit                         │
+│       (Defined and maintained by Consumer Order ling)     │
 │                                                              │
 │   public interface UserQueryService {                       │
 │       Optional<UserDTO> findById(String userId);            │
@@ -44,24 +44,24 @@ Scenario: Order Plugin needs to query user info
 - Consumer knows best what functionality it needs, so interface design fits actual needs better.
 
 **Why this design?**
-- Traditional Pattern: User Plugin defines `UserService`, all consumers adapt to Producer's interface.
-- Consumer-Driven: Order Plugin defines `UserQueryService` (containing only methods it needs), User Plugin adapts to Consumer's need.
+- Traditional Pattern: User ling defines `UserService`, all consumers adapt to Producer's interface.
+- Consumer-Driven: Order ling defines `UserQueryService` (containing only methods it needs), User ling adapts to Consumer's need.
 - Advantage: Decoupling is more thorough, Consumer does not depend on Producer's full interface, allowing independent evolution.
 
 ---
 
-## API Module Structure
+## API Unit Structure
 
-### 2. API Module Only Contains Interfaces and DTOs
+### 2. API Unit Only Contains Interfaces and DTOs
 
-Consumer (Order Plugin) defines interfaces it needs, Producer (User Plugin) implements them:
+Consumer (Order ling) defines interfaces it needs, Producer (User ling) implements them:
 
 ```
-order-api/                              # API Module of Consumer Order Plugin
+order-api/                              # API Unit of Consumer Order ling
 ├── src/main/java/com/example/order/
 │   ├── api/
-│   │   ├── UserQueryService.java      # User query capability needed by Order (Implemented by User Plugin)
-│   │   └── PaymentService.java        # Payment capability needed by Order (Implemented by Payment Plugin)
+│   │   ├── UserQueryService.java      # User query capability needed by Order (Implemented by User ling)
+│   │   └── PaymentService.java        # Payment capability needed by Order (Implemented by Payment ling)
 │   └── dto/
 │       ├── UserDTO.java               # User Data Transfer Object
 │       └── PaymentResultDTO.java
@@ -95,7 +95,7 @@ public class OrderDTO {
 
 ### 3. Avoid Heavy Dependencies
 
-API module dependencies should be minimal:
+API unit dependencies should be minimal:
 
 ```xml
 <!-- ✅ Recommended Dependencies -->
@@ -148,14 +148,14 @@ Both versions can coexist in SharedApiClassLoader.
 | -------- | --------- | --------------- |
 | Add API Method | ✅ | Incrementally add JAR |
 | Breaking Change | ✅ | Versioned Package Name |
-| Coexistence of Old/New Plugins | ✅ | API Backward Compatibility |
+| Coexistence of Old/New Lings | ✅ | API Backward Compatibility |
 
 ### Canary Flow Example
 
 ```
-T0: PluginA-v1 + API-v1
-T1: Add API-v2, Deploy PluginA-v2 (v1/v2 Coexist)
-T2: Verify pass, Uninstall PluginA-v1
+T0: LingA-v1 + API-v1
+T1: Add API-v2, Deploy LingA-v2 (v1/v2 Coexist)
+T2: Verify pass, Uninstall LingA-v1
 ```
 
 ## Configuration Example
@@ -165,7 +165,7 @@ lingframe:
   preload-api-jars:
     - api/order-api-*.jar      # Wildcard load multiple versions
     - api/user-api/            # Directory auto scan
-    - lingframe-examples/lingframe-example-order-api  # Maven Module (Dev Mode)
+    - lingframe-examples/lingframe-example-order-api  # Maven Unit (Dev Mode)
 ```
 
 ## FAQ
@@ -183,4 +183,4 @@ lingframe:
 
 **Cause**: Same class loaded by different ClassLoaders
 
-**Solution**: Ensure API classes are ONLY loaded in SharedApiClassLoader, do not package them repeatedly in Plugin JARs.
+**Solution**: Ensure API classes are ONLY loaded in SharedApiClassLoader, do not package them repeatedly in ling JARs.

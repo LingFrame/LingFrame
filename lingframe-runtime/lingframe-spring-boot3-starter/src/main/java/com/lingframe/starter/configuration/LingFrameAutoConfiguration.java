@@ -1,7 +1,7 @@
 package com.lingframe.starter.configuration;
 
 import com.lingframe.core.kernel.GovernanceKernel;
-import com.lingframe.core.plugin.PluginManager;
+import com.lingframe.core.ling.LingManager;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.filter.LingWebGovernanceFilter;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -27,13 +27,13 @@ public class LingFrameAutoConfiguration {
     @Bean
     public FilterRegistrationBean<LingWebGovernanceFilter> lingWebGovernanceFilter(
             GovernanceKernel governanceKernel,
-            PluginManager pluginManager,
+            LingManager lingManager,
             WebInterfaceManager webInterfaceManager,
             LingFrameProperties properties,
             @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping) {
         FilterRegistrationBean<LingWebGovernanceFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(
-                new LingWebGovernanceFilter(governanceKernel, pluginManager, webInterfaceManager, properties,
+                new LingWebGovernanceFilter(governanceKernel, lingManager, webInterfaceManager, properties,
                         handlerMapping));
         registration.addUrlPatterns("/*");
         registration.setOrder(1); // 高优先级

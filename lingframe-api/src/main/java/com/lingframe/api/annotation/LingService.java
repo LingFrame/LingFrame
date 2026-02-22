@@ -14,7 +14,7 @@ public @interface LingService {
 
     /**
      * 服务协议 短 ID (必填)
-     * Core 会自动与插件 ID 拼接为 FQSID: [Plugin ID]:[短 ID]
+     * Core 会自动与单元 ID 拼接为 FQSID: [ling ID]:[短 ID]
      * 保证了服务的全球唯一性，解决了 ID 冲突问题。
      *
      * @return 短 ID，例如 "send_sms"

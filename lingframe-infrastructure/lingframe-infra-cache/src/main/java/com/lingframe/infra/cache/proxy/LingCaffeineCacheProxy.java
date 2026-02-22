@@ -3,7 +3,7 @@ package com.lingframe.infra.cache.proxy;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Policy;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
-import com.lingframe.api.context.PluginContextHolder;
+import com.lingframe.api.context.LingContextHolder;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
@@ -29,16 +29,16 @@ public class LingCaffeineCacheProxy<K, V> implements Cache<K, V> {
     }
 
     private void checkPermission(String operation) {
-        String callerPluginId = PluginContextHolder.get();
-        if (callerPluginId == null)
+        String callerLingId = LingContextHolder.get();
+        if (callerLingId == null)
             return;
 
-        boolean allowed = permissionService.isAllowed(callerPluginId, "cache:local", AccessType.WRITE);
-        permissionService.audit(callerPluginId, "cache:local", operation, allowed);
+        boolean allowed = permissionService.isAllowed(callerLingId, "cache:local", AccessType.WRITE);
+        permissionService.audit(callerLingId, "cache:local", operation, allowed);
 
         if (!allowed) {
             throw new PermissionDeniedException(
-                    "Plugin [" + callerPluginId + "] denied access to local cache operation: " + operation);
+                    "Ling [" + callerLingId + "] denied access to local cache operation: " + operation);
         }
     }
 

@@ -11,7 +11,7 @@
     <packaging>jar</packaging>
 
     <name>LingFrame :: API</name>
-    <description>插件 API 定义与契约</description>
+    <description>单元 API 定义与契约</description>
 
     <dependencies>
         <dependency>

@@ -8,35 +8,35 @@ import com.lingframe.api.exception.LingException;
  */
 public class ClassLoaderException extends LingException {
 
-    private final String pluginId;
+    private final String lingId;
     private final String resource;
 
     public ClassLoaderException(String message) {
         super(message);
-        this.pluginId = null;
+        this.lingId = null;
         this.resource = null;
     }
 
     public ClassLoaderException(String message, Throwable cause) {
         super(message, cause);
-        this.pluginId = null;
+        this.lingId = null;
         this.resource = null;
     }
 
-    public ClassLoaderException(String pluginId, String resource, String message) {
+    public ClassLoaderException(String lingId, String resource, String message) {
         super(message);
-        this.pluginId = pluginId;
+        this.lingId = lingId;
         this.resource = resource;
     }
 
-    public ClassLoaderException(String pluginId, String resource, String message, Throwable cause) {
+    public ClassLoaderException(String lingId, String resource, String message, Throwable cause) {
         super(message, cause);
-        this.pluginId = pluginId;
+        this.lingId = lingId;
         this.resource = resource;
     }
 
-    public String getPluginId() {
-        return pluginId;
+    public String getLingId() {
+        return lingId;
     }
 
     public String getResource() {
