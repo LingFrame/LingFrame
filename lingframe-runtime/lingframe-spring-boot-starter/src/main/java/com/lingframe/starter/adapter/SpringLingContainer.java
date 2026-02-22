@@ -10,6 +10,7 @@ import com.lingframe.core.ling.LingManager;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.processor.LingReferenceInjector;
+import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +28,8 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -46,6 +48,7 @@ public class SpringLingContainer implements LingContainer {
     private ClassLoader classLoader; // 非 final，以便在 stop() 中清除
     private WebInterfaceManager webInterfaceManager;
     private List<String> excludedPackages;
+    private List<LingContextCustomizer> customizers; // 新增定制器
     // 保存 Context 以便 stop 时使用
     private LingContext lingContext;
 
@@ -54,15 +57,17 @@ public class SpringLingContainer implements LingContainer {
     private final RequestMappingHandlerAdapter hostAdapter;
 
     public SpringLingContainer(SpringApplicationBuilder builder,
-                                 ClassLoader classLoader,
-                                 WebInterfaceManager webInterfaceManager,
-                                 List<String> excludedPackages,
-                                 ConfigurableApplicationContext hostContext,
-                                 RequestMappingHandlerAdapter hostAdapter) {
+            ClassLoader classLoader,
+            WebInterfaceManager webInterfaceManager,
+            List<String> excludedPackages,
+            List<LingContextCustomizer> customizers,
+            ConfigurableApplicationContext hostContext,
+            RequestMappingHandlerAdapter hostAdapter) {
         this.builder = builder;
         this.classLoader = classLoader;
         this.webInterfaceManager = webInterfaceManager;
         this.excludedPackages = excludedPackages != null ? excludedPackages : Collections.emptyList();
+        this.customizers = customizers != null ? customizers : Collections.emptyList();
         this.hostContext = hostContext;
         this.hostAdapter = hostAdapter;
     }
@@ -76,11 +81,21 @@ public class SpringLingContainer implements LingContainer {
         ClassLoader old = t.getContextClassLoader();
         t.setContextClassLoader(classLoader);
         try {
-            // 添加初始化器：在 Spring 启动前注册关键组件
+            // 添加初始化器：在 Spring 启动前注册关键组件和应用定制器
             builder.initializers(applicationContext -> {
                 if (applicationContext instanceof GenericApplicationContext) {
                     GenericApplicationContext gac = (GenericApplicationContext) applicationContext;
                     registerBeans(gac, classLoader);
+                }
+
+                if (applicationContext instanceof ConfigurableApplicationContext) {
+                    for (LingContextCustomizer customizer : customizers) {
+                        try {
+                            customizer.customize(lingContext, (ConfigurableApplicationContext) applicationContext);
+                        } catch (Exception e) {
+                            log.error("Error applying context customizer: " + customizer.getClass().getName(), e);
+                        }
+                    }
                 }
             });
             // 启动 Spring
@@ -110,7 +125,7 @@ public class SpringLingContainer implements LingContainer {
      */
     private void registerBeans(GenericApplicationContext context, ClassLoader lingClassLoader) {
         if (lingContext instanceof CoreLingContext) {
-            CoreLingContext coreCtx = (CoreLingContext)lingContext;
+            CoreLingContext coreCtx = (CoreLingContext) lingContext;
             LingManager lingManager = coreCtx.getLingManager();
             String lingId = lingContext.getLingId();
 
@@ -264,7 +279,7 @@ public class SpringLingContainer implements LingContainer {
      * 解析单个方法并生成元数据（简化版，不再解析参数）
      */
     private void registerControllerMethod(String lingId, Object bean, Method method,
-                                          String baseUrl, RequestMapping mapping) {
+            String baseUrl, RequestMapping mapping) {
         // URL 拼接: /lingId/classUrl/methodUrl
         String methodUrl = mapping.path().length > 0 ? mapping.path()[0] : "";
         String fullPath = ("/" + lingId + "/" + baseUrl + "/" + methodUrl).replaceAll("/+", "/");
@@ -362,7 +377,7 @@ public class SpringLingContainer implements LingContainer {
                     retrieverCacheField.setAccessible(true);
                     Object cache = retrieverCacheField.get(multicaster);
                     if (cache instanceof Map<?, ?>) {
-                        ((Map<?, ?>)cache).clear();
+                        ((Map<?, ?>) cache).clear();
                         log.debug("[{}] Cleared ApplicationEventMulticaster.retrieverCache", lingId);
                     }
                 }
@@ -377,7 +392,7 @@ public class SpringLingContainer implements LingContainer {
                     retrieverCacheField.setAccessible(true);
                     Object cache = retrieverCacheField.get(multicaster);
                     if (cache instanceof Map<?, ?>) {
-                        ((Map<?, ?>)cache).clear();
+                        ((Map<?, ?>) cache).clear();
                         log.debug("[{}] Cleared ApplicationEventMulticaster.retrieverCache (direct)", lingId);
                     }
                 } catch (Exception ex) {
@@ -409,8 +424,7 @@ public class SpringLingContainer implements LingContainer {
             // Spring Framework 5.x / 6.x
             Field cacheField = ReflectionUtils.findField(
                     org.springframework.core.io.support.SpringFactoriesLoader.class,
-                    "cache"
-            );
+                    "cache");
             if (cacheField != null) {
                 ReflectionUtils.makeAccessible(cacheField);
                 Map<?, ?> cache = (Map<?, ?>) ReflectionUtils.getField(cacheField, null);
@@ -429,7 +443,7 @@ public class SpringLingContainer implements LingContainer {
             Field[] fields = SpringFactoriesLoader.class.getDeclaredFields();
             for (Field field : fields) {
                 if (Map.class.isAssignableFrom(field.getType()) &&
-                    Modifier.isStatic(field.getModifiers())) {
+                        Modifier.isStatic(field.getModifiers())) {
                     ReflectionUtils.makeAccessible(field);
                     Map<?, ?> map = (Map<?, ?>) ReflectionUtils.getField(field, null);
                     if (map != null) {

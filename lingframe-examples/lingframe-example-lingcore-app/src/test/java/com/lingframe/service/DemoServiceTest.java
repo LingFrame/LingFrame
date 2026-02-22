@@ -34,7 +34,7 @@ public class DemoServiceTest {
     @Test
     public void testCallUserService() {
         // 测试查询用户
-        Object result = lingContext.invoke("user-ling:query_user", 1).orElse(null);
+        Object result = lingContext.invoke("user-ling:query_user", "1").orElse(null);
         log.info("Query result: {}", result);
         assertNotNull(result);
 

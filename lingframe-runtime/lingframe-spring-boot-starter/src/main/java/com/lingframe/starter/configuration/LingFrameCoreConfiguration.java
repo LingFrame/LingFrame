@@ -26,8 +26,15 @@ import com.lingframe.infra.cache.configuration.SpringCacheWrapperProcessor;
 import com.lingframe.infra.storage.configuration.DataSourceWrapperProcessor;
 import com.lingframe.starter.adapter.SpringContainerFactory;
 import com.lingframe.starter.config.LingFrameProperties;
+import com.lingframe.starter.deploy.DefaultLingDeployService;
+import com.lingframe.starter.deploy.LingDeployService;
+import com.lingframe.starter.event.ServiceExporterListener;
+import com.lingframe.starter.invoker.FilterableLingServiceInvoker;
 import com.lingframe.starter.processor.LingCoreBeanGovernanceProcessor;
 import com.lingframe.starter.processor.LingReferenceInjector;
+import com.lingframe.starter.spi.LingContextCustomizer;
+import com.lingframe.starter.spi.LingInvocationFilter;
+import com.lingframe.starter.spi.ServiceExporter;
 import com.lingframe.starter.web.WebInterfaceManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -129,8 +136,10 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     public ContainerFactory containerFactory(ApplicationContext parentContext,
-            WebInterfaceManager webInterfaceManager) {
-        return new SpringContainerFactory(parentContext, webInterfaceManager);
+            WebInterfaceManager webInterfaceManager,
+            ObjectProvider<List<LingContextCustomizer>> customizersProvider) {
+        List<LingContextCustomizer> customizers = customizersProvider.getIfAvailable(Collections::emptyList);
+        return new SpringContainerFactory(parentContext, webInterfaceManager, customizers);
     }
 
     @Bean
@@ -139,8 +148,13 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
-    public LingServiceInvoker lingServiceInvoker() {
-        return new DefaultLingServiceInvoker();
+    public LingServiceInvoker lingServiceInvoker(ObjectProvider<List<LingInvocationFilter>> filtersProvider) {
+        List<LingInvocationFilter> filters = filtersProvider.getIfAvailable(Collections::emptyList);
+        LingServiceInvoker defaultInvoker = new DefaultLingServiceInvoker();
+        if (filters.isEmpty()) {
+            return defaultInvoker;
+        }
+        return new FilterableLingServiceInvoker(defaultInvoker, filters);
     }
 
     @Bean
@@ -205,6 +219,18 @@ public class LingFrameCoreConfiguration {
     @Bean
     public LingDiscoveryService lingDiscoveryService(LingFrameConfig config, LingManager lingManager) {
         return new LingDiscoveryService(config, lingManager);
+    }
+
+    @Bean
+    public LingDeployService lingDeployService(LingManager lingManager) {
+        return new DefaultLingDeployService(lingManager);
+    }
+
+    @Bean
+    public ServiceExporterListener serviceExporterListener(EventBus eventBus, LingManager lingManager,
+            ObjectProvider<List<ServiceExporter>> exportersProvider) {
+        List<ServiceExporter> exporters = exportersProvider.getIfAvailable(Collections::emptyList);
+        return new ServiceExporterListener(eventBus, lingManager, exporters);
     }
 
     @Bean

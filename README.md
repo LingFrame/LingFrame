@@ -100,6 +100,7 @@ This is a phase that rejects pandering and begins choices.
 - A **JVM runtime governance framework**
 - A **structural tool for legacy systems**
 - A **system that allows Lings but doesn't tolerate their chaos**
+- A **resilient hub** equipped with Circuit Breakers, Rate Limiters, and Ecosystem SPI extensions
 
 It's not a microservices replacement,  
 nor a modularization silver bullet.
@@ -113,6 +114,7 @@ LingFrame's purpose is to provide possibilities for **"retraction" and "reorgani
 - JVM: JDK 17 / JDK 8
 - Spring Boot: 3.x / 2.x
 - Single-process ling isolation and governance
+- **Resilience & Ecosystem**: Native support for Canary releases, Circuit Breaking, Rate Limiting, and non-invasive external registry/config integration.
 - Clear distinction: **Interface stability ≠ Implementation stability**
 
 LingFrame doesn't hide complexity—  

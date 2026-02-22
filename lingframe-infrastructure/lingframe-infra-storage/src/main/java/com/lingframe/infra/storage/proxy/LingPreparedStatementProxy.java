@@ -22,9 +22,15 @@ import net.sf.jsqlparser.statement.delete.Delete;
 @RequiredArgsConstructor
 public class LingPreparedStatementProxy implements PreparedStatement {
 
+    private final Connection targetConnection; // 辅助信息，如果有需要可保留
     private final PreparedStatement target;
     private final PermissionService permissionService;
-    private final String sql; // 预编译的 SQL
+
+    // 🔥 不再强引用长原始 SQL，避免大数据量下的 FullGC 风险
+    // private final String sql;
+
+    // 审计用的精简标识 (仅取前100字符)
+    private final String sqlAuditSummary;
 
     // 预解析的结果
     private final AccessType preParsedAccessType;
@@ -52,11 +58,16 @@ public class LingPreparedStatementProxy implements PreparedStatement {
     }
 
     public LingPreparedStatementProxy(PreparedStatement target, PermissionService permissionService, String sql) {
+        this.targetConnection = null;
         this.target = target;
         this.permissionService = permissionService;
-        this.sql = sql;
 
-        // 在构造时预解析SQL类型
+        // 生成审计短摘要，防止 OOM
+        this.sqlAuditSummary = sql != null && sql.length() > 100
+                ? sql.substring(0, 100) + "..."
+                : sql;
+
+        // 在构造时预解析SQL类型，完成后即扔掉对长 SQL 的强引用
         this.preParsedAccessType = parseSqlForAccessTypeWithCache(sql);
     }
 
@@ -69,12 +80,14 @@ public class LingPreparedStatementProxy implements PreparedStatement {
             // 检查是否启用了灵核治理
             if (permissionService.isLingCoreGovernanceEnabled()) {
                 // 灵核治理开启：拒绝无上下文的操作
-                log.error("Security Alert: SQL execution without LingContext (LINGCORE governance ENABLED). SQL: {}",
-                        sql);
+                log.error(
+                        "Security Alert: SQL execution without LingContext (LINGCORE governance ENABLED). SQL Summary: {}",
+                        sqlAuditSummary);
                 throw new SQLException("Access Denied: LINGCORE governance is enabled but no context provided.");
             }
             // 灵核治理关闭：默认放行 (LINGCORE Privilege)
-            log.debug("SQL execution without LingContext (LINGCORE governance disabled). ALLOWED. SQL: {}", sql);
+            log.debug("SQL execution without LingContext (LINGCORE governance disabled). ALLOWED. SQL Summary: {}",
+                    sqlAuditSummary);
             return;
         }
 
@@ -82,11 +95,11 @@ public class LingPreparedStatementProxy implements PreparedStatement {
         boolean allowed = permissionService.isAllowed(callerLingId, "storage:sql", preParsedAccessType);
 
         // 3. 上报审计 (异步)
-        permissionService.audit(callerLingId, "storage:sql", sql, allowed);
+        permissionService.audit(callerLingId, "storage:sql", sqlAuditSummary, allowed);
 
         if (!allowed) {
             throw new SQLException(new PermissionDeniedException(
-                    "Ling [" + callerLingId + "] denied access to SQL: " + sql));
+                    "Ling [" + callerLingId + "] denied access to SQL. Summary: " + sqlAuditSummary));
         }
     }
 

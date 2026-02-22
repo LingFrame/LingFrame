@@ -79,17 +79,19 @@ Every cross-unit call leaves:
 
 ---
 
-## 🛡️ Advanced Capabilities: Runtime Governance (Long-term Value)
+## 🛡️ Advanced Capabilities: Runtime Governance & Ecosystem Extension (Long-term Value)
 
-As system scale and complexity rise, LingFrame provides a complete **Governance Kernel**:
+As system scale and complexity rise, LingFrame provides a complete **Governance Kernel** and **Ecosystem Extensibility**:
 
 * 🔐 **Permission Control**: All cross-unit calls must be authorized.
 * ⚖️ **Capability Arbitration**: Core acts as the sole proxy, preventing bypass.
 * 🧾 **Security Audit**: Meet compliance, risk control, and accountability needs.
 * 🔒 **Zero Trust Model**: Lings are untrusted by default.
+* 🛡️ **Resilience Governance**: Built-in Circuit Breaker, Rate Limiting, and Timeouts at the method execution level.
+* 🔌 **Ecosystem SPIs**: Non-invasively integrate with external ecosystems like Nacos, Consul, Apollo, and SkyWalking via `LingInvocationFilter`, `ServiceExporter`, etc.
 
 > These are not reasons to use it on day one,
-> But will **save your life** when the system gets complex.
+> But will **save your life** and drastically simplify architecture when the system gets complex.
 
 ---
 
@@ -146,9 +148,17 @@ mvn spring-boot:run
 ```yaml
 lingframe:
   enabled: true
-  dev-mode: true
-  Ling-home: "Lings"
+  dev-mode: true           # Enable dev mode, lings auto-activate after install
+  ling-home: "lings"       # Unit JAR directory
   auto-scan: true
+  
+  # 🔄 Phase 3: Resilience Governance Config
+  governance:
+    retry-count: 3                    # Global default retry count
+    circuit-breaker-enabled: true     # Enable circuit breaker
+    rate-limiter-enabled: true        # Enable rate limiter
+    default-timeout: 3s               # Default timeout
+    bulkhead-max-concurrent: 10       # Max concurrent limit
 ```
 
 ![LingFrame Dashboard Example](./images/dashboard.png)

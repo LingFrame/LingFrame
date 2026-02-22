@@ -17,6 +17,9 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 
 import java.io.File;
 import java.util.List;
+import java.util.Collections;
+
+import com.lingframe.starter.spi.LingContextCustomizer;
 
 @Slf4j
 public class SpringContainerFactory implements ContainerFactory {
@@ -25,13 +28,16 @@ public class SpringContainerFactory implements ContainerFactory {
     private final ApplicationContext parentContext;
     private final WebInterfaceManager webInterfaceManager;
     private final List<String> serviceExcludedPackages;
+    private final List<LingContextCustomizer> customizers; // 新增定制器列表
 
-    public SpringContainerFactory(ApplicationContext parentContext, WebInterfaceManager webInterfaceManager) {
+    public SpringContainerFactory(ApplicationContext parentContext, WebInterfaceManager webInterfaceManager,
+            List<LingContextCustomizer> customizers) {
         LingFrameProperties props = parentContext.getBean(LingFrameProperties.class);
         this.devMode = props.isDevMode();
         this.parentContext = parentContext;
         this.serviceExcludedPackages = props.getServiceExcludedPackages();
         this.webInterfaceManager = webInterfaceManager;
+        this.customizers = customizers != null ? customizers : Collections.emptyList();
     }
 
     @Override
@@ -74,6 +80,7 @@ public class SpringContainerFactory implements ContainerFactory {
                     classLoader,
                     webInterfaceManager,
                     serviceExcludedPackages,
+                    customizers, // 🔥 传入定制器
                     (ConfigurableApplicationContext) parentContext, // 🔥 传入灵核 Context
                     hostAdapter // 🔥 传入灵核 Adapter
             );

@@ -42,7 +42,7 @@
 
 ---
 
-## Phase 3：完整治理能力 🔄 进行中
+## Phase 3：完整治理能力 ✅ 已完成
 
 **目标**：全面的运行时治理
 
@@ -51,13 +51,11 @@
 - ✅ 安全审计（@Auditable）
 - ✅ 全链路追踪（TraceContext）
 - ✅ 灰度发布（CanaryRouter）
-
-### 待实现
-- ⏳ 熔断（Circuit Breaker）
-- ⏳ 降级（Fallback）
-- ⏳ 重试（Retry）
-- ⏳ 限流（Rate Limiting）
-- ⏳ 超时控制（Timeout）
+- ✅ 熔断机制（SlidingWindowCircuitBreaker）
+- ✅ 限流机制（TokenBucketRateLimiter）
+- ✅ 超时控制与降级兜底（整合于 SmartServiceProxy）
+- ✅ 重试机制（基于 GovernanceKernel 的 retryCount）
+- ✅ 复杂路由分发（基于 LabelMatchRouter 的标签与权重路由）
 
 ---
 
@@ -82,10 +80,15 @@
 
 ---
 
-## Phase 5：生态完善 ⏳ 计划中
+## Phase 5：生态完善 🔄 进行中
 
-**目标**：完整的基础设施代理生态
+**目标**：完整的基础设施代理生态与外骨骼扩展接入能力
 
+### 已实现
+- ✅ 生态级扩展 SPI（LingInvocationFilter、ServiceExporter、LingContextCustomizer、LingDeployService 等外围胶水层）
+- ✅ 开发体验增强（devMode 下单元安装后自动激活）
+
+### 待实现
 - ⏳ 消息代理（Kafka / RabbitMQ）
 - ⏳ 搜索代理（Elasticsearch）
 - ⏳ 更多基础设施代理

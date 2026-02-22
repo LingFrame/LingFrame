@@ -8,6 +8,16 @@ import java.util.Map;
 
 /**
  * 治理上下文：Core 层唯一认可的流量“通行证”
+ * <p>
+ * ⚠️【高危警告：防止 ClassLoader 内存泄漏】⚠️
+ * 鉴于 {@link com.lingframe.core.proxy.SmartServiceProxy} 采用了基于 ThreadLocal 的零 GC
+ * 对象池复用机制，
+ * 本对象（InvocationContext）在宿主线程（如 Tomcat Worker）中是长久存活且**不主动 remove** 的。
+ * 
+ * 绝对严禁在本类中新增任何由单元（Ling）自身 ClassLoader 加载的复杂业务对象字段！
+ * 只能使用 JDK 基础类（String, Map, Object[] 等）。
+ * 否则，单次跨单元调用的残留引用将导致该单元在卸载时发生严重的 Metaspace ClassLoader OOM！
+ * </p>
  */
 @Data
 @Builder

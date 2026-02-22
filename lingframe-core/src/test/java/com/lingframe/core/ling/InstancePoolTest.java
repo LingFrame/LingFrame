@@ -384,7 +384,7 @@ public class InstancePoolTest {
                 pool.addInstance(createMockInstance("1.0." + i), i == 0);
             }
 
-            List<LingInstance> instances = pool.getActiveInstances();
+            LingInstance[] instances = pool.getActiveInstances().toArray(new LingInstance[0]);
 
             int threadCount = 5;
             ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -396,7 +396,7 @@ public class InstancePoolTest {
                 executor.submit(() -> {
                     try {
                         startLatch.await();
-                        pool.moveToDying(instances.get(index));
+                        pool.moveToDying(instances[index]);
                     } catch (Exception e) {
                         // ignore
                     } finally {

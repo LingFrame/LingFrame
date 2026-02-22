@@ -229,10 +229,13 @@ LingFrame 借鉴操作系统的设计思想：
 │         │                                                    │
 │         ├─→ LingContextHolder.set(callerLingId)         │
 │         ├─→ TraceContext.start() 开启链路追踪               │
+│         ├─→ RateLimiter.acquire() 限流检查        │
+│         ├─→ CircuitBreaker.isAllowed() 熔断检查   │
 │         ├─→ checkPermissionSmartly() 权限检查               │
 │         │     ├─→ @RequiresPermission 显式声明              │
 │         │     └─→ GovernanceStrategy.inferPermission() 推导 │
 │         │                                                    │
+│         ├─→ Retry logic (InvocationExecutor)      │
 │         ├─→ activeInstanceRef.get() 获取活跃实例            │
 │         ├─→ instance.enter() (引用计数+1)                    │
 │         ├─→ TCCL 劫持                                        │
@@ -597,6 +600,27 @@ lingframe:
 >
 > Core Bean（`LingManager`、`LingContext`）通过 `registerBeans()` 手动注入。
 
+## 生态扩展 (Ecosystem SPI)
+
+为了维持核心（Core）的纯粹性，LingFrame 设计了一套高维度的外骨骼扩展机制（位于 `lingframe-runtime` 阶段，主要依托 Spring Boot Starter 装配），允许开发者以非侵入的方式将隔离的单元与企业现有的基础设施生态（如 Nacos、Apollo、SkyWalking 等）进行缝合：
+
+### 核心扩展点概览
+
+1. **`LingInvocationFilter` (服务调用过滤器)**
+   - **作用**：基于责任链机制，拦截对 `@LingService` 导出的服务的跨单元调用。 
+   - **场景**：分布式链路追踪（Trace 上下文透传）、全局限流、Metrics 指标采集。
+2. **`ServiceExporter` (服务导出器) 与 `ServiceExporterListener`**
+   - **作用**：监听单元的生命周期变化，当单元启动并挂载服务时提取元数据并向外推送。
+   - **场景**：将局部 `Ling` 单元服务自动注册至 Consul 或 Nacos 注册中心。
+3. **`LingContextCustomizer` (上下文定制器)**
+   - **作用**：在每个单元独有的 Spring `ApplicationContext` 刷新（`refresh`）前夕调用，允许动态修改或重新绑定局部上下文环境配置。
+   - **场景**：在单元启动前注入 Apollo 动态配置数据源，或挂载特定的全局拦截器代理。
+4. **`LingDeployService` (包拉取部署代理)**
+   - **作用**：充当宿主应用侧的代理层，负责从各种不同协议仓库地址中拉取压缩制品后再对接微内核。
+   - **场景**：解析 `oss://` 等非标路径将制品下载至本地。
+
+生态扩展不属于微内核（Microkernel），它们是构建在微内核外部的“胶水层”，确保业务特性迭代不受限于底座本身。
+
 ## 生命周期
 
 ### 单元安装流程
@@ -621,6 +645,8 @@ LingManager.install(lingId, version, jarFile)
     │       ├─→ serviceRegistry.register()     // 注册 @LingService
     │       ├─→ ling.onStart(context)        // 生命周期回调
     │       └─→ instancePool.setDefault(instance)  // 设置为默认实例
+    │
+    ├─→ [devMode] runtime.activate()           // 开发模式下自动激活
     │
     └─→ 旧版本进入死亡队列，等待引用计数归零后销毁
 ```

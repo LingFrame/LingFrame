@@ -79,17 +79,20 @@ LingFrame 会记录：
 
 ---
 
-## 🛡️ 进阶能力：运行时治理（长期价值）
+## 🛡️ 进阶能力：运行时治理与生态接入（长期价值）
 
-当系统规模和复杂度上升后，LingFrame 提供完整的**治理内核**：
+当系统规模和复杂度上升后，LingFrame 提供完整的**治理内核**和**外骨骼生态扩展**：
 
 * 🔐 **权限控制**：所有跨单元调用必须经过鉴权
 * ⚖️ **能力仲裁**：Core 作为唯一调用代理，禁止绕过
 * 🧾 **安全审计**：满足合规、风控、事后追责需求
 * 🔒 **零信任模型**：单元默认不可信
+* 🛡️ **高阶可用性治理**：内置基于滑动窗口的熔断、令牌桶限流与细粒度超时控制。
+* 🔌 **生态外接 SPI**：通过一系列外骨骼扩展接口（如拦截器、服务导出器），以零侵略方式无缝融入 Nacos、Apollo、SkyWalking 等外部基础设施。
+* 🔄 **已实现 Phase 3 弹性治理**：内置支持重试、熔断、限流和复杂权重路由。
 
 > 这些能力不是第一次使用的理由，
-> 但会在系统变复杂时，**救你一命**。
+> 但会在系统变复杂时，**救你一命**，极大地解耦你的架构。
 
 ---
 
@@ -146,9 +149,17 @@ mvn spring-boot:run
 ```yaml
 lingframe:
   enabled: true
-  dev-mode: true
-  Ling-home: "Lings"
+  dev-mode: true           # 开启开发模式，单元安装后将自动激活
+  ling-home: "lings"       # 单元 JAR 包目录
   auto-scan: true
+  
+  # 🔄 Phase 3: 弹性治理配置
+  governance:
+    retry-count: 3                    # 全局默认重试次数
+    circuit-breaker-enabled: true     # 开启熔断保护
+    rate-limiter-enabled: true        # 开启限流保护
+    default-timeout: 3s               # 默认超时时间
+    bulkhead-max-concurrent: 10       # 最大并发限制
 ```
 
 ![LingFrame Dashboard 示例](./../images/dashboard.zh-CN.png)

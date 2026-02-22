@@ -590,6 +590,12 @@ public class LingManager {
             eventBus.publish(new LingInstalledEvent(lingId, version));
             log.info("[{}] Installed successfully", lingId);
 
+            // ✅ 开发模式下自动激活
+            if (lingFrameConfig.isDevMode()) {
+                runtime.activate();
+                log.info("[{}] Auto-activated in DEV mode", lingId);
+            }
+
         } catch (Throwable t) {
             log.error("Failed to install ling: {} v{}", lingId, version, t);
 

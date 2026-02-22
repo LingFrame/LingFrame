@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V0.2.0] - 2026-02-23
+
+### 🚀 New Features
+
+- **Resilience Governance**: Full implementation of Circuit Breaking (Sliding Window), Rate Limiting (Token Bucket), Retry, and Fallback mechanisms in `GovernanceKernel`.
+- **Ecosystem Compatibility**: Added support for JDK 8 and Spring Boot 2.7.x, alongside the primary JDK 17/SpringBoot 3.x support.
+- **Developer Productivity**: 
+    - New `dev-mode` for loose runtime permissions.
+    - Automatic activation of Lings upon installation in development mode.
+    - Integrated SpringDoc (Swagger) support with API grouping (Core, Lings, Host).
+
+### 🛠 Refactoring & Improvements
+
+- **Global Terminology Refactor**: Renamed all "Plugin" related terms to "Ling" and "Host" to "LingCore" for conceptual consistency.
+- **Improved Isolation**: Enhanced `SmartServiceProxy` and `InvocationExecutor` to bolster unit boundary auditing.
+- **Infrastructure SPI**: Optimized `StorageService` and `CacheService` proxies for better stability.
+
+### 🐛 Bug Fixes
+
+- **Memory Leak Mitigation**: Systematically addressed potential ClassLoader memory leaks during Ling hot-swapping by clearing known Spring caches and Jakarta EL/Objenesis static references.
+- **Path Matching**: Fixed various path matching issues in Swagger and Web interface mappings.
+
 ## [V0.1.0-Preview] - 2026-02-01
 
 > **Maiden Phase (Preview)**: This release validates the feasibility of in-process JVM runtime governance.

@@ -6,7 +6,7 @@
 
 **LingFrame** = JVM Runtime Governance Framework
 
-Core Capabilities: ling Isolation + Permission Governance + Audit Tracing + Hot Swap
+Core Capabilities: ling Isolation + Permission Governance + Audit Tracing + Hot Swap + Resilience Governance
 
 ## Tech Stack
 

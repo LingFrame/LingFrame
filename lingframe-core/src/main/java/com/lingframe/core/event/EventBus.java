@@ -13,8 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Slf4j
 public class EventBus {
 
-    private final Map<Class<? extends LingEvent>, List<ListenerWrapper>> listeners =
-            new ConcurrentHashMap<>();
+    private final Map<Class<? extends LingEvent>, List<ListenerWrapper>> listeners = new ConcurrentHashMap<>();
 
     // 包装器，记录监听器归属的单元ID
     @Value
@@ -57,7 +56,8 @@ public class EventBus {
 
     public <E extends LingEvent> void publish(E event) {
         List<ListenerWrapper> wrappers = listeners.get(event.getClass());
-        if (wrappers == null) return;
+        if (wrappers == null)
+            return;
         for (ListenerWrapper wrapper : wrappers) {
             try {
                 @SuppressWarnings("unchecked")
@@ -65,11 +65,13 @@ public class EventBus {
                 if (castListener != null) {
                     castListener.onEvent(event);
                 }
-            } catch (RuntimeException e) {
-                log.warn("Event listener threw exception, propagating: {}", e.getMessage());
-                throw e; // Fail-Fast
             } catch (Exception e) {
-                log.error("Error processing event", e);
+                // 事件总线的监听器通常是旁路逻辑（如日志记录、指标收集或某些清理工作）
+                // 绝不能因为单个监听器抛出异常（包括 RuntimeException）就阻断整个 publish 流程及上层主链路
+                log.error("Error processing event [{}] in listener [{}]: {}",
+                        event.getClass().getSimpleName(),
+                        wrapper.listener().getClass().getName(),
+                        e.getMessage(), e);
             }
         }
     }

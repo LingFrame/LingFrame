@@ -228,10 +228,13 @@ Business ling calls userRepository.findById()
 │         │                                                    │
 │         ├─→ LingContextHolder.set(callerLingId)         │
 │         ├─→ TraceContext.start() Start Tracing              │
+│         ├─→ RateLimiter.acquire() Rate Limit Check│
+│         ├─→ CircuitBreaker.isAllowed() CB Check   │
 │         ├─→ checkPermissionSmartly() Permission Check       │
 │         │     ├─→ @RequiresPermission Explicit Declaration  │
 │         │     └─→ GovernanceStrategy.inferPermission() Infer│
 │         │                                                    │
+│         ├─→ Retry logic (InvocationExecutor)      │
 │         ├─→ activeInstanceRef.get() Get Active Instance     │
 │         ├─→ instance.enter() (Ref Count +1)                  │
 │         ├─→ TCCL Hijack                                      │
@@ -596,6 +599,27 @@ Each ling runs in a **completely isolated** Spring ApplicationContext:
 >
 > Core beans (`LingManager`, `LingContext`) are manually injected via `registerBeans()`.
 
+## Ecosystem Extensibility (SPI)
+
+To maintain the purity of the Core, LingFrame designs a high-level exoskeleton extension mechanism (in the `lingframe-runtime` phase, mainly relying on Spring Boot Starter assembly), allowing developers to seamlessly integrate isolated Lings with existing enterprise infrastructure ecosystems (such as Nacos, Apollo, SkyWalking, etc.) in a non-invasive way:
+
+### Core Extension Points
+
+1. **`LingInvocationFilter` (Service Invocation Filter)**
+   - **Role**: Based on a responsibility chain mechanism, intercepts cross-unit calls to services exported by `@LingService`.
+   - **Scenarios**: Distributed trace context propagation, global rate limiting, Metrics collection.
+2. **`ServiceExporter` and `ServiceExporterListener`**
+   - **Role**: Listens to unit lifecycle changes. Extracts metadata and pushes outward when a unit starts and mounts services.
+   - **Scenarios**: Automatically register local `Ling` services to Consul or Nacos registries.
+3. **`LingContextCustomizer` (Context Customizer)**
+   - **Role**: Invoked right before each unit's exclusive Spring `ApplicationContext` is refreshed (`refresh()`). Allows dynamic modification or rebinding of the local context environment configurations.
+   - **Scenarios**: Injecting Apollo dynamic configurations or mounting specific global interceptor proxies before a unit starts.
+4. **`LingDeployService` (Deployment Proxy)**
+   - **Role**: Acts as a proxy layer on the host application side, responsible for fetching compressed artifacts from various protocol repository addresses before hooking into the microkernel.
+   - **Scenarios**: Parsing non-standard paths like `oss://` to download plugins locally.
+
+Ecosystem extensions do not belong to the Microkernel. They act as a "glue layer" built outside the microkernel to ensure business feature iteration is not restricted by the underlying base.
+
 ## Lifecycle
 
 ### ling Installation Flow
@@ -620,6 +644,8 @@ LingManager.install(lingId, version, jarFile)
     │       ├─→ serviceRegistry.register()     // Register @LingService
     │       ├─→ ling.onStart(context)        // Lifecycle Callback
     │       └─→ instancePool.setDefault(instance)  // Set as Default
+    │
+    ├─→ [devMode] runtime.activate()           // Auto-activate in development mode
     │
     └─→ Old version enters dying queue, destroy after ref count zero
 ```

@@ -15,7 +15,7 @@ import java.util.Set;
  * 职责：管理 SharedApiClassLoader 中的共享 API，支持启动时预加载和动态添加
  * <p>
  * 架构设计：三层 ClassLoader 结构
- * 
+ *
  * <pre>
  * 灵核 ClassLoader (AppClassLoader)
  *     ↓ parent
@@ -61,6 +61,7 @@ public class SharedApiManager {
 
         for (String path : apiPaths) {
             try {
+                log.info("🔍 [SharedApi] Preloading path: {}", new File(path).getAbsolutePath());
                 loadPath(path, lingHomeDir, sharedApiCL);
             } catch (Exception e) {
                 log.error("❌ [SharedApi] Load failed: {}", path, e);

@@ -13,7 +13,7 @@
     <properties>
         <!-- LingFrame 版本 -->
         <!-- 使用 Maven CI Friendly 变量 -->
-        <revision>0.1.0-Preview</revision>
+        <revision>0.2.0</revision>
 
         <!-- Java -->
         <maven.compiler.source>${java.version}</maven.compiler.source>
@@ -35,7 +35,7 @@
 
         <!-- 测试 -->
         <junit-jupiter.version>5.9.3</junit-jupiter.version>
-        <mockito.version>5.3.1</mockito.version>
+        <mockito.version>4.11.0</mockito.version>
     </properties>
 
     <profiles>
@@ -63,6 +63,9 @@
                 <snakeyaml.version>2.2</snakeyaml.version>
                 <slf4j.version>2.0.13</slf4j.version>
                 <caffeine.version>3.1.8</caffeine.version>
+
+                <junit-jupiter.version>5.9.3</junit-jupiter.version>
+                <mockito.version>5.3.1</mockito.version>
             </properties>
         </profile>
     </profiles>

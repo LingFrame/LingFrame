@@ -2,7 +2,7 @@
 
 **Empower JVM Apps with OS-like Control and Governance**
 
-> 🟢 **Core Framework Implemented** — Permission Governance, Audit Tracing, Capability Arbitration, Unit Isolation core features are now available.
+> 🟢 **Core Framework Implemented** — Permission Governance, Audit Tracing, Capability Arbitration, Unit Isolation, and **Resilience Governance (Retry, Circuit-Breaking)** are available.
 
 ---
 
@@ -26,6 +26,7 @@
 | **Service Routing**   | `@LingService` + `@LingReference`, FQSID Routing | `LingReferenceInjector`, `GlobalServiceRoutingProxy` |
 | **Unit Isolation**  | Three-Tier ClassLoader + Spring Parent-Child Context | `SharedApiClassLoader`, `LingClassLoader`, `SpringLingContainer` |
 | **Hot Swap**          | Blue-Green Deploy + File Watcher, No Restart | `LingManager`, `InstancePool`, `HotSwapWatcher` |
+| **Resilience**        | Circuit Breaking, Retry, Rate Limiting    | `GovernanceKernel`, `SlidingWindowCircuitBreaker`, `TokenBucketRateLimiter` |
 
 ---
 
@@ -248,7 +249,7 @@ lingframe/
 | :---------- | :-------------------------------------------------- | :------------ |
 | **Phase 1** | Core Governance: Auth, Audit, Isolation             | ✅ **Done**   |
 | **Phase 2** | Visualization: Dashboard Governance Center          | ✅ **Basic Done**|
-| **Phase 3** | Elastic Governance: Circuit Break, Degrade, Retry, Rate Limit | 🔄 In Progress |
+| **Phase 3** | Elastic Governance: Circuit Break, Degrade, Retry, Rate Limit | ✅ **Done**    |
 | **Phase 4** | Observability: Metrics, Trace Visualization         | ⏳ Planned    |
 | **Phase 5** | Infra Extension: Message Proxy, Search Proxy        | ⏳ Planned    |
 

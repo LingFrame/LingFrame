@@ -34,6 +34,9 @@ public class InstancePool {
     // 死亡队列：存放待销毁的旧版本
     private final ConcurrentLinkedQueue<LingInstance> dyingQueue = new ConcurrentLinkedQueue<>();
 
+    // 关停标记，防止关停期间发生并发写入
+    private volatile boolean isShuttingDown = false;
+
     public InstancePool(String lingId, int maxDyingInstances) {
         this.lingId = lingId;
         this.maxDyingInstances = maxDyingInstances;
@@ -109,6 +112,11 @@ public class InstancePool {
     public LingInstance addInstance(LingInstance instance, boolean isDefault) {
         if (instance == null) {
             throw new InvalidArgumentException("instance", "Instance cannot be null");
+        }
+
+        if (isShuttingDown) {
+            log.warn("[{}] Cannot add instance {} because pool is shutting down", lingId, instance.getVersion());
+            return null; // 或者抛出异常，视上层业务容忍度而定
         }
 
         activePool.add(instance);
@@ -202,6 +210,9 @@ public class InstancePool {
      * @return 需要进入死亡队列的实例列表
      */
     public List<LingInstance> shutdown() {
+        // 标记关停，防止新的实例被并发加入
+        isShuttingDown = true;
+
         // 清空默认实例
         defaultInstance.set(null);
 
@@ -236,9 +247,17 @@ public class InstancePool {
         int dyingCount;
         boolean hasDefault;
 
-        public int activeCount(){return activeCount;}
-        public int dyingCount(){return dyingCount;}
-        public boolean hasDefault(){return hasDefault;}
+        public int activeCount() {
+            return activeCount;
+        }
+
+        public int dyingCount() {
+            return dyingCount;
+        }
+
+        public boolean hasDefault() {
+            return hasDefault;
+        }
 
         @Override
         @NonNull

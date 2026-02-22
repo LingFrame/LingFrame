@@ -351,9 +351,9 @@ public class LingManagerTest {
 
             Set<String> Lings = lingManager.getInstalledLings();
             assertEquals(3, Lings.size());
-            assertTrue(Lings.contains("Ling-0"));
-            assertTrue(Lings.contains("Ling-1"));
-            assertTrue(Lings.contains("Ling-2"));
+            assertTrue(Lings.contains("ling-0"));
+            assertTrue(Lings.contains("ling-1"));
+            assertTrue(Lings.contains("ling-2"));
         }
 
         @Test
@@ -369,18 +369,18 @@ public class LingManagerTest {
                 lingManager.installDev(definition, lingDir);
             }
 
-            lingManager.uninstall("Ling-1");
+            lingManager.uninstall("ling-1");
 
             Set<String> Lings = lingManager.getInstalledLings();
             assertEquals(2, Lings.size());
-            assertTrue(Lings.contains("Ling-0"));
-            assertFalse(Lings.contains("Ling-1"));
-            assertTrue(Lings.contains("Ling-2"));
+            assertTrue(Lings.contains("ling-0"));
+            assertFalse(Lings.contains("ling-1"));
+            assertTrue(Lings.contains("ling-2"));
 
-            assertEquals("1.0.0", lingManager.getLingVersion("Ling-0"));
-            assertEquals("1.0.0", lingManager.getLingVersion("Ling-2"));
-            assertNotNull(lingManager.getRuntime("Ling-0"));
-            assertNotNull(lingManager.getRuntime("Ling-2"));
+            assertEquals("1.0.0", lingManager.getLingVersion("ling-0"));
+            assertEquals("1.0.0", lingManager.getLingVersion("ling-2"));
+            assertNotNull(lingManager.getRuntime("ling-0"));
+            assertNotNull(lingManager.getRuntime("ling-2"));
         }
     }
 
@@ -523,7 +523,7 @@ public class LingManagerTest {
         @Test
         @DisplayName("卸载单元 A 不应影响单元 B")
         void uninstallAShouldNotAffectB() throws Exception {
-            for (String lingId : new String[]{"Ling-a", "Ling-b"}) {
+            for (String lingId : new String[] { "Ling-a", "Ling-b" }) {
                 File lingDir = createLingDir(lingId);
                 LingDefinition definition = createDefinition(lingId, "1.0.0");
                 LingContainer container = createMockContainer();
@@ -1134,7 +1134,7 @@ public class LingManagerTest {
                         () -> secureManager.installDev(def, lingDir));
 
                 assertTrue(ex.getMessage().contains("System.exit") ||
-                           ex.getCause().getMessage().contains("System.exit"));
+                        ex.getCause().getMessage().contains("System.exit"));
 
                 // 验证单元未被安装
                 assertNull(secureManager.getRuntime("evil-ling"));
