@@ -1,51 +1,243 @@
 package com.lingframe.core.kernel;
 
 import com.lingframe.api.security.AccessType;
-import lombok.Builder;
 import lombok.Data;
-
+import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 治理上下文：Core 层唯一认可的流量“通行证”
- * <p>
+ * 调用上下文：Pipeline 全链路的唯一"通行证"
  * ⚠️【高危警告：防止 ClassLoader 内存泄漏】⚠️
- * 鉴于 {@link com.lingframe.core.proxy.SmartServiceProxy} 采用了基于 ThreadLocal 的零 GC
- * 对象池复用机制，
- * 本对象（InvocationContext）在宿主线程（如 Tomcat Worker）中是长久存活且**不主动 remove** 的。
- * 
- * 绝对严禁在本类中新增任何由单元（Ling）自身 ClassLoader 加载的复杂业务对象字段！
- * 只能使用 JDK 基础类（String, Map, Object[] 等）。
- * 否则，单次跨单元调用的残留引用将导致该单元在卸载时发生严重的 Metaspace ClassLoader OOM！
- * </p>
+ * 本对象通过 ThreadLocal 对象池复用，在宿主线程中长久存活。
+ * 【铁律】所有字段必须是 JDK 基础类型。绝对禁止持有由单元 ClassLoader 加载的对象引用！
  */
 @Data
-@Builder
 public class InvocationContext {
-    // 身份信息
-    private String traceId; // 全局链路追踪 ID
-    private String lingId; // 目标单元 ID
-    private String callerLingId; // 调用方单元 ID
 
-    // 资源信息
-    private String resourceType; // "WEB" 或 "RPC"
-    private String resourceId; // URL (如 /user/create) 或 ServiceID (如 user:create)
-    private String operation; // 具体操作 (GET/POST 或 方法名)
+    // 线程局部对象池
+    private static final ThreadLocal<InvocationContext> POOL = ThreadLocal.withInitial(InvocationContext::new);
 
-    // 智能治理元数据 (由 Adapter 推导后填入)
-    private String requiredPermission; // 必须具备的权限标识 (例如 "user:create")
-    private AccessType accessType; // 访问类型 (EXECUTE, READ, WRITE)
-    private String auditAction; // 审计动作描述 (例如 "CreateUser")
-    private boolean shouldAudit; // 是否需要审计
-    private String ruleSource; // 规则来源 (Rule Source)
+    public static InvocationContext obtain() {
+        return POOL.get(); // 获取复用对象
+    }
 
-    // 现场数据
-    private Object[] args; // 参数
-    private Map<String, Object> metadata; // 扩展信息 (IP, UserAgent, RPC Context)
+    private InvocationContext() {
+        this.attachments = new HashMap<>();
+    }
 
-    // 路由标签，用于金丝雀、租户隔离等逻辑
+    // ════════════════════════════════════════════
+    // 第一部分：调用路由（Pipeline 核心依赖）
+    // ════════════════════════════════════════════
+    private String serviceFQSID;
+    private String methodName;
+    private String[] parameterTypeNames; // 绝不能用 Class<?>[]
+    private Object[] args;
+    private String targetLingId;
+    private String targetVersion;
+
+    // ════════════════════════════════════════════
+    // 第二部分：链路追踪与身份
+    // ════════════════════════════════════════════
+    private String traceId;
+    private String callerLingId;
+    private long createTimeNanos;
+
+    // ════════════════════════════════════════════
+    // 第三部分：治理决策
+    // ════════════════════════════════════════════
+    private String resourceType;
+    private String resourceId;
+    private String operation;
+    private String requiredPermission;
+    private AccessType accessType;
+    private String auditAction;
+    private boolean shouldAudit;
+    private String ruleSource;
+
+    // ════════════════════════════════════════════
+    // 第四部分：路由与弹性治理
+    // ════════════════════════════════════════════
     private Map<String, String> labels;
+    private Integer timeout;
+    private Map<String, Object> metadata;
 
-    // 弹性治理参数
-    private Integer timeout; // 超时时间 (ms)
+    // ════════════════════════════════════════════
+    // 第五部分：Filter 间瞬态通信
+    // ════════════════════════════════════════════
+    // ⚠️ 写入 attachments 的复杂对象引用必须在 finally 中主动移除！
+    private Map<String, Object> attachments;
+
+    /** 重置所有字段，防止污染下一次调用 */
+    public void reset() {
+        this.serviceFQSID = null;
+        this.methodName = null;
+        this.parameterTypeNames = null;
+        this.args = null;
+        this.targetLingId = null;
+        this.targetVersion = null;
+
+        this.traceId = null;
+        this.callerLingId = null;
+        this.createTimeNanos = 0L;
+
+        this.resourceType = null;
+        this.resourceId = null;
+        this.operation = null;
+        this.requiredPermission = null;
+        this.accessType = null;
+        this.auditAction = null;
+        this.shouldAudit = false;
+        this.ruleSource = null;
+
+        this.labels = null;
+        this.timeout = null;
+        this.metadata = null;
+
+        if (this.attachments != null) {
+            this.attachments.clear();
+        }
+    }
+
+    // =========================================================================
+    // 为保障 M1 阶段旧组件(GovernanceKernel/SmartServiceProxy/Adapters)正常编译，
+    // 临时保留的向下兼容 API (M3 阶段彻底删除)
+    // =========================================================================
+
+    @Deprecated
+    public String getLingId() {
+        return this.targetLingId;
+    }
+
+    @Deprecated
+    public void setLingId(String lingId) {
+        this.targetLingId = lingId;
+    }
+
+    @Deprecated
+    public static Builder builder() {
+        return new Builder(obtain());
+    }
+
+    @Deprecated
+    public static class Builder {
+        private final InvocationContext ctx;
+
+        private Builder(InvocationContext ctx) {
+            this.ctx = ctx;
+        }
+
+        public Builder traceId(String traceId) {
+            ctx.setTraceId(traceId);
+            return this;
+        }
+
+        public Builder callerLingId(String callerLingId) {
+            ctx.setCallerLingId(callerLingId);
+            return this;
+        }
+
+        public Builder targetLingId(String targetLingId) {
+            ctx.setTargetLingId(targetLingId);
+            return this;
+        }
+
+        public Builder lingId(String lingId) {
+            ctx.setLingId(lingId);
+            return this;
+        }
+
+        public Builder serviceFQSID(String serviceFQSID) {
+            ctx.setServiceFQSID(serviceFQSID);
+            return this;
+        }
+
+        public Builder methodName(String methodName) {
+            ctx.setMethodName(methodName);
+            return this;
+        }
+
+        public Builder parameterTypeNames(String[] parameterTypeNames) {
+            ctx.setParameterTypeNames(parameterTypeNames);
+            return this;
+        }
+
+        public Builder args(Object[] args) {
+            ctx.setArgs(args);
+            return this;
+        }
+
+        public Builder targetVersion(String targetVersion) {
+            ctx.setTargetVersion(targetVersion);
+            return this;
+        }
+
+        public Builder createTimeNanos(long createTimeNanos) {
+            ctx.setCreateTimeNanos(createTimeNanos);
+            return this;
+        }
+
+        public Builder resourceType(String resourceType) {
+            ctx.setResourceType(resourceType);
+            return this;
+        }
+
+        public Builder resourceId(String resourceId) {
+            ctx.setResourceId(resourceId);
+            return this;
+        }
+
+        public Builder operation(String operation) {
+            ctx.setOperation(operation);
+            return this;
+        }
+
+        public Builder requiredPermission(String requiredPermission) {
+            ctx.setRequiredPermission(requiredPermission);
+            return this;
+        }
+
+        public Builder accessType(AccessType accessType) {
+            ctx.setAccessType(accessType);
+            return this;
+        }
+
+        public Builder auditAction(String auditAction) {
+            ctx.setAuditAction(auditAction);
+            return this;
+        }
+
+        public Builder shouldAudit(boolean shouldAudit) {
+            ctx.setShouldAudit(shouldAudit);
+            return this;
+        }
+
+        public Builder ruleSource(String ruleSource) {
+            ctx.setRuleSource(ruleSource);
+            return this;
+        }
+
+        public Builder labels(Map<String, String> labels) {
+            ctx.setLabels(labels);
+            return this;
+        }
+
+        public Builder timeout(Integer timeout) {
+            ctx.setTimeout(timeout);
+            return this;
+        }
+
+        public Builder metadata(Map<String, Object> metadata) {
+            ctx.setMetadata(metadata);
+            return this;
+        }
+
+        public Builder attachments(Map<String, Object> attachments) {
+            ctx.setAttachments(attachments);
+            return this;
+        }
+
+        public InvocationContext build() {
+            return ctx;
+        }
+    }
 }
