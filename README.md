@@ -1,6 +1,6 @@
 # LingFrame · 灵珑
 
-![Status](https://img.shields.io/badge/Status-Core_Implemented-green)
+![Status](https://img.shields.io/badge/Status-Resilience_Governance-brightgreen)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue)
 ![Java](https://img.shields.io/badge/Java-17-orange)
 ![Java](https://img.shields.io/badge/Java-8-orange)
@@ -13,6 +13,8 @@
 
 [![Help Wanted](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LingFrame/LingFrame)
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/LingFrame/LingFrame?quickstart=1)
 
 [中文版 / Chinese](./README.zh-CN.md)
 
@@ -82,7 +84,21 @@ LingFrame addresses one core problem:
 
 ## Current Stage
 
-**v0.1.x · Maiden Phase (Preview)**
+**v0.2.0 · Metamorphosis**
+
+This is a stage of breaking shackles and redefining boundaries:
+
+- Discarding the cognitive limits of "Plugin" to establish physical "Ling (Unit)" isolation
+- Resilience governance is no longer superficial, but deeply embedded as kernel-level circuit breakers
+- Confronting the deep waters of ClassLoader leaks, replacing compromise with absolute eviction
+- Verifying another thing:  
+  **Can monolithic hot-swapping truly withstand industrial-grade high availability challenges?**
+
+This is a phase that sheds immaturity and confronts brutal production realities.
+
+---
+
+**v0.1.0 · First Cry (Historic)**
 
 This is a stage where the direction is frozen and boundaries are forming:
 
@@ -92,7 +108,6 @@ This is a stage where the direction is frozen and boundaries are forming:
   **Does runtime governance hold in a single process?**
 
 This is a phase that rejects pandering and begins choices.
-
 ---
 
 ## What Is LingFrame
