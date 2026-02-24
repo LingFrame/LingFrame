@@ -1,24 +1,21 @@
 {
   "name": "LingFrame - JDK8为主（遗留系统开发）",
-  "build": {
-    "dockerfile": "Dockerfile",
-    "context": "."
-  },
+  "image": "mcr.microsoft.com/devcontainers/java:1-17",
+
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
-      "version": "17",
+      "version": "8",
       "installMaven": "true"
     }
   },
+
   "customizations": {
     "vscode": {
       "extensions": [
         "vscjava.vscode-java-pack",
         "vscjava.vscode-spring-boot-dashboard",
         "redhat.fabric8-analytics",
-        "sonarsource.sonarlint-vscode",
-        "github.copilot",
-        "eamodio.gitlens"
+        "sonarsource.sonarlint-vscode"
       ],
       "settings": {
         "java.configuration.runtimes": [
@@ -36,8 +33,11 @@
       }
     }
   },
-  "postCreateCommand": "sudo update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/bin/java && mvn clean install -DskipTests -q && echo '✅ LingFrame环境就绪！默认JDK8 已激活' && java -version",
+
+  "postCreateCommand": "sudo update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/bin/java && mvn clean install -DskipTests -q && echo '✅ LingFrame JDK8环境就绪！' && java -version",
+
   "forwardPorts": [8080],
+
   "hostRequirements": {
     "cpus": 4,
     "memory": "8gb"
