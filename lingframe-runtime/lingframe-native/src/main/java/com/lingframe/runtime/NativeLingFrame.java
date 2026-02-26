@@ -5,23 +5,16 @@ import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.CoreLingContext;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.governance.DefaultTransactionVerifier;
-import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
-import com.lingframe.core.invoker.DefaultLingServiceInvoker;
-import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.ling.LingManager;
-import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.security.DefaultPermissionService;
-import com.lingframe.core.spi.GovernancePolicyProvider;
 import com.lingframe.runtime.adapter.NativeContainerFactory;
 import lombok.extern.slf4j.Slf4j;
 import com.lingframe.core.exception.ServiceUnavailableException;
 
 import java.util.Collections;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -57,38 +50,43 @@ public class NativeLingFrame {
         // 准备基础设施
         EventBus eventBus = new EventBus();
 
-        List<GovernancePolicyProvider> providers = Collections.emptyList();
         // 准备核心组件
         DefaultPermissionService permissionService = new DefaultPermissionService(eventBus);
-        GovernanceArbitrator governanceArbitrator = new GovernanceArbitrator(providers);
-        GovernanceKernel governanceKernel = new GovernanceKernel(permissionService, governanceArbitrator, eventBus);
         DefaultLingLoaderFactory loaderFactory = new DefaultLingLoaderFactory();
-
-        // 准备治理组件
-        DefaultLingServiceInvoker serviceInvoker = new DefaultLingServiceInvoker();
-        DefaultTransactionVerifier txVerifier = new DefaultTransactionVerifier();
 
         // 创建 Native 专用的容器工厂
         NativeContainerFactory containerFactory = new NativeContainerFactory();
 
         LocalGovernanceRegistry localGovernanceRegistry = new LocalGovernanceRegistry(eventBus);
 
-        // 组装 LingManager
-        // 注意：这里需要传入 Core 需要的所有组件
-        LingManager lingManager = new LingManager(
-                containerFactory, // <--- 注入 Native 实现
+        com.lingframe.core.ling.LingRepository lingRepository = new com.lingframe.core.ling.DefaultLingRepository();
+        com.lingframe.core.ling.LingServiceRegistry lingServiceRegistry = new com.lingframe.core.ling.DefaultLingServiceRegistry();
+        com.lingframe.core.ling.LingResourceManager resourceManager = new com.lingframe.core.ling.DefaultLingResourceManager();
+
+        com.lingframe.core.ling.LingLifecycleEngine lifecycleEngine = new com.lingframe.core.ling.DefaultLingLifecycleEngine(
+                containerFactory,
                 permissionService,
-                governanceKernel,
                 loaderFactory,
                 Collections.singletonList(new DangerousApiVerifier()), // 默认安全验证
                 eventBus,
-                new LabelMatchRouter(),
-                serviceInvoker,
-                txVerifier,
-                Collections.emptyList(), // 无 ThreadLocal 传播器
                 config,
-                localGovernanceRegistry,
-                null); // ResourceGuard - 使用默认实现
+                lingRepository,
+                lingServiceRegistry);
+
+        com.lingframe.core.pipeline.FilterRegistry filterRegistry = new com.lingframe.core.pipeline.FilterRegistry();
+        com.lingframe.core.pipeline.InvocationPipelineEngine pipelineEngine = new com.lingframe.core.pipeline.InvocationPipelineEngine(
+                filterRegistry);
+
+        // 组装 LingManager
+        // 注意：这里需要传入 Core 需要的所有组件
+        LingManager lingManager = new LingManager(
+                lifecycleEngine,
+                lingRepository,
+                lingServiceRegistry,
+                resourceManager,
+                pipelineEngine,
+                permissionService,
+                eventBus);
 
         // 注册一个特殊的 "lingcore-app" 上下文
         HOST_CONTEXT = new CoreLingContext("lingcore-app", lingManager, permissionService, eventBus);

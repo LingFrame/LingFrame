@@ -8,16 +8,18 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
-import com.lingframe.core.kernel.GovernanceKernel;
+
 import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.kernel.LingInvocationException;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingManager;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.dashboard.dto.SimulateResultDTO;
 import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.core.exception.ServiceUnavailableException;
-import com.lingframe.core.exception.InvocationException;
+import com.lingframe.core.kernel.LingInvocationException;
 import com.lingframe.dashboard.dto.StressResultDTO;
+import com.lingframe.dashboard.router.CanaryRouter;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import org.springframework.stereotype.Component;
@@ -27,11 +29,11 @@ import org.springframework.web.bind.annotation.RestController;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -40,9 +42,10 @@ import java.util.stream.Collectors;
 public class SimulateService {
 
     private final LingManager lingManager;
-    private final GovernanceKernel governanceKernel;
     private final EventBus eventBus;
+    private final CanaryRouter canaryRouter;
     private final PermissionService permissionService;
+    private final com.lingframe.core.pipeline.InvocationPipelineEngine pipelineEngine;
 
     public SimulateResultDTO simulateResource(String lingId, String resourceType) {
         // 🔥 尝试智能推导：寻找现有代码中的最佳替身
@@ -80,6 +83,8 @@ public class SimulateService {
         publishTrace(traceId, lingId, "→ Simulate Request: " + resourceType, "IN", 1);
         publishTrace(traceId, lingId, "  ! Business method not found, performing generic baseline check", "WARN", 1);
 
+        String ruleSource = "GovernancePolicy:" + mapPermission(resourceType);
+
         InvocationContext ctx = InvocationContext.builder()
                 .traceId(traceId)
                 .lingId(lingId)
@@ -91,21 +96,28 @@ public class SimulateService {
                 .requiredPermission(mapPermission(resourceType))
                 .shouldAudit(true)
                 .auditAction("SIMULATE:" + resourceType.toUpperCase())
+                .ruleSource(ruleSource)
                 .build();
+
+        // 预设路由目标实例和模拟 callable
+        LingInstance instance = runtime.getInstancePool().getDefault();
+        ctx.getAttachments().put("ling.target.instance", instance);
+        ctx.setServiceFQSID(lingId + ":simulate_" + resourceType);
+        ctx.getAttachments().put("ling.simulate.callable",
+                (Callable<Object>) () -> resourceType + " Access Success");
 
         boolean allowed;
         String message;
         boolean devBypass = false;
 
         try {
-            publishTrace(traceId, lingId, "  ↳ Kernel authorization check...", "IN", 2);
+            publishTrace(traceId, lingId, "  ↳ Pipeline execution...", "IN", 2);
 
-            governanceKernel.invoke(runtime, getSimulateMethod(), ctx, () -> {
-                return "Simulated " + resourceType + " success";
-            });
+            // 🔥 通过真实 Pipeline 统一入口执行
+            Object result = pipelineEngine.invoke(ctx);
 
             allowed = true;
-            message = resourceType + " Access Success";
+            message = String.valueOf(result);
 
             // 检测是否因开发模式豁免而通过
             if (isDevModeBypass(lingId, mapPermission(resourceType), mapAccessType(resourceType))) {
@@ -115,9 +127,14 @@ public class SimulateService {
                         "    ! Permission insufficient, bypassed by Dev Mode (Source: " + ctx.getRuleSource() + ")",
                         "WARN", 3);
             } else {
-                publishTrace(traceId, lingId, "    ✓ Permission verified", "OK", 3);
+                publishTrace(traceId, lingId, "    ✓ Permission verified (Source: " + ctx.getRuleSource() + ")", "OK",
+                        3);
             }
 
+        } catch (LingInvocationException e) {
+            allowed = false;
+            message = "Pipeline Rejected: " + e.getMessage();
+            publishTrace(traceId, lingId, "    ✗ " + message, "FAIL", 3);
         } catch (SecurityException e) {
             allowed = false;
             message = "Access Denied: " + e.getMessage();
@@ -183,13 +200,24 @@ public class SimulateService {
                     .build();
 
             try {
-                publishTrace(traceId, lingId, "  ↳ Kernel authorization check...", "IN", 2);
+                // Pipeline Phase 1: Routing
+                publishTrace(traceId, lingId, "  ↳ Pipeline routing...", "IN", 2);
 
-                // 🔥 模拟真实调用的路由和统计
-                LingInstance routed = targetRuntime.routeToAvailableInstance("simulate-ipc");
-                targetRuntime.recordRequest(routed);
+                LingInstance routed = targetRuntime.getInstancePool().getDefault();
+                if (routed == null) {
+                    throw new ServiceUnavailableException(targetLingId, "No active instances");
+                }
+                targetRuntime.recordRequest(false);
 
-                governanceKernel.invoke(targetRuntime, getSimulateMethod(), ctx, () -> "OK");
+                // 预设路由目标和模拟 callable
+                ctx.getAttachments().put("ling.target.instance", routed);
+                ctx.setServiceFQSID(targetLingId + ":ipc_call");
+                ctx.getAttachments().put("ling.simulate.callable",
+                        (Callable<Object>) () -> "IPC Call Success");
+
+                // 🔥 通过真实 Pipeline 统一入口执行
+                publishTrace(traceId, lingId, "  ↳ Pipeline execution...", "IN", 2);
+                pipelineEngine.invoke(ctx);
 
                 allowed = true;
                 message = "IPC Call Success (" + routed.getDefinition().getVersion() + ")";
@@ -241,12 +269,21 @@ public class SimulateService {
             throw new ServiceUnavailableException(lingId, "单元未激活");
         }
 
-        // 单次路由
-        LingInstance instance = runtime.routeToAvailableInstance("stress-test");
-        runtime.recordRequest(instance);
+        List<LingInstance> instances = runtime.getInstancePool().getActiveInstances();
+        if (instances.isEmpty()) {
+            throw new ServiceUnavailableException(lingId, "No active instances");
+        }
+
+        InvocationContext ctx = InvocationContext.builder().lingId(lingId).build();
+        LingInstance instance = canaryRouter.route(instances, ctx);
+        if (instance == null) {
+            instance = runtime.getInstancePool().getDefault();
+        }
 
         LingInstance defaultInstance = runtime.getInstancePool().getDefault();
         boolean isCanary = (instance != defaultInstance);
+
+        runtime.recordRequest(isCanary);
 
         String version = instance.getDefinition().getVersion();
         String tag = isCanary ? "CANARY" : "STABLE";
@@ -284,7 +321,8 @@ public class SimulateService {
         try {
             return SimulateService.class.getDeclaredMethod("simulatePlaceholder");
         } catch (NoSuchMethodException e) {
-            throw new InvocationException("Failed to get simulate method", e);
+            throw new LingInvocationException("local:simulatePlaceholder",
+                    LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
         }
     }
 
@@ -322,6 +360,20 @@ public class SimulateService {
             Method targetMethod = findMethodByName(targetClass, methodName);
 
             // 3. 构建上下文 - callerLingId 设为被测单元，这样权限检查针对正确的主体
+            // 🔥 从注解读取权限声明并设置 ruleSource
+            RequiresPermission annotation = targetMethod.getAnnotation(RequiresPermission.class);
+            String methodRuleSource;
+            String requiredPerm;
+            if (annotation != null) {
+                requiredPerm = annotation.value();
+                methodRuleSource = "@RequiresPermission(" + requiredPerm + ") on " + className + "#" + methodName;
+            } else {
+                requiredPerm = GovernanceStrategy.inferPermission(targetMethod);
+                methodRuleSource = requiredPerm != null
+                        ? "InferredFromMethod:" + className + "#" + methodName
+                        : null;
+            }
+
             ctx = InvocationContext.builder()
                     .traceId(traceId)
                     .lingId(lingId)
@@ -330,44 +382,42 @@ public class SimulateService {
                     .resourceId(className + "#" + methodName)
                     .operation(methodName)
                     .accessType(targetAccess) // 使用传递的目标 AccessType
+                    .requiredPermission(requiredPerm)
                     .shouldAudit(true)
                     .auditAction("SIMULATE:METHOD")
+                    .ruleSource(methodRuleSource)
                     .build();
 
-            // 4. Call Kernel (execute fake logic)
-            publishTrace(traceId, lingId, "  ↳ Kernel fine-grained auth...", "IN", 2);
+            // 预设路由目标实例和模拟 callable
+            LingInstance instance = runtime.getInstancePool().getDefault();
+            ctx.getAttachments().put("ling.target.instance", instance);
+            ctx.setServiceFQSID(lingId + ":" + className);
+            ctx.getAttachments().put("ling.simulate.callable",
+                    (Callable<Object>) () -> "Simulated " + methodName + " success");
 
-            governanceKernel.invoke(runtime, targetMethod, ctx, () -> {
-                return "Simulated " + methodName + " success";
-            });
+            // 🔥 通过真实 Pipeline 统一入口执行
+            publishTrace(traceId, lingId, "  ↳ Pipeline execution...", "IN", 2);
+            Object result = pipelineEngine.invoke(ctx);
 
             allowed = true;
             message = "Method " + methodName + " allowed";
 
             // 🔥 统一检测开发模式豁免逻辑
-            // 优先从注解读取 capability，其次使用 context 中的 requiredPermission
-            String capability = null;
+            String capability = ctx.getRequiredPermission();
             AccessType inferredAccess = ctx.getAccessType();
 
-            RequiresPermission annotation = targetMethod.getAnnotation(RequiresPermission.class);
-            if (annotation != null) {
-                capability = annotation.value();
-                // inferredAccess 由 context 决定，不再重新推导
-            } else if (ctx.getRequiredPermission() != null && !ctx.getRequiredPermission().trim().isEmpty()) {
-                capability = ctx.getRequiredPermission();
-            }
-
             // 如果找到了需要检查的 capability，则进行豁免检测
-            if (capability != null) {
+            if (capability != null && !capability.trim().isEmpty()) {
                 if (isDevModeBypass(lingId, capability, inferredAccess)) {
                     devBypass = true;
                     message += " (⚠️ Dev Mode Bypass)";
                     publishTrace(traceId, lingId,
                             "    ! Permission insufficient, bypassed by Dev Mode (Source: "
-                                    + (ctx != null ? ctx.getRuleSource() : "Unknown") + ")",
+                                    + ctx.getRuleSource() + ")",
                             "WARN", 3);
                 } else {
-                    publishTrace(traceId, lingId, "    ✓ Permission verified (Annotation check)", "OK", 3);
+                    publishTrace(traceId, lingId, "    ✓ Permission verified (Source: " + ctx.getRuleSource() + ")",
+                            "OK", 3);
                 }
             } else {
                 // No permission declared
@@ -382,6 +432,10 @@ public class SimulateService {
             allowed = false;
             message = "Method not found: " + methodName;
             publishTrace(traceId, lingId, "    ✗ " + message, "ERROR", 3);
+        } catch (LingInvocationException e) {
+            allowed = false;
+            message = "Pipeline Rejected: " + e.getMessage();
+            publishTrace(traceId, lingId, "    ✗ " + message, "FAIL", 3);
         } catch (SecurityException e) {
             allowed = false;
             message = "Access Denied: " + e.getMessage();

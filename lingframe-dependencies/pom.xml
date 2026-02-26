@@ -28,7 +28,7 @@
         <jsqlparser.version>1.4</jsqlparser.version>
         <guava.version>31.1-jre</guava.version>
         <hikaricp.version>5.0.1</hikaricp.version>
-        <lombok.version>1.18.30</lombok.version>
+        <lombok.version>1.18.36</lombok.version>
         <asm.version>9.6</asm.version>
         <springdoc.version>1.7.0</springdoc.version>
         <knife4j.version>4.3.0</knife4j.version>

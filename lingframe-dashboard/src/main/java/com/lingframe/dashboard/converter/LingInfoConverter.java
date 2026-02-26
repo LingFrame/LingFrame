@@ -5,10 +5,16 @@ import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
 import com.lingframe.dashboard.router.CanaryRouter;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 单元运行时信息转换为 DTO
@@ -23,11 +29,18 @@ public class LingInfoConverter {
 
         return LingInfoDTO.builder()
                 .lingId(lingId)
-                .status(runtime.getStatus().name())
-                .versions(runtime.getAllVersions())
-                .activeVersion(runtime.getVersion())
+                .status(runtime.getStateMachine().current() == RuntimeStatus.INACTIVE ? "LOADED"
+                        : runtime.getStateMachine().current().name())
+                .versions(runtime.getInstancePool().getActiveInstances().stream()
+                        .map(LingInstance::getVersion)
+                        .collect(Collectors.toList()))
+                .activeVersion(runtime.getInstancePool().getVersion())
                 .canaryPercent(canaryRouter.getCanaryPercent(lingId))
-                .canaryVersion(runtime.getCanaryVersion())
+                .canaryVersion(runtime.getInstancePool().getActiveInstances().stream()
+                        .filter(instance -> !instance.getVersion().equals(runtime.getInstancePool().getVersion()))
+                        .map(LingInstance::getVersion)
+                        .findFirst()
+                        .orElse(null))
                 .permissions(extractPermissions(lingId, permissionService, policy))
                 .installedAt(runtime.getInstalledAt())
                 .build();
@@ -62,7 +75,7 @@ public class LingInfoConverter {
         boolean cacheWrite = cachePermission != null && cachePermission.satisfies(AccessType.WRITE);
 
         // 提取 IPC 权限
-        java.util.List<String> ipcServices = new java.util.ArrayList<>();
+        List<String> ipcServices = new ArrayList<>();
         if (policy != null && policy.getCapabilities() != null) {
             for (GovernancePolicy.CapabilityRule rule : policy.getCapabilities()) {
                 if (rule.getCapability().startsWith("ipc:")) {

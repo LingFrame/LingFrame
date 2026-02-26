@@ -4,7 +4,7 @@ import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContextHolder;
 import com.lingframe.api.security.AccessType;
-import com.lingframe.core.kernel.GovernanceKernel;
+import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.ling.LingManager;
 import com.lingframe.core.ling.LingRuntime;
@@ -40,7 +40,7 @@ import java.util.HashMap;
 @RequiredArgsConstructor
 public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
-    private final GovernanceKernel governanceKernel;
+    private final PermissionService permissionService;
     private final LingManager lingManager;
     private final WebInterfaceManager webInterfaceManager;
     private final LingFrameProperties properties;
@@ -91,27 +91,25 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             InvocationContext ctx = buildInvocationContext(request, method, lingId, lingMeta);
 
             // 7. 获取 LingRuntime（单元请求时）
-            LingRuntime runtime = isLingRequest ? lingManager.getRuntime(lingId) : null;
-
-            // 8. 通过 GovernanceKernel.invoke() 统一执行
-            governanceKernel.invoke(runtime, method, ctx, () -> {
-                try {
-                    filterChain.doFilter(request, response);
-                    return null;
-                } catch (IOException | ServletException e) {
-                    throw new RuntimeException(e);
+            if (ctx.getRequiredPermission() != null && !ctx.getRequiredPermission().isEmpty()) {
+                boolean allowed = permissionService.isAllowed(
+                        "http-gateway",
+                        ctx.getRequiredPermission(),
+                        ctx.getAccessType());
+                if (!allowed) {
+                    throw new com.lingframe.api.exception.PermissionDeniedException(
+                            "http-gateway",
+                            ctx.getRequiredPermission(),
+                            ctx.getAccessType());
                 }
-            });
+            }
 
-        } catch (RuntimeException e) {
-            // 解包可能的 ServletException/IOException
-            if (e.getCause() instanceof ServletException se) {
-                throw se;
+            filterChain.doFilter(request, response);
+
+            if (ctx.isShouldAudit()) {
+                permissionService.audit("http-gateway", ctx.getResourceId(), ctx.getAuditAction(), true);
             }
-            if (e.getCause() instanceof IOException ioe) {
-                throw ioe;
-            }
-            throw e;
+
         } finally {
             // 恢复 ClassLoader
             if (originalCL != null) {

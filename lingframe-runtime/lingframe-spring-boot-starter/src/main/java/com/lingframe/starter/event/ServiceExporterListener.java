@@ -5,7 +5,6 @@ import com.lingframe.api.event.lifecycle.LingStoppedEvent;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.LingManager;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.ling.ServiceRegistry;
 import com.lingframe.starter.spi.ServiceExporter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -43,15 +42,10 @@ public class ServiceExporterListener {
         }
 
         try {
-            ServiceRegistry registry = runtime.getServiceRegistry();
-            List<ServiceRegistry.InvokableService> services = new ArrayList<>();
-            for (String fqsid : registry.getAllServiceIds()) {
-                ServiceRegistry.InvokableService s = registry.getService(fqsid);
-                if (s != null) {
-                    services.add(s);
-                }
-            }
-            if (!services.isEmpty()) {
+            // TODO V0.3.0: 适配新的 LingServiceRegistry 取代老版 InvokableService
+            List<String> services = new ArrayList<>();
+
+            if (exporters != null && !exporters.isEmpty()) {
                 exporters.forEach(exporter -> {
                     try {
                         exporter.export(lingId, services);

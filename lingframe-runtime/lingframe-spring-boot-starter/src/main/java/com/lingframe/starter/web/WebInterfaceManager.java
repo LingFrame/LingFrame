@@ -90,7 +90,7 @@ public class WebInterfaceManager {
             Class<?> userClass = AopUtils.getTargetClass(metadata.getTargetBean());
             String proxyBeanName = metadata.getLingId() + ":" + userClass.getName();
 
-            if (hostContext instanceof GenericApplicationContext && !((GenericApplicationContext) hostContext).containsBeanDefinition(proxyBeanName)) {
+            if (hostContext instanceof GenericApplicationContext && !hostContext.containsBeanDefinition(proxyBeanName)) {
                 GenericApplicationContext gac = (GenericApplicationContext) hostContext;
                 GenericBeanDefinition bd = new GenericBeanDefinition();
                 bd.setBeanClass(userClass);

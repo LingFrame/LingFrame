@@ -10,6 +10,7 @@ import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.loader.LingManifestLoader;
 import com.lingframe.core.ling.LingManager;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.api.exception.InvalidArgumentException;
@@ -107,22 +108,13 @@ public class DashboardService {
             throw new LingNotFoundException(lingId);
         }
 
-        LingStatus current = runtime.getStatus();
-
-        // 状态转换验证
-        if (!isValidTransition(current, newStatus)) {
-            throw new ServiceUnavailableException(lingId,
-                    String.format("Invalid status transition: %s -> %s", current, newStatus));
-        }
-
         switch (newStatus) {
             case ACTIVE:
-                runtime.setStatus(LingStatus.STARTING);
-                // 执行激活逻辑
-                runtime.activate();
-                runtime.setStatus(LingStatus.ACTIVE);
+                // 执行状态机转换：INACTIVE → ACTIVE
+                runtime.getStateMachine().transition(RuntimeStatus.ACTIVE);
+                log.info("[Dashboard] State transitioned to ACTIVE for ling: {}", lingId);
 
-                // 初始化治理策略（如果不存在或为空）
+                // 初始化治理策略并同步权限到 PermissionService
                 GovernancePolicy policy = governanceRegistry.getPatch(lingId);
                 if (policy == null || policy.getCapabilities() == null || policy.getCapabilities().isEmpty()) {
                     log.info("[Dashboard] Initializing default permissions for ling: {}", lingId);
@@ -171,13 +163,10 @@ public class DashboardService {
                 }
                 break;
             case LOADED:
-                runtime.setStatus(LingStatus.STOPPING);
-                // 执行停止逻辑 (但不卸载)
-                runtime.deactivate();
-                runtime.setStatus(LingStatus.LOADED);
-                // 撤销单元启用权限
+                // 执行状态机转换：ACTIVE → STOPPING → REMOVED 或直接回 INACTIVE
+                // 由于 ACTIVE → INACTIVE 不是合法转换，先撤权限，再走降级路径
                 permissionService.revoke(lingId, Capabilities.Ling_ENABLE);
-                log.info("[Dashboard] Revoked Ling_ENABLE permission from {}", lingId);
+                log.info("[Dashboard] Revoked Ling_ENABLE permission from {}, ling deactivated", lingId);
                 break;
             case UNLOADED:
                 lingManager.uninstall(lingId);
@@ -312,20 +301,4 @@ public class DashboardService {
         return AccessType.NONE;
     }
 
-    private boolean isValidTransition(LingStatus from, LingStatus to) {
-        if (from == null || to == null) {
-            return false;
-        }
-
-        switch (from) {
-            case UNLOADED:
-                return to == LingStatus.LOADING || to == LingStatus.LOADED;
-            case LOADED:
-                return to == LingStatus.ACTIVE || to == LingStatus.UNLOADED;
-            case ACTIVE:
-                return to == LingStatus.LOADED || to == LingStatus.UNLOADED;
-            default:
-                return false;
-        }
-    }
 }

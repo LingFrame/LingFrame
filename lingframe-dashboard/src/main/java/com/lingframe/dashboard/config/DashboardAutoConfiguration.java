@@ -3,7 +3,7 @@ package com.lingframe.dashboard.config;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
-import com.lingframe.core.kernel.GovernanceKernel;
+
 import com.lingframe.core.ling.LingManager;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
@@ -59,10 +59,11 @@ public class DashboardAutoConfiguration {
     @Bean
     public SimulateService simulateService(
             LingManager lingManager,
-            GovernanceKernel governanceKernel,
             EventBus eventBus,
-            PermissionService permissionService) {
-        return new SimulateService(lingManager, governanceKernel, eventBus, permissionService);
+            CanaryRouter canaryRouter,
+            PermissionService permissionService,
+            com.lingframe.core.pipeline.InvocationPipelineEngine pipelineEngine) {
+        return new SimulateService(lingManager, eventBus, canaryRouter, permissionService, pipelineEngine);
     }
 
     @Bean

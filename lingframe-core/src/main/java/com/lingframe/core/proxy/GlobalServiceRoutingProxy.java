@@ -1,9 +1,10 @@
 package com.lingframe.core.proxy;
 
-import com.lingframe.core.kernel.GovernanceKernel;
 import com.lingframe.core.exception.ServiceUnavailableException;
 import com.lingframe.core.ling.LingManager;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
+
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationHandler;
@@ -25,7 +26,7 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
     private final Class<?> serviceInterface;// 目标接口
     private final String targetLingId; // 用户指定的单元ID (可选)
     private final LingManager lingManager;
-    private final GovernanceKernel governanceKernel;
+    private final InvocationPipelineEngine pipelineEngine;
 
     // 缓存：接口类名 -> 真正提供服务的单元ID (避免每次都遍历)
     // 🔥 使用类名作为 Key 而非 Class 对象，避免持有 ClassLoader 引用导致泄漏
@@ -33,12 +34,12 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
 
     public GlobalServiceRoutingProxy(String callerLingId, Class<?> serviceInterface,
             String targetLingId, LingManager lingManager,
-            GovernanceKernel governanceKernel) {
+            InvocationPipelineEngine pipelineEngine) {
         this.callerLingId = callerLingId;
         this.serviceInterface = serviceInterface;
         this.targetLingId = targetLingId;
         this.lingManager = lingManager;
-        this.governanceKernel = governanceKernel;
+        this.pipelineEngine = pipelineEngine;
     }
 
     @Override
@@ -61,8 +62,7 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
 
         // 统一使用 SmartServiceProxy 执行治理和路由逻辑
         // 这样即使灵核调用，也能支持金丝雀分流！
-        SmartServiceProxy delegate = new SmartServiceProxy(callerLingId, runtime,
-                serviceInterface, governanceKernel);
+        SmartServiceProxy delegate = new SmartServiceProxy(callerLingId, runtime.getLingId(), this.pipelineEngine);
         return delegate.invoke(proxy, method, args);
     }
 

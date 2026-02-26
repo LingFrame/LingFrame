@@ -4,7 +4,7 @@ import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContextHolder;
 import com.lingframe.api.security.AccessType;
-import com.lingframe.core.kernel.GovernanceKernel;
+import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.ling.LingManager;
 import com.lingframe.core.ling.LingRuntime;
@@ -32,7 +32,7 @@ import java.util.HashMap;
 @RequiredArgsConstructor
 public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
-    private final GovernanceKernel governanceKernel;
+    private final PermissionService permissionService;
     private final LingManager lingManager;
     private final WebInterfaceManager webInterfaceManager;
     private final LingFrameProperties properties;
@@ -74,25 +74,25 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             Method method = handlerMethod.getMethod();
             InvocationContext ctx = buildInvocationContext(request, method, lingId, lingMeta);
 
-            LingRuntime runtime = isLingRequest ? lingManager.getRuntime(lingId) : null;
-
-            governanceKernel.invoke(runtime, method, ctx, () -> {
-                try {
-                    filterChain.doFilter(request, response);
-                    return null;
-                } catch (IOException | ServletException e) {
-                    throw new RuntimeException(e);
+            if (ctx.getRequiredPermission() != null && !ctx.getRequiredPermission().isEmpty()) {
+                boolean allowed = permissionService.isAllowed(
+                        "http-gateway",
+                        ctx.getRequiredPermission(),
+                        ctx.getAccessType());
+                if (!allowed) {
+                    throw new com.lingframe.api.exception.PermissionDeniedException(
+                            "http-gateway",
+                            ctx.getRequiredPermission(),
+                            ctx.getAccessType());
                 }
-            });
+            }
 
-        } catch (RuntimeException e) {
-            if (e.getCause() instanceof ServletException) {
-                throw (ServletException) e.getCause();
+            filterChain.doFilter(request, response);
+
+            if (ctx.isShouldAudit()) {
+                permissionService.audit("http-gateway", ctx.getResourceId(), ctx.getAuditAction(), true);
             }
-            if (e.getCause() instanceof IOException) {
-                throw (IOException) e.getCause();
-            }
-            throw e;
+
         } finally {
             if (originalCL != null) {
                 Thread.currentThread().setContextClassLoader(originalCL);

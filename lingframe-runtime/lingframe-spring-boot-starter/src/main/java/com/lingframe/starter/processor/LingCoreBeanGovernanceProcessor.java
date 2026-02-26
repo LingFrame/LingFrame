@@ -1,7 +1,8 @@
 package com.lingframe.starter.processor;
 
 import com.lingframe.api.annotation.LingReference;
-import com.lingframe.core.kernel.GovernanceKernel;
+import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.event.EventBus;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.interceptor.LingCoreBeanGovernanceInterceptor;
 import lombok.NonNull;
@@ -33,7 +34,8 @@ import java.util.Set;
 public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, ApplicationContextAware {
 
     private ApplicationContext applicationContext;
-    private GovernanceKernel governanceKernel;
+    private PermissionService permissionService;
+    private EventBus eventBus;
     private LingFrameProperties properties;
 
     // 需要被拦截的注解类型（排除 Controller/RestController，由 LingWebGovernanceInterceptor 处理）
@@ -107,17 +109,31 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
     }
 
     /**
-     * 懒加载获取 GovernanceKernel
+     * 懒加载获取 PermissionService
      */
-    private GovernanceKernel getGovernanceKernel() {
-        if (governanceKernel == null && applicationContext != null) {
+    private PermissionService getPermissionService() {
+        if (permissionService == null && applicationContext != null) {
             try {
-                governanceKernel = applicationContext.getBean(GovernanceKernel.class);
+                permissionService = applicationContext.getBean(PermissionService.class);
             } catch (Exception e) {
-                log.debug("GovernanceKernel not available yet");
+                log.debug("PermissionService not available yet");
             }
         }
-        return governanceKernel;
+        return permissionService;
+    }
+
+    /**
+     * 懒加载获取 EventBus
+     */
+    private EventBus getEventBus() {
+        if (eventBus == null && applicationContext != null) {
+            try {
+                eventBus = applicationContext.getBean(EventBus.class);
+            } catch (Exception e) {
+                log.debug("EventBus not available yet");
+            }
+        }
+        return eventBus;
     }
 
     /**
@@ -137,11 +153,12 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
     @Override
     public Object postProcessAfterInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
         // 懒加载获取核心组件
-        GovernanceKernel kernel = getGovernanceKernel();
+        PermissionService permService = getPermissionService();
+        EventBus bus = getEventBus();
         LingFrameProperties props = getProperties();
 
         // 如果核心组件未准备好，直接返回
-        if (kernel == null || props == null) {
+        if (permService == null || bus == null || props == null) {
             return bean;
         }
 
@@ -161,7 +178,8 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
             ProxyFactory proxyFactory = new ProxyFactory(bean);
             proxyFactory.setProxyTargetClass(true); // 强制使用 CGLIB
             proxyFactory.addAdvice(new LingCoreBeanGovernanceInterceptor(
-                    kernel,
+                    permService,
+                    bus,
                     props.getLingCoreGovernance().isGovernInternalCalls(),
                     props.getLingCoreGovernance().isCheckPermissions()));
             Object proxy = proxyFactory.getProxy();

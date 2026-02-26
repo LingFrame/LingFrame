@@ -4,7 +4,8 @@ import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContextHolder;
 import com.lingframe.api.security.AccessType;
-import com.lingframe.core.kernel.GovernanceKernel;
+import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.event.EventBus;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.strategy.GovernanceStrategy;
@@ -27,7 +28,8 @@ import java.util.HashMap;
 @RequiredArgsConstructor
 public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
 
-    private final GovernanceKernel governanceKernel;
+    private final PermissionService permissionService;
+    private final EventBus eventBus;
     private final boolean governInternalCalls;
     private final boolean checkPermissions;
     private static final String HOST_Ling_ID = "lingcore-app";
@@ -74,14 +76,34 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         // 构建治理上下文
         InvocationContext ctx = buildInvocationContext(method, args, callerLingId);
 
-        // 通过 GovernanceKernel 执行治理
-        return governanceKernel.invoke(null, method, ctx, () -> {
-            try {
-                return invocation.proceed();
-            } catch (Throwable t) {
-                throw new InvocationException("LINGCORE bean invocation failed", t);
+        // 执行治理：1. 权限检查
+        if (ctx.getRequiredPermission() != null && !ctx.getRequiredPermission().isEmpty()) {
+            boolean allowed = permissionService.isAllowed(
+                    callerLingId,
+                    ctx.getRequiredPermission(),
+                    ctx.getAccessType());
+            if (!allowed) {
+                throw new com.lingframe.api.exception.PermissionDeniedException(
+                        callerLingId,
+                        ctx.getRequiredPermission(),
+                        ctx.getAccessType());
             }
-        });
+        }
+
+        // 2. 方法调用
+        Object result;
+        try {
+            result = invocation.proceed();
+        } catch (Throwable t) {
+            throw new InvocationException("LINGCORE bean invocation failed", t);
+        }
+
+        // 3. 审计事件
+        if (ctx.isShouldAudit()) {
+            permissionService.audit(callerLingId, ctx.getResourceId(), ctx.getAuditAction(), true);
+        }
+
+        return result;
     }
 
     /**
