@@ -8,6 +8,7 @@ import com.lingframe.api.event.lifecycle.LingInstallingEvent;
 import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.api.event.lifecycle.LingUninstallingEvent;
 import com.lingframe.api.security.AccessType;
+import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.CoreLingContext;
@@ -593,6 +594,10 @@ public class LingManager {
             // ✅ 开发模式下自动激活
             if (lingFrameConfig.isDevMode()) {
                 runtime.activate();
+
+                // 赋予基本执行权限
+                permissionService.grant(lingId, Capabilities.Ling_ENABLE, AccessType.EXECUTE);
+
                 log.info("[{}] Auto-activated in DEV mode", lingId);
             }
 
