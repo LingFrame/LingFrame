@@ -27,9 +27,13 @@ lingframe:
   enabled: true
   dev-mode: true
   preload-api-jars:
+    - ../lingframe-example-order-api
     - lingframe-examples/lingframe-example-order-api
   ling-home: lings
   ling-roots:
+    - ../lingframe-example-ling-order
+    - ../lingframe-example-ling-user
+    - ../lingframe-example-ling-user-canary
     - lingframe-examples/lingframe-example-ling-order
     - lingframe-examples/lingframe-example-ling-user
     - lingframe-examples/lingframe-example-ling-user-canary
