@@ -11,9 +11,7 @@ import org.springframework.boot.Banner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.DefaultResourceLoader;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 
 import java.io.File;
 import java.util.List;
@@ -25,7 +23,6 @@ import com.lingframe.starter.spi.LingContextCustomizer;
 public class SpringContainerFactory implements ContainerFactory {
 
     private final boolean devMode;
-    private final ApplicationContext parentContext;
     private final WebInterfaceManager webInterfaceManager;
     private final List<String> serviceExcludedPackages;
     private final List<LingContextCustomizer> customizers; // 新增定制器列表
@@ -34,7 +31,6 @@ public class SpringContainerFactory implements ContainerFactory {
             List<LingContextCustomizer> customizers) {
         LingFrameProperties props = parentContext.getBean(LingFrameProperties.class);
         this.devMode = props.isDevMode();
-        this.parentContext = parentContext;
         this.serviceExcludedPackages = props.getServiceExcludedPackages();
         this.webInterfaceManager = webInterfaceManager;
         this.customizers = customizers != null ? customizers : Collections.emptyList();
@@ -67,22 +63,12 @@ public class SpringContainerFactory implements ContainerFactory {
                             "org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration," +
                             "org.springframework.boot.actuate.autoconfigure.endpoint.jmx.JmxEndpointAutoConfiguration");
 
-            // 🔥 获取灵核的 Adapter（用于清理缓存）
-            RequestMappingHandlerAdapter hostAdapter = null;
-            try {
-                hostAdapter = parentContext.getBean(RequestMappingHandlerAdapter.class);
-            } catch (Exception e) {
-                log.debug("No RequestMappingHandlerAdapter found in LINGCORE context");
-            }
-
             return new SpringLingContainer(
                     builder,
                     classLoader,
                     webInterfaceManager,
                     serviceExcludedPackages,
-                    customizers, // 🔥 传入定制器
-                    (ConfigurableApplicationContext) parentContext, // 🔥 传入灵核 Context
-                    hostAdapter // 🔥 传入灵核 Adapter
+                    customizers // 🔥 传入定制器
             );
 
         } catch (Exception e) {

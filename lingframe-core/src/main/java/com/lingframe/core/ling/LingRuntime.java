@@ -4,8 +4,9 @@ import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.fsm.StateMachine;
 import lombok.Getter;
 import lombok.ToString;
-
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 /**
  * 单元运行时（V0.3.0 聚合根纯化版）
@@ -73,9 +74,9 @@ public class LingRuntime {
     }
 
     /** 获取所有 READY 状态实例（用于路由选择） */
-    public java.util.List<LingInstance> getReadyInstances() {
+    public List<LingInstance> getReadyInstances() {
         return instancePool.getActiveInstances().stream()
                 .filter(LingInstance::isReady)
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
     }
 }

@@ -13,9 +13,9 @@ import com.lingframe.core.spi.LingInvocationFilter;
  * 根据 RuntimeStatus 拒绝 INACTIVE / STOPPING / REMOVED 状态的单元请求。
  */
 public class MacroStateGuardFilter implements LingInvocationFilter {
-    private LingRepository lingRepository;
+    private final LingRepository lingRepository;
 
-    public void setLingRepository(LingRepository lingRepository) {
+    public MacroStateGuardFilter(LingRepository lingRepository) {
         this.lingRepository = lingRepository;
     }
 

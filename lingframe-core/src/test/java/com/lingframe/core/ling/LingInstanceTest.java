@@ -2,6 +2,7 @@ package com.lingframe.core.ling;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -25,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)  // 🔥 设置宽松模式
+@MockitoSettings(strictness = Strictness.LENIENT) // 🔥 设置宽松模式
 @DisplayName("LingInstance 单元测试")
 public class LingInstanceTest {
 
@@ -74,30 +75,26 @@ public class LingInstanceTest {
         @DisplayName("version 为 null 应抛出异常")
         void shouldThrowWhenVersionIsNull() {
             definition.setVersion(null);
-            assertThrows(InvalidArgumentException.class, () ->
-                    new LingInstance(container, definition));
+            assertThrows(InvalidArgumentException.class, () -> new LingInstance(container, definition));
         }
 
         @Test
         @DisplayName("version 为空白应抛出异常")
         void shouldThrowWhenVersionIsBlank() {
             definition.setVersion(" ");
-            assertThrows(InvalidArgumentException.class, () ->
-                    new LingInstance(container, definition));
+            assertThrows(InvalidArgumentException.class, () -> new LingInstance(container, definition));
         }
 
         @Test
         @DisplayName("container 为 null 应抛出异常")
         void shouldThrowWhenContainerIsNull() {
-            assertThrows(NullPointerException.class, () ->
-                    new LingInstance(null, definition));
+            assertThrows(NullPointerException.class, () -> new LingInstance(null, definition));
         }
 
         @Test
         @DisplayName("definition 为 null 应抛出异常")
         void shouldThrowWhenDefinitionIsNull() {
-            assertThrows(NullPointerException.class, () ->
-                    new LingInstance(container, null));
+            assertThrows(NullPointerException.class, () -> new LingInstance(container, null));
         }
     }
 
@@ -119,6 +116,8 @@ public class LingInstanceTest {
             // 🔥 在需要时设置 mock 行为
             when(container.isActive()).thenReturn(true);
 
+            instance.getStateMachine().transition(InstanceStatus.LOADING);
+            instance.getStateMachine().transition(InstanceStatus.STARTING);
             instance.markReady();
             assertTrue(instance.isReady());
         }
@@ -127,6 +126,8 @@ public class LingInstanceTest {
         @DisplayName("容器不活跃时 isReady 应返回 false")
         void shouldNotBeReadyWhenContainerInactive() {
             when(container.isActive()).thenReturn(true);
+            instance.getStateMachine().transition(InstanceStatus.LOADING);
+            instance.getStateMachine().transition(InstanceStatus.STARTING);
             instance.markReady();
             assertTrue(instance.isReady());
 
@@ -140,6 +141,8 @@ public class LingInstanceTest {
         void shouldNotBeReadyWhenDying() {
             when(container.isActive()).thenReturn(true);
 
+            instance.getStateMachine().transition(InstanceStatus.LOADING);
+            instance.getStateMachine().transition(InstanceStatus.STARTING);
             instance.markReady();
             assertTrue(instance.isReady());
 
@@ -153,6 +156,8 @@ public class LingInstanceTest {
         void shouldNotBeReadyAfterDestroy() {
             when(container.isActive()).thenReturn(true);
 
+            instance.getStateMachine().transition(InstanceStatus.LOADING);
+            instance.getStateMachine().transition(InstanceStatus.STARTING);
             instance.markReady();
             instance.destroy();
 
@@ -165,6 +170,8 @@ public class LingInstanceTest {
         void destroyShouldBeIdempotent() {
             when(container.isActive()).thenReturn(true);
 
+            instance.getStateMachine().transition(InstanceStatus.LOADING);
+            instance.getStateMachine().transition(InstanceStatus.STARTING);
             instance.markReady();
 
             instance.destroy();
@@ -200,6 +207,8 @@ public class LingInstanceTest {
         @DisplayName("tryEnter 在就绪时应成功")
         void tryEnterShouldSucceedWhenReady() {
             when(container.isActive()).thenReturn(true);
+            instance.getStateMachine().transition(InstanceStatus.LOADING);
+            instance.getStateMachine().transition(InstanceStatus.STARTING);
             instance.markReady();
 
             assertTrue(instance.tryEnter());
@@ -211,6 +220,8 @@ public class LingInstanceTest {
         @DisplayName("tryEnter 在 dying 状态应失败")
         void tryEnterShouldFailWhenDying() {
             when(container.isActive()).thenReturn(true);
+            instance.getStateMachine().transition(InstanceStatus.LOADING);
+            instance.getStateMachine().transition(InstanceStatus.STARTING);
             instance.markReady();
             instance.markDying();
 
@@ -222,6 +233,8 @@ public class LingInstanceTest {
         @DisplayName("exit 后计数应减少")
         void exitShouldDecrementCount() {
             when(container.isActive()).thenReturn(true);
+            instance.getStateMachine().transition(InstanceStatus.LOADING);
+            instance.getStateMachine().transition(InstanceStatus.STARTING);
             instance.markReady();
 
             instance.tryEnter();
@@ -240,6 +253,8 @@ public class LingInstanceTest {
         @DisplayName("多次 exit 不应导致计数为负")
         void exitShouldNotGoNegative() {
             when(container.isActive()).thenReturn(true);
+            instance.getStateMachine().transition(InstanceStatus.LOADING);
+            instance.getStateMachine().transition(InstanceStatus.STARTING);
             instance.markReady();
             instance.tryEnter();
 
@@ -263,8 +278,7 @@ public class LingInstanceTest {
         void getLabelsShouldReturnUnmodifiableView() {
             Map<String, String> labels = instance.getLabels();
 
-            assertThrows(UnsupportedOperationException.class, () ->
-                    labels.put("key", "value"));
+            assertThrows(UnsupportedOperationException.class, () -> labels.put("key", "value"));
         }
 
         @Test
@@ -310,6 +324,8 @@ public class LingInstanceTest {
         @DisplayName("并发 tryEnter/exit 应保持计数一致")
         void concurrentEnterExitShouldBeConsistent() throws InterruptedException {
             when(container.isActive()).thenReturn(true);
+            instance.getStateMachine().transition(InstanceStatus.LOADING);
+            instance.getStateMachine().transition(InstanceStatus.STARTING);
             instance.markReady();
 
             int threadCount = 100;
@@ -358,6 +374,8 @@ public class LingInstanceTest {
         @DisplayName("并发 markDying 应阻止新的 tryEnter")
         void markDyingShouldBlockNewEnters() throws InterruptedException {
             when(container.isActive()).thenReturn(true);
+            instance.getStateMachine().transition(InstanceStatus.LOADING);
+            instance.getStateMachine().transition(InstanceStatus.STARTING);
             instance.markReady();
 
             int threadCount = 50;
@@ -412,13 +430,15 @@ public class LingInstanceTest {
     @DisplayName("toString 应包含关键信息")
     void toStringShouldContainKeyInfo() {
         when(container.isActive()).thenReturn(true);
+        instance.getStateMachine().transition(InstanceStatus.LOADING);
+        instance.getStateMachine().transition(InstanceStatus.STARTING);
         instance.markReady();
         instance.tryEnter();
 
         String str = instance.toString();
 
         assertTrue(str.contains("1.0.0"));
-        assertTrue(str.contains("ready=true"));
+        assertTrue(str.contains("state=READY"));
         assertTrue(str.contains("activeRequests=1"));
     }
 }

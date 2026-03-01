@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.URLConnection;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -52,6 +53,20 @@ public class LingClassLoader extends URLClassLoader {
     public LingClassLoader(String lingId, URL[] urls, ClassLoader parent) {
         super(urls, parent);
         this.lingId = lingId;
+
+        // 🔥 关键修复：关闭 URLConnection 的缓存机制
+        // 在 Windows 平台上，如果底层 JarURLConnection 启用了缓存，
+        // 即便调用了 URLClassLoader.close()，文件句柄依然可能被 JVM 占用，导致无法覆盖重装。
+        try {
+            // JDK 8 兼容写法：由于 JDK 8 没有 setDefaultUseCaches(String protocol, boolean
+            // defaultVal)
+            // 必须创建一个真实的 jar URL 连接实例来关闭整个 JVM 级别的 jar 缓存默认值
+            URLConnection connection = new URL("jar:file://dummy.jar!/").openConnection();
+            connection.setDefaultUseCaches(false);
+        } catch (Throwable t) {
+            log.warn("Failed to set default use caches to false for 'jar' protocol", t);
+        }
+
         log.debug("[{}] ClassLoader created with {} URLs", lingId, urls.length);
     }
 
@@ -211,8 +226,8 @@ public class LingClassLoader extends URLClassLoader {
      * 清理 URLClassLoader 内部缓存
      * <p>
      * URLClassLoader 内部的 URLClassPath 可能持有已打开的 JarFile 引用和 URL 列表。
-     * super.close() 会关闭文件句柄，但不一定清空集合引用。
-     * 此方法通过反射确保内部引用被彻底清理。
+     * super.close() 会关闭文件句柄，但不一定清空集合引用，在 Windows 下会导致无法删除 JAR。
+     * 此方法通过反射确保内部引用被彻底清理并强制关闭 JarFile。
      * </p>
      */
     private void cleanupInternalCaches() {
@@ -223,6 +238,43 @@ public class LingClassLoader extends URLClassLoader {
             Object ucp = ucpField.get(this);
 
             if (ucp != null) {
+
+                // 强制关闭所有 Loader
+                try {
+                    Field loadersField = ucp.getClass().getDeclaredField("loaders");
+                    loadersField.setAccessible(true);
+                    Object loaders = loadersField.get(ucp);
+                    if (loaders instanceof List<?>) {
+                        for (Object loader : (List<?>) loaders) {
+                            try {
+                                if (loader != null) {
+                                    // 尝试获取 Loader 内部的 jar/JarFile 并关闭 (主要针对 JarLoader)
+                                    try {
+                                        Field jarField = loader.getClass().getDeclaredField("jar");
+                                        jarField.setAccessible(true);
+                                        Object jarFile = jarField.get(loader);
+                                        if (jarFile instanceof java.util.jar.JarFile) {
+                                            ((java.util.jar.JarFile) jarFile).close();
+                                            log.debug("[{}] Closed JarFile via reflection", lingId);
+                                        } else if (jarFile instanceof java.util.zip.ZipFile) {
+                                            ((java.util.zip.ZipFile) jarFile).close();
+                                            log.debug("[{}] Closed ZipFile via reflection", lingId);
+                                        }
+                                    } catch (NoSuchFieldException e) {
+                                        // 忽略
+                                    }
+                                }
+                            } catch (Exception e) {
+                                log.trace("Failed to close loader internal jar", e);
+                            }
+                        }
+                        // 清空 loaders
+                        ((List<?>) loaders).clear();
+                    }
+                } catch (NoSuchFieldException ignored) {
+                    // JVM 版本不同
+                }
+
                 // 清理 URLClassPath.path (ArrayList<URL>)
                 try {
                     Field pathField = ucp.getClass().getDeclaredField("path");
@@ -233,18 +285,6 @@ public class LingClassLoader extends URLClassLoader {
                     }
                 } catch (NoSuchFieldException ignored) {
                     // JVM 版本不同，字段可能不存在
-                }
-
-                // 清理 URLClassPath.loaders (ArrayList<Loader>)
-                try {
-                    Field loadersField = ucp.getClass().getDeclaredField("loaders");
-                    loadersField.setAccessible(true);
-                    Object loaders = loadersField.get(ucp);
-                    if (loaders instanceof List<?>) {
-                        ((List<?>) loaders).clear();
-                    }
-                } catch (NoSuchFieldException ignored) {
-                    // JVM 版本不同
                 }
 
                 // 清理 URLClassPath.lmap (HashMap<String, Loader>)
@@ -259,7 +299,15 @@ public class LingClassLoader extends URLClassLoader {
                     // JVM 版本不同
                 }
 
-                log.debug("[{}] URLClassPath internal caches cleared", lingId);
+                // 清理 closed (如果有这个字段的话，在一些高版本 JDK 中防止再用)
+                try {
+                    Field closedField = ucp.getClass().getDeclaredField("closed");
+                    closedField.setAccessible(true);
+                    closedField.set(ucp, true);
+                } catch (NoSuchFieldException ignored) {
+                }
+
+                log.debug("[{}] URLClassPath internal caches and JAR handles cleared", lingId);
             }
         } catch (Exception e) {
             log.debug("[{}] Failed to cleanup URLClassPath: {}", lingId, e.getMessage());

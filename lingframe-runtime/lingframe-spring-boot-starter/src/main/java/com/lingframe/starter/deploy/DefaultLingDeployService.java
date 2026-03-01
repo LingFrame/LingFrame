@@ -2,17 +2,18 @@ package com.lingframe.starter.deploy;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.loader.LingManifestLoader;
-import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingLifecycleEngine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import java.io.File;
 import java.net.URI;
+import java.util.Collections;
 
 @Slf4j
 @RequiredArgsConstructor
 public class DefaultLingDeployService implements LingDeployService {
 
-    private final LingManager lingManager;
+    private final LingLifecycleEngine lifecycleEngine;
 
     @Override
     public void deploy(String uriString, boolean isDefault) throws Exception {
@@ -33,8 +34,7 @@ public class DefaultLingDeployService implements LingDeployService {
     @Override
     public void deploy(File file, boolean isDefault) throws Exception {
         LingDefinition def = LingManifestLoader.parseDefinition(file);
-        // Note: LingManager install may not accept isDefault right now,
-        // passing def and file is the standard. Default handling varies.
-        lingManager.install(def, file);
+        // Default handling varies.
+        lifecycleEngine.deploy(def, file, true, Collections.emptyMap());
     }
 }

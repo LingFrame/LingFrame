@@ -4,7 +4,9 @@ import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.exception.ServiceUnavailableException;
+import com.lingframe.core.ling.event.RuntimeEvent;
 import com.lingframe.core.ling.event.RuntimeEventBus;
+import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -84,7 +86,10 @@ public class LingLifecycleManagerTest {
         definition.setId(Ling_ID);
         definition.setVersion(version);
 
-        return new LingInstance(container, definition);
+        LingInstance instance = new LingInstance(container, definition);
+        instance.getStateMachine().transition(InstanceStatus.LOADING);
+        instance.getStateMachine().transition(InstanceStatus.STARTING);
+        return instance;
     }
 
     // ==================== 初始状态测试 ====================
@@ -187,6 +192,7 @@ public class LingLifecycleManagerTest {
             // 填满死亡队列
             for (int i = 0; i < config.getMaxHistorySnapshots(); i++) {
                 LingInstance instance = createMockInstance("old-" + i);
+                instance.markReady();
                 instancePool.addInstance(instance, false);
                 instance.tryEnter(); // 模拟有活跃请求
                 instancePool.moveToDying(instance);
@@ -317,7 +323,7 @@ public class LingLifecycleManagerTest {
         void addInstanceShouldPublishUpgradingEvent() {
             AtomicInteger eventCount = new AtomicInteger(0);
             internalEventBus.subscribe(
-                    com.lingframe.core.ling.event.RuntimeEvent.InstanceUpgrading.class,
+                    RuntimeEvent.InstanceUpgrading.class,
                     e -> eventCount.incrementAndGet());
 
             LingInstance instance = createMockInstance("1.0.0");
@@ -331,7 +337,7 @@ public class LingLifecycleManagerTest {
         void shutdownShouldPublishShuttingDownEvent() {
             AtomicInteger eventCount = new AtomicInteger(0);
             internalEventBus.subscribe(
-                    com.lingframe.core.ling.event.RuntimeEvent.RuntimeShuttingDown.class,
+                    RuntimeEvent.RuntimeShuttingDown.class,
                     e -> eventCount.incrementAndGet());
 
             lifecycleManager.shutdown();

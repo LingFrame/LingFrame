@@ -5,13 +5,18 @@ import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.ling.LingManager;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.exception.InvocationException;
-import lombok.Getter;
+import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.ling.LingServiceRegistry;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
+import com.lingframe.core.kernel.InvocationContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
+import java.lang.reflect.Proxy;
+import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Optional;
 
 @Slf4j
@@ -20,12 +25,9 @@ public class CoreLingContext implements LingContext {
 
     private final String lingId;
 
-    /**
-     * 向 Core/Runtime 内部暴露 LingManager
-     * 注意：此方法不在 LingContext API 接口中，仅供框架内部强转使用
-     */
-    @Getter
-    private final LingManager lingManager;
+    private final LingRepository lingRepository;
+    private final LingServiceRegistry lingServiceRegistry;
+    private final InvocationPipelineEngine pipelineEngine;
     private final PermissionService permissionService;
     private final EventBus eventBus;
 
@@ -41,11 +43,14 @@ public class CoreLingContext implements LingContext {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> Optional<T> getService(Class<T> serviceClass) {
-        // 【关键】单元获取服务时，通过 Core 代理出去
-        // 这里的 serviceClass.getName() 就是 Capability
         try {
-            T service = lingManager.getService(lingId, serviceClass);
+            T service = (T) Proxy.newProxyInstance(
+                    serviceClass.getClassLoader(),
+                    new Class[] { serviceClass },
+                    new GlobalServiceRoutingProxy(lingId, serviceClass.getName(), null,
+                            lingRepository, pipelineEngine));
             return Optional.ofNullable(service);
         } catch (Exception e) {
             log.warn("Service get failed.", e);
@@ -54,19 +59,56 @@ public class CoreLingContext implements LingContext {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> Optional<T> invoke(String serviceId, Object... args) {
         if (serviceId == null || serviceId.isEmpty()) {
             throw new InvalidArgumentException("serviceId", "Service ID cannot be empty.");
         }
 
+        String className = lingServiceRegistry.getServiceClassName(serviceId);
+        if (className == null) {
+            log.warn("Cannot find metadata for invokeService: {}", serviceId);
+            return Optional.empty();
+        }
+
+        List<String> methods = lingServiceRegistry.getProviderMethods(serviceId);
+        if (methods == null || methods.isEmpty()) {
+            return Optional.empty();
+        }
+
+        String firstMethodSig = methods.get(0);
+        String extractedMethodName = firstMethodSig.substring(0, firstMethodSig.indexOf('('));
+
+        InvocationContext ctx = InvocationContext.obtain();
+        ctx.setServiceFQSID(serviceId);
+        ctx.setMethodName(extractedMethodName);
+        ctx.setArgs(args);
+
+        ctx.getAttachments().put("ling.target.className", className);
+        ctx.getAttachments().put("ling.caller.id", lingId);
+
         try {
-            return lingManager.invokeService(this.lingId, serviceId, args);
+            Object result = pipelineEngine.invoke(ctx);
+            return (Optional<T>) Optional.ofNullable(result);
         } catch (PermissionDeniedException e) {
             throw e; // 权限异常直接抛出
         } catch (Exception e) {
             log.error("Service invocation failed for [{}]: {}", serviceId, e.getMessage(), e);
             throw new InvocationException("Service invoke failed: " + e.getMessage(), e);
+        } finally {
+            ctx.reset();
         }
+    }
+
+    public void registerProtocolService(String fqsid, Object bean, Method method) {
+        String methodName = method.getName();
+        Class<?>[] paramTypes = method.getParameterTypes();
+        String[] paramNames = new String[paramTypes.length];
+        for (int i = 0; i < paramTypes.length; i++) {
+            paramNames[i] = paramTypes[i].getName();
+        }
+        lingServiceRegistry.registerServiceMetadata(fqsid, method.getDeclaringClass().getName(), methodName,
+                paramNames);
     }
 
     @Override

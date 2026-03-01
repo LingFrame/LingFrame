@@ -5,6 +5,7 @@ import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -20,6 +21,11 @@ class LabelMatchRouterTest {
     @BeforeEach
     void setUp() {
         router = new LabelMatchRouter();
+    }
+
+    @AfterEach
+    void tearDown() {
+        InvocationContext.obtain().reset();
     }
 
     private LingInstance createInstance(String version, Map<String, String> labels, Map<String, Object> properties) {
@@ -55,9 +61,8 @@ class LabelMatchRouterTest {
         requestLabels.put("env", "prod");
         requestLabels.put("region", "sh");
 
-        InvocationContext context = InvocationContext.builder()
-                .labels(requestLabels)
-                .build();
+        InvocationContext context = InvocationContext.obtain();
+        context.setLabels(requestLabels);
 
         LingInstance selected = router.route(candidates, context);
         assertEquals("1.0.1", selected.getVersion(), "应该匹配到北京之外的上海实例");
@@ -79,9 +84,8 @@ class LabelMatchRouterTest {
 
         List<LingInstance> candidates = Arrays.asList(inst1, inst2);
 
-        InvocationContext context = InvocationContext.builder()
-                .labels(Collections.singletonMap("version", "v3")) // 没有匹配的
-                .build();
+        InvocationContext context = InvocationContext.obtain();
+        context.setLabels(Collections.singletonMap("version", "v3")); // 没有匹配的
 
         LingInstance selected = router.route(candidates, context);
         // 如果没有匹配的，逻辑是 orElse(candidates.get(0))
@@ -97,7 +101,7 @@ class LabelMatchRouterTest {
         LingInstance inst2 = createInstance("1.0.2", null, Collections.singletonMap("trafficWeight", 20));
 
         List<LingInstance> candidates = Arrays.asList(inst1, inst2);
-        InvocationContext context = InvocationContext.builder().build();
+        InvocationContext context = InvocationContext.obtain();
 
         int count1 = 0;
         int count2 = 0;

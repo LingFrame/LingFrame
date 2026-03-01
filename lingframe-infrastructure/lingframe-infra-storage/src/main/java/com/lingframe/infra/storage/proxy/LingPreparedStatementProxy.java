@@ -7,7 +7,12 @@ import com.lingframe.api.security.PermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.InputStream;
+import java.io.Reader;
+import java.math.BigDecimal;
+import java.net.URL;
 import java.sql.*;
+import java.util.Calendar;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -475,7 +480,7 @@ public class LingPreparedStatementProxy implements PreparedStatement {
     }
 
     @Override
-    public void setBigDecimal(int parameterIndex, java.math.BigDecimal x) throws SQLException {
+    public void setBigDecimal(int parameterIndex, BigDecimal x) throws SQLException {
         target.setBigDecimal(parameterIndex, x);
     }
 
@@ -485,32 +490,32 @@ public class LingPreparedStatementProxy implements PreparedStatement {
     }
 
     @Override
-    public void setDate(int parameterIndex, java.sql.Date x) throws SQLException {
+    public void setDate(int parameterIndex, Date x) throws SQLException {
         target.setDate(parameterIndex, x);
     }
 
     @Override
-    public void setTime(int parameterIndex, java.sql.Time x) throws SQLException {
+    public void setTime(int parameterIndex, Time x) throws SQLException {
         target.setTime(parameterIndex, x);
     }
 
     @Override
-    public void setTimestamp(int parameterIndex, java.sql.Timestamp x) throws SQLException {
+    public void setTimestamp(int parameterIndex, Timestamp x) throws SQLException {
         target.setTimestamp(parameterIndex, x);
     }
 
     @Override
-    public void setAsciiStream(int parameterIndex, java.io.InputStream x, int length) throws SQLException {
+    public void setAsciiStream(int parameterIndex, InputStream x, int length) throws SQLException {
         target.setAsciiStream(parameterIndex, x, length);
     }
 
     @Override
-    public void setUnicodeStream(int parameterIndex, java.io.InputStream x, int length) throws SQLException {
+    public void setUnicodeStream(int parameterIndex, InputStream x, int length) throws SQLException {
         target.setUnicodeStream(parameterIndex, x, length);
     }
 
     @Override
-    public void setBinaryStream(int parameterIndex, java.io.InputStream x, int length) throws SQLException {
+    public void setBinaryStream(int parameterIndex, InputStream x, int length) throws SQLException {
         target.setBinaryStream(parameterIndex, x, length);
     }
 
@@ -536,7 +541,7 @@ public class LingPreparedStatementProxy implements PreparedStatement {
     }
 
     @Override
-    public void setCharacterStream(int parameterIndex, java.io.Reader reader, int length) throws SQLException {
+    public void setCharacterStream(int parameterIndex, Reader reader, int length) throws SQLException {
         target.setCharacterStream(parameterIndex, reader, length);
     }
 
@@ -566,17 +571,17 @@ public class LingPreparedStatementProxy implements PreparedStatement {
     }
 
     @Override
-    public void setDate(int parameterIndex, java.sql.Date x, java.util.Calendar cal) throws SQLException {
+    public void setDate(int parameterIndex, Date x, Calendar cal) throws SQLException {
         target.setDate(parameterIndex, x, cal);
     }
 
     @Override
-    public void setTime(int parameterIndex, java.sql.Time x, java.util.Calendar cal) throws SQLException {
+    public void setTime(int parameterIndex, Time x, Calendar cal) throws SQLException {
         target.setTime(parameterIndex, x, cal);
     }
 
     @Override
-    public void setTimestamp(int parameterIndex, java.sql.Timestamp x, java.util.Calendar cal) throws SQLException {
+    public void setTimestamp(int parameterIndex, Timestamp x, Calendar cal) throws SQLException {
         target.setTimestamp(parameterIndex, x, cal);
     }
 
@@ -586,12 +591,12 @@ public class LingPreparedStatementProxy implements PreparedStatement {
     }
 
     @Override
-    public void setURL(int parameterIndex, java.net.URL x) throws SQLException {
+    public void setURL(int parameterIndex, URL x) throws SQLException {
         target.setURL(parameterIndex, x);
     }
 
     @Override
-    public java.sql.ParameterMetaData getParameterMetaData() throws SQLException {
+    public ParameterMetaData getParameterMetaData() throws SQLException {
         return target.getParameterMetaData();
     }
 
@@ -606,7 +611,7 @@ public class LingPreparedStatementProxy implements PreparedStatement {
     }
 
     @Override
-    public void setNCharacterStream(int parameterIndex, java.io.Reader value, long length) throws SQLException {
+    public void setNCharacterStream(int parameterIndex, Reader value, long length) throws SQLException {
         target.setNCharacterStream(parameterIndex, value, length);
     }
 
@@ -616,17 +621,17 @@ public class LingPreparedStatementProxy implements PreparedStatement {
     }
 
     @Override
-    public void setClob(int parameterIndex, java.io.Reader reader, long length) throws SQLException {
+    public void setClob(int parameterIndex, Reader reader, long length) throws SQLException {
         target.setClob(parameterIndex, reader, length);
     }
 
     @Override
-    public void setBlob(int parameterIndex, java.io.InputStream inputStream, long length) throws SQLException {
+    public void setBlob(int parameterIndex, InputStream inputStream, long length) throws SQLException {
         target.setBlob(parameterIndex, inputStream, length);
     }
 
     @Override
-    public void setNClob(int parameterIndex, java.io.Reader reader, long length) throws SQLException {
+    public void setNClob(int parameterIndex, Reader reader, long length) throws SQLException {
         target.setNClob(parameterIndex, reader, length);
     }
 
@@ -641,52 +646,52 @@ public class LingPreparedStatementProxy implements PreparedStatement {
     }
 
     @Override
-    public void setAsciiStream(int parameterIndex, java.io.InputStream x, long length) throws SQLException {
+    public void setAsciiStream(int parameterIndex, InputStream x, long length) throws SQLException {
         target.setAsciiStream(parameterIndex, x, length);
     }
 
     @Override
-    public void setBinaryStream(int parameterIndex, java.io.InputStream x, long length) throws SQLException {
+    public void setBinaryStream(int parameterIndex, InputStream x, long length) throws SQLException {
         target.setBinaryStream(parameterIndex, x, length);
     }
 
     @Override
-    public void setCharacterStream(int parameterIndex, java.io.Reader reader, long length) throws SQLException {
+    public void setCharacterStream(int parameterIndex, Reader reader, long length) throws SQLException {
         target.setCharacterStream(parameterIndex, reader, length);
     }
 
     @Override
-    public void setAsciiStream(int parameterIndex, java.io.InputStream x) throws SQLException {
+    public void setAsciiStream(int parameterIndex, InputStream x) throws SQLException {
         target.setAsciiStream(parameterIndex, x);
     }
 
     @Override
-    public void setBinaryStream(int parameterIndex, java.io.InputStream x) throws SQLException {
+    public void setBinaryStream(int parameterIndex, InputStream x) throws SQLException {
         target.setBinaryStream(parameterIndex, x);
     }
 
     @Override
-    public void setCharacterStream(int parameterIndex, java.io.Reader reader) throws SQLException {
+    public void setCharacterStream(int parameterIndex, Reader reader) throws SQLException {
         target.setCharacterStream(parameterIndex, reader);
     }
 
     @Override
-    public void setNCharacterStream(int parameterIndex, java.io.Reader value) throws SQLException {
+    public void setNCharacterStream(int parameterIndex, Reader value) throws SQLException {
         target.setNCharacterStream(parameterIndex, value);
     }
 
     @Override
-    public void setClob(int parameterIndex, java.io.Reader reader) throws SQLException {
+    public void setClob(int parameterIndex, Reader reader) throws SQLException {
         target.setClob(parameterIndex, reader);
     }
 
     @Override
-    public void setBlob(int parameterIndex, java.io.InputStream inputStream) throws SQLException {
+    public void setBlob(int parameterIndex, InputStream inputStream) throws SQLException {
         target.setBlob(parameterIndex, inputStream);
     }
 
     @Override
-    public void setNClob(int parameterIndex, java.io.Reader reader) throws SQLException {
+    public void setNClob(int parameterIndex, Reader reader) throws SQLException {
         target.setNClob(parameterIndex, reader);
     }
 }

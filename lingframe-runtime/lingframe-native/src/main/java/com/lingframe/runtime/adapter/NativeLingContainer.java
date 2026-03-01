@@ -4,7 +4,6 @@ import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
 import com.lingframe.core.context.CoreLingContext;
-import com.lingframe.core.ling.LingManager;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.exception.LingInstallException;
@@ -109,12 +108,11 @@ public class NativeLingContainer implements LingContainer {
 
     private void scanAndRegisterServices(LingContext context) {
         CoreLingContext coreCtx = null;
-        if (!(context instanceof CoreLingContext )) {
-            coreCtx  = (CoreLingContext) context;
+        if (!(context instanceof CoreLingContext)) {
+            coreCtx = (CoreLingContext) context;
             log.warn("[{}] Context is not CoreLingContext, skipping service registration.", lingId);
             return;
         }
-        LingManager lingManager = coreCtx.getLingManager();
 
         log.info("[{}] Scanning for @LingService...", lingId);
         Set<Class<?>> classes = scanClasses();
@@ -128,13 +126,13 @@ public class NativeLingContainer implements LingContainer {
             for (Method method : clazz.getMethods()) {
                 LingService annotation = method.getAnnotation(LingService.class);
                 if (annotation != null) {
-                    registerService(lingManager, clazz, method, annotation);
+                    registerService(coreCtx, clazz, method, annotation);
                 }
             }
         }
     }
 
-    private void registerService(LingManager pm, Class<?> clazz, Method method, LingService annotation) {
+    private void registerService(CoreLingContext ctx, Class<?> clazz, Method method, LingService annotation) {
         try {
             // 获取或创建单例
             Object instance = singletons.computeIfAbsent(clazz, k -> {
@@ -146,7 +144,7 @@ public class NativeLingContainer implements LingContainer {
             });
 
             String fqsid = lingId + ":" + annotation.id();
-            pm.registerProtocolService(lingId, fqsid, instance, method);
+            ctx.registerProtocolService(fqsid, instance, method);
             log.debug("[{}] Registered native service: {}", lingId, fqsid);
         } catch (Exception e) {
             log.error("[{}] Failed to register service: {}", lingId, method.getName(), e);

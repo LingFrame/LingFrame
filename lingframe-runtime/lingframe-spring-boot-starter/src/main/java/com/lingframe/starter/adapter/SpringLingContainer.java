@@ -6,7 +6,6 @@ import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
 import com.lingframe.core.context.CoreLingContext;
-import com.lingframe.core.ling.LingManager;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.processor.LingReferenceInjector;
@@ -20,11 +19,10 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.io.support.SpringFactoriesLoader;
+import org.springframework.util.ClassUtils;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -32,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.ResourceBundle;
 
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.context.support.AbstractApplicationContext;
@@ -52,24 +51,16 @@ public class SpringLingContainer implements LingContainer {
     // 保存 Context 以便 stop 时使用
     private LingContext lingContext;
 
-    // 🔥 新增：持有灵核 Context 引用，用于清理
-    private final ConfigurableApplicationContext hostContext;
-    private final RequestMappingHandlerAdapter hostAdapter;
-
     public SpringLingContainer(SpringApplicationBuilder builder,
             ClassLoader classLoader,
             WebInterfaceManager webInterfaceManager,
             List<String> excludedPackages,
-            List<LingContextCustomizer> customizers,
-            ConfigurableApplicationContext hostContext,
-            RequestMappingHandlerAdapter hostAdapter) {
+            List<LingContextCustomizer> customizers) {
         this.builder = builder;
         this.classLoader = classLoader;
         this.webInterfaceManager = webInterfaceManager;
         this.excludedPackages = excludedPackages != null ? excludedPackages : Collections.emptyList();
         this.customizers = customizers != null ? customizers : Collections.emptyList();
-        this.hostContext = hostContext;
-        this.hostAdapter = hostAdapter;
     }
 
     @Override
@@ -126,20 +117,16 @@ public class SpringLingContainer implements LingContainer {
     private void registerBeans(GenericApplicationContext context, ClassLoader lingClassLoader) {
         if (lingContext instanceof CoreLingContext) {
             CoreLingContext coreCtx = (CoreLingContext) lingContext;
-            LingManager lingManager = coreCtx.getLingManager();
             String lingId = lingContext.getLingId();
-
-            // 注册 LingManager
-            context.registerBean(LingManager.class, () -> lingManager);
 
             // 注册 LingContext 并设为 @Primary
             context.registerBean(LingContext.class, () -> coreCtx,
                     bd -> bd.setPrimary(true));
 
-            // 注册单元专用的 LingReferenceInjector
-            context.registerBean(LingReferenceInjector.class, () -> new LingReferenceInjector(lingId, lingManager));
+            // 注册单元专用的 LingReferenceInjector，传给它是 context
+            context.registerBean(LingReferenceInjector.class, () -> new LingReferenceInjector(lingId, coreCtx));
 
-            log.info("Injecting core beans for ling [{}]: LingManager, LingReferenceInjector", lingId);
+            log.info("Injecting core beans for ling [{}]: LingContext, LingReferenceInjector", lingId);
 
             // 自动配置单元独立数据源
             LingDataSourceRegistrar.register(context, lingClassLoader, lingId);
@@ -163,7 +150,7 @@ public class SpringLingContainer implements LingContainer {
             log.warn("LingContext is not instance of CoreLingContext, cannot register services.");
             return;
         }
-        LingManager lingManager = ((CoreLingContext) lingContext).getLingManager();
+        CoreLingContext coreCtx = (CoreLingContext) lingContext;
         String lingId = lingContext.getLingId();
 
         // 获取容器中所有 Bean 的名称
@@ -181,7 +168,7 @@ public class SpringLingContainer implements LingContainer {
                     if (lingService != null) {
                         String shortId = lingService.id();
                         String fqsid = lingId + ":" + shortId;
-                        lingManager.registerProtocolService(lingId, fqsid, bean, method);
+                        coreCtx.registerProtocolService(fqsid, bean, method);
                     }
                 });
 
@@ -194,7 +181,7 @@ public class SpringLingContainer implements LingContainer {
                                 Method implMethod = targetClass.getMethod(
                                         ifaceMethod.getName(), ifaceMethod.getParameterTypes());
                                 String fqsid = iface.getName() + ":" + ifaceMethod.getName();
-                                lingManager.registerProtocolService(lingId, fqsid, bean, implMethod);
+                                coreCtx.registerProtocolService(fqsid, bean, implMethod);
                             } catch (NoSuchMethodException ignored) {
                             }
                         }
@@ -406,13 +393,15 @@ public class SpringLingContainer implements LingContainer {
         }
 
         // 🔥 关键：清除所有对单元的引用，防止泄漏
+        clearSpringFactoriesCache(this.classLoader);
+        clearThirdPartyCaches(this.classLoader);
         this.builder = null; // SpringApplicationBuilder 持有 ResourceLoader → ClassLoader
         this.context = null; // ApplicationContext 持有 BeanFactory → 所有 Bean → Class → ClassLoader
         this.classLoader = null;
         this.lingContext = null;
         this.webInterfaceManager = null;
         this.excludedPackages = null;
-        this.lingContext = null;
+        this.customizers = null;
     }
 
     /**
@@ -456,6 +445,94 @@ public class SpringLingContainer implements LingContainer {
             }
         } catch (Exception e) {
             log.warn("Failed to clear additional SpringFactoriesLoader caches", e);
+        }
+    }
+
+    /**
+     * 清理常见第三方库（如 Jakarta EL, Spring ReflectionUtils）的静态缓存
+     * 避免它们持有单元类的强引用导致 ClassLoader 内存泄露
+     */
+    private void clearThirdPartyCaches(ClassLoader lingClassLoader) {
+        // 1. 清理 Spring 的 ReflectionUtils 内部缓存
+        try {
+            ReflectionUtils.clearCache();
+            log.debug("Cleared Spring ReflectionUtils cache");
+        } catch (Exception e) {
+            log.warn("Failed to clear Spring ReflectionUtils cache", e);
+        }
+
+        // 2. 清理 Jakarta EL (Expression Language) 缓存
+        // Tomcat 等容器中的 ELResolver 会缓存 Bean 属性导致 ClassLoader 泄露
+        try {
+            Class<?> beanELResolverClass = ClassUtils.forName("jakarta.el.BeanELResolver", lingClassLoader);
+            Method purgeMethod = ReflectionUtils.findMethod(beanELResolverClass, "purgeBeanClasses", ClassLoader.class);
+            if (purgeMethod != null) {
+                ReflectionUtils.invokeMethod(purgeMethod, null, lingClassLoader);
+                log.debug("Cleared Jakarta EL BeanELResolver cache for ling ClassLoader");
+            }
+        } catch (ClassNotFoundException e) {
+            // 没有用到 Jakarta EL，忽略
+        } catch (Exception e) {
+            log.warn("Failed to clear Jakarta EL context", e);
+        }
+
+        // 3. 尝试清理 javax.el (如果兼容老版本)
+        try {
+            Class<?> beanELResolverClass = ClassUtils.forName("javax.el.BeanELResolver", lingClassLoader);
+            Method purgeMethod = ReflectionUtils.findMethod(beanELResolverClass, "purgeBeanClasses", ClassLoader.class);
+            if (purgeMethod != null) {
+                ReflectionUtils.invokeMethod(purgeMethod, null, lingClassLoader);
+                log.debug("Cleared Javax EL BeanELResolver cache for ling ClassLoader");
+            }
+        } catch (ClassNotFoundException e) {
+            // 没有用到 Javax EL，忽略
+        } catch (Exception e) {
+            log.debug("Failed to clear Javax EL context", e);
+        }
+
+        // 4. 清理 Spring ResolvableType 缓存
+        try {
+            Method clearCacheMethod = ReflectionUtils.findMethod(
+                    org.springframework.core.ResolvableType.class, "clearCache");
+            if (clearCacheMethod != null) {
+                ReflectionUtils.invokeMethod(clearCacheMethod, null);
+                log.debug("Cleared Spring ResolvableType cache");
+            }
+        } catch (Exception e) {
+            log.debug("Failed to clear ResolvableType cache: {}", e.getMessage());
+        }
+
+        // 5. 清理 Spring AnnotationUtils/AnnotationTypeMappings 缓存
+        try {
+            Method clearCacheMethod = ReflectionUtils.findMethod(
+                    org.springframework.core.annotation.AnnotationUtils.class, "clearCache");
+            if (clearCacheMethod != null) {
+                ReflectionUtils.invokeMethod(clearCacheMethod, null);
+                log.debug("Cleared Spring AnnotationUtils cache");
+            }
+        } catch (Exception e) {
+            log.debug("Failed to clear AnnotationUtils cache: {}", e.getMessage());
+        }
+
+        // 6. 清理 Spring CachedIntrospectionResults
+        try {
+            Class<?> cirClass = ClassUtils.forName("org.springframework.beans.CachedIntrospectionResults",
+                    lingClassLoader);
+            Method clearMethod = ReflectionUtils.findMethod(cirClass, "clearClassLoader", ClassLoader.class);
+            if (clearMethod != null) {
+                ReflectionUtils.invokeMethod(clearMethod, null, lingClassLoader);
+                log.debug("Cleared Spring CachedIntrospectionResults for ling ClassLoader");
+            }
+        } catch (Exception e) {
+            log.debug("Failed to clear CachedIntrospectionResults: {}", e.getMessage());
+        }
+
+        // 7. 清理 JDK ResourceBundle 缓存
+        try {
+            ResourceBundle.clearCache(lingClassLoader);
+            log.debug("Cleared JDK ResourceBundle cache for ling ClassLoader");
+        } catch (Exception e) {
+            log.debug("Failed to clear ResourceBundle cache: {}", e.getMessage());
         }
     }
 

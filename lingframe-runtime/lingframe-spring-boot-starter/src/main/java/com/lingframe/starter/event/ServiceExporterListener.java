@@ -3,8 +3,9 @@ package com.lingframe.starter.event;
 import com.lingframe.api.event.lifecycle.LingStartedEvent;
 import com.lingframe.api.event.lifecycle.LingStoppedEvent;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.starter.spi.ServiceExporter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -20,11 +21,14 @@ import java.util.List;
 @Slf4j
 public class ServiceExporterListener {
 
-    private final LingManager lingManager;
+    private final LingRepository lingRepository;
+    private final LingServiceRegistry lingServiceRegistry;
     private final List<ServiceExporter> exporters;
 
-    public ServiceExporterListener(EventBus eventBus, LingManager lingManager, List<ServiceExporter> exporters) {
-        this.lingManager = lingManager;
+    public ServiceExporterListener(EventBus eventBus, LingRepository lingRepository,
+            LingServiceRegistry lingServiceRegistry, List<ServiceExporter> exporters) {
+        this.lingRepository = lingRepository;
+        this.lingServiceRegistry = lingServiceRegistry;
         this.exporters = exporters != null ? exporters : new ArrayList<>();
 
         if (!this.exporters.isEmpty()) {
@@ -36,14 +40,14 @@ public class ServiceExporterListener {
 
     private void onLingStarted(LingStartedEvent event) {
         String lingId = event.getLingId();
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             return;
         }
 
         try {
-            // TODO V0.3.0: 适配新的 LingServiceRegistry 取代老版 InvokableService
-            List<String> services = new ArrayList<>();
+            // 这里使用新的 LingServiceRegistry 获取服务列表
+            List<String> services = lingServiceRegistry.getServicesByLingId(lingId);
 
             if (exporters != null && !exporters.isEmpty()) {
                 exporters.forEach(exporter -> {

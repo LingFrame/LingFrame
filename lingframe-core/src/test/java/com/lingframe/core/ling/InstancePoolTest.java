@@ -2,6 +2,7 @@ package com.lingframe.core.ling;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -49,6 +50,8 @@ public class InstancePoolTest {
         definition.setVersion(version);
 
         LingInstance instance = new LingInstance(container, definition);
+        instance.getStateMachine().transition(InstanceStatus.LOADING);
+        instance.getStateMachine().transition(InstanceStatus.STARTING);
         instance.markReady();
         return instance;
     }
@@ -151,8 +154,7 @@ public class InstancePoolTest {
         @Test
         @DisplayName("添加 null 实例应抛出异常")
         void addNullShouldThrow() {
-            assertThrows(InvalidArgumentException.class, () ->
-                    pool.addInstance(null, true));
+            assertThrows(InvalidArgumentException.class, () -> pool.addInstance(null, true));
         }
     }
 

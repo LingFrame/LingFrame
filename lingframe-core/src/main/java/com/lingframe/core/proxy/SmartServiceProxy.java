@@ -49,7 +49,7 @@ public class SmartServiceProxy implements InvocationHandler {
         try {
             finalCtx.setTraceId(null);
             finalCtx.setCallerLingId(this.callerLingId);
-            finalCtx.setLingId(this.targetLingId);
+            finalCtx.setTargetLingId(this.targetLingId);
             finalCtx.setMethodName(method.getName());
 
             // 提取参数签名类型
@@ -72,8 +72,8 @@ public class SmartServiceProxy implements InvocationHandler {
                     m -> m.getDeclaringClass().getName() + ":" + m.getName());
             finalCtx.setResourceId(resourceId);
 
-            // 组装最终的目标服务寻址标： `targetLingId:interfaceName`
-            finalCtx.setServiceFQSID(targetLingId + ":" + method.getDeclaringClass().getSimpleName());
+            // 组装最终的目标服务寻址标： `targetLingId:interfaceFQCN`
+            finalCtx.setServiceFQSID(targetLingId + ":" + method.getDeclaringClass().getName());
 
             finalCtx.setAccessType(AccessType.EXECUTE);
             finalCtx.setAuditAction(resourceId);
@@ -90,11 +90,8 @@ public class SmartServiceProxy implements InvocationHandler {
             // 解包并抛出原始异常，对调用者透明
             throw e.getCause();
         } finally {
-            // 清理大对象引用
-            finalCtx.setArgs(null);
-            finalCtx.setLabels(null);
-            finalCtx.setMetadata(null);
-            finalCtx.getAttachments().clear();
+            // 彻底重置 ThreadLocal 池化上下文，防止污染同线程下次调用
+            finalCtx.reset();
         }
     }
 

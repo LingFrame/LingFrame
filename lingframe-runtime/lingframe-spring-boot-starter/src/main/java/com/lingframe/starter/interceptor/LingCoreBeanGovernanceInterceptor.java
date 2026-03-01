@@ -3,9 +3,9 @@ package com.lingframe.starter.interceptor;
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContextHolder;
+import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.event.EventBus;
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.strategy.GovernanceStrategy;
@@ -29,7 +29,6 @@ import java.util.HashMap;
 public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
 
     private final PermissionService permissionService;
-    private final EventBus eventBus;
     private final boolean governInternalCalls;
     private final boolean checkPermissions;
     private static final String HOST_Ling_ID = "lingcore-app";
@@ -83,7 +82,7 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
                     ctx.getRequiredPermission(),
                     ctx.getAccessType());
             if (!allowed) {
-                throw new com.lingframe.api.exception.PermissionDeniedException(
+                throw new PermissionDeniedException(
                         callerLingId,
                         ctx.getRequiredPermission(),
                         ctx.getAccessType());
@@ -141,21 +140,22 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         AccessType accessType = GovernanceStrategy.inferAccessType(method.getName());
 
         // 构建上下文
-        return InvocationContext.builder()
-                .traceId(TraceContext.get())
-                .lingId(HOST_Ling_ID)
-                .callerLingId(callerLingId)
-                .resourceType("RPC")
-                .resourceId(method.getDeclaringClass().getSimpleName() + "." + method.getName())
-                .operation(method.getName())
-                .requiredPermission(permission)
-                .accessType(accessType)
-                .auditAction(auditAction)
-                .shouldAudit(shouldAudit)
-                .args(args)
-                .metadata(new HashMap<>())
-                .labels(new HashMap<>())
-                .build();
+        InvocationContext ctx = InvocationContext.obtain();
+        ctx.setTraceId(TraceContext.get());
+        ctx.setTargetLingId(HOST_Ling_ID); // Set targetLingId instead of lingId
+        ctx.setCallerLingId(callerLingId);
+        ctx.setResourceType("RPC");
+        ctx.setResourceId(method.getDeclaringClass().getSimpleName() + "." + method.getName());
+        ctx.setOperation(method.getName());
+        ctx.setRequiredPermission(permission);
+        ctx.setAccessType(accessType);
+        ctx.setAuditAction(auditAction);
+        ctx.setShouldAudit(shouldAudit);
+        ctx.setArgs(args);
+        ctx.setMetadata(new HashMap<>());
+        ctx.setLabels(new HashMap<>());
+        ctx.setRuleSource(null); // Explicitly set to null as it's not resolved here
+        return ctx;
     }
 
     /**

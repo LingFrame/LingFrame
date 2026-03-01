@@ -39,4 +39,34 @@ public class InstanceCoordinator {
             throw e;
         }
     }
+
+    /**
+     * 执行单个实例的优雅关闭与拆卸，发布销毁事件以便底层系统清理资源
+     */
+    public void tearDown(LingInstance instance, com.lingframe.core.event.EventBus eventBus) {
+        try {
+            transitionState(instance, InstanceStatus.STOPPING);
+
+            // 通知容器关闭（清理 Spring/资源等）
+            if (instance.getContainer() != null) {
+                try {
+                    instance.getContainer().stop();
+                } catch (Exception e) {
+                    log.error("Failed to stop container for instance: {}", instance.getLingId(), e);
+                }
+            }
+
+            transitionState(instance, InstanceStatus.DEAD);
+
+            // 触发大管家的扫尾收割清理
+            if (eventBus != null) {
+                eventBus.publish(new com.lingframe.core.event.InstanceDestroyedEvent(
+                        instance.getLingId(), instance.getVersion()));
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to tear down instance: {}", instance.getLingId(), e);
+            transitionState(instance, InstanceStatus.ERROR);
+        }
+    }
 }

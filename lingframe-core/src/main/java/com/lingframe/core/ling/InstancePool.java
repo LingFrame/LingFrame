@@ -72,6 +72,15 @@ public class InstancePool {
     }
 
     /**
+     * 获取所有实例，包括活跃和死亡队列中的实例
+     */
+    public List<LingInstance> getAllInstances() {
+        List<LingInstance> all = new ArrayList<>(activePool);
+        all.addAll(dyingQueue);
+        return all;
+    }
+
+    /**
      * 获取当前版本号
      */
     public String getVersion() {
@@ -149,6 +158,20 @@ public class InstancePool {
 
         log.info("[{}] Instance {} moved to dying queue, dying count: {}",
                 lingId, instance.getVersion(), dyingQueue.size());
+    }
+
+    /**
+     * 彻底从池中移除实例（从活跃池和死亡队列）
+     */
+    public void removeInstance(LingInstance instance) {
+        if (instance == null) {
+            return;
+        }
+        activePool.remove(instance);
+        dyingQueue.remove(instance);
+
+        // 如果是默认实例，清除默认标记
+        defaultInstance.compareAndSet(instance, null);
     }
 
     /**

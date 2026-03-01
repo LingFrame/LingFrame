@@ -8,16 +8,15 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
-
 import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.kernel.LingInvocationException;
 import com.lingframe.core.ling.LingInstance;
-import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.dashboard.dto.SimulateResultDTO;
 import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.core.exception.ServiceUnavailableException;
-import com.lingframe.core.kernel.LingInvocationException;
 import com.lingframe.dashboard.dto.StressResultDTO;
 import com.lingframe.dashboard.router.CanaryRouter;
 import com.lingframe.core.spi.LingContainer;
@@ -41,11 +40,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SimulateService {
 
-    private final LingManager lingManager;
+    private final LingRepository lingRepository;
     private final EventBus eventBus;
     private final CanaryRouter canaryRouter;
     private final PermissionService permissionService;
-    private final com.lingframe.core.pipeline.InvocationPipelineEngine pipelineEngine;
+    private final InvocationPipelineEngine pipelineEngine;
 
     public SimulateResultDTO simulateResource(String lingId, String resourceType) {
         // 🔥 尝试智能推导：寻找现有代码中的最佳替身
@@ -69,7 +68,7 @@ public class SimulateService {
         }
 
         // 没找到替身，回退到通用模拟 (Low Fidelity)
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
         }
@@ -85,19 +84,18 @@ public class SimulateService {
 
         String ruleSource = "GovernancePolicy:" + mapPermission(resourceType);
 
-        InvocationContext ctx = InvocationContext.builder()
-                .traceId(traceId)
-                .lingId(lingId)
-                .callerLingId(lingId) // 模拟该单元作为调用方
-                .resourceType(mapResourceType(resourceType))
-                .resourceId("simulate:" + resourceType)
-                .operation("simulate_" + resourceType)
-                .accessType(mapAccessType(resourceType))
-                .requiredPermission(mapPermission(resourceType))
-                .shouldAudit(true)
-                .auditAction("SIMULATE:" + resourceType.toUpperCase())
-                .ruleSource(ruleSource)
-                .build();
+        InvocationContext ctx = InvocationContext.obtain();
+        ctx.setTraceId(traceId);
+        ctx.setTargetLingId(lingId); // Set via setTargetLingId since setLingId is deprecated
+        ctx.setCallerLingId(lingId); // 模拟该单元作为调用方
+        ctx.setResourceType(mapResourceType(resourceType));
+        ctx.setResourceId("simulate:" + resourceType);
+        ctx.setOperation("simulate_" + resourceType);
+        ctx.setAccessType(mapAccessType(resourceType));
+        ctx.setRequiredPermission(mapPermission(resourceType));
+        ctx.setShouldAudit(true);
+        ctx.setAuditAction("SIMULATE:" + resourceType.toUpperCase());
+        ctx.setRuleSource(ruleSource);
 
         // 预设路由目标实例和模拟 callable
         LingInstance instance = runtime.getInstancePool().getDefault();
@@ -158,7 +156,7 @@ public class SimulateService {
     }
 
     public SimulateResultDTO simulateIpc(String lingId, String targetLingId, boolean ipcEnabled) {
-        LingRuntime sourceRuntime = lingManager.getRuntime(lingId);
+        LingRuntime sourceRuntime = lingRepository.getRuntime(lingId);
         if (sourceRuntime == null) {
             throw new LingNotFoundException(lingId);
         }
@@ -167,7 +165,7 @@ public class SimulateService {
             throw new ServiceUnavailableException(lingId, "Source ling not active");
         }
 
-        LingRuntime targetRuntime = lingManager.getRuntime(targetLingId);
+        LingRuntime targetRuntime = lingRepository.getRuntime(targetLingId);
         String traceId = generateTraceId();
 
         publishTrace(traceId, lingId, "→ [IPC] Call initiated: " + targetLingId, "IN", 1);
@@ -186,18 +184,17 @@ public class SimulateService {
             publishTrace(traceId, lingId, "  ↳ Kernel authorization check...", "IN", 2);
             publishTrace(traceId, lingId, "    ✗ IPC access policy denied", "FAIL", 3);
         } else {
-            InvocationContext ctx = InvocationContext.builder()
-                    .traceId(traceId)
-                    .lingId(targetLingId)
-                    .callerLingId(lingId)
-                    .resourceType("IPC")
-                    .resourceId("ipc:" + lingId + "->" + targetLingId)
-                    .operation("ipc_call")
-                    .accessType(AccessType.EXECUTE)
-                    .requiredPermission("ipc:" + targetLingId)
-                    .shouldAudit(true)
-                    .auditAction("IPC_CALL")
-                    .build();
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setTraceId(traceId);
+            ctx.setTargetLingId(targetLingId);
+            ctx.setCallerLingId(lingId);
+            ctx.setResourceType("IPC");
+            ctx.setResourceId("ipc:" + lingId + "->" + targetLingId);
+            ctx.setOperation("ipc_call");
+            ctx.setAccessType(AccessType.EXECUTE);
+            ctx.setRequiredPermission("ipc:" + targetLingId);
+            ctx.setShouldAudit(true);
+            ctx.setAuditAction("IPC_CALL");
 
             try {
                 // Pipeline Phase 1: Routing
@@ -260,7 +257,7 @@ public class SimulateService {
      * 由前端 setInterval 控制频率，后端每次只执行一次路由
      */
     public StressResultDTO stressTest(String lingId) {
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
         }
@@ -274,7 +271,8 @@ public class SimulateService {
             throw new ServiceUnavailableException(lingId, "No active instances");
         }
 
-        InvocationContext ctx = InvocationContext.builder().lingId(lingId).build();
+        InvocationContext ctx = InvocationContext.obtain();
+        ctx.setTargetLingId(lingId);
         LingInstance instance = canaryRouter.route(instances, ctx);
         if (instance == null) {
             instance = runtime.getInstancePool().getDefault();
@@ -332,7 +330,7 @@ public class SimulateService {
      */
     public SimulateResultDTO simulateMethod(String lingId, String className, String methodName,
             AccessType targetAccess) {
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
         }
@@ -374,19 +372,18 @@ public class SimulateService {
                         : null;
             }
 
-            ctx = InvocationContext.builder()
-                    .traceId(traceId)
-                    .lingId(lingId)
-                    .callerLingId(lingId) // 模拟单元自己调用自己的方法
-                    .resourceType("METHOD")
-                    .resourceId(className + "#" + methodName)
-                    .operation(methodName)
-                    .accessType(targetAccess) // 使用传递的目标 AccessType
-                    .requiredPermission(requiredPerm)
-                    .shouldAudit(true)
-                    .auditAction("SIMULATE:METHOD")
-                    .ruleSource(methodRuleSource)
-                    .build();
+            ctx = InvocationContext.obtain();
+            ctx.setTraceId(traceId);
+            ctx.setTargetLingId(lingId);
+            ctx.setCallerLingId(lingId); // 模拟单元自己调用自己的方法
+            ctx.setResourceType("METHOD");
+            ctx.setResourceId(className + "#" + methodName);
+            ctx.setOperation(methodName);
+            ctx.setAccessType(targetAccess); // 使用传递的目标 AccessType
+            ctx.setRequiredPermission(requiredPerm);
+            ctx.setShouldAudit(true);
+            ctx.setAuditAction("SIMULATE:METHOD");
+            ctx.setRuleSource(methodRuleSource);
 
             // 预设路由目标实例和模拟 callable
             LingInstance instance = runtime.getInstancePool().getDefault();
@@ -470,7 +467,7 @@ public class SimulateService {
 
     private Method findSimulationCandidate(String lingId, AccessType targetAccess, String targetCapability) {
         try {
-            LingRuntime runtime = lingManager.getRuntime(lingId);
+            LingRuntime runtime = lingRepository.getRuntime(lingId);
             if (runtime == null || !runtime.isAvailable()) {
                 return null;
             }

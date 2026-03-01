@@ -13,11 +13,12 @@ public interface LingLifecycleEngine {
      * 根据提供的物理文件或虚拟路径进行完整的凌组件装载过程。
      * 包括读取清单、校验、放入 Repository、通知 ServiceRegistry，直到推进至就绪态。
      */
-    void deploy(File file);
+    void deploy(com.lingframe.api.config.LingDefinition lingDefinition, File sourceFile, boolean isDefault,
+            java.util.Map<String, String> labels);
 
     /**
      * 推演生命周期流以停用组件并回收相关强引用。
      * 结束后会触发 InstanceDestroyedEvent 并经由 ResourceManager 清空一切物理痕迹。
      */
-    void undeploy(String pluginId);
+    void undeploy(String lingId);
 }

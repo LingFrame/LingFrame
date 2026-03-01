@@ -3,11 +3,10 @@ package com.lingframe.starter.filter;
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContextHolder;
+import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.ling.LingManager;
-import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -33,7 +32,6 @@ import java.util.HashMap;
 public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
     private final PermissionService permissionService;
-    private final LingManager lingManager;
     private final WebInterfaceManager webInterfaceManager;
     private final LingFrameProperties properties;
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
@@ -80,7 +78,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
                         ctx.getRequiredPermission(),
                         ctx.getAccessType());
                 if (!allowed) {
-                    throw new com.lingframe.api.exception.PermissionDeniedException(
+                    throw new PermissionDeniedException(
                             "http-gateway",
                             ctx.getRequiredPermission(),
                             ctx.getAccessType());
@@ -158,19 +156,20 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
                 break;
         }
 
-        return InvocationContext.builder()
-                .traceId(request.getHeader("X-Trace-Id"))
-                .lingId(lingId)
-                .callerLingId("http-gateway")
-                .resourceType("HTTP")
-                .resourceId(request.getMethod() + " " + request.getRequestURI())
-                .operation(method.getName())
-                .requiredPermission(permission)
-                .accessType(accessType)
-                .auditAction(auditAction)
-                .shouldAudit(shouldAudit)
-                .metadata(new HashMap<>())
-                .labels(new HashMap<>())
-                .build();
+        InvocationContext ctx = InvocationContext.obtain();
+        ctx.setTraceId(request.getHeader("X-Trace-Id"));
+        ctx.setTargetLingId(lingId); // Set targetLingId instead of lingId
+        ctx.setCallerLingId("http-gateway");
+        ctx.setResourceType("HTTP");
+        ctx.setResourceId(request.getMethod() + " " + request.getRequestURI());
+        ctx.setOperation(method.getName());
+        ctx.setRequiredPermission(permission);
+        ctx.setAccessType(accessType);
+        ctx.setAuditAction(auditAction);
+        ctx.setShouldAudit(shouldAudit);
+        ctx.setMetadata(new HashMap<>());
+        ctx.setLabels(new HashMap<>());
+        ctx.setRuleSource(null); // Explicitly set to null as it's not resolved here
+        return ctx;
     }
 }

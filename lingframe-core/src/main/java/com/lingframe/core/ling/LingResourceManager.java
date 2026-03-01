@@ -8,15 +8,15 @@ package com.lingframe.core.ling;
 public interface LingResourceManager {
 
     /**
-     * 清理所有与目标 pluginId 强关联的堆对象和类缓存。
+     * 清理所有与目标 lingId 强关联的堆对象和类缓存。
      * 
-     * @param pluginId    要卸载或更新的组件唯一标识
+     * @param lingId      要卸载或更新的组件唯一标识
      * @param classLoader 被卸载组件的类加载器（用于比较或精准释放）
      */
-    void cleanupCaches(String pluginId, ClassLoader classLoader);
+    void cleanupCaches(String lingId, ClassLoader classLoader);
 
     /**
      * 关闭资源链接，释放物理与网络句柄（诸如数据库连接池、定时任务线程等）
      */
-    void closeResources(String pluginId);
+    void closeResources(String lingId);
 }

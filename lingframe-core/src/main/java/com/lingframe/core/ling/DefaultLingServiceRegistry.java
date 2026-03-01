@@ -11,10 +11,20 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     // "methodName(paramType1,paramType2)")
     private final Map<String, List<String>> metadataCache = new ConcurrentHashMap<>();
 
+    // 存储服务全限定名对应的实现类全限定名 (FQSID -> ClassName)
+    private final Map<String, String> classCache = new ConcurrentHashMap<>();
+
     @Override
-    public void registerServiceMetadata(String serviceFQSID, String methodName, String[] parameterTypes) {
+    public void registerServiceMetadata(String serviceFQSID, String className, String methodName,
+            String[] parameterTypes) {
+        classCache.put(serviceFQSID, className);
         metadataCache.computeIfAbsent(serviceFQSID, k -> new ArrayList<>())
                 .add(buildSignature(methodName, parameterTypes));
+    }
+
+    @Override
+    public String getServiceClassName(String serviceFQSID) {
+        return classCache.get(serviceFQSID);
     }
 
     @Override
@@ -31,10 +41,23 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     }
 
     @Override
-    public void evict(String pluginId) {
-        // 由于是 pluginId，而 serviceFQSID 的格式通常是 "pluginId:serviceName"
-        String prefix = pluginId + ":";
+    public List<String> getServicesByLingId(String lingId) {
+        String prefix = lingId + ":";
+        List<String> services = new ArrayList<>();
+        for (String fqsid : classCache.keySet()) {
+            if (fqsid.startsWith(prefix)) {
+                services.add(fqsid);
+            }
+        }
+        return services;
+    }
+
+    @Override
+    public void evict(String lingId) {
+        // 由于是 lingId，而 serviceFQSID 的格式通常是 "lingId:serviceName"
+        String prefix = lingId + ":";
         metadataCache.keySet().removeIf(k -> k.startsWith(prefix));
+        classCache.keySet().removeIf(k -> k.startsWith(prefix));
     }
 
     private String buildSignature(String methodName, String[] parameterTypes) {

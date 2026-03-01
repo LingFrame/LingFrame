@@ -7,23 +7,21 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
+import com.lingframe.core.spi.TrafficRouter;
 
 import java.util.List;
 
 /**
  * 灰度路由 Filter。
- * 根据 RoutingPolicy 从 READY 实例中选择目标，写入 attachments。
+ * 根据 TrafficRouter 策略从 READY 实例中选择目标，写入 attachments。
  */
 public class CanaryRoutingFilter implements LingInvocationFilter {
-    private RoutingPolicy policy;
-    private LingRepository lingRepository;
+    private final LingRepository lingRepository;
+    private final TrafficRouter trafficRouter;
 
-    public void setRoutingPolicy(RoutingPolicy policy) {
-        this.policy = policy;
-    }
-
-    public void setLingRepository(LingRepository lingRepository) {
+    public CanaryRoutingFilter(LingRepository lingRepository, TrafficRouter trafficRouter) {
         this.lingRepository = lingRepository;
+        this.trafficRouter = trafficRouter;
     }
 
     @Override
@@ -39,7 +37,7 @@ public class CanaryRoutingFilter implements LingInvocationFilter {
         }
 
         String fqsid = ctx.getServiceFQSID();
-        if (fqsid == null || policy == null || lingRepository == null) {
+        if (fqsid == null || trafficRouter == null || lingRepository == null) {
             return chain.doFilter(ctx);
         }
 
@@ -55,7 +53,7 @@ public class CanaryRoutingFilter implements LingInvocationFilter {
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
         }
 
-        LingInstance target = policy.select(ctx, candidates);
+        LingInstance target = trafficRouter.route(candidates, ctx);
         if (target == null) {
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
         }

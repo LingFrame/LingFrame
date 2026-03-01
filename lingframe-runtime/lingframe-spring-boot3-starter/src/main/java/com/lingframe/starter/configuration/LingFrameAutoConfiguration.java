@@ -1,7 +1,6 @@
 package com.lingframe.starter.configuration;
 
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.ling.LingManager;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.filter.LingWebGovernanceFilter;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -27,13 +26,12 @@ public class LingFrameAutoConfiguration {
     @Bean
     public FilterRegistrationBean<LingWebGovernanceFilter> lingWebGovernanceFilter(
             PermissionService permissionService,
-            LingManager lingManager,
             WebInterfaceManager webInterfaceManager,
             LingFrameProperties properties,
             @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping) {
         FilterRegistrationBean<LingWebGovernanceFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(
-                new LingWebGovernanceFilter(permissionService, lingManager, webInterfaceManager, properties,
+                new LingWebGovernanceFilter(permissionService, webInterfaceManager, properties,
                         handlerMapping));
         registration.addUrlPatterns("/*");
         registration.setOrder(1); // 高优先级

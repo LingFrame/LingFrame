@@ -40,7 +40,7 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
             return candidates.get(0);
         }
 
-        String lingId = context != null ? context.getLingId() : null;
+        String lingId = context != null ? context.getTargetLingId() : null;
         CanaryConfig config = lingId != null ? canaryConfigs.get(lingId) : null;
 
         // 有灰度配置，按比例路由
@@ -113,7 +113,6 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
         // 第一个通常是默认/稳定版
         return candidates.isEmpty() ? null : candidates.get(0);
     }
-
 
     @Value
     public static class CanaryConfig {

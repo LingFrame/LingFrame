@@ -141,14 +141,17 @@ public class LingInstance {
         }
 
         try {
-            // 无论处于何种状态，强制或按规流转到 DEAD
-            // FSM 约定 ERROR 和 STOPPING 能流转到 DEAD。如果是其他的，先尝试强制改变它。
-            // 为了安全，强制设为 DEAD （如果不符合规则则强制结束）
-            if (stateMachine.current() != InstanceStatus.STOPPING && stateMachine.current() != InstanceStatus.ERROR) {
-                // Not standard path, force state (if supported, else we just ignore exceptions)
+            InstanceStatus current = stateMachine.current();
+            if (current == InstanceStatus.CREATED || current == InstanceStatus.LOADING
+                    || current == InstanceStatus.STARTING) {
+                stateMachine.transition(InstanceStatus.ERROR);
+                stateMachine.transition(InstanceStatus.DEAD);
+            } else if (current == InstanceStatus.READY) {
+                stateMachine.transition(InstanceStatus.STOPPING);
+                stateMachine.transition(InstanceStatus.DEAD);
+            } else if (current == InstanceStatus.STOPPING || current == InstanceStatus.ERROR) {
+                stateMachine.transition(InstanceStatus.DEAD);
             }
-            // Temporarily not doing strict check if we are just tearing down violently
-            stateMachine.transition(InstanceStatus.DEAD);
         } catch (Exception e) {
             log.warn("Forced state transition to DEAD during destroy failed: {}", e.getMessage());
         }

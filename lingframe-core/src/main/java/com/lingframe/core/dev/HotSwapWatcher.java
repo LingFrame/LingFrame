@@ -4,7 +4,7 @@ import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.event.LingEventListener;
 import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.exception.LingInstallException;
 import lombok.extern.slf4j.Slf4j;
 
@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
 
-    private final LingManager lingManager;
+    private final LingLifecycleEngine lifecycleEngine;
     private final EventBus eventBus;
     private WatchService watchService;
     // 核心映射：WatchKey -> LingId
@@ -52,8 +52,8 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
             });
     private ScheduledFuture<?> debounceTask;
 
-    public HotSwapWatcher(LingManager lingManager, EventBus eventBus) {
-        this.lingManager = lingManager;
+    public HotSwapWatcher(LingLifecycleEngine lifecycleEngine, EventBus eventBus) {
+        this.lifecycleEngine = lifecycleEngine;
         this.eventBus = eventBus;
         // 注册自己监听卸载事件
         this.eventBus.subscribe("lingframe-hotswap", LingUninstalledEvent.class, this);
@@ -229,10 +229,10 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
                 reloadingLings.add(lingId);
 
                 // 卸载旧版
-                lingManager.uninstall(lingId);
+                lifecycleEngine.undeploy(lingId);
 
                 // 安装新版 (Dev模式)
-                lingManager.installDev(lingDefinition, source);
+                lifecycleEngine.deploy(lingDefinition, source, true, java.util.Collections.emptyMap());
 
                 log.info("⚡ Hot swap completed: {}", lingId);
 

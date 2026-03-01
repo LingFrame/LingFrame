@@ -1,6 +1,7 @@
 package com.lingframe.starter.configuration;
 
 import com.lingframe.api.context.LingContext;
+import com.lingframe.core.resource.BasicResourceGuard;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.classloader.SharedApiManager;
@@ -16,17 +17,15 @@ import com.lingframe.core.ling.DefaultLingLifecycleEngine;
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.DefaultLingResourceManager;
 import com.lingframe.core.ling.DefaultLingServiceRegistry;
+import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingLifecycleEngine;
-import com.lingframe.core.ling.LingManager;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingResourceManager;
 import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.loader.LingDiscoveryService;
-import com.lingframe.core.pipeline.CanaryRoutingFilter;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.pipeline.MacroStateGuardFilter;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.*;
@@ -150,8 +149,14 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public LingResourceManager lingResourceManager() {
-        return new DefaultLingResourceManager();
+    public InvokableMethodCache invokableMethodCache() {
+        return new InvokableMethodCache();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public LingResourceManager lingResourceManager(EventBus eventBus, InvokableMethodCache methodCache) {
+        return new DefaultLingResourceManager(eventBus, methodCache);
     }
 
     @Bean
@@ -203,6 +208,12 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public ResourceGuard resourceGuard() {
+        return new BasicResourceGuard();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public LingLifecycleEngine lingLifecycleEngine(ContainerFactory containerFactory,
             PermissionService permissionService,
             LingLoaderFactory lingLoaderFactory,
@@ -210,57 +221,48 @@ public class LingFrameCoreConfiguration {
             EventBus eventBus,
             LingFrameConfig lingFrameConfig,
             LingRepository lingRepository,
-            LingServiceRegistry lingServiceRegistry) {
+            LingServiceRegistry lingServiceRegistry,
+            InvocationPipelineEngine pipelineEngine,
+            ResourceGuard resourceGuard) {
         List<LingSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
         return new DefaultLingLifecycleEngine(containerFactory, permissionService,
-                lingLoaderFactory, verifiers, eventBus, lingFrameConfig, lingRepository, lingServiceRegistry);
+                lingLoaderFactory, verifiers, eventBus, lingFrameConfig, lingRepository, lingServiceRegistry,
+                pipelineEngine, resourceGuard);
     }
 
     @Bean
     @ConditionalOnMissingBean
     public InvocationPipelineEngine invocationPipelineEngine(
             ObjectProvider<FilterRegistry> registryProvider,
-            LingRepository lingRepository) {
+            LingRepository lingRepository,
+            InvokableMethodCache methodCache,
+            TrafficRouter trafficRouter,
+            EventBus eventBus) {
         FilterRegistry registry = registryProvider
-                .getIfAvailable(FilterRegistry::new);
-        // 注入 LingRepository 到需要它的内置 Filter
-        for (com.lingframe.core.spi.LingInvocationFilter filter : registry.getOrderedFilters()) {
-            if (filter instanceof MacroStateGuardFilter) {
-                ((MacroStateGuardFilter) filter).setLingRepository(lingRepository);
-            } else if (filter instanceof CanaryRoutingFilter) {
-                ((CanaryRoutingFilter) filter).setLingRepository(lingRepository);
-            }
-        }
+                .getIfAvailable(() -> new FilterRegistry(methodCache));
+        // 初始化内置 Filter 并注入依赖（构造器注入）
+        registry.initialize(lingRepository, trafficRouter, eventBus);
+        // 从宿主 ClassLoader 加载 SPI 扩展
+        registry.loadSpiFilters(Thread.currentThread().getContextClassLoader());
         return new InvocationPipelineEngine(registry);
     }
 
     @Bean
-    public LingManager lingManager(LingLifecycleEngine lifecycleEngine,
-            LingRepository lingRepository,
+    public LingDiscoveryService lingDiscoveryService(LingFrameConfig config, LingLifecycleEngine lifecycleEngine) {
+        return new LingDiscoveryService(config, lifecycleEngine);
+    }
+
+    @Bean
+    public LingDeployService lingDeployService(LingLifecycleEngine lifecycleEngine) {
+        return new DefaultLingDeployService(lifecycleEngine);
+    }
+
+    @Bean
+    public ServiceExporterListener serviceExporterListener(EventBus eventBus, LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry,
-            LingResourceManager resourceManager,
-            InvocationPipelineEngine pipelineEngine,
-            PermissionService permissionService,
-            EventBus eventBus) {
-        return new LingManager(lifecycleEngine, lingRepository, lingServiceRegistry, resourceManager, pipelineEngine,
-                permissionService, eventBus);
-    }
-
-    @Bean
-    public LingDiscoveryService lingDiscoveryService(LingFrameConfig config, LingManager lingManager) {
-        return new LingDiscoveryService(config, lingManager);
-    }
-
-    @Bean
-    public LingDeployService lingDeployService(LingManager lingManager) {
-        return new DefaultLingDeployService(lingManager);
-    }
-
-    @Bean
-    public ServiceExporterListener serviceExporterListener(EventBus eventBus, LingManager lingManager,
             ObjectProvider<List<ServiceExporter>> exportersProvider) {
         List<ServiceExporter> exporters = exportersProvider.getIfAvailable(Collections::emptyList);
-        return new ServiceExporterListener(eventBus, lingManager, exporters);
+        return new ServiceExporterListener(eventBus, lingRepository, lingServiceRegistry, exporters);
     }
 
     @Bean
@@ -284,15 +286,18 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     @ConditionalOnProperty(prefix = "lingframe", name = "dev-mode", havingValue = "true")
-    public HotSwapWatcher hotSwapWatcher(LingManager lingManager, EventBus eventBus) {
-        return new HotSwapWatcher(lingManager, eventBus);
+    public HotSwapWatcher hotSwapWatcher(LingLifecycleEngine lifecycleEngine, EventBus eventBus) {
+        return new HotSwapWatcher(lifecycleEngine, eventBus);
     }
 
     @Bean
-    public LingContext lingCoreContext(LingManager lingManager,
+    public LingContext lingCoreContext(LingRepository lingRepository,
+            LingServiceRegistry lingServiceRegistry,
+            InvocationPipelineEngine pipelineEngine,
             PermissionService permissionService,
             EventBus eventBus) {
-        return new CoreLingContext("lingcore-app", lingManager, permissionService, eventBus);
+        return new CoreLingContext("lingcore-app", lingRepository, lingServiceRegistry, pipelineEngine,
+                permissionService, eventBus);
     }
 
     @Bean

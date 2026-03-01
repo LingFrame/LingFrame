@@ -8,7 +8,8 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.enums.LingStatus;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.loader.LingManifestLoader;
-import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingLifecycleEngine;
+import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.dashboard.converter.LingInfoConverter;
@@ -16,7 +17,6 @@ import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.core.exception.LingInstallException;
-import com.lingframe.core.exception.ServiceUnavailableException;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
 import com.lingframe.dashboard.router.CanaryRouter;
@@ -31,15 +31,15 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DashboardService {
 
-    private final LingManager lingManager;
+    private final LingLifecycleEngine lifecycleEngine;
+    private final LingRepository lingRepository;
     private final LocalGovernanceRegistry governanceRegistry;
     private final CanaryRouter canaryRouter;
     private final LingInfoConverter converter;
     private final PermissionService permissionService;
 
     public List<LingInfoDTO> getAllLingInfos() {
-        return lingManager.getInstalledLings().stream()
-                .map(lingManager::getRuntime)
+        return lingRepository.getAllRuntimes().stream()
                 .filter(Objects::nonNull)
                 .map(runtime -> {
                     GovernancePolicy policy = getEffectivePolicy(runtime.getLingId());
@@ -49,7 +49,7 @@ public class DashboardService {
     }
 
     public LingInfoDTO getLingInfo(String lingId) {
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             return null;
         }
@@ -64,7 +64,7 @@ public class DashboardService {
             return policy;
         }
         // 降级使用静态定义
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime != null && runtime.getInstancePool().getDefault() != null
                 && runtime.getInstancePool().getDefault().getDefinition() != null) {
             return runtime.getInstancePool().getDefault().getDefinition().getGovernance();
@@ -78,7 +78,7 @@ public class DashboardService {
             if (def == null) {
                 throw new InvalidArgumentException("file", "Not a valid ling package: " + file.getName());
             }
-            lingManager.install(def, file);
+            lifecycleEngine.deploy(def, file, true, Collections.emptyMap());
             return getLingInfo(def.getId());
         } catch (Exception e) {
             throw new LingInstallException("unknown", "Failed to install ling: " + e.getMessage(), e);
@@ -87,7 +87,7 @@ public class DashboardService {
 
     public void uninstallLing(String lingId) {
         try {
-            lingManager.uninstall(lingId);
+            lifecycleEngine.undeploy(lingId);
         } catch (Exception e) {
             throw new LingInstallException(lingId, "Failed to uninstall ling: " + e.getMessage(), e);
         }
@@ -95,15 +95,14 @@ public class DashboardService {
 
     public LingInfoDTO reloadLing(String lingId) {
         try {
-            lingManager.reload(lingId);
-            return getLingInfo(lingId);
+            throw new LingInstallException(lingId, "Reload not supported via Dashboard in V0.3.0", null);
         } catch (Exception e) {
             throw new LingInstallException(lingId, "Failed to reload ling: " + e.getMessage(), e);
         }
     }
 
     public LingInfoDTO updateStatus(String lingId, LingStatus newStatus) {
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
         }
@@ -169,7 +168,7 @@ public class DashboardService {
                 log.info("[Dashboard] Revoked Ling_ENABLE permission from {}, ling deactivated", lingId);
                 break;
             case UNLOADED:
-                lingManager.uninstall(lingId);
+                lifecycleEngine.undeploy(lingId);
                 break;
             default:
                 throw new InvalidArgumentException("status", "Unsupported status: " + newStatus);
@@ -179,7 +178,7 @@ public class DashboardService {
     }
 
     public void setCanaryConfig(String lingId, int percent, String canaryVersion) {
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
         }
@@ -187,7 +186,7 @@ public class DashboardService {
     }
 
     public TrafficStatsDTO getTrafficStats(String lingId) {
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
         }
@@ -195,7 +194,7 @@ public class DashboardService {
     }
 
     public void resetTrafficStats(String lingId) {
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
         }

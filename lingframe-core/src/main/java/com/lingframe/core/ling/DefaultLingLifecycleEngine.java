@@ -7,6 +7,7 @@ import com.lingframe.api.event.lifecycle.LingInstalledEvent;
 import com.lingframe.api.event.lifecycle.LingInstallingEvent;
 import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.api.event.lifecycle.LingUninstallingEvent;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
@@ -20,8 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 单元生命周期引擎 (V0.3.0)
@@ -29,10 +28,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @Slf4j
 public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
-
-    private static final int QUEUE_CAPACITY = 100;
-    private static final long KEEP_ALIVE_TIME = 60L;
-    private static final int SHUTDOWN_TIMEOUT_SECONDS = 10;
 
     private final ContainerFactory containerFactory;
     private final LingLoaderFactory lingLoaderFactory;
@@ -44,11 +39,8 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
 
     private final List<LingSecurityVerifier> verifiers;
     private final LingFrameConfig lingFrameConfig;
-    private final ScheduledExecutorService scheduler;
-    private final AtomicInteger threadNumber = new AtomicInteger(1);
-
-    private final AtomicInteger globalThreadBudget;
-    private final Map<String, Integer> lingThreadAllocations = new ConcurrentHashMap<>();
+    private final InvocationPipelineEngine pipelineEngine;
+    private final ResourceGuard resourceGuard;
 
     private final InstanceCoordinator instanceCoordinator = new InstanceCoordinator();
 
@@ -59,7 +51,9 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             EventBus eventBus,
             LingFrameConfig lingFrameConfig,
             LingRepository lingRepository,
-            LingServiceRegistry lingServiceRegistry) {
+            LingServiceRegistry lingServiceRegistry,
+            InvocationPipelineEngine pipelineEngine,
+            ResourceGuard resourceGuard) {
 
         this.containerFactory = containerFactory;
         this.lingLoaderFactory = lingLoaderFactory;
@@ -79,18 +73,11 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         this.lingFrameConfig = lingFrameConfig;
         this.lingRepository = lingRepository;
         this.lingServiceRegistry = lingServiceRegistry;
-
-        this.scheduler = createScheduler();
-        this.globalThreadBudget = new AtomicInteger(lingFrameConfig.getGlobalMaxLingThreads());
+        this.pipelineEngine = pipelineEngine;
+        this.resourceGuard = resourceGuard;
     }
 
     @Override
-    public void deploy(File lingFile) {
-        // V0.3.0 中，部署将由单独的扫描或者 API 传入 LingDefinition
-        // 由于向后兼容，我们将继续保持通过定义等进行安装
-        throw new UnsupportedOperationException("Use specific deploy methods");
-    }
-
     public void deploy(LingDefinition lingDefinition, File sourceFile, boolean isDefault, Map<String, String> labels) {
         lingDefinition.validate();
         String lingId = lingDefinition.getId();
@@ -127,9 +114,8 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
                 lingRepository.register(runtime);
             }
 
-            // 在 V0.3.0 中，不再让 runtime 自己 addInstance 绑定 context
-            // Context 直接作为全局参数
-            LingContext context = new CoreLingContext(lingId, null, permissionService, eventBus);
+            LingContext context = new CoreLingContext(lingId, lingRepository, lingServiceRegistry, pipelineEngine,
+                    permissionService, eventBus);
             instanceCoordinator.start(instance);
 
             // 启动灵元 Spring 容器（创建 Bean、注册 Controller、扫描 LingService）
@@ -177,37 +163,61 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         log.info("Uninstalling ling: {}", lingId);
         eventBus.publish(new LingUninstallingEvent(lingId));
 
-        LingRuntime runtime = lingRepository.deregister(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             log.warn("Ling not found: {}", lingId);
             return;
         }
 
-        // 清理注册表中的暴露条目
+        // 1. 改变宏观状态，拒绝新请求
+        if (runtime.getStateMachine().current() != RuntimeStatus.STOPPING) {
+            runtime.getStateMachine().transition(RuntimeStatus.STOPPING);
+        }
+
+        // 2. 预留：等待存量请求排空 (当前仅为简单日志，实际应结合监控指标)
+        log.info("[{}] Draining existing requests...", lingId);
+
+        // 3. 逐个卸载底层实例
+        List<LingInstance> instances = runtime.getInstancePool().getAllInstances();
+        for (LingInstance instance : instances) {
+            instanceCoordinator.tearDown(instance, eventBus);
+            runtime.getInstancePool().removeInstance(instance);
+
+            // 🔥 彻底卸载的关键：清理资源并检测泄漏
+            ClassLoader classLoader = instance.getContainer().getClassLoader();
+            if (resourceGuard != null) {
+                resourceGuard.cleanup(lingId, classLoader);
+            }
+
+            // 显式关闭类加载器 (释放 Jar 句柄)
+            if (classLoader instanceof AutoCloseable) {
+                try {
+                    ((AutoCloseable) classLoader).close();
+                } catch (Exception e) {
+                    log.error("[{}] Failed to close ClassLoader", lingId, e);
+                }
+            }
+
+            // 延迟触发泄漏检测
+            if (resourceGuard != null) {
+                resourceGuard.detectLeak(lingId, classLoader);
+            }
+        }
+
+        // 4. 清理注册表中的暴露条目
         lingServiceRegistry.evict(lingId);
 
-        runtime.getInstancePool().shutdown();
-
-        reclaimThreadBudget(lingId);
+        // 5. 彻底解绑监听与权限
         eventBus.unsubscribeAll(lingId);
         permissionService.removeLing(lingId);
 
+        // 6. 宣告生命终结
+        runtime.getStateMachine().transition(RuntimeStatus.REMOVED);
+
+        // 7. 从仓储拔除引用
+        lingRepository.deregister(lingId);
+
         eventBus.publish(new LingUninstalledEvent(lingId));
-    }
-
-    private ScheduledExecutorService createScheduler() {
-        return Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "lingframe-engine-cleaner");
-            t.setDaemon(true);
-            return t;
-        });
-    }
-
-    private void reclaimThreadBudget(String lingId) {
-        Integer allocated = lingThreadAllocations.remove(lingId);
-        if (allocated != null && allocated > 0) {
-            globalThreadBudget.addAndGet(allocated);
-        }
     }
 
     private void cleanupOnFailure(ClassLoader classLoader, LingContainer container) {
@@ -218,6 +228,15 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
                 log.warn("Failed to stop container", e);
             }
         }
+
+        if (resourceGuard != null && classLoader != null) {
+            try {
+                resourceGuard.cleanup("fault-cleanup", classLoader);
+            } catch (Exception e) {
+                log.warn("ResourceGuard cleanup failed during failure recovery", e);
+            }
+        }
+
         if (classLoader instanceof AutoCloseable) {
             try {
                 ((AutoCloseable) classLoader).close();

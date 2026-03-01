@@ -1,7 +1,8 @@
 package com.lingframe.starter.processor;
 
 import com.lingframe.api.annotation.LingReference;
-import com.lingframe.core.ling.LingManager;
+import com.lingframe.api.context.LingContext;
+import com.lingframe.core.exception.LingRuntimeException;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;
@@ -17,16 +18,16 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
 
     private final String currentLingId; // 记录当前环境的单元ID
     private ApplicationContext applicationContext;
-    private LingManager lingManager; // 懒加载
+    private LingContext lingContext; // 懒加载
 
     public LingReferenceInjector(String currentLingId) {
         this.currentLingId = currentLingId;
     }
 
     // 兼容旧构造函数（单元内部使用）
-    public LingReferenceInjector(String currentLingId, LingManager lingManager) {
+    public LingReferenceInjector(String currentLingId, LingContext lingContext) {
         this.currentLingId = currentLingId;
-        this.lingManager = lingManager;
+        this.lingContext = lingContext;
     }
 
     @Override
@@ -35,17 +36,17 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
     }
 
     /**
-     * 懒加载获取 LingManager
+     * 懒加载获取 LingContext
      */
-    private LingManager getLingManager() {
-        if (lingManager == null && applicationContext != null) {
+    private LingContext getLingContext() {
+        if (lingContext == null && applicationContext != null) {
             try {
-                lingManager = applicationContext.getBean(LingManager.class);
+                lingContext = applicationContext.getBean(LingContext.class);
             } catch (Exception e) {
-                log.debug("LingManager not available yet");
+                log.debug("LingContext not available yet");
             }
         }
-        return lingManager;
+        return lingContext;
     }
 
     /**
@@ -53,9 +54,9 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
      */
     @Override
     public Object postProcessBeforeInitialization(Object bean, @NonNull String beanName) throws BeansException {
-        LingManager pm = getLingManager();
-        if (pm == null) {
-            return bean; // LingManager 未准备好，跳过
+        LingContext ctx = getLingContext();
+        if (ctx == null) {
+            return bean; // LingContext 未准备好，跳过
         }
 
         Class<?> clazz = bean.getClass();
@@ -64,7 +65,7 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
         ReflectionUtils.doWithFields(clazz, field -> {
             LingReference annotation = field.getAnnotation(LingReference.class);
             if (annotation != null) {
-                injectService(bean, field, annotation, pm);
+                injectService(bean, field, annotation, ctx);
             }
         });
 
@@ -77,7 +78,7 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
         return bean;
     }
 
-    private void injectService(Object bean, Field field, LingReference annotation, LingManager pm) {
+    private void injectService(Object bean, Field field, LingReference annotation, LingContext ctx) {
         try {
             field.setAccessible(true);
 
@@ -88,15 +89,11 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
             }
 
             Class<?> serviceType = field.getType();
-            String targetLingId = annotation.lingId();
-            // 🔥使用构造函数传入的 currentLingId，而不是写死或猜
-            String callerId = (currentLingId != null) ? currentLingId : "lingcore-app";
+            // 在 V0.3.0 之后，目标路由交由底层 PipelineEngine 与 Context 内置的 GlobalServiceRoutingProxy
+            // 自动抉择
+            Object proxy = ctx.getService(serviceType).orElseThrow(() -> new LingRuntimeException(currentLingId,
+                    "Failed to resolve service reference for type: " + serviceType.getName()));
 
-            // 创建全局路由代理
-            Object proxy = pm.getGlobalServiceProxy(
-                    callerId,
-                    serviceType,
-                    targetLingId);
             field.set(bean, proxy);
             log.info("Injected @LingReference for field: {}.{}",
                     bean.getClass().getSimpleName(), field.getName());

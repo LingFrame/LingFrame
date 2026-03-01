@@ -2,11 +2,12 @@ package com.lingframe.core.loader;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.config.LingFrameConfig;
-import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingLifecycleEngine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -25,7 +26,7 @@ import java.util.Set;
 public class LingDiscoveryService {
 
     private final LingFrameConfig config;
-    private final LingManager lingManager;
+    private final LingLifecycleEngine lifecycleEngine;
 
     /**
      * 执行扫描并加载
@@ -101,18 +102,13 @@ public class LingDiscoveryService {
 
             // 检查是否为金丝雀版本
             if (def.getProperties() != null && Boolean.TRUE.equals(def.getProperties().get("canary"))) {
-                lingManager.deployCanary(def, file, java.util.Collections.emptyMap());
+                lifecycleEngine.deploy(def, file, false, Collections.emptyMap());
                 loadedLingIds.add(lingId);
                 return;
             }
 
-            if (LingFrameConfig.current().isDevMode()) {
-                // 开发模式：目录安装
-                lingManager.installDev(def, file);
-            } else {
-                // 生产模式：Jar 安装
-                lingManager.install(def, file);
-            }
+            // 开发/生产模式由于引擎逻辑在内部判定，只需一致传 isDefault=true
+            lifecycleEngine.deploy(def, file, true, Collections.emptyMap());
 
             loadedLingIds.add(lingId);
         } catch (Exception e) {
