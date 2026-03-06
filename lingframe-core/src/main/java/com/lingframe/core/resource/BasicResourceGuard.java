@@ -8,11 +8,10 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.security.AccessControlContext;
-import java.security.ProtectionDomain;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -24,15 +23,137 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class BasicResourceGuard implements ResourceGuard {
 
-    /**
-     * 泄漏检测延迟时间（秒）
-     */
     private static final int LEAK_DETECTION_DELAY_SECONDS = 5;
 
+    // =========================================================================
+    // JDK 版本检测 & 能力探测
+    // =========================================================================
+
     /**
-     * 泄漏检测调度器
-     * 使用守护线程，不阻止 JVM 退出
+     * JDK 主版本号: 8, 11, 17, 21, 24...
      */
+    private static final int JDK_VERSION = detectJdkVersion();
+
+    /**
+     * Thread.target 字段是否可用
+     */
+    private static final Field THREAD_TARGET_FIELD = probeField(Thread.class, "target");
+
+    /**
+     * Thread.inheritedAccessControlContext 字段是否可用（Java 24 删除）
+     */
+    private static final Field THREAD_ACC_FIELD = probeField(Thread.class, "inheritedAccessControlContext");
+
+    /**
+     * AccessControlContext.context 字段是否可用（Java 24 删除）
+     */
+    private static final Field ACC_CONTEXT_FIELD = probeAccContextField();
+
+    /**
+     * Thread.isVirtual() 方法是否可用（Java 21+）
+     */
+    private static final Method THREAD_IS_VIRTUAL = probeMethod(Thread.class, "isVirtual");
+
+    /**
+     * DriverManager.registeredDrivers 字段是否可用
+     */
+    private static final Field DRIVER_MANAGER_FIELD = probeField(DriverManager.class, "registeredDrivers");
+
+    private static int detectJdkVersion() {
+        try {
+            String version = System.getProperty("java.specification.version");
+            if (version.startsWith("1.")) {
+                return Integer.parseInt(version.substring(2)); // 1.8 → 8
+            }
+            return Integer.parseInt(version.split("\\.")[0]); // 17 → 17
+        } catch (Exception e) {
+            return 8;
+        }
+    }
+
+    /**
+     * 启动时探测字段是否可访问，失败返回 null
+     * 避免运行时反复尝试失败的反射
+     */
+    private static Field probeField(Class<?> clazz, String fieldName) {
+        try {
+            Field f = clazz.getDeclaredField(fieldName);
+            f.setAccessible(true);
+            return f;
+        } catch (NoSuchFieldException e) {
+            log.debug("Field {}.{} not found (JDK {})", clazz.getSimpleName(), fieldName, JDK_VERSION);
+            return null;
+        } catch (Exception e) {
+            log.debug("Field {}.{} not accessible (JDK {}): {}. " +
+                            "Consider adding: --add-opens java.base/{}=ALL-UNNAMED",
+                    clazz.getSimpleName(), fieldName, JDK_VERSION, e.getClass().getSimpleName(),
+                    clazz.getPackage().getName());
+            return null;
+        }
+    }
+
+    private static Method probeMethod(Class<?> clazz, String methodName, Class<?>... paramTypes) {
+        try {
+            return clazz.getMethod(methodName, paramTypes);
+        } catch (NoSuchMethodException e) {
+            return null;
+        }
+    }
+
+    private static Field probeAccContextField() {
+        try {
+            Class<?> accClass = Class.forName("java.security.AccessControlContext");
+            Field f = accClass.getDeclaredField("context");
+            f.setAccessible(true);
+            return f;
+        } catch (ClassNotFoundException e) {
+            // Java 24+: 整个类都删除了
+            log.debug("AccessControlContext not found (JDK {}), SecurityManager removed", JDK_VERSION);
+            return null;
+        } catch (Exception e) {
+            log.debug("AccessControlContext.context not accessible (JDK {})", JDK_VERSION);
+            return null;
+        }
+    }
+
+    /**
+     * 判断线程是否为虚拟线程（Java 21+）
+     */
+    private static boolean isVirtualThread(Thread t) {
+        if (THREAD_IS_VIRTUAL == null) return false;
+        try {
+            return (Boolean) THREAD_IS_VIRTUAL.invoke(t);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 启动时打印一次 JDK 适配信息
+     */
+    static {
+        log.info("BasicResourceGuard initialized: JDK={}, capabilities=[target={}, acc={}, accContext={}, virtualThread={}]",
+                JDK_VERSION,
+                THREAD_TARGET_FIELD != null ? "✓" : "✗",
+                THREAD_ACC_FIELD != null ? "✓" : "✗",
+                ACC_CONTEXT_FIELD != null ? "✓" : "✗",
+                THREAD_IS_VIRTUAL != null ? "✓" : "✗");
+
+        if (JDK_VERSION >= 16) {
+            List<String> missing = new ArrayList<>();
+            if (THREAD_TARGET_FIELD == null) missing.add("--add-opens java.base/java.lang=ALL-UNNAMED");
+            if (DRIVER_MANAGER_FIELD == null) missing.add("--add-opens java.sql/java.sql=ALL-UNNAMED");
+            if (!missing.isEmpty()) {
+                log.warn("Some cleanup capabilities are limited. Recommended JVM args:\n  {}",
+                        String.join("\n  ", missing));
+            }
+        }
+    }
+
+    // =========================================================================
+    // 核心逻辑
+    // =========================================================================
+
     private final ScheduledExecutorService scheduler;
 
     public BasicResourceGuard() {
@@ -45,39 +166,13 @@ public class BasicResourceGuard implements ResourceGuard {
 
     @Override
     public void cleanup(String lingId, ClassLoader classLoader) {
-        log.info("[{}] Starting resource cleanup...", lingId);
+        log.info("[{}] Starting resource cleanup (JDK {})...", lingId, JDK_VERSION);
         log.info("[{}] Target ClassLoader: {}@{}", lingId,
                 classLoader.getClass().getSimpleName(),
                 Integer.toHexString(System.identityHashCode(classLoader)));
 
-        // 诊断：打印所有线程
-        Thread[] allThreads = getActiveThreads();
-        for (Thread t : allThreads) {
-            if (t == null)
-                continue;
-            ClassLoader tccl = null;
-            try {
-                tccl = t.getContextClassLoader();
-            } catch (Exception ignored) {
-            }
-
-            String tcclInfo = "null";
-            if (tccl != null) {
-                tcclInfo = tccl.getClass().getSimpleName() + "@" +
-                        Integer.toHexString(System.identityHashCode(tccl));
-            }
-
-            // 只打印可疑线程
-            boolean isMysql = t.getName().contains("mysql") || t.getName().contains("MySQL");
-            boolean isSameCL = (tccl == classLoader);
-
-            if (isMysql || isSameCL) {
-                log.warn("[{}] SUSPECT THREAD: name='{}', state={}, daemon={}, " +
-                                "contextCL={}, sameCL={}",
-                        lingId, t.getName(), t.getState(), t.isDaemon(),
-                        tcclInfo, isSameCL);
-            }
-        }
+        // 诊断：打印可疑线程
+        diagnoseSuspectThreads(lingId, classLoader);
 
         // 1. MySQL 清理线程
         cleanupMySqlThread(lingId, classLoader);
@@ -87,7 +182,7 @@ public class BasicResourceGuard implements ResourceGuard {
         if (count > 0) {
             log.info("[{}] Deregistered {} JDBC driver(s)", lingId, count);
         } else {
-            log.warn("[{}] No JDBC drivers found to deregister!", lingId);
+            log.debug("[{}] No JDBC drivers found to deregister", lingId);
         }
 
         // 3. 线程引用清理
@@ -101,11 +196,9 @@ public class BasicResourceGuard implements ResourceGuard {
 
     @Override
     public void detectLeak(String lingId, ClassLoader classLoader) {
-        // 使用 WeakReference 检测 ClassLoader 是否被回收
         WeakReference<ClassLoader> ref = new WeakReference<>(classLoader);
 
         scheduler.schedule(() -> {
-            // 多次 GC 尝试
             for (int i = 0; i < 5; i++) {
                 System.gc();
                 try {
@@ -127,54 +220,54 @@ public class BasicResourceGuard implements ResourceGuard {
         scheduler.shutdownNow();
     }
 
+    // =========================================================================
+    // 诊断
+    // =========================================================================
+
+    private void diagnoseSuspectThreads(String lingId, ClassLoader classLoader) {
+        Thread[] allThreads = getActiveThreads();
+        for (Thread t : allThreads) {
+            if (t == null) continue;
+
+            ClassLoader tccl = getContextClassLoaderSafe(t);
+            boolean isMysql = t.getName().contains("mysql") || t.getName().contains("MySQL");
+            boolean isSameCL = (tccl == classLoader);
+
+            if (isMysql || isSameCL) {
+                String tcclInfo = tccl == null ? "null" :
+                        tccl.getClass().getSimpleName() + "@" +
+                                Integer.toHexString(System.identityHashCode(tccl));
+                String extra = isVirtualThread(t) ? ", virtual=true" : "";
+
+                log.warn("[{}] SUSPECT THREAD: name='{}', state={}, daemon={}, contextCL={}, sameCL={}{}",
+                        lingId, t.getName(), t.getState(), t.isDaemon(),
+                        tcclInfo, isSameCL, extra);
+            }
+        }
+    }
+
+    // =========================================================================
+    // MySQL 清理
+    // =========================================================================
+
     private void cleanupMySqlThread(String lingId, ClassLoader classLoader) {
         log.info("[{}] Looking for MySQL cleanup thread...", lingId);
 
-        // Step 1: 尝试通过 MySQL API 关闭（可能因 CL 已关闭而失败）
-        String[] classNames = {
-                "com.mysql.cj.jdbc.AbandonedConnectionCleanupThread",
-                "com.mysql.jdbc.AbandonedConnectionCleanupThread"
-        };
-        for (String className : classNames) {
-            try {
-                Class<?> cls = Class.forName(className, true, classLoader);
-                cls.getMethod("checkedShutdown").invoke(null);
-                log.info("[{}] checkedShutdown() called via {}", lingId, className);
-                break;
-            } catch (Exception e) {
-                log.debug("[{}] checkedShutdown via {} failed: {}", lingId, className, e.getMessage());
-            }
-        }
+        // Step 1: 通过 MySQL API 关闭
+        invokeMySqlCheckedShutdown(lingId, classLoader);
 
-        // Step 2: 扫描所有线程，找到 MySQL 清理线程
+        // Step 2: 扫描线程
         Thread[] threads = getActiveThreads();
         boolean found = false;
 
         for (Thread t : threads) {
-            if (t == null)
-                continue;
+            if (t == null) continue;
 
-            // 名称匹配
-            if (!t.getName().contains("mysql-cj-abandoned-connection-cleanup") &&
-                    !t.getName().contains("Abandoned connection cleanup")) {
-                continue;
-            }
+            // 跳过虚拟线程（MySQL 不会用虚拟线程）
+            if (isVirtualThread(t)) continue;
 
-            // 关联性检查：contextClassLoader 或 ACC 引用目标 CL
-            boolean related = (t.getContextClassLoader() == classLoader);
-            if (!related) {
-                try {
-                    Field accField = Thread.class.getDeclaredField("inheritedAccessControlContext");
-                    accField.setAccessible(true);
-                    Object acc = accField.get(t);
-                    if (acc != null && referencesClassLoader(acc, classLoader)) {
-                        related = true;
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-
-            if (!related) {
+            if (!isMySqlCleanupThread(t)) continue;
+            if (!isThreadRelatedToClassLoader(t, classLoader)) {
                 log.debug("[{}] MySQL thread {} not related to this CL, skipping", lingId, t.getName());
                 continue;
             }
@@ -183,90 +276,138 @@ public class BasicResourceGuard implements ResourceGuard {
             log.info("[{}] Found MySQL cleanup thread: {}, state={}, alive={}",
                     lingId, t.getName(), t.getState(), t.isAlive());
 
-            // Step 3: 通过 Thread.target (Worker) 找到 ThreadPoolExecutor 并关闭
+            // Step 3: 关闭 Executor
             shutdownExecutorViaThread(lingId, t, classLoader);
 
-            // Step 4: 中断线程
+            // Step 4: 中断 + 等待
             t.interrupt();
-
-            // Step 5: 等待线程退出
             try {
                 t.join(3000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-
             log.info("[{}] After join: alive={}", lingId, t.isAlive());
 
-            // Step 6: 不管线程是否退出，清理所有引用
-            // contextClassLoader
-            try {
-                if (t.getContextClassLoader() == classLoader) {
-                    t.setContextClassLoader(null);
-                    log.info("[{}] Cleared contextClassLoader", lingId);
-                }
-            } catch (Exception ignored) {
-            }
-
-            // inheritedAccessControlContext
-            try {
-                Field accField = Thread.class.getDeclaredField("inheritedAccessControlContext");
-                accField.setAccessible(true);
-                Object acc = accField.get(t);
-                if (acc != null && referencesClassLoader(acc, classLoader)) {
-                    accField.set(t, null);
-                    log.info("[{}] Cleared inheritedAccessControlContext", lingId);
-                }
-            } catch (NoSuchFieldException ignored) {
-            } catch (Exception ignored) {
-            }
-
-            // target
-            try {
-                Field targetField = Thread.class.getDeclaredField("target");
-                targetField.setAccessible(true);
-                Object target = targetField.get(t);
-                if (target != null && target.getClass().getClassLoader() == classLoader) {
-                    targetField.set(t, null);
-                    log.info("[{}] Cleared target", lingId);
-                }
-            } catch (NoSuchFieldException ignored) {
-            } catch (Exception ignored) {
-            }
+            // Step 5: 清理线程上的所有引用
+            clearAllThreadReferences(lingId, t, classLoader);
         }
 
         if (!found) {
             log.info("[{}] No related MySQL cleanup thread found", lingId);
         }
-
         log.info("[{}] MySQL cleanup complete", lingId);
     }
 
+    private boolean isMySqlCleanupThread(Thread t) {
+        String name = t.getName();
+        return name.contains("mysql-cj-abandoned-connection-cleanup")
+                || name.contains("Abandoned connection cleanup");
+    }
+
     /**
-     * 通过反射找到线程内部的 ThreadPoolExecutor 并关掉
-     * 路径: Thread.target → ThreadPoolExecutor$Worker.this$0 → ThreadPoolExecutor
+     * 检查线程是否关联目标 ClassLoader
+     * 策略：contextClassLoader → inheritedAccessControlContext（如果可用）
      */
-    private void shutdownExecutorViaThread(String lingId, Thread thread, ClassLoader classLoader) {
-        // 方法1: 通过 Worker.this$0
-        try {
-            Field targetField = Thread.class.getDeclaredField("target");
-            targetField.setAccessible(true);
-            Object worker = targetField.get(thread);
-            if (worker != null) {
-                Field this0Field = worker.getClass().getDeclaredField("this$0");
-                this0Field.setAccessible(true);
-                Object executor = this0Field.get(worker);
-                if (executor instanceof ExecutorService) {
-                    ((ExecutorService) executor).shutdownNow();
-                    log.info("[{}] Shut down executor via Worker.this$0", lingId);
-                    return;
-                }
-            }
-        } catch (Exception e) {
-            log.debug("[{}] Worker.this$0 approach failed: {}", lingId, e.getMessage());
+    private boolean isThreadRelatedToClassLoader(Thread t, ClassLoader classLoader) {
+        // 1. contextClassLoader
+        if (getContextClassLoaderSafe(t) == classLoader) {
+            return true;
         }
 
-        // 方法2: 通过 MySQL 类的静态字段
+        // 2. inheritedAccessControlContext（Java < 24）
+        if (THREAD_ACC_FIELD != null) {
+            try {
+                Object acc = THREAD_ACC_FIELD.get(t);
+                if (acc != null && referencesClassLoader(acc, classLoader)) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        // 3. target 的 ClassLoader
+        if (THREAD_TARGET_FIELD != null) {
+            try {
+                Object target = THREAD_TARGET_FIELD.get(t);
+                if (target != null && target.getClass().getClassLoader() == classLoader) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        return false;
+    }
+
+    private void invokeMySqlCheckedShutdown(String lingId, ClassLoader classLoader) {
+        String[] classNames = {
+                "com.mysql.cj.jdbc.AbandonedConnectionCleanupThread",
+                "com.mysql.jdbc.AbandonedConnectionCleanupThread"
+        };
+        for (String className : classNames) {
+            try {
+                Class<?> cls = Class.forName(className, true, classLoader);
+                // 确认是目标 CL 加载的，防止回退到 parent
+                if (cls.getClassLoader() != classLoader) continue;
+
+                cls.getMethod("checkedShutdown").invoke(null);
+                log.info("[{}] checkedShutdown() called via {}", lingId, className);
+                return;
+            } catch (Exception e) {
+                log.debug("[{}] checkedShutdown via {} failed: {}", lingId, className, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 清理线程上的所有引用（contextCL、ACC、target）
+     */
+    private void clearAllThreadReferences(String lingId, Thread t, ClassLoader classLoader) {
+        // contextClassLoader
+        try {
+            if (t.getContextClassLoader() == classLoader) {
+                t.setContextClassLoader(null);
+                log.info("[{}] Cleared contextClassLoader on thread: {}", lingId, t.getName());
+            }
+        } catch (Exception ignored) {
+        }
+
+        // inheritedAccessControlContext（Java < 24）
+        clearThreadAccField(lingId, t, classLoader);
+
+        // target（Java < 21 或平台线程）
+        clearThreadTargetField(lingId, t, classLoader);
+    }
+
+    // =========================================================================
+    // Executor 关闭
+    // =========================================================================
+
+    private void shutdownExecutorViaThread(String lingId, Thread thread, ClassLoader classLoader) {
+        // 方法1: Thread.target → Worker.this$0 → ThreadPoolExecutor
+        if (THREAD_TARGET_FIELD != null) {
+            try {
+                Object worker = THREAD_TARGET_FIELD.get(thread);
+                if (worker != null) {
+                    Field this0Field = worker.getClass().getDeclaredField("this$0");
+                    this0Field.setAccessible(true);
+                    Object executor = this0Field.get(worker);
+                    if (executor instanceof ExecutorService) {
+                        ((ExecutorService) executor).shutdownNow();
+                        log.info("[{}] Shut down executor via Worker.this$0", lingId);
+                        return;
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("[{}] Worker.this$0 approach failed: {}", lingId, e.getMessage());
+            }
+        }
+
+        // 方法2: MySQL 类的静态字段
+        shutdownMySqlExecutorViaStaticField(lingId, classLoader);
+    }
+
+    private void shutdownMySqlExecutorViaStaticField(String lingId, ClassLoader classLoader) {
         String[] classNames = {
                 "com.mysql.cj.jdbc.AbandonedConnectionCleanupThread",
                 "com.mysql.jdbc.AbandonedConnectionCleanupThread"
@@ -274,13 +415,12 @@ public class BasicResourceGuard implements ResourceGuard {
         String[] fieldNames = {
                 "cleanupThreadExecutorService", "executorService", "cleanupThreadExcecutorService"
         };
+
         for (String className : classNames) {
             try {
                 Class<?> cls = Class.forName(className, true, classLoader);
-                if (cls.getClassLoader() != classLoader) {
-                    log.debug("[{}] {} loaded by different CL, skipping", lingId, className);
-                    continue;
-                }
+                if (cls.getClassLoader() != classLoader) continue;
+
                 for (String fieldName : fieldNames) {
                     try {
                         Field f = cls.getDeclaredField(fieldName);
@@ -301,17 +441,60 @@ public class BasicResourceGuard implements ResourceGuard {
         log.warn("[{}] Could not shut down MySQL executor", lingId);
     }
 
+    // =========================================================================
+    // JDBC 驱动反注册
+    // =========================================================================
+
     private int deregisterJdbcDrivers(String lingId, ClassLoader classLoader) {
+        if (JDK_VERSION >= 9 || DRIVER_MANAGER_FIELD == null) {
+            // Java 9+: 优先用公开 API，无需反射
+            return deregisterJdbcDriversPublicApi(lingId, classLoader);
+        } else {
+            // Java 8: 用反射绕过权限检查
+            return deregisterJdbcDriversReflection(lingId, classLoader);
+        }
+    }
+
+    /**
+     * Java 9+ 公开 API
+     */
+    private int deregisterJdbcDriversPublicApi(String lingId, ClassLoader classLoader) {
+        int count = 0;
+        List<Driver> toDeregister = new ArrayList<>();
+
+        Enumeration<Driver> drivers = DriverManager.getDrivers();
+        while (drivers.hasMoreElements()) {
+            Driver d = drivers.nextElement();
+            if (d.getClass().getClassLoader() == classLoader) {
+                toDeregister.add(d);
+            }
+        }
+
+        for (Driver d : toDeregister) {
+            try {
+                DriverManager.deregisterDriver(d);
+                count++;
+                log.info("[{}] Deregistered: {}", lingId, d.getClass().getName());
+            } catch (Exception e) {
+                log.warn("[{}] Failed to deregister {}: {}", lingId, d.getClass().getName(), e.getMessage());
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Java 8 反射方式（绕过 caller ClassLoader 检查）
+     */
+    private int deregisterJdbcDriversReflection(String lingId, ClassLoader classLoader) {
         int count = 0;
         try {
-            Field f = DriverManager.class.getDeclaredField("registeredDrivers");
-            f.setAccessible(true);
-            CopyOnWriteArrayList<?> drivers = (CopyOnWriteArrayList<?>) f.get(null);
-            if (drivers == null)
-                return 0;
+            @SuppressWarnings("unchecked")
+            CopyOnWriteArrayList<Object> drivers = (CopyOnWriteArrayList<Object>) DRIVER_MANAGER_FIELD.get(null);
+            if (drivers == null) return 0;
 
             List<Object> toRemove = new ArrayList<>();
             Field driverField = null;
+
             for (Object info : drivers) {
                 if (driverField == null) {
                     driverField = info.getClass().getDeclaredField("driver");
@@ -322,6 +505,7 @@ public class BasicResourceGuard implements ResourceGuard {
                     toRemove.add(info);
                 }
             }
+
             for (Object info : toRemove) {
                 Driver d = (Driver) driverField.get(info);
                 try {
@@ -333,42 +517,42 @@ public class BasicResourceGuard implements ResourceGuard {
                 log.info("[{}] Deregistered: {}", lingId, d.getClass().getName());
             }
         } catch (Exception e) {
-            log.debug("[{}] Driver deregister failed: {}", lingId, e.getMessage());
+            log.debug("[{}] Driver deregister (reflection) failed: {}", lingId, e.getMessage());
+            // 兜底：降级到公开 API
+            return deregisterJdbcDriversPublicApi(lingId, classLoader);
         }
         return count;
     }
 
+    // =========================================================================
+    // 线程引用清理
+    // =========================================================================
+
     private void clearThreadReferences(String lingId, ClassLoader classLoader) {
         for (Thread t : getActiveThreads()) {
-            if (t == null)
-                continue;
+            if (t == null) continue;
+
+            // 虚拟线程不处理 target / ACC（结构不同）
+            boolean isVirtual = isVirtualThread(t);
+
             try {
+                // contextClassLoader（所有线程类型都有）
                 if (t.getContextClassLoader() == classLoader) {
                     t.setContextClassLoader(null);
-                }
-                // inheritedAccessControlContext 深度检查
-                try {
-                    Field accField = Thread.class.getDeclaredField("inheritedAccessControlContext");
-                    accField.setAccessible(true);
-                    Object acc = accField.get(t);
-                    if (acc != null && referencesClassLoader(acc, classLoader)) {
-                        accField.set(t, null);
-                    }
-                } catch (NoSuchFieldException ignored) {
+                    log.debug("[{}] Cleared contextClassLoader on thread: {}", lingId, t.getName());
                 }
 
-                // target
-                try {
-                    Field targetField = Thread.class.getDeclaredField("target");
-                    targetField.setAccessible(true);
-                    Object target = targetField.get(t);
-                    if (target != null && target.getClass().getClassLoader() == classLoader) {
-                        targetField.set(t, null);
-                    }
-                } catch (NoSuchFieldException ignored) {
+                if (!isVirtual) {
+                    // inheritedAccessControlContext（Java < 24，仅平台线程）
+                    clearThreadAccField(lingId, t, classLoader);
+
+                    // target（仅平台线程）
+                    clearThreadTargetField(lingId, t, classLoader);
                 }
 
+                // 中断由目标 CL 创建的线程
                 if (t.getClass().getClassLoader() == classLoader) {
+                    log.info("[{}] Interrupting thread created by target CL: {}", lingId, t.getName());
                     t.interrupt();
                 }
             } catch (Exception ignored) {
@@ -376,19 +560,63 @@ public class BasicResourceGuard implements ResourceGuard {
         }
     }
 
-    private boolean referencesClassLoader(Object acc, ClassLoader cl) {
+    /**
+     * 清理 Thread.inheritedAccessControlContext
+     * Java 17: @Deprecated(forRemoval=true)
+     * Java 24: 已删除
+     */
+    private void clearThreadAccField(String lingId, Thread t, ClassLoader classLoader) {
+        if (THREAD_ACC_FIELD == null) return; // Java 24+ 或无权限
+
         try {
-            Field f = AccessControlContext.class.getDeclaredField("context");
-            f.setAccessible(true);
-            Object arr = f.get(acc);
-            if (arr == null)
-                return false;
+            Object acc = THREAD_ACC_FIELD.get(t);
+            if (acc != null && referencesClassLoader(acc, classLoader)) {
+                THREAD_ACC_FIELD.set(t, null);
+                log.debug("[{}] Cleared inheritedAccessControlContext on thread: {}", lingId, t.getName());
+            }
+        } catch (Exception e) {
+            log.trace("[{}] Failed to clear ACC on thread {}: {}", lingId, t.getName(), e.getMessage());
+        }
+    }
+
+    /**
+     * 清理 Thread.target
+     * Java 21+: 虚拟线程没有此字段，平台线程可能重构
+     */
+    private void clearThreadTargetField(String lingId, Thread t, ClassLoader classLoader) {
+        if (THREAD_TARGET_FIELD == null) return;
+
+        try {
+            Object target = THREAD_TARGET_FIELD.get(t);
+            if (target != null && target.getClass().getClassLoader() == classLoader) {
+                THREAD_TARGET_FIELD.set(t, null);
+                log.debug("[{}] Cleared target on thread: {}", lingId, t.getName());
+            }
+        } catch (Exception e) {
+            log.trace("[{}] Failed to clear target on thread {}: {}", lingId, t.getName(), e.getMessage());
+        }
+    }
+
+    // =========================================================================
+    // AccessControlContext 检查（Java < 24）
+    // =========================================================================
+
+    private boolean referencesClassLoader(Object acc, ClassLoader cl) {
+        if (ACC_CONTEXT_FIELD == null) return false; // Java 24+ 或无权限
+
+        try {
+            Object arr = ACC_CONTEXT_FIELD.get(acc);
+            if (arr == null) return false;
+
             int len = Array.getLength(arr);
             for (int i = 0; i < len; i++) {
                 Object pd = Array.get(arr, i);
-                if (pd instanceof ProtectionDomain) {
-                    if (((ProtectionDomain) pd).getClassLoader() == cl)
-                        return true;
+                // 不直接引用 ProtectionDomain 类，防止 Java 24 ClassNotFoundException
+                try {
+                    Method getClMethod = pd.getClass().getMethod("getClassLoader");
+                    Object pdCl = getClMethod.invoke(pd);
+                    if (pdCl == cl) return true;
+                } catch (Exception ignored) {
                 }
             }
         } catch (Exception ignored) {
@@ -396,37 +624,78 @@ public class BasicResourceGuard implements ResourceGuard {
         return false;
     }
 
-    private void clearThreadLocals(String lingId, ClassLoader classLoader) {
-        for (Thread t : getActiveThreads()) {
-            if (t == null)
-                continue;
-            clearThreadLocalMap(t, "threadLocals", classLoader);
-            clearThreadLocalMap(t, "inheritableThreadLocals", classLoader);
+    // =========================================================================
+    // ThreadLocal 清理
+    // =========================================================================
+
+    /**
+     * ThreadLocal 内部字段缓存（启动时探测一次）
+     */
+    private static final Field THREAD_LOCALS_FIELD = probeField(Thread.class, "threadLocals");
+    private static final Field INHERITABLE_THREAD_LOCALS_FIELD = probeField(Thread.class, "inheritableThreadLocals");
+    private static final Field TLM_TABLE_FIELD = probeThreadLocalMapTableField();
+
+    private static Field probeThreadLocalMapTableField() {
+        try {
+            Field tlmField = Thread.class.getDeclaredField("threadLocals");
+            tlmField.setAccessible(true);
+
+            // 找到 ThreadLocalMap 类
+            Class<?> tlmClass = Class.forName("java.lang.ThreadLocal$ThreadLocalMap");
+            Field tableField = tlmClass.getDeclaredField("table");
+            tableField.setAccessible(true);
+            return tableField;
+        } catch (Exception e) {
+            log.debug("ThreadLocalMap.table not accessible (JDK {}). " +
+                    "Consider: --add-opens java.base/java.lang=ALL-UNNAMED", JDK_VERSION);
+            return null;
         }
     }
 
-    private void clearThreadLocalMap(Thread t, String fieldName, ClassLoader cl) {
-        try {
-            Field mapField = Thread.class.getDeclaredField(fieldName);
-            mapField.setAccessible(true);
-            Object map = mapField.get(t);
-            if (map == null)
-                return;
+    private void clearThreadLocals(String lingId, ClassLoader classLoader) {
+        if (THREAD_LOCALS_FIELD == null && INHERITABLE_THREAD_LOCALS_FIELD == null) {
+            log.warn("[{}] ThreadLocal cleanup not available (JDK {} requires --add-opens)", lingId, JDK_VERSION);
+            return;
+        }
 
-            Field tableField = map.getClass().getDeclaredField("table");
-            tableField.setAccessible(true);
-            Object[] table = (Object[]) tableField.get(map);
-            if (table == null)
-                return;
+        int cleaned = 0;
+        for (Thread t : getActiveThreads()) {
+            if (t == null) continue;
+
+            // Java 21+: 虚拟线程的 ThreadLocal 存储方式不同，跳过
+            if (isVirtualThread(t)) continue;
+
+            cleaned += clearThreadLocalMap(t, THREAD_LOCALS_FIELD, classLoader);
+            cleaned += clearThreadLocalMap(t, INHERITABLE_THREAD_LOCALS_FIELD, classLoader);
+        }
+
+        if (cleaned > 0) {
+            log.info("[{}] Cleared {} ThreadLocal entries", lingId, cleaned);
+        }
+    }
+
+    private int clearThreadLocalMap(Thread t, Field mapField, ClassLoader cl) {
+        if (mapField == null || TLM_TABLE_FIELD == null) return 0;
+
+        int cleaned = 0;
+        try {
+            Object map = mapField.get(t);
+            if (map == null) return 0;
+
+            Object[] table = (Object[]) TLM_TABLE_FIELD.get(map);
+            if (table == null) return 0;
 
             Field valueField = null;
+            Method expungeMethod = null;
+
             for (Object entry : table) {
-                if (entry == null)
-                    continue;
+                if (entry == null) continue;
+
                 if (valueField == null) {
                     valueField = entry.getClass().getDeclaredField("value");
                     valueField.setAccessible(true);
                 }
+
                 Reference<?> ref = (Reference<?>) entry;
                 Object key = ref.get();
                 Object val = valueField.get(entry);
@@ -434,53 +703,83 @@ public class BasicResourceGuard implements ResourceGuard {
                 if (isClassLoaderRelated(key, cl) || isClassLoaderRelated(val, cl)) {
                     valueField.set(entry, null);
                     ref.clear();
+                    cleaned++;
                 }
             }
-            // 触发 expunge
-            try {
-                Method m = map.getClass().getDeclaredMethod("expungeStaleEntries");
-                m.setAccessible(true);
-                m.invoke(map);
-            } catch (Exception ignored) {
+
+            // 触发 expungeStaleEntries
+            if (cleaned > 0) {
+                if (expungeMethod == null) {
+                    try {
+                        expungeMethod = map.getClass().getDeclaredMethod("expungeStaleEntries");
+                        expungeMethod.setAccessible(true);
+                    } catch (NoSuchMethodException ignored) {
+                    }
+                }
+                if (expungeMethod != null) {
+                    expungeMethod.invoke(map);
+                }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.trace("Failed to clear ThreadLocal on thread {}: {}", t.getName(), e.getMessage());
         }
+        return cleaned;
     }
 
+    // =========================================================================
+    // ClassLoader 关联性判断
+    // =========================================================================
+
     private boolean isClassLoaderRelated(Object obj, ClassLoader cl) {
-        if (obj == null)
-            return false;
+        if (obj == null) return false;
 
         // 核心：直接 ClassLoader 检查
-        if (obj.getClass().getClassLoader() == cl)
-            return true;
-        if (obj instanceof Class && ((Class<?>) obj).getClassLoader() == cl)
-            return true;
-        if (obj instanceof ClassLoader && obj == cl)
-            return true;
+        if (obj.getClass().getClassLoader() == cl) return true;
+        if (obj instanceof Class && ((Class<?>) obj).getClassLoader() == cl) return true;
+        if (obj instanceof ClassLoader && obj == cl) return true;
 
-        // 深度：处理常见的容器类 (Spring Web 经常放 ArrayList 在 ThreadLocal 里)
+        // 深度：处理常见容器类
         if (obj instanceof Iterable) {
-            for (Object item : (Iterable<?>) obj) {
-                if (isClassLoaderRelated(item, cl))
-                    return true;
+            try {
+                for (Object item : (Iterable<?>) obj) {
+                    if (isClassLoaderRelated(item, cl)) return true;
+                }
+            } catch (Exception ignored) {
             }
         }
         if (obj instanceof Map) {
-            for (Map.Entry<?, ?> entry : ((Map<?, ?>) obj).entrySet()) {
-                if (isClassLoaderRelated(entry.getKey(), cl) || isClassLoaderRelated(entry.getValue(), cl))
-                    return true;
+            try {
+                for (Map.Entry<?, ?> entry : ((Map<?, ?>) obj).entrySet()) {
+                    if (isClassLoaderRelated(entry.getKey(), cl)
+                            || isClassLoaderRelated(entry.getValue(), cl))
+                        return true;
+                }
+            } catch (Exception ignored) {
             }
         }
-        if (obj.getClass().isArray()) {
-            int len = Array.getLength(obj);
-            for (int i = 0; i < len; i++) {
-                if (isClassLoaderRelated(Array.get(obj, i), cl))
-                    return true;
+        if (obj.getClass().isArray() && !obj.getClass().getComponentType().isPrimitive()) {
+            try {
+                int len = Array.getLength(obj);
+                for (int i = 0; i < len; i++) {
+                    if (isClassLoaderRelated(Array.get(obj, i), cl)) return true;
+                }
+            } catch (Exception ignored) {
             }
         }
 
         return false;
+    }
+
+    // =========================================================================
+    // 工具方法
+    // =========================================================================
+
+    private ClassLoader getContextClassLoaderSafe(Thread t) {
+        try {
+            return t.getContextClassLoader();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private Thread[] getActiveThreads() {
