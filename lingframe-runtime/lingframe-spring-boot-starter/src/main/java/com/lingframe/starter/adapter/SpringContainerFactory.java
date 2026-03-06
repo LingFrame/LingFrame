@@ -3,6 +3,7 @@ package com.lingframe.starter.adapter;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
+import com.lingframe.core.spi.ResourceGuard;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.loader.AsmMainClassScanner;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -26,14 +27,18 @@ public class SpringContainerFactory implements ContainerFactory {
     private final WebInterfaceManager webInterfaceManager;
     private final List<String> serviceExcludedPackages;
     private final List<LingContextCustomizer> customizers; // 新增定制器列表
+    private final ApplicationContext mainContext; // 🔥 主容器引用
+    private final ResourceGuard resourceGuard; // 🔥 资源守卫
 
     public SpringContainerFactory(ApplicationContext parentContext, WebInterfaceManager webInterfaceManager,
-            List<LingContextCustomizer> customizers) {
+            List<LingContextCustomizer> customizers, ResourceGuard resourceGuard) {
         LingFrameProperties props = parentContext.getBean(LingFrameProperties.class);
         this.devMode = props.isDevMode();
         this.serviceExcludedPackages = props.getServiceExcludedPackages();
         this.webInterfaceManager = webInterfaceManager;
         this.customizers = customizers != null ? customizers : Collections.emptyList();
+        this.mainContext = parentContext; // 🔥 保存主容器
+        this.resourceGuard = resourceGuard; // 🔥 保存资源守卫
     }
 
     @Override
@@ -68,7 +73,9 @@ public class SpringContainerFactory implements ContainerFactory {
                     classLoader,
                     webInterfaceManager,
                     serviceExcludedPackages,
-                    customizers // 🔥 传入定制器
+                    customizers, // 🔥 传入定制器
+                    mainContext,
+                    resourceGuard // 🔥 传入资源守卫
             );
 
         } catch (Exception e) {

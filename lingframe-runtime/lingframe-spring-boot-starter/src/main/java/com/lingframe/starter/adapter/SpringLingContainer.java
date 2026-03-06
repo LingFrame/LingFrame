@@ -9,34 +9,25 @@ import com.lingframe.core.context.CoreLingContext;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.processor.LingReferenceInjector;
+import com.lingframe.core.spi.ResourceGuard;
+import com.lingframe.starter.resource.SpringBasicResourceGuard;
 import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.annotation.AnnotatedElementUtils;
-import org.springframework.core.io.support.SpringFactoriesLoader;
-import org.springframework.util.ClassUtils;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.ResourceBundle;
-
-import org.springframework.beans.factory.NoSuchBeanDefinitionException;
-import org.springframework.context.support.AbstractApplicationContext;
-import org.springframework.core.env.ConfigurableEnvironment;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.MutablePropertySources;
 
 @Slf4j
 public class SpringLingContainer implements LingContainer {
@@ -50,17 +41,23 @@ public class SpringLingContainer implements LingContainer {
     private List<LingContextCustomizer> customizers; // 新增定制器
     // 保存 Context 以便 stop 时使用
     private LingContext lingContext;
+    private ApplicationContext mainContext; // 🔥 主容器引用
+    private final ResourceGuard resourceGuard; // 🔥 资源守卫
 
     public SpringLingContainer(SpringApplicationBuilder builder,
             ClassLoader classLoader,
             WebInterfaceManager webInterfaceManager,
             List<String> excludedPackages,
-            List<LingContextCustomizer> customizers) {
+            List<LingContextCustomizer> customizers,
+            ApplicationContext mainContext,
+            ResourceGuard resourceGuard) {
         this.builder = builder;
         this.classLoader = classLoader;
         this.webInterfaceManager = webInterfaceManager;
         this.excludedPackages = excludedPackages != null ? excludedPackages : Collections.emptyList();
         this.customizers = customizers != null ? customizers : Collections.emptyList();
+        this.mainContext = mainContext;
+        this.resourceGuard = resourceGuard;
     }
 
     @Override
@@ -336,65 +333,22 @@ public class SpringLingContainer implements LingContainer {
                 webInterfaceManager.unregister(lingId);
             }
 
-            // 🔥 清理 Environment 的 PropertySource，防止 OriginTrackedValue 泄漏
-            try {
-                Environment rawEnv = context.getEnvironment();
-                if (rawEnv instanceof ConfigurableEnvironment) {
-                    ConfigurableEnvironment env = (ConfigurableEnvironment) rawEnv;
-                    MutablePropertySources sources = env.getPropertySources();
-                    // 复制名称列表避免 ConcurrentModificationException
-                    List<String> names = new ArrayList<>();
-                    sources.forEach(ps -> names.add(ps.getName()));
-                    names.forEach(sources::remove);
-                    log.debug("[{}] Cleared {} PropertySources from ling Environment", lingId, names.size());
-                }
-            } catch (Exception e) {
-                log.debug("[{}] Failed to clear PropertySources: {}", lingId, e.getMessage());
-            }
-
-            // 🔥 清理 ApplicationEventMulticaster.retrieverCache，防止
-            // AvailabilityChangeEvent.source 泄漏
-            try {
-                Object multicaster = context
-                        .getBean(AbstractApplicationContext.APPLICATION_EVENT_MULTICASTER_BEAN_NAME);
-                if (multicaster != null) {
-                    // 获取 AbstractApplicationEventMulticaster.retrieverCache 字段
-                    Field retrieverCacheField = multicaster.getClass().getSuperclass()
-                            .getDeclaredField("retrieverCache");
-                    retrieverCacheField.setAccessible(true);
-                    Object cache = retrieverCacheField.get(multicaster);
-                    if (cache instanceof Map<?, ?>) {
-                        ((Map<?, ?>) cache).clear();
-                        log.debug("[{}] Cleared ApplicationEventMulticaster.retrieverCache", lingId);
-                    }
-                }
-            } catch (NoSuchBeanDefinitionException e) {
-                log.trace("[{}] No ApplicationEventMulticaster bean found", lingId);
-            } catch (NoSuchFieldException e) {
-                // 尝试直接在当前类查找
-                try {
-                    Object multicaster = context
-                            .getBean(AbstractApplicationContext.APPLICATION_EVENT_MULTICASTER_BEAN_NAME);
-                    Field retrieverCacheField = multicaster.getClass().getDeclaredField("retrieverCache");
-                    retrieverCacheField.setAccessible(true);
-                    Object cache = retrieverCacheField.get(multicaster);
-                    if (cache instanceof Map<?, ?>) {
-                        ((Map<?, ?>) cache).clear();
-                        log.debug("[{}] Cleared ApplicationEventMulticaster.retrieverCache (direct)", lingId);
-                    }
-                } catch (Exception ex) {
-                    log.trace("[{}] retrieverCache field not accessible: {}", lingId, ex.getMessage());
-                }
-            } catch (Exception e) {
-                log.debug("[{}] Failed to clear ApplicationEventMulticaster cache: {}", lingId, e.getMessage());
+            // 🔥 第一阶段清理：在 Context 关闭前执行 preCleanup
+            if (resourceGuard instanceof SpringBasicResourceGuard) {
+                SpringBasicResourceGuard srg = (SpringBasicResourceGuard) resourceGuard;
+                srg.setContexts(this.mainContext, this.context);
+                srg.preCleanup(lingId);
             }
 
             context.close();
         }
 
-        // 🔥 关键：清除所有对单元的引用，防止泄漏
-        clearSpringFactoriesCache(this.classLoader);
-        clearThirdPartyCaches(this.classLoader);
+        // 🔥 第二阶段清理会由 DefaultLingLifecycleEngine 调用 resourceGuard.cleanup()
+        // 此处仅确保 context 引用已设置（防御性）
+        if (resourceGuard instanceof SpringBasicResourceGuard) {
+            ((SpringBasicResourceGuard) resourceGuard).setContexts(this.mainContext, this.context);
+        }
+
         this.builder = null; // SpringApplicationBuilder 持有 ResourceLoader → ClassLoader
         this.context = null; // ApplicationContext 持有 BeanFactory → 所有 Bean → Class → ClassLoader
         this.classLoader = null;
@@ -402,138 +356,6 @@ public class SpringLingContainer implements LingContainer {
         this.webInterfaceManager = null;
         this.excludedPackages = null;
         this.customizers = null;
-    }
-
-    /**
-     * 清理 SpringFactoriesLoader 的静态缓存
-     * 这是单元 ClassLoader 泄漏的主要原因之一
-     */
-    private void clearSpringFactoriesCache(ClassLoader lingClassLoader) {
-        try {
-            // Spring Framework 5.x / 6.x
-            Field cacheField = ReflectionUtils.findField(
-                    org.springframework.core.io.support.SpringFactoriesLoader.class,
-                    "cache");
-            if (cacheField != null) {
-                ReflectionUtils.makeAccessible(cacheField);
-                Map<?, ?> cache = (Map<?, ?>) ReflectionUtils.getField(cacheField, null);
-                if (cache != null) {
-                    cache.remove(lingClassLoader);
-                    log.debug("Cleared SpringFactoriesLoader cache for: {}", lingClassLoader);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to clear SpringFactoriesLoader cache", e);
-        }
-
-        try {
-            // Spring Boot 3.x 可能有额外的 forDefaultResourceLocation 缓存
-            // SpringFactoriesLoader 内部可能有多个缓存字段，全部清理
-            Field[] fields = SpringFactoriesLoader.class.getDeclaredFields();
-            for (Field field : fields) {
-                if (Map.class.isAssignableFrom(field.getType()) &&
-                        Modifier.isStatic(field.getModifiers())) {
-                    ReflectionUtils.makeAccessible(field);
-                    Map<?, ?> map = (Map<?, ?>) ReflectionUtils.getField(field, null);
-                    if (map != null) {
-                        Object removed = map.remove(lingClassLoader);
-                        if (removed != null) {
-                            log.debug("Cleared static cache field '{}' for ling ClassLoader", field.getName());
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to clear additional SpringFactoriesLoader caches", e);
-        }
-    }
-
-    /**
-     * 清理常见第三方库（如 Jakarta EL, Spring ReflectionUtils）的静态缓存
-     * 避免它们持有单元类的强引用导致 ClassLoader 内存泄露
-     */
-    private void clearThirdPartyCaches(ClassLoader lingClassLoader) {
-        // 1. 清理 Spring 的 ReflectionUtils 内部缓存
-        try {
-            ReflectionUtils.clearCache();
-            log.debug("Cleared Spring ReflectionUtils cache");
-        } catch (Exception e) {
-            log.warn("Failed to clear Spring ReflectionUtils cache", e);
-        }
-
-        // 2. 清理 Jakarta EL (Expression Language) 缓存
-        // Tomcat 等容器中的 ELResolver 会缓存 Bean 属性导致 ClassLoader 泄露
-        try {
-            Class<?> beanELResolverClass = ClassUtils.forName("jakarta.el.BeanELResolver", lingClassLoader);
-            Method purgeMethod = ReflectionUtils.findMethod(beanELResolverClass, "purgeBeanClasses", ClassLoader.class);
-            if (purgeMethod != null) {
-                ReflectionUtils.invokeMethod(purgeMethod, null, lingClassLoader);
-                log.debug("Cleared Jakarta EL BeanELResolver cache for ling ClassLoader");
-            }
-        } catch (ClassNotFoundException e) {
-            // 没有用到 Jakarta EL，忽略
-        } catch (Exception e) {
-            log.warn("Failed to clear Jakarta EL context", e);
-        }
-
-        // 3. 尝试清理 javax.el (如果兼容老版本)
-        try {
-            Class<?> beanELResolverClass = ClassUtils.forName("javax.el.BeanELResolver", lingClassLoader);
-            Method purgeMethod = ReflectionUtils.findMethod(beanELResolverClass, "purgeBeanClasses", ClassLoader.class);
-            if (purgeMethod != null) {
-                ReflectionUtils.invokeMethod(purgeMethod, null, lingClassLoader);
-                log.debug("Cleared Javax EL BeanELResolver cache for ling ClassLoader");
-            }
-        } catch (ClassNotFoundException e) {
-            // 没有用到 Javax EL，忽略
-        } catch (Exception e) {
-            log.debug("Failed to clear Javax EL context", e);
-        }
-
-        // 4. 清理 Spring ResolvableType 缓存
-        try {
-            Method clearCacheMethod = ReflectionUtils.findMethod(
-                    org.springframework.core.ResolvableType.class, "clearCache");
-            if (clearCacheMethod != null) {
-                ReflectionUtils.invokeMethod(clearCacheMethod, null);
-                log.debug("Cleared Spring ResolvableType cache");
-            }
-        } catch (Exception e) {
-            log.debug("Failed to clear ResolvableType cache: {}", e.getMessage());
-        }
-
-        // 5. 清理 Spring AnnotationUtils/AnnotationTypeMappings 缓存
-        try {
-            Method clearCacheMethod = ReflectionUtils.findMethod(
-                    org.springframework.core.annotation.AnnotationUtils.class, "clearCache");
-            if (clearCacheMethod != null) {
-                ReflectionUtils.invokeMethod(clearCacheMethod, null);
-                log.debug("Cleared Spring AnnotationUtils cache");
-            }
-        } catch (Exception e) {
-            log.debug("Failed to clear AnnotationUtils cache: {}", e.getMessage());
-        }
-
-        // 6. 清理 Spring CachedIntrospectionResults
-        try {
-            Class<?> cirClass = ClassUtils.forName("org.springframework.beans.CachedIntrospectionResults",
-                    lingClassLoader);
-            Method clearMethod = ReflectionUtils.findMethod(cirClass, "clearClassLoader", ClassLoader.class);
-            if (clearMethod != null) {
-                ReflectionUtils.invokeMethod(clearMethod, null, lingClassLoader);
-                log.debug("Cleared Spring CachedIntrospectionResults for ling ClassLoader");
-            }
-        } catch (Exception e) {
-            log.debug("Failed to clear CachedIntrospectionResults: {}", e.getMessage());
-        }
-
-        // 7. 清理 JDK ResourceBundle 缓存
-        try {
-            ResourceBundle.clearCache(lingClassLoader);
-            log.debug("Cleared JDK ResourceBundle cache for ling ClassLoader");
-        } catch (Exception e) {
-            log.debug("Failed to clear ResourceBundle cache: {}", e.getMessage());
-        }
     }
 
     @Override

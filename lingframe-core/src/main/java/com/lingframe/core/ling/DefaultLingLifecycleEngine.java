@@ -180,11 +180,13 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         // 3. 逐个卸载底层实例
         List<LingInstance> instances = runtime.getInstancePool().getAllInstances();
         for (LingInstance instance : instances) {
+            // 🔥 先获取 ClassLoader，再 tearDown
+            ClassLoader classLoader = instance.getContainer().getClassLoader();
+
             instanceCoordinator.tearDown(instance, eventBus);
             runtime.getInstancePool().removeInstance(instance);
 
             // 🔥 彻底卸载的关键：清理资源并检测泄漏
-            ClassLoader classLoader = instance.getContainer().getClassLoader();
             if (resourceGuard != null) {
                 resourceGuard.cleanup(lingId, classLoader);
             }
