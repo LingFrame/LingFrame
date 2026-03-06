@@ -93,6 +93,15 @@ public class DashboardService {
         }
     }
 
+    public void uninstallLing(String lingId, String version) {
+        try {
+            lifecycleEngine.undeploy(lingId, version);
+        } catch (Exception e) {
+            throw new LingInstallException(lingId,
+                    "Failed to uninstall ling version " + version + ": " + e.getMessage(), e);
+        }
+    }
+
     public LingInfoDTO reloadLing(String lingId) {
         try {
             throw new LingInstallException(lingId, "Reload not supported via Dashboard in V0.3.0", null);

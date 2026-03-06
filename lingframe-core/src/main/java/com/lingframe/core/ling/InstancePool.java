@@ -72,6 +72,20 @@ public class InstancePool {
     }
 
     /**
+     * 根据版本获取特定的活跃实例
+     */
+    public LingInstance getInstance(String version) {
+        if (version == null)
+            return null;
+        for (LingInstance instance : activePool) {
+            if (version.equals(instance.getVersion())) {
+                return instance;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 获取所有实例，包括活跃和死亡队列中的实例
      */
     public List<LingInstance> getAllInstances() {
@@ -156,6 +170,16 @@ public class InstancePool {
         activePool.remove(instance);
         dyingQueue.add(instance);
 
+        // 如果该死亡实例曾是主实例，从活跃池中选拔新的主实例
+        if (defaultInstance.compareAndSet(instance, null)) {
+            if (!activePool.isEmpty()) {
+                LingInstance newDefault = activePool.get(0);
+                defaultInstance.set(newDefault);
+                log.info("[{}] Default instance moved to dying, promoted {} to new default", lingId,
+                        newDefault.getVersion());
+            }
+        }
+
         log.info("[{}] Instance {} moved to dying queue, dying count: {}",
                 lingId, instance.getVersion(), dyingQueue.size());
     }
@@ -170,8 +194,14 @@ public class InstancePool {
         activePool.remove(instance);
         dyingQueue.remove(instance);
 
-        // 如果是默认实例，清除默认标记
-        defaultInstance.compareAndSet(instance, null);
+        // 如果是默认实例，清除默认标记，并选举顺位继承者
+        if (defaultInstance.compareAndSet(instance, null)) {
+            if (!activePool.isEmpty()) {
+                LingInstance newDefault = activePool.get(0);
+                defaultInstance.set(newDefault);
+                log.info("[{}] Default instance removed, promoted {} to new default", lingId, newDefault.getVersion());
+            }
+        }
     }
 
     /**

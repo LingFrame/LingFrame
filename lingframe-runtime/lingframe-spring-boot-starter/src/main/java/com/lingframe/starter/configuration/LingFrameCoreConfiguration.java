@@ -1,7 +1,8 @@
 package com.lingframe.starter.configuration;
 
+import java.io.File;
 import com.lingframe.api.context.LingContext;
-import com.lingframe.core.resource.BasicResourceGuard;
+import com.lingframe.starter.resource.SpringBasicResourceGuard;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.classloader.SharedApiManager;
@@ -27,6 +28,7 @@ import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.LabelMatchRouter;
+import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.*;
 import com.lingframe.infra.cache.configuration.CaffeineWrapperProcessor;
@@ -35,13 +37,13 @@ import com.lingframe.infra.cache.configuration.SpringCacheWrapperProcessor;
 import com.lingframe.infra.storage.configuration.DataSourceWrapperProcessor;
 import com.lingframe.starter.adapter.SpringContainerFactory;
 import com.lingframe.starter.config.LingFrameProperties;
-import com.lingframe.starter.deploy.DefaultLingDeployService;
-import com.lingframe.starter.deploy.LingDeployService;
+import com.lingframe.core.deploy.DefaultLingDeployService;
+import com.lingframe.core.deploy.LingDeployService;
 import com.lingframe.starter.event.ServiceExporterListener;
 import com.lingframe.starter.processor.LingCoreBeanGovernanceProcessor;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.starter.spi.LingContextCustomizer;
-import com.lingframe.starter.spi.ServiceExporter;
+import com.lingframe.core.spi.ServiceExporter;
 import com.lingframe.starter.web.WebInterfaceManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -162,9 +164,10 @@ public class LingFrameCoreConfiguration {
     @Bean
     public ContainerFactory containerFactory(ApplicationContext parentContext,
             WebInterfaceManager webInterfaceManager,
-            ObjectProvider<List<LingContextCustomizer>> customizersProvider) {
+            ObjectProvider<List<LingContextCustomizer>> customizersProvider,
+            ResourceGuard resourceGuard) {
         List<LingContextCustomizer> customizers = customizersProvider.getIfAvailable(Collections::emptyList);
-        return new SpringContainerFactory(parentContext, webInterfaceManager, customizers);
+        return new SpringContainerFactory(parentContext, webInterfaceManager, customizers, resourceGuard);
     }
 
     @Bean
@@ -174,7 +177,7 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     public LingFrameConfig lingFrameConfig(LingFrameProperties properties) {
-        LingFrameProperties.Runtime rtProps = properties.getRuntime();
+        LingFrameProperties.RuntimeConfig rtProps = properties.getRuntime();
         LingRuntimeConfig runtimeConfig = LingRuntimeConfig.builder()
                 .maxHistorySnapshots(rtProps.getMaxHistorySnapshots())
                 .forceCleanupDelaySeconds((int) rtProps.getForceCleanupDelay().getSeconds())
@@ -209,7 +212,7 @@ public class LingFrameCoreConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public ResourceGuard resourceGuard() {
-        return new BasicResourceGuard();
+        return new SpringBasicResourceGuard();
     }
 
     @Bean

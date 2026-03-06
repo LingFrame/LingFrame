@@ -9,6 +9,8 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.net.URLConnection;
 import java.util.*;
+import java.util.jar.JarFile;
+import java.util.zip.ZipFile;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -253,11 +255,11 @@ public class LingClassLoader extends URLClassLoader {
                                         Field jarField = loader.getClass().getDeclaredField("jar");
                                         jarField.setAccessible(true);
                                         Object jarFile = jarField.get(loader);
-                                        if (jarFile instanceof java.util.jar.JarFile) {
-                                            ((java.util.jar.JarFile) jarFile).close();
+                                        if (jarFile instanceof JarFile) {
+                                            ((JarFile) jarFile).close();
                                             log.debug("[{}] Closed JarFile via reflection", lingId);
-                                        } else if (jarFile instanceof java.util.zip.ZipFile) {
-                                            ((java.util.zip.ZipFile) jarFile).close();
+                                        } else if (jarFile instanceof ZipFile) {
+                                            ((ZipFile) jarFile).close();
                                             log.debug("[{}] Closed ZipFile via reflection", lingId);
                                         }
                                     } catch (NoSuchFieldException e) {

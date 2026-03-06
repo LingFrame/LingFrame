@@ -1,6 +1,8 @@
 package com.lingframe.core.fsm;
 
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.event.EventBus;
+import com.lingframe.core.event.InstanceDestroyedEvent;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -43,7 +45,7 @@ public class InstanceCoordinator {
     /**
      * 执行单个实例的优雅关闭与拆卸，发布销毁事件以便底层系统清理资源
      */
-    public void tearDown(LingInstance instance, com.lingframe.core.event.EventBus eventBus) {
+    public void tearDown(LingInstance instance, EventBus eventBus) {
         try {
             transitionState(instance, InstanceStatus.STOPPING);
 
@@ -60,7 +62,7 @@ public class InstanceCoordinator {
 
             // 触发大管家的扫尾收割清理
             if (eventBus != null) {
-                eventBus.publish(new com.lingframe.core.event.InstanceDestroyedEvent(
+                eventBus.publish(new InstanceDestroyedEvent(
                         instance.getLingId(), instance.getVersion()));
             }
 

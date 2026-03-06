@@ -94,8 +94,10 @@
     "cancel": "取消",
     "confirm": "确认",
     "confirmUnload": "确认卸载单元",
-    "unloadWarning": "即将卸载 \"{lingId}\"，这将中断所有请求。",
-    "unloadAction": "卸载"
+    "unloadWarning": "即将卸载 \"{lingId}\"，这将中断所有相关联请求。",
+    "unloadAction": "卸载",
+    "selectVersion": "选择要卸载的版本：",
+    "allVersions": "全量卸载 (所有版本)"
   },
   "toast": {
     "getLingsFailed": "获取单元列表失败",
@@ -122,11 +124,11 @@
     "prodMode": "生产模式 (拒绝无权限访问)",
     "devMode": "开发模式 (仅警告无权限访问)",
     "alsoEnabled": "（同时开启 {perm}）",
-    "alsoEnabled": "（同时开启 {perm}）",
     "alsoDisabled": "（同时关闭 {perm}）",
     "installSuccess": "单元安装成功",
     "installFailed": "单元安装失败",
     "reloadSuccess": "单元重载成功",
-    "reloadFailed": "单元重载失败"
+    "reloadFailed": "单元重载失败",
+    "lingVersionUnloaded": "版本 {version} 卸载成功"
   }
 }

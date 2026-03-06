@@ -2,6 +2,7 @@ package com.lingframe.starter.web;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
+import org.springframework.beans.factory.support.AbstractBeanFactory;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.beans.factory.support.GenericBeanDefinition;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -90,7 +91,8 @@ public class WebInterfaceManager {
             Class<?> userClass = AopUtils.getTargetClass(metadata.getTargetBean());
             String proxyBeanName = metadata.getLingId() + ":" + userClass.getName();
 
-            if (hostContext instanceof GenericApplicationContext && !hostContext.containsBeanDefinition(proxyBeanName)) {
+            if (hostContext instanceof GenericApplicationContext
+                    && !hostContext.containsBeanDefinition(proxyBeanName)) {
                 GenericApplicationContext gac = (GenericApplicationContext) hostContext;
                 GenericBeanDefinition bd = new GenericBeanDefinition();
                 bd.setBeanClass(userClass);
@@ -129,19 +131,21 @@ public class WebInterfaceManager {
     }
 
     /**
-     * 注销单元的所有接口
+     * 注销单元的所有接口或特定版本的接口
      */
-    public void unregister(String lingId) {
-        if (hostMapping == null) return;
+    public void unregister(String lingId, ClassLoader targetLoader) {
+        if (hostMapping == null)
+            return;
 
-        log.info("♻️ [LingFrame Web] Unregistering interfaces for ling: {}", lingId);
+        log.info("♻️ [LingFrame Web] Unregistering interfaces for ling: {} (ClassLoader: {})", lingId,
+                targetLoader != null ? targetLoader.hashCode() : "ALL");
 
         List<String> keysToRemove = new ArrayList<>();
         AtomicReference<ClassLoader> lingLoader = new AtomicReference<>();
-        List<String> beanNamesToRemove = new ArrayList<>();  // 收集要移除的 bean 名
+        List<String> beanNamesToRemove = new ArrayList<>(); // 收集要移除的 bean 名
 
         metadataMap.forEach((key, meta) -> {
-            if (meta.getLingId().equals(lingId)) {
+            if (meta.getLingId().equals(lingId) && (targetLoader == null || meta.getClassLoader() == targetLoader)) {
                 keysToRemove.add(key);
                 lingLoader.set(meta.getClassLoader());
 
@@ -204,8 +208,8 @@ public class WebInterfaceManager {
         }
 
         // 深度清理 HandlerAdapter 缓存
-        if (hostAdapter != null && lingLoader.get() != null) {
-            clearAdapterCaches(lingLoader.get());
+        if (hostAdapter != null && (targetLoader != null || lingLoader.get() != null)) {
+            clearAdapterCaches(targetLoader != null ? targetLoader : lingLoader.get());
         }
 
         log.info("♻️ [LingFrame Web] Unregistered {} interfaces for ling: {}",
@@ -220,7 +224,7 @@ public class WebInterfaceManager {
             List<String> beanNames) {
         try {
             Field mergedField = ReflectionUtils.findField(
-                    org.springframework.beans.factory.support.AbstractBeanFactory.class,
+                    AbstractBeanFactory.class,
                     "mergedBeanDefinitions");
             if (mergedField != null) {
                 ReflectionUtils.makeAccessible(mergedField);

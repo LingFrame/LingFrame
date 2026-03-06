@@ -1,4 +1,4 @@
-package com.lingframe.starter.deploy;
+package com.lingframe.core.deploy;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.loader.LingManifestLoader;

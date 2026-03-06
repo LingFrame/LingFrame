@@ -94,6 +94,11 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
 
             if (lingRepository.hasRuntime(lingId)) {
                 log.info("[{}] Preparing for upgrade", lingId);
+                LingRuntime oldRuntime = lingRepository.getRuntime(lingId);
+                if (oldRuntime != null && oldRuntime.getInstancePool().getInstance(version) != null) {
+                    throw new IllegalStateException("Version " + version + " is already deployed for ling " + lingId
+                            + ". Please uninstall it first.");
+                }
             } else {
                 isNewRuntime = true;
             }
@@ -161,7 +166,6 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
     @Override
     public void undeploy(String lingId) {
         log.info("Uninstalling ling: {}", lingId);
-        eventBus.publish(new LingUninstallingEvent(lingId));
 
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
@@ -169,15 +173,72 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             return;
         }
 
+        // 预留：等待存量请求排空
+        log.info("[{}] Draining existing requests...", lingId);
+
+        doFullUndeploy(lingId, runtime);
+    }
+
+    @Override
+    public void undeploy(String lingId, String version) {
+        log.info("Uninstalling ling: {} version: {}", lingId, version);
+
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
+        if (runtime == null) {
+            log.warn("Ling not found: {}", lingId);
+            return;
+        }
+
+        // 1. 找到指定版本的实例（从活跃池查找）
+        LingInstance targetInstance = runtime.getInstancePool().getInstance(version);
+        if (targetInstance == null) {
+            log.warn("Ling instance not found or already dying for: {}:{}", lingId, version);
+            return;
+        }
+
+        log.info("[{}] Draining existing requests for version {}...", lingId, version);
+
+        // 2. 隔离并卸载该版本实例
+        ClassLoader classLoader = targetInstance.getContainer().getClassLoader();
+        instanceCoordinator.tearDown(targetInstance, eventBus);
+        runtime.getInstancePool().removeInstance(targetInstance);
+
+        if (resourceGuard != null) {
+            resourceGuard.cleanup(lingId, classLoader);
+        }
+
+        if (classLoader instanceof AutoCloseable) {
+            try {
+                ((AutoCloseable) classLoader).close();
+            } catch (Exception e) {
+                log.error("[{}] Failed to close ClassLoader for version {}", lingId, version, e);
+            }
+        }
+
+        if (resourceGuard != null) {
+            resourceGuard.detectLeak(lingId, classLoader);
+        }
+
+        // 3. 全局状态检查
+        List<LingInstance> remaining = runtime.getInstancePool().getAllInstances();
+        if (remaining.isEmpty()) {
+            log.info("[{}] No instances remaining after version {} unloaded. Cleaning up runtime.", lingId, version);
+            // 触发全量清场（不包含已经卸载的实例）
+            doFullUndeploy(lingId, runtime);
+        } else {
+            log.info("[{}] Ling has {} instances remaining, skipping runtime cleanup.", lingId, remaining.size());
+        }
+    }
+
+    private void doFullUndeploy(String lingId, LingRuntime runtime) {
+        eventBus.publish(new LingUninstallingEvent(lingId));
+
         // 1. 改变宏观状态，拒绝新请求
         if (runtime.getStateMachine().current() != RuntimeStatus.STOPPING) {
             runtime.getStateMachine().transition(RuntimeStatus.STOPPING);
         }
 
-        // 2. 预留：等待存量请求排空 (当前仅为简单日志，实际应结合监控指标)
-        log.info("[{}] Draining existing requests...", lingId);
-
-        // 3. 逐个卸载底层实例
+        // 2. 逐个卸载底层剩余的所有实例
         List<LingInstance> instances = runtime.getInstancePool().getAllInstances();
         for (LingInstance instance : instances) {
             // 🔥 先获取 ClassLoader，再 tearDown
@@ -206,17 +267,17 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             }
         }
 
-        // 4. 清理注册表中的暴露条目
+        // 3. 清理注册表中的暴露条目
         lingServiceRegistry.evict(lingId);
 
-        // 5. 彻底解绑监听与权限
+        // 4. 彻底解绑监听与权限
         eventBus.unsubscribeAll(lingId);
         permissionService.removeLing(lingId);
 
-        // 6. 宣告生命终结
+        // 5. 宣告生命终结
         runtime.getStateMachine().transition(RuntimeStatus.REMOVED);
 
-        // 7. 从仓储拔除引用
+        // 6. 从仓储拔除引用
         lingRepository.deregister(lingId);
 
         eventBus.publish(new LingUninstalledEvent(lingId));

@@ -500,9 +500,8 @@ public class SimulateService {
             // 如果找不到匹配的，宁可不用智能候选，走通用路径
             List<Method> capabilityMatched = candidates.stream()
                     .filter(m -> {
-                        if (m.isAnnotationPresent(com.lingframe.api.annotation.RequiresPermission.class)) {
-                            String capability = m.getAnnotation(com.lingframe.api.annotation.RequiresPermission.class)
-                                    .value();
+                        if (m.isAnnotationPresent(RequiresPermission.class)) {
+                            String capability = m.getAnnotation(RequiresPermission.class).value();
                             return capability.equals(targetCapability);
                         }
                         return false;
@@ -535,15 +534,15 @@ public class SimulateService {
         int score = 0;
 
         // 维度 0: Capability 匹配 (最最重要！)
-        if (m.isAnnotationPresent(com.lingframe.api.annotation.RequiresPermission.class)) {
-            String capability = m.getAnnotation(com.lingframe.api.annotation.RequiresPermission.class).value();
+        if (m.isAnnotationPresent(RequiresPermission.class)) {
+            String capability = m.getAnnotation(RequiresPermission.class).value();
             if (capability.equals(targetCapability)) {
                 score += 200; // 完全匹配，优先级最高
             }
         }
 
         // 维度 1: 显式权限定义
-        if (m.isAnnotationPresent(com.lingframe.api.annotation.RequiresPermission.class)) {
+        if (m.isAnnotationPresent(RequiresPermission.class)) {
             score += 100;
         }
 

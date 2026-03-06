@@ -33,11 +33,15 @@ public class LingInfoConverter {
                         : runtime.getStateMachine().current().name())
                 .versions(runtime.getInstancePool().getActiveInstances().stream()
                         .map(LingInstance::getVersion)
+                        .distinct()
                         .collect(Collectors.toList()))
                 .activeVersion(runtime.getInstancePool().getVersion())
                 .canaryPercent(canaryRouter.getCanaryPercent(lingId))
                 .canaryVersion(runtime.getInstancePool().getActiveInstances().stream()
-                        .filter(instance -> !instance.getVersion().equals(runtime.getInstancePool().getVersion()))
+                        .filter(instance -> {
+                            String activeVer = runtime.getInstancePool().getVersion();
+                            return activeVer == null || !activeVer.equals(instance.getVersion());
+                        })
                         .map(LingInstance::getVersion)
                         .findFirst()
                         .orElse(null))

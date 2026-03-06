@@ -6,7 +6,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingServiceRegistry;
-import com.lingframe.starter.spi.ServiceExporter;
+import com.lingframe.core.spi.ServiceExporter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;

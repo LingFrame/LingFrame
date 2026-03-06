@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
@@ -232,7 +233,7 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
                 lifecycleEngine.undeploy(lingId);
 
                 // 安装新版 (Dev模式)
-                lifecycleEngine.deploy(lingDefinition, source, true, java.util.Collections.emptyMap());
+                lifecycleEngine.deploy(lingDefinition, source, true, Collections.emptyMap());
 
                 log.info("⚡ Hot swap completed: {}", lingId);
 

@@ -97,7 +97,7 @@ public class LingFrameProperties {
     /**
      * 统一管理内核运行时配置
      */
-    private Runtime runtime = new Runtime();
+    private RuntimeConfig runtime = new RuntimeConfig();
 
     @Data
     public static class Audit {
@@ -163,7 +163,7 @@ public class LingFrameProperties {
     }
 
     @Data
-    public static class Runtime {
+    public static class RuntimeConfig {
         // --- 实例管理 ---
         private int maxHistorySnapshots = 5;
 
@@ -187,7 +187,7 @@ public class LingFrameProperties {
         /**
          * 全局单元线程总预算（所有单元共享此配额）
          */
-        private int globalMaxLingThreads = java.lang.Runtime.getRuntime().availableProcessors() * 4;
+        private int globalMaxLingThreads = Runtime.getRuntime().availableProcessors() * 4;
 
         /**
          * 单个单元线程池硬上限

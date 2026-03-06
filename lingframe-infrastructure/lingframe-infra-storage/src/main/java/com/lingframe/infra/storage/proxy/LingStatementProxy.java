@@ -112,7 +112,7 @@ public class LingStatementProxy implements Statement {
     private AccessType parseSqlForAccessType(String sql) {
         // 使用 JSqlParser
         try {
-            net.sf.jsqlparser.statement.Statement statement = CCJSqlParserUtil.parse(sql.trim());
+            Object statement = CCJSqlParserUtil.parse(sql.trim());
             if (statement instanceof Select) {
                 return AccessType.READ;
             } else if (statement instanceof Insert || statement instanceof Update || statement instanceof Delete) {

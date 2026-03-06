@@ -330,7 +330,7 @@ public class SpringLingContainer implements LingContainer {
 
             // 注销 Web 接口元数据
             if (webInterfaceManager != null) {
-                webInterfaceManager.unregister(lingId);
+                webInterfaceManager.unregister(lingId, this.classLoader);
             }
 
             // 🔥 第一阶段清理：在 Context 关闭前执行 preCleanup

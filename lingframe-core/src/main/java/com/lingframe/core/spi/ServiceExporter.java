@@ -1,4 +1,4 @@
-package com.lingframe.starter.spi;
+package com.lingframe.core.spi;
 
 import java.util.List;
 

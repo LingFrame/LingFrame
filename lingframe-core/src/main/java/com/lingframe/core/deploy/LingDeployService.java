@@ -1,4 +1,4 @@
-package com.lingframe.starter.deploy;
+package com.lingframe.core.deploy;
 
 import java.io.File;
 

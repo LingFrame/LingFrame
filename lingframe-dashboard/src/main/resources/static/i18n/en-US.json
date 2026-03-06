@@ -94,8 +94,10 @@
         "cancel": "Cancel",
         "confirm": "Confirm",
         "confirmUnload": "Confirm Unload Ling",
-        "unloadWarning": "About to unload \"{lingId}\", this will interrupt all requests.",
-        "unloadAction": "Unload"
+        "unloadWarning": "About to unload \"{lingId}\", this will interrupt all associated requests.",
+        "unloadAction": "Unload",
+        "selectVersion": "Select version to unload:",
+        "allVersions": "Unload all versions"
     },
     "toast": {
         "getLingsFailed": "Failed to get ling list",
@@ -126,6 +128,7 @@
         "installSuccess": "Ling installed successfully",
         "installFailed": "Ling install failed",
         "reloadSuccess": "Ling reloaded successfully",
-        "reloadFailed": "Ling reload failed"
+        "reloadFailed": "Ling reload failed",
+        "lingVersionUnloaded": "Version {version} unloaded successfully"
     }
 }

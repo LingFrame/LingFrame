@@ -110,6 +110,20 @@ public class LingController {
     }
 
     /**
+     * 按版本卸载单元
+     */
+    @DeleteMapping("/uninstall/{lingId}/{version}")
+    public ApiResponse<Void> uninstallVersion(@PathVariable String lingId, @PathVariable String version) {
+        try {
+            dashboardService.uninstallLing(lingId, version);
+            return ApiResponse.ok("版本 " + version + " 卸载成功", null);
+        } catch (Exception e) {
+            log.error("Uninstall failed for: {}:{}", lingId, version, e);
+            return ApiResponse.error("卸载特定版本失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 热重载单元 (开发模式)
      */
     @PostMapping("/{lingId}/reload")
