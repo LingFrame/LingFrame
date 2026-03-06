@@ -44,14 +44,14 @@ mvn spring-boot:run
 
 | 原则 | 说明 |
 |------|------|
-| **零信任** | 业务单元不能直接访问 DB/Redis，必须经过 Core 代理 |
+| **零信任** | 业务灵元不能直接访问 DB/Redis，必须经过 Core 代理 |
 | **微内核** | Core 只做调度仲裁，不包含业务逻辑 |
 | **契约优先** | 所有交互通过 `lingframe-api` 接口 |
 | **生态无关** | Core 是纯 Java，不依赖 Spring/ORM |
 
-### 单元职责
+### 灵元职责
 
-| 单元 | 职责 | 依赖规则 |
+| 灵元 | 职责 | 依赖规则 |
 |------|------|----------|
 | `lingframe-api` | 契约层 | 无外部依赖 |
 | `lingframe-core` | 治理内核 | **禁止**依赖 Spring |
@@ -80,7 +80,7 @@ mvn spring-boot:run
 
 ### 当前需要帮助的方向
 
-- ⏳ 单元测试补充
+- ⏳ 灵元测试补充
 - ⏳ 消息代理（Kafka/RabbitMQ）
 - ⏳ 文档完善
 
@@ -134,7 +134,7 @@ git push origin feature/your-feature
 
 ### 测试要求
 
-- 核心逻辑必须有单元测试
+- 核心逻辑必须有灵元测试
 - 测试类命名：`XxxTest.java`
 - 使用 JUnit 5 + Mockito
 

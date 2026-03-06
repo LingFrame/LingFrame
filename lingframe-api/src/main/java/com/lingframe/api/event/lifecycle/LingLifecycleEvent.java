@@ -4,7 +4,7 @@ import com.lingframe.api.event.AbstractLingEvent;
 import lombok.Getter;
 
 /**
- * 单元生命周期事件基类
+ * 灵元生命周期事件基类
  */
 @Getter
 public abstract class LingLifecycleEvent extends AbstractLingEvent {

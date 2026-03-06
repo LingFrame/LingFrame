@@ -24,7 +24,7 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("LingLifecycleManager 单元测试")
+@DisplayName("LingLifecycleManager 灵元测试")
 public class LingLifecycleManagerTest {
 
     private static final String Ling_ID = "test-ling";

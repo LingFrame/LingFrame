@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>LingFrame :: Example :: LINGCORE App</name>
-    <description>示例单元核心应用</description>
+    <description>示例灵元核心应用</description>
 
     <dependencies>
 

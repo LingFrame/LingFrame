@@ -21,11 +21,11 @@ import java.util.Set;
  *     ↓ parent
  * SharedApiClassLoader (共享 API 层)
  *     ↓ parent
- * LingClassLoader (单元实现层)
+ * LingClassLoader (灵元实现层)
  * </pre>
  * <p>
  * 配置 preload-api-jars 指定共享 API 路径，支持：
- * - JAR 文件、Maven 单元目录、JAR 目录、通配符模式
+ * - JAR 文件、Maven 灵元目录、JAR 目录、通配符模式
  */
 @Slf4j
 public class SharedApiManager {
@@ -83,7 +83,7 @@ public class SharedApiManager {
      * 支持:
      * - JAR 文件
      * - classes 目录 (直接包含 .class 文件)
-     * - Maven 单元目录 (包含 pom.xml 且有 target/classes)
+     * - Maven 灵元目录 (包含 pom.xml 且有 target/classes)
      * - JAR 目录 (包含多个 JAR，自动扫描所有 *.jar)
      * - 通配符模式 (如 libs/*-api.jar)
      */
@@ -114,7 +114,7 @@ public class SharedApiManager {
      * 加载目录（自动检测目录类型）
      */
     private void loadDirectory(File dir, SharedApiClassLoader sharedApiCL) {
-        // 1. 检查是否是 Maven 单元目录
+        // 1. 检查是否是 Maven 灵元目录
         File pomFile = new File(dir, "pom.xml");
         if (pomFile.exists()) {
             File classesDir = new File(dir, "target/classes");

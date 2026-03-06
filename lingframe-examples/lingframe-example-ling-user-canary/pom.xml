@@ -11,7 +11,7 @@
     <packaging>jar</packaging>
 
     <name>LingFrame :: Example :: User ling (Canary)</name>
-    <description>用户单元金丝雀版本 - 用于灰度发布测试</description>
+    <description>用户灵元金丝雀版本 - 用于灰度发布测试</description>
 
     <dependencies>
         <!-- 仅依赖 API -->
@@ -59,7 +59,7 @@
 
     <build>
         <plugins>
-            <!-- 打成可被加载的单元 JAR -->
+            <!-- 打成可被加载的灵元 JAR -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>

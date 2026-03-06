@@ -12,7 +12,7 @@ public interface CanaryConfigurable {
     /**
      * 设置金丝雀配置
      *
-     * @param lingId      单元ID
+     * @param lingId        灵元ID
      * @param percent       金丝雀流量百分比 (0-100)
      * @param canaryVersion 金丝雀版本号
      */
@@ -21,7 +21,7 @@ public interface CanaryConfigurable {
     /**
      * 获取金丝雀流量百分比
      *
-     * @param lingId 单元ID
+     * @param lingId 灵元ID
      * @return 百分比 (0 表示无金丝雀)
      */
     int getCanaryPercent(String lingId);
@@ -29,7 +29,7 @@ public interface CanaryConfigurable {
     /**
      * 获取金丝雀版本号
      *
-     * @param lingId 单元ID
+     * @param lingId 灵元ID
      * @return 版本号，如果没有则返回 null
      */
     default String getCanaryVersion(String lingId) {
@@ -39,7 +39,7 @@ public interface CanaryConfigurable {
     /**
      * 清除金丝雀配置
      *
-     * @param lingId 单元ID
+     * @param lingId 灵元ID
      */
     default void clearCanaryConfig(String lingId) {
         setCanaryConfig(lingId, 0, null);

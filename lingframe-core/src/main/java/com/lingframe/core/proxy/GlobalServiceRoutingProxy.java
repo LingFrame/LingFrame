@@ -16,8 +16,8 @@ import java.lang.reflect.Method;
  * <p>
  * 作用：
  * 1. 作为灵核端 @LingReference 注入的静态入口。
- * 2. 解决"鸡生蛋"问题：在单元还未启动时就能创建出代理对象。
- * 3. 动态路由：每次调用时，实时查找目标单元的最新版本。
+ * 2. 解决"鸡生蛋"问题：在灵元还未启动时就能创建出代理对象。
+ * 3. 动态路由：每次调用时，实时查找目标灵元的最新版本。
  * <p>
  * V0.3.0 修复：
  * - 不再持有 Class<?> 引用（改用 String interfaceName），防止 ClassLoader 泄漏
@@ -29,7 +29,7 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
 
     private final String callerLingId; // 通常是 "lingcore-app"
     private final String interfaceName; // 🔥 仅存类全限定名，不持有 Class 对象
-    private final String targetLingId; // 用户指定的单元ID (可选)
+    private final String targetLingId; // 用户指定的灵元ID (可选)
     private final LingRepository lingRepository;
     private final InvocationPipelineEngine pipelineEngine;
 
@@ -88,7 +88,7 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
             return targetLingId;
         }
 
-        // 遍历所有单元寻找实现
+        // 遍历所有灵元寻找实现
         for (LingRuntime runtime : lingRepository.getAllRuntimes()) {
             if (!runtime.isAvailable())
                 continue;
@@ -102,7 +102,7 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
                             return runtime.getLingId();
                         }
                     } catch (ClassNotFoundException ignored) {
-                        // 该单元没有此接口，继续搜索
+                        // 该灵元没有此接口，继续搜索
                     }
                 }
             } catch (Exception e) {

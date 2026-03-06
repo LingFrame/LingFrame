@@ -23,7 +23,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("GovernanceArbitrator 单元测试")
+@DisplayName("GovernanceArbitrator 灵元测试")
 class GovernanceArbitratorTest {
 
     @Mock

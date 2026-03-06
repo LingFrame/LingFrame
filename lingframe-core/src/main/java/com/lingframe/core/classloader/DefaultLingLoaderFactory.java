@@ -10,8 +10,8 @@ import java.net.MalformedURLException;
 import java.net.URL;
 
 /**
- * 默认单元加载器工厂
- * 职责：创建单元专用的 ClassLoader，三层类加载结构
+ * 默认灵元加载器工厂
+ * 职责：创建灵元专用的 ClassLoader，三层类加载结构
  * <p>
  * 类加载层级：
  *
@@ -20,7 +20,7 @@ import java.net.URL;
  *     ↓ parent
  * SharedApiClassLoader (共享 API 层)
  *     ↓ parent
- * LingClassLoader (单元实现层)
+ * LingClassLoader (灵元实现层)
  * </pre>
  */
 @Slf4j
@@ -31,10 +31,10 @@ public class DefaultLingLoaderFactory implements LingLoaderFactory {
         try {
             URL[] urls = resolveUrls(sourceFile);
 
-            // 确定单元 ClassLoader 的 parent
+            // 确定灵元 ClassLoader 的 parent
             ClassLoader parent = determineParent(hostClassLoader);
 
-            // ✅ 创建单元 ClassLoader
+            // ✅ 创建灵元 ClassLoader
             LingClassLoader lingCL = new LingClassLoader(lingId, urls, parent);
             log.debug("[{}] Creating LingClassLoader, parent={}", lingId, parent);
 
@@ -45,11 +45,11 @@ public class DefaultLingLoaderFactory implements LingLoaderFactory {
     }
 
     /**
-     * 确定单元 ClassLoader 的 parent
+     * 确定灵元 ClassLoader 的 parent
      * 如果启用了三层结构，使用 SharedApiClassLoader 作为 parent
      */
     private ClassLoader determineParent(ClassLoader hostClassLoader) {
-        // 三层结构：单元 CL -> SharedApi CL -> 灵核 CL
+        // 三层结构：灵元 CL -> SharedApi CL -> 灵核 CL
         return SharedApiClassLoader.getInstance(hostClassLoader);
     }
 

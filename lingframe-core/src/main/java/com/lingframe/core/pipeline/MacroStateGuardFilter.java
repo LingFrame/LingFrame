@@ -10,7 +10,7 @@ import com.lingframe.core.spi.LingInvocationFilter;
 
 /**
  * 宏观状态守卫 Filter。
- * 根据 RuntimeStatus 拒绝 INACTIVE / STOPPING / REMOVED 状态的单元请求。
+ * 根据 RuntimeStatus 拒绝 INACTIVE / STOPPING / REMOVED 状态的灵元请求。
  */
 public class MacroStateGuardFilter implements LingInvocationFilter {
     private final LingRepository lingRepository;

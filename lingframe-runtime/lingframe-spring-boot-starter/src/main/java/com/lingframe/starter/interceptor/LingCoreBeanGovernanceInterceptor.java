@@ -47,9 +47,9 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
             return invocation.proceed();
         }
 
-        // 获取调用方（当前单元ID）
+        // 获取调用方（当前灵元ID）
         String callerLingId = LingContextHolder.get();
-        // 如果没有单元上下文，说明是灵核内部调用
+        // 如果没有灵元上下文，说明是灵核内部调用
         if (callerLingId == null) {
             // 如果配置为不对灵核内部调用进行治理，直接放行
             if (!governInternalCalls) {

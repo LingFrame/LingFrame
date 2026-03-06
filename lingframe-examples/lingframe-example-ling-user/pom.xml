@@ -11,7 +11,7 @@
     <packaging>jar</packaging>
 
     <name>LingFrame :: Example :: User ling</name>
-    <description>示例业务单元（用户管理）</description>
+    <description>示例业务灵元（用户管理）</description>
 
     <dependencies>
         <!-- 仅依赖 API -->
@@ -59,7 +59,7 @@
 
     <build>
         <plugins>
-            <!-- 打成可被加载的单元 JAR -->
+            <!-- 打成可被加载的灵元 JAR -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>

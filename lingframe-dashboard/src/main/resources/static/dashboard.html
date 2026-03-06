@@ -56,8 +56,10 @@
                         <p class="text-base text-slate-400 mt-1">{{ modal.message }}</p>
                         <!-- 版本选择 (仅在卸载且支持多版本时显示) -->
                         <div v-if="modal.showVersionSelect && modal.versions && modal.versions.length > 0" class="mt-3">
-                            <label class="text-sm text-slate-500 block mb-1">{{ t('modal.selectVersion') || '选择要卸载的版本：' }}</label>
-                            <select v-model="modal.selectedVersion" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
+                            <label class="text-sm text-slate-500 block mb-1">{{ t('modal.selectVersion') || '选择要卸载的版本：'
+                                }}</label>
+                            <select v-model="modal.selectedVersion"
+                                class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
                                 <option value="">{{ t('modal.allVersions') || '全量卸载 (所有版本)' }}</option>
                                 <option v-for="v in modal.versions" :key="v" :value="v">{{ v }}</option>
                             </select>
@@ -147,7 +149,7 @@
                 </div>
                 <!-- 顶部工具栏右侧 -->
                 <div class="flex items-center gap-4">
-                    <!-- 上传单元按钮 -->
+                    <!-- 上传灵元按钮 -->
                     <button @click="openUploadModal"
                         class="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm transition-all shadow-lg hover:shadow-blue-500/20">
                         <i class="fa-solid fa-cloud-arrow-up"></i>
@@ -233,7 +235,7 @@
             <div class="flex-grow overflow-auto p-6">
                 <div class="content-grid grid grid-cols-12 gap-6 max-w-[1600px] mx-auto">
 
-                    <!-- 左列：单元列表 -->
+                    <!-- 左列：灵元列表 -->
                     <div class="col-span-12 lg:col-span-3">
                         <div class="card h-full relative">
                             <div class="card-header">
@@ -274,7 +276,7 @@
                                             </span>
                                         </div>
 
-                                        <!-- 单元操作按钮 (仅当选中且鼠标悬停时显示，或者一直显示简化版) -->
+                                        <!-- 灵元操作按钮 (仅当选中且鼠标悬停时显示，或者一直显示简化版) -->
                                         <div class="flex gap-1" v-if="activeId === p.lingId">
                                             <!-- 开发模式热重载 -->
                                             <button v-if="currentEnv === 'dev'" @click.stop="reloadLing(p.lingId)"
@@ -460,7 +462,7 @@
                     <!-- 右列：控制面板 -->
                     <div class="col-span-12 lg:col-span-3 space-y-6">
 
-                        <!-- 单元控制 -->
+                        <!-- 灵元控制 -->
                         <div class="card relative">
                             <div v-if="loading.status" class="loading-overlay">
                                 <div class="spinner"></div>
@@ -495,8 +497,7 @@
                                                 <i class="fa-solid fa-rotate"></i>
                                                 {{ t('control.reload') }}
                                             </button>
-                                            <button @click="requestUnload"
-                                                :disabled="activeLing?.status === 'UNLOADED'"
+                                            <button @click="requestUnload" :disabled="activeLing?.status === 'UNLOADED'"
                                                 :class="activeLing?.status === 'UNLOADED' ? 'bg-red-600' : 'bg-slate-700 hover:bg-slate-600'"
                                                 class="action-btn text-white text-sm">
                                                 <i class="fa-solid fa-power-off"></i>

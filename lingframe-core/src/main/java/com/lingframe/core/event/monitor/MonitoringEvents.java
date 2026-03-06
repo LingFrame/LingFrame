@@ -13,7 +13,7 @@ public class MonitoringEvents {
     @RequiredArgsConstructor
     public static class TraceLogEvent implements LingEvent {
         private final String traceId;
-        private final String lingId; // 当前单元
+        private final String lingId; // 当前灵元
         private final String action; // 操作描述 (如 "→ OrderService.create")
         private final String type; // IN (入站), OUT (出站/返回), ERROR
         private final int depth; // 调用深度

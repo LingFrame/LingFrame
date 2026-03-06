@@ -95,7 +95,7 @@ public class NativeLingFrame {
         HOST_CONTEXT = new CoreLingContext("lingcore-app", lingRepository, lingServiceRegistry, pipelineEngine,
                 permissionService, eventBus);
 
-        // 自动扫描单元
+        // 自动扫描灵元
         if (config.getLingRoots() != null || config.getLingHome() != null) {
             LingDiscoveryService discoveryService = new LingDiscoveryService(config, lifecycleEngine);
             log.info("Executing initial ling scan...");

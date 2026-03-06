@@ -1,8 +1,8 @@
-# 业务单元开发指南
+# 业务灵元开发指南
 
-本文档介绍如何开发 LingFrame 业务单元。
+本文档介绍如何开发 LingFrame 业务灵元。
 
-## 创建单元项目
+## 创建灵元项目
 
 ### 1. Maven 配置
 
@@ -31,7 +31,7 @@
 </project>
 ```
 
-### 2. 单元入口类
+### 2. 灵元入口类
 
 ```java
 package com.example.myling;
@@ -45,17 +45,17 @@ public class MyLing implements Ling {
 
     @Override
     public void onStart(LingContext context) {
-        System.out.println("单元启动: " + context.getLingId());
+        System.out.println("灵元启动: " + context.getLingId());
     }
 
     @Override
     public void onStop(LingContext context) {
-        System.out.println("单元停止: " + context.getLingId());
+        System.out.println("灵元停止: " + context.getLingId());
     }
 }
 ```
 
-### 3. 单元元数据
+### 3. 灵元元数据
 
 创建 `src/main/resources/ling.yml`：
 
@@ -64,7 +64,7 @@ public class MyLing implements Ling {
 id: my-ling
 version: 1.0.0
 provider: "My Company"
-description: "我的单元"
+description: "我的灵元"
 mainClass: "com.example.myling.MyLing"
 
 # 依赖声明（可选）
@@ -95,15 +95,15 @@ properties:
 
 使用 `@LingService` 注解暴露服务。
 
-**消费者驱动契约**：接口由消费者定义，生产者实现。例如 Order 单元定义 `UserQueryService`，User 单元实现它：
+**消费者驱动契约**：接口由消费者定义，生产者实现。例如 Order 灵元定义 `UserQueryService`，User 灵元实现它：
 
 ```java
-// ========== 消费者定义接口（在 order-api 单元中）==========
+// ========== 消费者定义接口（在 order-api 灵元中）==========
 public interface UserQueryService {
     Optional<UserDTO> findById(String userId);
 }
 
-// ========== 生产者实现接口（在 user-ling 单元中）==========
+// ========== 生产者实现接口（在 user-ling 灵元中）==========
 package com.example.user.service;
 
 import com.lingframe.api.annotation.Auditable;
@@ -149,7 +149,7 @@ public class UserAdminServiceImpl implements UserAdminService {
 
 例如：`user-ling:find_user`
 
-## 调用其他单元服务
+## 调用其他灵元服务
 
 LingFrame 提供三种服务调用方式，推荐优先级如下：
 
@@ -157,24 +157,24 @@ LingFrame 提供三种服务调用方式，推荐优先级如下：
 
 这是最接近 Spring 原生体验的调用方式。
 
-**消费者驱动契约**：Order 单元（消费者）定义它需要的接口，User/Payment 单元（生产者）实现：
+**消费者驱动契约**：Order 灵元（消费者）定义它需要的接口，User/Payment 灵元（生产者）实现：
 
 ```java
-// ========== 第1步：消费者定义接口（在 order-api 单元中）==========
+// ========== 第1步：消费者定义接口（在 order-api 灵元中）==========
 // 位置：order-api/src/main/java/com/example/order/api/
 
-// Order 单元定义它需要的用户查询能力
+// Order 灵元定义它需要的用户查询能力
 public interface UserQueryService {
     Optional<UserDTO> findById(String userId);
 }
 
-// Order 单元定义它需要的支付能力
+// Order 灵元定义它需要的支付能力
 public interface PaymentService {
     PaymentResult processPayment(String userId, BigDecimal amount);
 }
 
-// ========== 第2步：生产者实现接口（在各自单元中）==========
-// User 单元实现 Order 定义的 UserQueryService
+// ========== 第2步：生产者实现接口（在各自灵元中）==========
+// User 灵元实现 Order 定义的 UserQueryService
 // 位置：user-ling/src/main/java/.../UserQueryServiceImpl.java
 @Component
 public class UserQueryServiceImpl implements UserQueryService {
@@ -185,7 +185,7 @@ public class UserQueryServiceImpl implements UserQueryService {
     }
 }
 
-// Payment 单元实现 Order 定义的 PaymentService
+// Payment 灵元实现 Order 定义的 PaymentService
 // 位置：payment-ling/src/main/java/.../PaymentServiceImpl.java
 @Component
 public class PaymentServiceImpl implements PaymentService {
@@ -202,10 +202,10 @@ public class PaymentServiceImpl implements PaymentService {
 public class OrderService {
 
     @LingReference
-    private UserQueryService userQueryService;  // 自动注入，由 User 单元实现
+    private UserQueryService userQueryService;  // 自动注入，由 User 灵元实现
 
     @LingReference
-    private PaymentService paymentService;  // 自动注入，由 Payment 单元实现
+    private PaymentService paymentService;  // 自动注入，由 Payment 灵元实现
 
     public Order createOrder(String userId, List<Item> items) {
         // 直接调用，框架自动路由到生产者的实现
@@ -222,8 +222,8 @@ public class OrderService {
 
 **@LingReference 优点：**
 - 代码最简洁，接近 Spring 原生体验
-- 支持延迟绑定，单元未启动时也能创建代理
-- 自动路由到最新版本单元
+- 支持延迟绑定，灵元未启动时也能创建代理
+- 自动路由到最新版本灵元
 - 支持可选的 lingId 指定和超时配置
 - 通过 GlobalServiceRoutingProxy 实现智能路由
 
@@ -239,7 +239,7 @@ public class OrderService {
     private LingContext context;
 
     public Order createOrder(String userId, List<Item> items) {
-        // 获取消费者定义的接口的实现（由 User 单元提供）
+        // 获取消费者定义的接口的实现（由 User 灵元提供）
         Optional<UserQueryService> userQueryService = context.getService(UserQueryService.class);
         
         if (userQueryService.isEmpty()) {
@@ -378,9 +378,9 @@ lingframe:
 
 ## 框架治理能力
 
-以下能力由 **LingFrame 核心**提供，业务单元无需自行实现：
+以下能力由 **LingFrame 核心**提供，业务灵元无需自行实现：
 
-| 能力 | 说明 | 单元需要做什么 |
+| 能力 | 说明 | 灵元需要做什么 |
 |------|------|----------------|
 | 熔断 | 服务不可用时自动熔断 | 无需处理 |
 | 降级 | 熔断后返回降级响应 | 可选：提供 `@Fallback` 方法 |
@@ -389,13 +389,13 @@ lingframe:
 | 限流 | 请求频率限制 | 无需处理 |
 | 监控 | 调用链路追踪 | 无需处理 |
 
-**好处**：业务单元只需关注业务逻辑，治理策略可通过配置动态调整。
+**好处**：业务灵元只需关注业务逻辑，治理策略可通过配置动态调整。
 
 ## 最佳实践
 
 1. **消费者驱动契约**：消费者定义接口，生产者实现（详见 [共享 API 设计规范](shared-api-guidelines.md)）
 2. **服务调用优先级**：@LingReference > getService() > invoke()
-3. **依赖最小化**：单元只依赖 `lingframe-api`，不要依赖 `lingframe-core`
+3. **依赖最小化**：灵元只依赖 `lingframe-api`，不要依赖 `lingframe-core`
 4. **权限声明**：在 `ling.yml` 中声明所需权限
 5. **服务粒度**：一个 `@LingService` 对应一个业务操作
 6. **异常处理**：使用 `LingException` 及其子类
@@ -406,7 +406,7 @@ lingframe:
 
 ### ClassNotFoundException
 
-检查类加载器隔离，确保依赖的类在单元 JAR 中或父加载器可见。
+检查类加载器隔离，确保依赖的类在灵元 JAR 中或父加载器可见。
 
 ### 权限被拒绝
 
@@ -415,12 +415,12 @@ lingframe:
 
 ### @LingReference 注入失败
 
-1. 确保目标单元已启动并注册了对应的服务 Bean
+1. 确保目标灵元已启动并注册了对应的服务 Bean
 2. 检查接口类型是否匹配
-3. 如果指定了 lingId，确保单元ID正确
+3. 如果指定了 lingId，确保灵元ID正确
 
 ### 热重载不生效
 
 1. 确保配置了 `lingframe.dev-mode: true`
-2. 确保在 `Ling-roots` 中配置了单元的 target/classes 目录
+2. 确保在 `Ling-roots` 中配置了灵元的 target/classes 目录
 3. 重新编译后等待 500ms（防抖延迟）

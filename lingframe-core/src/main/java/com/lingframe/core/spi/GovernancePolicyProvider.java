@@ -19,7 +19,7 @@ public interface GovernancePolicyProvider {
     /**
      * 解析治理决策
      *
-     * @param runtime 当前单元运行时
+     * @param runtime 当前灵元运行时
      * @param method  目标方法
      * @param ctx     调用上下文
      * @return 决策结果，如果无法决策返回 null (责任链继续)

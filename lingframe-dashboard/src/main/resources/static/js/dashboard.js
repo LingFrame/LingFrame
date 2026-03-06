@@ -118,7 +118,7 @@ createApp({
             }
         };
 
-        // ==================== 单元操作 ====================
+        // ==================== 灵元操作 ====================
         const refreshLings = async () => {
             loading.lings = true;
             try {
@@ -144,7 +144,7 @@ createApp({
             Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
             lastAudit.value = null;
 
-            // 设置 IPC 目标为其他单元
+            // 设置 IPC 目标为其他灵元
             const otherLing = lings.value.find(p => p.lingId !== lingId && p.status === 'ACTIVE');
             if (otherLing) {
                 ipcTarget.value = otherLing.lingId;
@@ -215,7 +215,7 @@ createApp({
             if (modal.onConfirm) modal.onConfirm();
         };
 
-        // ==================== 上传单元 ====================
+        // ==================== 上传灵元 ====================
         const openUploadModal = () => {
             uploadModal.show = true;
             uploadModal.file = null;
@@ -328,10 +328,10 @@ createApp({
                     }
 
                     await api.delete(url);
-                    
+
                     if (modal.selectedVersion && modal.versions.length > 1) {
-                         showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`, 'success');
-                         refreshLings();
+                        showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`, 'success');
+                        refreshLings();
                     } else {
                         lings.value = lings.value.filter(p => p.lingId !== lingId);
                         if (activeId.value === lingId) {

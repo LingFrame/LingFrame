@@ -165,7 +165,7 @@ public class DefaultPermissionService implements PermissionService {
     }
 
     /**
-     * 清理单元的权限数据
+     * 清理灵元的权限数据
      */
     @Override
     public void removeLing(String lingId) {

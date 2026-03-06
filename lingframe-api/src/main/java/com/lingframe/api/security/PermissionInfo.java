@@ -7,7 +7,7 @@ import java.util.Optional;
 /**
  * 权限信息记录
  * <p>
- * 描述一个单元获得的某项能力权限的详细信息。
+ * 描述一个灵元获得的某项能力权限的详细信息。
  * 用于替代 PermissionService.getPermission() 的 Object 返回类型。
  * </p>
  *
@@ -28,7 +28,7 @@ public class PermissionInfo implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
-     * 单元 ID
+     * 灵元 ID
      */
     private String lingId;
 
@@ -78,7 +78,7 @@ public class PermissionInfo implements Serializable {
      * 创建一个有过期时间的权限信息
      */
     public static PermissionInfo withExpiry(String lingId, String capability, AccessType accessType,
-                                            Instant expiresAt, String source) {
+            Instant expiresAt, String source) {
         return PermissionInfo.builder()
                 .lingId(lingId)
                 .capability(capability)

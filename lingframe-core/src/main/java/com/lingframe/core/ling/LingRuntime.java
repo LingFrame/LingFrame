@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
- * 单元运行时（V0.3.0 聚合根纯化版）
+ * 灵元运行时（V0.3.0 聚合根纯化版）
  * 仅作为状态、数据和多版本实例池的宿主，剥离了生命周期、调用和路由等重度行为。
  */
 @ToString

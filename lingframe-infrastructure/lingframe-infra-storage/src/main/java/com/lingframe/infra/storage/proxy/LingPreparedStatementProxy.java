@@ -78,7 +78,7 @@ public class LingPreparedStatementProxy implements PreparedStatement {
 
     // --- 核心鉴权逻辑 ---
     private void checkPermission() throws SQLException {
-        // 1. 获取当前调用者（业务单元ID）
+        // 1. 获取当前调用者（业务灵元ID）
         // 这里依赖我们在 Runtime 层实现的 ThreadLocal Holder
         String callerLingId = LingContextHolder.get();
         if (callerLingId == null) {

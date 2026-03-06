@@ -3,9 +3,9 @@ package com.lingframe.core.exception;
 import com.lingframe.api.exception.LingException;
 
 /**
- * 单元运行时异常
+ * 灵元运行时异常
  * <p>
- * 用于单元执行过程中发生的错误
+ * 用于灵元执行过程中发生的错误
  */
 public class LingRuntimeException extends LingException {
 

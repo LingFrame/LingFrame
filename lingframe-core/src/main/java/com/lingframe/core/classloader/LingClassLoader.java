@@ -14,9 +14,9 @@ import java.util.zip.ZipFile;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * 单元类加载器
+ * 灵元类加载器
  * 特性：
- * 1. Child-First (优先加载单元内部类)
+ * 1. Child-First (优先加载灵元内部类)
  * 2. 强制委派白名单 (Core API 必须走父加载器)
  * 3. 资源加载 Child-First (防止读取到灵核的配置)
  * 4. 安全关闭 (防止关闭后继续使用)
@@ -324,7 +324,7 @@ public class LingClassLoader extends URLClassLoader {
     }
 
     /**
-     * 获取单元 ID
+     * 获取灵元 ID
      */
     public String getLingId() {
         return lingId;

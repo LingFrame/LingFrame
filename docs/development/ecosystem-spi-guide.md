@@ -51,7 +51,7 @@ public class TraceLingInvocationFilter implements LingInvocationFilter {
 
 ---
 
-## 2. 导出单元服务点 (`ServiceExporter`)
+## 2. 导出灵元服务点 (`ServiceExporter`)
 
 当您的 Spring 宿主应用需要感知内部沙箱运行的各个 Lings 对外暴露出新的扩展能力或服务点时（例如将这些微服务主动上发注册登记至诸如 Consul 或 Nacos 等远端注册中心），使用 `ServiceExporter` 这是针对微内核生命周期广播监听的标准入口。
 

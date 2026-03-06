@@ -20,7 +20,7 @@
 
 **目标**：验证 JVM 内治理的可行性
 
-- ✅ 单元生命周期管理
+- ✅ 灵元生命周期管理
 - ✅ Child-First 类加载隔离
 - ✅ Spring 父子上下文隔离
 - ✅ 三层 ClassLoader 架构（SharedApiClassLoader）
@@ -34,8 +34,8 @@
 
 **目标**：可视化操作入口
 
-- ✅ Dashboard 单元管理
-- ✅ 单元状态控制（启动/停止/热重载）
+- ✅ Dashboard 灵元管理
+- ✅ 灵元状态控制（启动/停止/热重载）
 - ✅ 权限动态调整
 - ✅ 灰度发布配置
 - ⏳ Dashboard UI 打磨
@@ -68,9 +68,9 @@
 - JVM 各项指标（GC、堆、线程）
 - 系统负载
 
-### 单元指标
-- 各单元调用次数、成功率、耗时
-- 单元资源占用
+### 灵元指标
+- 各灵元调用次数、成功率、耗时
+- 灵元资源占用
 - 异常统计
 
 ### 技术方案
@@ -86,7 +86,7 @@
 
 ### 已实现
 - ✅ 生态级扩展 SPI（LingInvocationFilter、ServiceExporter、LingContextCustomizer、LingDeployService 等外围胶水层）
-- ✅ 开发体验增强（devMode 下单元安装后自动激活）
+- ✅ 开发体验增强（devMode 下灵元安装后自动激活）
 
 ### 待实现
 - ⏳ 消息代理（Kafka / RabbitMQ）

@@ -9,7 +9,7 @@ import java.util.Map;
  * 调用上下文：Pipeline 全链路的唯一"通行证"
  * ⚠️【高危警告：防止 ClassLoader 内存泄漏】⚠️
  * 本对象通过 ThreadLocal 对象池复用，在宿主线程中长久存活。
- * 【铁律】所有字段必须是 JDK 基础类型。绝对禁止持有由单元 ClassLoader 加载的对象引用！
+ * 【铁律】所有字段必须是 JDK 基础类型。绝对禁止持有由灵元 ClassLoader 加载的对象引用！
  */
 @Data
 public class InvocationContext {

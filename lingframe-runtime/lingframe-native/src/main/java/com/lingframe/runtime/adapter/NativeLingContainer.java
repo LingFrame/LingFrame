@@ -23,7 +23,7 @@ import java.util.jar.JarFile;
 import java.util.stream.Stream;
 
 /**
- * 纯 Java 单元容器
+ * 纯 Java 灵元容器
  * 不依赖 Spring，直接反射调用生命周期方法
  */
 @Slf4j
@@ -52,7 +52,7 @@ public class NativeLingContainer implements LingContainer {
                 throw new InvalidArgumentException("mainClass",
                         "Native ling main class must implement Ling: " + mainClass.getName());
             }
-            // 实例化单元入口类并放入单例池
+            // 实例化灵元入口类并放入单例池
             this.lingInstance = (Ling) mainClass.getDeclaredConstructor().newInstance();
             this.singletons.put(mainClass, lingInstance);
         } catch (Exception e) {
@@ -69,7 +69,7 @@ public class NativeLingContainer implements LingContainer {
             t.setContextClassLoader(classLoader);
             log.info("Starting Native ling: {}", context.getLingId());
 
-            // 核心：调用单元的 onStart
+            // 核心：调用灵元的 onStart
             lingInstance.onStart(context);
             this.active = true;
 
@@ -203,7 +203,7 @@ public class NativeLingContainer implements LingContainer {
                 return Optional.empty();
             return Optional.of(classLoader.loadClass(className));
         } catch (Throwable e) {
-            // 忽略 NoClassDefFoundError 等，因为单元可能依赖了 provided 的库但还没加载
+            // 忽略 NoClassDefFoundError 等，因为灵元可能依赖了 provided 的库但还没加载
             return Optional.empty();
         }
     }
@@ -215,7 +215,7 @@ public class NativeLingContainer implements LingContainer {
 
     @Override
     public <T> T getBean(Class<T> type) {
-        // Native 容器没有 IOC 容器，只支持返回单元主类实例
+        // Native 容器没有 IOC 容器，只支持返回灵元主类实例
         if (type.isInstance(lingInstance)) {
             return type.cast(lingInstance);
         }

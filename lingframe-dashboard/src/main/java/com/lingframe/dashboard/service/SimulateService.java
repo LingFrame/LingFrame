@@ -87,7 +87,7 @@ public class SimulateService {
         InvocationContext ctx = InvocationContext.obtain();
         ctx.setTraceId(traceId);
         ctx.setTargetLingId(lingId); // Set via setTargetLingId since setLingId is deprecated
-        ctx.setCallerLingId(lingId); // 模拟该单元作为调用方
+        ctx.setCallerLingId(lingId); // 模拟该灵元作为调用方
         ctx.setResourceType(mapResourceType(resourceType));
         ctx.setResourceId("simulate:" + resourceType);
         ctx.setOperation("simulate_" + resourceType);
@@ -263,7 +263,7 @@ public class SimulateService {
         }
 
         if (!runtime.isAvailable()) {
-            throw new ServiceUnavailableException(lingId, "单元未激活");
+            throw new ServiceUnavailableException(lingId, "灵元未激活");
         }
 
         List<LingInstance> instances = runtime.getInstancePool().getActiveInstances();
@@ -336,7 +336,7 @@ public class SimulateService {
         }
 
         if (!runtime.isAvailable()) {
-            throw new ServiceUnavailableException(lingId, "单元未激活");
+            throw new ServiceUnavailableException(lingId, "灵元未激活");
         }
 
         String traceId = generateTraceId();
@@ -348,7 +348,7 @@ public class SimulateService {
         boolean devBypass = false;
 
         try {
-            // 1. 获取单元类加载器
+            // 1. 获取灵元类加载器
             ClassLoader lingLoader = runtime.getInstancePool().getDefault()
                     .getContainer().getClassLoader();
 
@@ -357,7 +357,7 @@ public class SimulateService {
             // 简化处理：假设是无参方法，或仅根据名称匹配（生产环境应支持参数签名）
             Method targetMethod = findMethodByName(targetClass, methodName);
 
-            // 3. 构建上下文 - callerLingId 设为被测单元，这样权限检查针对正确的主体
+            // 3. 构建上下文 - callerLingId 设为被测灵元，这样权限检查针对正确的主体
             // 🔥 从注解读取权限声明并设置 ruleSource
             RequiresPermission annotation = targetMethod.getAnnotation(RequiresPermission.class);
             String methodRuleSource;
@@ -375,7 +375,7 @@ public class SimulateService {
             ctx = InvocationContext.obtain();
             ctx.setTraceId(traceId);
             ctx.setTargetLingId(lingId);
-            ctx.setCallerLingId(lingId); // 模拟单元自己调用自己的方法
+            ctx.setCallerLingId(lingId); // 模拟灵元自己调用自己的方法
             ctx.setResourceType("METHOD");
             ctx.setResourceId(className + "#" + methodName);
             ctx.setOperation(methodName);

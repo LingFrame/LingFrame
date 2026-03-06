@@ -4,7 +4,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 /**
- * 单元运行时配置
+ * 灵元运行时配置
  */
 @Getter
 @Builder
@@ -90,9 +90,9 @@ public class LingRuntimeConfig {
     public static LingRuntimeConfig development() {
         return LingRuntimeConfig.builder()
                 .maxHistorySnapshots(10)
-                .defaultTimeoutMs(30000)  // 30秒，方便调试
+                .defaultTimeoutMs(30000) // 30秒，方便调试
                 .bulkheadMaxConcurrent(100)
-                .forceCleanupDelaySeconds(5)  // 快速清理
+                .forceCleanupDelaySeconds(5) // 快速清理
                 .build();
     }
 
@@ -100,7 +100,6 @@ public class LingRuntimeConfig {
     public String toString() {
         return String.format(
                 "LingRuntimeConfig{maxHistory=%d, timeout=%dms, bulkhead=%d}",
-                maxHistorySnapshots, defaultTimeoutMs, bulkheadMaxConcurrent
-        );
+                maxHistorySnapshots, defaultTimeoutMs, bulkheadMaxConcurrent);
     }
 }

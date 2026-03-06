@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("LingClassLoader 单元测试")
+@DisplayName("LingClassLoader 灵元测试")
 class LingClassLoaderTest {
 
     @Nested
@@ -23,13 +23,13 @@ class LingClassLoaderTest {
     class IsolationTests {
 
         @Test
-        @DisplayName("不同单元之间应隔离类加载")
+        @DisplayName("不同灵元之间应隔离类加载")
         void testIsolation() {
 
-            try (LingClassLoader pc1 = new LingClassLoader("Ling-1", new URL[]{},
+            try (LingClassLoader pc1 = new LingClassLoader("Ling-1", new URL[] {},
                     ClassLoader.getSystemClassLoader());
-                 LingClassLoader pc2 = new LingClassLoader("Ling-2", new URL[]{},
-                         ClassLoader.getSystemClassLoader())) {
+                    LingClassLoader pc2 = new LingClassLoader("Ling-2", new URL[] {},
+                            ClassLoader.getSystemClassLoader())) {
                 try {
                     // 尝试加载不存在的类应该抛出 ClassNotFoundException
                     pc1.loadClass("com.example.NonExistentClass");
@@ -50,7 +50,7 @@ class LingClassLoaderTest {
         @Test
         @DisplayName("关闭后不应能加载类或资源")
         void testClosedState() throws Exception {
-            LingClassLoader pcl = new LingClassLoader("Ling-closed", new URL[]{},
+            LingClassLoader pcl = new LingClassLoader("Ling-closed", new URL[] {},
                     ClassLoader.getSystemClassLoader());
             pcl.close();
             assertTrue(pcl.isClosed());

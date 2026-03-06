@@ -27,7 +27,7 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT) // 🔥 设置宽松模式
-@DisplayName("LingInstance 单元测试")
+@DisplayName("LingInstance 灵元测试")
 public class LingInstanceTest {
 
     @Mock

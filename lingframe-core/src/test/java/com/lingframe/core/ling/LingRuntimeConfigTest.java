@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("LingRuntimeConfig 单元测试")
+@DisplayName("LingRuntimeConfig 灵元测试")
 public class LingRuntimeConfigTest {
 
     @Nested

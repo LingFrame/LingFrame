@@ -17,21 +17,21 @@ import java.util.jar.JarFile;
 
 /**
  * 共享 API ClassLoader
- * 职责：作为灵核 ClassLoader 和单元 ClassLoader 之间的中间层，
- * 加载各单元共享的 API 包（接口 + DTO），实现跨单元类共享
+ * 职责：作为灵核 ClassLoader 和灵元 ClassLoader 之间的中间层，
+ * 加载各灵元共享的 API 包（接口 + DTO），实现跨灵元类共享
  * <p>
  * 类加载层级：
  * 
  * <pre>
  * 灵核 ClassLoader (JDK, Spring, lingframe-api, 灵核业务)
  *         ↓ parent
- * SharedApiClassLoader (各单元的 -api.jar)
+ * SharedApiClassLoader (各灵元的 -api.jar)
  *         ↓ parent
- * LingClassLoader (各单元的实现)
+ * LingClassLoader (各灵元的实现)
  * </pre>
  * <p>
  * 安全设计：
- * 1. 只有灵核/框架可以添加 API JAR，单元不能自行添加
+ * 1. 只有灵核/框架可以添加 API JAR，灵元不能自行添加
  * 2. 加载前检查类是否已存在，防止覆盖
  * 3. 记录已加载的 API JAR，防止重复加载
  */

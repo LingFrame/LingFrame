@@ -33,7 +33,7 @@ import java.util.HashMap;
 
 /**
  * 统一 Web 层治理过滤器
- * 处理灵核和单元 Controller 的 HTTP 请求
+ * 处理灵核和灵元 Controller 的 HTTP 请求
  * 通过 GovernanceKernel.invoke() 统一执行权限检查、审计和追踪
  */
 @Slf4j
@@ -61,7 +61,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             return;
         }
 
-        // 2. 判断是单元请求还是灵核请求
+        // 2. 判断是灵元请求还是灵核请求
         WebInterfaceMetadata lingMeta = webInterfaceManager.getMetadata(handlerMethod);
         boolean isLingRequest = (lingMeta != null);
 
@@ -74,14 +74,14 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         // 3. 确定 lingId
         String lingId = isLingRequest ? lingMeta.getLingId() : HOST_Ling_ID;
 
-        // 4. ClassLoader 切换（仅单元请求）
+        // 4. ClassLoader 切换（仅灵元请求）
         ClassLoader originalCL = null;
         if (isLingRequest) {
             originalCL = Thread.currentThread().getContextClassLoader();
             Thread.currentThread().setContextClassLoader(lingMeta.getClassLoader());
         }
 
-        // 5. 设置单元上下文
+        // 5. 设置灵元上下文
         LingContextHolder.set(lingId);
 
         try {
@@ -89,7 +89,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             Method method = handlerMethod.getMethod();
             InvocationContext ctx = buildInvocationContext(request, method, lingId, lingMeta);
 
-            // 7. 获取 LingRuntime（单元请求时）
+            // 7. 获取 LingRuntime（灵元请求时）
             if (ctx.getRequiredPermission() != null && !ctx.getRequiredPermission().isEmpty()) {
                 boolean allowed = permissionService.isAllowed(
                         "http-gateway",
@@ -114,7 +114,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             if (originalCL != null) {
                 Thread.currentThread().setContextClassLoader(originalCL);
             }
-            // 清理单元上下文
+            // 清理灵元上下文
             LingContextHolder.clear();
         }
     }

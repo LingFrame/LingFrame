@@ -26,7 +26,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("InstancePool 单元测试")
+@DisplayName("InstancePool 灵元测试")
 public class InstancePoolTest {
 
     private static final String Ling_ID = "test-ling";

@@ -32,7 +32,7 @@ public class LingController {
             return ApiResponse.ok(dashboardService.getAllLingInfos());
         } catch (Exception e) {
             log.error("Failed to list Lings", e);
-            return ApiResponse.error("获取单元列表失败: " + e.getMessage());
+            return ApiResponse.error("获取灵元列表失败: " + e.getMessage());
         }
     }
 
@@ -41,12 +41,12 @@ public class LingController {
         try {
             LingInfoDTO info = dashboardService.getLingInfo(lingId);
             if (info == null) {
-                return ApiResponse.error("单元不存在: " + lingId);
+                return ApiResponse.error("灵元不存在: " + lingId);
             }
             return ApiResponse.ok(info);
         } catch (Exception e) {
             log.error("Failed to get ling: {}", lingId, e);
-            return ApiResponse.error("获取单元失败: " + e.getMessage());
+            return ApiResponse.error("获取灵元失败: " + e.getMessage());
         }
     }
 
@@ -64,7 +64,7 @@ public class LingController {
     }
 
     /**
-     * 安装/更新单元 (上传 JAR 包)
+     * 安装/更新灵元 (上传 JAR 包)
      */
     @PostMapping("/install")
     public ApiResponse<LingInfoDTO> install(@RequestParam("file") MultipartFile file) {
@@ -85,7 +85,7 @@ public class LingController {
             File targetFile = new File(lingDir, originalFilename);
             log.info("Saving uploaded ling to: {}", targetFile.getAbsolutePath());
             file.transferTo(targetFile);
-            // 安装单元
+            // 安装灵元
             LingInfoDTO info = dashboardService.installLing(targetFile);
 
             return ApiResponse.ok("安装成功", info);
@@ -96,7 +96,7 @@ public class LingController {
     }
 
     /**
-     * 卸载单元
+     * 卸载灵元
      */
     @DeleteMapping("/uninstall/{lingId}")
     public ApiResponse<Void> uninstall(@PathVariable String lingId) {
@@ -110,7 +110,7 @@ public class LingController {
     }
 
     /**
-     * 按版本卸载单元
+     * 按版本卸载灵元
      */
     @DeleteMapping("/uninstall/{lingId}/{version}")
     public ApiResponse<Void> uninstallVersion(@PathVariable String lingId, @PathVariable String version) {
@@ -124,7 +124,7 @@ public class LingController {
     }
 
     /**
-     * 热重载单元 (开发模式)
+     * 热重载灵元 (开发模式)
      */
     @PostMapping("/{lingId}/reload")
     public ApiResponse<LingInfoDTO> reload(@PathVariable String lingId) {

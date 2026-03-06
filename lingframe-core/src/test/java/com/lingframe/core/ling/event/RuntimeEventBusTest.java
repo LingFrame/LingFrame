@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("RuntimeEventBus 单元测试")
+@DisplayName("RuntimeEventBus 灵元测试")
 public class RuntimeEventBusTest {
 
     private RuntimeEventBus eventBus;
@@ -71,8 +71,8 @@ public class RuntimeEventBusTest {
         void unsubscribedShouldNotReceive() {
             AtomicInteger count = new AtomicInteger(0);
 
-            RuntimeEventBus.Subscription subscription =
-                    eventBus.subscribe(RuntimeEvent.InstanceUpgrading.class, e -> count.incrementAndGet());
+            RuntimeEventBus.Subscription subscription = eventBus.subscribe(RuntimeEvent.InstanceUpgrading.class,
+                    e -> count.incrementAndGet());
 
             eventBus.publish(new RuntimeEvent.InstanceUpgrading("test-ling", "1.0.0"));
             assertEquals(1, count.get());
@@ -98,8 +98,7 @@ public class RuntimeEventBusTest {
             });
             eventBus.subscribe(RuntimeEvent.InstanceUpgrading.class, e -> count.incrementAndGet());
 
-            assertDoesNotThrow(() ->
-                    eventBus.publish(new RuntimeEvent.InstanceUpgrading("test-ling", "1.0.0")));
+            assertDoesNotThrow(() -> eventBus.publish(new RuntimeEvent.InstanceUpgrading("test-ling", "1.0.0")));
 
             assertEquals(1, count.get());
         }

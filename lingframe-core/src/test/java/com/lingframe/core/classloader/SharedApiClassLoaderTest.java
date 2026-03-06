@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("SharedApiClassLoader 单元测试")
+@DisplayName("SharedApiClassLoader 灵元测试")
 class SharedApiClassLoaderTest {
 
     @TempDir

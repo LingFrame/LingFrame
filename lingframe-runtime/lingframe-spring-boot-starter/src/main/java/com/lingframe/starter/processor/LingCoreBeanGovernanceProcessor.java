@@ -195,7 +195,7 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
             return false;
         }
 
-        // 3. 排除已经有 @LingReference 注解的字段的 Bean（这些是单元内部的）
+        // 3. 排除已经有 @LingReference 注解的字段的 Bean（这些是灵元内部的）
         if (hasLingReference(bean.getClass())) {
             return false;
         }

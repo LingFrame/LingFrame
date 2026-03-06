@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("LocalGovernanceRegistry 单元测试")
+@DisplayName("LocalGovernanceRegistry 灵元测试")
 class LocalGovernanceRegistryTest {
 
     @TempDir

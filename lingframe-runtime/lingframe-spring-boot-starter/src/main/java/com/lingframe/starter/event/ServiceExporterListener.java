@@ -15,8 +15,8 @@ import java.util.List;
 /**
  * 外骨骼服务暴露监听器
  * <p>
- * 监听底层 Ling 单元的启停事件。当 Ling 启动成功时，
- * 获取该单元暴露的服务，派发至 Nacos 等对应的第三方注册中心。
+ * 监听底层 Ling 灵元的启停事件。当 Ling 启动成功时，
+ * 获取该灵元暴露的服务，派发至 Nacos 等对应的第三方注册中心。
  */
 @Slf4j
 public class ServiceExporterListener {

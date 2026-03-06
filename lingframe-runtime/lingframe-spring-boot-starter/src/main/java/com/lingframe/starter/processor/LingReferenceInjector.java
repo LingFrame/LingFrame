@@ -16,7 +16,7 @@ import java.lang.reflect.Field;
 @Slf4j
 public class LingReferenceInjector implements BeanPostProcessor, ApplicationContextAware {
 
-    private final String currentLingId; // 记录当前环境的单元ID
+    private final String currentLingId; // 记录当前环境的灵元ID
     private ApplicationContext applicationContext;
     private LingContext lingContext; // 懒加载
 
@@ -24,7 +24,7 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
         this.currentLingId = currentLingId;
     }
 
-    // 兼容旧构造函数（单元内部使用）
+    // 兼容旧构造函数（灵元内部使用）
     public LingReferenceInjector(String currentLingId, LingContext lingContext) {
         this.currentLingId = currentLingId;
         this.lingContext = lingContext;

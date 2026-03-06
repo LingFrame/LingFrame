@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * 职责：
  * 1. 限流（RateLimiter）—— 拒绝超过速率限制的请求
- * 2. 熔断（CircuitBreaker）—— 根据失败率自动隔离故障单元
+ * 2. 熔断（CircuitBreaker）—— 根据失败率自动隔离故障灵元
  * <p>
  * 弹性组件按 lingId 懒创建，参数来自 {@link LingRuntimeConfig}。
  */
@@ -123,7 +123,7 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
     }
 
     /**
-     * 单元卸载时驱逐弹性实例，防止内存泄漏
+     * 灵元卸载时驱逐弹性实例，防止内存泄漏
      */
     public void evict(String lingId) {
         breakers.remove(lingId);

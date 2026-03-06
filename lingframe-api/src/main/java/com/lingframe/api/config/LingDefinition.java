@@ -23,7 +23,7 @@ public class LingDefinition implements Serializable {
     private String description;
 
     // === 运行时配置 ===
-    private String mainClass; // 单元入口类全限定名
+    private String mainClass; // 灵元入口类全限定名
 
     // === 治理配置 ===
     private GovernancePolicy governance = new GovernancePolicy();

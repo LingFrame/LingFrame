@@ -27,9 +27,9 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Web 接口动态管理器（原生注册版）
  * 职责：
- * 1. 将单元 Controller 方法直接注册到灵核 Spring MVC
+ * 1. 将灵元 Controller 方法直接注册到灵核 Spring MVC
  * 2. 维护 HandlerMethod -> Metadata 映射，供 Interceptor 查询
- * 3. 单元卸载时彻底清理路由，防止内存泄漏
+ * 3. 灵元卸载时彻底清理路由，防止内存泄漏
  */
 @Slf4j
 public class WebInterfaceManager {
@@ -57,7 +57,7 @@ public class WebInterfaceManager {
     }
 
     /**
-     * 注册单元 Controller 方法到 Spring MVC
+     * 注册灵元 Controller 方法到 Spring MVC
      */
     public void register(WebInterfaceMetadata metadata) {
         if (hostMapping == null || hostContext == null) {
@@ -85,7 +85,7 @@ public class WebInterfaceManager {
         }
 
         try {
-            // 1. 将单元 Bean 注册到灵核 Context (供 SpringDoc 发现)
+            // 1. 将灵元 Bean 注册到灵核 Context (供 SpringDoc 发现)
             // 使用 BeanDefinition + InstanceSupplier 确保 SpringDoc 能读取到注解元数据
             // 关键：必须使用原始类 (Target Class) 而不是代理类，否则注解可能丢失
             Class<?> userClass = AopUtils.getTargetClass(metadata.getTargetBean());
@@ -112,7 +112,7 @@ public class WebInterfaceManager {
                     .methods(RequestMethod.valueOf(metadata.getHttpMethod()))
                     .build();
 
-            // 3. 直接注册单元 Controller Bean 和 Method 到 Spring MVC
+            // 3. 直接注册灵元 Controller Bean 和 Method 到 Spring MVC
             // 关键修复：使用 Bean Name (String) 注册，而不是实例。
             // 这样 SpringDoc 在扫描时会通过 Bean Name 找到我们在上面注册的 GenericBeanDefinition，
             // 进而读取到 setBeanClass(userClass) 设置的原始类，从而正确解析注解。
@@ -131,7 +131,7 @@ public class WebInterfaceManager {
     }
 
     /**
-     * 注销单元的所有接口或特定版本的接口
+     * 注销灵元的所有接口或特定版本的接口
      */
     public void unregister(String lingId, ClassLoader targetLoader) {
         if (hostMapping == null)
@@ -295,7 +295,7 @@ public class WebInterfaceManager {
     }
 
     /**
-     * 反射清理 Adapter 的单元相关缓存
+     * 反射清理 Adapter 的灵元相关缓存
      */
     private void clearAdapterCaches(ClassLoader lingLoader) {
         try {

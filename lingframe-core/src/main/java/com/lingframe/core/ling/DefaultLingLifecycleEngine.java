@@ -23,7 +23,7 @@ import java.io.File;
 import java.util.*;
 
 /**
- * 单元生命周期引擎 (V0.3.0)
+ * 灵元生命周期引擎 (V0.3.0)
  * 将生命周期逻辑（装载、隔离、权限申请）从原来的 LingManager 中剥离。
  */
 @Slf4j

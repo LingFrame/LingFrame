@@ -17,7 +17,7 @@ import java.util.Enumeration;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * BasicResourceGuard 单元测试
+ * BasicResourceGuard 灵元测试
  */
 @DisplayName("BasicResourceGuard 测试")
 class BasicResourceGuardTest {
@@ -60,7 +60,7 @@ class BasicResourceGuardTest {
         }
 
         @Test
-        @DisplayName("应该反注册由单元 ClassLoader 加载的 JDBC 驱动")
+        @DisplayName("应该反注册由灵元 ClassLoader 加载的 JDBC 驱动")
         void shouldDeregisterJdbcDrivers() throws SQLException {
             // 创建测试用 ClassLoader
             URLClassLoader testLoader = new URLClassLoader(new URL[0], getClass().getClassLoader());

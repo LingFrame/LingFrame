@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * 单元运行时信息转换为 DTO
+ * 灵元运行时信息转换为 DTO
  */
 public class LingInfoConverter {
 

@@ -55,15 +55,15 @@ public final class Capabilities {
 
     // ==================== IPC ====================
     /**
-     * 跨单元调用
+     * 跨灵元调用
      */
     public static final String IPC_INVOKE = "ipc:invoke";
 
-    // ==================== 单元管理 ====================
+    // ==================== 灵元管理 ====================
     /**
-     * 单元启用权限
+     * 灵元启用权限
      * <p>
-     * 允许单元被启用和执行。所有活跃单元都应该拥有此权限。
+     * 允许灵元被启用和执行。所有活跃灵元都应该拥有此权限。
      * </p>
      */
     public static final String Ling_ENABLE = "Ling_ENABLE";

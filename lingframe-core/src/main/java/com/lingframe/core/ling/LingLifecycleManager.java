@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * 单元生命周期管理器
+ * 灵元生命周期管理器
  * 职责：实例的启动、停止、清理调度
  */
 @Slf4j
@@ -43,12 +43,12 @@ public class LingLifecycleManager {
     private final AtomicBoolean shutdown = new AtomicBoolean(false);
 
     public LingLifecycleManager(String lingId,
-                                  InstancePool instancePool,
-                                  RuntimeEventBus internalEventBus,
-                                  EventBus externalEventBus,
-                                  ScheduledExecutorService scheduler,
-                                  LingRuntimeConfig config,
-                                  ResourceGuard resourceGuard) {
+            InstancePool instancePool,
+            RuntimeEventBus internalEventBus,
+            EventBus externalEventBus,
+            ScheduledExecutorService scheduler,
+            LingRuntimeConfig config,
+            ResourceGuard resourceGuard) {
         this.lingId = lingId;
         this.instancePool = instancePool;
         this.internalEventBus = internalEventBus;

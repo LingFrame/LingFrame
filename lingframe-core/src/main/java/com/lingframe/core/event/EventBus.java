@@ -15,7 +15,7 @@ public class EventBus {
 
     private final Map<Class<? extends LingEvent>, List<ListenerWrapper>> listeners = new ConcurrentHashMap<>();
 
-    // 包装器，记录监听器归属的单元ID
+    // 包装器，记录监听器归属的灵元ID
     @Value
     public static class ListenerWrapper {
         String lingId;
@@ -39,7 +39,7 @@ public class EventBus {
     }
 
     /**
-     * 卸载单元时，强制移除该单元注册的所有监听器
+     * 卸载灵元时，强制移除该灵元注册的所有监听器
      */
     public void unsubscribeAll(String lingId) {
         log.info("Cleaning up event listeners for ling: {}", lingId);

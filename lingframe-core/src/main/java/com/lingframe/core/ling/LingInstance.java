@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 单元实例：代表一个特定版本的单元运行实体
+ * 灵元实例：代表一个特定版本的灵元运行实体
  * 在 V0.3.0 中已采用 FSM (StateMachine) 进行生命周期防篡改保护。
  */
 @Slf4j
@@ -24,7 +24,7 @@ public class LingInstance {
     @Getter
     private volatile LingContainer container;
 
-    // 单元完整定义 (包含治理配置、扩展参数等)
+    // 灵元完整定义 (包含治理配置、扩展参数等)
     // 🔥 非 final：destroy() 时必须置 null
     @Getter
     private volatile LingDefinition definition;

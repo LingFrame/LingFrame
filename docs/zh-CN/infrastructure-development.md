@@ -1,4 +1,4 @@
-# 基础设施单元开发指南
+# 基础设施灵元开发指南
 
 本文档介绍 LingFrame 三层架构中的**基础设施层**及其开发方式。
 
@@ -17,7 +17,7 @@
                              ▼
 ┌─────────────────────────────────────────────────────────┐
 │             Business Lings（业务层）                   │
-│              用户中心 · 订单服务 · 支付单元               │
+│              用户中心 · 订单服务 · 支付灵元               │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -28,7 +28,7 @@
 1. **封装底层能力**：数据库、缓存、消息队列等
 2. **细粒度权限拦截**：在 API 层面进行权限检查
 3. **审计上报**：将操作记录上报给 Core
-4. **对业务单元透明**：业务单元无感知地使用基础设施
+4. **对业务灵元透明**：业务灵元无感知地使用基础设施
 
 ## 已实现的基础设施代理
 
@@ -39,7 +39,7 @@
 #### 代理链结构
 
 ```
-业务单元调用 DataSource.getConnection()
+业务灵元调用 DataSource.getConnection()
     │
     ▼
 ┌─────────────────────────────────────┐
@@ -92,7 +92,7 @@ public class DataSourceWrapperProcessor implements BeanPostProcessor {
 public class LingPreparedStatementProxy implements PreparedStatement {
 
     private void checkPermission() throws SQLException {
-        // 1. 获取调用方单元ID
+        // 1. 获取调用方灵元ID
         String callerLingId = LingContextHolder.get();
         if (callerLingId == null) return;
 
@@ -147,7 +147,7 @@ private AccessType parseSqlForAccessType(String sql) {
 #### 代理链结构
 
 ```
-业务单元调用 cacheManager.getCache("users")
+业务灵元调用 cacheManager.getCache("users")
     │
     ▼
 ┌─────────────────────────────────────┐
@@ -163,7 +163,7 @@ private AccessType parseSqlForAccessType(String sql) {
 │ - 权限检查 + 审计上报                │
 └─────────────────────────────────────┘
 
-业务单元调用 redisTemplate.opsForValue().set(...)
+业务灵元调用 redisTemplate.opsForValue().set(...)
     │
     ▼
 ┌─────────────────────────────────────┐
@@ -236,7 +236,7 @@ public ValueWrapper get(@NonNull Object key) {
 
 ## 开发新的基础设施代理
 
-### 1. 创建单元
+### 1. 创建灵元
 
 ```xml
 <project>
@@ -307,7 +307,7 @@ public class XxxWrapperProcessor implements BeanPostProcessor {
 
 基础设施代理需要定义清晰的能力标识（capability）：
 
-| 单元    | 能力标识          | 说明       |
+| 灵元    | 能力标识          | 说明       |
 | ------- | ----------------- | ---------- |
 | storage | `storage:sql`     | SQL 执行   |
 | cache   | `cache:redis`     | Redis 操作 |
@@ -315,7 +315,7 @@ public class XxxWrapperProcessor implements BeanPostProcessor {
 | message | `message:send`    | 发送消息   |
 | message | `message:consume` | 消费消息   |
 
-业务单元在 `ling.yml` 中声明所需能力：
+业务灵元在 `ling.yml` 中声明所需能力：
 
 ```yaml
 id: my-ling
@@ -330,11 +330,11 @@ governance:
       permissionId: "WRITE"
 ```
 
-## 与业务单元的关系
+## 与业务灵元的关系
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    业务单元                              │
+│                    业务灵元                              │
 │  userRepository.findById(id)                            │
 │         │                                               │
 │         │ (透明调用)                                     │
@@ -370,8 +370,8 @@ governance:
 
 ## 最佳实践
 
-1. **代理透明**：业务单元无需感知代理存在
-2. **能力标识规范**：使用 `单元:操作` 格式
+1. **代理透明**：业务灵元无需感知代理存在
+2. **能力标识规范**：使用 `灵元:操作` 格式
 3. **细粒度控制**：在最接近操作的地方拦截
 4. **异步审计**：审计不阻塞业务流程
 5. **缓存优化**：SQL 解析结果可缓存

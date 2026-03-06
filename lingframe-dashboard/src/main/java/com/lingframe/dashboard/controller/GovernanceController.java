@@ -37,7 +37,7 @@ public class GovernanceController {
     }
 
     /**
-     * 获取指定单元的治理策略
+     * 获取指定灵元的治理策略
      */
     @GetMapping("/{lingId}")
     public ApiResponse<GovernancePolicy> getPatch(@PathVariable String lingId) {

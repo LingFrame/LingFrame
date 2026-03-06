@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SmartServiceProxy implements InvocationHandler {
 
     private final String callerLingId; // 谁在调用
-    private final String targetLingId; // 目标单元 (仅存 ID 字符串)
+    private final String targetLingId; // 目标灵元 (仅存 ID 字符串)
 
     // 全局流水线引擎 (复用单例实例引用，无状态，不涉猎特定组件 ClassLoader)
     private final InvocationPipelineEngine pipelineEngine;

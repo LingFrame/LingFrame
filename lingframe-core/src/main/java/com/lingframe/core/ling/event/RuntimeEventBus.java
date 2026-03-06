@@ -8,7 +8,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 /**
- * 单元运行时内部事件总线
+ * 灵元运行时内部事件总线
  * 用于组件间解耦通信
  * <p>
  * 特点：

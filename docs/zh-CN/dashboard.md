@@ -1,18 +1,18 @@
 # Dashboard 可视化治理中心
 
-LingFrame Dashboard 是一个可选的高阶功能，提供可视化的单元管理和治理界面。
+LingFrame Dashboard 是一个可选的高阶功能，提供可视化的灵元管理和治理界面。
 
 ## 功能概览
 
 | 功能 | 说明 |
 |------|------|
-| **单元管理** | 列表、详情、安装、卸载、热重载 |
-| **状态控制** | 启动、停止、激活单元 |
-| **权限治理** | 动态调整单元资源权限（DB/Cache 读写） |
+| **灵元管理** | 列表、详情、安装、卸载、热重载 |
+| **状态控制** | 启动、停止、激活灵元 |
+| **权限治理** | 动态调整灵元资源权限（DB/Cache 读写） |
 | **灰度发布** | 配置灰度流量比例和版本 |
 | **流量统计** | 查看调用次数、成功率、耗时 |
 | **模拟测试** | 资源访问模拟、IPC 模拟、压力测试 |
-| **日志流** | 实时查看单元日志（SSE） |
+| **日志流** | 实时查看灵元日志（SSE） |
 
 ## 集成步骤
 
@@ -35,22 +35,22 @@ lingframe:
 ```
 
 ![LingFrame Dashboard 示例](./../images/dashboard.zh-CN.png)
-*图示：单元管理面板，展示实时状态、灰度流量和审计日志。*
+*图示：灵元管理面板，展示实时状态、灰度流量和审计日志。*
 
 ## API 端点
 
 Dashboard 启用后，以下 REST API 可用：
 
-### 单元管理
+### 灵元管理
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/lingframe/dashboard/lings` | 获取所有单元列表 |
-| GET | `/lingframe/dashboard/lings/{lingId}` | 获取单元详情 |
+| GET | `/lingframe/dashboard/lings` | 获取所有灵元列表 |
+| GET | `/lingframe/dashboard/lings/{lingId}` | 获取灵元详情 |
 | POST | `/lingframe/dashboard/lings/install` | 上传安装 JAR 包 |
-| DELETE | `/lingframe/dashboard/lings/uninstall/{lingId}` | 卸载单元 |
+| DELETE | `/lingframe/dashboard/lings/uninstall/{lingId}` | 卸载灵元 |
 | POST | `/lingframe/dashboard/lings/{lingId}/reload` | 热重载（开发模式） |
-| POST | `/lingframe/dashboard/lings/{lingId}/status` | 更新单元状态 |
+| POST | `/lingframe/dashboard/lings/{lingId}/status` | 更新灵元状态 |
 
 ### 灰度发布
 
@@ -71,7 +71,7 @@ Dashboard 启用后，以下 REST API 可用：
 | 方法 | 端点 | 说明 |
 |------|------|------|
 | GET | `/lingframe/dashboard/governance/rules` | 获取所有治理规则 |
-| GET | `/lingframe/dashboard/governance/{lingId}` | 获取单元治理策略 |
+| GET | `/lingframe/dashboard/governance/{lingId}` | 获取灵元治理策略 |
 | POST | `/lingframe/dashboard/governance/patch/{lingId}` | 更新治理策略 |
 | POST | `/lingframe/dashboard/governance/{lingId}/permissions` | 更新资源权限 |
 
@@ -92,13 +92,13 @@ Dashboard 启用后，以下 REST API 可用：
 
 ## 使用示例
 
-### 查看单元列表
+### 查看灵元列表
 
 ```bash
 curl http://localhost:8888/lingframe/dashboard/lings
 ```
 
-### 热重载单元
+### 热重载灵元
 
 ```bash
 curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/reload

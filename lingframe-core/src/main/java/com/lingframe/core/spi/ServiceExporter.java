@@ -11,13 +11,13 @@ import java.util.List;
 public interface ServiceExporter {
 
     /**
-     * @param lingId   产生该服务的单元 ID
-     * @param services 从容器扫描到的该单元的导出服务句柄元数据
+     * @param lingId   产生该服务的灵元 ID
+     * @param services 从容器扫描到的该灵元的导出服务句柄元数据
      */
     void export(String lingId, List<String> services);
 
     /**
-     * @param lingId 撤销该单元在外部注册中心的所有发布信息
+     * @param lingId 撤销该灵元在外部注册中心的所有发布信息
      */
     void unexport(String lingId);
 }

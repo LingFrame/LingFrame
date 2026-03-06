@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
- * 单元实例池
+ * 灵元实例池
  * 职责：管理活跃实例和死亡队列，支持多版本并存
  */
 @Slf4j

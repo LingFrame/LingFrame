@@ -5,16 +5,16 @@ import lombok.EqualsAndHashCode;
 import lombok.Value;
 
 /**
- * 单元运行时内部事件（组件间通信用）
+ * 灵元运行时内部事件（组件间通信用）
  * 注意：这是内部事件，不暴露给外部
  */
 public abstract class RuntimeEvent {
 
     // 私有构造，只能通过工厂方法创建
-    private RuntimeEvent() {}
+    private RuntimeEvent() {
+    }
 
     public abstract String lingId();
-
 
     // ===== 生命周期事件 =====
 
@@ -27,9 +27,13 @@ public abstract class RuntimeEvent {
         String lingId;
         String newVersion;
 
-        public String lingId(){return lingId;}
+        public String lingId() {
+            return lingId;
+        }
 
-        public String newVersion(){return newVersion;}
+        public String newVersion() {
+            return newVersion;
+        }
 
         @Override
         public String toString() {
@@ -48,7 +52,9 @@ public abstract class RuntimeEvent {
         String version;
         LingInstance instance;
 
-        public String lingId(){return lingId;}
+        public String lingId() {
+            return lingId;
+        }
 
         @Override
         public String toString() {
@@ -67,9 +73,17 @@ public abstract class RuntimeEvent {
         String version;
         LingInstance instance;
 
-        public String lingId(){return lingId;}
-        public String version(){return version;}
-        public LingInstance instance(){return instance;}
+        public String lingId() {
+            return lingId;
+        }
+
+        public String version() {
+            return version;
+        }
+
+        public LingInstance instance() {
+            return instance;
+        }
 
         @Override
         public String toString() {
@@ -87,8 +101,13 @@ public abstract class RuntimeEvent {
         String lingId;
         String version;
 
-        public String lingId(){return lingId;}
-        public String version(){return version;}
+        public String lingId() {
+            return lingId;
+        }
+
+        public String version() {
+            return version;
+        }
 
         @Override
         public String toString() {
@@ -107,7 +126,9 @@ public abstract class RuntimeEvent {
     public static class RuntimeShuttingDown extends RuntimeEvent {
         String lingId;
 
-        public String lingId(){return lingId;}
+        public String lingId() {
+            return lingId;
+        }
 
         @Override
         public String toString() {
@@ -123,7 +144,9 @@ public abstract class RuntimeEvent {
     public static class RuntimeShutdown extends RuntimeEvent {
         String lingId;
 
-        public String lingId(){return lingId;}
+        public String lingId() {
+            return lingId;
+        }
 
         @Override
         public String toString() {
@@ -141,9 +164,17 @@ public abstract class RuntimeEvent {
         String fqsid;
         String caller;
 
-        public String lingId(){return lingId;}
-        public String fqsid(){return fqsid;}
-        public String caller(){return caller;}
+        public String lingId() {
+            return lingId;
+        }
+
+        public String fqsid() {
+            return fqsid;
+        }
+
+        public String caller() {
+            return caller;
+        }
 
         @Override
         public String toString() {
@@ -163,10 +194,21 @@ public abstract class RuntimeEvent {
         long durationMs;
         boolean success;
 
-        public String lingId(){return lingId;}
-        public String fqsid(){return fqsid;}
-        public long durationMs(){return durationMs;}
-        public boolean success(){return success;}
+        public String lingId() {
+            return lingId;
+        }
+
+        public String fqsid() {
+            return fqsid;
+        }
+
+        public long durationMs() {
+            return durationMs;
+        }
+
+        public boolean success() {
+            return success;
+        }
 
         @Override
         public String toString() {
@@ -185,9 +227,17 @@ public abstract class RuntimeEvent {
         String fqsid;
         String reason;
 
-        public String lingId(){return lingId;}
-        public String fqsid(){return fqsid;}
-        public String reason(){return reason;}
+        public String lingId() {
+            return lingId;
+        }
+
+        public String fqsid() {
+            return fqsid;
+        }
+
+        public String reason() {
+            return reason;
+        }
 
         @Override
         public String toString() {

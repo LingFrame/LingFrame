@@ -53,12 +53,12 @@ public class SpringContainerFactory implements ContainerFactory {
                     // 🔥 不设置父容器，实现完全隔离
                     // 原因：
                     // 1. 父子容器关系导致灵核 BeanFactory 持有子容器引用，造成 ClassLoader 泄漏
-                    // 2. 零信任设计：单元不应直接访问灵核 Bean，应通过 LingContext
+                    // 2. 零信任设计：灵元不应直接访问灵核 Bean，应通过 LingContext
                     // 3. 核心 Bean (LingManager, LingContext) 已在 registerBeans() 中手动注入
                     .resourceLoader(new DefaultResourceLoader(classLoader)) // 使用隔离加载器
                     .sources(sourceClass)
                     .bannerMode(Banner.Mode.OFF)
-                    .web(WebApplicationType.NONE) // 禁止单元启动 Tomcat
+                    .web(WebApplicationType.NONE) // 禁止灵元启动 Tomcat
                     .properties("spring.main.allow-bean-definition-overriding=true") // 允许覆盖 Bean
                     .properties("spring.application.name=Ling-" + lingId) // 独立应用名
                     .properties("spring.sql.init.mode=never") // 禁用 Spring Boot 自动 SQL 初始化

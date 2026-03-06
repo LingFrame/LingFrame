@@ -100,7 +100,7 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- 导入 LingFrame BOM，统一管理 LingFrame 单元版本 -->
+            <!-- 导入 LingFrame BOM，统一管理 LingFrame 灵元版本 -->
             <dependency>
                 <groupId>com.lingframe</groupId>
                 <artifactId>lingframe-bom</artifactId>

@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>LingFrame :: Example :: ling :: Order</name>
-    <description>示例业务单元（订单管理）</description>
+    <description>示例业务灵元（订单管理）</description>
 
     <dependencies>
         <!-- 仅依赖 API -->
@@ -68,7 +68,7 @@
                     <parameters>true</parameters>
                 </configuration>
             </plugin>
-            <!-- 打成可被加载的单元 JAR -->
+            <!-- 打成可被加载的灵元 JAR -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>

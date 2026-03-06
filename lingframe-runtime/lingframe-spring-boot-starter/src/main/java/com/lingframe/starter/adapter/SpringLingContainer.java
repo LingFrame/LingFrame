@@ -120,12 +120,12 @@ public class SpringLingContainer implements LingContainer {
             context.registerBean(LingContext.class, () -> coreCtx,
                     bd -> bd.setPrimary(true));
 
-            // 注册单元专用的 LingReferenceInjector，传给它是 context
+            // 注册灵元专用的 LingReferenceInjector，传给它是 context
             context.registerBean(LingReferenceInjector.class, () -> new LingReferenceInjector(lingId, coreCtx));
 
             log.info("Injecting core beans for ling [{}]: LingContext, LingReferenceInjector", lingId);
 
-            // 自动配置单元独立数据源
+            // 自动配置灵元独立数据源
             LingDataSourceRegistrar.register(context, lingClassLoader, lingId);
         }
     }
@@ -170,7 +170,7 @@ public class SpringLingContainer implements LingContainer {
                 });
 
                 // 2. 隐式接口注册 (FQSID: [InterfaceName]:[MethodName])
-                // 支持 @LingReference 跨单元调用
+                // 支持 @LingReference 跨灵元调用
                 for (Class<?> iface : targetClass.getInterfaces()) {
                     if (isBusinessInterface(iface)) {
                         for (Method ifaceMethod : iface.getMethods()) {

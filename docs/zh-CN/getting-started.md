@@ -38,7 +38,7 @@ cd lingframe-examples/lingframe-example-lingcore-app
 mvn spring-boot:run
 ```
 
-### 3. 测试单元服务
+### 3. 测试灵元服务
 
 ```bash
 # 查询用户列表（user-ling 提供的服务）
@@ -68,15 +68,15 @@ curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
 └─────────────────┬───────────────────────┘
                   ▼
 ┌─────────────────────────────────────────┐
-│         Business（业务单元层）           │
-│      用户中心 · 订单服务 · 支付单元       │
+│         Business（业务灵元层）           │
+│      用户中心 · 订单服务 · 支付灵元       │
 └─────────────────────────────────────────┘
 ```
 
 ### 关键原则
 
-1. **零信任**：业务单元只能通过 Core 访问基础设施
-2. **上下文隔离**：每个单元独立的 Spring 子上下文
+1. **零信任**：业务灵元只能通过 Core 访问基础设施
+2. **上下文隔离**：每个灵元独立的 Spring 子上下文
 3. **FQSID 路由**：服务通过 `lingId:serviceId` 全局唯一标识
 
 ---
@@ -120,7 +120,7 @@ lingframe:
   preload-api-jars:
     - lingframe-examples/lingframe-example-order-api
   
-  # 单元目录
+  # 灵元目录
   ling-home: lings              # 生产模式：JAR 包目录
   ling-roots:                     # 开发模式：源码目录
     - lingframe-examples/lingframe-example-ling-order
@@ -135,9 +135,9 @@ lingframe:
 #   enabled: true
 ```
 
-### 4. 在灵核中调用单元服务
+### 4. 在灵核中调用灵元服务
 
-使用 `@LingReference` 自动注入单元服务。LingFrame 采用**消费者驱动契约**：
+使用 `@LingReference` 自动注入灵元服务。LingFrame 采用**消费者驱动契约**：
 
 ```java
 // 灵核应用（消费者）定义它需要的接口
@@ -146,7 +146,7 @@ public interface OrderQueryService {
     List<OrderDTO> findByUserId(Long userId);
 }
 
-// Order 单元（生产者）实现灵核定义的接口
+// Order 灵元（生产者）实现灵核定义的接口
 // 位置：order-ling/.../OrderQueryServiceImpl.java
 @Component
 public class OrderQueryServiceImpl implements OrderQueryService {
@@ -163,7 +163,7 @@ public class OrderQueryServiceImpl implements OrderQueryService {
 public class OrderController {
 
     @LingReference
-    private OrderQueryService orderQueryService;  // 框架自动路由到 Order 单元
+    private OrderQueryService orderQueryService;  // 框架自动路由到 Order 灵元
 
     @GetMapping("/orders/user/{userId}")
     public List<OrderDTO> getUserOrders(@PathVariable Long userId) {
@@ -180,13 +180,13 @@ public class OrderController {
 lingframe-examples/
 ├── lingframe-example-lingcore-app        # 灵核应用
 ├── lingframe-example-order-api       # 共享 API（消费者定义的接口）
-├── lingframe-example-ling-order    # 订单单元
-└── lingframe-example-ling-user     # 用户单元（提供 /user/* 接口）
+├── lingframe-example-ling-order    # 订单灵元
+└── lingframe-example-ling-user     # 用户灵元（提供 /user/* 接口）
 ```
 
-## 创建业务单元
+## 创建业务灵元
 
-详见 [单元开发指南](ling-development.md)
+详见 [灵元开发指南](ling-development.md)
 
 ## 安全治理演示（Killer Feature）
 
@@ -194,7 +194,7 @@ lingframe-examples/
 
 ### 1. 尝试非法写入（SQL 拦截）
 
-User 单元在配置文件 `ling.yml` 中声明了对数据库的 `READ` 权限，但没有声明 `WRITE` 权限。
+User 灵元在配置文件 `ling.yml` 中声明了对数据库的 `READ` 权限，但没有声明 `WRITE` 权限。
 
 调用创建用户接口（执行 INSERT SQL）：
 
@@ -212,7 +212,7 @@ c.l.core.exception.PermissionDeniedException: ling [user-ling] requires [storage
 
 ### 2. 体验缓存加速（Cache 代理）
 
-User 单元声明了 `cache:local` 的 `WRITE` 权限。
+User 灵元声明了 `cache:local` 的 `WRITE` 权限。
 
 **第一次查询**（触发 SQL 查询并写入缓存）：
 
@@ -249,7 +249,7 @@ Audit: ling [user-ling] accessed [cache:local] (ALLOWED)
 
 ## 下一步
 
-- [单元开发指南](ling-development.md) - 学习如何开发业务单元
+- [灵元开发指南](ling-development.md) - 学习如何开发业务灵元
 - [共享 API 设计规范](shared-api-guidelines.md) - API 设计最佳实践
 - [Dashboard 可视化治理](dashboard.md) - 高阶可选功能
 - [架构设计](architecture.md) - 深入了解治理原理

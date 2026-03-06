@@ -2,16 +2,16 @@ package com.lingframe.api.security;
 
 /**
  * Core 提供 - 权限查询服务
- * 负责检查单元是否有某项权限，并记录审计日志。
+ * 负责检查灵元是否有某项权限，并记录审计日志。
  * 
  * @author LingFrame
  */
 public interface PermissionService {
 
     /**
-     * 检查单元是否有某项权限。
+     * 检查灵元是否有某项权限。
      * 
-     * @param lingId   单元ID
+     * @param lingId     灵元ID
      * @param capability 能力标识，例如 "datasource", "redis"
      * @param accessType 访问类型，如 READ, WRITE
      * @return 如果允许访问则返回 true，否则返回 false
@@ -21,9 +21,9 @@ public interface PermissionService {
     void grant(String lingId, String capability, AccessType accessType);
 
     /**
-     * 撤销单元的某项权限
+     * 撤销灵元的某项权限
      *
-     * @param lingId   单元ID
+     * @param lingId     灵元ID
      * @param capability 能力标识
      */
     default void revoke(String lingId, String capability) {
@@ -31,12 +31,12 @@ public interface PermissionService {
     }
 
     /**
-     * 获取单元的权限信息。
+     * 获取灵元的权限信息。
      * <p>
-     * 返回指定单元对某项能力的权限详情，包括访问类型、授予时间、过期时间等。
+     * 返回指定灵元对某项能力的权限详情，包括访问类型、授予时间、过期时间等。
      * </p>
      *
-     * @param lingId   单元ID
+     * @param lingId     灵元ID
      * @param capability 能力标识
      * @return 权限信息，如果不存在则返回 null
      */
@@ -45,7 +45,7 @@ public interface PermissionService {
     /**
      * 记录审计日志。
      * 
-     * @param lingId   单元ID
+     * @param lingId     灵元ID
      * @param capability 能力标识
      * @param operation  具体操作，例如 SQL 命令类型、Redis 方法名
      * @param allowed    是否允许该操作

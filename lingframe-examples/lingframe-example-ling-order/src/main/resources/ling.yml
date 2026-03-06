@@ -2,7 +2,7 @@
 id: order-ling
 version: 1.0.0
 provider: "LingFrame"
-description: "订单单元"
+description: "订单灵元"
 mainClass: "com.lingframe.example.order.OrderApplication"
 
 # --- 治理配置 ---
@@ -10,7 +10,7 @@ governance:
   # ACL 入站规则 (StandardGovernancePolicyProvider 使用)
   permissions: []
 
-  # 单元能力申请 (LingManager 使用)
+  # 灵元能力申请 (LingManager 使用)
   capabilities:
     - capability: "storage:sql"
       accessType: "WRITE"      # 需要读写权限

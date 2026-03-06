@@ -94,7 +94,7 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
      * 这里通过 Spring Container 懒加载获取真实 Bean 实例，并配合 {@link InvokableMethodCache} 构建句柄。
      * 这是一种故意的防御性设计 (并非早期的临时方案)。
      * 如果在内核层启动或扫描时就直接硬抓取并强引用对方的 Class 或 Bean 实例对象，
-     * 旦需要卸载该 Ling 单元，核心层将由于持有该实例导致目标 ClassLoader 无法被 GC（内存泄漏）。
+     * 旦需要卸载该 Ling 灵元，核心层将由于持有该实例导致目标 ClassLoader 无法被 GC（内存泄漏）。
      * 所以，每次调用时动态从隔离上下文中取壳，获取句柄后再缓存在全局，是保证随时可被安全卸载的终态实践。
      */
     private Object getServiceBean(LingInstance instance, InvocationContext ctx) {

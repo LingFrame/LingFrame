@@ -8,7 +8,7 @@ import com.lingframe.core.spi.LingInvocationFilter;
 
 /**
  * ClassLoader 隔离 Filter。
- * 切换线程上下文 ClassLoader 至目标单元，解析方法签名类型，
+ * 切换线程上下文 ClassLoader 至目标灵元，解析方法签名类型，
  * 执行完毕后主动清除瞬态引用防止内存泄漏。
  */
 public class ContextIsolationFilter implements LingInvocationFilter {

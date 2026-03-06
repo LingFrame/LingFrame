@@ -11,7 +11,7 @@
     <packaging>jar</packaging>
 
     <name>LingFrame :: Example :: ling Native</name>
-    <description>示例业务单元（纯Java实现）</description>
+    <description>示例业务灵元（纯Java实现）</description>
 
     <dependencies>
         <!-- 仅依赖 API -->

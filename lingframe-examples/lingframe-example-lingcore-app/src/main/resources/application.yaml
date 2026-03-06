@@ -2,6 +2,10 @@ server:
   port: 8888
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 60MB
   # 修复 Spring Boot 2.6+ 与 SpringDoc 1.x 的兼容性问题
   # 避免 "Expected lookupPath in request attribute" 错误
   mvc:
@@ -43,7 +47,7 @@ lingframe:
 
 # SpringDoc OpenAPI 配置
 springdoc:
-  # 禁用 SpringDoc 缓存以支持单元动态加载
+  # 禁用 SpringDoc 缓存以支持灵元动态加载
   cache:
     disabled: true
   packages-to-scan: com.lingframe

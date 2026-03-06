@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 热加载监听器
- * 职责：监听 target/classes 目录变化，触发单元重载
+ * 职责：监听 target/classes 目录变化，触发灵元重载
  */
 @Slf4j
 public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
@@ -36,7 +36,7 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
     private final Map<String, File> lingSourceMap = new ConcurrentHashMap<>();
     private final Map<String, LingDefinition> lingDefinitionMap = new ConcurrentHashMap<>();
 
-    // 重载保护集合：记录当前正在进行热重载的单元ID
+    // 重载保护集合：记录当前正在进行热重载的灵元ID
     // 防止在重载过程中(先uninstall再install)误触发资源回收逻辑
     private final Set<String> reloadingLings = ConcurrentHashMap.newKeySet();
 
@@ -125,7 +125,7 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
 
     /**
      * 注销监听
-     * 遍历 Map，移除该单元名下的所有 Key (O(N) 复杂度，但在卸载时可接受)
+     * 遍历 Map，移除该灵元名下的所有 Key (O(N) 复杂度，但在卸载时可接受)
      */
     public void unregister(String lingId) {
         if (!isStarted.get())
@@ -250,7 +250,7 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
     /**
      * 检查是否存在编译错误
      *
-     * @param lingId 单元ID
+     * @param lingId 灵元ID
      * @return 是否存在编译错误
      */
     private boolean hasCompilationErrors(String lingId) {

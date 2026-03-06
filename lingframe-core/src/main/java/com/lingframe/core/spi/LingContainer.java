@@ -3,15 +3,15 @@ package com.lingframe.core.spi;
 import com.lingframe.api.context.LingContext;
 
 /**
- * 单元容器 SPI
- * 定义单元运行环境的最小契约
+ * 灵元容器 SPI
+ * 定义灵元运行环境的最小契约
  */
 public interface LingContainer {
 
     /**
      * 启动容器
      *
-     * @param context 单元上下文 (Core 传给单元的令牌)
+     * @param context 灵元上下文 (Core 传给灵元的令牌)
      */
     void start(LingContext context);
 
@@ -44,7 +44,7 @@ public interface LingContainer {
     String[] getBeanNames();
 
     /**
-     * 获取单元专用的类加载器 (用于 TCCL 劫持)
+     * 获取灵元专用的类加载器 (用于 TCCL 劫持)
      */
     ClassLoader getClassLoader();
 }

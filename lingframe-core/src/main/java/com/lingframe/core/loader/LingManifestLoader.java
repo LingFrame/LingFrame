@@ -18,10 +18,10 @@ public class LingManifestLoader {
     private static final String LING_MANIFEST_NAME = "ling.yml";
 
     /**
-     * 解析单元定义 (支持 Jar 和 目录)
+     * 解析灵元定义 (支持 Jar 和 目录)
      *
-     * @param file 单元文件（jar）或目录
-     * @return 单元定义，如果不是合法单元则返回 null
+     * @param file 灵元文件（jar）或目录
+     * @return 灵元定义，如果不是合法灵元则返回 null
      */
     public static LingDefinition parseDefinition(File file) {
         if (file.isDirectory()) {

@@ -79,7 +79,8 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
                         .append("\n")
                         .append("     - 期望类型: ").append(expectedType.getSimpleName()).append("\n")
                         .append("\n")
-                        .append("     - 实际类型: ").append(actualArg == null ? "null" : actualArg.getClass().getSimpleName()).append("\n")
+                        .append("     - 实际类型: ")
+                        .append(actualArg == null ? "null" : actualArg.getClass().getSimpleName()).append("\n")
                         .append("\n")
                         .append("     - 实际传值: ").append(actualArg).append("\n")
                         .append("\n")
@@ -89,7 +90,7 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
 
         if (foundMismatch) {
             throw new InvalidArgumentException("args", String.format(
-                    "调用单元服务 [%s] 失败，参数类型不匹配！%s",
+                    "调用灵元服务 [%s] 失败，参数类型不匹配！%s",
                     method.getName(), errorReport), e);
         }
     }
@@ -114,7 +115,7 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
         }
 
         // 情况 C: 类名完全一样，但是不匹配？ -> 肯定是类加载器问题！
-        // 这在 LingFrame 这种单元框架中非常关键！
+        // 这在 LingFrame 这种灵元框架中非常关键！
         if (expected.getName().equals(actualType.getName())) {
             return String.format(
                     "🔥 类加载器冲突！目标类由 [%s] 加载，但传入对象由 [%s] 加载。",
