@@ -2,7 +2,7 @@ package com.lingframe.core.invoker;
 
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.LingServiceInvoker;
-import com.lingframe.core.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.ServiceUnavailableException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.invoke.MethodHandle;

@@ -1,6 +1,4 @@
-package com.lingframe.core.exception;
-
-import com.lingframe.core.exception.LingRuntimeException;
+package com.lingframe.api.exception;
 
 /**
  * Pipeline 出口的唯一异常类型。调用者永远只看到 LingInvocationException。

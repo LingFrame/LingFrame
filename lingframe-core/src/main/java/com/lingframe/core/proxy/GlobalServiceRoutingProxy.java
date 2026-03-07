@@ -1,6 +1,6 @@
 package com.lingframe.core.proxy;
 
-import com.lingframe.core.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.ServiceUnavailableException;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;

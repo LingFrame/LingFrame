@@ -8,7 +8,7 @@ import com.lingframe.api.event.lifecycle.LingStoppedEvent;
 import com.lingframe.api.event.lifecycle.LingStoppingEvent;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.exception.LingInstallException;
-import com.lingframe.core.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.ServiceUnavailableException;
 import com.lingframe.core.ling.event.RuntimeEvent;
 import com.lingframe.core.ling.event.RuntimeEventBus;
 import com.lingframe.core.spi.ResourceGuard;

@@ -7,7 +7,7 @@ import com.lingframe.core.context.CoreLingContext;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.exception.LingInstallException;
-import com.lingframe.core.exception.LingRuntimeException;
+import com.lingframe.api.exception.LingRuntimeException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;

@@ -2,7 +2,7 @@ package com.lingframe.starter.processor;
 
 import com.lingframe.api.annotation.LingReference;
 import com.lingframe.api.context.LingContext;
-import com.lingframe.core.exception.LingRuntimeException;
+import com.lingframe.api.exception.LingRuntimeException;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;

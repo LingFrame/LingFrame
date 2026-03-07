@@ -1,4 +1,4 @@
-package com.lingframe.core.exception;
+package com.lingframe.api.exception;
 
 /**
  * 当熔断器打开或限流器拒绝时抛出

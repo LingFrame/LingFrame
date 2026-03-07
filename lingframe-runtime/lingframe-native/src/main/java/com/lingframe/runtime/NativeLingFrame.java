@@ -21,7 +21,7 @@ import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.runtime.adapter.NativeContainerFactory;
 import lombok.extern.slf4j.Slf4j;
-import com.lingframe.core.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.ServiceUnavailableException;
 
 import java.util.Collections;
 import java.util.concurrent.atomic.AtomicBoolean;

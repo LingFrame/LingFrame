@@ -1,7 +1,7 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.core.fsm.RuntimeStatus;
-import com.lingframe.core.exception.LingInvocationException;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.LingFilterChain;

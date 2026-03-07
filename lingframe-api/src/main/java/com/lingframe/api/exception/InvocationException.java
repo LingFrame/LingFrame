@@ -1,4 +1,4 @@
-package com.lingframe.core.exception;
+package com.lingframe.api.exception;
 
 import com.lingframe.api.exception.LingException;
 

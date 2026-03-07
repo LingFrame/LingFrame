@@ -9,7 +9,7 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.strategy.GovernanceStrategy;
-import com.lingframe.core.exception.InvocationException;
+import com.lingframe.api.exception.InvocationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aopalliance.intercept.MethodInterceptor;

@@ -3,7 +3,7 @@ package com.lingframe.core.ling;
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.ServiceUnavailableException;
 import com.lingframe.core.ling.event.RuntimeEvent;
 import com.lingframe.core.ling.event.RuntimeEventBus;
 import com.lingframe.core.fsm.InstanceStatus;

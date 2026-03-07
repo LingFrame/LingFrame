@@ -1,6 +1,4 @@
-package com.lingframe.core.exception;
-
-import com.lingframe.api.exception.LingException;
+package com.lingframe.api.exception;
 
 /**
  * 服务未找到异常

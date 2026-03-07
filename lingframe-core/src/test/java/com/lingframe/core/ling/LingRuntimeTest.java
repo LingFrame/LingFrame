@@ -4,7 +4,7 @@ package com.lingframe.core.ling;
 // import com.lingframe.api.config.LingDefinition;
 // import com.lingframe.api.context.LingContext;
 // import com.lingframe.core.event.EventBus;
-// import com.lingframe.core.exception.ServiceUnavailableException;
+// import com.lingframe.api.exception.ServiceUnavailableException;
 // import com.lingframe.core.kernel.GovernanceKernel;
 // import com.lingframe.core.spi.LingContainer;
 // import com.lingframe.core.spi.LingServiceInvoker;

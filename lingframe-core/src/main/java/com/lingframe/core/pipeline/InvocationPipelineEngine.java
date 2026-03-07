@@ -1,6 +1,6 @@
 package com.lingframe.core.pipeline;
 
-import com.lingframe.core.exception.LingInvocationException;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.spi.LingFilterChain;
 
 public class InvocationPipelineEngine {
