@@ -18,6 +18,8 @@ import java.lang.reflect.Proxy;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
+import com.lingframe.api.exception.LingInvocationException;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -97,6 +99,28 @@ public class CoreLingContext implements LingContext {
             throw new InvocationException("Service invoke failed: " + e.getMessage(), e);
         } finally {
             ctx.reset();
+        }
+    }
+
+    @Override
+    public <T> T invokeOrDefault(String serviceId, T defaultValue, Object... args) {
+        try {
+            Optional<T> result = this.invoke(serviceId, args);
+            return result.orElse(defaultValue);
+        } catch (LingInvocationException e) {
+            log.warn("[Fallback] Invoke {} failed (code: {}). Returning default value.", serviceId, e.getKind());
+            return defaultValue;
+        }
+    }
+
+    @Override
+    public <T> T invokeOrElse(String serviceId, Supplier<T> fallbackSupplier, Object... args) {
+        try {
+            Optional<T> result = this.invoke(serviceId, args);
+            return result.orElseGet(fallbackSupplier);
+        } catch (LingInvocationException e) {
+            log.warn("[Fallback] Invoke {} failed (code: {}). Executing fallback supplier.", serviceId, e.getKind());
+            return fallbackSupplier.get();
         }
     }
 

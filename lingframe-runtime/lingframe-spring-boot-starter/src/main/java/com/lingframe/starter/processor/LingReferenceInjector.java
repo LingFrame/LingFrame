@@ -2,6 +2,7 @@ package com.lingframe.starter.processor;
 
 import com.lingframe.api.annotation.LingReference;
 import com.lingframe.api.context.LingContext;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.exception.LingRuntimeException;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +13,8 @@ import org.springframework.context.ApplicationContextAware;
 import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 
 @Slf4j
 public class LingReferenceInjector implements BeanPostProcessor, ApplicationContextAware {
@@ -93,6 +96,39 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
             // 自动抉择
             Object proxy = ctx.getService(serviceType).orElseThrow(() -> new LingRuntimeException(currentLingId,
                     "Failed to resolve service reference for type: " + serviceType.getName()));
+
+            // 【增强】对 @LingReference 开启声明式 Fallback 包装支持
+            Class<?> fallbackClass = annotation.fallback();
+            if (fallbackClass != void.class) {
+                final Object originalProxy = proxy;
+                proxy = Proxy.newProxyInstance(
+                        serviceType.getClassLoader(),
+                        new Class<?>[] { serviceType },
+                        (p, method, methodArgs) -> {
+                            try {
+                                return method.invoke(originalProxy, methodArgs);
+                            } catch (InvocationTargetException e) {
+                                Throwable cause = e.getCause();
+                                // 如果捕获到底层抛出的跨组件熔断/超时异常
+                                if (cause instanceof LingInvocationException) {
+                                    if (applicationContext != null) {
+                                        try {
+                                            Object fallbackInstance = applicationContext.getBean(fallbackClass);
+                                            log.warn(
+                                                    "[Fallback] LingReference triggered fallback for target {} to instance {}",
+                                                    serviceType.getSimpleName(), fallbackClass.getSimpleName());
+                                            return method.invoke(fallbackInstance, methodArgs);
+                                        } catch (Exception fallbackEx) {
+                                            log.error("Failed to execute fallback logic or get fallback bean",
+                                                    fallbackEx);
+                                        }
+                                    }
+                                }
+                                // 若非异常降级场景或降级自身报错，继续向上抛出真实异常
+                                throw cause;
+                            }
+                        });
+            }
 
             field.set(bean, proxy);
             log.info("Injected @LingReference for field: {}.{}",

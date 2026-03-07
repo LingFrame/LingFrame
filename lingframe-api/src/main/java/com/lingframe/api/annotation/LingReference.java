@@ -25,4 +25,11 @@ public @interface LingReference {
      * 超时时间 (毫秒)
      */
     long timeout() default 3000;
+
+    /**
+     * 本地兜底逻辑类 (Fallback)
+     * 当跨灵元调用发生熔断、超时、找不到服务等情况时，将请求路由至该实现类。
+     * 必须是当前应用环境(Spring Context)中的 Bean，或者具有无参构造函数的类。
+     */
+    Class<?> fallback() default void.class;
 }
