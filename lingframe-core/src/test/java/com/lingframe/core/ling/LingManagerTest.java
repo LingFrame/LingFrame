@@ -7,7 +7,7 @@ package com.lingframe.core.ling;
 // import com.lingframe.core.config.LingFrameConfig;
 // import com.lingframe.core.event.EventBus;
 // import com.lingframe.core.governance.LocalGovernanceRegistry;
-// import com.lingframe.core.kernel.GovernanceKernel;
+// import com.lingframe.core.exception.LingInvocationException;Kernel;
 // import com.lingframe.core.spi.*;
 // import lombok.NonNull;
 // import org.junit.jupiter.api.*;

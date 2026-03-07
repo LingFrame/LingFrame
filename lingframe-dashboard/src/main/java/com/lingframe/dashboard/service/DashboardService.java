@@ -5,13 +5,12 @@ import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.enums.LingStatus;
+import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.loader.LingManifestLoader;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.api.exception.InvalidArgumentException;
@@ -110,7 +109,7 @@ public class DashboardService {
         }
     }
 
-    public LingInfoDTO updateStatus(String lingId, LingStatus newStatus) {
+    public LingInfoDTO updateStatus(String lingId, RuntimeStatus newStatus) {
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
@@ -118,7 +117,7 @@ public class DashboardService {
 
         switch (newStatus) {
             case ACTIVE:
-                // 执行状态机转换：INACTIVE → ACTIVE
+                // 执行状态机转换：INACTIVE -> ACTIVE
                 runtime.getStateMachine().transition(RuntimeStatus.ACTIVE);
                 log.info("[Dashboard] State transitioned to ACTIVE for ling: {}", lingId);
 
@@ -170,13 +169,14 @@ public class DashboardService {
                     }
                 }
                 break;
-            case LOADED:
-                // 执行状态机转换：ACTIVE → STOPPING → REMOVED 或直接回 INACTIVE
-                // 由于 ACTIVE → INACTIVE 不是合法转换，先撤权限，再走降级路径
+            case INACTIVE:
+                // 执行状态机转换：ACTIVE -> STOPPING -> INACTIVE 或直接撤权
+                // V0.3.0 中通过撤销 Ling_ENABLE 权限实现业务上的 INACTIVE（逻辑下线）
                 permissionService.revoke(lingId, Capabilities.Ling_ENABLE);
                 log.info("[Dashboard] Revoked Ling_ENABLE permission from {}, ling deactivated", lingId);
                 break;
-            case UNLOADED:
+            case REMOVED:
+                // 彻底卸载灵元
                 lifecycleEngine.undeploy(lingId);
                 break;
             default:

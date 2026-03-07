@@ -1,7 +1,7 @@
 package com.lingframe.core.router;
 
 import com.lingframe.api.config.LingDefinition;
-import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.BeforeEach;

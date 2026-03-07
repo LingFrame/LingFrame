@@ -4,6 +4,7 @@ import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.InstanceDestroyedEvent;
 import com.lingframe.core.event.InstanceStateChangedEvent;
+import com.lingframe.core.exception.IllegalStateTransitionException;
 import lombok.extern.slf4j.Slf4j;
 
 /**

@@ -2,7 +2,6 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
-import com.lingframe.core.kernel.InvocationContext;
 import java.util.List;
 
 public class DefaultFilterChain implements LingFilterChain {

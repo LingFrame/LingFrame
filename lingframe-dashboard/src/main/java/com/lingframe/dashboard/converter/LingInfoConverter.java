@@ -5,7 +5,6 @@ import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.dashboard.dto.LingInfoDTO;
@@ -29,8 +28,7 @@ public class LingInfoConverter {
 
         return LingInfoDTO.builder()
                 .lingId(lingId)
-                .status(runtime.getStateMachine().current() == RuntimeStatus.INACTIVE ? "LOADED"
-                        : runtime.getStateMachine().current().name())
+                .status(runtime.getStateMachine().current().name())
                 .versions(runtime.getInstancePool().getActiveInstances().stream()
                         .map(LingInstance::getVersion)
                         .distinct()

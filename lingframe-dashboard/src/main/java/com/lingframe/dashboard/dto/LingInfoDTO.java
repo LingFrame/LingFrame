@@ -16,7 +16,7 @@ import java.util.Map;
 public class LingInfoDTO {
 
     private String lingId;
-    private String status; // ACTIVE, LOADED, UNLOADED, STARTING, STOPPING
+    private String status; // ACTIVE, INACTIVE, DEGRADED, STOPPING, REMOVED
     private List<String> versions; // 所有已部署版本
     private String activeVersion; // 当前激活版本
     private Integer canaryPercent; // 灰度比例 0-100

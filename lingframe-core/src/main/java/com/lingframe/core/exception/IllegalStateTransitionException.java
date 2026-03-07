@@ -1,4 +1,4 @@
-package com.lingframe.core.fsm;
+package com.lingframe.core.exception;
 
 public class IllegalStateTransitionException extends RuntimeException {
     public IllegalStateTransitionException(Enum<?> from, Enum<?> to) {

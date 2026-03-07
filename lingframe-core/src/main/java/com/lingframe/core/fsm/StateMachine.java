@@ -1,5 +1,6 @@
 package com.lingframe.core.fsm;
 
+import com.lingframe.core.exception.IllegalStateTransitionException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;

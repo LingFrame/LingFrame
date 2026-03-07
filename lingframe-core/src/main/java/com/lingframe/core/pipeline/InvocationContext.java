@@ -1,9 +1,10 @@
-package com.lingframe.core.kernel;
+package com.lingframe.core.pipeline;
 
 import com.lingframe.api.security.AccessType;
 import lombok.Data;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 /**
  * 调用上下文：Pipeline 全链路的唯一"通行证"
@@ -98,4 +99,76 @@ public class InvocationContext {
         }
     }
 
+    // ════════════════════════════════════════════
+    // 第六部分：线程上下文快照与传播（零分配模式）
+    // ════════════════════════════════════════════
+
+    /**
+     * 从另一个上下文安全拷贝属性（复用当前对象池实例）
+     * 对于基础属性采用赋值，对于预初始化的集合利用 putAll 避免 new
+     */
+    public void copyFrom(InvocationContext source) {
+        if (source == null)
+            return;
+        this.serviceFQSID = source.serviceFQSID;
+        this.methodName = source.methodName;
+        this.parameterTypeNames = source.parameterTypeNames;
+        this.args = source.args;
+        this.targetLingId = source.targetLingId;
+        this.targetVersion = source.targetVersion;
+
+        this.traceId = source.traceId;
+        this.callerLingId = source.callerLingId;
+        this.createTimeNanos = source.createTimeNanos;
+
+        this.resourceType = source.resourceType;
+        this.resourceId = source.resourceId;
+        this.operation = source.operation;
+        this.requiredPermission = source.requiredPermission;
+        this.accessType = source.accessType;
+        this.auditAction = source.auditAction;
+        this.shouldAudit = source.shouldAudit;
+        this.ruleSource = source.ruleSource;
+
+        this.labels = source.labels;
+        this.timeout = source.timeout;
+        this.metadata = source.metadata;
+
+        if (source.attachments != null && !source.attachments.isEmpty()) {
+            this.attachments.putAll(source.attachments);
+        }
+    }
+
+    /**
+     * 将父线程的上下文无锁装载进子线程（用于 Callable）
+     * 依赖 copyFrom 达成极致的对象池复用且无内存分配（Zero Allocation）
+     */
+    public static <T> Callable<T> wrap(Callable<T> task) {
+        InvocationContext parent = InvocationContext.obtain();
+        return () -> {
+            InvocationContext child = InvocationContext.obtain();
+            try {
+                child.copyFrom(parent);
+                return task.call();
+            } finally {
+                child.reset();
+            }
+        };
+    }
+
+    /**
+     * 将父线程的上下文无锁装载进子线程（用于 Runnable）
+     */
+    public static Runnable wrap(Runnable task) {
+        InvocationContext parent = InvocationContext.obtain();
+        return () -> {
+            InvocationContext child = InvocationContext.obtain();
+            try {
+                child.copyFrom(parent);
+                task.run();
+            } finally {
+                child.reset();
+            }
+        };
+    }
 }

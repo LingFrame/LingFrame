@@ -65,7 +65,7 @@ createApp({
         // ==================== 计算属性 ====================
         const activeLing = computed(() => lings.value.find(p => p.lingId === activeId.value));
         const canCanary = computed(() => activeLing.value?.versions?.length >= 2);
-        const canOperate = computed(() => activeLing.value?.status === 'ACTIVE');
+        const canOperate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
         const sseStatusText = computed(() => ({
             connected: t('sidebar.sseConnected'),
             connecting: t('sidebar.sseConnecting'),
@@ -683,11 +683,11 @@ createApp({
 
         const getStatusClass = (status) => ({
             'ACTIVE': 'status-active',
-            'LOADED': 'status-loaded',
-            'UNLOADED': 'status-unloaded',
-            'LOADING': 'status-loading',
+            'INACTIVE': 'status-loaded',
+            'DEGRADED': 'status-error',
+            'REMOVED': 'status-unloaded',
             'STARTING': 'status-loading',
-            'ERROR': 'status-error'
+            'STOPPING': 'status-loading'
         }[status] || 'status-unloaded');
 
         const getLingShortName = (pid) => {

@@ -1,4 +1,4 @@
-package com.lingframe.core.kernel;
+package com.lingframe.core.exception;
 
 import com.lingframe.core.exception.LingRuntimeException;
 
@@ -36,6 +36,7 @@ public class LingInvocationException extends LingRuntimeException {
         RATE_LIMITED, // 限流
         CLASSLOADER_ERROR, // 隔离层异常
         INVOKE_ERROR, // 业务方法本身抛出异常
+        TIMEOUT, // 执行超时
         INTERNAL_ERROR // 框架内部 bug
     }
 }

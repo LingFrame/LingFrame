@@ -1,6 +1,5 @@
 package com.lingframe.core.pipeline;
 
-import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 import lombok.extern.slf4j.Slf4j;

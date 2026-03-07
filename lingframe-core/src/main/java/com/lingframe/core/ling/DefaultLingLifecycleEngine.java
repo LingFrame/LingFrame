@@ -298,7 +298,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         lingServiceRegistry.evict(lingId);
 
         // 4. 驱逐弹性治理组件（限流器、熔断器），防止内存泄漏
-        pipelineEngine.evictResilience(lingId);
+        pipelineEngine.evictLingResources(lingId);
 
         // 5. 彻底解绑监听与权限
         eventBus.unsubscribeAll(lingId);

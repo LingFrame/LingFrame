@@ -1,6 +1,6 @@
 package com.lingframe.dashboard.router;
 
-import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.CanaryConfigurable;
 import com.lingframe.core.spi.TrafficRouter;

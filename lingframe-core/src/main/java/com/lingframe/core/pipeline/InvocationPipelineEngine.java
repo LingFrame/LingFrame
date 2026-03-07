@@ -1,7 +1,6 @@
 package com.lingframe.core.pipeline;
 
-import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.kernel.LingInvocationException;
+import com.lingframe.core.exception.LingInvocationException;
 import com.lingframe.core.spi.LingFilterChain;
 
 public class InvocationPipelineEngine {
@@ -27,7 +26,7 @@ public class InvocationPipelineEngine {
      * 驱逐指定灵元的弹性治理组件。
      * 由灵元卸载链路调用，防止限流器/熔断器内存泄漏。
      */
-    public void evictResilience(String lingId) {
-        registry.evictResilience(lingId);
+    public void evictLingResources(String lingId) {
+        registry.evictLingResources(lingId);
     }
 }

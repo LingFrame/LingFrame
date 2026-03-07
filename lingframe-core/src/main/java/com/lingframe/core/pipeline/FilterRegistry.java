@@ -23,6 +23,7 @@ public class FilterRegistry {
 
     // 保留弹性治理 Filter 引用，支持灵元卸载时驱逐弹性组件
     private ResilienceGovernanceFilter resilienceFilter;
+    private ThreadIsolationGovernanceFilter isolationFilter;
 
     // 排序缓存，dirty 时重建
     private volatile List<LingInvocationFilter> orderedCache;
@@ -45,6 +46,10 @@ public class FilterRegistry {
                 trafficRouter != null ? trafficRouter : new LatestVersionPolicy());
         ResilienceGovernanceFilter resilience = new ResilienceGovernanceFilter(lingRepository, eventBus);
         this.resilienceFilter = resilience;
+
+        ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(lingRepository);
+        this.isolationFilter = threadIsolation;
+
         ContextIsolationFilter isolation = new ContextIsolationFilter();
         TerminalInvokerFilter terminal = new TerminalInvokerFilter(methodCache);
 
@@ -53,6 +58,7 @@ public class FilterRegistry {
                 stateGuard,
                 routing,
                 resilience,
+                threadIsolation,
                 isolation,
                 terminal));
 
@@ -100,12 +106,15 @@ public class FilterRegistry {
     }
 
     /**
-     * 驱逐指定灵元的弹性治理组件（限流器、熔断器）。
+     * 驱逐指定灵元的弹性治理组件（限流器、熔断器）和隔离线程。
      * 由灵元卸载链路调用，防止内存泄漏。
      */
-    public void evictResilience(String lingId) {
+    public void evictLingResources(String lingId) {
         if (resilienceFilter != null) {
             resilienceFilter.evict(lingId);
+        }
+        if (isolationFilter != null) {
+            isolationFilter.evict(lingId);
         }
     }
 }

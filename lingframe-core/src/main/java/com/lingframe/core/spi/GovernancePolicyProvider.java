@@ -1,7 +1,7 @@
 package com.lingframe.core.spi;
 
 import com.lingframe.core.governance.GovernanceDecision;
-import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.ling.LingRuntime;
 
 import java.lang.reflect.Method;

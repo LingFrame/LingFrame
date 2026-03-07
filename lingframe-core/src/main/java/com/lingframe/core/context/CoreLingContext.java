@@ -11,7 +11,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
-import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.pipeline.InvocationContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import java.lang.reflect.Proxy;

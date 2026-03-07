@@ -1,7 +1,7 @@
 package com.lingframe.core.governance;
 
 import com.lingframe.api.security.AccessType;
-import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import lombok.extern.slf4j.Slf4j;

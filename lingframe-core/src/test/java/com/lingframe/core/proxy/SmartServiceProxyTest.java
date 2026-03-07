@@ -1,7 +1,7 @@
 package com.lingframe.core.proxy;
 
 import com.lingframe.api.security.AccessType;
-import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

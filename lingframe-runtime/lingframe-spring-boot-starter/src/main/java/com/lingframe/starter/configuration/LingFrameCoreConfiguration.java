@@ -165,9 +165,9 @@ public class LingFrameCoreConfiguration {
     public ContainerFactory containerFactory(ApplicationContext parentContext,
             WebInterfaceManager webInterfaceManager,
             ObjectProvider<List<LingContextCustomizer>> customizersProvider,
-            ResourceGuard resourceGuard) {
+            List<ResourceGuard> resourceGuards) {
         List<LingContextCustomizer> customizers = customizersProvider.getIfAvailable(Collections::emptyList);
-        return new SpringContainerFactory(parentContext, webInterfaceManager, customizers, resourceGuard);
+        return new SpringContainerFactory(parentContext, webInterfaceManager, customizers, resourceGuards);
     }
 
     @Bean
@@ -226,11 +226,11 @@ public class LingFrameCoreConfiguration {
             LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry,
             InvocationPipelineEngine pipelineEngine,
-            ResourceGuard resourceGuard) {
+            List<ResourceGuard> resourceGuards) {
         List<LingSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
         return new DefaultLingLifecycleEngine(containerFactory, permissionService,
                 lingLoaderFactory, verifiers, eventBus, lingFrameConfig, lingRepository, lingServiceRegistry,
-                pipelineEngine, resourceGuard);
+                pipelineEngine, resourceGuards);
     }
 
     @Bean

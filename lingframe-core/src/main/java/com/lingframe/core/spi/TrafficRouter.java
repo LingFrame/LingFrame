@@ -1,6 +1,6 @@
 package com.lingframe.core.spi;
 
-import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.ling.LingInstance;
 
 import java.util.List;

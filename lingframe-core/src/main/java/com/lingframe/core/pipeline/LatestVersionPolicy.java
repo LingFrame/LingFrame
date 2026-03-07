@@ -1,6 +1,5 @@
 package com.lingframe.core.pipeline;
 
-import com.lingframe.core.kernel.InvocationContext;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.TrafficRouter;
 

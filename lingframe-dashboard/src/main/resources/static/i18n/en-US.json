@@ -1,6 +1,6 @@
 {
     "title": "LingFrame | Governance Center",
-    "version": "V0.2.0",
+    "version": "V0.3.0",
     "sidebar": {
         "currentEnv": "Current Env",
         "envDev": "Development",
@@ -39,7 +39,9 @@
     "traffic": {
         "title": "Traffic Control",
         "notSelected": "Not Selected",
-        "inactive": "Inactive",
+        "inactive": "INACTIVE",
+        "degraded": "DEGRADED",
+        "removed": "REMOVED",
         "canary": "Canary",
         "singleVersion": "Single Version",
         "stable": "Stable",
@@ -64,9 +66,10 @@
         "title": "Ling Control",
         "selectLing": "Select a ling from the list",
         "lifecycle": "Lifecycle",
-        "activate": "Activate",
-        "reload": "Reload",
-        "unload": "Unload",
+        "activate": "Activate (ACTIVE)",
+        "inactivate": "Inactivate (INACTIVE)",
+        "reload": "Hot Reload",
+        "unload": "Full Unload",
         "permissions": "Permissions",
         "dbRead": "DB Read",
         "dbWrite": "DB Write",

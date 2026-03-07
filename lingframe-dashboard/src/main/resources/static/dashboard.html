@@ -262,7 +262,7 @@
                                             p.lingId }}</span>
                                         <span
                                             :class="['text-xs px-2 py-0.5 rounded-full flex-shrink-0', getStatusClass(p.status)]">
-                                            {{ p.status }}
+                                            {{ t('traffic.' + p.status.toLowerCase()) }}
                                         </span>
                                     </div>
                                     <div class="flex justify-between items-center">
@@ -482,27 +482,33 @@
                                     <div class="mb-4">
                                         <label class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">{{
                                             t('control.lifecycle') }}</label>
-                                        <div class="grid grid-cols-3 gap-2">
+                                        <div class="grid grid-cols-2 gap-2">
                                             <button @click="updateStatus('ACTIVE')"
-                                                :disabled="activeLing?.status === 'ACTIVE'"
+                                                :disabled="activeLing?.status === 'ACTIVE' || activeLing?.status === 'DEGRADED'"
                                                 :class="activeLing?.status === 'ACTIVE' ? 'bg-green-600' : 'bg-slate-700 hover:bg-slate-600'"
                                                 class="action-btn text-white text-sm">
                                                 <i class="fa-solid fa-play"></i>
                                                 {{ t('control.activate') }}
                                             </button>
-                                            <button @click="updateStatus('LOADED')"
-                                                :disabled="activeLing?.status === 'LOADED'"
-                                                :class="activeLing?.status === 'LOADED' ? 'bg-blue-600' : 'bg-slate-700 hover:bg-slate-600'"
+                                            <button @click="updateStatus('INACTIVE')"
+                                                :disabled="activeLing?.status === 'INACTIVE'"
+                                                :class="activeLing?.status === 'INACTIVE' ? 'bg-blue-600' : 'bg-slate-700 hover:bg-slate-600'"
                                                 class="action-btn text-white text-sm">
+                                                <i class="fa-solid fa-pause"></i>
+                                                {{ t('control.inactivate') }}
+                                            </button>
+                                            <button v-if="currentEnv === 'dev'" @click="reloadLing(activeId)"
+                                                class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
                                                 <i class="fa-solid fa-rotate"></i>
                                                 {{ t('control.reload') }}
                                             </button>
-                                            <button @click="requestUnload" :disabled="activeLing?.status === 'UNLOADED'"
-                                                :class="activeLing?.status === 'UNLOADED' ? 'bg-red-600' : 'bg-slate-700 hover:bg-slate-600'"
+                                            <button @click="requestUnload" :disabled="activeLing?.status === 'REMOVED'"
+                                                :class="activeLing?.status === 'REMOVED' ? 'bg-red-600' : 'bg-slate-700 hover:bg-slate-600'"
                                                 class="action-btn text-white text-sm">
-                                                <i class="fa-solid fa-power-off"></i>
+                                                <i class="fa-solid fa-trash-can"></i>
                                                 {{ t('control.unload') }}
                                             </button>
+
                                         </div>
                                     </div>
 

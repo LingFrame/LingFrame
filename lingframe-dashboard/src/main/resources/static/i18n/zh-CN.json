@@ -1,6 +1,6 @@
 {
   "title": "灵珑 | 核心治理中心",
-  "version": "V0.2.0",
+  "version": "V0.3.0",
   "sidebar": {
     "currentEnv": "当前环境",
     "envDev": "开发环境",
@@ -39,7 +39,9 @@
   "traffic": {
     "title": "流量分发",
     "notSelected": "未选择",
-    "inactive": "未激活",
+    "inactive": "未激活 (INACTIVE)",
+    "degraded": "降级 (DEGRADED)",
+    "removed": "已卸载 (REMOVED)",
     "canary": "灰度中",
     "singleVersion": "单版本",
     "stable": "稳定版",
@@ -64,9 +66,10 @@
     "title": "灵元控制",
     "selectLing": "请在左侧选择灵元",
     "lifecycle": "生命周期",
-    "activate": "激活",
-    "reload": "重载",
-    "unload": "卸载",
+    "activate": "激活 (ACTIVE)",
+    "inactivate": "停用 (INACTIVE)",
+    "reload": "热重载",
+    "unload": "彻底卸载",
     "permissions": "资源权限",
     "dbRead": "DB 读",
     "dbWrite": "DB 写",

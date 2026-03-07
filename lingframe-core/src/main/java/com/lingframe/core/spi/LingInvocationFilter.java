@@ -1,6 +1,6 @@
 package com.lingframe.core.spi;
 
-import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.pipeline.InvocationContext;
 
 public interface LingInvocationFilter {
     int getOrder();

@@ -1,7 +1,6 @@
 package com.lingframe.core.pipeline;
 
-import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.kernel.LingInvocationException;
+import com.lingframe.core.exception.LingInvocationException;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;

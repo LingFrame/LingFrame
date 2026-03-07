@@ -1,7 +1,7 @@
 package com.lingframe.dashboard.controller;
 
 import com.lingframe.core.config.LingFrameConfig;
-import com.lingframe.core.enums.LingStatus;
+import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.DashboardService;
 import lombok.Data;
@@ -177,6 +177,6 @@ public class LingController {
     // 内部类：请求体
     @Data
     public static class LingStatusRequest {
-        private LingStatus status;
+        private RuntimeStatus status;
     }
 }

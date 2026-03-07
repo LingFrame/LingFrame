@@ -6,7 +6,7 @@ import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.core.governance.GovernanceDecision;
 import com.lingframe.core.governance.LingCoreGovernanceRule;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
-import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.GovernancePolicyProvider;
