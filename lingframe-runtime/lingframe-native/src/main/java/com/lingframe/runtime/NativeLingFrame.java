@@ -5,16 +5,13 @@ import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.CoreLingContext;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.ling.DefaultLingLifecycleEngine;
 import com.lingframe.core.ling.DefaultLingRepository;
-import com.lingframe.core.ling.DefaultLingResourceManager;
 import com.lingframe.core.ling.DefaultLingServiceRegistry;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.resource.BasicResourceGuard;
 import com.lingframe.core.ling.LingRepository;
-import com.lingframe.core.ling.LingResourceManager;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.pipeline.FilterRegistry;
@@ -89,7 +86,7 @@ public class NativeLingFrame {
                 lingRepository,
                 lingServiceRegistry,
                 pipelineEngine,
-                new BasicResourceGuard());
+                Collections.singletonList(new BasicResourceGuard()));
 
         // 注册一个特殊的 "lingcore-app" 上下文
         HOST_CONTEXT = new CoreLingContext("lingcore-app", lingRepository, lingServiceRegistry, pipelineEngine,

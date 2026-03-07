@@ -40,9 +40,9 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
     private final List<LingSecurityVerifier> verifiers;
     private final LingFrameConfig lingFrameConfig;
     private final InvocationPipelineEngine pipelineEngine;
-    private final ResourceGuard resourceGuard;
+    private final List<ResourceGuard> resourceGuards;
 
-    private final InstanceCoordinator instanceCoordinator = new InstanceCoordinator();
+    private final InstanceCoordinator instanceCoordinator;
 
     public DefaultLingLifecycleEngine(ContainerFactory containerFactory,
             PermissionService permissionService,
@@ -53,7 +53,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry,
             InvocationPipelineEngine pipelineEngine,
-            ResourceGuard resourceGuard) {
+            List<ResourceGuard> resourceGuards) {
 
         this.containerFactory = containerFactory;
         this.lingLoaderFactory = lingLoaderFactory;
@@ -74,7 +74,8 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         this.lingRepository = lingRepository;
         this.lingServiceRegistry = lingServiceRegistry;
         this.pipelineEngine = pipelineEngine;
-        this.resourceGuard = resourceGuard;
+        this.resourceGuards = resourceGuards != null ? new ArrayList<>(resourceGuards) : new ArrayList<>();
+        this.instanceCoordinator = new InstanceCoordinator(eventBus);
     }
 
     @Override
@@ -173,8 +174,14 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             return;
         }
 
-        // 预留：等待存量请求排空
-        log.info("[{}] Draining existing requests...", lingId);
+        // ① 先将宏观状态设为 STOPPING，MacroStateGuardFilter 会拒绝新请求
+        if (runtime.getStateMachine().current() != RuntimeStatus.STOPPING) {
+            runtime.getStateMachine().transition(RuntimeStatus.STOPPING);
+        }
+
+        // ② 流量排空：标记所有实例为 dying，等待存量请求完成
+        drainInstances(lingId, runtime.getInstancePool().getActiveInstances(),
+                runtime.getConfig().getForceCleanupDelaySeconds());
 
         doFullUndeploy(lingId, runtime);
     }
@@ -196,15 +203,22 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             return;
         }
 
-        log.info("[{}] Draining existing requests for version {}...", lingId, version);
+        // 2. 流量排空：标记实例为 dying，等待存量请求完成
+        drainInstances(lingId, java.util.Collections.singletonList(targetInstance),
+                runtime.getConfig().getForceCleanupDelaySeconds());
 
-        // 2. 隔离并卸载该版本实例
+        // 3. 隔离并卸载该版本实例
         ClassLoader classLoader = targetInstance.getContainer().getClassLoader();
         instanceCoordinator.tearDown(targetInstance, eventBus);
         runtime.getInstancePool().removeInstance(targetInstance);
 
-        if (resourceGuard != null) {
-            resourceGuard.cleanup(lingId, classLoader);
+        for (ResourceGuard guard : resourceGuards) {
+            try {
+                guard.cleanup(lingId, classLoader);
+            } catch (Exception e) {
+                log.error("[{}] Resource cleanup failed for version {} with guard: {}", lingId, version,
+                        guard.getClass().getName(), e);
+            }
         }
 
         if (classLoader instanceof AutoCloseable) {
@@ -215,11 +229,16 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             }
         }
 
-        if (resourceGuard != null) {
-            resourceGuard.detectLeak(lingId, classLoader);
+        for (ResourceGuard guard : resourceGuards) {
+            try {
+                guard.detectLeak(lingId, classLoader);
+            } catch (Exception e) {
+                log.error("[{}] Leak detection failed for version {} with guard: {}", lingId, version,
+                        guard.getClass().getName(), e);
+            }
         }
 
-        // 3. 全局状态检查
+        // 4. 全局状态检查
         List<LingInstance> remaining = runtime.getInstancePool().getAllInstances();
         if (remaining.isEmpty()) {
             log.info("[{}] No instances remaining after version {} unloaded. Cleaning up runtime.", lingId, version);
@@ -248,8 +267,12 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             runtime.getInstancePool().removeInstance(instance);
 
             // 🔥 彻底卸载的关键：清理资源并检测泄漏
-            if (resourceGuard != null) {
-                resourceGuard.cleanup(lingId, classLoader);
+            for (ResourceGuard guard : resourceGuards) {
+                try {
+                    guard.cleanup(lingId, classLoader);
+                } catch (Exception e) {
+                    log.error("[{}] Resource cleanup failed with guard: {}", lingId, guard.getClass().getName(), e);
+                }
             }
 
             // 显式关闭类加载器 (释放 Jar 句柄)
@@ -262,22 +285,29 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             }
 
             // 延迟触发泄漏检测
-            if (resourceGuard != null) {
-                resourceGuard.detectLeak(lingId, classLoader);
+            for (ResourceGuard guard : resourceGuards) {
+                try {
+                    guard.detectLeak(lingId, classLoader);
+                } catch (Exception e) {
+                    log.error("[{}] Leak detection failed with guard: {}", lingId, guard.getClass().getName(), e);
+                }
             }
         }
 
         // 3. 清理注册表中的暴露条目
         lingServiceRegistry.evict(lingId);
 
-        // 4. 彻底解绑监听与权限
+        // 4. 驱逐弹性治理组件（限流器、熔断器），防止内存泄漏
+        pipelineEngine.evictResilience(lingId);
+
+        // 5. 彻底解绑监听与权限
         eventBus.unsubscribeAll(lingId);
         permissionService.removeLing(lingId);
 
-        // 5. 宣告生命终结
+        // 6. 宣告生命终结
         runtime.getStateMachine().transition(RuntimeStatus.REMOVED);
 
-        // 6. 从仓储拔除引用
+        // 7. 从仓储拔除引用
         lingRepository.deregister(lingId);
 
         eventBus.publish(new LingUninstalledEvent(lingId));
@@ -292,11 +322,14 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             }
         }
 
-        if (resourceGuard != null && classLoader != null) {
-            try {
-                resourceGuard.cleanup("fault-cleanup", classLoader);
-            } catch (Exception e) {
-                log.warn("ResourceGuard cleanup failed during failure recovery", e);
+        if (classLoader != null && !resourceGuards.isEmpty()) {
+            for (ResourceGuard guard : resourceGuards) {
+                try {
+                    guard.cleanup("fault-cleanup", classLoader);
+                } catch (Exception e) {
+                    log.warn("ResourceGuard cleanup failed during failure recovery with guard: {}",
+                            guard.getClass().getName(), e);
+                }
             }
         }
 
@@ -305,6 +338,76 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
                 ((AutoCloseable) classLoader).close();
             } catch (Exception e) {
                 log.warn("Failed to close classloader", e);
+            }
+        }
+    }
+
+    /**
+     * 流量排空：标记目标实例为 dying（拒绝新请求），轮询等待存量请求完成。
+     * <p>
+     * 基础设施依赖：
+     * - {@link LingInstance#markDying()} → 将实例状态置为 STOPPING，{@code tryEnter()} 后续返回
+     * false
+     * - {@link LingInstance#isIdle()} → {@code activeRequests.get() == 0}
+     * <p>
+     * 超时保护：超过 {@code timeoutSeconds} 后强制继续，避免无限等待。
+     *
+     * @param lingId         灵元 ID（仅用于日志）
+     * @param instances      需要排空的实例列表
+     * @param timeoutSeconds 排空超时秒数（来自
+     *                       {@link LingRuntimeConfig#getForceCleanupDelaySeconds()}）
+     */
+    private void drainInstances(String lingId, List<LingInstance> instances, int timeoutSeconds) {
+        if (instances == null || instances.isEmpty()) {
+            return;
+        }
+
+        // 第一步：标记所有实例为 dying，拒绝新请求
+        for (LingInstance instance : instances) {
+            if (!instance.isDying()) {
+                try {
+                    instance.markDying();
+                } catch (Exception e) {
+                    log.debug("[{}] Instance {} already in terminal state", lingId, instance.getVersion());
+                }
+            }
+        }
+
+        log.info("[{}] Draining {} instances, timeout={}s...", lingId, instances.size(), timeoutSeconds);
+
+        // 第二步：轮询等待所有实例变为 idle
+        long deadlineMs = System.currentTimeMillis() + (long) timeoutSeconds * 1000;
+        boolean allIdle = false;
+
+        while (System.currentTimeMillis() < deadlineMs) {
+            allIdle = true;
+            for (LingInstance instance : instances) {
+                if (!instance.isIdle()) {
+                    allIdle = false;
+                    break;
+                }
+            }
+            if (allIdle) {
+                break;
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("[{}] Drain interrupted", lingId);
+                return;
+            }
+        }
+
+        if (allIdle) {
+            log.info("[{}] All instances drained successfully", lingId);
+        } else {
+            // 超时后强制继续，记录残留的活跃请求数
+            for (LingInstance instance : instances) {
+                if (!instance.isIdle()) {
+                    log.warn("[{}] Force proceeding: instance {} still has {} active requests",
+                            lingId, instance.getVersion(), instance.getActiveRequestCount());
+                }
             }
         }
     }

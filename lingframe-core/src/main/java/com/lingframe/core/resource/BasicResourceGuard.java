@@ -85,7 +85,7 @@ public class BasicResourceGuard implements ResourceGuard {
             return null;
         } catch (Exception e) {
             log.debug("Field {}.{} not accessible (JDK {}): {}. " +
-                            "Consider adding: --add-opens java.base/{}=ALL-UNNAMED",
+                    "Consider adding: --add-opens java.base/{}=ALL-UNNAMED",
                     clazz.getSimpleName(), fieldName, JDK_VERSION, e.getClass().getSimpleName(),
                     clazz.getPackage().getName());
             return null;
@@ -120,7 +120,8 @@ public class BasicResourceGuard implements ResourceGuard {
      * 判断线程是否为虚拟线程（Java 21+）
      */
     private static boolean isVirtualThread(Thread t) {
-        if (THREAD_IS_VIRTUAL == null) return false;
+        if (THREAD_IS_VIRTUAL == null)
+            return false;
         try {
             return (Boolean) THREAD_IS_VIRTUAL.invoke(t);
         } catch (Exception e) {
@@ -132,7 +133,8 @@ public class BasicResourceGuard implements ResourceGuard {
      * 启动时打印一次 JDK 适配信息
      */
     static {
-        log.info("BasicResourceGuard initialized: JDK={}, capabilities=[target={}, acc={}, accContext={}, virtualThread={}]",
+        log.info(
+                "BasicResourceGuard initialized: JDK={}, capabilities=[target={}, acc={}, accContext={}, virtualThread={}]",
                 JDK_VERSION,
                 THREAD_TARGET_FIELD != null ? "✓" : "✗",
                 THREAD_ACC_FIELD != null ? "✓" : "✗",
@@ -141,8 +143,10 @@ public class BasicResourceGuard implements ResourceGuard {
 
         if (JDK_VERSION >= 16) {
             List<String> missing = new ArrayList<>();
-            if (THREAD_TARGET_FIELD == null) missing.add("--add-opens java.base/java.lang=ALL-UNNAMED");
-            if (DRIVER_MANAGER_FIELD == null) missing.add("--add-opens java.sql/java.sql=ALL-UNNAMED");
+            if (THREAD_TARGET_FIELD == null)
+                missing.add("--add-opens java.base/java.lang=ALL-UNNAMED");
+            if (DRIVER_MANAGER_FIELD == null)
+                missing.add("--add-opens java.sql/java.sql=ALL-UNNAMED");
             if (!missing.isEmpty()) {
                 log.warn("Some cleanup capabilities are limited. Recommended JVM args:\n  {}",
                         String.join("\n  ", missing));
@@ -227,15 +231,16 @@ public class BasicResourceGuard implements ResourceGuard {
     private void diagnoseSuspectThreads(String lingId, ClassLoader classLoader) {
         Thread[] allThreads = getActiveThreads();
         for (Thread t : allThreads) {
-            if (t == null) continue;
+            if (t == null)
+                continue;
 
             ClassLoader tccl = getContextClassLoaderSafe(t);
             boolean isMysql = t.getName().contains("mysql") || t.getName().contains("MySQL");
             boolean isSameCL = (tccl == classLoader);
 
             if (isMysql || isSameCL) {
-                String tcclInfo = tccl == null ? "null" :
-                        tccl.getClass().getSimpleName() + "@" +
+                String tcclInfo = tccl == null ? "null"
+                        : tccl.getClass().getSimpleName() + "@" +
                                 Integer.toHexString(System.identityHashCode(tccl));
                 String extra = isVirtualThread(t) ? ", virtual=true" : "";
 
@@ -261,12 +266,15 @@ public class BasicResourceGuard implements ResourceGuard {
         boolean found = false;
 
         for (Thread t : threads) {
-            if (t == null) continue;
+            if (t == null)
+                continue;
 
             // 跳过虚拟线程（MySQL 不会用虚拟线程）
-            if (isVirtualThread(t)) continue;
+            if (isVirtualThread(t))
+                continue;
 
-            if (!isMySqlCleanupThread(t)) continue;
+            if (!isMySqlCleanupThread(t))
+                continue;
             if (!isThreadRelatedToClassLoader(t, classLoader)) {
                 log.debug("[{}] MySQL thread {} not related to this CL, skipping", lingId, t.getName());
                 continue;
@@ -348,7 +356,8 @@ public class BasicResourceGuard implements ResourceGuard {
             try {
                 Class<?> cls = Class.forName(className, true, classLoader);
                 // 确认是目标 CL 加载的，防止回退到 parent
-                if (cls.getClassLoader() != classLoader) continue;
+                if (cls.getClassLoader() != classLoader)
+                    continue;
 
                 cls.getMethod("checkedShutdown").invoke(null);
                 log.info("[{}] checkedShutdown() called via {}", lingId, className);
@@ -419,7 +428,8 @@ public class BasicResourceGuard implements ResourceGuard {
         for (String className : classNames) {
             try {
                 Class<?> cls = Class.forName(className, true, classLoader);
-                if (cls.getClassLoader() != classLoader) continue;
+                if (cls.getClassLoader() != classLoader)
+                    continue;
 
                 for (String fieldName : fieldNames) {
                     try {
@@ -446,13 +456,17 @@ public class BasicResourceGuard implements ResourceGuard {
     // =========================================================================
 
     private int deregisterJdbcDrivers(String lingId, ClassLoader classLoader) {
-        if (JDK_VERSION >= 9 || DRIVER_MANAGER_FIELD == null) {
-            // Java 9+: 优先用公开 API，无需反射
-            return deregisterJdbcDriversPublicApi(lingId, classLoader);
-        } else {
-            // Java 8: 用反射绕过权限检查
-            return deregisterJdbcDriversReflection(lingId, classLoader);
+        if (DRIVER_MANAGER_FIELD != null) {
+            // JVM 跨 ClassLoader 时，DriverManager.getDrivers() 因 CallerSensitive
+            // 获取不到子类加载器的驱动。
+            // 必须优先使用反射绕过权限检查进行强制反注册。
+            int count = deregisterJdbcDriversReflection(lingId, classLoader);
+            if (count > 0)
+                return count;
         }
+
+        // 兜底：如果反射完全失效，才尝试使用 Public API
+        return deregisterJdbcDriversPublicApi(lingId, classLoader);
     }
 
     /**
@@ -490,7 +504,8 @@ public class BasicResourceGuard implements ResourceGuard {
         try {
             @SuppressWarnings("unchecked")
             CopyOnWriteArrayList<Object> drivers = (CopyOnWriteArrayList<Object>) DRIVER_MANAGER_FIELD.get(null);
-            if (drivers == null) return 0;
+            if (drivers == null)
+                return 0;
 
             List<Object> toRemove = new ArrayList<>();
             Field driverField = null;
@@ -530,7 +545,8 @@ public class BasicResourceGuard implements ResourceGuard {
 
     private void clearThreadReferences(String lingId, ClassLoader classLoader) {
         for (Thread t : getActiveThreads()) {
-            if (t == null) continue;
+            if (t == null)
+                continue;
 
             // 虚拟线程不处理 target / ACC（结构不同）
             boolean isVirtual = isVirtualThread(t);
@@ -566,7 +582,8 @@ public class BasicResourceGuard implements ResourceGuard {
      * Java 24: 已删除
      */
     private void clearThreadAccField(String lingId, Thread t, ClassLoader classLoader) {
-        if (THREAD_ACC_FIELD == null) return; // Java 24+ 或无权限
+        if (THREAD_ACC_FIELD == null)
+            return; // Java 24+ 或无权限
 
         try {
             Object acc = THREAD_ACC_FIELD.get(t);
@@ -584,7 +601,8 @@ public class BasicResourceGuard implements ResourceGuard {
      * Java 21+: 虚拟线程没有此字段，平台线程可能重构
      */
     private void clearThreadTargetField(String lingId, Thread t, ClassLoader classLoader) {
-        if (THREAD_TARGET_FIELD == null) return;
+        if (THREAD_TARGET_FIELD == null)
+            return;
 
         try {
             Object target = THREAD_TARGET_FIELD.get(t);
@@ -602,11 +620,13 @@ public class BasicResourceGuard implements ResourceGuard {
     // =========================================================================
 
     private boolean referencesClassLoader(Object acc, ClassLoader cl) {
-        if (ACC_CONTEXT_FIELD == null) return false; // Java 24+ 或无权限
+        if (ACC_CONTEXT_FIELD == null)
+            return false; // Java 24+ 或无权限
 
         try {
             Object arr = ACC_CONTEXT_FIELD.get(acc);
-            if (arr == null) return false;
+            if (arr == null)
+                return false;
 
             int len = Array.getLength(arr);
             for (int i = 0; i < len; i++) {
@@ -615,7 +635,8 @@ public class BasicResourceGuard implements ResourceGuard {
                 try {
                     Method getClMethod = pd.getClass().getMethod("getClassLoader");
                     Object pdCl = getClMethod.invoke(pd);
-                    if (pdCl == cl) return true;
+                    if (pdCl == cl)
+                        return true;
                 } catch (Exception ignored) {
                 }
             }
@@ -660,10 +681,12 @@ public class BasicResourceGuard implements ResourceGuard {
 
         int cleaned = 0;
         for (Thread t : getActiveThreads()) {
-            if (t == null) continue;
+            if (t == null)
+                continue;
 
             // Java 21+: 虚拟线程的 ThreadLocal 存储方式不同，跳过
-            if (isVirtualThread(t)) continue;
+            if (isVirtualThread(t))
+                continue;
 
             cleaned += clearThreadLocalMap(t, THREAD_LOCALS_FIELD, classLoader);
             cleaned += clearThreadLocalMap(t, INHERITABLE_THREAD_LOCALS_FIELD, classLoader);
@@ -675,21 +698,25 @@ public class BasicResourceGuard implements ResourceGuard {
     }
 
     private int clearThreadLocalMap(Thread t, Field mapField, ClassLoader cl) {
-        if (mapField == null || TLM_TABLE_FIELD == null) return 0;
+        if (mapField == null || TLM_TABLE_FIELD == null)
+            return 0;
 
         int cleaned = 0;
         try {
             Object map = mapField.get(t);
-            if (map == null) return 0;
+            if (map == null)
+                return 0;
 
             Object[] table = (Object[]) TLM_TABLE_FIELD.get(map);
-            if (table == null) return 0;
+            if (table == null)
+                return 0;
 
             Field valueField = null;
             Method expungeMethod = null;
 
             for (Object entry : table) {
-                if (entry == null) continue;
+                if (entry == null)
+                    continue;
 
                 if (valueField == null) {
                     valueField = entry.getClass().getDeclaredField("value");
@@ -731,18 +758,23 @@ public class BasicResourceGuard implements ResourceGuard {
     // =========================================================================
 
     private boolean isClassLoaderRelated(Object obj, ClassLoader cl) {
-        if (obj == null) return false;
+        if (obj == null)
+            return false;
 
         // 核心：直接 ClassLoader 检查
-        if (obj.getClass().getClassLoader() == cl) return true;
-        if (obj instanceof Class && ((Class<?>) obj).getClassLoader() == cl) return true;
-        if (obj instanceof ClassLoader && obj == cl) return true;
+        if (obj.getClass().getClassLoader() == cl)
+            return true;
+        if (obj instanceof Class && ((Class<?>) obj).getClassLoader() == cl)
+            return true;
+        if (obj instanceof ClassLoader && obj == cl)
+            return true;
 
         // 深度：处理常见容器类
         if (obj instanceof Iterable) {
             try {
                 for (Object item : (Iterable<?>) obj) {
-                    if (isClassLoaderRelated(item, cl)) return true;
+                    if (isClassLoaderRelated(item, cl))
+                        return true;
                 }
             } catch (Exception ignored) {
             }
@@ -761,7 +793,8 @@ public class BasicResourceGuard implements ResourceGuard {
             try {
                 int len = Array.getLength(obj);
                 for (int i = 0; i < len; i++) {
-                    if (isClassLoaderRelated(Array.get(obj, i), cl)) return true;
+                    if (isClassLoaderRelated(Array.get(obj, i), cl))
+                        return true;
                 }
             } catch (Exception ignored) {
             }

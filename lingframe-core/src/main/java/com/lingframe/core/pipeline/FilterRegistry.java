@@ -21,6 +21,9 @@ public class FilterRegistry {
     private final List<LingInvocationFilter> spiFilters = new ArrayList<>();
     private final InvokableMethodCache methodCache;
 
+    // 保留弹性治理 Filter 引用，支持灵元卸载时驱逐弹性组件
+    private ResilienceGovernanceFilter resilienceFilter;
+
     // 排序缓存，dirty 时重建
     private volatile List<LingInvocationFilter> orderedCache;
 
@@ -41,6 +44,7 @@ public class FilterRegistry {
                 lingRepository,
                 trafficRouter != null ? trafficRouter : new LatestVersionPolicy());
         ResilienceGovernanceFilter resilience = new ResilienceGovernanceFilter(lingRepository, eventBus);
+        this.resilienceFilter = resilience;
         ContextIsolationFilter isolation = new ContextIsolationFilter();
         TerminalInvokerFilter terminal = new TerminalInvokerFilter(methodCache);
 
@@ -93,5 +97,15 @@ public class FilterRegistry {
 
     private void invalidateCache() {
         this.orderedCache = null;
+    }
+
+    /**
+     * 驱逐指定灵元的弹性治理组件（限流器、熔断器）。
+     * 由灵元卸载链路调用，防止内存泄漏。
+     */
+    public void evictResilience(String lingId) {
+        if (resilienceFilter != null) {
+            resilienceFilter.evict(lingId);
+        }
     }
 }

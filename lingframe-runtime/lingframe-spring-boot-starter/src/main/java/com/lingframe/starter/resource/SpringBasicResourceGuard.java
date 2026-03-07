@@ -31,8 +31,10 @@ import java.util.Map;
 import java.util.ResourceBundle;
 import java.util.concurrent.ExecutorService;
 
+import com.lingframe.starter.spi.SpringAwareResourceGuard;
+
 @Slf4j
-public class SpringBasicResourceGuard extends BasicResourceGuard {
+public class SpringBasicResourceGuard extends BasicResourceGuard implements SpringAwareResourceGuard {
 
     /**
      * Spring Framework 主版本号
@@ -58,8 +60,9 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
         return 5; // 默认 Spring 5
     }
 
+    @Override
     public void setContexts(ApplicationContext mainContext,
-                            ConfigurableApplicationContext lingContext) {
+            ConfigurableApplicationContext lingContext) {
         this.mainContext = mainContext;
         this.lingContext = lingContext;
     }
@@ -68,6 +71,7 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
     // 第一阶段：Context 活跃期预清理
     // =========================================================================
 
+    @Override
     public void preCleanup(String lingId) {
         if (lingContext == null || !lingContext.isActive())
             return;
@@ -122,7 +126,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
         try {
             Object multicaster = lingContext
                     .getBean(AbstractApplicationContext.APPLICATION_EVENT_MULTICASTER_BEAN_NAME);
-            if (multicaster == null) return;
+            if (multicaster == null)
+                return;
 
             // 沿继承链查找 retrieverCache（兼容 Spring 5.x / 6.x）
             Field retrieverCacheField = findFieldInHierarchy(
@@ -185,6 +190,12 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
         this.lingContext = null;
     }
 
+    @Override
+    public void clearContexts() {
+        this.mainContext = null;
+        this.lingContext = null;
+    }
+
     // =========================================================================
     // Spring 框架缓存清理
     // =========================================================================
@@ -221,7 +232,6 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
         // 4. ResolvableType
         clearResolvableTypeSelective(lingId, lingClassLoader);
 
-
         // 5. JDK ResourceBundle
         try {
             ResourceBundle.clearCache(lingClassLoader);
@@ -241,16 +251,18 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
      * 只移除由目标 ClassLoader 加载的 Class 的条目
      */
     private void clearReflectionUtilsSelective(String lingId, ClassLoader lingClassLoader) {
-        String[] cacheFieldNames = {"declaredFieldsCache", "declaredMethodsCache"};
+        String[] cacheFieldNames = { "declaredFieldsCache", "declaredMethodsCache" };
 
         for (String fieldName : cacheFieldNames) {
             try {
                 Field f = ReflectionUtils.findField(ReflectionUtils.class, fieldName);
-                if (f == null) continue;
+                if (f == null)
+                    continue;
 
                 f.setAccessible(true);
                 Map<?, ?> cache = (Map<?, ?>) f.get(null);
-                if (cache == null) continue;
+                if (cache == null)
+                    continue;
 
                 int before = cache.size();
                 cache.entrySet().removeIf(entry -> {
@@ -283,17 +295,19 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
             int totalRemoved = 0;
 
             for (Field f : AnnotationUtils.class.getDeclaredFields()) {
-                if (!Modifier.isStatic(f.getModifiers())) continue;
-                if (!Map.class.isAssignableFrom(f.getType())) continue;
+                if (!Modifier.isStatic(f.getModifiers()))
+                    continue;
+                if (!Map.class.isAssignableFrom(f.getType()))
+                    continue;
 
                 try {
                     f.setAccessible(true);
                     Map<?, ?> cache = (Map<?, ?>) f.get(null);
-                    if (cache == null || cache.isEmpty()) continue;
+                    if (cache == null || cache.isEmpty())
+                        continue;
 
                     int before = cache.size();
-                    cache.entrySet().removeIf(entry ->
-                            isRelatedToClassLoader(entry.getKey(), lingClassLoader));
+                    cache.entrySet().removeIf(entry -> isRelatedToClassLoader(entry.getKey(), lingClassLoader));
                     totalRemoved += (before - cache.size());
                 } catch (Exception ignored) {
                 }
@@ -304,17 +318,19 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
                 Class<?> aeClass = Class.forName(
                         "org.springframework.core.annotation.AnnotatedElementUtils");
                 for (Field f : aeClass.getDeclaredFields()) {
-                    if (!Modifier.isStatic(f.getModifiers())) continue;
-                    if (!Map.class.isAssignableFrom(f.getType())) continue;
+                    if (!Modifier.isStatic(f.getModifiers()))
+                        continue;
+                    if (!Map.class.isAssignableFrom(f.getType()))
+                        continue;
 
                     try {
                         f.setAccessible(true);
                         Map<?, ?> cache = (Map<?, ?>) f.get(null);
-                        if (cache == null) continue;
+                        if (cache == null)
+                            continue;
 
                         int before = cache.size();
-                        cache.entrySet().removeIf(entry ->
-                                isRelatedToClassLoader(entry.getKey(), lingClassLoader));
+                        cache.entrySet().removeIf(entry -> isRelatedToClassLoader(entry.getKey(), lingClassLoader));
                         totalRemoved += (before - cache.size());
                     } catch (Exception ignored) {
                     }
@@ -356,7 +372,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
     // ======================== ResolvableType 精确清理 ========================
 
     /**
-     * ResolvableType 内部有 cache = ConcurrentReferenceHashMap<ResolvableType, ResolvableType>
+     * ResolvableType 内部有 cache = ConcurrentReferenceHashMap<ResolvableType,
+     * ResolvableType>
      * key 和 value 都是 ResolvableType，内部持有 Class<?> type 字段
      */
     private void clearResolvableTypeSelective(String lingId, ClassLoader lingClassLoader) {
@@ -372,11 +389,13 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
                     }
                 }
             }
-            if (cacheField == null) return;
+            if (cacheField == null)
+                return;
 
             cacheField.setAccessible(true);
             Map<?, ?> cache = (Map<?, ?>) cacheField.get(null);
-            if (cache == null || cache.isEmpty()) return;
+            if (cache == null || cache.isEmpty())
+                return;
 
             int before = cache.size();
             cache.entrySet().removeIf(entry -> {
@@ -398,7 +417,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
      * ResolvableType 内部有 type（Class/Type）、resolved（Class）等字段
      */
     private boolean isResolvableTypeRelated(Object obj, ClassLoader cl) {
-        if (obj == null) return false;
+        if (obj == null)
+            return false;
 
         try {
             // 尝试 resolve() 方法获取实际 Class
@@ -436,8 +456,10 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
         try {
             int cleared = 0;
             for (Field field : SpringFactoriesLoader.class.getDeclaredFields()) {
-                if (!Modifier.isStatic(field.getModifiers())) continue;
-                if (!Map.class.isAssignableFrom(field.getType())) continue;
+                if (!Modifier.isStatic(field.getModifiers()))
+                    continue;
+                if (!Map.class.isAssignableFrom(field.getType()))
+                    continue;
 
                 try {
                     field.setAccessible(true);
@@ -498,10 +520,12 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
                 || className.contains("SpringApplicationShutdownHook")
                 || className.contains("SpringContextShutdownHook");
 
-        if (!isSpringHook) return false;
+        if (!isSpringHook)
+            return false;
 
         // 确认是目标 ClassLoader 的
-        if (hook.getClass().getClassLoader() == lingClassLoader) return true;
+        if (hook.getClass().getClassLoader() == lingClassLoader)
+            return true;
 
         // 检查 target
         try {
@@ -518,7 +542,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
 
         // 检查 contextClassLoader
         try {
-            if (hook.getContextClassLoader() == lingClassLoader) return true;
+            if (hook.getContextClassLoader() == lingClassLoader)
+                return true;
         } catch (Exception ignored) {
         }
 
@@ -579,8 +604,10 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
                     "org.springframework.cglib.core.AbstractClassGenerator");
 
             for (Field f : c.getDeclaredFields()) {
-                if (!Modifier.isStatic(f.getModifiers())) continue;
-                if (!Map.class.isAssignableFrom(f.getType())) continue;
+                if (!Modifier.isStatic(f.getModifiers()))
+                    continue;
+                if (!Map.class.isAssignableFrom(f.getType()))
+                    continue;
 
                 try {
                     f.setAccessible(true);
@@ -635,7 +662,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
 
             objenesisField.setAccessible(true);
             Object objenesis = objenesisField.get(null);
-            if (objenesis == null) return false;
+            if (objenesis == null)
+                return false;
 
             return clearMapFieldsByClassLoaderKey(objenesis, lingClassLoader,
                     "[" + lingId + "] Objenesis");
@@ -653,8 +681,10 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
         try {
             Class<?> c = Class.forName("org.springframework.objenesis.SpringObjenesis");
             for (Field f : c.getDeclaredFields()) {
-                if (!Modifier.isStatic(f.getModifiers())) continue;
-                if (!Map.class.isAssignableFrom(f.getType())) continue;
+                if (!Modifier.isStatic(f.getModifiers()))
+                    continue;
+                if (!Map.class.isAssignableFrom(f.getType()))
+                    continue;
 
                 try {
                     f.setAccessible(true);
@@ -677,7 +707,7 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
                 "org.springframework.objenesis.strategy.BaseInstantiatorStrategy",
                 "org.springframework.objenesis.strategy.StdInstantiatorStrategy"
         };
-        String[] fieldNames = {"INSTANTIATOR_CACHE", "cache", "CACHE"};
+        String[] fieldNames = { "INSTANTIATOR_CACHE", "cache", "CACHE" };
 
         for (String className : classNames) {
             try {
@@ -752,13 +782,15 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
     }
 
     private void clearLifecycleMetadataCache(String lingId,
-                                             ConfigurableListableBeanFactory beanFactory,
-                                             ClassLoader lingClassLoader) {
-        if (!(beanFactory instanceof DefaultListableBeanFactory)) return;
+            ConfigurableListableBeanFactory beanFactory,
+            ClassLoader lingClassLoader) {
+        if (!(beanFactory instanceof DefaultListableBeanFactory))
+            return;
 
         try {
             List<BeanPostProcessor> bpps = getBeanPostProcessors(beanFactory);
-            if (bpps == null || bpps.isEmpty()) return;
+            if (bpps == null || bpps.isEmpty())
+                return;
 
             String[] cacheFieldNames = {
                     "lifecycleMetadataCache",
@@ -769,12 +801,14 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
             for (BeanPostProcessor bpp : bpps) {
                 for (String fieldName : cacheFieldNames) {
                     Field f = findFieldInHierarchy(bpp.getClass(), fieldName);
-                    if (f == null) continue;
+                    if (f == null)
+                        continue;
 
                     try {
                         f.setAccessible(true);
                         Object cache = f.get(bpp);
-                        if (!(cache instanceof Map<?, ?>)) continue;
+                        if (!(cache instanceof Map<?, ?>))
+                            continue;
 
                         Map<?, ?> map = (Map<?, ?>) cache;
                         int before = map.size();
@@ -814,11 +848,12 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
      */
     @SuppressWarnings("unchecked")
     private List<BeanPostProcessor> getBeanPostProcessors(ConfigurableListableBeanFactory beanFactory) {
-        String[] possibleFieldNames = {"beanPostProcessors", "beanPostProcessorCache"};
+        String[] possibleFieldNames = { "beanPostProcessors", "beanPostProcessorCache" };
 
         for (String fieldName : possibleFieldNames) {
             Field f = findFieldInHierarchy(beanFactory.getClass(), fieldName);
-            if (f == null) continue;
+            if (f == null)
+                continue;
 
             try {
                 f.setAccessible(true);
@@ -845,7 +880,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
                             }
                         }
                     }
-                    if (!result.isEmpty()) return result;
+                    if (!result.isEmpty())
+                        return result;
                 }
             } catch (Exception ignored) {
             }
@@ -881,18 +917,20 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
     private int removeStaticMapEntries(Class<?> clazz, ClassLoader cl) {
         int totalRemoved = 0;
         for (Field f : clazz.getDeclaredFields()) {
-            if (!Modifier.isStatic(f.getModifiers())) continue;
-            if (!Map.class.isAssignableFrom(f.getType())) continue;
+            if (!Modifier.isStatic(f.getModifiers()))
+                continue;
+            if (!Map.class.isAssignableFrom(f.getType()))
+                continue;
 
             try {
                 f.setAccessible(true);
                 Map<?, ?> map = (Map<?, ?>) f.get(null);
-                if (map == null || map.isEmpty()) continue;
+                if (map == null || map.isEmpty())
+                    continue;
 
                 int before = map.size();
-                map.entrySet().removeIf(entry ->
-                        isRelatedToClassLoader(entry.getKey(), cl)
-                                || isRelatedToClassLoader(entry.getValue(), cl));
+                map.entrySet().removeIf(entry -> isRelatedToClassLoader(entry.getKey(), cl)
+                        || isRelatedToClassLoader(entry.getValue(), cl));
                 totalRemoved += (before - map.size());
             } catch (Exception ignored) {
             }
@@ -905,13 +943,15 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
      * value 可能是 InjectionMetadata、LifecycleMetadata 等，内部持有 Class 引用
      */
     private boolean isValueRelatedToClassLoader(Object value, ClassLoader cl) {
-        if (value == null) return false;
+        if (value == null)
+            return false;
 
         // 直接检查 value 的 ClassLoader
-        if (value.getClass().getClassLoader() == cl) return true;
+        if (value.getClass().getClassLoader() == cl)
+            return true;
 
         // 检查 value 内部的 targetClass / introspectedClass 字段
-        String[] classFieldNames = {"targetClass", "introspectedClass", "beanClass", "clazz"};
+        String[] classFieldNames = { "targetClass", "introspectedClass", "beanClass", "clazz" };
         for (String fieldName : classFieldNames) {
             Field f = findFieldInHierarchy(value.getClass(), fieldName);
             if (f != null) {
@@ -919,7 +959,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
                     f.setAccessible(true);
                     Object fieldValue = f.get(value);
                     if (fieldValue instanceof Class<?>) {
-                        if (((Class<?>) fieldValue).getClassLoader() == cl) return true;
+                        if (((Class<?>) fieldValue).getClassLoader() == cl)
+                            return true;
                     }
                 } catch (Exception ignored) {
                 }
@@ -935,12 +976,14 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
     private boolean clearMapFieldsByClassLoaderKey(Object obj, ClassLoader cl, String logPrefix) {
         boolean anyCleared = false;
         for (Field f : obj.getClass().getDeclaredFields()) {
-            if (!Map.class.isAssignableFrom(f.getType())) continue;
+            if (!Map.class.isAssignableFrom(f.getType()))
+                continue;
 
             try {
                 f.setAccessible(true);
                 Map<?, ?> map = (Map<?, ?>) f.get(obj);
-                if (map == null || map.isEmpty()) continue;
+                if (map == null || map.isEmpty())
+                    continue;
 
                 int before = map.size();
                 removeByClassLoaderKey(map, cl);
@@ -989,7 +1032,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
                     } else if (key instanceof ClassLoader) {
                         shouldRemove = key == cl;
                     }
-                    if (shouldRemove) it.remove();
+                    if (shouldRemove)
+                        it.remove();
                 }
             } catch (Exception ignored) {
             }
@@ -1027,9 +1071,12 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
     }
 
     protected static boolean isRelatedToClassLoader(Object obj, ClassLoader targetCL) {
-        if (obj == null || targetCL == null) return false;
-        if (obj instanceof Class<?>) return ((Class<?>) obj).getClassLoader() == targetCL;
-        if (obj.getClass().getClassLoader() == targetCL) return true;
+        if (obj == null || targetCL == null)
+            return false;
+        if (obj instanceof Class<?>)
+            return ((Class<?>) obj).getClassLoader() == targetCL;
+        if (obj.getClass().getClassLoader() == targetCL)
+            return true;
         return checkMethodClassKey(obj, targetCL);
     }
 
@@ -1062,7 +1109,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard {
     protected static boolean isTargetClassLoader(ClassLoader cl, ClassLoader target) {
         ClassLoader current = cl;
         while (current != null) {
-            if (current == target) return true;
+            if (current == target)
+                return true;
             current = current.getParent();
         }
         return false;

@@ -10,8 +10,8 @@ import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.core.spi.ResourceGuard;
-import com.lingframe.starter.resource.SpringBasicResourceGuard;
 import com.lingframe.starter.spi.LingContextCustomizer;
+import com.lingframe.starter.spi.SpringAwareResourceGuard;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +42,7 @@ public class SpringLingContainer implements LingContainer {
     // 保存 Context 以便 stop 时使用
     private LingContext lingContext;
     private ApplicationContext mainContext; // 🔥 主容器引用
-    private final ResourceGuard resourceGuard; // 🔥 资源守卫
+    private final List<ResourceGuard> resourceGuards; // 🔥 资源守卫列表
 
     public SpringLingContainer(SpringApplicationBuilder builder,
             ClassLoader classLoader,
@@ -50,14 +50,14 @@ public class SpringLingContainer implements LingContainer {
             List<String> excludedPackages,
             List<LingContextCustomizer> customizers,
             ApplicationContext mainContext,
-            ResourceGuard resourceGuard) {
+            List<ResourceGuard> resourceGuards) {
         this.builder = builder;
         this.classLoader = classLoader;
         this.webInterfaceManager = webInterfaceManager;
         this.excludedPackages = excludedPackages != null ? excludedPackages : Collections.emptyList();
         this.customizers = customizers != null ? customizers : Collections.emptyList();
         this.mainContext = mainContext;
-        this.resourceGuard = resourceGuard;
+        this.resourceGuards = resourceGuards != null ? resourceGuards : Collections.emptyList();
     }
 
     @Override
@@ -334,23 +334,36 @@ public class SpringLingContainer implements LingContainer {
             }
 
             // 🔥 第一阶段清理：在 Context 关闭前执行 preCleanup
-            if (resourceGuard instanceof SpringBasicResourceGuard) {
-                SpringBasicResourceGuard srg = (SpringBasicResourceGuard) resourceGuard;
-                srg.setContexts(this.mainContext, this.context);
-                srg.preCleanup(lingId);
+            for (ResourceGuard guard : resourceGuards) {
+                if (guard instanceof SpringAwareResourceGuard) {
+                    try {
+                        SpringAwareResourceGuard awareGuard = (SpringAwareResourceGuard) guard;
+                        awareGuard.setContexts(this.mainContext, this.context);
+                        awareGuard.preCleanup(lingId);
+                    } catch (Exception e) {
+                        log.debug("Failed to invoke preCleanup on resource guard: {}", guard.getClass().getName(), e);
+                    }
+                }
             }
 
             context.close();
         }
 
         // 🔥 第二阶段清理会由 DefaultLingLifecycleEngine 调用 resourceGuard.cleanup()
-        // 此处仅确保 context 引用已设置（防御性）
-        if (resourceGuard instanceof SpringBasicResourceGuard) {
-            ((SpringBasicResourceGuard) resourceGuard).setContexts(this.mainContext, this.context);
+        // 此处仅确保 context 引用已设置（防御性补充，防止未初始化的 guard 错过注入）
+        for (ResourceGuard guard : resourceGuards) {
+            if (guard instanceof SpringAwareResourceGuard) {
+                try {
+                    ((SpringAwareResourceGuard) guard).setContexts(this.mainContext,
+                            this.context);
+                } catch (Exception ignored) {
+                }
+            }
         }
 
         this.builder = null; // SpringApplicationBuilder 持有 ResourceLoader → ClassLoader
         this.context = null; // ApplicationContext 持有 BeanFactory → 所有 Bean → Class → ClassLoader
+        this.mainContext = null; // 主容器引用也必须断开
         this.classLoader = null;
         this.lingContext = null;
         this.webInterfaceManager = null;

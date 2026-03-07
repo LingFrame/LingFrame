@@ -22,4 +22,12 @@ public class InvocationPipelineEngine {
                     ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
         }
     }
+
+    /**
+     * 驱逐指定灵元的弹性治理组件。
+     * 由灵元卸载链路调用，防止限流器/熔断器内存泄漏。
+     */
+    public void evictResilience(String lingId) {
+        registry.evictResilience(lingId);
+    }
 }

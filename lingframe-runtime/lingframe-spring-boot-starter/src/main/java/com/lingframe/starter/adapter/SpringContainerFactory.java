@@ -28,17 +28,17 @@ public class SpringContainerFactory implements ContainerFactory {
     private final List<String> serviceExcludedPackages;
     private final List<LingContextCustomizer> customizers; // 新增定制器列表
     private final ApplicationContext mainContext; // 🔥 主容器引用
-    private final ResourceGuard resourceGuard; // 🔥 资源守卫
+    private final List<ResourceGuard> resourceGuards; // 🔥 资源守卫列表
 
     public SpringContainerFactory(ApplicationContext parentContext, WebInterfaceManager webInterfaceManager,
-            List<LingContextCustomizer> customizers, ResourceGuard resourceGuard) {
+            List<LingContextCustomizer> customizers, List<ResourceGuard> resourceGuards) {
         LingFrameProperties props = parentContext.getBean(LingFrameProperties.class);
         this.devMode = props.isDevMode();
         this.serviceExcludedPackages = props.getServiceExcludedPackages();
         this.webInterfaceManager = webInterfaceManager;
         this.customizers = customizers != null ? customizers : Collections.emptyList();
         this.mainContext = parentContext; // 🔥 保存主容器
-        this.resourceGuard = resourceGuard; // 🔥 保存资源守卫
+        this.resourceGuards = resourceGuards != null ? resourceGuards : Collections.emptyList(); // 🔥 保存资源守卫
     }
 
     @Override
@@ -75,7 +75,7 @@ public class SpringContainerFactory implements ContainerFactory {
                     serviceExcludedPackages,
                     customizers, // 🔥 传入定制器
                     mainContext,
-                    resourceGuard // 🔥 传入资源守卫
+                    resourceGuards // 🔥 传入资源守卫列表
             );
 
         } catch (Exception e) {
