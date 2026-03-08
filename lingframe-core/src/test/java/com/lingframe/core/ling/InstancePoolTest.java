@@ -2,6 +2,7 @@ package com.lingframe.core.ling;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +50,7 @@ public class InstancePoolTest {
         definition.setId(Ling_ID);
         definition.setVersion(version);
 
-        LingInstance instance = new LingInstance(container, definition);
+        LingInstance instance = new LingInstance(container, definition, new EventBus());
         instance.getStateMachine().transition(InstanceStatus.LOADING);
         instance.getStateMachine().transition(InstanceStatus.STARTING);
         instance.markReady();

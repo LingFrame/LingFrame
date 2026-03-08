@@ -3,6 +3,10 @@ package com.lingframe.core.pipeline;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.spi.LingFilterChain;
 
+/**
+ * 灵元调用管道引擎
+ * 负责组装并执行拦截器链 (LingInvocationFilter Chain)，实现权限校验、流量治理、路由转发等全链路逻辑。
+ */
 public class InvocationPipelineEngine {
     private final FilterRegistry registry;
 
@@ -10,6 +14,13 @@ public class InvocationPipelineEngine {
         this.registry = registry;
     }
 
+    /**
+     * 执行灵元服务调用
+     * 
+     * @param ctx 调用上下文，包含 FQSID、参数、追踪 ID 等信息
+     * @return 调用结果（从 TerminalInvokerFilter 返回）
+     * @throws LingInvocationException 当链路任何环节发生异常或治理拒绝时抛出
+     */
     public Object invoke(InvocationContext ctx) {
         try {
             LingFilterChain chain = new DefaultFilterChain(registry.getOrderedFilters(), 0);

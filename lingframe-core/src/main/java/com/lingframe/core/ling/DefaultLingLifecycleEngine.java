@@ -108,7 +108,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             container = containerFactory.create(lingId, sourceFile, lingClassLoader);
 
             LingDefinition instanceDef = lingDefinition.copy();
-            LingInstance instance = new LingInstance(container, instanceDef);
+            LingInstance instance = new LingInstance(container, instanceDef, eventBus);
             instance.addLabels(labels);
 
             // FSM state flow to loading
@@ -116,7 +116,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
 
             LingRuntime runtime = lingRepository.getRuntime(lingId);
             if (runtime == null) {
-                runtime = new LingRuntime(lingId, lingFrameConfig.getRuntimeConfig());
+                runtime = new LingRuntime(lingId, lingFrameConfig.getRuntimeConfig(), eventBus);
                 lingRepository.register(runtime);
             }
 

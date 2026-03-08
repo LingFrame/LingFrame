@@ -96,7 +96,7 @@ public class SharedApiClassLoader extends URLClassLoader {
      */
     public void addApiJar(File apiJar) {
         if (apiJar == null || !apiJar.exists()) {
-            throw new InvalidArgumentException("apiJar", "API JAR 不存在: " + apiJar);
+            throw new InvalidArgumentException("apiJar", "API JAR does not exist: " + apiJar);
         }
 
         String jarPath = apiJar.getAbsolutePath();
@@ -111,7 +111,7 @@ public class SharedApiClassLoader extends URLClassLoader {
         try {
             checkClassConflicts(apiJar);
         } catch (Exception e) {
-            throw new ClassLoaderException(null, jarPath, "API JAR 冲突检测失败", e);
+            throw new ClassLoaderException(null, jarPath, "API JAR conflict detection failed", e);
         }
 
         // 添加 URL
@@ -120,7 +120,7 @@ public class SharedApiClassLoader extends URLClassLoader {
             loadedJars.add(jarPath);
             log.info("📦 [SharedApi] JAR loaded: {}", apiJar.getName());
         } catch (MalformedURLException e) {
-            throw new ClassLoaderException(null, jarPath, "无法添加 API JAR", e);
+            throw new ClassLoaderException(null, jarPath, "Failed to add API JAR", e);
         }
     }
 
@@ -133,7 +133,7 @@ public class SharedApiClassLoader extends URLClassLoader {
      */
     public void addApiClassesDir(File classesDir) {
         if (classesDir == null || !classesDir.exists() || !classesDir.isDirectory()) {
-            throw new InvalidArgumentException("classesDir", "classes 目录无效: " + classesDir);
+            throw new InvalidArgumentException("classesDir", "Invalid classes directory: " + classesDir);
         }
 
         String dirPath = classesDir.getAbsolutePath();
@@ -153,7 +153,7 @@ public class SharedApiClassLoader extends URLClassLoader {
             loadedJars.add(dirPath);
             log.info("📦 [SharedApi] classes directory loaded: {}", classesDir.getName());
         } catch (MalformedURLException e) {
-            throw new ClassLoaderException(null, dirPath, "无法添加 classes 目录", e);
+            throw new ClassLoaderException(null, dirPath, "Failed to add classes directory", e);
         }
     }
 

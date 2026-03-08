@@ -18,7 +18,7 @@ import com.lingframe.dashboard.dto.SimulateResultDTO;
 import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.api.exception.ServiceUnavailableException;
 import com.lingframe.dashboard.dto.StressResultDTO;
-import com.lingframe.dashboard.router.CanaryRouter;
+import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import org.springframework.stereotype.Component;
@@ -46,6 +46,13 @@ public class SimulateService {
     private final PermissionService permissionService;
     private final InvocationPipelineEngine pipelineEngine;
 
+    /**
+     * 模拟资源访问权限校验
+     * 
+     * @param lingId       灵元ID
+     * @param resourceType 资源类型 (dbRead, dbWrite, cacheRead, etc.)
+     * @return 模拟结果
+     */
     public SimulateResultDTO simulateResource(String lingId, String resourceType) {
         // 🔥 尝试智能推导：寻找现有代码中的最佳替身
         AccessType targetAccess = mapAccessType(resourceType);
@@ -155,6 +162,14 @@ public class SimulateService {
                 .build();
     }
 
+    /**
+     * 模拟灵元间通讯 (IPC) 权限校验
+     * 
+     * @param lingId       调用方灵元ID
+     * @param targetLingId 目标灵元ID
+     * @param ipcEnabled   模拟控制：是否启用 IPC 授权
+     * @return 模拟结果
+     */
     public SimulateResultDTO simulateIpc(String lingId, String targetLingId, boolean ipcEnabled) {
         LingRuntime sourceRuntime = lingRepository.getRuntime(lingId);
         if (sourceRuntime == null) {
@@ -263,7 +278,7 @@ public class SimulateService {
         }
 
         if (!runtime.isAvailable()) {
-            throw new ServiceUnavailableException(lingId, "灵元未激活");
+            throw new ServiceUnavailableException(lingId, "Ling not active");
         }
 
         List<LingInstance> instances = runtime.getInstancePool().getActiveInstances();
@@ -336,7 +351,7 @@ public class SimulateService {
         }
 
         if (!runtime.isAvailable()) {
-            throw new ServiceUnavailableException(lingId, "灵元未激活");
+            throw new ServiceUnavailableException(lingId, "Ling not active");
         }
 
         String traceId = generateTraceId();

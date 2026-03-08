@@ -86,7 +86,7 @@ public class LingLifecycleManagerTest {
         definition.setId(Ling_ID);
         definition.setVersion(version);
 
-        LingInstance instance = new LingInstance(container, definition);
+        LingInstance instance = new LingInstance(container, definition, new EventBus());
         instance.getStateMachine().transition(InstanceStatus.LOADING);
         instance.getStateMachine().transition(InstanceStatus.STARTING);
         return instance;
@@ -170,7 +170,7 @@ public class LingLifecycleManagerTest {
             definition.setId(Ling_ID);
             definition.setVersion("1.0.0");
 
-            LingInstance instance = new LingInstance(container, definition);
+            LingInstance instance = new LingInstance(container, definition, new EventBus());
 
             assertThrows(RuntimeException.class, () -> lifecycleManager.addInstance(instance, lingContext, true));
         }

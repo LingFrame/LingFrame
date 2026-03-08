@@ -9,7 +9,7 @@ import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
-import com.lingframe.dashboard.router.CanaryRouter;
+import com.lingframe.core.router.CanaryRouter;
 
 import java.util.ArrayList;
 import java.util.List;

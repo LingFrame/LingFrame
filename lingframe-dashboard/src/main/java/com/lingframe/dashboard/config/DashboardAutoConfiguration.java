@@ -9,7 +9,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
-import com.lingframe.dashboard.router.CanaryRouter;
+import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LogStreamService;
 import com.lingframe.dashboard.service.SimulateService;

@@ -2,6 +2,7 @@ package com.lingframe.core.ling;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,7 +44,7 @@ public class LingInstanceTest {
 
         when(container.isActive()).thenReturn(true);
 
-        instance = new LingInstance(container, definition);
+        instance = new LingInstance(container, definition, new EventBus());
     }
 
     /**
@@ -75,26 +76,30 @@ public class LingInstanceTest {
         @DisplayName("version 为 null 应抛出异常")
         void shouldThrowWhenVersionIsNull() {
             definition.setVersion(null);
-            assertThrows(InvalidArgumentException.class, () -> new LingInstance(container, definition));
+            assertThrows(InvalidArgumentException.class,
+                    () -> new LingInstance(container, definition, new EventBus()));
         }
 
         @Test
         @DisplayName("version 为空白应抛出异常")
         void shouldThrowWhenVersionIsBlank() {
             definition.setVersion(" ");
-            assertThrows(InvalidArgumentException.class, () -> new LingInstance(container, definition));
+            assertThrows(InvalidArgumentException.class,
+                    () -> new LingInstance(container, definition, new EventBus()));
         }
 
         @Test
         @DisplayName("container 为 null 应抛出异常")
         void shouldThrowWhenContainerIsNull() {
-            assertThrows(NullPointerException.class, () -> new LingInstance(null, definition));
+            assertThrows(NullPointerException.class,
+                    () -> new LingInstance(null, definition, new EventBus()));
         }
 
         @Test
         @DisplayName("definition 为 null 应抛出异常")
         void shouldThrowWhenDefinitionIsNull() {
-            assertThrows(NullPointerException.class, () -> new LingInstance(container, null));
+            assertThrows(NullPointerException.class,
+                    () -> new LingInstance(container, null, new EventBus()));
         }
     }
 

@@ -8,6 +8,10 @@ import org.springframework.cache.CacheManager;
 
 import java.util.Collection;
 
+/**
+ * 灵元缓存管理器代理
+ * 职责：包装原始的 CacheManager，为获取到的 Cache 实例自动套上治理代理。
+ */
 @RequiredArgsConstructor
 public class LingCacheManagerProxy implements CacheManager {
 
@@ -17,12 +21,12 @@ public class LingCacheManagerProxy implements CacheManager {
     @Override
     public Cache getCache(@NonNull String name) {
         Cache cache = target.getCache(name);
-        if (cache == null) return null;
+        if (cache == null)
+            return null;
         // 🔥 关键：无论底层是 RedisCache 还是 CaffeineCache，统一套上治理壳
         // 这里的 LingCacheProxy 是针对 org.springframework.cache.Cache 接口的通用代理
         return new LingSpringCacheProxy(cache, permissionService);
     }
-
 
     @Override
     public Collection<String> getCacheNames() {

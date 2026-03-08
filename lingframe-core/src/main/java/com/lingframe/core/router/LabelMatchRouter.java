@@ -36,9 +36,9 @@ public class LabelMatchRouter implements TrafficRouter {
         // 标签打分逻辑
         return candidates.stream()
                 .map(inst -> new ScoredInstance(inst, calculateScore(inst.getLabels(), requestLabels)))
-                .filter(si -> si.score >= 0) // 过滤掉不匹配的 (score = -1)
-                .max(Comparator.comparingInt(si -> si.score))
-                .map(si -> si.instance)
+                .filter(si -> si.score() >= 0) // 过滤掉不匹配的 (score = -1)
+                .max(Comparator.comparingInt(si -> si.score()))
+                .map(si -> si.instance())
                 .orElse(candidates.get(0));
     }
 

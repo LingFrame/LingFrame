@@ -1,6 +1,7 @@
 package com.lingframe.core.fsm;
 
 import java.util.*;
+import com.lingframe.core.event.EventBus;
 
 public enum InstanceStatus {
     CREATED, // 刚构造，未开始加载
@@ -25,8 +26,7 @@ public enum InstanceStatus {
         TRANSITIONS = Collections.unmodifiableMap(map);
     }
 
-    public static StateMachine<InstanceStatus> newMachine() {
-        return new StateMachine<>(CREATED, TRANSITIONS); // Note: Doc says LOADING, but initial state should be CREATED
-                                                         // for Instance
+    public static StateMachine<InstanceStatus> newMachine(String lingId, EventBus eventBus) {
+        return new StateMachine<>(lingId, CREATED, TRANSITIONS, eventBus);
     }
 }

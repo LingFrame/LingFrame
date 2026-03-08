@@ -1,4 +1,4 @@
-package com.lingframe.dashboard.router;
+package com.lingframe.core.router;
 
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.ling.LingInstance;

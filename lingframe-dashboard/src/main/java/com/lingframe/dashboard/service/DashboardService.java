@@ -18,7 +18,7 @@ import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
-import com.lingframe.dashboard.router.CanaryRouter;
+import com.lingframe.core.router.CanaryRouter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 

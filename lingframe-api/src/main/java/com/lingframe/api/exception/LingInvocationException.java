@@ -4,7 +4,14 @@ package com.lingframe.api.exception;
  * Pipeline 出口的唯一异常类型。调用者永远只看到 LingInvocationException。
  */
 public class LingInvocationException extends LingRuntimeException {
+    /**
+     * 全限定服务标识 (Fully Qualified Service ID)
+     */
     private final String fqsid;
+
+    /**
+     * 具体的错误分类
+     */
     private final ErrorKind kind;
 
     public LingInvocationException(String fqsid, ErrorKind kind) {
@@ -27,14 +34,25 @@ public class LingInvocationException extends LingRuntimeException {
         return kind;
     }
 
+    /**
+     * 异常类型枚举
+     */
     public enum ErrorKind {
-        ROUTE_FAILURE, // 找不到目标实例
-        STATE_REJECTED, // 宏观状态拒绝（STOPPING/DEGRADED）
-        CIRCUIT_OPEN, // 熔断器打开
-        RATE_LIMITED, // 限流
-        CLASSLOADER_ERROR, // 隔离层异常
-        INVOKE_ERROR, // 业务方法本身抛出异常
-        TIMEOUT, // 执行超时
-        INTERNAL_ERROR // 框架内部 bug
+        /** 找不到目标实例（路由失败） */
+        ROUTE_FAILURE,
+        /** 宏观状态拒绝（如处于 STOPPING 或 DEGRADED 状态） */
+        STATE_REJECTED,
+        /** 熔断器处于打开状态 */
+        CIRCUIT_OPEN,
+        /** 触发限流保护 */
+        RATE_LIMITED,
+        /** 类加载器/隔离层异常 */
+        CLASSLOADER_ERROR,
+        /** 业务方法内部执行报错 */
+        INVOKE_ERROR,
+        /** 调用执行超时 */
+        TIMEOUT,
+        /** 框架底层内部异常 */
+        INTERNAL_ERROR
     }
 }

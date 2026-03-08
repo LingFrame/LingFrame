@@ -40,7 +40,7 @@ public class DefaultLingLoaderFactory implements LingLoaderFactory {
 
             return lingCL;
         } catch (MalformedURLException e) {
-            throw new ClassLoaderException(lingId, sourceFile.getPath(), "创建 LingClassLoader 失败", e);
+            throw new ClassLoaderException(lingId, sourceFile.getPath(), "Failed to create LingClassLoader", e);
         }
     }
 
@@ -64,7 +64,7 @@ public class DefaultLingLoaderFactory implements LingLoaderFactory {
             // 生产模式：JAR 包
             return new URL[] { sourceFile.toURI().toURL() };
         } else {
-            throw new InvalidArgumentException("sourceFile", "不支持的源文件类型: " + sourceFile);
+            throw new InvalidArgumentException("sourceFile", "Unsupported source file type: " + sourceFile);
         }
     }
 }

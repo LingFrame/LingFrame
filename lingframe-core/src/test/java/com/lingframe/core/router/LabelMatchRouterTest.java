@@ -2,6 +2,7 @@ package com.lingframe.core.router;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +35,7 @@ class LabelMatchRouterTest {
         definition.setId("test-service");
         definition.setVersion(version);
         definition.setProperties(properties != null ? properties : Collections.emptyMap());
-        LingInstance instance = new LingInstance(container, definition);
+        LingInstance instance = new LingInstance(container, definition, new EventBus());
         if (labels != null) {
             instance.addLabels(labels);
         }

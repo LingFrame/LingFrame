@@ -1,6 +1,7 @@
 package com.lingframe.core.ling;
 
 import com.lingframe.api.config.LingDefinition;
+import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.fsm.StateMachine;
 import com.lingframe.core.spi.LingContainer;
@@ -37,12 +38,15 @@ public class LingInstance {
 
     // 微观状态机
     @Getter
-    private final StateMachine<InstanceStatus> stateMachine = InstanceStatus.newMachine();
+    private final StateMachine<InstanceStatus> stateMachine;
 
-    public LingInstance(LingContainer container, LingDefinition definition) {
+    public LingInstance(LingContainer container, LingDefinition definition, EventBus eventBus) {
         // 🔥 参数校验
         this.container = Objects.requireNonNull(container, "container cannot be null");
         this.definition = Objects.requireNonNull(definition, "definition cannot be null");
+
+        String lingId = definition.getId();
+        this.stateMachine = InstanceStatus.newMachine(lingId, eventBus);
 
         definition.validate();
     }

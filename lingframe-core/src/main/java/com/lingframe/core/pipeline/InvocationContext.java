@@ -59,6 +59,11 @@ public class InvocationContext {
     // 第四部分：路由与弹性治理
     // ════════════════════════════════════════════
     private Map<String, String> labels;
+
+    public Map<String, String> getLabels() {
+        return labels;
+    }
+
     private Integer timeout;
     private Map<String, Object> metadata;
 
@@ -67,6 +72,10 @@ public class InvocationContext {
     // ════════════════════════════════════════════
     // ⚠️ 写入 attachments 的复杂对象引用必须在 finally 中主动移除！
     private Map<String, Object> attachments;
+
+    public Map<String, Object> getAttachments() {
+        return attachments;
+    }
 
     /** 重置所有字段，防止污染下一次调用 */
     public void reset() {

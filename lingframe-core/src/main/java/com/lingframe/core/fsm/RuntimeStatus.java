@@ -1,6 +1,7 @@
 package com.lingframe.core.fsm;
 
 import java.util.*;
+import com.lingframe.core.event.EventBus;
 
 public enum RuntimeStatus {
     INACTIVE, // 已注册但无可用实例
@@ -21,7 +22,7 @@ public enum RuntimeStatus {
         TRANSITIONS = Collections.unmodifiableMap(map);
     }
 
-    public static StateMachine<RuntimeStatus> newMachine() {
-        return new StateMachine<>(INACTIVE, TRANSITIONS);
+    public static StateMachine<RuntimeStatus> newMachine(String lingId, EventBus eventBus) {
+        return new StateMachine<>(lingId, INACTIVE, TRANSITIONS, eventBus);
     }
 }

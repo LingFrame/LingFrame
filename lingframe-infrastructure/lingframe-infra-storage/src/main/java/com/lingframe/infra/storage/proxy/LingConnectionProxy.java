@@ -9,7 +9,9 @@ import java.util.Properties;
 import java.util.concurrent.Executor;
 
 /**
- * 连接代理：劫持 createStatement / prepareStatement
+ * 数据库连接代理
+ * 职责：劫持 createStatement / prepareStatement 等方法，
+ * 驱动后续的 SQL 拦截与细粒度权限校验。
  */
 @RequiredArgsConstructor
 public class LingConnectionProxy implements Connection {

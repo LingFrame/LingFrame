@@ -14,6 +14,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.util.List;
 
+/**
+ * 灵元治理仪表盘控制器
+ * 提供灵元安装、状态管理、权限审阅及流量监控等功能的 REST 接口。
+ */
 @Slf4j
 @RestController
 @RequestMapping("/lingframe/dashboard/lings")
@@ -26,6 +30,9 @@ public class LingController {
 
     private final DashboardService dashboardService;
 
+    /**
+     * 获取所有灵元的运行快照列表
+     */
     @GetMapping
     public ApiResponse<List<LingInfoDTO>> listLings() {
         try {
@@ -36,6 +43,9 @@ public class LingController {
         }
     }
 
+    /**
+     * 获取指定灵元的详细信息
+     */
     @GetMapping("/{lingId}")
     public ApiResponse<LingInfoDTO> getLing(@PathVariable String lingId) {
         try {
@@ -50,6 +60,9 @@ public class LingController {
         }
     }
 
+    /**
+     * 更新灵元的运行时状态（激活、撤权等）
+     */
     @PostMapping("/{lingId}/status")
     public ApiResponse<LingInfoDTO> updateStatus(
             @PathVariable String lingId,
@@ -64,7 +77,8 @@ public class LingController {
     }
 
     /**
-     * 安装/更新灵元 (上传 JAR 包)
+     * 安装或更新灵元
+     * 通过上传灵元 JAR 包进行静态解析并执行冷启动部署。
      */
     @PostMapping("/install")
     public ApiResponse<LingInfoDTO> install(@RequestParam("file") MultipartFile file) {
@@ -97,6 +111,7 @@ public class LingController {
 
     /**
      * 卸载灵元
+     * 彻底回收灵元占用的 ClassLoader 及相关资源。
      */
     @DeleteMapping("/uninstall/{lingId}")
     public ApiResponse<Void> uninstall(@PathVariable String lingId) {
@@ -124,7 +139,8 @@ public class LingController {
     }
 
     /**
-     * 热重载灵元 (开发模式)
+     * 热重载灵元
+     * 仅在开发模式下允许，用于快速应用代码变更。
      */
     @PostMapping("/{lingId}/reload")
     public ApiResponse<LingInfoDTO> reload(@PathVariable String lingId) {

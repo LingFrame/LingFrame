@@ -2,6 +2,7 @@ package com.lingframe.core.ling;
 
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.fsm.StateMachine;
+import com.lingframe.core.event.EventBus;
 import lombok.Getter;
 import lombok.ToString;
 import java.util.List;
@@ -40,11 +41,11 @@ public class LingRuntime {
     @Getter
     private final long installedAt = System.currentTimeMillis();
 
-    public LingRuntime(String lingId, LingRuntimeConfig config) {
+    public LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus) {
         this.lingId = lingId;
         this.config = config != null ? config : LingRuntimeConfig.defaults();
         this.instancePool = new InstancePool(lingId, this.config.getMaxHistorySnapshots());
-        this.stateMachine = RuntimeStatus.newMachine();
+        this.stateMachine = RuntimeStatus.newMachine(lingId, eventBus);
     }
 
     public void recordRequest(boolean isCanary) {
