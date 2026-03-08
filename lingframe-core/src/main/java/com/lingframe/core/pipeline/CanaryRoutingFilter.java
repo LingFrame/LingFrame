@@ -1,6 +1,7 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
+import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
@@ -59,6 +60,17 @@ public class CanaryRoutingFilter implements LingInvocationFilter {
 
         ctx.setTargetLingId(target.getLingId());
         ctx.setTargetVersion(target.getVersion());
+
+        if (ctx.isDryRun() || ctx.isShouldAudit()) {
+            boolean isCanary = target != runtime.getInstancePool().getDefault();
+            String tag = isCanary ? "CANARY" : "STABLE";
+            ctx.addTrace(EngineTrace.builder()
+                    .source("CanaryRoutingFilter")
+                    .action("Route hit: version v" + target.getVersion() + " [" + tag + "]")
+                    .type(tag)
+                    .depth(2)
+                    .build());
+        }
 
         // 瞬态附件，留给 ContextIsolationFilter 和 TerminalInvokerFilter 取用
         ctx.getAttachments().put("ling.target.instance", target);

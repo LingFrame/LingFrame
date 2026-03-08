@@ -2,6 +2,7 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.api.exception.LingInvocationException;
+import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.LingFilterChain;
@@ -41,11 +42,37 @@ public class MacroStateGuardFilter implements LingInvocationFilter {
         switch (status) {
             case ACTIVE:
             case DEGRADED:
+                if (ctx.isDryRun() || ctx.isShouldAudit()) {
+                    ctx.addTrace(EngineTrace.builder()
+                            .source("MacroStateGuardFilter")
+                            .action("State ready [" + status + "], permitted")
+                            .type("OK")
+                            .depth(1)
+                            .build());
+                }
                 return chain.doFilter(ctx);
             case INACTIVE:
             case REMOVED:
+                if (ctx.isDryRun()) {
+                    ctx.addTrace(EngineTrace.builder()
+                            .source("MacroStateGuardFilter")
+                            .action("🛡️ [Dry run blocked] Ling not active or removed [" + status + "]")
+                            .type("ERROR")
+                            .depth(1)
+                            .build());
+                    throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
+                }
                 throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
             case STOPPING:
+                if (ctx.isDryRun()) {
+                    ctx.addTrace(EngineTrace.builder()
+                            .source("MacroStateGuardFilter")
+                            .action("🛡️ [Dry run blocked] Ling stopping [" + status + "]")
+                            .type("WARN")
+                            .depth(1)
+                            .build());
+                    throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.STATE_REJECTED);
+                }
                 throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.STATE_REJECTED);
             default:
                 throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.STATE_REJECTED);

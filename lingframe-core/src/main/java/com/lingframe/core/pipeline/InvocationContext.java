@@ -1,8 +1,12 @@
 package com.lingframe.core.pipeline;
 
+import com.lingframe.core.model.EngineTrace;
 import com.lingframe.api.security.AccessType;
 import lombok.Data;
+
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
@@ -44,7 +48,7 @@ public class InvocationContext {
     private long createTimeNanos;
 
     // ════════════════════════════════════════════
-    // 第三部分：治理决策
+    // 第三部分：治理决策与运行推演 (Dry-Run & Trace)
     // ════════════════════════════════════════════
     private String resourceType;
     private String resourceId;
@@ -54,6 +58,23 @@ public class InvocationContext {
     private String auditAction;
     private boolean shouldAudit;
     private String ruleSource;
+
+    // ----- 干跑与追踪（流量回放核心） -----
+    /** 是否为干跑/模拟模式。开启后将在最后一环被拦截，不产生真实副作用 */
+    private boolean dryRun;
+    /**
+     * 运行轨迹。只在干跑或特定需要强审计时采集。
+     * 由于 ThreadLocal 复用，应尽量复用 List 对象。
+     */
+    private List<EngineTrace> traces;
+
+    /** 快捷添加追踪的方法 */
+    public void addTrace(EngineTrace trace) {
+        if (this.traces == null) {
+            this.traces = new ArrayList<>();
+        }
+        this.traces.add(trace);
+    }
 
     // ════════════════════════════════════════════
     // 第四部分：路由与弹性治理
@@ -99,6 +120,11 @@ public class InvocationContext {
         this.shouldAudit = false;
         this.ruleSource = null;
 
+        this.dryRun = false;
+        if (this.traces != null) {
+            this.traces.clear();
+        }
+
         this.labels = null;
         this.timeout = null;
         this.metadata = null;
@@ -138,6 +164,14 @@ public class InvocationContext {
         this.auditAction = source.auditAction;
         this.shouldAudit = source.shouldAudit;
         this.ruleSource = source.ruleSource;
+
+        this.dryRun = source.dryRun;
+        if (source.traces != null && !source.traces.isEmpty()) {
+            if (this.traces == null) {
+                this.traces = new ArrayList<>();
+            }
+            this.traces.addAll(source.traces);
+        }
 
         this.labels = source.labels;
         this.timeout = source.timeout;

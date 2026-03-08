@@ -1,6 +1,7 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
+import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.LingFilterChain;
@@ -9,7 +10,6 @@ import com.lingframe.core.spi.LingInvocationFilter;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
-import java.util.concurrent.Callable;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,18 +31,18 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
 
     @Override
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
-        // 模拟场景：如果上游设置了 simulate callable，直接执行模拟逻辑
-        @SuppressWarnings("unchecked")
-        Callable<Object> simulateCallable = (Callable<Object>) ctx
-                .getAttachments().get("ling.simulate.callable");
-        if (simulateCallable != null) {
-            return simulateCallable.call();
-        }
-
         LingInstance target = (LingInstance) ctx.getAttachments().get("ling.target.instance");
         Class<?>[] resolvedTypes = (Class<?>[]) ctx.getAttachments().get("ling.resolved.types");
 
         if (target == null || resolvedTypes == null) {
+            if (ctx.isDryRun()) {
+                ctx.addTrace(EngineTrace.builder()
+                        .source("TerminalInvokerFilter")
+                        .action("Dry run failed: target instance not found or parameters not resolved")
+                        .type("ERROR")
+                        .depth(10)
+                        .build());
+            }
             throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INTERNAL_ERROR);
         }
 
@@ -58,8 +58,9 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
         MethodHandle handle = methodCache.computeIfAbsent(cacheKey, k -> {
             log.debug("Cache miss for {}, resolving MethodHandle.", cacheKey);
             try {
-                // 使用 publicLookup 有时找不到非公开代理对象，M1/M2阶段暂时降级为基础反射，后期可优化为 Lookup 提速
+                // 1. 先用传统的、宽松的但较慢的反射抓到 Method (如果被拦截还可以 setAccessible(true))
                 Method method = serviceBean.getClass().getMethod(ctx.getMethodName(), resolvedTypes);
+                // 2. 利用 unreflect(method) 把传统 Method 转化成高性能的 MethodHandle
                 MethodHandle mh = MethodHandles.publicLookup().unreflect(method);
                 log.trace("Successfully resolved MethodHandle for {}", cacheKey);
                 return mh;
@@ -69,7 +70,18 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
             }
         });
 
-        // 3. 极速调用
+        // 3. 极速调用与【干跑终点拦截】
+        if (ctx.isDryRun()) {
+            String mockResult = "Dry-Run Mock Success for: " + ctx.getServiceFQSID() + "#" + ctx.getMethodName();
+            ctx.addTrace(EngineTrace.builder()
+                    .source("TerminalInvokerFilter")
+                    .action("🛡️ Dry run success, target hit: " + cacheKey)
+                    .type("OK")
+                    .depth(10)
+                    .build());
+            return mockResult;
+        }
+
         try {
             if (ctx.getArgs() == null || ctx.getArgs().length == 0) {
                 return handle.invoke(serviceBean);
