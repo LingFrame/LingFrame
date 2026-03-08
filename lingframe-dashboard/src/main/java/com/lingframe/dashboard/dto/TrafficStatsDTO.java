@@ -14,6 +14,7 @@ public class TrafficStatsDTO {
     private long totalRequests;
     private long v1Requests;
     private long v2Requests;
+    private long activeRequests;
     private double v1Percent;
     private double v2Percent;
     private long windowStartTime;

@@ -1,9 +1,9 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
-import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 
@@ -36,12 +36,14 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
 
         if (target == null || resolvedTypes == null) {
             if (ctx.isDryRun()) {
+                String action = ctx.getAuditAction() != null ? ctx.getAuditAction() : "Unknown Simulation";
                 ctx.addTrace(EngineTrace.builder()
                         .source("TerminalInvokerFilter")
-                        .action("Dry run failed: target instance not found or parameters not resolved")
-                        .type("ERROR")
+                        .action("🛡️ Dry runs without specific route target halted gracefully (Action: " + action + ")")
+                        .type("OK")
                         .depth(10)
                         .build());
+                return "Dry-Run Mock Success: " + action;
             }
             throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INTERNAL_ERROR);
         }

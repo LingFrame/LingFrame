@@ -39,9 +39,9 @@
   "traffic": {
     "title": "流量分发",
     "notSelected": "未选择",
-    "inactive": "未激活 (INACTIVE)",
-    "degraded": "降级 (DEGRADED)",
-    "removed": "已卸载 (REMOVED)",
+    "inactive": "未激活",
+    "degraded": "降级",
+    "removed": "已卸载",
     "canary": "灰度中",
     "singleVersion": "单版本",
     "stable": "稳定版",
@@ -52,7 +52,12 @@
     "stop": "停止",
     "selectLing": "请先选择灵元",
     "lingInactive": "灵元未激活",
-    "onlyOneVersion": "当前灵元仅有单一版本"
+    "onlyOneVersion": "当前灵元仅有单一版本",
+    "total": "总请求",
+    "active": "活跃并发",
+    "v1Hit": "稳定版命中",
+    "v2Hit": "灰度版命中",
+    "drift": "偏差度"
   },
   "logs": {
     "title": "追踪日志",

@@ -20,6 +20,9 @@ public class ContextIsolationFilter implements LingInvocationFilter {
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
         LingInstance target = (LingInstance) ctx.getAttachments().get("ling.target.instance");
         if (target == null) {
+            if (ctx.isDryRun()) {
+                return chain.doFilter(ctx);
+            }
             throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.ROUTE_FAILURE);
         }
 

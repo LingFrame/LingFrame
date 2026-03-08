@@ -65,6 +65,7 @@ public class SimulateService {
         ctx.setAuditAction("SIMULATE:" + resourceType.toUpperCase());
         // 【核心下沉】：直接要求微内核提供无副作用演练
         ctx.setDryRun(true);
+        ctx.setRuntime(runtime);
 
         boolean allowed;
         String message;
@@ -175,6 +176,7 @@ public class SimulateService {
                 targetRuntime.recordRequest(false);
 
                 ctx.setDryRun(true);
+                ctx.setRuntime(targetRuntime);
 
                 // 🔥 通过真实 Pipeline 统一入口执行干跑
                 pipelineEngine.invoke(ctx);
@@ -257,6 +259,7 @@ public class SimulateService {
                 .totalRequests(1)
                 .v1Requests(isCanary ? 0 : 1)
                 .v2Requests(isCanary ? 1 : 0)
+                .activeRequests((int) runtime.getActiveRequests().get())
                 .v1Percent(isCanary ? 0 : 100)
                 .v2Percent(isCanary ? 100 : 0)
                 .build();
@@ -314,6 +317,7 @@ public class SimulateService {
             ctx.setAuditAction("SIMULATE:METHOD");
 
             ctx.setDryRun(true);
+            ctx.setRuntime(runtime);
 
             // 🔥 通过真实 Pipeline 统一入口执行干跑推演
             Object result = pipelineEngine.invoke(ctx);

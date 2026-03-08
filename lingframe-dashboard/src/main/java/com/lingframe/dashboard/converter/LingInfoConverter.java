@@ -58,6 +58,7 @@ public class LingInfoConverter {
                 .totalRequests(total)
                 .v1Requests(stable)
                 .v2Requests(canary)
+                .activeRequests(runtime.getActiveRequests().get())
                 .v1Percent(total > 0 ? (stable * 100.0 / total) : 0)
                 .v2Percent(total > 0 ? (canary * 100.0 / total) : 0)
                 .windowStartTime(runtime.getStatsWindowStart())

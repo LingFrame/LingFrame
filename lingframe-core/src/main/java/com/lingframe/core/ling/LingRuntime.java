@@ -36,6 +36,8 @@ public class LingRuntime {
     @Getter
     private final AtomicLong canaryRequests = new AtomicLong(0);
     @Getter
+    private final AtomicLong activeRequests = new AtomicLong(0);
+    @Getter
     private volatile long statsWindowStart = System.currentTimeMillis();
 
     @Getter
@@ -61,7 +63,16 @@ public class LingRuntime {
         totalRequests.set(0);
         stableRequests.set(0);
         canaryRequests.set(0);
+        activeRequests.set(0);
         statsWindowStart = System.currentTimeMillis();
+    }
+
+    public void startRequest() {
+        activeRequests.incrementAndGet();
+    }
+
+    public void endRequest() {
+        activeRequests.decrementAndGet();
     }
 
     public boolean isAvailable() {

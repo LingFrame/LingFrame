@@ -372,20 +372,21 @@
                                 </div>
 
                                 <!-- 指标卡片 -->
-                                <div class="metric-grid grid grid-cols-4 gap-3">
+                                <div class="metric-grid grid grid-cols-5 gap-3">
                                     <div class="metric-card">
-                                        <div class="text-xs text-slate-500 uppercase mb-1">Total</div>
+                                        <div class="text-xs text-slate-500 uppercase mb-1">{{ t('traffic.total') }}
+                                        </div>
                                         <div class="text-xl font-bold text-white font-mono">{{ stats.total }}</div>
                                     </div>
                                     <div class="metric-card border-blue-500/30">
-                                        <div class="text-xs text-blue-400 uppercase mb-1">V1 Hit</div>
+                                        <div class="text-xs text-blue-400 uppercase mb-1">{{ t('traffic.v1Hit') }}</div>
                                         <div class="text-xl font-bold text-blue-400 font-mono">{{ stats.v1Pct }}%</div>
                                     </div>
                                     <div class="metric-card"
                                         :class="canCanary && canOperate ? 'border-amber-500/30' : ''">
                                         <div class="text-xs uppercase mb-1"
-                                            :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">V2
-                                            Hit
+                                            :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">{{
+                                            t('traffic.v2Hit') }}
                                         </div>
                                         <div class="text-xl font-bold font-mono"
                                             :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">
@@ -393,10 +394,17 @@
                                         </div>
                                     </div>
                                     <div class="metric-card">
-                                        <div class="text-xs text-slate-500 uppercase mb-1">Drift</div>
+                                        <div class="text-xs text-slate-500 uppercase mb-1">{{ t('traffic.drift') }}
+                                        </div>
                                         <div class="text-xl font-bold font-mono"
                                             :class="canCanary && canOperate ? (Math.abs(stats.v2Pct - canaryPct) > 2 ? 'text-red-400' : 'text-green-400') : 'text-slate-500'">
                                             {{ canCanary && canOperate ? formatDrift(stats.v2Pct - canaryPct) : 'N/A' }}
+                                        </div>
+                                    </div>
+                                    <div class="metric-card border-purple-500/30">
+                                        <div class="text-xs text-purple-400 uppercase mb-1">{{ t('traffic.active') }}
+                                        </div>
+                                        <div class="text-xl font-bold text-purple-400 font-mono">{{ stats.active || 0 }}
                                         </div>
                                     </div>
                                 </div>

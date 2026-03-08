@@ -10,6 +10,7 @@ public class StressResultDTO {
     private int totalRequests;
     private int v1Requests;
     private int v2Requests;
+    private int activeRequests;
     private double v1Percent;
     private double v2Percent;
 }

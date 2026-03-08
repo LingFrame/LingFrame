@@ -53,14 +53,13 @@ public class FilterRegistry {
         ContextIsolationFilter isolation = new ContextIsolationFilter();
         TerminalInvokerFilter terminal = new TerminalInvokerFilter(methodCache);
 
-        builtinFilters.addAll(Arrays.asList(
-                new TrafficMetricsFilter(),
-                stateGuard,
-                routing,
-                resilience,
-                threadIsolation,
-                isolation,
-                terminal));
+        builtinFilters.add(new TrafficMetricsFilter(lingRepository));
+        builtinFilters.add(stateGuard);
+        builtinFilters.add(routing);
+        builtinFilters.add(resilience);
+        builtinFilters.add(threadIsolation);
+        builtinFilters.add(isolation);
+        builtinFilters.add(terminal);
 
         invalidateCache();
     }

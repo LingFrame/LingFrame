@@ -1,7 +1,8 @@
 package com.lingframe.core.pipeline;
 
-import com.lingframe.core.model.EngineTrace;
 import com.lingframe.api.security.AccessType;
+import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.model.EngineTrace;
 import lombok.Data;
 
 import java.util.ArrayList;
@@ -14,7 +15,8 @@ import java.util.concurrent.Callable;
  * 调用上下文：Pipeline 全链路的唯一"通行证"
  * ⚠️【高危警告：防止 ClassLoader 内存泄漏】⚠️
  * 本对象通过 ThreadLocal 对象池复用，在宿主线程中长久存活。
- * 【铁律】所有字段必须是 JDK 基础类型。绝对禁止持有由灵元 ClassLoader 加载的对象引用！
+ * 【铁律 2.0】优先使用 JDK 基础类型。允许持有 Core/API 层的复杂对象引用以提升性能，
+ * 但必须确保该引用在 reset() 中被彻底清除，严禁在池化对象中长期保存任何灵元实例相关的状态。
  */
 @Data
 public class InvocationContext {
@@ -39,6 +41,7 @@ public class InvocationContext {
     private Object[] args;
     private String targetLingId;
     private String targetVersion;
+    private LingRuntime runtime; // 运行时引用 (METRICS 阶段挂载)
 
     // ════════════════════════════════════════════
     // 第二部分：链路追踪与身份
@@ -106,6 +109,7 @@ public class InvocationContext {
         this.args = null;
         this.targetLingId = null;
         this.targetVersion = null;
+        this.runtime = null;
 
         this.traceId = null;
         this.callerLingId = null;
@@ -151,6 +155,7 @@ public class InvocationContext {
         this.args = source.args;
         this.targetLingId = source.targetLingId;
         this.targetVersion = source.targetVersion;
+        this.runtime = source.runtime;
 
         this.traceId = source.traceId;
         this.callerLingId = source.callerLingId;

@@ -23,7 +23,7 @@ createApp({
         const sseStatus = ref('disconnected');
         const toasts = ref([]);
 
-        const stats = reactive({ total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
+        const stats = reactive({ total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0, active: 0 });
 
         const loading = reactive({
             lings: false,
@@ -141,7 +141,7 @@ createApp({
                 canaryPct.value = ling.canaryPercent || 0;
             }
             // 重置统计
-            Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
+            Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0, active: 0 });
             lastAudit.value = null;
 
             // 设置 IPC 目标为其他灵元
@@ -556,6 +556,7 @@ createApp({
                         stats.total += result.totalRequests;
                         stats.v1 += result.v1Requests;
                         stats.v2 += result.v2Requests;
+                        stats.active = result.activeRequests || 0;
                         stats.v1Pct = stats.total > 0 ? ((stats.v1 / stats.total) * 100).toFixed(1) : 0;
                         stats.v2Pct = stats.total > 0 ? ((stats.v2 / stats.total) * 100).toFixed(1) : 0;
                     } catch (e) {
@@ -572,7 +573,7 @@ createApp({
         };
 
         const resetStats = () => {
-            Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
+            Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0, active: 0 });
             lastAudit.value = null;
         };
 

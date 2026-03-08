@@ -52,7 +52,12 @@
         "stop": "Stop",
         "selectLing": "Please select a ling",
         "lingInactive": "Ling is inactive",
-        "onlyOneVersion": "Only one version available"
+        "onlyOneVersion": "Only one version available",
+        "total": "Total",
+        "active": "Active",
+        "v1Hit": "V1 Hit",
+        "v2Hit": "V2 Hit",
+        "drift": "Drift"
     },
     "logs": {
         "title": "Trace Logs",

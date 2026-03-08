@@ -1,5 +1,7 @@
 package com.lingframe.core.pipeline;
 
+import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 import lombok.extern.slf4j.Slf4j;
@@ -7,6 +9,15 @@ import java.util.UUID;
 
 @Slf4j
 public class TrafficMetricsFilter implements LingInvocationFilter {
+    private final LingRepository repository;
+
+    public TrafficMetricsFilter(LingRepository repository) {
+        this.repository = repository;
+    }
+
+    public TrafficMetricsFilter() {
+        this.repository = null;
+    }
 
     @Override
     public int getOrder() {
@@ -19,7 +30,20 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
         if (ctx.getTraceId() == null) {
             ctx.setTraceId(UUID.randomUUID().toString().replace("-", ""));
         }
-        ctx.setCreateTimeNanos(start);
+        if (ctx.getCreateTimeNanos() == 0) {
+            ctx.setCreateTimeNanos(start);
+        }
+
+        // 缓存运行时引用，减少重复查找压力 (复用逻辑遵循铁律 2.0，已在 reset 中处理清理)
+        LingRuntime runtime = ctx.getRuntime();
+        if (runtime == null && repository != null && ctx.getTargetLingId() != null) {
+            runtime = repository.getRuntime(ctx.getTargetLingId());
+            ctx.setRuntime(runtime);
+        }
+
+        if (runtime != null) {
+            runtime.startRequest();
+        }
 
         try {
             Object result = chain.doFilter(ctx);
@@ -28,6 +52,10 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
         } catch (Throwable t) {
             recordMetrics(ctx, start, false, t);
             throw t;
+        } finally {
+            if (runtime != null) {
+                runtime.endRequest();
+            }
         }
     }
 
