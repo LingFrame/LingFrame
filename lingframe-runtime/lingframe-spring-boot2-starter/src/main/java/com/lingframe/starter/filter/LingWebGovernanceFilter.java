@@ -3,10 +3,11 @@ package com.lingframe.starter.filter;
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContextHolder;
-import com.lingframe.api.exception.PermissionDeniedException;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.security.AccessType;
-import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -31,8 +32,8 @@ import java.util.HashMap;
 @RequiredArgsConstructor
 public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
-    private final PermissionService permissionService;
     private final WebInterfaceManager webInterfaceManager;
+    private final InvocationPipelineEngine pipelineEngine;
     private final LingFrameProperties properties;
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
 
@@ -68,34 +69,52 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
         LingContextHolder.set(lingId);
 
+        InvocationContext ctx = null;
         try {
             Method method = handlerMethod.getMethod();
-            InvocationContext ctx = buildInvocationContext(request, method, lingId, lingMeta);
+            ctx = buildInvocationContext(request, method, lingId, lingMeta);
 
-            if (ctx.getRequiredPermission() != null && !ctx.getRequiredPermission().isEmpty()) {
-                boolean allowed = permissionService.isAllowed(
-                        "http-gateway",
-                        ctx.getRequiredPermission(),
-                        ctx.getAccessType());
-                if (!allowed) {
-                    throw new PermissionDeniedException(
-                            "http-gateway",
-                            ctx.getRequiredPermission(),
-                            ctx.getAccessType());
+            // 穿刺模式开启
+            ctx.setSkipTerminalInvocation(true);
+
+            // 借道 Pipeline 执行全套治理
+            try {
+                pipelineEngine.invoke(ctx);
+            } catch (LingInvocationException e) {
+                // 治理拒绝：由管道层统一抛出的受控异常。针对卸载/停机期间降级为 info 避免日志风暴
+                if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
+                    log.warn("[Governance] Security rejected (SB2): {} -> {}", ctx.getResourceId(), e.getMessage());
+                } else {
+                    log.info("[Governance] Request blocked (SB2): {} -> {}", ctx.getResourceId(), e.getMessage());
                 }
+                handleGovernanceFailure(response, e, ctx);
+                return;
             }
 
             filterChain.doFilter(request, response);
 
-            if (ctx.isShouldAudit()) {
-                permissionService.audit("http-gateway", ctx.getResourceId(), ctx.getAuditAction(), true);
-            }
-
         } finally {
+            if (ctx != null) {
+                ctx.recycle();
+            }
             if (originalCL != null) {
                 Thread.currentThread().setContextClassLoader(originalCL);
             }
             LingContextHolder.clear();
+            TraceContext.clear();
+        }
+    }
+
+    private void handleGovernanceFailure(HttpServletResponse response,
+            LingInvocationException e,
+            InvocationContext ctx) throws IOException {
+        if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
+            response.sendError(403, "Permission Denied: " + ctx.getRequiredPermission());
+        } else if (e.getKind() == LingInvocationException.ErrorKind.STATE_REJECTED ||
+                e.getKind() == LingInvocationException.ErrorKind.ROUTE_FAILURE) {
+            response.sendError(503, e.getMessage());
+        } else {
+            response.sendError(500, "Governance Error: " + e.getKind());
         }
     }
 
@@ -157,7 +176,13 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         }
 
         InvocationContext ctx = InvocationContext.obtain();
-        ctx.setTraceId(request.getHeader("X-Trace-Id"));
+        String traceId = request.getHeader("X-Trace-Id");
+        if (traceId == null || traceId.isEmpty()) {
+            traceId = TraceContext.start();
+        } else {
+            TraceContext.setTraceId(traceId);
+        }
+        ctx.setTraceId(traceId);
         ctx.setTargetLingId(lingId); // Set targetLingId instead of lingId
         ctx.setCallerLingId("http-gateway");
         ctx.setResourceType("HTTP");

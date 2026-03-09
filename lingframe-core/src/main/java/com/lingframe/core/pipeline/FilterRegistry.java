@@ -1,5 +1,6 @@
 package com.lingframe.core.pipeline;
 
+import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
@@ -28,8 +29,11 @@ public class FilterRegistry {
     // 排序缓存，dirty 时重建
     private volatile List<LingInvocationFilter> orderedCache;
 
-    public FilterRegistry(InvokableMethodCache methodCache) {
+    private final PermissionService permissionService;
+
+    public FilterRegistry(InvokableMethodCache methodCache, PermissionService permissionService) {
         this.methodCache = methodCache;
+        this.permissionService = permissionService;
     }
 
     /**
@@ -50,6 +54,8 @@ public class FilterRegistry {
         ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(lingRepository);
         this.isolationFilter = threadIsolation;
 
+        PermissionGovernanceFilter permissionGovernance = new PermissionGovernanceFilter(permissionService);
+
         ContextIsolationFilter isolation = new ContextIsolationFilter();
         TerminalInvokerFilter terminal = new TerminalInvokerFilter(methodCache);
 
@@ -58,6 +64,7 @@ public class FilterRegistry {
         builtinFilters.add(routing);
         builtinFilters.add(resilience);
         builtinFilters.add(threadIsolation);
+        builtinFilters.add(permissionGovernance);
         builtinFilters.add(isolation);
         builtinFilters.add(terminal);
 

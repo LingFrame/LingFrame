@@ -1,6 +1,6 @@
 package com.lingframe.core.monitor;
 
-import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 链路追踪上下文
@@ -13,16 +13,21 @@ public class TraceContext {
     // 调用深度计数器
     private static final ThreadLocal<Integer> DEPTH = ThreadLocal.withInitial(() -> 0);
 
-    /**
-     * 开启或获取当前 TraceId
-     */
     public static String start() {
         String tid = TRACE_ID.get();
         if (tid == null) {
-            tid = UUID.randomUUID().toString().replace("-", "");
+            tid = generate();
             TRACE_ID.set(tid);
         }
         return tid;
+    }
+
+    /**
+     * 生成符合规格的 TraceId (16位 16 进制字符串)
+     * 16 位对 UI 更友好，且 64 位熵足以满足分布式追踪需求
+     */
+    public static String generate() {
+        return String.format("%016X", ThreadLocalRandom.current().nextLong());
     }
 
     public static String get() {

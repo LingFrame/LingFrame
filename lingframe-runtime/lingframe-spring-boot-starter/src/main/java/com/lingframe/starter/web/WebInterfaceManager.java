@@ -267,24 +267,44 @@ public class WebInterfaceManager {
      * 判断是否是同一个处理器
      */
     private boolean isSameHandler(WebInterfaceMetadata meta, Object bean, Method method) {
-        // 比较 Bean 实例和方法签名
+        // 1. 比较 Bean 实例和方法签名 (适用于实例注册或已解析的情况)
         if (meta.getTargetBean() == bean) {
             return meta.getTargetMethod().equals(method);
         }
-        // 处理代理情况：比较方法名和参数类型
-        if (meta.getTargetMethod().getName().equals(method.getName())) {
-            Class<?>[] metaParams = meta.getTargetMethod().getParameterTypes();
-            Class<?>[] methodParams = method.getParameterTypes();
-            if (metaParams.length == methodParams.length) {
-                for (int i = 0; i < metaParams.length; i++) {
-                    if (!metaParams[i].equals(methodParams[i])) {
-                        return false;
-                    }
-                }
-                return true;
+
+        // 2. 处理延迟加载情况：比较 Bean Name (String)
+        if (bean instanceof String) {
+            String beanName = (String) bean;
+            // 计算注册时用的类名
+            Class<?> userClass = AopUtils.getTargetClass(meta.getTargetBean());
+            String expectedBeanName = meta.getLingId() + ":" + userClass.getName();
+            if (expectedBeanName.equals(beanName)) {
+                // 如果 Bean Name 匹配，还需进一步校验方法名和参数类型
+                return meta.getTargetMethod().getName().equals(method.getName()) &&
+                        isSameParameterTypes(meta.getTargetMethod(), method);
             }
         }
+
+        // 3. 处理代理或其他复杂情况：降级为方法签名比较
+        if (meta.getTargetMethod().getName().equals(method.getName())) {
+            return isSameParameterTypes(meta.getTargetMethod(), method);
+        }
         return false;
+    }
+
+    /**
+     * 判断方法参数类型是否一致
+     */
+    private boolean isSameParameterTypes(Method m1, Method m2) {
+        Class<?>[] params1 = m1.getParameterTypes();
+        Class<?>[] params2 = m2.getParameterTypes();
+        if (params1.length != params2.length)
+            return false;
+        for (int i = 0; i < params1.length; i++) {
+            if (!params1[i].equals(params2[i]))
+                return false;
+        }
+        return true;
     }
 
     /**

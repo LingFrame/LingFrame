@@ -2,6 +2,7 @@ package com.lingframe.starter.processor;
 
 import com.lingframe.api.annotation.LingReference;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
 
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.interceptor.LingCoreBeanGovernanceInterceptor;
@@ -35,6 +36,7 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
 
     private ApplicationContext applicationContext;
     private PermissionService permissionService;
+    private InvocationPipelineEngine pipelineEngine;
     private LingFrameProperties properties;
 
     // 需要被拦截的注解类型（排除 Controller/RestController，由 LingWebGovernanceInterceptor 处理）
@@ -122,6 +124,20 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
     }
 
     /**
+     * 懒加载获取 InvocationPipelineEngine
+     */
+    private InvocationPipelineEngine getPipelineEngine() {
+        if (pipelineEngine == null && applicationContext != null) {
+            try {
+                pipelineEngine = applicationContext.getBean(InvocationPipelineEngine.class);
+            } catch (Exception e) {
+                log.debug("InvocationPipelineEngine not available yet");
+            }
+        }
+        return pipelineEngine;
+    }
+
+    /**
      * 懒加载获取 LingFrameProperties
      */
     private LingFrameProperties getProperties() {
@@ -139,10 +155,11 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
     public Object postProcessAfterInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
         // 懒加载获取核心组件
         PermissionService permService = getPermissionService();
+        InvocationPipelineEngine engine = getPipelineEngine();
         LingFrameProperties props = getProperties();
 
         // 如果核心组件未准备好，直接返回
-        if (permService == null || props == null) {
+        if (permService == null || engine == null || props == null) {
             return bean;
         }
 
@@ -162,7 +179,7 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
             ProxyFactory proxyFactory = new ProxyFactory(bean);
             proxyFactory.setProxyTargetClass(true); // 强制使用 CGLIB
             proxyFactory.addAdvice(new LingCoreBeanGovernanceInterceptor(
-                    permService,
+                    engine,
                     props.getLingCoreGovernance().isGovernInternalCalls(),
                     props.getLingCoreGovernance().isCheckPermissions()));
             Object proxy = proxyFactory.getProxy();

@@ -5,27 +5,51 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.model.EngineTrace;
 import lombok.Data;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.lang.ref.WeakReference;
+import java.util.*;
 import java.util.concurrent.Callable;
 
 /**
  * 调用上下文：Pipeline 全链路的唯一"通行证"
  * ⚠️【高危警告：防止 ClassLoader 内存泄漏】⚠️
  * 本对象通过 ThreadLocal 对象池复用，在宿主线程中长久存活。
- * 【铁律 2.0】优先使用 JDK 基础类型。允许持有 Core/API 层的复杂对象引用以提升性能，
- * 但必须确保该引用在 reset() 中被彻底清除，严禁在池化对象中长期保存任何灵元实例相关的状态。
+ * 【铁律 2.0】优先使用 JDK 基础类型。允许持有 Core/API 层的复杂对象引用以提升性能，但遵循以下分级策略：
+ * 1. 基础数据载体（如 EngineTrace）：若仅持有 String/int 等 JDK 基础类型且在 reset 时执行 clear，允许持有强引用
+ * List。
+ * 2. 运行时相关对象（如 LingRuntime / LingInstance）：【强制】必须使用 WeakReference。此类对象关联灵元
+ * ClassLoader，强引用会导致卸载后内存泄漏。
+ * 3. 对象池安全防护：即便使用弱引用，也必须在 reset 中显式置 null，从物理上断开引用链。
+ * 严禁持有任何 Class 对象，严禁在池化对象中长期保存任何灵元实例相关的状态。
  */
+
 @Data
 public class InvocationContext {
 
-    // 线程局部对象池
-    private static final ThreadLocal<InvocationContext> POOL = ThreadLocal.withInitial(InvocationContext::new);
+    // 线程局部上下文栈，支持嵌套调用（如 Web -> Interceptor -> Proxy）
+    private static final ThreadLocal<Deque<InvocationContext>> STACK = ThreadLocal.withInitial(ArrayDeque::new);
 
+    /**
+     * 获取或创建一个可用的上下文
+     */
     public static InvocationContext obtain() {
-        return POOL.get(); // 获取复用对象
+        Deque<InvocationContext> stack = STACK.get();
+        InvocationContext ctx;
+        if (stack.isEmpty()) {
+            ctx = new InvocationContext();
+        } else {
+            ctx = stack.pop();
+        }
+        // 关键防护：取出后强制全量重置，防止脏数据（特别是弱引用失效导致的残留状态）影响下一次调用
+        ctx.reset();
+        return ctx;
+    }
+
+    /**
+     * 将当前上下文归还到对象池
+     */
+    public void recycle() {
+        this.reset();
+        STACK.get().push(this);
     }
 
     private InvocationContext() {
@@ -41,7 +65,19 @@ public class InvocationContext {
     private Object[] args;
     private String targetLingId;
     private String targetVersion;
-    private LingRuntime runtime; // 运行时引用 (METRICS 阶段挂载)
+
+    /**
+     * 运行时弱引用 (防止灵元卸载后无法回收 ClassLoader)
+     */
+    private WeakReference<LingRuntime> runtimeRef;
+
+    public void setRuntime(LingRuntime runtime) {
+        this.runtimeRef = (runtime != null) ? new WeakReference<>(runtime) : null;
+    }
+
+    public LingRuntime getRuntime() {
+        return (runtimeRef != null) ? runtimeRef.get() : null;
+    }
 
     // ════════════════════════════════════════════
     // 第二部分：链路追踪与身份
@@ -70,6 +106,12 @@ public class InvocationContext {
      * 由于 ThreadLocal 复用，应尽量复用 List 对象。
      */
     private List<EngineTrace> traces;
+
+    /**
+     * 是否跳过终端调用（末端反射）。
+     * 一般用于 Web 这种“只借用治理管道，不借用末端执行”的场景。
+     */
+    private boolean skipTerminalInvocation;
 
     /** 快捷添加追踪的方法 */
     public void addTrace(EngineTrace trace) {
@@ -109,7 +151,7 @@ public class InvocationContext {
         this.args = null;
         this.targetLingId = null;
         this.targetVersion = null;
-        this.runtime = null;
+        this.runtimeRef = null; // 物理清除弱引用容器
 
         this.traceId = null;
         this.callerLingId = null;
@@ -125,6 +167,7 @@ public class InvocationContext {
         this.ruleSource = null;
 
         this.dryRun = false;
+        this.skipTerminalInvocation = false;
         if (this.traces != null) {
             this.traces.clear();
         }
@@ -155,7 +198,7 @@ public class InvocationContext {
         this.args = source.args;
         this.targetLingId = source.targetLingId;
         this.targetVersion = source.targetVersion;
-        this.runtime = source.runtime;
+        this.runtimeRef = source.runtimeRef;
 
         this.traceId = source.traceId;
         this.callerLingId = source.callerLingId;
@@ -199,7 +242,7 @@ public class InvocationContext {
                 child.copyFrom(parent);
                 return task.call();
             } finally {
-                child.reset();
+                child.recycle();
             }
         };
     }
@@ -215,7 +258,7 @@ public class InvocationContext {
                 child.copyFrom(parent);
                 task.run();
             } finally {
-                child.reset();
+                child.recycle();
             }
         };
     }

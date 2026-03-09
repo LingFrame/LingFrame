@@ -70,7 +70,7 @@ public class NativeLingFrame {
         LingServiceRegistry lingServiceRegistry = new DefaultLingServiceRegistry();
 
         InvokableMethodCache invokableMethodCache = new InvokableMethodCache();
-        FilterRegistry filterRegistry = new FilterRegistry(invokableMethodCache);
+        FilterRegistry filterRegistry = new FilterRegistry(invokableMethodCache, permissionService);
         // 初始化内置 Filter 并注入依赖
         filterRegistry.initialize(lingRepository, new LatestVersionPolicy(), eventBus);
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(

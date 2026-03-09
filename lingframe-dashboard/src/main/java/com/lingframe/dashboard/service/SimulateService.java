@@ -14,17 +14,17 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.dashboard.dto.SimulateResultDTO;
+import com.lingframe.dashboard.dto.StressResultDTO;
 import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.api.exception.ServiceUnavailableException;
-import com.lingframe.dashboard.dto.StressResultDTO;
 import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.model.EngineTrace;
+import com.lingframe.core.monitor.TraceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -50,7 +50,7 @@ public class SimulateService {
             throw new ServiceUnavailableException(lingId, "Ling not active");
         }
 
-        String traceId = generateTraceId();
+        String traceId = TraceContext.start();
 
         InvocationContext ctx = InvocationContext.obtain();
         ctx.setTraceId(traceId);
@@ -134,7 +134,7 @@ public class SimulateService {
         }
 
         LingRuntime targetRuntime = lingRepository.getRuntime(targetLingId);
-        String traceId = generateTraceId();
+        String traceId = TraceContext.start();
 
         publishTrace(traceId, lingId, "→ [IPC] Call initiated: " + targetLingId, "IN", 1);
 
@@ -250,8 +250,7 @@ public class SimulateService {
         String version = instance.getDefinition().getVersion();
         String tag = isCanary ? "CANARY" : "STABLE";
 
-        // Publish Trace
-        publishTrace(generateTraceId(), lingId,
+        publishTrace(TraceContext.start(), lingId,
                 String.format("→ Routed to: %s (%s)", version, tag), tag, 1);
 
         return StressResultDTO.builder()
@@ -266,11 +265,6 @@ public class SimulateService {
     }
 
     // ==================== 辅助方法 ====================
-
-    private String generateTraceId() {
-        return Long.toHexString(System.currentTimeMillis()).toUpperCase()
-                + Integer.toHexString(ThreadLocalRandom.current().nextInt(0xFFFF)).toUpperCase();
-    }
 
     private void publishTrace(String traceId, String lingId, String action, String type, int depth) {
         try {
@@ -295,7 +289,7 @@ public class SimulateService {
             throw new ServiceUnavailableException(lingId, "Ling not active");
         }
 
-        String traceId = generateTraceId();
+        String traceId = TraceContext.start();
 
         boolean allowed;
         String message;

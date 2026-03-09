@@ -42,7 +42,14 @@ public class CanaryRoutingFilter implements LingInvocationFilter {
         }
 
         String lingId = fqsid.split(":")[0];
-        LingRuntime runtime = lingRepository.getRuntime(lingId);
+        LingRuntime runtime = ctx.getRuntime();
+        if (runtime == null) {
+            runtime = lingRepository.getRuntime(lingId);
+            if (runtime != null) {
+                ctx.setRuntime(runtime);
+            }
+        }
+
         if (runtime == null) {
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
         }

@@ -15,7 +15,11 @@ public class LingInvocationException extends LingRuntimeException {
     private final ErrorKind kind;
 
     public LingInvocationException(String fqsid, ErrorKind kind) {
-        super(fqsid, kind.name() + " for service: " + fqsid);
+        this(fqsid, kind, kind.name() + " for service: " + fqsid);
+    }
+
+    public LingInvocationException(String fqsid, ErrorKind kind, String message) {
+        super(fqsid, message);
         this.fqsid = fqsid;
         this.kind = kind;
     }
@@ -46,6 +50,8 @@ public class LingInvocationException extends LingRuntimeException {
         CIRCUIT_OPEN,
         /** 触发限流保护 */
         RATE_LIMITED,
+        /** 安全校验未通过（权限不足、审计失败等） */
+        SECURITY_REJECTED,
         /** 类加载器/隔离层异常 */
         CLASSLOADER_ERROR,
         /** 业务方法内部执行报错 */

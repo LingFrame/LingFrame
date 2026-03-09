@@ -4,6 +4,7 @@ import com.lingframe.api.context.LingContextHolder;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.monitor.TraceContext;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationHandler;
@@ -14,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 智能动态代理
- * 特性：不再持有任何 LingRuntime / GovernanceKernel 强引用，
+ * 特性：不再持有任何 LingRuntime 强引用，
  * 仅通过字符串元数据和全局 Pipeline 交互，彻底杜绝 ClassLoader 泄漏连带。
  */
 @Slf4j
@@ -44,44 +45,42 @@ public class SmartServiceProxy implements InvocationHandler {
         }
 
         InvocationContext ctx = InvocationContext.obtain();
-        final InvocationContext finalCtx = ctx;
 
         try {
-            finalCtx.setTraceId(null);
-            finalCtx.setCallerLingId(this.callerLingId);
-            finalCtx.setTargetLingId(this.targetLingId);
-            finalCtx.setMethodName(method.getName());
+            ctx.setTraceId(TraceContext.get());
+            ctx.setCallerLingId(this.callerLingId);
+            ctx.setTargetLingId(this.targetLingId);
+            ctx.setMethodName(method.getName());
 
-            // 提取参数签名类型
+            // 提取参数签名类型 (必须转为 String[] 以防跨线程持有的 Class 对象导致 ClassLoader 泄漏)
             Class<?>[] pTypes = method.getParameterTypes();
             String[] pTypeNames = new String[pTypes.length];
             for (int i = 0; i < pTypes.length; i++) {
                 pTypeNames[i] = pTypes[i].getName();
             }
-            // V0.3.0 新增 Pipeline 参数属性，此时放在 attachment 中暂存（M3之后改到 Context 原生字段）
-            finalCtx.getAttachments().put("ling.method.paramTypes", pTypes);
+            ctx.setParameterTypeNames(pTypeNames);
 
-            finalCtx.setOperation(method.getName());
-            finalCtx.setArgs(args);
-            finalCtx.setResourceType("RPC");
+            ctx.setOperation(method.getName());
+            ctx.setArgs(args);
+            ctx.setResourceType("RPC");
 
             Map<String, String> labels = LingContextHolder.getLabels();
-            finalCtx.setLabels(labels != null ? labels : Collections.emptyMap());
+            ctx.setLabels(labels != null ? labels : Collections.emptyMap());
 
             String resourceId = resourceIdCache.computeIfAbsent(method,
                     m -> m.getDeclaringClass().getName() + ":" + m.getName());
-            finalCtx.setResourceId(resourceId);
+            ctx.setResourceId(resourceId);
 
             // 组装最终的目标服务寻址标： `targetLingId:interfaceFQCN`
-            finalCtx.setServiceFQSID(targetLingId + ":" + method.getDeclaringClass().getName());
+            ctx.setServiceFQSID(targetLingId + ":" + method.getDeclaringClass().getName());
 
-            finalCtx.setAccessType(AccessType.EXECUTE);
-            finalCtx.setAuditAction(resourceId);
-            finalCtx.setMetadata(null);
+            ctx.setAccessType(AccessType.EXECUTE);
+            ctx.setAuditAction(resourceId);
+            ctx.setMetadata(null);
 
             // 委托全局的 PipelineEngine 执行
             if (pipelineEngine != null) {
-                return pipelineEngine.invoke(finalCtx);
+                return pipelineEngine.invoke(ctx);
             } else {
                 throw new IllegalStateException("PipelineEngine is not initialized for proxy.");
             }
@@ -90,8 +89,8 @@ public class SmartServiceProxy implements InvocationHandler {
             // 解包并抛出原始异常，对调用者透明
             throw e.getCause();
         } finally {
-            // 彻底重置 ThreadLocal 池化上下文，防止污染同线程下次调用
-            finalCtx.reset();
+            // 彻底重置 ThreadLocal 池化上下文，归还到对象栈中
+            ctx.recycle();
         }
     }
 

@@ -31,6 +31,13 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
 
     @Override
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
+        // [Key] Web 穿刺支持：如果标记为跳过终端调用，则在此截断，不执行实质性的反射调用
+        if (ctx.isSkipTerminalInvocation()) {
+            log.debug("[TerminalInvokerFilter] Penetrance mode enabled: skipping terminal reflection for {}",
+                    ctx.getServiceFQSID());
+            return null; // 返回 null 供外层 WebFilter 继续 doFilter 流程
+        }
+
         LingInstance target = (LingInstance) ctx.getAttachments().get("ling.target.instance");
         Class<?>[] resolvedTypes = (Class<?>[]) ctx.getAttachments().get("ling.resolved.types");
 

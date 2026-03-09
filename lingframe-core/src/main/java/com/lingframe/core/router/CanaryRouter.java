@@ -40,25 +40,47 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
             return candidates.get(0);
         }
 
-        String lingId = context != null ? context.getTargetLingId() : null;
-        CanaryConfig config = lingId != null ? canaryConfigs.get(lingId) : null;
-
-        // 有灰度配置，按比例路由
-        if (config != null && config.percent > 0) {
-            boolean routeToCanary = ThreadLocalRandom.current().nextInt(100) < config.percent;
-
-            if (routeToCanary) {
-                // 找灰度实例（非默认的，或匹配特定版本）
-                LingInstance canaryInstance = findCanaryInstance(candidates, config.canaryVersion);
-                if (canaryInstance != null) {
-                    return canaryInstance;
+        String lingId = null;
+        if (context != null) {
+            if (context.getRuntime() != null) {
+                lingId = context.getRuntime().getLingId();
+            } else if (context.getTargetLingId() != null) {
+                lingId = context.getTargetLingId();
+            } else if (context.getServiceFQSID() != null) {
+                String fqsid = context.getServiceFQSID();
+                int idx = fqsid.indexOf(':');
+                if (idx > 0) {
+                    lingId = fqsid.substring(0, idx);
                 }
             }
-            // 否则返回默认（稳定版）
-            return findStableInstance(candidates);
         }
 
-        // 无灰度配置，委托给原路由器
+        CanaryConfig config = lingId != null ? canaryConfigs.get(lingId) : null;
+
+        // A. 有灰度配置，执行“角色正交化”分流逻辑
+        if (config != null) {
+            // 1. 明确金丝雀实例 (优先通过版本锁定)
+            LingInstance targetCanary = findCanaryInstance(candidates, config.canaryVersion, null);
+
+            // 2. 明确稳定版实例 (必须排除已锁定的金丝雀，防止“先灰后稳”导致的角色反转)
+            LingInstance targetStable = findStableInstance(candidates, context, targetCanary);
+
+            // 3. 执行权重分发
+            boolean routeToCanary = config.percent > 0 && ThreadLocalRandom.current().nextInt(100) < config.percent;
+            if (routeToCanary && targetCanary != null) {
+                return targetCanary;
+            }
+            // 否则返回稳定版 (此时保证了稳定版绝不是金丝雀版本)
+            return targetStable;
+        }
+
+        // B. 无灰度配置，但无 Labels 请求时，默认锁定稳定版 (防止回退到基础路由器的 50/50 随机分发)
+        Map<String, String> labels = context != null ? context.getLabels() : null;
+        if (labels == null || labels.isEmpty()) {
+            return findStableInstance(candidates, context, null);
+        }
+
+        // C. 只有带特定 Labels 时才委托给基础路由器
         return delegate.route(candidates, context);
     }
 
@@ -70,13 +92,9 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
             throw new InvalidArgumentException("percent", "Canary percent must be 0-100");
         }
 
-        if (percent == 0) {
-            canaryConfigs.remove(lingId);
-            log.info("[{}] Canary disabled", lingId);
-        } else {
-            canaryConfigs.put(lingId, new CanaryConfig(percent, canaryVersion));
-            log.info("[{}] Canary config: {}% -> {}", lingId, percent, canaryVersion);
-        }
+        // 禁止移除配置，即便为 0 也要保留，以防止降级回退导致的流量泄露
+        canaryConfigs.put(lingId, new CanaryConfig(percent, canaryVersion));
+        log.info("[{}] Canary config updated: {}% -> {}", lingId, percent, canaryVersion);
     }
 
     /**
@@ -95,23 +113,46 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
         return config != null ? config.percent : 0;
     }
 
-    private LingInstance findCanaryInstance(List<LingInstance> candidates, String canaryVersion) {
-        // 优先匹配指定版本
+    private LingInstance findCanaryInstance(List<LingInstance> candidates, String canaryVersion,
+            LingInstance stableInstance) {
+        // 1. 优先匹配指定版本 (必须排除稳定版实例，防止自冲突)
         if (canaryVersion != null) {
             for (LingInstance inst : candidates) {
-                if (canaryVersion.equals(inst.getDefinition().getVersion())) {
+                if (inst != stableInstance && canaryVersion.equals(inst.getDefinition().getVersion())) {
                     return inst;
                 }
             }
         }
 
-        // 否则返回第二个实例（假设第一个是稳定版）
-        return candidates.size() > 1 ? candidates.get(1) : null;
+        // 2. 否则返回第一个“非稳定版”实例
+        for (LingInstance inst : candidates) {
+            if (inst != stableInstance) {
+                return inst;
+            }
+        }
+
+        return null;
     }
 
-    private LingInstance findStableInstance(List<LingInstance> candidates) {
-        // 第一个通常是默认/稳定版
-        return candidates.isEmpty() ? null : candidates.get(0);
+    private LingInstance findStableInstance(List<LingInstance> candidates, InvocationContext context,
+            LingInstance excludedInstance) {
+        // 1. 优先从 Runtime 引用中获取池标记的 Default 实例 (如果是金丝雀版本标记了 Default，则不能用它)
+        if (context != null && context.getRuntime() != null) {
+            LingInstance defaultInst = context.getRuntime().getInstancePool().getDefault();
+            if (defaultInst != null && defaultInst != excludedInstance && candidates.contains(defaultInst)) {
+                return defaultInst;
+            }
+        }
+
+        // 2. 降级逻辑：寻找第一个非排除对象的实例
+        for (LingInstance inst : candidates) {
+            if (inst != excludedInstance) {
+                return inst;
+            }
+        }
+
+        // 3. 实在没办法（如全是金丝雀版本，配置异常），则返回首位
+        return candidates.get(0);
     }
 
     @Value

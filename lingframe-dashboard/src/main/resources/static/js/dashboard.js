@@ -486,7 +486,6 @@ createApp({
         };
 
         // ==================== 功能演练 ====================
-        // ==================== 功能演练 ====================
         const simulate = async (resourceType) => {
             if (!canOperate.value) {
                 showToast(t('toast.lingNotActive'), 'error');
@@ -561,6 +560,15 @@ createApp({
                         stats.v2Pct = stats.total > 0 ? ((stats.v2 / stats.total) * 100).toFixed(1) : 0;
                     } catch (e) {
                         console.error('Stress test error', e);
+                        // 🔥 关键修复：发生严重错误（如灵元已卸载）时，自动停止压测
+                        if (isAuto.value) {
+                            isAuto.value = false;
+                            if (stressTimer) {
+                                clearInterval(stressTimer);
+                                stressTimer = null;
+                            }
+                            showToast(t('toast.stressStopped') || '压测已自动停止: ' + e.message, 'warn');
+                        }
                     }
                 }, 1000);
             } else {

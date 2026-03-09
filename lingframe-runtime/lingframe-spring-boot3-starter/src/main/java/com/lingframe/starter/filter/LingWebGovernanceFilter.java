@@ -3,11 +3,14 @@ package com.lingframe.starter.filter;
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContextHolder;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -40,8 +43,8 @@ import java.util.HashMap;
 @RequiredArgsConstructor
 public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
-    private final PermissionService permissionService;
     private final WebInterfaceManager webInterfaceManager;
+    private final InvocationPipelineEngine pipelineEngine;
     private final LingFrameProperties properties;
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
 
@@ -84,38 +87,61 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         // 5. 设置灵元上下文
         LingContextHolder.set(lingId);
 
+        InvocationContext ctx = null;
         try {
             // 6. 构建治理上下文
             Method method = handlerMethod.getMethod();
-            InvocationContext ctx = buildInvocationContext(request, method, lingId, lingMeta);
+            ctx = buildInvocationContext(request, method, lingId, lingMeta);
 
-            // 7. 获取 LingRuntime（灵元请求时）
-            if (ctx.getRequiredPermission() != null && !ctx.getRequiredPermission().isEmpty()) {
-                boolean allowed = permissionService.isAllowed(
-                        "http-gateway",
-                        ctx.getRequiredPermission(),
-                        ctx.getAccessType());
-                if (!allowed) {
-                    throw new PermissionDeniedException(
-                            "http-gateway",
-                            ctx.getRequiredPermission(),
-                            ctx.getAccessType());
+            // 7. 开启穿刺模式：仅利用管道进行治理检查，不执行末端反射调用（此处由 Spring 继续 Dispatch）
+            ctx.setSkipTerminalInvocation(true);
+
+            // 8. 借道 Pipeline 执行全套治理（并发统计、状态检查、权限校验、审计等）
+            try {
+                pipelineEngine.invoke(ctx);
+            } catch (LingInvocationException e) {
+                // 治理拒绝：卸载/停机期间降级为 info 避免压测日志风暴，权限错误保持 warn
+                if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
+                    log.warn("[Governance] Security rejected: {} -> {}", ctx.getResourceId(), e.getMessage());
+                } else {
+                    log.info("[Governance] Request blocked: {} -> {}", ctx.getResourceId(), e.getMessage());
                 }
+                handleGovernanceFailure(response, e, ctx);
+                return;
             }
 
+            // 9. 治理通过，放行请求至后续 FilterChain/Controller
             filterChain.doFilter(request, response);
 
-            if (ctx.isShouldAudit()) {
-                permissionService.audit("http-gateway", ctx.getResourceId(), ctx.getAuditAction(), true);
-            }
-
         } finally {
+            if (ctx != null) {
+                // [Key] 务必回收真实持有的上下文，防止 ThreadLocal 污染
+                ctx.recycle();
+            }
             // 恢复 ClassLoader
             if (originalCL != null) {
                 Thread.currentThread().setContextClassLoader(originalCL);
             }
-            // 清理灵元上下文
+            // 清理上下文与追踪 ID
             LingContextHolder.clear();
+            TraceContext.clear();
+        }
+    }
+
+    /**
+     * 处理治理失败情况
+     */
+    private void handleGovernanceFailure(HttpServletResponse response,
+            LingInvocationException e,
+            InvocationContext ctx) throws IOException {
+        if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
+            response.sendError(403, "Permission Denied: " + ctx.getRequiredPermission());
+        } else if (e.getKind() == LingInvocationException.ErrorKind.STATE_REJECTED ||
+                e.getKind() == LingInvocationException.ErrorKind.ROUTE_FAILURE) {
+            // 灵元卸载或停机期间，返回 503 Service Unavailable
+            response.sendError(503, e.getMessage());
+        } else {
+            response.sendError(500, "Governance Error: " + e.getKind());
         }
     }
 
@@ -125,8 +151,8 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
     private HandlerMethod resolveHandlerMethod(HttpServletRequest request) {
         try {
             HandlerExecutionChain chain = requestMappingHandlerMapping.getHandler(request);
-            if (chain != null && chain.getHandler() instanceof HandlerMethod hm) {
-                return hm;
+            if (chain != null && chain.getHandler() instanceof HandlerMethod) {
+                return (HandlerMethod) chain.getHandler();
             }
         } catch (Exception e) {
             log.debug("Failed to resolve handler for {}: {}", request.getRequestURI(), e.getMessage());
@@ -175,7 +201,13 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         };
 
         InvocationContext ctx = InvocationContext.obtain();
-        ctx.setTraceId(request.getHeader("X-Trace-Id"));
+        String traceId = request.getHeader("X-Trace-Id");
+        if (traceId == null || traceId.isEmpty()) {
+            traceId = TraceContext.start(); // 自动生成首跳 TraceId
+        } else {
+            TraceContext.setTraceId(traceId);
+        }
+        ctx.setTraceId(traceId);
         ctx.setTargetLingId(lingId); // Set targetLingId instead of lingId
         ctx.setCallerLingId("http-gateway"); // Web 请求来源标记
         ctx.setResourceType("HTTP");

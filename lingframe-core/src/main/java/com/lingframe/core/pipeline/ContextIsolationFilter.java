@@ -40,7 +40,7 @@ public class ContextIsolationFilter implements LingInvocationFilter {
             // 1. 切换线程上下文 ClassLoader
             Thread.currentThread().setContextClassLoader(lingClassLoader);
 
-            // 2. 根据 String[] names 解析 Class<?>[] 对象
+            // 2. 根据 String[] names 解析 Class<?>[] 对象 (在隔离 ClassLoader 下执行)
             Class<?>[] resolvedTypes = resolveTypes(ctx.getParameterTypeNames(), lingClassLoader);
             ctx.getAttachments().put("ling.resolved.types", resolvedTypes);
 

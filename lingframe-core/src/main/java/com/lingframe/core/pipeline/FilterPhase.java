@@ -6,6 +6,7 @@ public final class FilterPhase {
     public static final int ROUTING = 100;
     public static final int RESILIENCE = 200;
     public static final int ISOLATION = 300;
+    public static final int GOVERNANCE = 500;
     public static final int TERMINAL = Integer.MAX_VALUE;
 
     // 第三方插件建议区间

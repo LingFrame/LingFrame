@@ -5,11 +5,11 @@ import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContextHolder;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
-import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.strategy.GovernanceStrategy;
-import com.lingframe.api.exception.InvocationException;
+import com.lingframe.api.exception.LingInvocationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aopalliance.intercept.MethodInterceptor;
@@ -28,7 +28,7 @@ import java.util.HashMap;
 @RequiredArgsConstructor
 public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
 
-    private final PermissionService permissionService;
+    private final InvocationPipelineEngine pipelineEngine;
     private final boolean governInternalCalls;
     private final boolean checkPermissions;
     private static final String HOST_Ling_ID = "lingcore-app";
@@ -74,35 +74,26 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
 
         // 构建治理上下文
         InvocationContext ctx = buildInvocationContext(method, args, callerLingId);
+        // [Key] 开启穿刺模式：仅利用管道进行治理检查，不执行末端反射调用（因为拦截器本身要 proceed）
+        ctx.setSkipTerminalInvocation(true);
 
-        // 执行治理：1. 权限检查
-        if (ctx.getRequiredPermission() != null && !ctx.getRequiredPermission().isEmpty()) {
-            boolean allowed = permissionService.isAllowed(
-                    callerLingId,
-                    ctx.getRequiredPermission(),
-                    ctx.getAccessType());
-            if (!allowed) {
-                throw new PermissionDeniedException(
-                        callerLingId,
-                        ctx.getRequiredPermission(),
-                        ctx.getAccessType());
-            }
-        }
-
-        // 2. 方法调用
-        Object result;
         try {
-            result = invocation.proceed();
-        } catch (Throwable t) {
-            throw new InvocationException("LINGCORE bean invocation failed", t);
-        }
+            // 借道 Pipeline 执行全套治理（并发统计、状态检查、权限校验、审计等）
+            pipelineEngine.invoke(ctx);
 
-        // 3. 审计事件
-        if (ctx.isShouldAudit()) {
-            permissionService.audit(callerLingId, ctx.getResourceId(), ctx.getAuditAction(), true);
+            // 治理通过，执行业务方法
+            return invocation.proceed();
+        } catch (LingInvocationException e) {
+            // 治理拒绝：卸载/停机/限流期间降级为 info 避免压测日志风暴，权限错误保持 warn
+            if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
+                log.warn("[Governance] Security rejected for Bean: {} -> {}", ctx.getResourceId(), e.getMessage());
+                throw new PermissionDeniedException(callerLingId, ctx.getRequiredPermission(), ctx.getAccessType());
+            }
+            log.info("[Governance] Bean request blocked: {} -> {}", ctx.getResourceId(), e.getMessage());
+            throw e;
+        } finally {
+            ctx.recycle();
         }
-
-        return result;
     }
 
     /**

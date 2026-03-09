@@ -78,7 +78,7 @@ public class DefaultPermissionService implements PermissionService {
         log.info("[Auth-Internal] lingId={}, table content: {}", lingId, lingPerms);
 
         if (lingPerms == null) {
-            log.info("[Auth-Internal] ling has no permissions -> false");
+            log.error("[Auth-Internal] ling has no permissions -> false");
             return false;
         }
 
@@ -86,7 +86,7 @@ public class DefaultPermissionService implements PermissionService {
         log.info("[Auth-Internal] Query capability={}, granted: {}", capability, granted);
 
         if (granted == null) {
-            log.info("[Auth-Internal] Capability not granted -> false");
+            log.error("[Auth-Internal] Capability not granted -> false");
             return false;
         }
 

@@ -1,6 +1,6 @@
 package com.lingframe.starter.configuration;
 
-import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.filter.LingWebGovernanceFilter;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -25,13 +25,13 @@ public class LingFrameAutoConfiguration {
 
     @Bean
     public FilterRegistrationBean<LingWebGovernanceFilter> lingWebGovernanceFilter(
-            PermissionService permissionService,
             WebInterfaceManager webInterfaceManager,
+            InvocationPipelineEngine pipelineEngine,
             LingFrameProperties properties,
             @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping) {
         FilterRegistrationBean<LingWebGovernanceFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(
-                new LingWebGovernanceFilter(permissionService, webInterfaceManager, properties,
+                new LingWebGovernanceFilter(webInterfaceManager, pipelineEngine, properties,
                         handlerMapping));
         registration.addUrlPatterns("/*");
         registration.setOrder(1); // 高优先级

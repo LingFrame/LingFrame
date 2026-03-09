@@ -1,8 +1,8 @@
 package com.lingframe.starter.configuration;
 
-import java.io.File;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.starter.resource.SpringBasicResourceGuard;
+import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.classloader.SharedApiManager;
@@ -28,7 +28,6 @@ import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.LabelMatchRouter;
-import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.*;
 import com.lingframe.infra.cache.configuration.CaffeineWrapperProcessor;
@@ -42,8 +41,6 @@ import com.lingframe.core.deploy.LingDeployService;
 import com.lingframe.starter.event.ServiceExporterListener;
 import com.lingframe.starter.processor.LingCoreBeanGovernanceProcessor;
 import com.lingframe.starter.processor.LingReferenceInjector;
-import com.lingframe.starter.spi.LingContextCustomizer;
-import com.lingframe.core.spi.ServiceExporter;
 import com.lingframe.starter.web.WebInterfaceManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -239,10 +236,11 @@ public class LingFrameCoreConfiguration {
             ObjectProvider<FilterRegistry> registryProvider,
             LingRepository lingRepository,
             InvokableMethodCache methodCache,
+            PermissionService permissionService,
             TrafficRouter trafficRouter,
             EventBus eventBus) {
         FilterRegistry registry = registryProvider
-                .getIfAvailable(() -> new FilterRegistry(methodCache));
+                .getIfAvailable(() -> new FilterRegistry(methodCache, permissionService));
         // 初始化内置 Filter 并注入依赖（构造器注入）
         registry.initialize(lingRepository, trafficRouter, eventBus);
         // 从宿主 ClassLoader 加载 SPI 扩展
