@@ -6,6 +6,8 @@ import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
+import com.lingframe.core.spi.LingServiceInvoker;
+import com.lingframe.core.invoker.FastLingServiceInvoker;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -19,9 +21,11 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
 
     // 全局统一共享的方法执行元数组句柄缓存，由引擎统一管理生命周期
     private final InvokableMethodCache methodCache;
+    private final LingServiceInvoker invoker;
 
-    public TerminalInvokerFilter(InvokableMethodCache methodCache) {
+    public TerminalInvokerFilter(InvokableMethodCache methodCache, LingServiceInvoker invoker) {
         this.methodCache = methodCache;
+        this.invoker = invoker != null ? invoker : new FastLingServiceInvoker();
     }
 
     @Override
@@ -92,17 +96,23 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
         }
 
         try {
-            if (ctx.getArgs() == null || ctx.getArgs().length == 0) {
-                return handle.invoke(serviceBean);
-            } else {
-                return handle.invokeWithArguments(concatArgs(serviceBean, ctx.getArgs()));
+            // 默认走高性能 invoker；若使用自定义 invoker，则回退为反射 Method 路径
+            if (invoker instanceof FastLingServiceInvoker) {
+                Object[] args = concatArgs(serviceBean, ctx.getArgs());
+                return ((FastLingServiceInvoker) invoker).invokeFast(target, handle, args);
             }
+
+            Method method = serviceBean.getClass().getMethod(ctx.getMethodName(), resolvedTypes);
+            return invoker.invoke(target, serviceBean, method, ctx.getArgs());
         } catch (Throwable t) {
             throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INVOKE_ERROR, t);
         }
     }
 
     private Object[] concatArgs(Object instance, Object[] args) {
+        if (args == null || args.length == 0) {
+            return new Object[] { instance };
+        }
         Object[] full = new Object[args.length + 1];
         full[0] = instance;
         System.arraycopy(args, 0, full, 1, args.length);

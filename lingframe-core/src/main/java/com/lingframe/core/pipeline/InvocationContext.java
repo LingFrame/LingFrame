@@ -28,6 +28,41 @@ public class InvocationContext {
     // 线程局部上下文栈，支持嵌套调用（如 Web -> Interceptor -> Proxy）
     private static final ThreadLocal<Deque<InvocationContext>> STACK = ThreadLocal.withInitial(ArrayDeque::new);
 
+    // ════════════════════════════════════════════
+    // 活跃上下文管理（独立于对象池，追踪当前线程正在使用的上下文）
+    // ════════════════════════════════════════════
+    private static final ThreadLocal<InvocationContext> CURRENT = new ThreadLocal<>();
+
+    /**
+     * 获取当前线程的活跃上下文（可能为 null）
+     * 与 obtain() 不同，current() 不会创建新实例，仅返回已 attach 的上下文
+     */
+    public static InvocationContext current() {
+        return CURRENT.get();
+    }
+
+    /**
+     * 将本上下文挂载为当前线程的活跃上下文
+     * @return 前一个活跃上下文（用于 detach 恢复嵌套调用栈）
+     */
+    public InvocationContext attach() {
+        InvocationContext prev = CURRENT.get();
+        CURRENT.set(this);
+        return prev;
+    }
+
+    /**
+     * 恢复前一个活跃上下文，断开当前上下文与线程的关联
+     * @param toRestore attach() 返回的前一个上下文
+     */
+    public static void detach(InvocationContext toRestore) {
+        if (toRestore != null) {
+            CURRENT.set(toRestore);
+        } else {
+            CURRENT.remove();
+        }
+    }
+
     /**
      * 获取或创建一个可用的上下文
      */
@@ -232,16 +267,20 @@ public class InvocationContext {
 
     /**
      * 将父线程的上下文无锁装载进子线程（用于 Callable）
-     * 依赖 copyFrom 达成极致的对象池复用且无内存分配（Zero Allocation）
+     * 通过 current() 捕获父线程的活跃上下文快照，在子线程中 attach 副本实现传播
      */
     public static <T> Callable<T> wrap(Callable<T> task) {
-        InvocationContext parent = InvocationContext.obtain();
+        InvocationContext parent = InvocationContext.current();
         return () -> {
             InvocationContext child = InvocationContext.obtain();
+            InvocationContext prev = child.attach();
             try {
-                child.copyFrom(parent);
+                if (parent != null) {
+                    child.copyFrom(parent);
+                }
                 return task.call();
             } finally {
+                InvocationContext.detach(prev);
                 child.recycle();
             }
         };
@@ -249,15 +288,20 @@ public class InvocationContext {
 
     /**
      * 将父线程的上下文无锁装载进子线程（用于 Runnable）
+     * 通过 current() 捕获父线程的活跃上下文快照，在子线程中 attach 副本实现传播
      */
     public static Runnable wrap(Runnable task) {
-        InvocationContext parent = InvocationContext.obtain();
+        InvocationContext parent = InvocationContext.current();
         return () -> {
             InvocationContext child = InvocationContext.obtain();
+            InvocationContext prev = child.attach();
             try {
-                child.copyFrom(parent);
+                if (parent != null) {
+                    child.copyFrom(parent);
+                }
                 task.run();
             } finally {
+                InvocationContext.detach(prev);
                 child.recycle();
             }
         };

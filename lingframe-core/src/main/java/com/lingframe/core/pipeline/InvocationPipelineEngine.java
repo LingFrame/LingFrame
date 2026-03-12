@@ -22,6 +22,8 @@ public class InvocationPipelineEngine {
      * @throws LingInvocationException 当链路任何环节发生异常或治理拒绝时抛出
      */
     public Object invoke(InvocationContext ctx) {
+        // 将上下文挂载为当前线程活跃上下文，使 Pipeline 内部（含 wrap() 跨线程传播）可通过 current() 发现
+        InvocationContext prev = ctx.attach();
         try {
             LingFilterChain chain = new DefaultFilterChain(registry.getOrderedFilters(), 0);
             return chain.doFilter(ctx);
@@ -30,6 +32,8 @@ public class InvocationPipelineEngine {
         } catch (Throwable e) {
             throw new LingInvocationException(
                     ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
+        } finally {
+            InvocationContext.detach(prev);
         }
     }
 

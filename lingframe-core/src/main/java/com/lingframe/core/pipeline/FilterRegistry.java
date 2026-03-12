@@ -3,8 +3,10 @@ package com.lingframe.core.pipeline;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.InvokableMethodCache;
+import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.spi.LingInvocationFilter;
+import com.lingframe.core.spi.LingServiceInvoker;
 import com.lingframe.core.spi.TrafficRouter;
 
 import java.util.*;
@@ -30,10 +32,24 @@ public class FilterRegistry {
     private volatile List<LingInvocationFilter> orderedCache;
 
     private final PermissionService permissionService;
+    private final LingServiceInvoker serviceInvoker;
+    private final GovernanceArbitrator governanceArbitrator;
 
     public FilterRegistry(InvokableMethodCache methodCache, PermissionService permissionService) {
+        this(methodCache, permissionService, null, null);
+    }
+
+    public FilterRegistry(InvokableMethodCache methodCache, PermissionService permissionService,
+            LingServiceInvoker serviceInvoker) {
+        this(methodCache, permissionService, serviceInvoker, null);
+    }
+
+    public FilterRegistry(InvokableMethodCache methodCache, PermissionService permissionService,
+            LingServiceInvoker serviceInvoker, GovernanceArbitrator governanceArbitrator) {
         this.methodCache = methodCache;
         this.permissionService = permissionService;
+        this.serviceInvoker = serviceInvoker;
+        this.governanceArbitrator = governanceArbitrator;
     }
 
     /**
@@ -54,18 +70,20 @@ public class FilterRegistry {
         ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(lingRepository);
         this.isolationFilter = threadIsolation;
 
+        GovernanceDecisionFilter governanceDecision = new GovernanceDecisionFilter(lingRepository, governanceArbitrator);
         PermissionGovernanceFilter permissionGovernance = new PermissionGovernanceFilter(permissionService);
 
         ContextIsolationFilter isolation = new ContextIsolationFilter();
-        TerminalInvokerFilter terminal = new TerminalInvokerFilter(methodCache);
+        TerminalInvokerFilter terminal = new TerminalInvokerFilter(methodCache, serviceInvoker);
 
         builtinFilters.add(new TrafficMetricsFilter(lingRepository));
         builtinFilters.add(stateGuard);
         builtinFilters.add(routing);
         builtinFilters.add(resilience);
         builtinFilters.add(threadIsolation);
-        builtinFilters.add(permissionGovernance);
         builtinFilters.add(isolation);
+        builtinFilters.add(governanceDecision);
+        builtinFilters.add(permissionGovernance);
         builtinFilters.add(terminal);
 
         invalidateCache();

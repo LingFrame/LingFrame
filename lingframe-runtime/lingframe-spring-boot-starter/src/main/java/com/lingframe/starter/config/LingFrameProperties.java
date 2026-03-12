@@ -56,6 +56,14 @@ public class LingFrameProperties {
     private List<String> preloadApiJars = new ArrayList<>();
 
     /**
+     * 是否启用 API 包覆盖检测。
+     * <p>
+     * true: 如果灵元包内包含 com.lingframe.api.* 类则拒绝安装
+     * false: 允许灵元包内包含同名 API（不建议）
+     */
+    private boolean apiOverrideCheckEnabled = true;
+
+    /**
      * 灵元额外目录
      */
     private List<String> lingRoots = new ArrayList<>();

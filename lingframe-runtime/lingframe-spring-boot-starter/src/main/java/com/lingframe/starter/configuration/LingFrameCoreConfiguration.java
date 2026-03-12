@@ -29,6 +29,7 @@ import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.core.security.DefaultPermissionService;
+import com.lingframe.core.invoker.FastLingServiceInvoker;
 import com.lingframe.core.spi.*;
 import com.lingframe.infra.cache.configuration.CaffeineWrapperProcessor;
 import com.lingframe.infra.cache.configuration.RedisWrapperProcessor;
@@ -154,6 +155,12 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public LingServiceInvoker lingServiceInvoker() {
+        return new FastLingServiceInvoker();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public LingResourceManager lingResourceManager(EventBus eventBus, InvokableMethodCache methodCache) {
         return new DefaultLingResourceManager(eventBus, methodCache);
     }
@@ -199,6 +206,7 @@ public class LingFrameCoreConfiguration {
                 .lingCoreGovernanceInternalCalls(properties.getLingCoreGovernance().isGovernInternalCalls())
                 .hostCheckPermissions(properties.getLingCoreGovernance().isCheckPermissions())
                 .preloadApiJars(properties.getPreloadApiJars())
+                .apiOverrideCheckEnabled(properties.isApiOverrideCheckEnabled())
                 .build();
 
         LingFrameConfig.init(lingFrameConfig);
@@ -237,10 +245,14 @@ public class LingFrameCoreConfiguration {
             LingRepository lingRepository,
             InvokableMethodCache methodCache,
             PermissionService permissionService,
+            ObjectProvider<LingServiceInvoker> invokerProvider,
+            ObjectProvider<GovernanceArbitrator> arbitratorProvider,
             TrafficRouter trafficRouter,
             EventBus eventBus) {
+        LingServiceInvoker invoker = invokerProvider.getIfAvailable();
+        GovernanceArbitrator arbitrator = arbitratorProvider.getIfAvailable();
         FilterRegistry registry = registryProvider
-                .getIfAvailable(() -> new FilterRegistry(methodCache, permissionService));
+                .getIfAvailable(() -> new FilterRegistry(methodCache, permissionService, invoker, arbitrator));
         // 初始化内置 Filter 并注入依赖（构造器注入）
         registry.initialize(lingRepository, trafficRouter, eventBus);
         // 从宿主 ClassLoader 加载 SPI 扩展

@@ -16,7 +16,19 @@ public class FastLingServiceInvoker implements LingServiceInvoker {
 
     @Override
     public Object invoke(LingInstance instance, Object bean, Method method, Object[] args) throws Exception {
-        return method.invoke(bean, args);
+        if (!instance.tryEnter()) {
+            throw new ServiceUnavailableException(instance.getLingId(),
+                    "Ling instance is not ready or already destroyed");
+        }
+        ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+
+        try {
+            Thread.currentThread().setContextClassLoader(instance.getContainer().getClassLoader());
+            return method.invoke(bean, args);
+        } finally {
+            Thread.currentThread().setContextClassLoader(originalClassLoader);
+            instance.exit();
+        }
     }
 
     /**

@@ -19,11 +19,14 @@ import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.pipeline.LatestVersionPolicy;
 import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.security.DefaultPermissionService;
+import com.lingframe.core.spi.LingServiceInvoker;
+import com.lingframe.core.invoker.FastLingServiceInvoker;
 import com.lingframe.runtime.adapter.NativeContainerFactory;
 import lombok.extern.slf4j.Slf4j;
 import com.lingframe.api.exception.ServiceUnavailableException;
 
 import java.util.Collections;
+import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -70,7 +73,8 @@ public class NativeLingFrame {
         LingServiceRegistry lingServiceRegistry = new DefaultLingServiceRegistry();
 
         InvokableMethodCache invokableMethodCache = new InvokableMethodCache();
-        FilterRegistry filterRegistry = new FilterRegistry(invokableMethodCache, permissionService);
+        LingServiceInvoker invoker = resolveInvoker(Thread.currentThread().getContextClassLoader());
+        FilterRegistry filterRegistry = new FilterRegistry(invokableMethodCache, permissionService, invoker, null);
         // 初始化内置 Filter 并注入依赖
         filterRegistry.initialize(lingRepository, new LatestVersionPolicy(), eventBus);
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(
@@ -111,6 +115,18 @@ public class NativeLingFrame {
         log.info("LingFrame Native started in {} ms", System.currentTimeMillis() - start);
 
         return lifecycleEngine;
+    }
+
+    private static LingServiceInvoker resolveInvoker(ClassLoader hostClassLoader) {
+        try {
+            ServiceLoader<LingServiceInvoker> loader = ServiceLoader.load(LingServiceInvoker.class, hostClassLoader);
+            for (LingServiceInvoker invoker : loader) {
+                return invoker;
+            }
+        } catch (Exception ignored) {
+            // Fallback to default
+        }
+        return new FastLingServiceInvoker();
     }
 
     /**

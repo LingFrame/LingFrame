@@ -3,23 +3,23 @@ package com.lingframe.core.context;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.exception.InvocationException;
+import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
-import com.lingframe.core.pipeline.InvocationContext;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import java.lang.reflect.Proxy;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
-import com.lingframe.api.exception.LingInvocationException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -80,10 +80,12 @@ public class CoreLingContext implements LingContext {
 
         String firstMethodSig = methods.get(0);
         String extractedMethodName = firstMethodSig.substring(0, firstMethodSig.indexOf('('));
+        String[] paramTypeNames = parseParamTypeNames(firstMethodSig);
 
         InvocationContext ctx = InvocationContext.obtain();
         ctx.setServiceFQSID(serviceId);
         ctx.setMethodName(extractedMethodName);
+        ctx.setParameterTypeNames(paramTypeNames);
         ctx.setArgs(args);
 
         ctx.getAttachments().put("ling.target.className", className);
@@ -133,6 +135,22 @@ public class CoreLingContext implements LingContext {
         }
         lingServiceRegistry.registerServiceMetadata(fqsid, method.getDeclaringClass().getName(), methodName,
                 paramNames);
+    }
+
+    private String[] parseParamTypeNames(String signature) {
+        if (signature == null) {
+            return new String[0];
+        }
+        int start = signature.indexOf('(');
+        int end = signature.indexOf(')');
+        if (start < 0 || end < 0 || end <= start + 1) {
+            return new String[0];
+        }
+        String inside = signature.substring(start + 1, end).trim();
+        if (inside.isEmpty()) {
+            return new String[0];
+        }
+        return inside.split("\\s*,\\s*");
     }
 
     @Override

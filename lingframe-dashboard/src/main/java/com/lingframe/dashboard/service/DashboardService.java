@@ -126,7 +126,6 @@ public class DashboardService {
                 if (policy == null || policy.getCapabilities() == null || policy.getCapabilities().isEmpty()) {
                     log.info("[Dashboard] Initializing default permissions for ling: {}", lingId);
 
-                    // 创建默认权限配置（全部开启）
                     List<GovernancePolicy.CapabilityRule> defaultCapabilities = Arrays.asList(
                             GovernancePolicy.CapabilityRule.builder()
                                     .capability(Capabilities.STORAGE_SQL)
@@ -146,28 +145,9 @@ public class DashboardService {
                     }
                     policy.setCapabilities(defaultCapabilities);
                     governanceRegistry.updatePatch(lingId, policy);
-
-                    // 同步到运行时权限服务
-                    permissionService.grant(lingId, Capabilities.STORAGE_SQL, AccessType.WRITE);
-                    permissionService.grant(lingId, Capabilities.CACHE_LOCAL, AccessType.WRITE);
-                    permissionService.grant(lingId, Capabilities.Ling_ENABLE, AccessType.EXECUTE);
-
-                    log.info("[Dashboard] Default permissions initialized and persisted");
-                } else {
-                    log.info("[Dashboard] ling has governance policy, loading permissions from file");
-
-                    // 从治理策略加载权限并同步到运行时
-                    for (GovernancePolicy.CapabilityRule rule : policy.getCapabilities()) {
-                        try {
-                            AccessType accessType = AccessType.valueOf(rule.getAccessType());
-                            permissionService.grant(lingId, rule.getCapability(), accessType);
-                            log.info("[Dashboard] Loaded permission: {} -> {}", rule.getCapability(), accessType);
-                        } catch (Exception e) {
-                            log.warn("[Dashboard] Failed to load permission: {} -> {}, error: {}",
-                                    rule.getCapability(), rule.getAccessType(), e.getMessage());
-                        }
-                    }
                 }
+
+                syncPermissionsFromPolicy(lingId, policy);
                 break;
             case INACTIVE:
                 // 执行状态机转换：ACTIVE -> STOPPING -> INACTIVE 或直接撤权
@@ -222,11 +202,7 @@ public class DashboardService {
 
         log.info("Calculated permissions: SQL={}, Cache={}", sqlAccess, cacheAccess);
 
-        // 2. 同步到运行时权限服务
-        permissionService.grant(lingId, Capabilities.STORAGE_SQL, sqlAccess);
-        permissionService.grant(lingId, Capabilities.CACHE_LOCAL, cacheAccess);
-
-        // 3. 同步到治理策略并持久化
+        // 2. 同步到治理策略并持久化
         GovernancePolicy policy = governanceRegistry.getPatch(lingId);
         if (policy == null) {
             policy = new GovernancePolicy();
@@ -275,14 +251,13 @@ public class DashboardService {
                         .capability(capability)
                         .accessType(AccessType.EXECUTE.name()) // IPC 默认为 EXECUTE
                         .build());
-                // 同时授权到运行时
-                permissionService.grant(lingId, capability, AccessType.EXECUTE);
             }
         }
 
-        // 4. 设置回策略
+        // 4. 设置回策略并同步到运行时
         policy.setCapabilities(new ArrayList<>(ruleMap.values()));
         governanceRegistry.updatePatch(lingId, policy);
+        syncPermissionsFromPolicy(lingId, policy);
 
         log.info("Permission update completed and persisted");
         log.info("========================================");
@@ -307,6 +282,34 @@ public class DashboardService {
         }
         // 两者都没有，明确拒绝
         return AccessType.NONE;
+    }
+
+    /**
+     * 以治理策略为唯一来源，刷新运行时权限表。
+     */
+    public void updateGovernancePolicy(String lingId, GovernancePolicy policy) {
+        governanceRegistry.updatePatch(lingId, policy);
+        syncPermissionsFromPolicy(lingId, policy);
+    }
+
+    private void syncPermissionsFromPolicy(String lingId, GovernancePolicy policy) {
+        // 清空该灵元的运行时权限，避免旧权限残留
+        permissionService.removeLing(lingId);
+
+        if (policy == null || policy.getCapabilities() == null) {
+            return;
+        }
+
+        for (GovernancePolicy.CapabilityRule rule : policy.getCapabilities()) {
+            try {
+                AccessType accessType = AccessType.valueOf(rule.getAccessType());
+                permissionService.grant(lingId, rule.getCapability(), accessType);
+                log.info("[Dashboard] Loaded permission: {} -> {}", rule.getCapability(), accessType);
+            } catch (Exception e) {
+                log.warn("[Dashboard] Failed to load permission: {} -> {}, error: {}",
+                        rule.getCapability(), rule.getAccessType(), e.getMessage());
+            }
+        }
     }
 
 }

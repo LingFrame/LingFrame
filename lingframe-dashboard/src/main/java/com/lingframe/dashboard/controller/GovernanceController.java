@@ -58,7 +58,7 @@ public class GovernanceController {
             @PathVariable String lingId,
             @RequestBody GovernancePolicy policy) {
         try {
-            registry.updatePatch(lingId, policy);
+            dashboardService.updateGovernancePolicy(lingId, policy);
             return ApiResponse.ok("策略已更新", policy);
         } catch (Exception e) {
             log.error("Failed to update patch for: {}", lingId, e);

@@ -16,6 +16,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.InstanceCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.security.DangerousApiVerifier;
+import com.lingframe.core.security.ApiOverrideVerifier;
 import com.lingframe.core.spi.*;
 import lombok.extern.slf4j.Slf4j;
 
@@ -64,6 +65,16 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         if (verifiers != null) {
             this.verifiers.addAll(verifiers);
         }
+
+        boolean enableApiOverrideCheck = lingFrameConfig == null || lingFrameConfig.isApiOverrideCheckEnabled();
+        if (enableApiOverrideCheck) {
+            boolean hasApiOverrideVerifier = this.verifiers.stream()
+                    .anyMatch(v -> v instanceof ApiOverrideVerifier);
+            if (!hasApiOverrideVerifier) {
+                this.verifiers.add(0, new ApiOverrideVerifier());
+            }
+        }
+
         boolean hasBytecodeVerifier = this.verifiers.stream()
                 .anyMatch(v -> v instanceof DangerousApiVerifier);
         if (!hasBytecodeVerifier) {

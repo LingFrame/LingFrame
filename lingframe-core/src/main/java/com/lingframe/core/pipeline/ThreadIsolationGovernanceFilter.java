@@ -67,7 +67,13 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
             }
         });
 
-        Future<Object> future = executor.submit(isolatedTask);
+        Future<Object> future;
+        try {
+            future = executor.submit(isolatedTask);
+        } catch (RejectedExecutionException e) {
+            log.warn("[Isolation:{}] Execution rejected (bulkhead full) for FQSID={}", lingId, fqsid);
+            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.RATE_LIMITED, e);
+        }
 
         try {
             // 真超时阻塞等待

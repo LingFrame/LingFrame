@@ -22,7 +22,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.annotation.PreDestroy;
 
 /**
  * Web 接口动态管理器（原生注册版）
@@ -39,6 +42,12 @@ public class WebInterfaceManager {
 
     // 路由键 -> RequestMappingInfo 映射（用于卸载）
     private final Map<String, RequestMappingInfo> mappingInfoMap = new ConcurrentHashMap<>();
+
+    private final ExecutorService registryExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "LingFrame-WebInterfaceManager");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private RequestMappingHandlerMapping hostMapping;
     private RequestMappingHandlerAdapter hostAdapter;
@@ -60,6 +69,10 @@ public class WebInterfaceManager {
      * 注册灵元 Controller 方法到 Spring MVC
      */
     public void register(WebInterfaceMetadata metadata) {
+        registryExecutor.execute(() -> registerInternal(metadata));
+    }
+
+    private void registerInternal(WebInterfaceMetadata metadata) {
         if (hostMapping == null || hostContext == null) {
             log.warn("WebInterfaceManager not initialized, skipping registration: {}", metadata.getUrlPattern());
             return;
@@ -134,8 +147,13 @@ public class WebInterfaceManager {
      * 注销灵元的所有接口或特定版本的接口
      */
     public void unregister(String lingId, ClassLoader targetLoader) {
-        if (hostMapping == null)
+        registryExecutor.execute(() -> unregisterInternal(lingId, targetLoader));
+    }
+
+    private void unregisterInternal(String lingId, ClassLoader targetLoader) {
+        if (hostMapping == null) {
             return;
+        }
 
         log.info("♻️ [LingFrame Web] Unregistering interfaces for ling: {} (ClassLoader: {})", lingId,
                 targetLoader != null ? targetLoader.hashCode() : "ALL");
@@ -214,6 +232,11 @@ public class WebInterfaceManager {
 
         log.info("♻️ [LingFrame Web] Unregistered {} interfaces for ling: {}",
                 keysToRemove.size(), lingId);
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        registryExecutor.shutdown();
     }
 
     /**
@@ -298,11 +321,13 @@ public class WebInterfaceManager {
     private boolean isSameParameterTypes(Method m1, Method m2) {
         Class<?>[] params1 = m1.getParameterTypes();
         Class<?>[] params2 = m2.getParameterTypes();
-        if (params1.length != params2.length)
+        if (params1.length != params2.length) {
             return false;
+        }
         for (int i = 0; i < params1.length; i++) {
-            if (!params1[i].equals(params2[i]))
+            if (!params1[i].equals(params2[i])) {
                 return false;
+            }
         }
         return true;
     }
@@ -336,8 +361,9 @@ public class WebInterfaceManager {
 
     private void clearCache(String fieldName, ClassLoader lingLoader) throws Exception {
         Field field = ReflectionUtils.findField(hostAdapter.getClass(), fieldName);
-        if (field == null)
+        if (field == null) {
             return;
+        }
         ReflectionUtils.makeAccessible(field);
         @SuppressWarnings("unchecked")
         Map<Class<?>, ?> cache = (Map<Class<?>, ?>) ReflectionUtils.getField(field, hostAdapter);
@@ -348,8 +374,9 @@ public class WebInterfaceManager {
 
     private void clearAdviceCache(String fieldName, ClassLoader lingLoader) throws Exception {
         Field field = ReflectionUtils.findField(hostAdapter.getClass(), fieldName);
-        if (field == null)
+        if (field == null) {
             return;
+        }
         ReflectionUtils.makeAccessible(field);
         @SuppressWarnings("unchecked")
         Map<ControllerAdviceBean, Set<Method>> cache = (Map<ControllerAdviceBean, Set<Method>>) ReflectionUtils

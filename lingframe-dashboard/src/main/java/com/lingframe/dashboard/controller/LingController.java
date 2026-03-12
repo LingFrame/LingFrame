@@ -5,8 +5,8 @@ import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.DashboardService;
 import lombok.Data;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -21,7 +21,6 @@ import java.util.List;
 @Slf4j
 @RestController
 @RequestMapping("/lingframe/dashboard/lings")
-@RequiredArgsConstructor
 @CrossOrigin(origins = "*")
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class LingController {
@@ -29,6 +28,15 @@ public class LingController {
     private final LingFrameConfig lingFrameConfig;
 
     private final DashboardService dashboardService;
+    private final boolean installEnabled;
+
+    public LingController(LingFrameConfig lingFrameConfig,
+            DashboardService dashboardService,
+            @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
+        this.lingFrameConfig = lingFrameConfig;
+        this.dashboardService = dashboardService;
+        this.installEnabled = installEnabled;
+    }
 
     /**
      * 获取所有灵元的运行快照列表
@@ -83,6 +91,9 @@ public class LingController {
     @PostMapping("/install")
     public ApiResponse<LingInfoDTO> install(@RequestParam("file") MultipartFile file) {
         try {
+            if (!installEnabled) {
+                return ApiResponse.error("安装接口未启用，请设置 lingframe.dashboard.install-enabled=true");
+            }
             if (file.isEmpty()) {
                 return ApiResponse.error("文件为空");
             }

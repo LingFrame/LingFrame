@@ -171,6 +171,15 @@ public class LingFrameConfig {
     @Builder.Default
     private List<String> preloadApiJars = new ArrayList<>();
 
+    /**
+     * 是否启用 API 包覆盖检测。
+     * <p>
+     * true: 如果灵元包内包含 com.lingframe.api.* 类则拒绝安装
+     * false: 允许灵元包内包含同名 API（不建议）
+     */
+    @Builder.Default
+    private boolean apiOverrideCheckEnabled = true;
+
     // ================= 运行时模板 (Runtime Template) =================
 
     /**
