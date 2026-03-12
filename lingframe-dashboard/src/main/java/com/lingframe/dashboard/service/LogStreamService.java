@@ -127,9 +127,13 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     public void broadcast(LogStreamDTO logStreamDTO) {
         if (emitters.isEmpty())
             return;
+        if (dispatcher.isShutdown()) {
+            return;
+        }
 
         // 异步提交给分发线程，不阻塞当前业务线程 (Core Kernel)
-        dispatcher.submit(() -> {
+        try {
+            dispatcher.submit(() -> {
             List<SseEmitter> dead = new ArrayList<>();
             for (SseEmitter emitter : emitters) {
                 try {
@@ -141,7 +145,10 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                 }
             }
             emitters.removeAll(dead);
-        });
+            });
+        } catch (RejectedExecutionException e) {
+            // ignore on shutdown
+        }
     }
 
     /**
@@ -150,17 +157,24 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     private void sendHeartbeat() {
         if (emitters.isEmpty())
             return;
-        dispatcher.submit(() -> {
-            List<SseEmitter> dead = new ArrayList<>();
-            for (SseEmitter emitter : emitters) {
-                try {
-                    emitter.send(SseEmitter.event().name("ping").data("pong"));
-                } catch (Exception e) {
-                    dead.add(emitter);
+        if (dispatcher.isShutdown()) {
+            return;
+        }
+        try {
+            dispatcher.submit(() -> {
+                List<SseEmitter> dead = new ArrayList<>();
+                for (SseEmitter emitter : emitters) {
+                    try {
+                        emitter.send(SseEmitter.event().name("ping").data("pong"));
+                    } catch (Exception e) {
+                        dead.add(emitter);
+                    }
                 }
-            }
-            emitters.removeAll(dead);
-        });
+                emitters.removeAll(dead);
+            });
+        } catch (RejectedExecutionException e) {
+            // ignore on shutdown
+        }
     }
 
     /**
@@ -176,6 +190,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
      */
     @Override
     public void destroy() {
+        eventBus.unsubscribeAll("lingframe-dashboard");
         dispatcher.shutdownNow();
         scheduler.shutdownNow();
         emitters.forEach(SseEmitter::complete);

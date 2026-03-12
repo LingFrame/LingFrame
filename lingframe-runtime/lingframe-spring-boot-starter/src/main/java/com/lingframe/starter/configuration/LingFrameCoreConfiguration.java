@@ -189,6 +189,7 @@ public class LingFrameCoreConfiguration {
                 .defaultTimeoutMs((int) rtProps.getDefaultTimeout().toMillis())
                 .bulkheadMaxConcurrent(rtProps.getBulkheadMaxConcurrent())
                 .bulkheadAcquireTimeoutMs((int) rtProps.getBulkheadAcquireTimeout().toMillis())
+                .rateLimitPerSecond(rtProps.getRateLimitPerSecond())
                 .build();
 
         if (properties.isDevMode()) {
@@ -231,11 +232,12 @@ public class LingFrameCoreConfiguration {
             LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry,
             InvocationPipelineEngine pipelineEngine,
-            List<ResourceGuard> resourceGuards) {
+            List<ResourceGuard> resourceGuards,
+            ObjectProvider<HotSwapWatcher> hotSwapWatcherProvider) {
         List<LingSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
         return new DefaultLingLifecycleEngine(containerFactory, permissionService,
                 lingLoaderFactory, verifiers, eventBus, lingFrameConfig, lingRepository, lingServiceRegistry,
-                pipelineEngine, resourceGuards);
+                pipelineEngine, resourceGuards, hotSwapWatcherProvider.getIfAvailable());
     }
 
     @Bean
@@ -297,7 +299,7 @@ public class LingFrameCoreConfiguration {
         };
     }
 
-    @Bean
+    @Bean(destroyMethod = "shutdown")
     @ConditionalOnProperty(prefix = "lingframe", name = "dev-mode", havingValue = "true")
     public HotSwapWatcher hotSwapWatcher(LingLifecycleEngine lifecycleEngine, EventBus eventBus) {
         return new HotSwapWatcher(lifecycleEngine, eventBus);

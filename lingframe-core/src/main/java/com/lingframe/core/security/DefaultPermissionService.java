@@ -42,6 +42,11 @@ public class DefaultPermissionService implements PermissionService {
         log.debug("[Auth] Checking permission: lingId={}, capability={}, accessType={}", lingId, capability,
                 accessType);
 
+        if (capability == null) {
+            log.warn("[Auth] Capability is null, rejecting by default");
+            return false;
+        }
+
         // 灵核应用根据配置决定是否进行权限检查
         if (HOST_Ling_ID.equals(lingId)) {
             // 如果配置为不检查灵核应用权限，直接放行

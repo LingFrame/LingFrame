@@ -31,6 +31,16 @@ public class PermissionGovernanceFilter implements LingInvocationFilter {
         String callerLingId = ctx.getCallerLingId();
         String capability = ctx.getRequiredPermission();
 
+        if (capability == null || capability.isEmpty()) {
+            log.warn("[Security] Capability is empty, rejecting: caller={}, type={}",
+                    callerLingId, ctx.getAccessType());
+            if (ctx.isShouldAudit()) {
+                permissionService.audit(callerLingId, ctx.getResourceId(), ctx.getAuditAction(), false);
+            }
+            throw new LingInvocationException(ctx.getServiceFQSID(),
+                    LingInvocationException.ErrorKind.SECURITY_REJECTED);
+        }
+
         // 1. 权限校验
         if (capability != null && !capability.isEmpty()) {
             boolean allowed = permissionService.isAllowed(callerLingId, capability, ctx.getAccessType());

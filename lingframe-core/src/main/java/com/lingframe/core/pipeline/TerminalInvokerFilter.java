@@ -79,7 +79,8 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
                 return mh;
             } catch (Exception e) {
                 log.error("Failed to resolve MethodHandle for {}", cacheKey, e);
-                throw new RuntimeException("Method resolution failed for " + cacheKey, e);
+                throw new LingInvocationException(ctx.getServiceFQSID(),
+                        LingInvocationException.ErrorKind.INVOKE_ERROR, e);
             }
         });
 

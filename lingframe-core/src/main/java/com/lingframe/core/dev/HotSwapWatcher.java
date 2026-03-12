@@ -127,6 +127,15 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
      * 注销监听
      * 遍历 Map，移除该灵元名下的所有 Key (O(N) 复杂度，但在卸载时可接受)
      */
+    public void register(String lingId, File classesDir, LingDefinition definition) {
+        if (lingId == null || classesDir == null || definition == null) {
+            return;
+        }
+        lingSourceMap.put(lingId, classesDir);
+        lingDefinitionMap.put(lingId, definition);
+        register(lingId, classesDir);
+    }
+
     public void unregister(String lingId) {
         if (!isStarted.get())
             return;
@@ -146,6 +155,9 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
                 it.remove(); // 移除 Map 条目
             }
         }
+
+        lingSourceMap.remove(lingId);
+        lingDefinitionMap.remove(lingId);
     }
 
     // 关闭服务 (App shutdown 时调用)
@@ -154,6 +166,9 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
             if (watchService != null)
                 watchService.close();
             debounceExecutor.shutdownNow();
+            if (eventBus != null) {
+                eventBus.unsubscribeAll("lingframe-hotswap");
+            }
         } catch (IOException e) {
             // ignore
         }

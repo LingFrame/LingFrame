@@ -4,6 +4,7 @@ import com.lingframe.api.context.LingContext;
 import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.CoreLingContext;
+import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.DefaultLingLifecycleEngine;
 import com.lingframe.core.ling.DefaultLingRepository;
@@ -39,6 +40,7 @@ public class NativeLingFrame {
     private static final AtomicBoolean started = new AtomicBoolean(false);
     private static LingLifecycleEngine GLOBAL_LIFECYCLE_ENGINE;
     private static LingContext HOST_CONTEXT;
+    private static HotSwapWatcher HOT_SWAP_WATCHER;
 
     /**
      * 启动 LingFrame (使用默认配置)
@@ -92,6 +94,11 @@ public class NativeLingFrame {
                 pipelineEngine,
                 Collections.singletonList(new BasicResourceGuard()));
 
+        if (config != null && config.isDevMode() && lifecycleEngine instanceof DefaultLingLifecycleEngine) {
+            HOT_SWAP_WATCHER = new HotSwapWatcher(lifecycleEngine, eventBus);
+            ((DefaultLingLifecycleEngine) lifecycleEngine).setHotSwapWatcher(HOT_SWAP_WATCHER);
+        }
+
         // 注册一个特殊的 "lingcore-app" 上下文
         HOST_CONTEXT = new CoreLingContext("lingcore-app", lingRepository, lingServiceRegistry, pipelineEngine,
                 permissionService, eventBus);
@@ -106,7 +113,9 @@ public class NativeLingFrame {
         // 注册关闭钩子
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("LingFrame shutting down...");
-            // Native runtime cleanup goes here if necessary
+            if (HOT_SWAP_WATCHER != null) {
+                HOT_SWAP_WATCHER.shutdown();
+            }
         }));
 
         GLOBAL_LIFECYCLE_ENGINE = lifecycleEngine;

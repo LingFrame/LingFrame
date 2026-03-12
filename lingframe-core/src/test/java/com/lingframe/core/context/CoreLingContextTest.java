@@ -76,4 +76,34 @@ class CoreLingContextTest {
         assertEquals("ok", result.get());
         assertArrayEquals(new String[0], capturedParamTypes.get());
     }
+
+    @Test
+    void invokeShouldSetCallerAndTargetLingId() {
+        LingRepository lingRepository = mock(LingRepository.class);
+        LingServiceRegistry registry = mock(LingServiceRegistry.class);
+        InvocationPipelineEngine pipeline = mock(InvocationPipelineEngine.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        EventBus eventBus = mock(EventBus.class);
+
+        when(registry.getServiceClassName("ling-B:svc")).thenReturn("com.example.Foo");
+        when(registry.getProviderMethods("ling-B:svc")).thenReturn(List.of("ping()"));
+
+        AtomicReference<String> capturedCaller = new AtomicReference<>();
+        AtomicReference<String> capturedTarget = new AtomicReference<>();
+        when(pipeline.invoke(any())).thenAnswer(invocation -> {
+            InvocationContext ctx = invocation.getArgument(0);
+            capturedCaller.set(ctx.getCallerLingId());
+            capturedTarget.set(ctx.getTargetLingId());
+            return "ok";
+        });
+
+        CoreLingContext context = new CoreLingContext("ling-A", lingRepository, registry, pipeline,
+                permissionService, eventBus);
+
+        Optional<Object> result = context.invoke("ling-B:svc");
+        assertTrue(result.isPresent());
+        assertEquals("ok", result.get());
+        assertEquals("ling-A", capturedCaller.get());
+        assertEquals("ling-B", capturedTarget.get());
+    }
 }

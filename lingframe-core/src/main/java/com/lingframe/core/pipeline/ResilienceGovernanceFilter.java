@@ -126,7 +126,11 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
                 return null;
             LingRuntimeConfig config = runtime.getConfig();
             // 使用 bulkheadMaxConcurrent 作为限流 QPS 基线
-            return new TokenBucketRateLimiter(id, config.getBulkheadMaxConcurrent(), config.getBulkheadMaxConcurrent());
+            int rateLimit = config.getRateLimitPerSecond();
+            if (rateLimit <= 0) {
+                rateLimit = config.getBulkheadMaxConcurrent();
+            }
+            return new TokenBucketRateLimiter(id, rateLimit, rateLimit);
         });
     }
 

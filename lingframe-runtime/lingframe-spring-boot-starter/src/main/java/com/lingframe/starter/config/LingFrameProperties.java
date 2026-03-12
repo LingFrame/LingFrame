@@ -190,6 +190,11 @@ public class LingFrameProperties {
         @DurationUnit(ChronoUnit.MILLIS)
         private Duration bulkheadAcquireTimeout = Duration.ofMillis(3000);
 
+        /**
+         * 限流 QPS（每秒令牌数），0 表示不启用
+         */
+        private int rateLimitPerSecond = 0;
+
         // --- 灵元线程池预算 ---
 
         /**

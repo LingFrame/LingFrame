@@ -94,7 +94,7 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
             Class<?> clazz = Class.forName(className, false, cl);
             Class<?>[] resolvedTypes = (Class<?>[]) ctx.getAttachments().get("ling.resolved.types");
             if (resolvedTypes == null) {
-                resolvedTypes = new Class<?>[0];
+                resolvedTypes = resolveTypes(ctx.getParameterTypeNames(), cl);
             }
             return clazz.getMethod(methodName, resolvedTypes);
         } catch (Exception e) {
@@ -114,6 +114,40 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
         }
         ClassLoader cl = Thread.currentThread().getContextClassLoader();
         return cl != null ? cl : getClass().getClassLoader();
+    }
+
+    private Class<?>[] resolveTypes(String[] typeNames, ClassLoader cl) throws ClassNotFoundException {
+        if (typeNames == null || typeNames.length == 0) {
+            return new Class<?>[0];
+        }
+        Class<?>[] types = new Class<?>[typeNames.length];
+        for (int i = 0; i < typeNames.length; i++) {
+            types[i] = loadClass(typeNames[i], cl);
+        }
+        return types;
+    }
+
+    private Class<?> loadClass(String typeName, ClassLoader cl) throws ClassNotFoundException {
+        switch (typeName) {
+            case "int":
+                return int.class;
+            case "long":
+                return long.class;
+            case "double":
+                return double.class;
+            case "boolean":
+                return boolean.class;
+            case "byte":
+                return byte.class;
+            case "short":
+                return short.class;
+            case "float":
+                return float.class;
+            case "char":
+                return char.class;
+            default:
+                return Class.forName(typeName, false, cl);
+        }
     }
 
     private void applyDecision(InvocationContext ctx, GovernanceDecision decision) {
@@ -142,4 +176,3 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
         }
     }
 }
-

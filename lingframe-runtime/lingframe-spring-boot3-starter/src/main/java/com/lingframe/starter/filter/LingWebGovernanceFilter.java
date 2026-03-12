@@ -213,6 +213,10 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         ctx.setResourceType("HTTP");
         ctx.setResourceId(request.getMethod() + " " + request.getRequestURI());
         ctx.setOperation(method.getName());
+        ctx.setMethodName(method.getName());
+        ctx.setParameterTypeNames(resolveParameterTypeNames(method));
+        ctx.getAttachments().put("ling.target.className", method.getDeclaringClass().getName());
+        ctx.getAttachments().put("ling.resolved.types", method.getParameterTypes());
         ctx.setRequiredPermission(permission);
         ctx.setAccessType(accessType);
         ctx.setAuditAction(auditAction);
@@ -221,5 +225,17 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         ctx.setLabels(new HashMap<>());
         ctx.setRuleSource(null); // Explicitly set to null as it's not resolved here
         return ctx;
+    }
+
+    private String[] resolveParameterTypeNames(Method method) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        if (parameterTypes == null || parameterTypes.length == 0) {
+            return new String[0];
+        }
+        String[] names = new String[parameterTypes.length];
+        for (int i = 0; i < parameterTypes.length; i++) {
+            names[i] = parameterTypes[i].getName();
+        }
+        return names;
     }
 }

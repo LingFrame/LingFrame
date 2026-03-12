@@ -53,6 +53,12 @@ public class LingRuntimeConfig {
     @Builder.Default
     private int bulkheadAcquireTimeoutMs = 3000;
 
+    /**
+     * 限流 QPS（每秒令牌数），0 表示不启用
+     */
+    @Builder.Default
+    private int rateLimitPerSecond = 0;
+
     // ==================== 工厂方法 ====================
 
     /**
@@ -99,7 +105,7 @@ public class LingRuntimeConfig {
     @Override
     public String toString() {
         return String.format(
-                "LingRuntimeConfig{maxHistory=%d, timeout=%dms, bulkhead=%d}",
-                maxHistorySnapshots, defaultTimeoutMs, bulkheadMaxConcurrent);
+                "LingRuntimeConfig{maxHistory=%d, timeout=%dms, bulkhead=%d, rateLimit=%d/s}",
+                maxHistorySnapshots, defaultTimeoutMs, bulkheadMaxConcurrent, rateLimitPerSecond);
     }
 }

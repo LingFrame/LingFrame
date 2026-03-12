@@ -84,6 +84,8 @@ public class CoreLingContext implements LingContext {
 
         InvocationContext ctx = InvocationContext.obtain();
         ctx.setServiceFQSID(serviceId);
+        ctx.setCallerLingId(lingId);
+        ctx.setTargetLingId(extractLingId(serviceId));
         ctx.setMethodName(extractedMethodName);
         ctx.setParameterTypeNames(paramTypeNames);
         ctx.setArgs(args);
@@ -151,6 +153,17 @@ public class CoreLingContext implements LingContext {
             return new String[0];
         }
         return inside.split("\\s*,\\s*");
+    }
+
+    private String extractLingId(String serviceId) {
+        if (serviceId == null) {
+            return null;
+        }
+        int idx = serviceId.indexOf(':');
+        if (idx > 0) {
+            return serviceId.substring(0, idx);
+        }
+        return null;
     }
 
     @Override

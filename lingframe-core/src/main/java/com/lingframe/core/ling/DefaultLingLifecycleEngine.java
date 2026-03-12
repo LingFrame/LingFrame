@@ -17,6 +17,7 @@ import com.lingframe.core.fsm.InstanceCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.security.ApiOverrideVerifier;
+import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.spi.*;
 import lombok.extern.slf4j.Slf4j;
 
@@ -42,6 +43,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
     private final LingFrameConfig lingFrameConfig;
     private final InvocationPipelineEngine pipelineEngine;
     private final List<ResourceGuard> resourceGuards;
+    private HotSwapWatcher hotSwapWatcher;
 
     private final InstanceCoordinator instanceCoordinator;
 
@@ -55,6 +57,21 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             LingServiceRegistry lingServiceRegistry,
             InvocationPipelineEngine pipelineEngine,
             List<ResourceGuard> resourceGuards) {
+        this(containerFactory, permissionService, lingLoaderFactory, verifiers, eventBus, lingFrameConfig,
+                lingRepository, lingServiceRegistry, pipelineEngine, resourceGuards, null);
+    }
+
+    public DefaultLingLifecycleEngine(ContainerFactory containerFactory,
+            PermissionService permissionService,
+            LingLoaderFactory lingLoaderFactory,
+            List<LingSecurityVerifier> verifiers,
+            EventBus eventBus,
+            LingFrameConfig lingFrameConfig,
+            LingRepository lingRepository,
+            LingServiceRegistry lingServiceRegistry,
+            InvocationPipelineEngine pipelineEngine,
+            List<ResourceGuard> resourceGuards,
+            HotSwapWatcher hotSwapWatcher) {
 
         this.containerFactory = containerFactory;
         this.lingLoaderFactory = lingLoaderFactory;
@@ -86,7 +103,12 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         this.lingServiceRegistry = lingServiceRegistry;
         this.pipelineEngine = pipelineEngine;
         this.resourceGuards = resourceGuards != null ? new ArrayList<>(resourceGuards) : new ArrayList<>();
+        this.hotSwapWatcher = hotSwapWatcher;
         this.instanceCoordinator = new InstanceCoordinator(eventBus);
+    }
+
+    public void setHotSwapWatcher(HotSwapWatcher hotSwapWatcher) {
+        this.hotSwapWatcher = hotSwapWatcher;
     }
 
     @Override
@@ -137,6 +159,14 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
 
             // 启动灵元 Spring 容器（创建 Bean、注册 Controller、扫描 LingService）
             container.start(context);
+
+            if (hotSwapWatcher != null
+                    && lingFrameConfig != null
+                    && lingFrameConfig.isDevMode()
+                    && sourceFile != null
+                    && sourceFile.isDirectory()) {
+                hotSwapWatcher.register(lingId, sourceFile, lingDefinition);
+            }
 
             runtime.getInstancePool().addInstance(instance, isDefault);
             instanceCoordinator.markReady(instance);
@@ -262,6 +292,10 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
 
     private void doFullUndeploy(String lingId, LingRuntime runtime) {
         eventBus.publish(new LingUninstallingEvent(lingId));
+
+        if (hotSwapWatcher != null) {
+            hotSwapWatcher.unregister(lingId);
+        }
 
         // 1. 改变宏观状态，拒绝新请求
         if (runtime.getStateMachine().current() != RuntimeStatus.STOPPING) {

@@ -22,8 +22,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import com.lingframe.api.exception.LingException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.annotation.PreDestroy;
 
@@ -69,10 +72,21 @@ public class WebInterfaceManager {
      * 注册灵元 Controller 方法到 Spring MVC
      */
     public void register(WebInterfaceMetadata metadata) {
-        registryExecutor.execute(() -> registerInternal(metadata));
+        registryExecutor.execute(() -> registerInternal(metadata, false));
     }
 
-    private void registerInternal(WebInterfaceMetadata metadata) {
+    public void registerSync(WebInterfaceMetadata metadata) {
+        try {
+            registryExecutor.submit(() -> registerInternal(metadata, true)).get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new LingException("Interrupted while registering web mapping", e);
+        } catch (ExecutionException e) {
+            throw new LingException("Failed to register web mapping", e.getCause());
+        }
+    }
+
+    private void registerInternal(WebInterfaceMetadata metadata, boolean throwOnError) {
         if (hostMapping == null || hostContext == null) {
             log.warn("WebInterfaceManager not initialized, skipping registration: {}", metadata.getUrlPattern());
             return;
@@ -139,6 +153,10 @@ public class WebInterfaceManager {
                     metadata.getHttpMethod(), metadata.getUrlPattern(),
                     metadata.getLingId(), metadata.getTargetMethod().getName());
         } catch (Exception e) {
+            if (throwOnError) {
+                throw new LingException("Failed to register web mapping: " + metadata.getHttpMethod() + " "
+                        + metadata.getUrlPattern(), e);
+            }
             log.error("Failed to register web mapping: {} {}", metadata.getHttpMethod(), metadata.getUrlPattern(), e);
         }
     }
@@ -237,6 +255,14 @@ public class WebInterfaceManager {
     @PreDestroy
     public void shutdown() {
         registryExecutor.shutdown();
+        try {
+            if (!registryExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                registryExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            registryExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

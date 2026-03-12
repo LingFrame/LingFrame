@@ -311,7 +311,7 @@ public class SpringLingContainer implements LingContainer {
 
         // 注册到 WebInterfaceManager
         if (webInterfaceManager != null) {
-            webInterfaceManager.register(metadata);
+            webInterfaceManager.registerSync(metadata);
         }
     }
 

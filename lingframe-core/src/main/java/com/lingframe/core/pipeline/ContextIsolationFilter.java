@@ -18,6 +18,10 @@ public class ContextIsolationFilter implements LingInvocationFilter {
 
     @Override
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
+        if (ctx.isSkipTerminalInvocation()) {
+            return chain.doFilter(ctx);
+        }
+
         LingInstance target = (LingInstance) ctx.getAttachments().get("ling.target.instance");
         if (target == null) {
             if (ctx.isDryRun()) {

@@ -135,9 +135,12 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         ctx.setTraceId(TraceContext.get());
         ctx.setTargetLingId(HOST_Ling_ID); // Set targetLingId instead of lingId
         ctx.setCallerLingId(callerLingId);
+        ctx.setServiceFQSID(HOST_Ling_ID + ":" + method.getDeclaringClass().getName());
         ctx.setResourceType("RPC");
         ctx.setResourceId(method.getDeclaringClass().getSimpleName() + "." + method.getName());
         ctx.setOperation(method.getName());
+        ctx.setMethodName(method.getName());
+        ctx.setParameterTypeNames(resolveParameterTypeNames(method));
         ctx.setRequiredPermission(permission);
         ctx.setAccessType(accessType);
         ctx.setAuditAction(auditAction);
@@ -146,7 +149,21 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         ctx.setMetadata(new HashMap<>());
         ctx.setLabels(new HashMap<>());
         ctx.setRuleSource(null); // Explicitly set to null as it's not resolved here
+        ctx.getAttachments().put("ling.target.className", method.getDeclaringClass().getName());
+        ctx.getAttachments().put("ling.resolved.types", method.getParameterTypes());
         return ctx;
+    }
+
+    private String[] resolveParameterTypeNames(Method method) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        if (parameterTypes == null || parameterTypes.length == 0) {
+            return new String[0];
+        }
+        String[] names = new String[parameterTypes.length];
+        for (int i = 0; i < parameterTypes.length; i++) {
+            names[i] = parameterTypes[i].getName();
+        }
+        return names;
     }
 
     /**
