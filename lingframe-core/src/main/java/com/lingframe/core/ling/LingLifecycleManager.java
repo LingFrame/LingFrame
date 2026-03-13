@@ -9,8 +9,6 @@ import com.lingframe.api.event.lifecycle.LingStoppingEvent;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.api.exception.ServiceUnavailableException;
-import com.lingframe.core.ling.event.RuntimeEvent;
-import com.lingframe.core.ling.event.RuntimeEventBus;
 import com.lingframe.core.spi.ResourceGuard;
 import lombok.NonNull;
 import lombok.Value;
@@ -33,7 +31,6 @@ public class LingLifecycleManager {
     private final String lingId;
     private final LingRuntimeConfig config;
     private final InstancePool instancePool;
-    private final RuntimeEventBus internalEventBus; // 内部事件总线
     private final EventBus externalEventBus; // 外部事件总线
     private final ScheduledExecutorService scheduler;
     private final ResourceGuard resourceGuard;
@@ -44,14 +41,12 @@ public class LingLifecycleManager {
 
     public LingLifecycleManager(String lingId,
             InstancePool instancePool,
-            RuntimeEventBus internalEventBus,
             EventBus externalEventBus,
             ScheduledExecutorService scheduler,
             LingRuntimeConfig config,
             ResourceGuard resourceGuard) {
         this.lingId = lingId;
         this.instancePool = instancePool;
-        this.internalEventBus = internalEventBus;
         this.externalEventBus = externalEventBus;
         this.scheduler = scheduler;
         this.config = config;
@@ -79,9 +74,6 @@ public class LingLifecycleManager {
 
         // 发布外部事件
         publishExternal(new LingStartingEvent(lingId, version));
-
-        // 🔥 发布内部事件（通知其他组件准备升级）
-        publishInternal(new RuntimeEvent.InstanceUpgrading(lingId, version));
 
         // 启动容器
         try {
@@ -113,13 +105,8 @@ public class LingLifecycleManager {
             // 添加到池并处理旧实例
             LingInstance old = instancePool.addInstance(newInstance, isDefault);
 
-            // 🔥 发布实例就绪事件
-            publishInternal(new RuntimeEvent.InstanceReady(lingId, version, newInstance));
-
             if (old != null) {
                 instancePool.moveToDying(old);
-                // 🔥 发布实例进入死亡状态事件
-                publishInternal(new RuntimeEvent.InstanceDying(lingId, old.getVersion(), old));
             }
         } finally {
             stateLock.unlock();
@@ -144,7 +131,6 @@ public class LingLifecycleManager {
         stateLock.lock();
         try {
             // 🔥 发布关闭事件（其他组件自己清理）
-            publishInternal(new RuntimeEvent.RuntimeShuttingDown(lingId));
 
             // 🔥 显式关闭实例池
             instancePool.shutdown();
@@ -185,12 +171,8 @@ public class LingLifecycleManager {
         }
 
         // 🔥 发布已关闭事件
-        publishInternal(new RuntimeEvent.RuntimeShutdown(lingId));
 
         // 清理内部事件订阅，防止引用残留
-        if (internalEventBus != null) {
-            internalEventBus.clear();
-        }
 
         // 关闭资源守卫的后台线程
         if (resourceGuard != null) {
@@ -299,7 +281,6 @@ public class LingLifecycleManager {
         }
 
         // 🔥 发布内部销毁事件
-        publishInternal(new RuntimeEvent.InstanceDestroyed(lingId, version));
 
         publishExternal(new LingStoppedEvent(lingId, version));
 
@@ -329,12 +310,6 @@ public class LingLifecycleManager {
         try {
             instance.destroy();
         } catch (Exception ignored) {
-        }
-    }
-
-    private void publishInternal(RuntimeEvent event) {
-        if (internalEventBus != null) {
-            internalEventBus.publish(event);
         }
     }
 

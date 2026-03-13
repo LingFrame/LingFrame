@@ -103,6 +103,10 @@ public class LingInstance {
     }
 
     public void markDying() {
+        InstanceStatus current = stateMachine.current();
+        if (current == InstanceStatus.STOPPING || current == InstanceStatus.DEAD || current == InstanceStatus.ERROR) {
+            return;
+        }
         stateMachine.transition(InstanceStatus.STOPPING);
     }
 

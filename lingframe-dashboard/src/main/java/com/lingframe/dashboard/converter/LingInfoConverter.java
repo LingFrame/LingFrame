@@ -25,24 +25,39 @@ public class LingInfoConverter {
             PermissionService permissionService,
             GovernancePolicy policy) {
         String lingId = runtime.getLingId();
+        List<LingInstance> activeInstances = runtime.getInstancePool().getActiveInstances();
+        List<LingInstance> allInstances = runtime.getInstancePool().getAllInstances();
+        List<LingInstance> candidates = activeInstances.isEmpty() ? allInstances : activeInstances;
+
+        String stableVersion = null;
+        for (LingInstance instance : candidates) {
+            if (!isCanary(instance)) {
+                stableVersion = instance.getVersion();
+                break;
+            }
+        }
+
+        String canaryVersion = null;
+        for (LingInstance instance : candidates) {
+            if (isCanary(instance)) {
+                String version = instance.getVersion();
+                if (stableVersion == null || !stableVersion.equals(version)) {
+                    canaryVersion = version;
+                    break;
+                }
+            }
+        }
 
         return LingInfoDTO.builder()
                 .lingId(lingId)
                 .status(runtime.getStateMachine().current().name())
-                .versions(runtime.getInstancePool().getActiveInstances().stream()
+                .versions(candidates.stream()
                         .map(LingInstance::getVersion)
                         .distinct()
                         .collect(Collectors.toList()))
-                .activeVersion(runtime.getInstancePool().getVersion())
+                .activeVersion(stableVersion)
                 .canaryPercent(canaryRouter.getCanaryPercent(lingId))
-                .canaryVersion(runtime.getInstancePool().getActiveInstances().stream()
-                        .filter(instance -> {
-                            String activeVer = runtime.getInstancePool().getVersion();
-                            return activeVer == null || !activeVer.equals(instance.getVersion());
-                        })
-                        .map(LingInstance::getVersion)
-                        .findFirst()
-                        .orElse(null))
+                .canaryVersion(canaryVersion)
                 .permissions(extractPermissions(lingId, permissionService, policy))
                 .installedAt(runtime.getInstalledAt())
                 .build();
@@ -94,5 +109,25 @@ public class LingInfoConverter {
                 .cacheWrite(cacheWrite)
                 .ipcServices(ipcServices)
                 .build();
+    }
+
+    private boolean isCanary(LingInstance instance) {
+        if (instance == null || instance.getDefinition() == null) {
+            return false;
+        }
+        if (instance.getDefinition().getProperties() == null) {
+            return false;
+        }
+        Object value = instance.getDefinition().getProperties().get("canary");
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue() != 0;
+        }
+        return "true".equalsIgnoreCase(String.valueOf(value));
     }
 }

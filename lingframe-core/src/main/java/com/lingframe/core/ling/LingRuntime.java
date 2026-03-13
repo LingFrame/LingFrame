@@ -2,6 +2,7 @@ package com.lingframe.core.ling;
 
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.fsm.StateMachine;
+import com.lingframe.api.event.LingStateChangedEvent;
 import com.lingframe.core.event.EventBus;
 import lombok.Getter;
 import lombok.ToString;
@@ -48,6 +49,19 @@ public class LingRuntime {
         this.config = config != null ? config : LingRuntimeConfig.defaults();
         this.instancePool = new InstancePool(lingId, this.config.getMaxHistorySnapshots());
         this.stateMachine = RuntimeStatus.newMachine(lingId, eventBus);
+        if (eventBus != null) {
+            eventBus.subscribe(lingId, LingStateChangedEvent.class, this::handleStateChanged);
+        }
+    }
+
+    private void handleStateChanged(LingStateChangedEvent event) {
+        if (event == null || event.getLingId() == null || !event.getLingId().equals(lingId)) {
+            return;
+        }
+        String current = event.getCurrentState();
+        if (RuntimeStatus.STOPPING.name().equals(current) || RuntimeStatus.REMOVED.name().equals(current)) {
+            instancePool.shutdown();
+        }
     }
 
     public void recordRequest(boolean isCanary) {

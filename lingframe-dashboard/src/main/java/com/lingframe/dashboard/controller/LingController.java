@@ -76,7 +76,7 @@ public class LingController {
             @PathVariable String lingId,
             @RequestBody LingStatusRequest request) {
         try {
-            LingInfoDTO info = dashboardService.updateStatus(lingId, request.getStatus());
+            LingInfoDTO info = dashboardService.updateStatus(lingId, request.getStatus(), request.getVersion());
             return ApiResponse.ok("状态已更新", info);
         } catch (Exception e) {
             log.error("Failed to update status: {}", lingId, e);
@@ -154,12 +154,15 @@ public class LingController {
      * 仅在开发模式下允许，用于快速应用代码变更。
      */
     @PostMapping("/{lingId}/reload")
-    public ApiResponse<LingInfoDTO> reload(@PathVariable String lingId) {
+    public ApiResponse<LingInfoDTO> reload(
+            @PathVariable String lingId,
+            @RequestBody(required = false) LingReloadRequest request) {
         if (!lingFrameConfig.isDevMode()) {
             return ApiResponse.error("热重载仅在开发模式下可用");
         }
         try {
-            LingInfoDTO info = dashboardService.reloadLing(lingId);
+            String version = request != null ? request.getVersion() : null;
+            LingInfoDTO info = dashboardService.reloadLing(lingId, version);
             return ApiResponse.ok("重载成功", info);
         } catch (Exception e) {
             log.error("Reload failed: {}", lingId, e);
@@ -205,5 +208,11 @@ public class LingController {
     @Data
     public static class LingStatusRequest {
         private RuntimeStatus status;
+        private String version;
+    }
+
+    @Data
+    public static class LingReloadRequest {
+        private String version;
     }
 }

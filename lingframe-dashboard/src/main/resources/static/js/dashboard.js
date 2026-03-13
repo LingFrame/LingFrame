@@ -43,6 +43,7 @@ createApp({
             showVersionSelect: false,
             versions: [],
             selectedVersion: '',
+            versionSelectLabel: '',
             onConfirm: null
         });
 
@@ -154,11 +155,13 @@ createApp({
             syncIpcSwitch();
         };
 
-        const updateStatus = async (newStatus) => {
+        const doUpdateStatus = async (newStatus, version = '') => {
             if (!activeId.value) return;
             loading.status = true;
             try {
-                const updated = await api.post(`/lings/${activeId.value}/status`, { status: newStatus });
+                const body = { status: newStatus };
+                if (version) body.version = version;
+                const updated = await api.post(`/lings/${activeId.value}/status`, body);
                 const idx = lings.value.findIndex(p => p.lingId === activeId.value);
                 if (idx !== -1 && updated) {
                     lings.value[idx] = updated;
@@ -171,36 +174,89 @@ createApp({
             }
         };
 
+        const updateStatus = (newStatus) => {
+            if (!activeLing.value) return;
+            const versions = activeLing.value.versions || [];
+            if (versions.length > 1) {
+                modal.title = t('modal.statusTitle') || '确认操作';
+                modal.message = t('modal.statusMessage') || '请选择版本';
+                modal.actionText = newStatus === 'ACTIVE'
+                    ? (t('modal.actionActivate') || '激活')
+                    : (t('modal.actionInactivate') || '停用');
+                modal.versionSelectLabel = t('modal.statusMessage') || t('modal.selectVersion');
+                modal.showVersionSelect = true;
+                modal.versions = versions;
+                modal.selectedVersion = activeLing.value.activeVersion || '';
+                modal.onConfirm = async () => {
+                    modal.loading = true;
+                    try {
+                        await doUpdateStatus(newStatus, modal.selectedVersion);
+                    } finally {
+                        modal.loading = false;
+                        modal.show = false;
+                    }
+                };
+                modal.show = true;
+                return;
+            }
+            doUpdateStatus(newStatus);
+        };
+
         const requestUnload = () => {
             if (!activeLing.value) return;
             modal.title = t('modal.confirmUnload');
             modal.message = t('modal.unloadWarning', { lingId: activeId.value });
             modal.actionText = t('modal.unloadAction');
-            modal.showVersionSelect = true;
-            modal.versions = activeLing.value.versions || [];
-            modal.selectedVersion = ''; // 默认全量卸载
+            modal.versionSelectLabel = t('modal.selectVersion');
+            const versions = activeLing.value.versions || [];
+            if (versions.length > 1) {
+                modal.showVersionSelect = true;
+                modal.versions = versions;
+                modal.selectedVersion = ''; // 默认全量卸载
 
+                modal.onConfirm = async () => {
+                    modal.loading = true;
+                    try {
+                        let url = `/lings/uninstall/${activeId.value}`;
+                        if (modal.selectedVersion) {
+                            url += `/${modal.selectedVersion}`;
+                        }
+
+                        await api.delete(url);
+
+                        if (modal.selectedVersion && modal.versions.length > 1) {
+                            // 仅仅是删除了某个版本，刷新部分信息即可
+                            showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`, 'success');
+                            refreshLings(); // 简单起见，重新拉取最新状态
+                        } else {
+                            // 全量删除 或 最后一个版本被删除
+                            lings.value = lings.value.filter(p => p.lingId !== activeId.value);
+                            activeId.value = null;
+                            Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
+                            showToast(t('toast.lingUnloaded'), 'success');
+                        }
+                    } catch (e) {
+                        showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
+                    } finally {
+                        modal.loading = false;
+                        modal.show = false;
+                    }
+                };
+                modal.show = true;
+                return;
+            }
+
+            modal.showVersionSelect = false;
+            modal.versions = [];
+            modal.selectedVersion = '';
             modal.onConfirm = async () => {
                 modal.loading = true;
                 try {
-                    let url = `/lings/uninstall/${activeId.value}`;
-                    if (modal.selectedVersion) {
-                        url += `/${modal.selectedVersion}`;
-                    }
-
-                    await api.delete(url);
-
-                    if (modal.selectedVersion && modal.versions.length > 1) {
-                        // 仅仅是删除了某个版本，刷新部分信息即可
-                        showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`, 'success');
-                        refreshLings(); // 简单起见，重新拉取最新状态
-                    } else {
-                        // 全量删除 或 最后一个版本被删除
-                        lings.value = lings.value.filter(p => p.lingId !== activeId.value);
-                        activeId.value = null;
-                        Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
-                        showToast(t('toast.lingUnloaded'), 'success');
-                    }
+                    await api.delete(`/lings/uninstall/${activeId.value}`);
+                    lings.value = lings.value.filter(p => p.lingId !== activeId.value);
+                    activeId.value = null;
+                    Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
+                    showToast(t('toast.lingUnloaded'), 'success');
                 } catch (e) {
                     showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
                 } finally {
@@ -297,10 +353,11 @@ createApp({
             }
         };
 
-        const reloadLing = async (lingId) => {
+        const doReloadLing = async (lingId, version = '') => {
             loading.lings = true; // 复用 lings loading
             try {
-                await api.post(`/lings/${lingId}/reload`);
+                const body = version ? { version } : {};
+                await api.post(`/lings/${lingId}/reload`, body);
                 showToast(t('toast.reloadSuccess'), 'success');
                 refreshLings();
             } catch (e) {
@@ -310,36 +367,89 @@ createApp({
             }
         };
 
+        const reloadLing = (lingId) => {
+            if (!activeLing.value) return;
+            const versions = activeLing.value.versions || [];
+            if (versions.length > 1) {
+                modal.title = t('modal.reloadTitle') || '确认热重载';
+                modal.message = t('modal.reloadMessage') || '请选择版本';
+                modal.actionText = t('modal.actionReload') || '热重载';
+                modal.versionSelectLabel = t('modal.reloadMessage') || t('modal.selectVersion');
+                modal.showVersionSelect = true;
+                modal.versions = versions;
+                modal.selectedVersion = activeLing.value.activeVersion || '';
+                modal.onConfirm = async () => {
+                    modal.loading = true;
+                    try {
+                        await doReloadLing(lingId, modal.selectedVersion);
+                    } finally {
+                        modal.loading = false;
+                        modal.show = false;
+                    }
+                };
+                modal.show = true;
+                return;
+            }
+            doReloadLing(lingId);
+        };
+
         const requestUnloadWithName = (lingId) => {
             const ling = lings.value.find(p => p.lingId === lingId);
             modal.title = t('modal.confirmUnload');
             modal.message = t('modal.unloadWarning', { lingId });
             modal.actionText = t('modal.unloadAction');
-            modal.showVersionSelect = true;
-            modal.versions = ling ? (ling.versions || []) : [];
-            modal.selectedVersion = ''; // 默认全量卸载
+            modal.versionSelectLabel = t('modal.selectVersion');
+            const versions = ling ? (ling.versions || []) : [];
+            if (versions.length > 1) {
+                modal.showVersionSelect = true;
+                modal.versions = versions;
+                modal.selectedVersion = ''; // 默认全量卸载
 
+                modal.onConfirm = async () => {
+                    modal.loading = true;
+                    try {
+                        let url = `/lings/uninstall/${lingId}`;
+                        if (modal.selectedVersion) {
+                            url += `/${modal.selectedVersion}`;
+                        }
+
+                        await api.delete(url);
+
+                        if (modal.selectedVersion && modal.versions.length > 1) {
+                            showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`, 'success');
+                            refreshLings();
+                        } else {
+                            lings.value = lings.value.filter(p => p.lingId !== lingId);
+                            if (activeId.value === lingId) {
+                                activeId.value = null;
+                                Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 }); // Reset stats
+                            }
+                            showToast(t('toast.lingUnloaded'), 'success');
+                        }
+                    } catch (e) {
+                        showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
+                    } finally {
+                        modal.loading = false;
+                        modal.show = false;
+                    }
+                };
+                modal.show = true;
+                return;
+            }
+
+            modal.showVersionSelect = false;
+            modal.versions = [];
+            modal.selectedVersion = '';
             modal.onConfirm = async () => {
                 modal.loading = true;
                 try {
-                    let url = `/lings/uninstall/${lingId}`;
-                    if (modal.selectedVersion) {
-                        url += `/${modal.selectedVersion}`;
+                    await api.delete(`/lings/uninstall/${lingId}`);
+                    lings.value = lings.value.filter(p => p.lingId !== lingId);
+                    if (activeId.value === lingId) {
+                        activeId.value = null;
+                        Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 }); // Reset stats
                     }
-
-                    await api.delete(url);
-
-                    if (modal.selectedVersion && modal.versions.length > 1) {
-                        showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`, 'success');
-                        refreshLings();
-                    } else {
-                        lings.value = lings.value.filter(p => p.lingId !== lingId);
-                        if (activeId.value === lingId) {
-                            activeId.value = null;
-                            Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 }); // Reset stats
-                        }
-                        showToast(t('toast.lingUnloaded'), 'success');
-                    }
+                    showToast(t('toast.lingUnloaded'), 'success');
                 } catch (e) {
                     showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
                 } finally {

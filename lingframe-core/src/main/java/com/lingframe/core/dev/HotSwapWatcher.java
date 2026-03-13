@@ -150,6 +150,10 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         register(lingId, classesDir);
     }
 
+    /**
+     * 注销监听
+     * 遍历 Map，移除该灵元名下的所有 Key (O(N) 复杂度，但在卸载时可接受)
+     */
     public void unregister(String lingId) {
         if (!isStarted.get()) {
             return;
@@ -236,7 +240,7 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         // 延迟 1000ms 执行，等待 IDE 编译完成
         debounceTask = debounceExecutor.schedule(() -> {
             log.info("=================================================");
-            log.info("⚡ Source change detected, hot reloading ling: {}", lingId);
+            log.info("[HotSwap] Source change detected, hot reloading ling: {}", lingId);
 
             // 检查是否存在编译错误文件
             if (hasCompilationErrors(lingId)) {
@@ -265,9 +269,22 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
                 lifecycleEngine.undeploy(lingId);
 
                 // 安装新版 (Dev模式)
-                lifecycleEngine.deploy(lingDefinition, source, true, Collections.emptyMap());
+                Map<String, Object> properties = lingDefinition.getProperties();
+                boolean isCanary = false;
+                if (properties != null) {
+                    Object value = properties.get("canary");
+                    if (value instanceof Boolean) {
+                        isCanary = (Boolean) value;
+                    } else if (value instanceof Number) {
+                        isCanary = ((Number) value).intValue() != 0;
+                    } else if (value != null) {
+                        isCanary = "true".equalsIgnoreCase(String.valueOf(value));
+                    }
+                }
+                boolean isDefault = !isCanary;
+                lifecycleEngine.deploy(lingDefinition, source, isDefault, Collections.emptyMap());
 
-                log.info("⚡ Hot swap completed: {}", lingId);
+                log.info("[HotSwap] Hot swap completed: {}", lingId);
 
             } catch (Exception e) {
                 log.error("Hot swap failed", e);

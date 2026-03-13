@@ -34,6 +34,14 @@ public class InstanceCoordinator {
         transitionState(instance, InstanceStatus.READY);
     }
 
+    public void pause(LingInstance instance) {
+        transitionState(instance, InstanceStatus.INACTIVE);
+    }
+
+    public void resume(LingInstance instance) {
+        transitionState(instance, InstanceStatus.READY);
+    }
+
     public void stop(LingInstance instance) {
         transitionState(instance, InstanceStatus.STOPPING);
     }
@@ -44,6 +52,9 @@ public class InstanceCoordinator {
 
     private void transitionState(LingInstance instance, InstanceStatus targetStatus) {
         InstanceStatus fromStatus = instance.getStateMachine().current();
+        if (fromStatus == targetStatus) {
+            return;
+        }
         try {
             instance.getStateMachine().transition(targetStatus);
 
@@ -67,6 +78,9 @@ public class InstanceCoordinator {
         // tearDown 使用传入的 eventBus 发布销毁事件，保持向后兼容
         EventBus bus = eventBus != null ? eventBus : this.eventBus;
         try {
+            if (instance.isDestroyed()) {
+                return;
+            }
             if (!instance.isDying()) {
                 transitionState(instance, InstanceStatus.STOPPING);
             }

@@ -1,10 +1,10 @@
 package com.lingframe.core.router;
 
-import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.spi.CanaryConfigurable;
 import com.lingframe.core.spi.TrafficRouter;
-import com.lingframe.api.exception.InvalidArgumentException;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * 金丝雀灰度路由实现
+ * 金丝雀/灰度路由实现
  * <p>
  * 同时实现 TrafficRouter（路由决策）和 CanaryConfigurable（配置管理）
  */
@@ -62,7 +62,7 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
             // 1. 明确金丝雀实例 (优先通过版本锁定)
             LingInstance targetCanary = findCanaryInstance(candidates, config.canaryVersion, null);
 
-            // 2. 明确稳定版实例 (必须排除已锁定的金丝雀，防止“先灰后稳”导致的角色反转)
+            // 2. 明确稳定版实例(必须排除已锁定的金丝雀，防止“先灰后稳”导致的角色反转)
             LingInstance targetStable = findStableInstance(candidates, context, targetCanary);
 
             // 3. 执行权重分发
@@ -70,11 +70,11 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
             if (routeToCanary && targetCanary != null) {
                 return targetCanary;
             }
-            // 否则返回稳定版 (此时保证了稳定版绝不是金丝雀版本)
+            // 否则返回稳定版(此时保证稳定版绝不是金丝雀版本)
             return targetStable;
         }
 
-        // B. 无灰度配置，但无 Labels 请求时，默认锁定稳定版 (防止回退到基础路由器的 50/50 随机分发)
+        // B. 无灰度配置，但无 Labels 请求时，默认锁定稳定版(防止回退到基础路由器的 50/50 随机分发)
         Map<String, String> labels = context != null ? context.getLabels() : null;
         if (labels == null || labels.isEmpty()) {
             return findStableInstance(candidates, context, null);
@@ -92,7 +92,7 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
             throw new InvalidArgumentException("percent", "Canary percent must be 0-100");
         }
 
-        // 禁止移除配置，即便为 0 也要保留，以防止降级回退导致的流量泄露
+        // 禁止移除配置，即使为 0 也要保留，以防止降级回退导致的流量抖动
         canaryConfigs.put(lingId, new CanaryConfig(percent, canaryVersion));
         log.info("[{}] Canary config updated: {}% -> {}", lingId, percent, canaryVersion);
     }
@@ -134,7 +134,14 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
             }
         }
 
-        // 2. 否则返回第一个“非稳定版”实例
+        // 2. 优先选择显式标记为 canary 的实例
+        for (LingInstance inst : candidates) {
+            if (inst != stableInstance && isCanary(inst)) {
+                return inst;
+            }
+        }
+
+        // 3. 否则返回第一个“非稳定版”实例
         for (LingInstance inst : candidates) {
             if (inst != stableInstance) {
                 return inst;
@@ -146,7 +153,14 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
 
     private LingInstance findStableInstance(List<LingInstance> candidates, InvocationContext context,
             LingInstance excludedInstance) {
-        // 1. 优先从 Runtime 引用中获取池标记的 Default 实例 (如果是金丝雀版本标记了 Default，则不能用它)
+        // 1. 优先选择未标记 canary 的实例
+        for (LingInstance inst : candidates) {
+            if (inst != excludedInstance && !isCanary(inst)) {
+                return inst;
+            }
+        }
+
+        // 2. 退化到池标记的 Default 实例（如果存在且未被排除）
         if (context != null && context.getRuntime() != null) {
             LingInstance defaultInst = context.getRuntime().getInstancePool().getDefault();
             if (defaultInst != null && defaultInst != excludedInstance && candidates.contains(defaultInst)) {
@@ -154,15 +168,36 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
             }
         }
 
-        // 2. 降级逻辑：寻找第一个非排除对象的实例
+        // 3. 再次降级：寻找第一个非排除对象的实例
         for (LingInstance inst : candidates) {
             if (inst != excludedInstance) {
                 return inst;
             }
         }
 
-        // 3. 实在没办法（如全是金丝雀版本，配置异常），则返回首位
+        // 4. 实在没办法（如全被排除），则返回首位
         return candidates.get(0);
+    }
+
+    private boolean isCanary(LingInstance instance) {
+        if (instance == null || instance.getDefinition() == null) {
+            return false;
+        }
+        Map<String, Object> props = instance.getDefinition().getProperties();
+        if (props == null) {
+            return false;
+        }
+        Object value = props.get("canary");
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue() != 0;
+        }
+        return "true".equalsIgnoreCase(String.valueOf(value));
     }
 
     @Value

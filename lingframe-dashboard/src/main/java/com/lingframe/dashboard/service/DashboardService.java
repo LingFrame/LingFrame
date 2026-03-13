@@ -6,11 +6,13 @@ import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.loader.LingManifestLoader;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.api.exception.InvalidArgumentException;
@@ -30,6 +32,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DashboardService {
 
+    private final LingFrameConfig lingFrameConfig;
     private final LingLifecycleEngine lifecycleEngine;
     private final LingRepository lingRepository;
     private final LocalGovernanceRegistry governanceRegistry;
@@ -77,11 +80,29 @@ public class DashboardService {
             if (def == null) {
                 throw new InvalidArgumentException("file", "Not a valid ling package: " + file.getName());
             }
-            lifecycleEngine.deploy(def, file, true, Collections.emptyMap());
+            boolean isCanary = isCanary(def);
+            lifecycleEngine.deploy(def, file, !isCanary, Collections.emptyMap());
             return getLingInfo(def.getId());
         } catch (Exception e) {
             throw new LingInstallException("unknown", "Failed to install ling: " + e.getMessage(), e);
         }
+    }
+
+    private boolean isCanary(LingDefinition def) {
+        if (def == null || def.getProperties() == null) {
+            return false;
+        }
+        Object value = def.getProperties().get("canary");
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue() != 0;
+        }
+        return "true".equalsIgnoreCase(String.valueOf(value));
     }
 
     public void uninstallLing(String lingId) {
@@ -103,18 +124,57 @@ public class DashboardService {
         }
     }
 
-    public LingInfoDTO reloadLing(String lingId) {
+    public LingInfoDTO reloadLing(String lingId, String version) {
         try {
-            throw new LingInstallException(lingId, "Reload not supported via Dashboard in V0.3.0", null);
+            LingRuntime runtime = lingRepository.getRuntime(lingId);
+            if (runtime == null) {
+                throw new LingNotFoundException(lingId);
+            }
+
+            LingInstance target = version != null
+                    ? runtime.getInstancePool().getInstance(version)
+                    : selectStableInstance(runtime);
+            if (target == null) {
+                throw new LingInstallException(lingId, "No available instance to reload", null);
+            }
+
+            String targetVersion = target.getVersion();
+            File source = resolveSourceFile(lingId, targetVersion);
+            if (source == null) {
+                throw new LingInstallException(lingId,
+                        "Source file not found for " + lingId + ":" + targetVersion, null);
+            }
+
+            LingDefinition def = LingManifestLoader.parseDefinition(source);
+            if (def == null) {
+                throw new LingInstallException(lingId, "Invalid ling package: " + source.getAbsolutePath(), null);
+            }
+
+            boolean isCanary = isCanary(def);
+            lifecycleEngine.undeploy(lingId, targetVersion);
+            lifecycleEngine.deploy(def, source, !isCanary, Collections.emptyMap());
+
+            return getLingInfo(lingId);
         } catch (Exception e) {
             throw new LingInstallException(lingId, "Failed to reload ling: " + e.getMessage(), e);
         }
     }
 
-    public LingInfoDTO updateStatus(String lingId, RuntimeStatus newStatus) {
+    public LingInfoDTO updateStatus(String lingId, RuntimeStatus newStatus, String version) {
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
+        }
+
+        if (version != null && !version.isEmpty()) {
+            if (newStatus == RuntimeStatus.INACTIVE) {
+                lifecycleEngine.pauseVersion(lingId, version);
+                return getLingInfo(lingId);
+            }
+            if (newStatus == RuntimeStatus.ACTIVE) {
+                lifecycleEngine.resumeVersion(lingId, version);
+                return getLingInfo(lingId);
+            }
         }
 
         switch (newStatus) {
@@ -152,8 +212,11 @@ public class DashboardService {
                 syncPermissionsFromPolicy(lingId, policy);
                 break;
             case INACTIVE:
-                // 执行状态机转换：ACTIVE -> STOPPING -> INACTIVE 或直接撤权
-                // V0.3.0 中通过撤销 Ling_ENABLE 权限实现业务上的 INACTIVE（逻辑下线）
+                // 执行状态机转换，禁止新请求进入
+                runtime.getStateMachine().transition(RuntimeStatus.INACTIVE);
+                log.info("[Dashboard] State transitioned to INACTIVE for ling: {}", lingId);
+
+                // 同步撤销执行权限，保持权限侧一致
                 permissionService.revoke(lingId, Capabilities.Ling_ENABLE);
                 log.info("[Dashboard] Revoked Ling_ENABLE permission from {}, ling deactivated", lingId);
                 break;
@@ -312,6 +375,85 @@ public class DashboardService {
                         rule.getCapability(), rule.getAccessType(), e.getMessage());
             }
         }
+    }
+
+    private LingInstance selectStableInstance(LingRuntime runtime) {
+        if (runtime == null) {
+            return null;
+        }
+        for (LingInstance instance : runtime.getInstancePool().getActiveInstances()) {
+            if (!isCanary(instance)) {
+                return instance;
+            }
+        }
+        LingInstance fallback = runtime.getInstancePool().getDefault();
+        if (fallback != null) {
+            return fallback;
+        }
+        List<LingInstance> active = runtime.getInstancePool().getActiveInstances();
+        return active.isEmpty() ? null : active.get(0);
+    }
+
+    private File resolveSourceFile(String lingId, String version) {
+        File devFile = findFromRoots(lingId, version);
+        if (devFile != null) {
+            return devFile;
+        }
+        File homeFile = findFromHome(lingId, version);
+        if (homeFile != null) {
+            return homeFile;
+        }
+        return null;
+    }
+
+    private File findFromRoots(String lingId, String version) {
+        if (lingFrameConfig == null || !lingFrameConfig.isDevMode()) {
+            return null;
+        }
+        List<String> roots = lingFrameConfig.getLingRoots();
+        if (roots == null || roots.isEmpty()) {
+            return null;
+        }
+        for (String root : roots) {
+            String realPath = root + File.separator + "/target/classes";
+            File realFile = new File(realPath);
+            if (!realFile.exists()) {
+                continue;
+            }
+            LingDefinition def = LingManifestLoader.parseDefinition(realFile);
+            if (def != null && lingId.equals(def.getId()) && version.equals(def.getVersion())) {
+                return realFile;
+            }
+        }
+        return null;
+    }
+
+    private File findFromHome(String lingId, String version) {
+        if (lingFrameConfig == null || lingFrameConfig.getLingHome() == null) {
+            return null;
+        }
+        File home = new File(lingFrameConfig.getLingHome());
+        if (!home.exists() || !home.isDirectory()) {
+            return null;
+        }
+        File[] files = home.listFiles();
+        if (files == null) {
+            return null;
+        }
+        for (File file : files) {
+            LingDefinition def = LingManifestLoader.parseDefinition(file);
+            if (def != null && lingId.equals(def.getId()) && version.equals(def.getVersion())) {
+                return file;
+            }
+        }
+        return null;
+    }
+
+    private boolean isCanary(LingInstance instance) {
+        if (instance == null || instance.getDefinition() == null) {
+            return false;
+        }
+        return isCanary(instance.getDefinition());
     }
 
 }

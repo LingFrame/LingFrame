@@ -15,8 +15,8 @@ public enum RuntimeStatus {
     static {
         Map<RuntimeStatus, Set<RuntimeStatus>> map = new EnumMap<>(RuntimeStatus.class);
         map.put(INACTIVE, EnumSet.of(ACTIVE, REMOVED));
-        map.put(ACTIVE, EnumSet.of(DEGRADED, STOPPING));
-        map.put(DEGRADED, EnumSet.of(ACTIVE, STOPPING));
+        map.put(ACTIVE, EnumSet.of(DEGRADED, STOPPING, INACTIVE));
+        map.put(DEGRADED, EnumSet.of(ACTIVE, STOPPING, INACTIVE));
         map.put(STOPPING, EnumSet.of(REMOVED));
         map.put(REMOVED, Collections.emptySet());
         TRANSITIONS = Collections.unmodifiableMap(map);

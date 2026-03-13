@@ -1,6 +1,7 @@
 package com.lingframe.dashboard.config;
 
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 
@@ -47,13 +48,14 @@ public class DashboardAutoConfiguration {
 
     @Bean
     public DashboardService dashboardService(
+            LingFrameConfig lingFrameConfig,
             LingLifecycleEngine lifecycleEngine,
             LingRepository lingRepository,
             LocalGovernanceRegistry governanceRegistry,
             CanaryRouter canaryRouter,
             LingInfoConverter lingInfoConverter,
             PermissionService permissionService) {
-        return new DashboardService(lifecycleEngine, lingRepository, governanceRegistry, canaryRouter,
+        return new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository, governanceRegistry, canaryRouter,
                 lingInfoConverter,
                 permissionService);
     }

@@ -49,4 +49,28 @@ public class EventBusTest {
 
         assertEquals(1, count.get());
     }
+
+    @Test
+    @DisplayName("unsubscribeAll should remove all listeners for target lingId only")
+    void unsubscribeAllShouldRemoveAllForLingId() {
+        EventBus eventBus = new EventBus();
+        AtomicInteger a1 = new AtomicInteger(0);
+        AtomicInteger a2 = new AtomicInteger(0);
+        AtomicInteger b = new AtomicInteger(0);
+
+        LingEventListener<TestEvent> listenerA1 = e -> a1.incrementAndGet();
+        LingEventListener<TestEvent> listenerA2 = e -> a2.incrementAndGet();
+        LingEventListener<TestEvent> listenerB = e -> b.incrementAndGet();
+
+        eventBus.subscribe("ling-a", TestEvent.class, listenerA1);
+        eventBus.subscribe("ling-a", TestEvent.class, listenerA2);
+        eventBus.subscribe("ling-b", TestEvent.class, listenerB);
+
+        eventBus.unsubscribeAll("ling-a");
+        eventBus.publish(new TestEvent());
+
+        assertEquals(0, a1.get());
+        assertEquals(0, a2.get());
+        assertEquals(1, b.get());
+    }
 }

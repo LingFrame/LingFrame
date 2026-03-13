@@ -104,6 +104,13 @@
     "confirmUnload": "确认卸载灵元",
     "unloadWarning": "即将卸载 \"{lingId}\"，这将中断所有相关联请求。",
     "unloadAction": "卸载",
+    "statusTitle": "确认操作",
+    "statusMessage": "请选择要操作的版本：",
+    "reloadTitle": "确认热重载",
+    "reloadMessage": "请选择要重载的版本：",
+    "actionActivate": "激活",
+    "actionInactivate": "停用",
+    "actionReload": "热重载",
     "selectVersion": "选择要卸载的版本：",
     "allVersions": "全量卸载 (所有版本)"
   },

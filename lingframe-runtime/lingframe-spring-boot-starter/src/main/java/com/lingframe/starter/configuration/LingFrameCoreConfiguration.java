@@ -248,7 +248,7 @@ public class LingFrameCoreConfiguration {
                 pipelineEngine, resourceGuards, lingResourceManager);
         return new DefaultLingLifecycleEngine(containerFactory, permissionService,
                 lingLoaderFactory, verifiers, eventBus, lingFrameConfig, lingRepository, lingServiceRegistry,
-                pipelineEngine, unloadCoordinator, hotSwapWatcherProvider.getIfAvailable());
+                pipelineEngine, unloadCoordinator, null);
     }
 
     @Bean
@@ -313,7 +313,11 @@ public class LingFrameCoreConfiguration {
     @Bean(destroyMethod = "shutdown")
     @ConditionalOnProperty(prefix = "lingframe", name = "dev-mode", havingValue = "true")
     public HotSwapWatcher hotSwapWatcher(LingLifecycleEngine lifecycleEngine, EventBus eventBus) {
-        return new HotSwapWatcher(lifecycleEngine, eventBus);
+        HotSwapWatcher watcher = new HotSwapWatcher(lifecycleEngine, eventBus);
+        if (lifecycleEngine instanceof DefaultLingLifecycleEngine) {
+            ((DefaultLingLifecycleEngine) lifecycleEngine).setHotSwapWatcher(watcher);
+        }
+        return watcher;
     }
 
     @Bean

@@ -4,6 +4,7 @@ import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
@@ -18,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,6 +27,9 @@ import static org.mockito.Mockito.eq;
 
 @ExtendWith(MockitoExtension.class)
 class DashboardServiceTest {
+
+    @Mock
+    LingFrameConfig lingFrameConfig;
 
     @Mock
     LingLifecycleEngine lifecycleEngine;
@@ -44,7 +49,7 @@ class DashboardServiceTest {
 
     @Test
     void updateGovernancePolicyRefreshesPermissionsFromPolicy() {
-        DashboardService service = new DashboardService(lifecycleEngine, lingRepository,
+        DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
                 governanceRegistry, canaryRouter, lingInfoConverter, permissionService);
 
         GovernancePolicy policy = new GovernancePolicy();
@@ -68,7 +73,7 @@ class DashboardServiceTest {
 
     @Test
     void updatePermissionsPersistsPolicyAndSyncsRuntimePermissions() {
-        DashboardService service = new DashboardService(lifecycleEngine, lingRepository,
+        DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
                 governanceRegistry, canaryRouter, lingInfoConverter, permissionService);
 
         when(governanceRegistry.getPatch("ling1")).thenReturn(null);

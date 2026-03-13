@@ -32,4 +32,20 @@ public interface LingLifecycleEngine {
      * @param version 目标卸载版本
      */
     void undeploy(String lingId, String version);
+
+    /**
+     * 按版本停用（不卸载），仅将实例置为不可路由状态。
+     *
+     * @param lingId  灵元ID
+     * @param version 目标版本
+     */
+    void pauseVersion(String lingId, String version);
+
+    /**
+     * 按版本恢复（不重新部署），将实例恢复为可路由状态。
+     *
+     * @param lingId  灵元ID
+     * @param version 目标版本
+     */
+    void resumeVersion(String lingId, String version);
 }

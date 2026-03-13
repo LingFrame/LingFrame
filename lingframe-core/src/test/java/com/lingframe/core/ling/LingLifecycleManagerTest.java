@@ -4,8 +4,6 @@ import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.api.exception.ServiceUnavailableException;
-import com.lingframe.core.ling.event.RuntimeEvent;
-import com.lingframe.core.ling.event.RuntimeEventBus;
 import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.*;
@@ -27,7 +25,7 @@ import static org.mockito.Mockito.*;
 @DisplayName("LingLifecycleManager 灵元测试")
 public class LingLifecycleManagerTest {
 
-    private static final String Ling_ID = "test-ling";
+    private static final String LING_ID = "test-ling";
 
     @Mock
     private EventBus externalEventBus;
@@ -37,7 +35,6 @@ public class LingLifecycleManagerTest {
 
     private ScheduledExecutorService scheduler;
     private InstancePool instancePool;
-    private RuntimeEventBus internalEventBus;
     private LingRuntimeConfig config;
     private LingLifecycleManager lifecycleManager;
 
@@ -50,14 +47,12 @@ public class LingLifecycleManagerTest {
                 .forceCleanupDelaySeconds(2)
                 .build();
 
-        instancePool = new InstancePool(Ling_ID, config.getMaxHistorySnapshots());
-        internalEventBus = new RuntimeEventBus(Ling_ID);
+        instancePool = new InstancePool(LING_ID, config.getMaxHistorySnapshots());
 
         lifecycleManager = new LingLifecycleManager(
-                Ling_ID,
+                LING_ID,
                 instancePool,
-                internalEventBus, // 🔥 内部事件总线
-                externalEventBus, // 🔥 外部事件总线
+                externalEventBus,
                 scheduler,
                 config,
                 null // ResourceGuard（测试中不需要）
@@ -83,7 +78,7 @@ public class LingLifecycleManagerTest {
         doNothing().when(container).stop();
 
         LingDefinition definition = new LingDefinition();
-        definition.setId(Ling_ID);
+        definition.setId(LING_ID);
         definition.setVersion(version);
 
         LingInstance instance = new LingInstance(container, definition, new EventBus());
@@ -167,7 +162,7 @@ public class LingLifecycleManagerTest {
             doThrow(new RuntimeException("Start failed")).when(container).start(any());
 
             LingDefinition definition = new LingDefinition();
-            definition.setId(Ling_ID);
+            definition.setId(LING_ID);
             definition.setVersion("1.0.0");
 
             LingInstance instance = new LingInstance(container, definition, new EventBus());
@@ -309,40 +304,6 @@ public class LingLifecycleManagerTest {
             lifecycleManager.forceCleanupAll();
 
             assertEquals(0, instancePool.getDyingCount());
-        }
-    }
-
-    // ==================== 内部事件测试 ====================
-
-    @Nested
-    @DisplayName("内部事件")
-    class InternalEventTests {
-
-        @Test
-        @DisplayName("添加实例应发布 Upgrading 事件")
-        void addInstanceShouldPublishUpgradingEvent() {
-            AtomicInteger eventCount = new AtomicInteger(0);
-            internalEventBus.subscribe(
-                    RuntimeEvent.InstanceUpgrading.class,
-                    e -> eventCount.incrementAndGet());
-
-            LingInstance instance = createMockInstance("1.0.0");
-            lifecycleManager.addInstance(instance, lingContext, true);
-
-            assertEquals(1, eventCount.get());
-        }
-
-        @Test
-        @DisplayName("关闭应发布 ShuttingDown 事件")
-        void shutdownShouldPublishShuttingDownEvent() {
-            AtomicInteger eventCount = new AtomicInteger(0);
-            internalEventBus.subscribe(
-                    RuntimeEvent.RuntimeShuttingDown.class,
-                    e -> eventCount.incrementAndGet());
-
-            lifecycleManager.shutdown();
-
-            assertEquals(1, eventCount.get());
         }
     }
 

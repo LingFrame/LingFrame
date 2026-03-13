@@ -44,6 +44,7 @@ lingframe:
   # 开启 Dashboard 功能
   dashboard:
     enabled: true
+    install-enabled: true
 
 # SpringDoc OpenAPI 配置
 springdoc:

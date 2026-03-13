@@ -218,7 +218,9 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         }
 
         // ① 先将宏观状态设为 STOPPING，MacroStateGuardFilter 会拒绝新请求
-        if (runtime.getStateMachine().current() != RuntimeStatus.STOPPING) {
+        // INACTIVE 状态已被视为逻辑下线，避免触发非法转移
+        RuntimeStatus current = runtime.getStateMachine().current();
+        if (current != RuntimeStatus.STOPPING && current != RuntimeStatus.INACTIVE) {
             runtime.getStateMachine().transition(RuntimeStatus.STOPPING);
         }
 
@@ -278,6 +280,36 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         }
     }
 
+    @Override
+    public void pauseVersion(String lingId, String version) {
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
+        if (runtime == null) {
+            log.warn("Ling not found: {}", lingId);
+            return;
+        }
+        LingInstance instance = runtime.getInstancePool().getInstance(version);
+        if (instance == null) {
+            log.warn("Ling instance not found for: {}:{}", lingId, version);
+            return;
+        }
+        instanceCoordinator.pause(instance);
+    }
+
+    @Override
+    public void resumeVersion(String lingId, String version) {
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
+        if (runtime == null) {
+            log.warn("Ling not found: {}", lingId);
+            return;
+        }
+        LingInstance instance = runtime.getInstancePool().getInstance(version);
+        if (instance == null) {
+            log.warn("Ling instance not found for: {}:{}", lingId, version);
+            return;
+        }
+        instanceCoordinator.resume(instance);
+    }
+
     private void doFullUndeploy(String lingId, LingRuntime runtime) {
         eventBus.publish(new LingUninstallingEvent(lingId));
 
@@ -286,7 +318,9 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         }
 
         // 1. 改变宏观状态，拒绝新请求
-        if (runtime.getStateMachine().current() != RuntimeStatus.STOPPING) {
+        // INACTIVE 已是逻辑下线，避免 STOPPING 非法转移
+        RuntimeStatus current = runtime.getStateMachine().current();
+        if (current != RuntimeStatus.STOPPING && current != RuntimeStatus.INACTIVE) {
             runtime.getStateMachine().transition(RuntimeStatus.STOPPING);
         }
 

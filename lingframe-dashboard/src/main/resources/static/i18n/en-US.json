@@ -103,8 +103,15 @@
         "confirm": "Confirm",
         "confirmUnload": "Confirm Unload Ling",
         "unloadWarning": "About to unload \"{lingId}\", this will interrupt all associated requests.",
-        "unloadAction": "Unload",
-        "selectVersion": "Select version to unload:",
+    "unloadAction": "Unload",
+    "statusTitle": "Confirm Action",
+    "statusMessage": "Select version to operate:",
+    "reloadTitle": "Confirm Hot Reload",
+    "reloadMessage": "Select version to reload:",
+    "actionActivate": "Activate",
+    "actionInactivate": "Inactivate",
+    "actionReload": "Hot Reload",
+    "selectVersion": "Select version to unload:",
         "allVersions": "Unload all versions"
     },
     "toast": {

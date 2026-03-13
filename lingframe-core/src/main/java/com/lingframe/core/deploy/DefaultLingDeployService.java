@@ -35,6 +35,6 @@ public class DefaultLingDeployService implements LingDeployService {
     public void deploy(File file, boolean isDefault) throws Exception {
         LingDefinition def = LingManifestLoader.parseDefinition(file);
         // Default handling varies.
-        lifecycleEngine.deploy(def, file, true, Collections.emptyMap());
+        lifecycleEngine.deploy(def, file, isDefault, Collections.emptyMap());
     }
 }

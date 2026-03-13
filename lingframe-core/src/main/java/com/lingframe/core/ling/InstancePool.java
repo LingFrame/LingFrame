@@ -1,7 +1,5 @@
 package com.lingframe.core.ling;
 
-import com.lingframe.core.ling.event.RuntimeEvent;
-import com.lingframe.core.ling.event.RuntimeEventBus;
 import com.lingframe.api.exception.InvalidArgumentException;
 import lombok.NonNull;
 import lombok.Value;
@@ -40,19 +38,6 @@ public class InstancePool {
     public InstancePool(String lingId, int maxDyingInstances) {
         this.lingId = lingId;
         this.maxDyingInstances = maxDyingInstances;
-    }
-
-    /**
-     * 注册事件监听
-     */
-    public void registerEventHandlers(RuntimeEventBus eventBus) {
-        eventBus.subscribe(RuntimeEvent.RuntimeShuttingDown.class, this::onRuntimeShuttingDown);
-        log.debug("[{}] InstancePool event handlers registered", lingId);
-    }
-
-    private void onRuntimeShuttingDown(RuntimeEvent.RuntimeShuttingDown event) {
-        log.debug("[{}] Runtime shutting down, initiating pool shutdown", lingId);
-        shutdown();
     }
 
     // ==================== 查询方法 ====================
@@ -166,7 +151,9 @@ public class InstancePool {
             return;
         }
 
-        instance.markDying();
+        if (!instance.isDying()) {
+            instance.markDying();
+        }
         activePool.remove(instance);
         dyingQueue.add(instance);
 
