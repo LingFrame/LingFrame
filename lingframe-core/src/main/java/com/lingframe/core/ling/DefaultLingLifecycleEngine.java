@@ -7,7 +7,6 @@ import com.lingframe.api.event.lifecycle.LingInstalledEvent;
 import com.lingframe.api.event.lifecycle.LingInstallingEvent;
 import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.api.event.lifecycle.LingUninstallingEvent;
-import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
@@ -15,6 +14,7 @@ import com.lingframe.core.context.CoreLingContext;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.InstanceCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.security.ApiOverrideVerifier;
 import com.lingframe.core.dev.HotSwapWatcher;
@@ -42,7 +42,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
     private final List<LingSecurityVerifier> verifiers;
     private final LingFrameConfig lingFrameConfig;
     private final InvocationPipelineEngine pipelineEngine;
-    private final List<ResourceGuard> resourceGuards;
+    private final LingUnloadCoordinator unloadCoordinator;
     private HotSwapWatcher hotSwapWatcher;
 
     private final InstanceCoordinator instanceCoordinator;
@@ -56,9 +56,9 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry,
             InvocationPipelineEngine pipelineEngine,
-            List<ResourceGuard> resourceGuards) {
+            LingUnloadCoordinator unloadCoordinator) {
         this(containerFactory, permissionService, lingLoaderFactory, verifiers, eventBus, lingFrameConfig,
-                lingRepository, lingServiceRegistry, pipelineEngine, resourceGuards, null);
+                lingRepository, lingServiceRegistry, pipelineEngine, unloadCoordinator, null);
     }
 
     public DefaultLingLifecycleEngine(ContainerFactory containerFactory,
@@ -70,7 +70,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry,
             InvocationPipelineEngine pipelineEngine,
-            List<ResourceGuard> resourceGuards,
+            LingUnloadCoordinator unloadCoordinator,
             HotSwapWatcher hotSwapWatcher) {
 
         this.containerFactory = containerFactory;
@@ -102,7 +102,9 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         this.lingRepository = lingRepository;
         this.lingServiceRegistry = lingServiceRegistry;
         this.pipelineEngine = pipelineEngine;
-        this.resourceGuards = resourceGuards != null ? new ArrayList<>(resourceGuards) : new ArrayList<>();
+        this.unloadCoordinator = unloadCoordinator != null
+                ? unloadCoordinator
+                : new LingUnloadCoordinator(null, new ArrayList<>(), null);
         this.hotSwapWatcher = hotSwapWatcher;
         this.instanceCoordinator = new InstanceCoordinator(eventBus);
     }
@@ -253,14 +255,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         instanceCoordinator.tearDown(targetInstance, eventBus);
         runtime.getInstancePool().removeInstance(targetInstance);
 
-        for (ResourceGuard guard : resourceGuards) {
-            try {
-                guard.cleanup(lingId, classLoader);
-            } catch (Exception e) {
-                log.error("[{}] Resource cleanup failed for version {} with guard: {}", lingId, version,
-                        guard.getClass().getName(), e);
-            }
-        }
+        unloadCoordinator.onVersionUnload(lingId, version, classLoader);
 
         if (classLoader instanceof AutoCloseable) {
             try {
@@ -270,14 +265,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             }
         }
 
-        for (ResourceGuard guard : resourceGuards) {
-            try {
-                guard.detectLeak(lingId, classLoader);
-            } catch (Exception e) {
-                log.error("[{}] Leak detection failed for version {} with guard: {}", lingId, version,
-                        guard.getClass().getName(), e);
-            }
-        }
+        unloadCoordinator.detectLeak(lingId, version, classLoader);
 
         // 4. 全局状态检查
         List<LingInstance> remaining = runtime.getInstancePool().getAllInstances();
@@ -312,13 +300,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             runtime.getInstancePool().removeInstance(instance);
 
             // 🔥 彻底卸载的关键：清理资源并检测泄漏
-            for (ResourceGuard guard : resourceGuards) {
-                try {
-                    guard.cleanup(lingId, classLoader);
-                } catch (Exception e) {
-                    log.error("[{}] Resource cleanup failed with guard: {}", lingId, guard.getClass().getName(), e);
-                }
-            }
+            unloadCoordinator.onVersionUnload(lingId, instance.getVersion(), classLoader);
 
             // 显式关闭类加载器 (释放 Jar 句柄)
             if (classLoader instanceof AutoCloseable) {
@@ -330,20 +312,20 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             }
 
             // 延迟触发泄漏检测
-            for (ResourceGuard guard : resourceGuards) {
-                try {
-                    guard.detectLeak(lingId, classLoader);
-                } catch (Exception e) {
-                    log.error("[{}] Leak detection failed with guard: {}", lingId, guard.getClass().getName(), e);
-                }
-            }
+            unloadCoordinator.detectLeak(lingId, classLoader);
         }
 
         // 3. 清理注册表中的暴露条目
         lingServiceRegistry.evict(lingId);
+        List<String> remainingServices = lingServiceRegistry.getServicesByLingId(lingId);
+        if (remainingServices != null && !remainingServices.isEmpty()) {
+            log.warn("[{}] Service registry still has {} entries after evict, forcing cleanup",
+                    lingId, remainingServices.size());
+            lingServiceRegistry.evict(lingId);
+        }
 
-        // 4. 驱逐弹性治理组件（限流器、熔断器），防止内存泄漏
-        pipelineEngine.evictLingResources(lingId);
+        // 4. 统一卸载后置清理
+        unloadCoordinator.onLingUnload(lingId);
 
         // 5. 彻底解绑监听与权限
         eventBus.unsubscribeAll(lingId);
@@ -367,16 +349,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             }
         }
 
-        if (classLoader != null && !resourceGuards.isEmpty()) {
-            for (ResourceGuard guard : resourceGuards) {
-                try {
-                    guard.cleanup("fault-cleanup", classLoader);
-                } catch (Exception e) {
-                    log.warn("ResourceGuard cleanup failed during failure recovery with guard: {}",
-                            guard.getClass().getName(), e);
-                }
-            }
-        }
+        unloadCoordinator.onFailureCleanup(classLoader);
 
         if (classLoader instanceof AutoCloseable) {
             try {

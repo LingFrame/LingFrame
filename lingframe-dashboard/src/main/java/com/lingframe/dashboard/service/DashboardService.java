@@ -86,6 +86,7 @@ public class DashboardService {
 
     public void uninstallLing(String lingId) {
         try {
+            canaryRouter.removeCanaryConfig(lingId);
             lifecycleEngine.undeploy(lingId);
         } catch (Exception e) {
             throw new LingInstallException(lingId, "Failed to uninstall ling: " + e.getMessage(), e);
@@ -94,6 +95,7 @@ public class DashboardService {
 
     public void uninstallLing(String lingId, String version) {
         try {
+            canaryRouter.removeCanaryConfig(lingId);
             lifecycleEngine.undeploy(lingId, version);
         } catch (Exception e) {
             throw new LingInstallException(lingId,

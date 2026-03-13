@@ -2,18 +2,21 @@ package com.lingframe.runtime;
 
 import com.lingframe.api.context.LingContext;
 import com.lingframe.core.classloader.DefaultLingLoaderFactory;
+import com.lingframe.core.classloader.SharedApiClassLoader;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.CoreLingContext;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.DefaultLingLifecycleEngine;
 import com.lingframe.core.ling.DefaultLingRepository;
+import com.lingframe.core.ling.DefaultLingResourceManager;
 import com.lingframe.core.ling.DefaultLingServiceRegistry;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.resource.BasicResourceGuard;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
+import com.lingframe.core.ling.LingUnloadCoordinator;
 import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
@@ -41,6 +44,7 @@ public class NativeLingFrame {
     private static LingLifecycleEngine GLOBAL_LIFECYCLE_ENGINE;
     private static LingContext HOST_CONTEXT;
     private static HotSwapWatcher HOT_SWAP_WATCHER;
+    private static DefaultLingResourceManager RESOURCE_MANAGER;
 
     /**
      * 启动 LingFrame (使用默认配置)
@@ -82,6 +86,12 @@ public class NativeLingFrame {
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(
                 filterRegistry);
 
+        RESOURCE_MANAGER = new DefaultLingResourceManager(lingRepository, eventBus, invokableMethodCache);
+        LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
+                pipelineEngine,
+                Collections.singletonList(new BasicResourceGuard()),
+                RESOURCE_MANAGER);
+
         LingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(
                 containerFactory,
                 permissionService,
@@ -92,7 +102,7 @@ public class NativeLingFrame {
                 lingRepository,
                 lingServiceRegistry,
                 pipelineEngine,
-                Collections.singletonList(new BasicResourceGuard()));
+                unloadCoordinator);
 
         if (config != null && config.isDevMode() && lifecycleEngine instanceof DefaultLingLifecycleEngine) {
             HOT_SWAP_WATCHER = new HotSwapWatcher(lifecycleEngine, eventBus);
@@ -116,6 +126,10 @@ public class NativeLingFrame {
             if (HOT_SWAP_WATCHER != null) {
                 HOT_SWAP_WATCHER.shutdown();
             }
+            if (RESOURCE_MANAGER != null) {
+                RESOURCE_MANAGER.shutdown();
+            }
+            SharedApiClassLoader.resetInstance();
         }));
 
         GLOBAL_LIFECYCLE_ENGINE = lifecycleEngine;

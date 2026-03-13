@@ -93,7 +93,7 @@ public class LingPreparedStatementProxy implements PreparedStatement {
 
     private void checkPermission() throws SQLException {
         // 1. 获取调用方灵元ID
-        String callerLingId = LingContextHolder.get();
+        String callerLingId = LingCallContext.getLingId();
         if (callerLingId == null) return;
 
         // 2. 解析 SQL 类型
@@ -181,7 +181,7 @@ private AccessType parseSqlForAccessType(String sql) {
 ```java
 @Override
 public Object invoke(MethodInvocation invocation) throws Throwable {
-    String callerLingId = LingContextHolder.get();
+    String callerLingId = LingCallContext.getLingId();
     String methodName = invocation.getMethod().getName();
     
     // 推导操作类型
@@ -269,7 +269,7 @@ public class LingXxxProxy implements XxxInterface {
     @Override
     public Result doSomething(Args args) {
         // 1. 获取调用方
-        String callerLingId = LingContextHolder.get();
+        String callerLingId = LingCallContext.getLingId();
 
         // 2. 权限检查
         if (!permissionService.isAllowed(callerLingId, "xxx:capability", accessType)) {

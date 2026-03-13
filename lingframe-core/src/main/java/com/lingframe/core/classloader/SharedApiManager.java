@@ -245,6 +245,10 @@ public class SharedApiManager {
                 cl.getLoadedJarCount(), cl.getSharedClassCount());
     }
 
+    public void shutdown() {
+        SharedApiClassLoader.resetInstance();
+    }
+
     /**
      * 解析路径（支持绝对路径、相对 CWD 路径、相对 lingHome 路径）
      * 始终返回规范化的绝对路径

@@ -38,6 +38,20 @@ public class EventBus {
                 .add(new ListenerWrapper(lingId, listener));
     }
 
+    public <E extends LingEvent> void unsubscribe(String lingId, Class<E> eventType, LingEventListener<E> listener) {
+        if (lingId == null || eventType == null || listener == null) {
+            return;
+        }
+        List<ListenerWrapper> list = listeners.get(eventType);
+        if (list == null) {
+            return;
+        }
+        list.removeIf(wrapper -> lingId.equals(wrapper.lingId()) && wrapper.listener() == listener);
+        if (list.isEmpty()) {
+            listeners.remove(eventType, list);
+        }
+    }
+
     /**
      * 卸载灵元时，强制移除该灵元注册的所有监听器
      */

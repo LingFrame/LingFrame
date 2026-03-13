@@ -1,10 +1,9 @@
 package com.lingframe.core.proxy;
 
-import com.lingframe.api.context.LingContextHolder;
+import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.monitor.TraceContext;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationHandler;
@@ -47,7 +46,7 @@ public class SmartServiceProxy implements InvocationHandler {
         InvocationContext ctx = InvocationContext.obtain();
 
         try {
-            ctx.setTraceId(TraceContext.get());
+            ctx.setTraceId(LingCallContext.getTraceId());
             ctx.setCallerLingId(this.callerLingId);
             ctx.setTargetLingId(this.targetLingId);
             ctx.setMethodName(method.getName());
@@ -64,7 +63,7 @@ public class SmartServiceProxy implements InvocationHandler {
             ctx.setArgs(args);
             ctx.setResourceType("RPC");
 
-            Map<String, String> labels = LingContextHolder.getLabels();
+            Map<String, String> labels = LingCallContext.getLabels();
             ctx.setLabels(labels != null ? labels : Collections.emptyMap());
 
             String resourceId = resourceIdCache.computeIfAbsent(method,

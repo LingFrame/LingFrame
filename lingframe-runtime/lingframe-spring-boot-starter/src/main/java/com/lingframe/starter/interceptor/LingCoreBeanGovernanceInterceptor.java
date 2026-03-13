@@ -2,12 +2,11 @@ package com.lingframe.starter.interceptor;
 
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
-import com.lingframe.api.context.LingContextHolder;
+import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.api.exception.LingInvocationException;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +47,7 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         }
 
         // 获取调用方（当前灵元ID）
-        String callerLingId = LingContextHolder.get();
+        String callerLingId = LingCallContext.getLingId();
         // 如果没有灵元上下文，说明是灵核内部调用
         if (callerLingId == null) {
             // 如果配置为不对灵核内部调用进行治理，直接放行
@@ -132,7 +131,7 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
 
         // 构建上下文
         InvocationContext ctx = InvocationContext.obtain();
-        ctx.setTraceId(TraceContext.get());
+        ctx.setTraceId(LingCallContext.getTraceId());
         ctx.setTargetLingId(HOST_Ling_ID); // Set targetLingId instead of lingId
         ctx.setCallerLingId(callerLingId);
         ctx.setServiceFQSID(HOST_Ling_ID + ":" + method.getDeclaringClass().getName());

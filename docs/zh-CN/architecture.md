@@ -20,7 +20,7 @@ LingFrame 借鉴操作系统的设计思想：
 │  │                 Core（治理内核）                        │  │
 │  │                                                        │  │
 │  │   LingManager · PermissionService · EventBus        │  │
-│  │   AuditManager · TraceContext · GovernanceStrategy    │  │
+│  │   AuditManager · LingCallContext · GovernanceStrategy │  │
 │  │                                                        │  │
 │  │   职责：生命周期管理 · 权限治理 · 能力调度 · 上下文隔离  │  │
 │  └────────────────────────┬──────────────────────────────┘  │
@@ -114,7 +114,7 @@ LingFrame 借鉴操作系统的设计思想：
 │       └→ LingPreparedStatementProxy  │  ← PreparedStatement
 │                                      │
 │ 拦截点：execute/executeQuery/Update  │
-│ 1. LingContextHolder.get() 获取调用方
+│ 1. LingCallContext.getLingId() 获取调用方
 │ 2. 解析 SQL 类型 (SELECT/INSERT...)  │
 │ 3. permissionService.isAllowed() 鉴权│
 │ 4. permissionService.audit() 审计    │
@@ -165,7 +165,7 @@ LingFrame 借鉴操作系统的设计思想：
 │         │                                                    │
 │         ├─→ checkPermission()                               │
 │         │     │                                              │
-│         │     ├─→ LingContextHolder.get() → "user-ling" │
+│         │     ├─→ LingCallContext.getLingId() → "user-ling" │
 │         │     │                                              │
 │         │     ├─→ preParsedAccessType (构造时已解析)         │
 │         │     │                                              │
@@ -227,8 +227,8 @@ LingFrame 借鉴操作系统的设计思想：
 │         ▼                                                    │
 │   SmartServiceProxy.invoke() (委托给智能代理)               │
 │         │                                                    │
-│         ├─→ LingContextHolder.set(callerLingId)         │
-│         ├─→ TraceContext.start() 开启链路追踪               │
+│         ├─→ LingCallContext.setLingId(callerLingId)     │
+│         ├─→ LingCallContext.startTrace() 开启链路追踪        │
 │         ├─→ RateLimiter.acquire() 限流检查        │
 │         ├─→ CircuitBreaker.isAllowed() 熔断检查   │
 │         ├─→ checkPermissionSmartly() 权限检查               │
@@ -325,8 +325,8 @@ LingFrame 借鉴操作系统的设计思想：
 │                                                              │
 │   SmartServiceProxy.invoke() (JDK 动态代理)                  │
 │         │                                                    │
-│         ├─→ LingContextHolder.set(callerLingId)         │
-│         ├─→ TraceContext.start() 开启链路追踪               │
+│         ├─→ LingCallContext.setLingId(callerLingId)     │
+│         ├─→ LingCallContext.startTrace() 开启链路追踪        │
 │         ├─→ checkPermissionSmartly() 权限检查               │
 │         │     ├─→ @RequiresPermission 显式声明              │
 │         │     └─→ GovernanceStrategy.inferPermission() 推导 │

@@ -24,6 +24,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingResourceManager;
 import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.ling.LingServiceRegistry;
+import com.lingframe.core.ling.LingUnloadCoordinator;
 import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
@@ -35,6 +36,7 @@ import com.lingframe.infra.cache.configuration.CaffeineWrapperProcessor;
 import com.lingframe.infra.cache.configuration.RedisWrapperProcessor;
 import com.lingframe.infra.cache.configuration.SpringCacheWrapperProcessor;
 import com.lingframe.infra.storage.configuration.DataSourceWrapperProcessor;
+import com.lingframe.starter.resource.StorageResourceGuard;
 import com.lingframe.starter.adapter.SpringContainerFactory;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.core.deploy.DefaultLingDeployService;
@@ -159,10 +161,11 @@ public class LingFrameCoreConfiguration {
         return new FastLingServiceInvoker();
     }
 
-    @Bean
+    @Bean(destroyMethod = "shutdown")
     @ConditionalOnMissingBean
-    public LingResourceManager lingResourceManager(EventBus eventBus, InvokableMethodCache methodCache) {
-        return new DefaultLingResourceManager(eventBus, methodCache);
+    public LingResourceManager lingResourceManager(LingRepository lingRepository, EventBus eventBus,
+            InvokableMethodCache methodCache) {
+        return new DefaultLingResourceManager(lingRepository, eventBus, methodCache);
     }
 
     @Bean
@@ -222,6 +225,11 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
+    public ResourceGuard storageResourceGuard() {
+        return new StorageResourceGuard();
+    }
+
+    @Bean
     @ConditionalOnMissingBean
     public LingLifecycleEngine lingLifecycleEngine(ContainerFactory containerFactory,
             PermissionService permissionService,
@@ -233,11 +241,14 @@ public class LingFrameCoreConfiguration {
             LingServiceRegistry lingServiceRegistry,
             InvocationPipelineEngine pipelineEngine,
             List<ResourceGuard> resourceGuards,
+            LingResourceManager lingResourceManager,
             ObjectProvider<HotSwapWatcher> hotSwapWatcherProvider) {
         List<LingSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
+        LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
+                pipelineEngine, resourceGuards, lingResourceManager);
         return new DefaultLingLifecycleEngine(containerFactory, permissionService,
                 lingLoaderFactory, verifiers, eventBus, lingFrameConfig, lingRepository, lingServiceRegistry,
-                pipelineEngine, resourceGuards, hotSwapWatcherProvider.getIfAvailable());
+                pipelineEngine, unloadCoordinator, hotSwapWatcherProvider.getIfAvailable());
     }
 
     @Bean
@@ -272,7 +283,7 @@ public class LingFrameCoreConfiguration {
         return new DefaultLingDeployService(lifecycleEngine);
     }
 
-    @Bean
+    @Bean(destroyMethod = "shutdown")
     public ServiceExporterListener serviceExporterListener(EventBus eventBus, LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry,
             ObjectProvider<List<ServiceExporter>> exportersProvider) {
@@ -280,7 +291,7 @@ public class LingFrameCoreConfiguration {
         return new ServiceExporterListener(eventBus, lingRepository, lingServiceRegistry, exporters);
     }
 
-    @Bean
+    @Bean(destroyMethod = "shutdown")
     public SharedApiManager sharedApiManager(LingFrameConfig config) {
         ClassLoader hostCL = Thread.currentThread().getContextClassLoader();
         return new SharedApiManager(hostCL, config);

@@ -49,7 +49,7 @@
 ### 已实现
 - ✅ 权限控制（@RequiresPermission）
 - ✅ 安全审计（@Auditable）
-- ✅ 全链路追踪（TraceContext）
+- ✅ 全链路追踪（LingCallContext）
 - ✅ 灰度发布（CanaryRouter）
 - ✅ 熔断机制（SlidingWindowCircuitBreaker）
 - ✅ 限流机制（TokenBucketRateLimiter）

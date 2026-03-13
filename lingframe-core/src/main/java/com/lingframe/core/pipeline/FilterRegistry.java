@@ -141,4 +141,11 @@ public class FilterRegistry {
             isolationFilter.evict(lingId);
         }
     }
+
+    public int evictMethodCache(String lingId) {
+        if (methodCache == null || lingId == null || lingId.isEmpty()) {
+            return 0;
+        }
+        return methodCache.evictByPrefix(lingId + ":");
+    }
 }

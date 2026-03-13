@@ -187,6 +187,16 @@ public class LingLifecycleManager {
         // 🔥 发布已关闭事件
         publishInternal(new RuntimeEvent.RuntimeShutdown(lingId));
 
+        // 清理内部事件订阅，防止引用残留
+        if (internalEventBus != null) {
+            internalEventBus.clear();
+        }
+
+        // 关闭资源守卫的后台线程
+        if (resourceGuard != null) {
+            resourceGuard.shutdown();
+        }
+
         log.info("[{}] Lifecycle manager shutdown complete", lingId);
     }
 

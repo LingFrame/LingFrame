@@ -2,12 +2,11 @@ package com.lingframe.starter.filter;
 
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
-import com.lingframe.api.context.LingContextHolder;
+import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -67,7 +66,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             Thread.currentThread().setContextClassLoader(lingMeta.getClassLoader());
         }
 
-        LingContextHolder.set(lingId);
+        LingCallContext.setLingId(lingId);
 
         InvocationContext ctx = null;
         try {
@@ -100,8 +99,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             if (originalCL != null) {
                 Thread.currentThread().setContextClassLoader(originalCL);
             }
-            LingContextHolder.clear();
-            TraceContext.clear();
+            LingCallContext.clear();
         }
     }
 
@@ -178,9 +176,9 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         InvocationContext ctx = InvocationContext.obtain();
         String traceId = request.getHeader("X-Trace-Id");
         if (traceId == null || traceId.isEmpty()) {
-            traceId = TraceContext.start();
+            traceId = LingCallContext.startTrace();
         } else {
-            TraceContext.setTraceId(traceId);
+            LingCallContext.setTraceId(traceId);
         }
         ctx.setTraceId(traceId);
         ctx.setTargetLingId(lingId); // Set targetLingId instead of lingId

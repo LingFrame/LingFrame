@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -45,7 +46,7 @@ class GovernanceDecisionFilterTest {
             }
         };
 
-        GovernanceArbitrator arbitrator = new GovernanceArbitrator(List.of(provider));
+        GovernanceArbitrator arbitrator = new GovernanceArbitrator(Arrays.asList(provider));
         LingRepository repository = new DefaultLingRepository();
         repository.register(new LingRuntime("ling1", null, null));
 
@@ -92,7 +93,7 @@ class GovernanceDecisionFilterTest {
             }
         };
 
-        GovernanceArbitrator arbitrator = new GovernanceArbitrator(List.of(provider));
+        GovernanceArbitrator arbitrator = new GovernanceArbitrator(Arrays.asList(provider));
         LingRepository repository = new DefaultLingRepository();
         repository.register(new LingRuntime("ling1", null, null));
 

@@ -13,6 +13,8 @@ import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.api.security.PermissionService;
+
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -29,7 +31,7 @@ class CoreLingContextTest {
         EventBus eventBus = mock(EventBus.class);
 
         when(registry.getServiceClassName("svc")).thenReturn("com.example.Foo");
-        when(registry.getProviderMethods("svc")).thenReturn(List.of("hello(java.lang.String, int)"));
+        when(registry.getProviderMethods("svc")).thenReturn(Arrays.asList("hello(java.lang.String, int)"));
 
         AtomicReference<String[]> capturedParamTypes = new AtomicReference<>();
         AtomicReference<String> capturedMethodName = new AtomicReference<>();
@@ -59,7 +61,7 @@ class CoreLingContextTest {
         EventBus eventBus = mock(EventBus.class);
 
         when(registry.getServiceClassName("svc")).thenReturn("com.example.Foo");
-        when(registry.getProviderMethods("svc")).thenReturn(List.of("ping()"));
+        when(registry.getProviderMethods("svc")).thenReturn(Arrays.asList("ping()"));
 
         AtomicReference<String[]> capturedParamTypes = new AtomicReference<>();
         when(pipeline.invoke(any())).thenAnswer(invocation -> {
@@ -86,7 +88,7 @@ class CoreLingContextTest {
         EventBus eventBus = mock(EventBus.class);
 
         when(registry.getServiceClassName("ling-B:svc")).thenReturn("com.example.Foo");
-        when(registry.getProviderMethods("ling-B:svc")).thenReturn(List.of("ping()"));
+        when(registry.getProviderMethods("ling-B:svc")).thenReturn(Arrays.asList("ping()"));
 
         AtomicReference<String> capturedCaller = new AtomicReference<>();
         AtomicReference<String> capturedTarget = new AtomicReference<>();

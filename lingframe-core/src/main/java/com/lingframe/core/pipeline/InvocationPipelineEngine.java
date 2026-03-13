@@ -44,4 +44,8 @@ public class InvocationPipelineEngine {
     public void evictLingResources(String lingId) {
         registry.evictLingResources(lingId);
     }
+
+    public int evictMethodCache(String lingId) {
+        return registry.evictMethodCache(lingId);
+    }
 }

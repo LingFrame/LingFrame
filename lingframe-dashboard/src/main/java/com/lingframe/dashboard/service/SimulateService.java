@@ -19,7 +19,7 @@ import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.api.exception.ServiceUnavailableException;
 import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.model.EngineTrace;
-import com.lingframe.core.monitor.TraceContext;
+import com.lingframe.api.context.LingCallContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -50,7 +50,7 @@ public class SimulateService {
             throw new ServiceUnavailableException(lingId, "Ling not active");
         }
 
-        String traceId = TraceContext.start();
+        String traceId = LingCallContext.startTrace();
 
         InvocationContext ctx = InvocationContext.obtain();
         ctx.setTraceId(traceId);
@@ -134,7 +134,7 @@ public class SimulateService {
         }
 
         LingRuntime targetRuntime = lingRepository.getRuntime(targetLingId);
-        String traceId = TraceContext.start();
+        String traceId = LingCallContext.startTrace();
 
         publishTrace(traceId, lingId, "→ [IPC] Call initiated: " + targetLingId, "IN", 1);
 
@@ -250,7 +250,7 @@ public class SimulateService {
         String version = instance.getDefinition().getVersion();
         String tag = isCanary ? "CANARY" : "STABLE";
 
-        publishTrace(TraceContext.start(), lingId,
+        publishTrace(LingCallContext.startTrace(), lingId,
                 String.format("→ Routed to: %s (%s)", version, tag), tag, 1);
 
         return StressResultDTO.builder()
@@ -289,7 +289,7 @@ public class SimulateService {
             throw new ServiceUnavailableException(lingId, "Ling not active");
         }
 
-        String traceId = TraceContext.start();
+        String traceId = LingCallContext.startTrace();
 
         boolean allowed;
         String message;

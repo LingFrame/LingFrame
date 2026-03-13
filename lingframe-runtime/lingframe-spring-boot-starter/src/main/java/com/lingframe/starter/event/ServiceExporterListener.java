@@ -2,6 +2,7 @@ package com.lingframe.starter.event;
 
 import com.lingframe.api.event.lifecycle.LingStartedEvent;
 import com.lingframe.api.event.lifecycle.LingStoppedEvent;
+import com.lingframe.api.event.LingEventListener;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
@@ -21,19 +22,25 @@ import java.util.List;
 @Slf4j
 public class ServiceExporterListener {
 
+    private final EventBus eventBus;
     private final LingRepository lingRepository;
     private final LingServiceRegistry lingServiceRegistry;
     private final List<ServiceExporter> exporters;
+    private final LingEventListener<LingStartedEvent> startedListener;
+    private final LingEventListener<LingStoppedEvent> stoppedListener;
 
     public ServiceExporterListener(EventBus eventBus, LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry, List<ServiceExporter> exporters) {
+        this.eventBus = eventBus;
         this.lingRepository = lingRepository;
         this.lingServiceRegistry = lingServiceRegistry;
         this.exporters = exporters != null ? exporters : new ArrayList<>();
+        this.startedListener = this::onLingStarted;
+        this.stoppedListener = this::onLingStopped;
 
         if (!this.exporters.isEmpty()) {
-            eventBus.subscribe("system", LingStartedEvent.class, this::onLingStarted);
-            eventBus.subscribe("system", LingStoppedEvent.class, this::onLingStopped);
+            eventBus.subscribe("system", LingStartedEvent.class, startedListener);
+            eventBus.subscribe("system", LingStoppedEvent.class, stoppedListener);
             log.info("Registered ServiceExporterListener with {} exporters", this.exporters.size());
         }
     }
@@ -74,5 +81,13 @@ public class ServiceExporterListener {
                         exporter.getClass().getName(), e);
             }
         });
+    }
+
+    public void shutdown() {
+        if (eventBus == null || exporters.isEmpty()) {
+            return;
+        }
+        eventBus.unsubscribe("system", LingStartedEvent.class, startedListener);
+        eventBus.unsubscribe("system", LingStoppedEvent.class, stoppedListener);
     }
 }

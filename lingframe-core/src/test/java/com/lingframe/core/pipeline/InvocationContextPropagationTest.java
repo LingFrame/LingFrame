@@ -1,8 +1,11 @@
 package com.lingframe.core.pipeline;
 
+import com.lingframe.api.context.LingCallContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -17,6 +20,7 @@ class InvocationContextPropagationTest {
     void tearDown() {
         // 确保每个测试后清理 ThreadLocal
         InvocationContext.detach(null);
+        LingCallContext.clear();
     }
 
     // ════════════════════════════════════════════
@@ -80,13 +84,21 @@ class InvocationContextPropagationTest {
         parent.setCallerLingId("caller-ling-001");
         parent.setTargetLingId("target-ling-001");
         InvocationContext prev = parent.attach();
+        LingCallContext.setLingId("ling-a");
+        Map<String, String> labels = new HashMap<>();
+        labels.put("env", "canary");
+        LingCallContext.setLabels(labels);
+        LingCallContext.setTraceId("trace-parent");
 
         try {
             // 在父线程中 wrap 一个 Callable
             Callable<String> wrapped = InvocationContext.wrap(() -> {
                 InvocationContext child = InvocationContext.current();
                 assertNotNull(child, "子线程中 current() 不应为 null");
-                return child.getTraceId() + "|" + child.getCallerLingId() + "|" + child.getTargetLingId();
+                return child.getTraceId() + "|" + child.getCallerLingId() + "|" + child.getTargetLingId()
+                        + "|" + LingCallContext.getLingId()
+                        + "|" + LingCallContext.getTraceId()
+                        + "|" + LingCallContext.getLabels().get("env");
             });
 
             // 在另一个线程中执行
@@ -94,7 +106,7 @@ class InvocationContextPropagationTest {
             try {
                 Future<String> future = executor.submit(wrapped);
                 String result = future.get(5, TimeUnit.SECONDS);
-                assertEquals("propagated-trace-id|caller-ling-001|target-ling-001", result,
+                assertEquals("propagated-trace-id|caller-ling-001|target-ling-001|ling-a|trace-parent|canary", result,
                         "子线程应继承父线程的 traceId、callerLingId、targetLingId");
             } finally {
                 executor.shutdown();
@@ -102,6 +114,7 @@ class InvocationContextPropagationTest {
         } finally {
             InvocationContext.detach(prev);
             parent.recycle();
+            LingCallContext.clear();
         }
     }
 
@@ -121,6 +134,28 @@ class InvocationContextPropagationTest {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             assertTrue(executor.submit(wrapped).get(5, TimeUnit.SECONDS));
+        } finally {
+            executor.shutdown();
+        }
+    }
+
+    @Test
+    void wrap_ShouldNotClearLingIdWhenTraceMissing() throws Exception {
+        LingCallContext.setLingId("ling-x");
+        Map<String, String> labels = new HashMap<>();
+        labels.put("k", "v");
+        LingCallContext.setLabels(labels);
+        LingCallContext.clearTraceId();
+
+        Runnable wrapped = InvocationContext.wrap(() -> {
+            assertEquals("ling-x", LingCallContext.getLingId());
+            assertEquals("v", LingCallContext.getLabels().get("k"));
+            assertNull(LingCallContext.getTraceId());
+        });
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            executor.submit(wrapped).get(5, TimeUnit.SECONDS);
         } finally {
             executor.shutdown();
         }
@@ -170,10 +205,13 @@ class InvocationContextPropagationTest {
         InvocationContext parent = InvocationContext.obtain();
         parent.setTraceId("cleanup-test");
         InvocationContext prev = parent.attach();
+        LingCallContext.setLingId("ling-cleanup");
+        LingCallContext.setTraceId("trace-cleanup");
 
         try {
             CompletableFuture<Void> childDone = new CompletableFuture<>();
             CompletableFuture<InvocationContext> afterCleanup = new CompletableFuture<>();
+            CompletableFuture<String> afterContext = new CompletableFuture<>();
 
             Runnable wrapped = InvocationContext.wrap(() -> {
                 // 在 wrap 内部，子线程有活跃上下文
@@ -188,9 +226,12 @@ class InvocationContextPropagationTest {
                     wrapped.run();
                     // wrap 的 finally 已经 detach + recycle，此时子线程不应有活跃上下文
                     afterCleanup.complete(InvocationContext.current());
+                    afterContext.complete(String.valueOf(LingCallContext.getLingId())
+                            + "|" + String.valueOf(LingCallContext.getTraceId()));
                 });
 
                 childDone.get(5, TimeUnit.SECONDS);
+                assertEquals("null|null", afterContext.get(5, TimeUnit.SECONDS));
                 assertNull(afterCleanup.get(5, TimeUnit.SECONDS),
                         "wrap 执行完毕后子线程的 current() 应为 null（已清理）");
             } finally {
@@ -199,6 +240,7 @@ class InvocationContextPropagationTest {
         } finally {
             InvocationContext.detach(prev);
             parent.recycle();
+            LingCallContext.clear();
         }
     }
 }

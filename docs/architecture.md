@@ -20,7 +20,7 @@ LingFrame draws inspiration from operating system design principles:
 │  │                 Core (Governance Kernel)                │  │
 │  │                                                        │  │
 │  │   LingManager · PermissionService · EventBus        │  │
-│  │   AuditManager · TraceContext · GovernanceStrategy    │  │
+│  │   AuditManager · LingCallContext · GovernanceStrategy │  │
 │  │                                                        │  │
 │  │   Resp: Lifecycle Mgmt · Auth Gov · Capability Sched · Context Isolation │  │
 │  └────────────────────────┬──────────────────────────────┘  │
@@ -114,7 +114,7 @@ Business ling calls userRepository.findById()
 │       └→ LingPreparedStatementProxy  │  ← PreparedStatement
 │                                      │
 │ Interception: execute/executeQuery/Update  │
-│ 1. LingContextHolder.get() Get Caller
+│ 1. LingCallContext.getLingId() Get Caller
 │ 2. Parse SQL Type (SELECT/INSERT...) │
 │ 3. permissionService.isAllowed() Auth│
 │ 4. permissionService.audit() Audit   │
@@ -165,7 +165,7 @@ Business ling calls userRepository.findById()
 │         │                                                    │
 │         ├─→ checkPermission()                               │
 │         │     │                                              │
-│         │     ├─→ LingContextHolder.get() → "user-ling" │
+│         │     ├─→ LingCallContext.getLingId() → "user-ling" │
 │         │     │                                              │
 │         │     ├─→ preParsedAccessType (Parsed at construction)│
 │         │     │                                              │
@@ -226,8 +226,8 @@ Business ling calls userRepository.findById()
 │         ▼                                                    │
 │   SmartServiceProxy.invoke() (Delegate to Smart Proxy)      │
 │         │                                                    │
-│         ├─→ LingContextHolder.set(callerLingId)         │
-│         ├─→ TraceContext.start() Start Tracing              │
+│         ├─→ LingCallContext.setLingId(callerLingId)     │
+│         ├─→ LingCallContext.startTrace() Start Tracing      │
 │         ├─→ RateLimiter.acquire() Rate Limit Check│
 │         ├─→ CircuitBreaker.isAllowed() CB Check   │
 │         ├─→ checkPermissionSmartly() Permission Check       │
@@ -324,8 +324,8 @@ Business ling calls userRepository.findById()
 │                                                              │
 │   SmartServiceProxy.invoke() (JDK Dynamic Proxy)            │
 │         │                                                    │
-│         ├─→ LingContextHolder.set(callerLingId)         │
-│         ├─→ TraceContext.start() Start Tracing              │
+│         ├─→ LingCallContext.setLingId(callerLingId)     │
+│         ├─→ LingCallContext.startTrace() Start Tracing      │
 │         ├─→ checkPermissionSmartly() Permission Check       │
 │         │     ├─→ @RequiresPermission Explicit Declaration  │
 │         │     └─→ GovernanceStrategy.inferPermission() Infer│

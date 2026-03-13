@@ -1,6 +1,6 @@
 package com.lingframe.infra.storage.proxy;
 
-import com.lingframe.api.context.LingContextHolder;
+import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
@@ -14,8 +14,6 @@ import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.update.Update;
 
 import java.sql.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -25,30 +23,10 @@ public class LingStatementProxy implements Statement {
     private final PermissionService permissionService;
 
     // SQL解析结果缓存 (LRU缓存)
-    private static final int MAX_CACHE_SIZE = 1000;
-    private static final ConcurrentHashMap<String, SqlParseResult> parseCache = new ConcurrentHashMap<>();
-
-    // 缓存条目过期时间 (毫秒)
-    private static final long CACHE_EXPIRE_TIME = TimeUnit.MINUTES.toMillis(10);
-
-    // SQL解析结果缓存条目
-    private static class SqlParseResult {
-        final AccessType accessType;
-        final long timestamp;
-
-        SqlParseResult(AccessType accessType) {
-            this.accessType = accessType;
-            this.timestamp = System.currentTimeMillis();
-        }
-
-        boolean isExpired() {
-            return System.currentTimeMillis() - timestamp > CACHE_EXPIRE_TIME;
-        }
-    }
 
     // --- 鉴权逻辑：与 PreparedStatement 类似，只是 SQL 是参数传进来的 ---
     private void checkPermission(String sql) throws SQLException {
-        String callerLingId = LingContextHolder.get();
+        String callerLingId = LingCallContext.getLingId();
         // 无上下文：灵核操作
         if (callerLingId == null) {
             // 检查是否启用了灵核治理
@@ -80,25 +58,17 @@ public class LingStatementProxy implements Statement {
      */
     private AccessType parseSqlForAccessTypeWithCache(String sql) {
         // 检查缓存
-        SqlParseResult cachedResult = parseCache.get(sql);
-        if (cachedResult != null && !cachedResult.isExpired()) {
-            return cachedResult.accessType;
+        String cacheLingId = LingCallContext.getLingId();
+        AccessType cachedAccessType = SqlParseCache.get(cacheLingId, sql);
+        if (cachedAccessType != null) {
+            return cachedAccessType;
         }
 
         // 缓存未命中或已过期，重新解析
         AccessType accessType = parseSqlForAccessType(sql);
 
         // 更新缓存
-        if (parseCache.size() < MAX_CACHE_SIZE) {
-            parseCache.put(sql, new SqlParseResult(accessType));
-        } else {
-            // 缓存满时清除过期条目
-            parseCache.entrySet().removeIf(entry -> entry.getValue().isExpired());
-            // 如果仍有空间则添加新条目
-            if (parseCache.size() < MAX_CACHE_SIZE) {
-                parseCache.put(sql, new SqlParseResult(accessType));
-            }
-        }
+        SqlParseCache.put(cacheLingId, sql, accessType);
 
         return accessType;
     }

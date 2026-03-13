@@ -271,15 +271,18 @@ public class InvocationContext {
      */
     public static <T> Callable<T> wrap(Callable<T> task) {
         InvocationContext parent = InvocationContext.current();
+        LingCallContextSnapshot snapshot = LingCallContextSnapshot.capture();
         return () -> {
             InvocationContext child = InvocationContext.obtain();
             InvocationContext prev = child.attach();
+            LingCallContextSnapshot previousSnapshot = LingCallContextSnapshot.apply(snapshot);
             try {
                 if (parent != null) {
                     child.copyFrom(parent);
                 }
                 return task.call();
             } finally {
+                LingCallContextSnapshot.restore(previousSnapshot);
                 InvocationContext.detach(prev);
                 child.recycle();
             }
@@ -292,15 +295,18 @@ public class InvocationContext {
      */
     public static Runnable wrap(Runnable task) {
         InvocationContext parent = InvocationContext.current();
+        LingCallContextSnapshot snapshot = LingCallContextSnapshot.capture();
         return () -> {
             InvocationContext child = InvocationContext.obtain();
             InvocationContext prev = child.attach();
+            LingCallContextSnapshot previousSnapshot = LingCallContextSnapshot.apply(snapshot);
             try {
                 if (parent != null) {
                     child.copyFrom(parent);
                 }
                 task.run();
             } finally {
+                LingCallContextSnapshot.restore(previousSnapshot);
                 InvocationContext.detach(prev);
                 child.recycle();
             }

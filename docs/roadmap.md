@@ -49,7 +49,7 @@ Core Capabilities:
 ### Implemented
 - ✅ Permission Control (@RequiresPermission)
 - ✅ Security Audit (@Auditable)
-- ✅ Full Tracing (TraceContext)
+- ✅ Full Tracing (LingCallContext)
 - ✅ Canary Release (CanaryRouter)
 - ✅ Circuit Breaker (SlidingWindowCircuitBreaker)
 - ✅ Rate Limiting (TokenBucketRateLimiter)

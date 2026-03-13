@@ -7,7 +7,7 @@ import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
-import com.lingframe.core.monitor.TraceContext;
+import com.lingframe.api.context.LingCallContext;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
@@ -136,7 +136,7 @@ public class DefaultPermissionService implements PermissionService {
         }
 
         // 优先从链路上下文获取 TraceId，保持追踪连贯性
-        String traceId = TraceContext.start();
+        String traceId = LingCallContext.startTrace();
 
         // 1. 持久化审计记录 (异步写入日志/ES/DB)
         AuditManager.asyncRecord(

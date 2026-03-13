@@ -2,7 +2,7 @@ package com.lingframe.starter.filter;
 
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
-import com.lingframe.api.context.LingContextHolder;
+import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
@@ -10,7 +10,6 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.monitor.TraceContext;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -85,7 +84,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         }
 
         // 5. 设置灵元上下文
-        LingContextHolder.set(lingId);
+        LingCallContext.setLingId(lingId);
 
         InvocationContext ctx = null;
         try {
@@ -123,8 +122,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
                 Thread.currentThread().setContextClassLoader(originalCL);
             }
             // 清理上下文与追踪 ID
-            LingContextHolder.clear();
-            TraceContext.clear();
+            LingCallContext.clear();
         }
     }
 
@@ -203,9 +201,9 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         InvocationContext ctx = InvocationContext.obtain();
         String traceId = request.getHeader("X-Trace-Id");
         if (traceId == null || traceId.isEmpty()) {
-            traceId = TraceContext.start(); // 自动生成首跳 TraceId
+            traceId = LingCallContext.startTrace(); // 自动生成首跳 TraceId
         } else {
-            TraceContext.setTraceId(traceId);
+            LingCallContext.setTraceId(traceId);
         }
         ctx.setTraceId(traceId);
         ctx.setTargetLingId(lingId); // Set targetLingId instead of lingId

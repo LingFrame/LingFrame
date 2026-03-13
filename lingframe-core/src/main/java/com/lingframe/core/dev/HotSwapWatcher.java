@@ -4,19 +4,30 @@ import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.event.LingEventListener;
 import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.exception.LingInstallException;
+import com.lingframe.core.ling.LingLifecycleEngine;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.*;
+import java.nio.file.ClosedWatchServiceException;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
 
 /**
  * 热加载监听器
@@ -64,8 +75,9 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
      * 初始化监听服务 (Lazy Init)
      */
     private synchronized void ensureInit() {
-        if (isStarted.get())
+        if (isStarted.get()) {
             return;
+        }
         try {
             this.watchService = FileSystems.getDefault().newWatchService();
             startWatchLoop();
@@ -99,6 +111,7 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
     public void register(String lingId, File classesDir) {
         ensureInit(); // 触发懒加载
         try {
+            cleanupWatchKeys(lingId);
             Path path = classesDir.toPath();
             // 递归注册所有子目录
             WatchKey key = path.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY,
@@ -106,16 +119,17 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
             keyLingMap.put(key, lingId);
 
             // 简单遍历一级子目录注册
-            Files.walk(path, 10)
-                    .filter(Files::isDirectory)
-                    .forEach(p -> {
-                        try {
-                            WatchKey k = p.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY);
-                            keyLingMap.put(k, lingId);
-                        } catch (IOException e) {
-                            log.warn("Failed to watch subdir: {}", p, e);
-                        }
-                    });
+            try (Stream<Path> paths = Files.walk(path, 10)) {
+                paths.filter(Files::isDirectory)
+                        .forEach(p -> {
+                            try {
+                                WatchKey k = p.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY);
+                                keyLingMap.put(k, lingId);
+                            } catch (IOException e) {
+                                log.warn("Failed to watch subdir: {}", p, e);
+                            }
+                        });
+            }
 
             log.info("[HotSwap] Watching directory: {}", classesDir.getAbsolutePath());
         } catch (Exception e) {
@@ -137,8 +151,9 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
     }
 
     public void unregister(String lingId) {
-        if (!isStarted.get())
+        if (!isStarted.get()) {
             return;
+        }
 
         log.info("[HotSwap] Unregistering watcher for: {}", lingId);
 
@@ -163,8 +178,9 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
     // 关闭服务 (App shutdown 时调用)
     public synchronized void shutdown() {
         try {
-            if (watchService != null)
+            if (watchService != null) {
                 watchService.close();
+            }
             debounceExecutor.shutdownNow();
             if (eventBus != null) {
                 eventBus.unsubscribeAll("lingframe-hotswap");
@@ -178,8 +194,9 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         Thread thread = new Thread(() -> {
             while (true) {
                 try {
-                    if (watchService == null)
+                    if (watchService == null) {
                         break;
+                    }
 
                     WatchKey key = watchService.take();
 
@@ -276,13 +293,30 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
                 Path dir = (Path) entry.getKey().watchable();
                 try {
                     // 检查目录中是否存在 .class 文件
-                    return Files.walk(dir)
-                            .noneMatch(path -> path.toString().endsWith(".class"));
+                    try (Stream<Path> paths = Files.walk(dir)) {
+                        return paths.noneMatch(path -> path.toString().endsWith(".class"));
+                    }
                 } catch (IOException e) {
                     log.warn("Failed to check compilation status: {}", dir, e);
                 }
             }
         }
         return false;
+    }
+
+    private void cleanupWatchKeys(String lingId) {
+        // 使用迭代器安全删除
+        Iterator<Map.Entry<WatchKey, String>> it = keyLingMap.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<WatchKey, String> entry = it.next();
+            if (entry.getValue().equals(lingId)) {
+                WatchKey key = entry.getKey();
+                try {
+                    key.cancel(); // 释放操作系统资源
+                } catch (Exception ignored) {
+                }
+                it.remove(); // 移除 Map 条目
+            }
+        }
     }
 }

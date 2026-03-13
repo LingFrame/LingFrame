@@ -105,6 +105,16 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
     }
 
     /**
+     * 移除灰度配置
+     */
+    public void removeCanaryConfig(String lingId) {
+        if (lingId == null) {
+            return;
+        }
+        canaryConfigs.remove(lingId);
+    }
+
+    /**
      * 获取灰度比例
      */
     @Override

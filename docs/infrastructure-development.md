@@ -93,7 +93,7 @@ public class LingPreparedStatementProxy implements PreparedStatement {
 
     private void checkPermission() throws SQLException {
         // 1. Get Caller ling ID
-        String callerLingId = LingContextHolder.get();
+        String callerLingId = LingCallContext.getLingId();
         if (callerLingId == null) return;
 
         // 2. Parse SQL Type
@@ -181,7 +181,7 @@ Business Unit calls redisTemplate.opsForValue().set(...)
 ```java
 @Override
 public Object invoke(MethodInvocation invocation) throws Throwable {
-    String callerLingId = LingContextHolder.get();
+    String callerLingId = LingCallContext.getLingId();
     String methodName = invocation.getMethod().getName();
     
     // Infer Operation Type
@@ -269,7 +269,7 @@ public class LingXxxProxy implements XxxInterface {
     @Override
     public Result doSomething(Args args) {
         // 1. Get Caller
-        String callerLingId = LingContextHolder.get();
+        String callerLingId = LingCallContext.getLingId();
 
         // 2. Permission Check
         if (!permissionService.isAllowed(callerLingId, "xxx:capability", accessType)) {

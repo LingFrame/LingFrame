@@ -4,7 +4,7 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
-import com.lingframe.core.monitor.TraceContext;
+import com.lingframe.api.context.LingCallContext;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -31,10 +31,10 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
         // 核心同步逻辑：优先保证 ThreadLocal 上下文与 InvocationContext 一致
         String traceId = ctx.getTraceId();
         if (traceId == null || traceId.isEmpty()) {
-            traceId = TraceContext.start();
+            traceId = LingCallContext.startTrace();
             ctx.setTraceId(traceId);
         } else {
-            TraceContext.setTraceId(traceId);
+            LingCallContext.setTraceId(traceId);
         }
 
         if (ctx.getCreateTimeNanos() == 0) {
