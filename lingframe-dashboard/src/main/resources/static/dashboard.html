@@ -56,7 +56,8 @@
                         <p class="text-base text-slate-400 mt-1">{{ modal.message }}</p>
                         <!-- 版本选择 (仅在卸载且支持多版本时显示) -->
                         <div v-if="modal.showVersionSelect && modal.versions && modal.versions.length > 0" class="mt-3">
-                            <label class="text-sm text-slate-500 block mb-1">{{ modal.versionSelectLabel || (t('modal.selectVersion') || '选择要卸载的版本：') }}</label>
+                            <label class="text-sm text-slate-500 block mb-1">{{ modal.versionSelectLabel ||
+                                (t('modal.selectVersion') || '选择要卸载的版本：') }}</label>
                             <select v-model="modal.selectedVersion"
                                 class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
                                 <option value="">{{ t('modal.allVersions') || '全量卸载 (所有版本)' }}</option>
@@ -85,12 +86,12 @@
             <div class="p-5 border-b border-slate-700">
                 <div class="flex items-center gap-3">
                     <div
-                        class="w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center font-bold text-white">
-                        L
+                        class="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">
+                        {{ t('branding.icon') }}
                     </div>
                     <div>
-                        <h1 class="font-bold text-white text-lg">LingFrame</h1>
-                        <p class="text-xs text-slate-500">{{ t('version') }}</p>
+                        <h1 class="font-bold text-white text-lg tracking-tight">{{ t('branding.name') }}</h1>
+                        <p class="text-xs text-slate-500 font-mono tracking-wide mt-0.5">{{ t('version') }}</p>
                     </div>
                 </div>
             </div>
@@ -252,48 +253,60 @@
                                 <p class="text-base text-slate-500">{{ t('lingList.empty') }}</p>
                             </div>
 
-                            <div class="max-h-[800px] overflow-y-auto">
+                            <div class="max-h-[800px] overflow-y-auto" v-else>
                                 <div v-for="p in lings" :key="p.lingId" @click="selectLing(p.lingId)"
                                     :class="['Ling-item', activeId === p.lingId ? 'active' : '']">
                                     <div class="flex justify-between items-start mb-2">
                                         <span class="font-medium text-white text-base truncate pr-2"
                                             :title="p.lingId">{{
                                             p.lingId }}</span>
-                                        <span
-                                            :class="['text-xs px-2 py-0.5 rounded-full flex-shrink-0', getStatusClass(p.status)]">
-                                            {{ p.status }}
-                                        </span>
+                                        <div class="flex gap-2 items-center">
+                                            <span
+                                                :class="['text-[11px] px-2 py-0.5 rounded-full flex-shrink-0 font-black uppercase tracking-tighter', getStatusClass(p.status)]">
+                                                {{ p.status }}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div class="flex justify-between items-center">
+
+                                    <!-- 侧边栏双效染色 (字号再次加大 & 颜色深度对应) -->
+                                    <div class="mt-3 space-y-1.5 ml-1"
+                                        v-if="p.versionDetails && p.versionDetails.length > 0">
+                                        <div v-for="v in p.versionDetails" :key="v.version" :class="[
+                                                v.isDefault ? 'bg-blue-600/20 border-l-4 border-l-blue-500 shadow-[inset_0_0_15px_rgba(59,130,246,0.1)]' : 
+                                                v.isCanary ? 'bg-amber-600/20 border-l-4 border-l-amber-500 shadow-[inset_0_0_15px_rgba(245,158,11,0.1)]' : 'pl-3 border-l-2 border-slate-700'
+                                            ]"
+                                            class="flex justify-between items-center text-sm py-2 px-3 rounded-r transition-all hover:brightness-125">
+                                            <div class="flex items-center gap-2">
+                                                <div
+                                                    :class="['w-2 h-2 rounded-full', getStatusClass(v.status).replace('status-', 'bg-')]">
+                                                </div>
+                                                <!-- 直接染色，不透传，确保显示 -->
+                                                <span v-if="v.isDefault"
+                                                    class="font-mono font-black shrink-0 text-blue-400">{{ v.version
+                                                    }}</span>
+                                                <span v-else-if="v.isCanary"
+                                                    class="font-mono font-black shrink-0 text-amber-400">{{ v.version
+                                                    }}</span>
+                                                <span v-else class="font-mono font-black shrink-0 text-slate-200">{{
+                                                    v.version }}</span>
+                                            </div>
+                                            <!-- 比例数字同步染色 -->
+                                            <span class="font-mono font-black"
+                                                :class="v.isDefault ? 'text-blue-300' : v.isCanary ? 'text-amber-300' : 'text-slate-400'">{{
+                                                v.trafficWeight }}%</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex justify-between items-center mt-2" v-else>
                                         <div class="flex gap-2 flex-wrap">
                                             <span v-if="p.activeVersion"
                                                 class="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
                                                 {{ p.activeVersion }}
                                             </span>
-                                            <span v-else-if="!p.canaryVersion"
-                                                class="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
-                                                {{ p.versions?.[0] || 'unknown' }}
-                                            </span>
                                             <span v-if="p.canaryVersion"
                                                 class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">
                                                 {{ p.canaryVersion }}
                                             </span>
-                                        </div>
-
-                                        <!-- 灵元操作按钮 (仅当选中且鼠标悬停时显示，或者一直显示简化版) -->
-                                        <div class="flex gap-1" v-if="activeId === p.lingId">
-                                            <!-- 开发模式热重载 -->
-                                            <button v-if="currentEnv === 'dev'" @click.stop="reloadLing(p.lingId)"
-                                                class="p-1.5 text-slate-400 hover:text-blue-400 transition-colors"
-                                                :title="t('control.reload')">
-                                                <i class="fa-solid fa-rotate"></i>
-                                            </button>
-                                            <!-- 卸载 -->
-                                            <button @click.stop="requestUnloadWithName(p.lingId)"
-                                                class="p-1.5 text-slate-400 hover:text-red-400 transition-colors"
-                                                :title="t('control.unload')">
-                                                <i class="fa-solid fa-trash-can"></i>
-                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -326,7 +339,7 @@
                                         t('traffic.singleVersion') }}</span>
                                 </div>
                                 <div class="flex gap-2">
-                                    <button @click="resetStats" :disabled="!activeId || loading.stats"
+                                    <button @click="resetCanary" :disabled="!activeId || loading.canary"
                                         class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
                                         <i class="fa-solid fa-rotate-right"></i>
                                         {{ t('traffic.reset') }}
@@ -344,7 +357,7 @@
                                 <!-- 灰度滑块 -->
                                 <div class="mb-6">
                                     <template v-if="canCanary && canOperate">
-                                        <div class="flex justify-between text-sm font-medium mb-3">
+                                        <div class="flex justify-between text-sm font-bold mb-3">
                                             <span class="text-blue-400">
                                                 <i class="fa-solid fa-cube mr-1"></i>
                                                 {{ t('traffic.stable') }} {{ activeLing?.activeVersion }}: {{ 100 -
@@ -356,7 +369,8 @@
                                                 <i class="fa-solid fa-flask ml-1"></i>
                                             </span>
                                         </div>
-                                        <input type="range" v-model.number="canaryPct" @change="updateCanaryConfig"
+                                        <input type="range" v-model.number="canaryPct"
+                                            @input="updateCanaryConfigLocally" @change="updateCanaryConfig"
                                             class="slider-custom" :style="{'--p': (100-canaryPct)+'%'}">
                                     </template>
                                     <template v-else>
@@ -490,61 +504,110 @@
                                 </div>
 
                                 <template v-else>
-                                    <!-- 生命周期 -->
-                                    <div class="mb-4">
-                                        <label class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">{{
-                                            t('control.lifecycle') }}</label>
-                                        <div class="grid grid-cols-2 gap-2">
-                                            <button @click="updateStatus('ACTIVE')"
-                                                :disabled="activeLing?.status === 'ACTIVE' || activeLing?.status === 'DEGRADED'"
-                                                :class="activeLing?.status === 'ACTIVE' ? 'bg-green-600' : 'bg-slate-700 hover:bg-slate-600'"
-                                                class="action-btn text-white text-sm">
-                                                <i class="fa-solid fa-play"></i>
-                                                {{ t('control.activate') }}
-                                            </button>
-                                            <button @click="updateStatus('INACTIVE')"
-                                                :disabled="activeLing?.status === 'INACTIVE'"
-                                                :class="activeLing?.status === 'INACTIVE' ? 'bg-blue-600' : 'bg-slate-700 hover:bg-slate-600'"
-                                                class="action-btn text-white text-sm">
-                                                <i class="fa-solid fa-pause"></i>
-                                                {{ t('control.inactivate') }}
-                                            </button>
-                                            <button v-if="currentEnv === 'dev'" @click="reloadLing(activeId)"
-                                                class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
-                                                <i class="fa-solid fa-rotate"></i>
-                                                {{ t('control.reload') }}
-                                            </button>
-                                            <button @click="requestUnload" :disabled="activeLing?.status === 'REMOVED'"
-                                                :class="activeLing?.status === 'REMOVED' ? 'bg-red-600' : 'bg-slate-700 hover:bg-slate-600'"
-                                                class="action-btn text-white text-sm">
-                                                <i class="fa-solid fa-trash-can"></i>
-                                                {{ t('control.unload') }}
-                                            </button>
+                                    <!-- 灵元管理中枢 -->
+                                    <div class="space-y-4">
+                                        <div v-for="v in activeLing?.versionDetails" :key="v.version"
+                                            class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 shadow-lg animate-in fade-in slide-in-from-right-4 transition-all hover:border-slate-500">
 
+                                            <!-- 卡片头部: 视觉对齐 (V2.5) -->
+                                            <div class="flex justify-between items-center mb-4">
+                                                <div class="flex items-center gap-3">
+                                                    <!-- 版本号: 核心数字染色 -->
+                                                    <span class="text-2xl font-mono font-black tracking-tight" 
+                                                        :class="v.isDefault ? 'text-blue-400' : v.isCanary ? 'text-amber-400' : 'text-white'">
+                                                        {{ v.version }}
+                                                    </span>
+                                                    <!-- 状态展示: 直接复用左侧列表的高质感 Tag 方案 -->
+                                                    <span :class="['text-[11px] px-2.5 py-0.5 rounded-full flex-shrink-0 font-black uppercase tracking-tighter', getStatusClass(v.status)]">
+                                                        {{ v.status }}
+                                                    </span>
+                                                </div>
+                                                <!-- 流量占比: 对齐大号数字 -->
+                                                <div class="text-2xl font-mono font-black leading-none"
+                                                    :class="v.isDefault ? 'text-blue-400' : v.isCanary ? 'text-amber-400' : 'text-white'">
+                                                    {{ v.trafficWeight }}%
+                                                </div>
+                                            </div>
+
+                                            <!-- 语义化操作按钮组 (修复状态判定逻辑) -->
+                                            <div class="grid grid-cols-2 gap-3 mb-2">
+                                                <!-- 状态判定支持各种变体: 只要不是正在运行的状态，都显示激活 -->
+                                                <button v-if="v.status !== 'ACTIVE' && v.status !== 'IN_USE'"
+                                                    @click="doUpdateStatus('ACTIVE', v.version)"
+                                                    class="flex items-center justify-center gap-2 bg-green-600/90 hover:bg-green-500 text-white font-bold py-2 rounded-lg transition-all active:scale-95 shadow-lg shadow-green-900/20">
+                                                    <i class="fa-solid fa-play"></i>
+                                                    {{ t('control.activate') }}
+                                                </button>
+                                                <button v-else @click="doUpdateStatus('INACTIVE', v.version)"
+                                                    class="flex items-center justify-center gap-2 bg-blue-600/90 hover:bg-blue-500 text-white font-bold py-2 rounded-lg transition-all active:scale-95 shadow-lg shadow-blue-900/20">
+                                                    <i class="fa-solid fa-pause"></i>
+                                                    {{ t('control.inactivate') }}
+                                                </button>
+
+                                                <!-- 热重载 -->
+                                                <button
+                                                    v-if="currentEnv === 'dev' && (v.status === 'ACTIVE' || v.status === 'IN_USE')"
+                                                    @click="doReloadLing(activeId, v.version)"
+                                                    class="flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded-lg transition-all active:scale-95">
+                                                    <i class="fa-solid fa-rotate"></i>
+                                                    {{ t('control.reload') }}
+                                                </button>
+
+                                                <!-- 卸载: 统一显示在次要位置 -->
+                                                <button v-if="v.status !== 'ACTIVE'"
+                                                    @click="requestUnloadSpecific(activeId, v.version)"
+                                                    class="flex items-center justify-center gap-2 bg-red-900/30 hover:bg-red-600/90 text-red-400 hover:text-white border border-red-500/30 font-bold py-2 rounded-lg transition-all active:scale-95">
+                                                    <i class="fa-solid fa-trash-can"></i>
+                                                    {{ t('control.unload') }}
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
 
-                                    <!-- 资源权限 -->
-                                    <div class="mb-4">
-                                        <label class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">{{
-                                            t('control.permissions') }}</label>
-                                        <div class="grid grid-cols-2 gap-2">
-                                            <button @click="togglePerm('dbRead')" :disabled="loading.permissions"
-                                                :class="activeLing?.permissions?.dbRead !== false ? 'perm-btn on' : 'perm-btn off'">
-                                                <i class="fa-solid fa-database mr-1"></i> {{ t('control.dbRead') }}
-                                            </button>
-                                            <button @click="togglePerm('dbWrite')" :disabled="loading.permissions"
-                                                :class="activeLing?.permissions?.dbWrite !== false ? 'perm-btn on' : 'perm-btn off'">
-                                                <i class="fa-solid fa-database mr-1"></i> {{ t('control.dbWrite') }}
-                                            </button>
-                                            <button @click="togglePerm('cacheRead')" :disabled="loading.permissions"
-                                                :class="activeLing?.permissions?.cacheRead !== false ? 'perm-btn on' : 'perm-btn off'">
-                                                <i class="fa-solid fa-bolt mr-1"></i> {{ t('control.cacheRead') }}
-                                            </button>
-                                            <button @click="togglePerm('cacheWrite')" :disabled="loading.permissions"
-                                                :class="activeLing?.permissions?.cacheWrite !== false ? 'perm-btn on' : 'perm-btn off'">
-                                                <i class="fa-solid fa-bolt mr-1"></i> {{ t('control.cacheWrite') }}
-                                            </button>
+                                        <!-- 若灵元无多版本细节，显示兜底批量按钮 -->
+                                        <div v-if="(!activeLing?.versionDetails || activeLing?.versionDetails.length === 0)"
+                                            class="space-y-3">
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <button @click="updateStatus('ACTIVE')"
+                                                    class="action-btn bg-green-600 text-white">{{ t('control.activate')
+                                                    }}</button>
+                                                <button @click="updateStatus('INACTIVE')"
+                                                    class="action-btn bg-blue-600 text-white">{{ t('control.inactivate')
+                                                    }}</button>
+                                            </div>
+                                            <button @click="requestUnloadWithName(activeId)"
+                                                class="w-full py-2 bg-red-600/20 text-red-400 border border-red-500/30 rounded-lg font-bold">{{
+                                                t('control.unload') }}</button>
+                                        </div>
+
+                                        <!-- 分割线 -->
+                                        <div class="border-t border-slate-700 my-6"></div>
+
+                                        <!-- 资源权限 (调整至底部) -->
+                                        <div>
+                                            <label
+                                                class="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-3 block">{{
+                                                t('control.permissions') }}</label>
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <button @click="togglePerm('dbRead')" :disabled="loading.permissions"
+                                                    :class="activeLing?.permissions?.dbRead !== false ? 'perm-btn on' : 'perm-btn off'">
+                                                    <i class="fa-solid fa-database mr-1"></i> {{ t('control.dbRead') }}
+                                                </button>
+                                                <button @click="togglePerm('dbWrite')" :disabled="loading.permissions"
+                                                    :class="activeLing?.permissions?.dbWrite !== false ? 'perm-btn on' : 'perm-btn off'">
+                                                    <i class="fa-solid fa-database mr-1"></i> {{ t('control.dbWrite') }}
+                                                </button>
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2 mt-2">
+                                                <button @click="togglePerm('cacheRead')" :disabled="loading.permissions"
+                                                    :class="activeLing?.permissions?.cacheRead !== false ? 'perm-btn on' : 'perm-btn off'">
+                                                    <i class="fa-solid fa-bolt mr-1"></i> {{ t('control.cacheRead') }}
+                                                </button>
+                                                <button @click="togglePerm('cacheWrite')"
+                                                    :disabled="loading.permissions"
+                                                    :class="activeLing?.permissions?.cacheWrite !== false ? 'perm-btn on' : 'perm-btn off'">
+                                                    <i class="fa-solid fa-bolt mr-1"></i> {{ t('control.cacheWrite') }}
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </template>

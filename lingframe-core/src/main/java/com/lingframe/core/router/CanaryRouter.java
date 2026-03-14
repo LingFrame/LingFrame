@@ -153,18 +153,18 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
 
     private LingInstance findStableInstance(List<LingInstance> candidates, InvocationContext context,
             LingInstance excludedInstance) {
-        // 1. 优先选择未标记 canary 的实例
-        for (LingInstance inst : candidates) {
-            if (inst != excludedInstance && !isCanary(inst)) {
-                return inst;
-            }
-        }
-
-        // 2. 退化到池标记的 Default 实例（如果存在且未被排除）
+        // 1. 退化到池标记的 Default 实例（如果存在且未被排除，具有最高优先级防止劫持）
         if (context != null && context.getRuntime() != null) {
             LingInstance defaultInst = context.getRuntime().getInstancePool().getDefault();
             if (defaultInst != null && defaultInst != excludedInstance && candidates.contains(defaultInst)) {
                 return defaultInst;
+            }
+        }
+
+        // 2. 优先选择未标记 canary 的实例
+        for (LingInstance inst : candidates) {
+            if (inst != excludedInstance && !isCanary(inst)) {
+                return inst;
             }
         }
 

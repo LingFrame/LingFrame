@@ -16,14 +16,23 @@ import java.util.Map;
 public class LingInfoDTO {
 
     private String lingId;
-    private String status; // ACTIVE, INACTIVE, DEGRADED, STOPPING, REMOVED
-    private List<String> versions; // 所有已部署版本
-    private String activeVersion; // 当前激活版本
-    private Integer canaryPercent; // 灰度比例 0-100
-    private String canaryVersion; // 灰度版本
+    private String status; // 全局聚合状态: ACTIVE, INACTIVE, DEGRADED, STOPPING, REMOVED
+    private List<VersionInfo> versionDetails; // 所有运行版本的明细树
     private ResourcePermissions permissions;
     private long installedAt; // 安装时间戳
     private Map<String, Object> metadata;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class VersionInfo {
+        private String version;
+        private String status;
+        private Boolean isDefault;
+        private Boolean isCanary;
+        private int trafficWeight; // 这个版本承载的流量占比 0-100
+    }
 
     @Data
     @Builder

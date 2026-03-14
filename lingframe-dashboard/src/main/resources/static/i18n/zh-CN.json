@@ -1,4 +1,8 @@
 {
+  "branding": {
+    "name": "灵珑",
+    "icon": "灵"
+  },
   "title": "灵珑 | 核心治理中心",
   "version": "V0.3.0",
   "sidebar": {

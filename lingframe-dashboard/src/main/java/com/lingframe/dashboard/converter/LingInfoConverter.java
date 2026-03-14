@@ -27,37 +27,32 @@ public class LingInfoConverter {
         String lingId = runtime.getLingId();
         List<LingInstance> activeInstances = runtime.getInstancePool().getActiveInstances();
         List<LingInstance> allInstances = runtime.getInstancePool().getAllInstances();
-        List<LingInstance> candidates = activeInstances.isEmpty() ? allInstances : activeInstances;
+        int canaryPercent = canaryRouter.getCanaryPercent(lingId);
 
-        String stableVersion = null;
-        for (LingInstance instance : candidates) {
-            if (!isCanary(instance)) {
-                stableVersion = instance.getVersion();
-                break;
-            }
-        }
-
-        String canaryVersion = null;
-        for (LingInstance instance : candidates) {
-            if (isCanary(instance)) {
-                String version = instance.getVersion();
-                if (stableVersion == null || !stableVersion.equals(version)) {
-                    canaryVersion = version;
-                    break;
+        List<LingInfoDTO.VersionInfo> versionDetails = allInstances.stream().map(instance -> {
+            boolean isCurCanary = isCanary(instance);
+            boolean isCurDefault = instance == runtime.getInstancePool().getDefault();
+            int weight = 0;
+            if (activeInstances.contains(instance)) {
+                if (isCurCanary) {
+                    weight = canaryPercent;
+                } else if (isCurDefault) {
+                    weight = 100 - canaryPercent;
                 }
             }
-        }
+            return LingInfoDTO.VersionInfo.builder()
+                    .version(instance.getVersion())
+                    .status(instance.getStateMachine().current().name())
+                    .isDefault(isCurDefault)
+                    .isCanary(isCurCanary)
+                    .trafficWeight(weight)
+                    .build();
+        }).collect(Collectors.toList());
 
         return LingInfoDTO.builder()
                 .lingId(lingId)
                 .status(runtime.getStateMachine().current().name())
-                .versions(candidates.stream()
-                        .map(LingInstance::getVersion)
-                        .distinct()
-                        .collect(Collectors.toList()))
-                .activeVersion(stableVersion)
-                .canaryPercent(canaryRouter.getCanaryPercent(lingId))
-                .canaryVersion(canaryVersion)
+                .versionDetails(versionDetails)
                 .permissions(extractPermissions(lingId, permissionService, policy))
                 .installedAt(runtime.getInstalledAt())
                 .build();

@@ -65,7 +65,7 @@ createApp({
 
         // ==================== 计算属性 ====================
         const activeLing = computed(() => lings.value.find(p => p.lingId === activeId.value));
-        const canCanary = computed(() => activeLing.value?.versions?.length >= 2);
+        const canCanary = computed(() => (activeLing.value?.versionDetails?.length || 0) >= 2);
         const canOperate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
         const sseStatusText = computed(() => ({
             connected: t('sidebar.sseConnected'),
@@ -139,7 +139,8 @@ createApp({
             activeId.value = lingId;
             const ling = lings.value.find(p => p.lingId === lingId);
             if (ling) {
-                canaryPct.value = ling.canaryPercent || 0;
+                const canaryInfo = ling.versionDetails?.find(v => v.isCanary);
+                canaryPct.value = canaryInfo ? canaryInfo.trafficWeight : 0;
             }
             // 重置统计
             Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0, active: 0 });
@@ -176,7 +177,7 @@ createApp({
 
         const updateStatus = (newStatus) => {
             if (!activeLing.value) return;
-            const versions = activeLing.value.versions || [];
+            const versions = activeLing.value.versionDetails?.map(v => v.version) || [];
             if (versions.length > 1) {
                 modal.title = t('modal.statusTitle') || '确认操作';
                 modal.message = t('modal.statusMessage') || '请选择版本';
@@ -208,7 +209,7 @@ createApp({
             modal.message = t('modal.unloadWarning', { lingId: activeId.value });
             modal.actionText = t('modal.unloadAction');
             modal.versionSelectLabel = t('modal.selectVersion');
-            const versions = activeLing.value.versions || [];
+            const versions = activeLing.value.versionDetails?.map(v => v.version) || [];
             if (versions.length > 1) {
                 modal.showVersionSelect = true;
                 modal.versions = versions;
@@ -369,7 +370,7 @@ createApp({
 
         const reloadLing = (lingId) => {
             if (!activeLing.value) return;
-            const versions = activeLing.value.versions || [];
+            const versions = activeLing.value.versionDetails?.map(v => v.version) || [];
             if (versions.length > 1) {
                 modal.title = t('modal.reloadTitle') || '确认热重载';
                 modal.message = t('modal.reloadMessage') || '请选择版本';
@@ -399,7 +400,7 @@ createApp({
             modal.message = t('modal.unloadWarning', { lingId });
             modal.actionText = t('modal.unloadAction');
             modal.versionSelectLabel = t('modal.selectVersion');
-            const versions = ling ? (ling.versions || []) : [];
+            const versions = ling ? (ling.versionDetails?.map(v => v.version) || []) : [];
             if (versions.length > 1) {
                 modal.showVersionSelect = true;
                 modal.versions = versions;
@@ -459,13 +460,37 @@ createApp({
             };
             modal.show = true;
         };
+
+        const requestUnloadSpecific = (lingId, version) => {
+            modal.title = t('modal.confirmUnload');
+            modal.message = t('modal.unloadWarningSpecific', { lingId, version }) || `确认卸载服务 ${lingId} 的版本 ${version} 吗？`;
+            modal.actionText = t('modal.unloadAction');
+            modal.showVersionSelect = false; // 已指定版本，无需选择
+            modal.onConfirm = async () => {
+                modal.loading = true;
+                try {
+                    await api.delete(`/lings/uninstall/${lingId}/${version}`);
+                    showToast(t('toast.lingVersionUnloaded', { version }) || `版本 ${version} 卸载成功`, 'success');
+                    refreshLings();
+                } catch (e) {
+                    showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
+                } finally {
+                    modal.loading = false;
+                    modal.show = false;
+                }
+            };
+            modal.show = true;
+        };
+
         const updateCanaryConfig = async () => {
             if (!activeId.value || !canCanary.value) return;
+            
             loading.canary = true;
             try {
                 await api.post(`/lings/${activeId.value}/canary`, {
                     percent: canaryPct.value,
-                    canaryVersion: activeLing.value?.canaryVersion
+                    canaryVersion: activeLing.value?.versionDetails?.find(v => v.isCanary)?.version 
+                                      || activeLing.value?.versionDetails?.find(v => !v.isDefault)?.version
                 });
                 showToast(t('toast.canarySet', { percent: canaryPct.value }), 'success');
             } catch (e) {
@@ -473,6 +498,39 @@ createApp({
             } finally {
                 loading.canary = false;
             }
+        };
+
+        const updateCanaryConfigLocally = () => {
+            // 实现丝滑的即时同步: 深度更新全量响应式数据
+            if (activeLing.value && activeLing.value.versionDetails) {
+                // 1. 同步更新当前选中对象的内部比例
+                activeLing.value.versionDetails.forEach(v => {
+                    if (v.isCanary) {
+                        v.trafficWeight = canaryPct.value;
+                    } else if (v.isDefault) {
+                        v.trafficWeight = 100 - canaryPct.value;
+                    }
+                });
+                
+                // 2. 核心补救：强制更新 lings 列表中的引用，触发侧边栏响应式重绘
+                const idx = lings.value.findIndex(p => p.lingId === activeId.value);
+                if (idx !== -1) {
+                    // 使用展开运算符保持响应式，或者直接替换对象
+                    // 这里我们通过重新赋值来确保 Vue 检测到变化
+                    lings.value[idx] = { ...lings.value[idx] };
+                }
+
+                // 3. 同步更新中间统计卡片
+                stats.v2Pct = canaryPct.value;
+                stats.v1Pct = 100 - canaryPct.value;
+            }
+        };
+
+        const resetCanary = async () => {
+            if (!activeId.value) return;
+            canaryPct.value = 0;
+            updateCanaryConfigLocally();
+            await updateCanaryConfig();
         };
 
         // ==================== 权限操作 ====================
@@ -803,8 +861,12 @@ createApp({
         const getStatusClass = (status) => ({
             'ACTIVE': 'status-active',
             'INACTIVE': 'status-loaded',
+            'READY': 'status-loaded',
+            'READY_FOR_USE': 'status-loaded',
+            'IN_USE': 'status-active',
             'DEGRADED': 'status-error',
             'REMOVED': 'status-unloaded',
+            'RETIRED': 'status-unloaded',
             'STARTING': 'status-loading',
             'STOPPING': 'status-loading'
         }[status] || 'status-unloaded');
@@ -947,12 +1009,13 @@ createApp({
 
             // 方法
             refreshLings, selectLing, updateStatus, requestUnload,
-            confirmModalAction, updateCanaryConfig, togglePerm, toggleIpc,
+            confirmModalAction, updateCanaryConfig, updateCanaryConfigLocally, resetCanary, togglePerm, toggleIpc,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
             handleLogScroll, scrollToTop,
             formatDrift, formatTime, formatSize,
             getStatusClass, getLingShortName, getLingTagClass, getLogColor,
-            openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, reloadLing, requestUnloadWithName
+            openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
+            doUpdateStatus
         };
     }
 }).mount('#app');

@@ -23,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * 灵元生命周期引擎 (V0.3.0)
@@ -170,8 +171,20 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
                 hotSwapWatcher.register(lingId, sourceFile, lingDefinition);
             }
 
-            runtime.getInstancePool().addInstance(instance, isDefault);
+            LingInstance oldDefault = runtime.getInstancePool().addInstance(instance, isDefault);
             instanceCoordinator.markReady(instance);
+
+            if (oldDefault != null) {
+                String oldVersion = oldDefault.getVersion();
+                log.info("[{}] Triggering async undeploy for replaced default version: {}", lingId, oldVersion);
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        undeploy(lingId, oldVersion);
+                    } catch (Exception e) {
+                        log.error("[{}] Failed to async undeploy replaced version {}", lingId, oldVersion, e);
+                    }
+                });
+            }
 
             if (lingDefinition.getGovernance() != null
                     && lingDefinition.getGovernance().getCapabilities() != null) {

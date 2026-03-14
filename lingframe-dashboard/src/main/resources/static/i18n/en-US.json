@@ -1,4 +1,8 @@
 {
+  "branding": {
+    "name": "LingFrame",
+    "icon": "L"
+  },
     "title": "LingFrame | Governance Center",
     "version": "V0.3.0",
     "sidebar": {
