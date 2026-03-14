@@ -146,9 +146,17 @@
         "alsoEnabled": " (also enabled {perm})",
         "alsoDisabled": " (also disabled {perm})",
         "installSuccess": "Ling installed successfully",
-        "installFailed": "Ling install failed",
-        "reloadSuccess": "Ling reloaded successfully",
-        "reloadFailed": "Ling reload failed",
-        "lingVersionUnloaded": "Version {version} unloaded successfully"
-    }
+    "installFailed": "Ling install failed",
+    "reloadSuccess": "Ling reloaded successfully",
+    "reloadFailed": "Ling reload failed",
+    "lingVersionUnloaded": "Version {version} unloaded successfully"
+  },
+  "performance": {
+    "title": "System Performance",
+    "realtime": "Real-time Monitor",
+    "memory": "Memory",
+    "heap": "Heap Memory",
+    "threads": "Active Threads",
+    "gc": "GC Count"
+  }
 }

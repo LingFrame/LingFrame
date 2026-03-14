@@ -150,5 +150,13 @@
     "reloadSuccess": "灵元重载成功",
     "reloadFailed": "灵元重载失败",
     "lingVersionUnloaded": "版本 {version} 卸载成功"
+  },
+  "performance": {
+    "title": "系统性能",
+    "realtime": "实时监控",
+    "memory": "内存",
+    "heap": "堆内存",
+    "threads": "活跃线程",
+    "gc": "GC 次数"
   }
 }
