@@ -28,6 +28,22 @@
             color: #fff;
             border-color: #475569;
         }
+
+        /* 凤凰涅槃：浴火重生文字特效 (V3.0) */
+        @keyframes phoenix-fire {
+            0% { background-position: 0% 50%; filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.4)); }
+            50% { background-position: 100% 50%; filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.6)); }
+            100% { background-position: 0% 50%; filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.4)); }
+        }
+
+        .animate-phoenix {
+            background: linear-gradient(90deg, #60a5fa, #ef4444, #f59e0b, #60a5fa);
+            background-size: 300% 300%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: phoenix-fire 4s ease infinite;
+            display: inline-block;
+        }
     </style>
 </head>
 
@@ -91,7 +107,11 @@
                     </div>
                     <div>
                         <h1 class="font-bold text-white text-lg tracking-tight">{{ t('branding.name') }}</h1>
-                        <p class="text-xs text-slate-500 font-mono tracking-wide mt-0.5">{{ t('version') }}</p>
+                        <p class="text-xs font-mono tracking-wide mt-0.5 flex items-center">
+                            <span class="text-slate-500">{{ t('version') }}</span>
+                            <span class="mx-1.5 text-slate-700">·</span>
+                            <span class="animate-phoenix font-black italic">{{ t('branding.codename') }}</span>
+                        </p>
                     </div>
                 </div>
             </div>

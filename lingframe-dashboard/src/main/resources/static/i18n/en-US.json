@@ -1,7 +1,8 @@
 {
   "branding": {
     "name": "LingFrame",
-    "icon": "L"
+    "icon": "L",
+    "codename": "Nirvana"
   },
     "title": "LingFrame | Governance Center",
     "version": "V0.3.0",

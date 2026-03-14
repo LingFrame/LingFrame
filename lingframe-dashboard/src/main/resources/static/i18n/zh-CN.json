@@ -1,7 +1,8 @@
 {
   "branding": {
     "name": "灵珑",
-    "icon": "灵"
+    "icon": "灵",
+    "codename": "涅槃"
   },
   "title": "灵珑 | 核心治理中心",
   "version": "V0.3.0",
