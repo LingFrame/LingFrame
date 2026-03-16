@@ -7,6 +7,7 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.CoreLingContext;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.ling.DefaultLingLifecycleEngine;
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.DefaultLingResourceManager;
@@ -45,6 +46,7 @@ public class NativeLingFrame {
     private static LingContext HOST_CONTEXT;
     private static HotSwapWatcher HOT_SWAP_WATCHER;
     private static DefaultLingResourceManager RESOURCE_MANAGER;
+    private static RuntimeCoordinator RUNTIME_COORDINATOR;
 
     /**
      * 启动 LingFrame (使用默认配置)
@@ -67,6 +69,8 @@ public class NativeLingFrame {
 
         // 准备基础设施
         EventBus eventBus = new EventBus();
+        RUNTIME_COORDINATOR = new RuntimeCoordinator(eventBus);
+        RUNTIME_COORDINATOR.start();
 
         // 准备核心组件
         DefaultPermissionService permissionService = new DefaultPermissionService(eventBus);
@@ -128,6 +132,9 @@ public class NativeLingFrame {
             }
             if (RESOURCE_MANAGER != null) {
                 RESOURCE_MANAGER.shutdown();
+            }
+            if (RUNTIME_COORDINATOR != null) {
+                RUNTIME_COORDINATOR.stop();
             }
             SharedApiClassLoader.resetInstance();
         }));

@@ -150,9 +150,24 @@ public class DashboardService {
                 throw new LingInstallException(lingId, "Invalid ling package: " + source.getAbsolutePath(), null);
             }
 
-            boolean isCanary = isCanary(def);
-            lifecycleEngine.undeploy(lingId, targetVersion);
-            lifecycleEngine.deploy(def, source, !isCanary, Collections.emptyMap());
+            // 重载时保持原实例的默认/灰度角色与标签
+            boolean wasDefault = runtime.getInstancePool().getDefault() == target;
+            Map<String, String> labels = new HashMap<>(target.getLabels());
+
+            // 重载时改版本号：baseVersion + "-reload-{n}"
+            String reloadVersion = buildReloadVersion(runtime, targetVersion);
+            def.setVersion(reloadVersion);
+            markReload(def, labels, reloadVersion);
+
+            // 两阶段热重载：先新建，再切流，最后卸载旧实例
+            lifecycleEngine.deployForReload(def, source, wasDefault, labels);
+
+            LingInstance newInstance = runtime.getInstancePool().getInstance(reloadVersion);
+            if (newInstance == null) {
+                throw new LingInstallException(lingId, "Hot reload failed: new instance not found", null);
+            }
+
+            lifecycleEngine.undeploy(lingId, target);
 
             return getLingInfo(lingId);
         } catch (Exception e) {
@@ -164,17 +179,6 @@ public class DashboardService {
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
-        }
-
-        if (version != null && !version.isEmpty()) {
-            if (newStatus == RuntimeStatus.INACTIVE) {
-                lifecycleEngine.pauseVersion(lingId, version);
-                return getLingInfo(lingId);
-            }
-            if (newStatus == RuntimeStatus.ACTIVE) {
-                lifecycleEngine.resumeVersion(lingId, version);
-                return getLingInfo(lingId);
-            }
         }
 
         switch (newStatus) {
@@ -454,6 +458,40 @@ public class DashboardService {
             return false;
         }
         return isCanary(instance.getDefinition());
+    }
+
+    private String buildReloadVersion(LingRuntime runtime, String baseVersion) {
+        int max = 0;
+        String prefix = baseVersion + "-reload-";
+        for (LingInstance instance : runtime.getInstancePool().getAllInstances()) {
+            String v = instance.getVersion();
+            if (v != null && v.startsWith(prefix)) {
+                String suffix = v.substring(prefix.length());
+                try {
+                    int n = Integer.parseInt(suffix);
+                    if (n > max) {
+                        max = n;
+                    }
+                } catch (NumberFormatException ignore) {
+                    // ignore malformed reload versions
+                }
+            }
+        }
+        return prefix + (max + 1);
+    }
+
+    private void markReload(LingDefinition def, Map<String, String> labels, String reloadVersion) {
+        if (labels != null) {
+            labels.put("reload", "true");
+            labels.put("reloadVersion", reloadVersion);
+        }
+        Map<String, Object> props = def.getProperties();
+        if (props == null) {
+            props = new HashMap<>();
+            def.setProperties(props);
+        }
+        props.put("reload", true);
+        props.put("reloadVersion", reloadVersion);
     }
 
 }

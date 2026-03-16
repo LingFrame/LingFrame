@@ -19,9 +19,8 @@ import java.lang.reflect.Method;
  * 2. 解决"鸡生蛋"问题：在灵元还未启动时就能创建出代理对象。
  * 3. 动态路由：每次调用时，实时查找目标灵元的最新版本。
  * <p>
- * V0.3.0 修复：
  * - 不再持有 Class<?> 引用（改用 String interfaceName），防止 ClassLoader 泄漏
- * - 不再持有 LingManager 引用（改用 LingRepository），推进去中心化
+ * - 改用 LingRepository，推进去中心化
  * - 复用 SmartServiceProxy 实例，避免每次调用都创建新对象
  */
 @Slf4j
@@ -38,8 +37,8 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
     private volatile String cachedDelegateLingId;
 
     public GlobalServiceRoutingProxy(String callerLingId, String interfaceName,
-            String targetLingId, LingRepository lingRepository,
-            InvocationPipelineEngine pipelineEngine) {
+                                     String targetLingId, LingRepository lingRepository,
+                                     InvocationPipelineEngine pipelineEngine) {
         this.callerLingId = callerLingId;
         this.interfaceName = interfaceName;
         this.targetLingId = targetLingId;

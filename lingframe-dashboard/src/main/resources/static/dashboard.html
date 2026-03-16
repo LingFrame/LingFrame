@@ -647,8 +647,19 @@
 
                                 <template v-else>
                                     <!-- 灵元管理中枢 -->
-                                    <div class="space-y-4">
-                                        <div v-for="v in activeLing?.versionDetails" :key="v.version"
+                                        <div class="space-y-4">
+                                            <!-- 运行时级别操作（不区分版本） -->
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <button @click="updateStatus('ACTIVE')"
+                                                    class="action-btn bg-green-600 text-white">{{ t('control.activate') }}</button>
+                                                <button @click="updateStatus('INACTIVE')"
+                                                    class="action-btn bg-blue-600 text-white">{{ t('control.inactivate') }}</button>
+                                            </div>
+                                            <button @click="requestUnloadWithName(activeId)"
+                                                class="w-full py-2 bg-red-600/20 text-red-400 border border-red-500/30 rounded-lg font-bold">{{
+                                                t('control.unload') }}</button>
+
+                                            <div v-for="v in activeLing?.versionDetails" :key="v.version"
                                             class="bg-[#111827] border border-[#1f2937] rounded-xl p-4 shadow-lg transition-all hover:border-[#2a3441]">
 
                                             <!-- 卡片头部: 垂直布局避免拥挤 -->
@@ -675,21 +686,11 @@
                                             <!-- 操作按钮组: 固定2列布局 -->
                                             <div class="grid grid-cols-2 gap-2">
                                                 <!-- 激活/暂停 -->
-                                                <button v-if="v.status !== 'ACTIVE' && v.status !== 'IN_USE'"
-                                                    @click="doUpdateStatus('ACTIVE', v.version)"
-                                                    class="flex items-center justify-center gap-1.5 bg-green-600 hover:bg-green-500 text-white text-sm font-bold py-2 rounded-lg transition-all active:scale-95">
-                                                    <i class="fa-solid fa-play text-xs"></i>
-                                                    {{ t('control.activate') }}
-                                                </button>
-                                                <button v-else @click="doUpdateStatus('INACTIVE', v.version)"
-                                                    class="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold py-2 rounded-lg transition-all active:scale-95">
-                                                    <i class="fa-solid fa-pause text-xs"></i>
-                                                    {{ t('control.inactivate') }}
-                                                </button>
+                                                
 
                                                 <!-- 热重载 -->
                                                 <button
-                                                    v-if="currentEnv === 'dev' && (v.status === 'ACTIVE' || v.status === 'IN_USE')"
+                                                    v-if="currentEnv === 'dev' && (v.status === 'ACTIVE' || v.status === 'IN_USE' || v.status === 'READY' || v.status === 'READY_FOR_USE')"
                                                     @click="doReloadLing(activeId, v.version)"
                                                     class="flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold py-2 rounded-lg transition-all active:scale-95">
                                                     <i class="fa-solid fa-rotate text-xs"></i>
@@ -697,8 +698,7 @@
                                                 </button>
 
                                                 <!-- 卸载: 统一显示在次要位置 -->
-                                                <button v-if="v.status !== 'ACTIVE'"
-                                                    @click="requestUnloadSpecific(activeId, v.version)"
+                                                <button @click="requestUnloadSpecific(activeId, v.version)"
                                                     class="flex items-center justify-center gap-2 bg-red-900/30 hover:bg-red-600/90 text-red-400 hover:text-white border border-red-500/30 font-bold py-2 rounded-lg transition-all active:scale-95">
                                                     <i class="fa-solid fa-trash-can"></i>
                                                     {{ t('control.unload') }}

@@ -92,7 +92,7 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
             }
 
             Class<?> serviceType = field.getType();
-            // 在 V0.3.0 之后，目标路由交由底层 PipelineEngine 与 Context 内置的 GlobalServiceRoutingProxy
+            // 目标路由交由底层 PipelineEngine 与 Context 内置的 GlobalServiceRoutingProxy
             // 自动抉择
             Object proxy = ctx.getService(serviceType).orElseThrow(() -> new LingRuntimeException(currentLingId,
                     "Failed to resolve service reference for type: " + serviceType.getName()));

@@ -1,6 +1,6 @@
 package com.lingframe.core.ling;
 
-import com.lingframe.api.event.LingStateChangedEvent;
+import com.lingframe.core.event.RuntimeStateChangedEvent;
 import com.lingframe.core.event.EventBus;
 import org.junit.jupiter.api.Test;
 
@@ -15,7 +15,9 @@ class LingRuntimeStateEventTest {
         EventBus eventBus = new EventBus();
         LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus);
 
-        eventBus.publish(new LingStateChangedEvent("ling-a", "ACTIVE", "STOPPING"));
+        eventBus.publish(new RuntimeStateChangedEvent("ling-a",
+                com.lingframe.core.fsm.RuntimeStatus.ACTIVE,
+                com.lingframe.core.fsm.RuntimeStatus.STOPPING));
 
         LingInstance instance = mock(LingInstance.class);
         when(instance.getVersion()).thenReturn("v1");
@@ -29,7 +31,9 @@ class LingRuntimeStateEventTest {
         EventBus eventBus = new EventBus();
         LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus);
 
-        eventBus.publish(new LingStateChangedEvent("ling-b", "ACTIVE", "STOPPING"));
+        eventBus.publish(new RuntimeStateChangedEvent("ling-b",
+                com.lingframe.core.fsm.RuntimeStatus.ACTIVE,
+                com.lingframe.core.fsm.RuntimeStatus.STOPPING));
 
         LingInstance instance = mock(LingInstance.class);
         when(instance.getVersion()).thenReturn("v1");

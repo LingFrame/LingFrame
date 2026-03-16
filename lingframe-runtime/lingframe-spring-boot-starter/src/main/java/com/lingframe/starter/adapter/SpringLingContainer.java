@@ -36,6 +36,7 @@ public class SpringLingContainer implements LingContainer {
     private SpringApplicationBuilder builder;
     private ConfigurableApplicationContext context;
     private ClassLoader classLoader; // 非 final，以便在 stop() 中清除
+    private String version;
     private WebInterfaceManager webInterfaceManager;
     private List<String> excludedPackages;
     private List<LingContextCustomizer> customizers; // 新增定制器
@@ -50,7 +51,8 @@ public class SpringLingContainer implements LingContainer {
             List<String> excludedPackages,
             List<LingContextCustomizer> customizers,
             ApplicationContext mainContext,
-            List<ResourceGuard> resourceGuards) {
+            List<ResourceGuard> resourceGuards,
+            String version) {
         this.builder = builder;
         this.classLoader = classLoader;
         this.webInterfaceManager = webInterfaceManager;
@@ -58,6 +60,7 @@ public class SpringLingContainer implements LingContainer {
         this.customizers = customizers != null ? customizers : Collections.emptyList();
         this.mainContext = mainContext;
         this.resourceGuards = resourceGuards != null ? resourceGuards : Collections.emptyList();
+        this.version = version;
     }
 
     @Override
@@ -296,6 +299,7 @@ public class SpringLingContainer implements LingContainer {
         // 构建简化的元数据（不含参数定义，由 Spring 原生处理）
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
                 .lingId(lingId)
+                .version(version)
                 .targetBean(bean)
                 .targetMethod(method)
                 .classLoader(this.classLoader)
@@ -369,6 +373,7 @@ public class SpringLingContainer implements LingContainer {
         this.webInterfaceManager = null;
         this.excludedPackages = null;
         this.customizers = null;
+        this.version = null;
     }
 
     @Override

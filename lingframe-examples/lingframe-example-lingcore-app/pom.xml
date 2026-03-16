@@ -69,6 +69,10 @@
                 <activeByDefault>true</activeByDefault>
             </activation>
             <dependencies>
+                <dependency>
+                    <groupId>com.lingframe</groupId>
+                    <artifactId>lingframe-spring-boot2-starter</artifactId>
+                </dependency>
                 <!-- SpringDoc for Boot 2 -->
                 <dependency>
                     <groupId>org.springdoc</groupId>
@@ -83,6 +87,10 @@
                 <java.version>17</java.version>
             </properties>
             <dependencies>
+                <dependency>
+                    <groupId>com.lingframe</groupId>
+                    <artifactId>lingframe-spring-boot3-starter</artifactId>
+                </dependency>
                 <!-- SpringDoc for Boot 3 -->
                 <dependency>
                     <groupId>org.springdoc</groupId>

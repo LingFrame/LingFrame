@@ -1,6 +1,7 @@
 package com.lingframe.core.ling;
 
 import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.core.fsm.InstanceCoordinator;
 import lombok.NonNull;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -32,8 +33,11 @@ public class InstancePool {
     // 死亡队列：存放待销毁的旧版本
     private final ConcurrentLinkedQueue<LingInstance> dyingQueue = new ConcurrentLinkedQueue<>();
 
-    // 关停标记，防止关停期间发生并发写入
+    // 关停标记，避免关停期间并发写入
     private volatile boolean isShuttingDown = false;
+
+    // 实例状态机协同器（可选），用于保持事件与快照联动
+    private volatile InstanceCoordinator instanceCoordinator;
 
     public InstancePool(String lingId, int maxDyingInstances) {
         this.lingId = lingId;
@@ -57,11 +61,12 @@ public class InstancePool {
     }
 
     /**
-     * 根据版本获取特定的活跃实例
+     * 根据版本获取指定活跃实例
      */
     public LingInstance getInstance(String version) {
-        if (version == null)
+        if (version == null) {
             return null;
+        }
         for (LingInstance instance : activePool) {
             if (version.equals(instance.getVersion())) {
                 return instance;
@@ -71,7 +76,7 @@ public class InstancePool {
     }
 
     /**
-     * 获取所有实例，包括活跃和死亡队列中的实例
+     * 获取所有实例（含活跃与死亡队列）
      */
     public List<LingInstance> getAllInstances() {
         List<LingInstance> all = new ArrayList<>(activePool);
@@ -80,7 +85,7 @@ public class InstancePool {
     }
 
     /**
-     * 获取当前版本号
+     * 获取当前默认版本号
      */
     public String getVersion() {
         LingInstance instance = defaultInstance.get();
@@ -88,7 +93,7 @@ public class InstancePool {
     }
 
     /**
-     * 检查是否有可用实例
+     * 是否有可用实例
      */
     public boolean hasAvailableInstance() {
         return activePool.stream().anyMatch(instance -> instance.isReady() && !instance.isDying());
@@ -102,7 +107,7 @@ public class InstancePool {
     }
 
     /**
-     * 检查是否可以添加新实例（背压检查）
+     * 是否允许添加新实例（背压检测）
      */
     public boolean canAddInstance() {
         return dyingQueue.size() < maxDyingInstances;
@@ -114,7 +119,7 @@ public class InstancePool {
      * 添加新实例到活跃池
      *
      * @param instance  新实例
-     * @param isDefault 是否设为默认
+     * @param isDefault 是否设置为默认
      * @return 被替换的旧默认实例（如果有）
      */
     public LingInstance addInstance(LingInstance instance, boolean isDefault) {
@@ -152,12 +157,19 @@ public class InstancePool {
         }
 
         if (!instance.isDying()) {
-            instance.markDying();
+            InstanceCoordinator coordinator = this.instanceCoordinator;
+            if (coordinator != null) {
+                coordinator.stop(instance);
+                log.debug("[{}] Instance {} marked STOPPING via InstanceCoordinator",
+                        lingId, instance.getVersion());
+            } else {
+                instance.markDying();
+            }
         }
         activePool.remove(instance);
         dyingQueue.add(instance);
 
-        // 如果该死亡实例曾是主实例，从活跃池中选拔新的主实例
+        // 若该实例曾是主实例，从活跃池选举新的主实例
         if (defaultInstance.compareAndSet(instance, null)) {
             if (!activePool.isEmpty()) {
                 LingInstance newDefault = activePool.get(0);
@@ -172,7 +184,7 @@ public class InstancePool {
     }
 
     /**
-     * 彻底从池中移除实例（从活跃池和死亡队列）
+     * 彻底从池中移除实例（活跃池 + 死亡队列）
      */
     public void removeInstance(LingInstance instance) {
         if (instance == null) {
@@ -181,7 +193,7 @@ public class InstancePool {
         activePool.remove(instance);
         dyingQueue.remove(instance);
 
-        // 如果是默认实例，清除默认标记，并选举顺位继承者
+        // 若为默认实例，清除默认标记并选举新主
         if (defaultInstance.compareAndSet(instance, null)) {
             if (!activePool.isEmpty()) {
                 LingInstance newDefault = activePool.get(0);
@@ -247,10 +259,10 @@ public class InstancePool {
     /**
      * 关闭实例池（卸载时调用）
      *
-     * @return 需要进入死亡队列的实例列表
+     * @return 进入死亡队列的实例列表
      */
     public List<LingInstance> shutdown() {
-        // 标记关停，防止新的实例被并发加入
+        // 标记关停，避免新实例并发加入
         isShuttingDown = true;
 
         // 清空默认实例
@@ -305,5 +317,12 @@ public class InstancePool {
             return String.format("PoolStats{active=%d, dying=%d, hasDefault=%s}",
                     activeCount, dyingCount, hasDefault);
         }
+    }
+
+    /**
+     * 绑定实例状态协同器（可选），用于统一状态转换与事件联动
+     */
+    public void setInstanceCoordinator(InstanceCoordinator instanceCoordinator) {
+        this.instanceCoordinator = instanceCoordinator;
     }
 }

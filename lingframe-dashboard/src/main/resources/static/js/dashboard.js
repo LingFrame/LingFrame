@@ -169,12 +169,11 @@ createApp({
             syncIpcSwitch();
         };
 
-        const doUpdateStatus = async (newStatus, version = '') => {
+        const doUpdateStatus = async (newStatus) => {
             if (!activeId.value) return;
             loading.status = true;
             try {
                 const body = { status: newStatus };
-                if (version) body.version = version;
                 const updated = await api.post(`/lings/${activeId.value}/status`, body);
                 const idx = lings.value.findIndex(p => p.lingId === activeId.value);
                 if (idx !== -1 && updated) {
@@ -190,29 +189,6 @@ createApp({
 
         const updateStatus = (newStatus) => {
             if (!activeLing.value) return;
-            const versions = activeLing.value.versionDetails?.map(v => v.version) || [];
-            if (versions.length > 1) {
-                modal.title = t('modal.statusTitle') || '确认操作';
-                modal.message = t('modal.statusMessage') || '请选择版本';
-                modal.actionText = newStatus === 'ACTIVE'
-                    ? (t('modal.actionActivate') || '激活')
-                    : (t('modal.actionInactivate') || '停用');
-                modal.versionSelectLabel = t('modal.statusMessage') || t('modal.selectVersion');
-                modal.showVersionSelect = true;
-                modal.versions = versions;
-                modal.selectedVersion = activeLing.value.activeVersion || '';
-                modal.onConfirm = async () => {
-                    modal.loading = true;
-                    try {
-                        await doUpdateStatus(newStatus, modal.selectedVersion);
-                    } finally {
-                        modal.loading = false;
-                        modal.show = false;
-                    }
-                };
-                modal.show = true;
-                return;
-            }
             doUpdateStatus(newStatus);
         };
 

@@ -1,5 +1,6 @@
 package com.lingframe.core.spi;
 
+import com.lingframe.api.config.LingDefinition;
 import java.io.File;
 
 /**
@@ -15,5 +16,5 @@ public interface ContainerFactory {
      * @param classLoader 灵元专用的类加载器
      * @return 容器实例
      */
-    LingContainer create(String lingId, File jarFile, ClassLoader classLoader);
+    LingContainer create(LingDefinition definition, File jarFile, ClassLoader classLoader);
 }

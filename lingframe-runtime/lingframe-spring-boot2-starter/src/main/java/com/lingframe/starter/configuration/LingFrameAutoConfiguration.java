@@ -6,10 +6,15 @@ import com.lingframe.starter.filter.LingWebGovernanceFilter;
 import com.lingframe.starter.web.WebInterfaceManager;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 /**
@@ -19,6 +24,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
  * 仅在此注册 javax.servlet 版本的 Filter。
  */
 @Configuration
+@ConditionalOnWebApplication
 @ConditionalOnProperty(prefix = "lingframe", name = "enabled", havingValue = "true", matchIfMissing = true)
 @Import(LingFrameCoreConfiguration.class)
 public class LingFrameAutoConfiguration {
@@ -37,5 +43,20 @@ public class LingFrameAutoConfiguration {
         registration.setOrder(1);
         registration.setName("lingWebGovernanceFilter");
         return registration;
+    }
+
+    @Bean
+    public ApplicationListener<ContextRefreshedEvent> lingWebInitializer(
+            WebInterfaceManager manager,
+            @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping hostMapping,
+            RequestMappingHandlerAdapter adapter) {
+        return event -> {
+            if (event.getApplicationContext().getParent() == null) {
+                if (event.getApplicationContext() instanceof ConfigurableApplicationContext) {
+                    ConfigurableApplicationContext cac = (ConfigurableApplicationContext) event.getApplicationContext();
+                    manager.init(hostMapping, adapter, cac);
+                }
+            }
+        };
     }
 }

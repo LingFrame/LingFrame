@@ -16,21 +16,21 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 灵元实例：代表一个特定版本的灵元运行实体
- * 在 V0.3.0 中已采用 FSM (StateMachine) 进行生命周期防篡改保护。
+ * 采用 FSM (StateMachine) 进行生命周期保护。
  */
 @Slf4j
 public class LingInstance {
 
-    // 🔥 非 final：destroy() 时必须置 null 断开 → ClassLoader 引用链
+    // 注意：非 final，destroy() 时需置 null 断开 ClassLoader 引用链
     @Getter
     private volatile LingContainer container;
 
-    // 灵元完整定义 (包含治理配置、扩展参数等)
-    // 🔥 非 final：destroy() 时必须置 null
+    // 灵元完整定义（包含治理配置、扩展参数等）
+    // 注意：非 final，destroy() 时需置 null
     @Getter
     private volatile LingDefinition definition;
 
-    // 实例固有标签 (如 {"env": "canary", "tenant": "T1"})
+    // 实例固有标签（例如 {"env":"canary","tenant":"T1"}）
     private final Map<String, String> labels = new ConcurrentHashMap<>();
 
     // 引用计数器：记录当前正在处理的请求数
@@ -41,12 +41,12 @@ public class LingInstance {
     private final StateMachine<InstanceStatus> stateMachine;
 
     public LingInstance(LingContainer container, LingDefinition definition, EventBus eventBus) {
-        // 🔥 参数校验
+        // 参数校验
         this.container = Objects.requireNonNull(container, "container cannot be null");
         this.definition = Objects.requireNonNull(definition, "definition cannot be null");
 
         String lingId = definition.getId();
-        this.stateMachine = InstanceStatus.newMachine(lingId, eventBus);
+        this.stateMachine = InstanceStatus.newMachine(lingId);
 
         definition.validate();
     }
@@ -62,14 +62,14 @@ public class LingInstance {
     }
 
     /**
-     * 🔥 返回标签的不可变视图，防止外部篡改
+     * 返回标签的不可变视图，防止外部篡改
      */
     public Map<String, String> getLabels() {
         return Collections.unmodifiableMap(labels);
     }
 
     /**
-     * 🔥 安全地添加标签
+     * 安全地添加标签
      */
     public void addLabel(String key, String value) {
         if (key != null && value != null) {
@@ -78,7 +78,7 @@ public class LingInstance {
     }
 
     /**
-     * 🔥 批量添加标签
+     * 批量添加标签
      */
     public void addLabels(Map<String, String> newLabels) {
         if (newLabels != null) {
@@ -87,7 +87,7 @@ public class LingInstance {
     }
 
     /**
-     * 🔥 获取当前活跃请求数（不暴露 AtomicLong 本身）
+     * 获取当前活跃请求数（不暴露 AtomicLong 本身）
      */
     public long getActiveRequestCount() {
         return activeRequests.get();

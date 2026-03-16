@@ -1,18 +1,20 @@
 package com.lingframe.core.ling;
 
+import com.lingframe.core.event.EventBus;
+import com.lingframe.core.event.RuntimeStateChangedEvent;
+import com.lingframe.core.fsm.InstanceCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.fsm.StateMachine;
-import com.lingframe.api.event.LingStateChangedEvent;
-import com.lingframe.core.event.EventBus;
 import lombok.Getter;
 import lombok.ToString;
+
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
- * 灵元运行时（V0.3.0 聚合根纯化版）
- * 仅作为状态、数据和多版本实例池的宿主，剥离了生命周期、调用和路由等重度行为。
+ * 灵元运行时
+ * 仅承担状态、数据与多版本实例池的宿主职责，剥离生命周期、路由与调用逻辑。
  */
 @ToString
 public class LingRuntime {
@@ -45,21 +47,27 @@ public class LingRuntime {
     private final long installedAt = System.currentTimeMillis();
 
     public LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus) {
+        this(lingId, config, eventBus, null);
+    }
+
+    public LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
+            InstanceCoordinator instanceCoordinator) {
         this.lingId = lingId;
         this.config = config != null ? config : LingRuntimeConfig.defaults();
         this.instancePool = new InstancePool(lingId, this.config.getMaxHistorySnapshots());
-        this.stateMachine = RuntimeStatus.newMachine(lingId, eventBus);
+        this.instancePool.setInstanceCoordinator(instanceCoordinator);
+        this.stateMachine = RuntimeStatus.newMachine(lingId);
         if (eventBus != null) {
-            eventBus.subscribe(lingId, LingStateChangedEvent.class, this::handleStateChanged);
+            eventBus.subscribe(lingId, RuntimeStateChangedEvent.class, this::handleStateChanged);
         }
     }
 
-    private void handleStateChanged(LingStateChangedEvent event) {
+    private void handleStateChanged(RuntimeStateChangedEvent event) {
         if (event == null || event.getLingId() == null || !event.getLingId().equals(lingId)) {
             return;
         }
-        String current = event.getCurrentState();
-        if (RuntimeStatus.STOPPING.name().equals(current) || RuntimeStatus.REMOVED.name().equals(current)) {
+        RuntimeStatus current = event.getTo();
+        if (current == RuntimeStatus.STOPPING || current == RuntimeStatus.REMOVED) {
             instancePool.shutdown();
         }
     }
@@ -94,12 +102,16 @@ public class LingRuntime {
                 instancePool.hasAvailableInstance();
     }
 
-    /** 宏观状态便利方法 */
+    /**
+     * 宏观状态便捷方法
+     */
     public RuntimeStatus currentStatus() {
         return stateMachine.current();
     }
 
-    /** 获取所有 READY 状态实例（用于路由选择） */
+    /**
+     * 获取所有 READY 状态实例（用于路由选择）
+     */
     public List<LingInstance> getReadyInstances() {
         return instancePool.getActiveInstances().stream()
                 .filter(LingInstance::isReady)

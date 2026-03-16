@@ -121,7 +121,7 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
     }
 
     /**
-     * 注意 (V0.3.0 架构说明)：
+     * 注意 (架构说明)：
      * 这里通过 Spring Container 懒加载获取真实 Bean 实例，并配合 {@link InvokableMethodCache} 构建句柄。
      * 这是一种故意的防御性设计 (并非早期的临时方案)。
      * 如果在内核层启动或扫描时就直接硬抓取并强引用对方的 Class 或 Bean 实例对象，

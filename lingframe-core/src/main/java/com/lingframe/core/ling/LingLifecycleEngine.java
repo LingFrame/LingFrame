@@ -19,6 +19,14 @@ public interface LingLifecycleEngine {
             Map<String, String> labels);
 
     /**
+     * 热重载专用：允许同版本并存，先新建再切换流量
+     */
+    default void deployForReload(LingDefinition lingDefinition, File sourceFile, boolean isDefault,
+            Map<String, String> labels) {
+        deploy(lingDefinition, sourceFile, isDefault, labels);
+    }
+
+    /**
      * 推演生命周期流以停用组件并回收相关强引用。
      * 结束后会触发 InstanceDestroyedEvent 并经由 ResourceManager 清空一切物理痕迹。
      */
@@ -34,18 +42,11 @@ public interface LingLifecycleEngine {
     void undeploy(String lingId, String version);
 
     /**
-     * 按版本停用（不卸载），仅将实例置为不可路由状态。
-     *
-     * @param lingId  灵元ID
-     * @param version 目标版本
+     * 按实例卸载（用于热重载旧实例清理）
      */
-    void pauseVersion(String lingId, String version);
-
-    /**
-     * 按版本恢复（不重新部署），将实例恢复为可路由状态。
-     *
-     * @param lingId  灵元ID
-     * @param version 目标版本
-     */
-    void resumeVersion(String lingId, String version);
+    default void undeploy(String lingId, LingInstance instance) {
+        if (instance != null) {
+            undeploy(lingId, instance.getVersion());
+        }
+    }
 }

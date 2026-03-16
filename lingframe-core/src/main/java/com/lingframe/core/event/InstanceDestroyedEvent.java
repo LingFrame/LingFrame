@@ -10,10 +10,12 @@ import com.lingframe.api.event.LingEvent;
 public class InstanceDestroyedEvent implements LingEvent {
     private final String lingId;
     private final String version;
+    private final long timestamp;
 
     public InstanceDestroyedEvent(String lingId, String version) {
         this.lingId = lingId;
         this.version = version;
+        this.timestamp = System.currentTimeMillis();
     }
 
     public String getLingId() {
@@ -22,5 +24,9 @@ public class InstanceDestroyedEvent implements LingEvent {
 
     public String getVersion() {
         return version;
+    }
+
+    public long getTimestamp() {
+        return timestamp;
     }
 }

@@ -1,5 +1,6 @@
 package com.lingframe.starter.adapter;
 
+import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
@@ -42,7 +43,9 @@ public class SpringContainerFactory implements ContainerFactory {
     }
 
     @Override
-    public LingContainer create(String lingId, File sourceFile, ClassLoader classLoader) {
+    public LingContainer create(LingDefinition definition, File sourceFile, ClassLoader classLoader) {
+        String lingId = definition != null ? definition.getId() : null;
+        String version = definition != null ? definition.getVersion() : null;
         try {
             String mainClass = AsmMainClassScanner.discoverMainClass(lingId, sourceFile, classLoader);
             log.info("[{}] Found Main-Class: {}", lingId, mainClass);
@@ -68,15 +71,17 @@ public class SpringContainerFactory implements ContainerFactory {
                             "org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration," +
                             "org.springframework.boot.actuate.autoconfigure.endpoint.jmx.JmxEndpointAutoConfiguration");
 
-            return new SpringLingContainer(
+            SpringLingContainer container = new SpringLingContainer(
                     builder,
                     classLoader,
                     webInterfaceManager,
                     serviceExcludedPackages,
                     customizers, // 🔥 传入定制器
                     mainContext,
-                    resourceGuards // 🔥 传入资源守卫列表
+                    resourceGuards,
+                    version
             );
+            return container;
 
         } catch (Exception e) {
             log.error("[{}] Create container failed", lingId, e);

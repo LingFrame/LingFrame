@@ -6,6 +6,7 @@ import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.config.LingFrameProperties;
@@ -50,7 +51,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             return;
         }
 
-        WebInterfaceMetadata lingMeta = webInterfaceManager.getMetadata(handlerMethod);
+        WebInterfaceMetadata lingMeta = webInterfaceManager.getMetadata(request, handlerMethod);
         boolean isLingRequest = (lingMeta != null);
 
         if (!isLingRequest && !properties.getLingCoreGovernance().isEnabled()) {
@@ -79,6 +80,11 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             // 借道 Pipeline 执行全套治理
             try {
                 pipelineEngine.invoke(ctx);
+                Object routed = ctx.getAttachments().get("ling.target.instance");
+                if (routed instanceof LingInstance) {
+                    request.setAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY,
+                            ((LingInstance) routed).getVersion());
+                }
             } catch (LingInvocationException e) {
                 // 治理拒绝：由管道层统一抛出的受控异常。针对卸载/停机期间降级为 info 避免日志风暴
                 if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
@@ -182,6 +188,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         }
         ctx.setTraceId(traceId);
         ctx.setTargetLingId(lingId); // Set targetLingId instead of lingId
+        ctx.setServiceFQSID(lingId + ":http");
         ctx.setCallerLingId("http-gateway");
         ctx.setResourceType("HTTP");
         ctx.setResourceId(request.getMethod() + " " + request.getRequestURI());

@@ -18,13 +18,15 @@ public class InstanceStateChangedEvent implements LingEvent {
     private final String version;
     private final InstanceStatus fromStatus;
     private final InstanceStatus toStatus;
+    private final long timestamp;
 
     public InstanceStateChangedEvent(String lingId, String version,
-            InstanceStatus fromStatus, InstanceStatus toStatus) {
+                                     InstanceStatus fromStatus, InstanceStatus toStatus) {
         this.lingId = lingId;
         this.version = version;
         this.fromStatus = fromStatus;
         this.toStatus = toStatus;
+        this.timestamp = System.currentTimeMillis();
     }
 
     public String getLingId() {
@@ -41,6 +43,10 @@ public class InstanceStateChangedEvent implements LingEvent {
 
     public InstanceStatus getToStatus() {
         return toStatus;
+    }
+
+    public long getTimestamp() {
+        return timestamp;
     }
 
     @Override

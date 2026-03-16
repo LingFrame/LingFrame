@@ -1,66 +1,51 @@
 package com.lingframe.starter.configuration;
 
 import com.lingframe.api.context.LingContext;
-import com.lingframe.starter.resource.SpringBasicResourceGuard;
-import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.classloader.SharedApiManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.CoreLingContext;
+import com.lingframe.core.deploy.DefaultLingDeployService;
+import com.lingframe.core.deploy.LingDeployService;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.LingCoreGovernanceRule;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.governance.provider.StandardGovernancePolicyProvider;
-import com.lingframe.core.ling.DefaultLingLifecycleEngine;
-import com.lingframe.core.ling.DefaultLingRepository;
-import com.lingframe.core.ling.DefaultLingResourceManager;
-import com.lingframe.core.ling.DefaultLingServiceRegistry;
-import com.lingframe.core.ling.InvokableMethodCache;
-import com.lingframe.core.ling.LingLifecycleEngine;
-import com.lingframe.core.ling.LingRepository;
-import com.lingframe.core.ling.LingResourceManager;
-import com.lingframe.core.ling.LingRuntimeConfig;
-import com.lingframe.core.ling.LingServiceRegistry;
-import com.lingframe.core.ling.LingUnloadCoordinator;
+import com.lingframe.core.invoker.FastLingServiceInvoker;
+import com.lingframe.core.ling.*;
 import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.core.security.DefaultPermissionService;
-import com.lingframe.core.invoker.FastLingServiceInvoker;
 import com.lingframe.core.spi.*;
 import com.lingframe.infra.cache.configuration.CaffeineWrapperProcessor;
 import com.lingframe.infra.cache.configuration.RedisWrapperProcessor;
 import com.lingframe.infra.cache.configuration.SpringCacheWrapperProcessor;
 import com.lingframe.infra.storage.configuration.DataSourceWrapperProcessor;
-import com.lingframe.starter.resource.StorageResourceGuard;
 import com.lingframe.starter.adapter.SpringContainerFactory;
 import com.lingframe.starter.config.LingFrameProperties;
-import com.lingframe.core.deploy.DefaultLingDeployService;
-import com.lingframe.core.deploy.LingDeployService;
 import com.lingframe.starter.event.ServiceExporterListener;
 import com.lingframe.starter.processor.LingCoreBeanGovernanceProcessor;
 import com.lingframe.starter.processor.LingReferenceInjector;
+import com.lingframe.starter.resource.SpringBasicResourceGuard;
+import com.lingframe.starter.resource.StorageResourceGuard;
+import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.starter.web.WebInterfaceManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationListener;
-import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.event.ContextRefreshedEvent;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -91,6 +76,12 @@ public class LingFrameCoreConfiguration {
     @ConditionalOnMissingBean
     public EventBus eventBus() {
         return new EventBus();
+    }
+
+    @Bean(initMethod = "start", destroyMethod = "stop")
+    @ConditionalOnMissingBean
+    public RuntimeCoordinator runtimeCoordinator(EventBus eventBus) {
+        return new RuntimeCoordinator(eventBus);
     }
 
     @Bean
@@ -164,15 +155,15 @@ public class LingFrameCoreConfiguration {
     @Bean(destroyMethod = "shutdown")
     @ConditionalOnMissingBean
     public LingResourceManager lingResourceManager(LingRepository lingRepository, EventBus eventBus,
-            InvokableMethodCache methodCache) {
+                                                   InvokableMethodCache methodCache) {
         return new DefaultLingResourceManager(lingRepository, eventBus, methodCache);
     }
 
     @Bean
     public ContainerFactory containerFactory(ApplicationContext parentContext,
-            WebInterfaceManager webInterfaceManager,
-            ObjectProvider<List<LingContextCustomizer>> customizersProvider,
-            List<ResourceGuard> resourceGuards) {
+                                             WebInterfaceManager webInterfaceManager,
+                                             ObjectProvider<List<LingContextCustomizer>> customizersProvider,
+                                             List<ResourceGuard> resourceGuards) {
         List<LingContextCustomizer> customizers = customizersProvider.getIfAvailable(Collections::emptyList);
         return new SpringContainerFactory(parentContext, webInterfaceManager, customizers, resourceGuards);
     }
@@ -232,17 +223,17 @@ public class LingFrameCoreConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public LingLifecycleEngine lingLifecycleEngine(ContainerFactory containerFactory,
-            PermissionService permissionService,
-            LingLoaderFactory lingLoaderFactory,
-            ObjectProvider<List<LingSecurityVerifier>> verifiersProvider,
-            EventBus eventBus,
-            LingFrameConfig lingFrameConfig,
-            LingRepository lingRepository,
-            LingServiceRegistry lingServiceRegistry,
-            InvocationPipelineEngine pipelineEngine,
-            List<ResourceGuard> resourceGuards,
-            LingResourceManager lingResourceManager,
-            ObjectProvider<HotSwapWatcher> hotSwapWatcherProvider) {
+                                                   PermissionService permissionService,
+                                                   LingLoaderFactory lingLoaderFactory,
+                                                   ObjectProvider<List<LingSecurityVerifier>> verifiersProvider,
+                                                   EventBus eventBus,
+                                                   LingFrameConfig lingFrameConfig,
+                                                   LingRepository lingRepository,
+                                                   LingServiceRegistry lingServiceRegistry,
+                                                   InvocationPipelineEngine pipelineEngine,
+                                                   List<ResourceGuard> resourceGuards,
+                                                   LingResourceManager lingResourceManager,
+                                                   ObjectProvider<HotSwapWatcher> hotSwapWatcherProvider) {
         List<LingSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
                 pipelineEngine, resourceGuards, lingResourceManager);
@@ -285,8 +276,8 @@ public class LingFrameCoreConfiguration {
 
     @Bean(destroyMethod = "shutdown")
     public ServiceExporterListener serviceExporterListener(EventBus eventBus, LingRepository lingRepository,
-            LingServiceRegistry lingServiceRegistry,
-            ObjectProvider<List<ServiceExporter>> exportersProvider) {
+                                                           LingServiceRegistry lingServiceRegistry,
+                                                           ObjectProvider<List<ServiceExporter>> exportersProvider) {
         List<ServiceExporter> exporters = exportersProvider.getIfAvailable(Collections::emptyList);
         return new ServiceExporterListener(eventBus, lingRepository, lingServiceRegistry, exporters);
     }
@@ -322,10 +313,10 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     public LingContext lingCoreContext(LingRepository lingRepository,
-            LingServiceRegistry lingServiceRegistry,
-            InvocationPipelineEngine pipelineEngine,
-            PermissionService permissionService,
-            EventBus eventBus) {
+                                       LingServiceRegistry lingServiceRegistry,
+                                       InvocationPipelineEngine pipelineEngine,
+                                       PermissionService permissionService,
+                                       EventBus eventBus) {
         return new CoreLingContext("lingcore-app", lingRepository, lingServiceRegistry, pipelineEngine,
                 permissionService, eventBus);
     }
@@ -336,22 +327,8 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
-    public WebInterfaceManager webInterfaceManager() {
-        return new WebInterfaceManager();
+    public WebInterfaceManager webInterfaceManager(LingRepository lingRepository, TrafficRouter trafficRouter) {
+        return new WebInterfaceManager(lingRepository, trafficRouter);
     }
 
-    @Bean
-    public ApplicationListener<ContextRefreshedEvent> lingWebInitializer(
-            WebInterfaceManager manager,
-            @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping hostMapping,
-            RequestMappingHandlerAdapter adapter) {
-        return event -> {
-            if (event.getApplicationContext().getParent() == null) {
-                if (event.getApplicationContext() instanceof ConfigurableApplicationContext) {
-                    ConfigurableApplicationContext cac = (ConfigurableApplicationContext) event.getApplicationContext();
-                    manager.init(hostMapping, adapter, cac);
-                }
-            }
-        };
-    }
 }

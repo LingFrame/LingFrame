@@ -29,6 +29,7 @@ public class WebInterfaceMetadata {
     private String requiredPermission;
     private boolean shouldAudit;
     private String auditAction;
+    private String version;
 
     /**
      * 🔥 卸载时清理引用，帮助 GC
