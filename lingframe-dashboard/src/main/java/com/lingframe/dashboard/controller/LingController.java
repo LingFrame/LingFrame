@@ -12,7 +12,11 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.lang.management.*;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 灵元治理仪表盘控制器
@@ -24,6 +28,10 @@ import java.util.List;
 @CrossOrigin(origins = "*")
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class LingController {
+
+    // CPU 计算用的缓存变量
+    private final AtomicLong lastCpuTime = new AtomicLong(0);
+    private final AtomicLong lastSampleTime = new AtomicLong(0);
 
     private final LingFrameConfig lingFrameConfig;
 
@@ -201,6 +209,95 @@ public class LingController {
         } catch (Exception e) {
             log.error("Failed to reset stats: {}", lingId, e);
             return ApiResponse.error("重置失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取 JVM 性能指标
+     */
+    @GetMapping("/metrics")
+    public ApiResponse<Map<String, Object>> getMetrics() {
+        try {
+            Map<String, Object> metrics = new HashMap<>();
+
+            // CPU 使用率（通过 Process CPU 时间计算）
+            int cpuUsage = calculateCpuUsage();
+            metrics.put("cpuUsage", cpuUsage);
+
+            // 内存信息 (JVM 堆内存)
+            Runtime runtime = Runtime.getRuntime();
+            long totalMemory = runtime.totalMemory();  // 当前分配的内存
+            long freeMemory = runtime.freeMemory();
+            long usedMemory = totalMemory - freeMemory; // 已使用的内存
+
+            metrics.put("memoryUsedMB", usedMemory / 1024 / 1024);
+            metrics.put("memoryTotalMB", totalMemory / 1024 / 1024);
+            metrics.put("memoryUsage", Math.round((double) usedMemory / totalMemory * 100)); // 使用当前分配内存计算百分比
+
+            // 堆内存（通过 MemoryMXBean）
+            MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
+            MemoryUsage heapUsage = memoryMXBean.getHeapMemoryUsage();
+            metrics.put("heapUsedMB", heapUsage.getUsed() / 1024 / 1024);
+            metrics.put("heapMaxMB", heapUsage.getMax() / 1024 / 1024);
+
+            // 线程数
+            ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+            metrics.put("threadCount", threadMXBean.getThreadCount());
+
+            // GC 次数
+            long gcCount = 0;
+            for (GarbageCollectorMXBean gcBean : ManagementFactory.getGarbageCollectorMXBeans()) {
+                gcCount += gcBean.getCollectionCount();
+            }
+            metrics.put("gcCount", gcCount);
+
+            return ApiResponse.ok(metrics);
+        } catch (Exception e) {
+            log.error("Failed to get metrics", e);
+            return ApiResponse.error("获取性能指标失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 计算 JVM 进程 CPU 使用率
+     * 使用 ThreadMXBean 统计所有线程的 CPU 时间
+     */
+    private int calculateCpuUsage() {
+        try {
+            ThreadMXBean threadBean = ManagementFactory.getThreadMXBean();
+            long[] threadIds = threadBean.getAllThreadIds();
+            long totalCpuTime = 0;
+
+            // 获取每个线程的 CPU 时间
+            for (long tid : threadIds) {
+                long cpuTime = threadBean.getThreadCpuTime(tid);
+                if (cpuTime > 0) {
+                    totalCpuTime += cpuTime;
+                }
+            }
+
+            long currentTime = System.nanoTime();
+            long lastCpu = lastCpuTime.get();
+            long lastTime = lastSampleTime.get();
+
+            int cpuUsage = 0;
+            if (lastCpu > 0 && lastTime > 0) {
+                long cpuDelta = totalCpuTime - lastCpu;
+                long timeDelta = currentTime - lastTime;
+
+                if (timeDelta > 0) {
+                    // CPU 时间 / 经过时间 / 核心数 = 使用率
+                    int processors = Runtime.getRuntime().availableProcessors();
+                    cpuUsage = (int) Math.min(100, Math.round((cpuDelta * 100.0) / (timeDelta * processors)));
+                }
+            }
+
+            lastCpuTime.set(totalCpuTime);
+            lastSampleTime.set(currentTime);
+
+            return cpuUsage;
+        } catch (Exception e) {
+            return 0;
         }
     }
 

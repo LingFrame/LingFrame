@@ -57,9 +57,22 @@ createApp({
 
         const envLabels = { dev: '开发', test: '测试', prod: '生产' };
 
+        // 性能监控数据
+        const perfMetrics = reactive({
+            cpu: 0,
+            memory: 0,
+            memoryUsed: 0,
+            memoryTotal: 0,
+            heapUsed: 0,
+            heapMax: 0,
+            threads: 0,
+            gcCount: 0
+        });
+
         let eventSource = null;
         let timeTimer = null;
         let stressTimer = null;
+        let perfTimer = null;
         let logIdCounter = 0;
         let toastIdCounter = 0;
 
@@ -949,6 +962,26 @@ createApp({
 
         // ... Existing code ...
 
+        // 获取性能指标
+        const fetchPerformanceMetrics = async () => {
+            try {
+                const data = await api.get('/lings/metrics');
+                if (data) {
+                    perfMetrics.cpu = data.cpuUsage || 0;
+                    perfMetrics.memory = data.memoryUsage || 0;
+                    perfMetrics.memoryUsed = data.memoryUsedMB || 0;
+                    perfMetrics.memoryTotal = data.memoryTotalMB || 0;
+                    perfMetrics.heapUsed = data.heapUsedMB || 0;
+                    perfMetrics.heapMax = data.heapMaxMB || 0;
+                    perfMetrics.threads = data.threadCount || 0;
+                    perfMetrics.gcCount = data.gcCount || 0;
+                }
+            } catch (e) {
+                // 静默失败，不打扰用户
+                console.log('Failed to fetch metrics:', e.message);
+            }
+        };
+
         onMounted(async () => {
             updateTime();
             timeTimer = setInterval(updateTime, 1000);
@@ -965,6 +998,10 @@ createApp({
 
             // 初始化同步
             updateEnvMode(currentEnv.value);
+
+            // 启动性能监控
+            fetchPerformanceMetrics();
+            perfTimer = setInterval(fetchPerformanceMetrics, 3000);
         });
 
         // ==================== 监听环境切换 ====================
@@ -992,7 +1029,13 @@ createApp({
             }
         };
 
-        // ... (keep onUnmounted)
+        // 清理定时器
+        onUnmounted(() => {
+            if (timeTimer) clearInterval(timeTimer);
+            if (stressTimer) clearInterval(stressTimer);
+            if (perfTimer) clearInterval(perfTimer);
+            if (eventSource) eventSource.close();
+        });
 
         return {
             // I18n
@@ -1003,6 +1046,9 @@ createApp({
             logs, lastAudit, logViewMode, logContainer, isUserScrolling, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
             stats, loading, modal, toasts, envLabels, uploadModal,
+
+            // 性能监控
+            perfMetrics,
 
             // 计算属性
             activeLing, canCanary, canOperate, displayLogs,
@@ -1015,7 +1061,7 @@ createApp({
             formatDrift, formatTime, formatSize,
             getStatusClass, getLingShortName, getLingTagClass, getLogColor,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
-            doUpdateStatus
+            doUpdateStatus, fetchPerformanceMetrics
         };
     }
 }).mount('#app');

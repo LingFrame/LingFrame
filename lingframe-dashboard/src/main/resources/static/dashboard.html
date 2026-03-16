@@ -13,20 +13,71 @@
     <link rel="stylesheet" href="css/jetbrains-mono.css">
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
+        /* CSS 变量系统 - 深色版 */
+        :root {
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --secondary-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --info-color: #6366f1;
+            --dark-bg: #0a0f1a;
+            --card-bg: #151b2b;
+            --border-color: #2a3441;
+            --text-primary: #f1f5f9;
+            --text-secondary: #64748b;
+        }
+
         .lang-switch {
-            background-color: #1e293b;
-            color: #94a3b8;
-            border: 1px solid #334155;
+            background-color: var(--card-bg);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
             border-radius: 0.375rem;
             padding: 0.25rem 0.5rem;
             font-size: 0.875rem;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
         }
 
         .lang-switch:hover {
             color: #fff;
             border-color: #475569;
+            background-color: #334155;
+            transform: translateY(-1px);
+        }
+
+        /* 凤凰涅槃：浴火重生文字特效 (V3.0) */
+        @keyframes phoenix-fire {
+            0% { background-position: 0% 50%; filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.4)) brightness(1); }
+            25% { filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.6)) brightness(1.2); }
+            50% { background-position: 100% 50%; filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.8)) brightness(1.3); }
+            75% { filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.6)) brightness(1.1); }
+            100% { background-position: 0% 50%; filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.4)) brightness(1); }
+        }
+
+        @keyframes phoenix-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        .animate-phoenix {
+            background: linear-gradient(90deg, 
+                #3b82f6 0%, 
+                #8b5cf6 15%, 
+                #ef4444 35%, 
+                #f97316 50%, 
+                #f59e0b 65%, 
+                #ef4444 85%, 
+                #3b82f6 100%);
+            background-size: 400% 400%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: phoenix-fire 3s ease infinite, phoenix-pulse 2s ease-in-out infinite;
+            display: inline-block;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            text-shadow: 0 0 30px rgba(239, 68, 68, 0.3);
         }
     </style>
 </head>
@@ -91,7 +142,11 @@
                     </div>
                     <div>
                         <h1 class="font-bold text-white text-lg tracking-tight">{{ t('branding.name') }}</h1>
-                        <p class="text-xs text-slate-500 font-mono tracking-wide mt-0.5">{{ t('version') }}</p>
+                        <p class="text-xs font-mono tracking-wide mt-0.5 flex items-center">
+                            <span class="text-slate-500">{{ t('version') }}</span>
+                            <span class="mx-1.5 text-slate-700">·</span>
+                            <span class="animate-phoenix font-black italic">{{ t('branding.codename') }}</span>
+                        </p>
                     </div>
                 </div>
             </div>
@@ -235,9 +290,10 @@
             <div class="flex-grow overflow-auto p-6">
                 <div class="content-grid grid grid-cols-12 gap-6 max-w-[1600px] mx-auto">
 
-                    <!-- 左列：灵元列表 -->
-                    <div class="col-span-12 lg:col-span-3">
-                        <div class="card h-full relative">
+                    <!-- 左列：灵元列表 + 性能监控 -->
+                    <div class="col-span-12 lg:col-span-3 space-y-6">
+                        <!-- 灵元列表 -->
+                        <div class="card relative">
                             <div class="card-header">
                                 <h3 class="font-bold text-base text-white">{{ t('lingList.title') }}</h3>
                                 <span class="text-sm text-slate-500">{{ t('lingList.count', { n: lings.length })
@@ -253,7 +309,7 @@
                                 <p class="text-base text-slate-500">{{ t('lingList.empty') }}</p>
                             </div>
 
-                            <div class="max-h-[800px] overflow-y-auto" v-else>
+                            <div class="overflow-y-auto overflow-x-hidden max-h-[400px]" v-else>
                                 <div v-for="p in lings" :key="p.lingId" @click="selectLing(p.lingId)"
                                     :class="['Ling-item', activeId === p.lingId ? 'active' : '']">
                                     <div class="flex justify-between items-start mb-2">
@@ -308,6 +364,92 @@
                                                 {{ p.canaryVersion }}
                                             </span>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 设备性能监控 -->
+                        <div class="card relative">
+                            <div class="card-header">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-microchip text-blue-400"></i>
+                                    <h3 class="font-bold text-base text-white">{{ t('performance.title') || '系统性能' }}</h3>
+                                </div>
+                                <span class="text-xs text-slate-500">{{ t('performance.realtime') || '实时监控' }}</span>
+                            </div>
+                            <div class="p-4 space-y-4">
+                                <!-- CPU 使用率 -->
+                                <div>
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-xs text-slate-400 flex items-center gap-1">
+                                            <i class="fa-solid fa-microchip text-slate-500"></i> CPU
+                                        </span>
+                                        <span class="text-sm font-mono font-bold" :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">
+                                            {{ perfMetrics.cpu }}%
+                                        </span>
+                                    </div>
+                                    <div class="h-3 bg-slate-800 rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]"
+                                            :class="perfMetrics.cpu > 80 ? 'bg-red-500 shadow-red-500/30' : perfMetrics.cpu > 60 ? 'bg-amber-500 shadow-amber-500/30' : 'bg-green-500 shadow-green-500/30'"
+                                            :style="{ width: Math.max(3, perfMetrics.cpu) + '%' }"></div>
+                                    </div>
+                                </div>
+
+                                <!-- JVM 内存 (堆 + 非堆) -->
+                                <div>
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-xs text-slate-400 flex items-center gap-1">
+                                            <i class="fa-solid fa-memory text-slate-500"></i> JVM 内存
+                                        </span>
+                                        <span class="text-sm font-mono font-bold" :class="perfMetrics.memory > 80 ? 'text-red-400' : perfMetrics.memory > 60 ? 'text-amber-400' : 'text-blue-400'">
+                                            {{ perfMetrics.memory }}%
+                                        </span>
+                                    </div>
+                                    <div class="h-3 bg-slate-800 rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]"
+                                            :class="perfMetrics.memory > 80 ? 'bg-red-500 shadow-red-500/30' : perfMetrics.memory > 60 ? 'bg-amber-500 shadow-amber-500/30' : 'bg-blue-500 shadow-blue-500/30'"
+                                            :style="{ width: Math.max(3, perfMetrics.memory) + '%' }"></div>
+                                    </div>
+                                    <div class="text-xs text-slate-500 mt-1 text-right font-mono">
+                                        已用 {{ perfMetrics.memoryUsed }}MB / 分配 {{ perfMetrics.memoryTotal }}MB
+                                    </div>
+                                </div>
+
+                                <!-- 堆内存详情 -->
+                                <div class="bg-slate-800/30 rounded-lg p-3">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-xs text-slate-400 flex items-center gap-1">
+                                            <i class="fa-solid fa-cubes text-purple-500"></i> 堆内存
+                                        </span>
+                                        <span class="text-xs font-mono font-bold text-purple-400">
+                                            {{ Math.round(perfMetrics.heapUsed / perfMetrics.heapMax * 100) }}%
+                                        </span>
+                                    </div>
+                                    <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                                        <div class="h-full bg-purple-500 rounded-full transition-all duration-500"
+                                            :style="{ width: Math.max(2, perfMetrics.heapUsed / perfMetrics.heapMax * 100) + '%' }"></div>
+                                    </div>
+                                    <div class="text-xs text-slate-500 mt-1 text-right font-mono">
+                                        {{ perfMetrics.heapUsed }}MB / {{ perfMetrics.heapMax }}MB
+                                    </div>
+                                </div>
+
+                                <!-- 线程数 & GC 次数 网格布局 -->
+                                <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+                                    <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                        <div class="flex items-center justify-center gap-1 mb-1">
+                                            <i class="fa-solid fa-code-branch text-cyan-500 text-xs"></i>
+                                            <span class="text-[10px] text-slate-500 uppercase">{{ t('performance.threads') || '活跃线程' }}</span>
+                                        </div>
+                                        <span class="text-lg font-mono font-bold text-cyan-400">{{ perfMetrics.threads }}</span>
+                                    </div>
+                                    <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                        <div class="flex items-center justify-center gap-1 mb-1">
+                                            <i class="fa-solid fa-recycle text-pink-500 text-xs"></i>
+                                            <span class="text-[10px] text-slate-500 uppercase">{{ t('performance.gc') || 'GC 次数' }}</span>
+                                        </div>
+                                        <span class="text-lg font-mono font-bold text-pink-400">{{ perfMetrics.gcCount }}</span>
                                     </div>
                                 </div>
                             </div>
@@ -486,7 +628,7 @@
                     </div>
 
                     <!-- 右列：控制面板 -->
-                    <div class="col-span-12 lg:col-span-3 space-y-6">
+                    <div class="col-span-12 lg:col-span-3 xl:col-span-3 space-y-6" style="min-width: 280px; max-width: 320px;">
 
                         <!-- 灵元控制 -->
                         <div class="card relative">
@@ -507,40 +649,41 @@
                                     <!-- 灵元管理中枢 -->
                                     <div class="space-y-4">
                                         <div v-for="v in activeLing?.versionDetails" :key="v.version"
-                                            class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 shadow-lg animate-in fade-in slide-in-from-right-4 transition-all hover:border-slate-500">
+                                            class="bg-[#111827] border border-[#1f2937] rounded-xl p-4 shadow-lg transition-all hover:border-[#2a3441]">
 
-                                            <!-- 卡片头部: 视觉对齐 (V2.5) -->
-                                            <div class="flex justify-between items-center mb-4">
-                                                <div class="flex items-center gap-3">
-                                                    <!-- 版本号: 核心数字染色 -->
-                                                    <span class="text-2xl font-mono font-black tracking-tight" 
-                                                        :class="v.isDefault ? 'text-blue-400' : v.isCanary ? 'text-amber-400' : 'text-white'">
+                                            <!-- 卡片头部: 垂直布局避免拥挤 -->
+                                            <div class="mb-3">
+                                                <div class="flex items-center justify-between mb-2">
+                                                    <!-- 版本号: 缩小字号防止换行 -->
+                                                    <span class="text-lg font-mono font-bold tracking-tight truncate max-w-[140px]" 
+                                                        :class="v.isDefault ? 'text-blue-400' : v.isCanary ? 'text-amber-400' : 'text-white'"
+                                                        :title="v.version">
                                                         {{ v.version }}
                                                     </span>
-                                                    <!-- 状态展示: 直接复用左侧列表的高质感 Tag 方案 -->
-                                                    <span :class="['text-[11px] px-2.5 py-0.5 rounded-full flex-shrink-0 font-black uppercase tracking-tighter', getStatusClass(v.status)]">
-                                                        {{ v.status }}
-                                                    </span>
+                                                    <!-- 流量占比 -->
+                                                    <div class="text-xl font-mono font-bold"
+                                                        :class="v.isDefault ? 'text-blue-400' : v.isCanary ? 'text-amber-400' : 'text-white'">
+                                                        {{ v.trafficWeight }}%
+                                                    </div>
                                                 </div>
-                                                <!-- 流量占比: 对齐大号数字 -->
-                                                <div class="text-2xl font-mono font-black leading-none"
-                                                    :class="v.isDefault ? 'text-blue-400' : v.isCanary ? 'text-amber-400' : 'text-white'">
-                                                    {{ v.trafficWeight }}%
-                                                </div>
+                                                <!-- 状态标签单独一行 -->
+                                                <span :class="['inline-block text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter', getStatusClass(v.status)]">
+                                                    {{ v.status }}
+                                                </span>
                                             </div>
 
-                                            <!-- 语义化操作按钮组 (修复状态判定逻辑) -->
-                                            <div class="grid grid-cols-2 gap-3 mb-2">
-                                                <!-- 状态判定支持各种变体: 只要不是正在运行的状态，都显示激活 -->
+                                            <!-- 操作按钮组: 固定2列布局 -->
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <!-- 激活/暂停 -->
                                                 <button v-if="v.status !== 'ACTIVE' && v.status !== 'IN_USE'"
                                                     @click="doUpdateStatus('ACTIVE', v.version)"
-                                                    class="flex items-center justify-center gap-2 bg-green-600/90 hover:bg-green-500 text-white font-bold py-2 rounded-lg transition-all active:scale-95 shadow-lg shadow-green-900/20">
-                                                    <i class="fa-solid fa-play"></i>
+                                                    class="flex items-center justify-center gap-1.5 bg-green-600 hover:bg-green-500 text-white text-sm font-bold py-2 rounded-lg transition-all active:scale-95">
+                                                    <i class="fa-solid fa-play text-xs"></i>
                                                     {{ t('control.activate') }}
                                                 </button>
                                                 <button v-else @click="doUpdateStatus('INACTIVE', v.version)"
-                                                    class="flex items-center justify-center gap-2 bg-blue-600/90 hover:bg-blue-500 text-white font-bold py-2 rounded-lg transition-all active:scale-95 shadow-lg shadow-blue-900/20">
-                                                    <i class="fa-solid fa-pause"></i>
+                                                    class="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold py-2 rounded-lg transition-all active:scale-95">
+                                                    <i class="fa-solid fa-pause text-xs"></i>
                                                     {{ t('control.inactivate') }}
                                                 </button>
 
@@ -548,8 +691,8 @@
                                                 <button
                                                     v-if="currentEnv === 'dev' && (v.status === 'ACTIVE' || v.status === 'IN_USE')"
                                                     @click="doReloadLing(activeId, v.version)"
-                                                    class="flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded-lg transition-all active:scale-95">
-                                                    <i class="fa-solid fa-rotate"></i>
+                                                    class="flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold py-2 rounded-lg transition-all active:scale-95">
+                                                    <i class="fa-solid fa-rotate text-xs"></i>
                                                     {{ t('control.reload') }}
                                                 </button>
 

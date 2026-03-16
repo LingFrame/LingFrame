@@ -1,7 +1,8 @@
 {
   "branding": {
     "name": "LingFrame",
-    "icon": "L"
+    "icon": "L",
+    "codename": "Nirvana"
   },
     "title": "LingFrame | Governance Center",
     "version": "V0.3.0",
@@ -145,9 +146,17 @@
         "alsoEnabled": " (also enabled {perm})",
         "alsoDisabled": " (also disabled {perm})",
         "installSuccess": "Ling installed successfully",
-        "installFailed": "Ling install failed",
-        "reloadSuccess": "Ling reloaded successfully",
-        "reloadFailed": "Ling reload failed",
-        "lingVersionUnloaded": "Version {version} unloaded successfully"
-    }
+    "installFailed": "Ling install failed",
+    "reloadSuccess": "Ling reloaded successfully",
+    "reloadFailed": "Ling reload failed",
+    "lingVersionUnloaded": "Version {version} unloaded successfully"
+  },
+  "performance": {
+    "title": "System Performance",
+    "realtime": "Real-time Monitor",
+    "memory": "Memory",
+    "heap": "Heap Memory",
+    "threads": "Active Threads",
+    "gc": "GC Count"
+  }
 }
