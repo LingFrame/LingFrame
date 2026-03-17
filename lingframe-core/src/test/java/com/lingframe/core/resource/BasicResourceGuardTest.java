@@ -31,9 +31,6 @@ class BasicResourceGuardTest {
 
     @AfterEach
     void tearDown() {
-        if (resourceGuard instanceof BasicResourceGuard) {
-            resourceGuard.shutdown();
-        }
     }
 
     @Nested
@@ -85,51 +82,6 @@ class BasicResourceGuardTest {
                 count++;
             }
             return count;
-        }
-    }
-
-    @Nested
-    @DisplayName("detectLeak() 方法")
-    class DetectLeakTests {
-
-        @Test
-        @DisplayName("应该正常执行泄漏检测，不抛异常")
-        void shouldExecuteWithoutException() {
-            ClassLoader testClassLoader = getClass().getClassLoader();
-
-            assertDoesNotThrow(() -> resourceGuard.detectLeak("test-ling", testClassLoader));
-        }
-
-        @Test
-        @DisplayName("应该处理可被回收的 ClassLoader")
-        void shouldDetectRecyclableClassLoader() throws InterruptedException {
-            // 创建一个没有强引用的 ClassLoader
-            URLClassLoader disposableLoader = new URLClassLoader(new URL[0], null);
-
-            // 调用泄漏检测
-            resourceGuard.detectLeak("test-ling", disposableLoader);
-
-            // 释放引用
-            disposableLoader = null;
-
-            // 等待检测完成（检测器会在 5 秒后执行）
-            // 这里不实际等待，只验证调用不抛异常
-        }
-    }
-
-    @Nested
-    @DisplayName("shutdown() 方法")
-    class ShutdownTests {
-
-        @Test
-        @DisplayName("应该正常关闭调度器")
-        void shouldShutdownGracefully() {
-            BasicResourceGuard guard = new BasicResourceGuard();
-
-            assertDoesNotThrow(guard::shutdown);
-
-            // 关闭后再次调用不应抛异常
-            assertDoesNotThrow(guard::shutdown);
         }
     }
 }

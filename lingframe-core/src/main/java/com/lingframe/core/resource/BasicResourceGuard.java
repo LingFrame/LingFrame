@@ -4,7 +4,6 @@ import com.lingframe.core.spi.ResourceGuard;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.ref.Reference;
-import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -17,23 +16,10 @@ import java.util.Map;
 import java.util.IdentityHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class BasicResourceGuard implements ResourceGuard {
 
-    private static final int LEAK_DETECTION_DELAY_SECONDS = 5;
-    private static final ClassLoader CORE_CLASSLOADER = BasicResourceGuard.class.getClassLoader();
-
-    // =========================================================================
-    // JDK 版本检测 & 能力探测
-    // =========================================================================
-
-    /**
-     * JDK 主版本号: 8, 11, 17, 21, 24...
-     */
     private static final int JDK_VERSION = detectJdkVersion();
 
     /**
@@ -160,15 +146,7 @@ public class BasicResourceGuard implements ResourceGuard {
     // 核心逻辑
     // =========================================================================
 
-    private final ScheduledExecutorService scheduler;
-
     public BasicResourceGuard() {
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "lingframe-leak-detector");
-            t.setDaemon(true);
-            t.setContextClassLoader(CORE_CLASSLOADER);
-            return t;
-        });
     }
 
     @Override
@@ -204,30 +182,7 @@ public class BasicResourceGuard implements ResourceGuard {
         log.info("[{}] Resource cleanup completed", lingId);
     }
 
-    @Override
-    public void detectLeak(String lingId, ClassLoader classLoader) {
-        WeakReference<ClassLoader> ref = new WeakReference<>(classLoader);
-
-        scheduler.schedule(() -> {
-            for (int i = 0; i < 5; i++) {
-                System.gc();
-                try {
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-                if (ref.get() == null) {
-                    log.info("✅ [{}] ClassLoader collected successfully (GC round {})", lingId, i + 1);
-                    return;
-                }
-            }
-            log.warn("⚠️ [{}] ClassLoader NOT collected after 5 GC rounds! Memory leak confirmed.", lingId);
-        }, LEAK_DETECTION_DELAY_SECONDS, TimeUnit.SECONDS);
-    }
-
     public void shutdown() {
-        scheduler.shutdownNow();
     }
 
     // =========================================================================

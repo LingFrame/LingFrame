@@ -6,7 +6,7 @@ import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
-import com.lingframe.core.context.CoreLingContext;
+import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.starter.processor.LingReferenceInjector;
@@ -18,7 +18,6 @@ import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -119,8 +118,8 @@ public class SpringLingContainer implements LingContainer {
      * 手动注册核心 Bean
      */
     private void registerBeans(GenericApplicationContext context, ClassLoader lingClassLoader) {
-        if (lingContext instanceof CoreLingContext) {
-            CoreLingContext coreCtx = (CoreLingContext) lingContext;
+        if (lingContext instanceof DefaultLingContext) {
+            DefaultLingContext coreCtx = (DefaultLingContext) lingContext;
             String lingId = lingContext.getLingId();
 
             // 注册 LingContext 并设为 @Primary
@@ -150,11 +149,11 @@ public class SpringLingContainer implements LingContainer {
      * 扫描协议服务
      */
     private void scanAndRegisterLingServices() {
-        if (!(lingContext instanceof CoreLingContext)) {
-            log.warn("LingContext is not instance of CoreLingContext, cannot register services.");
+        if (!(lingContext instanceof DefaultLingContext)) {
+            log.warn("LingContext is not instance of DefaultLingContext, cannot register services.");
             return;
         }
-        CoreLingContext coreCtx = (CoreLingContext) lingContext;
+        DefaultLingContext coreCtx = (DefaultLingContext) lingContext;
         String lingId = lingContext.getLingId();
 
         // 获取容器中所有 Bean 的名称
@@ -232,7 +231,7 @@ public class SpringLingContainer implements LingContainer {
      * 扫描并注册 @RestController（原生 Spring MVC 注册）
      */
     private void scanAndRegisterControllers() {
-        if (!(lingContext instanceof CoreLingContext))
+        if (!(lingContext instanceof DefaultLingContext))
             return;
         String lingId = lingContext.getLingId();
 

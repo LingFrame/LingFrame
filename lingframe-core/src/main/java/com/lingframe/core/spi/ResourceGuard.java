@@ -22,18 +22,6 @@ public interface ResourceGuard {
     void cleanup(String lingId, ClassLoader classLoader);
 
     /**
-     * 检测 ClassLoader 是否存在泄漏
-     * <p>
-     * 延迟检测 ClassLoader 是否被 GC 回收，未回收则输出告警日志。
-     * 此方法应在 cleanup() 之后调用。
-     * </p>
-     *
-     * @param lingId      灵元 ID
-     * @param classLoader 灵元的 ClassLoader（将被包装为 WeakReference）
-     */
-    void detectLeak(String lingId, ClassLoader classLoader);
-
-    /**
      * 关闭资源守卫
      * <p>
      * 在框架关闭时调用，用于清理后台线程等资源

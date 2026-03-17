@@ -266,7 +266,6 @@ public class LingLifecycleManager {
         if (cl != null) {
             try {
                 resourceGuard.cleanup(lingId, cl);
-                resourceGuard.detectLeak(lingId, cl);
 
                 // 🔥 关键：关闭 ClassLoader 释放 JAR 文件句柄
                 if (cl instanceof AutoCloseable) {
@@ -281,7 +280,6 @@ public class LingLifecycleManager {
         }
 
         // 🔥 发布内部销毁事件
-
         publishExternal(new LingStoppedEvent(lingId, version));
 
         // 🔥 ClassLoader GC 检测增强：延迟检查确认回收状态

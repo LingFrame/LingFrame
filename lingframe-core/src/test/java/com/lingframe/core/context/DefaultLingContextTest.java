@@ -15,12 +15,11 @@ import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.api.security.PermissionService;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
-class CoreLingContextTest {
+class DefaultLingContextTest {
 
     @Test
     void invokeShouldParseParamTypeNamesFromSignature() {
@@ -42,7 +41,7 @@ class CoreLingContextTest {
             return "ok";
         });
 
-        CoreLingContext context = new CoreLingContext("ling-A", lingRepository, registry, pipeline,
+        DefaultLingContext context = new DefaultLingContext("ling-A", lingRepository, registry, pipeline,
                 permissionService, eventBus);
 
         Optional<Object> result = context.invoke("svc", "a", 1);
@@ -70,7 +69,7 @@ class CoreLingContextTest {
             return "ok";
         });
 
-        CoreLingContext context = new CoreLingContext("ling-A", lingRepository, registry, pipeline,
+        DefaultLingContext context = new DefaultLingContext("ling-A", lingRepository, registry, pipeline,
                 permissionService, eventBus);
 
         Optional<Object> result = context.invoke("svc");
@@ -99,7 +98,7 @@ class CoreLingContextTest {
             return "ok";
         });
 
-        CoreLingContext context = new CoreLingContext("ling-A", lingRepository, registry, pipeline,
+        DefaultLingContext context = new DefaultLingContext("ling-A", lingRepository, registry, pipeline,
                 permissionService, eventBus);
 
         Optional<Object> result = context.invoke("ling-B:svc");

@@ -273,7 +273,7 @@ LingFrame 借鉴操作系统的设计思想：
 ┌─────────────────────────────────────────────────────────────┐
 │ Core                                                         │
 │                                                              │
-│   CoreLingContext.invoke()                                │
+│   DefaultLingContext.invoke()                                │
 │         │                                                    │
 │         ├─→ GovernanceStrategy.inferAccessType() → EXECUTE  │
 │         ├─→ permissionService.isAllowed() 权限检查           │

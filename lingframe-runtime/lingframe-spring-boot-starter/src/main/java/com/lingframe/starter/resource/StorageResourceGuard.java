@@ -12,9 +12,4 @@ public class StorageResourceGuard implements ResourceGuard {
     public void cleanup(String lingId, ClassLoader classLoader) {
         SqlParseCache.evictLing(lingId);
     }
-
-    @Override
-    public void detectLeak(String lingId, ClassLoader classLoader) {
-        // no-op
-    }
 }

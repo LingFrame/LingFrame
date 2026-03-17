@@ -5,7 +5,7 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.classloader.SharedApiManager;
 import com.lingframe.core.config.LingFrameConfig;
-import com.lingframe.core.context.CoreLingContext;
+import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.deploy.DefaultLingDeployService;
 import com.lingframe.core.deploy.LingDeployService;
 import com.lingframe.core.dev.HotSwapWatcher;
@@ -17,6 +17,7 @@ import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.governance.provider.StandardGovernancePolicyProvider;
 import com.lingframe.core.invoker.FastLingServiceInvoker;
 import com.lingframe.core.ling.*;
+import com.lingframe.core.resource.DefaultLeakDetector;
 import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
@@ -211,6 +212,12 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public LeakDetector leakDetector() {
+        return new DefaultLeakDetector();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public ResourceGuard resourceGuard() {
         return new SpringBasicResourceGuard();
     }
@@ -233,13 +240,14 @@ public class LingFrameCoreConfiguration {
                                                    InvocationPipelineEngine pipelineEngine,
                                                    List<ResourceGuard> resourceGuards,
                                                    LingResourceManager lingResourceManager,
+                                                   LeakDetector leakDetector,
                                                    ObjectProvider<HotSwapWatcher> hotSwapWatcherProvider) {
         List<LingSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
-                pipelineEngine, resourceGuards, lingResourceManager);
+                pipelineEngine, resourceGuards, lingResourceManager, leakDetector);
         return new DefaultLingLifecycleEngine(containerFactory, permissionService,
                 lingLoaderFactory, verifiers, eventBus, lingFrameConfig, lingRepository, lingServiceRegistry,
-                pipelineEngine, unloadCoordinator, null);
+                pipelineEngine, lingResourceManager, unloadCoordinator);
     }
 
     @Bean
@@ -317,7 +325,7 @@ public class LingFrameCoreConfiguration {
                                        InvocationPipelineEngine pipelineEngine,
                                        PermissionService permissionService,
                                        EventBus eventBus) {
-        return new CoreLingContext("lingcore-app", lingRepository, lingServiceRegistry, pipelineEngine,
+        return new DefaultLingContext("lingcore-app", lingRepository, lingServiceRegistry, pipelineEngine,
                 permissionService, eventBus);
     }
 

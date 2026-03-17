@@ -10,7 +10,7 @@ import com.lingframe.api.event.lifecycle.LingUninstallingEvent;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
-import com.lingframe.core.context.CoreLingContext;
+import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.InstanceCoordinator;
@@ -22,6 +22,7 @@ import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.LingLoaderFactory;
 import com.lingframe.core.spi.LingSecurityVerifier;
+import com.lingframe.core.resource.DefaultLeakDetector;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -61,9 +62,10 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
                                       LingRepository lingRepository,
                                       LingServiceRegistry lingServiceRegistry,
                                       InvocationPipelineEngine pipelineEngine,
+                                      LingResourceManager lingResourceManager,
                                       LingUnloadCoordinator unloadCoordinator) {
         this(containerFactory, permissionService, lingLoaderFactory, verifiers, eventBus, lingFrameConfig,
-                lingRepository, lingServiceRegistry, pipelineEngine, unloadCoordinator, null);
+                lingRepository, lingServiceRegistry, pipelineEngine, lingResourceManager, unloadCoordinator, null);
     }
 
     public DefaultLingLifecycleEngine(ContainerFactory containerFactory,
@@ -75,6 +77,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
                                       LingRepository lingRepository,
                                       LingServiceRegistry lingServiceRegistry,
                                       InvocationPipelineEngine pipelineEngine,
+                                      LingResourceManager lingResourceManager,
                                       LingUnloadCoordinator unloadCoordinator,
                                       HotSwapWatcher hotSwapWatcher) {
 
@@ -109,7 +112,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         this.pipelineEngine = pipelineEngine;
         this.unloadCoordinator = unloadCoordinator != null
                 ? unloadCoordinator
-                : new LingUnloadCoordinator(null, new ArrayList<>(), null);
+                : new LingUnloadCoordinator(pipelineEngine, new ArrayList<>(), lingResourceManager, new DefaultLeakDetector());
         this.hotSwapWatcher = hotSwapWatcher;
         this.instanceCoordinator = new InstanceCoordinator(eventBus);
     }
@@ -177,7 +180,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
                 lingRepository.register(runtime);
             }
 
-            LingContext context = new CoreLingContext(lingId, lingRepository, lingServiceRegistry, pipelineEngine,
+            LingContext context = new DefaultLingContext(lingId, lingRepository, lingServiceRegistry, pipelineEngine,
                     permissionService, eventBus);
             instanceCoordinator.start(instance);
 

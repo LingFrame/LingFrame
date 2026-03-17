@@ -23,7 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @RequiredArgsConstructor
-public class CoreLingContext implements LingContext {
+public class DefaultLingContext implements LingContext {
 
     private final String lingId;
 

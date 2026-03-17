@@ -3,7 +3,7 @@ package com.lingframe.runtime.adapter;
 import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
-import com.lingframe.core.context.CoreLingContext;
+import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.exception.LingInstallException;
@@ -107,10 +107,10 @@ public class NativeLingContainer implements LingContainer {
     // ==================== 服务扫描与注册逻辑 ====================
 
     private void scanAndRegisterServices(LingContext context) {
-        CoreLingContext coreCtx = null;
-        if (!(context instanceof CoreLingContext)) {
-            coreCtx = (CoreLingContext) context;
-            log.warn("[{}] Context is not CoreLingContext, skipping service registration.", lingId);
+        DefaultLingContext coreCtx = null;
+        if (!(context instanceof DefaultLingContext)) {
+            coreCtx = (DefaultLingContext) context;
+            log.warn("[{}] Context is not DefaultLingContext, skipping service registration.", lingId);
             return;
         }
 
@@ -132,7 +132,7 @@ public class NativeLingContainer implements LingContainer {
         }
     }
 
-    private void registerService(CoreLingContext ctx, Class<?> clazz, Method method, LingService annotation) {
+    private void registerService(DefaultLingContext ctx, Class<?> clazz, Method method, LingService annotation) {
         try {
             // 获取或创建单例
             Object instance = singletons.computeIfAbsent(clazz, k -> {

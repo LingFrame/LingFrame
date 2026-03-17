@@ -1,7 +1,7 @@
 package com.lingframe.core.ling;
 
-import com.lingframe.core.ling.LingResourceManager;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.ResourceGuard;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +18,7 @@ public class LingUnloadCoordinator {
     private final InvocationPipelineEngine pipelineEngine;
     private final List<ResourceGuard> resourceGuards;
     private final LingResourceManager lingResourceManager;
+    private final LeakDetector leakDetector;
 
     /**
      * 版本级卸载后的清理动作。
@@ -53,17 +54,15 @@ public class LingUnloadCoordinator {
      * 版本卸载后的泄漏检测。
      */
     public void detectLeak(String lingId, String version, ClassLoader classLoader) {
-        if (classLoader == null || resourceGuards == null) {
+        if (classLoader == null || leakDetector == null) {
             return;
         }
         String leakId = version != null ? lingId + ":" + version : lingId;
-        for (ResourceGuard guard : resourceGuards) {
-            try {
-                guard.detectLeak(leakId, classLoader);
-            } catch (Exception e) {
-                log.error("[{}] Leak detection failed for version {} with guard: {}", lingId, version,
-                        guard.getClass().getName(), e);
-            }
+        try {
+            leakDetector.detectLeak(leakId, classLoader);
+        } catch (Exception e) {
+            log.error("[{}] Leak detection failed for version {} with detector: {}", lingId, version,
+                    leakDetector.getClass().getName(), e);
         }
     }
 
@@ -71,15 +70,13 @@ public class LingUnloadCoordinator {
      * 整 Ling 卸载后的泄漏检测。
      */
     public void detectLeak(String lingId, ClassLoader classLoader) {
-        if (classLoader == null || resourceGuards == null) {
+        if (classLoader == null || leakDetector == null) {
             return;
         }
-        for (ResourceGuard guard : resourceGuards) {
-            try {
-                guard.detectLeak(lingId, classLoader);
-            } catch (Exception e) {
-                log.error("[{}] Leak detection failed with guard: {}", lingId, guard.getClass().getName(), e);
-            }
+        try {
+            leakDetector.detectLeak(lingId, classLoader);
+        } catch (Exception e) {
+            log.error("[{}] Leak detection failed with detector: {}", lingId, leakDetector.getClass().getName(), e);
         }
     }
 

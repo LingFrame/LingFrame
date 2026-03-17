@@ -4,7 +4,7 @@ import com.lingframe.api.context.LingContext;
 import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.classloader.SharedApiClassLoader;
 import com.lingframe.core.config.LingFrameConfig;
-import com.lingframe.core.context.CoreLingContext;
+import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
@@ -13,6 +13,7 @@ import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.DefaultLingResourceManager;
 import com.lingframe.core.ling.DefaultLingServiceRegistry;
 import com.lingframe.core.ling.InvokableMethodCache;
+import com.lingframe.core.resource.DefaultLeakDetector;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.resource.BasicResourceGuard;
 import com.lingframe.core.ling.LingRepository;
@@ -94,7 +95,8 @@ public class NativeLingFrame {
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
                 pipelineEngine,
                 Collections.singletonList(new BasicResourceGuard()),
-                RESOURCE_MANAGER);
+                RESOURCE_MANAGER,
+                new DefaultLeakDetector());
 
         LingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(
                 containerFactory,
@@ -106,6 +108,7 @@ public class NativeLingFrame {
                 lingRepository,
                 lingServiceRegistry,
                 pipelineEngine,
+                RESOURCE_MANAGER,
                 unloadCoordinator);
 
         if (config != null && config.isDevMode() && lifecycleEngine instanceof DefaultLingLifecycleEngine) {
@@ -114,7 +117,7 @@ public class NativeLingFrame {
         }
 
         // 注册一个特殊的 "lingcore-app" 上下文
-        HOST_CONTEXT = new CoreLingContext("lingcore-app", lingRepository, lingServiceRegistry, pipelineEngine,
+        HOST_CONTEXT = new DefaultLingContext("lingcore-app", lingRepository, lingServiceRegistry, pipelineEngine,
                 permissionService, eventBus);
 
         // 自动扫描灵元

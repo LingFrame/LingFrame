@@ -272,7 +272,7 @@ Business ling calls userRepository.findById()
 ┌─────────────────────────────────────────────────────────────┐
 │ Core                                                         │
 │                                                              │
-│   CoreLingContext.invoke()                                │
+│   DefaultLingContext.invoke()                                │
 │         │                                                    │
 │         ├─→ GovernanceStrategy.inferAccessType() → EXECUTE  │
 │         ├─→ permissionService.isAllowed() Permission Check   │
