@@ -56,9 +56,10 @@ public class LingUnloadCoordinator {
         if (classLoader == null || resourceGuards == null) {
             return;
         }
+        String leakId = version != null ? lingId + ":" + version : lingId;
         for (ResourceGuard guard : resourceGuards) {
             try {
-                guard.detectLeak(lingId, classLoader);
+                guard.detectLeak(leakId, classLoader);
             } catch (Exception e) {
                 log.error("[{}] Leak detection failed for version {} with guard: {}", lingId, version,
                         guard.getClass().getName(), e);

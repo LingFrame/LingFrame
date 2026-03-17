@@ -7,9 +7,11 @@ import java.util.Map;
 /**
  * LingLifecycleEngine 是组件装载和生命流的唯一驱动者。
  * 它持有诸如 FSM (StateMachine) 的控制权把柄，将外部的部署指令转译为 FSM 动作并驱动其跃迁。
- * 在 M3 彻底推翻 LingManager 时，它接管加载与卸载的核心装配流水线。
+ * 接管加载与卸载的核心装配流水线。
  */
 public interface LingLifecycleEngine {
+
+    ClassLoader getClassLoader(String lingId);
 
     /**
      * 根据提供的物理文件或虚拟路径进行完整的凌组件装载过程。

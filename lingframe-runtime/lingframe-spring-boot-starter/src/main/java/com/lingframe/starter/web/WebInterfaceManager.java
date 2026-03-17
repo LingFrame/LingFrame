@@ -1,5 +1,11 @@
 package com.lingframe.starter.web;
 
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.ser.SerializerCache;
+import com.fasterxml.jackson.databind.ser.impl.ReadOnlyClassToSerializerMap;
+import com.fasterxml.jackson.databind.util.TypeKey;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.support.AbstractBeanFactory;
@@ -7,6 +13,7 @@ import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.beans.factory.support.GenericBeanDefinition;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
+import org.springframework.core.MethodParameter;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -20,12 +27,14 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+
 import com.lingframe.api.exception.LingException;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.spi.TrafficRouter;
+
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -34,12 +43,16 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.annotation.PreDestroy;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
 import org.springframework.core.ParameterNameDiscoverer;
 import org.springframework.web.bind.support.WebDataBinderFactory;
+import org.springframework.web.bind.support.WebBindingInitializer;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolverComposite;
+import org.springframework.web.method.support.HandlerMethodReturnValueHandlerComposite;
 import org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod;
 import org.springframework.web.method.support.ModelAndViewContainer;
+import org.springframework.web.servlet.ModelAndView;
 
 /**
  * Web 接口动态管理器（原生注册版）
@@ -75,6 +88,8 @@ public class WebInterfaceManager {
 
     private volatile HandlerMethodArgumentResolverComposite argumentResolvers;
     private volatile ParameterNameDiscoverer parameterNameDiscoverer;
+    private volatile HandlerMethodReturnValueHandlerComposite returnValueHandlers;
+    private volatile WebBindingInitializer webBindingInitializer;
 
     public static final String REQUEST_METADATA_KEY = "ling.web.metadata";
     public static final String REQUEST_TARGET_VERSION_KEY = "ling.target.version";
@@ -88,8 +103,8 @@ public class WebInterfaceManager {
      * 初始化方法，由 AutoConfiguration 调用
      */
     public void init(RequestMappingHandlerMapping mapping,
-            RequestMappingHandlerAdapter adapter,
-            ConfigurableApplicationContext hostContext) {
+                     RequestMappingHandlerAdapter adapter,
+                     ConfigurableApplicationContext hostContext) {
         this.hostMapping = mapping;
         this.hostAdapter = adapter;
         this.hostContext = hostContext;
@@ -328,7 +343,7 @@ public class WebInterfaceManager {
      * Spring 的 removeBeanDefinition 只标记 stale，不实际删除
      */
     private void clearMergedBeanDefinitions(GenericApplicationContext gac,
-            List<String> beanNames) {
+                                            List<String> beanNames) {
         try {
             Field mergedField = ReflectionUtils.findField(
                     AbstractBeanFactory.class,
@@ -549,12 +564,27 @@ public class WebInterfaceManager {
         if (resolvers != null) {
             invocable.setHandlerMethodArgumentResolvers(resolvers);
         }
+        HandlerMethodReturnValueHandlerComposite returnHandlers = getReturnValueHandlers();
+        if (returnHandlers != null) {
+            invocable.setHandlerMethodReturnValueHandlers(returnHandlers);
+        }
+        WebBindingInitializer bindingInitializer = getWebBindingInitializer();
+        if (bindingInitializer != null) {
+            invokeWebBindingInitializerIfSupported(invocable, bindingInitializer);
+        }
         invocable.setParameterNameDiscoverer(getParameterNameDiscoverer());
         invocable.setDataBinderFactory(Objects.requireNonNull(getDataBinderFactory(handlerMethod)));
 
         ServletWebRequest webRequest = new ServletWebRequest(request, response);
         ModelAndViewContainer mavContainer = new ModelAndViewContainer();
-        return invocable.invokeForRequest(webRequest, mavContainer);
+        invocable.invokeAndHandle(webRequest, mavContainer);
+        if (mavContainer.isRequestHandled()) {
+            return null;
+        }
+        if (mavContainer.getViewName() != null) {
+            return new ModelAndView(mavContainer.getViewName(), mavContainer.getModel());
+        }
+        return mavContainer.getModel();
     }
 
     private HandlerMethodArgumentResolverComposite getArgumentResolvers() {
@@ -587,6 +617,53 @@ public class WebInterfaceManager {
             log.warn("Failed to resolve parameterNameDiscoverer from RequestMappingHandlerAdapter", e);
         }
         return parameterNameDiscoverer;
+    }
+
+    private HandlerMethodReturnValueHandlerComposite getReturnValueHandlers() {
+        if (returnValueHandlers != null) {
+            return returnValueHandlers;
+        }
+        try {
+            Field field = ReflectionUtils.findField(RequestMappingHandlerAdapter.class, "returnValueHandlers");
+            if (field != null) {
+                ReflectionUtils.makeAccessible(field);
+                returnValueHandlers = (HandlerMethodReturnValueHandlerComposite) ReflectionUtils.getField(field,
+                        hostAdapter);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to resolve returnValueHandlers from RequestMappingHandlerAdapter", e);
+        }
+        return returnValueHandlers;
+    }
+
+    private WebBindingInitializer getWebBindingInitializer() {
+        if (webBindingInitializer != null) {
+            return webBindingInitializer;
+        }
+        try {
+            Field field = ReflectionUtils.findField(RequestMappingHandlerAdapter.class, "webBindingInitializer");
+            if (field != null) {
+                ReflectionUtils.makeAccessible(field);
+                webBindingInitializer = (WebBindingInitializer) ReflectionUtils.getField(field, hostAdapter);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to resolve webBindingInitializer from RequestMappingHandlerAdapter", e);
+        }
+        return webBindingInitializer;
+    }
+
+    private void invokeWebBindingInitializerIfSupported(ServletInvocableHandlerMethod invocable,
+                                                        WebBindingInitializer initializer) {
+        try {
+            Method method = ReflectionUtils.findMethod(invocable.getClass(), "setWebBindingInitializer",
+                    WebBindingInitializer.class);
+            if (method != null) {
+                ReflectionUtils.makeAccessible(method);
+                method.invoke(invocable, initializer);
+            }
+        } catch (Exception e) {
+            log.debug("setWebBindingInitializer not supported on this Spring version");
+        }
     }
 
     private WebDataBinderFactory getDataBinderFactory(HandlerMethod handlerMethod) {
@@ -643,6 +720,8 @@ public class WebInterfaceManager {
             clearAdviceCache("initBinderAdviceCache", lingLoader);
             clearAdviceCache("modelAttributeAdviceCache", lingLoader);
 
+            clearArgumentResolverCache(lingLoader);
+
             log.debug("Cleared HandlerAdapter caches for ling ClassLoader: {}", lingLoader);
         } catch (Exception e) {
             log.warn("Failed to clear HandlerAdapter caches", e);
@@ -677,5 +756,43 @@ public class WebInterfaceManager {
                 return type != null && type.getClassLoader() == lingLoader;
             });
         }
+    }
+
+    private void clearArgumentResolverCache(ClassLoader lingLoader) throws Exception {
+        HandlerMethodArgumentResolverComposite resolvers = getArgumentResolvers();
+        if (resolvers == null) {
+            return;
+        }
+
+        Field cacheField = ReflectionUtils.findField(HandlerMethodArgumentResolverComposite.class,
+                "argumentResolverCache");
+        if (cacheField == null) {
+            return;
+        }
+        ReflectionUtils.makeAccessible(cacheField);
+        Object cacheObj = ReflectionUtils.getField(cacheField, resolvers);
+        if (!(cacheObj instanceof Map<?, ?>)) {
+            return;
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<Object, Object> cache = (Map<Object, Object>) cacheObj;
+        int before = cache.size();
+        cache.entrySet().removeIf(entry -> isMethodParameterFromClassLoader(entry.getKey(), lingLoader));
+        int removed = before - cache.size();
+        if (removed > 0) {
+            log.debug("Cleared argumentResolverCache: removed {} entries", removed);
+        }
+    }
+
+    private boolean isMethodParameterFromClassLoader(Object key, ClassLoader lingLoader) {
+        if (key == null || lingLoader == null) {
+            return false;
+        }
+        if (key instanceof MethodParameter) {
+            Class<?> containing = ((MethodParameter) key).getContainingClass();
+            return containing != null && containing.getClassLoader() == lingLoader;
+        }
+        return false;
     }
 }

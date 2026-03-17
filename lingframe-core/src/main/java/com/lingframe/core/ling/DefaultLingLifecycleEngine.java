@@ -53,30 +53,30 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
     private final InstanceCoordinator instanceCoordinator;
 
     public DefaultLingLifecycleEngine(ContainerFactory containerFactory,
-            PermissionService permissionService,
-            LingLoaderFactory lingLoaderFactory,
-            List<LingSecurityVerifier> verifiers,
-            EventBus eventBus,
-            LingFrameConfig lingFrameConfig,
-            LingRepository lingRepository,
-            LingServiceRegistry lingServiceRegistry,
-            InvocationPipelineEngine pipelineEngine,
-            LingUnloadCoordinator unloadCoordinator) {
+                                      PermissionService permissionService,
+                                      LingLoaderFactory lingLoaderFactory,
+                                      List<LingSecurityVerifier> verifiers,
+                                      EventBus eventBus,
+                                      LingFrameConfig lingFrameConfig,
+                                      LingRepository lingRepository,
+                                      LingServiceRegistry lingServiceRegistry,
+                                      InvocationPipelineEngine pipelineEngine,
+                                      LingUnloadCoordinator unloadCoordinator) {
         this(containerFactory, permissionService, lingLoaderFactory, verifiers, eventBus, lingFrameConfig,
                 lingRepository, lingServiceRegistry, pipelineEngine, unloadCoordinator, null);
     }
 
     public DefaultLingLifecycleEngine(ContainerFactory containerFactory,
-            PermissionService permissionService,
-            LingLoaderFactory lingLoaderFactory,
-            List<LingSecurityVerifier> verifiers,
-            EventBus eventBus,
-            LingFrameConfig lingFrameConfig,
-            LingRepository lingRepository,
-            LingServiceRegistry lingServiceRegistry,
-            InvocationPipelineEngine pipelineEngine,
-            LingUnloadCoordinator unloadCoordinator,
-            HotSwapWatcher hotSwapWatcher) {
+                                      PermissionService permissionService,
+                                      LingLoaderFactory lingLoaderFactory,
+                                      List<LingSecurityVerifier> verifiers,
+                                      EventBus eventBus,
+                                      LingFrameConfig lingFrameConfig,
+                                      LingRepository lingRepository,
+                                      LingServiceRegistry lingServiceRegistry,
+                                      InvocationPipelineEngine pipelineEngine,
+                                      LingUnloadCoordinator unloadCoordinator,
+                                      HotSwapWatcher hotSwapWatcher) {
 
         this.containerFactory = containerFactory;
         this.lingLoaderFactory = lingLoaderFactory;
@@ -119,18 +119,23 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
     }
 
     @Override
+    public ClassLoader getClassLoader(String lingId) {
+        return lingRepository.getRuntime(lingId).getClass().getClassLoader();
+    }
+
+    @Override
     public void deploy(LingDefinition lingDefinition, File sourceFile, boolean isDefault, Map<String, String> labels) {
         deployInternal(lingDefinition, sourceFile, isDefault, labels, false);
     }
 
     @Override
     public void deployForReload(LingDefinition lingDefinition, File sourceFile, boolean isDefault,
-            Map<String, String> labels) {
+                                Map<String, String> labels) {
         deployInternal(lingDefinition, sourceFile, isDefault, labels, true);
     }
 
     private void deployInternal(LingDefinition lingDefinition, File sourceFile, boolean isDefault,
-            Map<String, String> labels, boolean allowSameVersion) {
+                                Map<String, String> labels, boolean allowSameVersion) {
         lingDefinition.validate();
         String lingId = lingDefinition.getId();
         String version = lingDefinition.getVersion();
@@ -385,7 +390,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             }
 
             // 延迟触发泄漏检测
-            unloadCoordinator.detectLeak(lingId, classLoader);
+            unloadCoordinator.detectLeak(lingId, instance.getVersion(), classLoader);
         }
 
         // 3. 清理注册表中的暴露条目

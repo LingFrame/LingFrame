@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
+import java.util.IdentityHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -24,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 public class BasicResourceGuard implements ResourceGuard {
 
     private static final int LEAK_DETECTION_DELAY_SECONDS = 5;
+    private static final ClassLoader CORE_CLASSLOADER = BasicResourceGuard.class.getClassLoader();
 
     // =========================================================================
     // JDK 版本检测 & 能力探测
@@ -164,6 +166,7 @@ public class BasicResourceGuard implements ResourceGuard {
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "lingframe-leak-detector");
             t.setDaemon(true);
+            t.setContextClassLoader(CORE_CLASSLOADER);
             return t;
         });
     }
@@ -194,6 +197,9 @@ public class BasicResourceGuard implements ResourceGuard {
 
         // 4. ThreadLocal 清理
         clearThreadLocals(lingId, classLoader);
+
+        // 5. 清理审计 ShutdownHook
+        clearAuditShutdownHook(lingId, classLoader);
 
         log.info("[{}] Resource cleanup completed", lingId);
     }
@@ -248,6 +254,43 @@ public class BasicResourceGuard implements ResourceGuard {
                         lingId, t.getName(), t.getState(), t.isDaemon(),
                         tcclInfo, isSameCL, extra);
             }
+        }
+    }
+
+    // =========================================================================
+    // ShutdownHook 清理（审计线程）
+    // =========================================================================
+
+    private void clearAuditShutdownHook(String lingId, ClassLoader classLoader) {
+        try {
+            Class<?> hooksClass = Class.forName("java.lang.ApplicationShutdownHooks");
+            Field hooksField = hooksClass.getDeclaredField("hooks");
+            hooksField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            Map<Thread, Thread> hooks = (Map<Thread, Thread>) hooksField.get(null);
+            if (hooks == null || hooks.isEmpty()) {
+                return;
+            }
+            List<Thread> toRemove = new CopyOnWriteArrayList<>();
+            hooks.forEach((hook, value) -> {
+                if (hook == null) {
+                    return;
+                }
+                ClassLoader tccl = hook.getContextClassLoader();
+                if (tccl == classLoader && hook.getName().contains("audit-shutdown-hook")) {
+                    toRemove.add(hook);
+                }
+            });
+            for (Thread hook : toRemove) {
+                try {
+                    Runtime.getRuntime().removeShutdownHook(hook);
+                    log.info("[{}] Removed audit shutdown hook: {}", lingId, hook.getName());
+                } catch (Exception e) {
+                    log.debug("[{}] Failed to remove audit shutdown hook: {}", lingId, e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("[{}] Audit shutdown hook cleanup failed: {}", lingId, e.getMessage());
         }
     }
 
@@ -680,6 +723,7 @@ public class BasicResourceGuard implements ResourceGuard {
         }
 
         int cleaned = 0;
+        int scannedThreads = 0;
         for (Thread t : getActiveThreads()) {
             if (t == null)
                 continue;
@@ -688,16 +732,19 @@ public class BasicResourceGuard implements ResourceGuard {
             if (isVirtualThread(t))
                 continue;
 
-            cleaned += clearThreadLocalMap(t, THREAD_LOCALS_FIELD, classLoader);
-            cleaned += clearThreadLocalMap(t, INHERITABLE_THREAD_LOCALS_FIELD, classLoader);
+            scannedThreads++;
+            cleaned += clearThreadLocalMap(lingId, t, THREAD_LOCALS_FIELD, classLoader);
+            cleaned += clearThreadLocalMap(lingId, t, INHERITABLE_THREAD_LOCALS_FIELD, classLoader);
         }
 
         if (cleaned > 0) {
             log.info("[{}] Cleared {} ThreadLocal entries", lingId, cleaned);
+        } else {
+            log.debug("[{}] ThreadLocal scan finished, no entries removed (threads={})", lingId, scannedThreads);
         }
     }
 
-    private int clearThreadLocalMap(Thread t, Field mapField, ClassLoader cl) {
+    private int clearThreadLocalMap(String lingId, Thread t, Field mapField, ClassLoader cl) {
         if (mapField == null || TLM_TABLE_FIELD == null)
             return 0;
 
@@ -714,6 +761,9 @@ public class BasicResourceGuard implements ResourceGuard {
             Field valueField = null;
             Method expungeMethod = null;
 
+            int logged = 0;
+            List<String> samples = new ArrayList<>();
+
             for (Object entry : table) {
                 if (entry == null)
                     continue;
@@ -727,10 +777,16 @@ public class BasicResourceGuard implements ResourceGuard {
                 Object key = ref.get();
                 Object val = valueField.get(entry);
 
-                if (isClassLoaderRelated(key, cl) || isClassLoaderRelated(val, cl)) {
+                if (isClassLoaderRelated(key, cl) || isClassLoaderRelated(val, cl)
+                        || deepReferencesClassLoader(key, cl, 3)
+                        || deepReferencesClassLoader(val, cl, 3)) {
                     valueField.set(entry, null);
                     ref.clear();
                     cleaned++;
+                    if (logged < 3) {
+                        samples.add(describeThreadLocalEntry(key, val));
+                        logged++;
+                    }
                 }
             }
 
@@ -747,10 +803,88 @@ public class BasicResourceGuard implements ResourceGuard {
                     expungeMethod.invoke(map);
                 }
             }
+            if (!samples.isEmpty()) {
+                log.debug("[{}] ThreadLocal hits on thread {}: {}", lingId, t.getName(), samples);
+            }
         } catch (Exception e) {
             log.trace("Failed to clear ThreadLocal on thread {}: {}", t.getName(), e.getMessage());
         }
         return cleaned;
+    }
+
+    private String describeThreadLocalEntry(Object key, Object val) {
+        String keyType = key == null ? "null" : key.getClass().getName();
+        String valType = val == null ? "null" : val.getClass().getName();
+        return "key=" + keyType + ", val=" + valType;
+    }
+
+    private boolean deepReferencesClassLoader(Object obj, ClassLoader cl, int maxDepth) {
+        if (obj == null || cl == null || maxDepth <= 0) {
+            return false;
+        }
+        IdentityHashMap<Object, Boolean> visited = new IdentityHashMap<>();
+        return deepReferencesClassLoader(obj, cl, maxDepth, visited);
+    }
+
+    private boolean deepReferencesClassLoader(Object obj, ClassLoader cl, int depth,
+            IdentityHashMap<Object, Boolean> visited) {
+        if (obj == null || cl == null || depth <= 0) {
+            return false;
+        }
+        if (visited.put(obj, Boolean.TRUE) != null) {
+            return false;
+        }
+        if (isClassLoaderRelated(obj, cl)) {
+            return true;
+        }
+        Class<?> type = obj.getClass();
+        if (type.isArray() && !type.getComponentType().isPrimitive()) {
+            int len = Array.getLength(obj);
+            for (int i = 0; i < len; i++) {
+                if (deepReferencesClassLoader(Array.get(obj, i), cl, depth - 1, visited)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (obj instanceof Iterable) {
+            for (Object item : (Iterable<?>) obj) {
+                if (deepReferencesClassLoader(item, cl, depth - 1, visited)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (obj instanceof Map) {
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) obj).entrySet()) {
+                if (deepReferencesClassLoader(entry.getKey(), cl, depth - 1, visited)
+                        || deepReferencesClassLoader(entry.getValue(), cl, depth - 1, visited)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // 递归扫描字段（避免静态字段）
+        Class<?> current = type;
+        while (current != null && current != Object.class) {
+            Field[] fields = current.getDeclaredFields();
+            for (Field f : fields) {
+                if ((f.getModifiers() & java.lang.reflect.Modifier.STATIC) != 0) {
+                    continue;
+                }
+                try {
+                    f.setAccessible(true);
+                    Object fieldValue = f.get(obj);
+                    if (deepReferencesClassLoader(fieldValue, cl, depth - 1, visited)) {
+                        return true;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            current = current.getSuperclass();
+        }
+        return false;
     }
 
     // =========================================================================
@@ -768,6 +902,12 @@ public class BasicResourceGuard implements ResourceGuard {
             return true;
         if (obj instanceof ClassLoader && obj == cl)
             return true;
+        if (obj instanceof Reference) {
+            Object referent = ((Reference<?>) obj).get();
+            if (referent != null && isClassLoaderRelated(referent, cl)) {
+                return true;
+            }
+        }
 
         // 深度：处理常见容器类
         if (obj instanceof Iterable) {

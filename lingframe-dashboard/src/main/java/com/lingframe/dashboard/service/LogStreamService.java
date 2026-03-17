@@ -27,6 +27,7 @@ import java.util.concurrent.*;
 public class LogStreamService implements InitializingBean, DisposableBean {
 
     private final EventBus eventBus;
+    private static final ClassLoader CORE_CLASSLOADER = LogStreamService.class.getClassLoader();
     /**
      * 维护所有活跃连接
      */
@@ -38,6 +39,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     private final ExecutorService dispatcher = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "ling-sse-dispatcher");
         t.setDaemon(true);
+        t.setContextClassLoader(CORE_CLASSLOADER);
         t.setUncaughtExceptionHandler((thread, ex) -> log.error("SSE dispatcher thread error", ex));
         return t;
     });
@@ -48,6 +50,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "ling-sse-heartbeat");
         t.setDaemon(true);
+        t.setContextClassLoader(CORE_CLASSLOADER);
         t.setUncaughtExceptionHandler((thread, ex) -> log.error("SSE heartbeat thread error", ex));
         return t;
     });
@@ -133,7 +136,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
 
         // 异步提交给分发线程，不阻塞当前业务线程 (Core Kernel)
         try {
-            dispatcher.submit(() -> {
+            dispatcher.submit(withCoreClassLoader(() -> {
             List<SseEmitter> dead = new ArrayList<>();
             for (SseEmitter emitter : emitters) {
                 try {
@@ -145,7 +148,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                 }
             }
             emitters.removeAll(dead);
-            });
+            }));
         } catch (RejectedExecutionException e) {
             // ignore on shutdown
         }
@@ -161,7 +164,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
             return;
         }
         try {
-            dispatcher.submit(() -> {
+            dispatcher.submit(withCoreClassLoader(() -> {
                 List<SseEmitter> dead = new ArrayList<>();
                 for (SseEmitter emitter : emitters) {
                     try {
@@ -171,7 +174,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                     }
                 }
                 emitters.removeAll(dead);
-            });
+            }));
         } catch (RejectedExecutionException e) {
             // ignore on shutdown
         }
@@ -194,5 +197,17 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         dispatcher.shutdownNow();
         scheduler.shutdownNow();
         emitters.forEach(SseEmitter::complete);
+    }
+
+    private Runnable withCoreClassLoader(Runnable task) {
+        return () -> {
+            ClassLoader prev = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader(CORE_CLASSLOADER);
+            try {
+                task.run();
+            } finally {
+                Thread.currentThread().setContextClassLoader(prev);
+            }
+        };
     }
 }

@@ -1,5 +1,7 @@
 package com.lingframe.starter.resource;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.type.TypeFactory;
 import com.lingframe.core.resource.BasicResourceGuard;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.CachedIntrospectionResults;
@@ -19,6 +21,7 @@ import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.io.support.SpringFactoriesLoader;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.ReflectionUtils;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 
 import javax.sql.DataSource;
 import java.lang.reflect.Field;
@@ -29,6 +32,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.ResourceBundle;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 
 import com.lingframe.starter.spi.SpringAwareResourceGuard;
@@ -100,6 +105,9 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
 
             // 5. 关闭 DataSource
             closeDataSources(lingId, beanFactory);
+
+            clearPropertyAnnotationCache(lingId, lingClassLoader, "pre");
+            clearJacksonCaches(lingId, lingClassLoader, "pre");
 
         } catch (Exception e) {
             log.debug("[{}] Spring pre-cleanup failed: {}", lingId, e.getMessage());
@@ -229,10 +237,16 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
         // 3. AnnotationUtils
         clearAnnotationUtilsSelective(lingId, lingClassLoader);
 
-        // 4. ResolvableType
+        // 4. Property.annotationCache
+        clearPropertyAnnotationCache(lingId, lingClassLoader, "post");
+
+        // 4.5 Jackson caches
+        clearJacksonCaches(lingId, lingClassLoader, "post");
+
+        // 5. ResolvableType
         clearResolvableTypeSelective(lingId, lingClassLoader);
 
-        // 5. JDK ResourceBundle
+        // 6. JDK ResourceBundle
         try {
             ResourceBundle.clearCache(lingClassLoader);
             log.debug("[{}] Cleared ResourceBundle cache", lingId);
@@ -367,6 +381,360 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
         } catch (Exception e) {
             log.debug("[{}] AnnotationUtils selective cleanup failed: {}", lingId, e.getMessage());
         }
+    }
+
+    private void clearPropertyAnnotationCache(String lingId, ClassLoader lingClassLoader, String phase) {
+        try {
+            Class<?> propertyClass = Class.forName("org.springframework.core.convert.Property");
+            Field cacheField = findFieldInHierarchy(propertyClass, "annotationCache");
+            if (cacheField == null) {
+                return;
+            }
+            cacheField.setAccessible(true);
+            Object cacheObj = cacheField.get(null);
+            if (!(cacheObj instanceof Map<?, ?>)) {
+                return;
+            }
+
+            Map<?, ?> cache = (Map<?, ?>) cacheObj;
+            int before = cache.size();
+            cache.entrySet().removeIf(entry -> isRelatedToClassLoader(entry.getKey(), lingClassLoader)
+                    || isRelatedToClassLoader(entry.getValue(), lingClassLoader)
+                    || isPropertyRelatedToClassLoader(entry.getKey(), lingClassLoader)
+                    || isPropertyRelatedToClassLoader(entry.getValue(), lingClassLoader));
+            int removed = before - cache.size();
+            log.debug("[{}] Property.annotationCache ({}): removed {} entries", lingId, phase, removed);
+        } catch (ClassNotFoundException e) {
+            // ignore
+        } catch (Exception e) {
+            log.debug("[{}] Property.annotationCache cleanup failed ({}): {}", lingId, phase, e.getMessage());
+        }
+    }
+
+    private void clearJacksonCaches(String lingId, ClassLoader lingClassLoader, String phase) {
+        if (mainContext == null || lingClassLoader == null) {
+            return;
+        }
+        try {
+            Map<String, ObjectMapper> mapperBeans = mainContext.getBeansOfType(ObjectMapper.class);
+            Set<ObjectMapper> mappers = new HashSet<>(mapperBeans.values());
+            try {
+                Map<String, MappingJackson2HttpMessageConverter> converters = mainContext
+                        .getBeansOfType(MappingJackson2HttpMessageConverter.class);
+                for (MappingJackson2HttpMessageConverter converter : converters.values()) {
+                    if (converter != null && converter.getObjectMapper() != null) {
+                        mappers.add(converter.getObjectMapper());
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+
+            int totalRemoved = 0;
+            for (ObjectMapper mapper : mappers) {
+                totalRemoved += clearObjectMapperCaches(mapper, lingClassLoader);
+            }
+            log.debug("[{}] Jackson cache cleanup ({}): removed {} entries", lingId, phase, totalRemoved);
+        } catch (Exception e) {
+            log.debug("[{}] Jackson cache cleanup failed ({}): {}", lingId, phase, e.getMessage());
+        }
+    }
+
+    private int clearObjectMapperCaches(ObjectMapper mapper, ClassLoader lingClassLoader) {
+        int removed = 0;
+        try {
+            removed += clearTypeFactoryCache(mapper.getTypeFactory(), lingClassLoader);
+        } catch (Exception ignored) {
+        }
+        try {
+            removed += clearObjectMapperRootDeserializers(mapper, lingClassLoader);
+        } catch (Exception ignored) {
+        }
+        try {
+            removed += clearDeserializerCache(mapper, lingClassLoader);
+        } catch (Exception ignored) {
+        }
+        try {
+            removed += clearSerializerCache(mapper, lingClassLoader);
+        } catch (Exception ignored) {
+        }
+        return removed;
+    }
+
+    private int clearTypeFactoryCache(TypeFactory typeFactory, ClassLoader lingClassLoader) {
+        if (typeFactory == null) {
+            return 0;
+        }
+        Field cacheField = findFieldInHierarchy(typeFactory.getClass(), "_typeCache");
+        if (cacheField == null) {
+            cacheField = findFieldInHierarchy(typeFactory.getClass(), "typeCache");
+        }
+        if (cacheField == null) {
+            return 0;
+        }
+        try {
+            cacheField.setAccessible(true);
+            Object cacheObj = cacheField.get(typeFactory);
+            if (cacheObj instanceof Map<?, ?>) {
+                return removeJacksonMapEntries((Map<?, ?>) cacheObj, lingClassLoader);
+            }
+        } catch (Exception ignored) {
+        }
+        return 0;
+    }
+
+    private int clearObjectMapperRootDeserializers(ObjectMapper mapper, ClassLoader lingClassLoader) {
+        Field field = findFieldInHierarchy(mapper.getClass(), "_rootDeserializers");
+        if (field == null) {
+            return 0;
+        }
+        try {
+            field.setAccessible(true);
+            Object cacheObj = field.get(mapper);
+            if (cacheObj instanceof Map<?, ?>) {
+                return removeJacksonMapEntries((Map<?, ?>) cacheObj, lingClassLoader);
+            }
+        } catch (Exception ignored) {
+        }
+        return 0;
+    }
+
+    private int clearDeserializerCache(ObjectMapper mapper, ClassLoader lingClassLoader) {
+        Field ctxField = findFieldInHierarchy(mapper.getClass(), "_deserializationContext");
+        if (ctxField == null) {
+            return 0;
+        }
+        try {
+            ctxField.setAccessible(true);
+            Object ctx = ctxField.get(mapper);
+            if (ctx == null) {
+                return 0;
+            }
+            Field cacheField = findFieldInHierarchy(ctx.getClass(), "_cache");
+            if (cacheField == null) {
+                cacheField = findFieldInHierarchy(ctx.getClass(), "cache");
+            }
+            if (cacheField == null) {
+                return 0;
+            }
+            cacheField.setAccessible(true);
+            Object cache = cacheField.get(ctx);
+            if (cache == null) {
+                return 0;
+            }
+            return clearDeserializerCacheInternal(cache, lingClassLoader);
+        } catch (Exception ignored) {
+        }
+        return 0;
+    }
+
+    private int clearDeserializerCacheInternal(Object cache, ClassLoader lingClassLoader) {
+        int removed = 0;
+        for (String fieldName : new String[] { "_cachedDeserializers", "_incompleteDeserializers" }) {
+            Field f = findFieldInHierarchy(cache.getClass(), fieldName);
+            if (f == null) {
+                continue;
+            }
+            try {
+                f.setAccessible(true);
+                Object mapObj = f.get(cache);
+                if (mapObj instanceof Map<?, ?>) {
+                    removed += removeJacksonMapEntries((Map<?, ?>) mapObj, lingClassLoader);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return removed;
+    }
+
+    private int clearSerializerCache(ObjectMapper mapper, ClassLoader lingClassLoader) {
+        Field providerField = findFieldInHierarchy(mapper.getClass(), "_serializerProvider");
+        if (providerField == null) {
+            return 0;
+        }
+        try {
+            providerField.setAccessible(true);
+            Object provider = providerField.get(mapper);
+            if (provider == null) {
+                return 0;
+            }
+            Field cacheField = findFieldInHierarchy(provider.getClass(), "_serializerCache");
+            if (cacheField == null) {
+                return 0;
+            }
+            cacheField.setAccessible(true);
+            Object cache = cacheField.get(provider);
+            if (cache == null) {
+                return 0;
+            }
+            return clearSerializerCacheInternal(cache, lingClassLoader);
+        } catch (Exception ignored) {
+        }
+        return 0;
+    }
+
+    private int clearSerializerCacheInternal(Object cache, ClassLoader lingClassLoader) {
+        int removed = 0;
+        for (String fieldName : new String[] { "_sharedMap", "_readOnlyMap" }) {
+            Field f = findFieldInHierarchy(cache.getClass(), fieldName);
+            if (f == null) {
+                continue;
+            }
+            try {
+                f.setAccessible(true);
+                Object mapObj = f.get(cache);
+                if (mapObj instanceof Map<?, ?>) {
+                    removed += removeJacksonMapEntries((Map<?, ?>) mapObj, lingClassLoader);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return removed;
+    }
+
+    private int removeJacksonMapEntries(Map<?, ?> map, ClassLoader lingClassLoader) {
+        int before = map.size();
+        try {
+            map.entrySet().removeIf(entry -> isJacksonRelatedToClassLoader(entry.getKey(), lingClassLoader)
+                    || isJacksonRelatedToClassLoader(entry.getValue(), lingClassLoader)
+                    || isRelatedToClassLoader(entry.getKey(), lingClassLoader)
+                    || isRelatedToClassLoader(entry.getValue(), lingClassLoader));
+        } catch (UnsupportedOperationException e) {
+            try {
+                Iterator<?> it = map.entrySet().iterator();
+                while (it.hasNext()) {
+                    Map.Entry<?, ?> entry = (Map.Entry<?, ?>) it.next();
+                    if (isJacksonRelatedToClassLoader(entry.getKey(), lingClassLoader)
+                            || isJacksonRelatedToClassLoader(entry.getValue(), lingClassLoader)
+                            || isRelatedToClassLoader(entry.getKey(), lingClassLoader)
+                            || isRelatedToClassLoader(entry.getValue(), lingClassLoader)) {
+                        it.remove();
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return before - map.size();
+    }
+
+    private boolean isJacksonRelatedToClassLoader(Object obj, ClassLoader cl) {
+        if (obj == null || cl == null) {
+            return false;
+        }
+        if (obj instanceof Class<?>) {
+            return ((Class<?>) obj).getClassLoader() == cl;
+        }
+        String cn = obj.getClass().getName();
+        if (cn.equals("com.fasterxml.jackson.databind.JavaType")
+                || cn.startsWith("com.fasterxml.jackson.databind.type.")) {
+            try {
+                Method m = obj.getClass().getMethod("getRawClass");
+                Object raw = m.invoke(obj);
+                if (raw instanceof Class<?>) {
+                    return ((Class<?>) raw).getClassLoader() == cl;
+                }
+            } catch (Exception ignored) {
+            }
+            try {
+                Field f = findFieldInHierarchy(obj.getClass(), "_class");
+                if (f == null) {
+                    f = findFieldInHierarchy(obj.getClass(), "_rawClass");
+                }
+                if (f != null) {
+                    f.setAccessible(true);
+                    Object raw = f.get(obj);
+                    if (raw instanceof Class<?>) {
+                        return ((Class<?>) raw).getClassLoader() == cl;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (cn.contains("TypeKey")) {
+            try {
+                Field f = findFieldInHierarchy(obj.getClass(), "_class");
+                if (f != null) {
+                    f.setAccessible(true);
+                    Object raw = f.get(obj);
+                    if (raw instanceof Class<?>) {
+                        return ((Class<?>) raw).getClassLoader() == cl;
+                    }
+                }
+                Field typeField = findFieldInHierarchy(obj.getClass(), "_type");
+                if (typeField != null) {
+                    typeField.setAccessible(true);
+                    Object type = typeField.get(obj);
+                    if (isJacksonRelatedToClassLoader(type, cl)) {
+                        return true;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (cn.contains("ClassKey")) {
+            try {
+                Field f = findFieldInHierarchy(obj.getClass(), "clazz");
+                if (f == null) {
+                    f = findFieldInHierarchy(obj.getClass(), "_class");
+                }
+                if (f != null) {
+                    f.setAccessible(true);
+                    Object raw = f.get(obj);
+                    if (raw instanceof Class<?>) {
+                        return ((Class<?>) raw).getClassLoader() == cl;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return false;
+    }
+
+    private boolean isPropertyRelatedToClassLoader(Object obj, ClassLoader cl) {
+        if (obj == null || cl == null) {
+            return false;
+        }
+        if (obj instanceof Class<?>) {
+            return ((Class<?>) obj).getClassLoader() == cl;
+        }
+        if (!"org.springframework.core.convert.Property".equals(obj.getClass().getName())) {
+            return false;
+        }
+        try {
+            Field objectType = findFieldInHierarchy(obj.getClass(), "objectType");
+            if (objectType != null) {
+                objectType.setAccessible(true);
+                Object type = objectType.get(obj);
+                if (type instanceof Class<?> && ((Class<?>) type).getClassLoader() == cl) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            Field readMethod = findFieldInHierarchy(obj.getClass(), "readMethod");
+            if (readMethod != null) {
+                readMethod.setAccessible(true);
+                Object method = readMethod.get(obj);
+                if (method instanceof Method
+                        && ((Method) method).getDeclaringClass().getClassLoader() == cl) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            Field writeMethod = findFieldInHierarchy(obj.getClass(), "writeMethod");
+            if (writeMethod != null) {
+                writeMethod.setAccessible(true);
+                Object method = writeMethod.get(obj);
+                if (method instanceof Method
+                        && ((Method) method).getDeclaringClass().getClassLoader() == cl) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
     }
 
     // ======================== ResolvableType 精确清理 ========================

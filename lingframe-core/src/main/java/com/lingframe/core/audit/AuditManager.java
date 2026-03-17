@@ -14,6 +14,7 @@ public class AuditManager {
 
     // 丢弃计数器，用于告警
     private static final AtomicLong discardCount = new AtomicLong(0);
+    private static final ClassLoader CORE_CLASSLOADER = AuditManager.class.getClassLoader();
 
     // 使用独立的单线程线程池，保证日志顺序，且不占用 ForkJoinPool
     private static final ExecutorService AUDIT_EXECUTOR = new ThreadPoolExecutor(
@@ -24,6 +25,7 @@ public class AuditManager {
             r -> {
                 Thread thread = new Thread(r, "lingframe-audit-logger");
                 thread.setDaemon(true);
+                thread.setContextClassLoader(CORE_CLASSLOADER);
                 thread.setUncaughtExceptionHandler(
                         (t, e) -> log.error("Thread pool thread {} exception: {}", t.getName(), e.getMessage()));
                 return thread;
@@ -38,7 +40,7 @@ public class AuditManager {
 
     // 注册 Shutdown Hook（替代无效的 @PreDestroy 静态方法）
     static {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+        Thread hook = new Thread(() -> {
             log.info("Shutting down Audit Executor...");
             AUDIT_EXECUTOR.shutdown();
             try {
@@ -51,7 +53,9 @@ public class AuditManager {
                 Thread.currentThread().interrupt();
             }
             log.info("Audit Executor shutdown complete.");
-        }, "audit-shutdown-hook"));
+        }, "audit-shutdown-hook");
+        hook.setContextClassLoader(AuditManager.class.getClassLoader());
+        Runtime.getRuntime().addShutdownHook(hook);
     }
 
     /**
@@ -63,6 +67,8 @@ public class AuditManager {
         try {
             // 使用独立线程池执行，避免阻塞业务线程
             CompletableFuture.runAsync(() -> {
+                ClassLoader prev = Thread.currentThread().getContextClassLoader();
+                Thread.currentThread().setContextClassLoader(CORE_CLASSLOADER);
                 try {
                     // 生产环境应写入 ES/DB，此处演示打印日志
                     // 仅记录操作是否成功，不记录具体异常堆栈（由 Monitor 负责）
@@ -79,6 +85,8 @@ public class AuditManager {
                             success ? "Success" : "Void", argsStr, resultStr);
                 } catch (Exception e) {
                     log.warn("Audit log failed", e);
+                } finally {
+                    Thread.currentThread().setContextClassLoader(prev);
                 }
             }, AUDIT_EXECUTOR);
         } catch (Exception e) {

@@ -22,6 +22,7 @@ import java.util.concurrent.*;
  */
 public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
     private static final Logger log = LoggerFactory.getLogger(ThreadIsolationGovernanceFilter.class);
+    private static final ClassLoader CORE_CLASSLOADER = ThreadIsolationGovernanceFilter.class.getClassLoader();
 
     private final LingRepository lingRepository;
     private final Map<String, ExecutorService> executors = new ConcurrentHashMap<>();
@@ -111,6 +112,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
                         public Thread newThread(Runnable r) {
                             Thread t = new Thread(r, "Ling-Iso-" + id + "-" + (++count));
                             t.setDaemon(true);
+                            t.setContextClassLoader(CORE_CLASSLOADER);
                             return t;
                         }
                     },
@@ -125,6 +127,13 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         ExecutorService executor = executors.remove(lingId);
         if (executor != null && !executor.isShutdown()) {
             executor.shutdownNow();
+            try {
+                if (!executor.awaitTermination(3, TimeUnit.SECONDS)) {
+                    log.warn("[Isolation:{}] Thread pool did not terminate in time", lingId);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             log.debug("[Isolation:{}] Evicted and terminated isolated thread pool", lingId);
         }
     }

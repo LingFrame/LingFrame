@@ -10,137 +10,194 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.ClosedWatchServiceException;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardWatchEventKinds;
-import java.nio.file.WatchKey;
-import java.nio.file.WatchService;
+import java.lang.ref.WeakReference;
+import java.nio.file.*;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
-/**
- * 热加载监听器
- * 职责：监听 target/classes 目录变化，触发灵元重载
- */
 @Slf4j
 public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
 
     private final LingLifecycleEngine lifecycleEngine;
     private final EventBus eventBus;
     private WatchService watchService;
-    // 核心映射：WatchKey -> LingId
-    // 因为是递归监听，一个 LingId 会对应多个 WatchKey (每个子目录一个)
-    private final Map<WatchKey, String> keyLingMap = new ConcurrentHashMap<>();
 
-    // 源码映射：LingId -> ClassesDir (用于重装)
+    private final Map<WatchKey, String> keyLingMap = new ConcurrentHashMap<>();
     private final Map<String, File> lingSourceMap = new ConcurrentHashMap<>();
     private final Map<String, LingDefinition> lingDefinitionMap = new ConcurrentHashMap<>();
-
-    // 重载保护集合：记录当前正在进行热重载的灵元ID
-    // 防止在重载过程中(先uninstall再install)误触发资源回收逻辑
     private final Set<String> reloadingLings = ConcurrentHashMap.newKeySet();
+
+    // ✅ 新增：跟踪旧 ClassLoader 是否被 GC
+    private final Map<String, WeakReference<ClassLoader>> oldClassLoaderRefs = new ConcurrentHashMap<>();
 
     private final AtomicBoolean isStarted = new AtomicBoolean(false);
 
-    // 防抖调度器：防止一次保存触发多次重载
     private final ScheduledExecutorService debounceExecutor = Executors.newSingleThreadScheduledExecutor(
             r -> {
                 Thread thread = new Thread(r, "lingframe-hotswap-debounce");
                 thread.setDaemon(true);
                 thread.setUncaughtExceptionHandler(
-                        (t, e) -> log.error("Thread pool thread {} exception: {}", t.getName(), e.getMessage()));
+                        (t, e) -> log.error("Thread {} exception: {}", t.getName(), e.getMessage()));
                 return thread;
             });
-    private ScheduledFuture<?> debounceTask;
+
+    // ✅ 改为 volatile，防止并发问题
+    private volatile ScheduledFuture<?> debounceTask;
 
     public HotSwapWatcher(LingLifecycleEngine lifecycleEngine, EventBus eventBus) {
         this.lifecycleEngine = lifecycleEngine;
         this.eventBus = eventBus;
-        // 注册自己监听卸载事件
         this.eventBus.subscribe("lingframe-hotswap", LingUninstalledEvent.class, this);
     }
 
-    /**
-     * 初始化监听服务 (Lazy Init)
-     */
-    private synchronized void ensureInit() {
-        if (isStarted.get()) {
-            return;
-        }
-        try {
-            this.watchService = FileSystems.getDefault().newWatchService();
-            startWatchLoop();
-            isStarted.set(true);
-            log.info("[HotSwap] WatchService initialized (Lazy).");
-        } catch (IOException e) {
-            throw new LingInstallException("hotswap", "Failed to init WatchService", e);
-        }
-    }
-
-    /**
-     * 响应系统卸载事件 (自动清理资源)
-     */
     @Override
     public void onEvent(LingUninstalledEvent event) {
         String lingId = event.getLingId();
-
-        // [Critical] 如果是热重载导致的卸载，不要注销监听！
         if (reloadingLings.contains(lingId)) {
             log.debug("[HotSwap] Ignoring uninstall event for reloading ling: {}", lingId);
             return;
         }
-
-        // 只有用户手动卸载(API)时，才真正停止监听
         unregister(lingId);
     }
 
-    /**
-     * 注册监听目录
-     */
-    public void register(String lingId, File classesDir) {
-        ensureInit(); // 触发懒加载
-        try {
-            cleanupWatchKeys(lingId);
-            Path path = classesDir.toPath();
-            // 递归注册所有子目录
-            WatchKey key = path.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY,
-                    StandardWatchEventKinds.ENTRY_CREATE);
-            keyLingMap.put(key, lingId);
+    private synchronized void scheduleReload(String lingId) {
+        if (debounceTask != null && !debounceTask.isDone()) {
+            debounceTask.cancel(false);
+        }
 
-            // 简单遍历一级子目录注册
-            try (Stream<Path> paths = Files.walk(path, 10)) {
-                paths.filter(Files::isDirectory)
-                        .forEach(p -> {
-                            try {
-                                WatchKey k = p.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY);
-                                keyLingMap.put(k, lingId);
-                            } catch (IOException e) {
-                                log.warn("Failed to watch subdir: {}", p, e);
-                            }
-                        });
+        debounceTask = debounceExecutor.schedule(() -> {
+            doReload(lingId);
+            // ✅ 任务完成后清除引用，防止 lambda 被 ScheduledFuture 持有
+            debounceTask = null;
+        }, 1000, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * ✅ 抽取热加载核心逻辑，增加 TCCL 保护和 GC 验证
+     */
+    private void doReload(String lingId) {
+        log.info("=================================================");
+        log.info("[HotSwap] Source change detected, hot reloading: {}", lingId);
+
+        if (hasCompilationErrors(lingId)) {
+            log.warn("[HotSwap] Compilation error detected, skipping: {}", lingId);
+            log.info("=================================================");
+            return;
+        }
+
+        File source = lingSourceMap.get(lingId);
+        if (source == null) {
+            log.error("[HotSwap] Source lost for ling: {}", lingId);
+            return;
+        }
+
+        LingDefinition lingDefinition = lingDefinitionMap.get(lingId);
+        if (lingDefinition == null) {
+            log.warn("[HotSwap] LingDefinition lost for ling: {}", lingId);
+            return;
+        }
+
+        // ✅ 保护当前线程的 TCCL
+        Thread currentThread = Thread.currentThread();
+        ClassLoader originalTCCL = currentThread.getContextClassLoader();
+
+        try {
+            reloadingLings.add(lingId);
+
+            // ✅ 在 undeploy 前，获取旧 ClassLoader 的弱引用用于验证
+            ClassLoader oldClassLoader = getOldClassLoader(lingId);
+            WeakReference<ClassLoader> weakRef = null;
+            if (oldClassLoader != null) {
+                weakRef = new WeakReference<>(oldClassLoader);
+                oldClassLoader = null; // 立即释放强引用
             }
 
-            log.info("[HotSwap] Watching directory: {}", classesDir.getAbsolutePath());
+            // ========== 卸载旧版 ==========
+            lifecycleEngine.undeploy(lingId);
+
+            // ✅ 强制恢复 TCCL（防止 undeploy 过程中被改变）
+            currentThread.setContextClassLoader(originalTCCL);
+
+            // ========== 安装新版 ==========
+            boolean isCanary = resolveCanaryFlag(lingDefinition);
+            boolean isDefault = !isCanary;
+            lifecycleEngine.deploy(lingDefinition, source, isDefault, Collections.emptyMap());
+
+            // ✅ 再次恢复 TCCL（防止 deploy/start 过程中被改变）
+            currentThread.setContextClassLoader(originalTCCL);
+
+            log.info("[HotSwap] Hot swap completed: {}", lingId);
+
+            // ✅ 验证旧 ClassLoader 是否可以被 GC
+            if (weakRef != null) {
+                verifyClassLoaderGC(lingId, weakRef);
+            }
+
         } catch (Exception e) {
-            log.warn("Failed to watch dir: {}", classesDir, e);
+            log.error("[HotSwap] Hot swap failed for: {}", lingId, e);
+            // ✅ 确保异常时也恢复 TCCL
+            currentThread.setContextClassLoader(originalTCCL);
+        } finally {
+            reloadingLings.remove(lingId);
+        }
+        log.info("=================================================");
+    }
+
+    /**
+     * ✅ 获取当前灵元的 ClassLoader（undeploy 前）
+     */
+    private ClassLoader getOldClassLoader(String lingId) {
+        try {
+            // 通过 lifecycleEngine 获取当前容器的 ClassLoader
+            // 需要 lifecycleEngine 提供这个能力
+            return lifecycleEngine.getClassLoader(lingId);
+        } catch (Exception e) {
+            return null;
         }
     }
 
     /**
-     * 注销监听
-     * 遍历 Map，移除该灵元名下的所有 Key (O(N) 复杂度，但在卸载时可接受)
+     * ✅ 验证旧 ClassLoader 是否已被 GC
      */
+    private void verifyClassLoaderGC(String lingId, WeakReference<ClassLoader> weakRef) {
+        // 延迟验证，给 GC 时间
+        debounceExecutor.schedule(() -> {
+            System.gc();
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException ignored) {
+            }
+            System.gc();
+
+            if (weakRef.get() == null) {
+                log.info("✅ [HotSwap] Old ClassLoader for [{}] has been GC'd", lingId);
+            } else {
+                log.warn("⚠️ [HotSwap] Old ClassLoader for [{}] is STILL ALIVE - memory leak!", lingId);
+                // 可以在这里触发 heap dump 进行分析
+            }
+        }, 5, TimeUnit.SECONDS);
+    }
+
+    /**
+     * ✅ 抽取 canary 判断逻辑
+     */
+    private boolean resolveCanaryFlag(LingDefinition lingDefinition) {
+        Map<String, Object> properties = lingDefinition.getProperties();
+        if (properties == null) return false;
+        Object value = properties.get("canary");
+        if (value instanceof Boolean) return (Boolean) value;
+        if (value instanceof Number) return ((Number) value).intValue() != 0;
+        if (value != null) return "true".equalsIgnoreCase(String.valueOf(value));
+        return false;
+    }
+
+    // ======================== 注册/注销 ========================
+
     public void register(String lingId, File classesDir, LingDefinition definition) {
         if (lingId == null || classesDir == null || definition == null) {
             return;
@@ -150,47 +207,65 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         register(lingId, classesDir);
     }
 
-    /**
-     * 注销监听
-     * 遍历 Map，移除该灵元名下的所有 Key (O(N) 复杂度，但在卸载时可接受)
-     */
-    public void unregister(String lingId) {
-        if (!isStarted.get()) {
-            return;
+    public void register(String lingId, File classesDir) {
+        ensureInit();
+        try {
+            cleanupWatchKeys(lingId);
+            Path path = classesDir.toPath();
+            WatchKey key = path.register(watchService,
+                    StandardWatchEventKinds.ENTRY_MODIFY,
+                    StandardWatchEventKinds.ENTRY_CREATE);
+            keyLingMap.put(key, lingId);
+
+            try (Stream<Path> paths = Files.walk(path, 10)) {
+                paths.filter(Files::isDirectory).forEach(p -> {
+                    try {
+                        WatchKey k = p.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY);
+                        keyLingMap.put(k, lingId);
+                    } catch (IOException e) {
+                        log.warn("Failed to watch subdir: {}", p, e);
+                    }
+                });
+            }
+            log.info("[HotSwap] Watching directory: {}", classesDir.getAbsolutePath());
+        } catch (Exception e) {
+            log.warn("Failed to watch dir: {}", classesDir, e);
         }
+    }
 
+    public void unregister(String lingId) {
+        if (!isStarted.get()) return;
         log.info("[HotSwap] Unregistering watcher for: {}", lingId);
+        cleanupWatchKeys(lingId);
+        lingSourceMap.remove(lingId);
+        lingDefinitionMap.remove(lingId);
+        oldClassLoaderRefs.remove(lingId);
+    }
 
-        // 使用迭代器安全删除
+    private void cleanupWatchKeys(String lingId) {
         Iterator<Map.Entry<WatchKey, String>> it = keyLingMap.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<WatchKey, String> entry = it.next();
             if (entry.getValue().equals(lingId)) {
-                WatchKey key = entry.getKey();
                 try {
-                    key.cancel(); // 释放操作系统资源
+                    entry.getKey().cancel();
                 } catch (Exception ignored) {
                 }
-                it.remove(); // 移除 Map 条目
+                it.remove();
             }
         }
-
-        lingSourceMap.remove(lingId);
-        lingDefinitionMap.remove(lingId);
     }
 
-    // 关闭服务 (App shutdown 时调用)
-    public synchronized void shutdown() {
+    // ======================== WatchService ========================
+
+    private synchronized void ensureInit() {
+        if (isStarted.get()) return;
         try {
-            if (watchService != null) {
-                watchService.close();
-            }
-            debounceExecutor.shutdownNow();
-            if (eventBus != null) {
-                eventBus.unsubscribeAll("lingframe-hotswap");
-            }
+            this.watchService = FileSystems.getDefault().newWatchService();
+            startWatchLoop();
+            isStarted.set(true);
         } catch (IOException e) {
-            // ignore
+            throw new LingInstallException("hotswap", "Failed to init WatchService", e);
         }
     }
 
@@ -198,29 +273,18 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         Thread thread = new Thread(() -> {
             while (true) {
                 try {
-                    if (watchService == null) {
-                        break;
-                    }
-
+                    if (watchService == null) break;
                     WatchKey key = watchService.take();
-
                     String lingId = keyLingMap.get(key);
                     if (lingId != null) {
-                        // 触发防抖重载
                         scheduleReload(lingId);
                     }
-
-                    // 清空事件队列，防止死循环
                     key.pollEvents();
-
-                    // 重置 key，如果重置失败说明目录已不可访问
                     if (!key.reset()) {
                         keyLingMap.remove(key);
                     }
-                } catch (InterruptedException e) {
+                } catch (InterruptedException | ClosedWatchServiceException e) {
                     break;
-                } catch (ClosedWatchServiceException e) {
-                    break; // 服务关闭，退出
                 } catch (Exception e) {
                     log.error("Error in HotSwap loop", e);
                 }
@@ -228,91 +292,15 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         });
         thread.setDaemon(true);
         thread.setName("lingframe-hotswap-watcher");
-        thread.setUncaughtExceptionHandler(
-                (t, e) -> log.error("Thread pool thread {} exception: {}", t.getName(), e.getMessage()));
         thread.start();
     }
 
-    private synchronized void scheduleReload(String lingId) {
-        if (debounceTask != null && !debounceTask.isDone()) {
-            debounceTask.cancel(false);
-        }
-        // 延迟 1000ms 执行，等待 IDE 编译完成
-        debounceTask = debounceExecutor.schedule(() -> {
-            log.info("=================================================");
-            log.info("[HotSwap] Source change detected, hot reloading ling: {}", lingId);
-
-            // 检查是否存在编译错误文件
-            if (hasCompilationErrors(lingId)) {
-                log.warn("Compilation error detected, skipping hot reload: {}", lingId);
-                log.info("=================================================");
-                return;
-            }
-
-            File source = lingSourceMap.get(lingId);
-            if (source == null) {
-                log.error("Source lost for ling: {}", lingId);
-                return;
-            }
-
-            LingDefinition lingDefinition = lingDefinitionMap.get(lingId);
-            if (lingDefinition == null) {
-                log.warn("LingDefinition lost for ling: {}", lingId);
-                return;
-            }
-
-            try {
-                // 标记正在重载 (保护 WatchKey 不被回收)
-                reloadingLings.add(lingId);
-
-                // 卸载旧版
-                lifecycleEngine.undeploy(lingId);
-
-                // 安装新版 (Dev模式)
-                Map<String, Object> properties = lingDefinition.getProperties();
-                boolean isCanary = false;
-                if (properties != null) {
-                    Object value = properties.get("canary");
-                    if (value instanceof Boolean) {
-                        isCanary = (Boolean) value;
-                    } else if (value instanceof Number) {
-                        isCanary = ((Number) value).intValue() != 0;
-                    } else if (value != null) {
-                        isCanary = "true".equalsIgnoreCase(String.valueOf(value));
-                    }
-                }
-                boolean isDefault = !isCanary;
-                lifecycleEngine.deploy(lingDefinition, source, isDefault, Collections.emptyMap());
-
-                log.info("[HotSwap] Hot swap completed: {}", lingId);
-
-            } catch (Exception e) {
-                log.error("Hot swap failed", e);
-            } finally {
-                // 解除保护
-                reloadingLings.remove(lingId);
-            }
-            log.info("=================================================");
-        }, 1000, TimeUnit.MILLISECONDS);
-    }
-
-    /**
-     * 检查是否存在编译错误
-     *
-     * @param lingId 灵元ID
-     * @return 是否存在编译错误
-     */
     private boolean hasCompilationErrors(String lingId) {
-        // 简单实现：检查是否存在 .class 文件
-        // 更完善的实现应该检查编译器输出或错误日志
         for (Map.Entry<WatchKey, String> entry : keyLingMap.entrySet()) {
             if (entry.getValue().equals(lingId)) {
                 Path dir = (Path) entry.getKey().watchable();
-                try {
-                    // 检查目录中是否存在 .class 文件
-                    try (Stream<Path> paths = Files.walk(dir)) {
-                        return paths.noneMatch(path -> path.toString().endsWith(".class"));
-                    }
+                try (Stream<Path> paths = Files.walk(dir)) {
+                    return paths.noneMatch(path -> path.toString().endsWith(".class"));
                 } catch (IOException e) {
                     log.warn("Failed to check compilation status: {}", dir, e);
                 }
@@ -321,19 +309,12 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         return false;
     }
 
-    private void cleanupWatchKeys(String lingId) {
-        // 使用迭代器安全删除
-        Iterator<Map.Entry<WatchKey, String>> it = keyLingMap.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<WatchKey, String> entry = it.next();
-            if (entry.getValue().equals(lingId)) {
-                WatchKey key = entry.getKey();
-                try {
-                    key.cancel(); // 释放操作系统资源
-                } catch (Exception ignored) {
-                }
-                it.remove(); // 移除 Map 条目
-            }
+    public synchronized void shutdown() {
+        try {
+            if (watchService != null) watchService.close();
+            debounceExecutor.shutdownNow();
+            if (eventBus != null) eventBus.unsubscribeAll("lingframe-hotswap");
+        } catch (IOException ignored) {
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.lingframe.starter.adapter;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.annotation.RequiresPermission;
@@ -12,10 +13,12 @@ import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.core.spi.ResourceGuard;
 import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.starter.spi.SpringAwareResourceGuard;
+import com.lingframe.starter.util.JacksonCacheEvictUtil;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -24,6 +27,7 @@ import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.List;
@@ -46,13 +50,13 @@ public class SpringLingContainer implements LingContainer {
     private final List<ResourceGuard> resourceGuards; // 🔥 资源守卫列表
 
     public SpringLingContainer(SpringApplicationBuilder builder,
-            ClassLoader classLoader,
-            WebInterfaceManager webInterfaceManager,
-            List<String> excludedPackages,
-            List<LingContextCustomizer> customizers,
-            ApplicationContext mainContext,
-            List<ResourceGuard> resourceGuards,
-            String version) {
+                               ClassLoader classLoader,
+                               WebInterfaceManager webInterfaceManager,
+                               List<String> excludedPackages,
+                               List<LingContextCustomizer> customizers,
+                               ApplicationContext mainContext,
+                               List<ResourceGuard> resourceGuards,
+                               String version) {
         this.builder = builder;
         this.classLoader = classLoader;
         this.webInterfaceManager = webInterfaceManager;
@@ -266,7 +270,7 @@ public class SpringLingContainer implements LingContainer {
      * 解析单个方法并生成元数据（简化版，不再解析参数）
      */
     private void registerControllerMethod(String lingId, Object bean, Method method,
-            String baseUrl, RequestMapping mapping) {
+                                          String baseUrl, RequestMapping mapping) {
         // URL 拼接: /lingId/classUrl/methodUrl
         String methodUrl = mapping.path().length > 0 ? mapping.path()[0] : "";
         String fullPath = ("/" + lingId + "/" + baseUrl + "/" + methodUrl).replaceAll("/+", "/");
@@ -335,6 +339,14 @@ public class SpringLingContainer implements LingContainer {
             // 注销 Web 接口元数据
             if (webInterfaceManager != null) {
                 webInterfaceManager.unregister(lingId, this.classLoader);
+            }
+
+            // ✅ 从主容器获取 ObjectMapper，而不是靠 @Autowired
+            try {
+                ObjectMapper om = this.mainContext.getBean(ObjectMapper.class);
+                JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
+            } catch (Exception e) {
+                log.warn("清理 Jackson 缓存失败", e);
             }
 
             // 🔥 第一阶段清理：在 Context 关闭前执行 preCleanup
