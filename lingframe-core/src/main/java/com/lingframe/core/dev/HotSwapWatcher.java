@@ -5,15 +5,21 @@ import com.lingframe.api.event.LingEventListener;
 import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.exception.LingInstallException;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingLifecycleEngine;
+import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.ling.LingRuntime;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.nio.file.*;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
@@ -24,6 +30,7 @@ import java.util.stream.Stream;
 public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
 
     private final LingLifecycleEngine lifecycleEngine;
+    private final LingRepository lingRepository;
     private final EventBus eventBus;
     private WatchService watchService;
 
@@ -31,9 +38,6 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
     private final Map<String, File> lingSourceMap = new ConcurrentHashMap<>();
     private final Map<String, LingDefinition> lingDefinitionMap = new ConcurrentHashMap<>();
     private final Set<String> reloadingLings = ConcurrentHashMap.newKeySet();
-
-    // ✅ 新增：跟踪旧 ClassLoader 是否被 GC
-    private final Map<String, WeakReference<ClassLoader>> oldClassLoaderRefs = new ConcurrentHashMap<>();
 
     private final AtomicBoolean isStarted = new AtomicBoolean(false);
 
@@ -49,8 +53,9 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
     // ✅ 改为 volatile，防止并发问题
     private volatile ScheduledFuture<?> debounceTask;
 
-    public HotSwapWatcher(LingLifecycleEngine lifecycleEngine, EventBus eventBus) {
+    public HotSwapWatcher(LingLifecycleEngine lifecycleEngine, LingRepository lingRepository, EventBus eventBus) {
         this.lifecycleEngine = lifecycleEngine;
+        this.lingRepository = lingRepository;
         this.eventBus = eventBus;
         this.eventBus.subscribe("lingframe-hotswap", LingUninstalledEvent.class, this);
     }
@@ -109,13 +114,7 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         try {
             reloadingLings.add(lingId);
 
-            // ✅ 在 undeploy 前，获取旧 ClassLoader 的弱引用用于验证
-            ClassLoader oldClassLoader = getOldClassLoader(lingId);
-            WeakReference<ClassLoader> weakRef = null;
-            if (oldClassLoader != null) {
-                weakRef = new WeakReference<>(oldClassLoader);
-                oldClassLoader = null; // 立即释放强引用
-            }
+            List<TrackedClassLoader> oldClassLoaders = snapshotClassLoaders(lingId);
 
             // ========== 卸载旧版 ==========
             lifecycleEngine.undeploy(lingId);
@@ -134,8 +133,8 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
             log.info("[HotSwap] Hot swap completed: {}", lingId);
 
             // ✅ 验证旧 ClassLoader 是否可以被 GC
-            if (weakRef != null) {
-                verifyClassLoaderGC(lingId, weakRef);
+            if (!oldClassLoaders.isEmpty()) {
+                verifyClassLoaderGC(lingId, oldClassLoaders);
             }
 
         } catch (Exception e) {
@@ -149,22 +148,9 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
     }
 
     /**
-     * ✅ 获取当前灵元的 ClassLoader（undeploy 前）
-     */
-    private ClassLoader getOldClassLoader(String lingId) {
-        try {
-            // 通过 lifecycleEngine 获取当前容器的 ClassLoader
-            // 需要 lifecycleEngine 提供这个能力
-            return lifecycleEngine.getClassLoader(lingId);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
      * ✅ 验证旧 ClassLoader 是否已被 GC
      */
-    private void verifyClassLoaderGC(String lingId, WeakReference<ClassLoader> weakRef) {
+    private void verifyClassLoaderGC(String lingId, List<TrackedClassLoader> trackedLoaders) {
         // 延迟验证，给 GC 时间
         debounceExecutor.schedule(() -> {
             System.gc();
@@ -174,13 +160,37 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
             }
             System.gc();
 
-            if (weakRef.get() == null) {
-                log.info("✅ [HotSwap] Old ClassLoader for [{}] has been GC'd", lingId);
-            } else {
-                log.warn("⚠️ [HotSwap] Old ClassLoader for [{}] is STILL ALIVE - memory leak!", lingId);
-                // 可以在这里触发 heap dump 进行分析
+            for (TrackedClassLoader tracked : trackedLoaders) {
+                if (tracked.reference.get() == null) {
+                    log.info("[HotSwap] Old ClassLoader for [{}:{}] has been GC'd", lingId, tracked.version);
+                } else {
+                    log.warn("[HotSwap] Old ClassLoader for [{}:{}] is STILL ALIVE - memory leak!",
+                            lingId, tracked.version);
+                }
             }
         }, 5, TimeUnit.SECONDS);
+    }
+
+    private List<TrackedClassLoader> snapshotClassLoaders(String lingId) {
+        if (lingRepository == null) {
+            return Collections.emptyList();
+        }
+
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
+        if (runtime == null) {
+            return Collections.emptyList();
+        }
+
+        List<TrackedClassLoader> tracked = new ArrayList<>();
+        Set<ClassLoader> seen = Collections.newSetFromMap(new IdentityHashMap<ClassLoader, Boolean>());
+        for (LingInstance instance : runtime.getInstancePool().getAllInstances()) {
+            ClassLoader classLoader = instance.getClassLoader();
+            if (classLoader == null || !seen.add(classLoader)) {
+                continue;
+            }
+            tracked.add(new TrackedClassLoader(instance.getVersion(), new WeakReference<>(classLoader)));
+        }
+        return tracked;
     }
 
     /**
@@ -239,7 +249,6 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         cleanupWatchKeys(lingId);
         lingSourceMap.remove(lingId);
         lingDefinitionMap.remove(lingId);
-        oldClassLoaderRefs.remove(lingId);
     }
 
     private void cleanupWatchKeys(String lingId) {
@@ -315,6 +324,16 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
             debounceExecutor.shutdownNow();
             if (eventBus != null) eventBus.unsubscribeAll("lingframe-hotswap");
         } catch (IOException ignored) {
+        }
+    }
+
+    private static final class TrackedClassLoader {
+        private final String version;
+        private final WeakReference<ClassLoader> reference;
+
+        private TrackedClassLoader(String version, WeakReference<ClassLoader> reference) {
+            this.version = version;
+            this.reference = reference;
         }
     }
 }

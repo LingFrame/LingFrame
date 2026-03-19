@@ -313,8 +313,10 @@ public class LingFrameCoreConfiguration {
 
     @Bean(destroyMethod = "shutdown")
     @ConditionalOnProperty(prefix = "lingframe", name = "dev-mode", havingValue = "true")
-    public HotSwapWatcher hotSwapWatcher(LingLifecycleEngine lifecycleEngine, EventBus eventBus) {
-        HotSwapWatcher watcher = new HotSwapWatcher(lifecycleEngine, eventBus);
+    public HotSwapWatcher hotSwapWatcher(LingLifecycleEngine lifecycleEngine,
+                                         LingRepository lingRepository,
+                                         EventBus eventBus) {
+        HotSwapWatcher watcher = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus);
         if (lifecycleEngine instanceof DefaultLingLifecycleEngine) {
             ((DefaultLingLifecycleEngine) lifecycleEngine).setHotSwapWatcher(watcher);
         }

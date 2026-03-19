@@ -80,6 +80,19 @@ LingFrame draws inspiration from operating system design principles:
 | `EventBus`                | Event Publish/Subscribe    |
 | `GovernanceKernel`        | Governance Kernel          |
 
+#### Runtime Dual-State Machine
+
+The current runtime model has been converged into a dual-state architecture:
+
+- **Instance Layer**: `LingInstance` carries the per-instance FSM, and `InstanceCoordinator` is the only formal state writer.
+- **Runtime Layer**: `LingRuntime` acts only as the host view, while `RuntimeCoordinator` owns and drives `RuntimeStatus`.
+- **Linkage Model**: the instance layer publishes facts, the runtime layer subscribes and aggregates from snapshots. Objects no longer write each other's state directly.
+
+For the full explanation, see:
+
+- [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md)
+- [Runtime Dual-State Machine Guide](runtime-dual-state-machine-guide.md)
+
 ### Layer 2: Infrastructure (Infrastructure Layer)
 
 **Unit**: `lingframe-infrastructure/*`

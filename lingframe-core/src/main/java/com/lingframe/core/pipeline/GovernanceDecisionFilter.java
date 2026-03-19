@@ -106,8 +106,8 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
     private ClassLoader resolveClassLoader(InvocationContext ctx) {
         try {
             LingInstance target = (LingInstance) ctx.getAttachments().get("ling.target.instance");
-            if (target != null && target.getContainer() != null) {
-                return target.getContainer().getClassLoader();
+            if (target != null && target.getClassLoader() != null) {
+                return target.getClassLoader();
             }
         } catch (Exception ignored) {
             // fallback to context loader

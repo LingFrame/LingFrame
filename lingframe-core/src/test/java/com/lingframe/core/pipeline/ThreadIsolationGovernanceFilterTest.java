@@ -6,6 +6,7 @@ import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.spi.LingFilterChain;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +27,8 @@ class ThreadIsolationGovernanceFilterTest {
                 .bulkheadMaxConcurrent(1)
                 .defaultTimeoutMs(2000)
                 .build();
-        LingRuntime runtime = new LingRuntime("ling1", config, new EventBus());
+        EventBus eventBus = new EventBus();
+        LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
         repository.register(runtime);
 
         ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
@@ -69,4 +71,3 @@ class ThreadIsolationGovernanceFilterTest {
         }
     }
 }
-

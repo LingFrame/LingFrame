@@ -5,6 +5,7 @@ import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
@@ -43,6 +44,8 @@ class DashboardServiceTest {
     LingInfoConverter lingInfoConverter;
     @Mock
     PermissionService permissionService;
+    @Mock
+    RuntimeCoordinator runtimeCoordinator;
 
     @Captor
     ArgumentCaptor<GovernancePolicy> policyCaptor;
@@ -50,7 +53,7 @@ class DashboardServiceTest {
     @Test
     void updateGovernancePolicyRefreshesPermissionsFromPolicy() {
         DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                governanceRegistry, canaryRouter, lingInfoConverter, permissionService);
+                governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator);
 
         GovernancePolicy policy = new GovernancePolicy();
         policy.setCapabilities(Arrays.asList(
@@ -74,7 +77,7 @@ class DashboardServiceTest {
     @Test
     void updatePermissionsPersistsPolicyAndSyncsRuntimePermissions() {
         DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                governanceRegistry, canaryRouter, lingInfoConverter, permissionService);
+                governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator);
 
         when(governanceRegistry.getPatch("ling1")).thenReturn(null);
 

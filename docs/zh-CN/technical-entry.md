@@ -263,6 +263,8 @@ lingframe/
 - [基础设施层开发](infrastructure-development.md) - 开发基础设施代理
 - [Dashboard](dashboard.md) - 可视化治理中心
 - [架构设计](architecture.md) - 深入了解治理原理
+- [运行时双层状态机架构设计](runtime-dual-state-machine-architecture.md) - 双层状态机的边界、联动和收敛原则
+- [运行时双层状态机技术指导](runtime-dual-state-machine-guide.md) - 面向新人的理解、扩展与排障说明
 - [路线图](roadmap.md) - 演进计划
 
 ---

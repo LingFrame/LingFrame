@@ -33,7 +33,10 @@ public class ContextIsolationFilter implements LingInvocationFilter {
         // 通过 Container 获取 ClassLoader，不再使用反射
         ClassLoader lingClassLoader;
         try {
-            lingClassLoader = target.getContainer().getClassLoader();
+            lingClassLoader = target.getClassLoader();
+            if (lingClassLoader == null) {
+                throw new IllegalStateException("Target classloader is unavailable");
+            }
         } catch (Exception e) {
             throw new LingInvocationException(ctx.getServiceFQSID(),
                     LingInvocationException.ErrorKind.CLASSLOADER_ERROR, e);

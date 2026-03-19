@@ -2,28 +2,47 @@ package com.lingframe.core.ling;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.context.LingContext;
-import com.lingframe.core.event.EventBus;
 import com.lingframe.api.exception.ServiceUnavailableException;
-import com.lingframe.core.fsm.InstanceStatus;
+import com.lingframe.core.event.EventBus;
+import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.spi.LingContainer;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-import java.util.concurrent.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("LingLifecycleManager 灵元测试")
-public class LingLifecycleManagerTest {
+class LingLifecycleManagerTest {
 
     private static final String LING_ID = "test-ling";
 
@@ -37,6 +56,7 @@ public class LingLifecycleManagerTest {
     private InstancePool instancePool;
     private LingRuntimeConfig config;
     private LingLifecycleManager lifecycleManager;
+    private InstanceCoordinator bootstrapCoordinator;
 
     @BeforeEach
     void setUp() {
@@ -48,15 +68,14 @@ public class LingLifecycleManagerTest {
                 .build();
 
         instancePool = new InstancePool(LING_ID, config.getMaxHistorySnapshots());
-
         lifecycleManager = new LingLifecycleManager(
                 LING_ID,
                 instancePool,
                 externalEventBus,
                 scheduler,
                 config,
-                null // ResourceGuard（测试中不需要）
-        );
+                null);
+        bootstrapCoordinator = new InstanceCoordinator(null);
     }
 
     @AfterEach
@@ -69,38 +88,15 @@ public class LingLifecycleManagerTest {
         }
     }
 
-    // ==================== 辅助方法 ====================
-
-    private LingInstance createMockInstance(String version) {
-        LingContainer container = mock(LingContainer.class);
-        when(container.isActive()).thenReturn(true);
-        doNothing().when(container).start(any());
-        doNothing().when(container).stop();
-
-        LingDefinition definition = new LingDefinition();
-        definition.setId(LING_ID);
-        definition.setVersion(version);
-
-        LingInstance instance = new LingInstance(container, definition, new EventBus());
-        instance.getStateMachine().transition(InstanceStatus.LOADING);
-        instance.getStateMachine().transition(InstanceStatus.STARTING);
-        return instance;
-    }
-
-    // ==================== 初始状态测试 ====================
-
     @Nested
-    @DisplayName("初始状态")
     class InitialStateTests {
 
         @Test
-        @DisplayName("新创建的管理器不应处于关闭状态")
         void newManagerShouldNotBeShutdown() {
             assertFalse(lifecycleManager.isShutdown());
         }
 
         @Test
-        @DisplayName("初始统计应正确")
         void initialStatsShouldBeCorrect() {
             LingLifecycleManager.LifecycleStats stats = lifecycleManager.getStats();
 
@@ -110,14 +106,10 @@ public class LingLifecycleManagerTest {
         }
     }
 
-    // ==================== 添加实例测试 ====================
-
     @Nested
-    @DisplayName("添加实例")
     class AddInstanceTests {
 
         @Test
-        @DisplayName("添加实例应成功")
         void addInstanceShouldSucceed() {
             LingInstance instance = createMockInstance("1.0.0");
 
@@ -129,7 +121,6 @@ public class LingLifecycleManagerTest {
         }
 
         @Test
-        @DisplayName("添加非默认实例不应替换默认")
         void addNonDefaultShouldNotReplaceDefault() {
             LingInstance v1 = createMockInstance("1.0.0");
             LingInstance v2 = createMockInstance("2.0.0");
@@ -142,7 +133,6 @@ public class LingLifecycleManagerTest {
         }
 
         @Test
-        @DisplayName("升级应将旧版本移入死亡队列")
         void upgradeShouldMoveOldToDying() {
             LingInstance v1 = createMockInstance("1.0.0");
             LingInstance v2 = createMockInstance("2.0.0");
@@ -156,8 +146,7 @@ public class LingLifecycleManagerTest {
         }
 
         @Test
-        @DisplayName("容器启动失败应抛出异常")
-        void containerStartFailureShouldThrow() {
+        void containerStartFailureShouldThrowLingInstallException() {
             LingContainer container = mock(LingContainer.class);
             doThrow(new RuntimeException("Start failed")).when(container).start(any());
 
@@ -166,12 +155,14 @@ public class LingLifecycleManagerTest {
             definition.setVersion("1.0.0");
 
             LingInstance instance = new LingInstance(container, definition, new EventBus());
+            bootstrapCoordinator.prepare(instance);
+            bootstrapCoordinator.start(instance);
 
-            assertThrows(RuntimeException.class, () -> lifecycleManager.addInstance(instance, lingContext, true));
+            assertThrows(LingInstallException.class,
+                    () -> lifecycleManager.addInstance(instance, lingContext, true));
         }
 
         @Test
-        @DisplayName("关闭后添加实例应抛出异常")
         void addAfterShutdownShouldThrow() {
             lifecycleManager.shutdown();
 
@@ -182,14 +173,12 @@ public class LingLifecycleManagerTest {
         }
 
         @Test
-        @DisplayName("背压检查应阻止过多实例")
         void backpressureShouldPreventTooManyInstances() {
-            // 填满死亡队列
             for (int i = 0; i < config.getMaxHistorySnapshots(); i++) {
                 LingInstance instance = createMockInstance("old-" + i);
-                instance.markReady();
+                bootstrapCoordinator.markReady(instance);
                 instancePool.addInstance(instance, false);
-                instance.tryEnter(); // 模拟有活跃请求
+                instance.tryEnter();
                 instancePool.moveToDying(instance);
             }
 
@@ -200,22 +189,16 @@ public class LingLifecycleManagerTest {
         }
     }
 
-    // ==================== 关闭测试 ====================
-
     @Nested
-    @DisplayName("关闭功能")
     class ShutdownTests {
 
         @Test
-        @DisplayName("关闭应设置状态")
         void shutdownShouldSetState() {
             lifecycleManager.shutdown();
-
             assertTrue(lifecycleManager.isShutdown());
         }
 
         @Test
-        @DisplayName("关闭应是幂等的")
         void shutdownShouldBeIdempotent() {
             assertDoesNotThrow(() -> {
                 lifecycleManager.shutdown();
@@ -225,7 +208,6 @@ public class LingLifecycleManagerTest {
         }
 
         @Test
-        @DisplayName("关闭应清空实例池")
         void shutdownShouldClearInstancePool() {
             LingInstance instance = createMockInstance("1.0.0");
             lifecycleManager.addInstance(instance, lingContext, true);
@@ -237,14 +219,10 @@ public class LingLifecycleManagerTest {
         }
     }
 
-    // ==================== 清理测试 ====================
-
     @Nested
-    @DisplayName("清理功能")
     class CleanupTests {
 
         @Test
-        @DisplayName("清理应销毁空闲实例")
         void cleanupShouldDestroyIdleInstances() {
             LingInstance instance = createMockInstance("1.0.0");
             lifecycleManager.addInstance(instance, lingContext, true);
@@ -259,12 +237,11 @@ public class LingLifecycleManagerTest {
         }
 
         @Test
-        @DisplayName("清理不应销毁忙碌实例")
         void cleanupShouldNotDestroyBusyInstances() {
             LingInstance instance = createMockInstance("1.0.0");
             lifecycleManager.addInstance(instance, lingContext, true);
 
-            instance.tryEnter(); // 模拟活跃请求
+            instance.tryEnter();
             instancePool.moveToDying(instance);
 
             int cleaned = lifecycleManager.cleanupIdleInstances();
@@ -272,11 +249,10 @@ public class LingLifecycleManagerTest {
             assertEquals(0, cleaned);
             assertFalse(instance.isDestroyed());
 
-            instance.exit(); // 清理
+            instance.exit();
         }
 
         @Test
-        @DisplayName("定时清理应自动执行")
         void periodicCleanupShouldRun() {
             LingInstance instance = createMockInstance("1.0.0");
             lifecycleManager.addInstance(instance, lingContext, true);
@@ -290,12 +266,11 @@ public class LingLifecycleManagerTest {
         }
 
         @Test
-        @DisplayName("强制清理应销毁所有实例")
         void forceCleanupShouldDestroyAll() {
             for (int i = 0; i < 3; i++) {
                 LingInstance instance = createMockInstance("1.0." + i);
                 lifecycleManager.addInstance(instance, lingContext, false);
-                instance.tryEnter(); // 模拟忙碌
+                instance.tryEnter();
                 instancePool.moveToDying(instance);
             }
 
@@ -307,14 +282,10 @@ public class LingLifecycleManagerTest {
         }
     }
 
-    // ==================== 外部事件测试 ====================
-
     @Nested
-    @DisplayName("外部事件")
     class ExternalEventTests {
 
         @Test
-        @DisplayName("添加实例应发布启动事件")
         void addInstanceShouldPublishStartEvents() {
             LingInstance instance = createMockInstance("1.0.0");
 
@@ -324,7 +295,6 @@ public class LingLifecycleManagerTest {
         }
 
         @Test
-        @DisplayName("销毁实例应发布停止事件")
         void destroyInstanceShouldPublishStopEvents() {
             LingInstance instance = createMockInstance("1.0.0");
             lifecycleManager.addInstance(instance, lingContext, true);
@@ -338,14 +308,10 @@ public class LingLifecycleManagerTest {
         }
     }
 
-    // ==================== 统计信息测试 ====================
-
     @Nested
-    @DisplayName("统计信息")
     class StatsTests {
 
         @Test
-        @DisplayName("getStats 应返回正确统计")
         void getStatsShouldWork() {
             LingInstance instance = createMockInstance("1.0.0");
             lifecycleManager.addInstance(instance, lingContext, true);
@@ -358,7 +324,6 @@ public class LingLifecycleManagerTest {
         }
 
         @Test
-        @DisplayName("关闭后统计应正确")
         void statsAfterShutdownShouldBeCorrect() {
             lifecycleManager.shutdown();
 
@@ -368,23 +333,18 @@ public class LingLifecycleManagerTest {
         }
 
         @Test
-        @DisplayName("LifecycleStats toString 应包含关键信息")
         void statsToStringShouldWork() {
-            String str = lifecycleManager.getStats().toString();
+            String value = lifecycleManager.getStats().toString();
 
-            assertTrue(str.contains("shutdown=false"));
-            assertTrue(str.contains("dying=0"));
+            assertTrue(value.contains("shutdown=false"));
+            assertTrue(value.contains("dying=0"));
         }
     }
 
-    // ==================== 并发测试 ====================
-
     @Nested
-    @DisplayName("并发安全")
     class ConcurrencyTests {
 
         @Test
-        @DisplayName("并发添加实例应安全")
         void concurrentAddShouldBeSafe() throws InterruptedException {
             int threadCount = 10;
             ExecutorService testExecutor = Executors.newFixedThreadPool(threadCount);
@@ -400,8 +360,7 @@ public class LingLifecycleManagerTest {
                         LingInstance instance = createMockInstance("1.0." + index);
                         lifecycleManager.addInstance(instance, lingContext, index == 0);
                         successCount.incrementAndGet();
-                    } catch (Exception e) {
-                        // 部分失败是可接受的
+                    } catch (Exception ignored) {
                     } finally {
                         doneLatch.countDown();
                     }
@@ -417,7 +376,6 @@ public class LingLifecycleManagerTest {
         }
 
         @Test
-        @DisplayName("并发清理应安全")
         void concurrentCleanupShouldBeSafe() throws InterruptedException {
             for (int i = 0; i < 5; i++) {
                 LingInstance instance = createMockInstance("1.0." + i);
@@ -435,8 +393,7 @@ public class LingLifecycleManagerTest {
                     try {
                         startLatch.await();
                         lifecycleManager.cleanupIdleInstances();
-                    } catch (Exception e) {
-                        // ignore
+                    } catch (Exception ignored) {
                     } finally {
                         doneLatch.countDown();
                     }
@@ -450,5 +407,21 @@ public class LingLifecycleManagerTest {
             assertTrue(completed);
             assertEquals(0, instancePool.getDyingCount());
         }
+    }
+
+    private LingInstance createMockInstance(String version) {
+        LingContainer container = mock(LingContainer.class);
+        when(container.isActive()).thenReturn(true);
+        doNothing().when(container).start(any());
+        doNothing().when(container).stop();
+
+        LingDefinition definition = new LingDefinition();
+        definition.setId(LING_ID);
+        definition.setVersion(version);
+
+        LingInstance instance = new LingInstance(container, definition, new EventBus());
+        bootstrapCoordinator.prepare(instance);
+        bootstrapCoordinator.start(instance);
+        return instance;
     }
 }

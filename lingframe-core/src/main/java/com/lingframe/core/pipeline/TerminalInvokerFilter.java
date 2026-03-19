@@ -136,9 +136,13 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
 
         // 优先从 attachment 获取显式注册的 className
         String className = (String) ctx.getAttachments().get("ling.target.className");
+        ClassLoader classLoader = instance.getClassLoader();
+        if (classLoader == null) {
+            return null;
+        }
         if (className != null) {
             try {
-                Class<?> clazz = instance.getContainer().getClassLoader().loadClass(className);
+                Class<?> clazz = classLoader.loadClass(className);
                 return instance.getContainer().getBean(clazz);
             } catch (Exception e) {
                 log.warn("Failed to get bean by explicit className: {}", className, e);
@@ -151,7 +155,7 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
             if (serviceName.contains("#")) {
                 serviceName = serviceName.split("#")[0];
             }
-            Class<?> clazz = instance.getContainer().getClassLoader().loadClass(serviceName);
+            Class<?> clazz = classLoader.loadClass(serviceName);
             return instance.getContainer().getBean(clazz);
         } catch (ClassNotFoundException e) {
             // 降级使用 Bean Name 获取

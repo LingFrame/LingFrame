@@ -12,10 +12,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * 运行时状态协调器——双层状态机的联动引擎
+ * 运行时状态协调器，也是 {@link RuntimeStatus} 状态机的唯一拥有者。
  * <p>
- * 核心职责：监听实例级状态变更事件，按聚合评估策略重新计算宏观 {@link RuntimeStatus}，
- * 驱动运行时状态机跃迁并发布变更事件。
+ * 在当前“双层状态机”模型中：
+ * <ul>
+ *   <li>实例状态协调器负责写入单实例事实状态</li>
+ *   <li>{@code RuntimeCoordinator} 订阅实例事件并维护运行时快照</li>
+ *   <li>它再基于快照聚合出宏观 {@link RuntimeStatus}</li>
+ * </ul>
+ * 因此两层状态机不是“对象互相持有并直接改状态”，
+ * 而是“实例层产出事实，运行时层订阅事实并收敛宏观状态”。
  * <p>
  * 通过 {@link EventBus#subscribeGlobal} 以全局监听器身份订阅实例事件，
  * 聚合评估后驱动运行时状态机，实现微观到宏观的自动联动。
@@ -47,7 +53,8 @@ public class RuntimeCoordinator {
     private static final int MAX_RETRIES = 3;
 
     /**
-     * lingId -> 运行时状态机
+     * lingId -> 运行时状态机。
+     * 这是运行时宏观状态的正式真源。
      */
     private final ConcurrentMap<String, StateMachine<RuntimeStatus>> machines = new ConcurrentHashMap<>();
 
@@ -57,6 +64,8 @@ public class RuntimeCoordinator {
      * 维护每个 Ling 下所有活跃实例的状态快照。
      * instanceKey 使用实例版本号（version），同一 Ling 的不同版本各占一个条目。
      * 实例进入 DEAD 后从快照中移除。
+     * 这是 runtime 聚合时看到的“事实视图”，而不是直接去扫描对象图。
+     * 这样可以把“实例状态写入”和“运行时状态聚合”解耦成事件边界。
      */
     private final ConcurrentMap<String, ConcurrentMap<String, InstanceStatus>> snapshots = new ConcurrentHashMap<>();
 
@@ -116,12 +125,15 @@ public class RuntimeCoordinator {
     /**
      * 注册一个 Ling，创建对应的运行时状态机。
      * 幂等操作：重复注册返回已有状态机。
+     * 这是运行时 FSM 的唯一创建入口。
      *
      * @param lingId Ling 标识
      * @return 该 Ling 的运行时状态机
      */
     public StateMachine<RuntimeStatus> register(String lingId) {
         snapshots.putIfAbsent(lingId, new ConcurrentHashMap<>());
+        // register 是运行时状态机的唯一创建入口，保证 LingRuntime 与 coordinator
+        // 读取的都是同一份宏观状态真源。
         return machines.computeIfAbsent(lingId, id -> {
             log.info("Ling [{}] registered, runtime FSM created with INACTIVE", id);
             return RuntimeStatus.newMachine(id);
@@ -141,7 +153,7 @@ public class RuntimeCoordinator {
     /**
      * 处理实例状态变更事件。
      * <p>
-     * 由 {@link InstanceCoordinator} 发布，本方法更新实例快照后触发聚合评估。
+     * 由实例状态协调器发布，本方法更新实例快照后触发聚合评估。
      * 若该 Ling 尚未注册，自动防御性注册。
      */
     public void onInstanceStateChanged(InstanceStateChangedEvent event) {
@@ -163,7 +175,7 @@ public class RuntimeCoordinator {
             log.debug("Instance [{}/{}] snapshot updated to {}", lingId, version, to);
         }
 
-        // 触发聚合评估
+        // 触发聚合评估：实例层只汇报事实，运行时层自己决定宏观状态。
         reevaluate(lingId);
     }
 
@@ -190,7 +202,8 @@ public class RuntimeCoordinator {
     /**
      * 主动关闭一个 Ling 的运行时（管理员/运维触发）。
      * <p>
-     * 跃迁到 STOPPING 后，不再参与自动聚合评估。
+     * STOPPING 在当前版本中属于“运维意图态”。
+     * 一旦进入 STOPPING，就不再允许实例层事实把它重新拉回 ACTIVE / DEGRADED。
      * 当所有实例都 DEAD 后，由 {@link #reevaluate} 自动跃迁到 REMOVED。
      */
     public void shutdown(String lingId) {
@@ -266,7 +279,9 @@ public class RuntimeCoordinator {
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             RuntimeStatus current = fsm.current();
 
-            // STOPPING 状态下只允许自动跃迁到 REMOVED（所有实例销毁后）
+            // STOPPING 是运维意图态。
+            // 一旦进入 STOPPING，runtime 不允许再被“实例变好了”拉回 ACTIVE / DEGRADED，
+            // 只允许在实例全部消失后继续前进到 REMOVED。
             if (current == RuntimeStatus.STOPPING) {
                 tryFinishShutdown(lingId, fsm);
                 return;
@@ -277,7 +292,8 @@ public class RuntimeCoordinator {
                 return;
             }
 
-            // 收集实例状态快照
+            // 收集实例状态快照，而不是直接操作 LingInstance：
+            // 这样双层状态机是“事件联动”，不是“对象互写”。
             ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
             Collection<InstanceStatus> stateValues = (states != null)
                     ? states.values()

@@ -94,7 +94,10 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
             try {
                 LingInstance instance = runtime.getInstancePool().getDefault();
                 if (instance != null && instance.getContainer() != null) {
-                    ClassLoader cl = instance.getContainer().getClassLoader();
+                    ClassLoader cl = instance.getClassLoader();
+                    if (cl == null) {
+                        continue;
+                    }
                     try {
                         Class<?> clazz = cl.loadClass(interfaceName);
                         if (instance.getContainer().getBean(clazz) != null) {

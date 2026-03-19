@@ -263,6 +263,8 @@ lingframe/
 - [Infrastructure Development](infrastructure-development.md) - Develop Infra Proxies
 - [Dashboard](dashboard.md) - Visual Governance Center
 - [Architecture Design](architecture.md) - Deep Dive
+- [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md) - Runtime state convergence model
+- [Runtime Dual-State Machine Guide](runtime-dual-state-machine-guide.md) - How to read, extend, and troubleshoot it
 - [Roadmap](roadmap.md) - Evolution Plan
 
 ---

@@ -13,6 +13,7 @@ import java.util.*;
  *                       ERROR ───→ STOPPING / DEAD
  * </pre>
  * "是否参与路由"由流量策略层决定，不体现为实例状态。
+ * RuntimeStatus 由多个 InstanceStatus 聚合而来，但两层状态机彼此不直接写对方。
  */
 public enum InstanceStatus {
 

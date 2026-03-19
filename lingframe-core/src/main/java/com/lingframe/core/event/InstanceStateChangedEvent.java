@@ -5,7 +5,7 @@ import com.lingframe.core.fsm.InstanceStatus;
 
 /**
  * 实例状态变更事件。
- * 由 {@link com.lingframe.core.fsm.InstanceCoordinator} 在每次状态转换成功后发布。
+ * 由实例状态协调器在每次状态转换成功后发布。
  * <p>
  * 用途：
  * 1. Dashboard 实时感知实例状态变化

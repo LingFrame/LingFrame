@@ -2,6 +2,7 @@ package com.lingframe.core.dev;
 
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.LingLifecycleEngine;
+import com.lingframe.core.ling.LingRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -28,7 +29,8 @@ class HotSwapWatcherTest {
     void registerShouldCleanupPreviousKeys() throws Exception {
         EventBus eventBus = mock(EventBus.class);
         LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
-        HotSwapWatcher watcher = new HotSwapWatcher(lifecycleEngine, eventBus);
+        LingRepository lingRepository = mock(LingRepository.class);
+        HotSwapWatcher watcher = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus);
 
         Path root = tempDir.resolve("classes");
         Files.createDirectories(root.resolve("sub"));

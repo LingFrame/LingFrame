@@ -2,19 +2,28 @@ package com.lingframe.core.ling;
 
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.RuntimeStateChangedEvent;
-import com.lingframe.core.fsm.InstanceCoordinator;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
-import com.lingframe.core.fsm.StateMachine;
 import lombok.Getter;
 import lombok.ToString;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
- * 灵元运行时
- * 仅承担状态、数据与多版本实例池的宿主职责，剥离生命周期、路由与调用逻辑。
+ * 灵元运行时宿主。
+ * <p>
+ * 它在当前架构中是一个“只读宿主对象”：
+ * 负责持有运行时配置、流量统计和多版本实例池，
+ * 但不再拥有也不再直接修改 {@link RuntimeStatus} 状态机。
+ * <p>
+ * 运行时宏观状态的唯一真源统一收敛到 {@link RuntimeCoordinator}，
+ * {@code LingRuntime} 只能通过 {@link #currentStatus()} 读取。
+ * 生命周期编排、实例切换、运行时联动分别由
+ * {@link DefaultLingLifecycleEngine}、{@link LingLifecycleManager}、
+ * {@link RuntimeCoordinator} 完成。
  */
 @ToString
 public class LingRuntime {
@@ -28,8 +37,9 @@ public class LingRuntime {
     @Getter
     private final InstancePool instancePool;
 
-    @Getter
-    private final StateMachine<RuntimeStatus> stateMachine;
+    // LingRuntime 不再持有运行时状态机。
+    // 这里保留的是一个只读访问点，用于查询宏观运行时状态。
+    private final RuntimeCoordinator runtimeCoordinator;
 
     // 流量统计
     @Getter
@@ -46,17 +56,21 @@ public class LingRuntime {
     @Getter
     private final long installedAt = System.currentTimeMillis();
 
-    public LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus) {
-        this(lingId, config, eventBus, null);
+    public LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
+            RuntimeCoordinator runtimeCoordinator) {
+        this(lingId, config, eventBus, null, runtimeCoordinator);
     }
 
-    public LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
-            InstanceCoordinator instanceCoordinator) {
+    LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
+                InstanceCoordinator instanceCoordinator, RuntimeCoordinator runtimeCoordinator) {
         this.lingId = lingId;
         this.config = config != null ? config : LingRuntimeConfig.defaults();
         this.instancePool = new InstancePool(lingId, this.config.getMaxHistorySnapshots());
         this.instancePool.setInstanceCoordinator(instanceCoordinator);
-        this.stateMachine = RuntimeStatus.newMachine(lingId);
+        this.runtimeCoordinator = Objects.requireNonNull(runtimeCoordinator, "RuntimeCoordinator is required");
+
+        // 宿主创建时立即注册运行时聚合器，保证首个实例事件到来前已有宏观状态落点。
+        this.runtimeCoordinator.register(lingId);
         if (eventBus != null) {
             eventBus.subscribe(lingId, RuntimeStateChangedEvent.class, this::handleStateChanged);
         }
@@ -67,11 +81,9 @@ public class LingRuntime {
             return;
         }
         RuntimeStatus newStatus = event.getTo();
-        
-        if (stateMachine.current() != newStatus) {
-            stateMachine.transition(newStatus);
-        }
-        
+
+        // 宏观运行时进入 STOPPING/REMOVED 后，宿主只需要同步收紧成员池写入。
+        // 这里不反向写 RuntimeStatus，避免对象之间互相改写状态。
         if (newStatus == RuntimeStatus.STOPPING || newStatus == RuntimeStatus.REMOVED) {
             instancePool.shutdown();
         }
@@ -103,15 +115,16 @@ public class LingRuntime {
     }
 
     public boolean isAvailable() {
-        return stateMachine.current() == RuntimeStatus.ACTIVE &&
+        return currentStatus() == RuntimeStatus.ACTIVE &&
                 instancePool.hasAvailableInstance();
     }
 
     /**
-     * 宏观状态便捷方法
+     * 宏观状态便捷方法。
+     * 外部读取运行时状态只能走这里，真源完全归 RuntimeCoordinator 所有。
      */
     public RuntimeStatus currentStatus() {
-        return stateMachine.current();
+        return runtimeCoordinator.getStatus(lingId);
     }
 
     /**

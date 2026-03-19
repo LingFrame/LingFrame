@@ -45,6 +45,10 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         this.runtimeCoordinator = runtimeCoordinator;
     }
 
+    public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus) {
+        this(lingRepository, eventBus, null);
+    }
+
     /** 无参构造保持向后兼容（弹性治理不生效，仅透传） */
     public ResilienceGovernanceFilter() {
         this.lingRepository = null;
@@ -155,7 +159,7 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             return;
         try {
             LingRuntime runtime = lingRepository.getRuntime(lingId);
-            if (runtime != null && runtime.getStateMachine().current() == RuntimeStatus.ACTIVE) {
+            if (runtime != null && runtime.currentStatus() == RuntimeStatus.ACTIVE) {
                 runtimeCoordinator.transition(lingId, RuntimeStatus.DEGRADED);
                 log.warn("[Resilience:{}] Circuit breaker opened, runtime transitioned to DEGRADED", lingId);
             }
@@ -174,7 +178,7 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         try {
             if (breaker.getState() == CircuitBreaker.State.CLOSED) {
                 LingRuntime runtime = lingRepository.getRuntime(lingId);
-                if (runtime != null && runtime.getStateMachine().current() == RuntimeStatus.DEGRADED) {
+                if (runtime != null && runtime.currentStatus() == RuntimeStatus.DEGRADED) {
                     runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
                     log.info("[Resilience:{}] Circuit breaker recovered, runtime transitioned back to ACTIVE", lingId);
                 }

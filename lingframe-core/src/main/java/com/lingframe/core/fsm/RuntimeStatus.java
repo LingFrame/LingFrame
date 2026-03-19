@@ -7,6 +7,11 @@ import java.util.*;
  * <p>
  * 描述一个 Ling 在运行时维度的宏观健康度，
  * 由底层多个 {@link InstanceStatus} 的聚合评估驱动（见 RuntimeCoordinator）。
+ * <p>
+ * 注意：当前版本里它同时承担了两类语义：
+ * 1. 宏观可用性事实：INACTIVE / ACTIVE / DEGRADED
+ * 2. 运维生命周期意图：STOPPING / REMOVED
+ * 因此 STOPPING / REMOVED 在实现里具有更高优先级，会压制后续聚合评估。
  */
 public enum RuntimeStatus {
 

@@ -1,7 +1,8 @@
 package com.lingframe.core.ling;
 
-import com.lingframe.core.event.RuntimeStateChangedEvent;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.event.RuntimeStateChangedEvent;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,7 +14,8 @@ class LingRuntimeStateEventTest {
     @Test
     void shouldShutdownPoolOnStoppingState() {
         EventBus eventBus = new EventBus();
-        LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus);
+        LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus,
+                new RuntimeCoordinator(eventBus));
 
         eventBus.publish(new RuntimeStateChangedEvent("ling-a",
                 com.lingframe.core.fsm.RuntimeStatus.ACTIVE,
@@ -29,7 +31,8 @@ class LingRuntimeStateEventTest {
     @Test
     void shouldIgnoreOtherLingState() {
         EventBus eventBus = new EventBus();
-        LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus);
+        LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus,
+                new RuntimeCoordinator(eventBus));
 
         eventBus.publish(new RuntimeStateChangedEvent("ling-b",
                 com.lingframe.core.fsm.RuntimeStatus.ACTIVE,

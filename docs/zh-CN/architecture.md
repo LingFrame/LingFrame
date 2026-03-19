@@ -80,6 +80,19 @@ LingFrame 借鉴操作系统的设计思想：
 | `EventBus`               | 事件发布订阅           |
 | `GovernanceKernel`       | 治理内核               |
 
+#### 运行时双层状态机
+
+当前版本的运行时收敛到了“实例层 + 运行时层”的双层状态机模型：
+
+- **实例层**：`LingInstance` 承载单实例 FSM，`InstanceCoordinator` 是唯一状态写入口
+- **运行时层**：`LingRuntime` 只做宿主，`RuntimeCoordinator` 持有并驱动 `RuntimeStatus`
+- **联动方式**：实例层发布事件，运行时层订阅事件并基于快照聚合，不再允许对象之间互相直接改状态
+
+详细说明见：
+
+- [运行时双层状态机架构设计](runtime-dual-state-machine-architecture.md)
+- [运行时双层状态机技术指导](runtime-dual-state-machine-guide.md)
+
 ### 第二层：Infrastructure（基础设施层）
 
 **灵元**：`lingframe-infrastructure/*`

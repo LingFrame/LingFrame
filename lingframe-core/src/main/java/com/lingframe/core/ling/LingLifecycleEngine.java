@@ -1,27 +1,28 @@
 package com.lingframe.core.ling;
 
 import com.lingframe.api.config.LingDefinition;
+
 import java.io.File;
 import java.util.Map;
 
 /**
- * LingLifecycleEngine 是组件装载和生命流的唯一驱动者。
- * 它持有诸如 FSM (StateMachine) 的控制权把柄，将外部的部署指令转译为 FSM 动作并驱动其跃迁。
- * 接管加载与卸载的核心装配流水线。
+ * 面向部署与卸载的顶层生命周期编排入口。
+ * <p>
+ * 架构边界如下：
+ * 该引擎负责把外部的部署/卸载意图翻译为具体的运行时动作与实例动作，
+ * 它负责装配与编排，但状态写入仍然委托给专门的协调器。
  */
 public interface LingLifecycleEngine {
 
-    ClassLoader getClassLoader(String lingId);
-
     /**
-     * 根据提供的物理文件或虚拟路径进行完整的凌组件装载过程。
-     * 包括读取清单、校验、放入 Repository、通知 ServiceRegistry，直到推进至就绪态。
+     * 执行一次从制品源到可用实例的完整部署。
      */
     void deploy(LingDefinition lingDefinition, File sourceFile, boolean isDefault,
             Map<String, String> labels);
 
     /**
-     * 热重载专用：允许同版本并存，先新建再切换流量
+     * 面向重载场景的部署路径。
+     * 允许同版本短暂并存，以便在旧实例切流前先创建新实例。
      */
     default void deployForReload(LingDefinition lingDefinition, File sourceFile, boolean isDefault,
             Map<String, String> labels) {
@@ -29,22 +30,19 @@ public interface LingLifecycleEngine {
     }
 
     /**
-     * 推演生命周期流以停用组件并回收相关强引用。
-     * 结束后会触发 InstanceDestroyedEvent 并经由 ResourceManager 清空一切物理痕迹。
+     * 卸载整个灵元运行时，并回收全部关联资源。
      */
     void undeploy(String lingId);
 
     /**
-     * 根据特定版本卸载灵元。
-     * 如果这是该灵元的最后一个活跃版本，则会触发全量资源的同步清扫。
-     * 
-     * @param lingId  灵元ID
-     * @param version 目标卸载版本
+     * 卸载某个具体版本。
+     * 如果它已经是最后一个版本，则连同运行时一起移除。
      */
     void undeploy(String lingId, String version);
 
     /**
-     * 按实例卸载（用于热重载旧实例清理）
+     * 卸载某个具体实例对象。
+     * 默认实现按版本路由，只有在实现类确实需要实例级特化逻辑时才需要覆盖。
      */
     default void undeploy(String lingId, LingInstance instance) {
         if (instance != null) {

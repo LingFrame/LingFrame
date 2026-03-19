@@ -6,9 +6,9 @@ import com.lingframe.api.event.lifecycle.LingStartedEvent;
 import com.lingframe.api.event.lifecycle.LingStartingEvent;
 import com.lingframe.api.event.lifecycle.LingStoppedEvent;
 import com.lingframe.api.event.lifecycle.LingStoppingEvent;
+import com.lingframe.api.exception.ServiceUnavailableException;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.exception.LingInstallException;
-import com.lingframe.api.exception.ServiceUnavailableException;
 import com.lingframe.core.spi.ResourceGuard;
 import lombok.NonNull;
 import lombok.Value;
@@ -22,8 +22,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * 灵元生命周期管理器
- * 职责：实例的启动、停止、清理调度
+ * 宿主侧实例生命周期管理器。
+ * <p>
+ * 引擎负责创建并预备实例，本管理器负责完成这些预备实例在宿主侧的后续阶段：
+ * 启动容器、提交入池、退役被替换版本，以及销毁已经排空的实例。
+ * <p>
+ * 它从不直接写实例状态，所有实例状态迁移仍然统一经过 {@link InstanceCoordinator}。
  */
 @Slf4j
 public class LingLifecycleManager {
@@ -31,9 +35,10 @@ public class LingLifecycleManager {
     private final String lingId;
     private final LingRuntimeConfig config;
     private final InstancePool instancePool;
-    private final EventBus externalEventBus; // 外部事件总线
+    private final EventBus externalEventBus;
     private final ScheduledExecutorService scheduler;
     private final ResourceGuard resourceGuard;
+    private final InstanceCoordinator instanceCoordinator;
 
     private final ReentrantLock stateLock = new ReentrantLock();
     private final AtomicBoolean forceCleanupScheduled = new AtomicBoolean(false);
@@ -51,157 +56,55 @@ public class LingLifecycleManager {
         this.scheduler = scheduler;
         this.config = config;
         this.resourceGuard = resourceGuard;
-
-        // 启动定时清理任务
+        this.instanceCoordinator = new InstanceCoordinator(null);
+        this.instancePool.setInstanceCoordinator(this.instanceCoordinator);
         schedulePeriodicCleanup();
     }
 
-    // ==================== 实例生命周期 ====================
-
     /**
-     * 添加新实例
+     * 将一个已经预备好的实例接入当前存活实例池。
+     * <p>
+     * 这里约定调用方已经创建好实例并将其推进到 STARTING，
+     * 本管理器只负责宿主侧启动、进入 READY、提交入池以及退役被替换版本。
      */
     public void addInstance(LingInstance newInstance, LingContext context, boolean isDefault) {
         checkNotShutdown();
 
-        // 快速背压检查
-        if (!instancePool.canAddInstance()) {
-            throw new ServiceUnavailableException(lingId, "System busy: Too many dying instances");
-        }
-
         String version = newInstance.getVersion();
+        ensurePoolCanAcceptNewInstance();
+
         log.info("[{}] Starting new version: {}", lingId, version);
-
-        // 发布外部事件
-        publishExternal(new LingStartingEvent(lingId, version));
-
-        // 启动容器
-        try {
-            newInstance.getContainer().start(context);
-            newInstance.markReady();
-        } catch (Exception e) {
-            log.error("[{}] Failed to start version {}", lingId, version, e);
-            safeDestroy(newInstance);
-            throw new LingInstallException(lingId, "Ling start failed", e);
-        }
-
-        // 加锁切换状态
-        stateLock.lock();
-        try {
-            // 再次检查背压
-            if (!instancePool.canAddInstance()) {
-                log.warn("[{}] Backpressure hit after startup", lingId);
-                safeDestroy(newInstance);
-                throw new ServiceUnavailableException(lingId, "System busy: Too many dying instances");
-            }
-
-            // 检查就绪状态
-            if (isDefault && !newInstance.isReady()) {
-                log.warn("[{}] New version is NOT READY", lingId);
-                safeDestroy(newInstance);
-                throw new LingInstallException(lingId, "New instance failed to become ready");
-            }
-
-            // 添加到池并处理旧实例
-            LingInstance old = instancePool.addInstance(newInstance, isDefault);
-
-            if (old != null) {
-                instancePool.moveToDying(old);
-            }
-        } finally {
-            stateLock.unlock();
-        }
-
-        publishExternal(new LingStartedEvent(lingId, version));
+        publishStarting(version);
+        startContainerAndReachReady(newInstance, context);
+        commitStartedInstance(newInstance, isDefault);
+        publishStarted(version);
         log.info("[{}] Version {} started", lingId, version);
     }
 
     /**
-     * 关闭生命周期管理器
-     * <p>
-     * 同步等待活跃请求完成（带超时），超时后强制清理。
-     * 不再依赖异步 scheduleForceCleanup() 闭包作为唯一回收路径。
-     * </p>
+     * 进入关闭流程，等待死亡队列实例排空；
+     * 如果在配置超时时间内仍未静止，则触发强制清理。
      */
     public void shutdown() {
         if (!shutdown.compareAndSet(false, true)) {
-            return; // 已经关闭
+            return;
         }
 
-        stateLock.lock();
-        try {
-            // 🔥 发布关闭事件（其他组件自己清理）
-
-            // 🔥 显式关闭实例池
-            instancePool.shutdown();
-
-            // 立即清理一次
-            cleanupIdleInstances();
-        } finally {
-            stateLock.unlock();
-        }
-
-        // 🔥 同步等待活跃请求完成（不持有 stateLock，避免死锁）
-        if (instancePool.getDyingCount() > 0) {
-            long deadlineMs = System.currentTimeMillis()
-                    + config.getForceCleanupDelaySeconds() * 1000L;
-            log.info("[{}] Waiting for {} active instances to drain (timeout={}s)",
-                    lingId, instancePool.getDyingCount(),
-                    config.getForceCleanupDelaySeconds());
-
-            while (instancePool.getDyingCount() > 0
-                    && System.currentTimeMillis() < deadlineMs) {
-                cleanupIdleInstances();
-                if (instancePool.getDyingCount() > 0) {
-                    try {
-                        Thread.sleep(500);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-            }
-
-            // 超时后强制清理
-            if (instancePool.getDyingCount() > 0) {
-                log.warn("[{}] Force cleanup after timeout, {} instances remaining",
-                        lingId, instancePool.getDyingCount());
-                forceCleanupAll();
-            }
-        }
-
-        // 🔥 发布已关闭事件
-
-        // 清理内部事件订阅，防止引用残留
-
-        // 关闭资源守卫的后台线程
-        if (resourceGuard != null) {
-            resourceGuard.shutdown();
-        }
+        beginShutdown();
+        waitForDyingInstancesToDrain();
+        shutdownManagedResources();
 
         log.info("[{}] Lifecycle manager shutdown complete", lingId);
     }
 
-    /**
-     * 检查是否已关闭
-     */
     public boolean isShutdown() {
         return shutdown.get();
     }
 
-    // ==================== 清理任务 ====================
-
-    /**
-     * 清理空闲的死亡实例
-     */
     public int cleanupIdleInstances() {
         if (stateLock.tryLock()) {
             try {
-                int cleaned = instancePool.cleanupIdleInstances(this::destroyInstance);
-                if (cleaned > 0) {
-                    log.debug("[{}] Cleaned up {} idle instances", lingId, cleaned);
-                }
-                return cleaned;
+                return cleanupIdleInstancesUnderLock();
             } finally {
                 stateLock.unlock();
             }
@@ -209,15 +112,10 @@ public class LingLifecycleManager {
         return 0;
     }
 
-    /**
-     * 强制清理所有死亡实例
-     */
     public void forceCleanupAll() {
         log.warn("[{}] Force cleanup triggered", lingId);
         instancePool.forceCleanupAll(this::destroyInstance);
     }
-
-    // ==================== 内部方法 ====================
 
     private void schedulePeriodicCleanup() {
         if (scheduler != null && !scheduler.isShutdown()) {
@@ -229,7 +127,116 @@ public class LingLifecycleManager {
         }
     }
 
-    // scheduleForceCleanup() 已移除：shutdown() 改为同步等待 + 超时强制清理
+    private void ensurePoolCanAcceptNewInstance() {
+        if (!instancePool.canAddInstance()) {
+            throw new ServiceUnavailableException(lingId, "System busy: Too many dying instances");
+        }
+    }
+
+    private void publishStarting(String version) {
+        publishExternal(new LingStartingEvent(lingId, version));
+    }
+
+    private void startContainerAndReachReady(LingInstance newInstance, LingContext context) {
+        String version = newInstance.getVersion();
+        try {
+            newInstance.getContainer().start(context);
+            instanceCoordinator.markReady(newInstance);
+        } catch (Exception e) {
+            log.error("[{}] Failed to start version {}", lingId, version, e);
+            safeDestroy(newInstance);
+            throw new LingInstallException(lingId, "Ling start failed", e);
+        }
+    }
+
+    private void commitStartedInstance(LingInstance newInstance, boolean isDefault) {
+        stateLock.lock();
+        try {
+            ensurePoolCanAcceptNewInstance();
+            ensureDefaultCandidateIsReady(newInstance, isDefault);
+            LingInstance replacedDefault = instancePool.addInstance(newInstance, isDefault);
+            retireReplacedDefault(replacedDefault);
+        } catch (RuntimeException e) {
+            safeDestroy(newInstance);
+            throw e;
+        } finally {
+            stateLock.unlock();
+        }
+    }
+
+    private void ensureDefaultCandidateIsReady(LingInstance newInstance, boolean isDefault) {
+        if (isDefault && !newInstance.isReady()) {
+            log.warn("[{}] New version is NOT READY", lingId);
+            throw new LingInstallException(lingId, "New instance failed to become ready");
+        }
+    }
+
+    private void retireReplacedDefault(LingInstance replacedDefault) {
+        if (replacedDefault != null) {
+            instancePool.moveToDying(replacedDefault);
+        }
+    }
+
+    private void publishStarted(String version) {
+        publishExternal(new LingStartedEvent(lingId, version));
+    }
+
+    private void beginShutdown() {
+        stateLock.lock();
+        try {
+            instancePool.shutdown();
+            cleanupIdleInstancesUnderLock();
+        } finally {
+            stateLock.unlock();
+        }
+    }
+
+    private int cleanupIdleInstancesUnderLock() {
+        int cleaned = instancePool.cleanupIdleInstances(this::destroyInstance);
+        if (cleaned > 0) {
+            log.debug("[{}] Cleaned up {} idle instances", lingId, cleaned);
+        }
+        return cleaned;
+    }
+
+    private void waitForDyingInstancesToDrain() {
+        if (instancePool.getDyingCount() <= 0) {
+            return;
+        }
+
+        long deadlineMs = System.currentTimeMillis() + config.getForceCleanupDelaySeconds() * 1000L;
+        log.info("[{}] Waiting for {} active instances to drain (timeout={}s)",
+                lingId, instancePool.getDyingCount(), config.getForceCleanupDelaySeconds());
+
+        while (instancePool.getDyingCount() > 0 && System.currentTimeMillis() < deadlineMs) {
+            cleanupIdleInstances();
+            if (instancePool.getDyingCount() > 0 && !sleepBeforeNextDrainCheck()) {
+                break;
+            }
+        }
+
+        if (instancePool.getDyingCount() > 0) {
+            log.warn("[{}] Force cleanup after timeout, {} instances remaining",
+                    lingId, instancePool.getDyingCount());
+            forceCleanupAll();
+        }
+    }
+
+    private boolean sleepBeforeNextDrainCheck() {
+        try {
+            Thread.sleep(500);
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private void shutdownManagedResources() {
+        if (resourceGuard != null) {
+            resourceGuard.shutdown();
+        }
+    }
 
     private void destroyInstance(LingInstance instance) {
         if (instance == null || instance.isDestroyed()) {
@@ -237,76 +244,82 @@ public class LingLifecycleManager {
         }
 
         String version = instance.getVersion();
-
-        if (!instance.getContainer().isActive()) {
-            log.debug("[{}] Container already inactive: {}", lingId, version);
-            return;
+        boolean containerActive = instance.getContainer() != null && instance.getContainer().isActive();
+        if (!containerActive) {
+            log.debug("[{}] Container already inactive before teardown: {}", lingId, version);
         }
 
         log.info("[{}] Stopping version: {}", lingId, version);
+        publishStopping(version);
 
-        // Pre-Stop 事件
+        // tearDown 会清掉强引用，因此要先抓取 ClassLoader。
+        ClassLoader classLoader = instance.getClassLoader();
+        tearDownInstance(instance, version);
+        cleanupDetachedResources(version, classLoader);
+        publishExternal(new LingStoppedEvent(lingId, version));
+        scheduleLeakCheck(version, classLoader);
+    }
+
+    private void publishStopping(String version) {
         try {
             publishExternal(new LingStoppingEvent(lingId, version));
         } catch (Exception e) {
             log.error("[{}] Error in Pre-Stop hook", lingId, e);
         }
+    }
 
-        // 销毁实例
-        // 🔥 关键：在 destroy 之前保存 ClassLoader 引用，因为 destroy 后容器会清空它
-        ClassLoader cl = instance.getContainer().getClassLoader();
-
+    private void tearDownInstance(LingInstance instance, String version) {
         try {
-            instance.destroy();
+            instanceCoordinator.tearDown(instance);
         } catch (Exception e) {
             log.error("[{}] Error destroying instance: {}", lingId, version, e);
         }
+    }
 
-        // 🔥 资源清理 (在实例销毁后执行)
-        if (cl != null) {
-            try {
-                resourceGuard.cleanup(lingId, cl);
-
-                // 🔥 关键：关闭 ClassLoader 释放 JAR 文件句柄
-                if (cl instanceof AutoCloseable) {
-                    ((AutoCloseable) cl).close();
-                    log.info("[{}] ClassLoader closed for version {}", lingId, version);
-                }
-            } catch (Exception e) {
-                log.error("[{}] Resource cleanup failed for version {}", lingId, version, e);
-            }
-        } else {
+    private void cleanupDetachedResources(String version, ClassLoader classLoader) {
+        if (classLoader == null) {
             log.warn("[{}] ClassLoader was null before destroy for version {}", lingId, version);
+            return;
         }
 
-        // 🔥 发布内部销毁事件
-        publishExternal(new LingStoppedEvent(lingId, version));
-
-        // 🔥 ClassLoader GC 检测增强：延迟检查确认回收状态
-        WeakReference<ClassLoader> clRef = new WeakReference<>(cl);
-        // 主动断开本地引用
-        final String ver = version;
-        if (scheduler != null && !scheduler.isShutdown()) {
-            try {
-                scheduler.schedule(() -> {
-                    System.gc();
-                    if (clRef.get() != null) {
-                        log.warn("[{}] ⚠️ ClassLoader NOT collected after destroy (version={}). Possible leak.",
-                                lingId, ver);
-                    } else {
-                        log.info("[{}] ✅ ClassLoader successfully collected (version={}).",
-                                lingId, ver);
-                    }
-                }, 5, TimeUnit.SECONDS);
-            } catch (RejectedExecutionException ignored) {
-                // scheduler 已关闭，跳过检测
+        try {
+            if (resourceGuard != null) {
+                resourceGuard.cleanup(lingId, classLoader);
             }
+            if (classLoader instanceof AutoCloseable) {
+                ((AutoCloseable) classLoader).close();
+                log.info("[{}] ClassLoader closed for version {}", lingId, version);
+            }
+        } catch (Exception e) {
+            log.error("[{}] Resource cleanup failed for version {}", lingId, version, e);
+        }
+    }
+
+    private void scheduleLeakCheck(String version, ClassLoader classLoader) {
+        if (classLoader == null || scheduler == null || scheduler.isShutdown()) {
+            return;
+        }
+
+        WeakReference<ClassLoader> classLoaderRef = new WeakReference<>(classLoader);
+        try {
+            scheduler.schedule(() -> {
+                System.gc();
+                if (classLoaderRef.get() != null) {
+                    log.warn("[{}] ClassLoader NOT collected after destroy (version={}). Possible leak.",
+                            lingId, version);
+                } else {
+                    log.info("[{}] ClassLoader successfully collected (version={}).",
+                            lingId, version);
+                }
+            }, 5, TimeUnit.SECONDS);
+        } catch (RejectedExecutionException ignored) {
+            // 调度器已经停止时，忽略泄漏检查调度即可。
         }
     }
 
     private void safeDestroy(LingInstance instance) {
         try {
-            instance.destroy();
+            instanceCoordinator.tearDown(instance);
         } catch (Exception ignored) {
         }
     }
@@ -322,8 +335,6 @@ public class LingLifecycleManager {
             throw new ServiceUnavailableException(lingId, "Lifecycle manager is shutdown");
         }
     }
-
-    // ==================== 统计信息 ====================
 
     public LifecycleStats getStats() {
         return new LifecycleStats(

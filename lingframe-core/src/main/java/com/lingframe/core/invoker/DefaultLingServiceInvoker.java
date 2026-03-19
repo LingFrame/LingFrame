@@ -21,10 +21,11 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
                     "Ling instance is not ready or already destroyed");
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+        ClassLoader targetClassLoader = instance.getClassLoader();
 
         try {
             // TCCL 切换
-            Thread.currentThread().setContextClassLoader(instance.getContainer().getClassLoader());
+            Thread.currentThread().setContextClassLoader(targetClassLoader);
 
             // 反射调用
             return method.invoke(bean, args);

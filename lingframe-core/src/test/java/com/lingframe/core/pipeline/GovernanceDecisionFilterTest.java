@@ -1,6 +1,7 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.security.AccessType;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.GovernanceDecision;
 import com.lingframe.core.ling.DefaultLingRepository;
@@ -13,7 +14,6 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.Arrays;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -48,7 +48,7 @@ class GovernanceDecisionFilterTest {
 
         GovernanceArbitrator arbitrator = new GovernanceArbitrator(Arrays.asList(provider));
         LingRepository repository = new DefaultLingRepository();
-        repository.register(new LingRuntime("ling1", null, null));
+        repository.register(new LingRuntime("ling1", null, null, new RuntimeCoordinator(null)));
 
         GovernanceDecisionFilter filter = new GovernanceDecisionFilter(repository, arbitrator);
 
@@ -95,7 +95,7 @@ class GovernanceDecisionFilterTest {
 
         GovernanceArbitrator arbitrator = new GovernanceArbitrator(Arrays.asList(provider));
         LingRepository repository = new DefaultLingRepository();
-        repository.register(new LingRuntime("ling1", null, null));
+        repository.register(new LingRuntime("ling1", null, null, new RuntimeCoordinator(null)));
 
         GovernanceDecisionFilter filter = new GovernanceDecisionFilter(repository, arbitrator);
 

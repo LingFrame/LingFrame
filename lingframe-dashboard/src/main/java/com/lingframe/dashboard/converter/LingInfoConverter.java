@@ -42,7 +42,7 @@ public class LingInfoConverter {
             }
             return LingInfoDTO.VersionInfo.builder()
                     .version(instance.getVersion())
-                    .status(instance.getStateMachine().current().name())
+                    .status(instance.currentStatus().name())
                     .isDefault(isCurDefault)
                     .isCanary(isCurCanary)
                     .trafficWeight(weight)
@@ -51,7 +51,7 @@ public class LingInfoConverter {
 
         return LingInfoDTO.builder()
                 .lingId(lingId)
-                .status(runtime.getStateMachine().current().name())
+                .status(runtime.currentStatus().name())
                 .versionDetails(versionDetails)
                 .permissions(extractPermissions(lingId, permissionService, policy))
                 .installedAt(runtime.getInstalledAt())

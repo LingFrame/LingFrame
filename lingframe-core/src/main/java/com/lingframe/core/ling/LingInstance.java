@@ -4,6 +4,7 @@ import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.fsm.StateMachine;
+import com.lingframe.core.fsm.TransitionResult;
 import com.lingframe.core.spi.LingContainer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -15,8 +16,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 灵元实例：代表一个特定版本的灵元运行实体
- * 采用 FSM (StateMachine) 进行生命周期保护。
+ * 灵元实例。
+ * <p>
+ * 代表某个版本的真实运行实体，内部仍保留实例级状态机作为生命周期一致性原语。
+ * 这并不意味着状态机重新暴露给外部：
+ * 外部不能直接拿到或修改状态机，所有状态写入都必须经由 {@link InstanceCoordinator}。
+ * <p>
+ * 换句话说：
+ * {@code LingInstance} 拥有“状态承载体”，
+ * 但不拥有“对外状态写接口”。
  */
 @Slf4j
 public class LingInstance {
@@ -36,8 +44,10 @@ public class LingInstance {
     // 引用计数器：记录当前正在处理的请求数
     private final AtomicLong activeRequests = new AtomicLong(0);
 
-    // 微观状态机
-    @Getter
+    // 微观状态机仍然跟随实例对象存在：
+    // 1. 它是单实例生命周期的 CAS 一致性载体；
+    // 2. 实例状态协调器需要它来原子推进状态；
+    // 3. 但它只保留为包内实现细节，不再构成公共 API。
     private final StateMachine<InstanceStatus> stateMachine;
 
     public LingInstance(LingContainer container, LingDefinition definition, EventBus eventBus) {
@@ -95,28 +105,25 @@ public class LingInstance {
 
     public boolean isReady() {
         LingContainer c = container;
-        return stateMachine.current() == InstanceStatus.READY && c != null && c.isActive();
+        return currentStatus() == InstanceStatus.READY && c != null && c.isActive();
     }
 
-    public void markReady() {
-        stateMachine.transition(InstanceStatus.READY);
+    public ClassLoader getClassLoader() {
+        LingContainer c = container;
+        return c != null ? c.getClassLoader() : null;
     }
 
-    public void markDying() {
-        InstanceStatus current = stateMachine.current();
-        if (current == InstanceStatus.STOPPING || current == InstanceStatus.DEAD || current == InstanceStatus.ERROR) {
-            return;
-        }
-        stateMachine.transition(InstanceStatus.STOPPING);
+    public InstanceStatus currentStatus() {
+        return stateMachine.current();
     }
 
     public boolean isDying() {
-        InstanceStatus state = stateMachine.current();
+        InstanceStatus state = currentStatus();
         return state == InstanceStatus.STOPPING || state == InstanceStatus.DEAD || state == InstanceStatus.ERROR;
     }
 
     public boolean isDestroyed() {
-        return stateMachine.current() == InstanceStatus.DEAD;
+        return currentStatus() == InstanceStatus.DEAD;
     }
 
     public boolean tryEnter() {
@@ -135,7 +142,7 @@ public class LingInstance {
         long count = activeRequests.decrementAndGet();
         if (count < 0) {
             activeRequests.compareAndSet(count, 0);
-            log.warn("Unbalanced exit() call detected for ling instance: {}", definition.getVersion());
+            log.warn("Unbalanced exit() call detected for ling instance: {}", getVersion());
         }
     }
 
@@ -143,47 +150,22 @@ public class LingInstance {
         return activeRequests.get() == 0;
     }
 
-    public synchronized void destroy() {
-        if (stateMachine.current() == InstanceStatus.DEAD) {
-            return;
-        }
-
-        try {
-            InstanceStatus current = stateMachine.current();
-            if (current == InstanceStatus.CREATED || current == InstanceStatus.LOADING
-                    || current == InstanceStatus.STARTING) {
-                stateMachine.transition(InstanceStatus.ERROR);
-                stateMachine.transition(InstanceStatus.DEAD);
-            } else if (current == InstanceStatus.READY) {
-                stateMachine.transition(InstanceStatus.STOPPING);
-                stateMachine.transition(InstanceStatus.DEAD);
-            } else if (current == InstanceStatus.STOPPING || current == InstanceStatus.ERROR) {
-                stateMachine.transition(InstanceStatus.DEAD);
-            }
-        } catch (Exception e) {
-            log.warn("Forced state transition to DEAD during destroy failed: {}", e.getMessage());
-        }
-
-        String version = getVersion();
-
-        LingContainer c = this.container;
-        if (c != null && c.isActive()) {
-            try {
-                c.stop();
-                log.info("Ling instance {} destroyed successfully", version);
-            } catch (Exception e) {
-                log.error("Error destroying ling instance {}: {}", version, e.getMessage(), e);
-            }
-        }
-
+    // 只做“断开强引用”，不做状态迁移；状态迁移由 InstanceCoordinator 统一负责。
+    synchronized void clearDetachedState() {
         labels.clear();
         this.container = null;
         this.definition = null;
     }
 
+    // 包内唯一底层状态写操作，供 InstanceCoordinator 调用。
+    // 这里不向外公开，防止业务层或宿主层绕开协调器直接改状态。
+    TransitionResult<InstanceStatus> transitionState(InstanceStatus target) {
+        return stateMachine.transition(target);
+    }
+
     @Override
     public String toString() {
         return String.format("LingInstance{version='%s', state=%s, activeRequests=%d}",
-                getVersion(), stateMachine.current(), activeRequests.get());
+                getVersion(), currentStatus(), activeRequests.get());
     }
 }

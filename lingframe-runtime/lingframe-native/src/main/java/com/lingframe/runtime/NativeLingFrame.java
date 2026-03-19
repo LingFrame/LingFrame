@@ -113,7 +113,7 @@ public class NativeLingFrame {
                 RUNTIME_COORDINATOR);
 
         if (config != null && config.isDevMode() && lifecycleEngine instanceof DefaultLingLifecycleEngine) {
-            HOT_SWAP_WATCHER = new HotSwapWatcher(lifecycleEngine, eventBus);
+            HOT_SWAP_WATCHER = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus);
             ((DefaultLingLifecycleEngine) lifecycleEngine).setHotSwapWatcher(HOT_SWAP_WATCHER);
         }
 

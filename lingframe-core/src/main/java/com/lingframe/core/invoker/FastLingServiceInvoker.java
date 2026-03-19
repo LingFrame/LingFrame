@@ -21,9 +21,10 @@ public class FastLingServiceInvoker implements LingServiceInvoker {
                     "Ling instance is not ready or already destroyed");
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+        ClassLoader targetClassLoader = instance.getClassLoader();
 
         try {
-            Thread.currentThread().setContextClassLoader(instance.getContainer().getClassLoader());
+            Thread.currentThread().setContextClassLoader(targetClassLoader);
             return method.invoke(bean, args);
         } finally {
             Thread.currentThread().setContextClassLoader(originalClassLoader);
@@ -40,9 +41,10 @@ public class FastLingServiceInvoker implements LingServiceInvoker {
                     "Ling instance is not ready or already destroyed");
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+        ClassLoader targetClassLoader = instance.getClassLoader();
 
         try {
-            Thread.currentThread().setContextClassLoader(instance.getContainer().getClassLoader());
+            Thread.currentThread().setContextClassLoader(targetClassLoader);
 
             // MethodHandle.invokeWithArguments 会自动处理装箱/拆箱和参数数组展开
             return methodHandle.invokeWithArguments(args);
