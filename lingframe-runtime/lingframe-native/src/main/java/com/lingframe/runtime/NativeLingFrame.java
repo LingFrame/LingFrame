@@ -87,7 +87,7 @@ public class NativeLingFrame {
         LingServiceInvoker invoker = resolveInvoker(Thread.currentThread().getContextClassLoader());
         FilterRegistry filterRegistry = new FilterRegistry(invokableMethodCache, permissionService, invoker, null);
         // 初始化内置 Filter 并注入依赖
-        filterRegistry.initialize(lingRepository, new LatestVersionPolicy(), eventBus);
+        filterRegistry.initialize(lingRepository, new LatestVersionPolicy(), eventBus, RUNTIME_COORDINATOR);
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(
                 filterRegistry);
 
@@ -96,20 +96,21 @@ public class NativeLingFrame {
                 pipelineEngine,
                 Collections.singletonList(new BasicResourceGuard()),
                 RESOURCE_MANAGER,
-                new DefaultLeakDetector());
+                new DefaultLeakDetector(eventBus, config));
 
         LingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(
                 containerFactory,
                 permissionService,
                 loaderFactory,
-                Collections.singletonList(new DangerousApiVerifier()), // 默认安全验证
+                Collections.singletonList(new DangerousApiVerifier()),
                 eventBus,
                 config,
                 lingRepository,
                 lingServiceRegistry,
                 pipelineEngine,
                 RESOURCE_MANAGER,
-                unloadCoordinator);
+                unloadCoordinator,
+                RUNTIME_COORDINATOR);
 
         if (config != null && config.isDevMode() && lifecycleEngine instanceof DefaultLingLifecycleEngine) {
             HOT_SWAP_WATCHER = new HotSwapWatcher(lifecycleEngine, eventBus);

@@ -66,8 +66,13 @@ public class LingRuntime {
         if (event == null || event.getLingId() == null || !event.getLingId().equals(lingId)) {
             return;
         }
-        RuntimeStatus current = event.getTo();
-        if (current == RuntimeStatus.STOPPING || current == RuntimeStatus.REMOVED) {
+        RuntimeStatus newStatus = event.getTo();
+        
+        if (stateMachine.current() != newStatus) {
+            stateMachine.transition(newStatus);
+        }
+        
+        if (newStatus == RuntimeStatus.STOPPING || newStatus == RuntimeStatus.REMOVED) {
             instancePool.shutdown();
         }
     }

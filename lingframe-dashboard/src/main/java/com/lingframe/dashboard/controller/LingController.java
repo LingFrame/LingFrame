@@ -2,6 +2,9 @@ package com.lingframe.dashboard.controller;
 
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.metrics.JVMMetrics;
+import com.lingframe.core.metrics.MetricsCollector;
+import com.lingframe.core.metrics.MetricsSnapshot;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.DashboardService;
 import lombok.Data;
@@ -12,11 +15,10 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
-import java.lang.management.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 /**
  * 灵元治理仪表盘控制器
@@ -29,20 +31,18 @@ import java.util.concurrent.atomic.AtomicLong;
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class LingController {
 
-    // CPU 计算用的缓存变量
-    private final AtomicLong lastCpuTime = new AtomicLong(0);
-    private final AtomicLong lastSampleTime = new AtomicLong(0);
-
     private final LingFrameConfig lingFrameConfig;
-
     private final DashboardService dashboardService;
+    private final MetricsCollector metricsCollector;
     private final boolean installEnabled;
 
     public LingController(LingFrameConfig lingFrameConfig,
             DashboardService dashboardService,
+            MetricsCollector metricsCollector,
             @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
         this.lingFrameConfig = lingFrameConfig;
         this.dashboardService = dashboardService;
+        this.metricsCollector = metricsCollector;
         this.installEnabled = installEnabled;
     }
 
@@ -219,85 +219,75 @@ public class LingController {
     public ApiResponse<Map<String, Object>> getMetrics() {
         try {
             Map<String, Object> metrics = new HashMap<>();
-
-            // CPU 使用率（通过 Process CPU 时间计算）
-            int cpuUsage = calculateCpuUsage();
-            metrics.put("cpuUsage", cpuUsage);
-
-            // 内存信息 (JVM 堆内存)
-            Runtime runtime = Runtime.getRuntime();
-            long totalMemory = runtime.totalMemory();  // 当前分配的内存
-            long freeMemory = runtime.freeMemory();
-            long usedMemory = totalMemory - freeMemory; // 已使用的内存
-
-            metrics.put("memoryUsedMB", usedMemory / 1024 / 1024);
-            metrics.put("memoryTotalMB", totalMemory / 1024 / 1024);
-            metrics.put("memoryUsage", Math.round((double) usedMemory / totalMemory * 100)); // 使用当前分配内存计算百分比
-
-            // 堆内存（通过 MemoryMXBean）
-            MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
-            MemoryUsage heapUsage = memoryMXBean.getHeapMemoryUsage();
-            metrics.put("heapUsedMB", heapUsage.getUsed() / 1024 / 1024);
-            metrics.put("heapMaxMB", heapUsage.getMax() / 1024 / 1024);
-
-            // 线程数
-            ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
-            metrics.put("threadCount", threadMXBean.getThreadCount());
-
-            // GC 次数
-            long gcCount = 0;
-            for (GarbageCollectorMXBean gcBean : ManagementFactory.getGarbageCollectorMXBeans()) {
-                gcCount += gcBean.getCollectionCount();
-            }
-            metrics.put("gcCount", gcCount);
-
+            
+            JVMMetrics jvmMetrics = JVMMetrics.collect();
+            
+            metrics.put("cpuUsage", jvmMetrics.getCpuUsage());
+            metrics.put("processCpuLoad", jvmMetrics.getProcessCpuLoad());
+            
+            metrics.put("memoryUsedMB", jvmMetrics.getUsedMemoryMB());
+            metrics.put("memoryTotalMB", jvmMetrics.getTotalMemoryMB());
+            metrics.put("memoryUsage", jvmMetrics.getMemoryUsagePercent());
+            
+            metrics.put("heapUsedMB", jvmMetrics.getHeapUsedMB());
+            metrics.put("heapMaxMB", jvmMetrics.getHeapMaxMB());
+            metrics.put("heapUsage", jvmMetrics.getHeapUsagePercent());
+            
+            metrics.put("metaspaceUsedKB", jvmMetrics.getMetaspaceUsedKB());
+            metrics.put("metaspaceMaxKB", jvmMetrics.getMetaspaceMaxKB());
+            metrics.put("metaspaceUsage", jvmMetrics.getMetaspaceUsagePercent());
+            
+            metrics.put("loadedClassCount", jvmMetrics.getLoadedClassCount());
+            metrics.put("totalLoadedClassCount", jvmMetrics.getTotalLoadedClassCount());
+            metrics.put("unloadedClassCount", jvmMetrics.getUnloadedClassCount());
+            
+            metrics.put("threadCount", jvmMetrics.getThreadCount());
+            metrics.put("daemonThreadCount", jvmMetrics.getDaemonThreadCount());
+            metrics.put("peakThreadCount", jvmMetrics.getPeakThreadCount());
+            
+            metrics.put("gcCount", jvmMetrics.getGcCount());
+            metrics.put("gcTimeMs", jvmMetrics.getGcTimeMs());
+            
+            metrics.put("availableProcessors", jvmMetrics.getAvailableProcessors());
+            metrics.put("systemLoadAverage", jvmMetrics.getSystemLoadAverage());
+            
             return ApiResponse.ok(metrics);
         } catch (Exception e) {
             log.error("Failed to get metrics", e);
             return ApiResponse.error("获取性能指标失败: " + e.getMessage());
         }
     }
-
+    
     /**
-     * 计算 JVM 进程 CPU 使用率
-     * 使用 ThreadMXBean 统计所有线程的 CPU 时间
+     * 获取灵元健康指标
      */
-    private int calculateCpuUsage() {
+    @GetMapping("/{lingId}/health")
+    public ApiResponse<MetricsSnapshot> getLingHealth(@PathVariable String lingId) {
         try {
-            ThreadMXBean threadBean = ManagementFactory.getThreadMXBean();
-            long[] threadIds = threadBean.getAllThreadIds();
-            long totalCpuTime = 0;
-
-            // 获取每个线程的 CPU 时间
-            for (long tid : threadIds) {
-                long cpuTime = threadBean.getThreadCpuTime(tid);
-                if (cpuTime > 0) {
-                    totalCpuTime += cpuTime;
-                }
-            }
-
-            long currentTime = System.nanoTime();
-            long lastCpu = lastCpuTime.get();
-            long lastTime = lastSampleTime.get();
-
-            int cpuUsage = 0;
-            if (lastCpu > 0 && lastTime > 0) {
-                long cpuDelta = totalCpuTime - lastCpu;
-                long timeDelta = currentTime - lastTime;
-
-                if (timeDelta > 0) {
-                    // CPU 时间 / 经过时间 / 核心数 = 使用率
-                    int processors = Runtime.getRuntime().availableProcessors();
-                    cpuUsage = (int) Math.min(100, Math.round((cpuDelta * 100.0) / (timeDelta * processors)));
-                }
-            }
-
-            lastCpuTime.set(totalCpuTime);
-            lastSampleTime.set(currentTime);
-
-            return cpuUsage;
+            MetricsSnapshot snapshot = metricsCollector.getSnapshot(lingId);
+            return ApiResponse.ok(snapshot);
         } catch (Exception e) {
-            return 0;
+            log.error("Failed to get health metrics for ling: {}", lingId, e);
+            return ApiResponse.error("获取健康指标失败: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 获取所有灵元的健康指标
+     */
+    @GetMapping("/health/all")
+    public ApiResponse<Map<String, MetricsSnapshot>> getAllLingHealth() {
+        try {
+            Map<String, MetricsSnapshot> allMetrics = metricsCollector.getAllSnapshots().stream()
+                    .collect(Collectors.toMap(
+                            MetricsSnapshot::getLingId,
+                            snapshot -> snapshot,
+                            (existing, replacement) -> existing
+                    ));
+            return ApiResponse.ok(allMetrics);
+        } catch (Exception e) {
+            log.error("Failed to get all health metrics", e);
+            return ApiResponse.error("获取健康指标失败: " + e.getMessage());
         }
     }
 

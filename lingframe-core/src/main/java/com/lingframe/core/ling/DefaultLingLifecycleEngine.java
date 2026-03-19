@@ -14,6 +14,7 @@ import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.InstanceCoordinator;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.security.ApiOverrideVerifier;
@@ -29,6 +30,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 灵元生命周期引擎
@@ -52,6 +54,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
     private HotSwapWatcher hotSwapWatcher;
 
     private final InstanceCoordinator instanceCoordinator;
+    private final RuntimeCoordinator runtimeCoordinator;
 
     public DefaultLingLifecycleEngine(ContainerFactory containerFactory,
                                       PermissionService permissionService,
@@ -63,9 +66,10 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
                                       LingServiceRegistry lingServiceRegistry,
                                       InvocationPipelineEngine pipelineEngine,
                                       LingResourceManager lingResourceManager,
-                                      LingUnloadCoordinator unloadCoordinator) {
+                                      LingUnloadCoordinator unloadCoordinator,
+                                      RuntimeCoordinator runtimeCoordinator) {
         this(containerFactory, permissionService, lingLoaderFactory, verifiers, eventBus, lingFrameConfig,
-                lingRepository, lingServiceRegistry, pipelineEngine, lingResourceManager, unloadCoordinator, null);
+                lingRepository, lingServiceRegistry, pipelineEngine, lingResourceManager, unloadCoordinator, runtimeCoordinator, null);
     }
 
     public DefaultLingLifecycleEngine(ContainerFactory containerFactory,
@@ -79,6 +83,7 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
                                       InvocationPipelineEngine pipelineEngine,
                                       LingResourceManager lingResourceManager,
                                       LingUnloadCoordinator unloadCoordinator,
+                                      RuntimeCoordinator runtimeCoordinator,
                                       HotSwapWatcher hotSwapWatcher) {
 
         this.containerFactory = containerFactory;
@@ -112,9 +117,10 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         this.pipelineEngine = pipelineEngine;
         this.unloadCoordinator = unloadCoordinator != null
                 ? unloadCoordinator
-                : new LingUnloadCoordinator(pipelineEngine, new ArrayList<>(), lingResourceManager, new DefaultLeakDetector());
+                : new LingUnloadCoordinator(pipelineEngine, new ArrayList<>(), lingResourceManager, new DefaultLeakDetector(eventBus, lingFrameConfig));
         this.hotSwapWatcher = hotSwapWatcher;
         this.instanceCoordinator = new InstanceCoordinator(eventBus);
+        this.runtimeCoordinator = Objects.requireNonNull(runtimeCoordinator, "RuntimeCoordinator is required");
     }
 
     public void setHotSwapWatcher(HotSwapWatcher hotSwapWatcher) {
@@ -171,7 +177,10 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             LingInstance instance = new LingInstance(container, instanceDef, eventBus);
             instance.addLabels(labels);
 
-            // FSM state flow to LOADING
+            // 1. 先注册到 RuntimeCoordinator（确保能接收实例状态事件）
+            runtimeCoordinator.register(lingId);
+
+            // 2. 驱动实例状态机：CREATED → LOADING
             instanceCoordinator.prepare(instance);
 
             LingRuntime runtime = lingRepository.getRuntime(lingId);
@@ -182,6 +191,8 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
 
             LingContext context = new DefaultLingContext(lingId, lingRepository, lingServiceRegistry, pipelineEngine,
                     permissionService, eventBus);
+            
+            // 3. 驱动实例状态机：LOADING → STARTING
             instanceCoordinator.start(instance);
 
             // 启动灵元 Spring 容器（创建 Bean、注册 Controller、扫描 LingService）
@@ -196,6 +207,11 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             }
 
             runtime.getInstancePool().addInstance(instance, isDefault);
+            
+            // 4. 驱动实例状态机：STARTING → READY
+            //    → 发布 InstanceStateChangedEvent
+            //    → RuntimeCoordinator 聚合评估 → INACTIVE → ACTIVE
+            //    → 发布 RuntimeStateChangedEvent
             instanceCoordinator.markReady(instance);
 
             if (lingDefinition.getGovernance() != null
@@ -211,11 +227,8 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
                 }
             }
 
-            // 实例就绪后，将宏观状态机从 INACTIVE -> ACTIVE（仅当尚未联动时）
-            if (runtime.getStateMachine().current() == RuntimeStatus.INACTIVE) {
-                runtime.getStateMachine().transition(RuntimeStatus.ACTIVE);
-                log.info("[{}] State transitioned to ACTIVE", lingId);
-            }
+            // 实例就绪后，RuntimeCoordinator 会通过 InstanceStateChangedEvent 自动驱动状态变更
+            // 无需手动触发状态转换
 
             eventBus.publish(new LingInstalledEvent(lingId, version));
             log.info("[{}] Installed successfully", lingId);
@@ -242,17 +255,11 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             return;
         }
 
-        // 1. 先将宏观状态设置为 STOPPING，MacroStateGuardFilter 会拒绝新请求
-        // INACTIVE 状态已视为逻辑下线，避免触发非法转换
-        RuntimeStatus current = runtime.getStateMachine().current();
-        if (current != RuntimeStatus.STOPPING && current != RuntimeStatus.INACTIVE) {
-            runtime.getStateMachine().transition(RuntimeStatus.STOPPING);
-        }
-
-        // 2. 流量排空：标记所有实例为 dying，等待存量请求完成
+        // 流量排空：标记所有实例为 dying，等待存量请求完成
         drainInstances(lingId, runtime.getInstancePool().getActiveInstances(),
                 runtime.getConfig().getForceCleanupDelaySeconds());
 
+        // 完整卸载流程（包含 shutdown → tearDown → purge）
         doFullUndeploy(lingId, runtime);
     }
 
@@ -364,14 +371,15 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             hotSwapWatcher.unregister(lingId);
         }
 
-        // 1. 改变宏观状态，拒绝新请求
-        // INACTIVE 已是逻辑下线，避免 STOPPING 非法转移
+        // 1. 通过 RuntimeCoordinator 进入 STOPPING 状态（拒绝新请求）
         RuntimeStatus current = runtime.getStateMachine().current();
-        if (current != RuntimeStatus.STOPPING && current != RuntimeStatus.INACTIVE) {
-            runtime.getStateMachine().transition(RuntimeStatus.STOPPING);
+        if (current != RuntimeStatus.STOPPING && current != RuntimeStatus.INACTIVE && current != RuntimeStatus.REMOVED) {
+            runtimeCoordinator.shutdown(lingId);
         }
 
         // 2. 逐个卸载底层剩余的所有实例
+        //    instanceCoordinator.tearDown() → 发布 InstanceStateChangedEvent(DEAD)
+        //    → RuntimeCoordinator.tryFinishShutdown() → STOPPING→REMOVED
         List<LingInstance> instances = runtime.getInstancePool().getAllInstances();
         for (LingInstance instance : instances) {
             // 🔥 先获取 ClassLoader，再 tearDown
@@ -412,8 +420,8 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         eventBus.unsubscribeAll(lingId);
         permissionService.removeLing(lingId);
 
-        // 6. 宣告生命周期结束
-        runtime.getStateMachine().transition(RuntimeStatus.REMOVED);
+        // 6. 清理 RuntimeCoordinator 内存（状态已由 tryFinishShutdown 自动转为 REMOVED）
+        runtimeCoordinator.purge(lingId);
 
         // 7. 从仓储移除引用
         lingRepository.deregister(lingId);

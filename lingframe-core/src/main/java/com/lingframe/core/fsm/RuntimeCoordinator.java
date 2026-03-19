@@ -210,6 +210,33 @@ public class RuntimeCoordinator {
     }
 
     /**
+     * 主动触发运行时状态转换（Dashboard/运维调用）。
+     * <p>
+     * 此方法是外部触发状态转换的唯一入口，确保所有状态变更都通过 RuntimeCoordinator，
+     * 从而保证事件正确发布。
+     *
+     * @param lingId Ling 标识
+     * @param target 目标状态
+     * @return 转换结果
+     */
+    public TransitionResult<RuntimeStatus> transition(String lingId, RuntimeStatus target) {
+        StateMachine<RuntimeStatus> fsm = machines.get(lingId);
+        if (fsm == null) {
+            log.warn("Cannot transition unknown ling [{}]", lingId);
+            return TransitionResult.illegal(null, target);
+        }
+
+        TransitionResult<RuntimeStatus> result = fsm.transition(target);
+        if (result.isSuccess() && result.from() != result.target()) {
+            log.info("Ling [{}] runtime state changed: {} -> {}", lingId, result.from(), result.target());
+            publishChanged(lingId, result);
+        } else if (result.isIllegal()) {
+            log.warn("Illegal transition for ling [{}]: {} -> {}", lingId, result.from(), target);
+        }
+        return result;
+    }
+
+    /**
      * 清理已移除 Ling 的内存数据（可选，由大管家定期调用）
      */
     public void purge(String lingId) {

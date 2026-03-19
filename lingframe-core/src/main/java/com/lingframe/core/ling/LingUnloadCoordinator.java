@@ -57,26 +57,11 @@ public class LingUnloadCoordinator {
         if (classLoader == null || leakDetector == null) {
             return;
         }
-        String leakId = version != null ? lingId + ":" + version : lingId;
         try {
-            leakDetector.detectLeak(leakId, classLoader);
+            leakDetector.detectLeak(lingId, version, classLoader);
         } catch (Exception e) {
             log.error("[{}] Leak detection failed for version {} with detector: {}", lingId, version,
                     leakDetector.getClass().getName(), e);
-        }
-    }
-
-    /**
-     * 整 Ling 卸载后的泄漏检测。
-     */
-    public void detectLeak(String lingId, ClassLoader classLoader) {
-        if (classLoader == null || leakDetector == null) {
-            return;
-        }
-        try {
-            leakDetector.detectLeak(lingId, classLoader);
-        } catch (Exception e) {
-            log.error("[{}] Leak detection failed with detector: {}", lingId, leakDetector.getClass().getName(), e);
         }
     }
 

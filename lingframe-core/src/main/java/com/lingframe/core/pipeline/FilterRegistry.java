@@ -2,6 +2,7 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.ling.LingRepository;
@@ -60,11 +61,24 @@ public class FilterRegistry {
      * @param trafficRouter  路由策略（可为 null，此时灰度路由走默认 LatestVersionPolicy）
      */
     public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus) {
+        initialize(lingRepository, trafficRouter, eventBus, null);
+    }
+
+    /**
+     * 初始化内置 Filter 并注入依赖。
+     * 必须在 Pipeline 可用前调用一次。
+     *
+     * @param lingRepository      运行时仓库，供 StateGuard / Routing 查询
+     * @param trafficRouter       路由策略（可为 null，此时灰度路由走默认 LatestVersionPolicy）
+     * @param runtimeCoordinator  运行时协调器（可为 null，此时弹性治理的状态变更走降级路径）
+     */
+    public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
+            RuntimeCoordinator runtimeCoordinator) {
         MacroStateGuardFilter stateGuard = new MacroStateGuardFilter(lingRepository);
         CanaryRoutingFilter routing = new CanaryRoutingFilter(
                 lingRepository,
                 trafficRouter != null ? trafficRouter : new LatestVersionPolicy());
-        ResilienceGovernanceFilter resilience = new ResilienceGovernanceFilter(lingRepository, eventBus);
+        ResilienceGovernanceFilter resilience = new ResilienceGovernanceFilter(lingRepository, eventBus, runtimeCoordinator);
         this.resilienceFilter = resilience;
 
         ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(lingRepository);
@@ -76,7 +90,7 @@ public class FilterRegistry {
         ContextIsolationFilter isolation = new ContextIsolationFilter();
         TerminalInvokerFilter terminal = new TerminalInvokerFilter(methodCache, serviceInvoker);
 
-        builtinFilters.add(new TrafficMetricsFilter(lingRepository));
+        builtinFilters.add(new TrafficMetricsFilter(lingRepository, null, eventBus));
         builtinFilters.add(stateGuard);
         builtinFilters.add(routing);
         builtinFilters.add(resilience);

@@ -11,9 +11,10 @@ public interface LeakDetector {
      * 启动对 ClassLoader 的泄露检测
      *
      * @param lingId      灵元 ID
+     * @param version     灵元版本号
      * @param classLoader 待检测的 ClassLoader
      */
-    void detectLeak(String lingId, ClassLoader classLoader);
+    void detectLeak(String lingId,String version, ClassLoader classLoader);
 
     /**
      * 关闭检测器，释放后台资源

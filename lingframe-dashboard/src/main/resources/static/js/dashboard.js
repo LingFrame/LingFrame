@@ -60,14 +60,30 @@ createApp({
         // 性能监控数据
         const perfMetrics = reactive({
             cpu: 0,
+            processCpuLoad: 0,
             memory: 0,
             memoryUsed: 0,
             memoryTotal: 0,
             heapUsed: 0,
             heapMax: 0,
+            heapUsage: 0,
+            metaspaceUsed: 0,
+            metaspaceMax: 0,
+            metaspaceUsage: 0,
+            loadedClassCount: 0,
+            totalLoadedClassCount: 0,
+            unloadedClassCount: 0,
             threads: 0,
-            gcCount: 0
+            daemonThreads: 0,
+            peakThreads: 0,
+            gcCount: 0,
+            gcTimeMs: 0,
+            availableProcessors: 0,
+            systemLoadAverage: 0
         });
+        
+        // 灵元健康指标
+        const lingHealthMetrics = reactive({});
 
         let eventSource = null;
         let timeTimer = null;
@@ -80,6 +96,8 @@ createApp({
         const activeLing = computed(() => lings.value.find(p => p.lingId === activeId.value));
         const canCanary = computed(() => (activeLing.value?.versionDetails?.length || 0) >= 2);
         const canOperate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
+        const canActivate = computed(() => activeLing.value?.status === 'INACTIVE');
+        const canDeactivate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
         const sseStatusText = computed(() => ({
             connected: t('sidebar.sseConnected'),
             connecting: t('sidebar.sseConnecting'),
@@ -189,6 +207,17 @@ createApp({
 
         const updateStatus = (newStatus) => {
             if (!activeLing.value) return;
+            
+            const currentStatus = activeLing.value.status;
+            if (newStatus === 'ACTIVE' && currentStatus !== 'INACTIVE') {
+                showToast(t('toast.cannotActivateFrom') + ': ' + currentStatus, 'error');
+                return;
+            }
+            if (newStatus === 'INACTIVE' && currentStatus !== 'ACTIVE' && currentStatus !== 'DEGRADED') {
+                showToast(t('toast.cannotDeactivateFrom') + ': ' + currentStatus, 'error');
+                return;
+            }
+            
             doUpdateStatus(newStatus);
         };
 
@@ -944,17 +973,43 @@ createApp({
                 const data = await api.get('/lings/metrics');
                 if (data) {
                     perfMetrics.cpu = data.cpuUsage || 0;
+                    perfMetrics.processCpuLoad = data.processCpuLoad || 0;
                     perfMetrics.memory = data.memoryUsage || 0;
                     perfMetrics.memoryUsed = data.memoryUsedMB || 0;
                     perfMetrics.memoryTotal = data.memoryTotalMB || 0;
                     perfMetrics.heapUsed = data.heapUsedMB || 0;
                     perfMetrics.heapMax = data.heapMaxMB || 0;
+                    perfMetrics.heapUsage = data.heapUsage || 0;
+                    perfMetrics.metaspaceUsed = data.metaspaceUsedKB || 0;
+                    perfMetrics.metaspaceMax = data.metaspaceMaxKB || 0;
+                    perfMetrics.metaspaceUsage = data.metaspaceUsage || 0;
+                    perfMetrics.loadedClassCount = data.loadedClassCount || 0;
+                    perfMetrics.totalLoadedClassCount = data.totalLoadedClassCount || 0;
+                    perfMetrics.unloadedClassCount = data.unloadedClassCount || 0;
                     perfMetrics.threads = data.threadCount || 0;
+                    perfMetrics.daemonThreads = data.daemonThreadCount || 0;
+                    perfMetrics.peakThreads = data.peakThreadCount || 0;
                     perfMetrics.gcCount = data.gcCount || 0;
+                    perfMetrics.gcTimeMs = data.gcTimeMs || 0;
+                    perfMetrics.availableProcessors = data.availableProcessors || 0;
+                    perfMetrics.systemLoadAverage = data.systemLoadAverage || 0;
                 }
             } catch (e) {
-                // 静默失败，不打扰用户
                 console.log('Failed to fetch metrics:', e.message);
+            }
+        };
+        
+        // 获取灵元健康指标
+        const fetchLingHealthMetrics = async () => {
+            try {
+                const data = await api.get('/lings/health/all');
+                if (data) {
+                    Object.keys(data).forEach(lingId => {
+                        lingHealthMetrics[lingId] = data[lingId];
+                    });
+                }
+            } catch (e) {
+                console.log('Failed to fetch ling health metrics:', e.message);
             }
         };
 
@@ -962,22 +1017,21 @@ createApp({
             updateTime();
             timeTimer = setInterval(updateTime, 1000);
 
-            // Load initial locale
             await loadLocale(locale.value);
             document.documentElement.lang = locale.value;
-            // Delay title update slightly to ensure messages are loaded
             nextTick(() => { document.title = t('title'); });
 
             refreshLings();
             console.log(new Date(), 'start connecting sse')
             connectSSE();
 
-            // 初始化同步
             updateEnvMode(currentEnv.value);
 
-            // 启动性能监控
             fetchPerformanceMetrics();
             perfTimer = setInterval(fetchPerformanceMetrics, 3000);
+            
+            fetchLingHealthMetrics();
+            setInterval(fetchLingHealthMetrics, 5000);
         });
 
         // ==================== 监听环境切换 ====================
@@ -1014,22 +1068,18 @@ createApp({
         });
 
         return {
-            // I18n
             locale, supportedLocales, switchLocale, t,
 
-            // 状态
             lings, activeId, canaryPct, isAuto, ipcEnabled, ipcTarget,
             logs, lastAudit, logViewMode, logContainer, isUserScrolling, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
             stats, loading, modal, toasts, envLabels, uploadModal,
 
-            // 性能监控
             perfMetrics,
+            lingHealthMetrics,
 
-            // 计算属性
-            activeLing, canCanary, canOperate, displayLogs,
+            activeLing, canCanary, canOperate, canActivate, canDeactivate, displayLogs,
 
-            // 方法
             refreshLings, selectLing, updateStatus, requestUnload,
             confirmModalAction, updateCanaryConfig, updateCanaryConfigLocally, resetCanary, togglePerm, toggleIpc,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
@@ -1037,7 +1087,7 @@ createApp({
             formatDrift, formatTime, formatSize,
             getStatusClass, getLingShortName, getLingTagClass, getLogColor,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
-            doUpdateStatus, fetchPerformanceMetrics
+            doUpdateStatus, fetchPerformanceMetrics, fetchLingHealthMetrics
         };
     }
 }).mount('#app');

@@ -1,6 +1,7 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingRepository;
@@ -32,20 +33,23 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
 
     private final LingRepository lingRepository;
     private final EventBus eventBus;
+    private final RuntimeCoordinator runtimeCoordinator;
 
     // 按 lingId 管理弹性组件实例
     private final ConcurrentHashMap<String, CircuitBreaker> breakers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, RateLimiter> limiters = new ConcurrentHashMap<>();
 
-    public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus) {
+    public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus, RuntimeCoordinator runtimeCoordinator) {
         this.lingRepository = lingRepository;
         this.eventBus = eventBus;
+        this.runtimeCoordinator = runtimeCoordinator;
     }
 
     /** 无参构造保持向后兼容（弹性治理不生效，仅透传） */
     public ResilienceGovernanceFilter() {
         this.lingRepository = null;
         this.eventBus = null;
+        this.runtimeCoordinator = null;
     }
 
     @Override
@@ -147,12 +151,12 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
      * 仅在当前状态为 ACTIVE 时才转换，避免重复操作或在 STOPPING 时误触发。
      */
     private void transitionToDegraded(String lingId) {
-        if (lingRepository == null)
+        if (lingRepository == null || runtimeCoordinator == null)
             return;
         try {
             LingRuntime runtime = lingRepository.getRuntime(lingId);
             if (runtime != null && runtime.getStateMachine().current() == RuntimeStatus.ACTIVE) {
-                runtime.getStateMachine().transition(RuntimeStatus.DEGRADED);
+                runtimeCoordinator.transition(lingId, RuntimeStatus.DEGRADED);
                 log.warn("[Resilience:{}] Circuit breaker opened, runtime transitioned to DEGRADED", lingId);
             }
         } catch (Exception e) {
@@ -165,13 +169,13 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
      * 仅在当前状态为 DEGRADED 且熔断器状态为 CLOSED 时触发。
      */
     private void tryRecoverFromDegraded(String lingId, CircuitBreaker breaker) {
-        if (lingRepository == null)
+        if (lingRepository == null || runtimeCoordinator == null)
             return;
         try {
             if (breaker.getState() == CircuitBreaker.State.CLOSED) {
                 LingRuntime runtime = lingRepository.getRuntime(lingId);
                 if (runtime != null && runtime.getStateMachine().current() == RuntimeStatus.DEGRADED) {
-                    runtime.getStateMachine().transition(RuntimeStatus.ACTIVE);
+                    runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
                     log.info("[Resilience:{}] Circuit breaker recovered, runtime transitioned back to ACTIVE", lingId);
                 }
             }

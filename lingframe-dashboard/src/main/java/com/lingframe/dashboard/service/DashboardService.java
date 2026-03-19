@@ -5,7 +5,9 @@ import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.fsm.TransitionResult;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.loader.LingManifestLoader;
@@ -39,6 +41,7 @@ public class DashboardService {
     private final CanaryRouter canaryRouter;
     private final LingInfoConverter converter;
     private final PermissionService permissionService;
+    private final RuntimeCoordinator runtimeCoordinator;
 
     public List<LingInfoDTO> getAllLingInfos() {
         return lingRepository.getAllRuntimes().stream()
@@ -181,13 +184,20 @@ public class DashboardService {
             throw new LingNotFoundException(lingId);
         }
 
+        RuntimeStatus currentStatus = runtime.currentStatus();
+        log.info("[Dashboard] Requesting status transition for ling {}: {} -> {}", lingId, currentStatus, newStatus);
+
         switch (newStatus) {
             case ACTIVE:
-                // 执行状态机转换：INACTIVE -> ACTIVE
-                runtime.getStateMachine().transition(RuntimeStatus.ACTIVE);
+                TransitionResult<RuntimeStatus> activeResult = runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
+                if (!activeResult.isSuccess()) {
+                    String errorMsg = String.format("Cannot transition %s to ACTIVE from %s: %s", 
+                            lingId, currentStatus, activeResult.code());
+                    log.warn("[Dashboard] {}", errorMsg);
+                    throw new IllegalStateException(errorMsg);
+                }
                 log.info("[Dashboard] State transitioned to ACTIVE for ling: {}", lingId);
 
-                // 初始化治理策略并同步权限到 PermissionService
                 GovernancePolicy policy = governanceRegistry.getPatch(lingId);
                 if (policy == null || policy.getCapabilities() == null || policy.getCapabilities().isEmpty()) {
                     log.info("[Dashboard] Initializing default permissions for ling: {}", lingId);
@@ -216,16 +226,19 @@ public class DashboardService {
                 syncPermissionsFromPolicy(lingId, policy);
                 break;
             case INACTIVE:
-                // 执行状态机转换，禁止新请求进入
-                runtime.getStateMachine().transition(RuntimeStatus.INACTIVE);
+                TransitionResult<RuntimeStatus> inactiveResult = runtimeCoordinator.transition(lingId, RuntimeStatus.INACTIVE);
+                if (!inactiveResult.isSuccess()) {
+                    String errorMsg = String.format("Cannot transition %s to INACTIVE from %s: %s", 
+                            lingId, currentStatus, inactiveResult.code());
+                    log.warn("[Dashboard] {}", errorMsg);
+                    throw new IllegalStateException(errorMsg);
+                }
                 log.info("[Dashboard] State transitioned to INACTIVE for ling: {}", lingId);
 
-                // 同步撤销执行权限，保持权限侧一致
                 permissionService.revoke(lingId, Capabilities.Ling_ENABLE);
                 log.info("[Dashboard] Revoked Ling_ENABLE permission from {}, ling deactivated", lingId);
                 break;
             case REMOVED:
-                // 彻底卸载灵元
                 lifecycleEngine.undeploy(lingId);
                 break;
             default:

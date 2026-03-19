@@ -1,7 +1,14 @@
 package com.lingframe.dashboard.service;
 
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.event.InstanceDestroyedEvent;
+import com.lingframe.core.event.InstanceStateChangedEvent;
+import com.lingframe.core.event.RuntimeStateChangedEvent;
 import com.lingframe.core.event.monitor.MonitoringEvents;
+import com.lingframe.api.event.lifecycle.LingInstalledEvent;
+import com.lingframe.api.event.lifecycle.LingInstallingEvent;
+import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
+import com.lingframe.api.event.lifecycle.LingUninstallingEvent;
 import com.lingframe.dashboard.dto.LogStreamDTO;
 
 import lombok.RequiredArgsConstructor;
@@ -17,10 +24,30 @@ import java.util.concurrent.*;
 
 /**
  * SSE 日志流服务
- * 特性：
- * 1. 异步非阻塞分发
- * 2. 自动心跳保活
- * 3. 优雅关闭
+ *
+ * <p>特性：
+ * <ul>
+ *   <li>异步非阻塞分发 - 使用独立线程池处理事件推送，不阻塞业务线程</li>
+ *   <li>自动心跳保活 - 每15秒发送心跳，防止连接超时</li>
+ *   <li>优雅关闭 - 服务销毁时清理所有连接和线程池</li>
+ *   <li>ClassLoader隔离 - 确保在正确的ClassLoader上下文中执行</li>
+ * </ul>
+ *
+ * <p>订阅的事件类型：
+ * <ul>
+ *   <li>TraceLogEvent - 方法级全链路追踪日志</li>
+ *   <li>AuditLogEvent - 权限审计日志</li>
+ *   <li>AlertNotifyEvent - 告警通知</li>
+ *   <li>CircuitBreakerStateEvent - 熔断器状态变化</li>
+ *   <li>LeakDetectionEvent - GC泄漏检测结果</li>
+ *   <li>InstanceStateChangedEvent - 实例状态变化</li>
+ *   <li>RuntimeStateChangedEvent - 运行时状态变化</li>
+ *   <li>InstanceDestroyedEvent - 实例销毁</li>
+ *   <li>LingInstallingEvent - 灵元安装中</li>
+ *   <li>LingInstalledEvent - 灵元安装完成</li>
+ *   <li>LingUninstallingEvent - 灵元卸载中</li>
+ *   <li>LingUninstalledEvent - 灵元卸载完成</li>
+ * </ul>
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -28,8 +55,9 @@ public class LogStreamService implements InitializingBean, DisposableBean {
 
     private final EventBus eventBus;
     private static final ClassLoader CORE_CLASSLOADER = LogStreamService.class.getClassLoader();
+
     /**
-     * 维护所有活跃连接
+     * 维护所有活跃的SSE连接
      */
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
 
@@ -55,11 +83,28 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         return t;
     });
 
+    /**
+     * 初始化：订阅内核事件并启动心跳
+     */
     @Override
     public void afterPropertiesSet() {
-        // 订阅内核事件
+        // 订阅内核监控事件
         eventBus.subscribe("lingframe-dashboard", MonitoringEvents.TraceLogEvent.class, this::handleTrace);
         eventBus.subscribe("lingframe-dashboard", MonitoringEvents.AuditLogEvent.class, this::handleAudit);
+        eventBus.subscribe("lingframe-dashboard", MonitoringEvents.AlertNotifyEvent.class, this::handleAlert);
+        eventBus.subscribe("lingframe-dashboard", MonitoringEvents.CircuitBreakerStateEvent.class, this::handleCircuitBreaker);
+        eventBus.subscribe("lingframe-dashboard", MonitoringEvents.LeakDetectionEvent.class, this::handleLeakDetection);
+
+        // 订阅状态变化事件
+        eventBus.subscribe("lingframe-dashboard", InstanceStateChangedEvent.class, this::handleInstanceStateChange);
+        eventBus.subscribe("lingframe-dashboard", RuntimeStateChangedEvent.class, this::handleRuntimeStateChange);
+        eventBus.subscribe("lingframe-dashboard", InstanceDestroyedEvent.class, this::handleInstanceDestroyed);
+
+        // 订阅生命周期事件
+        eventBus.subscribe("lingframe-dashboard", LingInstallingEvent.class, this::handleLingInstalling);
+        eventBus.subscribe("lingframe-dashboard", LingInstalledEvent.class, this::handleLingInstalled);
+        eventBus.subscribe("lingframe-dashboard", LingUninstallingEvent.class, this::handleLingUninstalling);
+        eventBus.subscribe("lingframe-dashboard", LingUninstalledEvent.class, this::handleLingUninstalled);
 
         // 启动心跳 (每15秒)，防止 Nginx/Browser 超时
         scheduler.scheduleAtFixedRate(this::sendHeartbeat, 15, 15, TimeUnit.SECONDS);
@@ -68,6 +113,8 @@ public class LogStreamService implements InitializingBean, DisposableBean {
 
     /**
      * 创建新的 SSE 连接
+     *
+     * @return SSE发射器实例
      */
     public SseEmitter createEmitter() {
         SseEmitter emitter = new SseEmitter(0L);
@@ -90,7 +137,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     }
 
     /**
-     * 处理内核 Trace 日志事件
+     * 处理内核 Trace 日志事件（方法级全链路追踪）
      */
     private void handleTrace(MonitoringEvents.TraceLogEvent event) {
         LogStreamDTO logStreamDTO = LogStreamDTO.builder()
@@ -106,7 +153,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     }
 
     /**
-     * 处理内核 Audit 日志事件
+     * 处理内核 Audit 日志事件（权限审计）
      */
     private void handleAudit(MonitoringEvents.AuditLogEvent event) {
         String content = String.format("%s on %s - %s (%.3fms)",
@@ -125,7 +172,201 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     }
 
     /**
+     * 处理告警通知事件
+     */
+    private void handleAlert(MonitoringEvents.AlertNotifyEvent event) {
+        LogStreamDTO logStreamDTO = LogStreamDTO.builder()
+                .type("ALERT")
+                .lingId(event.getLingId())
+                .content(event.getMessage())
+                .tag(event.getType())
+                .level(event.getLevel())
+                .timestamp(event.getTimestamp())
+                .build();
+        broadcast(logStreamDTO);
+    }
+
+    /**
+     * 处理熔断器状态变化事件
+     */
+    private void handleCircuitBreaker(MonitoringEvents.CircuitBreakerStateEvent event) {
+        String content = String.format("CircuitBreaker [%s] %s -> %s (failure rate: %.1f%%)",
+                event.getResourceId(), event.getOldState(), event.getNewState(), event.getFailureRate() * 100);
+
+        LogStreamDTO logStreamDTO = LogStreamDTO.builder()
+                .type("ALERT")
+                .content(content)
+                .tag("CIRCUIT_BREAKER")
+                .level("WARNING")
+                .timestamp(event.getTimestamp())
+                .build();
+        broadcast(logStreamDTO);
+    }
+
+    /**
+     * 处理GC泄漏检测结果事件
+     */
+    private void handleLeakDetection(MonitoringEvents.LeakDetectionEvent event) {
+        String level = event.isCollected() ? "INFO" : "ERROR";
+        String content = String.format("Ling [%s] version=%s %s",
+                event.getLingId(), event.getVersion(), event.getMessage());
+
+        LogStreamDTO logStreamDTO = LogStreamDTO.builder()
+                .type("LEAK_DETECTION")
+                .lingId(event.getLingId())
+                .content(content)
+                .tag(event.isCollected() ? "OK" : "FAIL")
+                .level(level)
+                .timestamp(event.getTimestamp())
+                .build();
+        broadcast(logStreamDTO);
+    }
+
+    /**
+     * 处理实例状态变化事件
+     */
+    private void handleInstanceStateChange(InstanceStateChangedEvent event) {
+        String content = String.format("Ling [%s] version=%s: %s -> %s",
+                event.getLingId(), event.getVersion(),
+                event.getFromStatus(), event.getToStatus());
+
+        String level = "INFO";
+        if (event.getToStatus().name().contains("ERROR") || event.getToStatus().name().contains("FAILED")) {
+            level = "ERROR";
+        } else if (event.getToStatus().name().contains("DEACTIVATED") || event.getToStatus().name().contains("STOPPED")) {
+            level = "WARNING";
+        }
+
+        LogStreamDTO logStreamDTO = LogStreamDTO.builder()
+                .type("ALERT")
+                .lingId(event.getLingId())
+                .content(content)
+                .tag("STATE_CHANGE")
+                .level(level)
+                .timestamp(event.getTimestamp())
+                .build();
+        broadcast(logStreamDTO);
+    }
+
+    /**
+     * 处理运行时状态变化事件
+     */
+    private void handleRuntimeStateChange(RuntimeStateChangedEvent event) {
+        String content = String.format("Ling [%s] runtime: %s -> %s",
+                event.getLingId(), event.getFrom(), event.getTo());
+
+        String level = "INFO";
+        if (event.getTo().name().contains("ERROR") || event.getTo().name().contains("FAILED")) {
+            level = "ERROR";
+        } else if (event.getTo().name().contains("STOPPED") || event.getTo().name().contains("INACTIVE")) {
+            level = "WARNING";
+        }
+
+        LogStreamDTO logStreamDTO = LogStreamDTO.builder()
+                .type("ALERT")
+                .lingId(event.getLingId())
+                .content(content)
+                .tag("RUNTIME_CHANGE")
+                .level(level)
+                .timestamp(event.getTimestamp())
+                .build();
+        broadcast(logStreamDTO);
+    }
+
+    /**
+     * 处理实例销毁事件
+     */
+    private void handleInstanceDestroyed(InstanceDestroyedEvent event) {
+        String content = String.format("Ling [%s] version=%s destroyed",
+                event.getLingId(), event.getVersion());
+
+        LogStreamDTO logStreamDTO = LogStreamDTO.builder()
+                .type("ALERT")
+                .lingId(event.getLingId())
+                .content(content)
+                .tag("INSTANCE_DESTROYED")
+                .level("WARNING")
+                .timestamp(event.getTimestamp())
+                .build();
+        broadcast(logStreamDTO);
+    }
+
+    /**
+     * 处理灵元安装中事件
+     */
+    private void handleLingInstalling(LingInstallingEvent event) {
+        String content = String.format("Ling [%s] version=%s installing...",
+                event.getLingId(), event.getVersion());
+
+        LogStreamDTO logStreamDTO = LogStreamDTO.builder()
+                .type("ALERT")
+                .lingId(event.getLingId())
+                .content(content)
+                .tag("LING_INSTALLING")
+                .level("INFO")
+                .timestamp(event.getTimestamp())
+                .build();
+        broadcast(logStreamDTO);
+    }
+
+    /**
+     * 处理灵元安装完成事件
+     */
+    private void handleLingInstalled(LingInstalledEvent event) {
+        String content = String.format("Ling [%s] version=%s installed successfully!",
+                event.getLingId(), event.getVersion());
+
+        LogStreamDTO logStreamDTO = LogStreamDTO.builder()
+                .type("ALERT")
+                .lingId(event.getLingId())
+                .content(content)
+                .tag("LING_INSTALLED")
+                .level("INFO")
+                .timestamp(event.getTimestamp())
+                .build();
+        broadcast(logStreamDTO);
+    }
+
+    /**
+     * 处理灵元卸载中事件
+     */
+    private void handleLingUninstalling(LingUninstallingEvent event) {
+        String content = String.format("Ling [%s] uninstalling...",
+                event.getLingId());
+
+        LogStreamDTO logStreamDTO = LogStreamDTO.builder()
+                .type("ALERT")
+                .lingId(event.getLingId())
+                .content(content)
+                .tag("LING_UNINSTALLING")
+                .level("WARNING")
+                .timestamp(event.getTimestamp())
+                .build();
+        broadcast(logStreamDTO);
+    }
+
+    /**
+     * 处理灵元卸载完成事件
+     */
+    private void handleLingUninstalled(LingUninstalledEvent event) {
+        String content = String.format("Ling [%s] uninstalled successfully",
+                event.getLingId());
+
+        LogStreamDTO logStreamDTO = LogStreamDTO.builder()
+                .type("ALERT")
+                .lingId(event.getLingId())
+                .content(content)
+                .tag("LING_UNINSTALLED")
+                .level("INFO")
+                .timestamp(event.getTimestamp())
+                .build();
+        broadcast(logStreamDTO);
+    }
+
+    /**
      * 广播日志事件给所有连接
+     *
+     * @param logStreamDTO 日志数据传输对象
      */
     public void broadcast(LogStreamDTO logStreamDTO) {
         if (emitters.isEmpty())
@@ -137,17 +378,17 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         // 异步提交给分发线程，不阻塞当前业务线程 (Core Kernel)
         try {
             dispatcher.submit(withCoreClassLoader(() -> {
-            List<SseEmitter> dead = new ArrayList<>();
-            for (SseEmitter emitter : emitters) {
-                try {
-                    emitter.send(SseEmitter.event()
-                            .name("log-event")
-                            .data(logStreamDTO, MediaType.APPLICATION_JSON));
-                } catch (Exception e) {
-                    dead.add(emitter);
+                List<SseEmitter> dead = new ArrayList<>();
+                for (SseEmitter emitter : emitters) {
+                    try {
+                        emitter.send(SseEmitter.event()
+                                .name("log-event")
+                                .data(logStreamDTO, MediaType.APPLICATION_JSON));
+                    } catch (Exception e) {
+                        dead.add(emitter);
+                    }
                 }
-            }
-            emitters.removeAll(dead);
+                emitters.removeAll(dead);
             }));
         } catch (RejectedExecutionException e) {
             // ignore on shutdown
@@ -199,6 +440,9 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         emitters.forEach(SseEmitter::complete);
     }
 
+    /**
+     * 确保在正确的ClassLoader上下文中执行任务
+     */
     private Runnable withCoreClassLoader(Runnable task) {
         return () -> {
             ClassLoader prev = Thread.currentThread().getContextClassLoader();

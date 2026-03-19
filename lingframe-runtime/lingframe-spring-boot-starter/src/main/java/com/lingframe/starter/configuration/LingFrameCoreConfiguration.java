@@ -212,8 +212,8 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public LeakDetector leakDetector() {
-        return new DefaultLeakDetector();
+    public LeakDetector leakDetector(EventBus eventBus, LingFrameConfig lingFrameConfig) {
+        return new DefaultLeakDetector(eventBus, lingFrameConfig);
     }
 
     @Bean
@@ -241,13 +241,14 @@ public class LingFrameCoreConfiguration {
                                                    List<ResourceGuard> resourceGuards,
                                                    LingResourceManager lingResourceManager,
                                                    LeakDetector leakDetector,
+                                                   RuntimeCoordinator runtimeCoordinator,
                                                    ObjectProvider<HotSwapWatcher> hotSwapWatcherProvider) {
         List<LingSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
                 pipelineEngine, resourceGuards, lingResourceManager, leakDetector);
         return new DefaultLingLifecycleEngine(containerFactory, permissionService,
                 lingLoaderFactory, verifiers, eventBus, lingFrameConfig, lingRepository, lingServiceRegistry,
-                pipelineEngine, lingResourceManager, unloadCoordinator);
+                pipelineEngine, lingResourceManager, unloadCoordinator, runtimeCoordinator);
     }
 
     @Bean
@@ -260,13 +261,14 @@ public class LingFrameCoreConfiguration {
             ObjectProvider<LingServiceInvoker> invokerProvider,
             ObjectProvider<GovernanceArbitrator> arbitratorProvider,
             TrafficRouter trafficRouter,
-            EventBus eventBus) {
+            EventBus eventBus,
+            RuntimeCoordinator runtimeCoordinator) {
         LingServiceInvoker invoker = invokerProvider.getIfAvailable();
         GovernanceArbitrator arbitrator = arbitratorProvider.getIfAvailable();
         FilterRegistry registry = registryProvider
                 .getIfAvailable(() -> new FilterRegistry(methodCache, permissionService, invoker, arbitrator));
         // 初始化内置 Filter 并注入依赖（构造器注入）
-        registry.initialize(lingRepository, trafficRouter, eventBus);
+        registry.initialize(lingRepository, trafficRouter, eventBus, runtimeCoordinator);
         // 从宿主 ClassLoader 加载 SPI 扩展
         registry.loadSpiFilters(Thread.currentThread().getContextClassLoader());
         return new InvocationPipelineEngine(registry);

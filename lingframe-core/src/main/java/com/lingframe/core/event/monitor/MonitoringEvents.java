@@ -41,4 +41,24 @@ public class MonitoringEvents {
         private final double failureRate;
         private final long timestamp = System.currentTimeMillis();
     }
+
+    @Getter
+    @RequiredArgsConstructor
+    public static class AlertNotifyEvent implements LingEvent {
+        private final String level;
+        private final String type;
+        private final String lingId;
+        private final String message;
+        private final long timestamp = System.currentTimeMillis();
+    }
+
+    @Getter
+    @RequiredArgsConstructor
+    public static class LeakDetectionEvent implements LingEvent {
+        private final String lingId;
+        private final String version;
+        private final boolean collected;
+        private final String message;
+        private final long timestamp = System.currentTimeMillis();
+    }
 }

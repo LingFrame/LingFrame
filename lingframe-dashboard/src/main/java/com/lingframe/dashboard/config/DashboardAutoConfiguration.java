@@ -3,10 +3,12 @@ package com.lingframe.dashboard.config;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
@@ -54,10 +56,12 @@ public class DashboardAutoConfiguration {
             LocalGovernanceRegistry governanceRegistry,
             CanaryRouter canaryRouter,
             LingInfoConverter lingInfoConverter,
-            PermissionService permissionService) {
+            PermissionService permissionService,
+            RuntimeCoordinator runtimeCoordinator) {
         return new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository, governanceRegistry, canaryRouter,
                 lingInfoConverter,
-                permissionService);
+                permissionService,
+                runtimeCoordinator);
     }
 
     @Bean
@@ -73,6 +77,11 @@ public class DashboardAutoConfiguration {
     @Bean
     public LogStreamService logStreamService(EventBus eventBus) {
         return new LogStreamService(eventBus);
+    }
+    
+    @Bean
+    public MetricsCollector metricsCollector(LingRepository lingRepository) {
+        return new MetricsCollector(lingRepository);
     }
 
 }
