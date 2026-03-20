@@ -14,8 +14,6 @@
 [![Help Wanted](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LingFrame/LingFrame)
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/LingFrame/LingFrame?quickstart=1)
-
 [中文版 / Chinese](./README.zh-CN.md)
 
 ## Start From Here
