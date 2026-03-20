@@ -100,6 +100,14 @@ createApp({
         let logIdCounter = 0;
         let toastIdCounter = 0;
 
+        // 日志筛选和聚合相关
+        const logAggregationMode = ref(false);
+        const logFilters = reactive({
+            version: '',
+            eventType: '',
+            keyword: ''
+        });
+
         // ==================== 计算属性 ====================
         const activeLing = computed(() => lings.value.find(p => p.lingId === activeId.value));
         const canCanary = computed(() => (activeLing.value?.versionDetails?.length || 0) >= 2);
@@ -112,11 +120,54 @@ createApp({
             disconnected: t('sidebar.sseDisconnected')
         }[sseStatus.value]));
 
+        // 获取可用的版本列表
+        const availableVersions = computed(() => {
+            const versions = new Set();
+            lings.value.forEach(ling => {
+                if (ling.versionDetails) {
+                    ling.versionDetails.forEach(v => {
+                        versions.add(v.version);
+                    });
+                }
+            });
+            return Array.from(versions).sort();
+        });
+
+        // 筛选和聚合日志
         const displayLogs = computed(() => {
+            let filteredLogs = logs.value;
+
+            // 按视图模式筛选
             if (logViewMode.value === 'current' && activeId.value) {
-                return logs.value.filter(l => l.lingId === activeId.value);
+                filteredLogs = filteredLogs.filter(l => l.lingId === activeId.value);
             }
-            return logs.value;
+
+            // 按版本筛选
+            if (logFilters.version) {
+                filteredLogs = filteredLogs.filter(l => l.version === logFilters.version);
+            }
+
+            // 按事件类型筛选
+            if (logFilters.eventType) {
+                filteredLogs = filteredLogs.filter(l => l.type === logFilters.eventType);
+            }
+
+            // 按关键词筛选
+            if (logFilters.keyword) {
+                const keyword = logFilters.keyword.toLowerCase();
+                filteredLogs = filteredLogs.filter(l => 
+                    l.content.toLowerCase().includes(keyword) ||
+                    l.lingId.toLowerCase().includes(keyword) ||
+                    (l.traceId && l.traceId.toLowerCase().includes(keyword))
+                );
+            }
+
+            // 聚合模式
+            if (logAggregationMode.value) {
+                return aggregateLogs(filteredLogs);
+            }
+
+            return filteredLogs;
         });
 
         // ==================== Toast 通知 ====================
@@ -853,6 +904,7 @@ createApp({
                 id: ++logIdCounter,
                 traceId: data.traceId,
                 lingId: data.lingId,
+                version: data.version,
                 content: data.content,
                 type: data.type,
                 tag: data.tag,
@@ -886,6 +938,50 @@ createApp({
             if (logContainer.value) {
                 isUserScrolling.value = logContainer.value.scrollTop > 50;
             }
+        };
+
+        // 聚合日志
+        const aggregateLogs = (logs) => {
+            const aggregated = {};
+
+            logs.forEach(log => {
+                // 按类型、内容和版本聚合
+                const key = `${log.type || 'UNKNOWN'}-${log.content}-${log.version || 'UNKNOWN'}`;
+                if (!aggregated[key]) {
+                    aggregated[key] = {
+                        id: ++logIdCounter,
+                        type: log.type,
+                        content: log.content,
+                        lingId: log.lingId,
+                        version: log.version,
+                        count: 0,
+                        firstTimestamp: log.timestamp,
+                        lastTimestamp: log.timestamp,
+                        logs: []
+                    };
+                }
+                
+                const entry = aggregated[key];
+                entry.count++;
+                entry.firstTimestamp = Math.min(entry.firstTimestamp, log.timestamp);
+                entry.lastTimestamp = Math.max(entry.lastTimestamp, log.timestamp);
+                entry.logs.push(log);
+            });
+
+            // 转换为数组并按最后时间排序
+            return Object.values(aggregated).sort((a, b) => b.lastTimestamp - a.firstTimestamp);
+        };
+
+        // 筛选日志
+        const filterLogs = () => {
+            // 筛选逻辑已在displayLogs计算属性中实现
+        };
+
+        // 重置日志筛选
+        const resetLogFilters = () => {
+            logFilters.version = '';
+            logFilters.eventType = '';
+            logFilters.keyword = '';
         };
 
         const scrollToTop = () => {
@@ -1169,19 +1265,19 @@ createApp({
             locale, supportedLocales, switchLocale, t,
 
             lings, activeId, canaryPct, isAuto, ipcEnabled, ipcTarget,
-            logs, lastAudit, logViewMode, logContainer, isUserScrolling, sidebarOpen,
+            logs, lastAudit, logViewMode, logAggregationMode, logFilters, logContainer, isUserScrolling, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
             stats, loading, modal, toasts, envLabels, uploadModal, timelineModal,
 
             perfMetrics,
             lingHealthMetrics,
 
-            activeLing, canCanary, canOperate, canActivate, canDeactivate, displayLogs,
+            activeLing, canCanary, canOperate, canActivate, canDeactivate, displayLogs, availableVersions,
 
             refreshLings, selectLing, updateStatus, requestUnload,
             confirmModalAction, updateCanaryConfig, updateCanaryConfigLocally, resetCanary, togglePerm, toggleIpc,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
-            handleLogScroll, scrollToTop,
+            handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
             formatDrift, formatTime, formatSize,
             getStatusClass, getLingShortName, getLingTagClass, getLogColor,
             getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass,

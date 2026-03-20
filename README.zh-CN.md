@@ -1,37 +1,64 @@
-# LingFrame · 灵珑
+<h1 align="center">LingFrame · 灵珑</h1>
 
-![Status](https://img.shields.io/badge/Status-Resilience_Governance-brightgreen)
-![License](https://img.shields.io/badge/License-Apache_2.0-blue)
-![Java](https://img.shields.io/badge/Java-17-orange)
-![Java](https://img.shields.io/badge/Java-8-orange)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-2.7.18-brightgreen)
+<p align="center">
+  <strong>面向长期运行系统的 JVM 运行时治理框架</strong>
+</p>
 
-[![Gitee](https://img.shields.io/badge/Gitee-Repository-red?logo=gitee&logoColor=white)](https://gitee.com/knight6236/lingframe)
-[![AtomGit G-Star](https://img.shields.io/badge/AtomGit-G--Star_孵化项目-silver?logo=git&logoColor=white)](https://atomgit.com/lingframe/LingFrame)
-[![GitHub](https://img.shields.io/badge/GitHub-Repository-black?logo=github&logoColor=white)](https://github.com/LingFrame/LingFrame)
+<p align="center">
+  <img src="https://img.shields.io/badge/Status-Resilience_Governance-brightgreen" alt="Status">
+  <img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License">
+  <img src="https://img.shields.io/badge/Java-17-orange" alt="Java">
+  <img src="https://img.shields.io/badge/Java-8-orange" alt="Java">
+  <img src="https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen" alt="Spring Boot">
+  <img src="https://img.shields.io/badge/Spring_Boot-2.7.18-brightgreen" alt="Spring Boot">
+</p>
 
-[![Help Wanted](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LingFrame/LingFrame)
+<p align="center">
+  <a href="https://gitee.com/knight6236/lingframe">
+    <img src="https://img.shields.io/badge/Gitee-Repository-red?logo=gitee&logoColor=white" alt="Gitee">
+  </a>
+  <a href="https://atomgit.com/lingframe/LingFrame">
+    <img src="https://img.shields.io/badge/AtomGit-G--Star_孵化项目-silver?logo=git&logoColor=white" alt="AtomGit">
+  </a>
+  <a href="https://github.com/LingFrame/LingFrame">
+    <img src="https://img.shields.io/badge/GitHub-Repository-black?logo=github&logoColor=white" alt="GitHub">
+  </a>
+  <a href="../../pulls">
+    <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
+  </a>
+  <a href="https://deepwiki.com/LingFrame/LingFrame">
+    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki">
+  </a>
+</p>
 
-[English Version](./README.md)
-
-## 你可以从这里开始
-
-- **技术入口**：深入治理细节与架构 👉 [technical-entry.md](docs/zh-CN/technical-entry.md)
-- **实用入口**：快速上手与灰度发布 👉 [practical-entry.md](docs/zh-CN/practical-entry.md)
-- **快速试用**：👉 [getting-started.md](docs/zh-CN/getting-started.md)
-- **核心立场**：👉 [MANIFESTO.md](MANIFESTO.md)
-- **设计原则与边界选择**：👉 [WHY.md](WHY.md)
-
-你不需要一次性读完所有内容。  
-灵珑允许你在任何阶段停下。
+<p align="center">
+  <a href="./README.md">English</a> | <strong>中文</strong>
+</p>
 
 ---
 
-![LingFrame Dashboard 示例](./docs/images/dashboard.zh-CN.png)
+## 📖 从这里开始
+
+| 入口 | 说明 |
+|------|------|
+| [技术入口](docs/zh-CN/technical-entry.md) | 深入治理细节与架构 |
+| [实用入口](docs/zh-CN/practical-entry.md) | 快速上手与灰度发布 |
+| [快速试用](docs/zh-CN/getting-started.md) | 立刻体验灵珑 |
+| [核心立场](MANIFESTO.md) | 理解灵珑的哲学 |
+| [设计原则与边界选择](WHY.md) | 了解设计背后的思考 |
+
+> 你不需要一次性读完所有内容。  
+> 灵珑允许你在任何阶段停下。
 
 ---
+
+<p align="center">
+  <img src="./docs/images/dashboard.zh-CN.png" alt="LingFrame Dashboard 示例" width="80%">
+</p>
+
+---
+
+## ✨ 什么是灵珑？
 
 LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理框架**。  
 它尝试在**不重写系统、不强行拆分微服务**的前提下，让已经服役多年的单体应用，继续稳定、可控、可演进地运行下去。
@@ -41,7 +68,7 @@ LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理�
 
 ---
 
-## 序章
+## 🌌 序章
 
 它最初并不是为了优雅而诞生的。
 
@@ -64,13 +91,13 @@ LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理�
 
 ---
 
-## 灵珑关心的，并不是“加功能”
+## 🎯 灵珑关心的，并不是“加功能”
 
 在大量真实系统中，问题往往不是功能不足，而是：
 
 - 系统仍在运行，但已经没人敢改  
-- 灵元边界逐渐失效，耦合无法追溯  
-- 灵元化引入后，隔离却只停留在结构层  
+- 模块边界逐渐失效，耦合无法追溯  
+- 模块化引入后，隔离却只停留在结构层  
 - 重启不是不能接受，而是**无法预期**
 
 灵珑关注的核心问题只有一个：
@@ -79,13 +106,13 @@ LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理�
 
 ---
 
-## 当前阶段
+## 🚀 当前阶段
 
-**v0.2.0 · 蜕变**
+### 🔹 v0.2.0 · 蜕变
 
 这是一个打破桎梏、重定义边界的阶段：
 
-- 抛弃 "Plugin" 的认知局限，确立真正的 "Ling（灵元）" 隔离
+- 抛弃 "Plugin" 的认知局限，确立真正的 **“灵元”隔离**
 - 弹性治理不再流于控制面，化作宿主内核真正的熔断器
 - 直面类加载器泄漏的深水区，尽可能解决卸载问题
 - 证明另一件事：  
@@ -95,7 +122,7 @@ LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理�
 
 ---
 
-**v0.1.0 · 初啼（历史版本）**
+### 🔹 v0.1.0 · 初啼（历史版本）
 
 这是一个方向已经冻结、边界正在成型的阶段：
 
@@ -105,9 +132,10 @@ LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理�
   **运行时治理在单进程内是否成立**
 
 这是一个拒绝讨好、开始选择的阶段。
+
 ---
 
-## 灵珑是什么
+## 🧩 灵珑是什么
 
 - 一个 **JVM 运行时治理框架**
 - 一个 **面向老系统的结构性工具**
@@ -115,27 +143,27 @@ LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理�
 - 一个 **拥有滑动窗口熔断、限流支持及 SPI 生态连接能力的高可用底座**
 
 它不是微服务替代品，  
-也不是灵元化银弹。
+也不是模块化银弹。
 
 灵珑存在的意义，是在系统复杂到某个阶段时，  
 **为“回缩”与“重组”提供可能性**。
 
 ---
 
-## 技术边界（简述）
+## ⚙️ 技术边界
 
-- JVM：JDK 17 / JDK 8
-- Spring Boot：3.x / 2.x
-- 单进程内灵元隔离与治理
-- **可用性与生态**：原生配备灰度发布、熔断限流，并通过外骨骼扩展无缝对接 Nacos / Apollo 等第三方基础设施。
-- 明确区分：**接口稳定性 ≠ 实现稳定性**
+- **JVM**：JDK 17 / JDK 8
+- **Spring Boot**：3.x / 2.x
+- **隔离模型**：单进程内灵元隔离与治理
+- **可用性与生态**：原生配备灰度发布、熔断限流，并通过外骨骼扩展无缝对接 Nacos / Apollo 等第三方基础设施
+- **稳定性哲学**：明确区分**接口稳定性 ≠ 实现稳定性**
 
 灵珑不隐藏复杂性，  
 只是拒绝把复杂性一次性压给使用者。
 
 ---
 
-## 最后
+## 💬 最后
 
 灵珑不会替系统做决定。
 
@@ -147,18 +175,20 @@ LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理�
 
 ---
 
-## 致谢
+## 🙏 致谢
 
 **特别鸣谢 Gitee 官方与开源社区的推荐与支持！** 
 
-感谢 [Gitee](https://gitee.com) 平台以及红薯老师为本土开源生态提供的优质土壤，让底层的轮子也能被看见。
+感谢 [Gitee](https://gitee.com) 平台以及红薯老师为本土开源生态提供的优质土壤，让底层的轮子也能被看见。  
 👉 [访问 Gitee 官方主仓库](https://gitee.com/knight6236/lingframe)
 
 ---
 
-[![AtomGit](docs/images/AtomGit.svg)](https://atomgit.com/lingframe/LingFrame)
+<p align="center">
+  <a href="https://atomgit.com/lingframe/LingFrame">
+    <img src="docs/images/AtomGit.svg" alt="AtomGit" width="120">
+  </a>
+</p>
 
 本项目也是 AtomGit G-Star 孵化项目。  
 感谢 [AtomGit](https://atomgit.com) 平台对开源项目的支持与推广。
-
-

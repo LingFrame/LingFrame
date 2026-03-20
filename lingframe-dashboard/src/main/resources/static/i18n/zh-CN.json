@@ -71,7 +71,20 @@
     "all": "全部",
     "waiting": "等待日志...",
     "connecting": "连接中...",
-    "newLogs": "新日志"
+    "newLogs": "新日志",
+    "aggregationMode": "聚合模式",
+    "filterByVersion": "按版本筛选",
+    "filterByEventType": "按事件类型筛选",
+    "filterByKeyword": "按关键词搜索",
+    "allVersions": "所有版本",
+    "allEventTypes": "所有事件类型",
+    "eventTypeLoading": "加载",
+    "eventTypeUnloading": "卸载",
+    "eventTypeGC": "垃圾回收",
+    "eventTypeError": "错误",
+    "keywordPlaceholder": "输入关键词搜索",
+    "resetFilters": "重置筛选",
+    "applyFilters": "应用筛选"
   },
   "control": {
     "title": "灵元控制",
