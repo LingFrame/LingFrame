@@ -15,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -227,6 +228,63 @@ class LingInstanceTest {
 
     @Nested
     @DisplayName("标签管理")
+    class ActiveInvocationRegistryTests {
+
+        @Test
+        @DisplayName("beginInvocation 应登记快照并在 completeInvocation 时回收")
+        void beginInvocationShouldTrackSnapshotUntilCompletion() {
+            prepareReady(instance);
+            ActiveInvocationSnapshot snapshot = new ActiveInvocationSnapshot(
+                    "trace-1",
+                    "test-ling:demo.Service",
+                    "execute",
+                    "caller-a",
+                    "POST /demo",
+                    instance.getVersion(),
+                    100L,
+                    11L,
+                    "worker-1");
+
+            long invocationId = instance.beginInvocation(snapshot);
+
+            assertTrue(invocationId > 0);
+            assertEquals(1, instance.getActiveRequestCount());
+            List<ActiveInvocationSnapshot> active = instance.snapshotActiveInvocations();
+            assertEquals(1, active.size());
+            assertEquals("trace-1", active.get(0).getTraceId());
+            assertEquals("test-ling:demo.Service", active.get(0).getServiceFQSID());
+            assertEquals("execute", active.get(0).getMethodName());
+
+            instance.completeInvocation(invocationId);
+
+            assertEquals(0, instance.getActiveRequestCount());
+            assertTrue(instance.snapshotActiveInvocations().isEmpty());
+        }
+
+        @Test
+        @DisplayName("未就绪时 beginInvocation 不应登记快照")
+        void beginInvocationShouldFailWhenInstanceIsNotReady() {
+            ActiveInvocationSnapshot snapshot = new ActiveInvocationSnapshot(
+                    "trace-x",
+                    "test-ling:demo.Service",
+                    "execute",
+                    "caller-a",
+                    "POST /demo",
+                    instance.getVersion(),
+                    100L,
+                    11L,
+                    "worker-1");
+
+            long invocationId = instance.beginInvocation(snapshot);
+
+            assertEquals(-1L, invocationId);
+            assertEquals(0, instance.getActiveRequestCount());
+            assertTrue(instance.snapshotActiveInvocations().isEmpty());
+        }
+    }
+
+    @Nested
+    @DisplayName("活跃调用登记")
     class LabelManagementTests {
 
         @Test

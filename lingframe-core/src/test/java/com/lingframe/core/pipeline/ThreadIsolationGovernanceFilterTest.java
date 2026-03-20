@@ -7,6 +7,7 @@ import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
+import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.spi.LingFilterChain;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -16,8 +17,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -75,6 +78,51 @@ class ThreadIsolationGovernanceFilterTest {
                 filter.evict("ling1");
                 firstContext.recycle();
                 secondContext.recycle();
+            }
+        }
+
+        @Test
+        @DisplayName("应使用子上下文执行并合并新增追踪")
+        void shouldRunWithChildContextAndMergeNewTraces() throws Throwable {
+            LingRepository repository = new DefaultLingRepository();
+            LingRuntimeConfig config = LingRuntimeConfig.builder()
+                    .bulkheadMaxConcurrent(2)
+                    .defaultTimeoutMs(1000)
+                    .build();
+            EventBus eventBus = new EventBus();
+            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            repository.register(runtime);
+
+            ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
+            InvocationContext context = InvocationContext.obtain();
+            context.setServiceFQSID("ling1:TestService");
+            context.addTrace(EngineTrace.builder()
+                    .source("parent")
+                    .action("existing")
+                    .type("INFO")
+                    .depth(1)
+                    .build());
+
+            AtomicReference<InvocationContext> seen = new AtomicReference<>();
+            LingFilterChain chain = current -> {
+                seen.set(current);
+                current.addTrace(EngineTrace.builder()
+                        .source("child")
+                        .action("isolated")
+                        .type("INFO")
+                        .depth(2)
+                        .build());
+                return "ok";
+            };
+
+            try {
+                assertEquals("ok", filter.doFilter(context, chain));
+                assertNotSame(context, seen.get());
+                assertEquals(2, context.getTraces().size());
+                assertEquals("child", context.getTraces().get(1).getSource());
+            } finally {
+                filter.evict("ling1");
+                context.recycle();
             }
         }
     }

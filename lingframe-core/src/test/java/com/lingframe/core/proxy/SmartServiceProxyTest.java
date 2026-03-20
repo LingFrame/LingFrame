@@ -1,6 +1,7 @@
 package com.lingframe.core.proxy;
 
 import com.lingframe.api.security.AccessType;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import org.junit.jupiter.api.AfterEach;
@@ -30,19 +31,35 @@ class SmartServiceProxyTest {
 
     @Mock
     private InvocationPipelineEngine pipelineEngine;
+    @Mock
+    private LingServiceRegistry lingServiceRegistry;
 
     private SmartServiceProxy smartServiceProxy;
     private DemoService proxyInstance;
 
-    interface DemoService {
+    interface BaseService {
         String sayHello(String name);
+    }
 
+    interface DemoService extends BaseService {
         void throwError() throws Exception;
+    }
+
+    static class DemoServiceImpl implements DemoService {
+        @Override
+        public String sayHello(String name) {
+            return "Hello " + name;
+        }
+
+        @Override
+        public void throwError() {
+        }
     }
 
     @BeforeEach
     void setUp() {
-        smartServiceProxy = new SmartServiceProxy("caller-ling", "target-ling", pipelineEngine);
+        smartServiceProxy = new SmartServiceProxy("caller-ling", "target-ling",
+                DemoService.class.getName(), pipelineEngine, lingServiceRegistry);
         proxyInstance = (DemoService) Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
                 new Class[] { DemoService.class },
@@ -51,7 +68,7 @@ class SmartServiceProxyTest {
 
     @AfterEach
     void tearDown() {
-        InvocationContext.obtain().reset();
+        InvocationContext.detach(null);
     }
 
     @Nested
@@ -72,13 +89,15 @@ class SmartServiceProxyTest {
     class ServiceInvocationTests {
 
         @Test
-        @DisplayName("服务方法调用时应填充并在结束后重置上下文")
+        @DisplayName("服务方法调用时应填充真实目标类并在结束后重置上下文")
         void invoke_WhenServiceMethod_ShouldContextBePopulatedAndReset() throws Throwable {
+            when(lingServiceRegistry.getServiceClassName("target-ling:" + DemoService.class.getName()))
+                    .thenReturn(DemoServiceImpl.class.getName());
             when(pipelineEngine.invoke(any(InvocationContext.class))).thenAnswer(invocation -> {
                 InvocationContext ctx = invocation.getArgument(0);
 
-                assertEquals("target-ling:com.lingframe.core.proxy.SmartServiceProxyTest$DemoService",
-                        ctx.getServiceFQSID());
+                assertEquals("target-ling:" + DemoService.class.getName(), ctx.getServiceFQSID());
+                assertEquals(DemoServiceImpl.class.getName(), ctx.resolution().getTargetClassName());
                 assertEquals("sayHello", ctx.getMethodName());
                 assertEquals("target-ling", ctx.getTargetLingId());
                 assertEquals("caller-ling", ctx.getCallerLingId());
@@ -98,6 +117,7 @@ class SmartServiceProxyTest {
             assertNull(afterCtx.getMethodName());
             assertNull(afterCtx.getArgs());
             assertTrue(afterCtx.getAttachments() == null || afterCtx.getAttachments().isEmpty());
+            afterCtx.recycle();
         }
 
         @Test
@@ -112,6 +132,7 @@ class SmartServiceProxyTest {
 
             InvocationContext afterCtx = InvocationContext.obtain();
             assertNull(afterCtx.getServiceFQSID());
+            afterCtx.recycle();
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.lingframe.core.pipeline;
 
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
@@ -16,8 +17,10 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @DisplayName("GovernanceDecisionFilter 测试")
 class GovernanceDecisionFilterTest {
@@ -90,6 +93,77 @@ class GovernanceDecisionFilterTest {
         }
     }
 
+    @Nested
+    @DisplayName("快速失败")
+    class FailFastTests {
+
+        @Test
+        @DisplayName("方法无法解析且缺少入口治理事实时应快速失败")
+        void shouldFailWhenMethodCannotBeResolvedWithoutEntryGovernanceFacts() {
+            GovernanceDecisionFilter filter = new GovernanceDecisionFilter(repository,
+                    new GovernanceArbitrator(Collections.emptyList()));
+
+            InvocationContext context = InvocationContext.obtain();
+            context.setServiceFQSID("ling1:" + TestService.class.getName());
+            context.setTargetLingId("ling1");
+            context.setMethodName("ping");
+
+            try {
+                LingInvocationException exception = assertThrows(LingInvocationException.class,
+                        () -> filter.doFilter(context, current -> null));
+                assertEquals(LingInvocationException.ErrorKind.INTERNAL_ERROR, exception.getKind());
+            } finally {
+                context.recycle();
+            }
+        }
+
+        @Test
+        @DisplayName("仲裁器无决策且缺少入口治理事实时应快速失败")
+        void shouldFailWhenArbitratorReturnsNoDecisionWithoutEntryGovernanceFacts() {
+            GovernanceDecisionFilter filter = new GovernanceDecisionFilter(repository,
+                    new GovernanceArbitrator(Collections.singletonList(emptyProvider())));
+            repository.register(new LingRuntime("ling1", null, null, new RuntimeCoordinator(null)));
+
+            InvocationContext context = InvocationContext.obtain();
+            context.setServiceFQSID("ling1:" + TestService.class.getName());
+            context.setTargetLingId("ling1");
+            context.setMethodName("ping");
+            context.setParameterTypeNames(new String[0]);
+            context.resolution().setTargetClassName(TestService.class.getName());
+            context.resolution().setTargetClassLoader(TestService.class.getClassLoader());
+
+            try {
+                LingInvocationException exception = assertThrows(LingInvocationException.class,
+                        () -> filter.doFilter(context, current -> null));
+                assertEquals(LingInvocationException.ErrorKind.INTERNAL_ERROR, exception.getKind());
+            } finally {
+                context.recycle();
+            }
+        }
+
+        @Test
+        @DisplayName("预填充入口治理事实时应允许继续执行")
+        void shouldAllowPrePopulatedEntryGovernanceFacts() throws Throwable {
+            GovernanceDecisionFilter filter = new GovernanceDecisionFilter(repository,
+                    new GovernanceArbitrator(Collections.emptyList()));
+
+            InvocationContext context = InvocationContext.obtain();
+            context.setServiceFQSID("ling1:http");
+            context.setTargetLingId("ling1");
+            context.setRequiredPermission("web:read");
+            context.setAccessType(AccessType.READ);
+
+            try {
+                Object result = filter.doFilter(context, current -> "ok");
+                assertEquals("ok", result);
+                assertEquals("web:read", context.getRequiredPermission());
+                assertEquals(AccessType.READ, context.getAccessType());
+            } finally {
+                context.recycle();
+            }
+        }
+    }
+
     private GovernanceArbitrator buildArbitrator(long timeoutMs) {
         GovernancePolicyProvider provider = new GovernancePolicyProvider() {
             @Override
@@ -110,5 +184,19 @@ class GovernanceDecisionFilterTest {
             }
         };
         return new GovernanceArbitrator(Arrays.asList(provider));
+    }
+
+    private GovernancePolicyProvider emptyProvider() {
+        return new GovernancePolicyProvider() {
+            @Override
+            public int getOrder() {
+                return 1;
+            }
+
+            @Override
+            public GovernanceDecision resolve(LingRuntime runtime, Method method, InvocationContext ctx) {
+                return GovernanceDecision.empty();
+            }
+        };
     }
 }

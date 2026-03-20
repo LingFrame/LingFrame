@@ -1,6 +1,5 @@
 package com.lingframe.core.governance;
 
-import com.lingframe.api.security.AccessType;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,8 +17,7 @@ import java.util.Arrays;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -82,18 +80,15 @@ class GovernanceArbitratorTest {
         }
 
         @Test
-        @DisplayName("所有 Provider 都未命中时应回退默认策略")
-        void testArbitrate_DefaultFallback() {
+        @DisplayName("所有 Provider 都未命中时应返回 null")
+        void testArbitrate_ReturnNullWhenNoProviderMatches() {
             when(provider1.getOrder()).thenReturn(10);
             when(provider1.resolve(any(), any(), any())).thenReturn(null);
 
             GovernanceArbitrator arbitrator = new GovernanceArbitrator(Collections.singletonList(provider1));
             GovernanceDecision result = arbitrator.arbitrate(runtime, method, null);
 
-            assertNotNull(result);
-            assertEquals("default:execute", result.getRequiredPermission());
-            assertEquals(AccessType.EXECUTE, result.getAccessType());
-            assertFalse(result.getAuditEnabled());
+            assertNull(result);
         }
     }
 }

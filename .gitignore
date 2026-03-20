@@ -37,3 +37,8 @@ docs/images/lingframe-cover.png
 /PR_DESCRIPTION.md
 /LingFrame V0.3.0.md
 /docs/development
+**/node_modules/
+**/dist/
+**/.vite/
+*.tsbuildinfo
+/lingframe-dashboard-web
