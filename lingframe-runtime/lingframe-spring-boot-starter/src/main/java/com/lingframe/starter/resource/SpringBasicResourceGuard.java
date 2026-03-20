@@ -42,9 +42,8 @@ import com.lingframe.starter.spi.SpringAwareResourceGuard;
 public class SpringBasicResourceGuard extends BasicResourceGuard implements SpringAwareResourceGuard {
 
     /**
-     * Spring Framework 主版本号
-     * 5 = Spring Boot 2.x
-     * 6 = Spring Boot 3.x
+     * 当前使用的 Spring Framework 主版本号
+     * 其中 5 对应 Spring Boot 2.x，6 对应 Spring Boot 3.x
      */
     private static final int SPRING_MAJOR_VERSION = detectSpringMajorVersion();
 
@@ -205,7 +204,7 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
     }
 
     // =========================================================================
-    // Spring 框架缓存清理
+    // 针对 Spring 框架的缓存清理
     // =========================================================================
 
     protected void springCleanup(String lingId, ClassLoader lingClassLoader) {
@@ -258,7 +257,7 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
     // ======================== ReflectionUtils 精确清理 ========================
 
     /**
-     * ReflectionUtils 内部有两个缓存:
+     * `ReflectionUtils` 内部有两个缓存：
      * - declaredFieldsCache: Map<Class<?>, Field[]>
      * - declaredMethodsCache: Map<Class<?>, Method[]>
      * <p>
@@ -298,9 +297,9 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
     // ======================== AnnotationUtils 精确清理 ========================
 
     /**
-     * AnnotationUtils 内部缓存:
-     * Spring 5.x: annotatedInterfaceCache, findAnnotationCache, ...
-     * Spring 6.x: 可能合并或重命名
+     * `AnnotationUtils` 内部缓存说明：
+     * 在 Spring 5.x 中，常见缓存包括 `annotatedInterfaceCache`、`findAnnotationCache` 等。
+     * 在 Spring 6.x 中，这些字段可能被合并或重命名。
      * <p>
      * 通用策略：扫描所有静态 Map 字段
      */
@@ -327,7 +326,7 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
                 }
             }
 
-            // AnnotatedElementUtils 也有缓存
+            // `AnnotatedElementUtils` 也维护了一组缓存
             try {
                 Class<?> aeClass = Class.forName(
                         "org.springframework.core.annotation.AnnotatedElementUtils");
@@ -352,7 +351,7 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
             } catch (Exception ignored) {
             }
 
-            // MergedAnnotations 缓存（Spring 5.2+）
+            // `MergedAnnotations` 相关缓存（Spring 5.2+）
             try {
                 Class<?> maClass = Class.forName(
                         "org.springframework.core.annotation.MergedAnnotationsCollection");
@@ -405,7 +404,7 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
             int removed = before - cache.size();
             log.debug("[{}] Property.annotationCache ({}): removed {} entries", lingId, phase, removed);
         } catch (ClassNotFoundException e) {
-            // ignore
+            // 忽略该版本下不存在目标类的情况
         } catch (Exception e) {
             log.debug("[{}] Property.annotationCache cleanup failed ({}): {}", lingId, phase, e.getMessage());
         }
@@ -740,9 +739,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
     // ======================== ResolvableType 精确清理 ========================
 
     /**
-     * ResolvableType 内部有 cache = ConcurrentReferenceHashMap<ResolvableType,
-     * ResolvableType>
-     * key 和 value 都是 ResolvableType，内部持有 Class<?> type 字段
+     * `ResolvableType` 内部存在 `ConcurrentReferenceHashMap<ResolvableType, ResolvableType>` 形式的缓存
+     * 其中键和值都是 `ResolvableType`，内部持有 `Class<?> type` 等字段
      */
     private void clearResolvableTypeSelective(String lingId, ClassLoader lingClassLoader) {
         try {
@@ -782,7 +780,7 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
 
     /**
      * 检查 ResolvableType 是否关联目标 ClassLoader
-     * ResolvableType 内部有 type（Class/Type）、resolved（Class）等字段
+     * `ResolvableType` 内部会持有 `type`（Class/Type）、`resolved`（Class）等字段
      */
     private boolean isResolvableTypeRelated(Object obj, ClassLoader cl) {
         if (obj == null)
@@ -817,8 +815,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
     // ======================== SpringFactoriesLoader ========================
 
     protected void clearSpringFactoriesCache(String lingId, ClassLoader lingClassLoader) {
-        // Spring 5.x: 静态字段 cache = Map<ClassLoader, Map<String, List<String>>>
-        // Spring 6.x: 重构了，可能改成实例级缓存 / forDefaultResourceLocation
+        // 在 Spring 5.x 中，常见结构是静态字段 `cache = Map<ClassLoader, Map<String, List<String>>>`
+        // 在 Spring 6.x 中，缓存结构已重构，可能改成实例级缓存或 `forDefaultResourceLocation`
         // 通用策略：扫描所有静态 Map 字段，按 ClassLoader key 移除
 
         try {
@@ -904,7 +902,7 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
                 return true;
             }
         } catch (NoSuchFieldException e) {
-            // Java 21+ 可能没有 target 字段
+            // 在 Java 21+ 中，`target` 字段可能已经不存在
         } catch (Exception ignored) {
         }
 
@@ -929,8 +927,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
     }
 
     /**
-     * Spring 5.x / Boot 2.x
-     * AbstractClassGenerator 有一个 static CACHE 字段
+     * 面向 Spring 5.x / Boot 2.x 的清理逻辑
+     * `AbstractClassGenerator` 中存在一个静态 `CACHE` 字段
      */
     private void clearCglibCacheV5(String lingId, ClassLoader lingClassLoader) {
         try {
@@ -956,8 +954,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
     }
 
     /**
-     * Spring 6.x / Boot 3.x
-     * CGLIB 重构了缓存结构，改用 ClassLoaderData，存在 WeakHashMap 或类似结构
+     * 面向 Spring 6.x / Boot 3.x 的清理逻辑
+     * 在新版实现中，CGLIB 已重构缓存结构，改用 `ClassLoaderData`、`WeakHashMap` 或类似结构
      */
     private void clearCglibCacheV6(String lingId, ClassLoader lingClassLoader) {
         clearCglibCacheGeneric(lingId, lingClassLoader);
@@ -1101,8 +1099,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
     // ======================== EL 缓存 ========================
 
     private void clearELCache(String lingId, ClassLoader lingClassLoader) {
-        // Spring Boot 2.x → javax.el
-        // Spring Boot 3.x → jakarta.el
+        // 在 Spring Boot 2.x 中使用 `javax.el`
+        // 在 Spring Boot 3.x 中使用 `jakarta.el`
         String[] elClassNames = {
                 "jakarta.el.BeanELResolver",
                 "javax.el.BeanELResolver"
@@ -1184,12 +1182,12 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
                         // ✅ 精确移除：只移除目标 ClassLoader 相关的条目
                         map.entrySet().removeIf(entry -> {
                             Object key = entry.getKey();
-                            // key 通常是 Class<?> 或 String(beanName)
+                            // 这里的 key 通常是 `Class<?>` 或 `String(beanName)`
                             if (key instanceof Class<?>) {
                                 return ((Class<?>) key).getClassLoader() == lingClassLoader;
                             }
                             if (key instanceof String) {
-                                // beanName 作为 key，检查 value
+                                // 当 `beanName` 作为 key 时，需要检查 value
                                 return isValueRelatedToClassLoader(entry.getValue(), lingClassLoader);
                             }
                             return isRelatedToClassLoader(key, lingClassLoader);
@@ -1211,8 +1209,8 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
 
     /**
      * 获取 BeanPostProcessor 列表
-     * Spring 5.x: AbstractBeanFactory.beanPostProcessors 是 List
-     * Spring 6.x: 可能封装成 BeanPostProcessorCache 内部类
+     * 在 Spring 5.x 中，`AbstractBeanFactory.beanPostProcessors` 通常是 `List`
+     * 在 Spring 6.x 中，它可能被封装为 `BeanPostProcessorCache` 内部类
      */
     @SuppressWarnings("unchecked")
     private List<BeanPostProcessor> getBeanPostProcessors(ConfigurableListableBeanFactory beanFactory) {
@@ -1308,7 +1306,7 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
 
     /**
      * 检查 value 是否关联目标 ClassLoader
-     * value 可能是 InjectionMetadata、LifecycleMetadata 等，内部持有 Class 引用
+     * 这里的 value 可能是 `InjectionMetadata`、`LifecycleMetadata` 等对象，内部会持有 `Class` 引用
      */
     private boolean isValueRelatedToClassLoader(Object value, ClassLoader cl) {
         if (value == null)

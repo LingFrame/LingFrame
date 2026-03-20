@@ -1,7 +1,7 @@
 package com.lingframe.api.security;
 
 /**
- * Core 提供 - 权限查询服务
+ * 灵核提供的权限查询服务
  * 负责检查灵元是否有某项权限，并记录审计日志。
  * 
  * @author LingFrame
@@ -51,6 +51,21 @@ public interface PermissionService {
      * @param allowed    是否允许该操作
      */
     void audit(String lingId, String capability, String operation, boolean allowed);
+
+    /**
+     * 记录结构化审计事件。
+     * <p>
+     * 默认实现用于兼容旧版本实现，避免只理解历史布尔结果的实现被破坏。
+     */
+    default void audit(PermissionAuditRecord record) {
+        if (record == null) {
+            return;
+        }
+        audit(record.getCallerLingId(),
+                record.getCapability(),
+                record.getAction(),
+                record.getResult() != null && record.getResult().isSuccess());
+    }
 
     default void removeLing(String lingId) {
     }

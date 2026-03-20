@@ -14,7 +14,7 @@ import java.util.List;
  * 自动发现并注入 Spring 托管的 {@link LingInvocationFilter} 到 Pipeline 引擎。
  * <p>
  * 当灵核应用或第三方 Starter 中声明了 {@code @Bean LingInvocationFilter} 时，
- * 本配置类会自动将其收集并通过 {@link FilterRegistry#addDynamicFilter} 注入到全局调用管道中。
+ * 本配置类会自动将其收集并通过 {@link FilterRegistry#addDynamicFilter} 注入到全局调用 Pipeline 中。
  * 这样 Pipeline 就能同时运行内置 Filter（由 {@code FilterRegistry.initialize} 注册）
  * 和 Spring 生态中动态声明的扩展 Filter。
  */

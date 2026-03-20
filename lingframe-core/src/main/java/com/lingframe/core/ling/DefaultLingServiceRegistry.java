@@ -7,19 +7,25 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DefaultLingServiceRegistry implements LingServiceRegistry {
     // 存储服务全限定名为 Key，方法元数据为 Value
-    // FQSID (例如 "lingId:serviceName") -> List of Methods (e.g.,
-    // "methodName(paramType1,paramType2)")
+    // `FQSID`（例如 `lingId:serviceName`）映射到方法签名列表
+    // 例如 `methodName(paramType1,paramType2)`
     private final Map<String, List<String>> metadataCache = new ConcurrentHashMap<>();
 
-    // 存储服务全限定名对应的实现类全限定名 (FQSID -> ClassName)
+    // 存储服务全限定名对应的实现类全限定名（`FQSID -> 类名`）
     private final Map<String, String> classCache = new ConcurrentHashMap<>();
 
     @Override
     public void registerServiceMetadata(String serviceFQSID, String className, String methodName,
             String[] parameterTypes) {
         classCache.put(serviceFQSID, className);
-        metadataCache.computeIfAbsent(serviceFQSID, k -> new ArrayList<>())
-                .add(buildSignature(methodName, parameterTypes));
+        String signature = buildSignature(methodName, parameterTypes);
+        metadataCache.compute(serviceFQSID, (key, existing) -> {
+            List<String> methods = existing != null ? existing : new ArrayList<>();
+            if (!methods.contains(signature)) {
+                methods.add(signature);
+            }
+            return methods;
+        });
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.lingframe.core.proxy;
 
 import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.security.AccessType;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import lombok.extern.slf4j.Slf4j;
@@ -22,19 +23,31 @@ public class SmartServiceProxy implements InvocationHandler {
 
     private final String callerLingId; // 谁在调用
     private final String targetLingId; // 目标灵元 (仅存 ID 字符串)
+    private final String interfaceName;
 
     // 全局流水线引擎 (复用单例实例引用，无状态，不涉猎特定组件 ClassLoader)
     private final InvocationPipelineEngine pipelineEngine;
+    private final LingServiceRegistry lingServiceRegistry;
 
-    // 获取服务 FQSID 等的临时缓存（Method 实例作为 Key 仍会持有类引用，但这是调用方自己定义的接口，因此与被调用方无关）
+    // 🔥 获取服务 FQSID 等的临时缓存（Method 实例作为 Key 仍会持有类引用，但这是调用方自己定义的接口，因此与被调用方无关）
     private final Map<Method, String> resourceIdCache = new ConcurrentHashMap<>();
 
     public SmartServiceProxy(String callerLingId,
             String targetLingId,
             InvocationPipelineEngine pipelineEngine) {
+        this(callerLingId, targetLingId, null, pipelineEngine, null);
+    }
+
+    public SmartServiceProxy(String callerLingId,
+            String targetLingId,
+            String interfaceName,
+            InvocationPipelineEngine pipelineEngine,
+            LingServiceRegistry lingServiceRegistry) {
         this.callerLingId = callerLingId;
         this.targetLingId = targetLingId;
+        this.interfaceName = interfaceName;
         this.pipelineEngine = pipelineEngine;
+        this.lingServiceRegistry = lingServiceRegistry;
     }
 
     @Override
@@ -71,7 +84,10 @@ public class SmartServiceProxy implements InvocationHandler {
             ctx.setResourceId(resourceId);
 
             // 组装最终的目标服务寻址标： `targetLingId:interfaceFQCN`
-            ctx.setServiceFQSID(targetLingId + ":" + method.getDeclaringClass().getName());
+            String serviceInterfaceName = interfaceName != null ? interfaceName : method.getDeclaringClass().getName();
+            String serviceFQSID = targetLingId + ":" + serviceInterfaceName;
+            ctx.setServiceFQSID(serviceFQSID);
+            populateTargetResolution(ctx, serviceFQSID);
 
             ctx.setAccessType(AccessType.EXECUTE);
             ctx.setAuditAction(resourceId);
@@ -90,6 +106,16 @@ public class SmartServiceProxy implements InvocationHandler {
         } finally {
             // 彻底重置 ThreadLocal 池化上下文，归还到对象栈中
             ctx.recycle();
+        }
+    }
+
+    private void populateTargetResolution(InvocationContext ctx, String serviceFQSID) {
+        if (lingServiceRegistry == null || serviceFQSID == null) {
+            return;
+        }
+        String targetClassName = lingServiceRegistry.getServiceClassName(serviceFQSID);
+        if (targetClassName != null && !targetClassName.isEmpty()) {
+            ctx.resolution().setTargetClassName(targetClassName);
         }
     }
 

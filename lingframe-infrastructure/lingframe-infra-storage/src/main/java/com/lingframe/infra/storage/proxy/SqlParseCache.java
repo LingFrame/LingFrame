@@ -2,12 +2,11 @@ package com.lingframe.infra.storage.proxy;
 
 import com.lingframe.api.security.AccessType;
 
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
- * SQL parse cache scoped by lingId to avoid cross-ling interference.
+ * 按灵元 ID 隔离的 SQL 解析缓存，用于避免跨灵元相互污染。
  */
 public final class SqlParseCache {
 

@@ -19,9 +19,9 @@ import java.util.Set;
  * <pre>
  * 灵核 ClassLoader（灵核 / Spring / 灵核业务）
  *     ↓ parent
- * SharedApiClassLoader（共享 API 层，只放接口 / DTO / 契约）
+ * 共享 API 层的 `SharedApiClassLoader`，只放接口、DTO 和契约
  *     ↓ parent
- * LingClassLoader（灵元实现层）
+ * 灵元实现层的 `LingClassLoader`
  * </pre>
  * <p>
  * ⚠️ Shared API 的本质不是“多一个方便加载目录”，而是“单进程内统一的契约边界”。

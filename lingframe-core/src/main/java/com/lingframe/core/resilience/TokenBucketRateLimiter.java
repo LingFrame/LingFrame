@@ -53,7 +53,7 @@ public class TokenBucketRateLimiter implements RateLimiter {
                 if (state.compareAndSet(current, next)) {
                     return true;
                 }
-                // CAS 失败，重试
+                // 基于 CAS 的更新失败后继续重试
             } else {
                 // 令牌不足
                 // 也要更新时间，防止下次计算时 duration 过大导致精度问题，或者仅仅是为了 lazy update？

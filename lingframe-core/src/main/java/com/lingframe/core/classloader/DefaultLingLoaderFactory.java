@@ -18,9 +18,9 @@ import java.net.URL;
  * <pre>
  * 灵核 ClassLoader
  *     ↓ parent
- * SharedApiClassLoader (共享 API 层)
+ * 共享 API 层的 `SharedApiClassLoader`
  *     ↓ parent
- * LingClassLoader (灵元实现层)
+ * 灵元实现层的 `LingClassLoader`
  * </pre>
  */
 @Slf4j

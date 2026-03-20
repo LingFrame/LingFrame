@@ -1,8 +1,7 @@
 package com.lingframe.core.governance;
 
-import com.lingframe.api.security.AccessType;
-import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import lombok.extern.slf4j.Slf4j;
 
@@ -37,12 +36,7 @@ public class GovernanceArbitrator {
                 return decision;
             }
         }
-        // 绝对兜底：防止 NPE，默认放行但需基础权限
-        return GovernanceDecision.builder()
-                .requiredPermission("default:execute")
-                .accessType(AccessType.EXECUTE)
-                .auditEnabled(false)
-                .build();
+        return null;
     }
 
 }

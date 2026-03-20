@@ -24,7 +24,7 @@ public class DefaultLingDeployService implements LingDeployService {
         if ("file".equalsIgnoreCase(uri.getScheme()) || uri.getScheme() == null) {
             file = new File(uri.getPath());
         } else {
-            // TODO: 未来可在此扩展 HTTP/S3/OSS 下载机制
+            // 预留扩展点：未来可在此支持 HTTP、S3、OSS 等下载机制
             throw new UnsupportedOperationException("URI scheme not supported yet: " + uri.getScheme());
         }
 
@@ -34,7 +34,7 @@ public class DefaultLingDeployService implements LingDeployService {
     @Override
     public void deploy(File file, boolean isDefault) throws Exception {
         LingDefinition def = LingManifestLoader.parseDefinition(file);
-        // Default handling varies.
+        // 默认部署标记的具体处理由生命周期引擎统一决定。
         lifecycleEngine.deploy(def, file, isDefault, Collections.emptyMap());
     }
 }

@@ -17,7 +17,7 @@ public interface Ling {
      * @param context 灵元上下文，提供环境交互能力
      */
     default void onStart(LingContext context) {
-        // Default empty implementation
+        // 默认空实现
     }
 
     /**
@@ -27,6 +27,6 @@ public interface Ling {
      * @param context 灵元上下文
      */
     default void onStop(LingContext context) {
-        // Default empty implementation
+        // 默认空实现
     }
 }

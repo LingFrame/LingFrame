@@ -22,6 +22,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Slf4j
 @AutoConfiguration
@@ -82,6 +84,21 @@ public class DashboardAutoConfiguration {
     @Bean
     public MetricsCollector metricsCollector(LingRepository lingRepository) {
         return new MetricsCollector(lingRepository);
+    }
+
+    @Bean
+    public WebMvcConfigurer dashboardWebMvcConfigurer() {
+        return new WebMvcConfigurer() {
+            @Override
+            public void addViewControllers(ViewControllerRegistry registry) {
+                registry.addRedirectViewController("/lingframe/dashboard/ui", "/lingframe/dashboard/ui/");
+                registry.addViewController("/lingframe/dashboard/ui/").setViewName("forward:/lingframe/dashboard/ui/index.html");
+                registry.addViewController("/lingframe/dashboard/ui/{path:[^\\.]*}")
+                        .setViewName("forward:/lingframe/dashboard/ui/index.html");
+                registry.addViewController("/lingframe/dashboard/ui/**/{path:[^\\.]*}")
+                        .setViewName("forward:/lingframe/dashboard/ui/index.html");
+            }
+        };
     }
 
 }

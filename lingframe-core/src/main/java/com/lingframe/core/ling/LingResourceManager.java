@@ -1,8 +1,8 @@
 package com.lingframe.core.ling;
 
 /**
- * LingResourceManager 在组件卸载/更新等生命周期阶段，负责集中处理资源清理。
- * 解决以前（V0.2.x 阶段）分散在 WebInterfaceManager 等各处产生的 ClassLoader Leak。
+ * LingResourceManager 在组件卸载、更新等生命周期阶段负责集中处理资源清理。
+ * <p>
  * 凡有外溢的、带强引用的缓存（诸如 EL/Jackson/Spring 等）都由其协调清理。
  */
 public interface LingResourceManager {

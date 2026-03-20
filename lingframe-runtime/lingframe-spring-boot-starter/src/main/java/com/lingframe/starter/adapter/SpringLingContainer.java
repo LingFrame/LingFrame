@@ -25,15 +25,34 @@ import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 
 import java.lang.reflect.Method;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+/**
+ * Spring 容器适配器。
+ * 用于在 Spring Boot 应用中集成灵珑容器。
+ */
 @Slf4j
 public class SpringLingContainer implements LingContainer {
+
+    private static final RequestMethod[] DEFAULT_HTTP_METHODS = new RequestMethod[] {
+            RequestMethod.GET,
+            RequestMethod.HEAD,
+            RequestMethod.POST,
+            RequestMethod.PUT,
+            RequestMethod.PATCH,
+            RequestMethod.DELETE,
+            RequestMethod.OPTIONS,
+            RequestMethod.TRACE
+    };
 
     // 🔥 非 final：stop() 时必须清空，否则 builder 持有 ResourceLoader → ClassLoader 引用链
     private SpringApplicationBuilder builder;
@@ -70,7 +89,7 @@ public class SpringLingContainer implements LingContainer {
     public void start(LingContext lingContext) {
         this.lingContext = lingContext;
 
-        // TCCL 劫持
+        // 劫持线程上下文类加载器（TCCL）
         Thread t = Thread.currentThread();
         ClassLoader old = t.getContextClassLoader();
         t.setContextClassLoader(classLoader);
@@ -183,6 +202,8 @@ public class SpringLingContainer implements LingContainer {
                             try {
                                 Method implMethod = targetClass.getMethod(
                                         ifaceMethod.getName(), ifaceMethod.getParameterTypes());
+                                String canonicalFqsid = lingId + ":" + iface.getName();
+                                coreCtx.registerProtocolService(canonicalFqsid, bean, implMethod);
                                 String fqsid = iface.getName() + ":" + ifaceMethod.getName();
                                 coreCtx.registerProtocolService(fqsid, bean, implMethod);
                             } catch (NoSuchMethodException ignored) {
@@ -238,25 +259,22 @@ public class SpringLingContainer implements LingContainer {
         // 获取所有 @RestController
         Map<String, Object> controllers = context.getBeansWithAnnotation(RestController.class);
 
-        for (Object bean : controllers.values()) {
+        for (Map.Entry<String, Object> entry : controllers.entrySet()) {
+            String beanName = entry.getKey();
+            Object bean = entry.getValue();
             try {
                 Class<?> targetClass = AopUtils.getTargetClass(bean);
 
                 // 解析类级 @RequestMapping
-                String baseUrl = "";
                 RequestMapping classMapping = AnnotatedElementUtils.findMergedAnnotation(targetClass,
                         RequestMapping.class);
-                if (classMapping != null && classMapping.path().length > 0) {
-                    baseUrl = classMapping.path()[0];
-                }
 
                 // 遍历方法
-                String finalBaseUrl = baseUrl;
                 ReflectionUtils.doWithMethods(targetClass, method -> {
                     // 查找 RequestMapping (包含 GetMapping, PostMapping 等)
                     RequestMapping mapping = AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class);
                     if (mapping != null) {
-                        registerControllerMethod(lingId, bean, method, finalBaseUrl, mapping);
+                        registerControllerMappings(lingId, beanName, bean, method, classMapping, mapping);
                     }
                 });
             } catch (Exception e) {
@@ -268,13 +286,14 @@ public class SpringLingContainer implements LingContainer {
     /**
      * 解析单个方法并生成元数据（简化版，不再解析参数）
      */
-    private void registerControllerMethod(String lingId, Object bean, Method method,
-                                          String baseUrl, RequestMapping mapping) {
-        // URL 拼接: /lingId/classUrl/methodUrl
+    private void registerControllerMethod(String lingId, String beanName, Object bean, Method method,
+                                          RequestMapping classMapping, RequestMapping mapping) {
+        // 请求路径按 `/lingId/classUrl/methodUrl` 规则拼接
+        String baseUrl = classMapping != null && classMapping.path().length > 0 ? classMapping.path()[0] : "";
         String methodUrl = mapping.path().length > 0 ? mapping.path()[0] : "";
-        String fullPath = ("/" + lingId + "/" + baseUrl + "/" + methodUrl).replaceAll("/+", "/");
+        String fullPath = null;
 
-        // HTTP Method
+        // 解析 HTTP 方法
         String httpMethod = mapping.method().length > 0 ? mapping.method()[0].name() : "GET";
 
         // 智能权限推导
@@ -303,7 +322,11 @@ public class SpringLingContainer implements LingContainer {
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
                 .lingId(lingId)
                 .version(version)
+                .targetBeanName(beanName)
                 .targetBean(bean)
+                .targetClassName(method.getDeclaringClass().getName())
+                .targetMethodName(method.getName())
+                .targetMethodParameterTypeNames(resolveParameterTypeNames(method))
                 .targetMethod(method)
                 .classLoader(this.classLoader)
                 .lingApplicationContext(this.context)
@@ -313,6 +336,7 @@ public class SpringLingContainer implements LingContainer {
                 .shouldAudit(shouldAudit)
                 .auditAction(auditAction)
                 .build();
+        metadata.minimizeHostReferences();
 
         log.info("🌍 [LingFrame Web] Found Controller: {} [{}]", httpMethod, fullPath);
 
@@ -320,6 +344,206 @@ public class SpringLingContainer implements LingContainer {
         if (webInterfaceManager != null) {
             webInterfaceManager.registerSync(metadata);
         }
+    }
+
+    private void registerControllerMappings(String lingId, String beanName, Object bean, Method method,
+                                            RequestMapping classMapping, RequestMapping mapping) {
+        String permission;
+        RequiresPermission permAnn = AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class);
+        if (permAnn != null) {
+            permission = permAnn.value();
+        } else {
+            permission = GovernanceStrategy.inferPermission(method);
+        }
+
+        Auditable auditAnn = AnnotatedElementUtils.findMergedAnnotation(method, Auditable.class);
+        Set<String> fullPaths = resolveFullPaths(lingId, classMapping, mapping);
+        RequestMethod[] httpMethods = resolveHttpMethods(classMapping, mapping);
+        String[] params = resolveParams(classMapping, mapping);
+        String[] headers = resolveHeaders(classMapping, mapping);
+        String[] consumes = resolveConsumes(classMapping, mapping);
+        String[] produces = resolveProduces(classMapping, mapping);
+
+        for (String fullPath : fullPaths) {
+            for (RequestMethod requestMethod : httpMethods) {
+                String httpMethod = requestMethod.name();
+                boolean shouldAudit = false;
+                String auditAction = method.getName();
+                if (auditAnn != null) {
+                    shouldAudit = true;
+                    auditAction = auditAnn.action();
+                } else if (isWriteMethod(httpMethod)) {
+                    shouldAudit = true;
+                    auditAction = httpMethod + " " + fullPath;
+                }
+
+                RequestMappingInfo.Builder mappingBuilder = RequestMappingInfo
+                        .paths(fullPath)
+                        .methods(requestMethod);
+                if (params.length > 0) {
+                    mappingBuilder.params(params);
+                }
+                if (headers.length > 0) {
+                    mappingBuilder.headers(headers);
+                }
+                if (consumes.length > 0) {
+                    mappingBuilder.consumes(consumes);
+                }
+                if (produces.length > 0) {
+                    mappingBuilder.produces(produces);
+                }
+                RequestMappingInfo requestMappingInfo = mappingBuilder.build();
+
+                WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
+                        .lingId(lingId)
+                        .version(version)
+                        .targetBeanName(beanName)
+                        .targetBean(bean)
+                        .targetClassName(method.getDeclaringClass().getName())
+                        .targetMethodName(method.getName())
+                        .targetMethodParameterTypeNames(resolveParameterTypeNames(method))
+                        .targetMethod(method)
+                        .classLoader(this.classLoader)
+                        .lingApplicationContext(this.context)
+                        .urlPattern(fullPath)
+                        .httpMethod(httpMethod)
+                        .params(copyStringArray(params))
+                        .headers(copyStringArray(headers))
+                        .consumes(copyStringArray(consumes))
+                        .produces(copyStringArray(produces))
+                        .requiredPermission(permission)
+                        .shouldAudit(shouldAudit)
+                        .auditAction(auditAction)
+                        .requestMappingInfo(requestMappingInfo)
+                        .build();
+                metadata.minimizeHostReferences();
+
+                log.info("🌍 [LingFrame Web] Found Controller: {} [{}]", httpMethod, fullPath);
+                if (webInterfaceManager != null) {
+                    webInterfaceManager.registerSync(metadata);
+                }
+            }
+        }
+    }
+
+    private Set<String> resolveFullPaths(String lingId, RequestMapping classMapping, RequestMapping methodMapping) {
+        String[] classPaths = resolvePaths(classMapping);
+        String[] methodPaths = resolvePaths(methodMapping);
+        LinkedHashSet<String> fullPaths = new LinkedHashSet<>();
+        for (String classPath : classPaths) {
+            for (String methodPath : methodPaths) {
+                fullPaths.add(normalizePath("/" + lingId + "/" + classPath + "/" + methodPath));
+            }
+        }
+        return fullPaths;
+    }
+
+    private String[] resolvePaths(RequestMapping mapping) {
+        if (mapping == null) {
+            return new String[] {""};
+        }
+        if (mapping.path().length > 0) {
+            return mapping.path();
+        }
+        if (mapping.value().length > 0) {
+            return mapping.value();
+        }
+        return new String[] {""};
+    }
+
+    private RequestMethod[] resolveHttpMethods(RequestMapping classMapping, RequestMapping methodMapping) {
+        if (methodMapping != null && methodMapping.method().length > 0) {
+            return methodMapping.method();
+        }
+        if (classMapping != null && classMapping.method().length > 0) {
+            return classMapping.method();
+        }
+        return DEFAULT_HTTP_METHODS;
+    }
+
+    private String[] resolveParams(RequestMapping classMapping, RequestMapping methodMapping) {
+        return mergeExpressions(classMapping != null ? classMapping.params() : new String[0],
+                methodMapping != null ? methodMapping.params() : new String[0]);
+    }
+
+    private String[] resolveHeaders(RequestMapping classMapping, RequestMapping methodMapping) {
+        return mergeExpressions(classMapping != null ? classMapping.headers() : new String[0],
+                methodMapping != null ? methodMapping.headers() : new String[0]);
+    }
+
+    private String[] resolveConsumes(RequestMapping classMapping, RequestMapping methodMapping) {
+        if (methodMapping != null && methodMapping.consumes().length > 0) {
+            return copyStringArray(methodMapping.consumes());
+        }
+        return classMapping != null ? copyStringArray(classMapping.consumes()) : new String[0];
+    }
+
+    private String[] resolveProduces(RequestMapping classMapping, RequestMapping methodMapping) {
+        if (methodMapping != null && methodMapping.produces().length > 0) {
+            return copyStringArray(methodMapping.produces());
+        }
+        return classMapping != null ? copyStringArray(classMapping.produces()) : new String[0];
+    }
+
+    private String[] mergeExpressions(String[] first, String[] second) {
+        LinkedHashSet<String> merged = new LinkedHashSet<>();
+        addExpressions(merged, first);
+        addExpressions(merged, second);
+        return merged.toArray(new String[0]);
+    }
+
+    private void addExpressions(Set<String> target, String[] source) {
+        if (source == null) {
+            return;
+        }
+        for (String expression : source) {
+            if (expression == null || expression.trim().isEmpty()) {
+                continue;
+            }
+            target.add(expression);
+        }
+    }
+
+    private boolean isWriteMethod(String httpMethod) {
+        return "POST".equals(httpMethod)
+                || "PUT".equals(httpMethod)
+                || "PATCH".equals(httpMethod)
+                || "DELETE".equals(httpMethod);
+    }
+
+    private String normalizePath(String path) {
+        String normalized = path.replaceAll("/+", "/");
+        if (normalized.isEmpty()) {
+            return "/";
+        }
+        if (!normalized.startsWith("/")) {
+            normalized = "/" + normalized;
+        }
+        if (normalized.length() > 1 && normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    private String[] copyStringArray(String[] source) {
+        if (source == null || source.length == 0) {
+            return new String[0];
+        }
+        String[] copy = new String[source.length];
+        System.arraycopy(source, 0, copy, 0, source.length);
+        return copy;
+    }
+
+    private String[] resolveParameterTypeNames(Method method) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        if (parameterTypes.length == 0) {
+            return new String[0];
+        }
+        String[] names = new String[parameterTypes.length];
+        for (int i = 0; i < parameterTypes.length; i++) {
+            names[i] = parameterTypes[i].getName();
+        }
+        return names;
     }
 
     @Override
@@ -337,7 +561,7 @@ public class SpringLingContainer implements LingContainer {
 
             // 注销 Web 接口元数据
             if (webInterfaceManager != null) {
-                webInterfaceManager.unregister(lingId, this.classLoader);
+                webInterfaceManager.unregisterSync(lingId, this.classLoader);
             }
 
             // ✅ 从主容器获取 ObjectMapper，而不是靠 @Autowired

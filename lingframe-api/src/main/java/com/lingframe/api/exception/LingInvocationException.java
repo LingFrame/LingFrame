@@ -1,7 +1,7 @@
 package com.lingframe.api.exception;
 
 /**
- * Pipeline 出口的唯一异常类型。调用者永远只看到 LingInvocationException。
+ * Pipeline 出口的唯一异常类型，调用者最终只会看到 LingInvocationException。
  */
 public class LingInvocationException extends LingRuntimeException {
     /**

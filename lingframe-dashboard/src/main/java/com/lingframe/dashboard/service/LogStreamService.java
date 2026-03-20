@@ -23,14 +23,14 @@ import java.util.List;
 import java.util.concurrent.*;
 
 /**
- * SSE 日志流服务
+ * SSE 日志流服务。
  *
  * <p>特性：
  * <ul>
  *   <li>异步非阻塞分发 - 使用独立线程池处理事件推送，不阻塞业务线程</li>
  *   <li>自动心跳保活 - 每15秒发送心跳，防止连接超时</li>
  *   <li>优雅关闭 - 服务销毁时清理所有连接和线程池</li>
- *   <li>ClassLoader隔离 - 确保在正确的ClassLoader上下文中执行</li>
+ *   <li>ClassLoader 隔离 - 确保在正确的 ClassLoader 上下文中执行</li>
  * </ul>
  *
  * <p>订阅的事件类型：
@@ -39,7 +39,7 @@ import java.util.concurrent.*;
  *   <li>AuditLogEvent - 权限审计日志</li>
  *   <li>AlertNotifyEvent - 告警通知</li>
  *   <li>CircuitBreakerStateEvent - 熔断器状态变化</li>
- *   <li>LeakDetectionEvent - GC泄漏检测结果</li>
+ *   <li>LeakDetectionEvent - GC 泄漏检测结果</li>
  *   <li>InstanceStateChangedEvent - 实例状态变化</li>
  *   <li>RuntimeStateChangedEvent - 运行时状态变化</li>
  *   <li>InstanceDestroyedEvent - 实例销毁</li>
@@ -53,11 +53,12 @@ import java.util.concurrent.*;
 @RequiredArgsConstructor
 public class LogStreamService implements InitializingBean, DisposableBean {
 
+    // 仪表盘自行维护格式化逻辑，避免新增事件字段反向污染核心事件模型。
     private final EventBus eventBus;
     private static final ClassLoader CORE_CLASSLOADER = LogStreamService.class.getClassLoader();
 
     /**
-     * 维护所有活跃的SSE连接
+     * 维护所有活跃的 SSE 连接。
      */
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
 
@@ -73,7 +74,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     });
 
     /**
-     * 心跳调度器，15秒发送一次心跳
+     * 心跳调度器，每 15 秒发送一次心跳
      */
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "ling-sse-heartbeat");
@@ -106,15 +107,15 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         eventBus.subscribe("lingframe-dashboard", LingUninstallingEvent.class, this::handleLingUninstalling);
         eventBus.subscribe("lingframe-dashboard", LingUninstalledEvent.class, this::handleLingUninstalled);
 
-        // 启动心跳 (每15秒)，防止 Nginx/Browser 超时
+        // 启动心跳（每 15 秒），防止 Nginx / Browser 超时
         scheduler.scheduleAtFixedRate(this::sendHeartbeat, 15, 15, TimeUnit.SECONDS);
         log.info("[LingFrame Dashboard] LogStreamService initialized");
     }
 
     /**
-     * 创建新的 SSE 连接
+     * 创建新的 SSE 连接。
      *
-     * @return SSE发射器实例
+     * @return SSE 发射器实例
      */
     public SseEmitter createEmitter() {
         SseEmitter emitter = new SseEmitter(0L);
@@ -156,16 +157,27 @@ public class LogStreamService implements InitializingBean, DisposableBean {
      * 处理内核 Audit 日志事件（权限审计）
      */
     private void handleAudit(MonitoringEvents.AuditLogEvent event) {
-        String content = String.format("%s on %s - %s (%.3fms)",
-                event.getAction(), event.getResource(),
-                event.isSuccess() ? "SUCCESS" : "DENIED", event.getCost() / 1_000_000.0);
+        StringBuilder content = new StringBuilder();
+        content.append(event.getAction()).append(" on ").append(event.getResource())
+                .append(" - ").append(event.getResult())
+                .append(String.format(" (%.3fms)", event.getCostNanos() / 1_000_000.0));
+        if (event.getCapability() != null && !event.getCapability().isEmpty()) {
+            content.append(" [").append(event.getCapability()).append("]");
+        }
+        if (event.getPrincipal() != null && !event.getPrincipal().isEmpty()) {
+            content.append(" principal=").append(event.getPrincipal());
+        }
+        if (event.getFailureReason() != null && !event.getFailureReason().isEmpty()) {
+            content.append(" reason=").append(event.getFailureReason());
+        }
 
         LogStreamDTO logStreamDTO = LogStreamDTO.builder()
                 .type("AUDIT")
                 .traceId(event.getTraceId())
                 .lingId(event.getLingId())
-                .content(content)
-                .tag(event.isSuccess() ? "OK" : "FAIL")
+                .content(content.toString())
+                .tag(event.getResult() == null ? "UNKNOWN" : event.getResult().name())
+                .level(resolveAuditLevel(event))
                 .timestamp(event.getTimestamp())
                 .build();
         broadcast(logStreamDTO);
@@ -204,12 +216,17 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     }
 
     /**
-     * 处理GC泄漏检测结果事件
+     * 处理 GC 泄漏检测结果事件
      */
     private void handleLeakDetection(MonitoringEvents.LeakDetectionEvent event) {
         String level = event.isCollected() ? "INFO" : "ERROR";
-        String content = String.format("Ling [%s] version=%s %s",
-                event.getLingId(), event.getVersion(), event.getMessage());
+        long elapsedMillis = Math.max(0L, event.getTimestamp() - event.getTriggerTimeMillis());
+        String content = String.format("Ling [%s] version=%s mode=%s %s (+%dms)",
+                event.getLingId(),
+                event.getVersion(),
+                event.getDetectionMode(),
+                event.getMessage(),
+                elapsedMillis);
 
         LogStreamDTO logStreamDTO = LogStreamDTO.builder()
                 .type("LEAK_DETECTION")
@@ -220,6 +237,22 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                 .timestamp(event.getTimestamp())
                 .build();
         broadcast(logStreamDTO);
+    }
+
+    private String resolveAuditLevel(MonitoringEvents.AuditLogEvent event) {
+        if (event.getResult() == null) {
+            return "INFO";
+        }
+        switch (event.getResult()) {
+            case ALLOWED:
+                return "INFO";
+            case DENIED:
+                return "WARNING";
+            case FAILED:
+                return "ERROR";
+            default:
+                return "INFO";
+        }
     }
 
     /**
@@ -364,7 +397,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     }
 
     /**
-     * 广播日志事件给所有连接
+     * 广播日志事件给所有 SSE 连接
      *
      * @param logStreamDTO 日志数据传输对象
      */
@@ -391,12 +424,12 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                 emitters.removeAll(dead);
             }));
         } catch (RejectedExecutionException e) {
-            // ignore on shutdown
+            // 关闭过程中拒绝提交任务属于正常现象，直接忽略
         }
     }
 
     /**
-     * 发送心跳事件给所有连接
+     * 发送心跳事件给所有 SSE 连接
      */
     private void sendHeartbeat() {
         if (emitters.isEmpty())
@@ -417,7 +450,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                 emitters.removeAll(dead);
             }));
         } catch (RejectedExecutionException e) {
-            // ignore on shutdown
+            // 关闭过程中拒绝提交任务属于正常现象，直接忽略
         }
     }
 
@@ -430,7 +463,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     }
 
     /**
-     * 服务销毁时，清理所有连接
+     * 服务销毁时，清理所有 SSE 连接
      */
     @Override
     public void destroy() {
@@ -441,7 +474,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     }
 
     /**
-     * 确保在正确的ClassLoader上下文中执行任务
+     * 确保在正确的 ClassLoader 上下文中执行任务
      */
     private Runnable withCoreClassLoader(Runnable task) {
         return () -> {

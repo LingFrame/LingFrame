@@ -3,7 +3,9 @@ package com.lingframe.starter.configuration;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.filter.LingWebGovernanceFilter;
+import com.lingframe.starter.web.LingGatewayHandlerMapping;
 import com.lingframe.starter.web.WebInterfaceManager;
+import com.lingframe.starter.web.WebRouteResolver;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -18,7 +20,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 /**
- * Spring Boot 2.x 自动配置入口
+ * 面向 Spring Boot 2.x 的自动配置入口
  * <p>
  * 通过 {@code @Import} 引入版本无关的 {@link LingFrameCoreConfiguration}，
  * 仅在此注册 javax.servlet 版本的 Filter。
@@ -31,18 +33,25 @@ public class LingFrameAutoConfiguration {
 
     @Bean
     public FilterRegistrationBean<LingWebGovernanceFilter> lingWebGovernanceFilter(
-            WebInterfaceManager webInterfaceManager,
+            WebRouteResolver webRouteResolver,
             InvocationPipelineEngine pipelineEngine,
             LingFrameProperties properties,
             @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping) {
         FilterRegistrationBean<LingWebGovernanceFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(
-                new LingWebGovernanceFilter(webInterfaceManager, pipelineEngine, properties,
+                new LingWebGovernanceFilter(webRouteResolver, pipelineEngine, properties,
                         handlerMapping));
         registration.addUrlPatterns("/*");
         registration.setOrder(1);
         registration.setName("lingWebGovernanceFilter");
         return registration;
+    }
+
+    @Bean
+    public LingGatewayHandlerMapping lingGatewayHandlerMapping(
+            WebRouteResolver webRouteResolver,
+            WebInterfaceManager webInterfaceManager) {
+        return new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager);
     }
 
     @Bean

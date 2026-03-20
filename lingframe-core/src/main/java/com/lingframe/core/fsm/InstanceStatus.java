@@ -8,12 +8,12 @@ import java.util.*;
  * 描述单个 {@code LingInstance} 从创建到销毁的完整生命周期。
  * 设计为<b>单向管道</b>（无环），保证状态机的可预测性：
  * <pre>
- * CREATED → LOADING → STARTING → READY → STOPPING → DEAD
+ * 状态主链：CREATED → LOADING → STARTING → READY → STOPPING → DEAD
  *    ↘         ↘          ↘        ↘         ↘
- *                       ERROR ───→ STOPPING / DEAD
+ * 异常支路：ERROR ───→ STOPPING / DEAD
  * </pre>
  * "是否参与路由"由流量策略层决定，不体现为实例状态。
- * RuntimeStatus 由多个 InstanceStatus 聚合而来，但两层状态机彼此不直接写对方。
+ * 运行时状态 `RuntimeStatus` 由多个实例状态 `InstanceStatus` 聚合而来，但两层状态机彼此不直接写对方。
  */
 public enum InstanceStatus {
 

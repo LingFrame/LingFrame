@@ -163,7 +163,7 @@ createApp({
         };
 
         const selectLing = async (lingId) => {
-            // ... (Same logic, no strings to change inside normally) ...
+        // ... 其余逻辑保持一致，通常不需要改动内部文案 ...
             if (isAuto.value) {
                 toggleAuto(); // 停止压测
             }
@@ -555,7 +555,7 @@ createApp({
         const togglePerm = async (perm) => {
             if (!activeLing.value) return;
 
-            // ... (logs skipped for brevity) ...
+        // ... 其余日志相关逻辑省略 ...
 
             const currentPerms = activeLing.value.permissions || {};
             const currentValue = currentPerms[perm] !== false;
@@ -626,7 +626,7 @@ createApp({
         };
 
         const toggleIpc = async () => {
-            // ... (Toggle logic) ...
+        // ... 开关切换逻辑 ...
             if (!activeLing.value || !ipcTarget.value) return;
 
             // 切换状态
@@ -644,7 +644,7 @@ createApp({
 
             // 构建完整权限对象
             const newPerms = {
-                // ... copy perms ...
+        // ... 复制权限配置 ...
                 dbRead: currentPerms.dbRead !== false,
                 dbWrite: currentPerms.dbWrite !== false,
                 cacheRead: currentPerms.cacheRead !== false,
@@ -784,7 +784,7 @@ createApp({
                 sseStatus.value = 'connected';
                 console.log(new Date(), 'SSE connected');
             };
-            // ... (Rest of SSE implementation stays mostly same, log content is dynamic)
+        // ... 其余 SSE 实现基本保持不变，日志内容为动态生成 ...
 
             // 🔥 添加通用消息监听器
             eventSource.onmessage = (e) => {
@@ -934,7 +934,7 @@ createApp({
                 messages.value[lang] = await res.json();
             } catch (e) {
                 console.error(`Failed to load locale ${lang}:`, e);
-                // Fallback to empty object or default
+                // 回退为空对象或默认值
             }
         };
 
@@ -958,14 +958,14 @@ createApp({
                     return key;
                 }
             }
-            // Replace params like {n}
+            // 替换形如 {n} 的参数占位符
             if (typeof value === 'string') {
                 return value.replace(/\{(\w+)\}/g, (_, k) => params[k] !== undefined ? params[k] : `{${k}}`);
             }
             return value;
         };
 
-        // ... Existing code ...
+        // ... 其余现有代码 ...
 
         // 获取性能指标
         const fetchPerformanceMetrics = async () => {
@@ -1039,7 +1039,7 @@ createApp({
             updateEnvMode(newVal);
         });
 
-        // Watch locale change to update time format if needed (optional)
+        // 监听 locale 变化，按需更新时间格式（可选）
         watch(locale, () => {
             updateTime();
         });
@@ -1050,7 +1050,7 @@ createApp({
 
                 const isProd = env === 'prod';
                 const color = isProd ? 'success' : 'info';
-                // Use keys for toast
+                // toast 文案使用 i18n key
                 const modeText = isProd ? t('toast.prodMode') : t('toast.devMode');
 
                 showToast(t('toast.envSwitched', { mode: modeText }), color);

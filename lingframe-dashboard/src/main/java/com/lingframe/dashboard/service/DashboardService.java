@@ -486,7 +486,7 @@ public class DashboardService {
                         max = n;
                     }
                 } catch (NumberFormatException ignore) {
-                    // ignore malformed reload versions
+                    // 忽略格式不合法的重载版本号
                 }
             }
         }

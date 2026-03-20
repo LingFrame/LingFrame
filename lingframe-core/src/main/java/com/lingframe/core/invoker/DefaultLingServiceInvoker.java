@@ -16,7 +16,8 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
     @Override
     public Object invoke(LingInstance instance, Object bean, Method method, Object[] args) throws Exception {
         // 引用计数保护
-        if (!instance.tryEnter()) {
+        long invocationId = instance.beginInvocation(ActiveInvocationSupport.capture(instance, method.getName()));
+        if (invocationId < 0) {
             throw new ServiceUnavailableException(instance.getLingId(),
                     "Ling instance is not ready or already destroyed");
         }
@@ -24,7 +25,7 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
         ClassLoader targetClassLoader = instance.getClassLoader();
 
         try {
-            // TCCL 切换
+            // 切换线程上下文类加载器（TCCL）
             Thread.currentThread().setContextClassLoader(targetClassLoader);
 
             // 反射调用
@@ -43,7 +44,7 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
         } finally {
             // 资源恢复
             Thread.currentThread().setContextClassLoader(originalClassLoader);
-            instance.exit();
+            instance.completeInvocation(invocationId);
         }
     }
 

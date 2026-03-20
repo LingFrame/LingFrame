@@ -53,7 +53,7 @@ public class DefaultLingContext implements LingContext {
                     serviceClass.getClassLoader(),
                     new Class[] { serviceClass },
                     new GlobalServiceRoutingProxy(lingId, serviceClass.getName(), null,
-                            lingRepository, pipelineEngine));
+                            lingRepository, pipelineEngine, lingServiceRegistry));
             return Optional.ofNullable(service);
         } catch (Exception e) {
             log.warn("Service get failed.", e);

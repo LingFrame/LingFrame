@@ -25,9 +25,9 @@ import java.util.jar.JarFile;
  * <pre>
  * 灵核 ClassLoader（JDK / Spring / lingframe-api / 灵核业务）
  *         ↓ parent
- * SharedApiClassLoader（各灵元共享的 API 契约）
+ * 各灵元共享 API 契约的 `SharedApiClassLoader`
  *         ↓ parent
- * LingClassLoader（各灵元实现）
+ * 各灵元实现使用的 `LingClassLoader`
  * </pre>
  * <p>
  * 安全设计：
@@ -117,7 +117,7 @@ public class SharedApiClassLoader extends URLClassLoader {
         }
 
         // ⚠️ 这里只做“类名冲突预警”，不主动覆盖旧类。
-        // Shared API 一旦发生同名契约冲突，强行替换比显式暴露问题更危险。
+        // 共享 API 一旦发生同名契约冲突，强行替换比显式暴露问题更危险。
         try {
             checkClassConflicts(apiJar);
         } catch (Exception e) {

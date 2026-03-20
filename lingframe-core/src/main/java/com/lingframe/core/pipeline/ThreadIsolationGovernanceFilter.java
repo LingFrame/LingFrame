@@ -55,16 +55,21 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         LingRuntimeConfig config = runtime.getConfig();
         int timeoutMs = resolveTimeout(ctx, config);
         ExecutorService executor = getExecutor(lingId, config);
+        LingCallContextSnapshot snapshot = LingCallContextSnapshot.capture();
+        int inheritedTraceCount = traceCount(ctx);
 
-        Callable<Object> isolatedTask = InvocationContext.wrap(() -> {
+        Callable<Object> isolatedTask = () -> {
+            InvocationContext child = InvocationContext.obtain();
+            InvocationContext previous = child.attach();
+            LingCallContextSnapshot previousSnapshot = LingCallContextSnapshot.apply(snapshot);
             ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
-            ClassLoader targetClassLoader = ctx.resolution().getTargetClassLoader();
-            if (targetClassLoader != null) {
-                // 进入真实执行前，再把工作线程临时切到目标灵元的类型宇宙
-                Thread.currentThread().setContextClassLoader(targetClassLoader);
-            }
             try {
-                return chain.doFilter(ctx);
+                child.copyFrom(ctx);
+                ClassLoader targetClassLoader = child.resolution().getTargetClassLoader();
+                if (targetClassLoader != null) {
+                    Thread.currentThread().setContextClassLoader(targetClassLoader);
+                }
+                return chain.doFilter(child);
             } catch (Exception e) {
                 throw e;
             } catch (Error e) {
@@ -72,9 +77,13 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
             } catch (Throwable throwable) {
                 throw new ExecutionException(throwable);
             } finally {
+                mergeNewTraces(ctx, child, inheritedTraceCount);
                 Thread.currentThread().setContextClassLoader(originalClassLoader);
+                LingCallContextSnapshot.restore(previousSnapshot);
+                InvocationContext.detach(previous);
+                child.recycle();
             }
-        });
+        };
 
         Future<Object> future;
         try {
@@ -91,7 +100,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
             log.error("[Isolation:{}] Execution timed out after {} ms for {}", lingId, timeoutMs, fqsid);
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.TIMEOUT);
         } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
+            Throwable cause = unwrapExecutionCause(e.getCause());
             if (cause instanceof LingInvocationException) {
                 throw (LingInvocationException) cause;
             }
@@ -100,6 +109,27 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
             Thread.currentThread().interrupt();
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
         }
+    }
+
+    private int traceCount(InvocationContext ctx) {
+        return ctx.getTraces() == null ? 0 : ctx.getTraces().size();
+    }
+
+    private void mergeNewTraces(InvocationContext parent, InvocationContext child, int inheritedTraceCount) {
+        if (parent == null || child == null || child.getTraces() == null) {
+            return;
+        }
+        for (int i = inheritedTraceCount; i < child.getTraces().size(); i++) {
+            parent.addTrace(child.getTraces().get(i));
+        }
+    }
+
+    private Throwable unwrapExecutionCause(Throwable cause) {
+        Throwable current = cause;
+        while (current instanceof ExecutionException && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current == null ? cause : current;
     }
 
     private int resolveTimeout(InvocationContext ctx, LingRuntimeConfig config) {

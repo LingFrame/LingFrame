@@ -54,7 +54,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * LingFrame 公共核心配置 —— 版本无关
+ * 灵珑公共核心配置，且与 Spring Boot 版本无关
  * <p>
  * 所有与 Spring Boot 版本无关的 Bean 定义集中于此。
  * 版本特定的 Starter 通过 {@code @Import(LingFrameCoreConfiguration.class)} 引入。

@@ -10,7 +10,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * LingFrame Core 全局配置对象 (Immutable)
+ * 灵珑灵核全局配置对象（Immutable）
  * <p>
  * 职责：作为 Core 层的唯一配置入口，屏蔽 Spring Boot 或其他外部环境的差异。
  * 包含：
@@ -128,9 +128,9 @@ public class LingFrameConfig {
     /**
      * 是否启用灵核 Bean 治理，默认值为 false
      * <p>
-     * true: 启用治理，对灵核 Bean 进行权限检查和审计
+     * 当为 true 时，启用治理，对灵核 Bean 进行权限检查和审计
      * <p>
-     * false: 禁用治理，灵核 Bean 不受限制
+     * 当为 false 时，禁用治理，灵核 Bean 不受限制
      */
     @Builder.Default
     private boolean lingCoreGovernanceEnabled = false;
@@ -138,9 +138,9 @@ public class LingFrameConfig {
     /**
      * 是否对灵核内部调用进行治理，默认值为 false
      * <p>
-     * true: 灵核自己调用自己的 Bean 也会被治理
+     * 当为 true 时，灵核自己调用自己的 Bean 也会被治理
      * <p>
-     * false: 只有灵元调用灵核 Bean 时才会被治理
+     * 当为 false 时，只有灵元调用灵核 Bean 时才会被治理
      */
     @Builder.Default
     private boolean lingCoreGovernanceInternalCalls = false;
@@ -148,12 +148,33 @@ public class LingFrameConfig {
     /**
      * 是否对灵核应用进行权限检查，默认值为 false
      * <p>
-     * true: 灵核应用也需要通过权限检查
+     * 当为 true 时，灵核应用也需要通过权限检查
      * <p>
-     * false: 灵核应用自动拥有所有权限
+     * 当为 false 时，灵核应用自动拥有所有权限
      */
     @Builder.Default
     private boolean hostCheckPermissions = false;
+
+    @Builder.Default
+    private int leakDetectionMaxConcurrentAggressiveChecks = 2;
+
+    @Builder.Default
+    private int leakDetectionDevStartDelayMillis = 2000;
+
+    @Builder.Default
+    private int leakDetectionAggressiveGcRounds = 5;
+
+    @Builder.Default
+    private int leakDetectionAggressiveGcIntervalMillis = 500;
+
+    @Builder.Default
+    private int leakDetectionPassiveWindowMillis = 60000;
+
+    @Builder.Default
+    private int leakDetectionFinalConfirmationDelayMillis = 1000;
+
+    @Builder.Default
+    private int leakDetectionQueuePollMillis = 5000;
 
     // ================= 共享 API 配置 =================
 
@@ -174,8 +195,8 @@ public class LingFrameConfig {
     /**
      * 是否启用 API 包覆盖检测。
      * <p>
-     * true: 如果灵元包内包含 com.lingframe.api.* 类则拒绝安装
-     * false: 允许灵元包内包含同名 API（不建议）
+     * 当为 true 时，如果灵元包内包含 `com.lingframe.api.*` 类则拒绝安装
+     * 当为 false 时，允许灵元包内包含同名 API（不建议）
      */
     @Builder.Default
     private boolean apiOverrideCheckEnabled = true;

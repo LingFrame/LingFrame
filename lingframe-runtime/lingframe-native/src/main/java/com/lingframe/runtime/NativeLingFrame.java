@@ -36,8 +36,8 @@ import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * LingFrame Native 启动器
- * 灵核应用通过此类一键启动框架
+ * 灵珑 Native 启动器。
+ * 灵核应用通过此类一键启动框架。
  */
 @Slf4j
 public class NativeLingFrame {
@@ -50,14 +50,14 @@ public class NativeLingFrame {
     private static RuntimeCoordinator RUNTIME_COORDINATOR;
 
     /**
-     * 启动 LingFrame (使用默认配置)
+     * 使用默认配置启动灵珑。
      */
     public static LingLifecycleEngine start() {
         return start(LingFrameConfig.current());
     }
 
     /**
-     * 启动 LingFrame (自定义配置)
+     * 使用自定义配置启动灵珑。
      */
     public static LingLifecycleEngine start(LingFrameConfig config) {
         if (started.get()) {
@@ -158,13 +158,13 @@ public class NativeLingFrame {
                 return invoker;
             }
         } catch (Exception ignored) {
-            // Fallback to default
+            // 如解析失败，则回退到默认实现
         }
         return new FastLingServiceInvoker();
     }
 
     /**
-     * 获取灵核上下文，用于 invoke 调用
+     * 获取灵核上下文，用于 invoke 调用。
      */
     public static LingContext getHostContext() {
         if (!started.get()) {

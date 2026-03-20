@@ -1,5 +1,6 @@
 package com.lingframe.core.pipeline;
 
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.GovernanceDecision;
 import com.lingframe.core.ling.LingRepository;
@@ -41,15 +42,36 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
             return chain.doFilter(ctx);
         }
 
+        boolean hasEntryGovernanceFacts = hasEntryGovernanceFacts(ctx);
         Method method = resolveTargetMethod(ctx);
         if (method == null) {
+            if (!hasEntryGovernanceFacts) {
+                throw new LingInvocationException(ctx.getServiceFQSID(),
+                        LingInvocationException.ErrorKind.INTERNAL_ERROR,
+                        "Governance target method is unresolved and no entry governance facts were provided");
+            }
             return chain.doFilter(ctx);
         }
 
         LingRuntime runtime = resolveRuntime(ctx);
         GovernanceDecision decision = governanceArbitrator.arbitrate(runtime, method, ctx);
+        if (decision == null) {
+            if (!hasEntryGovernanceFacts) {
+                throw new LingInvocationException(ctx.getServiceFQSID(),
+                        LingInvocationException.ErrorKind.INTERNAL_ERROR,
+                        "Governance arbitrator returned no decision and no entry governance facts were provided");
+            }
+            return chain.doFilter(ctx);
+        }
+
         applyDecision(ctx, decision);
         return chain.doFilter(ctx);
+    }
+
+    private boolean hasEntryGovernanceFacts(InvocationContext ctx) {
+        return ctx != null
+                && ctx.governance().getRequiredPermission() != null
+                && ctx.governance().getAccessType() != null;
     }
 
     private LingRuntime resolveRuntime(InvocationContext ctx) {
@@ -108,11 +130,7 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
     }
 
     private void applyDecision(InvocationContext ctx, GovernanceDecision decision) {
-        if (decision == null) {
-            return;
-        }
-
-        // ⚠️ 统一写入治理分区，避免再次出现“事实字段”和“治理意图字段”混写在根对象上的问题
+         // ⚠️ 统一写入治理分区，避免再次出现“事实字段”和“治理意图字段”混写在根对象上的问题
         InvocationGovernanceState governanceState = ctx.governance();
         if (decision.getRequiredPermission() != null) {
             governanceState.setRequiredPermission(decision.getRequiredPermission());

@@ -12,9 +12,9 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 /**
- * API 覆盖检测器。
+ * API 契约覆盖检测器。
  * <p>
- * 防止灵元在自身包内声明 com.lingframe.api.* 类，导致契约层被覆盖。
+ * 防止灵元在自身包内声明 {@code com.lingframe.api.*} 类，导致 API 契约层被覆盖。
  */
 @Slf4j
 public class ApiOverrideVerifier implements LingSecurityVerifier {

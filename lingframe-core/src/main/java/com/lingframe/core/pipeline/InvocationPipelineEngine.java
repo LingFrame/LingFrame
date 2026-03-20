@@ -4,8 +4,8 @@ import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.spi.LingFilterChain;
 
 /**
- * 灵元调用管道引擎
- * 负责组装并执行拦截器链 (LingInvocationFilter Chain)，实现权限校验、流量治理、路由转发等全链路逻辑。
+ * 灵元调用 Pipeline 引擎。
+ * 负责组装并执行拦截器链（LingInvocationFilter Chain），实现权限校验、流量治理、路由转发等全链路逻辑。
  */
 public class InvocationPipelineEngine {
     private final FilterRegistry registry;

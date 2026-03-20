@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentMap;
  * <p>
  * 事件链路：
  * <pre>
- * InstanceCoordinator                    RuntimeCoordinator
+ * 实例协调器 `InstanceCoordinator`        运行时协调器 `RuntimeCoordinator`
  *   ├─ 驱动 InstanceStatus FSM              ├─ 监听 InstanceStateChangedEvent
  *   ├─ 发布 InstanceStateChangedEvent ───→  ├─ 聚合评估所有实例状态
  *   └─                                     ├─ 驱动 RuntimeStatus FSM
@@ -48,21 +48,21 @@ import java.util.concurrent.ConcurrentMap;
 public class RuntimeCoordinator {
 
     /**
-     * CAS 重试上限
+     * 基于 CAS 的重试上限
      */
     private static final int MAX_RETRIES = 3;
 
     /**
-     * lingId -> 运行时状态机。
+     * `lingId -> 运行时状态机`
      * 这是运行时宏观状态的正式真源。
      */
     private final ConcurrentMap<String, StateMachine<RuntimeStatus>> machines = new ConcurrentHashMap<>();
 
     /**
-     * lingId -> { instanceKey -> InstanceStatus }
+     * `lingId -> { instanceKey -> InstanceStatus }`
      * <p>
      * 维护每个 Ling 下所有活跃实例的状态快照。
-     * instanceKey 使用实例版本号（version），同一 Ling 的不同版本各占一个条目。
+     * `instanceKey` 使用实例版本号 `version`，同一灵元的不同版本各占一个条目。
      * 实例进入 DEAD 后从快照中移除。
      * 这是 runtime 聚合时看到的“事实视图”，而不是直接去扫描对象图。
      * 这样可以把“实例状态写入”和“运行时状态聚合”解耦成事件边界。
@@ -132,7 +132,7 @@ public class RuntimeCoordinator {
      */
     public StateMachine<RuntimeStatus> register(String lingId) {
         snapshots.putIfAbsent(lingId, new ConcurrentHashMap<>());
-        // register 是运行时状态机的唯一创建入口，保证 LingRuntime 与 coordinator
+        // `register` 是运行时状态机的唯一创建入口，保证 `LingRuntime` 与协调器
         // 读取的都是同一份宏观状态真源。
         return machines.computeIfAbsent(lingId, id -> {
             log.info("Ling [{}] registered, runtime FSM created with INACTIVE", id);
@@ -202,7 +202,7 @@ public class RuntimeCoordinator {
     /**
      * 主动关闭一个 Ling 的运行时（管理员/运维触发）。
      * <p>
-     * STOPPING 在当前版本中属于“运维意图态”。
+     * `STOPPING` 在当前版本中属于“运维意图态”。
      * 一旦进入 STOPPING，就不再允许实例层事实把它重新拉回 ACTIVE / DEGRADED。
      * 当所有实例都 DEAD 后，由 {@link #reevaluate} 自动跃迁到 REMOVED。
      */
@@ -279,7 +279,7 @@ public class RuntimeCoordinator {
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             RuntimeStatus current = fsm.current();
 
-            // STOPPING 是运维意图态。
+            // `STOPPING` 是运维意图态。
             // 一旦进入 STOPPING，runtime 不允许再被“实例变好了”拉回 ACTIVE / DEGRADED，
             // 只允许在实例全部消失后继续前进到 REMOVED。
             if (current == RuntimeStatus.STOPPING) {
@@ -307,7 +307,7 @@ public class RuntimeCoordinator {
                 return;
             }
 
-            // CAS 驱动跃迁
+            // 通过 CAS 驱动状态跃迁
             TransitionResult<RuntimeStatus> result = fsm.transition(suggested);
             switch (result.code()) {
                 case SUCCESS:
@@ -340,7 +340,7 @@ public class RuntimeCoordinator {
     }
 
     /**
-     * STOPPING 状态下，检查是否所有实例都已销毁，若是则跃迁到 REMOVED
+     * 在 `STOPPING` 状态下，检查是否所有实例都已销毁，若是则跃迁到 `REMOVED`
      */
     private void tryFinishShutdown(String lingId, StateMachine<RuntimeStatus> fsm) {
         ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);

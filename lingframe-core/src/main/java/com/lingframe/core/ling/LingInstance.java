@@ -9,7 +9,10 @@ import com.lingframe.core.spi.LingContainer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -43,6 +46,8 @@ public class LingInstance {
 
     // 引用计数器：记录当前正在处理的请求数
     private final AtomicLong activeRequests = new AtomicLong(0);
+    private final AtomicLong activeInvocationSequence = new AtomicLong(0);
+    private final Map<Long, ActiveInvocationSnapshot> activeInvocations = new ConcurrentHashMap<>();
 
     // 微观状态机仍然跟随实例对象存在：
     // 1. 它是单实例生命周期的 CAS 一致性载体；
@@ -138,6 +143,28 @@ public class LingInstance {
         return true;
     }
 
+    public long beginInvocation(ActiveInvocationSnapshot snapshot) {
+        if (isDying() || !isReady()) {
+            return -1L;
+        }
+
+        long invocationId = -1L;
+        if (snapshot != null) {
+            invocationId = activeInvocationSequence.incrementAndGet();
+            activeInvocations.put(invocationId, snapshot);
+        }
+
+        activeRequests.incrementAndGet();
+        if (isDying()) {
+            activeRequests.decrementAndGet();
+            if (invocationId > 0) {
+                activeInvocations.remove(invocationId);
+            }
+            return -1L;
+        }
+        return invocationId;
+    }
+
     public void exit() {
         long count = activeRequests.decrementAndGet();
         if (count < 0) {
@@ -146,13 +173,27 @@ public class LingInstance {
         }
     }
 
+    public void completeInvocation(long invocationId) {
+        if (invocationId > 0) {
+            activeInvocations.remove(invocationId);
+        }
+        exit();
+    }
+
     public boolean isIdle() {
         return activeRequests.get() == 0;
+    }
+
+    public List<ActiveInvocationSnapshot> snapshotActiveInvocations() {
+        List<ActiveInvocationSnapshot> snapshots = new ArrayList<>(activeInvocations.values());
+        snapshots.sort(Comparator.comparingLong(ActiveInvocationSnapshot::getStartTimeMillis));
+        return snapshots;
     }
 
     // 只做“断开强引用”，不做状态迁移；状态迁移由 InstanceCoordinator 统一负责。
     synchronized void clearDetachedState() {
         labels.clear();
+        activeInvocations.clear();
         this.container = null;
         this.definition = null;
     }

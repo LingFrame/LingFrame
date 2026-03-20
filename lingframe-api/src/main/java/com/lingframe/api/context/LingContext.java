@@ -31,9 +31,9 @@ public interface LingContext {
     /**
      * 通用服务调用
      * 遵循面向协议原则，通过服务 ID (FQSID) 调用外部能力。
-     * Core 会拦截并进行权限检查、审计和路由转发。
+     * 灵核会拦截并进行权限检查、审计和路由转发。
      * 
-     * @param serviceId FQSID (ling ID:Short ID) 或 Client SDK 提供的常量
+     * @param serviceId FQSID（灵元 ID:短 ID）或客户端 SDK 提供的常量
      * @param args      参数列表
      * @return 服务执行结果
      */
@@ -64,7 +64,7 @@ public interface LingContext {
     /**
      * 获取系统服务或能力
      * <p>
-     * 遵循零信任原则，业务灵元只能通过此方法获取被 Core 授权的基础设施能力。
+     * 遵循零信任原则，业务灵元只能通过此方法获取被灵核授权的基础设施能力。
      * </p>
      * 
      * @param serviceClass 服务接口类
@@ -73,7 +73,7 @@ public interface LingContext {
     <T> Optional<T> getService(Class<T> serviceClass);
 
     /**
-     * 获取 Core 提供的权限服务
+     * 获取灵核提供的权限服务
      * 
      * @return 权限服务实例
      */

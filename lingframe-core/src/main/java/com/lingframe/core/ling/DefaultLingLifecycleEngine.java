@@ -513,12 +513,32 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         if (allIdle) {
             log.info("[{}] All instances drained successfully", lingId);
         } else {
+            long nowMillis = System.currentTimeMillis();
             for (LingInstance instance : instances) {
                 if (!instance.isIdle()) {
                     log.warn("[{}] Force proceeding: instance {} still has {} active requests",
                             lingId, instance.getVersion(), instance.getActiveRequestCount());
+                    for (String summary : describeActiveInvocations(instance, nowMillis)) {
+                        log.warn("[{}] In-flight invocation on instance {}: {}",
+                                lingId, instance.getVersion(), summary);
+                    }
                 }
             }
         }
+    }
+
+    static List<String> describeActiveInvocations(LingInstance instance, long nowMillis) {
+        if (instance == null) {
+            return Collections.emptyList();
+        }
+        List<ActiveInvocationSnapshot> snapshots = instance.snapshotActiveInvocations();
+        if (snapshots.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> summaries = new ArrayList<>(snapshots.size());
+        for (ActiveInvocationSnapshot snapshot : snapshots) {
+            summaries.add(snapshot.toSummary(nowMillis));
+        }
+        return summaries;
     }
 }

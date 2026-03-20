@@ -68,8 +68,7 @@ public class LingClassLoader extends URLClassLoader {
         // 在 Windows 平台上，如果底层 JarURLConnection 启用了缓存，
         // 即便调用了 URLClassLoader.close()，文件句柄依然可能被 JVM 占用，导致无法覆盖重装。
         try {
-            // JDK 8 兼容写法：由于 JDK 8 没有 setDefaultUseCaches(String protocol, boolean
-            // defaultVal)
+            // 为兼容 JDK 8：该版本没有 setDefaultUseCaches(String protocol, boolean defaultVal)
             // 必须创建一个真实的 jar URL 连接实例来关闭整个 JVM 级别的 jar 缓存默认值
             URLConnection connection = new URL("jar:file://dummy.jar!/").openConnection();
             connection.setDefaultUseCaches(false);
@@ -180,7 +179,7 @@ public class LingClassLoader extends URLClassLoader {
                 }
             }
 
-            // Child-First: 优先自己加载
+            // 子优先：优先从当前类加载器加载
             try {
                 c = findClass(name);
                 if (resolve)
@@ -250,12 +249,12 @@ public class LingClassLoader extends URLClassLoader {
             super.close();
 
             // 🔥 清理 URLClassPath 内部缓存（loaders、path 等）
-            // super.close() 已关闭文件句柄，但某些 JVM 实现可能在 URLClassPath 中残留引用
+            // `super.close()` 已关闭文件句柄，但某些 JVM 实现可能在 `URLClassPath` 中残留引用
             cleanupInternalCaches();
 
             log.info("[{}] ClassLoader closed successfully", lingId);
             // 💡 不再在此处调用 System.gc()
-            // GC 提示由 BasicResourceGuard 在所有清理完成后统一触发，
+            // 垃圾回收提示由 `BasicResourceGuard` 在所有清理完成后统一触发，
             // 此处调用没有实际效果（引用链尚未完全切断）
         } catch (IOException e) {
             log.error("[{}] Error closing ClassLoader", lingId, e);
@@ -266,8 +265,8 @@ public class LingClassLoader extends URLClassLoader {
     /**
      * 清理 URLClassLoader 内部缓存
      * <p>
-     * URLClassLoader 内部的 URLClassPath 可能持有已打开的 JarFile 引用和 URL 列表。
-     * super.close() 会关闭文件句柄，但不一定清空集合引用，在 Windows 下会导致无法删除 JAR。
+     * `URLClassLoader` 内部的 `URLClassPath` 可能持有已打开的 `JarFile` 引用和 URL 列表。
+     * `super.close()` 会关闭文件句柄，但不一定清空集合引用，在 Windows 下会导致无法删除 JAR。
      * 此方法通过反射确保内部引用被彻底清理并强制关闭 JarFile。
      * </p>
      */
@@ -313,7 +312,7 @@ public class LingClassLoader extends URLClassLoader {
                         ((List<?>) loaders).clear();
                     }
                 } catch (NoSuchFieldException ignored) {
-                    // JVM 版本不同
+                    // 不同 JVM 版本的字段布局可能不同
                 }
 
                 // 清理 URLClassPath.path (ArrayList<URL>)
@@ -325,7 +324,7 @@ public class LingClassLoader extends URLClassLoader {
                         ((List<?>) path).clear();
                     }
                 } catch (NoSuchFieldException ignored) {
-                    // JVM 版本不同，字段可能不存在
+                    // 不同 JVM 版本中该字段可能不存在
                 }
 
                 // 清理 URLClassPath.lmap (HashMap<String, Loader>)
@@ -337,7 +336,7 @@ public class LingClassLoader extends URLClassLoader {
                         ((Map<?, ?>) lmap).clear();
                     }
                 } catch (NoSuchFieldException ignored) {
-                    // JVM 版本不同
+                    // 不同 JVM 版本的字段布局可能不同
                 }
 
                 // 清理 closed (如果有这个字段的话，在一些高版本 JDK 中防止再用)

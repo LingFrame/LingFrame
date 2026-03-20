@@ -8,167 +8,222 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 默认泄露检测器实现
- *
- * <p>采用"环境感知"策略，根据运行模式选择不同的检测方式：
- *
- * <h3>开发模式 (devMode=true)</h3>
- * <ul>
- *   <li>激进检测：主动诱导 GC 并循环检查</li>
- *   <li>延迟 2 秒后开始检测</li>
- *   <li>最多执行 5 轮 GC，每轮间隔 500ms</li>
- *   <li>立即反馈结果，便于开发调试</li>
- * </ul>
- *
- * <h3>生产模式 (devMode=false)</h3>
- * <ul>
- *   <li>静默监听：依赖 ReferenceQueue 和长周期超时</li>
- *   <li>零侵入，不主动触发 GC</li>
- *   <li>60秒后进行"最终审判"</li>
- *   <li>通过队列监听线程确认回收</li>
- * </ul>
- *
- * <p>检测结果通过 EventBus 推送到 Dashboard：
- * <ul>
- *   <li>成功回收：INFO 级别，显示 GC 轮次或时间窗口</li>
- *   <li>疑似泄漏：ERROR 级别，提示可能存在内存泄漏</li>
- * </ul>
- *
- * @see MonitoringEvents.LeakDetectionEvent
+ * 默认的类加载器泄漏检测器，采用有界的激进诊断策略。
  */
 @Slf4j
 public class DefaultLeakDetector implements LeakDetector {
 
-    private final ScheduledExecutorService scheduler;
+    static final String MODE_DEV_AGGRESSIVE = "DEV_AGGRESSIVE";
+    static final String MODE_DEV_BOUNDED = "DEV_BOUNDED";
+    static final String MODE_PROD_PASSIVE = "PROD_PASSIVE";
+
+    private final ScheduledThreadPoolExecutor scheduler;
     private final ReferenceQueue<ClassLoader> referenceQueue = new ReferenceQueue<>();
+    private final AtomicInteger aggressiveChecksInFlight = new AtomicInteger();
+
     private final boolean devMode;
     private final EventBus eventBus;
+    private final int maxConcurrentAggressiveChecks;
+    private final int devStartDelayMillis;
+    private final int aggressiveGcRounds;
+    private final int aggressiveGcIntervalMillis;
+    private final int passiveWindowMillis;
+    private final int finalConfirmationDelayMillis;
+    private final int queuePollMillis;
 
-    /**
-     * 默认构造器（从配置读取模式）
-     */
     public DefaultLeakDetector() {
         this(null, LingFrameConfig.current());
     }
 
-    /**
-     * 完整构造器
-     *
-     * @param eventBus 事件总线，用于推送检测结果
-     * @param config   框架配置，用于判断运行模式
-     */
     public DefaultLeakDetector(EventBus eventBus, LingFrameConfig config) {
+        LingFrameConfig effectiveConfig = config == null ? LingFrameConfig.current() : config;
         this.eventBus = eventBus;
-        this.devMode = config != null ? config.isDevMode() : LingFrameConfig.current().isDevMode();
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "lingframe-leak-detector");
-            t.setDaemon(true);
-            return t;
-        });
+        this.devMode = effectiveConfig.isDevMode();
+        this.maxConcurrentAggressiveChecks = Math.max(1, effectiveConfig.getLeakDetectionMaxConcurrentAggressiveChecks());
+        this.devStartDelayMillis = Math.max(0, effectiveConfig.getLeakDetectionDevStartDelayMillis());
+        this.aggressiveGcRounds = Math.max(0, effectiveConfig.getLeakDetectionAggressiveGcRounds());
+        this.aggressiveGcIntervalMillis = Math.max(1, effectiveConfig.getLeakDetectionAggressiveGcIntervalMillis());
+        this.passiveWindowMillis = Math.max(1, effectiveConfig.getLeakDetectionPassiveWindowMillis());
+        this.finalConfirmationDelayMillis = Math.max(1, effectiveConfig.getLeakDetectionFinalConfirmationDelayMillis());
+        this.queuePollMillis = Math.max(100, effectiveConfig.getLeakDetectionQueuePollMillis());
+        this.scheduler = new ScheduledThreadPoolExecutor(
+                Math.max(1, this.maxConcurrentAggressiveChecks),
+                runnable -> {
+                    Thread thread = new Thread(runnable, "lingframe-leak-detector");
+                    thread.setDaemon(true);
+                    return thread;
+                });
+        this.scheduler.setRemoveOnCancelPolicy(true);
 
-        // 启动队列监听线程 (仅用于生产模式下的即时回收确认)
         if (!devMode) {
             startQueueListener();
         }
     }
 
-    /**
-     * 检测 ClassLoader 是否存在内存泄漏
-     *
-     * @param lingId      灵元ID
-     * @param classLoader 待检测的 ClassLoader
-     */
     @Override
     public void detectLeak(String lingId, String version, ClassLoader classLoader) {
-        if (classLoader == null) return;
+        if (classLoader == null) {
+            return;
+        }
 
+        long triggerTimeMillis = System.currentTimeMillis();
         if (devMode) {
-            detectLeakAggressive(lingId, version, classLoader);
+            detectLeakAggressive(lingId, version, classLoader, triggerTimeMillis);
         } else {
-            detectLeakPassive(lingId, version, classLoader);
+            detectLeakPassive(lingId, version, classLoader, triggerTimeMillis);
         }
     }
 
-    /**
-     * [开发模式] 激进检测：诱导 GC 并循环检查
-     *
-     * <p>执行策略：
-     * <ol>
-     *   <li>延迟 2 秒后开始检测</li>
-     *   <li>每轮执行 System.gc() 并等待 500ms</li>
-     *   <li>检查弱引用是否被回收</li>
-     *   <li>最多 5 轮，成功则提前退出</li>
-     * </ol>
-     */
-    private void detectLeakAggressive(String lingId, String version, ClassLoader classLoader) {
-        WeakReference<ClassLoader> ref = new WeakReference<>(classLoader);
-        scheduler.schedule(() -> {
-            for (int i = 0; i < 5; i++) {
-                System.gc();
+    private void detectLeakAggressive(String lingId, String version, ClassLoader classLoader, long triggerTimeMillis) {
+        WeakReference<ClassLoader> reference = new WeakReference<>(classLoader);
+        if (!tryAcquireAggressiveSlot()) {
+            log.debug("[{}-{}] Aggressive leak detection throttled, using bounded confirmation", lingId, version);
+            scheduleBoundedConfirmation(lingId, version, reference, triggerTimeMillis);
+            return;
+        }
+
+        try {
+            scheduler.schedule(() -> {
                 try {
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
+                    for (int round = 1; round <= aggressiveGcRounds; round++) {
+                        System.gc();
+                        if (!sleepQuietly(aggressiveGcIntervalMillis)) {
+                            return;
+                        }
+                        if (reference.get() == null) {
+                            publishLeakDetection(
+                                    lingId,
+                                    version,
+                                    true,
+                                    MODE_DEV_AGGRESSIVE,
+                                    triggerTimeMillis,
+                                    "ClassLoader collected after " + round + " GC rounds");
+                            log.info("✅ [{}-{}] ClassLoader collected successfully (DevMode, GC round {})", lingId, version, round);
+                            return;
+                        }
+                    }
+                    scheduleFinalConfirmation(
+                            lingId,
+                            version,
+                            reference,
+                            triggerTimeMillis,
+                            MODE_DEV_AGGRESSIVE,
+                            true,
+                            "ClassLoader still alive after " + aggressiveGcRounds + " GC rounds");
+                } finally {
+                    aggressiveChecksInFlight.decrementAndGet();
                 }
-                if (ref.get() == null) {
-                    log.info("✅ [{}-{}] ClassLoader collected successfully (DevMode, GC round {})", lingId, version, i + 1);
-                    publishLeakDetection(lingId, version, true, "ClassLoader collected successfully after " + (i + 1) + " GC rounds");
-                    return;
-                }
-            }
-            log.warn("⚠️ [{}-{}] ClassLoader NOT collected after 5 GC rounds! (DevMode)", lingId, version);
-            publishLeakDetection(lingId, version, false, "ClassLoader NOT collected after 5 GC rounds - Memory leak suspected!");
-        }, 2, TimeUnit.SECONDS);
+            }, devStartDelayMillis, TimeUnit.MILLISECONDS);
+        } catch (RuntimeException ex) {
+            aggressiveChecksInFlight.decrementAndGet();
+            throw ex;
+        }
     }
 
-    /**
-     * [生产模式] 静默监听：依赖 ReferenceQueue 和长周期超时
-     *
-     * <p>执行策略：
-     * <ol>
-     *   <li>创建带队列的弱引用</li>
-     *   <li>60秒后进行"最终审判"</li>
-     *   <li>检查引用是否仍存活</li>
-     *   <li>队列监听线程可提前确认回收</li>
-     * </ol>
-     */
-    private void detectLeakPassive(String lingId, String version, ClassLoader classLoader) {
-        // 使用带队列的弱引用，以便异步确认回收
-        LeakReference ref = new LeakReference(lingId, version, classLoader, referenceQueue);
+    private void scheduleBoundedConfirmation(String lingId,
+                                             String version,
+                                             WeakReference<ClassLoader> reference,
+                                             long triggerTimeMillis) {
+        scheduler.schedule(() -> scheduleFinalConfirmation(
+                        lingId,
+                        version,
+                        reference,
+                        triggerTimeMillis,
+                        MODE_DEV_BOUNDED,
+                        false,
+                        "Aggressive leak detection skipped by rate limit"),
+                devStartDelayMillis,
+                TimeUnit.MILLISECONDS);
+    }
 
-        // 60秒后进行"最终审判"
+    private void scheduleFinalConfirmation(String lingId,
+                                           String version,
+                                           WeakReference<ClassLoader> reference,
+                                           long triggerTimeMillis,
+                                           String detectionMode,
+                                           boolean triggerGc,
+                                           String pendingFailureMessage) {
         scheduler.schedule(() -> {
-            if (ref.get() != null) {
-                log.warn("⚠️ [{}-{}] ClassLoader still alive after 60s window. Memory leak suspected! (ProdMode)", lingId, version);
-                publishLeakDetection(lingId, version, false, "ClassLoader still alive after 60s - Memory leak suspected!");
-            } else {
-                // 如果引用的对象已经不在了，但还没出现在队列里，说明回收在最后一刻发生了
-                log.debug("[{}-{}] Final check confirmed ClassLoader collection.", lingId, version);
-                publishLeakDetection(lingId, version, true, "ClassLoader collected within 60s window");
+            if (triggerGc) {
+                System.gc();
             }
-        }, 60, TimeUnit.SECONDS);
+            if (reference.get() == null) {
+                publishLeakDetection(
+                        lingId,
+                        version,
+                        true,
+                        detectionMode,
+                        triggerTimeMillis,
+                        "ClassLoader collected during confirmation window");
+                log.info("✅ [{}-{}] ClassLoader collected successfully", lingId, version);
+                return;
+            }
+            publishLeakDetection(
+                    lingId,
+                    version,
+                    false,
+                    detectionMode,
+                    triggerTimeMillis,
+                    pendingFailureMessage + " and remained alive after confirmation window");
+            log.info("❌ [{}-{}] ClassLoader remained alive after confirmation window, {}", lingId, version, pendingFailureMessage);
+        }, finalConfirmationDelayMillis, TimeUnit.MILLISECONDS);
     }
 
-    /**
-     * 启动队列监听线程（仅生产模式）
-     *
-     * <p>该线程阻塞等待 JVM 自然 GC 将引用放入队列，
-     * 可提前确认 ClassLoader 已被回收，无需等待 60 秒超时。
-     */
+    private void detectLeakPassive(String lingId, String version, ClassLoader classLoader, long triggerTimeMillis) {
+        LeakReference reference = new LeakReference(
+                lingId,
+                version,
+                MODE_PROD_PASSIVE,
+                triggerTimeMillis,
+                classLoader,
+                referenceQueue);
+
+        scheduler.schedule(() -> {
+            if (!reference.tryReport()) {
+                return;
+            }
+            if (reference.get() == null) {
+                publishLeakDetection(
+                        lingId,
+                        version,
+                        true,
+                        MODE_PROD_PASSIVE,
+                        triggerTimeMillis,
+                        "ClassLoader collected within passive window");
+                log.info("✅ [{}-{}] ClassLoader collected successfully within passive window", lingId, version);
+                return;
+            }
+            publishLeakDetection(
+                    lingId,
+                    version,
+                    false,
+                    MODE_PROD_PASSIVE,
+                    triggerTimeMillis,
+                    "ClassLoader still alive after " + passiveWindowMillis + "ms passive window");
+            log.info("❌ [{}-{}] ClassLoader remained alive after {}ms passive window", lingId, version, passiveWindowMillis);
+        }, passiveWindowMillis, TimeUnit.MILLISECONDS);
+    }
+
     private void startQueueListener() {
-        Thread t = new Thread(() -> {
+        Thread listener = new Thread(() -> {
             while (!scheduler.isShutdown()) {
                 try {
-                    // 阻塞等待
-                    LeakReference ref = (LeakReference) referenceQueue.remove(5000);
-                    if (ref != null) {
-                        log.info("✅ [{}-{}] ClassLoader collected by JVM natural GC.", ref.lingId, ref.version);
+                    LeakReference reference = (LeakReference) referenceQueue.remove(queuePollMillis);
+                    if (reference != null && reference.tryReport()) {
+                        publishLeakDetection(
+                                reference.lingId,
+                                reference.version,
+                                true,
+                                reference.detectionMode,
+                                reference.triggerTimeMillis,
+                                "ClassLoader collected by JVM natural GC");
+                        log.info("✅ [{}-{}] ClassLoader collected successfully by JVM natural GC", reference.lingId, reference.version);
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -178,48 +233,81 @@ public class DefaultLeakDetector implements LeakDetector {
                 }
             }
         }, "lingframe-leak-queue-listener");
-        t.setDaemon(true);
-        t.start();
+        listener.setDaemon(true);
+        listener.start();
     }
 
-    /**
-     * 关闭检测器，释放资源
-     */
     @Override
     public void shutdown() {
         scheduler.shutdownNow();
     }
 
-    /**
-     * 携带元数据的弱引用
-     *
-     * <p>用于在 ReferenceQueue 中识别是哪个灵元的 ClassLoader 被回收
-     */
-    private static class LeakReference extends WeakReference<ClassLoader> {
-        final String lingId;
-        final String version;
-
-        LeakReference(String lingId, String version, ClassLoader referent, ReferenceQueue<? super ClassLoader> q) {
-            super(referent, q);
-            this.lingId = lingId;
-            this.version = version;
+    private boolean tryAcquireAggressiveSlot() {
+        while (true) {
+            int current = aggressiveChecksInFlight.get();
+            if (current >= maxConcurrentAggressiveChecks) {
+                return false;
+            }
+            if (aggressiveChecksInFlight.compareAndSet(current, current + 1)) {
+                return true;
+            }
         }
     }
 
-    /**
-     * 发布泄漏检测结果事件
-     *
-     * @param lingId    灵元ID
-     * @param collected 是否成功回收
-     * @param message   结果消息
-     */
-    private void publishLeakDetection(String lingId, String version, boolean collected, String message) {
-        if (eventBus != null) {
-            try {
-                eventBus.publish(new MonitoringEvents.LeakDetectionEvent(lingId, version, collected, message));
-            } catch (Exception e) {
-                log.warn("Failed to publish leak detection event: {}", e.getMessage());
-            }
+    private boolean sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private void publishLeakDetection(String lingId,
+                                      String version,
+                                      boolean collected,
+                                      String detectionMode,
+                                      long triggerTimeMillis,
+                                      String message) {
+        if (eventBus == null) {
+            return;
+        }
+        try {
+            eventBus.publish(new MonitoringEvents.LeakDetectionEvent(
+                    lingId,
+                    version,
+                    collected,
+                    message,
+                    detectionMode,
+                    triggerTimeMillis));
+        } catch (Exception e) {
+            log.warn("Failed to publish leak detection event: {}", e.getMessage());
+        }
+    }
+
+    private static final class LeakReference extends WeakReference<ClassLoader> {
+        private final String lingId;
+        private final String version;
+        private final String detectionMode;
+        private final long triggerTimeMillis;
+        private final AtomicBoolean reported = new AtomicBoolean(false);
+
+        private LeakReference(String lingId,
+                              String version,
+                              String detectionMode,
+                              long triggerTimeMillis,
+                              ClassLoader referent,
+                              ReferenceQueue<? super ClassLoader> queue) {
+            super(referent, queue);
+            this.lingId = lingId;
+            this.version = version;
+            this.detectionMode = detectionMode;
+            this.triggerTimeMillis = triggerTimeMillis;
+        }
+
+        private boolean tryReport() {
+            return reported.compareAndSet(false, true);
         }
     }
 }

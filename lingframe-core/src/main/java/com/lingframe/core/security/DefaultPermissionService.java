@@ -1,13 +1,15 @@
 package com.lingframe.core.security;
 
+import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.security.AccessType;
+import com.lingframe.api.security.PermissionAuditRecord;
+import com.lingframe.api.security.PermissionAuditResult;
 import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
-import com.lingframe.api.context.LingCallContext;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
@@ -15,64 +17,49 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 默认权限服务实现
- * 职责：管理权限策略，提供鉴权查询，记录审计日志
+ * 默认的运行时权限服务实现。
  */
 @Slf4j
 public class DefaultPermissionService implements PermissionService {
 
+    private static final String GLOBAL_WHITELIST_PREFIX = "com.lingframe.api.";
+    private static final String LING_CORE_ID = "lingcore-app";
+
     private final EventBus eventBus;
+    private final Map<String, Map<String, AccessType>> permissions = new ConcurrentHashMap<>();
 
     public DefaultPermissionService(EventBus eventBus) {
         this.eventBus = eventBus;
     }
 
-    // 简单的权限表: Map<LingId, Map<Capability, AccessType>>
-    // 实际生产中应从数据库或配置文件加载
-    private final Map<String, Map<String, AccessType>> permissions = new ConcurrentHashMap<>();
-
-    // 全局白名单服务 (例如基础的日志服务)
-    private static final String GLOBAL_WHITELIST_PREFIX = "com.lingframe.api.";
-
-    // 灵核应用 ID
-    private static final String LING_CORE_ID = "lingcore-app";
-
     @Override
     public boolean isAllowed(String lingId, String capability, AccessType accessType) {
-        log.debug("[Auth] Checking permission: lingId={}, capability={}, accessType={}", lingId, capability,
-                accessType);
+        log.debug("[Auth] Checking permission: lingId={}, capability={}, accessType={}", lingId, capability, accessType);
 
         if (capability == null) {
             log.warn("[Auth] Capability is null, rejecting by default");
             return false;
         }
 
-        // 灵核应用根据配置决定是否进行权限检查
-        if (LING_CORE_ID.equals(lingId)) {
-            // 如果配置为不检查灵核应用权限，直接放行
-            if (!LingFrameConfig.current().isHostCheckPermissions()) {
-                log.debug("[Auth] LINGCORE application bypassed");
-                return true;
-            }
+        if (LING_CORE_ID.equals(lingId) && !LingFrameConfig.current().isHostCheckPermissions()) {
+            log.debug("[Auth] LINGCORE application bypassed");
+            return true;
         }
 
-        // 白名单放行
         if (lingId == null || capability.startsWith(GLOBAL_WHITELIST_PREFIX)) {
             log.debug("[Auth] Whitelist bypassed");
             return true;
         }
 
-        // 查表鉴权
         boolean allowed = checkInternal(lingId, capability, accessType);
-        log.info("[Auth] Permission table check result: {}", allowed);
+        log.debug("[Auth] Permission table check result: {}", allowed);
 
-        // 开发模式兜底
         if (!allowed && LingFrameConfig.current().isDevMode()) {
             log.warn("==========================================================================");
             log.warn("[DEV WARNING] ling [{}] unauthorized access [{}] ({}). Please declare in ling.yml: {}",
                     lingId, capability, accessType, capability);
             log.warn("==========================================================================");
-            return true; // 开发模式强制放行
+            return true;
         }
 
         return allowed;
@@ -80,24 +67,25 @@ public class DefaultPermissionService implements PermissionService {
 
     private boolean checkInternal(String lingId, String capability, AccessType accessType) {
         Map<String, AccessType> lingPerms = permissions.get(lingId);
-        log.info("[Auth-Internal] lingId={}, table content: {}", lingId, lingPerms);
+        log.debug("[Auth-Internal] lingId={}, grantedCapabilityCount={}",
+                lingId,
+                lingPerms == null ? 0 : lingPerms.size());
 
         if (lingPerms == null) {
-            log.error("[Auth-Internal] ling has no permissions -> false");
+            log.debug("[Auth-Internal] ling has no permissions -> false");
             return false;
         }
 
         AccessType granted = lingPerms.get(capability);
-        log.info("[Auth-Internal] Query capability={}, granted: {}", capability, granted);
+        log.debug("[Auth-Internal] Query capability={}, granted={}", capability, granted);
 
         if (granted == null) {
-            log.error("[Auth-Internal] Capability not granted -> false");
+            log.debug("[Auth-Internal] Capability not granted -> false");
             return false;
         }
 
-        // 使用 AccessType 的层级比较方法
         boolean result = granted.satisfies(accessType);
-        log.info("[Auth-Internal] granted({}).satisfies(required({})) = {}", granted, accessType, result);
+        log.debug("[Auth-Internal] granted({}).satisfies(required({})) = {}", granted, accessType, result);
         return result;
     }
 
@@ -105,17 +93,15 @@ public class DefaultPermissionService implements PermissionService {
     public void grant(String lingId, String capability, AccessType accessType) {
         log.info("[PermissionService] Granting permission: lingId={}, capability={}, accessType={}",
                 lingId, capability, accessType);
-        permissions.computeIfAbsent(lingId, k -> new ConcurrentHashMap<>())
-                .put(capability, accessType);
-        log.info("[PermissionService] Permission saved, current permissions: {}", permissions.get(lingId));
+        permissions.computeIfAbsent(lingId, k -> new ConcurrentHashMap<>()).put(capability, accessType);
+        log.debug("[PermissionService] Permission saved for lingId={}, capability={}", lingId, capability);
     }
 
     @Override
     public void revoke(String lingId, String capability) {
         log.info("[PermissionService] Revoking permission: lingId={}, capability={}", lingId, capability);
-        permissions.computeIfAbsent(lingId, k -> new ConcurrentHashMap<>())
-                .put(capability, AccessType.NONE);
-        log.info("[PermissionService] Permission set to NONE, current permissions: {}", permissions.get(lingId));
+        permissions.computeIfAbsent(lingId, k -> new ConcurrentHashMap<>()).put(capability, AccessType.NONE);
+        log.debug("[PermissionService] Permission set to NONE for lingId={}, capability={}", lingId, capability);
     }
 
     @Override
@@ -129,49 +115,63 @@ public class DefaultPermissionService implements PermissionService {
 
     @Override
     public void audit(String lingId, String capability, String operation, boolean allowed) {
-        // 日志记录
-        if (!allowed) {
-            log.warn("[Security] Access Denied - ling: {}, Capability: {}, Operation: {}", lingId, capability,
-                    operation);
+        audit(PermissionAuditRecord.builder()
+                .callerLingId(lingId)
+                .capability(capability)
+                .action(operation)
+                .resource(capability)
+                .result(allowed ? PermissionAuditResult.ALLOWED : PermissionAuditResult.DENIED)
+                .costNanos(0L)
+                .build());
+    }
+
+    @Override
+    public void audit(PermissionAuditRecord record) {
+        if (record == null || record.getResult() == null) {
+            return;
         }
 
-        // 优先从链路上下文获取 TraceId，保持追踪连贯性
         String traceId = LingCallContext.startTrace();
+        String callerLingId = record.getCallerLingId();
+        String principal = normalize(record.getPrincipal());
+        String capability = normalize(record.getCapability());
+        String action = truncate(record.getAction(), 80);
+        String resource = truncate(record.getResource(), 120);
+        String failureReason = truncate(record.getFailureReason(), 160);
 
-        // 1. 持久化审计记录 (异步写入日志/ES/DB)
+        if (record.getResult() == PermissionAuditResult.DENIED) {
+            log.warn("[Security] Access denied - caller={}, capability={}, action={}, resource={}",
+                    callerLingId, capability, action, resource);
+        } else if (record.getResult() == PermissionAuditResult.FAILED) {
+            log.warn("[Security] Allowed invocation failed - caller={}, capability={}, action={}, reason={}",
+                    callerLingId, capability, action, failureReason);
+        }
+
         AuditManager.asyncRecord(
                 traceId,
-                lingId,
-                allowed ? "ALLOWED" : "DENIED",
+                callerLingId,
+                principal,
+                record.getResult(),
                 capability,
-                new Object[] { truncateOperation(operation) },
-                allowed ? "Success" : "Denied",
-                0L);
+                action,
+                resource,
+                failureReason,
+                record.getCostNanos());
 
-        // 2. 发布审计事件到 EventBus，供 Dashboard 实时展示
         if (eventBus != null) {
             eventBus.publish(new MonitoringEvents.AuditLogEvent(
                     traceId,
-                    lingId,
-                    allowed ? "ALLOWED" : "DENIED",
-                    capability + ":" + truncateOperation(operation),
-                    allowed,
-                    0L));
+                    callerLingId,
+                    principal,
+                    action,
+                    resource,
+                    capability,
+                    record.getResult(),
+                    failureReason,
+                    record.getCostNanos()));
         }
     }
 
-    /**
-     * 截断过长的 SQL 语句
-     */
-    private String truncateOperation(String operation) {
-        if (operation == null)
-            return "";
-        return operation.length() > 80 ? operation.substring(0, 80) + "..." : operation;
-    }
-
-    /**
-     * 清理灵元的权限数据
-     */
     @Override
     public void removeLing(String lingId) {
         if (permissions.remove(lingId) != null) {
@@ -182,5 +182,19 @@ public class DefaultPermissionService implements PermissionService {
     @Override
     public boolean isLingCoreGovernanceEnabled() {
         return LingFrameConfig.current().isLingCoreGovernanceEnabled();
+    }
+
+    private String normalize(String value) {
+        return value == null ? null : value.trim();
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+        if (value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength) + "...";
     }
 }
