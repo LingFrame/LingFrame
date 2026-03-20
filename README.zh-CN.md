@@ -1,4 +1,4 @@
-﻿# LingFrame · 灵珑
+# LingFrame · 灵珑
 
 ![Status](https://img.shields.io/badge/Status-Resilience_Governance-brightgreen)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue)
@@ -7,9 +7,9 @@
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-2.7.18-brightgreen)
 
+[![Gitee](https://img.shields.io/badge/Gitee-Repository-red?logo=gitee&logoColor=white)](https://gitee.com/knight6236/lingframe)
 [![AtomGit G-Star](https://img.shields.io/badge/AtomGit-G--Star_孵化项目-silver?logo=git&logoColor=white)](https://atomgit.com/lingframe/LingFrame)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-black?logo=github&logoColor=white)](https://github.com/LingFrame/LingFrame)
-[![Gitee](https://img.shields.io/badge/Gitee-Repository-red?logo=gitee&logoColor=white)](https://gitee.com/knight6236/lingframe)
 
 [![Help Wanted](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LingFrame/LingFrame)
@@ -89,11 +89,11 @@ LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理�
 
 - 抛弃 "Plugin" 的认知局限，确立真正的 "Ling（灵元）" 隔离
 - 弹性治理不再流于控制面，化作宿主内核真正的熔断器
-- 直面类加载器泄漏的深水区，用彻底的卸载代替妥协
+- 直面类加载器泄漏的深水区，尽可能解决卸载问题
 - 证明另一件事：  
   **单体架构下的热拔插是否能真正承载工业级的高可用挑战**
 
-这是一个褪去青涩、直面残酷生产环境的阶段。
+这是一个褪去青涩、准备直面残酷生产环境的阶段。
 
 ---
 
@@ -151,9 +151,16 @@ LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理�
 
 ## 致谢
 
+**特别鸣谢 Gitee 官方与开源社区的推荐与支持！** 
+
+感谢 [Gitee](https://gitee.com) 平台以及红薯老师为本土开源生态提供的优质土壤，让底层的轮子也能被看见。
+👉 [访问 Gitee 官方主仓库](https://gitee.com/knight6236/lingframe)
+
+---
+
 [![AtomGit](docs/images/AtomGit.svg)](https://atomgit.com/lingframe/LingFrame)
 
-本项目是 **AtomGit G-Star 孵化项目**。  
+本项目也是 AtomGit G-Star 孵化项目。  
 感谢 [AtomGit](https://atomgit.com) 平台对开源项目的支持与推广。
 
 
