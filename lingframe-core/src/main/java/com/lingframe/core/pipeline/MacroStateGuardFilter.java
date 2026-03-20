@@ -1,18 +1,19 @@
 package com.lingframe.core.pipeline;
 
-import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.api.exception.LingInvocationException;
-import com.lingframe.core.model.EngineTrace;
+import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 
 /**
- * 宏观状态守卫 Filter。
- * 根据 RuntimeStatus 拒绝 INACTIVE / STOPPING / REMOVED 状态的灵元请求。
+ * 宏观运行时状态守卫过滤器。
+ * 负责在路由之前先回答一个更基础的问题：这个 Runtime 现在到底还能不能接单。
  */
 public class MacroStateGuardFilter implements LingInvocationFilter {
+
     private final LingRepository lingRepository;
 
     public MacroStateGuardFilter(LingRepository lingRepository) {
@@ -28,25 +29,28 @@ public class MacroStateGuardFilter implements LingInvocationFilter {
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
         String fqsid = ctx.getServiceFQSID();
         if (fqsid == null || lingRepository == null) {
-            return chain.doFilter(ctx); // 非服务调用或未就绪直接放行
+            return chain.doFilter(ctx);
         }
 
-        String lingId = fqsid.split(":")[0];
+        String lingId = fqsid.split(":", 2)[0];
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
+            if (ctx.isGovernOnly()) {
+                // GOVERN_ONLY 允许灵核入口借道治理，即便此时并不存在真实灵元 Runtime
+                return chain.doFilter(ctx);
+            }
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE,
                     "Target ling not found: " + lingId);
         }
 
         RuntimeStatus status = runtime.currentStatus();
-
         switch (status) {
             case ACTIVE:
             case DEGRADED:
-                if (ctx.isDryRun() || ctx.isShouldAudit()) {
+                if (ctx.isSimulation() || ctx.isShouldAudit()) {
                     ctx.addTrace(EngineTrace.builder()
                             .source("MacroStateGuardFilter")
-                            .action("State ready [" + status + "], permitted")
+                            .action("Runtime state ready [" + status + "]")
                             .type("OK")
                             .depth(1)
                             .build());
@@ -54,27 +58,29 @@ public class MacroStateGuardFilter implements LingInvocationFilter {
                 return chain.doFilter(ctx);
             case INACTIVE:
             case REMOVED:
-                String msg = "Ling [" + lingId + "] is " + status;
-                if (ctx.isDryRun()) {
+                String unavailableMessage = "Ling [" + lingId + "] is " + status;
+                if (ctx.isSimulation()) {
                     ctx.addTrace(EngineTrace.builder()
                             .source("MacroStateGuardFilter")
-                            .action("🛡️ [Dry run blocked] " + msg)
+                            .action("Simulation blocked because " + unavailableMessage)
                             .type("ERROR")
                             .depth(1)
                             .build());
                 }
-                throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE, msg);
+                throw new LingInvocationException(fqsid,
+                        LingInvocationException.ErrorKind.ROUTE_FAILURE, unavailableMessage);
             case STOPPING:
-                String stopMsg = "Ling [" + lingId + "] is stopping";
-                if (ctx.isDryRun()) {
+                String stoppingMessage = "Ling [" + lingId + "] is stopping";
+                if (ctx.isSimulation()) {
                     ctx.addTrace(EngineTrace.builder()
                             .source("MacroStateGuardFilter")
-                            .action("🛡️ [Dry run blocked] " + stopMsg)
+                            .action("Simulation blocked because " + stoppingMessage)
                             .type("WARN")
                             .depth(1)
                             .build());
                 }
-                throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.STATE_REJECTED, stopMsg);
+                throw new LingInvocationException(fqsid,
+                        LingInvocationException.ErrorKind.STATE_REJECTED, stoppingMessage);
             default:
                 throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.STATE_REJECTED);
         }

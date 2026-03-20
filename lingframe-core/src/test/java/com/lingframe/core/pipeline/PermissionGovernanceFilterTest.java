@@ -1,19 +1,22 @@
 package com.lingframe.core.pipeline;
 
+import com.lingframe.api.exception.LingInvocationException;
+import com.lingframe.api.security.AccessType;
+import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.spi.LingFilterChain;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-import com.lingframe.api.exception.LingInvocationException;
-import com.lingframe.api.security.AccessType;
-import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.spi.LingFilterChain;
-import org.junit.jupiter.api.Test;
-
+@DisplayName("PermissionGovernanceFilter 测试")
 class PermissionGovernanceFilterTest {
 
     @Test
+    @DisplayName("缺失所需权限时应拒绝调用并记录审计")
     void rejectsWhenCapabilityMissing() throws Throwable {
         PermissionService permissionService = mock(PermissionService.class);
         PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService);

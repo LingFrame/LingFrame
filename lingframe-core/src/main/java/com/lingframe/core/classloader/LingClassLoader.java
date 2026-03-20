@@ -12,14 +12,19 @@ import java.util.*;
 import java.util.jar.JarFile;
 import java.util.zip.ZipFile;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 灵元类加载器
+ * 灵元类加载器。
  * 特性：
- * 1. Child-First (优先加载灵元内部类)
- * 2. 强制委派白名单 (Core API 必须走父加载器)
- * 3. 资源加载 Child-First (防止读取到灵核的配置)
- * 4. 安全关闭 (防止关闭后继续使用)
+ * 1. Child-First（优先加载灵元内部类）
+ * 2. 强制委派白名单（Core API / Shared API 必须走父加载器）
+ * 3. 资源加载 Child-First（防止误读到灵核配置）
+ * 4. 安全关闭（防止关闭后继续被误用）
+ * <p>
+ * ⚠️ 这里的共享 API 包前缀和额外父委派包，不是“普通运行时配置”，而是类加载边界本身。
+ * 一旦灵元开始装载实现类，就必须冻结这条边界；否则同名类可能在不同时间走出不同的委派路径，
+ * 最终演变成最难排查的 ClassCastException / LinkageError。
  */
 @Slf4j
 public class LingClassLoader extends URLClassLoader {
@@ -37,11 +42,14 @@ public class LingClassLoader extends URLClassLoader {
             "org.yaml.snakeyaml." // SnakeYAML
     );
 
-    // 共享 API 包前缀（可动态添加，优先委派给 SharedApiClassLoader）
+    // 共享 API 包前缀（可动态添加，最终委派给 SharedApiClassLoader）
     private static final List<String> sharedApiPackages = new CopyOnWriteArrayList<>();
 
     // 可配置的额外委派包列表
     private static final List<String> additionalParentPackages = new CopyOnWriteArrayList<>();
+
+    // 🔒 共享 API 边界一旦冻结，委派规则就不允许再变动，防止“半新半旧”的类加载结果混在同一进程里
+    private static final AtomicBoolean SHARED_API_BOUNDARY_FROZEN = new AtomicBoolean(false);
 
     // ==================== 实例状态 ====================
 
@@ -79,8 +87,9 @@ public class LingClassLoader extends URLClassLoader {
      */
     public static void addParentDelegatePackages(Collection<String> packages) {
         if (packages != null) {
+            ensureSharedBoundaryMutable("add parent delegate packages");
             additionalParentPackages.addAll(packages);
-            log.info("Added parent delegate packages: {}", packages);
+            log.info("📦 [SharedApi] Added parent delegate packages {}", packages);
         }
     }
 
@@ -89,6 +98,7 @@ public class LingClassLoader extends URLClassLoader {
      */
     public static void removeParentDelegatePackages(Collection<String> packages) {
         if (packages != null) {
+            ensureSharedBoundaryMutable("remove parent delegate packages");
             additionalParentPackages.removeAll(packages);
         }
     }
@@ -100,8 +110,9 @@ public class LingClassLoader extends URLClassLoader {
      */
     public static void addSharedApiPackages(Collection<String> packages) {
         if (packages != null) {
+            ensureSharedBoundaryMutable("add shared API packages");
             sharedApiPackages.addAll(packages);
-            log.info("📦 Added shared API packages: {}", packages);
+            log.info("📦 [SharedApi] Added shared API packages {}", packages);
         }
     }
 
@@ -109,12 +120,40 @@ public class LingClassLoader extends URLClassLoader {
      * 清空共享 API 包列表
      */
     public static void clearSharedApiPackages() {
+        ensureSharedBoundaryMutable("clear shared API packages");
         sharedApiPackages.clear();
+    }
+
+    /**
+     * 冻结共享 API 边界。
+     * ⚠️ 冻结时机必须早于首个灵元实现类的真实装载，否则委派规则的观测结果会前后不一致。
+     */
+    public static void freezeSharedApiBoundary() {
+        if (SHARED_API_BOUNDARY_FROZEN.compareAndSet(false, true)) {
+            log.info("🔒 [SharedApi] LingClassLoader shared API boundary frozen");
+        }
+    }
+
+    /**
+     * 仅用于关闭阶段或测试重置。
+     */
+    public static void resetSharedApiBoundary() {
+        SHARED_API_BOUNDARY_FROZEN.set(false);
+        sharedApiPackages.clear();
+        additionalParentPackages.clear();
+    }
+
+    private static void ensureSharedBoundaryMutable(String action) {
+        // ⚠️ 如果允许在运行期继续改委派包前缀，同一个 ClassLoader 里的“已加载类”和“未加载类”
+        // 可能从此走不同的解析路径，最后不是功能错，而是类型系统整体失真。
+        if (SHARED_API_BOUNDARY_FROZEN.get()) {
+            throw new IllegalStateException("Shared API boundary already frozen, cannot " + action);
+        }
     }
 
     @Override
     public Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-        // ✅ 关闭状态检查
+        // ⚠️ 关闭后的 ClassLoader 继续参与委派，会把卸载期问题拖成诡异的 NoClassDefFoundError/LinkageError
         if (closed) {
             throw new ClassLoaderException(lingId, name,
                     String.format("ClassLoader for ling [%s] has been closed, cannot load class: %s",
@@ -210,7 +249,7 @@ public class LingClassLoader extends URLClassLoader {
             // 调用父类的 close() 释放 JAR 文件句柄
             super.close();
 
-            // 🔥 清理 URLClassPath 内部缓存（loaders, path 等）
+            // 🔥 清理 URLClassPath 内部缓存（loaders、path 等）
             // super.close() 已关闭文件句柄，但某些 JVM 实现可能在 URLClassPath 中残留引用
             cleanupInternalCaches();
 
@@ -331,21 +370,21 @@ public class LingClassLoader extends URLClassLoader {
     }
 
     private boolean shouldDelegateToParent(String name) {
-        // ✅ 检查内置白名单
+        // 检查内置白名单
         for (String pkg : FORCE_PARENT_PACKAGES) {
             if (name.startsWith(pkg)) {
                 return true;
             }
         }
 
-        // ✅ 检查共享 API 包（委派给 SharedApiClassLoader）
+        // 检查共享 API 包（委派给 SharedApiClassLoader）
         for (String pkg : sharedApiPackages) {
             if (name.startsWith(pkg)) {
                 return true;
             }
         }
 
-        // ✅ 检查动态添加的白名单
+        // 检查动态添加的白名单
         for (String pkg : additionalParentPackages) {
             if (name.startsWith(pkg)) {
                 return true;

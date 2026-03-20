@@ -36,11 +36,11 @@
 | --- | --- | --- | --- |
 | `LingInstance` | 实例层 | 持有单实例运行实体与实例级 FSM 载体 | 否，对外不开放 |
 | `InstanceCoordinator` | 实例层 | 单实例状态唯一正式写入口，发布实例状态事件 | 是 |
-| `InstancePool` | 宿主层 | 管理活跃实例、默认实例、死亡队列 | 否，只管成员关系 |
-| `LingRuntime` | 运行时宿主层 | 持有配置、统计和实例池，对外暴露运行时只读视图 | 否 |
+| `InstancePool` | 灵核成员层 | 管理活跃实例、默认实例、死亡队列 | 否，只管成员关系 |
+| `LingRuntime` | 运行时聚合层 | 持有配置、统计和实例池，对外暴露运行时只读视图 | 否 |
 | `RuntimeCoordinator` | 运行时层 | 持有 `RuntimeStatus` FSM，聚合实例快照并发布运行时事件 | 是 |
-| `DefaultLingLifecycleEngine` | 编排层 | 把部署/卸载意图翻译成阶段化动作 | 否，编排而不直接改状态 |
-| `LingLifecycleManager` | 宿主执行层 | 完成实例启动、入池、退役、销毁等宿主阶段 | 否，必要时委托 coordinator |
+| `DefaultLingLifecycleEngine` | 编排层 | 把部署/卸载意图翻译成阶段化动作，并驱动部署/卸载顺序 | 否，编排而不直接改状态 |
+| `LingUnloadCoordinator` | 卸载清理层 | 回收管道资源、调用守卫清理并执行泄漏检测 | 否 |
 
 ## 两层状态机分别管什么
 
@@ -185,7 +185,8 @@ snapshots[lingId][version] = InstanceStatus
 ### 编排层做什么
 
 - `DefaultLingLifecycleEngine` 负责把部署/卸载意图拆成阶段
-- `LingLifecycleManager` 负责实例启动、入池、退役和销毁的宿主执行顺序
+- `DefaultLingLifecycleEngine` 负责实例启动、入池、退役和卸载的整体顺序
+- `LingUnloadCoordinator` 负责卸载后的资源清理与泄漏检测
 
 ### 编排层不做什么
 
@@ -282,7 +283,7 @@ runtime shutdown
 
 ### 第二，实例池与生命周期编排仍存在顺序耦合
 
-这是宿主层不可避免的现实，因为“入池”“切默认”“退役旧版本”“销毁资源”本来就有顺序要求。
+这是灵核侧不可避免的现实，因为“入池”“切默认”“退役旧版本”“销毁资源”本来就有顺序要求。
 
 当前做法不是消除顺序，而是把顺序集中在编排层，并把状态写权限收敛到协调器。
 
@@ -307,7 +308,7 @@ runtime shutdown
 5. `RuntimeCoordinator`
 6. `InstancePool`
 7. `LingRuntime`
-8. `LingLifecycleManager`
-9. `DefaultLingLifecycleEngine`
+8. `DefaultLingLifecycleEngine`
+9. `LingUnloadCoordinator`
 
 读完这条链，再看技术指导文档中的扩展与排障章节，会更容易建立完整心智模型。

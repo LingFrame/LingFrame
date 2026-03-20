@@ -8,6 +8,7 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
@@ -38,7 +39,9 @@ public class SimulateService {
 
     /**
      * 模拟资源访问权限校验
-     * 这将发起一次完全真实的 Dry-Run 流向内核，收集决策追踪
+     * 这将发起一次完全真实的内核级模拟调用，收集决策追踪。
+     * ⚠️ 这里不再走“控制台自己拼一套规则”的旁路逻辑，而是强制借道真实 Pipeline，
+     * 否则控制台看到的结果和线上真实治理链就会越跑越不一致。
      */
     public SimulateResultDTO simulateResource(String lingId, String resourceType) {
         LingRuntime runtime = lingRepository.getRuntime(lingId);
@@ -63,8 +66,8 @@ public class SimulateService {
         ctx.setRequiredPermission(mapPermission(resourceType));
         ctx.setShouldAudit(true);
         ctx.setAuditAction("SIMULATE:" + resourceType.toUpperCase());
-        // 【核心下沉】：直接要求微内核提供无副作用演练
-        ctx.setDryRun(true);
+        // 【核心下沉】直接要求微内核以“无副作用”模式跑完整治理链，而不是 dashboard 自己偷跑一套逻辑
+        ctx.setExecutionMode(InvocationExecutionMode.SIMULATION);
         ctx.setRuntime(runtime);
 
         boolean allowed;
@@ -166,7 +169,7 @@ public class SimulateService {
             ctx.setAuditAction("IPC_CALL");
 
             try {
-                // Pipeline Phase 1: Routing
+                // 第 1 阶段：路由预热与基础可用性检查
                 publishTrace(traceId, lingId, "  ↳ Pipeline routing...", "IN", 2);
 
                 LingInstance routed = targetRuntime.getInstancePool().getDefault();
@@ -175,16 +178,16 @@ public class SimulateService {
                 }
                 targetRuntime.recordRequest(false);
 
-                ctx.setDryRun(true);
+                ctx.setExecutionMode(InvocationExecutionMode.SIMULATION);
                 ctx.setRuntime(targetRuntime);
 
-                // 🔥 通过真实 Pipeline 统一入口执行干跑
+                // 🔥 通过真实 Pipeline 统一入口执行模拟，避免控制台和内核维护两套语义
                 pipelineEngine.invoke(ctx);
 
                 allowed = true;
                 message = "IPC Call Simulated Success";
 
-                // Detect if bypassed by dev mode
+                // 检查是否被开发模式豁免
                 if (isDevModeBypass(lingId, "ipc:" + targetLingId, AccessType.EXECUTE)) {
                     message += " (⚠️ Dev Mode Bypass)";
                     ctx.addTrace(EngineTrace.builder()
@@ -276,7 +279,7 @@ public class SimulateService {
 
     /**
      * 模拟特定方法的调用
-     * 通过 DryRun 交给核心引擎，消除老旧的反射加载动作
+     * 通过核心引擎执行统一模拟，消除老旧的反射直连逻辑。
      */
     public SimulateResultDTO simulateMethod(String lingId, String className, String methodName,
             AccessType targetAccess) {
@@ -310,10 +313,11 @@ public class SimulateService {
             ctx.setShouldAudit(true);
             ctx.setAuditAction("SIMULATE:METHOD");
 
-            ctx.setDryRun(true);
+            // ⚠️ 模拟方法调用也必须走同一条 Pipeline，否则权限决策、超时和审计来源都会失真
+            ctx.setExecutionMode(InvocationExecutionMode.SIMULATION);
             ctx.setRuntime(runtime);
 
-            // 🔥 通过真实 Pipeline 统一入口执行干跑推演
+            // 🔥 通过真实 Pipeline 统一入口执行模拟推演
             Object result = pipelineEngine.invoke(ctx);
 
             allowed = true;

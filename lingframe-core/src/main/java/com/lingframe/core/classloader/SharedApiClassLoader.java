@@ -16,71 +16,85 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 /**
- * 共享 API ClassLoader
- * 职责：作为灵核 ClassLoader 和灵元 ClassLoader 之间的中间层，
- * 加载各灵元共享的 API 包（接口 + DTO），实现跨灵元类共享
+ * 共享 API ClassLoader。
+ * 职责：作为灵核 ClassLoader 和 LingClassLoader 之间的中间层，
+ * 统一加载各灵元共享的接口、DTO 与契约类。
  * <p>
  * 类加载层级：
- * 
+ *
  * <pre>
- * 灵核 ClassLoader (JDK, Spring, lingframe-api, 灵核业务)
+ * 灵核 ClassLoader（JDK / Spring / lingframe-api / 灵核业务）
  *         ↓ parent
- * SharedApiClassLoader (各灵元的 -api.jar)
+ * SharedApiClassLoader（各灵元共享的 API 契约）
  *         ↓ parent
- * LingClassLoader (各灵元的实现)
+ * LingClassLoader（各灵元实现）
  * </pre>
  * <p>
  * 安全设计：
- * 1. 只有灵核/框架可以添加 API JAR，灵元不能自行添加
- * 2. 加载前检查类是否已存在，防止覆盖
- * 3. 记录已加载的 API JAR，防止重复加载
+ * 1. 只有框架 bootstrap 阶段允许向共享层注入 API JAR / classes 目录
+ * 2. 加载前记录并检测类冲突，至少把“谁先占坑”说明白
+ * 3. 边界 freeze 后禁止继续修改，避免运行时出现共享契约漂移
  */
 @Slf4j
 public class SharedApiClassLoader extends URLClassLoader {
 
-    // 单例实例
+    // 单例实例。共享层在单进程内只能有一份，否则“共享 API”会退化成多个平行宇宙。
     private static volatile SharedApiClassLoader INSTANCE;
 
-    // 已加载的 API JAR 路径（防止重复加载）
+    // 🔒 边界冻结后不允许继续向共享层塞入新契约
+    private static volatile boolean BOUNDARY_FROZEN;
+
+    // 已加载的 JAR / classes 目录路径，用于幂等去重
     private final Set<String> loadedJars = ConcurrentHashMap.newKeySet();
 
-    // 已加载的类名 -> 来源 JAR（用于冲突检测和调试）
+    // 类名 -> 来源，用于冲突检测和调试定位
     private final Map<String, String> classSourceMap = new ConcurrentHashMap<>();
 
     /**
-     * 获取单例实例
-     * 首次调用时创建，使用灵核 ClassLoader 作为 parent
-     *
-     * @param hostClassLoader 灵核 ClassLoader
-     * @return 共享 API ClassLoader 实例
+     * 获取单例实例。
      */
-    public static synchronized SharedApiClassLoader getInstance(ClassLoader hostClassLoader) {
+    public static synchronized SharedApiClassLoader getInstance(ClassLoader lingCoreClassLoader) {
         if (INSTANCE == null) {
-            INSTANCE = new SharedApiClassLoader(hostClassLoader);
-            log.info("📦 [LingFrame] SharedApiClassLoader initialized");
+            INSTANCE = new SharedApiClassLoader(lingCoreClassLoader);
+            log.info("📦 [SharedApi] SharedApiClassLoader initialized");
         }
         return INSTANCE;
     }
 
     /**
-     * 获取已初始化的实例（如果未初始化返回 null）
+     * 获取已初始化的实例；未初始化时返回 null。
      */
     public static SharedApiClassLoader getInstanceOrNull() {
         return INSTANCE;
     }
 
     /**
-     * 重置实例（仅用于测试）
+     * 冻结共享 API 边界。
+     */
+    public static synchronized void freezeBoundary() {
+        if (!BOUNDARY_FROZEN) {
+            BOUNDARY_FROZEN = true;
+            log.info("🔒 [SharedApi] Shared API classloader boundary frozen");
+        }
+    }
+
+    public static boolean isBoundaryFrozen() {
+        return BOUNDARY_FROZEN;
+    }
+
+    /**
+     * 仅用于测试和容器关闭后的全量重置。
      */
     public static synchronized void resetInstance() {
         if (INSTANCE != null) {
             try {
                 INSTANCE.close();
             } catch (Exception e) {
-                log.warn("Error closing SharedApiClassLoader", e);
+                log.warn("⚠️ [SharedApi] Error while closing SharedApiClassLoader", e);
             }
             INSTANCE = null;
         }
+        BOUNDARY_FROZEN = false;
     }
 
     private SharedApiClassLoader(ClassLoader parent) {
@@ -88,103 +102,102 @@ public class SharedApiClassLoader extends URLClassLoader {
     }
 
     /**
-     * 添加 API JAR 到共享类加载器
-     * 只有通过此方法添加的 JAR 中的类才能被共享访问
-     *
-     * @param apiJar API JAR 文件
-     * @throws IllegalStateException 如果 JAR 无效或包含冲突的类
+     * 添加 API JAR。
      */
     public void addApiJar(File apiJar) {
+        assertBoundaryMutable("add API JAR");
         if (apiJar == null || !apiJar.exists()) {
             throw new InvalidArgumentException("apiJar", "API JAR does not exist: " + apiJar);
         }
 
         String jarPath = apiJar.getAbsolutePath();
-
-        // 防止重复加载
         if (loadedJars.contains(jarPath)) {
-            log.debug("API JAR already loaded, skipping: {}", jarPath);
+            log.debug("[SharedApi] API JAR already loaded, skipping {}", jarPath);
             return;
         }
 
-        // 冲突检测：扫描 JAR 中的类，检查是否与已加载的类冲突
+        // ⚠️ 这里只做“类名冲突预警”，不主动覆盖旧类。
+        // Shared API 一旦发生同名契约冲突，强行替换比显式暴露问题更危险。
         try {
             checkClassConflicts(apiJar);
         } catch (Exception e) {
             throw new ClassLoaderException(null, jarPath, "API JAR conflict detection failed", e);
         }
 
-        // 添加 URL
         try {
             addURL(apiJar.toURI().toURL());
             loadedJars.add(jarPath);
-            log.info("📦 [SharedApi] JAR loaded: {}", apiJar.getName());
+            log.info("📦 [SharedApi] Loaded JAR {}", apiJar.getName());
         } catch (MalformedURLException e) {
             throw new ClassLoaderException(null, jarPath, "Failed to add API JAR", e);
         }
     }
 
     /**
-     * 添加 API classes 目录到共享类加载器
-     * 用于开发模式下加载未打包的类文件
-     *
-     * @param classesDir classes 目录
-     * @throws IllegalStateException 如果目录无效
+     * 添加 API classes 目录。
      */
     public void addApiClassesDir(File classesDir) {
+        assertBoundaryMutable("add API classes directory");
         if (classesDir == null || !classesDir.exists() || !classesDir.isDirectory()) {
             throw new InvalidArgumentException("classesDir", "Invalid classes directory: " + classesDir);
         }
 
         String dirPath = classesDir.getAbsolutePath();
-
-        // 防止重复加载
         if (loadedJars.contains(dirPath)) {
-            log.debug("classes directory already loaded, skipping: {}", dirPath);
+            log.debug("[SharedApi] Classes directory already loaded, skipping {}", dirPath);
             return;
         }
 
         try {
-            // 扫描目录中的类文件并记录
+            // 🔥 只扫描并登记类名，不主动 preload Class 对象，避免过早触发类初始化
             scanClassesDir(classesDir, classesDir, classesDir.getName());
-
-            // 添加 URL
             addURL(classesDir.toURI().toURL());
             loadedJars.add(dirPath);
-            log.info("📦 [SharedApi] classes directory loaded: {}", classesDir.getName());
+            log.info("📦 [SharedApi] Loaded classes directory {}", classesDir.getName());
         } catch (MalformedURLException e) {
             throw new ClassLoaderException(null, dirPath, "Failed to add classes directory", e);
         }
     }
 
+    private void assertBoundaryMutable(String action) {
+        // ⚠️ freeze 之后再追加共享契约，会让不同时间创建的灵元看到不同 ABI 视图
+        if (BOUNDARY_FROZEN) {
+            throw new IllegalStateException("Shared API boundary already frozen, cannot " + action);
+        }
+    }
+
     /**
-     * 扫描 classes 目录中的类文件
+     * 扫描 classes 目录。
+     * 注意这里只记录类名和来源，不保留 Class 对象本身。
      */
     private void scanClassesDir(File baseDir, File currentDir, String sourceName) {
         File[] files = currentDir.listFiles();
-        if (files == null)
+        if (files == null) {
             return;
+        }
 
         for (File file : files) {
             if (file.isDirectory()) {
                 scanClassesDir(baseDir, file, sourceName);
-            } else if (file.getName().endsWith(".class")) {
-                // 计算类名
-                String relativePath = baseDir.toURI().relativize(file.toURI()).getPath();
-                String className = relativePath.substring(0, relativePath.length() - 6).replace('/', '.');
+                continue;
+            }
+            if (!file.getName().endsWith(".class")) {
+                continue;
+            }
 
-                String existingSource = classSourceMap.get(className);
-                if (existingSource != null) {
-                    log.warn("⚠️ Class conflict: {} already loaded by {}", className, existingSource);
-                } else {
-                    classSourceMap.put(className, sourceName);
-                }
+            String relativePath = baseDir.toURI().relativize(file.toURI()).getPath();
+            String className = relativePath.substring(0, relativePath.length() - 6).replace('/', '.');
+            String existingSource = classSourceMap.get(className);
+            if (existingSource != null) {
+                log.warn("⚠️ [SharedApi] Class conflict detected: {} already loaded from {}", className, existingSource);
+            } else {
+                classSourceMap.put(className, sourceName);
             }
         }
     }
 
     /**
-     * 检查 JAR 中的类是否与已加载的类冲突
+     * 检查 JAR 中的类是否与已加载共享契约冲突。
      */
     private void checkClassConflicts(File jarFile) throws Exception {
         try (JarFile jar = new JarFile(jarFile)) {
@@ -193,10 +206,9 @@ public class SharedApiClassLoader extends URLClassLoader {
                     .filter(entry -> entry.getName().endsWith(".class"))
                     .map(this::entryToClassName)
                     .forEach(className -> {
-                        // 检查是否已被其他 JAR 加载
                         String existingSource = classSourceMap.get(className);
                         if (existingSource != null) {
-                            log.warn("⚠️ Class conflict: {} already loaded by {}, version in {} will be ignored",
+                            log.warn("⚠️ [SharedApi] Class conflict detected: {} already loaded from {}, version in {} will be ignored",
                                     className, existingSource, jarName);
                         } else {
                             classSourceMap.put(className, jarName);
@@ -206,47 +218,34 @@ public class SharedApiClassLoader extends URLClassLoader {
     }
 
     /**
-     * 将 JAR 条目名称转换为类名
+     * 将 JAR 条目名转成标准类名。
      */
     private String entryToClassName(JarEntry entry) {
         String name = entry.getName();
-        // 移除 .class 后缀并将 / 替换为 .
         return name.substring(0, name.length() - 6).replace('/', '.');
     }
 
-    /**
-     * 检查指定类是否由共享 ClassLoader 加载
-     */
     public boolean isSharedClass(String className) {
         return classSourceMap.containsKey(className);
     }
 
-    /**
-     * 获取已加载的 API JAR 数量
-     */
     public int getLoadedJarCount() {
         return loadedJars.size();
     }
 
-    /**
-     * 获取已加载的共享类数量
-     */
     public int getSharedClassCount() {
         return classSourceMap.size();
     }
 
     /**
-     * 获取所有共享类的包前缀（用于 LingClassLoader 委派）
-     * 返回去重后的包名前缀列表
+     * 提取所有共享类的包前缀，供 LingClassLoader 建立强制委派白名单。
      */
     public Set<String> getSharedPackagePrefixes() {
         Set<String> packages = new HashSet<>();
         for (String className : classSourceMap.keySet()) {
             int lastDot = className.lastIndexOf('.');
             if (lastDot > 0) {
-                // 获取包名并加上点号作为前缀
-                String packageName = className.substring(0, lastDot + 1);
-                packages.add(packageName);
+                packages.add(className.substring(0, lastDot + 1));
             }
         }
         return packages;
@@ -254,7 +253,7 @@ public class SharedApiClassLoader extends URLClassLoader {
 
     @Override
     public String toString() {
-        return String.format("SharedApiClassLoader[jars=%d, classes=%d]",
-                loadedJars.size(), classSourceMap.size());
+        return String.format("SharedApiClassLoader[jars=%d, classes=%d, frozen=%s]",
+                loadedJars.size(), classSourceMap.size(), BOUNDARY_FROZEN);
     }
 }

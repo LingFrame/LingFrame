@@ -269,7 +269,7 @@ public class LingFrameCoreConfiguration {
                 .getIfAvailable(() -> new FilterRegistry(methodCache, permissionService, invoker, arbitrator));
         // 初始化内置 Filter 并注入依赖（构造器注入）
         registry.initialize(lingRepository, trafficRouter, eventBus, runtimeCoordinator);
-        // 从宿主 ClassLoader 加载 SPI 扩展
+        // 从灵核 ClassLoader 加载 SPI 扩展
         registry.loadSpiFilters(Thread.currentThread().getContextClassLoader());
         return new InvocationPipelineEngine(registry);
     }
@@ -294,8 +294,8 @@ public class LingFrameCoreConfiguration {
 
     @Bean(destroyMethod = "shutdown")
     public SharedApiManager sharedApiManager(LingFrameConfig config) {
-        ClassLoader hostCL = Thread.currentThread().getContextClassLoader();
-        return new SharedApiManager(hostCL, config);
+        ClassLoader lingCoreCL = Thread.currentThread().getContextClassLoader();
+        return new SharedApiManager(lingCoreCL, config);
     }
 
     @Bean
@@ -306,7 +306,14 @@ public class LingFrameCoreConfiguration {
             if (!BOOTSTRAP_DONE.compareAndSet(false, true)) {
                 return;
             }
+
+            // ⚠️ 顺序不能反：
+            // 1. 先预加载共享契约
+            // 2. 再冻结共享边界
+            // 3. 最后才允许发现并装载灵元实现
+            // 否则不同灵元可能看到不同版本的共享 ABI 视图。
             sharedApiManager.preloadFromConfig();
+            sharedApiManager.freezeSharedBoundary();
             discoveryService.scanAndLoad();
         };
     }

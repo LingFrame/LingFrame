@@ -13,7 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("DefaultPermissionService 灵元测试")
+@DisplayName("DefaultPermissionService 测试")
 class DefaultPermissionServiceTest {
 
     private DefaultPermissionService permissionService;

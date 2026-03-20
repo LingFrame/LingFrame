@@ -11,6 +11,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
 import java.lang.reflect.Method;
@@ -90,8 +91,9 @@ public class DefaultLingContext implements LingContext {
         ctx.setParameterTypeNames(paramTypeNames);
         ctx.setArgs(args);
 
-        ctx.getAttachments().put("ling.target.className", className);
-        ctx.getAttachments().put("ling.caller.id", lingId);
+        // 入口层如果已经知道目标类名，就直接写入 resolution 分区，避免后续再通过字符串附件兜底传播
+        ctx.resolution().setTargetClassName(className);
+        ctx.setExecutionMode(InvocationExecutionMode.NORMAL);
 
         try {
             Object result = pipelineEngine.invoke(ctx);
@@ -102,6 +104,7 @@ public class DefaultLingContext implements LingContext {
             log.error("Service invocation failed for [{}]: {}", serviceId, e.getMessage(), e);
             throw new InvocationException("Service invoke failed: " + e.getMessage(), e);
         } finally {
+            // 这里至少要彻底清空，防止跨调用残留；若后续统一收口对象池策略，可再整体切到 recycle()
             ctx.reset();
         }
     }

@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("LingRuntimeConfig 灵元测试")
+@DisplayName("LingRuntimeConfig 测试")
 public class LingRuntimeConfigTest {
 
     @Nested
@@ -115,7 +115,7 @@ public class LingRuntimeConfigTest {
     }
 
     @Nested
-    @DisplayName("toString")
+    @DisplayName("字符串表示")
     class ToStringTests {
 
         @Test

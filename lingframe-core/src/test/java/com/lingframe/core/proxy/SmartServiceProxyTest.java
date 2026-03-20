@@ -5,6 +5,8 @@ import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -12,18 +14,24 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Proxy;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@DisplayName("SmartServiceProxy 测试")
 class SmartServiceProxyTest {
 
     @Mock
     private InvocationPipelineEngine pipelineEngine;
 
     private SmartServiceProxy smartServiceProxy;
-
     private DemoService proxyInstance;
 
     interface DemoService {
@@ -46,57 +54,64 @@ class SmartServiceProxyTest {
         InvocationContext.obtain().reset();
     }
 
-    @Test
-    void invoke_WhenObjectMethod_ShouldExecuteLocally() {
-        assertNotNull(proxyInstance.toString());
-        assertEquals(proxyInstance.hashCode(), proxyInstance.hashCode());
-        // verify pipeline Engine was not called
-        verifyNoInteractions(pipelineEngine);
+    @Nested
+    @DisplayName("Object 基础方法")
+    class ObjectMethodTests {
+
+        @Test
+        @DisplayName("调用 Object 方法时应在本地执行")
+        void invoke_WhenObjectMethod_ShouldExecuteLocally() {
+            assertNotNull(proxyInstance.toString());
+            assertEquals(proxyInstance.hashCode(), proxyInstance.hashCode());
+            verifyNoInteractions(pipelineEngine);
+        }
     }
 
-    @Test
-    void invoke_WhenServiceMethod_ShouldContextBePopulatedAndReset() throws Throwable {
-        when(pipelineEngine.invoke(any(InvocationContext.class))).thenAnswer(invocation -> {
-            InvocationContext ctx = invocation.getArgument(0);
+    @Nested
+    @DisplayName("服务调用")
+    class ServiceInvocationTests {
 
-            // Assert context properties during execution
-            assertEquals("target-ling:com.lingframe.core.proxy.SmartServiceProxyTest$DemoService",
-                    ctx.getServiceFQSID());
-            assertEquals("sayHello", ctx.getMethodName());
-            assertEquals("target-ling", ctx.getTargetLingId());
-            assertEquals("caller-ling", ctx.getCallerLingId());
-            assertEquals(AccessType.EXECUTE, ctx.getAccessType());
-            assertNotNull(ctx.getParameterTypeNames());
-            assertArrayEquals(new Object[] { "World" }, ctx.getArgs());
+        @Test
+        @DisplayName("服务方法调用时应填充并在结束后重置上下文")
+        void invoke_WhenServiceMethod_ShouldContextBePopulatedAndReset() throws Throwable {
+            when(pipelineEngine.invoke(any(InvocationContext.class))).thenAnswer(invocation -> {
+                InvocationContext ctx = invocation.getArgument(0);
 
-            return "Hello World";
-        });
+                assertEquals("target-ling:com.lingframe.core.proxy.SmartServiceProxyTest$DemoService",
+                        ctx.getServiceFQSID());
+                assertEquals("sayHello", ctx.getMethodName());
+                assertEquals("target-ling", ctx.getTargetLingId());
+                assertEquals("caller-ling", ctx.getCallerLingId());
+                assertEquals(AccessType.EXECUTE, ctx.getAccessType());
+                assertNotNull(ctx.getParameterTypeNames());
+                assertArrayEquals(new Object[] { "World" }, ctx.getArgs());
 
-        String result = proxyInstance.sayHello("World");
+                return "Hello World";
+            });
 
-        assertEquals("Hello World", result);
+            String result = proxyInstance.sayHello("World");
 
-        // After invocation, the ThreadLocal context MUST be reset
-        InvocationContext afterCtx = InvocationContext.obtain();
-        assertNull(afterCtx.getServiceFQSID());
-        assertNull(afterCtx.getMethodName());
-        assertNull(afterCtx.getArgs());
-        assertTrue(afterCtx.getAttachments() == null || afterCtx.getAttachments().isEmpty());
-    }
+            assertEquals("Hello World", result);
 
-    @Test
-    void invoke_WhenPipelineThrowsException_ShouldThrowDirectlyAndResetContext() throws Throwable {
-        RuntimeException bizException = new RuntimeException("Business Rule Violated");
-        when(pipelineEngine.invoke(any(InvocationContext.class))).thenThrow(bizException);
+            InvocationContext afterCtx = InvocationContext.obtain();
+            assertNull(afterCtx.getServiceFQSID());
+            assertNull(afterCtx.getMethodName());
+            assertNull(afterCtx.getArgs());
+            assertTrue(afterCtx.getAttachments() == null || afterCtx.getAttachments().isEmpty());
+        }
 
-        RuntimeException thrown = assertThrows(RuntimeException.class, () -> {
-            proxyInstance.throwError();
-        });
+        @Test
+        @DisplayName("管线抛出异常时应直接透传并重置上下文")
+        void invoke_WhenPipelineThrowsException_ShouldThrowDirectlyAndResetContext() throws Throwable {
+            RuntimeException bizException = new RuntimeException("Business Rule Violated");
+            when(pipelineEngine.invoke(any(InvocationContext.class))).thenThrow(bizException);
 
-        assertEquals("Business Rule Violated", thrown.getMessage());
+            RuntimeException thrown = assertThrows(RuntimeException.class, () -> proxyInstance.throwError());
 
-        // Context still must be reset
-        InvocationContext afterCtx = InvocationContext.obtain();
-        assertNull(afterCtx.getServiceFQSID());
+            assertEquals("Business Rule Violated", thrown.getMessage());
+
+            InvocationContext afterCtx = InvocationContext.obtain();
+            assertNull(afterCtx.getServiceFQSID());
+        }
     }
 }

@@ -3,7 +3,7 @@ package com.lingframe.core.deploy;
 import java.io.File;
 
 /**
- * 宿主级别的高级部署门面。
+ * 灵核级别的高级部署门面。
  * <p>
  * 提供更高维度的统一下载与安装能力，隔离底层纯净的微内核 (Core)。
  * 未来可以扩展支持 http:// 或 oss:// 等基于 URI 的资源拉取。

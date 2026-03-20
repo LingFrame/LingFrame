@@ -218,7 +218,7 @@ If those two concepts are starting to collide badly, then further separation may
 Change orchestration first:
 
 - `DefaultLingLifecycleEngine`
-- `LingLifecycleManager`
+- `LingUnloadCoordinator` when the change affects unload cleanup
 
 Do not start by changing coordinators unless state ownership itself is changing.
 
@@ -228,7 +228,7 @@ Place it on the right layer:
 
 - instance fact change -> instance event chain
 - runtime macro change -> runtime event chain
-- membership change -> host layer
+- membership change -> kernel membership layer
 
 Do not cross-write state across layers.
 
@@ -291,6 +291,6 @@ If any answer is yes, the patch needs scrutiny.
 6. `RuntimeCoordinator`
 7. `InstancePool`
 8. `LingRuntime`
-9. `LingLifecycleManager`
-10. `DefaultLingLifecycleEngine`
+9. `DefaultLingLifecycleEngine`
+10. `LingUnloadCoordinator`
 11. [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md)

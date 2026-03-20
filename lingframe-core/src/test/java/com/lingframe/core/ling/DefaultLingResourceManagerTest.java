@@ -2,6 +2,7 @@ package com.lingframe.core.ling;
 
 import com.lingframe.core.event.InstanceDestroyedEvent;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -17,48 +18,54 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@DisplayName("DefaultLingResourceManager 测试")
 class DefaultLingResourceManagerTest {
 
-    @Test
-    @DisplayName("仍有实例时不应回收线程池")
-    void shouldNotReclaimThreadPoolWhenInstancesRemain() throws Exception {
-        LingRepository repository = mock(LingRepository.class);
-        LingRuntime runtime = mock(LingRuntime.class);
-        InstancePool instancePool = mock(InstancePool.class);
+    @Nested
+    @DisplayName("线程池回收")
+    class ThreadPoolReclaimTests {
 
-        when(repository.getRuntime("ling-a")).thenReturn(runtime);
-        when(runtime.getInstancePool()).thenReturn(instancePool);
-        when(instancePool.getAllInstances()).thenReturn(Collections.singletonList(mock(LingInstance.class)));
+        @Test
+        @DisplayName("仍有实例存活时不应回收线程池")
+        void shouldNotReclaimThreadPoolWhenInstancesRemain() throws Exception {
+            LingRepository repository = mock(LingRepository.class);
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool instancePool = mock(InstancePool.class);
 
-        DefaultLingResourceManager manager = new DefaultLingResourceManager(repository, null, null);
-        manager.allocateThreadPool("ling-a", 1);
+            when(repository.getRuntime("ling-a")).thenReturn(runtime);
+            when(runtime.getInstancePool()).thenReturn(instancePool);
+            when(instancePool.getAllInstances()).thenReturn(Collections.singletonList(mock(LingInstance.class)));
 
-        manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0"));
+            DefaultLingResourceManager manager = new DefaultLingResourceManager(repository, null, null);
+            manager.allocateThreadPool("ling-a", 1);
 
-        Map<String, ExecutorService> pools = getThreadPools(manager);
-        assertTrue(pools.containsKey("ling-a"));
+            manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0"));
 
-        manager.shutdown();
-    }
+            Map<String, ExecutorService> pools = getThreadPools(manager);
+            assertTrue(pools.containsKey("ling-a"));
 
-    @Test
-    @DisplayName("无实例时应回收线程池")
-    void shouldReclaimThreadPoolWhenNoInstancesRemain() throws Exception {
-        LingRepository repository = mock(LingRepository.class);
-        LingRuntime runtime = mock(LingRuntime.class);
-        InstancePool instancePool = mock(InstancePool.class);
+            manager.shutdown();
+        }
 
-        when(repository.getRuntime("ling-a")).thenReturn(runtime);
-        when(runtime.getInstancePool()).thenReturn(instancePool);
-        when(instancePool.getAllInstances()).thenReturn(Collections.emptyList());
+        @Test
+        @DisplayName("无实例存活时应回收线程池")
+        void shouldReclaimThreadPoolWhenNoInstancesRemain() throws Exception {
+            LingRepository repository = mock(LingRepository.class);
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool instancePool = mock(InstancePool.class);
 
-        DefaultLingResourceManager manager = new DefaultLingResourceManager(repository, null, null);
-        manager.allocateThreadPool("ling-a", 1);
+            when(repository.getRuntime("ling-a")).thenReturn(runtime);
+            when(runtime.getInstancePool()).thenReturn(instancePool);
+            when(instancePool.getAllInstances()).thenReturn(Collections.emptyList());
 
-        manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0"));
+            DefaultLingResourceManager manager = new DefaultLingResourceManager(repository, null, null);
+            manager.allocateThreadPool("ling-a", 1);
 
-        Map<String, ExecutorService> pools = getThreadPools(manager);
-        assertFalse(pools.containsKey("ling-a"));
+            manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0"));
+
+            Map<String, ExecutorService> pools = getThreadPools(manager);
+            assertFalse(pools.containsKey("ling-a"));
+        }
     }
 
     @SuppressWarnings("unchecked")

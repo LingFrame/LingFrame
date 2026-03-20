@@ -3,57 +3,128 @@ package com.lingframe.core.pipeline;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.model.EngineTrace;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.lang.ref.WeakReference;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
 /**
- * 调用上下文：Pipeline 全链路的唯一"通行证"
+ * 调用上下文：Pipeline 全链路的唯一“通行证”。
  * ⚠️【高危警告：防止 ClassLoader 内存泄漏】⚠️
- * 本对象通过 ThreadLocal 对象池复用，在宿主线程中长久存活。
- * 【铁律 2.0】优先使用 JDK 基础类型。允许持有 Core/API 层的复杂对象引用以提升性能，但遵循以下分级策略：
- * 1. 基础数据载体（如 EngineTrace）：若仅持有 String/int 等 JDK 基础类型且在 reset 时执行 clear，允许持有强引用
- * List。
- * 2. 运行时相关对象（如 LingRuntime / LingInstance）：【强制】必须使用 WeakReference。此类对象关联灵元
- * ClassLoader，强引用会导致卸载后内存泄漏。
- * 3. 对象池安全防护：即便使用弱引用，也必须在 reset 中显式置 null，从物理上断开引用链。
- * 严禁持有任何 Class 对象，严禁在池化对象中长期保存任何灵元实例相关的状态。
+ * 本对象通过 ThreadLocal 对象池复用，在灵核线程中可能长期存活。
+ * 新版架构把协议拆成 routing / resolution / governance / execution 四个显式分区，
+ * 目的不是“为了好看”，而是强制把“路由事实”“解析产物”“治理意图”“执行模式”分开，避免再次退回字符串附件驱动。
+ * <p>
+ * 【铁律 3.0】
+ * 1. 顶层字段优先只放 String / long / Map 等基础协议数据。
+ * 2. 运行时对象（如 LingRuntime）必须使用 WeakReference。
+ * 3. 解析阶段允许短暂持有 ClassLoader / Class<?>[] / Method 等强引用，但只能进入 resolution 分区，
+ *    并且必须在 reset() 中物理清空，绝不能跨调用残留。
+ * 4. attachments 已降级为扩展附件袋，不再承载核心协议，避免“字符串 key 驱动架构”继续蔓延。
  */
-
-@Data
+@Getter
+@Setter
 public class InvocationContext {
 
-    // 线程局部上下文栈，支持嵌套调用（如 Web -> Interceptor -> Proxy）
+    /**
+     * 线程局部对象池，减少高频调用时的上下文分配。
+     * 支持嵌套调用（例如 Web -> Interceptor -> Proxy）。
+     */
     private static final ThreadLocal<Deque<InvocationContext>> STACK = ThreadLocal.withInitial(ArrayDeque::new);
 
-    // ════════════════════════════════════════════
-    // 活跃上下文管理（独立于对象池，追踪当前线程正在使用的上下文）
-    // ════════════════════════════════════════════
+    /**
+     * 当前线程的活动上下文。
+     * 与对象池独立存在，用于线程传播和嵌套 attach / detach。
+     */
     private static final ThreadLocal<InvocationContext> CURRENT = new ThreadLocal<>();
 
+    // ════════════════════════════════════════════
+    // 第一部分：基础调用事实
+    // ════════════════════════════════════════════
+    private String serviceFQSID;
+    private String methodName;
+
+    // ⚠️ 绝不能改回 Class<?>[]，否则入口阶段就会把目标灵元的类型系统提前拉进灵核线程
+    private String[] parameterTypeNames;
+    private Object[] args;
+    private String targetLingId;
+    private String targetVersion;
+
     /**
-     * 获取当前线程的活跃上下文（可能为 null）
-     * 与 obtain() 不同，current() 不会创建新实例，仅返回已 attach 的上下文
+     * 运行时对象必须走弱引用。
+     * 否则对象池里的 InvocationContext 会把 Runtime 与其背后的灵元 ClassLoader 长期挂住。
+     */
+    private WeakReference<LingRuntime> runtimeRef;
+
+    // ════════════════════════════════════════════
+    // 第二部分：链路身份与治理入参
+    // ════════════════════════════════════════════
+    private String traceId;
+    private String callerLingId;
+    private long createTimeNanos;
+
+    private String resourceType;
+    private String resourceId;
+    private String operation;
+    private Map<String, String> labels;
+    private Map<String, Object> metadata;
+
+    /**
+     * 显式协议分区。
+     * ⚠️ 核心链路协议只能写入这些分区，不能再退回 attachments + magic key 模式。
+     */
+    private final InvocationRoutingState routingState = new InvocationRoutingState();
+    private final InvocationResolutionState resolutionState = new InvocationResolutionState();
+    private final InvocationGovernanceState governanceState = new InvocationGovernanceState();
+    private final InvocationExecutionState executionState = new InvocationExecutionState();
+
+    /**
+     * 扩展附件袋。
+     * 这里不再承载核心链路协议，只允许作为临时扩展槽位使用。
+     * ⚠️ 写入复杂对象时仍要谨慎，最好在 finally 中主动移除。
+     */
+    private final Map<String, Object> attachments = new HashMap<>();
+
+    private InvocationContext() {
+    }
+
+    /**
+     * 获取当前线程的活动上下文，不创建新实例。
      */
     public static InvocationContext current() {
         return CURRENT.get();
     }
 
     /**
-     * 将本上下文挂载为当前线程的活跃上下文
-     * @return 前一个活跃上下文（用于 detach 恢复嵌套调用栈）
+     * 获取可复用的上下文实例。
+     * ⚠️ 每次取出都必须强制 reset，一旦对象池里带脏数据，后果比多分配一个对象更难排查。
      */
-    public InvocationContext attach() {
-        InvocationContext prev = CURRENT.get();
-        CURRENT.set(this);
-        return prev;
+    public static InvocationContext obtain() {
+        Deque<InvocationContext> stack = STACK.get();
+        InvocationContext ctx = stack.isEmpty() ? new InvocationContext() : stack.pop();
+        ctx.reset();
+        return ctx;
     }
 
     /**
-     * 恢复前一个活跃上下文，断开当前上下文与线程的关联
-     * @param toRestore attach() 返回的前一个上下文
+     * 将当前上下文挂载到线程。
+     *
+     * @return 挂载前的活动上下文，用于后续恢复
+     */
+    public InvocationContext attach() {
+        InvocationContext previous = CURRENT.get();
+        CURRENT.set(this);
+        return previous;
+    }
+
+    /**
+     * 恢复上一个活动上下文。
      */
     public static void detach(InvocationContext toRestore) {
         if (toRestore != null) {
@@ -64,121 +135,141 @@ public class InvocationContext {
     }
 
     /**
-     * 获取或创建一个可用的上下文
-     */
-    public static InvocationContext obtain() {
-        Deque<InvocationContext> stack = STACK.get();
-        InvocationContext ctx;
-        if (stack.isEmpty()) {
-            ctx = new InvocationContext();
-        } else {
-            ctx = stack.pop();
-        }
-        // 关键防护：取出后强制全量重置，防止脏数据（特别是弱引用失效导致的残留状态）影响下一次调用
-        ctx.reset();
-        return ctx;
-    }
-
-    /**
-     * 将当前上下文归还到对象池
+     * 回收上下文到对象池。
      */
     public void recycle() {
-        this.reset();
+        reset();
         STACK.get().push(this);
     }
 
-    private InvocationContext() {
-        this.attachments = new HashMap<>();
+    /**
+     * 显式读取路由分区。
+     * 路由分区只描述“应该去哪个实例”，不描述如何解析方法。
+     */
+    public InvocationRoutingState routing() {
+        return routingState;
     }
 
-    // ════════════════════════════════════════════
-    // 第一部分：调用路由（Pipeline 核心依赖）
-    // ════════════════════════════════════════════
-    private String serviceFQSID;
-    private String methodName;
-    private String[] parameterTypeNames; // 绝不能用 Class<?>[]
-    private Object[] args;
-    private String targetLingId;
-    private String targetVersion;
+    /**
+     * 显式读取解析分区。
+     * 解析分区只承载 ClassLoader / Method 等短生命产物。
+     */
+    public InvocationResolutionState resolution() {
+        return resolutionState;
+    }
 
     /**
-     * 运行时弱引用 (防止灵元卸载后无法回收 ClassLoader)
+     * 显式读取治理分区。
+     * 治理分区描述权限、审计、超时等“运维意图”。
      */
-    private WeakReference<LingRuntime> runtimeRef;
+    public InvocationGovernanceState governance() {
+        return governanceState;
+    }
 
+    /**
+     * 显式读取执行分区。
+     * 执行分区描述本次调用要不要真实落地、要不要采样轨迹。
+     */
+    public InvocationExecutionState execution() {
+        return executionState;
+    }
+
+    /**
+     * 运行时对象使用弱引用，避免上下文池把 Runtime 长时间挂住。
+     */
     public void setRuntime(LingRuntime runtime) {
-        this.runtimeRef = (runtime != null) ? new WeakReference<>(runtime) : null;
+        this.runtimeRef = runtime == null ? null : new WeakReference<>(runtime);
     }
 
     public LingRuntime getRuntime() {
-        return (runtimeRef != null) ? runtimeRef.get() : null;
+        return runtimeRef == null ? null : runtimeRef.get();
     }
 
-    // ════════════════════════════════════════════
-    // 第二部分：链路追踪与身份
-    // ════════════════════════════════════════════
-    private String traceId;
-    private String callerLingId;
-    private long createTimeNanos;
-
-    // ════════════════════════════════════════════
-    // 第三部分：治理决策与运行推演 (Dry-Run & Trace)
-    // ════════════════════════════════════════════
-    private String resourceType;
-    private String resourceId;
-    private String operation;
-    private String requiredPermission;
-    private AccessType accessType;
-    private String auditAction;
-    private boolean shouldAudit;
-    private String ruleSource;
-
-    // ----- 干跑与追踪（流量回放核心） -----
-    /** 是否为干跑/模拟模式。开启后将在最后一环被拦截，不产生真实副作用 */
-    private boolean dryRun;
     /**
-     * 运行轨迹。只在干跑或特定需要强审计时采集。
-     * 由于 ThreadLocal 复用，应尽量复用 List 对象。
+     * 治理字段的聚合访问器，统一委派到治理分区。
      */
-    private List<EngineTrace> traces;
+    public String getRequiredPermission() {
+        return governanceState.getRequiredPermission();
+    }
+
+    public void setRequiredPermission(String requiredPermission) {
+        governanceState.setRequiredPermission(requiredPermission);
+    }
+
+    public AccessType getAccessType() {
+        return governanceState.getAccessType();
+    }
+
+    public void setAccessType(AccessType accessType) {
+        governanceState.setAccessType(accessType);
+    }
+
+    public boolean isShouldAudit() {
+        return governanceState.isShouldAudit();
+    }
+
+    public void setShouldAudit(boolean shouldAudit) {
+        governanceState.setShouldAudit(shouldAudit);
+    }
+
+    public String getAuditAction() {
+        return governanceState.getAuditAction();
+    }
+
+    public void setAuditAction(String auditAction) {
+        governanceState.setAuditAction(auditAction);
+    }
+
+    public String getRuleSource() {
+        return governanceState.getRuleSource();
+    }
+
+    public void setRuleSource(String ruleSource) {
+        governanceState.setRuleSource(ruleSource);
+    }
+
+    public Integer getTimeout() {
+        return governanceState.getTimeoutMs();
+    }
+
+    public void setTimeout(Integer timeoutMs) {
+        governanceState.setTimeoutMs(timeoutMs);
+    }
 
     /**
-     * 是否跳过终端调用（末端反射）。
-     * 一般用于 Web 这种“只借用治理管道，不借用末端执行”的场景。
+     * 执行模式访问器。
      */
-    private boolean skipTerminalInvocation;
+    public InvocationExecutionMode getExecutionMode() {
+        return executionState.getMode();
+    }
 
-    /** 快捷添加追踪的方法 */
+    public void setExecutionMode(InvocationExecutionMode executionMode) {
+        executionState.setMode(executionMode == null ? InvocationExecutionMode.NORMAL : executionMode);
+    }
+
+    public boolean isSimulation() {
+        return getExecutionMode().isSimulation();
+    }
+
+    public boolean isGovernOnly() {
+        return getExecutionMode().isGovernOnly();
+    }
+
+    public boolean shouldInvokeTerminal() {
+        return getExecutionMode().shouldInvokeTerminal();
+    }
+
+    public List<EngineTrace> getTraces() {
+        return executionState.getTraces();
+    }
+
     public void addTrace(EngineTrace trace) {
-        if (this.traces == null) {
-            this.traces = new ArrayList<>();
-        }
-        this.traces.add(trace);
+        executionState.addTrace(trace);
     }
 
-    // ════════════════════════════════════════════
-    // 第四部分：路由与弹性治理
-    // ════════════════════════════════════════════
-    private Map<String, String> labels;
-
-    public Map<String, String> getLabels() {
-        return labels;
-    }
-
-    private Integer timeout;
-    private Map<String, Object> metadata;
-
-    // ════════════════════════════════════════════
-    // 第五部分：Filter 间瞬态通信
-    // ════════════════════════════════════════════
-    // ⚠️ 写入 attachments 的复杂对象引用必须在 finally 中主动移除！
-    private Map<String, Object> attachments;
-
-    public Map<String, Object> getAttachments() {
-        return attachments;
-    }
-
-    /** 重置所有字段，防止污染下一次调用 */
+    /**
+     * 清空所有状态，确保对象池中的上下文不会携带上一次调用残留。
+     */
     public void reset() {
         this.serviceFQSID = null;
         this.methodName = null;
@@ -186,7 +277,7 @@ public class InvocationContext {
         this.args = null;
         this.targetLingId = null;
         this.targetVersion = null;
-        this.runtimeRef = null; // 物理清除弱引用容器
+        this.runtimeRef = null; // ⚠️ 物理清空 WeakReference 容器本身，而不只是等待 referent 自己失效
 
         this.traceId = null;
         this.callerLingId = null;
@@ -195,38 +286,27 @@ public class InvocationContext {
         this.resourceType = null;
         this.resourceId = null;
         this.operation = null;
-        this.requiredPermission = null;
-        this.accessType = null;
-        this.auditAction = null;
-        this.shouldAudit = false;
-        this.ruleSource = null;
-
-        this.dryRun = false;
-        this.skipTerminalInvocation = false;
-        if (this.traces != null) {
-            this.traces.clear();
-        }
-
         this.labels = null;
-        this.timeout = null;
         this.metadata = null;
 
-        if (this.attachments != null) {
-            this.attachments.clear();
-        }
+        this.routingState.reset();
+        this.resolutionState.reset();
+        this.governanceState.reset();
+        this.executionState.reset();
+
+        // attachments 虽已降级为扩展槽位，但对象池回收前仍必须强制清空
+        this.attachments.clear();
     }
 
-    // ════════════════════════════════════════════
-    // 第六部分：线程上下文快照与传播（零分配模式）
-    // ════════════════════════════════════════════
-
     /**
-     * 从另一个上下文安全拷贝属性（复用当前对象池实例）
-     * 对于基础属性采用赋值，对于预初始化的集合利用 putAll 避免 new
+     * 从另一个上下文复制状态。
+     * 用于线程间传播时构造子线程视角的当前上下文。
+     * ⚠️ 这里的复制是“当前调用树内的受控浅拷贝”，不是可长期持有的快照对象。
      */
     public void copyFrom(InvocationContext source) {
-        if (source == null)
+        if (source == null) {
             return;
+        }
         this.serviceFQSID = source.serviceFQSID;
         this.methodName = source.methodName;
         this.parameterTypeNames = source.parameterTypeNames;
@@ -242,39 +322,25 @@ public class InvocationContext {
         this.resourceType = source.resourceType;
         this.resourceId = source.resourceId;
         this.operation = source.operation;
-        this.requiredPermission = source.requiredPermission;
-        this.accessType = source.accessType;
-        this.auditAction = source.auditAction;
-        this.shouldAudit = source.shouldAudit;
-        this.ruleSource = source.ruleSource;
-
-        this.dryRun = source.dryRun;
-        if (source.traces != null && !source.traces.isEmpty()) {
-            if (this.traces == null) {
-                this.traces = new ArrayList<>();
-            }
-            this.traces.addAll(source.traces);
-        }
-
         this.labels = source.labels;
-        this.timeout = source.timeout;
         this.metadata = source.metadata;
 
-        if (source.attachments != null && !source.attachments.isEmpty()) {
-            this.attachments.putAll(source.attachments);
-        }
+        this.routingState.copyFrom(source.routingState);
+        this.resolutionState.copyFrom(source.resolutionState);
+        this.governanceState.copyFrom(source.governanceState);
+        this.executionState.copyFrom(source.executionState);
+        this.attachments.putAll(source.attachments);
     }
 
     /**
-     * 将父线程的上下文无锁装载进子线程（用于 Callable）
-     * 通过 current() 捕获父线程的活跃上下文快照，在子线程中 attach 副本实现传播
+     * 包装子线程 Callable，传播当前线程的调用上下文和 LingCallContext 快照。
      */
     public static <T> Callable<T> wrap(Callable<T> task) {
         InvocationContext parent = InvocationContext.current();
         LingCallContextSnapshot snapshot = LingCallContextSnapshot.capture();
         return () -> {
             InvocationContext child = InvocationContext.obtain();
-            InvocationContext prev = child.attach();
+            InvocationContext previous = child.attach();
             LingCallContextSnapshot previousSnapshot = LingCallContextSnapshot.apply(snapshot);
             try {
                 if (parent != null) {
@@ -283,22 +349,21 @@ public class InvocationContext {
                 return task.call();
             } finally {
                 LingCallContextSnapshot.restore(previousSnapshot);
-                InvocationContext.detach(prev);
+                InvocationContext.detach(previous);
                 child.recycle();
             }
         };
     }
 
     /**
-     * 将父线程的上下文无锁装载进子线程（用于 Runnable）
-     * 通过 current() 捕获父线程的活跃上下文快照，在子线程中 attach 副本实现传播
+     * 包装子线程 Runnable，传播当前线程的调用上下文和 LingCallContext 快照。
      */
     public static Runnable wrap(Runnable task) {
         InvocationContext parent = InvocationContext.current();
         LingCallContextSnapshot snapshot = LingCallContextSnapshot.capture();
         return () -> {
             InvocationContext child = InvocationContext.obtain();
-            InvocationContext prev = child.attach();
+            InvocationContext previous = child.attach();
             LingCallContextSnapshot previousSnapshot = LingCallContextSnapshot.apply(snapshot);
             try {
                 if (parent != null) {
@@ -307,7 +372,7 @@ public class InvocationContext {
                 task.run();
             } finally {
                 LingCallContextSnapshot.restore(previousSnapshot);
-                InvocationContext.detach(prev);
+                InvocationContext.detach(previous);
                 child.recycle();
             }
         };

@@ -161,7 +161,7 @@ public class InstancePool {
     /**
      * 将实例移入死亡队列。
      * <p>
-     * 这是“成员关系变化 + 状态联动”的宿主动作：
+     * 这是“成员关系变化 + 状态联动”的灵核动作：
      * 先通过协调器确保实例进入 STOPPING，
      * 再把它从 activePool 迁到 dyingQueue。
      */

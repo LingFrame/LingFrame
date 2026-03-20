@@ -6,6 +6,7 @@ import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.strategy.GovernanceStrategy;
@@ -37,7 +38,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
     private final LingFrameProperties properties;
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
 
-    private static final String HOST_Ling_ID = "lingcore-app";
+    private static final String LING_CORE_ID = "lingcore-app";
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -59,7 +60,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             return;
         }
 
-        String lingId = isLingRequest ? lingMeta.getLingId() : HOST_Ling_ID;
+        String lingId = isLingRequest ? lingMeta.getLingId() : LING_CORE_ID;
 
         ClassLoader originalCL = null;
         if (isLingRequest) {
@@ -74,16 +75,16 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             Method method = handlerMethod.getMethod();
             ctx = buildInvocationContext(request, method, lingId, lingMeta);
 
-            // 穿刺模式开启
-            ctx.setSkipTerminalInvocation(true);
+            // 【关键】GOVERN_ONLY 表示 Web 层只借道治理，不由 Pipeline 代替 Spring MVC 执行 Controller
+            ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
 
             // 借道 Pipeline 执行全套治理
             try {
                 pipelineEngine.invoke(ctx);
-                Object routed = ctx.getAttachments().get("ling.target.instance");
-                if (routed instanceof LingInstance) {
+                LingInstance routed = ctx.routing().getTargetInstance();
+                if (routed != null) {
                     request.setAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY,
-                            ((LingInstance) routed).getVersion());
+                            routed.getVersion());
                 }
             } catch (LingInvocationException e) {
                 // 治理拒绝：由管道层统一抛出的受控异常。针对卸载/停机期间降级为 info 避免日志风暴
@@ -187,7 +188,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             LingCallContext.setTraceId(traceId);
         }
         ctx.setTraceId(traceId);
-        ctx.setTargetLingId(lingId); // Set targetLingId instead of lingId
+        ctx.setTargetLingId(lingId); // 这里写目标灵元标识，而不是旧字段语义上的 lingId
         ctx.setServiceFQSID(lingId + ":http");
         ctx.setCallerLingId("http-gateway");
         ctx.setResourceType("HTTP");
@@ -195,15 +196,17 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         ctx.setOperation(method.getName());
         ctx.setMethodName(method.getName());
         ctx.setParameterTypeNames(resolveParameterTypeNames(method));
-        ctx.getAttachments().put("ling.target.className", method.getDeclaringClass().getName());
-        ctx.getAttachments().put("ling.resolved.types", method.getParameterTypes());
+        // Web 入口已经知道 HandlerMethod，对应解析信息直接写入 resolution 分区
+        ctx.resolution().setTargetClassName(method.getDeclaringClass().getName());
+        ctx.resolution().setResolvedParameterTypes(method.getParameterTypes());
+        ctx.resolution().setTargetClassLoader(method.getDeclaringClass().getClassLoader());
         ctx.setRequiredPermission(permission);
         ctx.setAccessType(accessType);
         ctx.setAuditAction(auditAction);
         ctx.setShouldAudit(shouldAudit);
         ctx.setMetadata(new HashMap<>());
         ctx.setLabels(new HashMap<>());
-        ctx.setRuleSource(null); // Explicitly set to null as it's not resolved here
+        ctx.setRuleSource(null); // 这里尚未进入规则仲裁阶段，因此显式置空
         return ctx;
     }
 

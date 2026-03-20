@@ -9,14 +9,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@DisplayName("EventBus tests")
+@DisplayName("EventBus 测试")
 public class EventBusTest {
 
     static class TestEvent implements LingEvent {
     }
 
     @Test
-    @DisplayName("unsubscribe should remove only the specified listener")
+    @DisplayName("取消订阅时应只移除指定监听器")
     void unsubscribeShouldRemoveOnlySpecifiedListener() {
         EventBus eventBus = new EventBus();
         AtomicInteger first = new AtomicInteger(0);
@@ -36,7 +36,7 @@ public class EventBusTest {
     }
 
     @Test
-    @DisplayName("unsubscribe should not remove listeners with different lingId")
+    @DisplayName("取消订阅时不应误删其他灵元的监听器")
     void unsubscribeShouldRespectLingId() {
         EventBus eventBus = new EventBus();
         AtomicInteger count = new AtomicInteger(0);
@@ -51,7 +51,7 @@ public class EventBusTest {
     }
 
     @Test
-    @DisplayName("unsubscribeAll should remove all listeners for target lingId only")
+    @DisplayName("批量取消订阅时应只移除目标灵元的全部监听器")
     void unsubscribeAllShouldRemoveAllForLingId() {
         EventBus eventBus = new EventBus();
         AtomicInteger a1 = new AtomicInteger(0);

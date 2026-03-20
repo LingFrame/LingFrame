@@ -5,6 +5,7 @@ import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +31,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
+@DisplayName("InstancePool 测试")
 class InstancePoolTest {
 
     private static final String LING_ID = "test-ling";
@@ -46,25 +48,30 @@ class InstancePoolTest {
     }
 
     @Nested
+    @DisplayName("初始状态")
     class InitialStateTests {
 
         @Test
+        @DisplayName("新建实例池时不应存在默认实例")
         void newPoolShouldHaveNoDefault() {
             assertNull(pool.getDefault());
             assertNull(pool.getVersion());
         }
 
         @Test
+        @DisplayName("新建实例池时不应存在活跃实例")
         void newPoolShouldHaveNoActiveInstances() {
             assertTrue(pool.getActiveInstances().isEmpty());
         }
 
         @Test
+        @DisplayName("新建实例池时应允许添加实例")
         void newPoolShouldAllowAddInstance() {
             assertTrue(pool.canAddInstance());
         }
 
         @Test
+        @DisplayName("新建实例池时统计信息应正确")
         void newPoolStatsShouldBeCorrect() {
             InstancePool.PoolStats stats = pool.getStats();
             assertEquals(0, stats.activeCount());
@@ -74,9 +81,11 @@ class InstancePoolTest {
     }
 
     @Nested
+    @DisplayName("实例添加")
     class AddInstanceTests {
 
         @Test
+        @DisplayName("添加默认实例时应设置默认实例")
         void addDefaultInstanceShouldSetDefault() {
             LingInstance instance = createMockInstance("1.0.0");
 
@@ -89,6 +98,7 @@ class InstancePoolTest {
         }
 
         @Test
+        @DisplayName("添加非默认实例时不应覆盖默认实例")
         void addNonDefaultInstanceShouldNotSetDefault() {
             LingInstance instance = createMockInstance("1.0.0");
 
@@ -99,6 +109,7 @@ class InstancePoolTest {
         }
 
         @Test
+        @DisplayName("替换默认实例时应返回旧实例")
         void replaceDefaultShouldReturnOld() {
             LingInstance v1 = createMockInstance("1.0.0");
             LingInstance v2 = createMockInstance("2.0.0");
@@ -112,6 +123,7 @@ class InstancePoolTest {
         }
 
         @Test
+        @DisplayName("多个非默认实例应允许并存")
         void addMultipleNonDefaultShouldCoexist() {
             LingInstance stable = createMockInstance("1.0.0");
             LingInstance canary1 = createMockInstance("2.0.0-canary");
@@ -126,15 +138,18 @@ class InstancePoolTest {
         }
 
         @Test
+        @DisplayName("添加空实例时应抛出异常")
         void addNullShouldThrow() {
             assertThrows(InvalidArgumentException.class, () -> pool.addInstance(null, true));
         }
     }
 
     @Nested
+    @DisplayName("濒死队列")
     class DyingQueueTests {
 
         @Test
+        @DisplayName("迁移到濒死队列时应标记实例并移出活跃列表")
         void moveToDyingShouldWork() {
             LingInstance instance = createMockInstance("1.0.0");
             pool.addInstance(instance, true);
@@ -147,11 +162,13 @@ class InstancePoolTest {
         }
 
         @Test
+        @DisplayName("迁移空实例到濒死队列时应安全忽略")
         void moveToDyingNullShouldBeSafe() {
             assertDoesNotThrow(() -> pool.moveToDying(null));
         }
 
         @Test
+        @DisplayName("濒死队列满载时不应继续允许添加实例")
         void canAddInstanceShouldReturnFalseWhenFull() {
             for (int i = 0; i < MAX_DYING; i++) {
                 LingInstance instance = createMockInstance("1.0." + i);
@@ -165,9 +182,11 @@ class InstancePoolTest {
     }
 
     @Nested
+    @DisplayName("清理行为")
     class CleanupTests {
 
         @Test
+        @DisplayName("空闲濒死实例应被清理")
         void cleanupIdleShouldWork() {
             LingInstance instance = createMockInstance("1.0.0");
             pool.addInstance(instance, true);
@@ -184,6 +203,7 @@ class InstancePoolTest {
         }
 
         @Test
+        @DisplayName("忙碌中的濒死实例不应被清理")
         void cleanupIdleShouldNotCleanBusy() {
             LingInstance instance = createMockInstance("1.0.0");
             pool.addInstance(instance, true);
@@ -202,6 +222,7 @@ class InstancePoolTest {
         }
 
         @Test
+        @DisplayName("强制清理应移除所有濒死实例")
         void forceCleanupAllShouldWork() {
             for (int i = 0; i < 3; i++) {
                 LingInstance instance = createMockInstance("1.0." + i);
@@ -221,9 +242,11 @@ class InstancePoolTest {
     }
 
     @Nested
+    @DisplayName("停机行为")
     class ShutdownTests {
 
         @Test
+        @DisplayName("停机后应清空默认实例")
         void shutdownShouldClearDefault() {
             LingInstance instance = createMockInstance("1.0.0");
             pool.addInstance(instance, true);
@@ -234,6 +257,7 @@ class InstancePoolTest {
         }
 
         @Test
+        @DisplayName("停机后应将所有实例迁移到濒死队列")
         void shutdownShouldMoveAllToDying() {
             for (int i = 0; i < 3; i++) {
                 LingInstance instance = createMockInstance("1.0." + i);
@@ -248,6 +272,7 @@ class InstancePoolTest {
         }
 
         @Test
+        @DisplayName("停机返回的实例都应处于濒死状态")
         void shutdownInstancesShouldBeDying() {
             LingInstance instance = createMockInstance("1.0.0");
             pool.addInstance(instance, true);
@@ -259,14 +284,17 @@ class InstancePoolTest {
     }
 
     @Nested
+    @DisplayName("可用性判断")
     class AvailabilityTests {
 
         @Test
+        @DisplayName("实例池为空时不应判定为可用")
         void hasAvailableShouldReturnFalseWhenEmpty() {
             assertFalse(pool.hasAvailableInstance());
         }
 
         @Test
+        @DisplayName("存在就绪实例时应判定为可用")
         void hasAvailableShouldReturnTrueWhenReady() {
             LingInstance instance = createMockInstance("1.0.0");
             pool.addInstance(instance, true);
@@ -275,6 +303,7 @@ class InstancePoolTest {
         }
 
         @Test
+        @DisplayName("实例进入濒死状态后不应再判定为可用")
         void hasAvailableShouldReturnFalseWhenDying() {
             LingInstance instance = createMockInstance("1.0.0");
             pool.addInstance(instance, true);
@@ -285,9 +314,11 @@ class InstancePoolTest {
     }
 
     @Nested
+    @DisplayName("并发安全")
     class ConcurrencyTests {
 
         @Test
+        @DisplayName("并发添加实例时应保持线程安全")
         void concurrentAddShouldBeSafe() throws InterruptedException {
             int threadCount = 10;
             ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -317,6 +348,7 @@ class InstancePoolTest {
         }
 
         @Test
+        @DisplayName("并发迁移到濒死队列时应保持线程安全")
         void concurrentMoveToDyingShouldBeSafe() throws InterruptedException {
             for (int i = 0; i < 5; i++) {
                 pool.addInstance(createMockInstance("1.0." + i), i == 0);
@@ -353,9 +385,11 @@ class InstancePoolTest {
     }
 
     @Nested
+    @DisplayName("统计信息")
     class StatsTests {
 
         @Test
+        @DisplayName("统计快照应反映当前实例池状态")
         void getStatsShouldBeCorrect() {
             pool.addInstance(createMockInstance("1.0.0"), true);
             pool.addInstance(createMockInstance("1.0.1"), false);
@@ -372,6 +406,7 @@ class InstancePoolTest {
         }
 
         @Test
+        @DisplayName("统计对象字符串应包含关键信息")
         void poolStatsToStringShouldWork() {
             pool.addInstance(createMockInstance("1.0.0"), true);
 

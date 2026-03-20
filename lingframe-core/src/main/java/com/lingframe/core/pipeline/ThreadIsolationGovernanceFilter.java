@@ -13,14 +13,14 @@ import java.util.Map;
 import java.util.concurrent.*;
 
 /**
- * 线程隔离与真超时治理过滤器
+ * 线程隔离过滤器。
+ * 负责把终端执行放入灵元专属线程池，并消费治理阶段产出的超时决策。
  * <p>
- * 职责：
- * 1. 提供插件沙箱的最后一道防线：线程物理隔离。
- * 2. 避免 Web 容器宿主线程被恶意/阻塞的插件耗尽。
- * 3. 施加真正的 Future.get(timeout) 本地超时打断惩罚。
+ * ⚠️ 线程池线程默认挂 CORE_CLASSLOADER，单次调用再临时切到目标灵元的 ClassLoader。
+ * 如果让线程池常驻线程永久挂住灵元 ClassLoader，灵元卸载后最容易出现“功能没问题，但就是回收不掉”的隐性泄漏。
  */
 public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
+
     private static final Logger log = LoggerFactory.getLogger(ThreadIsolationGovernanceFilter.class);
     private static final ClassLoader CORE_CLASSLOADER = ThreadIsolationGovernanceFilter.class.getClassLoader();
 
@@ -33,7 +33,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
 
     @Override
     public int getOrder() {
-        return FilterPhase.ISOLATION;
+        return FilterPhase.EXECUTION_ISOLATION;
     }
 
     @Override
@@ -42,29 +42,37 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         if (fqsid == null || !fqsid.contains(":")) {
             return chain.doFilter(ctx);
         }
+        if (ctx.isGovernOnly()) {
+            return chain.doFilter(ctx);
+        }
 
-        String lingId = fqsid.split(":")[0];
+        String lingId = fqsid.split(":", 2)[0];
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             return chain.doFilter(ctx);
         }
 
         LingRuntimeConfig config = runtime.getConfig();
-        int timeoutMs = config.getDefaultTimeoutMs();
-
-        // 获取或创建灵元专属隔离线程池
+        int timeoutMs = resolveTimeout(ctx, config);
         ExecutorService executor = getExecutor(lingId, config);
 
-        // 利用 InvocationContext 的能力捕获主线程快照并包裹为子线程任务
         Callable<Object> isolatedTask = InvocationContext.wrap(() -> {
+            ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+            ClassLoader targetClassLoader = ctx.resolution().getTargetClassLoader();
+            if (targetClassLoader != null) {
+                // 进入真实执行前，再把工作线程临时切到目标灵元的类型宇宙
+                Thread.currentThread().setContextClassLoader(targetClassLoader);
+            }
             try {
                 return chain.doFilter(ctx);
             } catch (Exception e) {
                 throw e;
             } catch (Error e) {
                 throw e;
-            } catch (Throwable t) {
-                throw new ExecutionException(t);
+            } catch (Throwable throwable) {
+                throw new ExecutionException(throwable);
+            } finally {
+                Thread.currentThread().setContextClassLoader(originalClassLoader);
             }
         });
 
@@ -72,17 +80,15 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         try {
             future = executor.submit(isolatedTask);
         } catch (RejectedExecutionException e) {
-            log.warn("[Isolation:{}] Execution rejected (bulkhead full) for FQSID={}", lingId, fqsid);
+            log.warn("[Isolation:{}] Execution rejected because bulkhead is full for {}", lingId, fqsid);
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.RATE_LIMITED, e);
         }
 
         try {
-            // 真超时阻塞等待
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            // 超时直接取消子线程（发起 interrupt），保全宿主线程
             future.cancel(true);
-            log.error("[Isolation:{}] Execution timeout ({}ms). Task cancelled for FQSID={}", lingId, timeoutMs, fqsid);
+            log.error("[Isolation:{}] Execution timed out after {} ms for {}", lingId, timeoutMs, fqsid);
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.TIMEOUT);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
@@ -96,24 +102,35 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         }
     }
 
+    private int resolveTimeout(InvocationContext ctx, LingRuntimeConfig config) {
+        Integer governedTimeout = ctx.governance().getTimeoutMs();
+        if (governedTimeout != null && governedTimeout >= 0) {
+            // 治理阶段已经给出明确 timeout，就不要再让执行阶段自己猜一次
+            return governedTimeout;
+        }
+        return config.getDefaultTimeoutMs();
+    }
+
     private ExecutorService getExecutor(String lingId, LingRuntimeConfig config) {
         return executors.computeIfAbsent(lingId, id -> {
             int maxThreads = config.getBulkheadMaxConcurrent();
-            log.debug("[Isolation:{}] Initializing isolated thread pool, maxThreads={}", id, maxThreads);
+            log.debug("[Isolation:{}] Initializing isolated thread pool with maxThreads={}", id, maxThreads);
             return new ThreadPoolExecutor(
-                    Math.min(2, maxThreads), // 核心线程
-                    maxThreads, // 最大隔离线程
-                    60L, TimeUnit.SECONDS,
-                    new SynchronousQueue<>(), // 拒绝排队，交由前置 RateLimiter/Bulkhead 限流器拦截
+                    Math.min(2, maxThreads),
+                    maxThreads,
+                    60L,
+                    TimeUnit.SECONDS,
+                    new SynchronousQueue<>(),
                     new ThreadFactory() {
-                        private int count = 0;
+                        private int counter = 0;
 
                         @Override
-                        public Thread newThread(Runnable r) {
-                            Thread t = new Thread(r, "Ling-Iso-" + id + "-" + (++count));
-                            t.setDaemon(true);
-                            t.setContextClassLoader(CORE_CLASSLOADER);
-                            return t;
+                        public Thread newThread(Runnable runnable) {
+                            Thread thread = new Thread(runnable, "Ling-Iso-" + id + "-" + (++counter));
+                            thread.setDaemon(true);
+                            // ⚠️ 常驻线程只挂核心 ClassLoader；单次任务内再临时切换，避免线程把灵元 ClassLoader 挂死
+                            thread.setContextClassLoader(CORE_CLASSLOADER);
+                            return thread;
                         }
                     },
                     new ThreadPoolExecutor.AbortPolicy());
@@ -121,7 +138,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
     }
 
     /**
-     * 灵元卸载时驱逐隔离线程池，防止线程泄漏与 ClassLoader 残留
+     * 灵元卸载时驱逐隔离线程池，防止线程泄漏。
      */
     public void evict(String lingId) {
         ExecutorService executor = executors.remove(lingId);
@@ -129,12 +146,12 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
             executor.shutdownNow();
             try {
                 if (!executor.awaitTermination(3, TimeUnit.SECONDS)) {
-                    log.warn("[Isolation:{}] Thread pool did not terminate in time", lingId);
+                    log.warn("[Isolation:{}] Thread pool did not terminate within the grace period", lingId);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            log.debug("[Isolation:{}] Evicted and terminated isolated thread pool", lingId);
+            log.debug("[Isolation:{}] Evicted isolated thread pool", lingId);
         }
     }
 }

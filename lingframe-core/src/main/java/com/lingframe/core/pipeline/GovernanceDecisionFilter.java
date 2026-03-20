@@ -2,7 +2,6 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.GovernanceDecision;
-import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.LingFilterChain;
@@ -13,9 +12,12 @@ import java.lang.reflect.Method;
 import java.time.Duration;
 
 /**
- * 治理决策过滤器
+ * 治理决策过滤器。
+ * 负责把规则解析结果写入治理分区。
  * <p>
- * 在调用链路中应用治理决策（权限、审计、超时等），并写入 InvocationContext。
+ * ⚠️ 它故意放在 resolution 之后、permission 之前：
+ * 先拿到目标方法真实视角，再产出 requiredPermission / timeout / auditAction，
+ * 后续权限过滤器和线程隔离阶段只消费这里的结果，不再各自重复猜测。
  */
 @Slf4j
 public class GovernanceDecisionFilter implements LingInvocationFilter {
@@ -47,7 +49,6 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
         LingRuntime runtime = resolveRuntime(ctx);
         GovernanceDecision decision = governanceArbitrator.arbitrate(runtime, method, ctx);
         applyDecision(ctx, decision);
-
         return chain.doFilter(ctx);
     }
 
@@ -61,92 +62,48 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
         }
         String lingId = ctx.getTargetLingId();
         if (lingId == null && ctx.getServiceFQSID() != null) {
-            String fqsid = ctx.getServiceFQSID();
-            int idx = fqsid.indexOf(':');
-            if (idx > 0) {
-                lingId = fqsid.substring(0, idx);
+            int separator = ctx.getServiceFQSID().indexOf(':');
+            if (separator > 0) {
+                lingId = ctx.getServiceFQSID().substring(0, separator);
             }
         }
-        return lingId != null ? lingRepository.getRuntime(lingId) : null;
+        return lingId == null ? null : lingRepository.getRuntime(lingId);
     }
 
     private Method resolveTargetMethod(InvocationContext ctx) {
+        InvocationResolutionState resolutionState = ctx.resolution();
+        if (resolutionState.getResolvedMethod() != null) {
+            return resolutionState.getResolvedMethod();
+        }
+
         String methodName = ctx.getMethodName();
-        if (methodName == null || methodName.isEmpty()) {
+        String className = resolutionState.getTargetClassName();
+        ClassLoader classLoader = resolutionState.getTargetClassLoader();
+        if (methodName == null || methodName.isEmpty() || className == null || className.isEmpty()) {
             return null;
         }
-
-        String className = (String) ctx.getAttachments().get("ling.target.className");
-        if (className == null && ctx.getServiceFQSID() != null) {
-            String serviceName = ctx.getServiceFQSID().split(":", 2)[1];
-            if (serviceName.contains("#")) {
-                serviceName = serviceName.split("#")[0];
-            }
-            className = serviceName;
+        if (classLoader == null) {
+            classLoader = Thread.currentThread().getContextClassLoader();
+        }
+        if (classLoader == null) {
+            classLoader = getClass().getClassLoader();
         }
 
-        if (className == null || className.isEmpty()) {
-            return null;
-        }
-
-        ClassLoader cl = resolveClassLoader(ctx);
         try {
-            Class<?> clazz = Class.forName(className, false, cl);
-            Class<?>[] resolvedTypes = (Class<?>[]) ctx.getAttachments().get("ling.resolved.types");
+            // 这里必须使用解析阶段选定的 ClassLoader 视角，否则灵核与灵元同名类会被解析成两个世界
+            Class<?> targetClass = Class.forName(className, false, classLoader);
+            Class<?>[] resolvedTypes = resolutionState.getResolvedParameterTypes();
             if (resolvedTypes == null) {
-                resolvedTypes = resolveTypes(ctx.getParameterTypeNames(), cl);
+                resolvedTypes = InvocationTypeResolver.resolveTypes(ctx.getParameterTypeNames(), classLoader);
+                resolutionState.setResolvedParameterTypes(resolvedTypes);
             }
-            return clazz.getMethod(methodName, resolvedTypes);
+            Method method = targetClass.getMethod(methodName, resolvedTypes);
+            resolutionState.setResolvedMethod(method);
+            return method;
         } catch (Exception e) {
-            log.debug("Governance decision skipped, method not resolved: {}.{}", className, methodName);
+            // 治理决策拿不到方法时选择“跳过”，而不是用猜测值污染治理结果
+            log.debug("Governance decision skipped because method resolution failed: {}.{}", className, methodName);
             return null;
-        }
-    }
-
-    private ClassLoader resolveClassLoader(InvocationContext ctx) {
-        try {
-            LingInstance target = (LingInstance) ctx.getAttachments().get("ling.target.instance");
-            if (target != null && target.getClassLoader() != null) {
-                return target.getClassLoader();
-            }
-        } catch (Exception ignored) {
-            // fallback to context loader
-        }
-        ClassLoader cl = Thread.currentThread().getContextClassLoader();
-        return cl != null ? cl : getClass().getClassLoader();
-    }
-
-    private Class<?>[] resolveTypes(String[] typeNames, ClassLoader cl) throws ClassNotFoundException {
-        if (typeNames == null || typeNames.length == 0) {
-            return new Class<?>[0];
-        }
-        Class<?>[] types = new Class<?>[typeNames.length];
-        for (int i = 0; i < typeNames.length; i++) {
-            types[i] = loadClass(typeNames[i], cl);
-        }
-        return types;
-    }
-
-    private Class<?> loadClass(String typeName, ClassLoader cl) throws ClassNotFoundException {
-        switch (typeName) {
-            case "int":
-                return int.class;
-            case "long":
-                return long.class;
-            case "double":
-                return double.class;
-            case "boolean":
-                return boolean.class;
-            case "byte":
-                return byte.class;
-            case "short":
-                return short.class;
-            case "float":
-                return float.class;
-            case "char":
-                return char.class;
-            default:
-                return Class.forName(typeName, false, cl);
         }
     }
 
@@ -154,25 +111,30 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
         if (decision == null) {
             return;
         }
+
+        // ⚠️ 统一写入治理分区，避免再次出现“事实字段”和“治理意图字段”混写在根对象上的问题
+        InvocationGovernanceState governanceState = ctx.governance();
         if (decision.getRequiredPermission() != null) {
-            ctx.setRequiredPermission(decision.getRequiredPermission());
+            governanceState.setRequiredPermission(decision.getRequiredPermission());
         }
         if (decision.getAccessType() != null) {
-            ctx.setAccessType(decision.getAccessType());
+            governanceState.setAccessType(decision.getAccessType());
         }
         if (decision.getAuditEnabled() != null) {
-            ctx.setShouldAudit(decision.getAuditEnabled());
+            governanceState.setShouldAudit(decision.getAuditEnabled());
         }
         if (decision.getAuditAction() != null) {
-            ctx.setAuditAction(decision.getAuditAction());
+            governanceState.setAuditAction(decision.getAuditAction());
         }
         if (decision.getSource() != null) {
-            ctx.setRuleSource(decision.getSource());
+            governanceState.setRuleSource(decision.getSource());
         }
+
         Duration timeout = decision.getTimeout();
         if (timeout != null && timeout.toMillis() >= 0) {
-            long ms = timeout.toMillis();
-            ctx.setTimeout(ms > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) ms);
+            // timeout 在这里收敛成毫秒值，后续线程隔离阶段只消费最终决策，形成闭环
+            long timeoutMs = timeout.toMillis();
+            governanceState.setTimeoutMs(timeoutMs > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) timeoutMs);
         }
     }
 }

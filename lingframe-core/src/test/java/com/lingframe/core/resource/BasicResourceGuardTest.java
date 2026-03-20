@@ -17,7 +17,7 @@ import java.util.Enumeration;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * BasicResourceGuard 灵元测试
+ * BasicResourceGuard 测试
  */
 @DisplayName("BasicResourceGuard 测试")
 class BasicResourceGuardTest {

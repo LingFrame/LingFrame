@@ -1,62 +1,68 @@
 package com.lingframe.core.classloader;
 
 import com.lingframe.core.exception.ClassLoaderException;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import java.net.URL;
+import java.util.Collections;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("LingClassLoader 灵元测试")
+@DisplayName("LingClassLoader 测试")
 class LingClassLoaderTest {
+
+    @AfterEach
+    void tearDown() {
+        LingClassLoader.resetSharedApiBoundary();
+    }
 
     @Nested
     @DisplayName("类加载隔离")
     class IsolationTests {
 
         @Test
-        @DisplayName("不同灵元之间应隔离类加载")
-        void testIsolation() {
-
-            try (LingClassLoader pc1 = new LingClassLoader("Ling-1", new URL[] {},
-                    ClassLoader.getSystemClassLoader());
-                    LingClassLoader pc2 = new LingClassLoader("Ling-2", new URL[] {},
-                            ClassLoader.getSystemClassLoader())) {
-                try {
-                    // 尝试加载不存在的类应该抛出 ClassNotFoundException
-                    pc1.loadClass("com.example.NonExistentClass");
-                    fail("Should throw ClassNotFoundException");
-                } catch (ClassNotFoundException e) {
-                    // 符合预期
-                }
-            } catch (Exception e) {
-                // ignore
+        @DisplayName("不同灵元之间应隔离缺失类加载")
+        void shouldThrowClassNotFoundForMissingClassInIsolatedLoader() throws Exception {
+            try (LingClassLoader first = new LingClassLoader("ling-1", new URL[0], ClassLoader.getSystemClassLoader());
+                    LingClassLoader second = new LingClassLoader("ling-2", new URL[0], ClassLoader.getSystemClassLoader())) {
+                assertThrows(ClassNotFoundException.class, () -> first.loadClass("com.example.MissingClass"));
+                assertThrows(ClassNotFoundException.class, () -> second.loadClass("com.example.MissingClass"));
             }
         }
     }
 
     @Nested
-    @DisplayName("生命周期状态")
+    @DisplayName("生命周期行为")
     class LifecycleTests {
 
         @Test
-        @DisplayName("关闭后不应能加载类或资源")
-        void testClosedState() throws Exception {
-            LingClassLoader pcl = new LingClassLoader("Ling-closed", new URL[] {},
-                    ClassLoader.getSystemClassLoader());
-            pcl.close();
-            assertTrue(pcl.isClosed());
+        @DisplayName("关闭后不应再允许加载类或资源")
+        void shouldRejectLoadingAfterClose() throws Exception {
+            LingClassLoader classLoader = new LingClassLoader("ling-closed", new URL[0], ClassLoader.getSystemClassLoader());
+            classLoader.close();
 
-            assertThrows(ClassLoaderException.class, () -> pcl.loadClass("java.lang.String"));
-            assertNull(pcl.getResource("any/resource"));
+            assertTrue(classLoader.isClosed());
+            assertThrows(ClassLoaderException.class, () -> classLoader.loadClass("java.lang.String"));
+            assertNull(classLoader.getResource("any/resource"));
+        }
+    }
+
+    @Nested
+    @DisplayName("共享边界管理")
+    class SharedBoundaryTests {
+
+        @Test
+        @DisplayName("冻结共享边界后不应再允许追加共享包前缀")
+        void shouldRejectSharedBoundaryMutationAfterFreeze() {
+            LingClassLoader.freezeSharedApiBoundary();
+
+            assertThrows(IllegalStateException.class,
+                    () -> LingClassLoader.addSharedApiPackages(Collections.singletonList("demo.shared.")));
         }
     }
 }

@@ -74,7 +74,7 @@ LingFrame draws inspiration from operating system design principles:
 | `InstancePool`            | Blue-Green Deployment & Versioning |
 | `ServiceRegistry`         | Service Registry           |
 | `InvocationExecutor`      | Invocation Executor        |
-| `LingLifecycleManager`  | Lifecycle Management       |
+| `DefaultLingLifecycleEngine` | Lifecycle Orchestration |
 | `PermissionService`       | Permission Check & Authorization |
 | `AuditManager`            | Audit Logging              |
 | `EventBus`                | Event Publish/Subscribe    |

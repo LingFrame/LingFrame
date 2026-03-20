@@ -8,6 +8,8 @@ import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -28,6 +30,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
+@DisplayName("LingRuntime 测试")
 class LingRuntimeTest {
 
     private static final String LING_ID = "test-ling";
@@ -47,99 +50,127 @@ class LingRuntimeTest {
                 instanceCoordinator, runtimeCoordinator);
     }
 
-    @Test
-    void shouldHaveCorrectInitialValues() {
-        assertEquals(LING_ID, runtime.getLingId());
-        assertNotNull(runtime.getConfig());
-        assertNotNull(runtime.getInstancePool());
-        assertEquals(RuntimeStatus.INACTIVE, runtime.currentStatus());
-        assertFalse(runtime.isAvailable());
+    @Nested
+    @DisplayName("基础属性")
+    class BasicPropertyTests {
+
+        @Test
+        @DisplayName("初始值应符合默认约定")
+        void shouldHaveCorrectInitialValues() {
+            assertEquals(LING_ID, runtime.getLingId());
+            assertNotNull(runtime.getConfig());
+            assertNotNull(runtime.getInstancePool());
+            assertEquals(RuntimeStatus.INACTIVE, runtime.currentStatus());
+            assertFalse(runtime.isAvailable());
+        }
+
+        @Test
+        @DisplayName("空配置构造时应自动回退默认配置")
+        void shouldHandleNullConfig() {
+            LingRuntime nullConfigRuntime = new LingRuntime("null-id", null, eventBus,
+                    new RuntimeCoordinator(eventBus));
+            assertNotNull(nullConfigRuntime.getConfig());
+            assertEquals(RuntimeStatus.INACTIVE, nullConfigRuntime.currentStatus());
+        }
     }
 
-    @Test
-    void shouldGetReadyInstances() {
-        assertTrue(runtime.getReadyInstances().isEmpty());
+    @Nested
+    @DisplayName("实例可用性")
+    class AvailabilityTests {
 
-        LingInstance readyInstance = createMockInstance("1.0.0", true);
-        runtime.getInstancePool().addInstance(readyInstance, true);
+        @Test
+        @DisplayName("应只返回就绪实例列表")
+        void shouldGetReadyInstances() {
+            assertTrue(runtime.getReadyInstances().isEmpty());
 
-        List<LingInstance> readyInstances = runtime.getReadyInstances();
-        assertEquals(1, readyInstances.size());
-        assertSame(readyInstance, readyInstances.get(0));
+            LingInstance readyInstance = createMockInstance("1.0.0", true);
+            runtime.getInstancePool().addInstance(readyInstance, true);
+
+            List<LingInstance> readyInstances = runtime.getReadyInstances();
+            assertEquals(1, readyInstances.size());
+            assertSame(readyInstance, readyInstances.get(0));
+        }
+
+        @Test
+        @DisplayName("可用性应同时依赖运行时状态与就绪实例")
+        void availabilityShouldDependOnCoordinatorStateAndReadyInstances() {
+            assertFalse(runtime.isAvailable());
+
+            runtime.getInstancePool().addInstance(createMockInstance("1.0.0", true), true);
+            assertFalse(runtime.isAvailable());
+
+            runtimeCoordinator.transition(LING_ID, RuntimeStatus.ACTIVE);
+            assertTrue(runtime.isAvailable());
+        }
     }
 
-    @Test
-    void availabilityShouldDependOnCoordinatorStateAndReadyInstances() {
-        assertFalse(runtime.isAvailable());
+    @Nested
+    @DisplayName("请求统计")
+    class RequestStatsTests {
 
-        runtime.getInstancePool().addInstance(createMockInstance("1.0.0", true), true);
-        assertFalse(runtime.isAvailable());
+        @Test
+        @DisplayName("应正确累计总请求、稳定请求与金丝雀请求")
+        void shouldRecordTrafficStats() {
+            runtime.recordRequest(false);
+            runtime.recordRequest(false);
+            runtime.recordRequest(true);
 
-        runtimeCoordinator.transition(LING_ID, RuntimeStatus.ACTIVE);
-        assertTrue(runtime.isAvailable());
+            assertEquals(3, runtime.getTotalRequests().get());
+            assertEquals(2, runtime.getStableRequests().get());
+            assertEquals(1, runtime.getCanaryRequests().get());
+        }
+
+        @Test
+        @DisplayName("应正确跟踪活跃请求数")
+        void shouldTrackActiveRequests() {
+            runtime.startRequest();
+            runtime.startRequest();
+            assertEquals(2, runtime.getActiveRequests().get());
+
+            runtime.endRequest();
+            assertEquals(1, runtime.getActiveRequests().get());
+        }
     }
 
-    @Test
-    void shouldRecordTrafficStats() {
-        runtime.recordRequest(false);
-        runtime.recordRequest(false);
-        runtime.recordRequest(true);
+    @Nested
+    @DisplayName("事件与状态联动")
+    class EventAndStateTests {
 
-        assertEquals(3, runtime.getTotalRequests().get());
-        assertEquals(2, runtime.getStableRequests().get());
-        assertEquals(1, runtime.getCanaryRequests().get());
-    }
+        @Test
+        @SuppressWarnings("unchecked")
+        @DisplayName("收到移除事件后应关闭实例池并拒绝新增实例")
+        void shouldShutdownPoolOnRemovedEvent() {
+            InstancePool pool = runtime.getInstancePool();
+            LingInstance oldInstance = createMockInstance("1.0.1", true);
+            pool.addInstance(oldInstance, false);
 
-    @Test
-    void shouldTrackActiveRequests() {
-        runtime.startRequest();
-        runtime.startRequest();
-        assertEquals(2, runtime.getActiveRequests().get());
+            ArgumentCaptor<LingEventListener<RuntimeStateChangedEvent>> captor =
+                    ArgumentCaptor.forClass(LingEventListener.class);
+            verify(eventBus).subscribe(eq(LING_ID), eq(RuntimeStateChangedEvent.class), captor.capture());
 
-        runtime.endRequest();
-        assertEquals(1, runtime.getActiveRequests().get());
-    }
+            LingEventListener<RuntimeStateChangedEvent> listener = captor.getValue();
+            listener.onEvent(new RuntimeStateChangedEvent(LING_ID, RuntimeStatus.ACTIVE, RuntimeStatus.REMOVED));
 
-    @Test
-    @SuppressWarnings("unchecked")
-    void shouldShutdownPoolOnRemovedEvent() {
-        InstancePool pool = runtime.getInstancePool();
-        LingInstance oldInstance = createMockInstance("1.0.1", true);
-        pool.addInstance(oldInstance, false);
+            LingInstance newInstance = createMockInstance("1.0.2", true);
+            LingInstance result = pool.addInstance(newInstance, false);
 
-        ArgumentCaptor<LingEventListener<RuntimeStateChangedEvent>> captor =
-                ArgumentCaptor.forClass(LingEventListener.class);
-        verify(eventBus).subscribe(eq(LING_ID), eq(RuntimeStateChangedEvent.class), captor.capture());
+            assertNull(result);
+            assertTrue(oldInstance.isDying());
+            assertTrue(pool.getActiveInstances().isEmpty());
+            assertFalse(pool.getActiveInstances().contains(newInstance));
+        }
 
-        LingEventListener<RuntimeStateChangedEvent> listener = captor.getValue();
-        listener.onEvent(new RuntimeStateChangedEvent(LING_ID, RuntimeStatus.ACTIVE, RuntimeStatus.REMOVED));
+        @Test
+        @DisplayName("运行时状态应反映协调器推进结果")
+        void shouldReflectCoordinatorTransitions() {
+            LingRuntime coordinatedRuntime = new LingRuntime(LING_ID, LingRuntimeConfig.defaults(), null,
+                    instanceCoordinator, runtimeCoordinator);
 
-        LingInstance newInstance = createMockInstance("1.0.2", true);
-        LingInstance result = pool.addInstance(newInstance, false);
+            assertEquals(RuntimeStatus.INACTIVE, coordinatedRuntime.currentStatus());
 
-        assertNull(result);
-        assertTrue(oldInstance.isDying());
-        assertTrue(pool.getActiveInstances().isEmpty());
-        assertFalse(pool.getActiveInstances().contains(newInstance));
-    }
-
-    @Test
-    void shouldHandleNullConfig() {
-        LingRuntime nullConfigRuntime = new LingRuntime("null-id", null, eventBus,
-                new RuntimeCoordinator(eventBus));
-        assertNotNull(nullConfigRuntime.getConfig());
-        assertEquals(RuntimeStatus.INACTIVE, nullConfigRuntime.currentStatus());
-    }
-
-    @Test
-    void shouldReflectCoordinatorTransitions() {
-        LingRuntime coordinatedRuntime = new LingRuntime(LING_ID, LingRuntimeConfig.defaults(), null,
-                instanceCoordinator, runtimeCoordinator);
-
-        assertEquals(RuntimeStatus.INACTIVE, coordinatedRuntime.currentStatus());
-
-        runtimeCoordinator.transition(LING_ID, RuntimeStatus.ACTIVE);
-        assertEquals(RuntimeStatus.ACTIVE, coordinatedRuntime.currentStatus());
+            runtimeCoordinator.transition(LING_ID, RuntimeStatus.ACTIVE);
+            assertEquals(RuntimeStatus.ACTIVE, coordinatedRuntime.currentStatus());
+        }
     }
 
     private LingInstance createMockInstance(String version, boolean ready) {

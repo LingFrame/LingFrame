@@ -74,7 +74,7 @@ LingFrame 借鉴操作系统的设计思想：
 | `InstancePool`           | 蓝绿部署和版本管理     |
 | `ServiceRegistry`        | 服务注册表             |
 | `InvocationExecutor`     | 调用执行器             |
-| `LingLifecycleManager` | 生命周期管理           |
+| `DefaultLingLifecycleEngine` | 生命周期编排       |
 | `PermissionService`      | 权限检查和授权         |
 | `AuditManager`           | 审计日志记录           |
 | `EventBus`               | 事件发布订阅           |

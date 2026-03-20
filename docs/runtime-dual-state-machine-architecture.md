@@ -36,11 +36,11 @@ After the split:
 | --- | --- | --- | --- |
 | `LingInstance` | Instance | Holds the concrete runtime entity and the per-instance FSM carrier | No public write authority |
 | `InstanceCoordinator` | Instance | Only formal writer for instance state, publishes instance events | Yes |
-| `InstancePool` | Host | Manages active instances, default instance, and dying queue | No, membership only |
-| `LingRuntime` | Host | Holds config, stats, and instance pool, exposes a read-only runtime view | No |
+| `InstancePool` | Kernel membership | Manages active instances, default instance, and dying queue | No, membership only |
+| `LingRuntime` | Runtime aggregate | Holds config, stats, and instance pool, exposes a read-only runtime view | No |
 | `RuntimeCoordinator` | Runtime | Owns `RuntimeStatus`, maintains snapshots, aggregates macro state | Yes |
-| `DefaultLingLifecycleEngine` | Orchestration | Translates deploy / undeploy intent into phases | No |
-| `LingLifecycleManager` | Host execution | Starts instances, commits them to the pool, retires and destroys them | No |
+| `DefaultLingLifecycleEngine` | Orchestration | Translates deploy / undeploy intent into phases and drives deploy / undeploy order | No |
+| `LingUnloadCoordinator` | Unload cleanup | Evicts pipeline/runtime resources, delegates guard cleanup, and runs leak detection | No |
 
 ## What Each State Machine Owns
 
@@ -161,7 +161,8 @@ Benefits:
 ### What orchestration does
 
 - `DefaultLingLifecycleEngine` defines phase order
-- `LingLifecycleManager` performs host-side startup, commit, retirement, and teardown
+- `DefaultLingLifecycleEngine` drives startup, pool commit, retirement, and undeploy sequencing
+- `LingUnloadCoordinator` handles unload-side cleanup and leak detection
 
 ### What orchestration must not do
 
@@ -246,5 +247,5 @@ The goal of the current design is not to remove ordering. The goal is to central
 5. `RuntimeCoordinator`
 6. `InstancePool`
 7. `LingRuntime`
-8. `LingLifecycleManager`
-9. `DefaultLingLifecycleEngine`
+8. `DefaultLingLifecycleEngine`
+9. `LingUnloadCoordinator`

@@ -13,16 +13,16 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
- * 灵元运行时宿主。
+ * 灵元运行时聚合体。
  * <p>
- * 它在当前架构中是一个“只读宿主对象”：
+ * 它在当前架构中是一个“只读灵核聚合对象”：
  * 负责持有运行时配置、流量统计和多版本实例池，
  * 但不再拥有也不再直接修改 {@link RuntimeStatus} 状态机。
  * <p>
  * 运行时宏观状态的唯一真源统一收敛到 {@link RuntimeCoordinator}，
  * {@code LingRuntime} 只能通过 {@link #currentStatus()} 读取。
  * 生命周期编排、实例切换、运行时联动分别由
- * {@link DefaultLingLifecycleEngine}、{@link LingLifecycleManager}、
+ * {@link DefaultLingLifecycleEngine}、{@link InstancePool}、
  * {@link RuntimeCoordinator} 完成。
  */
 @ToString
@@ -69,7 +69,7 @@ public class LingRuntime {
         this.instancePool.setInstanceCoordinator(instanceCoordinator);
         this.runtimeCoordinator = Objects.requireNonNull(runtimeCoordinator, "RuntimeCoordinator is required");
 
-        // 宿主创建时立即注册运行时聚合器，保证首个实例事件到来前已有宏观状态落点。
+        // 灵核创建时立即注册运行时聚合器，保证首个实例事件到来前已有宏观状态落点。
         this.runtimeCoordinator.register(lingId);
         if (eventBus != null) {
             eventBus.subscribe(lingId, RuntimeStateChangedEvent.class, this::handleStateChanged);
@@ -82,7 +82,7 @@ public class LingRuntime {
         }
         RuntimeStatus newStatus = event.getTo();
 
-        // 宏观运行时进入 STOPPING/REMOVED 后，宿主只需要同步收紧成员池写入。
+        // 宏观运行时进入 STOPPING/REMOVED 后，灵核只需要同步收紧成员池写入。
         // 这里不反向写 RuntimeStatus，避免对象之间互相改写状态。
         if (newStatus == RuntimeStatus.STOPPING || newStatus == RuntimeStatus.REMOVED) {
             instancePool.shutdown();

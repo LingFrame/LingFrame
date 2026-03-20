@@ -6,6 +6,7 @@ import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.api.exception.LingInvocationException;
@@ -30,7 +31,7 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
     private final InvocationPipelineEngine pipelineEngine;
     private final boolean governInternalCalls;
     private final boolean checkPermissions;
-    private static final String HOST_Ling_ID = "lingcore-app";
+    private static final String LING_CORE_ID = "lingcore-app";
 
     @Override
     public Object invoke(MethodInvocation invocation) throws Throwable {
@@ -55,7 +56,7 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
                 log.debug("[Governance Interceptor] Internal LINGCORE call, governance disabled, skipping");
                 return invocation.proceed();
             }
-            callerLingId = HOST_Ling_ID;
+            callerLingId = LING_CORE_ID;
             log.debug("[Governance Interceptor] No ling context, using LINGCORE as caller: {}", callerLingId);
         } else {
             log.debug("[Governance Interceptor] ling {} calling LINGCORE method: {}.{}",
@@ -63,7 +64,7 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         }
 
         // 如果配置为不对灵核应用进行权限检查，直接执行
-        if (HOST_Ling_ID.equals(callerLingId) && !checkPermissions) {
+        if (LING_CORE_ID.equals(callerLingId) && !checkPermissions) {
             log.debug("[Governance Interceptor] LINGCORE app, permission check disabled, proceeding");
             return invocation.proceed();
         }
@@ -73,8 +74,9 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
 
         // 构建治理上下文
         InvocationContext ctx = buildInvocationContext(method, args, callerLingId);
-        // [Key] 开启穿刺模式：仅利用管道进行治理检查，不执行末端反射调用（因为拦截器本身要 proceed）
-        ctx.setSkipTerminalInvocation(true);
+        // 【关键】开启穿刺模式：这里只借道 Pipeline 做治理，不借道 Pipeline 做终端执行。
+        // 真正的业务方法仍由当前 AOP 调用链自己 invocation.proceed()。
+        ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
 
         try {
             // 借道 Pipeline 执行全套治理（并发统计、状态检查、权限校验、审计等）
@@ -132,9 +134,9 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         // 构建上下文
         InvocationContext ctx = InvocationContext.obtain();
         ctx.setTraceId(LingCallContext.getTraceId());
-        ctx.setTargetLingId(HOST_Ling_ID); // Set targetLingId instead of lingId
+        ctx.setTargetLingId(LING_CORE_ID); // 这里写目标标识，而不是旧字段语义上的 lingId
         ctx.setCallerLingId(callerLingId);
-        ctx.setServiceFQSID(HOST_Ling_ID + ":" + method.getDeclaringClass().getName());
+        ctx.setServiceFQSID(LING_CORE_ID + ":" + method.getDeclaringClass().getName());
         ctx.setResourceType("RPC");
         ctx.setResourceId(method.getDeclaringClass().getSimpleName() + "." + method.getName());
         ctx.setOperation(method.getName());
@@ -147,9 +149,12 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         ctx.setArgs(args);
         ctx.setMetadata(new HashMap<>());
         ctx.setLabels(new HashMap<>());
-        ctx.setRuleSource(null); // Explicitly set to null as it's not resolved here
-        ctx.getAttachments().put("ling.target.className", method.getDeclaringClass().getName());
-        ctx.getAttachments().put("ling.resolved.types", method.getParameterTypes());
+        ctx.setRuleSource(null); // 这里尚未进入规则仲裁阶段，因此显式置空
+
+        // 入口已经拿到了 Method 元信息，就直接喂给 resolution 分区，后续治理与终端无需重复猜测
+        ctx.resolution().setTargetClassName(method.getDeclaringClass().getName());
+        ctx.resolution().setResolvedParameterTypes(method.getParameterTypes());
+        ctx.resolution().setTargetClassLoader(method.getDeclaringClass().getClassLoader());
         return ctx;
     }
 

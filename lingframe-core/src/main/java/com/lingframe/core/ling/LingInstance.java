@@ -158,7 +158,7 @@ public class LingInstance {
     }
 
     // 包内唯一底层状态写操作，供 InstanceCoordinator 调用。
-    // 这里不向外公开，防止业务层或宿主层绕开协调器直接改状态。
+    // 这里不向外公开，防止业务层或灵核层绕开协调器直接改状态。
     TransitionResult<InstanceStatus> transitionState(InstanceStatus target) {
         return stateMachine.transition(target);
     }

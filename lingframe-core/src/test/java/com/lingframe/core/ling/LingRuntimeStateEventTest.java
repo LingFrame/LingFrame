@@ -3,45 +3,55 @@ package com.lingframe.core.ling;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.RuntimeStateChangedEvent;
 import com.lingframe.core.fsm.RuntimeCoordinator;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@DisplayName("LingRuntime 状态事件测试")
 class LingRuntimeStateEventTest {
 
-    @Test
-    void shouldShutdownPoolOnStoppingState() {
-        EventBus eventBus = new EventBus();
-        LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus,
-                new RuntimeCoordinator(eventBus));
+    @Nested
+    @DisplayName("运行时状态广播")
+    class RuntimeStateEventTests {
 
-        eventBus.publish(new RuntimeStateChangedEvent("ling-a",
-                com.lingframe.core.fsm.RuntimeStatus.ACTIVE,
-                com.lingframe.core.fsm.RuntimeStatus.STOPPING));
+        @Test
+        @DisplayName("停止事件应触发实例池清空")
+        void shouldShutdownPoolOnStoppingState() {
+            EventBus eventBus = new EventBus();
+            LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus,
+                    new RuntimeCoordinator(eventBus));
 
-        LingInstance instance = mock(LingInstance.class);
-        when(instance.getVersion()).thenReturn("v1");
-        runtime.getInstancePool().addInstance(instance, false);
+            eventBus.publish(new RuntimeStateChangedEvent("ling-a",
+                    com.lingframe.core.fsm.RuntimeStatus.ACTIVE,
+                    com.lingframe.core.fsm.RuntimeStatus.STOPPING));
 
-        assertEquals(0, runtime.getInstancePool().getActiveInstances().size());
-    }
+            LingInstance instance = mock(LingInstance.class);
+            when(instance.getVersion()).thenReturn("v1");
+            runtime.getInstancePool().addInstance(instance, false);
 
-    @Test
-    void shouldIgnoreOtherLingState() {
-        EventBus eventBus = new EventBus();
-        LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus,
-                new RuntimeCoordinator(eventBus));
+            assertEquals(0, runtime.getInstancePool().getActiveInstances().size());
+        }
 
-        eventBus.publish(new RuntimeStateChangedEvent("ling-b",
-                com.lingframe.core.fsm.RuntimeStatus.ACTIVE,
-                com.lingframe.core.fsm.RuntimeStatus.STOPPING));
+        @Test
+        @DisplayName("其他灵元的状态事件不应影响当前实例池")
+        void shouldIgnoreOtherLingState() {
+            EventBus eventBus = new EventBus();
+            LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus,
+                    new RuntimeCoordinator(eventBus));
 
-        LingInstance instance = mock(LingInstance.class);
-        when(instance.getVersion()).thenReturn("v1");
-        runtime.getInstancePool().addInstance(instance, false);
+            eventBus.publish(new RuntimeStateChangedEvent("ling-b",
+                    com.lingframe.core.fsm.RuntimeStatus.ACTIVE,
+                    com.lingframe.core.fsm.RuntimeStatus.STOPPING));
 
-        assertEquals(1, runtime.getInstancePool().getActiveInstances().size());
+            LingInstance instance = mock(LingInstance.class);
+            when(instance.getVersion()).thenReturn("v1");
+            runtime.getInstancePool().addInstance(instance, false);
+
+            assertEquals(1, runtime.getInstancePool().getActiveInstances().size());
+        }
     }
 }

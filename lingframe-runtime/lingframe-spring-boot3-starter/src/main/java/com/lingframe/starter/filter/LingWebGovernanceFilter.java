@@ -8,6 +8,7 @@ import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.ling.LingRuntime;
@@ -48,7 +49,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
     private final LingFrameProperties properties;
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
 
-    private static final String HOST_Ling_ID = "lingcore-app";
+    private static final String LING_CORE_ID = "lingcore-app";
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request,
@@ -75,7 +76,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         }
 
         // 3. 确定 lingId
-        String lingId = isLingRequest ? lingMeta.getLingId() : HOST_Ling_ID;
+        String lingId = isLingRequest ? lingMeta.getLingId() : LING_CORE_ID;
 
         // 4. ClassLoader 切换（仅灵元请求）
         ClassLoader originalCL = null;
@@ -93,16 +94,16 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             Method method = handlerMethod.getMethod();
             ctx = buildInvocationContext(request, method, lingId, lingMeta);
 
-            // 7. 开启穿刺模式：仅利用管道进行治理检查，不执行末端反射调用（此处由 Spring 继续 Dispatch）
-            ctx.setSkipTerminalInvocation(true);
+            // 7. 开启穿刺模式：这里只借道 Pipeline 做治理，真实 Controller 执行仍由 Spring 自己完成
+            ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
 
             // 8. 借道 Pipeline 执行全套治理（并发统计、状态检查、权限校验、审计等）
             try {
                 pipelineEngine.invoke(ctx);
-                Object routed = ctx.getAttachments().get("ling.target.instance");
-                if (routed instanceof LingInstance) {
+                LingInstance routed = ctx.routing().getTargetInstance();
+                if (routed != null) {
                     request.setAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY,
-                            ((LingInstance) routed).getVersion());
+                            routed.getVersion());
                 }
             } catch (LingInvocationException e) {
                 // 治理拒绝：卸载/停机期间降级为 info 避免压测日志风暴，权限错误保持 warn
@@ -120,7 +121,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
         } finally {
             if (ctx != null) {
-                // [Key] 务必回收真实持有的上下文，防止 ThreadLocal 污染
+                // 【关键】务必回收真实持有的上下文，防止 ThreadLocal 污染
                 ctx.recycle();
             }
             // 恢复 ClassLoader
@@ -212,7 +213,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             LingCallContext.setTraceId(traceId);
         }
         ctx.setTraceId(traceId);
-        ctx.setTargetLingId(lingId); // Set targetLingId instead of lingId
+        ctx.setTargetLingId(lingId); // 这里写目标灵元标识，而不是旧字段语义上的 lingId
         ctx.setServiceFQSID(lingId + ":http");
         ctx.setCallerLingId("http-gateway"); // Web 请求来源标记
         ctx.setResourceType("HTTP");
@@ -220,15 +221,17 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         ctx.setOperation(method.getName());
         ctx.setMethodName(method.getName());
         ctx.setParameterTypeNames(resolveParameterTypeNames(method));
-        ctx.getAttachments().put("ling.target.className", method.getDeclaringClass().getName());
-        ctx.getAttachments().put("ling.resolved.types", method.getParameterTypes());
+        // HandlerMethod 已经给出真实目标类和参数签名，这些都属于 resolution 分区，而不是 attachments
+        ctx.resolution().setTargetClassName(method.getDeclaringClass().getName());
+        ctx.resolution().setResolvedParameterTypes(method.getParameterTypes());
+        ctx.resolution().setTargetClassLoader(method.getDeclaringClass().getClassLoader());
         ctx.setRequiredPermission(permission);
         ctx.setAccessType(accessType);
         ctx.setAuditAction(auditAction);
         ctx.setShouldAudit(shouldAudit);
         ctx.setMetadata(new HashMap<>());
         ctx.setLabels(new HashMap<>());
-        ctx.setRuleSource(null); // Explicitly set to null as it's not resolved here
+        ctx.setRuleSource(null); // 这里尚未进入规则仲裁阶段，因此显式置空
         return ctx;
     }
 

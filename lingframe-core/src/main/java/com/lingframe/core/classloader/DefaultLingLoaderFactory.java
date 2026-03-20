@@ -27,12 +27,12 @@ import java.net.URL;
 public class DefaultLingLoaderFactory implements LingLoaderFactory {
 
     @Override
-    public ClassLoader create(String lingId, File sourceFile, ClassLoader hostClassLoader) {
+    public ClassLoader create(String lingId, File sourceFile, ClassLoader lingCoreClassLoader) {
         try {
             URL[] urls = resolveUrls(sourceFile);
 
             // 确定灵元 ClassLoader 的 parent
-            ClassLoader parent = determineParent(hostClassLoader);
+            ClassLoader parent = determineParent(lingCoreClassLoader);
 
             // ✅ 创建灵元 ClassLoader
             LingClassLoader lingCL = new LingClassLoader(lingId, urls, parent);
@@ -48,9 +48,9 @@ public class DefaultLingLoaderFactory implements LingLoaderFactory {
      * 确定灵元 ClassLoader 的 parent
      * 如果启用了三层结构，使用 SharedApiClassLoader 作为 parent
      */
-    private ClassLoader determineParent(ClassLoader hostClassLoader) {
+    private ClassLoader determineParent(ClassLoader lingCoreClassLoader) {
         // 三层结构：灵元 CL -> SharedApi CL -> 灵核 CL
-        return SharedApiClassLoader.getInstance(hostClassLoader);
+        return SharedApiClassLoader.getInstance(lingCoreClassLoader);
     }
 
     /**

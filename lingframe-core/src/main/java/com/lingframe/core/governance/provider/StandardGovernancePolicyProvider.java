@@ -28,7 +28,7 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
 
     private final LocalGovernanceRegistry localRegistry;
     // 预编译的灵核规则 (提升匹配性能)
-    private final List<CompiledRule> hostRules;
+    private final List<CompiledRule> lingCoreRules;
 
     @Value
     public static class CompiledRule {
@@ -39,7 +39,7 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
     public StandardGovernancePolicyProvider(LocalGovernanceRegistry localRegistry,
             List<LingCoreGovernanceRule> rawRules) {
         this.localRegistry = localRegistry;
-        this.hostRules = rawRules.stream()
+        this.lingCoreRules = rawRules.stream()
                 .map(r -> new CompiledRule(compilePattern(r.getPattern()), r))
                 .collect(Collectors.toList());
     }
@@ -57,7 +57,7 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
         String fullSign = pid + "." + mName;
 
         // === P0: 灵核 YAML 强制规则 (最高优先级) ===
-        for (CompiledRule cr : hostRules) {
+        for (CompiledRule cr : lingCoreRules) {
             if (cr.pattern.matcher(fullSign).matches()) {
                 LingCoreGovernanceRule r = cr.rule;
                 return GovernanceDecision.builder()

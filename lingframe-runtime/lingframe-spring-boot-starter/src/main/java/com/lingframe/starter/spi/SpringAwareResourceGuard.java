@@ -16,7 +16,7 @@ public interface SpringAwareResourceGuard extends ResourceGuard {
     /**
      * 接收并注入 Spring 上下文引用
      *
-     * @param mainContext 主容器（宿主）上下文
+     * @param mainContext 主容器（灵核）上下文
      * @param lingContext 灵元子容器上下文
      */
     void setContexts(ApplicationContext mainContext, ConfigurableApplicationContext lingContext);

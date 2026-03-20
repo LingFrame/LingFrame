@@ -35,7 +35,7 @@ public class DefaultPermissionService implements PermissionService {
     private static final String GLOBAL_WHITELIST_PREFIX = "com.lingframe.api.";
 
     // 灵核应用 ID
-    private static final String HOST_Ling_ID = "lingcore-app";
+    private static final String LING_CORE_ID = "lingcore-app";
 
     @Override
     public boolean isAllowed(String lingId, String capability, AccessType accessType) {
@@ -48,7 +48,7 @@ public class DefaultPermissionService implements PermissionService {
         }
 
         // 灵核应用根据配置决定是否进行权限检查
-        if (HOST_Ling_ID.equals(lingId)) {
+        if (LING_CORE_ID.equals(lingId)) {
             // 如果配置为不检查灵核应用权限，直接放行
             if (!LingFrameConfig.current().isHostCheckPermissions()) {
                 log.debug("[Auth] LINGCORE application bypassed");

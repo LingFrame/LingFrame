@@ -17,13 +17,15 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collections;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("GovernanceArbitrator 灵元测试")
+@DisplayName("GovernanceArbitrator 测试")
 class GovernanceArbitratorTest {
 
     @Mock
@@ -45,7 +47,7 @@ class GovernanceArbitratorTest {
     class ArbitrationLogicTests {
 
         @Test
-        @DisplayName("首个有效 Provider 应胜出 (First Win)")
+        @DisplayName("首个返回有效结果的 Provider 应直接胜出")
         void testArbitrate_FirstProviderWins() {
             when(provider1.getOrder()).thenReturn(10);
             when(provider2.getOrder()).thenReturn(20);
@@ -62,12 +64,10 @@ class GovernanceArbitratorTest {
         }
 
         @Test
-        @DisplayName("首个 Provider 无决策时应回退到第二个")
+        @DisplayName("当前序位 Provider 无决策时应回退到下一个 Provider")
         void testArbitrate_FallbackToSecondProvider() {
             when(provider1.getOrder()).thenReturn(10);
             when(provider2.getOrder()).thenReturn(20);
-
-            // Provider 1 返回 null (无决策)
             when(provider1.resolve(any(), any(), any())).thenReturn(null);
 
             GovernanceDecision decision2 = GovernanceDecision.builder()
@@ -82,7 +82,7 @@ class GovernanceArbitratorTest {
         }
 
         @Test
-        @DisplayName("无任何 Provider 决策时应使用默认策略")
+        @DisplayName("所有 Provider 都未命中时应回退默认策略")
         void testArbitrate_DefaultFallback() {
             when(provider1.getOrder()).thenReturn(10);
             when(provider1.resolve(any(), any(), any())).thenReturn(null);

@@ -240,7 +240,7 @@
 优先改编排层：
 
 - `DefaultLingLifecycleEngine`
-- `LingLifecycleManager`
+- 如果改动涉及卸载清理，再看 `LingUnloadCoordinator`
 
 不要先去改 coordinator。
 
@@ -252,7 +252,7 @@
 
 - 实例事实变化，就挂实例事件链
 - 运行时宏观变化，就挂运行时事件链
-- 池成员关系变化，就挂宿主层
+- 池成员关系变化，就挂灵核成员层
 
 不要跨层偷写状态。
 
@@ -317,8 +317,8 @@
 6. `RuntimeCoordinator`
 7. `InstancePool`
 8. `LingRuntime`
-9. `LingLifecycleManager`
-10. `DefaultLingLifecycleEngine`
+9. `DefaultLingLifecycleEngine`
+10. `LingUnloadCoordinator`
 11. [运行时双层状态机架构设计](runtime-dual-state-machine-architecture.md)
 
 ## 最后一句建议

@@ -5,6 +5,7 @@ import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
+@DisplayName("LingInstance 测试")
 class LingInstanceTest {
 
     @Mock
@@ -50,9 +52,11 @@ class LingInstanceTest {
     }
 
     @Nested
+    @DisplayName("构造约束")
     class ConstructorTests {
 
         @Test
+        @DisplayName("合法参数下应构造成功")
         void shouldConstructSuccessfully() {
             assertNotNull(instance);
             assertEquals("1.0.0", instance.getVersion());
@@ -61,6 +65,7 @@ class LingInstanceTest {
         }
 
         @Test
+        @DisplayName("版本号为 null 时应抛出异常")
         void shouldThrowWhenVersionIsNull() {
             definition.setVersion(null);
             assertThrows(InvalidArgumentException.class,
@@ -68,6 +73,7 @@ class LingInstanceTest {
         }
 
         @Test
+        @DisplayName("版本号为空白字符串时应抛出异常")
         void shouldThrowWhenVersionIsBlank() {
             definition.setVersion(" ");
             assertThrows(InvalidArgumentException.class,
@@ -75,12 +81,14 @@ class LingInstanceTest {
         }
 
         @Test
+        @DisplayName("容器为 null 时应抛出异常")
         void shouldThrowWhenContainerIsNull() {
             assertThrows(NullPointerException.class,
                     () -> new LingInstance(null, definition, new EventBus()));
         }
 
         @Test
+        @DisplayName("定义为 null 时应抛出异常")
         void shouldThrowWhenDefinitionIsNull() {
             assertThrows(NullPointerException.class,
                     () -> new LingInstance(container, null, new EventBus()));
@@ -88,20 +96,24 @@ class LingInstanceTest {
     }
 
     @Nested
+    @DisplayName("状态管理")
     class StateManagementTests {
 
         @Test
+        @DisplayName("新实例初始时不应处于就绪状态")
         void newInstanceShouldNotBeReady() {
             assertFalse(instance.isReady());
         }
 
         @Test
+        @DisplayName("协调器标记就绪后应变为可用")
         void shouldBeReadyAfterCoordinatorMarksReady() {
             prepareReady(instance);
             assertTrue(instance.isReady());
         }
 
         @Test
+        @DisplayName("容器失活后不应再判定为就绪")
         void shouldNotBeReadyWhenContainerInactive() {
             prepareReady(instance);
             assertTrue(instance.isReady());
@@ -111,6 +123,7 @@ class LingInstanceTest {
         }
 
         @Test
+        @DisplayName("停止后不应再判定为就绪")
         void shouldNotBeReadyWhenStopping() {
             prepareReady(instance);
             assertTrue(instance.isReady());
@@ -121,6 +134,7 @@ class LingInstanceTest {
         }
 
         @Test
+        @DisplayName("销毁后不应再判定为就绪")
         void shouldNotBeReadyAfterTearDown() {
             prepareReady(instance);
             destroy(instance);
@@ -130,6 +144,7 @@ class LingInstanceTest {
         }
 
         @Test
+        @DisplayName("重复销毁应保持幂等")
         void tearDownShouldBeIdempotent() {
             prepareReady(instance);
 
@@ -142,21 +157,25 @@ class LingInstanceTest {
     }
 
     @Nested
+    @DisplayName("引用计数")
     class ReferenceCountingTests {
 
         @Test
+        @DisplayName("初始时应为空闲且无活跃请求")
         void shouldBeIdleInitially() {
             assertTrue(instance.isIdle());
             assertEquals(0, instance.getActiveRequestCount());
         }
 
         @Test
+        @DisplayName("未就绪时 tryEnter 应失败")
         void tryEnterShouldFailWhenNotReady() {
             assertFalse(instance.tryEnter());
             assertEquals(0, instance.getActiveRequestCount());
         }
 
         @Test
+        @DisplayName("就绪后 tryEnter 应成功并增加活跃计数")
         void tryEnterShouldSucceedWhenReady() {
             prepareReady(instance);
 
@@ -166,6 +185,7 @@ class LingInstanceTest {
         }
 
         @Test
+        @DisplayName("濒死状态下 tryEnter 应失败")
         void tryEnterShouldFailWhenDying() {
             prepareReady(instance);
             stop(instance);
@@ -175,6 +195,7 @@ class LingInstanceTest {
         }
 
         @Test
+        @DisplayName("exit 应递减活跃请求计数")
         void exitShouldDecrementCount() {
             prepareReady(instance);
 
@@ -191,6 +212,7 @@ class LingInstanceTest {
         }
 
         @Test
+        @DisplayName("多次 exit 后活跃计数不应出现负数")
         void exitShouldNotGoNegative() {
             prepareReady(instance);
             instance.tryEnter();
@@ -204,15 +226,18 @@ class LingInstanceTest {
     }
 
     @Nested
+    @DisplayName("标签管理")
     class LabelManagementTests {
 
         @Test
+        @DisplayName("标签视图应为不可变集合")
         void getLabelsShouldReturnUnmodifiableView() {
             Map<String, String> labels = instance.getLabels();
             assertThrows(UnsupportedOperationException.class, () -> labels.put("key", "value"));
         }
 
         @Test
+        @DisplayName("应支持逐个添加标签")
         void addLabelShouldWork() {
             instance.addLabel("env", "canary");
             instance.addLabel("tenant", "T1");
@@ -223,6 +248,7 @@ class LingInstanceTest {
         }
 
         @Test
+        @DisplayName("空标签键值应被安全忽略")
         void addLabelShouldIgnoreNulls() {
             instance.addLabel(null, "value");
             instance.addLabel("key", null);
@@ -232,6 +258,7 @@ class LingInstanceTest {
         }
 
         @Test
+        @DisplayName("应支持批量添加标签")
         void addLabelsShouldAddBatch() {
             HashMap<String, String> labels = new HashMap<>();
             labels.put("a", "1");
@@ -243,9 +270,11 @@ class LingInstanceTest {
     }
 
     @Nested
+    @DisplayName("并发安全")
     class ConcurrencyTests {
 
         @Test
+        @DisplayName("并发进入与退出后状态应保持一致")
         void concurrentEnterExitShouldBeConsistent() throws InterruptedException {
             prepareReady(instance);
 
@@ -286,6 +315,7 @@ class LingInstanceTest {
         }
 
         @Test
+        @DisplayName("停止后应阻止新的进入请求")
         void stoppingShouldBlockNewEnters() throws InterruptedException {
             prepareReady(instance);
 
@@ -327,16 +357,22 @@ class LingInstanceTest {
         }
     }
 
-    @Test
-    void toStringShouldContainKeyInfo() {
-        prepareReady(instance);
-        instance.tryEnter();
+    @Nested
+    @DisplayName("字符串表示")
+    class ToStringTests {
 
-        String value = instance.toString();
+        @Test
+        @DisplayName("toString 应包含关键状态信息")
+        void toStringShouldContainKeyInfo() {
+            prepareReady(instance);
+            instance.tryEnter();
 
-        assertTrue(value.contains("1.0.0"));
-        assertTrue(value.contains("state=READY"));
-        assertTrue(value.contains("activeRequests=1"));
+            String value = instance.toString();
+
+            assertTrue(value.contains("1.0.0"));
+            assertTrue(value.contains("state=READY"));
+            assertTrue(value.contains("activeRequests=1"));
+        }
     }
 
     private LingDefinition createDefinition() {
