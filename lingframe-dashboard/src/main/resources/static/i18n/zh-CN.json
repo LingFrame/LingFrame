@@ -21,7 +21,8 @@
   },
   "header": {
     "notSelected": "未选择",
-    "upload": "上传灵元"
+    "upload": "上传灵元",
+    "timeline": "时间线"
   },
   "upload": {
     "title": "上传灵元",
@@ -150,7 +151,8 @@
     "installFailed": "灵元安装失败",
     "reloadSuccess": "灵元重载成功",
     "reloadFailed": "灵元重载失败",
-    "lingVersionUnloaded": "版本 {version} 卸载成功"
+    "lingVersionUnloaded": "版本 {version} 卸载成功",
+    "getTimelineFailed": "获取时间线失败"
   },
   "performance": {
     "title": "系统性能",
@@ -159,5 +161,11 @@
     "heap": "堆内存",
     "threads": "活跃线程",
     "gc": "GC 次数"
+  },
+  "timeline": {
+    "title": "灵元生命周期时间线",
+    "selectLing": "选择灵元",
+    "allLings": "所有灵元",
+    "noEvents": "暂无事件记录"
   }
 }

@@ -55,6 +55,14 @@ createApp({
             progress: 0
         });
 
+        // 时间线模态框
+        const timelineModal = reactive({
+            show: false,
+            loading: false,
+            selectedLingId: '',
+            events: []
+        });
+
         const envLabels = { dev: '开发', test: '测试', prod: '生产' };
 
         // 性能监控数据
@@ -301,6 +309,32 @@ createApp({
         const closeUploadModal = () => {
             if (!uploadModal.uploading) {
                 uploadModal.show = false;
+            }
+        };
+
+        // 时间线相关方法
+        const openTimelineModal = async () => {
+            timelineModal.show = true;
+            await loadTimelineData();
+        };
+
+        const closeTimelineModal = () => {
+            timelineModal.show = false;
+        };
+
+        const loadTimelineData = async () => {
+            timelineModal.loading = true;
+            try {
+                let path = '/lings/timeline';
+                if (timelineModal.selectedLingId) {
+                    path += `?lingId=${timelineModal.selectedLingId}`;
+                }
+                timelineModal.events = await api.get(path);
+            } catch (e) {
+                showToast(t('toast.getTimelineFailed') + ': ' + e.message, 'error');
+                timelineModal.events = [];
+            } finally {
+                timelineModal.loading = false;
             }
         };
 
@@ -919,6 +953,70 @@ createApp({
             return 'text-slate-400';
         };
 
+        // 时间线事件样式和图标
+        const getTimelineEventClass = (type) => {
+            switch (type) {
+                case 'READY':
+                    return 'bg-blue-500/20 text-blue-400 border-2 border-blue-500';
+                case 'ACTIVE':
+                    return 'bg-green-500/20 text-green-400 border-2 border-green-500';
+                case 'STOPPING':
+                    return 'bg-amber-500/20 text-amber-400 border-2 border-amber-500';
+                case 'DEAD':
+                    return 'bg-red-500/20 text-red-400 border-2 border-red-500';
+                case 'RELOAD':
+                    return 'bg-purple-500/20 text-purple-400 border-2 border-purple-500';
+                case 'UNLOAD':
+                    return 'bg-pink-500/20 text-pink-400 border-2 border-pink-500';
+                case 'GC':
+                    return 'bg-cyan-500/20 text-cyan-400 border-2 border-cyan-500';
+                default:
+                    return 'bg-slate-500/20 text-slate-400 border-2 border-slate-500';
+            }
+        };
+
+        const getTimelineEventIcon = (type) => {
+            switch (type) {
+                case 'READY':
+                    return 'fa-solid fa-check-circle';
+                case 'ACTIVE':
+                    return 'fa-solid fa-play-circle';
+                case 'STOPPING':
+                    return 'fa-solid fa-pause-circle';
+                case 'DEAD':
+                    return 'fa-solid fa-stop-circle';
+                case 'RELOAD':
+                    return 'fa-solid fa-sync';
+                case 'UNLOAD':
+                    return 'fa-solid fa-trash';
+                case 'GC':
+                    return 'fa-solid fa-recycle';
+                default:
+                    return 'fa-solid fa-circle';
+            }
+        };
+
+        const getTimelineEventTypeClass = (type) => {
+            switch (type) {
+                case 'READY':
+                    return 'bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded';
+                case 'ACTIVE':
+                    return 'bg-green-500/20 text-green-400 px-2 py-0.5 rounded';
+                case 'STOPPING':
+                    return 'bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded';
+                case 'DEAD':
+                    return 'bg-red-500/20 text-red-400 px-2 py-0.5 rounded';
+                case 'RELOAD':
+                    return 'bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded';
+                case 'UNLOAD':
+                    return 'bg-pink-500/20 text-pink-400 px-2 py-0.5 rounded';
+                case 'GC':
+                    return 'bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded';
+                default:
+                    return 'bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded';
+            }
+        };
+
         // ==================== 生命周期 ====================
         // ==================== I18n ====================
         const locale = ref(localStorage.getItem('lingframe_locale') || 'zh-CN');
@@ -1073,7 +1171,7 @@ createApp({
             lings, activeId, canaryPct, isAuto, ipcEnabled, ipcTarget,
             logs, lastAudit, logViewMode, logContainer, isUserScrolling, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
-            stats, loading, modal, toasts, envLabels, uploadModal,
+            stats, loading, modal, toasts, envLabels, uploadModal, timelineModal,
 
             perfMetrics,
             lingHealthMetrics,
@@ -1086,7 +1184,9 @@ createApp({
             handleLogScroll, scrollToTop,
             formatDrift, formatTime, formatSize,
             getStatusClass, getLingShortName, getLingTagClass, getLogColor,
+            getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
+            openTimelineModal, closeTimelineModal, loadTimelineData,
             doUpdateStatus, fetchPerformanceMetrics, fetchLingHealthMetrics
         };
     }
