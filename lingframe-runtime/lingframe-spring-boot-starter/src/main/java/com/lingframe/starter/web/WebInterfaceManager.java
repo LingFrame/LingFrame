@@ -7,7 +7,6 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.TrafficRouter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.context.request.ServletWebRequest;
@@ -19,6 +18,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import javax.annotation.PreDestroy;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -41,10 +41,12 @@ public class WebInterfaceManager implements WebRouteResolver {
     private final Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
     private final Map<String, RequestMappingInfo> mappingInfoMap = new ConcurrentHashMap<>();
+    private final Map<String, String> compatibilityBeanNamesByRoute = new ConcurrentHashMap<>();
 
     private final ExecutorService registryExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "LingFrame-WebInterfaceManager");
         thread.setDaemon(true);
+        thread.setContextClassLoader(WebInterfaceManager.class.getClassLoader());
         return thread;
     });
 
@@ -107,7 +109,10 @@ public class WebInterfaceManager implements WebRouteResolver {
 
         try {
             Method targetMethod = requireTargetMethod(metadata, routeKey);
-            Class<?> targetClass = targetMethod.getDeclaringClass();
+            Class<?> targetClass = metadata.getTargetClass();
+            if (targetClass == null) {
+                targetClass = targetMethod.getDeclaringClass();
+            }
             String version = metadata.getVersion();
             String proxyBeanName = metadata.getLingId() + ":" + (version != null ? version : "unknown")
                     + ":" + targetClass.getName();
@@ -118,14 +123,10 @@ public class WebInterfaceManager implements WebRouteResolver {
             RequestMappingInfo info = resolveRequestMappingInfo(metadata);
 
             if (!mappingInfoMap.containsKey(routeKey)) {
-                LingWebEntryHandler entryHandler = new LingWebEntryHandler(this, routeKey);
-                Method dispatchMethod = ReflectionUtils.findMethod(
-                        LingWebEntryHandler.class, "dispatch", ServletWebRequest.class);
-                if (dispatchMethod == null) {
-                    throw new IllegalStateException("dispatch method not found for route: " + routeKey);
-                }
-                hostSupport.registerMapping(routeKey, info, entryHandler, dispatchMethod, mappingInfoMap);
-                log.info("Registered route entry: {} {}", metadata.getHttpMethod(), metadata.getUrlPattern());
+                hostSupport.registerMapping(routeKey, info, proxyBeanName, targetMethod, mappingInfoMap);
+                compatibilityBeanNamesByRoute.put(routeKey, proxyBeanName);
+                log.info("Registered SpringDoc compatibility mapping: {} {}", metadata.getHttpMethod(),
+                        metadata.getUrlPattern());
             }
 
             metadataMap.compute(routeKey, (key, existing) -> mergeRouteMetadata(routeKey, existing, metadata));
@@ -175,21 +176,38 @@ public class WebInterfaceManager implements WebRouteResolver {
         List<String> routesToRemove = new ArrayList<>();
         AtomicReference<ClassLoader> lingLoader = new AtomicReference<>();
         Set<String> beanNamesToRemove = new LinkedHashSet<>();
+        Set<Class<?>> controllerClassesToRemove = new LinkedHashSet<>();
         Map<String, List<WebInterfaceMetadata>> remainingMap = new HashMap<>();
         List<WebInterfaceMetadata> removedMetas = new ArrayList<>();
+        Set<String> routesToRefresh = new LinkedHashSet<>();
 
         metadataMap.forEach((routeKey, metas) -> {
             if (metas == null || metas.isEmpty()) {
                 return;
             }
             List<WebInterfaceMetadata> remaining = new ArrayList<>();
+            String compatibilityBeanName = compatibilityBeanNamesByRoute.get(routeKey);
+            boolean compatibilityBeanRemoved = false;
             for (WebInterfaceMetadata meta : metas) {
-                if (meta.getLingId().equals(lingId)
-                        && (targetLoader == null || meta.getClassLoader() == targetLoader)) {
+                // ClassLoader WeakRef 被 GC 后返回 null，也应视为匹配并移除，避免路由残留
+                ClassLoader metaLoader = meta.getClassLoader();
+                boolean loaderMatches = targetLoader == null
+                        || metaLoader == targetLoader
+                        || metaLoader == null;
+                if (meta.getLingId().equals(lingId) && loaderMatches) {
                     removedMetas.add(meta);
-                    lingLoader.set(meta.getClassLoader());
+                    if (metaLoader != null) {
+                        lingLoader.set(metaLoader);
+                    }
+                    Class<?> targetClass = meta.getTargetClass();
+                    if (targetClass != null) {
+                        controllerClassesToRemove.add(targetClass);
+                    }
                     if (meta.getSpringDocBeanName() != null) {
                         beanNamesToRemove.add(meta.getSpringDocBeanName());
+                        if (Objects.equals(meta.getSpringDocBeanName(), compatibilityBeanName)) {
+                            compatibilityBeanRemoved = true;
+                        }
                     }
                 } else {
                     remaining.add(meta);
@@ -200,6 +218,9 @@ public class WebInterfaceManager implements WebRouteResolver {
                 routesToRemove.add(routeKey);
             } else {
                 remainingMap.put(routeKey, remaining);
+                if (compatibilityBeanRemoved) {
+                    routesToRefresh.add(routeKey);
+                }
             }
         });
 
@@ -215,8 +236,14 @@ public class WebInterfaceManager implements WebRouteResolver {
             meta.clearReferences();
         }
 
+        controllerClassesToRemove.removeIf(this::isControllerClassStillRegistered);
         ClassLoader cleanupLoader = targetLoader != null ? targetLoader : lingLoader.get();
-        hostSupport.cleanupCompatibilityArtifacts(beanNamesToRemove, routesToRemove, mappingInfoMap, cleanupLoader);
+        hostSupport.cleanupCompatibilityArtifacts(beanNamesToRemove, routesToRemove, mappingInfoMap,
+                cleanupLoader, controllerClassesToRemove);
+        for (String routeKey : routesToRemove) {
+            compatibilityBeanNamesByRoute.remove(routeKey);
+        }
+        refreshCompatibilityMappings(remainingMap, routesToRefresh, cleanupLoader);
 
         log.info("Unregistered {} interfaces for ling: {}", removedMetas.size(), lingId);
     }
@@ -376,6 +403,72 @@ public class WebInterfaceManager implements WebRouteResolver {
                         .add(meta.getUrlPattern());
             }
         });
+    }
+
+    private void refreshCompatibilityMappings(Map<String, List<WebInterfaceMetadata>> remainingMap,
+                                              Set<String> routesToRefresh,
+                                              ClassLoader cleanupLoader) {
+        if (routesToRefresh == null || routesToRefresh.isEmpty()) {
+            return;
+        }
+        // 传入有效的 cleanupLoader 以确保 Adapter 缓存被正确清理
+        hostSupport.cleanupCompatibilityArtifacts(Collections.emptySet(), routesToRefresh,
+                mappingInfoMap, cleanupLoader, Collections.emptySet());
+        for (String routeKey : routesToRefresh) {
+            List<WebInterfaceMetadata> candidates = remainingMap.get(routeKey);
+            WebInterfaceMetadata replacement = selectCompatibilityMetadata(candidates);
+            if (replacement == null) {
+                compatibilityBeanNamesByRoute.remove(routeKey);
+                continue;
+            }
+            try {
+                Method targetMethod = requireTargetMethod(replacement, routeKey);
+                RequestMappingInfo mappingInfo = resolveRequestMappingInfo(replacement);
+                hostSupport.registerMapping(routeKey, mappingInfo, replacement.getSpringDocBeanName(),
+                        targetMethod, mappingInfoMap);
+                compatibilityBeanNamesByRoute.put(routeKey, replacement.getSpringDocBeanName());
+                log.info("Refreshed SpringDoc compatibility mapping: {} {}",
+                        replacement.getHttpMethod(), replacement.getUrlPattern());
+            } catch (Exception e) {
+                compatibilityBeanNamesByRoute.remove(routeKey);
+                log.warn("Failed to refresh SpringDoc compatibility mapping: {}", routeKey, e);
+            }
+        }
+    }
+
+    private WebInterfaceMetadata selectCompatibilityMetadata(List<WebInterfaceMetadata> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        for (WebInterfaceMetadata candidate : candidates) {
+            if (candidate != null && candidate.getSpringDocBeanName() != null) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private boolean isControllerClassStillRegistered(Class<?> targetClass) {
+        if (targetClass == null) {
+            return false;
+        }
+        for (List<WebInterfaceMetadata> metas : metadataMap.values()) {
+            if (metas == null) {
+                continue;
+            }
+            for (WebInterfaceMetadata meta : metas) {
+                if (meta == null) {
+                    continue;
+                }
+                Class<?> remainingClass = meta.getTargetClass();
+                // 只有完全相同的 Class 对象（即由同一个 ClassLoader 加载的同名类）
+                // 才说明该 Controller 在本实例的其他路由中还有注册关联
+                if (remainingClass == targetClass) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private Object requireTargetBean(WebInterfaceMetadata metadata, String routeKey) {

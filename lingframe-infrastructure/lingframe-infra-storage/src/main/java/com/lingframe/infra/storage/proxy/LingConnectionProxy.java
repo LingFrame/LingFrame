@@ -86,7 +86,6 @@ public class LingConnectionProxy implements Connection {
         return target.getAutoCommit();
     }
 
-    // ... 还有很多，务必补全
     @Override
     public DatabaseMetaData getMetaData() throws SQLException {
         return target.getMetaData();

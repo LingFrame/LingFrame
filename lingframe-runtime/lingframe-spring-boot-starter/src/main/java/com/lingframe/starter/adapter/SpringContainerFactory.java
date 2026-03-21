@@ -61,6 +61,7 @@ public class SpringContainerFactory implements ContainerFactory {
                     .resourceLoader(new DefaultResourceLoader(classLoader)) // 使用隔离加载器
                     .sources(sourceClass)
                     .bannerMode(Banner.Mode.OFF)
+                    .registerShutdownHook(false) // 🔥 防止在 JDK 17 下因无法反射清理 ShutdownHook 而导致 ClassLoader 永久泄漏
                     .web(WebApplicationType.NONE) // 禁止灵元启动 Tomcat
                     .properties("spring.main.allow-bean-definition-overriding=true") // 允许覆盖 Bean
                     .properties("spring.application.name=Ling-" + lingId) // 独立应用名

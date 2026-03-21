@@ -454,16 +454,31 @@ public class BasicResourceGuard implements ResourceGuard {
     // =========================================================================
 
     private int deregisterJdbcDrivers(String lingId, ClassLoader classLoader) {
+        // 1. 优先尝试让 Ling 自己清理（通过 LingClassLoader 加载的 Helper 避开 CallerSensitive 和 JDK17 反射限制）
+        try {
+            Class<?> helperClass = classLoader.loadClass("com.lingframe.starter.util.JdbcCleanupHelper");
+            // 只有当 Helper 真的是由该 ClassLoader 加载的，才调用，否则跳过
+            if (helperClass.getClassLoader() == classLoader) {
+                Method cleanupMethod = helperClass.getMethod("deregisterAll");
+                int count = (Integer) cleanupMethod.invoke(null);
+                if (count > 0) {
+                    log.info("[{}] Deregistered {} JDBC driver(s) via JdbcCleanupHelper", lingId, count);
+                    return count;
+                }
+            }
+        } catch (Throwable e) {
+            log.debug("[{}] JdbcCleanupHelper not found or failed: {}", lingId, e.getMessage());
+        }
+
+        // 2. 然后尝试强悍的反射清理（绕过 Caller检查，但需要 add-opens java.sql/java.sql=ALL-UNNAMED）
         if (DRIVER_MANAGER_FIELD != null) {
-            // JVM 跨 ClassLoader 时，DriverManager.getDrivers() 因 CallerSensitive
-            // 获取不到子类加载器的驱动。
-            // 必须优先使用反射绕过权限检查进行强制反注册。
             int count = deregisterJdbcDriversReflection(lingId, classLoader);
             if (count > 0)
                 return count;
         }
 
-        // 兜底：如果反射完全失效，才尝试使用 Public API
+        // 3. 兜底：如果都没有成功，尝试使用 Public API
+        // 注意：这里的调用者是 HostClassLoader，将永远找不到 LingCL 的 Driver，但为了极少数非隔离场景留着
         return deregisterJdbcDriversPublicApi(lingId, classLoader);
     }
 

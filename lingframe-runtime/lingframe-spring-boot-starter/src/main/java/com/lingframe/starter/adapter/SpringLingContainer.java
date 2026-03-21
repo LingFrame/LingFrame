@@ -324,7 +324,7 @@ public class SpringLingContainer implements LingContainer {
                 .version(version)
                 .targetBeanName(beanName)
                 .targetBean(bean)
-                .targetClassName(method.getDeclaringClass().getName())
+                .targetClassName(resolveControllerClass(bean, method).getName())
                 .targetMethodName(method.getName())
                 .targetMethodParameterTypeNames(resolveParameterTypeNames(method))
                 .targetMethod(method)
@@ -399,7 +399,7 @@ public class SpringLingContainer implements LingContainer {
                         .version(version)
                         .targetBeanName(beanName)
                         .targetBean(bean)
-                        .targetClassName(method.getDeclaringClass().getName())
+                        .targetClassName(resolveControllerClass(bean, method).getName())
                         .targetMethodName(method.getName())
                         .targetMethodParameterTypeNames(resolveParameterTypeNames(method))
                         .targetMethod(method)
@@ -436,6 +436,11 @@ public class SpringLingContainer implements LingContainer {
             }
         }
         return fullPaths;
+    }
+
+    private Class<?> resolveControllerClass(Object bean, Method method) {
+        Class<?> targetClass = bean != null ? AopUtils.getTargetClass(bean) : null;
+        return targetClass != null ? targetClass : method.getDeclaringClass();
     }
 
     private String[] resolvePaths(RequestMapping mapping) {

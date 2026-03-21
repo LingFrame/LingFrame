@@ -147,6 +147,10 @@ public class WebInterfaceMetadata {
     }
 
     public void minimizeHostReferences() {
+        Class<?> targetClass = resolveUserClass(targetBean);
+        if (targetClass != null) {
+            targetClassName = targetClass.getName();
+        }
         if (targetMethod != null) {
             targetMethodRef = new WeakReference<>(targetMethod);
             if (targetMethodName == null || targetMethodName.isEmpty()) {
@@ -164,10 +168,8 @@ public class WebInterfaceMetadata {
             targetBeanRef = new WeakReference<>(targetBean);
             targetBean = null;
         }
-        if (classLoader != null) {
-            classLoaderRef = new WeakReference<>(classLoader);
-            classLoader = null;
-        }
+        // 🔥 classLoader 不降级为 WeakReference：卸载时依赖 ClassLoader 身份匹配，
+        // 若被 GC 则无法正确识别待移除的元数据，导致路由残留
         if (lingApplicationContext != null) {
             lingApplicationContextRef = new WeakReference<>(lingApplicationContext);
             lingApplicationContext = null;
@@ -208,6 +210,10 @@ public class WebInterfaceMetadata {
             return expectedLoader == null || userClass.getClassLoader() == expectedLoader;
         }
         return false;
+    }
+
+    private Class<?> resolveUserClass(Object bean) {
+        return bean != null ? AopUtils.getTargetClass(bean) : null;
     }
 
     public boolean hasSameTargetSignature(WebInterfaceMetadata other) {
@@ -371,18 +377,6 @@ public class WebInterfaceMetadata {
         signature.append(label).append('=').append(Arrays.toString(values));
     }
 
-    private RequestMappingInfo resolveMatchingRequestMappingInfo(Object request) {
-        if (requestMappingInfo == null || request == null) {
-            return requestMappingInfo;
-        }
-        Method matchingMethod = findMethod(requestMappingInfo.getClass(), "getMatchingCondition", 1);
-        if (matchingMethod == null) {
-            return requestMappingInfo;
-        }
-        Object result = ReflectionUtils.invokeMethod(matchingMethod, requestMappingInfo, request);
-        return result instanceof RequestMappingInfo ? (RequestMappingInfo) result : null;
-    }
-
     private boolean matchesParams(Object request) {
         if (params == null || params.length == 0) {
             return true;
@@ -536,17 +530,6 @@ public class WebInterfaceMetadata {
 
     private int conditionWeight(String[] expressions) {
         return expressions == null ? 0 : expressions.length;
-    }
-
-    private Method findMethod(Class<?> type, String name, int parameterCount) {
-        for (Method candidate : type.getMethods()) {
-            if (!candidate.getName().equals(name) || candidate.getParameterCount() != parameterCount) {
-                continue;
-            }
-            ReflectionUtils.makeAccessible(candidate);
-            return candidate;
-        }
-        return null;
     }
 
     private interface StringValueLookup {

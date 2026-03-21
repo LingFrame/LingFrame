@@ -56,7 +56,8 @@ class SpringWebHostSupportTest {
                     Collections.singleton(beanName),
                     Collections.singleton(routeKey),
                     mappingInfoMap,
-                    DemoController.class.getClassLoader());
+                    DemoController.class.getClassLoader(),
+                    Collections.emptySet());
 
             assertFalse(hostContext.containsBeanDefinition(beanName));
             assertFalse(mappingInfoMap.containsKey(routeKey));

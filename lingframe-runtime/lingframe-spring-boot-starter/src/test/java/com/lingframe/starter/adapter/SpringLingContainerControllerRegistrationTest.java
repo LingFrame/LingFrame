@@ -112,6 +112,53 @@ class SpringLingContainerControllerRegistrationTest {
         }
     }
 
+    @Test
+    @DisplayName("应为继承方法记录真实 Controller 类名")
+    void shouldCaptureConcreteControllerClassForInheritedMethod() throws Exception {
+        SpringLingContainer container = new SpringLingContainer(
+                null,
+                InheritedController.class.getClassLoader(),
+                webInterfaceManager,
+                Collections.emptyList(),
+                Collections.emptyList(),
+                null,
+                Collections.emptyList(),
+                "v1");
+
+        InheritedController bean = new InheritedController();
+        Method targetMethod = InheritedController.class.getMethod("detail");
+        RequestMapping classMapping = AnnotatedElementUtils.findMergedAnnotation(InheritedController.class,
+                RequestMapping.class);
+        RequestMapping mapping = AnnotatedElementUtils.findMergedAnnotation(targetMethod, RequestMapping.class);
+        assertNotNull(classMapping);
+        assertNotNull(mapping);
+
+        List<WebInterfaceMetadata> captured = new ArrayList<>();
+        doAnswer(invocation -> {
+            captured.add(invocation.getArgument(0));
+            return null;
+        }).when(webInterfaceManager).registerSync(any(WebInterfaceMetadata.class));
+
+        Method registerMethod = ReflectionUtils.findMethod(
+                SpringLingContainer.class,
+                "registerControllerMappings",
+                String.class,
+                String.class,
+                Object.class,
+                Method.class,
+                RequestMapping.class,
+                RequestMapping.class);
+        assertNotNull(registerMethod);
+        ReflectionUtils.makeAccessible(registerMethod);
+        ReflectionUtils.invokeMethod(registerMethod, container, "ling-a", "inheritedController",
+                bean, targetMethod, classMapping, mapping);
+
+        assertEquals(1, captured.size());
+        WebInterfaceMetadata metadata = captured.get(0);
+        assertEquals(InheritedController.class.getName(), metadata.getTargetClassName());
+        assertEquals(InheritedBaseController.class.getName(), metadata.getTargetMethod().getDeclaringClass().getName());
+    }
+
     @RestController
     @RequestMapping(path = {"/api", "/alt"})
     static class MultiMappingController {
@@ -126,5 +173,17 @@ class SpringLingContainerControllerRegistrationTest {
         public String upsert() {
             return "ok";
         }
+    }
+
+    static class InheritedBaseController {
+        @RequestMapping(path = "/detail", method = RequestMethod.GET)
+        public String detail() {
+            return "ok";
+        }
+    }
+
+    @RestController
+    @RequestMapping(path = "/inherited")
+    static class InheritedController extends InheritedBaseController {
     }
 }

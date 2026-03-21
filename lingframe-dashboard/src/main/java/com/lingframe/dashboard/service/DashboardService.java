@@ -142,7 +142,12 @@ public class DashboardService {
             }
 
             String targetVersion = target.getVersion();
-            File source = resolveSourceFile(lingId, targetVersion);
+            String baseVersion = targetVersion;
+            int reloadIdx = targetVersion.indexOf("-reload-");
+            if (reloadIdx > 0) {
+                baseVersion = targetVersion.substring(0, reloadIdx);
+            }
+            File source = resolveSourceFile(lingId, baseVersion);
             if (source == null) {
                 throw new LingInstallException(lingId,
                         "Source file not found for " + lingId + ":" + targetVersion, null);
@@ -158,7 +163,7 @@ public class DashboardService {
             Map<String, String> labels = new HashMap<>(target.getLabels());
 
             // 重载时改版本号：baseVersion + "-reload-{n}"
-            String reloadVersion = buildReloadVersion(runtime, targetVersion);
+            String reloadVersion = buildReloadVersion(runtime, baseVersion);
             def.setVersion(reloadVersion);
             markReload(def, labels, reloadVersion);
 
