@@ -290,6 +290,19 @@ public class LingController {
             return ApiResponse.error("获取健康指标失败: " + e.getMessage());
         }
     }
+    
+    /**
+     * 获取灵元生命周期事件
+     */
+    @GetMapping("/timeline")
+    public ApiResponse<List<DashboardService.LifecycleEvent>> getTimeline(@RequestParam(value = "lingId", required = false) String lingId) {
+        try {
+            return ApiResponse.ok(dashboardService.getLifecycleEvents(lingId));
+        } catch (Exception e) {
+            log.error("Failed to get timeline events", e);
+            return ApiResponse.error("获取时间线事件失败: " + e.getMessage());
+        }
+    }
 
     // 内部类：请求体
     @Data

@@ -23,6 +23,7 @@ import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
 import com.lingframe.core.router.CanaryRouter;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -34,6 +35,30 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DashboardService {
 
+    /**
+     * 灵元生命周期事件
+     */
+    @Data
+    public static class LifecycleEvent {
+        private String id;
+        private String lingId;
+        private String version;
+        private String type;
+        private String title;
+        private String description;
+        private long timestamp;
+        
+        public LifecycleEvent(String lingId, String version, String type, String title, String description) {
+            this.id = UUID.randomUUID().toString();
+            this.lingId = lingId;
+            this.version = version;
+            this.type = type;
+            this.title = title;
+            this.description = description;
+            this.timestamp = System.currentTimeMillis();
+        }
+    }
+
     private final LingFrameConfig lingFrameConfig;
     private final LingLifecycleEngine lifecycleEngine;
     private final LingRepository lingRepository;
@@ -42,6 +67,9 @@ public class DashboardService {
     private final LingInfoConverter converter;
     private final PermissionService permissionService;
     private final RuntimeCoordinator runtimeCoordinator;
+    
+    // 存储生命周期事件的列表
+    private final List<LifecycleEvent> lifecycleEvents = Collections.synchronizedList(new ArrayList<>());
 
     public List<LingInfoDTO> getAllLingInfos() {
         return lingRepository.getAllRuntimes().stream()
@@ -85,6 +113,7 @@ public class DashboardService {
             }
             boolean isCanary = isCanary(def);
             lifecycleEngine.deploy(def, file, !isCanary, Collections.emptyMap());
+            addLifecycleEvent(def.getId(), def.getVersion(), "READY", "灵元安装完成", "灵元 " + def.getId() + " 版本 " + def.getVersion() + " 安装成功并准备就绪");
             return getLingInfo(def.getId());
         } catch (Exception e) {
             throw new LingInstallException("unknown", "Failed to install ling: " + e.getMessage(), e);
@@ -112,6 +141,7 @@ public class DashboardService {
         try {
             canaryRouter.removeCanaryConfig(lingId);
             lifecycleEngine.undeploy(lingId);
+            addLifecycleEvent(lingId, "", "DEAD", "灵元完全卸载", "灵元 " + lingId + " 已完全卸载，所有版本均已移除");
         } catch (Exception e) {
             throw new LingInstallException(lingId, "Failed to uninstall ling: " + e.getMessage(), e);
         }
@@ -121,6 +151,7 @@ public class DashboardService {
         try {
             canaryRouter.removeCanaryConfig(lingId);
             lifecycleEngine.undeploy(lingId, version);
+            addLifecycleEvent(lingId, version, "UNLOAD", "灵元版本卸载", "灵元 " + lingId + " 版本 " + version + " 已卸载");
         } catch (Exception e) {
             throw new LingInstallException(lingId,
                     "Failed to uninstall ling version " + version + ": " + e.getMessage(), e);
@@ -176,6 +207,7 @@ public class DashboardService {
             }
 
             lifecycleEngine.undeploy(lingId, target);
+            addLifecycleEvent(lingId, reloadVersion, "RELOAD", "灵元热重载", "灵元 " + lingId + " 版本 " + targetVersion + " 已热重载为 " + reloadVersion);
 
             return getLingInfo(lingId);
         } catch (Exception e) {
@@ -202,6 +234,7 @@ public class DashboardService {
                     throw new IllegalStateException(errorMsg);
                 }
                 log.info("[Dashboard] State transitioned to ACTIVE for ling: {}", lingId);
+                addLifecycleEvent(lingId, version, "ACTIVE", "灵元激活", "灵元 " + lingId + " 已激活并开始处理请求");
 
                 GovernancePolicy policy = governanceRegistry.getPatch(lingId);
                 if (policy == null || policy.getCapabilities() == null || policy.getCapabilities().isEmpty()) {
@@ -239,6 +272,7 @@ public class DashboardService {
                     throw new IllegalStateException(errorMsg);
                 }
                 log.info("[Dashboard] State transitioned to INACTIVE for ling: {}", lingId);
+                addLifecycleEvent(lingId, version, "STOPPING", "灵元停用", "灵元 " + lingId + " 已停用，不再接受新请求");
 
                 permissionService.revoke(lingId, Capabilities.Ling_ENABLE);
                 log.info("[Dashboard] Revoked Ling_ENABLE permission from {}, ling deactivated", lingId);
@@ -275,6 +309,25 @@ public class DashboardService {
             throw new LingNotFoundException(lingId);
         }
         runtime.resetTrafficStats();
+    }
+    
+    public List<LifecycleEvent> getLifecycleEvents(String lingId) {
+        if (lingId == null || lingId.isEmpty()) {
+            return new ArrayList<>(lifecycleEvents);
+        } else {
+            return lifecycleEvents.stream()
+                    .filter(event -> lingId.equals(event.getLingId()))
+                    .collect(Collectors.toList());
+        }
+    }
+    
+    private void addLifecycleEvent(String lingId, String version, String type, String title, String description) {
+        LifecycleEvent event = new LifecycleEvent(lingId, version, type, title, description);
+        lifecycleEvents.add(event);
+        // 限制事件数量，只保留最近的1000条
+        if (lifecycleEvents.size() > 1000) {
+            lifecycleEvents.remove(0);
+        }
     }
 
     public void updatePermissions(String lingId, ResourcePermissionDTO dto) {
