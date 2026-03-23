@@ -74,6 +74,8 @@ Terminology must stay consistent. Do not let different docs, code, logs, and tes
 
 - In Chinese contexts, the project name should be written as "灵珑"; if English needs to be added, use "灵珑（LingFrame）" or "灵珑 · LingFrame"
 - In English contexts, the project name should be `LingFrame`
+- Do not write "LingFrame（灵珑）" or "LingFrame's ..." in Chinese contexts
+- In docs, comments, and review notes, use `LingCore` and `Ling` consistently in English contexts
 - Do not reintroduce "Host" where `LingCore` is the established term
 - Do not downgrade `Ling` back to `Plugin`
 - If old fields or old docs still contain historical wording, new content must not continue that wording
@@ -438,7 +440,7 @@ If this is your first time reading LingFrame, use this order:
 
 1. [WHY.md](WHY.md)
 2. [MANIFESTO.md](MANIFESTO.md)
-3. [README.zh-CN.md](README.zh-CN.md)
+3. [README.md](README.md)
 4. this manual
 5. `LingInstance` / `InstanceCoordinator`
 6. `LingRuntime` / `RuntimeCoordinator`
