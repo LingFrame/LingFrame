@@ -1,705 +1,211 @@
 # Architecture Design
 
-This document describes the core architecture design and implementation principles of LingFrame.
-
-## Design Philosophy
-
-LingFrame draws inspiration from operating system design principles:
-
-- **Microkernel**: Core is responsible only for scheduling and arbitration, containing no business logic.
-- **Zero Trust**: Business units cannot directly access infrastructure; they must go through the Core proxy.
-- **Capability Isolation**: Each ling runs in an independent ClassLoader and Spring Context.
-
-## Three-Tier Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      LingCore Application                        │
-│                                                              │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │                 Core (Governance Kernel)                │  │
-│  │                                                        │  │
-│  │   LingManager · PermissionService · EventBus        │  │
-│  │   AuditManager · TraceContext · GovernanceStrategy    │  │
-│  │                                                        │  │
-│  │   Resp: Lifecycle Mgmt · Auth Gov · Capability Sched · Context Isolation │  │
-│  └────────────────────────┬──────────────────────────────┘  │
-│                           │                                  │
-│         ┌─────────────────┼─────────────────┐               │
-│         ▼                 ▼                 ▼               │
-│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐       │
-│  │  Storage    │   │   Cache     │   │  Message    │       │
-│  │  Proxy     │   │   Proxy    │   │  Proxy     │       │
-│  │             │   │             │   │             │       │
-│  │ Infra Layer  │   │ Infra Layer  │   │ Infra Layer  │       │
-│  └──────┬──────┘   └──────┬──────┘   └──────┬──────┘       │
-│         │                 │                 │               │
-│         └─────────────────┼─────────────────┘               │
-│                           │                                  │
-│         ┌─────────────────┼─────────────────┐               │
-│         ▼                 ▼                 ▼               │
-│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐       │
-│  │   User      │   │   Order     │   │  Payment    │       │
-│  │  ling     │   │   ling    │   │  ling     │       │
-│  │             │   │             │   │             │       │
-│  │ Business Layer│   │ Business Layer│   │ Business Layer│       │
-│  └─────────────┘   └─────────────┘   └─────────────┘       │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### Layer 1: Core (Governance Kernel)
-
-**Unit**: `lingframe-core`
-
-**Responsibilities**:
-
-- ling Cycle Management (Install, Uninstall, Hot Swap)
-- Governance (Permission Check, Authorization, Audit)
-- Service Routing (FQSID Routing Table)
-- Context Isolation (ClassLoader, Spring Context)
-
-**Key Principles**:
-
-- Core is the sole arbiter.
-- Provides no business capabilities, only scheduling and control.
-- All cross-ling calls must pass through Core.
-
-**Core Components**:
-
-| Component                 | Responsibility             |
-| ------------------------- | -------------------------- |
-| `LingManager`           | ling Install/Uninstall/Routing |
-| `LingRuntime`           | ling Runtime Environment |
-| `InstancePool`            | Blue-Green Deployment & Versioning |
-| `ServiceRegistry`         | Service Registry           |
-| `InvocationExecutor`      | Invocation Executor        |
-| `LingLifecycleManager`  | Lifecycle Management       |
-| `PermissionService`       | Permission Check & Authorization |
-| `AuditManager`            | Audit Logging              |
-| `EventBus`                | Event Publish/Subscribe    |
-| `GovernanceKernel`        | Governance Kernel          |
-
-### Layer 2: Infrastructure (Infrastructure Layer)
-
-**Unit**: `lingframe-infrastructure/*`
-
-**Responsibilities**:
-
-- Encapsulate underlying capabilities (Database, Cache, Message Queue).
-- Fine-grained permission interception.
-- Audit reporting.
-
-**Implemented**:
-
-| Unit                       | Description                | Capability ID |
-| ---------------------------- | -------------------------- | ------------- |
-| `lingframe-infra-storage`    | DB Access, SQL-level ACL   | `storage:sql` |
-| `lingframe-infra-cache`      | Cache Access (TODO)        | `cache:redis` |
-
-**Working Principle**:
-
-Infrastructure Lings intercept underlying calls via a **proxy chain**:
-
-```
-Business ling calls userRepository.findById()
-    │
-    ▼ (Transparent, via MyBatis/JPA)
-┌─────────────────────────────────────┐
-│ Storage ling (Infrastructure)      │
-│                                      │
-│ LingDataSourceProxy                  │
-│   └→ LingConnectionProxy             │
-│       ├→ LingStatementProxy          │  ← Normal Statement
-│       └→ LingPreparedStatementProxy  │  ← PreparedStatement
-│                                      │
-│ Interception: execute/executeQuery/Update  │
-│ 1. LingContextHolder.get() Get Caller
-│ 2. Parse SQL Type (SELECT/INSERT...) │
-│ 3. permissionService.isAllowed() Auth│
-│ 4. permissionService.audit() Audit   │
-└─────────────────────────────────────┘
-    │
-    ▼ (Permission Query)
-┌─────────────────────────────────────┐
-│ Core                                 │
-│ DefaultPermissionService.isAllowed() │
-└─────────────────────────────────────┘
-```
-
-> See [Infrastructure Proxy Development](infrastructure-development.md) for details.
-
-### Layer 3: Business Lings (Business Layer)
-
-**Unit**: User-developed Lings
-
-**Responsibilities**:
-
-- Implement business logic.
-- Access infrastructure via `LingContext`.
-- Expose services via `@LingService`.
-
-**Key Principles**:
-
-- **Zero Trust**: Cannot directly access Database, Cache, etc.
-- All capability calls must pass through Core proxy and authorization.
-- Declare required permissions in `ling.yml`.
-
-## Data Flow
-
-### Business Unit Calls Infrastructure
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Business ling (User ling)                                │
-│                                                              │
-│   userRepository.findById(id)                               │
-│         │                                                    │
-└─────────┼────────────────────────────────────────────────────┘
-          │ JDBC Call
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Infrastructure ling (Storage)                              │
-│                                                              │
-│   LingPreparedStatementProxy.executeQuery()                 │
-│         │                                                    │
-│         ├─→ checkPermission()                               │
-│         │     │                                              │
-│         │     ├─→ LingContextHolder.get() → "user-ling" │
-│         │     │                                              │
-│         │     ├─→ preParsedAccessType (Parsed at construction)│
-│         │     │                                              │
-│         │     ├─→ permissionService.isAllowed(              │
-│         │     │       "user-ling", "storage:sql", READ)   │
-│         │     │                                              │
-│         │     └─→ permissionService.audit(...)              │
-│         │                                                    │
-│         └─→ target.executeQuery()                           │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Core                                                         │
-│                                                              │
-│   DefaultPermissionService.isAllowed()                      │
-│         │                                                    │
-│         ├─→ Check Whitelist                                  │
-│         ├─→ Query Permission Table                           │
-│         └─→ Dev Mode Fallback                                │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-> Note: `LingPreparedStatementProxy` pre-parses SQL type at construction and caches it. `LingStatementProxy` parses SQL at each execution.
-
-### Cross-Unit Calls (Method 1: @LingReference Injection - Recommended)
-
-**Consumer-Driven Contract**: Order ling (Consumer) defines `UserQueryService` interface, User ling (Producer) implements it.
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Order ling (Consumer)                                      │
-│                                                              │
-│   // Order defines the interface it needs (in order-api)     │
-│   interface UserQueryService { UserDTO findById(userId); }  │
-│                                                              │
-│   @LingReference                                             │
-│   private UserQueryService userQueryService;                │
-│                                                              │
-│   userQueryService.findById(userId);  // Direct Call        │
-│         │                                                    │
-└─────────┼────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Core                                                         │
-│                                                              │
-│   GlobalServiceRoutingProxy.invoke() (JDK Dynamic Proxy)    │
-│         │                                                    │
-│         ├─→ resolveTargetLingId() Resolve Target ling   │
-│         │     ├─→ Check lingId in annotation              │
-│         │     └─→ Iterate all Lings for implementation (Cached)│
-│         │                                                    │
-│         ├─→ LingManager.getRuntime(lingId)              │
-│         │                                                    │
-│         ▼                                                    │
-│   SmartServiceProxy.invoke() (Delegate to Smart Proxy)      │
-│         │                                                    │
-│         ├─→ LingContextHolder.set(callerLingId)         │
-│         ├─→ TraceContext.start() Start Tracing              │
-│         ├─→ RateLimiter.acquire() Rate Limit Check│
-│         ├─→ CircuitBreaker.isAllowed() CB Check   │
-│         ├─→ checkPermissionSmartly() Permission Check       │
-│         │     ├─→ @RequiresPermission Explicit Declaration  │
-│         │     └─→ GovernanceStrategy.inferPermission() Infer│
-│         │                                                    │
-│         ├─→ Retry logic (InvocationExecutor)      │
-│         ├─→ activeInstanceRef.get() Get Active Instance     │
-│         ├─→ instance.enter() (Ref Count +1)                  │
-│         ├─→ TCCL Hijack                                      │
-│         ├─→ method.invoke(realBean, args)                   │
-│         ├─→ TCCL Restore                                     │
-│         ├─→ instance.exit() (Ref Count -1)                   │
-│         └─→ recordAuditSmartly() Smart Audit                │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ User ling (Producer)                                       │
-│                                                              │
-│   // Implements the interface defined by Consumer            │
-│   public class UserQueryServiceImpl implements UserQueryService {
-│       @LingService(id = "find_user", desc = "Query User")   │
-│       public UserDTO findById(String userId) { ... }        │
-│   }                                                          │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Cross-Unit Calls (Method 2: FQSID Protocol)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Order ling (Consumer)                                      │
-│                                                              │
-│   context.invoke("user-ling:find_user", userId)           │
-│         │                                                    │
-└─────────┼────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Core                                                         │
-│                                                              │
-│   CoreLingContext.invoke()                                │
-│         │                                                    │
-│         ├─→ GovernanceStrategy.inferAccessType() → EXECUTE  │
-│         ├─→ permissionService.isAllowed() Permission Check   │
-│         │                                                    │
-│         ▼                                                    │
-│   LingManager.invokeService()                             │
-│         │                                                    │
-│         ├─→ protocolServiceRegistry.get(fqsid) Find Route    │
-│         │                                                    │
-│         ▼                                                    │
-│   LingRuntime.invokeService()                             │
-│         │                                                    │
-│         ├─→ instance.enter() (Ref Count +1)                  │
-│         ├─→ TCCL Hijack                                      │
-│         ├─→ serviceMethodCache.get(fqsid) Get Method         │
-│         ├─→ method.invoke() Reflection Invoke                │
-│         ├─→ TCCL Restore                                     │
-│         └─→ instance.exit() (Ref Count -1)                   │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ User ling (Producer)                                       │
-│                                                              │
-│   @LingService(id = "find_user", desc = "Query User")       │
-│   public UserDTO findById(String userId) { ... }            │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Cross-Unit Calls (Method 3: Interface Proxy)
-
-**Consumer-Driven Contract**: Order defines `UserQueryService`, gets implementation via `getService()`.
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Order ling (Consumer)                                      │
-│                                                              │
-│   // Get implementation of the interface defined by Consumer │
-│   UserQueryService userService = context.getService(UserQueryService.class).get();
-│   userService.findById(userId);                             │
-│         │                                                    │
-└─────────┼────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Core                                                         │
-│                                                              │
-│   SmartServiceProxy.invoke() (JDK Dynamic Proxy)            │
-│         │                                                    │
-│         ├─→ LingContextHolder.set(callerLingId)         │
-│         ├─→ TraceContext.start() Start Tracing              │
-│         ├─→ checkPermissionSmartly() Permission Check       │
-│         │     ├─→ @RequiresPermission Explicit Declaration  │
-│         │     └─→ GovernanceStrategy.inferPermission() Infer│
-│         │                                                    │
-│         ├─→ activeInstanceRef.get() Get Active Instance     │
-│         ├─→ instance.enter() (Ref Count +1)                  │
-│         ├─→ TCCL Hijack                                      │
-│         ├─→ method.invoke(realBean, args)                   │
-│         ├─→ TCCL Restore                                     │
-│         ├─→ instance.exit() (Ref Count -1)                   │
-│         └─→ recordAuditSmartly() Smart Audit                │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ User ling (Producer)                                       │
-│                                                              │
-│   // Implements the interface defined by Consumer            │
-│   public class UserQueryServiceImpl implements UserQueryService {
-│       public UserDTO findById(String userId) { ... }        │
-│   }                                                          │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-> Differences:
->
-> - **@LingReference Injection** (Recommended): Auto-injected by `LingReferenceInjector`, uses `GlobalServiceRoutingProxy` for lazy binding and smart routing.
-> - **invoke(fqsid)**: Inspects `@LingService` methods via FQSID string.
-> - **getService(Class)**: Gets dynamic proxy of interface, auto-routes to implementation.
-
-## Service Invocation Details
-
-### @LingReference Mechanism (Recommended)
-
-`@LingReference` is the recommended way, providing the closest experience to native Spring:
-
-#### Working Principle
-
-```
-LINGCORE App Start
-    │
-    ▼
-LingReferenceInjector (BeanPostProcessor)
-    │
-    ├─→ Scan all Beans for @LingReference fields
-    │
-    ├─→ Call LingManager.getGlobalServiceProxy()
-    │     │
-    │     └─→ Create GlobalServiceRoutingProxy
-    │
-    └─→ Inject proxy object into field via reflection
-```
-
-#### Lazy Binding
-
-```
-@LingReference Field Call
-    │
-    ▼
-GlobalServiceRoutingProxy.invoke()
-    │
-    ├─→ resolveTargetLingId() Dynamic Resolve
-    │     ├─→ Check annotation lingId
-    │     ├─→ Query Route Cache (ROUTE_CACHE)
-    │     └─→ Iterate Lings for implementation
-    │
-    ├─→ LingManager.getRuntime(lingId) Get Runtime
-    │
-    └─→ Delegate to SmartServiceProxy for governance
-```
-
-#### Example
-
-```java
-// Order ling (Consumer) defines the interface it needs (in order-api unit)
-// Path: order-api/src/main/java/com/example/order/api/UserQueryService.java
-public interface UserQueryService {
-    Optional<UserDTO> findById(String userId);
-}
-
-// User ling (Producer) implements the interface
-// Path: user-ling/src/main/java/com/example/user/service/UserQueryServiceImpl.java
-@Component
-public class UserQueryServiceImpl implements UserQueryService {
-    @LingService(id = "find_user_by_id", desc = "Query User by ID")
-    @Override
-    public Optional<UserDTO> findById(String userId) {
-        return userRepository.findById(userId).map(this::toDTO);
-    }
-}
-
-// Usage in Order ling
-@RestController
-public class OrderController {
-    
-    // Inject the interface defined by Consumer, implemented by User ling
-    @LingReference
-    private UserQueryService userQueryService;
-    
-    @GetMapping("/orders/{userId}")
-    public List<Order> getUserOrders(@PathVariable String userId) {
-        // Direct call, framework routes to User ling implementation
-        UserDTO user = userQueryService.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        
-        return orderService.findByUser(user);
-    }
-}
-```
-
-#### Configuration
-
-| Property   | Description                             | Default |
-| ---------- | --------------------------------------- | ------- |
-| `lingId` | Target ling ID. Auto-discover if empty| Empty   |
-| `timeout`  | Timeout (ms)                            | 3000    |
-
-#### Advantages
-
-1. **Lazy Binding**: Proxy created effectively even if ling is not started; routes dynamically at runtime.
-2. **Smart Routing**: Auto-routes to latest ling version; supports Blue-Green.
-3. **Cache Optimization**: Interface-to-ling mapping is cached.
-4. **Fault Isolation**: Explicit exception if ling is offline.
-5. **Dev Friendly**: Closest to Spring native experience.
-
-### FQSID Protocol Call
-
-Suitable for loose coupling, no interface dependency:
-
-```java
-@Service
-public class OrderService {
-    @Autowired
-    private LingContext context;
-    
-    public Order createOrder(String userId) {
-        // Call Service via FQSID directly, returns Optional
-        Optional<UserDTO> user = context.invoke("user-ling:find_user", userId);
-        
-        if (user.isEmpty()) {
-            throw new BusinessException("User not found");
-        }
-        
-        return new Order(user.get());
-    }
-}
-```
-
-### Interface Proxy Call
-
-Suitable where explicit error handling is needed:
-
-```java
-@Service
-public class OrderService {
-    @Autowired
-    private LingContext context;
-    
-    public Order createOrder(String userId) {
-        // Get interface implementation (Provided by User ling)
-        Optional<UserQueryService> userQueryService = context.getService(UserQueryService.class);
-        
-        if (userQueryService.isEmpty()) {
-            throw new ServiceUnavailableException("User Query Service unavailable");
-        }
-        
-        UserDTO user = userQueryService.get().findById(userId)
-                .orElseThrow(() -> new BusinessException("User not found"));
-        return new Order(user);
-    }
-}
-```
-
-### Invocation Guide
-
-| Scenario                 | Recommended        | Reason                         |
-| ------------------------ | ------------------ | ------------------------------ |
-| LINGCORE calls ling        | @LingReference     | Simple, Lazy Binding           |
-| ling calls ling (Strong)| @LingReference  | Type-safe, IDE friendly        |
-| ling calls ling (Loose)| FQSID Protocol     | No interface dependency        |
-| Explicit Error Handling  | Interface Proxy    | Handle unavailability gracefully|
-| Dynamic Discovery        | Interface Proxy    | Get available services at runtime|
-| Optional call            | @LingReference     | Supports null check (Optional) |
-
-## Isolation Mechanism
-
-### ClassLoader Isolation
-
-LingFrame uses a three-tier ClassLoader architecture to solve type consistency for shared APIs:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    AppClassLoader                            │
-│                    (LINGCORE App)                                │
-│                                                              │
-│   lingframe-api (Contract)                                   │
-│   lingframe-core                                             │
-│   Spring Boot                                                │
-│                                                              │
-└────────────────────────┬────────────────────────────────────┘
-                         │ parent
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 SharedApiClassLoader                         │
-│                 (Shared API Layer)                           │
-│                                                              │
-│   order-api.jar (Shared Interface & DTO)                     │
-│   user-api.jar                                               │
-│   ...                                                        │
-│                                                              │
-└────────────────────────┬────────────────────────────────────┘
-                         │ parent
-         ┌───────────────┼───────────────┐
-         ▼               ▼               ▼
-┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-│LingCL A  │   │LingCL B  │   │LingCL C  │
-│             │   │             │   │             │
-│ Child-First │   │ Child-First │   │ Child-First │
-│ Load Self   │   │ Load Self   │   │ Load Self   │
-└─────────────┘   └─────────────┘   └─────────────┘
-```
-
-**Shared API Configuration** (`application.yaml`):
-
-```yaml
-lingframe:
-  preload-api-jars:
-    - libs/order-api.jar              # JAR File
-    - lingframe-examples/order-api    # Maven Unit Dir
-    - libs/*-api.jar                  # Wildcard
-```
-
-**Whitelist Delegation** (Force Parent Load):
-
-- `java.*`, `javax.*`, `jdk.*`, `sun.*`
-- `com.lingframe.api.*` (Framework Contract)
-- `org.slf4j.*` (Logging Facade)
-- **All classes in SharedApiClassLoader** (Auto-detected)
-
-> See [Shared API Guidelines](shared-api-guidelines.md)
-
-### Spring Context Isolation
-
-Each ling runs in a **completely isolated** Spring ApplicationContext:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│              LINGCORE Context (LINGCORE App)                         │
-│                                                              │
-│   LingManager, ContainerFactory, PermissionService        │
-│   Common Beans...                                            │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-
-┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-│  Context A  │   │  Context B  │   │  Context C  │
-│ (ling A)  │   │ (ling B)  │   │ (ling C)  │
-│             │   │             │   │             │
-│ Indep Beans │   │ Indep Beans │   │ Indep Beans │
-│ Indep Config│   │ Indep Config│   │ Indep Config│
-└─────────────┘   └─────────────┘   └─────────────┘
-```
-
-> **Design Note**: ling contexts are NOT child contexts of the LINGCORE.
-> This is intentional for:
-> 1. **Zero Trust**: Lings cannot directly access LingCore beans via `@Autowired`
-> 2. **Clean Unload**: No parent-child references that could cause ClassLoader leaks
-> 3. **True Isolation**: Each ling is a self-contained Spring Boot application
->
-> Core beans (`LingManager`, `LingContext`) are manually injected via `registerBeans()`.
-
-## Ecosystem Extensibility (SPI)
-
-To maintain the purity of the Core, LingFrame designs a high-level exoskeleton extension mechanism (in the `lingframe-runtime` phase, mainly relying on Spring Boot Starter assembly), allowing developers to seamlessly integrate isolated Lings with existing enterprise infrastructure ecosystems (such as Nacos, Apollo, SkyWalking, etc.) in a non-invasive way:
-
-### Core Extension Points
-
-1. **`LingInvocationFilter` (Service Invocation Filter)**
-   - **Role**: Based on a responsibility chain mechanism, intercepts cross-unit calls to services exported by `@LingService`.
-   - **Scenarios**: Distributed trace context propagation, global rate limiting, Metrics collection.
-2. **`ServiceExporter` and `ServiceExporterListener`**
-   - **Role**: Listens to unit lifecycle changes. Extracts metadata and pushes outward when a unit starts and mounts services.
-   - **Scenarios**: Automatically register local `Ling` services to Consul or Nacos registries.
-3. **`LingContextCustomizer` (Context Customizer)**
-   - **Role**: Invoked right before each unit's exclusive Spring `ApplicationContext` is refreshed (`refresh()`). Allows dynamic modification or rebinding of the local context environment configurations.
-   - **Scenarios**: Injecting Apollo dynamic configurations or mounting specific global interceptor proxies before a unit starts.
-4. **`LingDeployService` (Deployment Proxy)**
-   - **Role**: Acts as a proxy layer on the host application side, responsible for fetching compressed artifacts from various protocol repository addresses before hooking into the microkernel.
-   - **Scenarios**: Parsing non-standard paths like `oss://` to download plugins locally.
-
-Ecosystem extensions do not belong to the Microkernel. They act as a "glue layer" built outside the microkernel to ensure business feature iteration is not restricted by the underlying base.
-
-## Lifecycle
-
-### ling Installation Flow
-
-```
-LingManager.install(lingId, version, jarFile)
-    │
-    ├─→ Security Verify (DangerousApiVerifier)
-    │
-    ├─→ createLingClassLoader(file)     // Child-First CL
-    │
-    ├─→ containerFactory.create()          // SPI Create Container
-    │
-    ├─→ Create LingInstance
-    │
-    ├─→ Get or Create LingRuntime
-    │
-    ├─→ runtime.addInstance(instance, context, isDefault)  // Blue-Green
-    │       │
-    │       ├─→ instancePool.add(instance)     // Add to Pool
-    │       ├─→ container.start(context)       // Start Spring Child Ctx
-    │       ├─→ serviceRegistry.register()     // Register @LingService
-    │       ├─→ ling.onStart(context)        // Lifecycle Callback
-    │       └─→ instancePool.setDefault(instance)  // Set as Default
-    │
-    ├─→ [devMode] runtime.activate()           // Auto-activate in development mode
-    │
-    └─→ Old version enters dying queue, destroy after ref count zero
-```
-
-### Blue-Green Deployment
-
-```
-Timeline ─────────────────────────────────────────────────────→
-
-v1.0 Running
-    │
-    │  New Version Install Request
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ v1.0 (active)                                                │
-│ Processing Requests                                           │
-│                                                              │
-│                    v2.0 Starting...                          │
-│                    ┌─────────────────────────────────────┐  │
-│                    │ Create ClassLoader                   │  │
-│                    │ Start Spring Context                 │  │
-│                    │ Register @LingService                │  │
-│                    └─────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-    │
-    │  Atomic Switch
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ v2.0 (active)                                                │
-│ Accepting New Requests                                        │
-│                                                              │
-│ v1.0 (dying)                                                 │
-│ Draining Requests, Ref Count Decreasing                       │
-└─────────────────────────────────────────────────────────────┘
-    │
-    │  Ref Count Zero
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ v2.0 (active)                                                │
-│                                                              │
-│ v1.0 Destroy                                                 │
-│ - ling.onStop()                                           │
-│ - Spring Context.close()                                    │
-│ - ClassLoader Release                                       │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Unit Mapping
-
-| Layer          | Maven Unit                     | Description          |
-| -------------- | -------------------------------- | -------------------- |
-| Core           | `lingframe-core`                 | Governance Kernel    |
-| Core           | `lingframe-api`                  | Contract (Interface) |
-| Core           | `lingframe-spring-boot3-starter` | Spring Boot Integration|
-| Infrastructure | `lingframe-infra-storage`      | Storage Proxy        |
-| Infrastructure | `lingframe-infra-cache`        | Cache Proxy          |
-| Business       | User Lings                     | Business Logic       |
+This document describes the **public `0.3.0` architecture that is actually implemented in the current codebase**.
+
+It intentionally avoids older architecture narratives that no longer match the runtime.
+
+If you want one sentence for the center of gravity of this document, use this:
+
+> LingFrame architecture is no longer only answering how lings are loaded.  
+> It is also formalizing how they are governed, converged, unloaded, and cleaned up in a long-running process.
+
+---
+
+## Design Principles
+
+- **One governance spine**: governance should run through a single pipeline instead of being reimplemented per entry point.
+- **Explicit state ownership**: instance lifecycle state and macro runtime state must not be written by the same object graph.
+- **Mode-aware execution**: the kernel must support real execution, simulation, and governance-only entry borrowing without maintaining multiple rule systems.
+- **Event-first explainability**: the dashboard and future control surfaces should consume real kernel events, not shadow models.
+- **Long-running responsibility**: unload, cleanup, and leak diagnostics are part of runtime governance, not post-hoc utilities.
+- **Hot unload must stay ordered**: drain, resource eviction, cleanup, and state convergence belong to the formal runtime path.
+
+---
+
+## Module Layout
+
+| Module | Role in `0.3.0` |
+| :-- | :-- |
+| `lingframe-api` | contracts, annotations, exceptions, security abstractions |
+| `lingframe-core` | pipeline engine, routing, runtime state, lifecycle coordination, event bus, governance logic |
+| `lingframe-runtime` | Spring Boot integration, web governance filters, bean interception, starter assembly |
+| `lingframe-dashboard` | governance center, simulation APIs, canary operations, SSE log streaming |
+| `lingframe-infrastructure` | infrastructure proxy paths, with storage and cache as the current implemented reference paths |
+| `lingframe-examples` | example LingCore app and demo lings |
+
+---
+
+## Invocation Pipeline
+
+`InvocationPipelineEngine` is now the canonical governance execution path.
+
+`FilterRegistry` assembles builtin and SPI filters, validates phase contracts at startup, and exposes the ordered chain to the engine.
+
+### Builtin Phases
+
+| Filter | Responsibility |
+| :-- | :-- |
+| `TrafficMetricsFilter` | record request facts and early metrics/traces |
+| `MacroStateGuardFilter` | reject requests when runtime macro state makes them unsafe |
+| `CanaryRoutingFilter` | choose the target instance, including canary routing |
+| `ResilienceGovernanceFilter` | apply resilience decisions such as circuit breaking and rate limiting |
+| `ContextIsolationFilter` | resolve target class, method, and classloader isolation context |
+| `GovernanceDecisionFilter` | materialize governance decisions such as timeout and rule source |
+| `PermissionGovernanceFilter` | enforce final permission checks |
+| `ThreadIsolationGovernanceFilter` | apply execution isolation and thread handoff |
+| `TerminalInvokerFilter` | perform terminal invocation, simulation result generation, or skip terminal execution based on mode |
+
+The important shift in `0.3.0` is not just that these filters exist. It is that they now form the formal runtime path used by more than one entry surface.
+
+---
+
+## Execution Modes
+
+The pipeline is now explicitly mode-aware through `InvocationExecutionMode`.
+
+| Mode | Meaning | Typical use |
+| :-- | :-- | :-- |
+| `NORMAL` | run governance and real terminal invocation | ling-to-ling and standard runtime calls |
+| `SIMULATION` | run the full governance chain without real side effects | dashboard simulation and explanation |
+| `GOVERN_ONLY` | run governance but do not perform terminal invocation in the pipeline | Spring Web requests and LingCore bean interception that still execute through their original framework path |
+
+This is the key mechanism that allows more entry points to reuse one kernel instead of branching into separate governance implementations.
+
+---
+
+## Lifecycle Orchestration
+
+`DefaultLingLifecycleEngine` is the top-level lifecycle orchestrator in the shipped `0.3.0` runtime.
+
+It translates deploy, reload, and unload intent into ordered runtime actions while leaving state writes to `InstanceCoordinator` and `RuntimeCoordinator`.
+
+### Deploy
+
+- validate ling definition and security constraints
+- create classloader and container
+- register runtime before the first instance facts become visible
+- drive the instance through `LOADING -> STARTING -> READY`
+- publish the ready instance into the pool before emitting the `READY` fact upward
+
+### Reload
+
+- deploy a side-by-side replacement instance
+- preserve default or canary role and labels from the replaced instance
+- cut over to the new instance
+- unload the old instance after the replacement is ready
+
+### Undeploy
+
+- mark instances as `STOPPING`
+- drain in-flight requests until idle or timeout
+- evict services, pipeline-held resources, caches, and classloader-owned state
+- perform leak detection as part of unload completion
+
+This is part of why `0.3.0` is a convergence release rather than just a feature add.
+
+What matters here is not merely that unload exists, but that unload is treated as an orchestrated runtime responsibility with cleanup and diagnostics.
+
+---
+
+## Shared API Boundary
+
+`SharedApiManager` makes the `Shared API` boundary explicit at bootstrap time.
+
+- preload configured shared JARs or classes directories
+- register shared package prefixes
+- freeze the shared boundary
+- only then allow lings to load against that frozen contract view
+
+This is an intentional process-level rule. A brand-new shared contract can be introduced before freeze, but an already loaded shared contract must not be hot-updated or hot-unloaded inside the same process.
+
+---
+
+## Runtime Ownership Model
+
+`0.3.0` formalizes runtime state into two layers.
+
+### Instance Layer
+
+- state type: `InstanceStatus`
+- owner: `InstanceCoordinator`
+- purpose: model a single `LingInstance` lifecycle from `CREATED` to `DEAD`
+
+Typical states include:
+
+- `CREATED`
+- `LOADING`
+- `STARTING`
+- `READY`
+- `STOPPING`
+- `DEAD`
+- `ERROR`
+
+### Runtime Layer
+
+- state type: `RuntimeStatus`
+- owner: `RuntimeCoordinator`
+- purpose: model macro availability from the LingCore side
+
+Typical states include:
+
+- `INACTIVE`
+- `ACTIVE`
+- `DEGRADED`
+- `STOPPING`
+- `REMOVED`
+
+### Linkage Model
+
+The linkage is event-driven rather than object-mutating-object:
+
+- instance-layer changes publish facts
+- `RuntimeCoordinator` subscribes to those facts
+- runtime macro state is reevaluated from snapshots
+
+That separation is the main architectural convergence point in `0.3.0`.
+
+For the full state-ownership explanation, continue with [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md).
+
+---
+
+## Governance Entry Points
+
+The same kernel is now reused by multiple entry paths.
+
+| Entry point | Adapter | How it uses the kernel |
+| :-- | :-- | :-- |
+| Ling service invocation | core invocation path | uses `NORMAL` execution through the pipeline |
+| Spring Boot 2 / 3 Web requests | `LingWebGovernanceFilter` | uses `GOVERN_ONLY` to borrow governance while keeping the framework's own terminal dispatch |
+| LingCore bean methods | `LingCoreBeanGovernanceInterceptor` | uses `GOVERN_ONLY` around AOP-intercepted bean execution |
+| Dashboard simulations | `SimulateService` | uses `SIMULATION` to run the real governance chain without real side effects |
+
+This is what makes `0.3.0` meaningfully different from the earlier “feature collection” stage.
+
+---
+
+## Observability And Cleanup
+
+`0.3.0` also tightens the relationship between governance and operations.
+
+- `EngineTrace` captures explainable decision traces for simulation and kernel reasoning.
+- `MonitoringEvents` defines a shared event vocabulary for trace, audit, alert, circuit-breaker, and leak-detection events.
+- `LogStreamService` streams those events to the dashboard through SSE.
+- `InvocationPipelineEngine.evictLingResources` and method cache eviction support unload cleanup.
+- `DefaultLeakDetector` reports bounded dev-mode diagnostics and passive prod-mode diagnostics.
+
+The important architectural shift is that the dashboard is increasingly consuming **real kernel evidence** instead of a parallel interpretation layer.
+
+That is also part of what separates LingFrame from a simpler "dynamic loading plus admin UI" approach: the control surface is attached to the same runtime spine rather than to a sidecar explanation layer.
+
+---
+
+## Current Boundaries
+
+The public `0.3.0` architecture still has clear boundaries:
+
+- it is a **single-process** governance kernel
+- `Shared API` remains a **process-level contract boundary**
+- shared contract changes still require a process restart once the boundary has been frozen
+- storage and cache proxy paths are the clearest infrastructure references today; broader proxy ecosystems are still incremental
+
+Those boundaries are intentional and should stay visible in public-facing documentation.

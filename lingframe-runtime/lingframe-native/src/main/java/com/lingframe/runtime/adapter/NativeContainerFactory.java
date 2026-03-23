@@ -1,7 +1,6 @@
 package com.lingframe.runtime.adapter;
 
 import com.lingframe.api.config.LingDefinition;
-import com.lingframe.core.loader.LingManifestLoader;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.api.exception.InvalidArgumentException;
@@ -14,11 +13,13 @@ import java.io.File;
 public class NativeContainerFactory implements ContainerFactory {
 
     @Override
-    public LingContainer create(String lingId, File sourceFile, ClassLoader classLoader) {
-        LingDefinition definition = LingManifestLoader.parseDefinition(sourceFile);
+    public LingContainer create(LingDefinition definition, File sourceFile, ClassLoader classLoader) {
         if (definition == null) {
-            log.error("[{}] Cannot parse LingDefinition from source: {}", lingId, sourceFile);
-            throw new InvalidArgumentException("lingId", "LingDefinition not found for ling: " + lingId);
+            throw new InvalidArgumentException("definition", "LingDefinition cannot be null.");
+        }
+        String lingId = definition.getId();
+        if (lingId == null || lingId.trim().isEmpty()) {
+            throw new InvalidArgumentException("lingId", "Ling ID cannot be empty.");
         }
         String mainClassName = definition.getMainClass();
         if (mainClassName == null || mainClassName.trim().isEmpty()) {

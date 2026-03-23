@@ -4,7 +4,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 /**
- * 单元运行时配置
+ * 灵元运行时配置
  */
 @Getter
 @Builder
@@ -53,6 +53,12 @@ public class LingRuntimeConfig {
     @Builder.Default
     private int bulkheadAcquireTimeoutMs = 3000;
 
+    /**
+     * 限流 QPS（每秒令牌数），0 表示不启用
+     */
+    @Builder.Default
+    private int rateLimitPerSecond = 0;
+
     // ==================== 工厂方法 ====================
 
     /**
@@ -90,17 +96,16 @@ public class LingRuntimeConfig {
     public static LingRuntimeConfig development() {
         return LingRuntimeConfig.builder()
                 .maxHistorySnapshots(10)
-                .defaultTimeoutMs(30000)  // 30秒，方便调试
+                .defaultTimeoutMs(30000) // 30秒，方便调试
                 .bulkheadMaxConcurrent(100)
-                .forceCleanupDelaySeconds(5)  // 快速清理
+                .forceCleanupDelaySeconds(5) // 快速清理
                 .build();
     }
 
     @Override
     public String toString() {
         return String.format(
-                "LingRuntimeConfig{maxHistory=%d, timeout=%dms, bulkhead=%d}",
-                maxHistorySnapshots, defaultTimeoutMs, bulkheadMaxConcurrent
-        );
+                "LingRuntimeConfig{maxHistory=%d, timeout=%dms, bulkhead=%d, rateLimit=%d/s}",
+                maxHistorySnapshots, defaultTimeoutMs, bulkheadMaxConcurrent, rateLimitPerSecond);
     }
 }

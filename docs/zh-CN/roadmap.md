@@ -20,7 +20,7 @@
 
 **目标**：验证 JVM 内治理的可行性
 
-- ✅ 单元生命周期管理
+- ✅ 灵元生命周期管理
 - ✅ Child-First 类加载隔离
 - ✅ Spring 父子上下文隔离
 - ✅ 三层 ClassLoader 架构（SharedApiClassLoader）
@@ -34,10 +34,13 @@
 
 **目标**：可视化操作入口
 
-- ✅ Dashboard 单元管理
-- ✅ 单元状态控制（启动/停止/热重载）
+- ✅ Dashboard 灵元管理
+- ✅ 灵元状态控制（启动/停止/热重载）
 - ✅ 权限动态调整
 - ✅ 灰度发布配置
+- ✅ 模拟测试接口（资源 / IPC / 压测路由）
+- ✅ SSE 事件流（`/lingframe/dashboard/stream`）
+- ✅ JVM 指标与灵元健康快照
 - ⏳ Dashboard UI 打磨
 
 ---
@@ -49,28 +52,43 @@
 ### 已实现
 - ✅ 权限控制（@RequiresPermission）
 - ✅ 安全审计（@Auditable）
-- ✅ 全链路追踪（TraceContext）
+- ✅ 全链路追踪（LingCallContext）
 - ✅ 灰度发布（CanaryRouter）
 - ✅ 熔断机制（SlidingWindowCircuitBreaker）
 - ✅ 限流机制（TokenBucketRateLimiter）
 - ✅ 超时控制与降级兜底（整合于 SmartServiceProxy）
 - ✅ 重试机制（基于 GovernanceKernel 的 retryCount）
 - ✅ 复杂路由分发（基于 LabelMatchRouter 的标签与权重路由）
+- ✅ 统一调用治理主链（`InvocationPipelineEngine` + `FilterRegistry`）
+- ✅ 三种执行模式：`NORMAL` / `SIMULATION` / `GOVERN_ONLY`
+- ✅ Web 请求、灵核 Bean、Dashboard 模拟共用同一条治理内核
+- ✅ 双层运行时状态模型（`InstanceStatus` / `RuntimeStatus`）
+- ✅ 状态写入权收束到 `InstanceCoordinator` / `RuntimeCoordinator`
+- ✅ 生命周期编排收束到 `DefaultLingLifecycleEngine`
+- ✅ 卸载清理、资源驱逐与泄漏检测纳入正式运行时职责
+- ✅ Shared API 启动顺序与冻结边界（`SharedApiManager`）
 
 ---
 
-## Phase 4：可观测性 ⏳ 计划中
+## Phase 4：可观测性 🔄 进行中
 
 **目标**：全面监控能力
 
-### 系统指标
-- CPU / 内存使用率
-- JVM 各项指标（GC、堆、线程）
-- 系统负载
+### 当前已具备
+- ✅ Dashboard SSE 监控事件流
+- ✅ trace / audit / lifecycle / circuit-breaker / leak-detection 事件输出
+- ✅ JVM / 系统指标采集（CPU、进程 CPU 负载、总内存、堆、非堆、Metaspace、类加载、线程、GC、系统负载）
+- ✅ 单灵元 / 全量灵元健康快照
 
-### 单元指标
-- 各单元调用次数、成功率、耗时
-- 单元资源占用
+### 系统指标
+- ✅ CPU / 进程 CPU 负载
+- ✅ 总内存 / 堆 / 非堆 / Metaspace
+- ✅ JVM 各项指标（GC、类加载、线程）
+- ✅ 系统负载
+
+### 灵元指标
+- 各灵元调用次数、成功率、耗时
+- 灵元资源占用
 - 异常统计
 
 ### 技术方案
@@ -85,8 +103,14 @@
 **目标**：完整的基础设施代理生态与外骨骼扩展接入能力
 
 ### 已实现
-- ✅ 生态级扩展 SPI（LingInvocationFilter、ServiceExporter、LingContextCustomizer、LingDeployService 等外围胶水层）
-- ✅ 开发体验增强（devMode 下单元安装后自动激活）
+- ✅ 生态级扩展 SPI 已建立（`LingInvocationFilter`、`ServiceExporter`、`LingContextCustomizer`、`LingDeployService`）
+- ✅ `LingInvocationFilter` 已接入统一治理 Pipeline，可通过运行时装配动态扩展 Filter 链
+- ✅ `LingDeployService` 已有默认实现（`DefaultLingDeployService`）
+- ✅ 开发体验增强（devMode 下灵元安装后自动激活）
+
+### 当前阶段说明
+- `ServiceExporter` 与 `LingContextCustomizer` 已作为扩展点公开，但更多属于外围接入骨架，仍需要后续生态适配逐步补齐
+- 当前生态扩展重点仍然是“把接入边界先立住”，不是宣称完整生态已经完成
 
 ### 待实现
 - ⏳ 消息代理（Kafka / RabbitMQ）

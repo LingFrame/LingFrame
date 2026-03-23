@@ -1,169 +1,113 @@
 # Contributing Guide
 
-Thank you for your interest in LingFrame!
+Thanks for considering a contribution to LingFrame.
 
-## Quick Start
+This file is the public contribution entry point.  
+The authoritative development rules live in [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md).
 
-### Prerequisites
-
-- JDK 17+
-- Maven 3.8+
-- IDE: IntelliJ IDEA (Recommended)
-
-### Build Project
-
-```bash
-# Clone Repository (Choose any)
-# GitHub (International, Recommended)
-git clone https://github.com/LingFrame/LingFrame.git
-
-# AtomGit (China)
-git clone https://atomgit.com/lingframe/LingFrame.git
-
-# Gitee (China Mirror)
-git clone https://gitee.com/knight6236/lingframe.git
-
-cd LingFrame
-mvn clean install -DskipTests
-```
-
-### Run Example
-
-```bash
-cd lingframe-examples/lingframe-example-lingcore-app
-mvn spring-boot:run
-```
+If you are new here, do not start by changing code blindly. Read the project stance first, then the public architecture, then the development manual.
 
 ---
 
-## Architecture Must-Read
+## Read These First
 
-> ⚠️ **Please understand these principles, otherwise your PR might be rejected.**
+1. [WHY.md](WHY.md)
+2. [MANIFESTO.md](MANIFESTO.md)
+3. [README.md](README.md)
+4. [docs/glossary.md](docs/glossary.md)
+5. [docs/architecture.md](docs/architecture.md)
+6. [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md)
 
-### Core Principles
-
-| Principle | Description |
-|-----------|-------------|
-| **Zero Trust** | Business units cannot access DB/Redis directly, must go through Core proxy. |
-| **Microkernel** | Core only handles scheduling and arbitration, no business logic. |
-| **Contract First** | All interactions via `lingframe-api` interfaces. |
-| **Ecosystem Agnostic** | Core is pure Java, does not depend on Spring/ORM. |
-
-### Unit Responsibilities
-
-| Unit | Responsibility | Dependency Rule |
-|--------|----------------|-----------------|
-| `lingframe-api` | Contract Layer | No external dependencies. |
-| `lingframe-core` | Governance Kernel | **FORBIDDEN** to depend on Spring. |
-| `lingframe-runtime` | Ecosystem Adapter | Bridges Core and Spring. |
-| `lingframe-dashboard` | Visualization | Depends on Spring Web. |
-
-### Design Principles
-
-- **SRP**: Single Responsibility Principle.
-- **DIP**: Dependency Inversion Principle.
-- **OCP**: Open/Closed Principle.
+If old comments, stale docs, local habits, or partial implementations conflict with the development manual, follow the manual first.
 
 ---
 
-## Where to Start?
+## Good First Contribution Areas
 
-### Good First Issues
+If this is your first contribution, prefer one of these:
 
-Look for these labels in [Issues](../../issues):
+- documentation fixes aligned with the actual implementation
+- clarity improvements for examples and newcomer-facing docs
+- tests around already shipped behavior
+- small bug fixes that do not alter architecture boundaries
 
-| Label | Suitable For |
-|-------|--------------|
-| `good first issue` | First-time contributors |
-| `help wanted` | Need help |
-| `documentation` | Documentation improvements |
+Avoid using a first contribution for:
 
-### Areas Needing Help
-
-- ⏳ Unit Test Coverage
-- ⏳ Message Proxy (Kafka/RabbitMQ)
-- ⏳ Documentation Polish
-
----
-
-## Contribution Flow
-
-### 1. Pick a Task
-
-Comment on an Issue: "I would like to work on this."
-
-### 2. Develop
-
-```bash
-# Clone after Fork
-git clone https://github.com/YOUR_USERNAME/lingframe.git
-
-# Create Branch
-git checkout -b feature/your-feature
-
-# Develop and Commit
-git commit -m "feat: add your feature"
-git push origin feature/your-feature
-```
-
-### 3. Submit PR
-
-- [ ] Build Passes: `mvn clean compile`
-- [ ] Tests Pass: `mvn test`
-- [ ] Describe changes clearly
+- state machine semantic rewrites
+- shared API contract changes
+- classloader boundary changes
+- lifecycle orchestration rewrites
+- large terminology rewrites without verifying code and docs together
 
 ---
 
-## Code Guidelines
+## Minimum Requirements Before Submission
 
-### Naming Conventions
-
-| Type | Rule | Example |
-|------|------|---------|
-| Interface | Descriptive Name | `LingContext` |
-| Implementation | `Default` Prefix | `DefaultPermissionService` |
-| Proxy | `Proxy` Suffix | `SmartServiceProxy` |
-| Factory | `Factory` Suffix | `SpringContainerFactory` |
-
-### Code Style
-
-- 4 spaces indentation
-- Javadoc for classes and methods
-- Use Lombok to reduce boilerplate
-- Use SLF4J for logging
-
-### Test Requirements
-
-- Core logic must have unit tests
-- Test class naming: `XxxTest.java`
-- Use JUnit 5 + Mockito
-
-### Commit Messages
-
-Use [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-feat: add permission check for SQL execution
-fix: fix classloader memory leak on ling unload
-docs: update quick start guide
-```
+- the project builds successfully
+- relevant tests pass
+- architecture boundaries remain intact
+- state machine, lifecycle, governance semantics, and shared API changes update tests together
+- terminology, boundary, and behavior changes update documentation together
 
 ---
 
-## Feedback
+## Non-Negotiable Rules
 
-| Type | Channel |
-|------|---------|
-| Bug | [Issues](../../issues) |
-| Feature Request | [Discussions](../../discussions) |
-| Security | Message Maintainers |
+- comments must be in Chinese
+- logs must be in English
+- in English project language, use `LingCore` and `Ling`
+- in Chinese project language, use `灵核` and `灵元`
+- do not delete high-value rationale comments, pitfall notes, or risk warnings just to make code look cleaner
+- test display names should be Chinese
 
 ---
 
-## Code of Conduct
+## Shared API Hard Constraint
 
-- Respect every contributor.
-- Be friendly and professional.
-- Accept constructive criticism.
+Treat `Shared API` as a process-level public contract boundary, not as a normal shared dependency.
 
-Thank you for your contribution! 🎉
+- design it using consumer-driven contracts
+- prefer additive, backward-compatible evolution
+- a brand-new shared API JAR may be hot-loaded before the boundary is frozen
+- an already loaded shared API JAR must not be hot-updated or hot-unloaded
+- any existing contract change requires a process restart
+
+This is one of the most important contribution constraints in the project.
+
+---
+
+## Architecture-Facing Changes
+
+The following changes are architecture-facing and are not complete unless code, tests, and docs move together:
+
+- state machine semantic changes
+- lifecycle orchestration changes
+- write-boundary or ownership changes
+- classloader boundary changes
+- shared API contract changes
+- `timeout`, `permission`, `unload`, or `audit` semantic changes
+
+If you touch one of these, explain the change clearly in the PR.
+
+---
+
+## Practical Contribution Flow
+
+1. Sync the latest code.
+2. Read the relevant docs before changing behavior.
+3. Make the smallest change that solves the problem.
+4. Verify the build and relevant tests.
+5. Re-check whether docs also need updates.
+6. Submit a PR that explains:
+   - what changed
+   - why it changed
+   - how it was verified
+   - whether architecture, tests, or docs were affected
+
+---
+
+## Final Advice For New Contributors
+
+> When in doubt, preserve boundaries.
+
+Most harmful changes in LingFrame do not start as dramatic rewrites. They usually begin as a small convenience that quietly weakens lifecycle ownership, shared API discipline, or governance consistency.

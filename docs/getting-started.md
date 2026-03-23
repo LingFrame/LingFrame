@@ -1,112 +1,109 @@
 # Getting Started
 
-This guide helps you quickly understand and use LingFrame.
+This guide is the shortest path for a first-time LingFrame user.
+
+It is intentionally about one thing only: **getting a runnable example up and understanding the minimum vocabulary**.
+
+If you only want one thing from this page, remember this:
+
+> LingFrame helps you load and govern isolated lings inside one JVM process, without forcing a microservice rewrite.
+
+For `0.3.0`, this is not only a demo of "lings can be loaded".  
+It is also your first look at a runtime path that is governable, convergent, and ready to be validated later against disciplined unload behavior.
+
+---
+
+## What You Will Run
+
+In the example project, you will start one LingCore application and let it load two sample lings:
+
+- `user-ling`
+- `order-ling`
+
+You will see three things in one run:
+
+- lings can be loaded into the same process
+- LingCore can call ling services through shared contracts
+- governance still sits in the middle of that call path
+
+---
 
 ## Prerequisites
 
-- JDK 17+
+- JDK 17+ for the main example path
 - Maven 3.8+
 
-## 5-Minute Hello World
+`0.3.0` also supports JDK 8 and Spring Boot 2.x, but the example app remains the easiest place to start.
 
-### 1. Build Project
+---
 
-**Get Source Code** (Choose any repository):
+## 5-Minute Run
+
+### 1. Clone the repository
 
 ```bash
-# GitHub (International, Recommended)
+# GitHub
 git clone https://github.com/LingFrame/LingFrame.git
 
-# AtomGit (China)
+# AtomGit
 git clone https://atomgit.com/lingframe/LingFrame.git
 
-# Gitee (China Mirror)
-git clone https://gitee.com/knight6236/lingframe.git
+# Gitee
+git clone https://gitee.com/LingFrame/LingFrame.git
 ```
 
-**Build**:
+### 2. Build the project
 
 ```bash
 cd LingFrame
 mvn clean install -DskipTests
 ```
 
-### 2. Start Example Application
+### 3. Start the example LingCore application
 
 ```bash
 cd lingframe-examples/lingframe-example-lingcore-app
 mvn spring-boot:run
 ```
 
-### 3. Test ling Service
+### 4. Verify the example is alive
 
 ```bash
-# Query user list (Provided by user-ling)
 curl http://localhost:8888/user-ling/user/listUsers
-
-# Query single user
 curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
 ```
 
-Congratulations! You have successfully run your first LingFrame application!
+If both requests return normally, you already have a working LingFrame runtime.
 
 ---
 
-## Core Concepts
+## What Just Started
 
-### Three-Tier Architecture
+### LingCore
 
-```
-┌─────────────────────────────────────────┐
-│         Core (Governance Kernel)         │
-│  Auth Check · Audit · Context Isolation  │
-└─────────────────┬───────────────────────┘
-                  ▼
-┌─────────────────────────────────────────┐
-│     Infrastructure (Infra Layer)         │
-│       Storage · Cache · Message          │
-└─────────────────┬───────────────────────┘
-                  ▼
-┌─────────────────────────────────────────┐
-│       Business (Business Layer)          │
-│    User Center · Order Service · Payment │
-└─────────────────────────────────────────┘
-```
+`LingCore` is the LingCore-side application inside the current process. It owns the runtime, the governance kernel, and the shared contract boundary.
 
-### Key Principles
+### Ling
 
-1. **Zero Trust**: Business units can only access infrastructure via Core.
-2. **Context Isolation**: Each unit has an independent Spring Child Context.
-3. **FQSID Routing**: Services are identified by global unique `lingId:serviceId`.
+A `Ling` is a separately loaded business runtime unit with its own classloader and lifecycle.
+
+### Shared API
+
+`Shared API` is the process-level contract layer. Interfaces and DTOs that cross the LingCore / ling boundary belong here.
+
+For a beginner, it is enough to remember:
+
+- LingCore is the LingCore-side application in the current process
+- lings are isolated business runtime units
+- Shared API is the contract both sides agree on
+
+For terminology details, see [Glossary](glossary.md).
 
 ---
 
-## Create LingCore Application
+## Minimal Example Configuration
 
-### 1. Add Dependency
-
-```xml
-<dependency>
-    <groupId>com.lingframe</groupId>
-    <artifactId>lingframe-spring-boot3-starter</artifactId>
-    <version>${lingframe.version}</version>
-</dependency>
-```
-
-### 2. Application Class
-
-```java
-@SpringBootApplication
-public class LingCoreApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(LingCoreApplication.class, args);
-    }
-}
-```
-
-### 3. Configuration
-
-Refer to `application.yaml` in the example app:
+The example app already contains working configuration. The important parts are:
 
 ```yaml
 server:
@@ -114,144 +111,35 @@ server:
 
 lingframe:
   enabled: true
-  dev-mode: true                    # Dev mode, only warn on permission denied
-  
-  # Preload Shared API (Supports directory/JAR/wildcard)
+  dev-mode: true
+
   preload-api-jars:
     - lingframe-examples/lingframe-example-order-api
-  
-  # ling Directory
-  ling-home: lings              # Production: JAR directory
-  ling-roots:                     # Development: Source code directory
+
+  ling-home: lings
+  ling-roots:
     - lingframe-examples/lingframe-example-ling-order
     - lingframe-examples/lingframe-example-ling-user
-  
-  # LingCore governance (Optional)
-  ling-core-governance:
-    enabled: false
-
-# Advanced Feature: Visual Dashboard (Optional, default disabled)
-# dashboard:
-#   enabled: true
 ```
 
-### 4. Call ling Service in LINGCORE
+This means:
 
-Use `@LingReference` to auto-inject ling services. LingFrame uses **Consumer-Driven Contracts**:
-
-```java
-// LINGCORE App (Consumer) defines the interface it needs
-// Location: LINGCORE-api/.../OrderQueryService.java
-public interface OrderQueryService {
-    List<OrderDTO> findByUserId(Long userId);
-}
-
-// Order ling (Producer) implements the interface defined by LINGCORE
-// Location: order-ling/.../OrderQueryServiceImpl.java
-@Component
-public class OrderQueryServiceImpl implements OrderQueryService {
-    @LingService(id = "find_orders_by_user", desc = "Query User Orders")
-    @Override
-    public List<OrderDTO> findByUserId(Long userId) {
-        return orderRepository.findByUserId(userId);
-    }
-}
-
-// LINGCORE App uses the interface it defined
-@RestController
-@RequiredArgsConstructor
-public class OrderController {
-
-    @LingReference
-    private OrderQueryService orderQueryService;  // Framework auto-routes to Order ling
-
-    @GetMapping("/orders/user/{userId}")
-    public List<OrderDTO> getUserOrders(@PathVariable Long userId) {
-        return orderQueryService.findByUserId(userId);
-    }
-}
-```
+- LingFrame runtime is enabled
+- the process runs in developer-friendly mode
+- shared contracts are preloaded before lings start
+- local example lings are discovered from source roots
 
 ---
 
-## Example Project Structure
+## What This Run Already Proves
 
-```
-lingframe-examples/
-├── lingframe-example-lingcore-app        # LingCore Application
-├── lingframe-example-order-api       # Shared API (Interface defined by Consumer)
-├── lingframe-example-ling-order    # Order Unit
-└── lingframe-example-ling-user     # User Unit (Provides /user/* API)
-```
+Once the example is up, you have already verified four things:
 
-## Create Business Unit
+- LingCore can discover and load lings inside one process
+- shared contracts are preloaded before lings start
+- cross-ling calls do not bypass the governance kernel
+- the example setup is enough to continue with real development docs
 
-See [Unit Development Guide](ling-development.md)
+The next thing worth validating is not only whether another ling can be loaded, but whether the same runtime path stays orderly through reload, unload, and cleanup scenarios.
 
-## Security Governance Demo (Killer Feature)
-
-The example project has built-in governance policies. You can experience LingFrame's core **Zero Trust Governance** via the following steps.
-
-### 1. Attempt Illegal Write (SQL Interception)
-
-User ling declared `READ` permission for database in `ling.yml`, but did NOT declare `WRITE` permission.
-
-Call Create User API (Executes INSERT SQL):
-
-```bash
-curl -X POST "http://localhost:8888/user-ling/user/createUser?name=Attacker&email=hacker@test.com"
-```
-
-**Expected Result**:
-- HTTP 500 Internal Server Error
-- Observe exception in console log:
-
-```text
-c.l.core.exception.PermissionDeniedException: ling [user-ling] requires [storage:sql] with [WRITE] access, but only allowed: [READ]
-```
-
-### 2. Experience Cache Acceleration (Cache Proxy)
-
-User ling declared `WRITE` permission for `cache:local`.
-
-**First Query** (Trigger SQL query and write to cache):
-
-```bash
-curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
-```
-
-Observe Log:
-```text
-Executing SQL: SELECT * FROM t_user WHERE id = ?
-Cache PUT: users::1
-Audit: ling [user-ling] accessed [storage:sql] (ALLOWED)
-```
-
-**Second Query** (Cache Hit, No SQL):
-
-```bash
-curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
-```
-
-Observe Log:
-```text
-Cache HIT: users::1
-Audit: ling [user-ling] accessed [cache:local] (ALLOWED)
-```
-
-### 3. [Real World Case] LINGCORE Initialization Intercepted?
-
-In early versions, LingFrame's security policy was so strict that it even intercepted Spring Boot's startup SQL initialization script (`schema.sql`), throwing `Security Alert: SQL execution without LingContext...`. This proves the **no-blind-spot coverage** of the governance kernel—even I/O operations during framework startup cannot escape it.
-
-![Startup Interception](images/initDB.png)
-
-> Current versions check if LingCore governance is enabled to ensure developer experience.
-
----
-
-## Next Steps
-
-- [Unit Development Guide](ling-development.md) - Learn how to develop business units
-- [Shared API Guidelines](shared-api-guidelines.md) - API Design Best Practices
-- [Dashboard Visual Governance](dashboard.md) - Advanced Optional Feature
-- [Architecture Design](architecture.md) - Deep dive into governance principles
+Continue with [Practical Entry](practical-entry.md) for rollout decisions, or go straight to [Ling Development Guide](ling-development.md) if you want to start writing lings.

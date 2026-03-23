@@ -1,186 +1,144 @@
-# Shared API Design Guidelines
+# Shared API Guidelines
 
-## Architecture Overview
+This is one of the most important documents for new LingFrame developers.
 
-```
-LINGCORE ClassLoader (AppClassLoader)
-    ↓ parent
-SharedApiClassLoader (Shared API Layer)
-    ↓ parent
-LingClassLoader (ling Implementation Layer)
-```
-
-## Core Design Principles
-
-### 1. API Provided by Consumer (Consumer-Driven Contract)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                 Consumer-Driven Contract Pattern             │
-└─────────────────────────────────────────────────────────────┘
-
-Scenario: Order ling needs to query user info
-
-┌─────────────┐     Needs Capability     ┌─────────────┐
-│ Order ling│ ───────────────▶ │ User ling  │
-│ (Consumer)  │                  │ (Producer)   │
-└─────────────┘                  └─────────────┘
-       │                               ▲
-       │ 1. Define required interface     │ 2. Implement interface defined by Consumer
-       ▼                               │
-┌─────────────────────────────────────────────────────────────┐
-│                    order-api Unit                         │
-│       (Defined and maintained by Consumer Order ling)     │
-│                                                              │
-│   public interface UserQueryService {                       │
-│       Optional<UserDTO> findById(String userId);            │
-│   }                                                          │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Core Principles**:
-- API interface is defined and maintained by **Consumer** (Who needs the capability, defines the interface).
-- Producer **implements** the interface defined by Consumer (Who has the capability, provides implementation).
-- Consumer knows best what functionality it needs, so interface design fits actual needs better.
-
-**Why this design?**
-- Traditional Pattern: User ling defines `UserService`, all consumers adapt to Producer's interface.
-- Consumer-Driven: Order ling defines `UserQueryService` (containing only methods it needs), User ling adapts to Consumer's need.
-- Advantage: Decoupling is more thorough, Consumer does not depend on Producer's full interface, allowing independent evolution.
+> `Shared API` is the process-level public contract boundary between LingCore and lings.
 
 ---
 
-## API Unit Structure
+## What Belongs In Shared API
 
-### 2. API Unit Only Contains Interfaces and DTOs
+Keep `Shared API` limited to contract material:
 
-Consumer (Order ling) defines interfaces it needs, Producer (User ling) implements them:
+- interfaces
+- DTOs
+- small enums and value objects used in those contracts
 
-```
-order-api/                              # API Unit of Consumer Order ling
-├── src/main/java/com/example/order/
-│   ├── api/
-│   │   ├── UserQueryService.java      # User query capability needed by Order (Implemented by User ling)
-│   │   └── PaymentService.java        # Payment capability needed by Order (Implemented by Payment ling)
-│   └── dto/
-│       ├── UserDTO.java               # User Data Transfer Object
-│       └── PaymentResultDTO.java
-└── pom.xml
-```
+Do not put these in `Shared API`:
 
-**Should NOT Contain**:
-- ❌ Business Logic Implementation
-- ❌ Database Access Code
-- ❌ Spring Components (@Service, @Repository, etc.)
-- ❌ Governance Logic (Circuit Breaking, Retry, etc.)
+- business implementations
+- repositories
+- Spring services or components
+- persistence entities from one side's private implementation
 
-### 3. DTO Design Guidelines
+---
+
+## The Consumer-Driven Contract Rule
+
+LingFrame uses a consumer-driven pattern.
+
+- the consumer defines the interface it needs
+- the producer implements that interface
 
 ```java
-// ✅ Correct: Simple POJO, Serializable
+public interface UserQueryService {
+    Optional<UserDTO> findById(String userId);
+}
+```
+
+```java
+@Component
+public class UserQueryServiceImpl implements UserQueryService {
+    @LingService(id = "find_user")
+    @Override
+    public Optional<UserDTO> findById(String userId) {
+        return userRepository.findById(userId).map(this::toDTO);
+    }
+}
+```
+
+---
+
+## Classloader Reality In 0.3.0
+
+The current runtime uses a three-level relationship:
+
+- LingCore classloader
+- `SharedApiClassLoader`
+- ling implementation classloader
+
+Practical meaning:
+
+- contracts must be visible through the shared layer
+- implementations must stay in the ling layer
+- the same contract class should not be packaged redundantly into multiple places
+
+---
+
+## Bootstrap Boundary You Must Respect
+
+In `0.3.0`, `Shared API` bootstrap order is explicit:
+
+1. preload shared jars or classes directories
+2. register shared package prefixes
+3. freeze the shared boundary
+4. then load lings
+
+That is part of the architecture boundary.
+
+### Operational meaning
+
+- a brand-new shared jar can be introduced before freeze
+- an already loaded shared contract must not be hot-updated in place
+- changing an existing shared contract still requires a process restart
+
+---
+
+## DTO Design Rules
+
+Good DTOs are boring on purpose.
+
+```java
 @Data
 public class OrderDTO implements Serializable {
     private Long id;
     private String orderNo;
     private BigDecimal amount;
-    private LocalDateTime createTime;
-}
-
-// ❌ Incorrect: Contains business logic or complex dependencies
-public class OrderDTO {
-    private Order order;  // Do not reference entity class
-    public void process() { ... }  // No business methods
 }
 ```
 
-### 3. Avoid Heavy Dependencies
+Avoid embedding business behavior or private entity models in DTOs.
 
-API unit dependencies should be minimal:
+---
 
-```xml
-<!-- ✅ Recommended Dependencies -->
-<dependencies>
-    <dependency>
-        <groupId>org.projectlombok</groupId>
-        <artifactId>lombok</artifactId>
-        <scope>provided</scope>
-    </dependency>
-</dependencies>
+## Evolution Rules
 
-<!-- ❌ Avoid Dependencies -->
-<!-- Do not introduce Spring, DB drivers, etc. -->
-```
+Safe changes:
 
-## API Evolution Principles
+- add methods
+- add optional fields
+- add new versioned packages for breaking changes
 
-### 4. Backward Compatibility (Highly Recommended)
+Unsafe changes:
 
-```java
-// ✅ Correct: Add only, do not modify
-interface OrderService {
-    Order getOrder(Long id);           // v1 Kept
-    List<Order> batchGet(List<Long> ids); // v2 Added
-}
+- changing existing signatures in place
+- reusing the same package for incompatible changes
+- assuming shared contract hot-update is safe
 
-// ❌ Incorrect: Modify existing method signature
-interface OrderService {
-    OrderDTO getOrder(String orderId); // Breaks compatibility!
-}
-```
+For incompatible changes, prefer versioned packages.
 
-### 5. Use Versioned Package Names for Breaking Changes
+---
 
-```java
-// Version 1
-package com.example.order.api.v1;
-public interface OrderService { ... }
-
-// Version 2 (Incompatible)
-package com.example.order.api.v2;
-public interface OrderService { ... }
-```
-
-Both versions can coexist in SharedApiClassLoader.
-
-## Canary Release Support
-
-| Scenario | Supported | Handling Method |
-| -------- | --------- | --------------- |
-| Add API Method | ✅ | Incrementally add JAR |
-| Breaking Change | ✅ | Versioned Package Name |
-| Coexistence of Old/New Lings | ✅ | API Backward Compatibility |
-
-### Canary Flow Example
-
-```
-T0: LingA-v1 + API-v1
-T1: Add API-v2, Deploy LingA-v2 (v1/v2 Coexist)
-T2: Verify pass, Uninstall LingA-v1
-```
-
-## Configuration Example
+## Typical `preload-api-jars` Examples
 
 ```yaml
 lingframe:
   preload-api-jars:
-    - api/order-api-*.jar      # Wildcard load multiple versions
-    - api/user-api/            # Directory auto scan
-    - lingframe-examples/lingframe-example-order-api  # Maven Unit (Dev Mode)
+    - api/order-api-*.jar
+    - api/user-api/
+    - lingframe-examples/lingframe-example-order-api
 ```
 
-## FAQ
+---
 
-### Q: ClassNotFoundException / NoClassDefFoundError
+## Common Errors
 
-**Cause**: API not correctly loaded into SharedApiClassLoader
+### `ClassNotFoundException`
 
-**Check**:
-1. Confirm `preload-api-jars` configuration is correct.
-2. Confirm JAR/Directory path exists.
-3. Check startup logs for `📦 [SharedApi]` output.
+Usually means the shared contract was not preloaded correctly.
 
-### Q: ClassCastException
+### `ClassCastException`
 
-**Cause**: Same class loaded by different ClassLoaders
+Usually means the same class was loaded by more than one classloader view.
 
-**Solution**: Ensure API classes are ONLY loaded in SharedApiClassLoader, do not package them repeatedly in ling JARs.
+Continue with [Ling Development Guide](ling-development.md) if you want to write a ling against this contract boundary.

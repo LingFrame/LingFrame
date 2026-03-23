@@ -1,340 +1,405 @@
 package com.lingframe.starter.web;
 
+import com.lingframe.api.exception.LingException;
+import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.spi.TrafficRouter;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.aop.support.AopUtils;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
-import org.springframework.beans.factory.support.GenericBeanDefinition;
+import org.springframework.beans.CachedIntrospectionResults;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.support.GenericApplicationContext;
-import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.method.ControllerAdviceBean;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
-import java.lang.reflect.Field;
+import javax.annotation.PreDestroy;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
- * Web 接口动态管理器（原生注册版）
- * 职责：
- * 1. 将单元 Controller 方法直接注册到灵核 Spring MVC
- * 2. 维护 HandlerMethod -> Metadata 映射，供 Interceptor 查询
- * 3. 单元卸载时彻底清理路由，防止内存泄漏
+ * 负责灵元 Controller 的 Web 接口注册、路由解析与调用分发。
  */
 @Slf4j
-public class WebInterfaceManager {
+public class WebInterfaceManager implements WebRouteResolver {
 
-    // HandlerMethod 标识 -> 元数据映射
-    private final Map<String, WebInterfaceMetadata> metadataMap = new ConcurrentHashMap<>();
-
-    // 路由键 -> RequestMappingInfo 映射（用于卸载）
+    private final Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
+    private final Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
     private final Map<String, RequestMappingInfo> mappingInfoMap = new ConcurrentHashMap<>();
 
-    private RequestMappingHandlerMapping hostMapping;
-    private RequestMappingHandlerAdapter hostAdapter;
-    private ConfigurableApplicationContext hostContext;
+    private final ExecutorService registryExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "LingFrame-WebInterfaceManager");
+        thread.setDaemon(true);
+        thread.setContextClassLoader(WebInterfaceManager.class.getClassLoader());
+        return thread;
+    });
 
-    /**
-     * 初始化方法，由 AutoConfiguration 调用
-     */
-    public void init(RequestMappingHandlerMapping mapping,
-            RequestMappingHandlerAdapter adapter,
-            ConfigurableApplicationContext hostContext) {
-        this.hostMapping = mapping;
-        this.hostAdapter = adapter;
-        this.hostContext = hostContext;
-        log.info("🌍 [LingFrame Web] WebInterfaceManager initialized with native registration");
+    private final DefaultWebRouteResolver routeResolver;
+    private final SpringWebHostSupport hostSupport = new SpringWebHostSupport();
+
+    public static final String REQUEST_METADATA_KEY = "ling.web.metadata";
+    public static final String REQUEST_ROUTE_RESOLUTION_KEY = "ling.web.route.resolution";
+    public static final String REQUEST_TARGET_VERSION_KEY = "ling.target.version";
+
+    public WebInterfaceManager(LingRepository lingRepository, TrafficRouter trafficRouter) {
+        this.routeResolver = new DefaultWebRouteResolver(
+                metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
     }
 
-    /**
-     * 注册单元 Controller 方法到 Spring MVC
-     */
+    public void init(RequestMappingHandlerMapping mapping,
+                     RequestMappingHandlerAdapter adapter,
+                     ConfigurableApplicationContext hostContext) {
+        this.hostSupport.init(mapping, adapter, hostContext);
+        log.info("LingFrame WebInterfaceManager initialized with native registration");
+    }
+
     public void register(WebInterfaceMetadata metadata) {
-        if (hostMapping == null || hostContext == null) {
+        registryExecutor.execute(() -> registerInternal(metadata, false));
+    }
+
+    public void registerSync(WebInterfaceMetadata metadata) {
+        try {
+            registryExecutor.submit(() -> registerInternal(metadata, true)).get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new LingException("Interrupted while registering web mapping", e);
+        } catch (ExecutionException e) {
+            throw new LingException("Failed to register web mapping", e.getCause());
+        }
+    }
+
+    public void unregister(String lingId, ClassLoader targetLoader) {
+        registryExecutor.execute(() -> unregisterInternal(lingId, targetLoader));
+    }
+
+    public void unregisterSync(String lingId, ClassLoader targetLoader) {
+        try {
+            registryExecutor.submit(() -> unregisterInternal(lingId, targetLoader)).get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new LingException("Interrupted while unregistering web mapping", e);
+        } catch (ExecutionException e) {
+            throw new LingException("Failed to unregister web mapping", e.getCause());
+        }
+    }
+
+    public Map<String, List<WebInterfaceMetadata>> getMetadataMap() {
+        return Collections.unmodifiableMap(metadataMap);
+    }
+
+    // 🔥 宿主代理方法缓存（static，只解析一次，由 AppClassLoader 加载）
+    private static final Method HOST_DISPATCH_METHOD;
+    static {
+        try {
+            HOST_DISPATCH_METHOD = LingWebEntryHandler.class.getMethod("dispatch", ServletWebRequest.class);
+        } catch (NoSuchMethodException e) {
+            throw new ExceptionInInitializerError("Cannot find LingWebEntryHandler.dispatch method: " + e);
+        }
+    }
+
+    private void registerInternal(WebInterfaceMetadata metadata, boolean throwOnError) {
+        if (!hostSupport.isInitialized()) {
             log.warn("WebInterfaceManager not initialized, skipping registration: {}", metadata.getUrlPattern());
             return;
         }
 
         String routeKey = buildRouteKey(metadata);
 
-        // 检查路由冲突
-        if (metadataMap.containsKey(routeKey)) {
-            log.warn("⚠️ [LingFrame Web] Route conflict detected, overwriting: {} [{}]",
-                    metadata.getHttpMethod(), metadata.getUrlPattern());
-
-            // 🔥 修复：如果存在冲突，先移除旧映射（热替换机制）
-            RequestMappingInfo oldInfo = mappingInfoMap.get(routeKey);
-            if (oldInfo != null) {
-                try {
-                    hostMapping.unregisterMapping(oldInfo);
-                    log.info("♻️ [LingFrame Web] Unregistered conflicting mapping: {}", routeKey);
-                } catch (Exception e) {
-                    log.warn("Failed to unregister conflicting mapping: {}", routeKey, e);
-                }
-            }
-        }
-
         try {
-            // 1. 将单元 Bean 注册到灵核 Context (供 SpringDoc 发现)
-            // 使用 BeanDefinition + InstanceSupplier 确保 SpringDoc 能读取到注解元数据
-            // 关键：必须使用原始类 (Target Class) 而不是代理类，否则注解可能丢失
-            Class<?> userClass = AopUtils.getTargetClass(metadata.getTargetBean());
-            String proxyBeanName = metadata.getLingId() + ":" + userClass.getName();
+            // 保留 targetMethod 引用用于内部调用分发，但不再暴露给宿主
+            Method targetMethod = requireTargetMethod(metadata, routeKey);
+            metadata.minimizeHostReferences();
 
-            if (hostContext instanceof GenericApplicationContext && !((GenericApplicationContext) hostContext).containsBeanDefinition(proxyBeanName)) {
-                GenericApplicationContext gac = (GenericApplicationContext) hostContext;
-                GenericBeanDefinition bd = new GenericBeanDefinition();
-                bd.setBeanClass(userClass);
-                bd.setInstanceSupplier(metadata::getTargetBean);
-                bd.setScope("singleton");
-                // 标记为 Primary 或其他特征可能有助于发现，但暂不加
-                gac.registerBeanDefinition(proxyBeanName, bd);
-                log.info("🔥 [LingFrame Web] Registered ling Bean for SpringDoc: {} (Class: {})", proxyBeanName,
-                        userClass.getName());
-            } else {
-                log.debug("Ling Bean already registered: {}", proxyBeanName);
+            RequestMappingInfo info = resolveRequestMappingInfo(metadata);
+
+            if (!mappingInfoMap.containsKey(routeKey)) {
+                // 🔥 架构级断绝：注册宿主加载的 LingWebEntryHandler 代替灵元 Method
+                // Spring MVC 只会看到 LingWebEntryHandler.dispatch(ServletWebRequest)
+                // 其 HandlerMapping 内部缓存永远只持有 AppClassLoader 的类引用
+                LingWebEntryHandler entryHandler = new LingWebEntryHandler(this, routeKey);
+                hostSupport.registerMapping(routeKey, info, entryHandler, HOST_DISPATCH_METHOD, mappingInfoMap);
+                log.info("Registered proxy mapping: {} {}", metadata.getHttpMethod(), metadata.getUrlPattern());
+                // ✅ 注册后清理 SpringDoc 缓存，确保 UI 同步
+                hostSupport.clearSpringDocCache();
             }
 
-            // 2. 构建 RequestMappingInfo
-            RequestMappingInfo info = RequestMappingInfo
-                    .paths(metadata.getUrlPattern())
-                    .methods(RequestMethod.valueOf(metadata.getHttpMethod()))
-                    .build();
+            metadataMap.compute(routeKey, (key, existing) -> mergeRouteMetadata(routeKey, existing, metadata));
+            routePatternsByMethod
+                    .computeIfAbsent(metadata.getHttpMethod(), key -> ConcurrentHashMap.newKeySet())
+                    .add(metadata.getUrlPattern());
 
-            // 3. 直接注册单元 Controller Bean 和 Method 到 Spring MVC
-            // 关键修复：使用 Bean Name (String) 注册，而不是实例。
-            // 这样 SpringDoc 在扫描时会通过 Bean Name 找到我们在上面注册的 GenericBeanDefinition，
-            // 进而读取到 setBeanClass(userClass) 设置的原始类，从而正确解析注解。
-            hostMapping.registerMapping(info, proxyBeanName, metadata.getTargetMethod());
-
-            // 存储映射关系
-            metadataMap.put(routeKey, metadata);
-            mappingInfoMap.put(routeKey, info);
-
-            log.info("🌍 [LingFrame Web] Registered: {} {} -> {}.{}",
-                    metadata.getHttpMethod(), metadata.getUrlPattern(),
-                    metadata.getLingId(), metadata.getTargetMethod().getName());
+            log.info("Registered: {} {} -> {}.{}",
+                    metadata.getHttpMethod(), metadata.getUrlPattern(), metadata.getLingId(), targetMethod.getName());
         } catch (Exception e) {
+            if (throwOnError) {
+                throw new LingException(
+                        "Failed to register web mapping: " + metadata.getHttpMethod() + " " + metadata.getUrlPattern(),
+                        e);
+            }
             log.error("Failed to register web mapping: {} {}", metadata.getHttpMethod(), metadata.getUrlPattern(), e);
         }
     }
 
-    /**
-     * 注销单元的所有接口
-     */
-    public void unregister(String lingId) {
-        if (hostMapping == null) return;
+    private List<WebInterfaceMetadata> mergeRouteMetadata(String routeKey,
+                                                          List<WebInterfaceMetadata> existing,
+                                                          WebInterfaceMetadata incoming) {
+        List<WebInterfaceMetadata> merged = existing != null ? new ArrayList<>(existing) : new ArrayList<>();
+        for (WebInterfaceMetadata current : merged) {
+            if (!Objects.equals(current.getVersion(), incoming.getVersion())) {
+                continue;
+            }
+            if (!current.hasSameTargetSignature(incoming)) {
+                throw new IllegalStateException(
+                        "Conflicting web route registration for " + routeKey + " version " + incoming.getVersion());
+            }
+        }
+        merged.removeIf(current -> Objects.equals(current.getVersion(), incoming.getVersion())
+                && current.hasSameTargetSignature(incoming));
+        merged.add(incoming);
+        return merged;
+    }
 
-        log.info("♻️ [LingFrame Web] Unregistering interfaces for ling: {}", lingId);
+    private void unregisterInternal(String lingId, ClassLoader targetLoader) {
+        if (!hostSupport.isInitialized()) {
+            return;
+        }
 
-        List<String> keysToRemove = new ArrayList<>();
-        AtomicReference<ClassLoader> lingLoader = new AtomicReference<>();
-        List<String> beanNamesToRemove = new ArrayList<>();  // 收集要移除的 bean 名
+        log.info("Unregistering interfaces for ling: {} (ClassLoader: {})",
+                lingId, targetLoader != null ? targetLoader.hashCode() : "ALL");
 
-        metadataMap.forEach((key, meta) -> {
-            if (meta.getLingId().equals(lingId)) {
-                keysToRemove.add(key);
-                lingLoader.set(meta.getClassLoader());
+        List<String> routesToRemove = new ArrayList<>();
+        Map<String, List<WebInterfaceMetadata>> remainingMap = new HashMap<>();
+        List<WebInterfaceMetadata> removedMetas = new ArrayList<>();
 
-                // 1. 从 Spring MVC 注销
-                RequestMappingInfo info = mappingInfoMap.get(key);
-                if (info != null) {
-                    try {
-                        hostMapping.unregisterMapping(info);
-                    } catch (Exception e) {
-                        log.warn("Failed to unregister mapping: {}", key, e);
-                    }
+        metadataMap.forEach((routeKey, metas) -> {
+            if (metas == null || metas.isEmpty()) {
+                return;
+            }
+            List<WebInterfaceMetadata> remaining = new ArrayList<>();
+            for (WebInterfaceMetadata meta : metas) {
+                ClassLoader metaLoader = meta.getClassLoader();
+                boolean loaderMatches = targetLoader == null
+                        || metaLoader == targetLoader
+                        || metaLoader == null;
+
+                if (meta.getLingId().equals(lingId) && loaderMatches) {
+                    removedMetas.add(meta);
+                } else {
+                    remaining.add(meta);
                 }
+            }
 
-                // 2. 🔥 修复：使用与 register 相同的逻辑计算 bean 名
-                if (hostContext instanceof GenericApplicationContext) {
-                    Class<?> userClass = AopUtils.getTargetClass(meta.getTargetBean());
-                    String proxyBeanName = meta.getLingId() + ":" + userClass.getName();
-                    beanNamesToRemove.add(proxyBeanName);
-                }
+            if (remaining.isEmpty()) {
+                routesToRemove.add(routeKey);
+            } else {
+                remainingMap.put(routeKey, remaining);
             }
         });
 
-        // 3. 🔥 修复：从灵核 Context 移除 Bean 定义
-        if (hostContext instanceof GenericApplicationContext) {
-            GenericApplicationContext gac = (GenericApplicationContext) hostContext;
-            for (String beanName : beanNamesToRemove) {
-                if (gac.containsBeanDefinition(beanName)) {
-                    try {
-                        DefaultListableBeanFactory beanFactory = (DefaultListableBeanFactory) gac.getBeanFactory();
+        for (Map.Entry<String, List<WebInterfaceMetadata>> entry : remainingMap.entrySet()) {
+            metadataMap.put(entry.getKey(), entry.getValue());
+        }
+        for (String routeKey : routesToRemove) {
+            metadataMap.remove(routeKey);
+        }
+        rebuildRoutePatternIndex();
 
-                        // 1. 从单例缓存中移除（singletonObjects, earlySingletonObjects 等）
-                        if (beanFactory.containsSingleton(beanName)) {
-                            beanFactory.destroySingleton(beanName);
-                        }
-
-                        // 2. 移除 BeanDefinition（从 beanDefinitionMap 中删除）
-                        if (beanFactory.containsBeanDefinition(beanName)) {
-                            beanFactory.removeBeanDefinition(beanName);
-                        }
-
-                        beanFactory.clearMetadataCache();
-                        log.debug("Cleaned up bean: {}", beanName);
-                    } catch (Exception e) {
-                        log.warn("Failed to cleanup bean: {}", beanName, e);
-                    }
-                }
-            }
-
-            // 4. 🔥🔥🔥 关键修复：强制清理 mergedBeanDefinitions 缓存
-            clearMergedBeanDefinitions(gac, beanNamesToRemove);
+        for (WebInterfaceMetadata meta : removedMetas) {
+            meta.clearReferences();
         }
 
-        // 清理本地缓存
-        for (String key : keysToRemove) {
-            WebInterfaceMetadata meta = metadataMap.remove(key);
-            if (meta != null) {
-                meta.clearReferences(); // ← 主动断开引用
-            }
-            mappingInfoMap.remove(key);
+        // 🔥 纯代理架构下，卸载只需移除 HandlerMapping 中的路由映射
+        // 无需清理宿主的任何 Bean、BPP 缓存或 Adapter 缓存
+        // 因为宿主从未接触过灵元的类
+        hostSupport.unregisterMappings(routesToRemove, mappingInfoMap);
+        
+        // ✅ 注销后立即清理 SpringDoc 缓存，防止 UI 出现过期路由
+        hostSupport.clearSpringDocCache();
+
+        // 🔥 彻底解决“无法卸载”的关键：强制清理 Spring 核心缓存池对该 ClassLoader 的引用
+        if (targetLoader != null) {
+            CachedIntrospectionResults.clearClassLoader(targetLoader);
         }
 
-        // 深度清理 HandlerAdapter 缓存
-        if (hostAdapter != null && lingLoader.get() != null) {
-            clearAdapterCaches(lingLoader.get());
-        }
-
-        log.info("♻️ [LingFrame Web] Unregistered {} interfaces for ling: {}",
-                keysToRemove.size(), lingId);
+        log.info("Unregistered {} interfaces for ling: {}", removedMetas.size(), lingId);
     }
 
-    /**
-     * 🔥 强制从 mergedBeanDefinitions 中移除指定条目
-     * Spring 的 removeBeanDefinition 只标记 stale，不实际删除
-     */
-    private void clearMergedBeanDefinitions(GenericApplicationContext gac,
-            List<String> beanNames) {
+    @PreDestroy
+    public void shutdown() {
+        registryExecutor.shutdown();
         try {
-            Field mergedField = ReflectionUtils.findField(
-                    org.springframework.beans.factory.support.AbstractBeanFactory.class,
-                    "mergedBeanDefinitions");
-            if (mergedField != null) {
-                ReflectionUtils.makeAccessible(mergedField);
-                @SuppressWarnings("unchecked")
-                Map<String, ?> mergedBeanDefinitions = (Map<String, ?>) ReflectionUtils.getField(mergedField,
-                        gac.getBeanFactory());
-                if (mergedBeanDefinitions != null) {
-                    for (String beanName : beanNames) {
-                        mergedBeanDefinitions.remove(beanName);
-                        log.debug("Removed mergedBeanDefinition: {}", beanName);
-                    }
-                }
+            if (!registryExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                registryExecutor.shutdownNow();
             }
-        } catch (Exception e) {
-            log.warn("Failed to clear mergedBeanDefinitions, falling back to clearMetadataCache", e);
-            // 兜底：清除所有缓存（影响范围大但安全）
-            gac.getBeanFactory().clearMetadataCache();
+        } catch (InterruptedException e) {
+            registryExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 
-    /**
-     * 根据 HandlerMethod 获取元数据
-     * 供 LingWebGovernanceInterceptor 调用
-     */
+    public WebInterfaceMetadata getMetadata(Object request, HandlerMethod handlerMethod) {
+        WebRouteResolution resolution = resolveRoute(request, handlerMethod);
+        return resolution != null ? resolution.getMetadata() : null;
+    }
+
     public WebInterfaceMetadata getMetadata(HandlerMethod handlerMethod) {
-        // 通过 Bean 和 Method 构建查找键
-        Object bean = handlerMethod.getBean();
-        Method method = handlerMethod.getMethod();
-
-        // 遍历查找匹配的元数据
-        for (WebInterfaceMetadata meta : metadataMap.values()) {
-            if (isSameHandler(meta, bean, method)) {
-                return meta;
-            }
-        }
-        return null;
+        return getMetadata(null, handlerMethod);
     }
 
-    /**
-     * 判断是否是同一个处理器
-     */
-    private boolean isSameHandler(WebInterfaceMetadata meta, Object bean, Method method) {
-        // 比较 Bean 实例和方法签名
-        if (meta.getTargetBean() == bean) {
-            return meta.getTargetMethod().equals(method);
-        }
-        // 处理代理情况：比较方法名和参数类型
-        if (meta.getTargetMethod().getName().equals(method.getName())) {
-            Class<?>[] metaParams = meta.getTargetMethod().getParameterTypes();
-            Class<?>[] methodParams = method.getParameterTypes();
-            if (metaParams.length == methodParams.length) {
-                for (int i = 0; i < metaParams.length; i++) {
-                    if (!metaParams[i].equals(methodParams[i])) {
-                        return false;
-                    }
-                }
-                return true;
-            }
-        }
-        return false;
+    @Override
+    public WebRouteResolution resolveRoute(Object request) {
+        return routeResolver.resolveRoute(request);
     }
 
-    /**
-     * 构建路由键：httpMethod#urlPattern
-     */
-    private String buildRouteKey(WebInterfaceMetadata metadata) {
-        return metadata.getHttpMethod() + "#" + metadata.getUrlPattern();
+    @Override
+    public WebRouteResolution resolveRoute(Object request, HandlerMethod handlerMethod) {
+        return routeResolver.resolveRoute(request, handlerMethod);
     }
 
-    /**
-     * 反射清理 Adapter 的单元相关缓存
-     */
-    private void clearAdapterCaches(ClassLoader lingLoader) {
+    @Override
+    public WebRouteResolution resolveRoute(String routeKey, Object request) {
+        return routeResolver.resolveRoute(routeKey, request);
+    }
+
+    public LingRuntime resolveRuntime(String lingId) {
+        return routeResolver.resolveRuntime(lingId);
+    }
+
+    public LingInstance resolveTargetInstance(WebInterfaceMetadata metadata) {
+        return routeResolver.resolveTargetInstance(metadata);
+    }
+
+    public LingInstance resolveTargetInstance(String lingId, String version) {
+        return routeResolver.resolveTargetInstance(lingId, version);
+    }
+
+    public Object dispatch(ServletWebRequest webRequest) throws Exception {
+        WebRouteResolution resolution = resolveRoute(webRequest);
+        return dispatchResolved(resolution, "dynamic gateway", webRequest);
+    }
+
+    public Object dispatch(String routeKey, ServletWebRequest webRequest) throws Exception {
+        WebRouteResolution resolution = resolveRoute(routeKey, webRequest);
+        return dispatchResolved(resolution, routeKey, webRequest);
+    }
+
+    private Object dispatchResolved(WebRouteResolution resolution, String routeId, ServletWebRequest webRequest)
+            throws Exception {
+        WebInterfaceMetadata meta = resolution != null ? resolution.getMetadata() : null;
+        if (meta == null) {
+            throw new LingException("No available target for route: " + routeId);
+        }
+
+        ClassLoader original = Thread.currentThread().getContextClassLoader();
+        ClassLoader targetLoader = meta.getClassLoader();
+        if (targetLoader != null) {
+            Thread.currentThread().setContextClassLoader(targetLoader);
+        }
         try {
-            // 清理普通缓存 (ConcurrentHashMap<Class<?>, ?>)
-            clearCache("sessionAttributesHandlerCache", lingLoader);
-            clearCache("initBinderCache", lingLoader);
-            clearCache("modelAttributeCache", lingLoader);
-
-            // 清理 Advice 缓存 (LinkedHashMap<ControllerAdviceBean, Set<Method>>)
-            clearAdviceCache("initBinderAdviceCache", lingLoader);
-            clearAdviceCache("modelAttributeAdviceCache", lingLoader);
-
-            log.debug("Cleared HandlerAdapter caches for ling ClassLoader: {}", lingLoader);
-        } catch (Exception e) {
-            log.warn("Failed to clear HandlerAdapter caches", e);
+            return hostSupport.invokeTarget(meta, routeId, webRequest);
+        } finally {
+            Thread.currentThread().setContextClassLoader(original);
         }
     }
 
-    private void clearCache(String fieldName, ClassLoader lingLoader) throws Exception {
-        Field field = ReflectionUtils.findField(hostAdapter.getClass(), fieldName);
-        if (field == null)
-            return;
-        ReflectionUtils.makeAccessible(field);
-        @SuppressWarnings("unchecked")
-        Map<Class<?>, ?> cache = (Map<Class<?>, ?>) ReflectionUtils.getField(field, hostAdapter);
-        if (cache != null) {
-            cache.keySet().removeIf(clazz -> clazz != null && clazz.getClassLoader() == lingLoader);
+    public LingGatewayHandler gatewayHandler() {
+        return new LingGatewayHandler(this);
+    }
+
+    public static class LingWebEntryHandler {
+        private final WebInterfaceManager manager;
+        private final String routeKey;
+
+        public LingWebEntryHandler(WebInterfaceManager manager, String routeKey) {
+            this.manager = manager;
+            this.routeKey = routeKey;
+        }
+
+        public String getRouteKey() {
+            return routeKey;
+        }
+
+        @ResponseBody
+        public Object dispatch(ServletWebRequest webRequest) throws Exception {
+            return manager.dispatch(routeKey, webRequest);
         }
     }
 
-    private void clearAdviceCache(String fieldName, ClassLoader lingLoader) throws Exception {
-        Field field = ReflectionUtils.findField(hostAdapter.getClass(), fieldName);
-        if (field == null)
-            return;
-        ReflectionUtils.makeAccessible(field);
-        @SuppressWarnings("unchecked")
-        Map<ControllerAdviceBean, Set<Method>> cache = (Map<ControllerAdviceBean, Set<Method>>) ReflectionUtils
-                .getField(field, hostAdapter);
-        if (cache != null) {
-            cache.keySet().removeIf(advice -> {
-                Class<?> type = advice.getBeanType();
-                return type != null && type.getClassLoader() == lingLoader;
-            });
+    public static class LingGatewayHandler {
+        private final WebInterfaceManager manager;
+
+        public LingGatewayHandler(WebInterfaceManager manager) {
+            this.manager = manager;
         }
+
+        @ResponseBody
+        public Object dispatch(ServletWebRequest webRequest) throws Exception {
+            return manager.dispatch(webRequest);
+        }
+    }
+
+    private String buildRouteKey(WebInterfaceMetadata metadata) {
+        return metadata.buildRouteKey();
+    }
+
+    private RequestMappingInfo resolveRequestMappingInfo(WebInterfaceMetadata metadata) {
+        if (metadata.getRequestMappingInfo() != null) {
+            return metadata.getRequestMappingInfo();
+        }
+        RequestMappingInfo.Builder builder = RequestMappingInfo
+                .paths(metadata.getUrlPattern())
+                .methods(RequestMethod.valueOf(metadata.getHttpMethod()));
+        if (metadata.getParams() != null && metadata.getParams().length > 0) {
+            builder.params(metadata.getParams());
+        }
+        if (metadata.getHeaders() != null && metadata.getHeaders().length > 0) {
+            builder.headers(metadata.getHeaders());
+        }
+        if (metadata.getConsumes() != null && metadata.getConsumes().length > 0) {
+            builder.consumes(metadata.getConsumes());
+        }
+        if (metadata.getProduces() != null && metadata.getProduces().length > 0) {
+            builder.produces(metadata.getProduces());
+        }
+        return builder.build();
+    }
+
+    private void rebuildRoutePatternIndex() {
+        routePatternsByMethod.clear();
+        metadataMap.values().forEach(metas -> {
+            if (metas == null) {
+                return;
+            }
+            for (WebInterfaceMetadata meta : metas) {
+                if (meta == null || meta.getHttpMethod() == null || meta.getUrlPattern() == null) {
+                    continue;
+                }
+                routePatternsByMethod
+                        .computeIfAbsent(meta.getHttpMethod(), key -> ConcurrentHashMap.newKeySet())
+                        .add(meta.getUrlPattern());
+            }
+        });
+    }
+
+    private Method requireTargetMethod(WebInterfaceMetadata metadata, String routeKey) {
+        Method targetMethod = metadata.getTargetMethod();
+        if (targetMethod == null) {
+            throw new IllegalStateException("Target method no longer available for route: " + routeKey);
+        }
+        return targetMethod;
     }
 }

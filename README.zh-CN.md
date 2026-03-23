@@ -1,166 +1,199 @@
-# LingFrame · 灵珑
+<h1 align="center">灵珑 · LingFrame</h1>
 
-![Status](https://img.shields.io/badge/Status-Resilience_Governance-brightgreen)
-![License](https://img.shields.io/badge/License-Apache_2.0-blue)
-![Java](https://img.shields.io/badge/Java-17-orange)
-![Java](https://img.shields.io/badge/Java-8-orange)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-2.7.18-brightgreen)
+<p align="center">
+  <strong>面向长期运行系统的 JVM 运行时治理框架</strong>
+</p>
 
-[![Gitee](https://img.shields.io/badge/Gitee-Repository-red?logo=gitee&logoColor=white)](https://gitee.com/knight6236/lingframe)
-[![AtomGit G-Star](https://img.shields.io/badge/AtomGit-G--Star_孵化项目-silver?logo=git&logoColor=white)](https://atomgit.com/lingframe/LingFrame)
-[![GitHub](https://img.shields.io/badge/GitHub-Repository-black?logo=github&logoColor=white)](https://github.com/LingFrame/LingFrame)
+<p align="center">
+  <img src="https://img.shields.io/badge/Status-Resilience_Governance-brightgreen" alt="Status">
+  <img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License">
+  <img src="https://img.shields.io/badge/Java-17-orange" alt="Java">
+  <img src="https://img.shields.io/badge/Java-8-orange" alt="Java">
+  <img src="https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen" alt="Spring Boot">
+  <img src="https://img.shields.io/badge/Spring_Boot-2.7.18-brightgreen" alt="Spring Boot">
+</p>
 
-[![Help Wanted](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LingFrame/LingFrame)
+<p align="center">
+  <a href="https://gitee.com/LingFrame/LingFrame">
+    <img src="https://img.shields.io/badge/Gitee-Repository-red?logo=gitee&logoColor=white" alt="Gitee">
+  </a>
+  <a href="https://atomgit.com/lingframe/LingFrame">
+    <img src="https://img.shields.io/badge/AtomGit-G--Star_孵化项目-silver?logo=git&logoColor=white" alt="AtomGit">
+  </a>
+  <a href="https://github.com/LingFrame/LingFrame">
+    <img src="https://img.shields.io/badge/GitHub-Repository-black?logo=github&logoColor=white" alt="GitHub">
+  </a>
+  <a href="../../pulls">
+    <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
+  </a>
+  <a href="https://deepwiki.com/LingFrame/LingFrame">
+    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki">
+  </a>
+</p>
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/LingFrame/LingFrame?quickstart=1)
-
-[English Version](./README.md)
-
-## 你可以从这里开始
-
-- **技术入口**：深入治理细节与架构 👉 [technical-entry.md](docs/zh-CN/technical-entry.md)
-- **实用入口**：快速上手与灰度发布 👉 [practical-entry.md](docs/zh-CN/practical-entry.md)
-- **快速试用**：👉 [getting-started.md](docs/zh-CN/getting-started.md)
-- **核心立场**：👉 [MANIFESTO.md](MANIFESTO.md)
-- **设计原则与边界选择**：👉 [WHY.md](WHY.md)
-
-你不需要一次性读完所有内容。  
-灵珑允许你在任何阶段停下。
+<p align="center">
+  <a href="./README.md">English</a> | <strong>中文</strong>
+</p>
 
 ---
 
-![LingFrame Dashboard 示例](./docs/images/dashboard.zh-CN.png)
+灵珑是一个面向长期运行系统的 **JVM 运行时治理框架**。
 
----
+它不要求你立刻重写系统，也不强迫你马上拆成微服务。  
+它更关心另一件更现实的事：
 
-LingFrame（灵珑）是一个**面向长期运行系统的 JVM 运行时治理框架**。  
-它尝试在**不重写系统、不强行拆分微服务**的前提下，让已经服役多年的单体应用，继续稳定、可控、可演进地运行下去。
+> 当系统已经运行很多年、不能轻易停下、也越来越难改时，  
+> 我们能不能先把它重新变得可理解、可控制、可演进。
 
-很多系统并不是设计得不好，  
+很多系统并不是设计得不好。  
 只是活得太久，改得太急。
 
----
+如果只用一句话记住灵珑，可以这样理解：
 
-## 序章
-
-它最初并不是为了优雅而诞生的。
-
-只是某一天，人们发现系统已经大到无法理解，却又不能停下。  
-每一次改动都像在黑夜中摸索，  
-每一次上线都伴随着祈祷。
-
-于是，有人开始问一个看似保守的问题：
-
-> 如果系统暂时无法被重写，  
-> 那它是否还能被**治理**？
-
-不是通过更多规则，  
-而是通过**更清晰的边界**。  
-不是替系统做决定，  
-而是让系统在还能被理解的时候，  
-把事情放回该在的位置上。
-
-灵珑由此诞生。
+> 灵珑不只负责把灵元加载进 JVM，  
+> 更负责让它们在长期运行中可治理、可收敛、可被干净地卸载出去。
 
 ---
 
-## 灵珑关心的，并不是“加功能”
+## 📖 你可以先从这里开始
 
-在大量真实系统中，问题往往不是功能不足，而是：
+- **第一次接触灵珑**：先看 [getting-started.md](docs/zh-CN/getting-started.md)
+- **想快速理解它解决什么问题**：看 [practical-entry.md](docs/zh-CN/practical-entry.md)
+- **想了解 `0.3.0` 当前架构已经做到哪一步**：看 [technical-entry.md](docs/zh-CN/technical-entry.md)
+- **想理解灵珑为什么这样设计**：看 [WHY.md](WHY.md)
+- **想理解灵珑坚持什么**：看 [MANIFESTO.md](MANIFESTO.md)
 
-- 系统仍在运行，但已经没人敢改  
-- 单元边界逐渐失效，耦合无法追溯  
-- 单元化引入后，隔离却只停留在结构层  
-- 重启不是不能接受，而是**无法预期**
-
-灵珑关注的核心问题只有一个：
-
-> **系统在长期运行中，如何不失控。**
+> 你不需要一次读完整套文档。  
+> 灵珑允许你在任何阶段停下来，再继续往下看。
 
 ---
 
-## 当前阶段
+![灵珑 Dashboard 示例](./docs/images/dashboard.zh-CN.0.3.0.png)
 
-**v0.2.0 · 蜕变**
-
-这是一个打破桎梏、重定义边界的阶段：
-
-- 抛弃 "Plugin" 的认知局限，确立真正的 "Ling（单元）" 隔离
-- 弹性治理不再流于控制面，化作宿主内核真正的熔断器
-- 直面类加载器泄漏的深水区，尽可能解决卸载问题
-- 证明另一件事：  
-  **单体架构下的热拔插是否能真正承载工业级的高可用挑战**
-
-这是一个褪去青涩、准备直面残酷生产环境的阶段。
+*当前 Dashboard 已经是实际可用的治理控制面，而不只是展示页面。*
 
 ---
 
-**v0.1.0 · 初啼（历史版本）**
+## ✨ 灵珑是什么？
 
-这是一个方向已经冻结、边界正在成型的阶段：
+灵珑不是把“插件框架”换了一个名字。  
+它也不是“单体改造万能药”。
 
-- 不追求功能完整
-- 不承诺向后兼容
-- 只验证一件事：  
-  **运行时治理在单进程内是否成立**
+更准确地说，它是：
 
-这是一个拒绝讨好、开始选择的阶段。
----
+- 一个面向单进程长期运行系统的运行时治理框架
+- 一个帮助老系统重新恢复边界感和控制感的结构化工具
+- 一个允许灵元存在，但不接受灵元失控的治理体系
 
-## 灵珑是什么
-
-- 一个 **JVM 运行时治理框架**
-- 一个 **面向老系统的结构性工具**
-- 一个 **允许单元存在，但不纵容单元失控的体系**
-- 一个 **拥有滑动窗口熔断、限流支持及 SPI 生态连接能力的高可用底座**
-
-它不是微服务替代品，  
-也不是单元化银弹。
-
-灵珑存在的意义，是在系统复杂到某个阶段时，  
-**为“回缩”与“重组”提供可能性**。
+它关心的重点不是再堆一层功能，  
+而是把系统里已经存在、但越来越失控的复杂性重新收回来。
 
 ---
 
-## 技术边界（简述）
+## 💎 灵珑最独特的地方
+
+- **不只强调热加载，更强调规范热卸载**：灵元不是“能下线就行”，而是要经历排空、清理、资源释放与状态收口
+- **把零泄漏热卸载当作正式目标**：不是简单丢掉 `ClassLoader`，而是把卸载清理、资源驱逐、泄漏检测做成长期运行机制
+- **把长期运行秩序收敛成一条主链**：调用治理、运行时状态、控制面、监控事件不是散着拼，而是在收束为统一运行时内核
+- **对热更新边界保持克制**：像 `Shared API` 这种进程级契约，不拿“不安全但看起来很酷”的热更能力做宣传
+
+---
+
+## 🎯 它适合什么，不适合什么
+
+### 更适合
+
+- 已经运行多年、不能轻易停机或重写的单体系统
+- 希望逐步引入灵元隔离、灰度、限流、熔断、权限与审计能力的团队
+- 想在不彻底推翻现有系统的前提下，先把运行时秩序建立起来的场景
+
+### 不适合
+
+- 把它当成微服务替代品
+- 把它当成纯前端插件市场或低代码装配平台
+- 希望接入一个框架就自动消除业务复杂性
+
+灵珑不会替系统做决定。  
+它只是尽量把决定重新放回该发生的位置。
+
+---
+
+## 🚀 当前阶段
+
+### 🔹 v0.3.0 · 涅槃
+
+这一阶段的重点，不是继续向外堆分散能力，  
+而是把已经存在的治理机制真正收束成一条稳定、可复用、可解释的运行时主链。
+
+当前已经明确交付的核心内容包括：
+
+- 围绕 `InvocationPipelineEngine` 与 `FilterRegistry` 收束统一治理 Pipeline
+- 明确三种执行模式：`NORMAL`、`SIMULATION`、`GOVERN_ONLY`
+- 让灵元调用、Spring Boot 2 / 3 Web 治理、灵核 Bean 拦截、Dashboard 模拟共用同一条治理内核
+- 将运行时状态收束为 `InstanceStatus` 与 `RuntimeStatus` 双层模型，并分别由 `InstanceCoordinator`、`RuntimeCoordinator` 负责状态写入
+- 由 `DefaultLingLifecycleEngine` 明确承担部署、重载、卸载的生命周期编排
+- 将卸载清理、资源驱逐与泄漏检测正式纳入长期运行职责，朝规范热卸载与零泄漏目标持续收敛
+- 让 `SharedApiManager` 明确共享 API 的启动边界：预加载、注册包、冻结边界、再加载灵元
+- 让 Dashboard 真正成为治理控制面，提供生命周期操作、灰度配置、治理补丁、模拟、指标和 SSE 事件流
+
+换句话说，灵珑现在已经不只是“机制拼装”，  
+而是在往一套真正可长期维护的运行时治理内核收敛。
+
+---
+
+## 🧩 它真正想解决的问题
+
+在真实系统里，问题往往不是功能不够，而是这些情况越来越常见：
+
+- 系统还在跑，但已经没人敢动
+- 边界还在名义上存在，实际却越来越模糊
+- 灰度、熔断、权限、审计各自有一点，但没有统一的运行时落点
+- 重启不是绝对不能接受，不能接受的是不可预期
+
+灵珑真正关心的，其实只有一个问题：
+
+> 系统在长期运行中，如何不失控。
+
+不是靠堆更多规定，  
+而是靠更清楚的边界、更稳定的治理主链、更诚实的运行时反馈。
+
+---
+
+## ⚙️ 技术边界
 
 - JVM：JDK 17 / JDK 8
 - Spring Boot：3.x / 2.x
-- 单进程内单元隔离与治理
-- **可用性与生态**：原生配备灰度发布、熔断限流，并通过外骨骼扩展无缝对接 Nacos / Apollo 等第三方基础设施。
-- 明确区分：**接口稳定性 ≠ 实现稳定性**
+- 当前公开架构仍然是单进程内的灵元隔离与治理
+- `Shared API` 是进程级公共契约边界：新共享包可以热加载，但已加载契约不支持热更新或热卸载；契约变更需要重启进程
+- 原生支持灰度、熔断、限流、审计、权限、模拟与治理观测
+- 可与外部注册中心、配置中心等基础设施做非侵入集成
 
-灵珑不隐藏复杂性，  
-只是拒绝把复杂性一次性压给使用者。
-
----
-
-## 最后
-
-灵珑不会替系统做决定。
-
-她只是在系统还愿意被理解的时候，  
-帮你把事情放回该在的位置上。
-
-如果你只是走到这里停下，  
-那也完全没有关系。
+灵珑不会假装复杂性不存在。  
+它只是拒绝把全部复杂性一次性砸给使用者。
 
 ---
 
-## 致谢
+## 💬 如果你准备继续往下看
+
+- 想先跑起来：看 [getting-started.md](docs/zh-CN/getting-started.md)
+- 想从源码实现理解 `0.3.0`：看 [technical-entry.md](docs/zh-CN/technical-entry.md)
+- 想看 Dashboard 在当前版本里扮演什么角色：看 [dashboard.md](docs/zh-CN/dashboard.md)
+- 想了解术语：看 [glossary.md](docs/zh-CN/glossary.md)
+
+如果你现在只读到这里，也完全没关系。
+
+---
+
+## 🙏 致谢
 
 **特别鸣谢 Gitee 官方与开源社区的推荐与支持！** 
 
 感谢 [Gitee](https://gitee.com) 平台以及红薯老师为本土开源生态提供的优质土壤，让底层的轮子也能被看见。
-👉 [访问 Gitee 官方主仓库](https://gitee.com/knight6236/lingframe)
+👉 [访问 Gitee 官方主仓库](https://gitee.com/LingFrame/LingFrame)
 
 ---
 
 [![AtomGit](docs/images/AtomGit.svg)](https://atomgit.com/lingframe/LingFrame)
 
-本项目也是 AtomGit G-Star 孵化项目。  
+本项目是 **AtomGit G-Star Incubated Project**。  
 感谢 [AtomGit](https://atomgit.com) 平台对开源项目的支持与推广。
-
-
