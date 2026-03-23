@@ -3,7 +3,7 @@ package com.lingframe.infra.cache.proxy;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Policy;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
-import com.lingframe.api.context.LingContextHolder;
+import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
@@ -29,7 +29,7 @@ public class LingCaffeineCacheProxy<K, V> implements Cache<K, V> {
     }
 
     private void checkPermission(String operation) {
-        String callerLingId = LingContextHolder.get();
+        String callerLingId = LingCallContext.getLingId();
         if (callerLingId == null)
             return;
 

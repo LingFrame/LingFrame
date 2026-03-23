@@ -1,7 +1,7 @@
 package com.lingframe.api.exception;
 
 /**
- * LingFrame 基础异常
+ * 灵珑基础异常
  * 
  * @author LingFrame
  */

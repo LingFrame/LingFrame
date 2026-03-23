@@ -40,7 +40,7 @@ public class DataSourceWrapperProcessor implements BeanPostProcessor {
             log.info(">>>>>> [LingFrame] Wrapping DataSource: {}", beanName);
 
             // 从 Core 获取 PermissionService (这里假设 PermissionService Bean 可见)
-            // 注意：因为基础设施单元与 Core 在类加载器上通常有一定隔离，这里需要确保 API 包是共享的
+            // 注意：因为基础设施灵元与 Core 在类加载器上通常有一定隔离，这里需要确保 API 包是共享的
             PermissionService permissionService = applicationContext.getBean(PermissionService.class);
 
             return new LingDataSourceProxy((DataSource) bean, permissionService);

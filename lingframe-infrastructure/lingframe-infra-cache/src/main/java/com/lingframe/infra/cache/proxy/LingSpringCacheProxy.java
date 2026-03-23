@@ -1,6 +1,6 @@
 package com.lingframe.infra.cache.proxy;
 
-import com.lingframe.api.context.LingContextHolder;
+import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
@@ -25,7 +25,7 @@ public class LingSpringCacheProxy implements Cache {
     private final PermissionService permissionService;
 
     private void checkPermission(String operation) {
-        String callerLingId = LingContextHolder.get();
+        String callerLingId = LingCallContext.getLingId();
         if (callerLingId == null) return;
 
         boolean allowed = permissionService.isAllowed(callerLingId, "cache:local", AccessType.WRITE);

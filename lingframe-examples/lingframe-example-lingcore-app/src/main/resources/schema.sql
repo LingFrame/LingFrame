@@ -1,4 +1,4 @@
--- 单元核心业务表：配置管理
+-- 灵元核心业务表：配置管理
 CREATE TABLE IF NOT EXISTS t_config (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     config_key VARCHAR(255) NOT NULL UNIQUE,

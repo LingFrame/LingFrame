@@ -38,7 +38,7 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
     private final AtomicInteger failureCount = new AtomicInteger(0);
     private final AtomicInteger slowCount = new AtomicInteger(0);
 
-    // Half-Open 状态下的试探计数
+    // 半开状态下的试探计数
     private final AtomicInteger permittedNumberOfCallsInHalfOpenState = new AtomicInteger(10);
     private final AtomicInteger successfulCallsInHalfOpenState = new AtomicInteger(0);
 
@@ -128,16 +128,16 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
             return;
         }
 
-        // CLOSED State: Update sliding window
+        // 关闭状态下更新滑动窗口
         int idx = currentIndex.getAndIncrement() % slidingWindowSize;
 
-        // Remove old values
+        // 移除旧值
         if (failureWindow[idx])
             failureCount.decrementAndGet();
         if (slowWindow[idx])
             slowCount.decrementAndGet();
 
-        // Add new values
+        // 写入新值
         failureWindow[idx] = isError;
         if (isError)
             failureCount.incrementAndGet();
@@ -186,7 +186,7 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
                 eventBus.publish(
                         new MonitoringEvents.CircuitBreakerStateEvent(name, oldState.name(), newState.name(), 0.0));
             } catch (Exception e) {
-                // ignore
+                // 忽略刷新过程中的异常
             }
         }
     }
@@ -195,7 +195,7 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
         if (state.compareAndSet(State.HALF_OPEN, State.CLOSED)) {
             log.info("[Breaker:{}] State changed: HALF_OPEN -> CLOSED (Recovered)", name);
             publishStateEvent(State.HALF_OPEN, State.CLOSED);
-            // Reset window
+            // 重置窗口
             currentIndex.set(0);
             totalCallsInWindow.set(0);
             failureCount.set(0);

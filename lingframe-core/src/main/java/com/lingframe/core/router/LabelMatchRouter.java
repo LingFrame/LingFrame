@@ -1,6 +1,6 @@
 package com.lingframe.core.router;
 
-import com.lingframe.core.kernel.InvocationContext;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.TrafficRouter;
 import lombok.AccessLevel;
@@ -36,9 +36,9 @@ public class LabelMatchRouter implements TrafficRouter {
         // 标签打分逻辑
         return candidates.stream()
                 .map(inst -> new ScoredInstance(inst, calculateScore(inst.getLabels(), requestLabels)))
-                .filter(si -> si.score >= 0) // 过滤掉不匹配的 (score = -1)
-                .max(Comparator.comparingInt(si -> si.score))
-                .map(si -> si.instance)
+                .filter(si -> si.score() >= 0) // 过滤掉不匹配的 (score = -1)
+                .max(Comparator.comparingInt(si -> si.score()))
+                .map(si -> si.instance())
                 .orElse(candidates.get(0));
     }
 
@@ -103,13 +103,18 @@ public class LabelMatchRouter implements TrafficRouter {
     }
 
     @Value
-    @Getter(AccessLevel.NONE)  // 不生成标准 getter
+    @Getter(AccessLevel.NONE) // 不生成标准 getter
     public class ScoredInstance {
         LingInstance instance;
         int score;
 
         // Record 风格的访问器
-        public LingInstance instance() { return instance; }
-        public int score() { return score; }
+        public LingInstance instance() {
+            return instance;
+        }
+
+        public int score() {
+            return score;
+        }
     }
 }

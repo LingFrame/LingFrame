@@ -1,44 +1,47 @@
 package com.lingframe.core.audit;
 
+import com.lingframe.api.security.PermissionAuditResult;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.Arrays;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 审计管理器 (异步非阻塞)
+ * 运行时治理事件使用的异步审计落点。
  */
 @Slf4j
 public class AuditManager {
 
-    // 丢弃计数器，用于告警
-    private static final AtomicLong discardCount = new AtomicLong(0);
+    private static final AtomicLong DISCARD_COUNT = new AtomicLong(0);
+    private static final ClassLoader CORE_CLASSLOADER = AuditManager.class.getClassLoader();
 
-    // 使用独立的单线程线程池，保证日志顺序，且不占用 ForkJoinPool
     private static final ExecutorService AUDIT_EXECUTOR = new ThreadPoolExecutor(
             1,
             1,
-            0L, TimeUnit.MILLISECONDS,
-            new LinkedBlockingQueue<>(1000), // 缓冲队列 1000
-            r -> {
-                Thread thread = new Thread(r, "lingframe-audit-logger");
+            0L,
+            TimeUnit.MILLISECONDS,
+            new LinkedBlockingQueue<>(1000),
+            runnable -> {
+                Thread thread = new Thread(runnable, "lingframe-audit-logger");
                 thread.setDaemon(true);
+                thread.setContextClassLoader(CORE_CLASSLOADER);
                 thread.setUncaughtExceptionHandler(
                         (t, e) -> log.error("Thread pool thread {} exception: {}", t.getName(), e.getMessage()));
                 return thread;
             },
-            // 自定义拒绝策略：丢弃日志但记录告警
-            (r, executor) -> {
-                long count = discardCount.incrementAndGet();
+            (runnable, executor) -> {
+                long count = DISCARD_COUNT.incrementAndGet();
                 if (count == 1 || count % 100 == 0) {
-                    log.warn("⚠️ Audit log queue full, discarded {} logs so far", count);
+                    log.warn("Audit log queue full, discarded {} records so far", count);
                 }
             });
 
-    // 注册 Shutdown Hook（替代无效的 @PreDestroy 静态方法）
     static {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+        Thread hook = new Thread(() -> {
             log.info("Shutting down Audit Executor...");
             AUDIT_EXECUTOR.shutdown();
             try {
@@ -51,39 +54,75 @@ public class AuditManager {
                 Thread.currentThread().interrupt();
             }
             log.info("Audit Executor shutdown complete.");
-        }, "audit-shutdown-hook"));
+        }, "audit-shutdown-hook");
+        hook.setContextClassLoader(CORE_CLASSLOADER);
+        Runtime.getRuntime().addShutdownHook(hook);
     }
 
-    /**
-     * 异步记录审计日志
-     */
-    public static void asyncRecord(String traceId, String callerLingId, String action, String resource,
-            Object[] args, Object result, long cost) {
-        // 增加防御性 try-catch，防止提交任务本身抛出异常
+    private AuditManager() {
+    }
+
+    public static void asyncRecord(String traceId,
+            String callerLingId,
+            String principal,
+            PermissionAuditResult result,
+            String capability,
+            String action,
+            String resource,
+            String failureReason,
+            long costNanos) {
         try {
-            // 使用独立线程池执行，避免阻塞业务线程
             CompletableFuture.runAsync(() -> {
+                ClassLoader previous = Thread.currentThread().getContextClassLoader();
+                Thread.currentThread().setContextClassLoader(CORE_CLASSLOADER);
                 try {
-                    // 生产环境应写入 ES/DB，此处演示打印日志
-                    // 仅记录操作是否成功，不记录具体异常堆栈（由 Monitor 负责）
-                    boolean success = (result != null) || (cost > 0);
-
-                    // 简单的 JSON 格式化，方便日志系统采集
-                    String argsStr = args == null ? "[]" : "args_hash:" + Integer.toHexString(Arrays.hashCode(args));
-                    String resultStr = result == null ? "null"
-                            : result.toString().substring(0, Math.min(50, result.toString().length()));
-
                     log.info(
-                            "[AUDIT] TraceId={}, ling={}, Action={}, Resource={}, Cost={}ms, Result={}, Args={}, Data={}",
-                            traceId, callerLingId, action, resource, String.format("%.3f", cost / 1_000_000.0),
-                            success ? "Success" : "Void", argsStr, resultStr);
+                            "[AUDIT] TraceId={}, Caller={}, Principal={}, Result={}, Capability={}, Action={}, Resource={}, Cost={}ms, Failure={}",
+                            traceId,
+                            truncate(callerLingId, 64),
+                            truncate(principal, 64),
+                            result,
+                            truncate(capability, 128),
+                            truncate(action, 128),
+                            truncate(resource, 160),
+                            String.format("%.3f", costNanos / 1_000_000.0),
+                            truncate(failureReason, 160));
                 } catch (Exception e) {
                     log.warn("Audit log failed", e);
+                } finally {
+                    Thread.currentThread().setContextClassLoader(previous);
                 }
             }, AUDIT_EXECUTOR);
-        } catch (Exception e) {
-            // 这里的异常通常意味着线程池已关闭或严重错误，日志可能也打不出来，但尽力而为
-            // 忽略丢弃异常
+        } catch (Exception ignored) {
+            // 忽略审计链路异常，避免污染主调用链路。
         }
+    }
+
+    public static void asyncRecord(String traceId,
+            String callerLingId,
+            String action,
+            String resource,
+            Object[] args,
+            Object result,
+            long cost) {
+        asyncRecord(traceId,
+                callerLingId,
+                null,
+                result == null ? PermissionAuditResult.DENIED : PermissionAuditResult.ALLOWED,
+                resource,
+                action,
+                resource,
+                null,
+                cost);
+    }
+
+    private static String truncate(String value, int maxLength) {
+        if (value == null || value.isEmpty()) {
+            return "-";
+        }
+        if (value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength) + "...";
     }
 }

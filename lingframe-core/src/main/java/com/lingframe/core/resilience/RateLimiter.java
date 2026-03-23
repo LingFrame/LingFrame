@@ -8,7 +8,7 @@ public interface RateLimiter {
     /**
      * 尝试获取许可
      * 
-     * @return true if permitted, false otherwise
+     * @return 获取到许可时返回 `true`，否则返回 `false`
      */
     boolean tryAcquire();
 

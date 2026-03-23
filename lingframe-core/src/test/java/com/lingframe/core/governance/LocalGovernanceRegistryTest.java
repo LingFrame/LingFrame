@@ -17,11 +17,14 @@ import org.mockito.quality.Strictness;
 import java.io.File;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("LocalGovernanceRegistry 单元测试")
+@DisplayName("LocalGovernanceRegistry 测试")
 class LocalGovernanceRegistryTest {
 
     @TempDir
@@ -35,7 +38,7 @@ class LocalGovernanceRegistryTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        // 使用临时文件路径构造 Registry
+        // 使用临时文件路径构造注册表，避免污染真实环境。
         configFile = tempDir.resolve("ling-governance-patch.yml").toFile();
         registry = new LocalGovernanceRegistry(eventBus, configFile.getAbsolutePath());
     }
@@ -52,7 +55,7 @@ class LocalGovernanceRegistryTest {
     class PatchManagementTests {
 
         @Test
-        @DisplayName("更新并获取补丁应成功")
+        @DisplayName("更新后应能按灵元标识取回补丁")
         void testUpdateAndGetPatch() {
             GovernancePolicy policy = new GovernancePolicy();
             policy.getPermissions().add(GovernancePolicy.PermissionRule.builder()
@@ -66,9 +69,7 @@ class LocalGovernanceRegistryTest {
             assertNotNull(retrieved);
             assertFalse(retrieved.getPermissions().isEmpty());
             assertEquals("perm-1", retrieved.getPermissions().get(0).getPermissionId());
-
-            // 验证文件持久化
-            assertTrue(configFile.exists(), "配置文件应该被创建");
+            assertTrue(configFile.exists(), "配置文件应被创建");
         }
     }
 
@@ -77,21 +78,15 @@ class LocalGovernanceRegistryTest {
     class PersistenceTests {
 
         @Test
-        @DisplayName("重启后应能从文件加载补丁")
+        @DisplayName("重新构造注册表后应能从文件加载补丁")
         void testLoadFromFile() throws Exception {
-            // 先保存一个补丁
             GovernancePolicy policy = new GovernancePolicy();
             policy.getPermissions().add(GovernancePolicy.PermissionRule.builder()
                     .permissionId("perm-2")
                     .build());
             registry.updatePatch("Ling-2", policy);
 
-            // 创建新的 Registry 实例模拟重启
             LocalGovernanceRegistry newRegistry = new LocalGovernanceRegistry(eventBus, configFile.getAbsolutePath());
-
-            // 构造函数中已经调用了 load()，所以这里不需要再反射调 load()
-            // 但为了模拟"重启"后读取，我们直接断言即可
-            // 如果构造函数中的load()已经读取了，那么getPatch应该能拿到数据
 
             GovernancePolicy loadedPolicy = newRegistry.getPatch("Ling-2");
             assertNotNull(loadedPolicy);
@@ -99,6 +94,4 @@ class LocalGovernanceRegistryTest {
             assertEquals("perm-2", loadedPolicy.getPermissions().get(0).getPermissionId());
         }
     }
-
-    // setPrivateField removed as it is no longer needed
 }

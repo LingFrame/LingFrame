@@ -2,17 +2,18 @@ package com.lingframe.core.loader;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.config.LingFrameConfig;
-import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingLifecycleEngine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
- * 单元自动发现服务 (Production Ready)
+ * 灵元自动发现服务 (Production Ready)
  * <p>
  * 职责：
  * 1. 扫描配置的所有根目录 (homes)
@@ -25,7 +26,7 @@ import java.util.Set;
 public class LingDiscoveryService {
 
     private final LingFrameConfig config;
-    private final LingManager lingManager;
+    private final LingLifecycleEngine lifecycleEngine;
 
     /**
      * 执行扫描并加载
@@ -35,7 +36,7 @@ public class LingDiscoveryService {
             log.info("AutoScan has bean false.");
             return;
         }
-        // 用于记录本次扫描已加载的单元ID，防止重复加载（实现优先级覆盖）
+        // 用于记录本次扫描已加载的灵元ID，防止重复加载（实现优先级覆盖）
         Set<String> loadedLingIds = new HashSet<>();
         if (!config.getLingHome().trim().isEmpty()) {
             File homeFile = new File(config.getLingHome());
@@ -44,11 +45,11 @@ public class LingDiscoveryService {
                 log.info("Starting ling discovery from {}, count: {}", config.getLingHome(), files.length);
                 for (File file : files) {
                     try {
-                        // 尝试加载单个单元
+                        // 尝试加载单个灵元
                         installSingle(loadedLingIds, file);
                     } catch (Exception e) {
                         // 🔥捕获异常，只打印日志，不抛出！
-                        // 这样坏单元只会打印报错，不会炸毁主程序
+                        // 这样坏灵元只会打印报错，不会炸毁主程序
                         log.error("⚠️ Failed to load ling from: {}", file.getAbsolutePath(), e);
                     }
                 }
@@ -81,7 +82,7 @@ public class LingDiscoveryService {
             // 尝试解析元数据
             LingDefinition def = LingManifestLoader.parseDefinition(file);
             if (def == null) {
-                // 并不是一个有效的单元包，跳过（可能是临时文件或无关文件夹）
+                // 并不是一个有效的灵元包，跳过（可能是临时文件或无关文件夹）
                 return;
             }
 
@@ -101,22 +102,17 @@ public class LingDiscoveryService {
 
             // 检查是否为金丝雀版本
             if (def.getProperties() != null && Boolean.TRUE.equals(def.getProperties().get("canary"))) {
-                lingManager.deployCanary(def, file, java.util.Collections.emptyMap());
+                lifecycleEngine.deploy(def, file, false, Collections.emptyMap());
                 loadedLingIds.add(lingId);
                 return;
             }
 
-            if (LingFrameConfig.current().isDevMode()) {
-                // 开发模式：目录安装
-                lingManager.installDev(def, file);
-            } else {
-                // 生产模式：Jar 安装
-                lingManager.install(def, file);
-            }
+            // 开发/生产模式由于引擎逻辑在内部判定，只需一致传 isDefault=true
+            lifecycleEngine.deploy(def, file, true, Collections.emptyMap());
 
             loadedLingIds.add(lingId);
         } catch (Exception e) {
-            // 捕获单个单元的异常，避免阻断整个扫描过程
+            // 捕获单个灵元的异常，避免阻断整个扫描过程
             log.error("Failed to load ling from: {}", file.getAbsolutePath(), e);
         }
     }

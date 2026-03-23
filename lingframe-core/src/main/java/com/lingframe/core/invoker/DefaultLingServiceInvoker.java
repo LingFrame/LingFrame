@@ -2,8 +2,8 @@ package com.lingframe.core.invoker;
 
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.LingServiceInvoker;
-import com.lingframe.core.exception.ServiceUnavailableException;
-import com.lingframe.core.exception.InvocationException;
+import com.lingframe.api.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.InvocationException;
 import com.lingframe.api.exception.InvalidArgumentException;
 import lombok.extern.slf4j.Slf4j;
 
@@ -16,15 +16,17 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
     @Override
     public Object invoke(LingInstance instance, Object bean, Method method, Object[] args) throws Exception {
         // 引用计数保护
-        if (!instance.tryEnter()) {
+        long invocationId = instance.beginInvocation(ActiveInvocationSupport.capture(instance, method.getName()));
+        if (invocationId < 0) {
             throw new ServiceUnavailableException(instance.getLingId(),
                     "Ling instance is not ready or already destroyed");
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+        ClassLoader targetClassLoader = instance.getClassLoader();
 
         try {
-            // TCCL 切换
-            Thread.currentThread().setContextClassLoader(instance.getContainer().getClassLoader());
+            // 切换线程上下文类加载器（TCCL）
+            Thread.currentThread().setContextClassLoader(targetClassLoader);
 
             // 反射调用
             return method.invoke(bean, args);
@@ -42,7 +44,7 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
         } finally {
             // 资源恢复
             Thread.currentThread().setContextClassLoader(originalClassLoader);
-            instance.exit();
+            instance.completeInvocation(invocationId);
         }
     }
 
@@ -79,7 +81,8 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
                         .append("\n")
                         .append("     - 期望类型: ").append(expectedType.getSimpleName()).append("\n")
                         .append("\n")
-                        .append("     - 实际类型: ").append(actualArg == null ? "null" : actualArg.getClass().getSimpleName()).append("\n")
+                        .append("     - 实际类型: ")
+                        .append(actualArg == null ? "null" : actualArg.getClass().getSimpleName()).append("\n")
                         .append("\n")
                         .append("     - 实际传值: ").append(actualArg).append("\n")
                         .append("\n")
@@ -89,7 +92,7 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
 
         if (foundMismatch) {
             throw new InvalidArgumentException("args", String.format(
-                    "调用单元服务 [%s] 失败，参数类型不匹配！%s",
+                    "调用灵元服务 [%s] 失败，参数类型不匹配！%s",
                     method.getName(), errorReport), e);
         }
     }
@@ -114,7 +117,7 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
         }
 
         // 情况 C: 类名完全一样，但是不匹配？ -> 肯定是类加载器问题！
-        // 这在 LingFrame 这种单元框架中非常关键！
+        // 这在 LingFrame 这种灵元框架中非常关键！
         if (expected.getName().equals(actualType.getName())) {
             return String.format(
                     "🔥 类加载器冲突！目标类由 [%s] 加载，但传入对象由 [%s] 加载。",

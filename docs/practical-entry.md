@@ -1,279 +1,109 @@
-# LingFrame
+# Practical Entry
 
-**JVM Runtime Framework providing ling Architecture and Zero-Downtime Canary Release for Spring Boot**
-*Built-in complete permission control and security audit capabilities*
+This page is for developers who have already seen the quick start and now want the practical picture:
 
----
+- what LingFrame is good at right now
+- how to introduce it without overcommitting
+- what a safe first rollout looks like
 
-## 🚑 What can LingFrame solve for you immediately?
-
-> **Launch new features safely without changing the overall architecture**
-
-* ✅ **Ling-based Business Unit Splitting**: Isolate unstable features from the core system.
-* 🚦 **Zero-Downtime Canary Release**: New features only affect a subset of users.
-* 🔁 **Fast Rollback**: Enable/Disable Lings without redeploying.
-* 🧵 **Full Tracing & Audit Log**: Traceable issues and accountability.
-
-> LingFrame is not for "elegant design",
-> It is for **making the system fail less, be controllable, and survive**.
+It is intentionally about **adoption strategy**, not a full architecture explanation.
 
 ---
 
-## 🧩 Ling-based Spring Boot (Core Capability)
+## Use LingFrame For These Problems First
 
-LingFrame runs **Complete Spring Boot Context** as a ling:
+`0.3.0` is most useful when you already have a long-running JVM system and want better control without splitting it apart.
 
-* Independent ClassLoader per ling
-* Independent Lifecycle (Load / Start / Stop / Uninstall)
-* Enable, Disable, Replace on demand
-* No need to split into microservices, no network overhead
+If you care not only about "can it be loaded dynamically?" but also "can it be drained, cleaned up, reclaimed, and removed without making the long-running runtime dirtier?", LingFrame is a much better fit.
 
-**You can understand it as:**
+Strong fits:
 
-> 👉 "**Hot-Pluggable Spring Boot Units**"
+- isolate unstable or experimental business slices as lings
+- load and unload lings without full redeploy
+- do canary routing inside one process
+- put governance in front of cross-ling calls
+- observe lifecycle, trace, and leak signals from one runtime surface
+- establish disciplined hot-unload capability instead of treating dynamic loading as the finish line
 
-### Typical Use Cases
+Less suitable as a first goal:
 
-* Put **Experimental / High-Risk Features** in Lings via LingFrame.
-* Isolate **Third-Party / Secondary Development Code** from the main system.
-* Load **Low-Frequency Features** on demand to reduce complexity.
+- turning your monolith into a distributed platform
+- real-traffic replay validation
+- a fully expanded message/search proxy ecosystem
 
----
-
-## 🚦 Zero-Downtime Canary Release
-
-LingFrame built-in Ling-level traffic control:
-
-* ling Instance Pool
-* Canary / Grey Release
-* Label Routing
-* ling Version Coexistence
-
-You can achieve:
-
-* New ling **only affects 5% of users**
-* **Rollback immediately** if issues arise
-* **No restart required** during the process
-
-> For Ops and Devs, this is a **Life-Saving Capability**.
+Those are outside the shipped `0.3.0` boundary.
 
 ---
 
-## 🧵 Tracing and Audit (Enabled by Default)
+## Recommended Adoption Path
 
-LingFrame records:
+### Phase 1. Start with one non-core ling
 
-* ling → ling
-* ling → Infrastructure (DB / Cache / MQ)
-* ling → LINGCORE App
+Pick one business slice that is:
 
-Every cross-unit call leaves:
+- valuable enough to justify isolation
+- small enough to roll back quickly
+- not the deepest center of the system
 
-* Caller
-* Target
-* Execution Time
-* Permission Result
-* Audit Log
+### Phase 2. Move only the contract first
 
-> No more guessing when issues happen.
+Define the `Shared API` first:
 
----
+- interface
+- request and response DTOs
+- no business implementation
+- no Spring components
 
-## 🛡️ Advanced Capabilities: Runtime Governance & Ecosystem Extension (Long-term Value)
+### Phase 3. Run in dev mode and watch governance
 
-As system scale and complexity rise, LingFrame provides a complete **Governance Kernel** and **Ecosystem Extensibility**:
+Use this stage to verify:
 
-* 🔐 **Permission Control**: All cross-unit calls must be authorized.
-* ⚖️ **Capability Arbitration**: Core acts as the sole proxy, preventing bypass.
-* 🧾 **Security Audit**: Meet compliance, risk control, and accountability needs.
-* 🔒 **Zero Trust Model**: Lings are untrusted by default.
-* 🛡️ **Resilience Governance**: Built-in Circuit Breaker, Rate Limiting, and Timeouts at the method execution level.
-* 🔌 **Ecosystem SPIs**: Non-invasively integrate with external ecosystems like Nacos, Consul, Apollo, and SkyWalking via `LingInvocationFilter`, `ServiceExporter`, etc.
+- service registration
+- cross-ling invocation
+- permission declarations
+- cache or storage governance behavior
 
-> These are not reasons to use it on day one,
-> But will **save your life** and drastically simplify architecture when the system gets complex.
+### Phase 4. Introduce canary only after the ling is stable
+
+Canary is most useful after the ling already loads, runs, and can be rolled back cleanly.
 
 ---
 
-## 🧠 Core Philosophy: Survive First, Then Establish Order
+## What You Need To Know Technically Before Adopting
 
-```text
-┌───────────────────────────────────────────────┐
-│            Core (Governance Kernel)             │
-│   Auth · Audit · Arbitration · Tracing          │
-└───────────────────────┬───────────────────────┘
-                        ▼
-┌───────────────────────────────────────────────┐
-│          Infrastructure (Infra Proxy)           │
-│     DB / Cache / MQ / Search Unified Control    │
-└───────────────────────┬───────────────────────┘
-                        ▼
-┌───────────────────────────────────────────────┐
-│           Business Lings (Business Layer)     │
-│      Canary · Rollback · Isolated               │
-└───────────────────────────────────────────────┘
-```
+For a first rollout, you only need to keep three technical facts in mind:
+
+- major governance paths now converge on one kernel instead of staying scattered
+- runtime state is split between instance facts and macro runtime availability
+- Dashboard is already a backend governance surface, not just a UI shell
+
+If you add one more practical judgment, make it this:
+
+> The first thing worth validating in LingFrame is not just whether a ling can be loaded,  
+> but whether it can be drained, unloaded, and cleaned up without leaving the runtime in a worse state.
+
+This is enough to make rollout decisions.
 
 ---
 
-## 🚀 5-Minute Quick Start (Shortest Path)
+## A Safe First Rollout Checklist
 
-### Prerequisites
-
-* Java 17+
-* Maven 3.8+
-
-### Start LingCore Application
-
-```bash
-# Clone Repository (Choose any)
-# GitHub (International, Recommended)
-git clone https://github.com/LingFrame/LingFrame.git
-
-# AtomGit (China)
-git clone https://atomgit.com/lingframe/LingFrame.git
-
-# Gitee (China Mirror)
-git clone https://gitee.com/knight6236/lingframe.git
-
-cd LingFrame
-mvn clean install -DskipTests
-
-cd lingframe-examples/lingframe-example-lingcore-app
-mvn spring-boot:run
-```
-
-### Enable ling Mechanism
-
-```yaml
-lingframe:
-  enabled: true
-  dev-mode: true           # Enable dev mode, lings auto-activate after install
-  ling-home: "lings"       # Unit JAR directory
-  auto-scan: true
-  
-  # 🔄 Phase 3: Resilience Governance Config
-  governance:
-    retry-count: 3                    # Global default retry count
-    circuit-breaker-enabled: true     # Enable circuit breaker
-    rate-limiter-enabled: true        # Enable rate limiter
-    default-timeout: 3s               # Default timeout
-    bulkhead-max-concurrent: 10       # Max concurrent limit
-```
-
-![LingFrame Dashboard Example](./images/dashboard.png)
-*Figure: ling Management Panel, showing real-time status, canary traffic and audit logs.*
+- preload the shared contracts first
+- keep the first ling small and reversible
+- use `@LingReference` for the first integration path
+- declare permissions instead of relying on accidental access
+- verify unload and reload behavior in a non-production environment
+- treat dashboard APIs as a governance surface, not a toy admin page
 
 ---
 
-## 🧩 Create Your First ling
+## Common Beginner Mistakes
 
-### Define Interface (Consumer Driven)
+- treating Shared API like a random shared utils jar
+- moving too much business code at once
+- thinking canary alone equals governance
+- assuming Shared API can be hot-updated freely
 
-```java
-public interface UserQueryService {
-    Optional<UserDTO> findById(String userId);
-}
-```
+Existing shared contracts still require a process restart to change safely.
 
-### ling Implementation
-
-```java
-@SpringBootApplication
-public class UserLing implements Ling {
-
-    @Override
-    public void onStart(LingContext context) {
-        System.out.println("User ling started");
-    }
-}
-
-@Component
-public class UserQueryServiceImpl implements UserQueryService {
-
-    @LingService(id = "find_user")
-    @Override
-    public Optional<UserDTO> findById(String userId) {
-        return repository.findById(userId);
-    }
-}
-```
-
-### ling Metadata
-
-```yaml
-id: user-ling
-version: 1.0.0
-description: User unit
-mainClass: com.example.UserLing
-```
-
----
-
-## 🔄 Cross-ling Call (Auto Governance)
-
-```java
-@Component
-public class OrderService {
-
-    @LingReference
-    private UserQueryService userQueryService;
-
-    public Order create(String userId) {
-        return userQueryService.findById(userId)
-            .map(Order::new)
-            .orElseThrow();
-    }
-}
-```
-
-> All calls automatically pass through:
-> Permission Check · Audit · Tracing · Routing Decision
-
----
-
-## 👤 Who is it for?
-
-* Teams wanting to **Retrofit Monoliths with Lings**
-* Systems needing **Zero-Downtime Release / Canary**
-* Platforms with **Secondary Dev / Third-Party Extension** needs
-* Systems getting complex but not ready for Microservices
-
----
-
-## 📦 Project Structure
-
-```text
-lingframe/
-├── lingframe-api
-├── lingframe-core
-├── lingframe-runtime
-├── lingframe-infrastructure
-├── lingframe-examples
-├── lingframe-dependencies
-└── lingframe-bom
-```
-
----
-
-## 🤝 Contributing
-
-* Feature Development
-* Example Improvement
-* Documentation
-* Architecture Discussion
-
-👉 View [Issues](../../issues) / [Discussions](../../discussions)
-
----
-
-## 📄 License
-
-Apache License 2.0
-
----
-
-### Final Words
-
-> **LingFrame does not require you to "govern everything" from the start.**
-> **It just gives you one more choice before the system gets out of control.**
+If you need implementation details next, go to [LingFrame](technical-entry.md) or [Architecture Design](architecture.md).

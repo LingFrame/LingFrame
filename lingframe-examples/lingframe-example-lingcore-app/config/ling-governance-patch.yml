@@ -1,0 +1,24 @@
+user-ling: !!com.lingframe.api.config.GovernancePolicy
+  audits: [
+    ]
+  capabilities:
+  - accessType: EXECUTE
+    capability: Ling_ENABLE
+  - accessType: WRITE
+    capability: cache:local
+  - accessType: WRITE
+    capability: storage:sql
+  permissions: [
+    ]
+order-ling: !!com.lingframe.api.config.GovernancePolicy
+  audits: [
+    ]
+  capabilities:
+  - accessType: EXECUTE
+    capability: Ling_ENABLE
+  - accessType: WRITE
+    capability: cache:local
+  - accessType: WRITE
+    capability: storage:sql
+  permissions: [
+    ]

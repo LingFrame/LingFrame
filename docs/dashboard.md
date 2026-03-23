@@ -1,18 +1,28 @@
-# Dashboard: Visual Governance Center
+# Dashboard: Governance Control Surface
 
-LingFrame Dashboard is an optional advanced feature that provides a visual interface for ling management and governance.
+LingFrame Dashboard in `0.3.0` should be understood first as a runtime governance control surface, not as a frontend showcase.
+
+The shipped codebase exposes a real backend surface for ling lifecycle operations, governance patching, simulation, metrics, health snapshots, and SSE event streaming. The UI is only one consumer of that backend.
+
+Its importance is not just that "there is an admin page".  
+It is that the dashboard is already consuming real runtime state, real event streams, and real cleanup evidence from the same governance spine.
 
 ## Features Overview
 
-| Feature | Description |
+| Feature | What the current implementation provides |
 | ------- | ----------- |
-| **Unit Management** | List, Detail, Install, Uninstall, Hot Swap |
-| **Status Control** | Start, Stop, Activate Units |
-| **Permission Governance** | Dynamically adjust unit resource permissions (DB/Cache Read/Write) |
-| **Canary Deployment** | Configure canary traffic percentage and version |
-| **Traffic Statistics** | View call count, success rate, latency |
-| **Simulation Testing** | Resource Access Simulation, IPC Simulation, Stress Testing |
-| **Log Stream** | Real-time unit log viewing (SSE) |
+| **Ling Management** | List, detail, install, uninstall, uninstall by version, and dev-mode reload |
+| **Runtime Control** | Update runtime status through `ACTIVE`, `INACTIVE`, and removal flows |
+| **Governance Patch** | Read and update governance policy patches |
+| **Permission Governance** | Update DB/Cache permissions and IPC capability grants |
+| **Canary Deployment** | Configure canary percentage and canary version routing |
+| **Traffic Statistics** | View total requests, version split, active requests, and current window start |
+| **Simulation Testing** | Resource simulation, IPC simulation, stress routing, and dev/prod mode switch |
+| **Metrics & Health** | JVM metrics, per-ling health snapshots, and all-ling health snapshots |
+| **Event Streaming** | Real-time SSE stream backed by monitoring events |
+
+From the project-identity perspective, the dashboard is not only showing governance features.  
+It is gathering long-running runtime evidence, unload-side signals, and operational feedback into one control surface.
 
 ## Integration Steps
 
@@ -34,23 +44,35 @@ lingframe:
     enabled: true
 ```
 
-![LingFrame Dashboard Example](./images/dashboard.png)
-*Figure: ling Management Panel, showing real-time status, canary traffic, and audit logs.*
+### 3. Runtime Surface
+
+The backend control surface is enabled under:
+
+- REST: `/lingframe/dashboard/**`
+- SSE stream: `/lingframe/dashboard/stream`
+
+Install is additionally gated by `lingframe.dashboard.install-enabled=true`.
+
+Reload is only available when `lingframe.dev-mode=true`.
+
+![LingFrame Dashboard Example](./images/dashboard.0.3.0.png)
+*Figure: one possible UI consumer of the dashboard backend surface.*
 
 ## API Endpoints
 
 Once Dashboard is enabled, the following REST APIs are available:
 
-### Unit Management
+### Ling Management
 
 | Method | Endpoint | Description |
 | ------ | -------- | ----------- |
-| GET    | `/lingframe/dashboard/lings` | Get list of all units |
-| GET    | `/lingframe/dashboard/lings/{lingId}` | Get unit details |
-| POST   | `/lingframe/dashboard/lings/install` | Upload and install JAR |
-| DELETE | `/lingframe/dashboard/lings/uninstall/{lingId}` | Uninstall unit |
+| GET    | `/lingframe/dashboard/lings` | Get all lings |
+| GET    | `/lingframe/dashboard/lings/{lingId}` | Get ling details |
+| POST   | `/lingframe/dashboard/lings/install` | Upload and install JAR when install is enabled |
+| DELETE | `/lingframe/dashboard/lings/uninstall/{lingId}` | Uninstall a ling |
+| DELETE | `/lingframe/dashboard/lings/uninstall/{lingId}/{version}` | Uninstall a specific version |
 | POST   | `/lingframe/dashboard/lings/{lingId}/reload` | Hot Swap (Dev Mode) |
-| POST   | `/lingframe/dashboard/lings/{lingId}/status` | Update unit status |
+| POST   | `/lingframe/dashboard/lings/{lingId}/status` | Update ling runtime status |
 
 ### Canary Deployment
 
@@ -71,7 +93,7 @@ Request Body Example:
 | Method | Endpoint | Description |
 | ------ | -------- | ----------- |
 | GET    | `/lingframe/dashboard/governance/rules` | Get all governance rules |
-| GET    | `/lingframe/dashboard/governance/{lingId}` | Get unit governance policy |
+| GET    | `/lingframe/dashboard/governance/{lingId}` | Get one ling governance policy |
 | POST   | `/lingframe/dashboard/governance/patch/{lingId}` | Update governance policy |
 | POST   | `/lingframe/dashboard/governance/{lingId}/permissions` | Update resource permissions |
 
@@ -79,8 +101,16 @@ Request Body Example:
 
 | Method | Endpoint | Description |
 | ------ | -------- | ----------- |
-| GET    | `/lingframe/dashboard/lings/{lingId}/stats` | Get traffic stats |
+| GET    | `/lingframe/dashboard/lings/{lingId}/stats` | Get request totals, version split, active requests, and current window start |
 | POST   | `/lingframe/dashboard/lings/{lingId}/stats/reset` | Reset stats |
+
+### Metrics And Health
+
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| GET    | `/lingframe/dashboard/lings/metrics` | Get JVM metrics snapshot |
+| GET    | `/lingframe/dashboard/lings/{lingId}/health` | Get one ling health snapshot |
+| GET    | `/lingframe/dashboard/lings/health/all` | Get health snapshots for all lings |
 
 ### Simulation Testing
 
@@ -89,6 +119,13 @@ Request Body Example:
 | POST   | `/lingframe/dashboard/simulate/lings/{lingId}/resource` | Simulate resource access |
 | POST   | `/lingframe/dashboard/simulate/lings/{lingId}/ipc` | Simulate IPC call |
 | POST   | `/lingframe/dashboard/simulate/lings/{lingId}/stress` | Stress test |
+| POST   | `/lingframe/dashboard/simulate/config/mode` | Switch runtime test mode between dev and prod |
+
+### Event Streaming
+
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| GET    | `/lingframe/dashboard/stream` | Subscribe to SSE monitoring events |
 
 ## Usage Examples
 
@@ -98,7 +135,7 @@ Request Body Example:
 curl http://localhost:8888/lingframe/dashboard/lings
 ```
 
-### Hot Swap ling
+### Reload ling in dev mode
 
 ```bash
 curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/reload
@@ -114,6 +151,9 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
 
 ## Considerations
 
-1. **Dev/Test Environment Only**: In production, it is recommended to manage via configuration center.
-2. **Security**: CORS allowed by default; configure authentication for production.
-3. **Hot Swap**: Available only when `dev-mode: true`.
+1. Dashboard is optional and only active when `lingframe.dashboard.enabled=true`.
+2. Install is disabled by default and requires `lingframe.dashboard.install-enabled=true`.
+3. Reload is a dev-mode capability and is rejected when `lingframe.dev-mode=false`.
+4. CORS is open by default in the current implementation; production deployments should add proper access control in front of the dashboard surface.
+5. The backend API surface is the `0.3.0` truth source; UI packaging details are secondary to the runtime control contract.
+6. Dashboard is best understood as an observation and operation entry for the runtime kernel, not as a separate system alongside it.

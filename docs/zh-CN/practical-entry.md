@@ -1,280 +1,111 @@
-# LingFrame（灵珑）
+# 实用入口
 
-**为 Spring Boot 提供单元化架构与不停机灰度发布的 JVM 运行时框架**
-*在此之上，内建完整的权限控制与安全审计能力*
+这页写给已经看过快速开始、现在想从“怎么落地”角度理解灵珑的开发者。
 
----
+它主要回答三件事：
 
-## 🚑 LingFrame 能立刻帮你解决什么？
+- 灵珑现在最适合解决什么问题
+- 应该怎么引入，才不会一开始就过度投入
+- 什么样的第一轮上线方式最稳妥
 
-> **不改整体架构，也能让系统更安全地上线新功能**
-
-* ✅ **单元化拆分业务单元**，不稳定功能与核心系统隔离
-* 🚦 **不停机灰度 / 金丝雀发布**，新功能只对部分用户生效
-* 🔁 **快速回滚**，单元级别启停，无需重新发版
-* 🧵 **全链路追踪与审计日志**，问题可定位、责任可追溯
-
-> LingFrame 不是用来“设计得更优雅”，
-> 而是用来**让系统少炸、可控、能活下来**。
+它刻意只讨论**接入策略**，不展开完整架构解释。
 
 ---
 
-## 🧩 单元化 Spring Boot（核心能力）
+## 先用灵珑解决这些问题
 
-LingFrame 将 **完整的 Spring Boot 上下文** 作为单元运行：
+对于 `0.3.0`，灵珑最适合的场景是：你已经有一个长期运行的 JVM 系统，希望在不大拆大改的前提下，重新获得运行时控制力。
 
-* 每个单元拥有独立 ClassLoader
-* 独立生命周期（加载 / 启动 / 停止 / 卸载）
-* 可按需启用、禁用、替换
-* 不需要拆成微服务，也不引入网络开销
+如果你关心的不只是“能不能动态加载”，而是“能不能规范地下线、清理、回收，并让长期运行秩序不继续变脏”，那灵珑会更适合你。
 
-**你可以把它理解为：**
+适合优先解决的问题：
 
-> 👉「**可热插拔的 Spring Boot 单元**」
+- 把高风险或实验性业务切片隔离成灵元
+- 在不整包重发的情况下加载、卸载业务单元
+- 在单进程里做灰度路由
+- 给跨单元调用加上统一治理
+- 从一个运行时控制面观察生命周期、追踪与泄漏信号
+- 先建立规范热卸载能力，而不是只把动态加载当成能力终点
 
-### 典型用途
+不适合作为第一目标的事情：
 
-* 把 **实验性 / 高风险功能** 放进单元
-* 把 **第三方 / 二次开发代码** 与主系统隔离
-* 把 **低频功能** 按需加载，降低系统复杂度
+- 把单体直接变成分布式平台
+- 真实流量无损回放验证
+- 完整消息代理 / 搜索代理生态
 
----
-
-## 🚦 不停机灰度发布 / 金丝雀能力
-
-LingFrame 内建单元级流量控制能力：
-
-* 单元实例池
-* 灰度 / 金丝雀发布
-* 标签路由
-* 单元版本并存
-
-你可以做到：
-
-* 新单元 **只对 5% 用户生效**
-* 出问题 **立刻回滚到旧单元**
-* 整个过程 **无需重启应用**
-
-> 对开发和运维来说，这是**保命能力**。
+这些都不属于已交付的 `0.3.0` 边界。
 
 ---
 
-## 🧵 全链路追踪与调用审计（默认开启）
+## 推荐接入路径
 
-LingFrame 会记录：
+### 阶段 1：先选一个非核心灵元
 
-* 单元 → 单元
-* 单元 → 基础设施（DB / Cache / MQ）
-* 单元 → 灵核应用
+第一批灵元最好满足：
 
-每一次跨单元调用，都会留下：
+- 足够有价值，值得做隔离
+- 足够小，出了问题能快速回退
+- 不是系统最深处最难拆的核心链路
 
-* 调用来源
-* 调用目标
-* 执行耗时
-* 权限判定结果
-* 审计日志
+### 阶段 2：先移动契约，再移动业务
 
-> 出问题时，你不再靠猜。
+先把 `Shared API` 设计出来：
 
----
+- 接口
+- 请求 / 响应 DTO
+- 不放业务实现
+- 不放 Spring 组件
 
-## 🛡️ 进阶能力：运行时治理与生态接入（长期价值）
+### 阶段 3：先在 dev mode 下观察治理行为
 
-当系统规模和复杂度上升后，LingFrame 提供完整的**治理内核**和**外骨骼生态扩展**：
+重点验证：
 
-* 🔐 **权限控制**：所有跨单元调用必须经过鉴权
-* ⚖️ **能力仲裁**：Core 作为唯一调用代理，禁止绕过
-* 🧾 **安全审计**：满足合规、风控、事后追责需求
-* 🔒 **零信任模型**：单元默认不可信
-* 🛡️ **高阶可用性治理**：内置基于滑动窗口的熔断、令牌桶限流与细粒度超时控制。
-* 🔌 **生态外接 SPI**：通过一系列外骨骼扩展接口（如拦截器、服务导出器），以零侵略方式无缝融入 Nacos、Apollo、SkyWalking 等外部基础设施。
-* 🔄 **已实现 Phase 3 弹性治理**：内置支持重试、熔断、限流和复杂权重路由。
+- 服务注册
+- 跨灵元调用
+- 权限声明
+- 存储 / 缓存治理路径是否符合预期
 
-> 这些能力不是第一次使用的理由，
-> 但会在系统变复杂时，**救你一命**，极大地解耦你的架构。
+### 阶段 4：灵元稳定后再引入灰度
+
+灰度最有价值的时机，是灵元已经能稳定加载、运行、回滚之后。
 
 ---
 
-## 🧠 核心理念：先活下来，再建立秩序
+## 接入前只需要知道的三件技术事实
 
-```text
-┌───────────────────────────────────────────────┐
-│            Core（治理与运行时内核）             │
-│   权限 · 审计 · 调用仲裁 · 链路追踪             │
-└───────────────────────┬───────────────────────┘
-                        ▼
-┌───────────────────────────────────────────────┐
-│          Infrastructure（基础设施代理）        │
-│     DB / Cache / MQ / Search 统一受控          │
-└───────────────────────┬───────────────────────┘
-                        ▼
-┌───────────────────────────────────────────────┐
-│           Business Lings（业务单元）          │
-│      可灰度 · 可回滚 · 可隔离                   │
-└───────────────────────────────────────────────┘
-```
+对第一轮接入来说，你只需要先记住三件事：
+
+- 主要治理路径已经收束到同一条运行时内核
+- 运行时状态已经拆成“实例事实”和“宏观运行时可用性”两层
+- Dashboard 已经是后端治理控制面，而不只是前端壳
+
+如果再补一句最重要的判断，那就是：
+
+> 灵珑当前最值得优先验证的，不只是灵元能不能加载起来，  
+> 而是它能不能被规范地排空、卸载、清理，并且不给长期运行留下新的脏状态。
+
+这已经足够支撑接入决策。
 
 ---
 
-## 🚀 5 分钟上手（最短路径）
+## 一套稳妥的首轮上线检查单
 
-### 环境要求
-
-* Java 17+
-* Maven 3.8+
-
-### 启动灵核应用
-
-```bash
-# 克隆仓库（选择任意仓库）
-# AtomGit（推荐）
-git clone https://atomgit.com/lingframe/LingFrame.git
-
-# Gitee（国内镜像）
-git clone https://gitee.com/knight6236/lingframe.git
-
-# GitHub（国际）
-git clone https://github.com/LingFrame/LingFrame.git
-
-cd LingFrame
-mvn clean install -DskipTests
-
-cd lingframe-examples/lingframe-example-lingcore-app
-mvn spring-boot:run
-```
-
-### 启用单元机制
-
-```yaml
-lingframe:
-  enabled: true
-  dev-mode: true           # 开启开发模式，单元安装后将自动激活
-  ling-home: "lings"       # 单元 JAR 包目录
-  auto-scan: true
-  
-  # 🔄 Phase 3: 弹性治理配置
-  governance:
-    retry-count: 3                    # 全局默认重试次数
-    circuit-breaker-enabled: true     # 开启熔断保护
-    rate-limiter-enabled: true        # 开启限流保护
-    default-timeout: 3s               # 默认超时时间
-    bulkhead-max-concurrent: 10       # 最大并发限制
-```
-
-![LingFrame Dashboard 示例](./../images/dashboard.zh-CN.png)
-*图示：单元管理面板，展示实时状态、灰度流量和审计日志。*
+- 先 preload Shared API，再加载灵元
+- 第一批灵元尽量小、可回滚
+- 第一条集成路径优先用 `@LingReference`
+- 权限要显式声明，不要靠默认运气
+- 在非生产环境验证 reload / unload 行为
+- 把 Dashboard API 当作治理面，而不是演示页面
 
 ---
 
-## 🧩 创建你的第一个单元
+## 新手最容易踩的坑
 
-### 定义接口（消费者驱动）
+- 把 Shared API 当成“公共工具包”
+- 一开始搬太多业务
+- 以为灰度本身就等于治理
+- 误以为 Shared API 可以随便热更新
 
-```java
-public interface UserQueryService {
-    Optional<UserDTO> findById(String userId);
-}
-```
+已经加载的共享契约仍然需要通过重启进程来安全变更。
 
-### 单元实现
-
-```java
-@SpringBootApplication
-public class UserLing implements Ling {
-
-    @Override
-    public void onStart(LingContext context) {
-        System.out.println("User ling started");
-    }
-}
-
-@Component
-public class UserQueryServiceImpl implements UserQueryService {
-
-    @LingService(id = "find_user")
-    @Override
-    public Optional<UserDTO> findById(String userId) {
-        return repository.findById(userId);
-    }
-}
-```
-
-### 单元元数据
-
-```yaml
-id: user-ling
-version: 1.0.0
-description: User unit
-mainClass: com.example.UserLing
-```
-
----
-
-## 🔄 跨单元调用（自动治理）
-
-```java
-@Component
-public class OrderService {
-
-    @LingReference
-    private UserQueryService userQueryService;
-
-    public Order create(String userId) {
-        return userQueryService.findById(userId)
-            .map(Order::new)
-            .orElseThrow();
-    }
-}
-```
-
-> 所有调用都会自动经过：
-> 权限校验 · 审计 · 链路追踪 · 路由决策
-
----
-
-## 👤 适合谁使用？
-
-* 想要 **单元化改造单体应用** 的团队
-* 需要 **不停机发布 / 灰度能力** 的系统
-* 有 **二次开发 / 第三方扩展** 需求的平台
-* 系统开始变复杂，但还不想上微服务
-
----
-
-## 📦 项目结构
-
-```text
-lingframe/
-├── lingframe-api
-├── lingframe-core
-├── lingframe-runtime
-├── lingframe-infrastructure
-├── lingframe-examples
-├── lingframe-dependencies
-└── lingframe-bom
-```
-
----
-
-## 🤝 参与贡献
-
-* 功能开发
-* 示例完善
-* 文档补充
-* 架构讨论
-
-👉 查看 [Issues](../../issues) / [Discussions](../../discussions)
-
----
-
-## 📄 License
-
-Apache License 2.0
-
----
-
-### 最后一句（刻意留下的）
-
-> **LingFrame 不要求你一开始就“治理一切”。**
-> **它只是让你在系统失控之前，多一次选择的机会。**
+如果你接下来要看实现细节，再去 [技术入口](technical-entry.md) 或 [架构设计](architecture.md)。

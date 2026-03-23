@@ -1,169 +1,113 @@
 # 贡献指南
 
-感谢你对 LingFrame 的关注！
+感谢你愿意参与灵珑。
 
-## 快速开始
+这份文档是对外贡献入口。  
+真正权威的开发规则仍以 [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md) 为准。
 
-### 环境要求
-
-- JDK 17+
-- Maven 3.8+
-- IDE：IntelliJ IDEA（推荐）
-
-### 构建项目
-
-```bash
-# 克隆仓库（选择任意仓库）
-# AtomGit（推荐）
-git clone https://atomgit.com/lingframe/LingFrame.git
-
-# Gitee（国内镜像）
-git clone https://gitee.com/knight6236/lingframe.git
-
-# GitHub（国际）
-git clone https://github.com/LingFrame/LingFrame.git
-
-cd LingFrame
-mvn clean install -DskipTests
-```
-
-### 运行示例
-
-```bash
-cd lingframe-examples/lingframe-example-lingcore-app
-mvn spring-boot:run
-```
+如果你是第一次参与这个项目，不建议一上来就直接改代码。先理解项目立场、公开架构，再进入开发手册，会少走很多弯路。
 
 ---
 
-## 架构必读
+## 开始之前先读这些
 
-> ⚠️ **请务必理解这些原则，否则 PR 可能被拒绝**
+1. [WHY.md](WHY.md)
+2. [MANIFESTO.md](MANIFESTO.md)
+3. [README.zh-CN.md](README.zh-CN.md)
+4. [docs/zh-CN/glossary.md](docs/zh-CN/glossary.md)
+5. [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md)
+6. [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md)
 
-### 核心原则
-
-| 原则 | 说明 |
-|------|------|
-| **零信任** | 业务单元不能直接访问 DB/Redis，必须经过 Core 代理 |
-| **微内核** | Core 只做调度仲裁，不包含业务逻辑 |
-| **契约优先** | 所有交互通过 `lingframe-api` 接口 |
-| **生态无关** | Core 是纯 Java，不依赖 Spring/ORM |
-
-### 单元职责
-
-| 单元 | 职责 | 依赖规则 |
-|------|------|----------|
-| `lingframe-api` | 契约层 | 无外部依赖 |
-| `lingframe-core` | 治理内核 | **禁止**依赖 Spring |
-| `lingframe-runtime` | 生态适配 | 桥接 Core 和 Spring |
-| `lingframe-dashboard` | 可视化 | 依赖 Spring Web |
-
-### 设计原则
-
-- **SRP**：每个类只做一件事
-- **DIP**：依赖抽象，不依赖具体实现
-- **OCP**：通过扩展点增加功能
+如果旧注释、旧文档、本地习惯，或未完全清理的旧实现与开发手册冲突，优先遵循开发手册。
 
 ---
 
-## 从哪里开始？
+## 适合作为第一次贡献的方向
 
-### 新手友好任务
+如果这是你第一次参与，优先考虑下面这些类型：
 
-在 [Issues](../../issues) 中查找以下标签：
+- 基于真实实现的文档修正
+- 示例工程可读性提升
+- 已交付行为的测试补充
+- 不触碰架构边界的小型 bug 修复
 
-| 标签 | 适合人群 |
-|------|----------|
-| `good first issue` | 第一次贡献 |
-| `help wanted` | 需要帮助 |
-| `documentation` | 文档改进 |
+不建议第一次贡献就做：
 
-### 当前需要帮助的方向
-
-- ⏳ 单元测试补充
-- ⏳ 消息代理（Kafka/RabbitMQ）
-- ⏳ 文档完善
-
----
-
-## 贡献流程
-
-### 1. 认领任务
-
-在 Issue 下留言："我想认领这个任务"
-
-### 2. 开发
-
-```bash
-# Fork 后克隆
-git clone https://github.com/YOUR_USERNAME/lingframe.git
-
-# 创建分支
-git checkout -b feature/your-feature
-
-# 开发并提交
-git commit -m "feat: add your feature"
-git push origin feature/your-feature
-```
-
-### 3. 提交 PR
-
-- [ ] 代码编译通过：`mvn clean compile`
-- [ ] 测试通过：`mvn test`
-- [ ] 描述清楚改动内容
+- 状态机语义重写
+- Shared API 契约变更
+- classloader 边界调整
+- 生命周期编排重构
+- 没有同时核对代码与文档的全局术语重写
 
 ---
 
-## 代码规范
+## 提交前最低要求
 
-### 命名约定
-
-| 类型 | 规则 | 示例 |
-|------|------|------|
-| 接口 | 描述性名称 | `LingContext` |
-| 实现类 | `Default` 前缀 | `DefaultPermissionService` |
-| 代理类 | `Proxy` 后缀 | `SmartServiceProxy` |
-| 工厂类 | `Factory` 后缀 | `SpringContainerFactory` |
-
-### 代码风格
-
-- 4 空格缩进
-- 类和方法添加 Javadoc
-- 使用 Lombok 减少样板代码
-- 使用 SLF4J 日志
-
-### 测试要求
-
-- 核心逻辑必须有单元测试
-- 测试类命名：`XxxTest.java`
-- 使用 JUnit 5 + Mockito
-
-### 提交信息
-
-使用 [Conventional Commits](https://www.conventionalcommits.org/)：
-
-```
-feat: add permission check for SQL execution
-fix: fix classloader memory leak on ling unload
-docs: update quick start guide
-```
+- 项目可以正常构建
+- 相关测试通过
+- 改动没有破坏架构边界
+- 如果涉及状态机、生命周期、治理语义或 Shared API，测试必须同步更新
+- 如果涉及术语、边界或行为变化，文档必须同步更新
 
 ---
 
-## 问题反馈
+## 不可谈判的规则
 
-| 类型 | 渠道 |
-|------|------|
-| Bug | [Issues](../../issues) |
-| 功能建议 | [Discussions](../../discussions) |
-| 安全问题 | 私信维护者 |
+- 注释必须使用中文
+- 日志必须使用英文
+- 英文语境中使用 `LingCore`、`Ling`
+- 中文语境中使用“灵核”“灵元”
+- 不要为了“代码更整洁”删除高价值的设计原因、踩坑说明或风险警告注释
+- 测试展示名应使用中文
 
 ---
 
-## 行为准则
+## Shared API 的硬约束
 
-- 尊重每一位贡献者
-- 保持友善和专业
-- 接受建设性的批评
+必须把 `Shared API` 当作**进程级公共契约边界**，而不是普通共享依赖。
 
-感谢你的贡献！🎉
+- 契约设计遵循消费者驱动
+- 优先采用可向后兼容的增量演进
+- 全新的 shared API JAR 可以在边界 freeze 前引入
+- 已经加载的 shared API JAR 不允许热更新、热卸载
+- 已有契约的变更需要通过重启进程生效
+
+这是整个项目里最重要的贡献约束之一。
+
+---
+
+## 哪些改动属于架构级改动
+
+下面这些改动都属于架构级变更，如果只改代码、不补测试和文档，通常不能算完成：
+
+- 状态机语义变更
+- 生命周期编排变更
+- 所有权 / 写边界变更
+- classloader 边界变更
+- Shared API 契约变更
+- `timeout` / `permission` / `unload` / `audit` 语义变更
+
+如果你触碰了这些内容，PR 里必须把原因和影响写清楚。
+
+---
+
+## 一条实用的贡献流程
+
+1. 同步最新代码。
+2. 在动手前先读相关文档。
+3. 用最小改动解决当前问题。
+4. 验证构建与相关测试。
+5. 重新检查文档是否也需要更新。
+6. 提交 PR 时清楚说明：
+   - 改了什么
+   - 为什么这样改
+   - 如何验证
+   - 是否影响架构、测试、文档
+
+---
+
+## 给第一次参与者的一句提醒
+
+> 在灵珑里，不确定时优先保护边界。
+
+很多真正危险的改动，看起来都不像“大改动”，而是从一个“顺手方便一下”的小改动开始，慢慢削弱 shared API 纪律、生命周期所有权，或治理一致性。

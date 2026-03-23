@@ -1,7 +1,9 @@
 package com.lingframe.starter.processor;
 
 import com.lingframe.api.annotation.LingReference;
-import com.lingframe.core.kernel.GovernanceKernel;
+import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
+
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.interceptor.LingCoreBeanGovernanceInterceptor;
 import lombok.NonNull;
@@ -33,7 +35,8 @@ import java.util.Set;
 public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, ApplicationContextAware {
 
     private ApplicationContext applicationContext;
-    private GovernanceKernel governanceKernel;
+    private PermissionService permissionService;
+    private InvocationPipelineEngine pipelineEngine;
     private LingFrameProperties properties;
 
     // 需要被拦截的注解类型（排除 Controller/RestController，由 LingWebGovernanceInterceptor 处理）
@@ -107,17 +110,31 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
     }
 
     /**
-     * 懒加载获取 GovernanceKernel
+     * 懒加载获取 PermissionService
      */
-    private GovernanceKernel getGovernanceKernel() {
-        if (governanceKernel == null && applicationContext != null) {
+    private PermissionService getPermissionService() {
+        if (permissionService == null && applicationContext != null) {
             try {
-                governanceKernel = applicationContext.getBean(GovernanceKernel.class);
+                permissionService = applicationContext.getBean(PermissionService.class);
             } catch (Exception e) {
-                log.debug("GovernanceKernel not available yet");
+                log.debug("PermissionService not available yet");
             }
         }
-        return governanceKernel;
+        return permissionService;
+    }
+
+    /**
+     * 懒加载获取 InvocationPipelineEngine
+     */
+    private InvocationPipelineEngine getPipelineEngine() {
+        if (pipelineEngine == null && applicationContext != null) {
+            try {
+                pipelineEngine = applicationContext.getBean(InvocationPipelineEngine.class);
+            } catch (Exception e) {
+                log.debug("InvocationPipelineEngine not available yet");
+            }
+        }
+        return pipelineEngine;
     }
 
     /**
@@ -137,11 +154,12 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
     @Override
     public Object postProcessAfterInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
         // 懒加载获取核心组件
-        GovernanceKernel kernel = getGovernanceKernel();
+        PermissionService permService = getPermissionService();
+        InvocationPipelineEngine engine = getPipelineEngine();
         LingFrameProperties props = getProperties();
 
         // 如果核心组件未准备好，直接返回
-        if (kernel == null || props == null) {
+        if (permService == null || engine == null || props == null) {
             return bean;
         }
 
@@ -161,7 +179,7 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
             ProxyFactory proxyFactory = new ProxyFactory(bean);
             proxyFactory.setProxyTargetClass(true); // 强制使用 CGLIB
             proxyFactory.addAdvice(new LingCoreBeanGovernanceInterceptor(
-                    kernel,
+                    engine,
                     props.getLingCoreGovernance().isGovernInternalCalls(),
                     props.getLingCoreGovernance().isCheckPermissions()));
             Object proxy = proxyFactory.getProxy();
@@ -194,7 +212,7 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
             return false;
         }
 
-        // 3. 排除已经有 @LingReference 注解的字段的 Bean（这些是单元内部的）
+        // 3. 排除已经有 @LingReference 注解的字段的 Bean（这些是灵元内部的）
         if (hasLingReference(bean.getClass())) {
             return false;
         }

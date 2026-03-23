@@ -1,8 +1,8 @@
 package com.lingframe.api.exception;
 
 /**
- * 单元未找到异常
- * 当请求的单元不存在时抛出此异常。
+ * 灵元未找到异常
+ * 当请求的灵元不存在时抛出此异常。
  */
 public class LingNotFoundException extends LingException {
 

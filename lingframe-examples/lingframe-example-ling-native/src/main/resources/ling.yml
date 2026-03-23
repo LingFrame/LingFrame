@@ -2,7 +2,7 @@
 id: native-ling
 version: 1.0.0
 provider: "LingFrame"
-description: "本地单元"
+description: "本地灵元"
 mainClass: "com.lingframe.example.NativeLing"
 
 # --- 治理配置 ---
@@ -10,7 +10,7 @@ governance:
   # ACL 入站规则 (StandardGovernancePolicyProvider 使用)
   permissions: []
 
-  # 单元能力申请 (LingManager 使用)
+  # 灵元能力申请 (LingManager 使用)
   capabilities:
     - capability: "storage:sql"
       accessType: "READ"

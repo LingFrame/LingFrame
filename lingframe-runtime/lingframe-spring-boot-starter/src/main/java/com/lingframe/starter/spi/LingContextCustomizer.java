@@ -12,7 +12,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 public interface LingContextCustomizer {
 
     /**
-     * 定制目标单元的 Spring 容器环境
+     * 定制目标灵元的 Spring 容器环境
      *
      * @param context            当前隔离上下文身份
      * @param applicationContext 尚未刷新且刚构建完成的 ConfigurableApplicationContext

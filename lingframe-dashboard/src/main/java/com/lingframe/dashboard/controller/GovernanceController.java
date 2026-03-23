@@ -37,7 +37,7 @@ public class GovernanceController {
     }
 
     /**
-     * 获取指定单元的治理策略
+     * 获取指定灵元的治理策略
      */
     @GetMapping("/{lingId}")
     public ApiResponse<GovernancePolicy> getPatch(@PathVariable String lingId) {
@@ -58,7 +58,7 @@ public class GovernanceController {
             @PathVariable String lingId,
             @RequestBody GovernancePolicy policy) {
         try {
-            registry.updatePatch(lingId, policy);
+            dashboardService.updateGovernancePolicy(lingId, policy);
             return ApiResponse.ok("策略已更新", policy);
         } catch (Exception e) {
             log.error("Failed to update patch for: {}", lingId, e);

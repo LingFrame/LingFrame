@@ -2,13 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V0.3.0] - 2026-03-23
+
+### 🚀 Added
+
+- Unified governance pipeline around `InvocationPipelineEngine` and `FilterRegistry`, with explicit phases and execution modes: `NORMAL`, `SIMULATION`, and `GOVERN_ONLY`
+- Reuse of the same kernel path for ling-to-ling invocation, Spring Boot 2/3 web governance, LingCore bean interception, and dashboard simulation
+- Dashboard simulation through the real governance chain, plus SSE event streaming for trace, audit, circuit-breaker, lifecycle, and leak-detection events
+
+### 🛠 Changed
+
+- Runtime state ownership now converges around `InstanceStatus`, `RuntimeStatus`, `InstanceCoordinator`, and `RuntimeCoordinator`
+- Lifecycle orchestration is more explicit: deploy, side-by-side reload, drain-before-unload, and cleanup now form a clearer runtime path
+- `SharedApiManager` enforces the shared API bootstrap order: preload, register packages, freeze the boundary, then load lings
+- Unload cleanup now includes pipeline resource eviction and leak diagnostics as part of runtime responsibility
+
+### ⚠️ Notes
+
+- Public release scope: pipeline convergence, runtime convergence, dashboard governance/control surface, lifecycle orchestration, shared API boundary freezing, and long-running stability work
+
 ## [V0.2.0] - 2026-02-23
 
 ### 🚀 New Features
 
 - **Resilience Governance**: Full implementation of Circuit Breaking (Sliding Window), Rate Limiting (Token Bucket), Retry, and Fallback mechanisms in `GovernanceKernel`.
-- **Ecosystem Compatibility**: Added support for JDK 8 and Spring Boot 2.7.x, alongside the primary JDK 17/SpringBoot 3.x support.
-- **Developer Productivity**: 
+- **Ecosystem Compatibility**: Added support for JDK 8 and Spring Boot 2.7.x, alongside the primary JDK 17 / Spring Boot 3.x support.
+- **Developer Productivity**:
     - New `dev-mode` for loose runtime permissions.
     - Automatic activation of Lings upon installation in development mode.
     - Integrated SpringDoc (Swagger) support with API grouping (Core, Lings, Host).
@@ -41,7 +60,7 @@ All notable changes to this project will be documented in this file.
 - **Manifest Configuration**: Defined `ling.yml` standard for declaring metadata, dependencies, and required capabilities.
 - **Service Export/Import**:
   - `@LingService`: Export beans as cross-boundary services.
-  - `@LingReference`: Inject services from other Lings or the LINGCORE.
+  - `@LingReference`: Inject services from other Lings or the LingCore.
 
 #### Governance & Security
 - **Permission Control**:

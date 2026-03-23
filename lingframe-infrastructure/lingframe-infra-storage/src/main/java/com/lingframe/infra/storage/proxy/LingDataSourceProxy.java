@@ -11,7 +11,9 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.util.logging.Logger;
 
 /**
- * 数据源代理：劫持 getConnection
+ * 数据源代理
+ * 职责：劫持 getConnection 方法，为返回的 Connection 实例自动套上治理代理，
+ * 从而实现对 JDBC 执行层面的权限管控和审计映射。
  */
 @RequiredArgsConstructor
 public class LingDataSourceProxy implements DataSource {
