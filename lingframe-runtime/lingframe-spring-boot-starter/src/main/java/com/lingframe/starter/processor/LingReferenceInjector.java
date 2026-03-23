@@ -1,7 +1,9 @@
 package com.lingframe.starter.processor;
 
 import com.lingframe.api.annotation.LingReference;
-import com.lingframe.core.ling.LingManager;
+import com.lingframe.api.context.LingContext;
+import com.lingframe.api.exception.LingInvocationException;
+import com.lingframe.api.exception.LingRuntimeException;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;
@@ -11,22 +13,24 @@ import org.springframework.context.ApplicationContextAware;
 import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 
 @Slf4j
 public class LingReferenceInjector implements BeanPostProcessor, ApplicationContextAware {
 
-    private final String currentLingId; // 记录当前环境的单元ID
+    private final String currentLingId; // 记录当前环境的灵元ID
     private ApplicationContext applicationContext;
-    private LingManager lingManager; // 懒加载
+    private LingContext lingContext; // 懒加载
 
     public LingReferenceInjector(String currentLingId) {
         this.currentLingId = currentLingId;
     }
 
-    // 兼容旧构造函数（单元内部使用）
-    public LingReferenceInjector(String currentLingId, LingManager lingManager) {
+    // 兼容旧构造函数（灵元内部使用）
+    public LingReferenceInjector(String currentLingId, LingContext lingContext) {
         this.currentLingId = currentLingId;
-        this.lingManager = lingManager;
+        this.lingContext = lingContext;
     }
 
     @Override
@@ -35,17 +39,17 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
     }
 
     /**
-     * 懒加载获取 LingManager
+     * 懒加载获取 LingContext
      */
-    private LingManager getLingManager() {
-        if (lingManager == null && applicationContext != null) {
+    private LingContext getLingContext() {
+        if (lingContext == null && applicationContext != null) {
             try {
-                lingManager = applicationContext.getBean(LingManager.class);
+                lingContext = applicationContext.getBean(LingContext.class);
             } catch (Exception e) {
-                log.debug("LingManager not available yet");
+                log.debug("LingContext not available yet");
             }
         }
-        return lingManager;
+        return lingContext;
     }
 
     /**
@@ -53,9 +57,9 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
      */
     @Override
     public Object postProcessBeforeInitialization(Object bean, @NonNull String beanName) throws BeansException {
-        LingManager pm = getLingManager();
-        if (pm == null) {
-            return bean; // LingManager 未准备好，跳过
+        LingContext ctx = getLingContext();
+        if (ctx == null) {
+            return bean; // LingContext 未准备好，跳过
         }
 
         Class<?> clazz = bean.getClass();
@@ -64,7 +68,7 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
         ReflectionUtils.doWithFields(clazz, field -> {
             LingReference annotation = field.getAnnotation(LingReference.class);
             if (annotation != null) {
-                injectService(bean, field, annotation, pm);
+                injectService(bean, field, annotation, ctx);
             }
         });
 
@@ -77,7 +81,7 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
         return bean;
     }
 
-    private void injectService(Object bean, Field field, LingReference annotation, LingManager pm) {
+    private void injectService(Object bean, Field field, LingReference annotation, LingContext ctx) {
         try {
             field.setAccessible(true);
 
@@ -88,15 +92,44 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
             }
 
             Class<?> serviceType = field.getType();
-            String targetLingId = annotation.lingId();
-            // 🔥使用构造函数传入的 currentLingId，而不是写死或猜
-            String callerId = (currentLingId != null) ? currentLingId : "lingcore-app";
+            // 目标路由交由底层 PipelineEngine 与 Context 内置的 GlobalServiceRoutingProxy
+            // 自动抉择
+            Object proxy = ctx.getService(serviceType).orElseThrow(() -> new LingRuntimeException(currentLingId,
+                    "Failed to resolve service reference for type: " + serviceType.getName()));
 
-            // 创建全局路由代理
-            Object proxy = pm.getGlobalServiceProxy(
-                    callerId,
-                    serviceType,
-                    targetLingId);
+            // 【增强】对 @LingReference 开启声明式 Fallback 包装支持
+            Class<?> fallbackClass = annotation.fallback();
+            if (fallbackClass != void.class) {
+                final Object originalProxy = proxy;
+                proxy = Proxy.newProxyInstance(
+                        serviceType.getClassLoader(),
+                        new Class<?>[] { serviceType },
+                        (p, method, methodArgs) -> {
+                            try {
+                                return method.invoke(originalProxy, methodArgs);
+                            } catch (InvocationTargetException e) {
+                                Throwable cause = e.getCause();
+                                // 如果捕获到底层抛出的跨组件熔断/超时异常
+                                if (cause instanceof LingInvocationException) {
+                                    if (applicationContext != null) {
+                                        try {
+                                            Object fallbackInstance = applicationContext.getBean(fallbackClass);
+                                            log.warn(
+                                                    "[Fallback] LingReference triggered fallback for target {} to instance {}",
+                                                    serviceType.getSimpleName(), fallbackClass.getSimpleName());
+                                            return method.invoke(fallbackInstance, methodArgs);
+                                        } catch (Exception fallbackEx) {
+                                            log.error("Failed to execute fallback logic or get fallback bean",
+                                                    fallbackEx);
+                                        }
+                                    }
+                                }
+                                // 若非异常降级场景或降级自身报错，继续向上抛出真实异常
+                                throw cause;
+                            }
+                        });
+            }
+
             field.set(bean, proxy);
             log.info("Injected @LingReference for field: {}.{}",
                     bean.getClass().getSimpleName(), field.getName());

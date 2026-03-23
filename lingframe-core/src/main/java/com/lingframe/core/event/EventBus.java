@@ -2,7 +2,6 @@ package com.lingframe.core.event;
 
 import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.event.LingEventListener;
-import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -10,67 +9,173 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+/**
+ * 框架事件总线。
+ * <p>
+ * 支持两种订阅模式：
+ * <ul>
+ *   <li><b>灵元级监听</b>：绑定 lingId，灵元卸载时自动清除（{@link #subscribe(String, Class, LingEventListener)}）</li>
+ *   <li><b>全局监听</b>：框架级组件使用，不绑定灵元，生命周期由调用方管理（{@link #subscribeGlobal(Class, LingEventListener)}）</li>
+ * </ul>
+ * <p>
+ * publish 时两类监听器都会被分发，灵元级优先、全局其次（顺序不保证业务语义，仅为确定性调试）。
+ */
 @Slf4j
 public class EventBus {
 
-    private final Map<Class<? extends LingEvent>, List<ListenerWrapper>> listeners = new ConcurrentHashMap<>();
-
-    // 包装器，记录监听器归属的单元ID
-    @Value
+    /**
+     * 监听器包装器。
+     * lingId 为 null 表示全局监听器。
+     */
     public static class ListenerWrapper {
-        String lingId;
-        LingEventListener<? extends LingEvent> listener;
+        private final String lingId;
+        private final LingEventListener<? extends LingEvent> listener;
 
+        ListenerWrapper(String lingId, LingEventListener<? extends LingEvent> listener) {
+            this.lingId = lingId;
+            this.listener = listener;
+        }
+
+        /**
+         * 归属的灵元 ID，null 表示全局监听器
+         */
         public String lingId() {
             return lingId;
         }
 
-        public LingEventListener listener() {
+        public LingEventListener<? extends LingEvent> listener() {
             return listener;
+        }
+
+        /**
+         * 是否为全局（框架级）监听器
+         */
+        public boolean isGlobal() {
+            return lingId == null;
         }
     }
 
     /**
-     * 注册监听器
+     * eventType → 监听器列表（含灵元级和全局）
      */
-    public <E extends LingEvent> void subscribe(String lingId, Class<E> eventType, LingEventListener<E> listener) {
+    private final Map<Class<? extends LingEvent>, List<ListenerWrapper>> listeners = new ConcurrentHashMap<>();
+
+    /* ==================== 灵元级订阅 ==================== */
+
+    /**
+     * 注册灵元级监听器（绑定 lingId，灵元卸载时自动清除）
+     *
+     * @param lingId    灵元标识
+     * @param eventType 监听的事件类型
+     * @param listener  监听器实例
+     */
+    public <E extends LingEvent> void subscribe(String lingId, Class<E> eventType,
+                                                LingEventListener<E> listener) {
+        if (lingId == null) {
+            throw new IllegalArgumentException("lingId must not be null, use subscribeGlobal() for framework listeners");
+        }
         listeners.computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>())
                 .add(new ListenerWrapper(lingId, listener));
     }
 
     /**
-     * 卸载单元时，强制移除该单元注册的所有监听器
+     * 取消灵元级监听器
+     */
+    public <E extends LingEvent> void unsubscribe(String lingId, Class<E> eventType,
+                                                  LingEventListener<E> listener) {
+        if (lingId == null || eventType == null || listener == null) {
+            return;
+        }
+        List<ListenerWrapper> list = listeners.get(eventType);
+        if (list == null) {
+            return;
+        }
+        list.removeIf(w -> lingId.equals(w.lingId()) && w.listener() == listener);
+        // 列表为空时清理 key，避免内存泄漏
+        if (list.isEmpty()) {
+            listeners.remove(eventType, list);
+        }
+    }
+
+    /**
+     * 卸载灵元时，清除该灵元注册的所有监听器（不影响全局监听器）
      */
     public void unsubscribeAll(String lingId) {
-        log.info("Cleaning up event listeners for ling: {}", lingId);
-        for (List<ListenerWrapper> list : listeners.values()) {
-            list.removeIf(wrapper -> {
-                boolean match = wrapper.lingId().equals(lingId);
+        log.info("Cleaning up event listeners for ling [{}]", lingId);
+        for (Map.Entry<Class<? extends LingEvent>, List<ListenerWrapper>> entry : listeners.entrySet()) {
+            List<ListenerWrapper> list = entry.getValue();
+            list.removeIf(w -> {
+                // 全局监听器不受灵元卸载影响
+                if (w.isGlobal()) {
+                    return false;
+                }
+                boolean match = lingId.equals(w.lingId());
                 if (match) {
-                    log.debug("Removed listener: {}", wrapper.listener().getClass().getName());
+                    log.debug("Removed listener [{}] for ling [{}]",
+                            w.listener().getClass().getName(), lingId);
                 }
                 return match;
             });
         }
     }
 
+    /* ==================== 全局订阅（框架级组件使用） ==================== */
+
+    /**
+     * 注册全局监听器（不绑定灵元，生命周期由调用方管理）
+     * <p>
+     * 典型使用者：{@code RuntimeCoordinator}、审计追踪、全局指标收集等框架组件。
+     *
+     * @param eventType 监听的事件类型
+     * @param listener  监听器实例
+     */
+    public <E extends LingEvent> void subscribeGlobal(Class<E> eventType,
+                                                      LingEventListener<E> listener) {
+        listeners.computeIfAbsent(eventType, k -> new CopyOnWriteArrayList<>())
+                .add(new ListenerWrapper(null, listener));
+    }
+
+    /**
+     * 取消全局监听器
+     */
+    public <E extends LingEvent> void unsubscribeGlobal(Class<E> eventType,
+                                                        LingEventListener<E> listener) {
+        if (eventType == null || listener == null) {
+            return;
+        }
+        List<ListenerWrapper> list = listeners.get(eventType);
+        if (list == null) {
+            return;
+        }
+        list.removeIf(w -> w.isGlobal() && w.listener() == listener);
+        if (list.isEmpty()) {
+            listeners.remove(eventType, list);
+        }
+    }
+
+    /* ==================== 事件分发 ==================== */
+
+    /**
+     * 发布事件，分发给所有匹配的监听器（灵元级 + 全局）。
+     * <p>
+     * 单个监听器的异常不会中断分发流程，保证所有监听器都有机会执行。
+     */
+    @SuppressWarnings("unchecked")
     public <E extends LingEvent> void publish(E event) {
         List<ListenerWrapper> wrappers = listeners.get(event.getClass());
-        if (wrappers == null)
+        if (wrappers == null || wrappers.isEmpty()) {
             return;
+        }
         for (ListenerWrapper wrapper : wrappers) {
             try {
-                @SuppressWarnings("unchecked")
                 LingEventListener<E> castListener = (LingEventListener<E>) wrapper.listener();
-                if (castListener != null) {
-                    castListener.onEvent(event);
-                }
+                castListener.onEvent(event);
             } catch (Exception e) {
-                // 事件总线的监听器通常是旁路逻辑（如日志记录、指标收集或某些清理工作）
-                // 绝不能因为单个监听器抛出异常（包括 RuntimeException）就阻断整个 publish 流程及上层主链路
-                log.error("Error processing event [{}] in listener [{}]: {}",
+                // 隔离单个监听器的异常，防止阻断分发链路和上层主逻辑
+                log.error("Error dispatching event [{}] to listener [{}] (ling={}): {}",
                         event.getClass().getSimpleName(),
                         wrapper.listener().getClass().getName(),
+                        wrapper.isGlobal() ? "GLOBAL" : wrapper.lingId(),
                         e.getMessage(), e);
             }
         }

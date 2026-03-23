@@ -2,7 +2,7 @@ package com.lingframe.api.event.lifecycle;
 
 /**
  * 卸载前置事件 (可拦截)
- * 场景：防止误删核心单元
+ * 场景：防止误删核心灵元
  */
 public class LingUninstallingEvent extends LingLifecycleEvent {
     public LingUninstallingEvent(String lingId) {

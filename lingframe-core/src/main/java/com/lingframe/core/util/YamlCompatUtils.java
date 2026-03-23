@@ -11,7 +11,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
 /**
- * YAML 兼容工具类
+ * 处理 YAML 兼容性的工具类
  * 处理 SnakeYAML 1.x 和 2.x 的差异，特别是 2.x 的 TagInspector 安全检查。
  */
 @Slf4j
@@ -20,9 +20,9 @@ public class YamlCompatUtils {
     /**
      * 创建兼容 SnakeYAML 1.x / 2.x 的 Yaml 实例。
      *
-     * SnakeYAML 2.x 默认禁止 !! 全局标签（安全加固），
+     * 在 SnakeYAML 2.x 中，默认禁止 `!!` 全局标签（安全加固），
      * 需要通过 TagInspector 显式放行 com.lingframe.* 包下的类型。
-     * SnakeYAML 1.x 无此限制，TagInspector 接口也不存在，直接 fallback。
+     * 在 SnakeYAML 1.x 中没有此限制，`TagInspector` 接口也不存在，因此直接回退即可。
      */
     public static Yaml createSafeYaml() {
         return createSafeYaml(new DumperOptions());
@@ -47,7 +47,7 @@ public class YamlCompatUtils {
 
     private static void configureTagInspector(LoaderOptions loaderOptions) {
         try {
-            // SnakeYAML 2.x: org.yaml.snakeyaml.inspector.TagInspector
+            // 在 SnakeYAML 2.x 中使用 `org.yaml.snakeyaml.inspector.TagInspector`
             Class<?> tagInspectorClass = Class.forName(
                     "org.yaml.snakeyaml.inspector.TagInspector");
 
@@ -57,7 +57,7 @@ public class YamlCompatUtils {
                     new Class<?>[] { tagInspectorClass },
                     (proxy, method, args) -> {
                         if ("isGlobalTagAllowed".equals(method.getName())) {
-                            // args[0] 是 org.yaml.snakeyaml.nodes.Tag
+                            // `args[0]` 是 `org.yaml.snakeyaml.nodes.Tag`
                             Object tag = args[0];
                             String className = (String) tag.getClass()
                                     .getMethod("getClassName").invoke(tag);
@@ -71,9 +71,8 @@ public class YamlCompatUtils {
                     "setTagInspector", tagInspectorClass);
             setter.invoke(loaderOptions, inspector);
 
-            // log.debug("SnakeYAML 2.x detected, TagInspector configured");
         } catch (ClassNotFoundException ignored) {
-            // SnakeYAML 1.x: TagInspector 不存在，所有标签默认允许
+            // 在 SnakeYAML 1.x 中不存在 `TagInspector`，所有标签默认允许
         } catch (Exception e) {
             log.warn("Failed to configure SnakeYAML TagInspector: {}", e.getMessage());
         }

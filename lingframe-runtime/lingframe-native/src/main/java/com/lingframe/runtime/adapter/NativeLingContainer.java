@@ -3,12 +3,11 @@ package com.lingframe.runtime.adapter;
 import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
-import com.lingframe.core.context.CoreLingContext;
-import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.exception.LingInstallException;
-import com.lingframe.core.exception.LingRuntimeException;
+import com.lingframe.api.exception.LingRuntimeException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -24,7 +23,7 @@ import java.util.jar.JarFile;
 import java.util.stream.Stream;
 
 /**
- * 纯 Java 单元容器
+ * 纯 Java 灵元容器
  * 不依赖 Spring，直接反射调用生命周期方法
  */
 @Slf4j
@@ -53,7 +52,7 @@ public class NativeLingContainer implements LingContainer {
                 throw new InvalidArgumentException("mainClass",
                         "Native ling main class must implement Ling: " + mainClass.getName());
             }
-            // 实例化单元入口类并放入单例池
+            // 实例化灵元入口类并放入单例池
             this.lingInstance = (Ling) mainClass.getDeclaredConstructor().newInstance();
             this.singletons.put(mainClass, lingInstance);
         } catch (Exception e) {
@@ -70,7 +69,7 @@ public class NativeLingContainer implements LingContainer {
             t.setContextClassLoader(classLoader);
             log.info("Starting Native ling: {}", context.getLingId());
 
-            // 核心：调用单元的 onStart
+            // 核心：调用灵元的 onStart
             lingInstance.onStart(context);
             this.active = true;
 
@@ -108,13 +107,12 @@ public class NativeLingContainer implements LingContainer {
     // ==================== 服务扫描与注册逻辑 ====================
 
     private void scanAndRegisterServices(LingContext context) {
-        CoreLingContext coreCtx = null;
-        if (!(context instanceof CoreLingContext )) {
-            coreCtx  = (CoreLingContext) context;
-            log.warn("[{}] Context is not CoreLingContext, skipping service registration.", lingId);
+        DefaultLingContext coreCtx = null;
+        if (!(context instanceof DefaultLingContext)) {
+            coreCtx = (DefaultLingContext) context;
+            log.warn("[{}] Context is not DefaultLingContext, skipping service registration.", lingId);
             return;
         }
-        LingManager lingManager = coreCtx.getLingManager();
 
         log.info("[{}] Scanning for @LingService...", lingId);
         Set<Class<?>> classes = scanClasses();
@@ -128,13 +126,13 @@ public class NativeLingContainer implements LingContainer {
             for (Method method : clazz.getMethods()) {
                 LingService annotation = method.getAnnotation(LingService.class);
                 if (annotation != null) {
-                    registerService(lingManager, clazz, method, annotation);
+                    registerService(coreCtx, clazz, method, annotation);
                 }
             }
         }
     }
 
-    private void registerService(LingManager pm, Class<?> clazz, Method method, LingService annotation) {
+    private void registerService(DefaultLingContext ctx, Class<?> clazz, Method method, LingService annotation) {
         try {
             // 获取或创建单例
             Object instance = singletons.computeIfAbsent(clazz, k -> {
@@ -146,7 +144,7 @@ public class NativeLingContainer implements LingContainer {
             });
 
             String fqsid = lingId + ":" + annotation.id();
-            pm.registerProtocolService(lingId, fqsid, instance, method);
+            ctx.registerProtocolService(fqsid, instance, method);
             log.debug("[{}] Registered native service: {}", lingId, fqsid);
         } catch (Exception e) {
             log.error("[{}] Failed to register service: {}", lingId, method.getName(), e);
@@ -205,7 +203,7 @@ public class NativeLingContainer implements LingContainer {
                 return Optional.empty();
             return Optional.of(classLoader.loadClass(className));
         } catch (Throwable e) {
-            // 忽略 NoClassDefFoundError 等，因为单元可能依赖了 provided 的库但还没加载
+            // 忽略 NoClassDefFoundError 等，因为灵元可能依赖了 provided 的库但还没加载
             return Optional.empty();
         }
     }
@@ -217,7 +215,7 @@ public class NativeLingContainer implements LingContainer {
 
     @Override
     public <T> T getBean(Class<T> type) {
-        // Native 容器没有 IOC 容器，只支持返回单元主类实例
+        // Native 容器没有 IOC 容器，只支持返回灵元主类实例
         if (type.isInstance(lingInstance)) {
             return type.cast(lingInstance);
         }

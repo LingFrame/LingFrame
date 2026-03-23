@@ -3,7 +3,7 @@ package com.lingframe.core.exception;
 import com.lingframe.api.exception.LingException;
 
 /**
- * 单元安装异常
+ * 灵元安装异常
  */
 public class LingInstallException extends LingException {
 

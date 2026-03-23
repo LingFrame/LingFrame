@@ -1,6 +1,11 @@
 {
+  "branding": {
+    "name": "灵珑",
+    "icon": "灵",
+    "codename": "涅槃"
+  },
   "title": "灵珑 | 核心治理中心",
-  "version": "V0.2.0",
+  "version": "V0.3.0",
   "sidebar": {
     "currentEnv": "当前环境",
     "envDev": "开发环境",
@@ -11,15 +16,16 @@
     "sseConnected": "SSE 已连接",
     "sseConnecting": "SSE 连接中...",
     "sseDisconnected": "SSE 断开",
-    "lingCount": "单元数",
+    "lingCount": "灵元数",
     "logCount": "日志"
   },
   "header": {
     "notSelected": "未选择",
-    "upload": "上传单元"
+    "upload": "上传灵元",
+    "timeline": "时间线"
   },
   "upload": {
-    "title": "上传单元",
+    "title": "上传灵元",
     "dragText": "点击或拖拽 jar 包到此处",
     "supportText": "仅支持 .jar 格式文件",
     "uploading": "上传中",
@@ -32,14 +38,16 @@
     "prod": "生产"
   },
   "lingList": {
-    "title": "单元列表",
+    "title": "灵元列表",
     "count": "{n} 个",
-    "empty": "暂无已安装单元"
+    "empty": "暂无已安装灵元"
   },
   "traffic": {
     "title": "流量分发",
     "notSelected": "未选择",
     "inactive": "未激活",
+    "degraded": "降级",
+    "removed": "已卸载",
     "canary": "灰度中",
     "singleVersion": "单版本",
     "stable": "稳定版",
@@ -48,9 +56,14 @@
     "reset": "重置",
     "stress": "压测",
     "stop": "停止",
-    "selectLing": "请先选择单元",
-    "lingInactive": "单元未激活",
-    "onlyOneVersion": "当前单元仅有单一版本"
+    "selectLing": "请先选择灵元",
+    "lingInactive": "灵元未激活",
+    "onlyOneVersion": "当前灵元仅有单一版本",
+    "total": "总请求",
+    "active": "活跃并发",
+    "v1Hit": "稳定版命中",
+    "v2Hit": "灰度版命中",
+    "drift": "偏差度"
   },
   "logs": {
     "title": "追踪日志",
@@ -58,14 +71,28 @@
     "all": "全部",
     "waiting": "等待日志...",
     "connecting": "连接中...",
-    "newLogs": "新日志"
+    "newLogs": "新日志",
+    "aggregationMode": "聚合模式",
+    "filterByVersion": "按版本筛选",
+    "filterByEventType": "按事件类型筛选",
+    "filterByKeyword": "按关键词搜索",
+    "allVersions": "所有版本",
+    "allEventTypes": "所有事件类型",
+    "eventTypeLoading": "加载",
+    "eventTypeUnloading": "卸载",
+    "eventTypeGC": "垃圾回收",
+    "eventTypeError": "错误",
+    "keywordPlaceholder": "输入关键词搜索",
+    "resetFilters": "重置筛选",
+    "applyFilters": "应用筛选"
   },
   "control": {
-    "title": "单元控制",
-    "selectLing": "请在左侧选择单元",
+    "title": "灵元控制",
+    "selectLing": "请在左侧选择灵元",
     "lifecycle": "生命周期",
     "activate": "激活",
-    "reload": "重载",
+    "inactivate": "停用",
+    "reload": "热重载",
     "unload": "卸载",
     "permissions": "资源权限",
     "dbRead": "DB 读",
@@ -77,7 +104,7 @@
     "title": "功能演练",
     "ready": "READY",
     "inactive": "INACTIVE",
-    "lingNotActive": "单元未激活，请先激活",
+    "lingNotActive": "灵元未激活，请先激活",
     "readDb": "读DB",
     "writeDb": "写DB",
     "readCache": "读Cache",
@@ -93,15 +120,25 @@
   "modal": {
     "cancel": "取消",
     "confirm": "确认",
-    "confirmUnload": "确认卸载单元",
-    "unloadWarning": "即将卸载 \"{lingId}\"，这将中断所有请求。",
-    "unloadAction": "卸载"
+    "confirmUnload": "确认卸载灵元",
+    "unloadWarning": "即将卸载 \"{lingId}\"，这将中断所有相关联请求。",
+    "unloadWarningSpecific": "确认卸载服务 {lingId} 的版本 {version} 吗？",
+    "unloadAction": "卸载",
+    "statusTitle": "确认操作",
+    "statusMessage": "请选择要操作的版本：",
+    "reloadTitle": "确认热重载",
+    "reloadMessage": "请选择要重载的版本：",
+    "actionActivate": "激活",
+    "actionInactivate": "停用",
+    "actionReload": "热重载",
+    "selectVersion": "选择要卸载的版本：",
+    "allVersions": "全量卸载 (所有版本)"
   },
   "toast": {
-    "getLingsFailed": "获取单元列表失败",
+    "getLingsFailed": "获取灵元列表失败",
     "statusUpdated": "状态已更新为 {status}",
     "statusUpdateFailed": "状态更新失败",
-    "lingUnloaded": "单元已卸载",
+    "lingUnloaded": "灵元已卸载",
     "unloadFailed": "卸载失败",
     "canarySet": "灰度比例已设置为 {percent}%",
     "canaryFailed": "灰度配置失败",
@@ -115,18 +152,33 @@
     "simulateFailed": "模拟失败",
     "ipcSuccess": "IPC 调用成功",
     "ipcSimulateFailed": "IPC 模拟失败",
-    "lingNotActive": "单元未激活",
-    "sourceLingNotActive": "源单元未激活",
+    "lingNotActive": "灵元未激活",
+    "sourceLingNotActive": "源灵元未激活",
     "envSwitched": "环境已切换: {mode}",
     "envSwitchFailed": "环境切换失败",
     "prodMode": "生产模式 (拒绝无权限访问)",
     "devMode": "开发模式 (仅警告无权限访问)",
     "alsoEnabled": "（同时开启 {perm}）",
-    "alsoEnabled": "（同时开启 {perm}）",
     "alsoDisabled": "（同时关闭 {perm}）",
-    "installSuccess": "单元安装成功",
-    "installFailed": "单元安装失败",
-    "reloadSuccess": "单元重载成功",
-    "reloadFailed": "单元重载失败"
+    "installSuccess": "灵元安装成功",
+    "installFailed": "灵元安装失败",
+    "reloadSuccess": "灵元重载成功",
+    "reloadFailed": "灵元重载失败",
+    "lingVersionUnloaded": "版本 {version} 卸载成功",
+    "getTimelineFailed": "获取时间线失败"
+  },
+  "performance": {
+    "title": "系统性能",
+    "realtime": "实时监控",
+    "memory": "内存",
+    "heap": "堆内存",
+    "threads": "活跃线程",
+    "gc": "GC 次数"
+  },
+  "timeline": {
+    "title": "灵元生命周期时间线",
+    "selectLing": "选择灵元",
+    "allLings": "所有灵元",
+    "noEvents": "暂无事件记录"
   }
 }

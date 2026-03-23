@@ -1,5 +1,7 @@
 package com.lingframe.dashboard.controller;
 
+import com.lingframe.api.exception.LingNotFoundException;
+import com.lingframe.api.exception.ServiceUnavailableException;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.SimulateService;
@@ -71,6 +73,9 @@ public class SimulateController {
         try {
             StressResultDTO result = simulateService.stressTest(lingId);
             return ApiResponse.ok(result);
+        } catch (LingNotFoundException | ServiceUnavailableException e) {
+            log.info("Stress test stopped: {}", e.getMessage());
+            return ApiResponse.error("灵元已缺失或不可用: " + e.getMessage());
         } catch (Exception e) {
             log.error("Stress test failed", e);
             return ApiResponse.error("压测失败: " + e.getMessage());

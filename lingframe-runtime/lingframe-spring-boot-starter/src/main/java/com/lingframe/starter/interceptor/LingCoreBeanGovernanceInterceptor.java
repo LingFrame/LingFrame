@@ -2,13 +2,14 @@ package com.lingframe.starter.interceptor;
 
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
-import com.lingframe.api.context.LingContextHolder;
+import com.lingframe.api.context.LingCallContext;
+import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
-import com.lingframe.core.kernel.GovernanceKernel;
-import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.monitor.TraceContext;
+import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.pipeline.InvocationExecutionMode;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.strategy.GovernanceStrategy;
-import com.lingframe.core.exception.InvocationException;
+import com.lingframe.api.exception.LingInvocationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aopalliance.intercept.MethodInterceptor;
@@ -27,10 +28,10 @@ import java.util.HashMap;
 @RequiredArgsConstructor
 public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
 
-    private final GovernanceKernel governanceKernel;
+    private final InvocationPipelineEngine pipelineEngine;
     private final boolean governInternalCalls;
     private final boolean checkPermissions;
-    private static final String HOST_Ling_ID = "lingcore-app";
+    private static final String LING_CORE_ID = "lingcore-app";
 
     @Override
     public Object invoke(MethodInvocation invocation) throws Throwable {
@@ -46,16 +47,16 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
             return invocation.proceed();
         }
 
-        // 获取调用方（当前单元ID）
-        String callerLingId = LingContextHolder.get();
-        // 如果没有单元上下文，说明是灵核内部调用
+        // 获取调用方（当前灵元ID）
+        String callerLingId = LingCallContext.getLingId();
+        // 如果没有灵元上下文，说明是灵核内部调用
         if (callerLingId == null) {
             // 如果配置为不对灵核内部调用进行治理，直接放行
             if (!governInternalCalls) {
                 log.debug("[Governance Interceptor] Internal LINGCORE call, governance disabled, skipping");
                 return invocation.proceed();
             }
-            callerLingId = HOST_Ling_ID;
+            callerLingId = LING_CORE_ID;
             log.debug("[Governance Interceptor] No ling context, using LINGCORE as caller: {}", callerLingId);
         } else {
             log.debug("[Governance Interceptor] ling {} calling LINGCORE method: {}.{}",
@@ -63,7 +64,7 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         }
 
         // 如果配置为不对灵核应用进行权限检查，直接执行
-        if (HOST_Ling_ID.equals(callerLingId) && !checkPermissions) {
+        if (LING_CORE_ID.equals(callerLingId) && !checkPermissions) {
             log.debug("[Governance Interceptor] LINGCORE app, permission check disabled, proceeding");
             return invocation.proceed();
         }
@@ -73,15 +74,27 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
 
         // 构建治理上下文
         InvocationContext ctx = buildInvocationContext(method, args, callerLingId);
+        // 【关键】开启穿刺模式：这里只借道 Pipeline 做治理，不借道 Pipeline 做终端执行。
+        // 真正的业务方法仍由当前 AOP 调用链自己 invocation.proceed()。
+        ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
 
-        // 通过 GovernanceKernel 执行治理
-        return governanceKernel.invoke(null, method, ctx, () -> {
-            try {
-                return invocation.proceed();
-            } catch (Throwable t) {
-                throw new InvocationException("LINGCORE bean invocation failed", t);
+        try {
+            // 借道 Pipeline 执行全套治理（并发统计、状态检查、权限校验、审计等）
+            pipelineEngine.invoke(ctx);
+
+            // 治理通过，执行业务方法
+            return invocation.proceed();
+        } catch (LingInvocationException e) {
+            // 治理拒绝：卸载/停机/限流期间降级为 info 避免压测日志风暴，权限错误保持 warn
+            if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
+                log.warn("[Governance] Security rejected for Bean: {} -> {}", ctx.getResourceId(), e.getMessage());
+                throw new PermissionDeniedException(callerLingId, ctx.getRequiredPermission(), ctx.getAccessType());
             }
-        });
+            log.info("[Governance] Bean request blocked: {} -> {}", ctx.getResourceId(), e.getMessage());
+            throw e;
+        } finally {
+            ctx.recycle();
+        }
     }
 
     /**
@@ -119,21 +132,42 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         AccessType accessType = GovernanceStrategy.inferAccessType(method.getName());
 
         // 构建上下文
-        return InvocationContext.builder()
-                .traceId(TraceContext.get())
-                .lingId(HOST_Ling_ID)
-                .callerLingId(callerLingId)
-                .resourceType("RPC")
-                .resourceId(method.getDeclaringClass().getSimpleName() + "." + method.getName())
-                .operation(method.getName())
-                .requiredPermission(permission)
-                .accessType(accessType)
-                .auditAction(auditAction)
-                .shouldAudit(shouldAudit)
-                .args(args)
-                .metadata(new HashMap<>())
-                .labels(new HashMap<>())
-                .build();
+        InvocationContext ctx = InvocationContext.obtain();
+        ctx.setTraceId(LingCallContext.getTraceId());
+        ctx.setTargetLingId(LING_CORE_ID); // 这里写目标标识，而不是旧字段语义上的 lingId
+        ctx.setCallerLingId(callerLingId);
+        ctx.setServiceFQSID(LING_CORE_ID + ":" + method.getDeclaringClass().getName());
+        ctx.setResourceType("RPC");
+        ctx.setResourceId(method.getDeclaringClass().getSimpleName() + "." + method.getName());
+        ctx.setOperation(method.getName());
+        ctx.setMethodName(method.getName());
+        ctx.setParameterTypeNames(resolveParameterTypeNames(method));
+        ctx.setRequiredPermission(permission);
+        ctx.setAccessType(accessType);
+        ctx.setAuditAction(auditAction);
+        ctx.setShouldAudit(shouldAudit);
+        ctx.setArgs(args);
+        ctx.setMetadata(new HashMap<>());
+        ctx.setLabels(new HashMap<>());
+        ctx.setRuleSource(null); // 这里尚未进入规则仲裁阶段，因此显式置空
+
+        // 入口已经拿到了 Method 元信息，就直接喂给 resolution 分区，后续治理与终端无需重复猜测
+        ctx.resolution().setTargetClassName(method.getDeclaringClass().getName());
+        ctx.resolution().setResolvedParameterTypes(method.getParameterTypes());
+        ctx.resolution().setTargetClassLoader(method.getDeclaringClass().getClassLoader());
+        return ctx;
+    }
+
+    private String[] resolveParameterTypeNames(Method method) {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        if (parameterTypes == null || parameterTypes.length == 0) {
+            return new String[0];
+        }
+        String[] names = new String[parameterTypes.length];
+        for (int i = 0; i < parameterTypes.length; i++) {
+            names[i] = parameterTypes[i].getName();
+        }
+        return names;
     }
 
     /**

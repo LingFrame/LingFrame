@@ -1,6 +1,6 @@
 package com.lingframe.infra.cache.interceptor;
 
-import com.lingframe.api.context.LingContextHolder;
+import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
@@ -28,8 +28,8 @@ public class RedisPermissionInterceptor implements MethodInterceptor {
         Method method = invocation.getMethod();
         String methodName = method.getName();
 
-        // 获取调用方（当前单元ID）
-        String callerLingId = LingContextHolder.get();
+        // 获取调用方（当前灵元ID）
+        String callerLingId = LingCallContext.getLingId();
 
         // 如果没有上下文（比如灵核启动时的自检），或者调用的是 Object 的基础方法（toString等）
         if (isObjectMethod(methodName)) {
@@ -39,7 +39,8 @@ public class RedisPermissionInterceptor implements MethodInterceptor {
         // 检查灵核治理开关
         if (callerLingId == null) {
             if (permissionService.isLingCoreGovernanceEnabled()) {
-                log.error("Security Alert: Redis operation without LingContext (LINGCORE governance ENABLED). Method: {}",
+                log.error(
+                        "Security Alert: Redis operation without LingContext (LINGCORE governance ENABLED). Method: {}",
                         methodName);
                 throw new PermissionDeniedException(
                         "Access Denied: LINGCORE governance is enabled but no context provided for Redis operation: "

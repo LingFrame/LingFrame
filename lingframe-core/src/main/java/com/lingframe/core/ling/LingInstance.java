@@ -1,53 +1,67 @@
 package com.lingframe.core.ling;
 
 import com.lingframe.api.config.LingDefinition;
+import com.lingframe.core.event.EventBus;
+import com.lingframe.core.fsm.InstanceStatus;
+import com.lingframe.core.fsm.StateMachine;
+import com.lingframe.core.fsm.TransitionResult;
 import com.lingframe.core.spi.LingContainer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 单元实例：代表一个特定版本的单元运行实体
- * 包含：容器引用 + 引用计数器 + 完整定义契约
+ * 灵元实例。
+ * <p>
+ * 代表某个版本的真实运行实体，内部仍保留实例级状态机作为生命周期一致性原语。
+ * 这并不意味着状态机重新暴露给外部：
+ * 外部不能直接拿到或修改状态机，所有状态写入都必须经由 {@link InstanceCoordinator}。
+ * <p>
+ * 换句话说：
+ * {@code LingInstance} 拥有“状态承载体”，
+ * 但不拥有“对外状态写接口”。
  */
 @Slf4j
 public class LingInstance {
 
-    // 🔥 非 final：destroy() 时必须置 null 断开 → ClassLoader 引用链
+    // 注意：非 final，destroy() 时需置 null 断开 ClassLoader 引用链
     @Getter
     private volatile LingContainer container;
 
-    // 单元完整定义 (包含治理配置、扩展参数等)
-    // 🔥 非 final：destroy() 时必须置 null
+    // 灵元完整定义（包含治理配置、扩展参数等）
+    // 注意：非 final，destroy() 时需置 null
     @Getter
     private volatile LingDefinition definition;
 
-    // 实例固有标签 (如 {"env": "canary", "tenant": "T1"})
+    // 实例固有标签（例如 {"env":"canary","tenant":"T1"}）
     private final Map<String, String> labels = new ConcurrentHashMap<>();
 
     // 引用计数器：记录当前正在处理的请求数
     private final AtomicLong activeRequests = new AtomicLong(0);
+    private final AtomicLong activeInvocationSequence = new AtomicLong(0);
+    private final Map<Long, ActiveInvocationSnapshot> activeInvocations = new ConcurrentHashMap<>();
 
-    // 标记是否进入“濒死”状态（不再接收新流量）
-    @Getter
-    private volatile boolean dying = false;
+    // 微观状态机仍然跟随实例对象存在：
+    // 1. 它是单实例生命周期的 CAS 一致性载体；
+    // 2. 实例状态协调器需要它来原子推进状态；
+    // 3. 但它只保留为包内实现细节，不再构成公共 API。
+    private final StateMachine<InstanceStatus> stateMachine;
 
-    // 就绪状态
-    private volatile boolean ready = false;
-
-    // 🔥 销毁标记，保证幂等
-    @Getter
-    private volatile boolean destroyed = false;
-
-    public LingInstance(LingContainer container, LingDefinition definition) {
-        // 🔥 参数校验
+    public LingInstance(LingContainer container, LingDefinition definition, EventBus eventBus) {
+        // 参数校验
         this.container = Objects.requireNonNull(container, "container cannot be null");
         this.definition = Objects.requireNonNull(definition, "definition cannot be null");
+
+        String lingId = definition.getId();
+        this.stateMachine = InstanceStatus.newMachine(lingId);
 
         definition.validate();
     }
@@ -63,14 +77,14 @@ public class LingInstance {
     }
 
     /**
-     * 🔥 返回标签的不可变视图，防止外部篡改
+     * 返回标签的不可变视图，防止外部篡改
      */
     public Map<String, String> getLabels() {
         return Collections.unmodifiableMap(labels);
     }
 
     /**
-     * 🔥 安全地添加标签
+     * 安全地添加标签
      */
     public void addLabel(String key, String value) {
         if (key != null && value != null) {
@@ -79,7 +93,7 @@ public class LingInstance {
     }
 
     /**
-     * 🔥 批量添加标签
+     * 批量添加标签
      */
     public void addLabels(Map<String, String> newLabels) {
         if (newLabels != null) {
@@ -88,121 +102,111 @@ public class LingInstance {
     }
 
     /**
-     * 🔥 获取当前活跃请求数（不暴露 AtomicLong 本身）
+     * 获取当前活跃请求数（不暴露 AtomicLong 本身）
      */
     public long getActiveRequestCount() {
         return activeRequests.get();
     }
 
-    /**
-     * 标记实例就绪
-     */
-    public void markReady() {
-        this.ready = true;
-        log.debug("Ling instance {} marked as ready", definition.getVersion());
-    }
-
-    /**
-     * 检查是否就绪
-     */
     public boolean isReady() {
         LingContainer c = container;
-        return ready
-                && !dying
-                && !destroyed
-                && c != null
-                && c.isActive();
+        return currentStatus() == InstanceStatus.READY && c != null && c.isActive();
     }
 
-    /**
-     * 🔥 尝试进入（原子操作，检查状态）
-     *
-     * @return true 如果成功进入，false 如果实例不可用
-     */
+    public ClassLoader getClassLoader() {
+        LingContainer c = container;
+        return c != null ? c.getClassLoader() : null;
+    }
+
+    public InstanceStatus currentStatus() {
+        return stateMachine.current();
+    }
+
+    public boolean isDying() {
+        InstanceStatus state = currentStatus();
+        return state == InstanceStatus.STOPPING || state == InstanceStatus.DEAD || state == InstanceStatus.ERROR;
+    }
+
+    public boolean isDestroyed() {
+        return currentStatus() == InstanceStatus.DEAD;
+    }
+
     public boolean tryEnter() {
-        // 快速检查（非原子，但能过滤大部分无效请求）
-        if (dying || destroyed || !ready) {
+        if (isDying() || !isReady()) {
             return false;
         }
-
-        // 增加计数
         activeRequests.incrementAndGet();
-
-        // 二次检查（防止在 incrementAndGet 之前状态变化）
-        if (dying || destroyed) {
+        if (isDying()) {
             activeRequests.decrementAndGet();
             return false;
         }
-
         return true;
     }
 
-    /**
-     * 请求退出：计数器 -1
-     * 防止计数器变负
-     */
+    public long beginInvocation(ActiveInvocationSnapshot snapshot) {
+        if (isDying() || !isReady()) {
+            return -1L;
+        }
+
+        long invocationId = -1L;
+        if (snapshot != null) {
+            invocationId = activeInvocationSequence.incrementAndGet();
+            activeInvocations.put(invocationId, snapshot);
+        }
+
+        activeRequests.incrementAndGet();
+        if (isDying()) {
+            activeRequests.decrementAndGet();
+            if (invocationId > 0) {
+                activeInvocations.remove(invocationId);
+            }
+            return -1L;
+        }
+        return invocationId;
+    }
+
     public void exit() {
         long count = activeRequests.decrementAndGet();
         if (count < 0) {
-            // 修正为 0，并记录警告
             activeRequests.compareAndSet(count, 0);
-            log.warn("Unbalanced exit() call detected for ling instance: {}, count was: {}",
-                    definition.getVersion(), count);
+            log.warn("Unbalanced exit() call detected for ling instance: {}", getVersion());
         }
     }
 
-    /**
-     * 标记为濒死状态
-     */
-    public void markDying() {
-        this.dying = true;
-        log.info("Ling instance {} marked as dying", definition.getVersion());
+    public void completeInvocation(long invocationId) {
+        if (invocationId > 0) {
+            activeInvocations.remove(invocationId);
+        }
+        exit();
     }
 
-    /**
-     * 检查是否闲置（无活跃请求）
-     */
     public boolean isIdle() {
         return activeRequests.get() == 0;
     }
 
-    /**
-     * 销毁实例
-     * 🔥 保证幂等，增加状态标记
-     */
-    public synchronized void destroy() {
-        if (destroyed) {
-            return;
-        }
+    public List<ActiveInvocationSnapshot> snapshotActiveInvocations() {
+        List<ActiveInvocationSnapshot> snapshots = new ArrayList<>(activeInvocations.values());
+        snapshots.sort(Comparator.comparingLong(ActiveInvocationSnapshot::getStartTimeMillis));
+        return snapshots;
+    }
 
-        String version = getVersion();
-        this.dying = true;
-        this.ready = false;
-        this.destroyed = true;
-
-        LingContainer c = this.container;
-        if (c != null && c.isActive()) {
-            try {
-                c.stop();
-                log.info("Ling instance {} destroyed successfully", version);
-            } catch (Exception e) {
-                log.error("Error destroying ling instance {}: {}", version, e.getMessage(), e);
-            }
-        }
-
+    // 只做“断开强引用”，不做状态迁移；状态迁移由 InstanceCoordinator 统一负责。
+    synchronized void clearDetachedState() {
         labels.clear();
-
-        // 🔥 关键：主动断开引用链 container → ClassLoader, definition → metadata
+        activeInvocations.clear();
         this.container = null;
         this.definition = null;
     }
 
-    /**
-     * 🔥 toString 便于调试
-     */
+    // 包内唯一底层状态写操作，供 InstanceCoordinator 调用。
+    // 这里不向外公开，防止业务层或灵核层绕开协调器直接改状态。
+    TransitionResult<InstanceStatus> transitionState(InstanceStatus target) {
+        return stateMachine.transition(target);
+    }
+
     @Override
     public String toString() {
-        return String.format("LingInstance{version='%s', ready=%s, dying=%s, destroyed=%s, activeRequests=%d}",
-                getVersion(), ready, dying, destroyed, activeRequests.get());
+        return String.format("LingInstance{version='%s', state=%s, activeRequests=%d}",
+                getVersion(), currentStatus(), activeRequests.get());
     }
 }

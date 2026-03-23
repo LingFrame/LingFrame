@@ -1,186 +1,140 @@
-# 共享 API 设计规范
+# Shared API 设计规范
 
-## 架构概述
+这份文档对第一次接触灵珑的开发者非常重要。
 
-```
-灵核 ClassLoader (AppClassLoader)
-    ↓ parent
-SharedApiClassLoader (共享 API 层)
-    ↓ parent
-LingClassLoader (单元实现层)
-```
-
-## 核心设计原则
-
-### 1. API 由消费方提供（消费者驱动契约）
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     消费者驱动契约模式                        │
-└─────────────────────────────────────────────────────────────┘
-
-场景：Order 单元需要查询用户信息
-
-┌─────────────┐     需要能力      ┌─────────────┐
-│  Order 单元  │ ───────────────▶ │  User 单元   │
-│  (消费者)    │                  │  (生产者)    │
-└─────────────┘                  └─────────────┘
-       │                               ▲
-       │ 1. 定义所需接口               │ 2. 实现消费者定义的接口
-       ▼                               │
-┌─────────────────────────────────────────────────────────────┐
-│                      order-api 单元                          │
-│          (由消费者 Order 单元定义和维护)                       │
-│                                                              │
-│   public interface UserQueryService {                        │
-│       Optional<UserDTO> findById(String userId);             │
-│   }                                                          │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**核心原则**：
-- API 接口由**消费方**定义和维护（谁需要能力，谁定义接口）
-- 生产方**实现**消费方定义的接口（谁有能力，谁提供实现）
-- 消费方最了解自己需要什么功能，接口设计更贴合实际需求
-
-**为什么这样设计？**
-- 传统模式：User 单元定义 `UserService`，所有消费者适配生产者的接口
-- 消费者驱动：Order 单元定义 `UserQueryService`（只包含它需要的方法），User 单元适配消费者需求
-- 优势：解耦更彻底，消费者不依赖生产者的全量接口，可独立演进
+> `Shared API` 是灵核与灵元之间、以及灵元之间的进程级公共契约边界。
 
 ---
 
-## API 单元结构
+## 什么应该放进 Shared API
 
-### 2. API 单元只包含接口和 DTO
+`Shared API` 应该只放契约相关内容：
 
-消费者（Order 单元）定义它需要的接口，生产者（User 单元）实现：
+- 接口
+- DTO
+- 少量契约级别的枚举和值对象
 
-```
-order-api/                              # 消费者 Order 单元的 API 单元
-├── src/main/java/com/example/order/
-│   ├── api/
-│   │   ├── UserQueryService.java      # Order 需要的用户查询能力（由 User 单元实现）
-│   │   └── PaymentService.java        # Order 需要的支付能力（由 Payment 单元实现）
-│   └── dto/
-│       ├── UserDTO.java               # 用户数据传输对象
-│       └── PaymentResultDTO.java
-└── pom.xml
-```
+下面这些不应该放进去：
 
-**不应该包含**：
-- ❌ 业务逻辑实现
-- ❌ 数据库访问代码
-- ❌ Spring 组件（@Service, @Repository 等）
-- ❌ 治理逻辑（熔断、重试等）
+- 业务实现
+- repository
+- Spring 组件
+- 某一侧私有实现用到的持久化实体
 
-### 3. DTO 设计规范
+---
+
+## 消费者驱动契约规则
+
+灵珑使用“消费者驱动”模式：
+
+- 由消费者定义它需要的接口
+- 由生产者实现这份接口
 
 ```java
-// ✅ 正确：简单 POJO，可序列化
+public interface UserQueryService {
+    Optional<UserDTO> findById(String userId);
+}
+```
+
+```java
+@Component
+public class UserQueryServiceImpl implements UserQueryService {
+    @LingService(id = "find_user")
+    @Override
+    public Optional<UserDTO> findById(String userId) {
+        return userRepository.findById(userId).map(this::toDTO);
+    }
+}
+```
+
+---
+
+## `0.3.0` 里的 classloader 现实
+
+当前运行时可以大体理解成三层关系：
+
+- 灵核 classloader
+- `SharedApiClassLoader`
+- 灵元实现 classloader
+
+这意味着：
+
+- 契约类必须通过 shared 层可见
+- 实现类应留在灵元层
+- 同一份契约类不能在多个地方重复打包加载
+
+---
+
+## 必须尊重的启动边界
+
+在 `0.3.0` 里，`Shared API` 的启动顺序已经是显式规则：
+
+1. preload 共享 JAR 或 classes 目录
+2. 注册共享包前缀
+3. freeze 共享边界
+4. 然后再加载灵元
+
+### 这意味着什么
+
+- 全新的共享 jar 可以在 freeze 前引入
+- 已经加载过的共享契约不能原地热更新
+- 变更既有共享契约仍然需要重启进程
+
+---
+
+## DTO 设计规则
+
+好的 DTO 往往“刻意普通”。
+
+```java
 @Data
 public class OrderDTO implements Serializable {
     private Long id;
     private String orderNo;
     private BigDecimal amount;
-    private LocalDateTime createTime;
-}
-
-// ❌ 错误：包含业务逻辑或复杂依赖
-public class OrderDTO {
-    private Order order;  // 不要引用实体类
-    public void process() { ... }  // 不要有业务方法
 }
 ```
 
-### 3. 避免重量级依赖
+避免在 DTO 中写业务行为，或直接嵌入某个灵元的私有实体模型。
 
-API 单元的依赖应该尽量精简：
+---
 
-```xml
-<!-- ✅ 推荐的依赖 -->
-<dependencies>
-    <dependency>
-        <groupId>org.projectlombok</groupId>
-        <artifactId>lombok</artifactId>
-        <scope>provided</scope>
-    </dependency>
-</dependencies>
+## 演进规则
 
-<!-- ❌ 避免的依赖 -->
-<!-- 不要引入 Spring、数据库驱动等重量级依赖 -->
-```
+安全变更：
 
-## API 演进原则
+- 新增方法
+- 新增可选字段
+- 通过新包名承载破坏性变更
 
-### 4. 向后兼容（强烈推荐）
+高风险变更：
 
-```java
-// ✅ 正确：只增加，不修改
-interface OrderService {
-    Order getOrder(Long id);           // v1 保留
-    List<Order> batchGet(List<Long> ids); // v2 新增
-}
+- 原地修改已有方法签名
+- 不兼容变更还继续复用原包名
+- 误以为共享契约可以安全热更新
 
-// ❌ 错误：修改现有方法签名
-interface OrderService {
-    OrderDTO getOrder(String orderId); // 破坏兼容！
-}
-```
+---
 
-### 5. 破坏性变更使用版本化包名
-
-```java
-// 版本 1
-package com.example.order.api.v1;
-public interface OrderService { ... }
-
-// 版本 2（不兼容）
-package com.example.order.api.v2;
-public interface OrderService { ... }
-```
-
-两个版本可以共存于 SharedApiClassLoader。
-
-## 灰度发布支持
-
-| 场景 | 支持 | 处理方式 |
-|------|------|----------|
-| 新增 API 方法 | ✅ | 增量添加 JAR |
-| 破坏性变更 | ✅ | 版本化包名 |
-| 新旧单元共存 | ✅ | API 向后兼容 |
-
-### 灰度流程示例
-
-```
-T0: LingA-v1 + API-v1
-T1: 添加 API-v2，部署 LingA-v2（v1/v2 共存）
-T2: 验证通过，卸载 LingA-v1
-```
-
-## 配置示例
+## `preload-api-jars` 常见配置示例
 
 ```yaml
 lingframe:
   preload-api-jars:
-    - api/order-api-*.jar      # 通配符加载多版本
-    - api/user-api/            # 目录自动扫描
-    - lingframe-examples/lingframe-example-order-api  # Maven 单元（开发模式）
+    - api/order-api-*.jar
+    - api/user-api/
+    - lingframe-examples/lingframe-example-order-api
 ```
 
-## 常见问题
+---
 
-### Q: ClassNotFoundException / NoClassDefFoundError
+## 常见错误
 
-**原因**：API 未正确加载到 SharedApiClassLoader
+### `ClassNotFoundException`
 
-**检查**：
-1. 确认 `preload-api-jars` 配置正确
-2. 确认 JAR/目录路径存在
-3. 查看启动日志中的 `📦 [SharedApi]` 输出
+通常意味着共享契约没有被正确 preload。
 
-### Q: ClassCastException
+### `ClassCastException`
 
-**原因**：同一个类被不同 ClassLoader 加载
+通常意味着同一个类被多个 classloader 视图加载了。
 
-**解决**：确保 API 类只在 SharedApiClassLoader 中加载，不要在单元 JAR 中重复打包
+如果你接下来要按这套契约边界去写灵元，继续读 [业务灵元开发指南](ling-development.md)。

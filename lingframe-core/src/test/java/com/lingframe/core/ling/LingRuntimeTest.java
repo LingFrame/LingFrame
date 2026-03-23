@@ -1,478 +1,197 @@
 package com.lingframe.core.ling;
 
 import com.lingframe.api.config.LingDefinition;
-import com.lingframe.api.context.LingContext;
+import com.lingframe.api.event.LingEventListener;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.exception.ServiceUnavailableException;
-import com.lingframe.core.kernel.GovernanceKernel;
+import com.lingframe.core.event.RuntimeStateChangedEvent;
+import com.lingframe.core.fsm.RuntimeCoordinator;
+import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.spi.LingContainer;
-import com.lingframe.core.spi.LingServiceInvoker;
-import com.lingframe.core.spi.TrafficRouter;
-import com.lingframe.core.spi.TransactionVerifier;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.Collections;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.List;
 
-import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("LingRuntime 单元测试")
-public class LingRuntimeTest {
+@DisplayName("LingRuntime 测试")
+class LingRuntimeTest {
 
-    private static final String Ling_ID = "test-ling";
-
-    @Mock
-    private GovernanceKernel governanceKernel;
+    private static final String LING_ID = "test-ling";
 
     @Mock
     private EventBus eventBus;
 
-    @Mock
-    private TrafficRouter trafficRouter;
-
-    @Mock
-    private TransactionVerifier transactionVerifier;
-
-    @Mock
-    private LingContext lingContext;
-
-    private ScheduledExecutorService scheduler;
-    private ExecutorService executor;
-    private LingServiceInvoker invoker;
+    private InstanceCoordinator instanceCoordinator;
+    private RuntimeCoordinator runtimeCoordinator;
     private LingRuntime runtime;
 
     @BeforeEach
     void setUp() {
-        scheduler = Executors.newSingleThreadScheduledExecutor();
-        executor = Executors.newFixedThreadPool(4);
-
-        // 真实的 invoker
-        invoker = (instance, bean, method, args) -> {
-            try {
-                return method.invoke(bean, args);
-            } catch (InvocationTargetException e) {
-                Throwable cause = e.getCause();
-                if (cause instanceof Exception)
-                    throw (Exception) cause;
-                throw new RuntimeException(cause);
-            }
-        };
-
-        runtime = new LingRuntime(
-                Ling_ID,
-                LingRuntimeConfig.defaults(),
-                scheduler,
-                executor,
-                governanceKernel,
-                eventBus,
-                trafficRouter,
-                invoker,
-                transactionVerifier,
-                Collections.emptyList(),
-                null);
+        instanceCoordinator = new InstanceCoordinator(eventBus);
+        runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtime = new LingRuntime(LING_ID, LingRuntimeConfig.defaults(), eventBus,
+                instanceCoordinator, runtimeCoordinator);
     }
 
-    @AfterEach
-    void tearDown() {
-        if (runtime != null) {
-            try {
-                runtime.shutdown();
-            } catch (Exception ignored) {
-            }
+    @Nested
+    @DisplayName("基础属性")
+    class BasicPropertyTests {
+
+        @Test
+        @DisplayName("初始值应符合默认约定")
+        void shouldHaveCorrectInitialValues() {
+            assertEquals(LING_ID, runtime.getLingId());
+            assertNotNull(runtime.getConfig());
+            assertNotNull(runtime.getInstancePool());
+            assertEquals(RuntimeStatus.INACTIVE, runtime.currentStatus());
+            assertFalse(runtime.isAvailable());
         }
-        if (scheduler != null && !scheduler.isShutdown()) {
-            scheduler.shutdownNow();
-        }
-        if (executor != null && !executor.isShutdown()) {
-            executor.shutdownNow();
+
+        @Test
+        @DisplayName("空配置构造时应自动回退默认配置")
+        void shouldHandleNullConfig() {
+            LingRuntime nullConfigRuntime = new LingRuntime("null-id", null, eventBus,
+                    new RuntimeCoordinator(eventBus));
+            assertNotNull(nullConfigRuntime.getConfig());
+            assertEquals(RuntimeStatus.INACTIVE, nullConfigRuntime.currentStatus());
         }
     }
 
-    // ==================== 辅助方法 ====================
+    @Nested
+    @DisplayName("实例可用性")
+    class AvailabilityTests {
 
-    private LingInstance createMockInstance(String version) {
+        @Test
+        @DisplayName("应只返回就绪实例列表")
+        void shouldGetReadyInstances() {
+            assertTrue(runtime.getReadyInstances().isEmpty());
+
+            LingInstance readyInstance = createMockInstance("1.0.0", true);
+            runtime.getInstancePool().addInstance(readyInstance, true);
+
+            List<LingInstance> readyInstances = runtime.getReadyInstances();
+            assertEquals(1, readyInstances.size());
+            assertSame(readyInstance, readyInstances.get(0));
+        }
+
+        @Test
+        @DisplayName("可用性应同时依赖运行时状态与就绪实例")
+        void availabilityShouldDependOnCoordinatorStateAndReadyInstances() {
+            assertFalse(runtime.isAvailable());
+
+            runtime.getInstancePool().addInstance(createMockInstance("1.0.0", true), true);
+            assertFalse(runtime.isAvailable());
+
+            runtimeCoordinator.transition(LING_ID, RuntimeStatus.ACTIVE);
+            assertTrue(runtime.isAvailable());
+        }
+    }
+
+    @Nested
+    @DisplayName("请求统计")
+    class RequestStatsTests {
+
+        @Test
+        @DisplayName("应正确累计总请求、稳定请求与金丝雀请求")
+        void shouldRecordTrafficStats() {
+            runtime.recordRequest(false);
+            runtime.recordRequest(false);
+            runtime.recordRequest(true);
+
+            assertEquals(3, runtime.getTotalRequests().get());
+            assertEquals(2, runtime.getStableRequests().get());
+            assertEquals(1, runtime.getCanaryRequests().get());
+        }
+
+        @Test
+        @DisplayName("应正确跟踪活跃请求数")
+        void shouldTrackActiveRequests() {
+            runtime.startRequest();
+            runtime.startRequest();
+            assertEquals(2, runtime.getActiveRequests().get());
+
+            runtime.endRequest();
+            assertEquals(1, runtime.getActiveRequests().get());
+        }
+    }
+
+    @Nested
+    @DisplayName("事件与状态联动")
+    class EventAndStateTests {
+
+        @Test
+        @SuppressWarnings("unchecked")
+        @DisplayName("收到移除事件后应关闭实例池并拒绝新增实例")
+        void shouldShutdownPoolOnRemovedEvent() {
+            InstancePool pool = runtime.getInstancePool();
+            LingInstance oldInstance = createMockInstance("1.0.1", true);
+            pool.addInstance(oldInstance, false);
+
+            ArgumentCaptor<LingEventListener<RuntimeStateChangedEvent>> captor =
+                    ArgumentCaptor.forClass(LingEventListener.class);
+            verify(eventBus).subscribe(eq(LING_ID), eq(RuntimeStateChangedEvent.class), captor.capture());
+
+            LingEventListener<RuntimeStateChangedEvent> listener = captor.getValue();
+            listener.onEvent(new RuntimeStateChangedEvent(LING_ID, RuntimeStatus.ACTIVE, RuntimeStatus.REMOVED));
+
+            LingInstance newInstance = createMockInstance("1.0.2", true);
+            LingInstance result = pool.addInstance(newInstance, false);
+
+            assertNull(result);
+            assertTrue(oldInstance.isDying());
+            assertTrue(pool.getActiveInstances().isEmpty());
+            assertFalse(pool.getActiveInstances().contains(newInstance));
+        }
+
+        @Test
+        @DisplayName("运行时状态应反映协调器推进结果")
+        void shouldReflectCoordinatorTransitions() {
+            LingRuntime coordinatedRuntime = new LingRuntime(LING_ID, LingRuntimeConfig.defaults(), null,
+                    instanceCoordinator, runtimeCoordinator);
+
+            assertEquals(RuntimeStatus.INACTIVE, coordinatedRuntime.currentStatus());
+
+            runtimeCoordinator.transition(LING_ID, RuntimeStatus.ACTIVE);
+            assertEquals(RuntimeStatus.ACTIVE, coordinatedRuntime.currentStatus());
+        }
+    }
+
+    private LingInstance createMockInstance(String version, boolean ready) {
         LingContainer container = mock(LingContainer.class);
-        when(container.isActive()).thenReturn(true);
-        doNothing().when(container).start(any());
-        doNothing().when(container).stop();
+        lenient().when(container.isActive()).thenReturn(ready);
+        lenient().when(container.getClassLoader()).thenReturn(getClass().getClassLoader());
 
         LingDefinition definition = new LingDefinition();
-        definition.setId(Ling_ID);
+        definition.setId(LING_ID);
         definition.setVersion(version);
 
-        return new LingInstance(container, definition);
+        LingInstance instance = new LingInstance(container, definition, eventBus);
+        if (ready) {
+            prepareReady(instance);
+        }
+        return instance;
     }
 
-    public static class TestService {
-        public String hello(String name) {
-            return "Hello, " + name;
-        }
-
-        public int add(int a, int b) {
-            return a + b;
-        }
-    }
-
-    // ==================== 初始状态测试 ====================
-
-    @Nested
-    @DisplayName("初始状态")
-    class InitialStateTests {
-
-        @Test
-        @DisplayName("新运行时应有正确的 ID")
-        void newRuntimeShouldHaveCorrectId() {
-            assertEquals(Ling_ID, runtime.getLingId());
-        }
-
-        @Test
-        @DisplayName("新运行时应有默认配置")
-        void newRuntimeShouldHaveDefaultConfig() {
-            assertNotNull(runtime.getConfig());
-        }
-
-        @Test
-        @DisplayName("新运行时不应可用（无实例）")
-        void newRuntimeShouldNotBeAvailable() {
-            assertFalse(runtime.isAvailable());
-        }
-
-        @Test
-        @DisplayName("新运行时版本应为 null")
-        void newRuntimeVersionShouldBeNull() {
-            assertNull(runtime.getVersion());
-        }
-
-        @Test
-        @DisplayName("应能获取所有组件")
-        void shouldAccessAllComponents() {
-            assertNotNull(runtime.getInstancePool());
-            assertNotNull(runtime.getServiceRegistry());
-            assertNotNull(runtime.getInvocationExecutor());
-            assertNotNull(runtime.getLifecycleManager());
-        }
-    }
-
-    // ==================== 生命周期测试 ====================
-
-    @Nested
-    @DisplayName("生命周期")
-    class LifecycleTests {
-
-        @Test
-        @DisplayName("添加实例后应可用")
-        void shouldBeAvailableAfterAddInstance() {
-            LingInstance instance = createMockInstance("1.0.0");
-
-            runtime.addInstance(instance, lingContext, true);
-            runtime.activate();
-
-            assertTrue(runtime.isAvailable());
-            assertEquals("1.0.0", runtime.getVersion());
-        }
-
-        @Test
-        @DisplayName("关闭后应不可用")
-        void shouldNotBeAvailableAfterShutdown() {
-            LingInstance instance = createMockInstance("1.0.0");
-            runtime.addInstance(instance, lingContext, true);
-            runtime.activate();
-
-            runtime.shutdown();
-
-            assertFalse(runtime.isAvailable());
-        }
-
-        @Test
-        @DisplayName("关闭应是幂等的")
-        void shutdownShouldBeIdempotent() {
-            assertDoesNotThrow(() -> {
-                runtime.shutdown();
-                runtime.shutdown();
-                runtime.shutdown();
-            });
-        }
-    }
-
-    // ==================== 路由测试 ====================
-
-    @Nested
-    @DisplayName("路由")
-    class RoutingTests {
-
-        @Test
-        @DisplayName("routeToAvailableInstance 应返回可用实例")
-        void routeShouldReturnAvailableInstance() {
-            LingInstance instance = createMockInstance("1.0.0");
-            runtime.addInstance(instance, lingContext, true);
-
-            when(trafficRouter.route(anyList(), any())).thenReturn(instance);
-
-            LingInstance result = runtime.routeToAvailableInstance("test:service");
-
-            assertEquals(instance, result);
-        }
-
-        @Test
-        @DisplayName("路由无结果时应使用默认实例")
-        void routeShouldFallbackToDefault() {
-            LingInstance instance = createMockInstance("1.0.0");
-            runtime.addInstance(instance, lingContext, true);
-
-            when(trafficRouter.route(anyList(), any())).thenReturn(null);
-
-            LingInstance result = runtime.routeToAvailableInstance("test:service");
-
-            assertEquals(instance, result);
-        }
-
-        @Test
-        @DisplayName("无可用实例时应抛出异常")
-        void routeShouldThrowWhenNoInstance() {
-            when(trafficRouter.route(anyList(), any())).thenReturn(null);
-
-            assertThrows(ServiceUnavailableException.class, () -> runtime.routeToAvailableInstance("test:service"));
-        }
-    }
-
-    // ==================== 服务调用测试 ====================
-
-    @Nested
-    @DisplayName("服务调用")
-    class InvocationTests {
-
-        @Test
-        @DisplayName("invoke 应成功调用服务")
-        void invokeShouldSucceed() throws Exception {
-            LingInstance instance = createMockInstance("1.0.0");
-            runtime.addInstance(instance, lingContext, true);
-            runtime.activate();
-
-            when(trafficRouter.route(anyList(), any())).thenReturn(instance);
-
-            // 注册服务
-            TestService bean = new TestService();
-            Method method = TestService.class.getMethod("hello", String.class);
-            runtime.getServiceRegistry().registerService("test:hello", bean, method);
-
-            Object result = runtime.invoke("caller", "test:hello", new Object[] { "World" });
-
-            assertEquals("Hello, World", result);
-        }
-
-        @Test
-        @DisplayName("invoke 服务不存在应抛出异常")
-        void invokeShouldThrowWhenServiceNotFound() {
-            LingInstance instance = createMockInstance("1.0.0");
-            runtime.addInstance(instance, lingContext, true);
-            runtime.activate();
-
-            when(trafficRouter.route(anyList(), any())).thenReturn(instance);
-
-            assertThrows(NoSuchMethodException.class, () -> runtime.invoke("caller", "non:existent", new Object[] {}));
-        }
-
-        @Test
-        @DisplayName("无实例时调用应抛出异常")
-        void invokeShouldThrowWhenNoInstance() {
-            assertThrows(ServiceUnavailableException.class,
-                    () -> runtime.invoke("caller", "test:service", new Object[] {}));
-        }
-    }
-
-    // ==================== hasBean 测试 ====================
-
-    @Nested
-    @DisplayName("Bean 检查")
-    class HasBeanTests {
-
-        @Test
-        @DisplayName("无实例时 hasBean 应返回 false")
-        void hasBeanShouldReturnFalseWhenNoInstance() {
-            assertFalse(runtime.hasBean(String.class));
-        }
-
-        @Test
-        @DisplayName("有 Bean 时应返回 true")
-        void hasBeanShouldReturnTrueWhenBeanExists() {
-            LingInstance instance = createMockInstance("1.0.0");
-            when(instance.getContainer().getBean(String.class)).thenReturn("test");
-            runtime.addInstance(instance, lingContext, true);
-
-            assertTrue(runtime.hasBean(String.class));
-        }
-
-        @Test
-        @DisplayName("无 Bean 时应返回 false")
-        void hasBeanShouldReturnFalseWhenBeanNotExists() {
-            LingInstance instance = createMockInstance("1.0.0");
-            when(instance.getContainer().getBean(String.class)).thenReturn(null);
-            runtime.addInstance(instance, lingContext, true);
-
-            assertFalse(runtime.hasBean(String.class));
-        }
-    }
-
-    // ==================== 统计信息测试 ====================
-
-    @Nested
-    @DisplayName("统计信息")
-    class StatsTests {
-
-        @Test
-        @DisplayName("getStats 应返回完整统计")
-        void getStatsShouldReturnCompleteStats() {
-            LingInstance instance = createMockInstance("1.0.0");
-            runtime.addInstance(instance, lingContext, true);
-            runtime.activate();
-
-            LingRuntime.RuntimeStats stats = runtime.getStats();
-
-            assertEquals(Ling_ID, stats.lingId());
-            assertTrue(stats.available());
-            assertEquals("1.0.0", stats.version());
-            assertNotNull(stats.pool());
-            assertNotNull(stats.registry());
-            assertNotNull(stats.executor());
-            assertNotNull(stats.lifecycle());
-        }
-
-        @Test
-        @DisplayName("RuntimeStats toString 应包含关键信息")
-        void statsToStringShouldWork() {
-            LingInstance instance = createMockInstance("1.0.0");
-            runtime.addInstance(instance, lingContext, true);
-            runtime.activate();
-
-            String str = runtime.getStats().toString();
-
-            assertTrue(str.contains(Ling_ID));
-            assertTrue(str.contains("available=true"));
-            assertTrue(str.contains("version='1.0.0'"));
-        }
-    }
-
-    // ==================== 升级测试 ====================
-
-    @Nested
-    @DisplayName("版本升级")
-    class UpgradeTests {
-
-        @Test
-        @DisplayName("升级应更新版本号")
-        void upgradeShouldUpdateVersion() {
-            LingInstance v1 = createMockInstance("1.0.0");
-            LingInstance v2 = createMockInstance("2.0.0");
-
-            runtime.addInstance(v1, lingContext, true);
-            assertEquals("1.0.0", runtime.getVersion());
-
-            runtime.addInstance(v2, lingContext, true);
-            assertEquals("2.0.0", runtime.getVersion());
-        }
-
-        @Test
-        @DisplayName("升级后旧版本应进入 dying 状态")
-        void upgradeShouldMarkOldAsDying() {
-            LingInstance v1 = createMockInstance("1.0.0");
-            LingInstance v2 = createMockInstance("2.0.0");
-
-            runtime.addInstance(v1, lingContext, true);
-            runtime.addInstance(v2, lingContext, true);
-
-            assertTrue(v1.isDying());
-            assertFalse(v2.isDying());
-        }
-
-        @Test
-        @DisplayName("旧版本应自动被清理")
-        void oldVersionShouldBeCleanedUp() {
-            LingInstance v1 = createMockInstance("1.0.0");
-            LingInstance v2 = createMockInstance("2.0.0");
-
-            runtime.addInstance(v1, lingContext, true);
-            runtime.addInstance(v2, lingContext, true);
-
-            // 等待定时清理
-            await()
-                    .atMost(10, TimeUnit.SECONDS)
-                    .until(v1::isDestroyed);
-
-            assertTrue(v1.isDestroyed());
-        }
-    }
-
-    // ==================== 配置测试 ====================
-
-    @Nested
-    @DisplayName("配置")
-    class ConfigTests {
-
-        @Test
-        @DisplayName("应使用传入的配置")
-        void shouldUseProvidedConfig() {
-            LingRuntimeConfig customConfig = LingRuntimeConfig.builder()
-                    .defaultTimeoutMs(5000)
-                    .bulkheadMaxConcurrent(20)
-                    .build();
-
-            LingRuntime customRuntime = new LingRuntime(
-                    "custom-ling",
-                    customConfig,
-                    scheduler,
-                    executor,
-                    governanceKernel,
-                    eventBus,
-                    trafficRouter,
-                    invoker,
-                    transactionVerifier,
-                    Collections.emptyList(),
-                    null);
-
-            try {
-                assertEquals(5000, customRuntime.getConfig().getDefaultTimeoutMs());
-                assertEquals(20, customRuntime.getConfig().getBulkheadMaxConcurrent());
-            } finally {
-                customRuntime.shutdown();
-            }
-        }
-
-        @Test
-        @DisplayName("null 配置应使用默认值")
-        void nullConfigShouldUseDefaults() {
-            LingRuntime nullConfigRuntime = new LingRuntime(
-                    "null-config-ling",
-                    null,
-                    scheduler,
-                    executor,
-                    governanceKernel,
-                    eventBus,
-                    trafficRouter,
-                    invoker,
-                    transactionVerifier,
-                    Collections.emptyList(),
-                    null);
-
-            try {
-                assertNotNull(nullConfigRuntime.getConfig());
-                assertEquals(3000, nullConfigRuntime.getConfig().getDefaultTimeoutMs());
-            } finally {
-                nullConfigRuntime.shutdown();
-            }
-        }
+    private void prepareReady(LingInstance instance) {
+        instanceCoordinator.prepare(instance);
+        instanceCoordinator.start(instance);
+        instanceCoordinator.markReady(instance);
     }
 }

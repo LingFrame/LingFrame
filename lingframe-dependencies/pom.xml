@@ -13,7 +13,7 @@
     <properties>
         <!-- LingFrame 版本 -->
         <!-- 使用 Maven CI Friendly 变量 -->
-        <revision>0.2.0</revision>
+        <revision>0.3.0</revision>
 
         <!-- Java -->
         <maven.compiler.source>${java.version}</maven.compiler.source>
@@ -31,6 +31,7 @@
         <lombok.version>1.18.42</lombok.version>
         <asm.version>9.6</asm.version>
         <springdoc.version>1.7.0</springdoc.version>
+        <springdoc.artifactId>springdoc-openapi-ui</springdoc.artifactId>
         <knife4j.version>4.3.0</knife4j.version>
 
         <!-- 测试 -->
@@ -63,6 +64,8 @@
                 <snakeyaml.version>2.2</snakeyaml.version>
                 <slf4j.version>2.0.13</slf4j.version>
                 <caffeine.version>3.1.8</caffeine.version>
+                <springdoc.version>2.8.5</springdoc.version>
+                <springdoc.artifactId>springdoc-openapi-starter-webmvc-ui</springdoc.artifactId>
 
                 <junit-jupiter.version>5.9.3</junit-jupiter.version>
                 <mockito.version>5.3.1</mockito.version>
@@ -86,8 +89,8 @@
 
     <pluginRepositories>
         <pluginRepository>
-            <id>aliyun-ling</id>
-            <name>Aliyun Maven ling Repository</name>
+            <id>aliyun-plugin</id>
+            <name>Aliyun Maven Plugin Repository</name>
             <url>https://maven.aliyun.com/repository/public</url>
             <releases>
                 <enabled>true</enabled>
@@ -100,7 +103,7 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- 导入 LingFrame BOM，统一管理 LingFrame 单元版本 -->
+            <!-- 导入 LingFrame BOM，统一管理 LingFrame 灵元版本 -->
             <dependency>
                 <groupId>com.lingframe</groupId>
                 <artifactId>lingframe-bom</artifactId>
@@ -175,24 +178,20 @@
                 <version>${asm.version}</version>
             </dependency>
 
+            <!-- Servlet API (v4 for SB2, v6 for SB3 managed by SB BOM) -->
+            <dependency>
+                <groupId>javax.servlet</groupId>
+                <artifactId>javax.servlet-api</artifactId>
+                <version>4.0.1</version>
+                <scope>provided</scope>
+            </dependency>
+
             <!-- SpringDoc for API Documentation -->
             <dependency>
                 <groupId>org.springdoc</groupId>
-                <artifactId>springdoc-openapi-ui</artifactId>
+                <artifactId>${springdoc.artifactId}</artifactId>
                 <version>${springdoc.version}</version>
             </dependency>
-
-            <!--<dependency>
-                <groupId>com.github.xiaoymin</groupId>
-                <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
-                <version>${knife4j.version}</version>
-                <exclusions>
-                    <exclusion>
-                        <groupId>org.springdoc</groupId>
-                        <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-                    </exclusion>
-                </exclusions>
-            </dependency>-->
 
             <!-- Lombok -->
             <dependency>

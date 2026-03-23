@@ -33,12 +33,12 @@ public class LingFrameProperties {
     private boolean devMode = false;
 
     /**
-     * 启动时是否自动扫描并加载 home 目录下的单元。
+     * 启动时是否自动扫描并加载 home 目录下的灵元。
      */
     private boolean autoScan = true;
 
     /**
-     * 单元存放根目录。
+     * 灵元存放根目录。
      * 支持绝对路径和相对路径。
      */
     private String lingHome = "Lings";
@@ -47,7 +47,7 @@ public class LingFrameProperties {
      * 预加载的 API JAR 文件路径列表
      * <p>
      * 这些 JAR 会在启动时加载到 SharedApiClassLoader 中，
-     * 实现跨单元的 API 类共享
+     * 实现跨灵元的 API 类共享
      * <p>
      * 路径支持：
      * - 绝对路径: /path/to/api.jar
@@ -56,7 +56,15 @@ public class LingFrameProperties {
     private List<String> preloadApiJars = new ArrayList<>();
 
     /**
-     * 单元额外目录
+     * 是否启用 API 包覆盖检测。
+     * <p>
+     * true: 如果灵元包内包含 com.lingframe.api.* 类则拒绝安装
+     * false: 允许灵元包内包含同名 API（不建议）
+     */
+    private boolean apiOverrideCheckEnabled = true;
+
+    /**
+     * 灵元额外目录
      */
     private List<String> lingRoots = new ArrayList<>();
 
@@ -97,7 +105,7 @@ public class LingFrameProperties {
     /**
      * 统一管理内核运行时配置
      */
-    private Runtime runtime = new Runtime();
+    private RuntimeConfig runtime = new RuntimeConfig();
 
     @Data
     public static class Audit {
@@ -163,7 +171,7 @@ public class LingFrameProperties {
     }
 
     @Data
-    public static class Runtime {
+    public static class RuntimeConfig {
         // --- 实例管理 ---
         private int maxHistorySnapshots = 5;
 
@@ -182,20 +190,25 @@ public class LingFrameProperties {
         @DurationUnit(ChronoUnit.MILLIS)
         private Duration bulkheadAcquireTimeout = Duration.ofMillis(3000);
 
-        // --- 单元线程池预算 ---
-
         /**
-         * 全局单元线程总预算（所有单元共享此配额）
+         * 限流 QPS（每秒令牌数），0 表示不启用
          */
-        private int globalMaxLingThreads = java.lang.Runtime.getRuntime().availableProcessors() * 4;
+        private int rateLimitPerSecond = 0;
+
+        // --- 灵元线程池预算 ---
 
         /**
-         * 单个单元线程池硬上限
+         * 全局灵元线程总预算（所有灵元共享此配额）
+         */
+        private int globalMaxLingThreads = Runtime.getRuntime().availableProcessors() * 4;
+
+        /**
+         * 单个灵元线程池硬上限
          */
         private int maxThreadsPerLing = 8;
 
         /**
-         * 单个单元默认线程数
+         * 单个灵元默认线程数
          */
         private int defaultThreadsPerLing = 2;
     }
@@ -209,7 +222,7 @@ public class LingFrameProperties {
          * <p>
          * false: 禁用治理，灵核 Bean 不受限制
          * <p>
-         * 注意：开启后可能会影响单元的正常运行，建议仅在必要时开启
+         * 注意：开启后可能会影响灵元的正常运行，建议仅在必要时开启
          */
         private boolean enabled = false;
 
@@ -218,9 +231,9 @@ public class LingFrameProperties {
          * <p>
          * true: 灵核自己调用自己的 Bean 也会被治理
          * <p>
-         * false: 只有单元调用灵核 Bean 时才会被治理
+         * false: 只有灵元调用灵核 Bean 时才会被治理
          * <p>
-         * 注意：开启后可能会影响单元的正常运行，建议仅在必要时开启
+         * 注意：开启后可能会影响灵元的正常运行，建议仅在必要时开启
          */
         private boolean governInternalCalls = false;
 
@@ -231,7 +244,7 @@ public class LingFrameProperties {
          * <p>
          * false: 灵核应用自动拥有所有权限
          * <p>
-         * 注意：开启后可能会影响单元的正常运行，建议仅在必要时开启
+         * 注意：开启后可能会影响灵元的正常运行，建议仅在必要时开启
          */
         private boolean checkPermissions = false;
     }

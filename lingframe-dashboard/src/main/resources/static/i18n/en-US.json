@@ -1,6 +1,11 @@
 {
+  "branding": {
+    "name": "LingFrame",
+    "icon": "L",
+    "codename": "Nirvana"
+  },
     "title": "LingFrame | Governance Center",
-    "version": "V0.2.0",
+    "version": "V0.3.0",
     "sidebar": {
         "currentEnv": "Current Env",
         "envDev": "Development",
@@ -16,7 +21,8 @@
     },
     "header": {
         "notSelected": "Not Selected",
-        "upload": "Upload Ling"
+        "upload": "Upload Ling",
+        "timeline": "Timeline"
     },
     "upload": {
         "title": "Upload Ling",
@@ -39,7 +45,9 @@
     "traffic": {
         "title": "Traffic Control",
         "notSelected": "Not Selected",
-        "inactive": "Inactive",
+        "inactive": "INACTIVE",
+        "degraded": "DEGRADED",
+        "removed": "REMOVED",
         "canary": "Canary",
         "singleVersion": "Single Version",
         "stable": "Stable",
@@ -50,7 +58,12 @@
         "stop": "Stop",
         "selectLing": "Please select a ling",
         "lingInactive": "Ling is inactive",
-        "onlyOneVersion": "Only one version available"
+        "onlyOneVersion": "Only one version available",
+        "total": "Total",
+        "active": "Active",
+        "v1Hit": "V1 Hit",
+        "v2Hit": "V2 Hit",
+        "drift": "Drift"
     },
     "logs": {
         "title": "Trace Logs",
@@ -58,14 +71,28 @@
         "all": "All",
         "waiting": "Waiting for logs...",
         "connecting": "Connecting...",
-        "newLogs": "New Logs"
+        "newLogs": "New Logs",
+        "aggregationMode": "Aggregation Mode",
+        "filterByVersion": "Filter by Version",
+        "filterByEventType": "Filter by Event Type",
+        "filterByKeyword": "Filter by Keyword",
+        "allVersions": "All Versions",
+        "allEventTypes": "All Event Types",
+        "eventTypeLoading": "Loading",
+        "eventTypeUnloading": "Unloading",
+        "eventTypeGC": "GC",
+        "eventTypeError": "Error",
+        "keywordPlaceholder": "Enter keyword to search",
+        "resetFilters": "Reset Filters",
+        "applyFilters": "Apply Filters"
     },
     "control": {
         "title": "Ling Control",
         "selectLing": "Select a ling from the list",
         "lifecycle": "Lifecycle",
         "activate": "Activate",
-        "reload": "Reload",
+        "inactivate": "Inactivate",
+        "reload": "Hot Reload",
         "unload": "Unload",
         "permissions": "Permissions",
         "dbRead": "DB Read",
@@ -94,8 +121,18 @@
         "cancel": "Cancel",
         "confirm": "Confirm",
         "confirmUnload": "Confirm Unload Ling",
-        "unloadWarning": "About to unload \"{lingId}\", this will interrupt all requests.",
-        "unloadAction": "Unload"
+        "unloadWarning": "About to unload \"{lingId}\", this will interrupt all associated requests.",
+        "unloadWarningSpecific": "Confirm unloading service {lingId} version {version}?",
+    "unloadAction": "Unload",
+    "statusTitle": "Confirm Action",
+    "statusMessage": "Select version to operate:",
+    "reloadTitle": "Confirm Hot Reload",
+    "reloadMessage": "Select version to reload:",
+    "actionActivate": "Activate",
+    "actionInactivate": "Inactivate",
+    "actionReload": "Hot Reload",
+    "selectVersion": "Select version to unload:",
+        "allVersions": "Unload all versions"
     },
     "toast": {
         "getLingsFailed": "Failed to get ling list",
@@ -126,6 +163,22 @@
         "installSuccess": "Ling installed successfully",
         "installFailed": "Ling install failed",
         "reloadSuccess": "Ling reloaded successfully",
-        "reloadFailed": "Ling reload failed"
-    }
+        "reloadFailed": "Ling reload failed",
+        "lingVersionUnloaded": "Version {version} unloaded successfully",
+        "getTimelineFailed": "Failed to get timeline"
+  },
+  "performance": {
+    "title": "System Performance",
+    "realtime": "Real-time Monitor",
+    "memory": "Memory",
+    "heap": "Heap Memory",
+    "threads": "Active Threads",
+    "gc": "GC Count"
+  },
+  "timeline": {
+    "title": "Ling Lifecycle Timeline",
+    "selectLing": "Select Ling",
+    "allLings": "All Lings",
+    "noEvents": "No events found"
+  }
 }
