@@ -1,719 +1,214 @@
 # 架构设计
 
-本文档介绍 LingFrame 的核心架构设计和实现原理。
-
-## 设计理念
-
-LingFrame 借鉴操作系统的设计思想：
-
-- **微内核**：Core 只负责调度和仲裁，不包含业务逻辑
-- **零信任**：业务灵元不能直接访问基础设施，必须经过 Core 代理
-- **能力隔离**：每个灵元在独立的类加载器和 Spring 上下文中运行
-
-## 三层架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      LingCore Application                        │
-│                                                              │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │                 Core（治理内核）                        │  │
-│  │                                                        │  │
-│  │   LingManager · PermissionService · EventBus        │  │
-│  │   AuditManager · LingCallContext · GovernanceStrategy │  │
-│  │                                                        │  │
-│  │   职责：生命周期管理 · 权限治理 · 能力调度 · 上下文隔离  │  │
-│  └────────────────────────┬──────────────────────────────┘  │
-│                           │                                  │
-│         ┌─────────────────┼─────────────────┐               │
-│         ▼                 ▼                 ▼               │
-│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐       │
-│  │  Storage    │   │   Cache     │   │  Message    │       │
-│  │  Proxy     │   │   Proxy    │   │  Proxy     │       │
-│  │             │   │             │   │             │       │
-│  │ 基础设施层   │   │ 基础设施层   │   │ 基础设施层   │       │
-│  └──────┬──────┘   └──────┬──────┘   └──────┬──────┘       │
-│         │                 │                 │               │
-│         └─────────────────┼─────────────────┘               │
-│                           │                                  │
-│         ┌─────────────────┼─────────────────┐               │
-│         ▼                 ▼                 ▼               │
-│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐       │
-│  │   User      │   │   Order     │   │  Payment    │       │
-│  │  ling     │   │   ling    │   │  ling     │       │
-│  │             │   │             │   │             │       │
-│  │  业务灵元层  │   │  业务灵元层  │   │  业务灵元层  │       │
-│  └─────────────┘   └─────────────┘   └─────────────┘       │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### 第一层：Core（治理内核）
-
-**灵元**：`lingframe-core`
-
-**职责**：
-
-- 灵元生命周期管理（安装、卸载、热重载）
-- 权限治理（检查、授权、审计）
-- 服务路由（FQSID 路由表）
-- 上下文隔离（类加载器、Spring 上下文）
-
-**关键原则**：
-
-- Core 是唯一仲裁者
-- 不提供业务能力，只负责调度和控制
-- 所有跨灵元调用必须经过 Core
-
-**核心组件**：
-
-| 组件                      | 职责                   |
-| ------------------------ | ---------------------- |
-| `LingManager`          | 灵元安装/卸载/路由     |
-| `LingRuntime`          | 灵元运行时环境         |
-| `InstancePool`           | 蓝绿部署和版本管理     |
-| `ServiceRegistry`        | 服务注册表             |
-| `InvocationExecutor`     | 调用执行器             |
-| `DefaultLingLifecycleEngine` | 生命周期编排       |
-| `PermissionService`      | 权限检查和授权         |
-| `AuditManager`           | 审计日志记录           |
-| `EventBus`               | 事件发布订阅           |
-| `GovernanceKernel`       | 治理内核               |
-
-#### 运行时双层状态机
-
-当前版本的运行时收敛到了“实例层 + 运行时层”的双层状态机模型：
-
-- **实例层**：`LingInstance` 承载单实例 FSM，`InstanceCoordinator` 是唯一状态写入口
-- **运行时层**：`LingRuntime` 只做宿主，`RuntimeCoordinator` 持有并驱动 `RuntimeStatus`
-- **联动方式**：实例层发布事件，运行时层订阅事件并基于快照聚合，不再允许对象之间互相直接改状态
-
-详细说明见：
-
-- [运行时双层状态机架构设计](runtime-dual-state-machine-architecture.md)
-- [运行时双层状态机技术指导](runtime-dual-state-machine-guide.md)
-
-### 第二层：Infrastructure（基础设施层）
-
-**灵元**：`lingframe-infrastructure/*`
-
-**职责**：
-
-- 封装底层能力（数据库、缓存、消息队列）
-- 细粒度权限拦截
-- 审计上报
-
-**已实现**：
-
-| 灵元                         | 说明                       | 能力标识      |
-| -------------------------- | -------------------------- | ------------- |
-| `lingframe-infra-storage`  | 数据库访问，SQL 级权限控制 | `storage:sql` |
-| `lingframe-infra-cache`    | 缓存访问（待实现）         | `cache:redis` |
-
-**工作原理**：
-
-基础设施灵元通过**代理链**拦截底层调用：
-
-```
-业务灵元调用 userRepository.findById()
-    │
-    ▼ (透明，通过 MyBatis/JPA)
-┌─────────────────────────────────────┐
-│ Storage ling (基础设施层)          │
-│                                      │
-│ LingDataSourceProxy                  │
-│   └→ LingConnectionProxy             │
-│       ├→ LingStatementProxy          │  ← 普通 Statement
-│       └→ LingPreparedStatementProxy  │  ← PreparedStatement
-│                                      │
-│ 拦截点：execute/executeQuery/Update  │
-│ 1. LingCallContext.getLingId() 获取调用方
-│ 2. 解析 SQL 类型 (SELECT/INSERT...)  │
-│ 3. permissionService.isAllowed() 鉴权│
-│ 4. permissionService.audit() 审计    │
-└─────────────────────────────────────┘
-    │
-    ▼ (权限查询)
-┌─────────────────────────────────────┐
-│ Core                                 │
-│ DefaultPermissionService.isAllowed() │
-└─────────────────────────────────────┘
-```
-
-> 详细开发指南见 [基础设施代理开发](infrastructure-development.md)
-
-### 第三层：Business Lings（业务层）
-
-**灵元**：用户开发的灵元
-
-**职责**：
-
-- 实现业务逻辑
-- 通过 `LingContext` 访问基础设施
-- 通过 `@LingService` 暴露服务
-
-**关键原则**：
-
-- **零信任**：不能直接访问数据库、缓存等
-- 所有能力调用必须经过 Core 代理和鉴权
-- 在 `ling.yml` 中声明所需权限
-
-## 数据流
-
-### 业务灵元调用基础设施
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Business ling (用户灵元)                                   │
-│                                                              │
-│   userRepository.findById(id)                               │
-│         │                                                    │
-└─────────┼────────────────────────────────────────────────────┘
-          │ JDBC 调用
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Infrastructure ling (Storage)                              │
-│                                                              │
-│   LingPreparedStatementProxy.executeQuery()                 │
-│         │                                                    │
-│         ├─→ checkPermission()                               │
-│         │     │                                              │
-│         │     ├─→ LingCallContext.getLingId() → "user-ling" │
-│         │     │                                              │
-│         │     ├─→ preParsedAccessType (构造时已解析)         │
-│         │     │                                              │
-│         │     ├─→ permissionService.isAllowed(              │
-│         │     │       "user-ling", "storage:sql", READ)   │
-│         │     │                                              │
-│         │     └─→ permissionService.audit(...)              │
-│         │                                                    │
-│         └─→ target.executeQuery()                           │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Core                                                         │
-│                                                              │
-│   DefaultPermissionService.isAllowed()                      │
-│         │                                                    │
-│         ├─→ 检查白名单                                       │
-│         ├─→ 查询权限表                                       │
-│         └─→ 开发模式兜底                                     │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-> 注：`LingPreparedStatementProxy` 在构造时预解析 SQL 类型并缓存，执行时直接使用。
-> `LingStatementProxy` 则在每次执行时解析传入的 SQL。
-
-### 业务灵元间调用（方式一：@LingReference 注入 - 推荐）
-
-**消费者驱动契约**：Order 灵元（消费者）定义 `UserQueryService` 接口，User 灵元（生产者）实现
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Order ling（消费者）                                       │
-│                                                              │
-│   // Order 定义它需要的接口（在 order-api 中）               │
-│   interface UserQueryService { UserDTO findById(userId); }  │
-│                                                              │
-│   @LingReference                                             │
-│   private UserQueryService userQueryService;                │
-│                                                              │
-│   userQueryService.findById(userId);  // 直接调用           │
-│         │                                                    │
-└─────────┼────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Core                                                         │
-│                                                              │
-│   GlobalServiceRoutingProxy.invoke() (JDK 动态代理)         │
-│         │                                                    │
-│         ├─→ resolveTargetLingId() 解析目标灵元            │
-│         │     ├─→ 检查注解指定的 lingId                   │
-│         │     └─→ 遍历所有灵元查找接口实现（带缓存）         │
-│         │                                                    │
-│         ├─→ LingManager.getRuntime(lingId)              │
-│         │                                                    │
-│         ▼                                                    │
-│   SmartServiceProxy.invoke() (委托给智能代理)               │
-│         │                                                    │
-│         ├─→ LingCallContext.setLingId(callerLingId)     │
-│         ├─→ LingCallContext.startTrace() 开启链路追踪        │
-│         ├─→ RateLimiter.acquire() 限流检查        │
-│         ├─→ CircuitBreaker.isAllowed() 熔断检查   │
-│         ├─→ checkPermissionSmartly() 权限检查               │
-│         │     ├─→ @RequiresPermission 显式声明              │
-│         │     └─→ GovernanceStrategy.inferPermission() 推导 │
-│         │                                                    │
-│         ├─→ Retry logic (InvocationExecutor)      │
-│         ├─→ activeInstanceRef.get() 获取活跃实例            │
-│         ├─→ instance.enter() (引用计数+1)                    │
-│         ├─→ TCCL 劫持                                        │
-│         ├─→ method.invoke(realBean, args)                   │
-│         ├─→ TCCL 恢复                                        │
-│         ├─→ instance.exit() (引用计数-1)                     │
-│         └─→ recordAuditSmartly() 智能审计                   │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ User ling（生产者）                                        │
-│                                                              │
-│   // 实现消费者定义的接口                                    │
-│   public class UserQueryServiceImpl implements UserQueryService {
-│       @LingService(id = "find_user", desc = "查询用户")     │
-│       public UserDTO findById(String userId) { ... }        │
-│   }                                                          │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 业务灵元间调用（方式二：FQSID 协议调用）
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Order ling（消费者）                                       │
-│                                                              │
-│   context.invoke("user-ling:find_user", userId)           │
-│         │                                                    │
-└─────────┼────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Core                                                         │
-│                                                              │
-│   DefaultLingContext.invoke()                                │
-│         │                                                    │
-│         ├─→ GovernanceStrategy.inferAccessType() → EXECUTE  │
-│         ├─→ permissionService.isAllowed() 权限检查           │
-│         │                                                    │
-│         ▼                                                    │
-│   LingManager.invokeService()                             │
-│         │                                                    │
-│         ├─→ protocolServiceRegistry.get(fqsid) 查找路由      │
-│         │                                                    │
-│         ▼                                                    │
-│   LingRuntime.invokeService()                             │
-│         │                                                    │
-│         ├─→ instance.enter() (引用计数+1)                    │
-│         ├─→ TCCL 劫持                                        │
-│         ├─→ serviceMethodCache.get(fqsid) 获取方法           │
-│         ├─→ method.invoke() 反射调用                         │
-│         ├─→ TCCL 恢复                                        │
-│         └─→ instance.exit() (引用计数-1)                     │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ User ling（生产者）                                        │
-│                                                              │
-│   @LingService(id = "find_user", desc = "查询用户")         │
-│   public UserDTO findById(String userId) { ... }            │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 业务灵元间调用（方式三：接口代理调用）
-
-**消费者驱动契约**：Order 定义 `UserQueryService` 接口，通过 getService() 获取实现
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Order ling（消费者）                                       │
-│                                                              │
-│   // 获取消费者自己定义的接口实现                            │
-│   UserQueryService userService = context.getService(UserQueryService.class).get();
-│   userService.findById(userId);                             │
-│         │                                                    │
-└─────────┼────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Core                                                         │
-│                                                              │
-│   SmartServiceProxy.invoke() (JDK 动态代理)                  │
-│         │                                                    │
-│         ├─→ LingCallContext.setLingId(callerLingId)     │
-│         ├─→ LingCallContext.startTrace() 开启链路追踪        │
-│         ├─→ checkPermissionSmartly() 权限检查               │
-│         │     ├─→ @RequiresPermission 显式声明              │
-│         │     └─→ GovernanceStrategy.inferPermission() 推导 │
-│         │                                                    │
-│         ├─→ activeInstanceRef.get() 获取活跃实例            │
-│         ├─→ instance.enter() (引用计数+1)                    │
-│         ├─→ TCCL 劫持                                        │
-│         ├─→ method.invoke(realBean, args)                   │
-│         ├─→ TCCL 恢复                                        │
-│         ├─→ instance.exit() (引用计数-1)                     │
-│         └─→ recordAuditSmartly() 智能审计                   │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ User ling（生产者）                                        │
-│                                                              │
-│   // 实现消费者定义的接口                                    │
-│   public class UserQueryServiceImpl implements UserQueryService {
-│       public UserDTO findById(String userId) { ... }        │
-│   }                                                          │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-> 三种服务调用方式的区别：
->
-> - **@LingReference 注入**（推荐）：通过 LingReferenceInjector 自动注入，使用 GlobalServiceRoutingProxy 实现延迟绑定和智能路由
-> - **invoke(fqsid)**：通过 FQSID 字符串调用 `@LingService` 标注的方法
-> - **getService(Class)**：获取接口的动态代理，调用时自动路由到实现类
-
-## 服务调用方式详解
-
-### @LingReference 注入机制（推荐）
-
-@LingReference 是 LingFrame 推荐的服务调用方式，提供最接近 Spring 原生的开发体验：
-
-#### 工作原理
-
-```
-灵核应用启动
-    │
-    ▼
-LingReferenceInjector (BeanPostProcessor)
-    │
-    ├─→ 扫描所有 Bean 的 @LingReference 字段
-    │
-    ├─→ 调用 LingManager.getGlobalServiceProxy()
-    │     │
-    │     └─→ 创建 GlobalServiceRoutingProxy
-    │
-    └─→ 通过反射注入代理对象到字段
-```
-
-#### 延迟绑定机制
-
-```
-@LingReference 字段调用
-    │
-    ▼
-GlobalServiceRoutingProxy.invoke()
-    │
-    ├─→ resolveTargetLingId() 动态解析目标灵元
-    │     ├─→ 检查注解指定的 lingId
-    │     ├─→ 查询路由缓存 (ROUTE_CACHE)
-    │     └─→ 遍历所有灵元查找接口实现
-    │
-    ├─→ LingManager.getRuntime(lingId) 获取运行时
-    │
-    └─→ 委托给 SmartServiceProxy 执行治理逻辑
-```
-
-#### 使用示例
-
-```java
-// Order 灵元（消费者）定义它需要的接口（在 order-api 灵元中）
-// 路径：order-api/src/main/java/com/example/order/api/UserQueryService.java
-public interface UserQueryService {
-    Optional<UserDTO> findById(String userId);
-}
-
-// User 灵元（生产者）实现消费者定义的接口
-// 路径：user-ling/src/main/java/com/example/user/service/UserQueryServiceImpl.java
-@Component
-public class UserQueryServiceImpl implements UserQueryService {
-    @LingService(id = "find_user_by_id", desc = "根据ID查询用户")
-    @Override
-    public Optional<UserDTO> findById(String userId) {
-        return userRepository.findById(userId).map(this::toDTO);
-    }
-}
-
-// Order 灵元中使用消费者定义的接口
-@RestController
-public class OrderController {
-    
-    // 注入消费者定义的接口，由 User 灵元实现
-    @LingReference
-    private UserQueryService userQueryService;
-    
-    @GetMapping("/orders/{userId}")
-    public List<Order> getUserOrders(@PathVariable String userId) {
-        // 直接调用，框架自动路由到 User 灵元的实现
-        UserDTO user = userQueryService.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
-        
-        return orderService.findByUser(user);
-    }
-}
-```
-
-#### 配置选项
-
-| 属性       | 说明                                    | 默认值 |
-| ---------- | --------------------------------------- | ------ |
-| `lingId` | 指定目标灵元ID，为空时自动发现          | 空     |
-| `timeout`  | 调用超时时间（毫秒）                    | 3000   |
-
-#### 优势特性
-
-1. **延迟绑定**：灵元未启动时也能创建代理，运行时动态路由
-2. **智能路由**：自动路由到最新版本灵元，支持蓝绿部署
-3. **缓存优化**：接口到灵元的映射关系会被缓存，避免重复查找
-4. **故障隔离**：灵元下线时抛出明确异常，不影响其他功能
-5. **开发友好**：最接近 Spring 原生体验，学习成本最低
-
-### FQSID 协议调用
-
-适合松耦合场景，不需要接口依赖：
-
-```java
-@Service
-public class OrderService {
-    @Autowired
-    private LingContext context;
-    
-    public Order createOrder(String userId) {
-        // 通过 FQSID 直接调用服务，返回 Optional
-        Optional<UserDTO> user = context.invoke("user-ling:find_user", userId);
-        
-        if (user.isEmpty()) {
-            throw new BusinessException("用户不存在");
-        }
-        
-        return new Order(user.get());
-    }
-}
-```
-
-### 接口代理调用
-
-适合需要显式错误处理的场景（消费者定义接口，生产者实现）：
-
-```java
-@Service
-public class OrderService {
-    @Autowired
-    private LingContext context;
-    
-    public Order createOrder(String userId) {
-        // 获取接口实现（由 User 灵元提供）
-        Optional<UserQueryService> userQueryService = context.getService(UserQueryService.class);
-        
-        if (userQueryService.isEmpty()) {
-            throw new ServiceUnavailableException("用户查询服务不可用");
-        }
-        
-        UserDTO user = userQueryService.get().findById(userId)
-                .orElseThrow(() -> new BusinessException("用户不存在"));
-        return new Order(user);
-    }
-}
-```
-
-### 调用方式选择指南
-
-| 场景                     | 推荐方式           | 原因                           |
-| ------------------------ | ------------------ | ------------------------------ |
-| 灵核调用灵元             | @LingReference     | 简单，延迟绑定                 |
-| 灵元调用灵元（强依赖）   | @LingReference     | 类型安全，IDE 友好             |
-| 灵元调用灵元（松耦合）   | FQSID 协议         | 无接口依赖                     |
-| 显式错误处理             | 接口代理           | 优雅处理不可用情况             |
-| 动态发现                 | 接口代理           | 运行时获取可用服务             |
-| 可选调用                 | @LingReference     | 支持 null 检查（Optional）     |
-
-## 隔离机制
-
-### 类加载隔离
-
-LingFrame 采用三层 ClassLoader 架构，解决灵元间共享 API 的类型一致性问题：
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    AppClassLoader                            │
-│                    (灵核应用)                                 │
-│                                                              │
-│   lingframe-api (框架契约)                                   │
-│   lingframe-core                                             │
-│   Spring Boot                                                │
-│                                                              │
-└────────────────────────┬────────────────────────────────────┘
-                         │ parent
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 SharedApiClassLoader                         │
-│                 (共享 API 层)                                │
-│                                                              │
-│   order-api.jar (灵元间共享的接口和 DTO)                     │
-│   user-api.jar                                               │
-│   ...                                                        │
-│                                                              │
-└────────────────────────┬────────────────────────────────────┘
-                         │ parent
-         ┌───────────────┼───────────────┐
-         ▼               ▼               ▼
-┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-│LingCL A  │   │LingCL B  │   │LingCL C  │
-│             │   │             │   │             │
-│ Child-First │   │ Child-First │   │ Child-First │
-│ 优先加载自己 │   │ 优先加载自己 │   │ 优先加载自己 │
-└─────────────┘   └─────────────┘   └─────────────┘
-```
-
-**配置共享 API**（`application.yaml`）：
-
-```yaml
-lingframe:
-  preload-api-jars:
-    - libs/order-api.jar              # JAR 文件
-    - lingframe-examples/order-api    # Maven 灵元目录
-    - libs/*-api.jar                  # 通配符匹配
-```
-
-**白名单委派**（强制走父加载器）：
-
-- `java.*`, `javax.*`, `jdk.*`, `sun.*`
-- `com.lingframe.api.*`（框架契约层）
-- `org.slf4j.*`（日志门面）
-- **SharedApiClassLoader 中的所有类**（自动检测）
-
-> 详见 [共享 API 设计规范](shared-api-guidelines.md)
-
-### Spring 上下文隔离
-
-每个灵元运行在**完全隔离**的 Spring ApplicationContext 中：
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│              LINGCORE Context (灵核应用)                         │
-│                                                              │
-│   LingManager, ContainerFactory, PermissionService        │
-│   公共 Bean...                                               │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-
-┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-│  Context A  │   │  Context B  │   │  Context C  │
-│ (ling A)  │   │ (ling B)  │   │ (ling C)  │
-│             │   │             │   │             │
-│ 独立 Bean   │   │ 独立 Bean   │   │ 独立 Bean   │
-│ 独立配置    │   │ 独立配置    │   │ 独立配置    │
-└─────────────┘   └─────────────┘   └─────────────┘
-```
-
-> **设计说明**：灵元上下文**不是**灵核的子上下文。
-> 这是刻意设计的，原因：
-> 1. **零信任**：灵元不能通过 `@Autowired` 直接访问灵核 Bean
-> 2. **干净卸载**：无父子引用，避免 ClassLoader 泄漏
-> 3. **真正隔离**：每个灵元是独立的 Spring Boot 应用
->
-> Core Bean（`LingManager`、`LingContext`）通过 `registerBeans()` 手动注入。
-
-## 生态扩展 (Ecosystem SPI)
-
-为了维持核心（Core）的纯粹性，LingFrame 设计了一套高维度的外骨骼扩展机制（位于 `lingframe-runtime` 阶段，主要依托 Spring Boot Starter 装配），允许开发者以非侵入的方式将隔离的灵元与企业现有的基础设施生态（如 Nacos、Apollo、SkyWalking 等）进行缝合：
-
-### 核心扩展点概览
-
-1. **`LingInvocationFilter` (服务调用过滤器)**
-   - **作用**：基于责任链机制，拦截对 `@LingService` 导出的服务的跨灵元调用。 
-   - **场景**：分布式链路追踪（Trace 上下文透传）、全局限流、Metrics 指标采集。
-2. **`ServiceExporter` (服务导出器) 与 `ServiceExporterListener`**
-   - **作用**：监听灵元的生命周期变化，当灵元启动并挂载服务时提取元数据并向外推送。
-   - **场景**：将局部 `Ling` 灵元服务自动注册至 Consul 或 Nacos 注册中心。
-3. **`LingContextCustomizer` (上下文定制器)**
-   - **作用**：在每个灵元独有的 Spring `ApplicationContext` 刷新（`refresh`）前夕调用，允许动态修改或重新绑定局部上下文环境配置。
-   - **场景**：在灵元启动前注入 Apollo 动态配置数据源，或挂载特定的全局拦截器代理。
-4. **`LingDeployService` (包拉取部署代理)**
-   - **作用**：充当宿主应用侧的代理层，负责从各种不同协议仓库地址中拉取压缩制品后再对接微内核。
-   - **场景**：解析 `oss://` 等非标路径将制品下载至本地。
-
-生态扩展不属于微内核（Microkernel），它们是构建在微内核外部的“胶水层”，确保业务特性迭代不受限于底座本身。
-
-## 生命周期
-
-### 灵元安装流程
-
-```
-LingManager.install(lingId, version, jarFile)
-    │
-    ├─→ 安全验证 (DangerousApiVerifier)
-    │
-    ├─→ createLingClassLoader(file)     // Child-First 类加载器
-    │
-    ├─→ containerFactory.create()          // SPI 创建容器
-    │
-    ├─→ 创建 LingInstance
-    │
-    ├─→ 获取或创建 LingRuntime
-    │
-    ├─→ runtime.addInstance(instance, context, isDefault)  // 蓝绿部署
-    │       │
-    │       ├─→ instancePool.add(instance)     // 添加到实例池
-    │       ├─→ container.start(context)       // 启动 Spring 子上下文
-    │       ├─→ serviceRegistry.register()     // 注册 @LingService
-    │       ├─→ ling.onStart(context)        // 生命周期回调
-    │       └─→ instancePool.setDefault(instance)  // 设置为默认实例
-    │
-    ├─→ [devMode] runtime.activate()           // 开发模式下自动激活
-    │
-    └─→ 旧版本进入死亡队列，等待引用计数归零后销毁
-```
-
-### 蓝绿部署
-
-```
-时间线 ─────────────────────────────────────────────────────→
-
-v1.0 运行中
-    │
-    │  新版本安装请求
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ v1.0 (active)                                                │
-│ 继续处理请求                                                  │
-│                                                              │
-│                    v2.0 启动中...                            │
-│                    ┌─────────────────────────────────────┐  │
-│                    │ 创建 ClassLoader                     │  │
-│                    │ 启动 Spring Context                  │  │
-│                    │ 注册 @LingService                    │  │
-│                    └─────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-    │
-    │  原子切换
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ v2.0 (active)                                                │
-│ 接收新请求                                                    │
-│                                                              │
-│ v1.0 (dying)                                                 │
-│ 处理剩余请求，引用计数递减                                     │
-└─────────────────────────────────────────────────────────────┘
-    │
-    │  引用计数归零
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ v2.0 (active)                                                │
-│                                                              │
-│ v1.0 销毁                                                    │
-│ - ling.onStop()                                           │
-│ - Spring Context.close()                                    │
-│ - ClassLoader 释放                                          │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 灵元对应关系
-
-| 架构层         | Maven 灵元                       | 说明                 |
-| -------------- | -------------------------------- | -------------------- |
-| Core           | `lingframe-core`                 | 治理内核             |
-| Core           | `lingframe-api`                  | 契约（接口）         |
-| Core           | `lingframe-spring-boot3-starter` | Spring Boot 集成     |
-| Infrastructure | `lingframe-infra-storage`      | 存储代理             |
-| Infrastructure | `lingframe-infra-cache`        | 缓存代理             |
-| Business       | 用户灵元                         | 业务逻辑             |
+本文描述的是**当前代码里真实落地的 `0.3.0` 对外架构**。  
+它刻意避开已经不再符合运行时现状的旧叙事。
+
+如果用一句话概括这份架构文档的重点，那就是：
+
+> 灵珑当前架构不只是在回答“灵元怎么被加载”，  
+> 也在正式回答“灵元怎么被治理、被收敛、被规范地下线与清理”。
+
+---
+
+## 设计原则
+
+- **治理主链唯一**：治理能力尽量走同一条 Pipeline，而不是每个入口各自实现一套
+- **状态写入权明确**：实例生命周期状态与宏观运行时状态不能混写在同一组对象里
+- **执行模式显式化**：真实执行、模拟执行、仅治理借道都要通过统一模式表达
+- **解释性先走事件**：Dashboard 与后续控制面应消费真实内核事件，而不是维护影子模型
+- **长期运行职责前置**：卸载、清理、泄漏诊断属于运行时治理本身，不是附属工具
+- **热卸载必须有秩序**：排空、资源驱逐、清理与状态收口要被视为正式运行时路径
+
+---
+
+## 模块布局
+
+| 模块 | `0.3.0` 中的角色 |
+| :-- | :-- |
+| `lingframe-api` | 契约、注解、异常、安全抽象 |
+| `lingframe-core` | Pipeline、路由、运行时状态、生命周期编排、事件总线、治理逻辑 |
+| `lingframe-runtime` | Spring Boot 集成、Web 治理过滤器、Bean 拦截、Starter 装配 |
+| `lingframe-dashboard` | 治理控制面、模拟 API、灰度操作、SSE 事件流 |
+| `lingframe-infrastructure` | 基础设施代理路径，目前以存储与缓存为已实现参考路径 |
+| `lingframe-examples` | 示例灵核应用与演示灵元 |
+
+---
+
+## 调用治理 Pipeline
+
+`InvocationPipelineEngine` 已经成为正式的统一治理执行主链。  
+`FilterRegistry` 负责组装内建 Filter 与 SPI Filter，并在启动时校验阶段顺序约束。
+
+### 内建阶段
+
+| Filter | 职责 |
+| :-- | :-- |
+| `TrafficMetricsFilter` | 记录请求事实与早期指标、追踪信息 |
+| `MacroStateGuardFilter` | 当宏观运行时状态不安全时提前拒绝请求 |
+| `CanaryRoutingFilter` | 选择目标实例并处理灰度路由 |
+| `ResilienceGovernanceFilter` | 执行熔断、限流等韧性治理决策 |
+| `ContextIsolationFilter` | 解析目标类、方法与 ClassLoader 隔离上下文 |
+| `GovernanceDecisionFilter` | 收束超时、规则来源等治理决策 |
+| `PermissionGovernanceFilter` | 执行最终权限校验 |
+| `ThreadIsolationGovernanceFilter` | 执行线程隔离与切换 |
+| `TerminalInvokerFilter` | 执行真实终端调用、生成模拟结果，或在特定模式下跳过终端执行 |
+
+`0.3.0` 的关键，不只是“这些 Filter 存在”，  
+而是它们已经组成了对多个入口都可复用的正式运行时主链。
+
+---
+
+## 执行模式
+
+`InvocationExecutionMode` 让 Pipeline 具备了明确的模式感知能力。
+
+| 模式 | 含义 | 典型用途 |
+| :-- | :-- | :-- |
+| `NORMAL` | 执行治理并进入真实终端调用 | 灵元间标准调用 |
+| `SIMULATION` | 跑完整治理链，但不产生真实副作用 | Dashboard 模拟与解释 |
+| `GOVERN_ONLY` | 执行治理，但不在 Pipeline 内做终端调用 | Spring Web 请求与灵核 Bean 拦截，真实业务仍由原框架路径执行 |
+
+这也是更多入口能够共用同一套治理内核，而不是各自维护实现分支的关键。
+
+---
+
+## 生命周期编排
+
+`DefaultLingLifecycleEngine` 是 `0.3.0` 中已经落地的顶层生命周期编排器。
+
+它负责把部署、重载、卸载意图翻译成有序运行时动作，  
+但不会把状态写入权重新揉回一个对象里；真正的状态写入仍然由 `InstanceCoordinator` 与 `RuntimeCoordinator` 负责。
+
+### 部署
+
+- 校验灵元定义与安全约束
+- 创建 ClassLoader 与容器
+- 在首个实例事实出现前先注册运行时聚合
+- 驱动实例进入 `LOADING -> STARTING -> READY`
+- 先把实例放入池中，再向上发布 `READY` 事实
+
+### 重载
+
+- 先旁路部署一个替代实例
+- 保留原实例的 default/canary 角色与 labels
+- 切流到新实例
+- 在新实例 ready 后再卸载旧实例
+
+### 卸载
+
+- 先把实例标记为 `STOPPING`
+- 等待飞行中请求排空，直到空闲或超时
+- 驱逐服务、Pipeline 持有资源、缓存与 ClassLoader 关联状态
+- 把泄漏诊断纳入卸载完成流程
+
+这也是 `0.3.0` 能被视为“架构收敛版”的重要原因之一。
+
+这里真正特别的，不是系统“支持卸载”这件事本身，  
+而是卸载已经被当成需要正式编排、清理和诊断的运行时职责。
+
+---
+
+## Shared API 边界
+
+`SharedApiManager` 把 `Shared API` 的边界显式化到了启动流程里。
+
+- preload 配置好的共享 JAR 或 classes 目录
+- 注册共享包前缀
+- freeze 共享边界
+- 然后才允许灵元基于冻结后的契约视图加载
+
+这不是一个“方便一点的加载顺序”，  
+而是明确的进程级契约规则。新的共享契约可以在 freeze 前引入，但已经加载过的共享契约不能在同一进程里热更新或热卸载。
+
+---
+
+## 运行时状态所有权模型
+
+`0.3.0` 正式把运行时状态收束为两层。
+
+### 实例层
+
+- 状态类型：`InstanceStatus`
+- 状态所有者：`InstanceCoordinator`
+- 作用：描述单个 `LingInstance` 从 `CREATED` 到 `DEAD` 的生命周期
+
+典型状态包括：
+
+- `CREATED`
+- `LOADING`
+- `STARTING`
+- `READY`
+- `STOPPING`
+- `DEAD`
+- `ERROR`
+
+### 运行时层
+
+- 状态类型：`RuntimeStatus`
+- 状态所有者：`RuntimeCoordinator`
+- 作用：描述灵核侧视角下的宏观可用性
+
+典型状态包括：
+
+- `INACTIVE`
+- `ACTIVE`
+- `DEGRADED`
+- `STOPPING`
+- `REMOVED`
+
+### 联动方式
+
+两层状态通过事件联动，而不是对象互相写状态：
+
+- 实例层发布事实
+- `RuntimeCoordinator` 订阅这些事实
+- 运行时层基于快照重新聚合宏观状态
+
+这就是 `0.3.0` 最核心的收敛点之一。
+
+如果你想继续看状态所有权和联动链路的完整说明，直接读 [运行时双层状态机架构设计](runtime-dual-state-machine-architecture.md)。
+
+---
+
+## 治理入口
+
+同一套治理内核已经被复用到多个入口。
+
+| 入口 | 适配器 | 如何使用内核 |
+| :-- | :-- | :-- |
+| 灵元服务调用 | Core 标准调用路径 | 通过 `NORMAL` 模式执行完整 Pipeline |
+| Spring Boot 2 / 3 Web 请求 | `LingWebGovernanceFilter` | 通过 `GOVERN_ONLY` 借道治理，终端分发仍由 Web 框架完成 |
+| 灵核 Bean 方法 | `LingCoreBeanGovernanceInterceptor` | 在 AOP 拦截中通过 `GOVERN_ONLY` 复用治理能力 |
+| Dashboard 模拟 | `SimulateService` | 通过 `SIMULATION` 跑真实治理链路但不产生真实副作用 |
+
+这也是 `0.3.0` 与更早“功能拼装阶段”的本质差别。
+
+---
+
+## 可观测性与清理
+
+`0.3.0` 进一步拉近了治理与运维的关系。
+
+- `EngineTrace` 用来保留可解释的决策追踪
+- `MonitoringEvents` 定义 trace、audit、alert、circuit-breaker、leak-detection 等统一事件语义
+- `LogStreamService` 通过 SSE 把这些事件流推送到 Dashboard
+- `InvocationPipelineEngine.evictLingResources` 与方法缓存驱逐支撑卸载清理
+- `DefaultLeakDetector` 在开发态与生产态采用不同诊断策略
+
+架构上的重要变化在于：Dashboard 开始消费**真实内核证据**，而不是单独维护一层解释视图。
+
+这也是灵珑和普通“动态加载 + 管理后台”组合思路的差异所在：  
+控制面消费的是同一条运行时主链上的真实事件，而不是旁路出来的一层影子解释。
+
+---
+
+## 当前边界
+
+当前对外公开的 `0.3.0` 架构仍然有清晰边界：
+
+- 它仍然是**单进程**治理内核
+- `Shared API` 仍然是**进程级契约边界**
+- 一旦共享边界已经 freeze，共享契约变更仍然需要重启进程
+- 基础设施代理当前以存储与缓存路径最清晰，更多代理生态仍在后续演进
+
+这些边界是刻意保留的，也应该在对外文档中持续保持可见。

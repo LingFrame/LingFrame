@@ -1,426 +1,212 @@
 # 业务灵元开发指南
 
-本文档介绍如何开发 LingFrame 业务灵元。
+这份指南讲的是：如何写一个符合公开 `0.3.0` 运行时口径的业务灵元。
 
-## 创建灵元项目
+---
 
-### 1. Maven 配置
+## 灵元到底是什么
+
+灵元是一个业务单元，它：
+
+- 运行在灵核进程里
+- 拥有自己的 classloader 与生命周期
+- 通过灵珑契约暴露服务
+- 在治理内核之下运行
+
+如果你对词汇还不熟，先看 [术语表](glossary.md)。
+
+---
+
+## 一个最小可用灵元需要什么
+
+- 一个 Maven 模块
+- 一个实现 `Ling` 的入口类
+- 一个 `ling.yml` 描述文件
+
+### 1. Maven 依赖
 
 ```xml
-<project>
-    <parent>
+<dependencies>
+    <dependency>
+        <groupId>com.lingframe</groupId>
+        <artifactId>lingframe-api</artifactId>
+        <version>${lingframe.version}</version>
+    </dependency>
+
+    <dependency>
         <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.6</version>
-    </parent>
-
-    <dependencies>
-        <!-- LingFrame API -->
-        <dependency>
-            <groupId>com.lingframe</groupId>
-            <artifactId>lingframe-api</artifactId>
-            <version>${lingframe.version}</version>
-        </dependency>
-
-        <!-- Spring Boot -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
-        </dependency>
-    </dependencies>
-</project>
+        <artifactId>spring-boot-starter</artifactId>
+    </dependency>
+</dependencies>
 ```
 
-### 2. 灵元入口类
+### 2. 入口类
 
 ```java
-package com.example.myling;
-
-import com.lingframe.api.context.LingContext;
-import com.lingframe.api.ling.Ling;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
 @SpringBootApplication
 public class MyLing implements Ling {
 
     @Override
     public void onStart(LingContext context) {
-        System.out.println("灵元启动: " + context.getLingId());
+        System.out.println("Ling started: " + context.getLingId());
     }
 
     @Override
     public void onStop(LingContext context) {
-        System.out.println("灵元停止: " + context.getLingId());
+        System.out.println("Ling stopped: " + context.getLingId());
     }
 }
 ```
 
-### 3. 灵元元数据
-
-创建 `src/main/resources/ling.yml`：
+### 3. `ling.yml`
 
 ```yaml
-# 基础元数据
 id: my-ling
 version: 1.0.0
-provider: "My Company"
-description: "我的灵元"
-mainClass: "com.example.myling.MyLing"
+description: My first ling
+mainClass: com.example.myling.MyLing
+```
 
-# 依赖声明（可选）
-dependencies:
-  - id: "base-ling"
-    minVersion: "1.0.0"
+---
 
-# 治理配置
+## 如何暴露服务
+
+在生产者实现类上使用 `@LingService`。
+
+灵珑遵循"消费者驱动契约"：
+
+- 由消费者定义它需要的接口
+- 由生产者灵元实现这份接口
+
+```java
+public interface UserQueryService {
+    Optional<UserDTO> findById(String userId);
+}
+```
+
+```java
+@Component
+public class UserQueryServiceImpl implements UserQueryService {
+
+    @LingService(id = "find_user", desc = "Query user by ID")
+    @Override
+    public Optional<UserDTO> findById(String userId) {
+        return userRepository.findById(userId).map(this::toDTO);
+    }
+}
+```
+
+最终服务标识格式为：`lingId:serviceId`。
+
+---
+
+## 如何调用其他灵元
+
+推荐顺序如下：
+
+### 方式 1：`@LingReference`
+
+```java
+@Component
+public class OrderService {
+
+    @LingReference
+    private UserQueryService userQueryService;
+
+    public Order createOrder(String userId) {
+        UserDTO user = userQueryService.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        return new Order(user);
+    }
+}
+```
+
+### 方式 2：`LingContext.getService()`
+
+当你想显式处理"服务是否存在"时使用。
+
+### 方式 3：`LingContext.invoke()`
+
+当你明确想通过 FQSID 做更松耦合调用时再使用。
+
+---
+
+## 如何声明治理要求
+
+### 在 `ling.yml` 中声明权限
+
+```yaml
 governance:
   permissions:
     - methodPattern: "storage:sql"
       permissionId: "READ"
-    - methodPattern: "cache:redis"
+    - methodPattern: "cache:local"
       permissionId: "WRITE"
-  
-  audits:
-    - methodPattern: "com.example.*Service#delete*"
-      action: "DELETE_OPERATION"
-      enabled: true
-
-# 自定义属性（可选）
-properties:
-  custom-config: "value"
-  timeout: 5000
 ```
 
-## 暴露服务
-
-使用 `@LingService` 注解暴露服务。
-
-**消费者驱动契约**：接口由消费者定义，生产者实现。例如 Order 灵元定义 `UserQueryService`，User 灵元实现它：
+### 通过注解补充语义
 
 ```java
-// ========== 消费者定义接口（在 order-api 灵元中）==========
-public interface UserQueryService {
-    Optional<UserDTO> findById(String userId);
-}
-
-// ========== 生产者实现接口（在 user-ling 灵元中）==========
-package com.example.user.service;
-
-import com.lingframe.api.annotation.Auditable;
-import com.lingframe.api.annotation.LingService;
-import com.lingframe.api.annotation.RequiresPermission;
-import org.springframework.stereotype.Component;
-
-@Component
-public class UserQueryServiceImpl implements UserQueryService {
-
-    @LingService(id = "find_user", desc = "根据ID查询用户")
-    @Override
-    public Optional<UserDTO> findById(String userId) {
-        return userRepository.findById(userId).map(this::toDTO);
-    }
-}
-
-// 另一个服务示例：带权限和审计
-@Component  
-public class UserAdminServiceImpl implements UserAdminService {
-
-    @LingService(id = "create_user", desc = "创建新用户", timeout = 5000)
-    @RequiresPermission("user:write")
-    @Auditable(action = "CREATE_USER", resource = "user")
-    @Override
-    public UserDTO createUser(CreateUserRequest request) {
-        return toDTO(userRepository.save(toEntity(request)));
-    }
+@RequiresPermission("user:write")
+@Auditable(action = "CREATE_USER", resource = "user")
+public UserDTO createUser(CreateUserRequest request) {
+    ...
 }
 ```
-
-### @LingService 属性
-
-| 属性      | 说明                  | 默认值 |
-| --------- | --------------------- | ------ |
-| `id`      | 服务短 ID，组成 FQSID | 必填   |
-| `desc`    | 服务描述              | 空     |
-| `timeout` | 超时时间（毫秒）      | 3000   |
-
-### FQSID 格式
-
-服务的全局唯一标识：`lingId:serviceId`
-
-例如：`user-ling:find_user`
-
-## 调用其他灵元服务
-
-LingFrame 提供三种服务调用方式，推荐优先级如下：
-
-### 方式一：@LingReference 注入（强烈推荐）
-
-这是最接近 Spring 原生体验的调用方式。
-
-**消费者驱动契约**：Order 灵元（消费者）定义它需要的接口，User/Payment 灵元（生产者）实现：
-
-```java
-// ========== 第1步：消费者定义接口（在 order-api 灵元中）==========
-// 位置：order-api/src/main/java/com/example/order/api/
-
-// Order 灵元定义它需要的用户查询能力
-public interface UserQueryService {
-    Optional<UserDTO> findById(String userId);
-}
-
-// Order 灵元定义它需要的支付能力
-public interface PaymentService {
-    PaymentResult processPayment(String userId, BigDecimal amount);
-}
-
-// ========== 第2步：生产者实现接口（在各自灵元中）==========
-// User 灵元实现 Order 定义的 UserQueryService
-// 位置：user-ling/src/main/java/.../UserQueryServiceImpl.java
-@Component
-public class UserQueryServiceImpl implements UserQueryService {
-    @LingService(id = "find_user", desc = "查询用户")
-    @Override
-    public Optional<UserDTO> findById(String userId) {
-        return userRepository.findById(userId).map(this::toDTO);
-    }
-}
-
-// Payment 灵元实现 Order 定义的 PaymentService
-// 位置：payment-ling/src/main/java/.../PaymentServiceImpl.java
-@Component
-public class PaymentServiceImpl implements PaymentService {
-    @LingService(id = "process_payment", desc = "处理支付", timeout = 5000)
-    @Override
-    public PaymentResult processPayment(String userId, BigDecimal amount) {
-        return paymentGateway.charge(userId, amount);
-    }
-}
-
-// ========== 第3步：消费者使用自己定义的接口 ==========
-// 位置：order-ling/src/main/java/.../OrderService.java
-@Component
-public class OrderService {
-
-    @LingReference
-    private UserQueryService userQueryService;  // 自动注入，由 User 灵元实现
-
-    @LingReference
-    private PaymentService paymentService;  // 自动注入，由 Payment 灵元实现
-
-    public Order createOrder(String userId, List<Item> items) {
-        // 直接调用，框架自动路由到生产者的实现
-        UserDTO user = userQueryService.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
-
-        BigDecimal total = calculateTotal(items);
-        PaymentResult result = paymentService.processPayment(userId, total);
-        
-        return new Order(user, items, result);
-    }
-}
-```
-
-**@LingReference 优点：**
-- 代码最简洁，接近 Spring 原生体验
-- 支持延迟绑定，灵元未启动时也能创建代理
-- 自动路由到最新版本灵元
-- 支持可选的 lingId 指定和超时配置
-- 通过 GlobalServiceRoutingProxy 实现智能路由
-
-### 方式二：LingContext.getService()
-
-适合需要显式错误处理的场景：
-
-```java
-@Component
-public class OrderService {
-
-    @Autowired
-    private LingContext context;
-
-    public Order createOrder(String userId, List<Item> items) {
-        // 获取消费者定义的接口的实现（由 User 灵元提供）
-        Optional<UserQueryService> userQueryService = context.getService(UserQueryService.class);
-        
-        if (userQueryService.isEmpty()) {
-            throw new RuntimeException("用户查询服务不可用");
-        }
-        
-        UserDTO user = userQueryService.get().findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
-        return new Order(user, items);
-    }
-}
-```
-
-### 方式三：LingContext.invoke() FQSID 调用
-
-适合松耦合场景，不需要接口依赖：
-
-```java
-@Component
-public class OrderService {
-
-    @Autowired
-    private LingContext context;
-
-    public Order createOrder(String userId, List<Item> items) {
-        // 通过 FQSID 直接调用生产者的服务
-        Optional<UserDTO> user = context.invoke("user-ling:find_user", userId);
-        
-        if (user.isEmpty()) {
-            throw new RuntimeException("用户不存在");
-        }
-        
-        return new Order(user.get(), items);
-    }
-}
-```
-
-## 权限声明
-
-### 显式声明
-
-```java
-@RequiresPermission("user:export")
-public void exportUsers() { ... }
-```
-
-### 智能推导
-
-框架会根据方法名前缀自动推导权限：
-
-| 前缀                                           | AccessType |
-| ---------------------------------------------- | ---------- |
-| `get`, `find`, `query`, `list`, `select`       | READ       |
-| `create`, `save`, `insert`, `update`, `delete` | WRITE      |
-| 其他                                           | EXECUTE    |
 
 ### 开发模式
-
-开发时可在配置文件中开启宽松模式，权限不足仅警告：
 
 ```yaml
 lingframe:
   dev-mode: true
 ```
 
-## 审计日志
+---
 
-### 显式声明
+## 如何打包与加载
 
-```java
-@Auditable(action = "EXPORT_DATA", resource = "user")
-public void exportUsers() { ... }
-```
+### 开发路径
 
-### 自动审计
+让灵核指向源码根目录，边开发边重新编译灵元。
 
-写操作（WRITE）和执行操作（EXECUTE）会自动记录审计日志。
+### 生产路径
 
-## 事件通信
-
-### 发布事件
-
-```java
-public class UserCreatedEvent implements LingEvent {
-    private final String userId;
-    
-    public UserCreatedEvent(String userId) {
-        this.userId = userId;
-    }
-    
-    public String getUserId() {
-        return userId;
-    }
-}
-
-// 发布
-context.publishEvent(new UserCreatedEvent("123"));
-```
-
-### 监听事件
-
-```java
-@Component
-public class UserEventListener implements LingEventListener<UserCreatedEvent> {
-
-    @Override
-    public void onEvent(UserCreatedEvent event) {
-        System.out.println("用户创建: " + event.getUserId());
-    }
-}
-```
-
-## 打包部署
-
-### 生产模式
+把灵元打成 jar，放入 `ling-home` 目录。
 
 ```bash
 mvn clean package
-# 生成 target/my-ling.jar
 ```
 
-将 JAR 放入灵核应用的 Lings 目录，框架会自动扫描并加载。
+---
 
-### 开发模式
+## 运行时已经替你做了什么
 
-在灵核应用的配置文件中指向编译输出目录：
+在 `0.3.0` 里，业务灵元不需要自己去实现治理内核。
 
-```yaml
-lingframe:
-  dev-mode: true
-  Ling-roots:
-    - "../my-ling"
-```
+运行时已经提供：
 
-修改代码后重新编译，HotSwapWatcher 会自动检测 target/classes 中的变化并热重载。
+- 统一调用治理
+- 生命周期协调
+- 灰度路由
+- 模拟支持
+- 卸载清理钩子
+- 泄漏诊断
 
-## 框架治理能力
+你的主要职责是：
 
-以下能力由 **LingFrame 核心**提供，业务灵元无需自行实现：
+- 把契约写清楚
+- 把业务实现写干净
+- 把权限声明写诚实
 
-| 能力 | 说明 | 灵元需要做什么 |
-|------|------|----------------|
-| 熔断 | 服务不可用时自动熔断 | 无需处理 |
-| 降级 | 熔断后返回降级响应 | 可选：提供 `@Fallback` 方法 |
-| 重试 | 失败自动重试 | 无需处理 |
-| 超时 | 调用超时控制 | 可在 `@LingService` 中配置 |
-| 限流 | 请求频率限制 | 无需处理 |
-| 监控 | 调用链路追踪 | 无需处理 |
-
-**好处**：业务灵元只需关注业务逻辑，治理策略可通过配置动态调整。
+---
 
 ## 最佳实践
 
-1. **消费者驱动契约**：消费者定义接口，生产者实现（详见 [共享 API 设计规范](shared-api-guidelines.md)）
-2. **服务调用优先级**：@LingReference > getService() > invoke()
-3. **依赖最小化**：灵元只依赖 `lingframe-api`，不要依赖 `lingframe-core`
-4. **权限声明**：在 `ling.yml` 中声明所需权限
-5. **服务粒度**：一个 `@LingService` 对应一个业务操作
-6. **异常处理**：使用 `LingException` 及其子类
-7. **日志规范**：使用 SLF4J，避免直接 System.out
-8. **接口设计**：消费者定义精简的接口，只包含自己需要的方法
+- 第一批灵元尽量小
+- `Shared API` 只放契约
+- 第一条调用路径优先用 `@LingReference`
+- 在 `ling.yml` 中显式声明权限
+- 用 SLF4J 日志
+- 普通业务灵元不要直接依赖 `lingframe-core`
 
-## 常见问题
-
-### ClassNotFoundException
-
-检查类加载器隔离，确保依赖的类在灵元 JAR 中或父加载器可见。
-
-### 权限被拒绝
-
-1. 检查 `ling.yml` 中的权限声明
-2. 开发时开启 `lingframe.dev-mode: true`
-
-### @LingReference 注入失败
-
-1. 确保目标灵元已启动并注册了对应的服务 Bean
-2. 检查接口类型是否匹配
-3. 如果指定了 lingId，确保灵元ID正确
-
-### 热重载不生效
-
-1. 确保配置了 `lingframe.dev-mode: true`
-2. 确保在 `Ling-roots` 中配置了灵元的 target/classes 目录
-3. 重新编译后等待 500ms（防抖延迟）
+如果你下一步要看契约边界，去 [Shared API 设计规范](shared-api-guidelines.md)；如果你要看基础设施代理模式，去 [基础设施开发指南](infrastructure-development.md)。

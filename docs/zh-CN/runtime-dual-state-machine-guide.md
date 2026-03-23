@@ -1,6 +1,10 @@
-# 运行时双层状态机技术指导
+# 运行时双层状态机技术指南
 
 本文档面向第一次接触这套设计的人，重点不是讲“理念有多好”，而是帮助你真正读懂、调试、扩展这套架构。
+
+它重点回答的是：**怎么顺着代码看、哪里容易出错、扩展时怎么不把边界弄坏**。
+
+如果你想先看设计动机与稳定约束，请先读 [运行时双层状态机架构设计](runtime-dual-state-machine-architecture.md)。
 
 ## 先建立一个最小心智模型
 
@@ -10,7 +14,7 @@
 
 1. **实例状态** 由 `InstanceCoordinator` 写
 2. **运行时状态** 由 `RuntimeCoordinator` 写
-3. **生命周期编排** 由 engine / manager 组织顺序，但不直接掌握状态真源
+3. **生命周期编排** 由生命周期引擎组织顺序，但不直接掌握状态真源
 
 如果你能始终守住这三句话，后面再读代码就不会乱。
 
@@ -56,7 +60,7 @@
 
 ### `LingRuntime`
 
-它是运行时宿主，不是运行时状态机所有者。
+它是运行时聚合体，不是运行时状态机所有者。
 
 它负责：
 
@@ -147,25 +151,6 @@
 
 这种瞬时割裂在治理框架里非常危险。
 
-## 为什么 `LingRuntime` 不持有状态机后，架构反而更清晰
-
-很多人第一反应是：
-
-“对象有状态，不就应该把状态机放对象里吗？”
-
-这句话只对了一半。
-
-对实例层来说，状态机跟着 `LingInstance` 走是合理的，因为它描述的是这个对象自己的生命周期事实。
-
-但对运行时层来说，`LingRuntime` 不是单纯的“状态对象”，它还是宿主、统计容器、实例池容器。如果把 runtime FSM 也塞进去，编排层就很容易直接拿它改状态，最后又回到“谁都能写”的老路。
-
-所以当前设计是：
-
-- `LingInstance` 内部保留 FSM，但不开放写权限
-- `LingRuntime` 完全不保留 runtime FSM，只读 `RuntimeCoordinator`
-
-这两个选择连在一起，才构成完整边界。
-
 ## 常见误解
 
 ### 误解一：双层状态机就是两个完全独立的状态机
@@ -198,21 +183,6 @@
 - 状态联动的边界会重新消失
 
 快照虽然多了一层，但它把边界保住了。
-
-### 误解四：既然 `RuntimeStatus` 混了事实态和意图态，就应该立刻继续抽象
-
-不一定。
-
-当前这一步收敛的目标是先把边界稳住，而不是把抽象做得无限漂亮。
-
-只要你已经明确知道：
-
-- `STOPPING` 本质上是运维意图态
-- 它会压制实例层的向上聚合
-
-那这套实现就是可解释、可维护的。
-
-后续要不要继续拆“事实态 / 命令态”，要看真实复杂度是否配得上抽象成本。
 
 ## 扩展时怎么做，才不容易把架构搞坏
 
@@ -262,7 +232,7 @@
 
 优先看：
 
-1. `DefaultLingLifecycleEngine.deployInternal()`
+1. `DefaultLingLifecycleEngine.deploy()`
 2. `InstanceCoordinator.prepare()/start()/markReady()`
 3. `RuntimeCoordinator.onInstanceStateChanged()`
 
@@ -301,7 +271,7 @@
 4. 是否让 `InstancePool` 承担了超出成员关系的职责
 5. 是否让编排层直接改运行时状态而不是通过 coordinator
 6. 是否破坏了事件联动链
-7. 是否把“事实状态”和“运维意图”进一步混乱化
+7. 是否让这套状态边界变得更难向下一个维护者解释
 
 只要其中任意一条答案是“是”，就要谨慎。
 
@@ -310,16 +280,16 @@
 如果你完全不懂这套设计，按下面顺序读最稳：
 
 1. 本文档
-2. `InstanceStatus`
-3. `RuntimeStatus`
-4. `LingInstance`
-5. `InstanceCoordinator`
-6. `RuntimeCoordinator`
-7. `InstancePool`
-8. `LingRuntime`
-9. `DefaultLingLifecycleEngine`
-10. `LingUnloadCoordinator`
-11. [运行时双层状态机架构设计](runtime-dual-state-machine-architecture.md)
+2. [运行时双层状态机架构设计](runtime-dual-state-machine-architecture.md)
+3. `InstanceStatus`
+4. `RuntimeStatus`
+5. `LingInstance`
+6. `InstanceCoordinator`
+7. `RuntimeCoordinator`
+8. `InstancePool`
+9. `LingRuntime`
+10. `DefaultLingLifecycleEngine`
+11. `LingUnloadCoordinator`
 
 ## 最后一句建议
 

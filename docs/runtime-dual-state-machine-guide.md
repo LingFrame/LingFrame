@@ -2,6 +2,10 @@
 
 This guide is for someone who has never seen this architecture before and needs a practical way to understand, debug, and extend it.
 
+It is focused on **how to follow the code, where to debug, and how to change the model without breaking boundaries**.
+
+If you want the architectural rationale first, read [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md).
+
 ## Start With Three Sentences
 
 Do not try to memorize every class first.
@@ -10,7 +14,7 @@ Just remember:
 
 1. `InstanceCoordinator` writes instance state.
 2. `RuntimeCoordinator` writes runtime state.
-3. the engine / manager orchestrate order, but they do not own state truth.
+3. the lifecycle engine orchestrates order, but it does not own state truth.
 
 If you keep these three sentences in mind, the code becomes much easier to read.
 
@@ -56,7 +60,7 @@ It is not the lifecycle owner and not the runtime state machine.
 
 ### `LingRuntime`
 
-The host view of a runtime, not the owner of runtime state.
+The aggregate runtime view, not the owner of runtime state.
 
 It holds:
 
@@ -140,25 +144,6 @@ Without that order, you can briefly get:
 
 That kind of split-brain moment is dangerous in a governance framework.
 
-## Why Removing the Runtime FSM From `LingRuntime` Clarifies the Architecture
-
-A common first reaction is:
-
-"If an object has state, why not keep the FSM inside the object?"
-
-That is only half true.
-
-For instances, it works because the FSM describes the lifecycle fact of that exact object.
-
-For runtime, `LingRuntime` is not just a state object. It is also the host view, stats holder, and instance-pool owner. Once the runtime FSM lives there, orchestration code is strongly tempted to mutate it directly.
-
-So the design intentionally becomes asymmetric:
-
-- `LingInstance` keeps an internal FSM but exposes no public write surface
-- `LingRuntime` does not keep a runtime FSM at all and reads through `RuntimeCoordinator`
-
-That asymmetry is a feature, not an inconsistency.
-
 ## Common Misunderstandings
 
 ### "Two-layer FSM means two totally independent FSMs"
@@ -178,19 +163,6 @@ Once `InstancePool` starts owning full lifecycle, membership, state mutation, an
 That seems simpler short-term, but it creates tighter coupling, weaker boundaries, and worse reasoning under concurrency.
 
 Snapshots are an explicit boundary.
-
-### "`RuntimeStatus` mixes fact and intent, so we must abstract further immediately"
-
-Not necessarily.
-
-The current priority is stable boundaries, not maximum abstraction elegance.
-
-If everyone already understands that:
-
-- `STOPPING` is an operational intent state
-- it suppresses later aggregation
-
-then the current design is still coherent and maintainable.
 
 ## Safe Extension Rules
 
@@ -238,7 +210,7 @@ Do not cross-write state across layers.
 
 Check:
 
-1. `DefaultLingLifecycleEngine.deployInternal()`
+1. `DefaultLingLifecycleEngine.deploy()`
 2. `InstanceCoordinator.prepare()/start()/markReady()`
 3. `RuntimeCoordinator.onInstanceStateChanged()`
 
@@ -277,20 +249,20 @@ Whenever a patch touches lifecycle or state, check:
 4. Did it make `InstancePool` responsible for more than membership?
 5. Did it let orchestration write runtime state directly?
 6. Did it break the event linkage chain?
-7. Did it further blur fact state and operational intent?
+7. Did it make the state boundary harder to explain to the next reader?
 
 If any answer is yes, the patch needs scrutiny.
 
 ## Suggested Reading Order For Newcomers
 
 1. this guide
-2. `InstanceStatus`
-3. `RuntimeStatus`
-4. `LingInstance`
-5. `InstanceCoordinator`
-6. `RuntimeCoordinator`
-7. `InstancePool`
-8. `LingRuntime`
-9. `DefaultLingLifecycleEngine`
-10. `LingUnloadCoordinator`
-11. [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md)
+2. [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md)
+3. `InstanceStatus`
+4. `RuntimeStatus`
+5. `LingInstance`
+6. `InstanceCoordinator`
+7. `RuntimeCoordinator`
+8. `InstancePool`
+9. `LingRuntime`
+10. `DefaultLingLifecycleEngine`
+11. `LingUnloadCoordinator`

@@ -1,112 +1,109 @@
-# 快速入门
+# 快速开始
 
-本文档帮助你快速了解和使用 LingFrame。
+这份文档是第一次接触灵珑时的最短路径。
 
-## 环境准备
+它刻意只解决一件事：**先把示例跑起来，并建立最小术语感**。
 
-- JDK 17+
+如果你只记住一句话，请记住：
+
+> 灵珑让你在一个 JVM 进程里加载并治理彼此隔离的业务灵元，而不是一上来就把系统拆成微服务。
+
+对 `0.3.0` 来说，这不只是“把灵元加载起来”的演示，  
+也是你第一次接触一条可治理、可收敛、并且后续可继续验证规范热卸载的运行时链路。
+
+---
+
+## 你会跑起来什么
+
+示例工程里，你会启动一个灵核应用，并让它加载两个示例灵元：
+
+- `user-ling`
+- `order-ling`
+
+这一轮运行里，你会同时看到三件事：
+
+- 灵元可以在同一进程内被加载
+- 灵核可以通过共享契约调用灵元服务
+- 调用过程仍然经过治理内核
+
+---
+
+## 环境要求
+
+- JDK 17+ 作为主示例路径
 - Maven 3.8+
 
-## 5 分钟 Hello World
+`0.3.0` 同时支持 JDK 8 与 Spring Boot 2.x，但示例工程仍然是最容易上手的入口。
 
-### 1. 构建项目
+---
 
-**获取源码**（选择任意仓库）：
+## 5 分钟跑通
+
+### 1. 克隆仓库
 
 ```bash
-# AtomGit（推荐）
+# GitHub
+git clone https://github.com/LingFrame/LingFrame.git
+
+# AtomGit
 git clone https://atomgit.com/lingframe/LingFrame.git
 
-# Gitee（国内镜像）
-git clone https://gitee.com/knight6236/lingframe.git
-
-# GitHub（国际）
-git clone https://github.com/LingFrame/LingFrame.git
+# Gitee
+git clone https://gitee.com/LingFrame/LingFrame.git
 ```
 
-**构建**：
+### 2. 构建项目
 
 ```bash
 cd LingFrame
 mvn clean install -DskipTests
 ```
 
-### 2. 启动示例应用
+### 3. 启动示例灵核应用
 
 ```bash
 cd lingframe-examples/lingframe-example-lingcore-app
 mvn spring-boot:run
 ```
 
-### 3. 测试灵元服务
+### 4. 验证示例是否正常
 
 ```bash
-# 查询用户列表（user-ling 提供的服务）
 curl http://localhost:8888/user-ling/user/listUsers
-
-# 查询单个用户
 curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
 ```
 
-恭喜！你已经成功运行了第一个 LingFrame 应用！
+如果这两个请求都能正常返回，你已经拥有一个可运行的灵珑运行时。
 
 ---
 
-## 核心概念
+## 刚才启动了什么
 
-### 三层架构
+### 灵核
 
-```
-┌─────────────────────────────────────────┐
-│           Core（治理内核）               │
-│   权限校验 · 审计记录 · 上下文隔离        │
-└─────────────────┬───────────────────────┘
-                  ▼
-┌─────────────────────────────────────────┐
-│      Infrastructure（基础设施层）        │
-│          存储 · 缓存 · 消息              │
-└─────────────────┬───────────────────────┘
-                  ▼
-┌─────────────────────────────────────────┐
-│         Business（业务灵元层）           │
-│      用户中心 · 订单服务 · 支付灵元       │
-└─────────────────────────────────────────┘
-```
+`LingCore` 是当前进程里的灵核侧应用。它拥有运行时、治理内核，以及共享契约边界。
 
-### 关键原则
+### 灵元
 
-1. **零信任**：业务灵元只能通过 Core 访问基础设施
-2. **上下文隔离**：每个灵元独立的 Spring 子上下文
-3. **FQSID 路由**：服务通过 `lingId:serviceId` 全局唯一标识
+`Ling` 是在灵核进程里被独立加载的业务单元。
+
+### Shared API
+
+`Shared API` 是灵核与灵元之间、或者灵元与灵元之间的进程级公共契约层。跨边界使用的接口与 DTO 都应该放在这里。
+
+作为新手，你先记住下面三句就够了：
+
+- 灵核是当前进程里的灵核侧应用
+- 灵元是隔离的业务单元
+- Shared API 是双方共同遵守的契约
+
+术语说明详见 [术语表](glossary.md)。
 
 ---
 
-## 创建灵核应用
+## 最小可用配置
 
-### 1. 添加依赖
-
-```xml
-<dependency>
-    <groupId>com.lingframe</groupId>
-    <artifactId>lingframe-spring-boot3-starter</artifactId>
-    <version>${lingframe.version}</version>
-</dependency>
-```
-
-### 2. 启动类
-
-```java
-@SpringBootApplication
-public class LingCoreApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(LingCoreApplication.class, args);
-    }
-}
-```
-
-### 3. 配置文件
-
-参考示例应用 `application.yaml`：
+示例应用已经带好了工作配置。最关键的是这些部分：
 
 ```yaml
 server:
@@ -114,142 +111,36 @@ server:
 
 lingframe:
   enabled: true
-  dev-mode: true                    # 开发模式，权限不足时仅警告
-  
-  # 共享 API 预加载（支持目录/JAR/通配符）
+  dev-mode: true
+
   preload-api-jars:
     - lingframe-examples/lingframe-example-order-api
-  
-  # 灵元目录
-  ling-home: lings              # 生产模式：JAR 包目录
-  ling-roots:                     # 开发模式：源码目录
+
+  ling-home: lings
+  ling-roots:
     - lingframe-examples/lingframe-example-ling-order
     - lingframe-examples/lingframe-example-ling-user
-  
-  # 灵核治理（可选）
-  ling-core-governance:
-    enabled: false
-
-# 高阶功能：可视化仪表盘（可选，默认关闭）
-# dashboard:
-#   enabled: true
 ```
 
-### 4. 在灵核中调用灵元服务
+这表达的含义是：
 
-使用 `@LingReference` 自动注入灵元服务。LingFrame 采用**消费者驱动契约**：
-
-```java
-// 灵核应用（消费者）定义它需要的接口
-// 位置：LINGCORE-api/.../OrderQueryService.java
-public interface OrderQueryService {
-    List<OrderDTO> findByUserId(Long userId);
-}
-
-// Order 灵元（生产者）实现灵核定义的接口
-// 位置：order-ling/.../OrderQueryServiceImpl.java
-@Component
-public class OrderQueryServiceImpl implements OrderQueryService {
-    @LingService(id = "find_orders_by_user", desc = "查询用户订单")
-    @Override
-    public List<OrderDTO> findByUserId(Long userId) {
-        return orderRepository.findByUserId(userId);
-    }
-}
-
-// 灵核应用使用自己定义的接口
-@RestController
-@RequiredArgsConstructor
-public class OrderController {
-
-    @LingReference
-    private OrderQueryService orderQueryService;  // 框架自动路由到 Order 灵元
-
-    @GetMapping("/orders/user/{userId}")
-    public List<OrderDTO> getUserOrders(@PathVariable Long userId) {
-        return orderQueryService.findByUserId(userId);
-    }
-}
-```
+- 开启灵珑运行时
+- 当前以开发友好的模式运行
+- 在灵元启动前先 preload 共享契约
+- 从本地示例源码路径发现灵元
 
 ---
 
-## 示例项目结构
+## 这次跑通已经证明了什么
 
-```
-lingframe-examples/
-├── lingframe-example-lingcore-app        # 灵核应用
-├── lingframe-example-order-api       # 共享 API（消费者定义的接口）
-├── lingframe-example-ling-order    # 订单灵元
-└── lingframe-example-ling-user     # 用户灵元（提供 /user/* 接口）
-```
+当示例成功跑起来时，你其实已经验证了四件事：
 
-## 创建业务灵元
+- 灵核可以在单进程里发现并加载灵元
+- 共享契约会在灵元启动前先 preload
+- 跨灵元调用不会绕过治理内核
+- 当前示例配置已经足够继续阅读开发文档
 
-详见 [灵元开发指南](ling-development.md)
+下一步最值得继续验证的，不只是“还能不能再加载一个灵元”，  
+而是这条运行时链路在 reload / unload / cleanup 场景下能否继续保持有序。
 
-## 安全治理演示（Killer Feature）
-
-示例工程已内置了治理策略，你可以通过以下步骤体验 LingFrame 核心的**零信任治理**能力。
-
-### 1. 尝试非法写入（SQL 拦截）
-
-User 灵元在配置文件 `ling.yml` 中声明了对数据库的 `READ` 权限，但没有声明 `WRITE` 权限。
-
-调用创建用户接口（执行 INSERT SQL）：
-
-```bash
-curl -X POST "http://localhost:8888/user-ling/user/createUser?name=Attacker&email=hacker@test.com"
-```
-
-**预期结果**：
-- HTTP 500 Internal Server Error
-- 观察控制台日志，可见核心拦截异常：
-
-```text
-c.l.core.exception.PermissionDeniedException: ling [user-ling] requires [storage:sql] with [WRITE] access, but only allowed: [READ]
-```
-
-### 2. 体验缓存加速（Cache 代理）
-
-User 灵元声明了 `cache:local` 的 `WRITE` 权限。
-
-**第一次查询**（触发 SQL 查询并写入缓存）：
-
-```bash
-curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
-```
-
-观察日志：
-```text
-Executing SQL: SELECT * FROM t_user WHERE id = ?
-Cache PUT: users::1
-Audit: ling [user-ling] accessed [storage:sql] (ALLOWED)
-```
-
-**第二次查询**（命中缓存，无 SQL）：
-
-```bash
-curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
-```
-
-观察日志：
-```text
-Cache HIT: users::1
-Audit: ling [user-ling] accessed [cache:local] (ALLOWED)
-```
-
-### 3. 【真实案例】连灵核初始化都会被拦截？
-
-在早期的版本中，LingFrame 甚至因为安全策略过于严格，拦截了 Spring Boot 启动时的 SQL 初始化脚本（`schema.sql`），抛出了 `Security Alert: SQL execution without LingContext. SQL`。这从侧面证明了治理内核的**无死角覆盖**——即使是框架启动阶段的 I/O 操作也逃不过它的法眼。
-![alt text](../images/initDB.png)
-> 现在的版本已针对灵核是否开启治理进行判断，确保开发者体验。
-
----
-
-## 下一步
-
-- [灵元开发指南](ling-development.md) - 学习如何开发业务灵元
-- [共享 API 设计规范](shared-api-guidelines.md) - API 设计最佳实践
-- [Dashboard 可视化治理](dashboard.md) - 高阶可选功能
-- [架构设计](architecture.md) - 深入了解治理原理
+接下来如果你想先判断怎么落地，读 [实用入口](practical-entry.md)；如果你想直接开始写灵元，去 [业务灵元开发指南](ling-development.md)。

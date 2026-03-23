@@ -2,6 +2,25 @@
 
 本项目的所有重大更改都将记录在此文件中。
 
+## [V0.3.0] - 2026-03-23
+
+### 🚀 新增
+
+- 围绕 `InvocationPipelineEngine` 与 `FilterRegistry` 收束统一治理 Pipeline，并显式支持 `NORMAL`、`SIMULATION`、`GOVERN_ONLY`
+- 让灵元调用、Spring Boot 2/3 Web 治理、灵核 Bean 拦截、Dashboard 模拟共用同一条内核路径
+- Dashboard 通过真实治理链路执行模拟，并通过 SSE 输出 trace、audit、circuit-breaker、lifecycle、leak-detection 事件
+
+### 🛠 变更
+
+- 运行时状态写入权收束到 `InstanceStatus`、`RuntimeStatus`、`InstanceCoordinator`、`RuntimeCoordinator`
+- 生命周期编排变得更显式：部署、旁路重载、排空后卸载、清理形成更清晰的运行时路径
+- `SharedApiManager` 明确共享 API 启动顺序：预加载、注册包、冻结边界、再加载灵元
+- 卸载清理正式纳入 Pipeline 资源驱逐与泄漏诊断
+
+### ⚠️ 说明
+
+- `0.3.0` 对外交付：Pipeline 收束、运行时状态收敛、Dashboard 治理 / 控制面、生命周期编排、Shared API 边界冻结、长期运行稳定性相关工作
+
 ## [V0.2.0] - 2026-02-23
 
 ### 🚀 新特性

@@ -2,6 +2,10 @@
 
 This document describes the current dual-state runtime model around `LingRuntime` and `LingInstance`.
 
+It is focused on **why this split exists, what each layer owns, and which architectural constraints must remain stable**.
+
+If you want practical code-reading, debugging, and extension guidance, use [Runtime Dual-State Machine Guide](runtime-dual-state-machine-guide.md).
+
 The design is not about adding state machines for their own sake. It exists to solve three practical problems inside a single JVM process:
 
 1. A single instance lifecycle must be predictable and protected from arbitrary external mutation.
@@ -81,7 +85,7 @@ This was the key convergence point.
 
 If `LingRuntime` keeps its own runtime FSM, two architectural failures become likely:
 
-1. orchestration code writes runtime state directly through the host object
+1. orchestration code writes runtime state directly through the aggregate object
 2. `LingRuntime` and `RuntimeCoordinator` drift into dual sources of truth
 
 The current rule is strict:
@@ -130,7 +134,7 @@ RuntimeCoordinator
 
 LingRuntime
   -> observes runtime events
-  -> tightens host behavior when STOPPING / REMOVED
+  -> tightens LingCore-side runtime behavior when STOPPING / REMOVED
 ```
 
 This means:
@@ -151,7 +155,7 @@ Instead of scanning live object graphs directly.
 
 Benefits:
 
-1. aggregation depends on facts, not host object structure
+1. aggregation depends on facts, not aggregate object structure
 2. instance and runtime layers stay decoupled behind event boundaries
 3. concurrent reevaluation remains easier to reason about
 4. `STOPPING -> REMOVED` becomes "all factual instances are gone", not "some object said so"
@@ -174,7 +178,7 @@ In one sentence:
 
 > orchestration decides order, coordinators decide state.
 
-## Three Typical Flows
+## Architectural Reading Of Typical Flows
 
 ### First deployment
 
@@ -238,14 +242,4 @@ Pool commit, default switch, old-version retirement, and teardown are inherently
 
 The goal of the current design is not to remove ordering. The goal is to centralize ordering in orchestration and centralize write authority in coordinators.
 
-## Suggested Reading Order
-
-1. `InstanceStatus`
-2. `RuntimeStatus`
-3. `LingInstance`
-4. `InstanceCoordinator`
-5. `RuntimeCoordinator`
-6. `InstancePool`
-7. `LingRuntime`
-8. `DefaultLingLifecycleEngine`
-9. `LingUnloadCoordinator`
+Continue with [Runtime Dual-State Machine Guide](runtime-dual-state-machine-guide.md) if you want to follow actual code paths, extension rules, and debugging entry points.

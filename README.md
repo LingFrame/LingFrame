@@ -1,4 +1,4 @@
-# LingFrame · 灵珑
+# LingFrame
 
 ![Status](https://img.shields.io/badge/Status-Resilience_Governance-brightgreen)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue)
@@ -7,142 +7,159 @@
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.5.6-brightgreen)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-2.7.18-brightgreen)
 
+[![Gitee](https://img.shields.io/badge/Gitee-Repository-red?logo=gitee&logoColor=white)](https://gitee.com/LingFrame/LingFrame)
 [![AtomGit G-Star](https://img.shields.io/badge/AtomGit-G--Star_Incubated-silver?logo=git&logoColor=white)](https://atomgit.com/lingframe/LingFrame)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-black?logo=github&logoColor=white)](https://github.com/LingFrame/LingFrame)
-[![Gitee](https://img.shields.io/badge/Gitee-Repository-red?logo=gitee&logoColor=white)](https://gitee.com/knight6236/lingframe)
 
 [![Help Wanted](https://img.shields.io/badge/PRs-welcome-brightgreen)](../../pulls)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LingFrame/LingFrame)
 
-[中文版 / Chinese](./README.zh-CN.md)
+[中文](./README.zh-CN.md)
 
-## Start From Here
+LingFrame is a **JVM runtime governance framework for long-running systems**.
 
-- **Technical Entry**: Dive into governance details and architecture 👉 [technical-entry.md](docs/technical-entry.md)
-- **Practical Entry**: Quick start and canary deployment 👉 [practical-entry.md](docs/practical-entry.md)
-- **Quick Trial**: 👉 [getting-started.md](docs/getting-started.md)
-- **Core Stance**: 👉 [MANIFESTO.md](MANIFESTO.md)
-- **Design Principles and Boundaries**: 👉 [WHY.md](WHY.md)
+It does not ask you to rewrite the system immediately, and it does not force an instant move to microservices.  
+It focuses on something more practical:
 
-You don't need to read everything at once.  
-LingFrame allows you to pause at any stage.
+> When a system has been running for years, cannot easily stop, and keeps getting harder to change,  
+> can we first make it understandable, controllable, and evolvable again?
 
----
+Many systems are not poorly designed.  
+They have simply lived too long and changed too fast.
 
-![LingFrame Dashboard Example](./docs/images/dashboard.png)
+If you remember only one sentence about LingFrame, let it be this:
 
-*Real-time ling governance dashboard: monitor status, canary traffic, and audit logs.*
-
----
-
-LingFrame (LingFrame) is a **JVM runtime governance framework for long-running systems**.  
-It aims to keep legacy monolithic applications stable, controllable, and evolvable **without rewriting the system or forcing microservices splits**.
-
-Many systems aren't poorly designed—  
-they've just lived too long and changed too hastily.
+> LingFrame is not only about loading lings into one JVM.  
+> It is about keeping them governable, convergent, and cleanly unloadable over long-running runtime life.
 
 ---
 
-## Prologue
+## Start Here
 
-It wasn't born for elegance initially.
+- **First time reading LingFrame**: [getting-started.md](docs/getting-started.md)
+- **Want to understand what problem it solves**: [practical-entry.md](docs/practical-entry.md)
+- **Want to see what `0.3.0` actually delivers**: [technical-entry.md](docs/technical-entry.md)
+- **Want to understand why it is designed this way**: [WHY.md](WHY.md)
+- **Want to understand what LingFrame stands for**: [MANIFESTO.md](MANIFESTO.md)
 
-One day, people realized the system had grown too vast to comprehend, yet it couldn't stop.  
-Every change felt like groping in the dark,  
-every deployment came with a prayer.
-
-So, someone asked a seemingly conservative question:
-
-> If the system can't be rewritten for now,  
-> can it still be **governed**?
-
-Not through more rules,  
-but through **clearer boundaries**.  
-Not making decisions for the system,  
-but putting things back in their rightful place while it's still understandable.
-
-Thus, LingFrame was born.
+You do not need to read everything in one pass.  
+LingFrame lets you stop at any point and continue later.
 
 ---
 
-## What LingFrame Focuses On Isn't "Adding Features"
+![LingFrame Dashboard Example](./docs/images/dashboard.0.3.0.png)
 
-In many real-world systems, the issue isn't a lack of features, but:
+*The dashboard is now a real governance control surface, not just a demo page.*
 
-- The system is still running, but no one dares to change it
-- Unit boundaries fade, couplings become untraceable
-- After introducing Lings, isolation stays structural only
-- Restarts aren't unacceptable, but **unpredictable**
+---
 
-LingFrame addresses one core problem:
+## What LingFrame Is
 
-> **How to prevent systems from losing control in long-term operation.**
+LingFrame is not just a plugin framework with a new name.  
+It is not a silver bullet for monolith modernization either.
+
+More precisely, it is:
+
+- a runtime governance framework for long-running single-process systems
+- a structural tool that helps legacy systems recover boundaries and control
+- a governance model that allows lings to exist, but does not tolerate ling chaos
+
+Its goal is not to pile on one more layer of features.  
+Its goal is to bring already-existing but increasingly uncontrolled complexity back under order.
+
+---
+
+## What Makes LingFrame Different
+
+- **It does not stop at hot loading; it cares about disciplined hot unload**: a ling should not just disappear, it should drain, clean up, release resources, and converge its state properly
+- **Zero-leak hot unload is treated as a formal goal**: not just "drop the classloader and hope", but unload cleanup, resource eviction, and leak diagnostics as part of runtime design
+- **Long-running runtime order is converged into one spine**: invocation governance, runtime state, control surface, and monitoring evidence are being pulled into one runtime kernel instead of scattered mechanisms
+- **It stays strict about hot-update boundaries**: process-level contracts such as `Shared API` are not marketed as "freely hot-updatable" when that would be unsafe
+
+---
+
+## What It Fits, What It Does Not
+
+### Good Fit
+
+- monolithic JVM systems that have been running for years and cannot be easily stopped or rewritten
+- teams that want to gradually introduce ling isolation, canary release, rate limiting, circuit breaking, permission, and audit capabilities
+- environments where runtime order must be restored before any large-scale structural rewrite is realistic
+
+### Not A Good Fit
+
+- treating it as a replacement for microservices
+- treating it as a front-end plugin marketplace or low-code assembly platform
+- expecting one framework to remove business complexity automatically
+
+LingFrame does not make decisions for your system.  
+It tries to put decisions back where they belong.
 
 ---
 
 ## Current Stage
 
-**v0.2.0 · Metamorphosis**
+**v0.3.0 - Convergence and Stabilization**
 
-This is a stage of breaking shackles and redefining boundaries:
+This stage is not about adding another batch of scattered capabilities.  
+It is about converging existing governance mechanisms into a stable, reusable, explainable runtime spine.
 
-- Discarding the cognitive limits of "Plugin" to establish physical "Ling (Unit)" isolation
-- Resilience governance is no longer superficial, but deeply embedded as kernel-level circuit breakers
-- Confronting the deep waters of ClassLoader leaks, replacing compromise with absolute eviction
-- Verifying another thing:  
-  **Can monolithic hot-swapping truly withstand industrial-grade high availability challenges?**
+What `0.3.0` clearly delivers:
 
-This is a phase that sheds immaturity and confronts brutal production realities.
+- a unified governance pipeline around `InvocationPipelineEngine` and `FilterRegistry`
+- explicit execution modes: `NORMAL`, `SIMULATION`, and `GOVERN_ONLY`
+- the same kernel reused across ling invocation, Spring Boot 2 / 3 web governance, LingCore bean interception, and dashboard simulation
+- converged runtime state ownership through `InstanceStatus`, `RuntimeStatus`, `InstanceCoordinator`, and `RuntimeCoordinator`
+- explicit lifecycle orchestration through `DefaultLingLifecycleEngine`
+- unload cleanup, resource eviction, and leak diagnostics treated as long-running runtime responsibilities, with the architecture converging toward disciplined low-leak hot unload
+- an explicit shared API bootstrap boundary enforced by `SharedApiManager`
+- a dashboard that acts as a real control surface with lifecycle operations, canary configuration, governance patching, simulation, metrics, health snapshots, and SSE event streaming
 
----
-
-**v0.1.0 · First Cry (Historic)**
-
-This is a stage where the direction is frozen and boundaries are forming:
-
-- Not pursuing full features
-- No backward compatibility promises
-- Verifying one thing:  
-  **Does runtime governance hold in a single process?**
-
-This is a phase that rejects pandering and begins choices.
----
-
-## What Is LingFrame
-
-- A **JVM runtime governance framework**
-- A **structural tool for legacy systems**
-- A **system that allows Lings but doesn't tolerate their chaos**
-- A **resilient hub** equipped with Circuit Breakers, Rate Limiters, and Ecosystem SPI extensions
-
-It's not a microservices replacement,  
-nor a modularization silver bullet.
-
-LingFrame's purpose is to provide possibilities for **"retraction" and "reorganization"** when the system reaches a certain complexity.
+In other words, LingFrame is no longer just a collection of mechanisms.  
+It is converging into a runtime governance kernel that can be maintained over time.
 
 ---
 
-## Technical Boundaries (Overview)
+## The Problem It Actually Tries To Solve
+
+In real systems, the issue is often not missing features. It is this:
+
+- the system is still running, but no one dares to touch it
+- boundaries still exist in name, but not in reality
+- canary release, circuit breaking, permission, and audit each exist somewhere, but not on one clear runtime path
+- restarts are not impossible, but unpredictability is unacceptable
+
+LingFrame is really trying to answer one question:
+
+> How do we keep a long-running system from falling out of control?
+
+Not through more rules alone,  
+but through clearer boundaries, a more stable governance spine, and more honest runtime feedback.
+
+---
+
+## Technical Boundaries
 
 - JVM: JDK 17 / JDK 8
 - Spring Boot: 3.x / 2.x
-- Single-process ling isolation and governance
-- **Resilience & Ecosystem**: Native support for Canary releases, Circuit Breaking, Rate Limiting, and non-invasive external registry/config integration.
-- Clear distinction: **Interface stability ≠ Implementation stability**
+- the current public architecture is still single-process ling isolation and governance
+- `Shared API` is a process-level public contract boundary: a brand-new shared package may be hot-loaded, but an already loaded contract must not be hot-updated or hot-unloaded; contract changes require a process restart
+- native support exists for canary release, circuit breaking, rate limiting, audit, permission, simulation, and governance visibility
+- external registry and configuration systems can be integrated non-invasively
 
-LingFrame doesn't hide complexity—  
-it just refuses to dump it all on the user at once.
+LingFrame does not pretend complexity does not exist.  
+It just refuses to dump all of it on the user at once.
 
 ---
 
-## Finally
+## If You Want To Continue
 
-LingFrame won't make decisions for the system.
+- Want to run it first: [getting-started.md](docs/getting-started.md)
+- Want to understand `0.3.0` from the implementation side: [technical-entry.md](docs/technical-entry.md)
+- Want to see the role of the dashboard in the current release: [dashboard.md](docs/dashboard.md)
+- Want terminology help: [glossary.md](docs/glossary.md)
 
-She just helps put things back in place while the system is still willing to be understood.
-
-If you just stop here,  
-that's perfectly fine.
+If you stop here, that is completely fine.
 
 ---
 

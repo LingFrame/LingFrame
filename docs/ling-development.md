@@ -1,116 +1,94 @@
-# Business Unit Development Guide
+# Ling Development Guide
 
-This document introduces how to develop LingFrame business units (Lings).
+This guide explains how to build a ling that fits the public `0.3.0` runtime.
 
-## Create ling Project
+It is written for developers who are new to LingFrame, so it starts from the smallest working shape instead of the most feature-rich one.
 
-### 1. Maven Configuration
+---
+
+## What A Ling Is
+
+A ling is a business runtime unit that:
+
+- is loaded into LingCore at runtime
+- has its own classloader and lifecycle
+- exposes services through LingFrame contracts
+- runs under governance instead of bypassing the kernel
+
+If you are still mapping the vocabulary, see [Glossary](glossary.md).
+
+---
+
+## The Smallest Useful Ling
+
+Your ling needs three things:
+
+- a Maven module
+- an entry class implementing `Ling`
+- a `ling.yml` descriptor
+
+### 1. Maven setup
 
 ```xml
-<project>
-    <parent>
+<dependencies>
+    <dependency>
+        <groupId>com.lingframe</groupId>
+        <artifactId>lingframe-api</artifactId>
+        <version>${lingframe.version}</version>
+    </dependency>
+
+    <dependency>
         <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.6</version>
-    </parent>
-
-    <dependencies>
-        <!-- LingFrame API -->
-        <dependency>
-            <groupId>com.lingframe</groupId>
-            <artifactId>lingframe-api</artifactId>
-            <version>${lingframe.version}</version>
-        </dependency>
-
-        <!-- Spring Boot -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
-        </dependency>
-    </dependencies>
-</project>
+        <artifactId>spring-boot-starter</artifactId>
+    </dependency>
+</dependencies>
 ```
 
-### 2. ling Entry Class
+### 2. Entry class
 
 ```java
-package com.example.myling;
-
-import com.lingframe.api.context.LingContext;
-import com.lingframe.api.ling.Ling;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
 @SpringBootApplication
 public class MyLing implements Ling {
 
     @Override
     public void onStart(LingContext context) {
-        System.out.println("Ling Started: " + context.getLingId());
+        System.out.println("Ling started: " + context.getLingId());
     }
 
     @Override
     public void onStop(LingContext context) {
-        System.out.println("Ling Stopped: " + context.getLingId());
+        System.out.println("Ling stopped: " + context.getLingId());
     }
 }
 ```
 
-### 3. ling Metadata
-
-Create `src/main/resources/ling.yml`:
+### 3. `ling.yml`
 
 ```yaml
-# Basic Metadata
 id: my-ling
 version: 1.0.0
-provider: "My Company"
-description: "My ling"
-mainClass: "com.example.myling.MyLing"
-
-# Dependencies (Optional)
-dependencies:
-  - id: "base-ling"
-    minVersion: "1.0.0"
-
-# Governance Configuration
-governance:
-  permissions:
-    - methodPattern: "storage:sql"
-      permissionId: "READ"
-    - methodPattern: "cache:redis"
-      permissionId: "WRITE"
-  
-  audits:
-    - methodPattern: "com.example.*Service#delete*"
-      action: "DELETE_OPERATION"
-      enabled: true
-
-# Custom Properties (Optional)
-properties:
-  custom-config: "value"
-  timeout: 5000
+description: My first ling
+mainClass: com.example.myling.MyLing
 ```
 
-## Expose Service
+---
 
-Use `@LingService` annotation to expose services.
+## Exposing Services
 
-**Consumer-Driven Contract**: Interfaces are defined by consumers and implemented by producers. For example, Order unit defines `UserQueryService`, and User unit implements it:
+Use `@LingService` on the producer implementation.
+
+LingFrame follows a consumer-driven contract model:
+
+- the consumer defines the interface it needs
+- the producer ling implements that interface
 
 ```java
-// ========== Consumer Defines Interface (in order-api unit) ==========
 public interface UserQueryService {
     Optional<UserDTO> findById(String userId);
 }
+```
 
-// ========== Producer Implements Interface (in user-ling unit) ==========
-package com.example.user.service;
-
-import com.lingframe.api.annotation.Auditable;
-import com.lingframe.api.annotation.LingService;
-import com.lingframe.api.annotation.RequiresPermission;
-import org.springframework.stereotype.Component;
-
+```java
 @Component
 public class UserQueryServiceImpl implements UserQueryService {
 
@@ -120,307 +98,121 @@ public class UserQueryServiceImpl implements UserQueryService {
         return userRepository.findById(userId).map(this::toDTO);
     }
 }
-
-// Another example: With permission and audit
-@Component  
-public class UserAdminServiceImpl implements UserAdminService {
-
-    @LingService(id = "create_user", desc = "Create new user", timeout = 5000)
-    @RequiresPermission("user:write")
-    @Auditable(action = "CREATE_USER", resource = "user")
-    @Override
-    public UserDTO createUser(CreateUserRequest request) {
-        return toDTO(userRepository.save(toEntity(request)));
-    }
-}
 ```
 
-### @LingService Properties
+The final global identifier is `lingId:serviceId`.
 
-| Property | Description | Default |
-| -------- | ----------- | ------- |
-| `id` | Service Short ID, forms FQSID | Required |
-| `desc` | Service Description | Empty |
-| `timeout` | Timeout (ms) | 3000 |
+---
 
-### FQSID Format
+## Calling Other Lings
 
-Global Unique Service Identifier: `lingId:serviceId`
+In newcomer projects, use these options in this order.
 
-Example: `user-ling:find_user`
-
-## Call Other ling Services
-
-LingFrame provides three invocation methods, with the following recommended priority:
-
-### Method 1: @LingReference Injection (Highly Recommended)
-
-This is the closest to native Spring experience.
-
-**Consumer-Driven Contract**: Order ling (Consumer) defines the interface it needs, User/Payment ling (Producer) implements it:
+### Option 1. `@LingReference`
 
 ```java
-// ========== Step 1: Consumer Defines Interface (in order-api unit) ==========
-// Location: order-api/src/main/java/com/example/order/api/
-
-// Order ling defines the user query capability it needs
-public interface UserQueryService {
-    Optional<UserDTO> findById(String userId);
-}
-
-// Order ling defines the payment capability it needs
-public interface PaymentService {
-    PaymentResult processPayment(String userId, BigDecimal amount);
-}
-
-// ========== Step 2: Producer Implements Interface (in respective Lings) ==========
-// User ling implements UserQueryService defined by Order
-// Location: user-ling/src/main/java/.../UserQueryServiceImpl.java
-@Component
-public class UserQueryServiceImpl implements UserQueryService {
-    @LingService(id = "find_user", desc = "Query User")
-    @Override
-    public Optional<UserDTO> findById(String userId) {
-        return userRepository.findById(userId).map(this::toDTO);
-    }
-}
-
-// Payment ling implements PaymentService defined by Order
-// Location: payment-ling/src/main/java/.../PaymentServiceImpl.java
-@Component
-public class PaymentServiceImpl implements PaymentService {
-    @LingService(id = "process_payment", desc = "Process Payment", timeout = 5000)
-    @Override
-    public PaymentResult processPayment(String userId, BigDecimal amount) {
-        return paymentGateway.charge(userId, amount);
-    }
-}
-
-// ========== Step 3: Consumer Uses Interface Defined by Itself ==========
-// Location: order-ling/src/main/java/.../OrderService.java
 @Component
 public class OrderService {
 
     @LingReference
-    private UserQueryService userQueryService;  // Auto injected, implemented by User ling
+    private UserQueryService userQueryService;
 
-    @LingReference
-    private PaymentService paymentService;  // Auto injected, implemented by Payment ling
-
-    public Order createOrder(String userId, List<Item> items) {
-        // Direct call, framework auto-routes to producer implementation
+    public Order createOrder(String userId) {
         UserDTO user = userQueryService.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-
-        BigDecimal total = calculateTotal(items);
-        PaymentResult result = paymentService.processPayment(userId, total);
-        
-        return new Order(user, items, result);
+        return new Order(user);
     }
 }
 ```
 
-**@LingReference Pros:**
-- Cleanest code, closest to Spring native experience.
-- Supports lazy binding, proxy created even if ling not started.
-- Auto-routes to latest ling version.
-- Supports optional lingId specification and timeout configuration.
-- Smart routing via GlobalServiceRoutingProxy.
+### Option 2. `LingContext.getService()`
 
-### Method 2: LingContext.getService()
+Use this when you want explicit lookup behavior.
 
-Suitable where explicit error handling is needed:
+### Option 3. `LingContext.invoke()`
+
+Use this only when you intentionally want looser coupling through FQSID strings.
+
+---
+
+## Declaring Governance
+
+Governance should be explicit, not accidental.
+
+### Permission declaration in `ling.yml`
+
+```yaml
+governance:
+  permissions:
+    - methodPattern: "storage:sql"
+      permissionId: "READ"
+    - methodPattern: "cache:local"
+      permissionId: "WRITE"
+```
+
+### Annotation-based declaration
 
 ```java
-@Component
-public class OrderService {
-
-    @Autowired
-    private LingContext context;
-
-    public Order createOrder(String userId, List<Item> items) {
-        // Get implementation of the interface defined by Consumer (Provided by User ling)
-        Optional<UserQueryService> userQueryService = context.getService(UserQueryService.class);
-        
-        if (userQueryService.isEmpty()) {
-            throw new RuntimeException("User Query Service Unavailable");
-        }
-        
-        UserDTO user = userQueryService.get().findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        return new Order(user, items);
-    }
+@RequiresPermission("user:write")
+@Auditable(action = "CREATE_USER", resource = "user")
+public UserDTO createUser(CreateUserRequest request) {
+    ...
 }
 ```
 
-### Method 3: LingContext.invoke() FQSID Call
-
-Suitable for loose coupling, no interface dependency:
-
-```java
-@Component
-public class OrderService {
-
-    @Autowired
-    private LingContext context;
-
-    public Order createOrder(String userId, List<Item> items) {
-        // Direct call to producer service via FQSID
-        Optional<UserDTO> user = context.invoke("user-ling:find_user", userId);
-        
-        if (user.isEmpty()) {
-            throw new RuntimeException("User not found");
-        }
-        
-        return new Order(user.get(), items);
-    }
-}
-```
-
-## Permission Declaration
-
-### Explicit Declaration
-
-```java
-@RequiresPermission("user:export")
-public void exportUsers() { ... }
-```
-
-### Smart Inference
-
-Framework automatically infers permission based on method name prefix:
-
-| Prefix | AccessType |
-| ------ | ---------- |
-| `get`, `find`, `query`, `list`, `select` | READ |
-| `create`, `save`, `insert`, `update`, `delete` | WRITE |
-| Others | EXECUTE |
-
-### Development Mode
-
-Enable loose mode in configuration during development, permission denied only warns:
+### Development mode
 
 ```yaml
 lingframe:
   dev-mode: true
 ```
 
-## Audit Log
+---
 
-### Explicit Declaration
+## Packaging And Loading
 
-```java
-@Auditable(action = "EXPORT_DATA", resource = "user")
-public void exportUsers() { ... }
-```
+### Development path
 
-### Auto Audit
+Point LingCore at source roots and recompile the ling as you work.
 
-Write operations (WRITE) and Execute operations (EXECUTE) are automatically audited.
+### Production path
 
-## Event Communication
-
-### Publish Event
-
-```java
-public class UserCreatedEvent implements LingEvent {
-    private final String userId;
-    
-    public UserCreatedEvent(String userId) {
-        this.userId = userId;
-    }
-    
-    public String getUserId() {
-        return userId;
-    }
-}
-
-// Publish
-context.publishEvent(new UserCreatedEvent("123"));
-```
-
-### Listen Event
-
-```java
-@Component
-public class UserEventListener implements LingEventListener<UserCreatedEvent> {
-
-    @Override
-    public void onEvent(UserCreatedEvent event) {
-        System.out.println("User Created: " + event.getUserId());
-    }
-}
-```
-
-## Package & Deploy
-
-### Production Mode
+Package the ling as a jar and place it under `ling-home`.
 
 ```bash
 mvn clean package
-# Generates target/my-ling.jar
 ```
 
-Place JAR in LingCore application's `Lings` directory, framework will auto scan and load.
+---
 
-### Development Mode
+## What The Kernel Already Gives You
 
-Point to compilation output directory in LINGCORE app configuration:
+In `0.3.0`, business lings do not need to implement the kernel itself.
 
-```yaml
-lingframe:
-  dev-mode: true
-  Ling-roots:
-    - "../my-ling"
-```
+The runtime already gives you:
 
-After modifying code and recompiling, HotSwapWatcher auto-detects changes in `target/classes` and hot reloads.
+- unified invocation governance
+- runtime lifecycle coordination
+- canary routing
+- simulation support
+- unload cleanup hooks
+- leak diagnostics
 
-## Framework Governance Capabilities
+Your main job is to:
 
-The following capabilities are provided by **LingFrame Core**, business units do not need to implement them:
+- define a clear contract
+- implement business logic
+- declare permissions honestly
 
-| Capability | Description | What ling Needs To Do |
-| ---------- | ----------- | ----------------------- |
-| Circuit Breaking | Auto break when service unavailable | Nothing |
-| Degrade | Return fallback response after break | Optional: Provide `@Fallback` method |
-| Retry | Auto retry on failure | Nothing |
-| Timeout | Call timeout control | Configurable in `@LingService` |
-| Rate Limiting | Request frequency limit | Nothing |
-| Monitoring | Tracing | Nothing |
-
-**Benefit**: Business units only focus on business logic, governance policies can be dynamically adjusted via configuration.
+---
 
 ## Best Practices
 
-1. **Consumer-Driven Contract**: Consumer defines interface, producer implements (See [Shared API Guidelines](shared-api-guidelines.md)).
-2. **Invocation Priority**: @LingReference > getService() > invoke().
-3. **Minimize Dependencies**: Lings should only depend on `lingframe-api`, not `lingframe-core`.
-4. **Permission Declaration**: Declare required permissions in `ling.yml`.
-5. **Service Granularity**: One `@LingService` per business operation.
-6. **Exception Handling**: Use `LingException` and its subclasses.
-7. **Logging Standard**: Use SLF4J, avoid System.out.
-8. **Interface Design**: Consumer defines lean interfaces containing only required methods.
+- keep the first ling small
+- keep `Shared API` contract-only
+- prefer `@LingReference` for your first call path
+- declare permissions in `ling.yml`
+- use SLF4J logging instead of `System.out`
+- avoid depending on `lingframe-core` from ordinary business lings
 
-## FAQ
-
-### ClassNotFoundException
-
-Check ClassLoader isolation, ensure dependent classes are in ling JAR or visible to parent loader.
-
-### Permission Denied
-
-1. Check permission declaration in `ling.yml`.
-2. Enable `lingframe.dev-mode: true` during development.
-
-### @LingReference Injection Failed
-
-1. Ensure target ling is started and registered corresponding Service Bean.
-2. Check interface type match.
-3. If lingId is specified, ensure it is correct.
-
-### Hot Swap Not Working
-
-1. Ensure `lingframe.dev-mode: true` is configured.
-2. Ensure `Ling-roots` points to ling's `target/classes` directory.
-3. Wait 500ms after recompilation (Debounce delay).
+If you need the contract boundary next, go to [Shared API Guidelines](shared-api-guidelines.md); if you need infrastructure proxy patterns, go to [Infrastructure Development Guide](infrastructure-development.md).

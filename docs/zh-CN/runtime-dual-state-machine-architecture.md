@@ -1,6 +1,10 @@
 # 运行时双层状态机架构设计
 
-本文档描述 LingFrame 当前围绕 `LingRuntime` / `LingInstance` 收敛出的双层状态机架构。
+本文档描述灵珑当前围绕 `LingRuntime` / `LingInstance` 收敛出的双层状态机架构。
+
+它重点回答的是：**为什么要这样拆、每一层到底拥有什么、哪些架构约束不能退化**。
+
+如果你想看更偏实践的“怎么读代码、怎么调试、怎么扩展”，请直接读 [运行时双层状态机技术指南](runtime-dual-state-machine-guide.md)。
 
 它不是一套“为了状态机而状态机”的设计，而是为了解决单 JVM、单进程、多版本并存场景下最容易失控的三个问题：
 
@@ -154,7 +158,7 @@ RuntimeCoordinator
 
 LingRuntime
   -> subscribe runtime events
-  -> tighten host behavior when STOPPING / REMOVED
+  -> tighten LingCore-side runtime behavior when STOPPING / REMOVED
 ```
 
 这里必须强调：
@@ -198,7 +202,7 @@ snapshots[lingId][version] = InstanceStatus
 
 > 编排层决定顺序，协调器决定状态。
 
-## 三条典型链路
+## 典型链路的架构视角
 
 ### 首次部署
 
@@ -257,7 +261,7 @@ runtime shutdown
 
 以下规则建议直接视为架构红线：
 
-1. 不允许在业务代码或普通宿主代码中直接操作状态机
+1. 不允许在业务代码或普通灵核集成代码中直接操作状态机
 2. 不允许 `LingRuntime` 持有第二份 runtime FSM
 3. 不允许把 `InstancePool` 写成“生命周期管理器”
 4. 不允许在实例层和运行时层之间相互直接写状态
@@ -297,18 +301,4 @@ runtime shutdown
 4. **多版本治理稳定**：蓝绿、热重载、卸载更容易推理
 5. **后续演进有抓手**：如果将来拆“事实态 / 意图态”，已有边界可以承接
 
-## 建议的阅读顺序
-
-如果你第一次理解这套设计，建议按下面顺序阅读代码：
-
-1. `InstanceStatus`
-2. `RuntimeStatus`
-3. `LingInstance`
-4. `InstanceCoordinator`
-5. `RuntimeCoordinator`
-6. `InstancePool`
-7. `LingRuntime`
-8. `DefaultLingLifecycleEngine`
-9. `LingUnloadCoordinator`
-
-读完这条链，再看技术指导文档中的扩展与排障章节，会更容易建立完整心智模型。
+如果你接下来要顺着代码路径继续读、改、排障，直接去 [运行时双层状态机技术指南](runtime-dual-state-machine-guide.md)。

@@ -1,166 +1,47 @@
-# AI Assistant Guide
+# AI 助手开发指南
 
-> 本文件帮助 AI 助手快速理解 LingFrame 项目。
+> AI 修改灵珑代码、测试、文档时，统一以 [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md) 为规范源。
+>
+> 本文不是手册的重复版，只保留 AI 助手必须额外注意的执行规则。
 
-## 项目定位
+## 1. 先遵循开发手册
 
-**LingFrame（灵珑）** = JVM 运行时治理框架
+AI 助手在开始修改前，至少应先阅读：
 
-核心能力：灵元隔离 + 权限治理 + 审计追踪 + 热重载 + 弹性治理
+1. [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md)
+2. 涉及模块的代码
+3. 对应测试
+4. 对应架构文档
 
-## 技术栈
+如果涉及 AI Agent 体系设计、AI 能力边界、唯一智能出入口或路线推演，仍然以当前代码、测试和开发手册为准；不要在公开文档中引用未公开的内部规划材料。
 
-- Java 17+
-- Spring Boot 3.5.6
-- Maven 3.8+
+## 2. AI 必须额外注意的规则
 
-## 架构原则（必须遵守）
+- 先识别边界，再动代码
+- 先确认唯一真源和写权限，再设计改动
+- 注释必须是中文，日志必须是英文
+- 中文语境里项目名优先写“灵珑”；如需补充英文名，写作“灵珑（LingFrame）”
+- 术语统一使用“灵核”“灵元”，不要写“宿主”“插件”
+- 不要绕过 `InstanceCoordinator` / `RuntimeCoordinator` 直接改状态
+- 不要为了统一风格删除高价值设计注释、踩坑说明、风险提示
+- 测试展示名统一中文，优先使用 `@Nested + @DisplayName`
+- `Shared API` 按进程级公共契约对待：新 JAR 可以热加载，已加载 JAR 不允许热更新或热卸载，涉及契约替换必须重启进程
+- 涉及架构边界、状态机、生命周期、治理语义、Shared API 契约的改动，必须同步更新测试和文档
 
-### 核心设计
-1. **零信任**：业务灵元不能直接访问 DB/Redis，必须经过 Core 代理
-2. **微内核**：Core 只做调度仲裁，不包含业务逻辑
-3. **契约优先**：所有交互通过 `lingframe-api` 接口
-4. **上下文隔离**：每个灵元独立 ClassLoader + Spring 子上下文
-5. **FQSID 路由**：服务通过 `lingId:serviceId` 全局唯一标识
+## 3. AI 修改前的最低动作
 
-### 灵元职责
-- **lingframe-core**：纯 Java 实现，**不依赖任何框架**（无 Spring、无 ORM）
-- **lingframe-runtime**：生态适配层，如 `spring-boot3-starter` 适配 Spring
-- **lingframe-api**：契约层，Core 和灵元都依赖它
+- 先判断本次改动位于哪一层：实例层、运行时层、成员层、编排层、卸载层、适配层或文档层
+- 先确认谁有写权限、谁只读、谁编排
+- 先确认这次改动会不会影响测试、日志、文档和术语
 
-### 设计原则
-- **单一职责（SRP）**：每个类只做一件事
-- **依赖倒置（DIP）**：Core 依赖抽象，不依赖具体实现
-- **开闭原则（OCP）**：通过扩展点增加功能，不修改核心代码
-- **接口隔离（ISP）**：小而专的接口，不强迫实现不需要的方法
+如果答不出“谁有写权限”，就不应该开始修改。
 
-## 编写规范
+## 4. AI 修改后的最低交付
 
-### 对 Core 灵元的修改
-- **禁止**引入 Spring、Hibernate、MyBatis 等框架依赖
-- **禁止**直接 new 具体实现，使用工厂或注入
-- 公开 API 必须定义在 `lingframe-api` 中
+- 代码守住边界
+- 测试覆盖关键语义
+- 文档同步
+- 术语统一
+- 没有新增隐式状态和字符串魔法键扩散
 
-### 对运行时灵元的修改
-- 适配层负责桥接 Core 和具体框架
-- 使用 `@Configuration` 装配 Core 组件
-
-### 灵元开发
-- 只依赖 `lingframe-api`，**禁止**依赖 `lingframe-core`
-- 用 `@LingReference` 注入其他灵元服务，**不用** `@Autowired`
-- 用 `@LingService` 暴露服务
-
-### 权限声明
-- 敏感操作加 `@RequiresPermission`
-- 需要审计加 `@Auditable`
-- 框架会智能推导：get/find → READ，save/delete → WRITE
-
-### 共享 API 设计
-- 只放接口和 DTO，**不放**实现
-- 接口在消费者侧定义（消费者驱动契约）
-- DTO 必须可序列化，**不放**业务逻辑
-
-### 命名约定
-| 类型 | 规则 | 示例 |
-|------|------|------|
-| 接口 | 描述性名称 | `UserService` |
-| 实现类 | `Default` 或 `Core` 前缀 | `DefaultPermissionService` |
-| 代理类 | `Proxy` 后缀 | `SmartServiceProxy` |
-| 配置类 | `Properties` 后缀 | `LingFrameProperties` |
-| 工厂类 | `Factory` 后缀 | `SpringContainerFactory` |
-
-## 核心类速查
-
-| 类 | 职责 |
-|---|---|
-| `LingManager` | 灵元安装/卸载/服务路由 |
-| `LingRuntime` | 单个灵元的运行时环境 |
-| `InstancePool` | 蓝绿部署、版本切换 |
-| `SharedApiClassLoader` | 加载灵元间共享的 API |
-| `LingClassLoader` | 灵元类加载（Child-First） |
-| `ServiceRegistry` | 服务注册表 |
-| `InvocationExecutor` | 调用执行器 |
-| `GovernanceKernel` | 治理内核 |
-| `SmartServiceProxy` | 智能服务代理 |
-| `GlobalServiceRoutingProxy` | @LingReference 的代理实现 |
-
-## 三层 ClassLoader
-
-```
-AppClassLoader (灵核)
-    ↓ parent
-SharedApiClassLoader (共享 API)
-    ↓ parent
-LingClassLoader (灵元，Child-First)
-```
-
-## 关键配置格式
-
-### 灵核应用 (application.yaml)
-
-```yaml
-lingframe:
-  enabled: true
-  dev-mode: true                    # 开发模式，权限宽松
-  Ling-home: "Lings"            # JAR 包目录
-  Ling-roots:                     # 开发时的灵元根目录
-    - "../my-ling"
-  preload-api-jars:                 # 共享 API JAR
-    - "shared-api/*.jar"
-```
-
-### 灵元元数据 (ling.yml)
-
-```yaml
-id: my-ling                       # 无 ling: 根节点！
-version: 1.0.0
-mainClass: "com.example.MyLing"
-governance:
-  permissions:
-    - methodPattern: "storage:sql"  # 不是 capability
-      permissionId: "READ"          # 不是 access
-```
-
-## ⚠️ 常见错误
-
-| 错误 | 正确 |
-|------|------|
-| `devMode: true` | `dev-mode: true` (kebab-case) |
-| `ling.yml` 有 `ling:` 根节点 | 直接写属性，无根节点 |
-| 灵元依赖 `lingframe-core` | 只依赖 `lingframe-api` |
-| 用 `@Autowired` 注入其他灵元服务 | 用 `@LingReference` |
-| 找 `LingSlot` 类 | 不存在，用 `LingRuntime` |
-
-## 灵元结构
-
-```
-lingframe/
-├── lingframe-api/              # 契约层
-├── lingframe-core/             # 治理内核
-├── lingframe-runtime/
-│   └── lingframe-spring-boot3-starter/
-├── lingframe-infrastructure/
-│   ├── lingframe-infra-storage/
-│   └── lingframe-infra-cache/
-├── lingframe-dashboard/        # 可视化治理
-└── lingframe-examples/
-```
-
-## 常用命令
-
-```bash
-mvn clean install -DskipTests          # 构建
-mvn spring-boot:run -pl lingframe-examples/lingframe-example-lingcore-app  # 运行示例
-```
-
-## 文档索引
-
-| 文档 | 用途 |
-|------|------|
-| [getting-started.md](docs/zh-CN/getting-started.md) | 5 分钟上手 |
-| [ling-development.md](docs/zh-CN/ling-development.md) | 灵元开发 |
-| [shared-api-guidelines.md](docs/zh-CN/shared-api-guidelines.md) | API 设计规范 |
-| [architecture.md](docs/zh-CN/architecture.md) | 架构详解 |
-| [infrastructure-development.md](docs/zh-CN/infrastructure-development.md) | 基础设施代理 |
-| [dashboard.md](docs/zh-CN/dashboard.md) | Dashboard |
-| [roadmap.md](docs/zh-CN/roadmap.md) | 路线图 |
+如果旧文档、旧实现与本文件冲突，以本文件和开发手册为准。
