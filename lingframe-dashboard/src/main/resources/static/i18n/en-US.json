@@ -21,7 +21,8 @@
     },
     "header": {
         "notSelected": "Not Selected",
-        "upload": "Upload Ling"
+        "upload": "Upload Ling",
+        "timeline": "Timeline"
     },
     "upload": {
         "title": "Upload Ling",
@@ -70,7 +71,20 @@
         "all": "All",
         "waiting": "Waiting for logs...",
         "connecting": "Connecting...",
-        "newLogs": "New Logs"
+        "newLogs": "New Logs",
+        "aggregationMode": "Aggregation Mode",
+        "filterByVersion": "Filter by Version",
+        "filterByEventType": "Filter by Event Type",
+        "filterByKeyword": "Filter by Keyword",
+        "allVersions": "All Versions",
+        "allEventTypes": "All Event Types",
+        "eventTypeLoading": "Loading",
+        "eventTypeUnloading": "Unloading",
+        "eventTypeGC": "GC",
+        "eventTypeError": "Error",
+        "keywordPlaceholder": "Enter keyword to search",
+        "resetFilters": "Reset Filters",
+        "applyFilters": "Apply Filters"
     },
     "control": {
         "title": "Ling Control",
@@ -147,10 +161,11 @@
         "alsoEnabled": " (also enabled {perm})",
         "alsoDisabled": " (also disabled {perm})",
         "installSuccess": "Ling installed successfully",
-    "installFailed": "Ling install failed",
-    "reloadSuccess": "Ling reloaded successfully",
-    "reloadFailed": "Ling reload failed",
-    "lingVersionUnloaded": "Version {version} unloaded successfully"
+        "installFailed": "Ling install failed",
+        "reloadSuccess": "Ling reloaded successfully",
+        "reloadFailed": "Ling reload failed",
+        "lingVersionUnloaded": "Version {version} unloaded successfully",
+        "getTimelineFailed": "Failed to get timeline"
   },
   "performance": {
     "title": "System Performance",
@@ -159,5 +174,11 @@
     "heap": "Heap Memory",
     "threads": "Active Threads",
     "gc": "GC Count"
+  },
+  "timeline": {
+    "title": "Ling Lifecycle Timeline",
+    "selectLing": "Select Ling",
+    "allLings": "All Lings",
+    "noEvents": "No events found"
   }
 }

@@ -21,7 +21,8 @@
   },
   "header": {
     "notSelected": "未选择",
-    "upload": "上传灵元"
+    "upload": "上传灵元",
+    "timeline": "时间线"
   },
   "upload": {
     "title": "上传灵元",
@@ -70,7 +71,20 @@
     "all": "全部",
     "waiting": "等待日志...",
     "connecting": "连接中...",
-    "newLogs": "新日志"
+    "newLogs": "新日志",
+    "aggregationMode": "聚合模式",
+    "filterByVersion": "按版本筛选",
+    "filterByEventType": "按事件类型筛选",
+    "filterByKeyword": "按关键词搜索",
+    "allVersions": "所有版本",
+    "allEventTypes": "所有事件类型",
+    "eventTypeLoading": "加载",
+    "eventTypeUnloading": "卸载",
+    "eventTypeGC": "垃圾回收",
+    "eventTypeError": "错误",
+    "keywordPlaceholder": "输入关键词搜索",
+    "resetFilters": "重置筛选",
+    "applyFilters": "应用筛选"
   },
   "control": {
     "title": "灵元控制",
@@ -150,7 +164,8 @@
     "installFailed": "灵元安装失败",
     "reloadSuccess": "灵元重载成功",
     "reloadFailed": "灵元重载失败",
-    "lingVersionUnloaded": "版本 {version} 卸载成功"
+    "lingVersionUnloaded": "版本 {version} 卸载成功",
+    "getTimelineFailed": "获取时间线失败"
   },
   "performance": {
     "title": "系统性能",
@@ -159,5 +174,11 @@
     "heap": "堆内存",
     "threads": "活跃线程",
     "gc": "GC 次数"
+  },
+  "timeline": {
+    "title": "灵元生命周期时间线",
+    "selectLing": "选择灵元",
+    "allLings": "所有灵元",
+    "noEvents": "暂无事件记录"
   }
 }

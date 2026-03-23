@@ -55,6 +55,14 @@ createApp({
             progress: 0
         });
 
+        // 时间线模态框
+        const timelineModal = reactive({
+            show: false,
+            loading: false,
+            selectedLingId: '',
+            events: []
+        });
+
         const envLabels = { dev: '开发', test: '测试', prod: '生产' };
 
         // 性能监控数据
@@ -92,6 +100,14 @@ createApp({
         let logIdCounter = 0;
         let toastIdCounter = 0;
 
+        // 日志筛选和聚合相关
+        const logAggregationMode = ref(false);
+        const logFilters = reactive({
+            version: '',
+            eventType: '',
+            keyword: ''
+        });
+
         // ==================== 计算属性 ====================
         const activeLing = computed(() => lings.value.find(p => p.lingId === activeId.value));
         const canCanary = computed(() => (activeLing.value?.versionDetails?.length || 0) >= 2);
@@ -104,11 +120,54 @@ createApp({
             disconnected: t('sidebar.sseDisconnected')
         }[sseStatus.value]));
 
+        // 获取可用的版本列表
+        const availableVersions = computed(() => {
+            const versions = new Set();
+            lings.value.forEach(ling => {
+                if (ling.versionDetails) {
+                    ling.versionDetails.forEach(v => {
+                        versions.add(v.version);
+                    });
+                }
+            });
+            return Array.from(versions).sort();
+        });
+
+        // 筛选和聚合日志
         const displayLogs = computed(() => {
+            let filteredLogs = logs.value;
+
+            // 按视图模式筛选
             if (logViewMode.value === 'current' && activeId.value) {
-                return logs.value.filter(l => l.lingId === activeId.value);
+                filteredLogs = filteredLogs.filter(l => l.lingId === activeId.value);
             }
-            return logs.value;
+
+            // 按版本筛选
+            if (logFilters.version) {
+                filteredLogs = filteredLogs.filter(l => l.version === logFilters.version);
+            }
+
+            // 按事件类型筛选
+            if (logFilters.eventType) {
+                filteredLogs = filteredLogs.filter(l => l.type === logFilters.eventType);
+            }
+
+            // 按关键词筛选
+            if (logFilters.keyword) {
+                const keyword = logFilters.keyword.toLowerCase();
+                filteredLogs = filteredLogs.filter(l => 
+                    l.content.toLowerCase().includes(keyword) ||
+                    l.lingId.toLowerCase().includes(keyword) ||
+                    (l.traceId && l.traceId.toLowerCase().includes(keyword))
+                );
+            }
+
+            // 聚合模式
+            if (logAggregationMode.value) {
+                return aggregateLogs(filteredLogs);
+            }
+
+            return filteredLogs;
         });
 
         // ==================== Toast 通知 ====================
@@ -301,6 +360,32 @@ createApp({
         const closeUploadModal = () => {
             if (!uploadModal.uploading) {
                 uploadModal.show = false;
+            }
+        };
+
+        // 时间线相关方法
+        const openTimelineModal = async () => {
+            timelineModal.show = true;
+            await loadTimelineData();
+        };
+
+        const closeTimelineModal = () => {
+            timelineModal.show = false;
+        };
+
+        const loadTimelineData = async () => {
+            timelineModal.loading = true;
+            try {
+                let path = '/lings/timeline';
+                if (timelineModal.selectedLingId) {
+                    path += `?lingId=${timelineModal.selectedLingId}`;
+                }
+                timelineModal.events = await api.get(path);
+            } catch (e) {
+                showToast(t('toast.getTimelineFailed') + ': ' + e.message, 'error');
+                timelineModal.events = [];
+            } finally {
+                timelineModal.loading = false;
             }
         };
 
@@ -819,6 +904,7 @@ createApp({
                 id: ++logIdCounter,
                 traceId: data.traceId,
                 lingId: data.lingId,
+                version: data.version,
                 content: data.content,
                 type: data.type,
                 tag: data.tag,
@@ -852,6 +938,50 @@ createApp({
             if (logContainer.value) {
                 isUserScrolling.value = logContainer.value.scrollTop > 50;
             }
+        };
+
+        // 聚合日志
+        const aggregateLogs = (logs) => {
+            const aggregated = {};
+
+            logs.forEach(log => {
+                // 按类型、内容和版本聚合
+                const key = `${log.type || 'UNKNOWN'}-${log.content}-${log.version || 'UNKNOWN'}`;
+                if (!aggregated[key]) {
+                    aggregated[key] = {
+                        id: ++logIdCounter,
+                        type: log.type,
+                        content: log.content,
+                        lingId: log.lingId,
+                        version: log.version,
+                        count: 0,
+                        firstTimestamp: log.timestamp,
+                        lastTimestamp: log.timestamp,
+                        logs: []
+                    };
+                }
+                
+                const entry = aggregated[key];
+                entry.count++;
+                entry.firstTimestamp = Math.min(entry.firstTimestamp, log.timestamp);
+                entry.lastTimestamp = Math.max(entry.lastTimestamp, log.timestamp);
+                entry.logs.push(log);
+            });
+
+            // 转换为数组并按最后时间排序
+            return Object.values(aggregated).sort((a, b) => b.lastTimestamp - a.firstTimestamp);
+        };
+
+        // 筛选日志
+        const filterLogs = () => {
+            // 筛选逻辑已在displayLogs计算属性中实现
+        };
+
+        // 重置日志筛选
+        const resetLogFilters = () => {
+            logFilters.version = '';
+            logFilters.eventType = '';
+            logFilters.keyword = '';
         };
 
         const scrollToTop = () => {
@@ -917,6 +1047,70 @@ createApp({
             if (log.tag === 'STABLE') return 'text-blue-400';
             if (log.tag === 'START' || log.tag === 'SUMMARY') return 'text-purple-400';
             return 'text-slate-400';
+        };
+
+        // 时间线事件样式和图标
+        const getTimelineEventClass = (type) => {
+            switch (type) {
+                case 'READY':
+                    return 'bg-blue-500/20 text-blue-400 border-2 border-blue-500';
+                case 'ACTIVE':
+                    return 'bg-green-500/20 text-green-400 border-2 border-green-500';
+                case 'STOPPING':
+                    return 'bg-amber-500/20 text-amber-400 border-2 border-amber-500';
+                case 'DEAD':
+                    return 'bg-red-500/20 text-red-400 border-2 border-red-500';
+                case 'RELOAD':
+                    return 'bg-purple-500/20 text-purple-400 border-2 border-purple-500';
+                case 'UNLOAD':
+                    return 'bg-pink-500/20 text-pink-400 border-2 border-pink-500';
+                case 'GC':
+                    return 'bg-cyan-500/20 text-cyan-400 border-2 border-cyan-500';
+                default:
+                    return 'bg-slate-500/20 text-slate-400 border-2 border-slate-500';
+            }
+        };
+
+        const getTimelineEventIcon = (type) => {
+            switch (type) {
+                case 'READY':
+                    return 'fa-solid fa-check-circle';
+                case 'ACTIVE':
+                    return 'fa-solid fa-play-circle';
+                case 'STOPPING':
+                    return 'fa-solid fa-pause-circle';
+                case 'DEAD':
+                    return 'fa-solid fa-stop-circle';
+                case 'RELOAD':
+                    return 'fa-solid fa-sync';
+                case 'UNLOAD':
+                    return 'fa-solid fa-trash';
+                case 'GC':
+                    return 'fa-solid fa-recycle';
+                default:
+                    return 'fa-solid fa-circle';
+            }
+        };
+
+        const getTimelineEventTypeClass = (type) => {
+            switch (type) {
+                case 'READY':
+                    return 'bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded';
+                case 'ACTIVE':
+                    return 'bg-green-500/20 text-green-400 px-2 py-0.5 rounded';
+                case 'STOPPING':
+                    return 'bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded';
+                case 'DEAD':
+                    return 'bg-red-500/20 text-red-400 px-2 py-0.5 rounded';
+                case 'RELOAD':
+                    return 'bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded';
+                case 'UNLOAD':
+                    return 'bg-pink-500/20 text-pink-400 px-2 py-0.5 rounded';
+                case 'GC':
+                    return 'bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded';
+                default:
+                    return 'bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded';
+            }
         };
 
         // ==================== 生命周期 ====================
@@ -1071,22 +1265,24 @@ createApp({
             locale, supportedLocales, switchLocale, t,
 
             lings, activeId, canaryPct, isAuto, ipcEnabled, ipcTarget,
-            logs, lastAudit, logViewMode, logContainer, isUserScrolling, sidebarOpen,
+            logs, lastAudit, logViewMode, logAggregationMode, logFilters, logContainer, isUserScrolling, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
-            stats, loading, modal, toasts, envLabels, uploadModal,
+            stats, loading, modal, toasts, envLabels, uploadModal, timelineModal,
 
             perfMetrics,
             lingHealthMetrics,
 
-            activeLing, canCanary, canOperate, canActivate, canDeactivate, displayLogs,
+            activeLing, canCanary, canOperate, canActivate, canDeactivate, displayLogs, availableVersions,
 
             refreshLings, selectLing, updateStatus, requestUnload,
             confirmModalAction, updateCanaryConfig, updateCanaryConfigLocally, resetCanary, togglePerm, toggleIpc,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
-            handleLogScroll, scrollToTop,
+            handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
             formatDrift, formatTime, formatSize,
             getStatusClass, getLingShortName, getLingTagClass, getLogColor,
+            getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
+            openTimelineModal, closeTimelineModal, loadTimelineData,
             doUpdateStatus, fetchPerformanceMetrics, fetchLingHealthMetrics
         };
     }

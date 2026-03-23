@@ -9,6 +9,7 @@ public class LogStreamDTO {
     private String type;      // TRACE / AUDIT / ALERT / LEAK_DETECTION / STATE_CHANGE
     private String traceId;
     private String lingId;
+    private String version;
     private String content;
     private String tag;       // 辅助标签 (OK, FAIL, IN, OUT, INFO, WARNING, ERROR, CRITICAL)
     private int depth;        // 缩进深度
