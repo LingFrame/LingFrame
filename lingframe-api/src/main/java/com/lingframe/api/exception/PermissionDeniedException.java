@@ -4,7 +4,7 @@ import com.lingframe.api.security.AccessType;
 
 /**
  * 权限拒绝异常
- * 当单元尝试执行未经授权的操作时抛出此异常。
+ * 当灵元尝试执行未经授权的操作时抛出此异常。
  * 
  * @author LingFrame
  */

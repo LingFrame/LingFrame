@@ -5,7 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * 用户单元金丝雀版本启动类
+ * 用户灵元金丝雀版本启动类
  * 
  * 用于测试新功能和灰度发布场景
  */

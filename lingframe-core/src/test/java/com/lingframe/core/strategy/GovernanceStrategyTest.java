@@ -9,7 +9,7 @@ import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("GovernanceStrategy 单元测试")
+@DisplayName("GovernanceStrategy 测试")
 class GovernanceStrategyTest {
 
     @Nested

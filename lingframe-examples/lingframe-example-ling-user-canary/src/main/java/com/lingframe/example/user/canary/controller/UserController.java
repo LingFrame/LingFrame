@@ -11,14 +11,14 @@ import java.util.List;
 
 /**
  * 用户控制器 - 金丝雀版本
- * 
+ * <p>
  * 路由前缀：/user-canary
  * 包含实验性 API
  */
 @Tag(name = "User Canary", description = "用户管理 API (金丝雀版本)")
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/user-canary")
+@RequestMapping("/user")
 public class UserController {
 
     private final UserService userService;

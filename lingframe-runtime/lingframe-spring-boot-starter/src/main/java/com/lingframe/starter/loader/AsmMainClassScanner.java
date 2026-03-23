@@ -17,7 +17,7 @@ import java.util.jar.*;
 import java.util.stream.Stream;
 
 /**
- * 使用 ASM 扫描单元主类
+ * 使用 ASM 扫描灵元主类
  * 精确识别 @SpringBootApplication 注解和 main 方法
  */
 @Slf4j
@@ -26,7 +26,7 @@ public class AsmMainClassScanner {
     /**
      * 扫描主类（支持目录和 JAR）
      *
-     * @param source 单元源文件（目录或 JAR）
+     * @param source 灵元源文件（目录或 JAR）
      * @return 主类全限定名，未找到返回 null
      */
     public static String scanMainClass(File source) throws IOException {
@@ -69,11 +69,27 @@ public class AsmMainClassScanner {
                     .filter(p -> {
                         try {
                             String relativePath = dir.toPath().relativize(p).toString();
-                            try (InputStream is = Files.newInputStream(p)) {
+                            // 🔥 Windows 平台适配：增加自旋重试，应对编译器正在写入导致的文件锁定
+                            int retries = 3;
+                            InputStream is = null;
+                            while (retries > 0) {
+                                try {
+                                    is = Files.newInputStream(p);
+                                    break;
+                                } catch (IOException e) {
+                                    retries--;
+                                    if (retries == 0) throw e;
+                                    log.debug("File locked, retrying scan: {}", p);
+                                    Thread.sleep(100);
+                                }
+                            }
+                            try {
                                 String className = detectMainClass(relativePath, is);
                                 return className != null;
+                            } finally {
+                                if (is != null) is.close();
                             }
-                        } catch (IOException e) {
+                        } catch (Exception e) {
                             log.debug("Failed to read class file: {}", p, e);
                             return false;
                         }
@@ -177,8 +193,8 @@ public class AsmMainClassScanner {
     /**
      * 发现主类（统一入口）
      *
-     * @param lingId    单元 ID
-     * @param source      单元源文件
+     * @param lingId      灵元 ID
+     * @param source      灵元源文件
      * @param classLoader 类加载器
      * @return 主类全限定名
      * @throws IllegalStateException 未找到或验证失败时抛出

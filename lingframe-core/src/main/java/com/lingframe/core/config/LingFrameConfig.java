@@ -10,7 +10,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * LingFrame Core 全局配置对象 (Immutable)
+ * 灵珑灵核全局配置对象（Immutable）
  * <p>
  * 职责：作为 Core 层的唯一配置入口，屏蔽 Spring Boot 或其他外部环境的差异。
  * 包含：
@@ -51,8 +51,8 @@ public class LingFrameConfig {
      */
     public static void init(LingFrameConfig config) {
         if (INSTANCE != null) {
-            // 防止单元加载 Spring 上下文时覆盖灵核的全局配置
-            // 例如：LINGCORE 已开启 DevMode，单元启动默认配置为 false，若覆盖则导致 DevMode 失效
+            // 防止灵元加载 Spring 上下文时覆盖灵核的全局配置
+            // 例如：LINGCORE 已开启 DevMode，灵元启动默认配置为 false，若覆盖则导致 DevMode 失效
             return;
         }
         INSTANCE = config;
@@ -60,7 +60,7 @@ public class LingFrameConfig {
 
     /**
      * 清理全局配置
-     * 场景：单元测试 teardown
+     * 场景：灵元测试 teardown
      */
     public static void clear() {
         INSTANCE = null;
@@ -73,19 +73,19 @@ public class LingFrameConfig {
     private boolean devMode = false;
 
     /**
-     * 启动时是否自动扫描并加载 home 目录下的单元。
+     * 启动时是否自动扫描并加载 home 目录下的灵元。
      */
     @Builder.Default
     private boolean autoScan = true;
 
     /**
-     * 单元存放根目录
+     * 灵元存放根目录
      */
     @Builder.Default
     private String lingHome = "Lings";
 
     /**
-     * 单元额外目录
+     * 灵元额外目录
      */
     @Builder.Default
     private List<String> lingRoots = Collections.emptyList();
@@ -96,29 +96,29 @@ public class LingFrameConfig {
     @Builder.Default
     private int corePoolSize = Math.max(2, Runtime.getRuntime().availableProcessors());
 
-    // ================= 单元线程池预算 =================
+    // ================= 灵元线程池预算 =================
 
     /**
-     * 全局单元线程总预算（所有单元共享此配额）
+     * 全局灵元线程总预算（所有灵元共享此配额）
      * <p>
-     * 每个单元创建独立线程池时，从此预算中扣减。
-     * 卸载时归还。防止单元线程数不可控膨胀。
+     * 每个灵元创建独立线程池时，从此预算中扣减。
+     * 卸载时归还。防止灵元线程数不可控膨胀。
      */
     @Builder.Default
     private int globalMaxLingThreads = Runtime.getRuntime().availableProcessors() * 4;
 
     /**
-     * 单个单元线程池硬上限
+     * 单个灵元线程池硬上限
      * <p>
-     * 即使单元 ling.yml 中配置了更高的值，也不会超过此上限。
+     * 即使灵元 ling.yml 中配置了更高的值，也不会超过此上限。
      */
     @Builder.Default
     private int maxThreadsPerLing = 8;
 
     /**
-     * 单个单元默认线程数
+     * 单个灵元默认线程数
      * <p>
-     * 当单元未在 ling.yml 中指定线程数时，使用此默认值。
+     * 当灵元未在 ling.yml 中指定线程数时，使用此默认值。
      */
     @Builder.Default
     private int defaultThreadsPerLing = 2;
@@ -128,9 +128,9 @@ public class LingFrameConfig {
     /**
      * 是否启用灵核 Bean 治理，默认值为 false
      * <p>
-     * true: 启用治理，对灵核 Bean 进行权限检查和审计
+     * 当为 true 时，启用治理，对灵核 Bean 进行权限检查和审计
      * <p>
-     * false: 禁用治理，灵核 Bean 不受限制
+     * 当为 false 时，禁用治理，灵核 Bean 不受限制
      */
     @Builder.Default
     private boolean lingCoreGovernanceEnabled = false;
@@ -138,9 +138,9 @@ public class LingFrameConfig {
     /**
      * 是否对灵核内部调用进行治理，默认值为 false
      * <p>
-     * true: 灵核自己调用自己的 Bean 也会被治理
+     * 当为 true 时，灵核自己调用自己的 Bean 也会被治理
      * <p>
-     * false: 只有单元调用灵核 Bean 时才会被治理
+     * 当为 false 时，只有灵元调用灵核 Bean 时才会被治理
      */
     @Builder.Default
     private boolean lingCoreGovernanceInternalCalls = false;
@@ -148,12 +148,33 @@ public class LingFrameConfig {
     /**
      * 是否对灵核应用进行权限检查，默认值为 false
      * <p>
-     * true: 灵核应用也需要通过权限检查
+     * 当为 true 时，灵核应用也需要通过权限检查
      * <p>
-     * false: 灵核应用自动拥有所有权限
+     * 当为 false 时，灵核应用自动拥有所有权限
      */
     @Builder.Default
     private boolean hostCheckPermissions = false;
+
+    @Builder.Default
+    private int leakDetectionMaxConcurrentAggressiveChecks = 2;
+
+    @Builder.Default
+    private int leakDetectionDevStartDelayMillis = 2000;
+
+    @Builder.Default
+    private int leakDetectionAggressiveGcRounds = 5;
+
+    @Builder.Default
+    private int leakDetectionAggressiveGcIntervalMillis = 500;
+
+    @Builder.Default
+    private int leakDetectionPassiveWindowMillis = 60000;
+
+    @Builder.Default
+    private int leakDetectionFinalConfirmationDelayMillis = 1000;
+
+    @Builder.Default
+    private int leakDetectionQueuePollMillis = 5000;
 
     // ================= 共享 API 配置 =================
 
@@ -161,21 +182,30 @@ public class LingFrameConfig {
      * 预加载的 API JAR 文件路径列表
      * <p>
      * 这些 JAR 会在启动时加载到 SharedApiClassLoader 中，
-     * 实现跨单元的 API 类共享
+     * 实现跨灵元的 API 类共享
      * <p>
      * 路径支持：
      * - 绝对路径: /path/to/api.jar
      * - 相对路径: libs/order-api.jar (相对于 lingHome)
-     * - Maven 单元: lingframe-examples/lingframe-example-order-api (开发模式)
+     * - Maven 灵元: lingframe-examples/lingframe-example-order-api (开发模式)
      */
     @Builder.Default
     private List<String> preloadApiJars = new ArrayList<>();
 
+    /**
+     * 是否启用 API 包覆盖检测。
+     * <p>
+     * 当为 true 时，如果灵元包内包含 `com.lingframe.api.*` 类则拒绝安装
+     * 当为 false 时，允许灵元包内包含同名 API（不建议）
+     */
+    @Builder.Default
+    private boolean apiOverrideCheckEnabled = true;
+
     // ================= 运行时模板 (Runtime Template) =================
 
     /**
-     * 单元运行时的默认配置模板
-     * (当创建新单元实例时，会应用此配置)
+     * 灵元运行时的默认配置模板
+     * (当创建新灵元实例时，会应用此配置)
      */
     @Builder.Default
     private LingRuntimeConfig runtimeConfig = LingRuntimeConfig.defaults();

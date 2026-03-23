@@ -11,16 +11,16 @@
     <description>LingFrame 版本清单</description>
 
     <properties>
-        <revision>0.2.0</revision>
+        <revision>0.3.0</revision>
     </properties>
 
     <!--
-        BOM 仅暴露 LingFrame 单元，不暴露第三方依赖
+        BOM 仅暴露 LingFrame 灵元，不暴露第三方依赖
         外部项目如需要完整依赖管理，可 import lingframe-dependencies
     -->
     <dependencyManagement>
         <dependencies>
-            <!-- 核心单元 -->
+            <!-- 核心灵元 -->
             <dependency>
                 <groupId>com.lingframe</groupId>
                 <artifactId>lingframe-core</artifactId>

@@ -1,94 +1,138 @@
 package com.lingframe.core.proxy;
 
-import com.lingframe.core.kernel.GovernanceKernel;
-import com.lingframe.core.kernel.InvocationContext;
-import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.api.security.AccessType;
+import com.lingframe.core.ling.LingServiceRegistry;
+import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
-import java.lang.reflect.Method;
-import java.util.function.Supplier;
+import java.lang.reflect.Proxy;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
-@DisplayName("SmartServiceProxy 单元测试")
+@DisplayName("SmartServiceProxy 测试")
 class SmartServiceProxyTest {
 
     @Mock
-    private LingRuntime runtime;
-
+    private InvocationPipelineEngine pipelineEngine;
     @Mock
-    private GovernanceKernel kernel;
+    private LingServiceRegistry lingServiceRegistry;
 
-    private SmartServiceProxy proxy;
+    private SmartServiceProxy smartServiceProxy;
+    private DemoService proxyInstance;
+
+    interface BaseService {
+        String sayHello(String name);
+    }
+
+    interface DemoService extends BaseService {
+        void throwError() throws Exception;
+    }
+
+    static class DemoServiceImpl implements DemoService {
+        @Override
+        public String sayHello(String name) {
+            return "Hello " + name;
+        }
+
+        @Override
+        public void throwError() {
+        }
+    }
 
     @BeforeEach
     void setUp() {
-        when(runtime.getLingId()).thenReturn("target-ling");
+        smartServiceProxy = new SmartServiceProxy("caller-ling", "target-ling",
+                DemoService.class.getName(), pipelineEngine, lingServiceRegistry);
+        proxyInstance = (DemoService) Proxy.newProxyInstance(
+                Thread.currentThread().getContextClassLoader(),
+                new Class[] { DemoService.class },
+                smartServiceProxy);
+    }
 
-        // 模拟 Kernel 执行：直接执行 Supplier
-        when(kernel.invoke(eq(runtime), any(Method.class), any(InvocationContext.class), any(Supplier.class)))
-                .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(3)).get());
-
-        proxy = new SmartServiceProxy("caller-ling", runtime, Runnable.class, kernel);
+    @AfterEach
+    void tearDown() {
+        InvocationContext.detach(null);
     }
 
     @Nested
-    @DisplayName("代理调用")
-    class InvocationTests {
+    @DisplayName("Object 基础方法")
+    class ObjectMethodTests {
 
         @Test
-        @DisplayName("invoke 应正确委托给 Runtime")
-        void invokeShouldDelegateToRuntime() throws Throwable {
-            // 准备
-            when(runtime.invoke(any(InvocationContext.class))).thenReturn("Result");
+        @DisplayName("调用 Object 方法时应在本地执行")
+        void invoke_WhenObjectMethod_ShouldExecuteLocally() {
+            assertNotNull(proxyInstance.toString());
+            assertEquals(proxyInstance.hashCode(), proxyInstance.hashCode());
+            verifyNoInteractions(pipelineEngine);
+        }
+    }
 
-            // 执行
-            Method runMethod = Runnable.class.getMethod("run");
-            proxy.invoke(null, runMethod, new Object[0]);
+    @Nested
+    @DisplayName("服务调用")
+    class ServiceInvocationTests {
 
-            // 验证：Runtime.invoke(InvocationContext) 被调用
-            ArgumentCaptor<InvocationContext> ctxCaptor = ArgumentCaptor.forClass(InvocationContext.class);
-            verify(runtime, times(1)).invoke(ctxCaptor.capture());
+        @Test
+        @DisplayName("服务方法调用时应填充真实目标类并在结束后重置上下文")
+        void invoke_WhenServiceMethod_ShouldContextBePopulatedAndReset() throws Throwable {
+            when(lingServiceRegistry.getServiceClassName("target-ling:" + DemoService.class.getName()))
+                    .thenReturn(DemoServiceImpl.class.getName());
+            when(pipelineEngine.invoke(any(InvocationContext.class))).thenAnswer(invocation -> {
+                InvocationContext ctx = invocation.getArgument(0);
 
-            InvocationContext ctx = ctxCaptor.getValue();
-            assertEquals("caller-ling", ctx.getCallerLingId());
-            assertEquals("target-ling", ctx.getLingId());
-            assertEquals("java.lang.Runnable:run", ctx.getResourceId());
+                assertEquals("target-ling:" + DemoService.class.getName(), ctx.getServiceFQSID());
+                assertEquals(DemoServiceImpl.class.getName(), ctx.resolution().getTargetClassName());
+                assertEquals("sayHello", ctx.getMethodName());
+                assertEquals("target-ling", ctx.getTargetLingId());
+                assertEquals("caller-ling", ctx.getCallerLingId());
+                assertEquals(AccessType.EXECUTE, ctx.getAccessType());
+                assertNotNull(ctx.getParameterTypeNames());
+                assertArrayEquals(new Object[] { "World" }, ctx.getArgs());
+
+                return "Hello World";
+            });
+
+            String result = proxyInstance.sayHello("World");
+
+            assertEquals("Hello World", result);
+
+            InvocationContext afterCtx = InvocationContext.obtain();
+            assertNull(afterCtx.getServiceFQSID());
+            assertNull(afterCtx.getMethodName());
+            assertNull(afterCtx.getArgs());
+            assertTrue(afterCtx.getAttachments() == null || afterCtx.getAttachments().isEmpty());
+            afterCtx.recycle();
         }
 
         @Test
-        @DisplayName("invoke 应透传参数")
-        void invokeShouldPassArguments() throws Throwable {
-            // 准备
-            Object[] args = new Object[] { "test" };
-            when(runtime.invoke(any(InvocationContext.class))).thenReturn(null);
+        @DisplayName("管线抛出异常时应直接透传并重置上下文")
+        void invoke_WhenPipelineThrowsException_ShouldThrowDirectlyAndResetContext() throws Throwable {
+            RuntimeException bizException = new RuntimeException("Business Rule Violated");
+            when(pipelineEngine.invoke(any(InvocationContext.class))).thenThrow(bizException);
 
-            // 为了测试参数透传，使用带参接口 Comparable
-            SmartServiceProxy paramProxy = new SmartServiceProxy("caller-ling", runtime, Comparable.class, kernel);
-            Method compareToMethod = Comparable.class.getMethod("compareTo", Object.class);
+            RuntimeException thrown = assertThrows(RuntimeException.class, () -> proxyInstance.throwError());
 
-            paramProxy.invoke(null, compareToMethod, args);
+            assertEquals("Business Rule Violated", thrown.getMessage());
 
-            // 验证：Runtime.invoke(InvocationContext) 被调用，且 resourceId 包含 compareTo
-            ArgumentCaptor<InvocationContext> ctxCaptor = ArgumentCaptor.forClass(InvocationContext.class);
-            verify(runtime, times(1)).invoke(ctxCaptor.capture());
-
-            InvocationContext ctx = ctxCaptor.getValue();
-            assertTrue(ctx.getResourceId().contains("compareTo"));
-            assertEquals("caller-ling", ctx.getCallerLingId());
+            InvocationContext afterCtx = InvocationContext.obtain();
+            assertNull(afterCtx.getServiceFQSID());
+            afterCtx.recycle();
         }
     }
 }

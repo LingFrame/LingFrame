@@ -5,20 +5,26 @@ import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.enums.LingStatus;
+import com.lingframe.core.fsm.RuntimeCoordinator;
+import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.fsm.TransitionResult;
+import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.governance.GovernancePermissionSynchronizer;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.loader.LingManifestLoader;
-import com.lingframe.core.ling.LingManager;
+import com.lingframe.core.ling.LingLifecycleEngine;
+import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.core.exception.LingInstallException;
-import com.lingframe.core.exception.ServiceUnavailableException;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
-import com.lingframe.dashboard.router.CanaryRouter;
+import com.lingframe.core.router.CanaryRouter;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -30,15 +36,44 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DashboardService {
 
-    private final LingManager lingManager;
+    /**
+     * 灵元生命周期事件
+     */
+    @Data
+    public static class LifecycleEvent {
+        private String id;
+        private String lingId;
+        private String version;
+        private String type;
+        private String title;
+        private String description;
+        private long timestamp;
+        
+        public LifecycleEvent(String lingId, String version, String type, String title, String description) {
+            this.id = UUID.randomUUID().toString();
+            this.lingId = lingId;
+            this.version = version;
+            this.type = type;
+            this.title = title;
+            this.description = description;
+            this.timestamp = System.currentTimeMillis();
+        }
+    }
+
+    private final LingFrameConfig lingFrameConfig;
+    private final LingLifecycleEngine lifecycleEngine;
+    private final LingRepository lingRepository;
     private final LocalGovernanceRegistry governanceRegistry;
     private final CanaryRouter canaryRouter;
     private final LingInfoConverter converter;
     private final PermissionService permissionService;
+    private final RuntimeCoordinator runtimeCoordinator;
+    
+    // 存储生命周期事件的列表
+    private final List<LifecycleEvent> lifecycleEvents = Collections.synchronizedList(new ArrayList<>());
 
     public List<LingInfoDTO> getAllLingInfos() {
-        return lingManager.getInstalledLings().stream()
-                .map(lingManager::getRuntime)
+        return lingRepository.getAllRuntimes().stream()
                 .filter(Objects::nonNull)
                 .map(runtime -> {
                     GovernancePolicy policy = getEffectivePolicy(runtime.getLingId());
@@ -48,7 +83,7 @@ public class DashboardService {
     }
 
     public LingInfoDTO getLingInfo(String lingId) {
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             return null;
         }
@@ -63,7 +98,7 @@ public class DashboardService {
             return policy;
         }
         // 降级使用静态定义
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime != null && runtime.getInstancePool().getDefault() != null
                 && runtime.getInstancePool().getDefault().getDefinition() != null) {
             return runtime.getInstancePool().getDefault().getDefinition().getGovernance();
@@ -77,57 +112,135 @@ public class DashboardService {
             if (def == null) {
                 throw new InvalidArgumentException("file", "Not a valid ling package: " + file.getName());
             }
-            lingManager.install(def, file);
+            boolean isCanary = isCanary(def);
+            lifecycleEngine.deploy(def, file, !isCanary, Collections.emptyMap());
+            addLifecycleEvent(def.getId(), def.getVersion(), "READY", "灵元安装完成", "灵元 " + def.getId() + " 版本 " + def.getVersion() + " 安装成功并准备就绪");
             return getLingInfo(def.getId());
         } catch (Exception e) {
             throw new LingInstallException("unknown", "Failed to install ling: " + e.getMessage(), e);
         }
     }
 
+    private boolean isCanary(LingDefinition def) {
+        if (def == null || def.getProperties() == null) {
+            return false;
+        }
+        Object value = def.getProperties().get("canary");
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue() != 0;
+        }
+        return "true".equalsIgnoreCase(String.valueOf(value));
+    }
+
     public void uninstallLing(String lingId) {
         try {
-            lingManager.uninstall(lingId);
+            canaryRouter.removeCanaryConfig(lingId);
+            lifecycleEngine.undeploy(lingId);
+            addLifecycleEvent(lingId, "", "DEAD", "灵元完全卸载", "灵元 " + lingId + " 已完全卸载，所有版本均已移除");
         } catch (Exception e) {
             throw new LingInstallException(lingId, "Failed to uninstall ling: " + e.getMessage(), e);
         }
     }
 
-    public LingInfoDTO reloadLing(String lingId) {
+    public void uninstallLing(String lingId, String version) {
         try {
-            lingManager.reload(lingId);
+            canaryRouter.removeCanaryConfig(lingId);
+            lifecycleEngine.undeploy(lingId, version);
+            addLifecycleEvent(lingId, version, "UNLOAD", "灵元版本卸载", "灵元 " + lingId + " 版本 " + version + " 已卸载");
+        } catch (Exception e) {
+            throw new LingInstallException(lingId,
+                    "Failed to uninstall ling version " + version + ": " + e.getMessage(), e);
+        }
+    }
+
+    public LingInfoDTO reloadLing(String lingId, String version) {
+        try {
+            LingRuntime runtime = lingRepository.getRuntime(lingId);
+            if (runtime == null) {
+                throw new LingNotFoundException(lingId);
+            }
+
+            LingInstance target = version != null
+                    ? runtime.getInstancePool().getInstance(version)
+                    : selectStableInstance(runtime);
+            if (target == null) {
+                throw new LingInstallException(lingId, "No available instance to reload", null);
+            }
+
+            String targetVersion = target.getVersion();
+            String baseVersion = targetVersion;
+            int reloadIdx = targetVersion.indexOf("-reload-");
+            if (reloadIdx > 0) {
+                baseVersion = targetVersion.substring(0, reloadIdx);
+            }
+            File source = resolveSourceFile(lingId, baseVersion);
+            if (source == null) {
+                throw new LingInstallException(lingId,
+                        "Source file not found for " + lingId + ":" + targetVersion, null);
+            }
+
+            LingDefinition def = LingManifestLoader.parseDefinition(source);
+            if (def == null) {
+                throw new LingInstallException(lingId, "Invalid ling package: " + source.getAbsolutePath(), null);
+            }
+
+            // 重载时保持原实例的默认/灰度角色与标签
+            boolean wasDefault = runtime.getInstancePool().getDefault() == target;
+            Map<String, String> labels = new HashMap<>(target.getLabels());
+
+            // 重载时改版本号：baseVersion + "-reload-{n}"
+            String reloadVersion = buildReloadVersion(runtime, baseVersion);
+            def.setVersion(reloadVersion);
+            markReload(def, labels, reloadVersion);
+
+            // 两阶段热重载：先新建，再切流，最后卸载旧实例
+            lifecycleEngine.deployForReload(def, source, wasDefault, labels);
+
+            LingInstance newInstance = runtime.getInstancePool().getInstance(reloadVersion);
+            if (newInstance == null) {
+                throw new LingInstallException(lingId, "Hot reload failed: new instance not found", null);
+            }
+
+            lifecycleEngine.undeploy(lingId, target);
+            addLifecycleEvent(lingId, reloadVersion, "RELOAD", "灵元热重载", "灵元 " + lingId + " 版本 " + targetVersion + " 已热重载为 " + reloadVersion);
+
             return getLingInfo(lingId);
         } catch (Exception e) {
             throw new LingInstallException(lingId, "Failed to reload ling: " + e.getMessage(), e);
         }
     }
 
-    public LingInfoDTO updateStatus(String lingId, LingStatus newStatus) {
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+    public LingInfoDTO updateStatus(String lingId, RuntimeStatus newStatus, String version) {
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
         }
 
-        LingStatus current = runtime.getStatus();
-
-        // 状态转换验证
-        if (!isValidTransition(current, newStatus)) {
-            throw new ServiceUnavailableException(lingId,
-                    String.format("Invalid status transition: %s -> %s", current, newStatus));
-        }
+        RuntimeStatus currentStatus = runtime.currentStatus();
+        log.info("[Dashboard] Requesting status transition for ling {}: {} -> {}", lingId, currentStatus, newStatus);
 
         switch (newStatus) {
             case ACTIVE:
-                runtime.setStatus(LingStatus.STARTING);
-                // 执行激活逻辑
-                runtime.activate();
-                runtime.setStatus(LingStatus.ACTIVE);
+                TransitionResult<RuntimeStatus> activeResult = runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
+                if (!activeResult.isSuccess()) {
+                    String errorMsg = String.format("Cannot transition %s to ACTIVE from %s: %s", 
+                            lingId, currentStatus, activeResult.code());
+                    log.warn("[Dashboard] {}", errorMsg);
+                    throw new IllegalStateException(errorMsg);
+                }
+                log.info("[Dashboard] State transitioned to ACTIVE for ling: {}", lingId);
+                addLifecycleEvent(lingId, version, "ACTIVE", "灵元激活", "灵元 " + lingId + " 已激活并开始处理请求");
 
-                // 初始化治理策略（如果不存在或为空）
                 GovernancePolicy policy = governanceRegistry.getPatch(lingId);
                 if (policy == null || policy.getCapabilities() == null || policy.getCapabilities().isEmpty()) {
                     log.info("[Dashboard] Initializing default permissions for ling: {}", lingId);
 
-                    // 创建默认权限配置（全部开启）
                     List<GovernancePolicy.CapabilityRule> defaultCapabilities = Arrays.asList(
                             GovernancePolicy.CapabilityRule.builder()
                                     .capability(Capabilities.STORAGE_SQL)
@@ -147,40 +260,26 @@ public class DashboardService {
                     }
                     policy.setCapabilities(defaultCapabilities);
                     governanceRegistry.updatePatch(lingId, policy);
-
-                    // 同步到运行时权限服务
-                    permissionService.grant(lingId, Capabilities.STORAGE_SQL, AccessType.WRITE);
-                    permissionService.grant(lingId, Capabilities.CACHE_LOCAL, AccessType.WRITE);
-                    permissionService.grant(lingId, Capabilities.Ling_ENABLE, AccessType.EXECUTE);
-
-                    log.info("[Dashboard] Default permissions initialized and persisted");
-                } else {
-                    log.info("[Dashboard] ling has governance policy, loading permissions from file");
-
-                    // 从治理策略加载权限并同步到运行时
-                    for (GovernancePolicy.CapabilityRule rule : policy.getCapabilities()) {
-                        try {
-                            AccessType accessType = AccessType.valueOf(rule.getAccessType());
-                            permissionService.grant(lingId, rule.getCapability(), accessType);
-                            log.info("[Dashboard] Loaded permission: {} -> {}", rule.getCapability(), accessType);
-                        } catch (Exception e) {
-                            log.warn("[Dashboard] Failed to load permission: {} -> {}, error: {}",
-                                    rule.getCapability(), rule.getAccessType(), e.getMessage());
-                        }
-                    }
                 }
+
+                syncPermissionsFromPolicy(lingId, policy);
                 break;
-            case LOADED:
-                runtime.setStatus(LingStatus.STOPPING);
-                // 执行停止逻辑 (但不卸载)
-                runtime.deactivate();
-                runtime.setStatus(LingStatus.LOADED);
-                // 撤销单元启用权限
+            case INACTIVE:
+                TransitionResult<RuntimeStatus> inactiveResult = runtimeCoordinator.transition(lingId, RuntimeStatus.INACTIVE);
+                if (!inactiveResult.isSuccess()) {
+                    String errorMsg = String.format("Cannot transition %s to INACTIVE from %s: %s", 
+                            lingId, currentStatus, inactiveResult.code());
+                    log.warn("[Dashboard] {}", errorMsg);
+                    throw new IllegalStateException(errorMsg);
+                }
+                log.info("[Dashboard] State transitioned to INACTIVE for ling: {}", lingId);
+                addLifecycleEvent(lingId, version, "STOPPING", "灵元停用", "灵元 " + lingId + " 已停用，不再接受新请求");
+
                 permissionService.revoke(lingId, Capabilities.Ling_ENABLE);
-                log.info("[Dashboard] Revoked Ling_ENABLE permission from {}", lingId);
+                log.info("[Dashboard] Revoked Ling_ENABLE permission from {}, ling deactivated", lingId);
                 break;
-            case UNLOADED:
-                lingManager.uninstall(lingId);
+            case REMOVED:
+                lifecycleEngine.undeploy(lingId);
                 break;
             default:
                 throw new InvalidArgumentException("status", "Unsupported status: " + newStatus);
@@ -190,7 +289,7 @@ public class DashboardService {
     }
 
     public void setCanaryConfig(String lingId, int percent, String canaryVersion) {
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
         }
@@ -198,7 +297,7 @@ public class DashboardService {
     }
 
     public TrafficStatsDTO getTrafficStats(String lingId) {
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
         }
@@ -206,11 +305,30 @@ public class DashboardService {
     }
 
     public void resetTrafficStats(String lingId) {
-        LingRuntime runtime = lingManager.getRuntime(lingId);
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
         }
         runtime.resetTrafficStats();
+    }
+    
+    public List<LifecycleEvent> getLifecycleEvents(String lingId) {
+        if (lingId == null || lingId.isEmpty()) {
+            return new ArrayList<>(lifecycleEvents);
+        } else {
+            return lifecycleEvents.stream()
+                    .filter(event -> lingId.equals(event.getLingId()))
+                    .collect(Collectors.toList());
+        }
+    }
+    
+    private void addLifecycleEvent(String lingId, String version, String type, String title, String description) {
+        LifecycleEvent event = new LifecycleEvent(lingId, version, type, title, description);
+        lifecycleEvents.add(event);
+        // 限制事件数量，只保留最近的1000条
+        if (lifecycleEvents.size() > 1000) {
+            lifecycleEvents.remove(0);
+        }
     }
 
     public void updatePermissions(String lingId, ResourcePermissionDTO dto) {
@@ -225,11 +343,7 @@ public class DashboardService {
 
         log.info("Calculated permissions: SQL={}, Cache={}", sqlAccess, cacheAccess);
 
-        // 2. 同步到运行时权限服务
-        permissionService.grant(lingId, Capabilities.STORAGE_SQL, sqlAccess);
-        permissionService.grant(lingId, Capabilities.CACHE_LOCAL, cacheAccess);
-
-        // 3. 同步到治理策略并持久化
+        // 2. 同步到治理策略并持久化
         GovernancePolicy policy = governanceRegistry.getPatch(lingId);
         if (policy == null) {
             policy = new GovernancePolicy();
@@ -278,14 +392,13 @@ public class DashboardService {
                         .capability(capability)
                         .accessType(AccessType.EXECUTE.name()) // IPC 默认为 EXECUTE
                         .build());
-                // 同时授权到运行时
-                permissionService.grant(lingId, capability, AccessType.EXECUTE);
             }
         }
 
-        // 4. 设置回策略
+        // 4. 设置回策略并同步到运行时
         policy.setCapabilities(new ArrayList<>(ruleMap.values()));
         governanceRegistry.updatePatch(lingId, policy);
+        syncPermissionsFromPolicy(lingId, policy);
 
         log.info("Permission update completed and persisted");
         log.info("========================================");
@@ -312,20 +425,129 @@ public class DashboardService {
         return AccessType.NONE;
     }
 
-    private boolean isValidTransition(LingStatus from, LingStatus to) {
-        if (from == null || to == null) {
+    /**
+     * 以治理策略为唯一来源，刷新运行时权限表。
+     */
+    public void updateGovernancePolicy(String lingId, GovernancePolicy policy) {
+        governanceRegistry.updatePatch(lingId, policy);
+        syncPermissionsFromPolicy(lingId, policy);
+    }
+
+    private void syncPermissionsFromPolicy(String lingId, GovernancePolicy policy) {
+        GovernancePermissionSynchronizer.syncPolicy(lingId, policy, permissionService);
+    }
+
+    private LingInstance selectStableInstance(LingRuntime runtime) {
+        if (runtime == null) {
+            return null;
+        }
+        for (LingInstance instance : runtime.getInstancePool().getActiveInstances()) {
+            if (!isCanary(instance)) {
+                return instance;
+            }
+        }
+        LingInstance fallback = runtime.getInstancePool().getDefault();
+        if (fallback != null) {
+            return fallback;
+        }
+        List<LingInstance> active = runtime.getInstancePool().getActiveInstances();
+        return active.isEmpty() ? null : active.get(0);
+    }
+
+    private File resolveSourceFile(String lingId, String version) {
+        File devFile = findFromRoots(lingId, version);
+        if (devFile != null) {
+            return devFile;
+        }
+        File homeFile = findFromHome(lingId, version);
+        if (homeFile != null) {
+            return homeFile;
+        }
+        return null;
+    }
+
+    private File findFromRoots(String lingId, String version) {
+        if (lingFrameConfig == null || !lingFrameConfig.isDevMode()) {
+            return null;
+        }
+        List<String> roots = lingFrameConfig.getLingRoots();
+        if (roots == null || roots.isEmpty()) {
+            return null;
+        }
+        for (String root : roots) {
+            String realPath = root + File.separator + "/target/classes";
+            File realFile = new File(realPath);
+            if (!realFile.exists()) {
+                continue;
+            }
+            LingDefinition def = LingManifestLoader.parseDefinition(realFile);
+            if (def != null && lingId.equals(def.getId()) && version.equals(def.getVersion())) {
+                return realFile;
+            }
+        }
+        return null;
+    }
+
+    private File findFromHome(String lingId, String version) {
+        if (lingFrameConfig == null || lingFrameConfig.getLingHome() == null) {
+            return null;
+        }
+        File home = new File(lingFrameConfig.getLingHome());
+        if (!home.exists() || !home.isDirectory()) {
+            return null;
+        }
+        File[] files = home.listFiles();
+        if (files == null) {
+            return null;
+        }
+        for (File file : files) {
+            LingDefinition def = LingManifestLoader.parseDefinition(file);
+            if (def != null && lingId.equals(def.getId()) && version.equals(def.getVersion())) {
+                return file;
+            }
+        }
+        return null;
+    }
+
+    private boolean isCanary(LingInstance instance) {
+        if (instance == null || instance.getDefinition() == null) {
             return false;
         }
-
-        switch (from) {
-            case UNLOADED:
-                return to == LingStatus.LOADING || to == LingStatus.LOADED;
-            case LOADED:
-                return to == LingStatus.ACTIVE || to == LingStatus.UNLOADED;
-            case ACTIVE:
-                return to == LingStatus.LOADED || to == LingStatus.UNLOADED;
-            default:
-                return false;
-        }
+        return isCanary(instance.getDefinition());
     }
+
+    private String buildReloadVersion(LingRuntime runtime, String baseVersion) {
+        int max = 0;
+        String prefix = baseVersion + "-reload-";
+        for (LingInstance instance : runtime.getInstancePool().getAllInstances()) {
+            String v = instance.getVersion();
+            if (v != null && v.startsWith(prefix)) {
+                String suffix = v.substring(prefix.length());
+                try {
+                    int n = Integer.parseInt(suffix);
+                    if (n > max) {
+                        max = n;
+                    }
+                } catch (NumberFormatException ignore) {
+                    // 忽略格式不合法的重载版本号
+                }
+            }
+        }
+        return prefix + (max + 1);
+    }
+
+    private void markReload(LingDefinition def, Map<String, String> labels, String reloadVersion) {
+        if (labels != null) {
+            labels.put("reload", "true");
+            labels.put("reloadVersion", reloadVersion);
+        }
+        Map<String, Object> props = def.getProperties();
+        if (props == null) {
+            props = new HashMap<>();
+            def.setProperties(props);
+        }
+        props.put("reload", true);
+        props.put("reloadVersion", reloadVersion);
+    }
+
 }

@@ -38,6 +38,9 @@ Core Capabilities:
 - ✅ Unit Status Control (Start/Stop/Hot Swap)
 - ✅ Dynamic Permission Adjustment
 - ✅ Canary Release Configuration
+- ✅ Simulation APIs (resource / IPC / stress routing)
+- ✅ SSE event stream (`/lingframe/dashboard/stream`)
+- ✅ JVM metrics and ling health snapshots
 - ⏳ Dashboard UI Polish
 
 ---
@@ -49,24 +52,39 @@ Core Capabilities:
 ### Implemented
 - ✅ Permission Control (@RequiresPermission)
 - ✅ Security Audit (@Auditable)
-- ✅ Full Tracing (TraceContext)
+- ✅ Full Tracing (LingCallContext)
 - ✅ Canary Release (CanaryRouter)
 - ✅ Circuit Breaker (SlidingWindowCircuitBreaker)
 - ✅ Rate Limiting (TokenBucketRateLimiter)
 - ✅ Timeout Control & Fallback (SmartServiceProxy integrated)
 - ✅ Retry (GovernanceKernel integrated)
 - ✅ Complex Routing (LabelMatchRouter with Weight-based and Tag-based routing)
+- ✅ Unified invocation governance spine (`InvocationPipelineEngine` + `FilterRegistry`)
+- ✅ Three execution modes: `NORMAL`, `SIMULATION`, and `GOVERN_ONLY`
+- ✅ Shared governance kernel for web requests, LingCore beans, and dashboard simulation
+- ✅ Dual runtime state model (`InstanceStatus` / `RuntimeStatus`)
+- ✅ Converged state ownership through `InstanceCoordinator` / `RuntimeCoordinator`
+- ✅ Lifecycle orchestration through `DefaultLingLifecycleEngine`
+- ✅ Unload cleanup, resource eviction, and leak detection as formal runtime responsibilities
+- ✅ Shared API bootstrap ordering and boundary freezing (`SharedApiManager`)
 
 ---
 
-## Phase 4: Observability ⏳ Planned
+## Phase 4: Observability 🔄 In Progress
 
 **Goal**: Comprehensive Monitoring Capabilities
 
+### Already Available
+- ✅ Dashboard SSE monitoring stream
+- ✅ trace / audit / lifecycle / circuit-breaker / leak-detection event output
+- ✅ JVM / system metrics collection (CPU, process CPU load, total memory, heap, non-heap, metaspace, class loading, threads, GC, system load)
+- ✅ per-ling and all-ling health snapshots
+
 ### System Metrics
-- CPU / Memory Usage
-- JVM Metrics (GC, Heap, Thread)
-- System Load
+- ✅ CPU / process CPU load
+- ✅ total memory / heap / non-heap / metaspace
+- ✅ JVM metrics (GC, class loading, threads)
+- ✅ system load
 
 ### Unit Metrics
 - Call Count, Success Rate, Latency per Unit
@@ -85,8 +103,14 @@ Core Capabilities:
 **Goal**: Complete Infrastructure Proxy Ecosystem and Exoskeleton Extensions
 
 ### Implemented
-- ✅ Ecosystem SPIs (LingInvocationFilter, ServiceExporter, LingContextCustomizer, LingDeployService)
+- ✅ Ecosystem extension SPIs are in place (`LingInvocationFilter`, `ServiceExporter`, `LingContextCustomizer`, `LingDeployService`)
+- ✅ `LingInvocationFilter` is already wired into the unified governance pipeline and can extend the filter chain through runtime assembly
+- ✅ `LingDeployService` already has a default implementation (`DefaultLingDeployService`)
 - ✅ Developer Experience (Auto-activate units after installation in devMode)
+
+### Current Stage Notes
+- `ServiceExporter` and `LingContextCustomizer` are already public extension points, but they are still more like outer integration skeletons than a fully populated ecosystem
+- The current goal is to make extension boundaries real first, not to claim that the whole ecosystem is already finished
 
 ### To Be Implemented
 - ⏳ Message Proxy (Kafka / RabbitMQ)

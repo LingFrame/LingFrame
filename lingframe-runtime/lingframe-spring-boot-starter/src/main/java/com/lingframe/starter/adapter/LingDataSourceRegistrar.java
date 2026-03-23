@@ -14,21 +14,21 @@ import java.net.URLClassLoader;
 import java.util.function.Supplier;
 
 /**
- * 单元数据源自动注册器
+ * 灵元数据源自动注册器
  * <p>
- * 在单元容器初始化时，自动为单元注册独立的 DataSource 和 DataSourceInitializer，
- * 避免单元开发者手动编写样板代码。
+ * 在灵元容器初始化时，自动为灵元注册独立的 DataSource 和 DataSourceInitializer，
+ * 避免灵元开发者手动编写样板代码。
  * </p>
  *
  * <h3>生效条件</h3>
  * <ul>
- * <li>单元配置了 {@code spring.datasource.url}</li>
+ * <li>灵元配置了 {@code spring.datasource.url}</li>
  * <li>未禁用自动配置 {@code lingframe.ling.auto-datasource=false}</li>
  * </ul>
  *
  * <h3>初始化脚本</h3>
  * <p>
- * 如果单元的 classpath 中存在 {@code schema.sql}，将自动执行。
+ * 如果灵元的 classpath 中存在 {@code schema.sql}，将自动执行。
  * </p>
  */
 @Slf4j
@@ -39,11 +39,11 @@ public class LingDataSourceRegistrar {
     private static final String DEFAULT_SCHEMA_LOCATION = "schema.sql";
 
     /**
-     * 在单元容器初始化时注册数据源相关 Bean
+     * 在灵元容器初始化时注册数据源相关 Bean
      *
-     * @param context     单元的 GenericApplicationContext
-     * @param classLoader 单元的 ClassLoader
-     * @param lingId    单元 ID（用于日志）
+     * @param context     灵元的 GenericApplicationContext
+     * @param classLoader 灵元的 ClassLoader
+     * @param lingId      灵元 ID（用于日志）
      */
     public static void register(GenericApplicationContext context, ClassLoader classLoader, String lingId) {
         Environment env = context.getEnvironment();
@@ -55,7 +55,7 @@ public class LingDataSourceRegistrar {
             return;
         }
 
-        // 检查单元是否配置了独立数据源
+        // 检查灵元是否配置了独立数据源
         String dataSourceUrl = env.getProperty(PROP_DATASOURCE_URL);
         if (dataSourceUrl == null || dataSourceUrl.trim().isEmpty()) {
             log.debug("[{}] ling spring.datasource.url not configured, skipping auto-datasource registration",
@@ -83,7 +83,7 @@ public class LingDataSourceRegistrar {
         };
         context.registerBean("dataSource", DataSource.class, dataSourceSupplier, bd -> bd.setPrimary(true));
 
-        // 检查 schema.sql 是否存在（只查找单元自身资源，不委派给父 ClassLoader）
+        // 检查 schema.sql 是否存在（只查找灵元自身资源，不委派给父 ClassLoader）
         URL schemaUrl;
         if (classLoader instanceof URLClassLoader) {
             URLClassLoader urlClassLoader = (URLClassLoader) classLoader;

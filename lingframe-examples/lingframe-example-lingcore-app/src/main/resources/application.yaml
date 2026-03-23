@@ -2,11 +2,21 @@ server:
   port: 8888
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 60MB
   # 修复 Spring Boot 2.6+ 与 SpringDoc 1.x 的兼容性问题
   # 避免 "Expected lookupPath in request attribute" 错误
   mvc:
     path match:
       matching-strategy: ant_path_matcher
+  web:
+    resources:
+      cache:
+        period: 0
+      chain:
+        cache: false
   h2:
     console:
       enabled: true
@@ -44,10 +54,11 @@ lingframe:
   # 开启 Dashboard 功能
   dashboard:
     enabled: true
+    install-enabled: true
 
 # SpringDoc OpenAPI 配置
 springdoc:
-  # 禁用 SpringDoc 缓存以支持单元动态加载
+  # 禁用 SpringDoc 缓存以支持灵元动态加载
   cache:
     disabled: true
   packages-to-scan: com.lingframe
@@ -66,7 +77,11 @@ springdoc:
       paths-to-match: /**/dashboard/**
     - group: 02-LINGCORE
       display-name: 02. LINGCORE Application
-      paths-to-exclude: /**/dashboard/**, /*-Ling/**
+      paths-to-exclude: /**/dashboard/**, /*-ling/**
     - group: 03-Lings
       display-name: 03. Lings
-      paths-to-match: /**-Ling/**
+      paths-to-match: /**-ling/**
+
+logging:
+  level:
+    com.lingframe: INFO

@@ -1,287 +1,86 @@
 # LingFrame
 
-**Empower JVM Apps with OS-like Control and Governance**
+**Runtime governance for long-running JVM systems**
 
-> 🟢 **Core Framework Implemented** — Permission Governance, Audit Tracing, Capability Arbitration, Unit Isolation, and **Resilience Governance (Retry, Circuit-Breaking)** are available.
+> Public release baseline: `0.3.0 (Nirvana)`
 
----
+LingFrame is not trying to turn a monolith into a distributed platform overnight. Its current codebase is focused on one thing: making long-running JVM applications more governable without forcing a rewrite.
 
-## 📖 What is LingFrame?
+In `0.3.0`, the center of gravity has clearly shifted from scattered governance features to a converged runtime kernel.
 
-**LingFrame** is a **JVM Runtime Governance Framework**, focused on solving **Permission Control**, **Audit Tracing**, and **Capability Arbitration** issues in cross-unit calls within Java applications.
+If you want one line that captures the current implementation identity more sharply, use this:
 
-> ⚠️ We use modular isolation as a technical means for governance, but the core value lies in **Runtime Governance Capabilities** — ensuring every cross-unit call undergoes permission checks and audit recording.
+> LingFrame is no longer only proving that lings can be loaded dynamically.  
+> It is increasingly answering whether they can be unloaded, cleaned up, and kept under runtime order over long-running system life.
 
-**Core Capabilities**: **Permission Governance** · **Audit Tracing** · **Capability Arbitration** · **Unit Isolation**
-
----
-
-## ✅ Core Governance Capabilities
-
-| Capability            | Description                               | Core Class                            |
-| --------------------- | ----------------------------------------- | ------------------------------------- |
-| **Permission Governance** | Smart Inference + `@RequiresPermission`, all calls authorized | `GovernanceKernel`, `GovernanceStrategy` |
-| **Audit Tracing**     | `@Auditable` + Async Audit Log, Full Trace | `AuditManager`                        |
-| **Capability Arbitration**| Core is sole arbiter, proxying all cross-unit calls | `ServiceRegistry`, `SmartServiceProxy` |
-| **Service Routing**   | `@LingService` + `@LingReference`, FQSID Routing | `LingReferenceInjector`, `GlobalServiceRoutingProxy` |
-| **Unit Isolation**  | Three-Tier ClassLoader + Spring Parent-Child Context | `SharedApiClassLoader`, `LingClassLoader`, `SpringLingContainer` |
-| **Hot Swap**          | Blue-Green Deploy + File Watcher, No Restart | `LingManager`, `InstancePool`, `HotSwapWatcher` |
-| **Resilience**        | Circuit Breaking, Retry, Rate Limiting    | `GovernanceKernel`, `SlidingWindowCircuitBreaker`, `TokenBucketRateLimiter` |
+This page is a **code-reading entry**, not the full architecture spec.
 
 ---
 
-## 🎯 Problems We Solve
+## What 0.3.0 Means
 
-| Pain Point             | Current Dilemma                       | LingFrame Solution         |
-| :--------------------- | :------------------------------------ | :------------------------- |
-| **Lack of Authorization**| Units call directly, no checks      | All calls proxied by Core for auth |
-| **Untraceable Operations**| Hard to trace calls after failure    | Built-in Audit Log, Full Trace |
-| **Blurred Boundaries** | Extension logic coupled with kernel   | Three-Tier Architecture + Isolation |
-| **No Unified Governance** | Business units access DB/Redis directly | Unified infrastructure access arbitration |
+The current public release is centered on four concrete changes:
 
----
+- a single governance execution spine built around `InvocationPipelineEngine`
+- a formal dual-state runtime model built from `InstanceStatus` and `RuntimeStatus`
+- reuse of the same governance kernel across ling calls, web requests, LingCore beans, and dashboard simulations
+- better operational explainability through traces, monitoring events, SSE logs, and leak diagnostics
 
-## 👤 Applicable Scenarios
-
-| Scenario               | Typical Requirement                             |
-| ---------------------- | ----------------------------------------------- |
-| **Enterprise App**     | Fine-grained permission control and full audit  |
-| **Multi-Unit System**| Unified governance and isolation for calls      |
-| **Secondary Dev Platform**| Restrict and audit third-party code          |
-| **SaaS Multi-Tenant**  | Isolate and load tenant features on demand      |
-| **Monolith Modularization**| Split monolith into independent, clear units |
+If you are reading the codebase for the first time, this is the lens to keep in mind.
 
 ---
 
-## 💡 Core Philosophy: Governance Architecture
+## Core Capabilities In The Current Codebase
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│                 Core (Governance Kernel)                 │
-│      Auth Arbitration · Audit · Scheduling · Isolation    │
-└────────────────────────────────┬────────────────────────┘
-                                 ▼
-┌─────────────────────────────────────────────────────────┐
-│           Infrastructure (Infra Layer)                   │
-│    Storage Proxy · Cache Proxy · Message Proxy · Search   │
-└────────────────────────────────┬────────────────────────┘
-                                 ▼
-┌─────────────────────────────────────────────────────────┐
-│             Business (Business Layer)                    │
-│          User Center · Order Service · Payment            │
-└─────────────────────────────────────────────────────────┘
-```
-
-**Key Design Principles**:
-
-1. **Core is Sole Arbiter**: Provides no business capability, only Auth, Audit, and Proxy.
-2. **Zero Trust Call**: All cross-unit calls must be proxied and authorized by Core, no bypass.
-3. **Complete Audit Chain**: Every call is traceable, supporting accountability and compliance.
+| Capability | What is implemented in `0.3.0` | Main anchors |
+| :-- | :-- | :-- |
+| Unified invocation governance | explicit filter-based governance chain with startup order validation | `InvocationPipelineEngine`, `FilterRegistry` |
+| Runtime state convergence | instance lifecycle and macro runtime availability are separated and event-linked | `InstanceStatus`, `RuntimeStatus`, `InstanceCoordinator`, `RuntimeCoordinator` |
+| Web governance | Spring Boot 2 / 3 request entry points can borrow the kernel in `GOVERN_ONLY` mode | `LingWebGovernanceFilter` |
+| Bean governance | LingCore beans can reuse the pipeline through AOP interception | `LingCoreBeanGovernanceInterceptor` |
+| Simulation and explainability | dashboard simulation runs through the real governance chain in `SIMULATION` mode | `SimulateService`, `EngineTrace` |
+| Event streaming | trace, audit, lifecycle, circuit breaker, and leak events are streamed through SSE | `MonitoringEvents`, `LogStreamService` |
+| Long-running cleanup | unload-related resource eviction and leak detection are part of runtime operations | `InvocationPipelineEngine.evictLingResources`, `DefaultLeakDetector` |
+| Lifecycle orchestration | deploy, side-by-side reload, drain-before-unload, and final cleanup are coordinated in one runtime path | `DefaultLingLifecycleEngine`, `LingUnloadCoordinator` |
+| Shared contract boundary | shared APIs are preloaded and then frozen before lings load | `SharedApiManager` |
 
 ---
 
-## 🚀 Quick Start
+## The Project Traits Worth Noticing First
 
-### Prerequisites
+If you are reading the codebase for the first time, the most important thing to notice is not how many governance points exist, but these four traits:
 
-- Java 17+
-- Maven 3.8+
-
-### Build Project
-
-```bash
-# Clone Repository (Choose any)
-# GitHub (International, Recommended)
-git clone https://github.com/LingFrame/LingFrame.git
-
-# AtomGit (China)
-git clone https://atomgit.com/lingframe/LingFrame.git
-
-# Gitee (China Mirror)
-git clone https://gitee.com/knight6236/lingframe.git
-
-cd LingFrame
-
-# Build and Install
-mvn clean install -DskipTests
-
-# Run Example LINGCORE App
-cd lingframe-examples/lingframe-example-lingcore-app
-mvn spring-boot:run
-```
-
-### LingCore Application Configuration
-
-Configure LingFrame in `application.yaml`:
-
-```yaml
-lingframe:
-  enabled: true
-  dev-mode: true                    # Dev mode, warn only on permission denied
-  ling-home: "lings"            # ling JAR directory
-  ling-roots:                     # ling Source directory (Dev mode)
-    - "../my-ling"
-  auto-scan: true
-  
-  audit:
-    enabled: true
-    log-console: true
-    queue-size: 1000
-  
-  runtime:
-    default-timeout: 3s
-    bulkhead-max-concurrent: 10
-```
-
-### Create Business Unit
-
-LingFrame uses **Consumer-Driven Contract**: Consumer defines interface, Producer implements it.
-
-```java
-// ========== Consumer (Order ling) defines required interface ==========
-// Location: order-api/src/main/java/.../UserQueryService.java
-public interface UserQueryService {
-    Optional<UserDTO> findById(String userId);
-}
-
-// ========== Producer (User ling) implements the interface ==========
-// Location: user-ling/src/main/java/.../UserQueryServiceImpl.java
-@SpringBootApplication
-public class UserLing implements Ling {
-    @Override
-    public void onStart(LingContext context) {
-        System.out.println("Ling started: " + context.getLingId());
-    }
-}
-
-@Component
-public class UserQueryServiceImpl implements UserQueryService {
-    
-    @LingService(id = "find_user", desc = "Query User")
-    @Override
-    public Optional<UserDTO> findById(String userId) {
-        return userRepository.findById(userId).map(this::toDTO);
-    }
-}
-```
-
-Unit Metadata `ling.yml`:
-
-```yaml
-id: user-ling
-version: 1.0.0
-provider: "My Company"
-description: "User Unit"
-mainClass: "com.example.UserLing"
-
-governance:
-  permissions:
-    - methodPattern: "storage:sql"
-      permissionId: "READ"
-```
-
-### Cross-Unit Service Call (Via Kernel Proxy)
-
-```java
-// Method 1: @LingReference Injection (Highly Recommended)
-// Order ling uses interface defined by itself, implemented by User ling
-@Component
-public class OrderService {
-    
-    @LingReference
-    private UserQueryService userQueryService;  // Framework auto-routes to User ling implementation
-    
-    public Order createOrder(String userId) {
-        // This call passes through Core Permission Check and Audit
-        UserDTO user = userQueryService.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        return new Order(user);
-    }
-}
-
-// Method 2: LingContext.getService()
-Optional<UserQueryService> service = context.getService(UserQueryService.class);
-
-// Method 3: FQSID Protocol Call
-Optional<UserDTO> user = context.invoke("user-ling:find_user", userId);
-```
+- LingFrame is aimed at **long-running runtime order**, not just successful one-time deployment
+- it cares about **disciplined hot unload**, not only dynamic loading
+- **unload cleanup, resource eviction, and leak diagnostics** are already treated as formal runtime responsibilities
+- it stays strict about **process-level contract boundaries** such as `Shared API`, instead of overselling unsafe hot-update promises
 
 ---
 
-## 📦 Project Structure
+## How To Read The Project
 
-```
-lingframe/
-├── lingframe-api/              # Contract Layer (Interface, Annotation, Exception)
-├── lingframe-core/             # Governance Kernel (Auth, Audit, Unit Mgmt)
-├── lingframe-runtime/          # Runtime Integration
-│   └── lingframe-spring-boot3-starter/  # Spring Boot 3.x Integration
-├── lingframe-infrastructure/   # Infrastructure Layer
-│   ├── lingframe-infra-storage/   # Storage Proxy, SQL-level Permission
-│   └── lingframe-infra-cache/     # Cache Proxy
-├── lingframe-examples/         # Examples
-│   ├── lingframe-example-lingcore-app/     # LINGCORE App
-│   ├── lingframe-example-ling-user/  # User Unit
-│   └── lingframe-example-ling-order/ # Order Unit
-├── lingframe-dependencies/     # Dependency Management
-└── lingframe-bom/              # BOM provided to external
-```
+| Module | What to look for first |
+| :-- | :-- |
+| `lingframe-api` | contract surface and shared vocabulary |
+| `lingframe-core` | the actual governance kernel and runtime convergence points |
+| `lingframe-runtime` | how Spring Boot 2 / 3 reuses the kernel |
+| `lingframe-dashboard` | how the control surface consumes real kernel evidence |
+| `lingframe-infrastructure` | current storage / cache proxy reference paths |
+| `lingframe-examples` | the fastest way to connect docs to a runnable setup |
+
+For the full module responsibility statement, use [Architecture Design](architecture.md).
 
 ---
 
-## 🆚 Why Not Other Solutions?
+## Current Public Boundaries
 
-> LingFrame's core value is not modularity itself, but **Runtime Governance**. Comparison focuses on governance.
+The current codebase deliberately keeps these boundaries:
 
-| Governance Capability | OSGi     | Java SPI | PF4J       | **LingFrame**     |
-| :-------------------- | :------- | :------- | :--------- | :---------------- |
-| **Fine-grained Auth** | Complex  | None     | None       | ✅ Core Feature   |
-| **Audit Tracing**     | Extension| None     | None       | ✅ Built-in       |
-| **Capability Arbitration**| Service Registry| None | Extension Point | ✅ Core Forced Proxy |
-| **Spring Native**     | Adapter  | Manual   | Extra Work | ✅ Parent-Child Context |
-| **Positioning**       | Modularity| Extension| ling Sys | **Runtime Governance** |
+- LingFrame is still a **single-process** runtime governance system, not a distributed governance platform.
+- `Shared API` remains a **process-level contract**: a brand-new shared JAR can be hot-loaded, but an already loaded shared contract still requires a process restart to change safely.
+- The bootstrap order is part of that contract boundary: preload shared APIs first, freeze second, then load lings.
+- `0.3.0` publicly ships pipeline convergence, runtime convergence, dashboard simulation, and long-running stability work.
+- **Real-traffic replay validation is not part of `0.3.0`**.
+- Message/search proxy expansion is still future work rather than a finished public capability.
 
----
-
-## 📍 Roadmap
-
-| Phase       | Goal                                                | Status        |
-| :---------- | :-------------------------------------------------- | :------------ |
-| **Phase 1** | Core Governance: Auth, Audit, Isolation             | ✅ **Done**   |
-| **Phase 2** | Visualization: Dashboard Governance Center          | ✅ **Basic Done**|
-| **Phase 3** | Elastic Governance: Circuit Break, Degrade, Retry, Rate Limit | ✅ **Done**    |
-| **Phase 4** | Observability: Metrics, Trace Visualization         | ⏳ Planned    |
-| **Phase 5** | Infra Extension: Message Proxy, Search Proxy        | ⏳ Planned    |
-
----
-
-## 📚 Documentation
-
-- [Quick Start](getting-started.md) - 5 Minute Start
-- [Unit Development Guide](ling-development.md) - Develop Business Units
-- [Shared API Guidelines](shared-api-guidelines.md) - API Design Best Practices
-- [Infrastructure Development](infrastructure-development.md) - Develop Infra Proxies
-- [Dashboard](dashboard.md) - Visual Governance Center
-- [Architecture Design](architecture.md) - Deep Dive
-- [Roadmap](roadmap.md) - Evolution Plan
-
----
-
-## 👥 Contributing
-
-We welcome community participation:
-
-1. **Feature Dev**: Check [Issues](../../issues)
-2. **Architecture Discussion**: [Discussions](../../discussions)
-3. **Doc Improvement**: Help improve docs/tutorials
-4. **Test**: Add unit tests
-
-See [Contributing Guide](../CONTRIBUTING.md)
-
-⭐ **Star** this repo to follow our growth.
-
----
-
-## 📄 License
-
- **Apache License 2.0**
+Continue with [Architecture Design](architecture.md) for the formal public view, or jump straight to [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md) if state ownership is the part you want to understand next.
