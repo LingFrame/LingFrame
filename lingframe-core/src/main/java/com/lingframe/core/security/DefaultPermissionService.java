@@ -10,6 +10,7 @@ import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
+import com.lingframe.core.pipeline.InvocationContext;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
@@ -59,6 +60,7 @@ public class DefaultPermissionService implements PermissionService {
             log.warn("[DEV WARNING] ling [{}] unauthorized access [{}] ({}). Please declare in ling.yml: {}",
                     lingId, capability, accessType, capability);
             log.warn("==========================================================================");
+            publishDevModeBypassAlert(lingId, capability, accessType);
             return true;
         }
 
@@ -131,20 +133,22 @@ public class DefaultPermissionService implements PermissionService {
             return;
         }
 
-        String traceId = LingCallContext.startTrace();
+        String traceId = resolveTraceId();
         String callerLingId = record.getCallerLingId();
         String principal = normalize(record.getPrincipal());
         String capability = normalize(record.getCapability());
         String action = truncate(record.getAction(), 80);
         String resource = truncate(record.getResource(), 120);
+        String source = truncate(resolveInvocationSource(), 160);
+        String ruleSource = truncate(resolveRuleSource(), 120);
         String failureReason = truncate(record.getFailureReason(), 160);
 
         if (record.getResult() == PermissionAuditResult.DENIED) {
-            log.warn("[Security] Access denied - caller={}, capability={}, action={}, resource={}",
-                    callerLingId, capability, action, resource);
+            log.warn("[Security] Access denied - caller={}, capability={}, action={}, resource={}, source={}, ruleSource={}",
+                    callerLingId, capability, action, resource, source, ruleSource);
         } else if (record.getResult() == PermissionAuditResult.FAILED) {
-            log.warn("[Security] Allowed invocation failed - caller={}, capability={}, action={}, reason={}",
-                    callerLingId, capability, action, failureReason);
+            log.warn("[Security] Allowed invocation failed - caller={}, capability={}, action={}, source={}, ruleSource={}, reason={}",
+                    callerLingId, capability, action, source, ruleSource, failureReason);
         }
 
         AuditManager.asyncRecord(
@@ -166,6 +170,8 @@ public class DefaultPermissionService implements PermissionService {
                     action,
                     resource,
                     capability,
+                    source,
+                    ruleSource,
                     record.getResult(),
                     failureReason,
                     record.getCostNanos()));
@@ -196,5 +202,65 @@ public class DefaultPermissionService implements PermissionService {
             return value;
         }
         return value.substring(0, maxLength) + "...";
+    }
+
+    private void publishDevModeBypassAlert(String lingId, String capability, AccessType accessType) {
+        if (eventBus == null) {
+            return;
+        }
+
+        String traceId = resolveTraceId();
+        String source = truncate(resolveInvocationSource(), 160);
+        String ruleSource = truncate(resolveRuleSource(), 120);
+        String message = String.format(
+                "Dev mode bypassed unauthorized access for ling [%s]: capability [%s] (%s). Please declare it in ling.yml.",
+                lingId,
+                capability,
+                accessType);
+        eventBus.publish(new MonitoringEvents.AlertNotifyEvent(
+                traceId,
+                "WARNING",
+                "DEV_PERMISSION_BYPASS",
+                lingId,
+                message,
+                source,
+                ruleSource));
+    }
+
+    private String resolveTraceId() {
+        InvocationContext ctx = InvocationContext.current();
+        String traceId = ctx == null ? null : normalize(ctx.getTraceId());
+        if (traceId != null) {
+            LingCallContext.setTraceId(traceId);
+            return traceId;
+        }
+        return LingCallContext.startTrace();
+    }
+
+    private String resolveInvocationSource() {
+        InvocationContext ctx = InvocationContext.current();
+        if (ctx == null) {
+            return null;
+        }
+
+        String service = normalize(ctx.getServiceFQSID());
+        String operation = normalize(ctx.getOperation());
+        String resource = normalize(ctx.getResourceId());
+
+        if (service != null && operation != null) {
+            return service + "#" + operation;
+        }
+        if (service != null) {
+            return service;
+        }
+        if (operation != null) {
+            return operation;
+        }
+        return resource;
+    }
+
+    private String resolveRuleSource() {
+        InvocationContext ctx = InvocationContext.current();
+        return ctx == null ? null : normalize(ctx.getRuleSource());
     }
 }

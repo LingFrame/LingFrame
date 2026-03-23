@@ -69,11 +69,27 @@ public class AsmMainClassScanner {
                     .filter(p -> {
                         try {
                             String relativePath = dir.toPath().relativize(p).toString();
-                            try (InputStream is = Files.newInputStream(p)) {
+                            // 🔥 Windows 平台适配：增加自旋重试，应对编译器正在写入导致的文件锁定
+                            int retries = 3;
+                            InputStream is = null;
+                            while (retries > 0) {
+                                try {
+                                    is = Files.newInputStream(p);
+                                    break;
+                                } catch (IOException e) {
+                                    retries--;
+                                    if (retries == 0) throw e;
+                                    log.debug("File locked, retrying scan: {}", p);
+                                    Thread.sleep(100);
+                                }
+                            }
+                            try {
                                 String className = detectMainClass(relativePath, is);
                                 return className != null;
+                            } finally {
+                                if (is != null) is.close();
                             }
-                        } catch (IOException e) {
+                        } catch (Exception e) {
                             log.debug("Failed to read class file: {}", p, e);
                             return false;
                         }

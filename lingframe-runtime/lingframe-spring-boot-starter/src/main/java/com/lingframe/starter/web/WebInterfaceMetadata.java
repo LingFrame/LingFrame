@@ -64,6 +64,9 @@ public class WebInterfaceMetadata {
     private boolean shouldAudit;
     private String auditAction;
     private String version;
+    private String opSummary;
+    private String opDescription;
+    private String[] opTags;
     private transient RequestMappingInfo requestMappingInfo;
 
     private transient WeakReference<Object> targetBeanRef;
@@ -185,6 +188,16 @@ public class WebInterfaceMetadata {
         targetMethodRef = null;
         classLoaderRef = null;
         lingApplicationContextRef = null;
+        // 彻底擦除签名信息，防止持有 ClassLoader 中的 String (常量池引用)
+        targetBeanName = null;
+        targetClassName = null;
+        targetMethodName = null;
+        targetMethodParameterTypeNames = null;
+        springDocBeanName = null;
+        opSummary = null;
+        opDescription = null;
+        opTags = null;
+        requestMappingInfo = null;
     }
 
     public boolean matchesHandler(Object bean, Method method) {
@@ -273,6 +286,9 @@ public class WebInterfaceMetadata {
                 .shouldAudit(shouldAudit)
                 .auditAction(auditAction)
                 .version(version)
+                .opSummary(opSummary)
+                .opDescription(opDescription)
+                .opTags(opTags != null ? Arrays.copyOf(opTags, opTags.length) : null)
                 .requestMappingInfo(requestMappingInfo)
                 .build();
     }

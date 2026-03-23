@@ -9,6 +9,7 @@ import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.fsm.TransitionResult;
 import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.governance.GovernancePermissionSynchronizer;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.loader.LingManifestLoader;
 import com.lingframe.core.ling.LingLifecycleEngine;
@@ -380,23 +381,7 @@ public class DashboardService {
     }
 
     private void syncPermissionsFromPolicy(String lingId, GovernancePolicy policy) {
-        // 清空该灵元的运行时权限，避免旧权限残留
-        permissionService.removeLing(lingId);
-
-        if (policy == null || policy.getCapabilities() == null) {
-            return;
-        }
-
-        for (GovernancePolicy.CapabilityRule rule : policy.getCapabilities()) {
-            try {
-                AccessType accessType = AccessType.valueOf(rule.getAccessType());
-                permissionService.grant(lingId, rule.getCapability(), accessType);
-                log.info("[Dashboard] Loaded permission: {} -> {}", rule.getCapability(), accessType);
-            } catch (Exception e) {
-                log.warn("[Dashboard] Failed to load permission: {} -> {}, error: {}",
-                        rule.getCapability(), rule.getAccessType(), e.getMessage());
-            }
-        }
+        GovernancePermissionSynchronizer.syncPolicy(lingId, policy, permissionService);
     }
 
     private LingInstance selectStableInstance(LingRuntime runtime) {

@@ -1,11 +1,13 @@
 package com.lingframe.core.security;
 
+import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionAuditRecord;
 import com.lingframe.api.security.PermissionAuditResult;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
+import com.lingframe.core.pipeline.InvocationContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,6 +40,8 @@ class DefaultPermissionServiceTest {
     @AfterEach
     void tearDown() {
         LingFrameConfig.current().setDevMode(false);
+        LingCallContext.clear();
+        InvocationContext.detach(null);
     }
 
     @Nested
@@ -91,6 +95,33 @@ class DefaultPermissionServiceTest {
             LingFrameConfig.current().setDevMode(true);
             assertTrue(permissionService.isAllowed("test-ling", "test-capability", AccessType.WRITE));
         }
+
+        @Test
+        @DisplayName("should publish dev-mode bypass alert")
+        void shouldPublishDevModeBypassAlert() {
+            AtomicReference<MonitoringEvents.AlertNotifyEvent> captured = new AtomicReference<>();
+            eventBus.subscribe("test-listener", MonitoringEvents.AlertNotifyEvent.class, captured::set);
+            InvocationContext ctx = attachContext("trace-dev");
+
+            try {
+                LingFrameConfig.current().setDevMode(true);
+
+                assertTrue(permissionService.isAllowed("test-ling", "test-capability", AccessType.WRITE));
+            } finally {
+                InvocationContext.detach(null);
+                ctx.recycle();
+            }
+
+            MonitoringEvents.AlertNotifyEvent event = captured.get();
+            assertNotNull(event);
+            assertEquals("trace-dev", event.getTraceId());
+            assertEquals("WARNING", event.getLevel());
+            assertEquals("DEV_PERMISSION_BYPASS", event.getType());
+            assertEquals("test-ling", event.getLingId());
+            assertTrue(event.getMessage().contains("test-capability"));
+            assertEquals("test-ling:test-service#createOrder", event.getSource());
+            assertEquals("AnnotationPolicy", event.getRuleSource());
+        }
     }
 
     @Nested
@@ -101,27 +132,47 @@ class DefaultPermissionServiceTest {
         void publishesStructuredAuditEvent() {
             AtomicReference<MonitoringEvents.AuditLogEvent> captured = new AtomicReference<>();
             eventBus.subscribe("test-listener", MonitoringEvents.AuditLogEvent.class, captured::set);
+            InvocationContext ctx = attachContext("trace-audit");
 
-            permissionService.audit(PermissionAuditRecord.builder()
-                    .callerLingId("ling-a")
-                    .principal("alice")
-                    .capability("storage:sql")
-                    .action("PUT /orders/1")
-                    .resource("PUT /orders/1")
-                    .result(PermissionAuditResult.FAILED)
-                    .failureReason("IllegalStateException: boom")
-                    .costNanos(1234L)
-                    .build());
+            try {
+                permissionService.audit(PermissionAuditRecord.builder()
+                        .callerLingId("ling-a")
+                        .principal("alice")
+                        .capability("storage:sql")
+                        .action("PUT /orders/1")
+                        .resource("PUT /orders/1")
+                        .result(PermissionAuditResult.FAILED)
+                        .failureReason("IllegalStateException: boom")
+                        .costNanos(1234L)
+                        .build());
+            } finally {
+                InvocationContext.detach(null);
+                ctx.recycle();
+            }
 
             MonitoringEvents.AuditLogEvent event = captured.get();
             assertNotNull(event);
+            assertEquals("trace-audit", event.getTraceId());
             assertEquals("ling-a", event.getLingId());
             assertEquals("alice", event.getPrincipal());
             assertEquals("storage:sql", event.getCapability());
+            assertEquals("test-ling:test-service#createOrder", event.getSource());
+            assertEquals("AnnotationPolicy", event.getRuleSource());
             assertEquals(PermissionAuditResult.FAILED, event.getResult());
             assertEquals("IllegalStateException: boom", event.getFailureReason());
             assertEquals(1234L, event.getCostNanos());
             assertFalse(event.isSuccess());
         }
+    }
+
+    private InvocationContext attachContext(String traceId) {
+        InvocationContext ctx = InvocationContext.obtain();
+        ctx.setTraceId(traceId);
+        ctx.setServiceFQSID("test-ling:test-service");
+        ctx.setOperation("createOrder");
+        ctx.setResourceId("POST /orders");
+        ctx.setRuleSource("AnnotationPolicy");
+        ctx.attach();
+        return ctx;
     }
 }

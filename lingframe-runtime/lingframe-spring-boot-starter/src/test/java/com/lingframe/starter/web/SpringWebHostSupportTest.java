@@ -9,6 +9,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.util.ReflectionUtils;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
@@ -40,26 +41,17 @@ class SpringWebHostSupportTest {
             SpringWebHostSupport support = new SpringWebHostSupport();
             support.init(hostMapping, hostAdapter, hostContext);
 
-            String beanName = "ling-a:v1:" + DemoController.class.getName();
             String routeKey = "GET#/ling-a/demo/detail";
             RequestMappingInfo mappingInfo = RequestMappingInfo.paths("/ling-a/demo/detail")
                     .methods(RequestMethod.GET)
                     .build();
             Map<String, RequestMappingInfo> mappingInfoMap = new ConcurrentHashMap<>();
-            support.registerSpringDocBean(beanName, DemoController.class, DemoController::new);
             support.registerMapping(routeKey, mappingInfo, new Object(), Object.class.getMethods()[0], mappingInfoMap);
 
-            assertTrue(hostContext.containsBeanDefinition(beanName));
             assertTrue(mappingInfoMap.containsKey(routeKey));
 
-            support.cleanupCompatibilityArtifacts(
-                    Collections.singleton(beanName),
-                    Collections.singleton(routeKey),
-                    mappingInfoMap,
-                    DemoController.class.getClassLoader(),
-                    Collections.emptySet());
+            support.unregisterMappings(Collections.singleton(routeKey), mappingInfoMap);
 
-            assertFalse(hostContext.containsBeanDefinition(beanName));
             assertFalse(mappingInfoMap.containsKey(routeKey));
             verify(hostMapping).unregisterMapping(mappingInfo);
         } finally {
@@ -80,6 +72,10 @@ class SpringWebHostSupportTest {
 
             DemoController controller = new DemoController();
             Method targetMethod = DemoController.class.getMethod("echo", String.class);
+            GenericApplicationContext lingContext = new GenericApplicationContext();
+            lingContext.refresh();
+            lingContext.getBeanFactory().registerSingleton("requestMappingHandlerAdapter", hostAdapter);
+
             WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
                     .lingId("ling-a")
                     .version("v1")
@@ -90,19 +86,28 @@ class SpringWebHostSupportTest {
                     .targetMethodParameterTypeNames(new String[] {String.class.getName()})
                     .targetMethod(targetMethod)
                     .classLoader(DemoController.class.getClassLoader())
+                    .lingApplicationContext(lingContext)
                     .urlPattern("/ling-a/demo/echo")
                     .httpMethod("GET")
                     .requiredPermission("demo:read")
                     .build();
 
-            MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/echo");
-            request.addParameter("name", "alice");
-            MockHttpServletResponse response = new MockHttpServletResponse();
-
-            Object result = support.invokeTarget(metadata, metadata.buildRouteKey(), new ServletWebRequest(request, response));
+            Object request = new MockHttpServletRequest("GET", "/ling-a/demo/echo");
+            Method addParamMethod = ReflectionUtils.findMethod(request.getClass(), "addParameter", String.class, String.class);
+            if (addParamMethod != null) {
+                ReflectionUtils.invokeMethod(addParamMethod, request, "name", "alice");
+            }
+            Object response = new MockHttpServletResponse();
+            
+            // 动态构造 ServletWebRequest
+            ServletWebRequest webRequest = createServletWebRequest(request, response);
+            Object result = support.invokeTarget(metadata, metadata.buildRouteKey(), webRequest);
 
             assertNull(result);
-            assertEquals("alice", response.getContentAsString());
+            Method getContentMethod = ReflectionUtils.findMethod(response.getClass(), "getContentAsString");
+            if (getContentMethod != null) {
+                assertEquals("alice", ReflectionUtils.invokeMethod(getContentMethod, response));
+            }
         } finally {
             hostContext.close();
         }
@@ -114,6 +119,27 @@ class SpringWebHostSupportTest {
         adapter.setMessageConverters(Collections.singletonList(new StringHttpMessageConverter()));
         adapter.afterPropertiesSet();
         return adapter;
+    }
+
+    private ServletWebRequest createServletWebRequest(Object request, Object response) throws Exception {
+        ClassLoader cl = request.getClass().getClassLoader();
+        Class<?> requestIntf = findServletInterface(cl, "HttpServletRequest");
+        Class<?> responseIntf = findServletInterface(cl, "HttpServletResponse");
+
+        return (ServletWebRequest) ReflectionUtils.accessibleConstructor(ServletWebRequest.class, 
+            requestIntf, responseIntf).newInstance(request, response);
+    }
+
+    private static Class<?> findServletInterface(ClassLoader cl, String interfaceName) {
+        try {
+            return Class.forName("jakarta.servlet.http." + interfaceName, false, cl);
+        } catch (ClassNotFoundException e) {
+            try {
+                return Class.forName("javax.servlet.http." + interfaceName, false, cl);
+            } catch (ClassNotFoundException ex) {
+                return null;
+            }
+        }
     }
 
     static class DemoController {

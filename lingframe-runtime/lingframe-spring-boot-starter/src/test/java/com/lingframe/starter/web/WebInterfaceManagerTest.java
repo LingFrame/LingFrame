@@ -4,13 +4,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.beans.factory.support.GenericBeanDefinition;
+import com.lingframe.api.exception.LingException;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.http.converter.StringHttpMessageConverter;
+import org.springframework.util.ReflectionUtils;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -25,10 +26,9 @@ import java.lang.reflect.Method;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -55,7 +55,7 @@ class WebInterfaceManagerTest {
     }
 
     @Test
-    @DisplayName("unregisterSync 应移除路由索引与 SpringDoc Bean 定义")
+    @DisplayName("unregisterSync 应移除路由索引")
     void shouldUnregisterSynchronously() throws Exception {
         hostContext = new GenericApplicationContext();
         hostContext.refresh();
@@ -82,15 +82,11 @@ class WebInterfaceManagerTest {
 
         manager.registerSync(metadata);
 
-        String springDocBeanName = "ling-a:v1:" + DemoController.class.getName();
-        assertEquals(springDocBeanName, metadata.getSpringDocBeanName());
-        assertTrue(hostContext.containsBeanDefinition(springDocBeanName));
         assertNotNull(manager.resolveRoute(new MockHttpServletRequest("GET", "/ling-a/demo/detail")));
         verify(hostMapping).registerMapping(any(RequestMappingInfo.class), any(), any(Method.class));
 
         manager.unregisterSync("ling-a", DemoController.class.getClassLoader());
 
-        assertFalse(hostContext.containsBeanDefinition(springDocBeanName));
         assertNull(manager.resolveRoute(new MockHttpServletRequest("GET", "/ling-a/demo/detail")));
         verify(hostMapping).unregisterMapping(any(RequestMappingInfo.class));
     }
@@ -144,6 +140,7 @@ class WebInterfaceManagerTest {
                 .targetMethodParameterTypeNames(new String[] {String.class.getName()})
                 .targetMethod(targetMethod)
                 .classLoader(DemoController.class.getClassLoader())
+                .lingApplicationContext(hostContext)
                 .urlPattern("/ling-a/demo/echo")
                 .httpMethod("GET")
                 .requiredPermission("demo:read")
@@ -163,17 +160,17 @@ class WebInterfaceManagerTest {
 
         manager.unregisterSync("ling-a", DemoController.class.getClassLoader());
 
+        // 卸载后，通过 routeKey 重新分发应抛出异常（因为元数据已注销）
         MockHttpServletResponse response = new MockHttpServletResponse();
-        Object result = manager.dispatch(resolution.getRouteKey(), new ServletWebRequest(request, response));
+        assertThrows(LingException.class, () ->
+                manager.dispatch(resolution.getRouteKey(), createServletWebRequest(request, response)));
 
-        assertNull(result);
-        assertEquals("alice", response.getContentAsString());
         verify(hostMapping).unregisterMapping(any(RequestMappingInfo.class));
     }
 
     @Test
-    @DisplayName("registerSync 应使用真实 Controller 类注册继承方法的 SpringDoc Bean")
-    void shouldRegisterSpringDocBeanWithResolvedControllerClassForInheritedMethod() throws Exception {
+    @DisplayName("registerSync 应能够处理继承的 Controller 方法")
+    void shouldHandleInheritedMethodRegistration() throws Exception {
         hostContext = new GenericApplicationContext();
         hostContext.refresh();
 
@@ -197,22 +194,9 @@ class WebInterfaceManagerTest {
         manager.registerSync(first);
         manager.registerSync(second);
 
-        String firstBeanName = "ling-a:v1:" + FirstInheritedController.class.getName();
-        String secondBeanName = "ling-a:v1:" + SecondInheritedController.class.getName();
-        String baseBeanName = "ling-a:v1:" + BaseController.class.getName();
-
-        assertEquals(firstBeanName, first.getSpringDocBeanName());
-        assertEquals(secondBeanName, second.getSpringDocBeanName());
-        assertTrue(hostContext.containsBeanDefinition(firstBeanName));
-        assertTrue(hostContext.containsBeanDefinition(secondBeanName));
-        assertFalse(hostContext.containsBeanDefinition(baseBeanName));
-
-        GenericBeanDefinition firstBeanDefinition =
-                (GenericBeanDefinition) hostContext.getBeanFactory().getBeanDefinition(firstBeanName);
-        GenericBeanDefinition secondBeanDefinition =
-                (GenericBeanDefinition) hostContext.getBeanFactory().getBeanDefinition(secondBeanName);
-        assertEquals(FirstInheritedController.class, firstBeanDefinition.getBeanClass());
-        assertEquals(SecondInheritedController.class, secondBeanDefinition.getBeanClass());
+        assertNotNull(manager.resolveRoute(new MockHttpServletRequest("GET", "/ling-a/demo/first")));
+        assertNotNull(manager.resolveRoute(new MockHttpServletRequest("GET", "/ling-a/demo/second")));
+        verify(hostMapping, times(2)).registerMapping(any(RequestMappingInfo.class), any(), any(Method.class));
     }
 
     @Test
@@ -245,19 +229,19 @@ class WebInterfaceManagerTest {
         manager.registerSync(metadata);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
-        HandlerExecutionChain chain = realHostMapping.getHandler(request);
+        HandlerExecutionChain chain = getHandlerExecutionChain(realHostMapping, request);
 
         assertNotNull(chain);
         assertTrue(chain.getHandler() instanceof HandlerMethod);
         HandlerMethod handlerMethod = (HandlerMethod) chain.getHandler();
-        assertSame(controller, handlerMethod.getBean());
-        assertEquals(targetMethod, handlerMethod.getMethod());
-        assertEquals(DemoController.class, handlerMethod.getBeanType());
+        assertTrue(handlerMethod.getBean() instanceof WebInterfaceManager.LingWebEntryHandler);
+        assertEquals("dispatch", handlerMethod.getMethod().getName());
+        assertEquals(WebInterfaceManager.LingWebEntryHandler.class, handlerMethod.getBeanType());
 
         WebRouteResolution resolution = manager.resolveRoute(new MockHttpServletRequest("GET", "/ling-a/demo/detail"),
                 handlerMethod);
         assertNotNull(resolution);
-        assertSame(controller, handlerMethod.getBean());
+        assertTrue(handlerMethod.getBean() instanceof WebInterfaceManager.LingWebEntryHandler);
         assertEquals("detail", resolution.getMetadata().getTargetMethodName());
     }
 
@@ -313,18 +297,19 @@ class WebInterfaceManagerTest {
         manager.registerSync(v2);
 
         MockHttpServletRequest beforeRequest = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
-        HandlerMethod beforeHandler = (HandlerMethod) realHostMapping.getHandler(beforeRequest).getHandler();
-        assertSame(v1Controller, beforeHandler.getBean());
+        HandlerMethod beforeHandler = (HandlerMethod) getHandlerExecutionChain(realHostMapping, beforeRequest).getHandler();
+        assertTrue(beforeHandler.getBean() instanceof WebInterfaceManager.LingWebEntryHandler);
+        assertEquals(WebInterfaceManager.LingWebEntryHandler.class, beforeHandler.getBeanType());
 
         manager.unregisterSync("ling-a", v1Loader);
 
         MockHttpServletRequest afterRequest = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
-        HandlerExecutionChain afterChain = realHostMapping.getHandler(afterRequest);
+        HandlerExecutionChain afterChain = getHandlerExecutionChain(realHostMapping, afterRequest);
         assertNotNull(afterChain);
         assertTrue(afterChain.getHandler() instanceof HandlerMethod);
         HandlerMethod afterHandler = (HandlerMethod) afterChain.getHandler();
-        assertSame(v2Controller, afterHandler.getBean());
-        assertEquals(DemoController.class, afterHandler.getBeanType());
+        assertTrue(afterHandler.getBean() instanceof WebInterfaceManager.LingWebEntryHandler);
+        assertEquals(WebInterfaceManager.LingWebEntryHandler.class, afterHandler.getBeanType());
 
         WebRouteResolution resolution = manager.resolveRoute(new MockHttpServletRequest("GET", "/ling-a/demo/detail"));
         assertNotNull(resolution);
@@ -344,6 +329,38 @@ class WebInterfaceManagerTest {
         mapping.setApplicationContext(applicationContext);
         mapping.afterPropertiesSet();
         return mapping;
+    }
+
+    private ServletWebRequest createServletWebRequest(Object request, Object response) throws Exception {
+        ClassLoader cl = request.getClass().getClassLoader();
+        Class<?> requestIntf = findServletInterface(cl, "HttpServletRequest");
+        Class<?> responseIntf = findServletInterface(cl, "HttpServletResponse");
+        return (ServletWebRequest) ReflectionUtils.accessibleConstructor(ServletWebRequest.class,
+                requestIntf, responseIntf).newInstance(request, response);
+    }
+
+    private HandlerExecutionChain getHandlerExecutionChain(RequestMappingHandlerMapping mapping, Object request)
+            throws Exception {
+        ClassLoader cl = request.getClass().getClassLoader();
+        Class<?> requestIntf = findServletInterface(cl, "HttpServletRequest");
+        Method getHandlerMethod = ReflectionUtils.findMethod(mapping.getClass(), "getHandler", requestIntf);
+        if (getHandlerMethod == null) {
+            throw new AssertionError("Cannot resolve RequestMappingHandlerMapping.getHandler for request type "
+                    + request.getClass().getName());
+        }
+        return (HandlerExecutionChain) ReflectionUtils.invokeMethod(getHandlerMethod, mapping, request);
+    }
+
+    private static Class<?> findServletInterface(ClassLoader cl, String interfaceName) {
+        try {
+            return Class.forName("jakarta.servlet.http." + interfaceName, false, cl);
+        } catch (ClassNotFoundException e) {
+            try {
+                return Class.forName("javax.servlet.http." + interfaceName, false, cl);
+            } catch (ClassNotFoundException ex) {
+                return null;
+            }
+        }
     }
 
     private WebInterfaceMetadata conditionedMetadata(DemoController controller, Method targetMethod, String[] params) {

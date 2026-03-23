@@ -495,6 +495,8 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             for (LingInstance instance : instances) {
                 if (!instance.isIdle()) {
                     allIdle = false;
+                    log.debug("[{}] Waiting for instance {} to drain ({} active requests)...",
+                            lingId, instance.getVersion(), instance.getActiveRequestCount());
                     break;
                 }
             }

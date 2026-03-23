@@ -167,6 +167,12 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         if (event.getPrincipal() != null && !event.getPrincipal().isEmpty()) {
             content.append(" principal=").append(event.getPrincipal());
         }
+        if (event.getSource() != null && !event.getSource().isEmpty()) {
+            content.append(" source=").append(event.getSource());
+        }
+        if (event.getRuleSource() != null && !event.getRuleSource().isEmpty()) {
+            content.append(" ruleSource=").append(event.getRuleSource());
+        }
         if (event.getFailureReason() != null && !event.getFailureReason().isEmpty()) {
             content.append(" reason=").append(event.getFailureReason());
         }
@@ -187,10 +193,19 @@ public class LogStreamService implements InitializingBean, DisposableBean {
      * 处理告警通知事件
      */
     private void handleAlert(MonitoringEvents.AlertNotifyEvent event) {
+        StringBuilder content = new StringBuilder(event.getMessage());
+        if (event.getSource() != null && !event.getSource().isEmpty()) {
+            content.append(" source=").append(event.getSource());
+        }
+        if (event.getRuleSource() != null && !event.getRuleSource().isEmpty()) {
+            content.append(" ruleSource=").append(event.getRuleSource());
+        }
+
         LogStreamDTO logStreamDTO = LogStreamDTO.builder()
                 .type("ALERT")
+                .traceId(event.getTraceId())
                 .lingId(event.getLingId())
-                .content(event.getMessage())
+                .content(content.toString())
                 .tag(event.getType())
                 .level(event.getLevel())
                 .timestamp(event.getTimestamp())

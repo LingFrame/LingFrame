@@ -28,6 +28,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -213,7 +215,7 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
 
         // ---- 反射清理（需版本适配）----
         clearSpringFactoriesCache(lingId, lingClassLoader);
-        clearSpringShutdownHook(lingId, lingClassLoader);
+//        clearSpringShutdownHook(lingId, lingClassLoader);
         clearCglibCache(lingId, lingClassLoader);
         clearObjenesisCache(lingId, lingClassLoader);
         clearELCache(lingId, lingClassLoader);
@@ -242,6 +244,9 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
         // 4.5 Jackson caches
         clearJacksonCaches(lingId, lingClassLoader, "post");
 
+        // 4.6 Micrometer Caches
+        clearMicrometerCaches(lingId, lingClassLoader);
+
         // 5. ResolvableType
         clearResolvableTypeSelective(lingId, lingClassLoader);
 
@@ -255,6 +260,38 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
     }
 
     // ======================== ReflectionUtils 精确清理 ========================
+
+    private void clearMicrometerCaches(String lingId, ClassLoader lingClassLoader) {
+        try {
+            Class<?> timedAnnotationsClass = Class.forName("org.springframework.boot.actuate.metrics.annotation.TimedAnnotations");
+            Field cacheField = findFieldInHierarchy(timedAnnotationsClass, "cache");
+            if (cacheField != null) {
+                cacheField.setAccessible(true);
+                Object cacheObj = cacheField.get(null);
+                if (cacheObj instanceof Map<?, ?>) {
+                    Map<?, ?> cache = (Map<?, ?>) cacheObj;
+                    int before = cache.size();
+                    cache.keySet().removeIf(key -> {
+                        if (key instanceof Class) {
+                            return ((Class<?>) key).getClassLoader() == lingClassLoader;
+                        }
+                        if (key instanceof java.lang.reflect.Method) {
+                            return ((java.lang.reflect.Method) key).getDeclaringClass().getClassLoader() == lingClassLoader;
+                        }
+                        return false;
+                    });
+                    int removed = before - cache.size();
+                    if (removed > 0) {
+                        log.debug("[{}] TimedAnnotations.cache: removed {} entries", lingId, removed);
+                    }
+                }
+            }
+        } catch (ClassNotFoundException e) {
+            // Ignored
+        } catch (Exception e) {
+            log.debug("[{}] TimedAnnotations.cache cleanup failed: {}", lingId, e.getMessage());
+        }
+    }
 
     /**
      * `ReflectionUtils` 内部有两个缓存：
@@ -852,6 +889,9 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
     // ======================== ShutdownHook ========================
 
     protected void clearSpringShutdownHook(String lingId, ClassLoader lingClassLoader) {
+        clearApplicationContextShutdownHook(lingId);
+        clearSpringBootShutdownHookReferences(lingId, lingClassLoader);
+
         try {
             Class<?> hooksClass = Class.forName("java.lang.ApplicationShutdownHooks");
             Field hooksField = hooksClass.getDeclaredField("hooks");
@@ -875,6 +915,230 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
         } catch (Exception e) {
             log.debug("[{}] ShutdownHook cleanup failed: {}", lingId, e.getMessage());
         }
+    }
+
+    private void clearApplicationContextShutdownHook(String lingId) {
+        if (lingContext == null) {
+            return;
+        }
+
+        try {
+            Field shutdownHookField = findFieldInHierarchy(lingContext.getClass(), "shutdownHook");
+            if (shutdownHookField == null) {
+                return;
+            }
+
+            shutdownHookField.setAccessible(true);
+            Object hookObject = shutdownHookField.get(lingContext);
+            if (!(hookObject instanceof Thread)) {
+                return;
+            }
+
+            Thread hook = (Thread) hookObject;
+            try {
+                Runtime.getRuntime().removeShutdownHook(hook);
+                log.info("[{}] Removed ApplicationContext shutdown hook: {}", lingId, hook.getName());
+            } catch (IllegalStateException ignored) {
+                // JVM 正在退出时无法移除，仍然继续断开 context 持有的引用。
+            } catch (IllegalArgumentException ignored) {
+                // hook 未注册到 Runtime 时会进入这里，仍然需要清空字段引用。
+            }
+            shutdownHookField.set(lingContext, null);
+        } catch (Exception e) {
+            log.debug("[{}] ApplicationContext shutdown hook cleanup failed: {}", lingId, e.getMessage());
+        }
+    }
+
+    private void clearSpringBootShutdownHookReferences(String lingId, ClassLoader lingClassLoader) {
+        try {
+            Class<?> hookClass = Class.forName("org.springframework.boot.SpringApplicationShutdownHook");
+            int removed = removeShutdownHookTargetReferences(lingId, "SpringApplicationShutdownHook(static)",
+                    hookClass, null, true, lingClassLoader);
+
+            for (Field field : hookClass.getDeclaredFields()) {
+                if (!Modifier.isStatic(field.getModifiers())) {
+                    continue;
+                }
+                if (!hookClass.isAssignableFrom(field.getType())) {
+                    continue;
+                }
+                try {
+                    field.setAccessible(true);
+                    Object holder = field.get(null);
+                    if (holder != null) {
+                        removed += removeShutdownHookTargetReferences(
+                                lingId,
+                                "SpringApplicationShutdownHook(" + field.getName() + ")",
+                                holder.getClass(),
+                                holder,
+                                false,
+                                lingClassLoader);
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+
+            if (removed > 0) {
+                log.info("[{}] Removed {} Spring Boot shutdown hook reference(s)", lingId, removed);
+            }
+        } catch (ClassNotFoundException ignored) {
+            // 当前运行环境没有 Spring Boot shutdown hook 实现。
+        } catch (Exception e) {
+            log.debug("[{}] Spring Boot shutdown hook cleanup failed: {}", lingId, e.getMessage());
+        }
+    }
+
+    private int removeShutdownHookTargetReferences(String lingId,
+            String holderName,
+            Class<?> holderClass,
+            Object holder,
+            boolean staticOnly,
+            ClassLoader lingClassLoader) {
+        int removed = 0;
+        for (Field field : holderClass.getDeclaredFields()) {
+            if (staticOnly != Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+            if (!staticOnly && Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+            if (!Collection.class.isAssignableFrom(field.getType()) && !Map.class.isAssignableFrom(field.getType())) {
+                continue;
+            }
+            try {
+                field.setAccessible(true);
+                Object value = field.get(holder);
+                int currentRemoved = 0;
+                if (value instanceof Collection<?>) {
+                    currentRemoved = removeFromCollection((Collection<?>) value, lingClassLoader);
+                } else if (value instanceof Map<?, ?>) {
+                    currentRemoved = removeFromMap((Map<?, ?>) value, lingClassLoader);
+                }
+                removed += currentRemoved;
+                if (currentRemoved > 0) {
+                    log.info("[{}] Cleared {} shutdown hook reference(s) from {}.{}",
+                            lingId, currentRemoved, holderName, field.getName());
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return removed;
+    }
+
+    private int removeFromCollection(Collection<?> collection, ClassLoader lingClassLoader) {
+        List<Object> toRemove = new ArrayList<>();
+        for (Object candidate : collection) {
+            if (isShutdownHookTargetReference(candidate, lingClassLoader)) {
+                toRemove.add(candidate);
+            }
+        }
+        if (toRemove.isEmpty()) {
+            return 0;
+        }
+        collection.removeAll(toRemove);
+        return toRemove.size();
+    }
+
+    private int removeFromMap(Map<?, ?> map, ClassLoader lingClassLoader) {
+        List<Object> keysToRemove = new ArrayList<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (isShutdownHookTargetReference(entry.getKey(), lingClassLoader)
+                    || isShutdownHookTargetReference(entry.getValue(), lingClassLoader)) {
+                keysToRemove.add(entry.getKey());
+            }
+        }
+        if (keysToRemove.isEmpty()) {
+            return 0;
+        }
+        for (Object key : keysToRemove) {
+            map.remove(key);
+        }
+        return keysToRemove.size();
+    }
+
+    private boolean isShutdownHookTargetReference(Object candidate, ClassLoader lingClassLoader) {
+        if (candidate == null) {
+            return false;
+        }
+        if (lingContext != null && candidate == lingContext) {
+            return true;
+        }
+        if (candidate instanceof ConfigurableApplicationContext) {
+            ConfigurableApplicationContext context = (ConfigurableApplicationContext) candidate;
+            if (lingContext != null && context == lingContext) {
+                return true;
+            }
+            try {
+                if (context.getClassLoader() == lingClassLoader) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (candidate instanceof Thread && isSpringShutdownHook((Thread) candidate, lingClassLoader)) {
+            return true;
+        }
+        if (isRelatedToClassLoader(candidate, lingClassLoader)) {
+            return true;
+        }
+        return deepReferencesShutdownHookTarget(candidate, lingClassLoader, 3, new IdentityHashMap<>());
+    }
+
+    private boolean deepReferencesShutdownHookTarget(Object candidate,
+            ClassLoader lingClassLoader,
+            int depth,
+            IdentityHashMap<Object, Boolean> visited) {
+        if (candidate == null || depth <= 0) {
+            return false;
+        }
+        if (visited.put(candidate, Boolean.TRUE) != null) {
+            return false;
+        }
+        if (lingContext != null && candidate == lingContext) {
+            return true;
+        }
+        if (candidate instanceof ClassLoader) {
+            return candidate == lingClassLoader;
+        }
+        if (candidate instanceof Iterable<?>) {
+            for (Object item : (Iterable<?>) candidate) {
+                if (deepReferencesShutdownHookTarget(item, lingClassLoader, depth - 1, visited)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (candidate instanceof Map<?, ?>) {
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) candidate).entrySet()) {
+                if (deepReferencesShutdownHookTarget(entry.getKey(), lingClassLoader, depth - 1, visited)
+                        || deepReferencesShutdownHookTarget(entry.getValue(), lingClassLoader, depth - 1, visited)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        Class<?> type = candidate.getClass();
+        while (type != null && type != Object.class) {
+            for (Field field : type.getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers())) {
+                    continue;
+                }
+                try {
+                    field.setAccessible(true);
+                    Object fieldValue = field.get(candidate);
+                    if (fieldValue == lingContext || fieldValue == lingClassLoader) {
+                        return true;
+                    }
+                    if (deepReferencesShutdownHookTarget(fieldValue, lingClassLoader, depth - 1, visited)) {
+                        return true;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+            type = type.getSuperclass();
+        }
+        return false;
     }
 
     private boolean isSpringShutdownHook(Thread hook, ClassLoader lingClassLoader) {
@@ -1181,16 +1445,19 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
 
                         // ✅ 精确移除：只移除目标 ClassLoader 相关的条目
                         map.entrySet().removeIf(entry -> {
-                            Object key = entry.getKey();
-                            // 这里的 key 通常是 `Class<?>` 或 `String(beanName)`
-                            if (key instanceof Class<?>) {
-                                return ((Class<?>) key).getClassLoader() == lingClassLoader;
+                            try {
+                                Object key = entry.getKey();
+                                // 这里的 key 通常是 `Class<?>` 或 `String(beanName)`
+                                if (key instanceof Class<?>) {
+                                    return ((Class<?>) key).getClassLoader() == lingClassLoader;
+                                }
+                                if (key instanceof String) {
+                                    return isValueRelatedToClassLoader(entry.getValue(), lingClassLoader);
+                                }
+                                return isRelatedToClassLoader(key, lingClassLoader) || isValueRelatedToClassLoader(entry.getValue(), lingClassLoader);
+                            } catch (Exception e) {
+                                return false; // 严防任何 ConcurrentModificationException 或迭代异常中断整个清扫逻辑
                             }
-                            if (key instanceof String) {
-                                // 当 `beanName` 作为 key 时，需要检查 value
-                                return isValueRelatedToClassLoader(entry.getValue(), lingClassLoader);
-                            }
-                            return isRelatedToClassLoader(key, lingClassLoader);
                         });
 
                         int removed = before - map.size();
@@ -1204,6 +1471,59 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
             }
         } catch (Exception e) {
             log.debug("[{}] Lifecycle metadata cleanup failed: {}", lingId, e.getMessage());
+        }
+
+        // ======================== 清理 Spring Cache 的全局 AOP 缓存 ========================
+        try {
+            for (String beanName : beanFactory.getBeanDefinitionNames()) {
+                try {
+                    Object bean = beanFactory.getBean(beanName);
+                    if (bean == null) continue;
+                    
+                    Object targetToClear = null;
+                    
+                    // 1. 如果它是顶层 CacheOperationSource
+                    if (bean.getClass().getName().contains("AnnotationCacheOperationSource")) {
+                        targetToClear = bean;
+                    } 
+                    // 2. 如果它是寄生的 Advisor 或 Interceptor，则探测内部 cacheOperationSource
+                    else if (bean.getClass().getName().contains("CacheOperationSourceAdvisor") || 
+                             bean.getClass().getName().contains("CacheInterceptor")) {
+                        Field sourceField = findFieldInHierarchy(bean.getClass(), "cacheOperationSource");
+                        if (sourceField != null) {
+                            sourceField.setAccessible(true);
+                            targetToClear = sourceField.get(bean);
+                        }
+                    }
+
+                    if (targetToClear != null && targetToClear.getClass().getName().contains("AnnotationCacheOperationSource")) {
+                        Field attributeCacheField = findFieldInHierarchy(targetToClear.getClass(), "attributeCache");
+                        if (attributeCacheField != null) {
+                            attributeCacheField.setAccessible(true);
+                            Object cache = attributeCacheField.get(targetToClear);
+                            if (cache instanceof Map<?, ?>) {
+                                Map<?, ?> map = (Map<?, ?>) cache;
+                                int before = map.size();
+                                map.entrySet().removeIf(entry -> {
+                                    try {
+                                        return isRelatedToClassLoader(entry.getKey(), lingClassLoader) 
+                                            || isValueRelatedToClassLoader(entry.getValue(), lingClassLoader);
+                                    } catch (Exception e) {
+                                        return false;
+                                    }
+                                });
+                                int removed = before - map.size();
+                                if (removed > 0) {
+                                    log.debug("[{}] {}.attributeCache: removed {} entries", lingId, targetToClear.getClass().getSimpleName(), removed);
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        } catch (Exception e) {
+            log.debug("[{}] CacheOperationSource metadata cleanup failed: {}", lingId, e.getMessage());
         }
     }
 

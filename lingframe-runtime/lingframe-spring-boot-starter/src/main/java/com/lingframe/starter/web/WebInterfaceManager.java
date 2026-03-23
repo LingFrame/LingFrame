@@ -6,6 +6,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.TrafficRouter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.CachedIntrospectionResults;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -20,7 +21,6 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -30,7 +30,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 负责灵元 Controller 的 Web 接口注册、路由解析与调用分发。
@@ -41,7 +40,6 @@ public class WebInterfaceManager implements WebRouteResolver {
     private final Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
     private final Map<String, RequestMappingInfo> mappingInfoMap = new ConcurrentHashMap<>();
-    private final Map<String, String> compatibilityBeanNamesByRoute = new ConcurrentHashMap<>();
 
     private final ExecutorService registryExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "LingFrame-WebInterfaceManager");
@@ -99,6 +97,20 @@ public class WebInterfaceManager implements WebRouteResolver {
         }
     }
 
+    public Map<String, List<WebInterfaceMetadata>> getMetadataMap() {
+        return Collections.unmodifiableMap(metadataMap);
+    }
+
+    // 🔥 宿主代理方法缓存（static，只解析一次，由 AppClassLoader 加载）
+    private static final Method HOST_DISPATCH_METHOD;
+    static {
+        try {
+            HOST_DISPATCH_METHOD = LingWebEntryHandler.class.getMethod("dispatch", ServletWebRequest.class);
+        } catch (NoSuchMethodException e) {
+            throw new ExceptionInInitializerError("Cannot find LingWebEntryHandler.dispatch method: " + e);
+        }
+    }
+
     private void registerInternal(WebInterfaceMetadata metadata, boolean throwOnError) {
         if (!hostSupport.isInitialized()) {
             log.warn("WebInterfaceManager not initialized, skipping registration: {}", metadata.getUrlPattern());
@@ -108,25 +120,21 @@ public class WebInterfaceManager implements WebRouteResolver {
         String routeKey = buildRouteKey(metadata);
 
         try {
+            // 保留 targetMethod 引用用于内部调用分发，但不再暴露给宿主
             Method targetMethod = requireTargetMethod(metadata, routeKey);
-            Class<?> targetClass = metadata.getTargetClass();
-            if (targetClass == null) {
-                targetClass = targetMethod.getDeclaringClass();
-            }
-            String version = metadata.getVersion();
-            String proxyBeanName = metadata.getLingId() + ":" + (version != null ? version : "unknown")
-                    + ":" + targetClass.getName();
-            metadata.setSpringDocBeanName(proxyBeanName);
             metadata.minimizeHostReferences();
-            hostSupport.registerSpringDocBean(proxyBeanName, targetClass, () -> requireTargetBean(metadata, routeKey));
 
             RequestMappingInfo info = resolveRequestMappingInfo(metadata);
 
             if (!mappingInfoMap.containsKey(routeKey)) {
-                hostSupport.registerMapping(routeKey, info, proxyBeanName, targetMethod, mappingInfoMap);
-                compatibilityBeanNamesByRoute.put(routeKey, proxyBeanName);
-                log.info("Registered SpringDoc compatibility mapping: {} {}", metadata.getHttpMethod(),
-                        metadata.getUrlPattern());
+                // 🔥 架构级断绝：注册宿主加载的 LingWebEntryHandler 代替灵元 Method
+                // Spring MVC 只会看到 LingWebEntryHandler.dispatch(ServletWebRequest)
+                // 其 HandlerMapping 内部缓存永远只持有 AppClassLoader 的类引用
+                LingWebEntryHandler entryHandler = new LingWebEntryHandler(this, routeKey);
+                hostSupport.registerMapping(routeKey, info, entryHandler, HOST_DISPATCH_METHOD, mappingInfoMap);
+                log.info("Registered proxy mapping: {} {}", metadata.getHttpMethod(), metadata.getUrlPattern());
+                // ✅ 注册后清理 SpringDoc 缓存，确保 UI 同步
+                hostSupport.clearSpringDocCache();
             }
 
             metadataMap.compute(routeKey, (key, existing) -> mergeRouteMetadata(routeKey, existing, metadata));
@@ -174,41 +182,22 @@ public class WebInterfaceManager implements WebRouteResolver {
                 lingId, targetLoader != null ? targetLoader.hashCode() : "ALL");
 
         List<String> routesToRemove = new ArrayList<>();
-        AtomicReference<ClassLoader> lingLoader = new AtomicReference<>();
-        Set<String> beanNamesToRemove = new LinkedHashSet<>();
-        Set<Class<?>> controllerClassesToRemove = new LinkedHashSet<>();
         Map<String, List<WebInterfaceMetadata>> remainingMap = new HashMap<>();
         List<WebInterfaceMetadata> removedMetas = new ArrayList<>();
-        Set<String> routesToRefresh = new LinkedHashSet<>();
 
         metadataMap.forEach((routeKey, metas) -> {
             if (metas == null || metas.isEmpty()) {
                 return;
             }
             List<WebInterfaceMetadata> remaining = new ArrayList<>();
-            String compatibilityBeanName = compatibilityBeanNamesByRoute.get(routeKey);
-            boolean compatibilityBeanRemoved = false;
             for (WebInterfaceMetadata meta : metas) {
-                // ClassLoader WeakRef 被 GC 后返回 null，也应视为匹配并移除，避免路由残留
                 ClassLoader metaLoader = meta.getClassLoader();
                 boolean loaderMatches = targetLoader == null
                         || metaLoader == targetLoader
                         || metaLoader == null;
+
                 if (meta.getLingId().equals(lingId) && loaderMatches) {
                     removedMetas.add(meta);
-                    if (metaLoader != null) {
-                        lingLoader.set(metaLoader);
-                    }
-                    Class<?> targetClass = meta.getTargetClass();
-                    if (targetClass != null) {
-                        controllerClassesToRemove.add(targetClass);
-                    }
-                    if (meta.getSpringDocBeanName() != null) {
-                        beanNamesToRemove.add(meta.getSpringDocBeanName());
-                        if (Objects.equals(meta.getSpringDocBeanName(), compatibilityBeanName)) {
-                            compatibilityBeanRemoved = true;
-                        }
-                    }
                 } else {
                     remaining.add(meta);
                 }
@@ -218,9 +207,6 @@ public class WebInterfaceManager implements WebRouteResolver {
                 routesToRemove.add(routeKey);
             } else {
                 remainingMap.put(routeKey, remaining);
-                if (compatibilityBeanRemoved) {
-                    routesToRefresh.add(routeKey);
-                }
             }
         });
 
@@ -236,14 +222,18 @@ public class WebInterfaceManager implements WebRouteResolver {
             meta.clearReferences();
         }
 
-        controllerClassesToRemove.removeIf(this::isControllerClassStillRegistered);
-        ClassLoader cleanupLoader = targetLoader != null ? targetLoader : lingLoader.get();
-        hostSupport.cleanupCompatibilityArtifacts(beanNamesToRemove, routesToRemove, mappingInfoMap,
-                cleanupLoader, controllerClassesToRemove);
-        for (String routeKey : routesToRemove) {
-            compatibilityBeanNamesByRoute.remove(routeKey);
+        // 🔥 纯代理架构下，卸载只需移除 HandlerMapping 中的路由映射
+        // 无需清理宿主的任何 Bean、BPP 缓存或 Adapter 缓存
+        // 因为宿主从未接触过灵元的类
+        hostSupport.unregisterMappings(routesToRemove, mappingInfoMap);
+        
+        // ✅ 注销后立即清理 SpringDoc 缓存，防止 UI 出现过期路由
+        hostSupport.clearSpringDocCache();
+
+        // 🔥 彻底解决“无法卸载”的关键：强制清理 Spring 核心缓存池对该 ClassLoader 的引用
+        if (targetLoader != null) {
+            CachedIntrospectionResults.clearClassLoader(targetLoader);
         }
-        refreshCompatibilityMappings(remainingMap, routesToRefresh, cleanupLoader);
 
         log.info("Unregistered {} interfaces for ling: {}", removedMetas.size(), lingId);
     }
@@ -403,80 +393,6 @@ public class WebInterfaceManager implements WebRouteResolver {
                         .add(meta.getUrlPattern());
             }
         });
-    }
-
-    private void refreshCompatibilityMappings(Map<String, List<WebInterfaceMetadata>> remainingMap,
-                                              Set<String> routesToRefresh,
-                                              ClassLoader cleanupLoader) {
-        if (routesToRefresh == null || routesToRefresh.isEmpty()) {
-            return;
-        }
-        // 传入有效的 cleanupLoader 以确保 Adapter 缓存被正确清理
-        hostSupport.cleanupCompatibilityArtifacts(Collections.emptySet(), routesToRefresh,
-                mappingInfoMap, cleanupLoader, Collections.emptySet());
-        for (String routeKey : routesToRefresh) {
-            List<WebInterfaceMetadata> candidates = remainingMap.get(routeKey);
-            WebInterfaceMetadata replacement = selectCompatibilityMetadata(candidates);
-            if (replacement == null) {
-                compatibilityBeanNamesByRoute.remove(routeKey);
-                continue;
-            }
-            try {
-                Method targetMethod = requireTargetMethod(replacement, routeKey);
-                RequestMappingInfo mappingInfo = resolveRequestMappingInfo(replacement);
-                hostSupport.registerMapping(routeKey, mappingInfo, replacement.getSpringDocBeanName(),
-                        targetMethod, mappingInfoMap);
-                compatibilityBeanNamesByRoute.put(routeKey, replacement.getSpringDocBeanName());
-                log.info("Refreshed SpringDoc compatibility mapping: {} {}",
-                        replacement.getHttpMethod(), replacement.getUrlPattern());
-            } catch (Exception e) {
-                compatibilityBeanNamesByRoute.remove(routeKey);
-                log.warn("Failed to refresh SpringDoc compatibility mapping: {}", routeKey, e);
-            }
-        }
-    }
-
-    private WebInterfaceMetadata selectCompatibilityMetadata(List<WebInterfaceMetadata> candidates) {
-        if (candidates == null || candidates.isEmpty()) {
-            return null;
-        }
-        for (WebInterfaceMetadata candidate : candidates) {
-            if (candidate != null && candidate.getSpringDocBeanName() != null) {
-                return candidate;
-            }
-        }
-        return null;
-    }
-
-    private boolean isControllerClassStillRegistered(Class<?> targetClass) {
-        if (targetClass == null) {
-            return false;
-        }
-        for (List<WebInterfaceMetadata> metas : metadataMap.values()) {
-            if (metas == null) {
-                continue;
-            }
-            for (WebInterfaceMetadata meta : metas) {
-                if (meta == null) {
-                    continue;
-                }
-                Class<?> remainingClass = meta.getTargetClass();
-                // 只有完全相同的 Class 对象（即由同一个 ClassLoader 加载的同名类）
-                // 才说明该 Controller 在本实例的其他路由中还有注册关联
-                if (remainingClass == targetClass) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private Object requireTargetBean(WebInterfaceMetadata metadata, String routeKey) {
-        Object targetBean = metadata.getTargetBean();
-        if (targetBean == null) {
-            throw new IllegalStateException("Target bean no longer available for route: " + routeKey);
-        }
-        return targetBean;
     }
 
     private Method requireTargetMethod(WebInterfaceMetadata metadata, String routeKey) {

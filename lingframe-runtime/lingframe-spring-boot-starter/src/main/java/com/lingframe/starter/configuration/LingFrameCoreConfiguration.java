@@ -12,10 +12,17 @@ import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
+import com.lingframe.core.governance.GovernancePermissionSynchronizer;
 import com.lingframe.core.governance.LingCoreGovernanceRule;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
+import org.springframework.boot.context.event.ApplicationStartedEvent;
+import org.springframework.context.ConfigurableApplicationContext;
 import com.lingframe.core.governance.provider.StandardGovernancePolicyProvider;
 import com.lingframe.core.invoker.FastLingServiceInvoker;
+import com.lingframe.core.spi.LingServiceInvoker;
+import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.*;
 import com.lingframe.core.resource.DefaultLeakDetector;
 import com.lingframe.core.loader.LingDiscoveryService;
@@ -36,18 +43,29 @@ import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.starter.resource.SpringBasicResourceGuard;
 import com.lingframe.starter.resource.StorageResourceGuard;
 import com.lingframe.starter.spi.LingContextCustomizer;
+import com.lingframe.starter.web.LingRepeatableReadFilter;
 import com.lingframe.starter.web.WebInterfaceManager;
+import com.lingframe.starter.web.LingOpenApiCustomizer;
+import com.lingframe.starter.web.LingSpringDocCustomizerBridge;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.Ordered;
+import org.springframework.core.env.Environment;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -223,6 +241,27 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
+    public FilterRegistrationBean<?> lingRepeatableReadFilter() {
+        Object filter = LingRepeatableReadFilter.createProxy();
+        if (filter == null) return null;
+
+        FilterRegistrationBean<?> registration = new FilterRegistrationBean<>();
+        try {
+            // 动态适配 javax.servlet.Filter 或 jakarta.servlet.Filter
+            Class<?> filterInterface = filter.getClass().getInterfaces()[0];
+            Method setFilter = registration.getClass().getMethod("setFilter", filterInterface);
+            setFilter.invoke(registration, filter);
+        } catch (Exception e) {
+            log.error("Failed to register LingRepeatableReadFilter: {}", e.getMessage());
+        }
+
+        registration.addUrlPatterns("/*");
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        registration.setName("lingRepeatableReadFilter");
+        return registration;
+    }
+
+    @Bean
     public ResourceGuard storageResourceGuard() {
         return new StorageResourceGuard();
     }
@@ -246,9 +285,21 @@ public class LingFrameCoreConfiguration {
         List<LingSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
                 pipelineEngine, resourceGuards, lingResourceManager, leakDetector);
-        return new DefaultLingLifecycleEngine(containerFactory, permissionService,
-                lingLoaderFactory, verifiers, eventBus, lingFrameConfig, lingRepository, lingServiceRegistry,
-                pipelineEngine, lingResourceManager, unloadCoordinator, runtimeCoordinator);
+        
+        return new DefaultLingLifecycleEngine(
+                containerFactory, 
+                permissionService, 
+                lingLoaderFactory, 
+                verifiers, 
+                eventBus, 
+                lingFrameConfig, 
+                lingRepository, 
+                lingServiceRegistry, 
+                pipelineEngine, 
+                lingResourceManager, 
+                unloadCoordinator, 
+                runtimeCoordinator
+        );
     }
 
     @Bean
@@ -318,12 +369,25 @@ public class LingFrameCoreConfiguration {
         };
     }
 
+    @Bean
+    public ApplicationListener<ApplicationReadyEvent> governancePermissionRestoreListener(
+            LocalGovernanceRegistry governanceRegistry,
+            PermissionService permissionService) {
+        return event -> {
+            int syncedLingCount = GovernancePermissionSynchronizer.syncAll(governanceRegistry, permissionService);
+            if (syncedLingCount > 0) {
+                log.info("[Startup] Restored persisted governance permissions for {} ling(s)", syncedLingCount);
+            }
+        };
+    }
+
     @Bean(destroyMethod = "shutdown")
     @ConditionalOnProperty(prefix = "lingframe", name = "dev-mode", havingValue = "true")
     public HotSwapWatcher hotSwapWatcher(LingLifecycleEngine lifecycleEngine,
                                          LingRepository lingRepository,
-                                         EventBus eventBus) {
-        HotSwapWatcher watcher = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus);
+                                         EventBus eventBus,
+                                         LeakDetector leakDetector) {
+        HotSwapWatcher watcher = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus, leakDetector);
         if (lifecycleEngine instanceof DefaultLingLifecycleEngine) {
             ((DefaultLingLifecycleEngine) lifecycleEngine).setHotSwapWatcher(watcher);
         }
@@ -341,13 +405,83 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
-    public LingReferenceInjector lingReferenceInjector() {
+    public static LingReferenceInjector lingReferenceInjector() {
         return new LingReferenceInjector("lingcore-app");
     }
 
     @Bean
     public WebInterfaceManager webInterfaceManager(LingRepository lingRepository, TrafficRouter trafficRouter) {
         return new WebInterfaceManager(lingRepository, trafficRouter);
+    }
+
+    /**
+     * SpringDoc 集成适配 (核心转换器)
+     */
+    @Configuration
+    @ConditionalOnClass(io.swagger.v3.oas.models.OpenAPI.class)
+    static class SpringDocIntegrationConfiguration {
+        @Bean
+        public LingOpenApiCustomizer lingOpenApiCustomizer(WebInterfaceManager webInterfaceManager,
+                                                           Environment environment) {
+            return new LingOpenApiCustomizer(webInterfaceManager, environment);
+        }
+
+        @Bean
+        public Object lingSpringDocGlobalCustomizer(LingOpenApiCustomizer lingOpenApiCustomizer) {
+            return LingSpringDocCustomizerBridge.createGlobalCustomizer(
+                    LingFrameCoreConfiguration.class.getClassLoader(), lingOpenApiCustomizer);
+        }
+
+        @Bean
+        public static BeanPostProcessor lingSpringDocGroupedOpenApiPostProcessor(LingOpenApiCustomizer lingOpenApiCustomizer) {
+            return new BeanPostProcessor() {
+                @Override
+                public Object postProcessAfterInitialization(Object bean, String beanName) {
+                    LingSpringDocCustomizerBridge.attachToGroupedOpenApi(
+                            bean.getClass().getClassLoader(), lingOpenApiCustomizer, bean);
+                    return bean;
+                }
+            };
+        }
+    }
+
+    /**
+     * 🔥 修复：自动初始化 WebInterfaceManager
+     * 监听 ApplicationStartedEvent 以确保在 ApplicationRunner (灵元扫描) 执行前完成初始化。
+     */
+    @Bean
+    public ApplicationListener<ApplicationStartedEvent> webInterfaceManagerInitializer(
+            WebInterfaceManager webInterfaceManager,
+            ObjectProvider<RequestMappingHandlerMapping> mappingProvider,
+            ObjectProvider<RequestMappingHandlerAdapter> adapterProvider) {
+        return event -> {
+            ApplicationContext ctx = event.getApplicationContext();
+            if (!(ctx instanceof ConfigurableApplicationContext)) {
+                return;
+            }
+
+            // ⚠️ 宿主可能由于引入了 Actuator 等库导致存在多个 Mapping 候选，必须精准定位
+            RequestMappingHandlerMapping mapping = null;
+            try {
+                mapping = ctx.getBean("requestMappingHandlerMapping", RequestMappingHandlerMapping.class);
+            } catch (Exception e) {
+                mapping = mappingProvider.getIfUnique();
+            }
+
+            RequestMappingHandlerAdapter adapter = null;
+            try {
+                adapter = ctx.getBean("requestMappingHandlerAdapter", RequestMappingHandlerAdapter.class);
+            } catch (Exception e) {
+                adapter = adapterProvider.getIfUnique();
+            }
+
+            if (mapping != null && adapter != null) {
+                webInterfaceManager.init(mapping, adapter, (ConfigurableApplicationContext) ctx);
+                log.info("🌍 [LingFrame Web] WebInterfaceManager initialized with host Spring MVC components");
+            } else {
+                log.warn("⚠️ [LingFrame Web] Standard Spring MVC components not found, skipping WebInterfaceManager initialization");
+            }
+        };
     }
 
 }

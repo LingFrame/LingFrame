@@ -3,6 +3,7 @@ package com.lingframe.core.dev;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.spi.LeakDetector;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -31,7 +32,8 @@ class HotSwapWatcherTest {
         EventBus eventBus = mock(EventBus.class);
         LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
         LingRepository lingRepository = mock(LingRepository.class);
-        HotSwapWatcher watcher = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus);
+        LeakDetector leakDetector = mock(LeakDetector.class);
+        HotSwapWatcher watcher = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus, leakDetector);
 
         Path root = tempDir.resolve("classes");
         Files.createDirectories(root.resolve("sub"));

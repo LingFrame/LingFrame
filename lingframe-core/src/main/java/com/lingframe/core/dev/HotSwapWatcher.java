@@ -9,29 +9,33 @@ import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.spi.LeakDetector;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.ref.WeakReference;
 import java.nio.file.*;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.IdentityHashMap;
+import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
+/**
+ * 负责开发阶段的文件变动监听并自动触发 LingFrame 热重载。
+ * <p>
+ * KISS：本类仅负责“监听并触发”，泄漏检测等重型任务由专门的基础设施（LeakDetector）承接。
+ */
 @Slf4j
 public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
 
     private final LingLifecycleEngine lifecycleEngine;
     private final LingRepository lingRepository;
     private final EventBus eventBus;
+    private final LeakDetector leakDetector;
     private WatchService watchService;
 
     private final Map<WatchKey, String> keyLingMap = new ConcurrentHashMap<>();
@@ -45,18 +49,20 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
             r -> {
                 Thread thread = new Thread(r, "lingframe-hotswap-debounce");
                 thread.setDaemon(true);
-                thread.setUncaughtExceptionHandler(
-                        (t, e) -> log.error("Thread {} exception: {}", t.getName(), e.getMessage()));
                 return thread;
             });
 
     // ✅ 改为 volatile，防止并发问题
     private volatile ScheduledFuture<?> debounceTask;
 
-    public HotSwapWatcher(LingLifecycleEngine lifecycleEngine, LingRepository lingRepository, EventBus eventBus) {
+    public HotSwapWatcher(LingLifecycleEngine lifecycleEngine,
+            LingRepository lingRepository,
+            EventBus eventBus,
+            LeakDetector leakDetector) {
         this.lifecycleEngine = lifecycleEngine;
         this.lingRepository = lingRepository;
         this.eventBus = eventBus;
+        this.leakDetector = leakDetector;
         this.eventBus.subscribe("lingframe-hotswap", LingUninstalledEvent.class, this);
     }
 
@@ -76,9 +82,12 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         }
 
         debounceTask = debounceExecutor.schedule(() -> {
-            doReload(lingId);
-            // ✅ 任务完成后清除引用，防止 lambda 被 ScheduledFuture 持有
-            debounceTask = null;
+            try {
+                doReload(lingId);
+            } finally {
+                // ✅ 任务完成后清除引用，防止 lambda 被 ScheduledFuture 持有
+                debounceTask = null;
+            }
         }, 1000, TimeUnit.MILLISECONDS);
     }
 
@@ -114,27 +123,25 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         try {
             reloadingLings.add(lingId);
 
-            List<TrackedClassLoader> oldClassLoaders = snapshotClassLoaders(lingId);
+            // 1. 在卸载前记录旧的 ClassLoader 视图
+            Map<String, ClassLoader> oldLoaders = snapshotClassLoaders(lingId);
 
-            // ========== 卸载旧版 ==========
+            // 2. 执行卸载与重部署
             lifecycleEngine.undeploy(lingId);
 
             // ✅ 强制恢复 TCCL（防止 undeploy 过程中被改变）
             currentThread.setContextClassLoader(originalTCCL);
 
-            // ========== 安装新版 ==========
             boolean isCanary = resolveCanaryFlag(lingDefinition);
-            boolean isDefault = !isCanary;
-            lifecycleEngine.deploy(lingDefinition, source, isDefault, Collections.emptyMap());
-
+            lifecycleEngine.deploy(lingDefinition, source, !isCanary, Collections.emptyMap());
             // ✅ 再次恢复 TCCL（防止 deploy/start 过程中被改变）
             currentThread.setContextClassLoader(originalTCCL);
 
             log.info("[HotSwap] Hot swap completed: {}", lingId);
 
-            // ✅ 验证旧 ClassLoader 是否可以被 GC
-            if (!oldClassLoaders.isEmpty()) {
-                verifyClassLoaderGC(lingId, oldClassLoaders);
+            // 3. 将旧版的 ClassLoader 提交给统一的检测器进行收尾验证（符合职责归位原则）
+            if (leakDetector != null) {
+                oldLoaders.forEach((version, loader) -> leakDetector.detectLeak(lingId, version, loader));
             }
 
         } catch (Exception e) {
@@ -147,50 +154,21 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         log.info("=================================================");
     }
 
-    /**
-     * ✅ 验证旧 ClassLoader 是否已被 GC
-     */
-    private void verifyClassLoaderGC(String lingId, List<TrackedClassLoader> trackedLoaders) {
-        // 延迟验证，给 GC 时间
-        debounceExecutor.schedule(() -> {
-            System.gc();
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException ignored) {
-            }
-            System.gc();
-
-            for (TrackedClassLoader tracked : trackedLoaders) {
-                if (tracked.reference.get() == null) {
-                    log.info("[HotSwap] Old ClassLoader for [{}:{}] has been GC'd", lingId, tracked.version);
-                } else {
-                    log.warn("[HotSwap] Old ClassLoader for [{}:{}] is STILL ALIVE - memory leak!",
-                            lingId, tracked.version);
-                }
-            }
-        }, 5, TimeUnit.SECONDS);
-    }
-
-    private List<TrackedClassLoader> snapshotClassLoaders(String lingId) {
-        if (lingRepository == null) {
-            return Collections.emptyList();
-        }
+    private Map<String, ClassLoader> snapshotClassLoaders(String lingId) {
+        if (lingRepository == null)
+            return Collections.emptyMap();
 
         LingRuntime runtime = lingRepository.getRuntime(lingId);
-        if (runtime == null) {
-            return Collections.emptyList();
-        }
+        if (runtime == null)
+            return Collections.emptyMap();
 
-        List<TrackedClassLoader> tracked = new ArrayList<>();
-        Set<ClassLoader> seen = Collections.newSetFromMap(new IdentityHashMap<ClassLoader, Boolean>());
+        Map<String, ClassLoader> loaders = new HashMap<>();
         for (LingInstance instance : runtime.getInstancePool().getAllInstances()) {
-            ClassLoader classLoader = instance.getClassLoader();
-            if (classLoader == null || !seen.add(classLoader)) {
-                continue;
+            if (instance.getClassLoader() != null) {
+                loaders.put(instance.getVersion(), instance.getClassLoader());
             }
-            tracked.add(new TrackedClassLoader(instance.getVersion(), new WeakReference<>(classLoader)));
         }
-        return tracked;
+        return loaders;
     }
 
     /**
@@ -198,12 +176,12 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
      */
     private boolean resolveCanaryFlag(LingDefinition lingDefinition) {
         Map<String, Object> properties = lingDefinition.getProperties();
-        if (properties == null) return false;
+        if (properties == null)
+            return false;
         Object value = properties.get("canary");
-        if (value instanceof Boolean) return (Boolean) value;
-        if (value instanceof Number) return ((Number) value).intValue() != 0;
-        if (value != null) return "true".equalsIgnoreCase(String.valueOf(value));
-        return false;
+        if (value instanceof Boolean)
+            return (Boolean) value;
+        return "true".equalsIgnoreCase(String.valueOf(value));
     }
 
     // ======================== 注册/注销 ========================
@@ -232,8 +210,7 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
                     try {
                         WatchKey k = p.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY);
                         keyLingMap.put(k, lingId);
-                    } catch (IOException e) {
-                        log.warn("Failed to watch subdir: {}", p, e);
+                    } catch (IOException ignored) {
                     }
                 });
             }
@@ -244,7 +221,8 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
     }
 
     public void unregister(String lingId) {
-        if (!isStarted.get()) return;
+        if (!isStarted.get())
+            return;
         log.info("[HotSwap] Unregistering watcher for: {}", lingId);
         cleanupWatchKeys(lingId);
         lingSourceMap.remove(lingId);
@@ -268,7 +246,8 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
     // ======================== WatchService ========================
 
     private synchronized void ensureInit() {
-        if (isStarted.get()) return;
+        if (isStarted.get())
+            return;
         try {
             this.watchService = FileSystems.getDefault().newWatchService();
             startWatchLoop();
@@ -282,7 +261,8 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         Thread thread = new Thread(() -> {
             while (true) {
                 try {
-                    if (watchService == null) break;
+                    if (watchService == null)
+                        break;
                     WatchKey key = watchService.take();
                     String lingId = keyLingMap.get(key);
                     if (lingId != null) {
@@ -309,9 +289,8 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
             if (entry.getValue().equals(lingId)) {
                 Path dir = (Path) entry.getKey().watchable();
                 try (Stream<Path> paths = Files.walk(dir)) {
-                    return paths.noneMatch(path -> path.toString().endsWith(".class"));
-                } catch (IOException e) {
-                    log.warn("Failed to check compilation status: {}", dir, e);
+                    return paths.noneMatch(p -> p.toString().endsWith(".class"));
+                } catch (IOException ignored) {
                 }
             }
         }
@@ -320,20 +299,12 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
 
     public synchronized void shutdown() {
         try {
-            if (watchService != null) watchService.close();
+            if (watchService != null)
+                watchService.close();
             debounceExecutor.shutdownNow();
-            if (eventBus != null) eventBus.unsubscribeAll("lingframe-hotswap");
+            if (eventBus != null)
+                eventBus.unsubscribeAll("lingframe-hotswap");
         } catch (IOException ignored) {
-        }
-    }
-
-    private static final class TrackedClassLoader {
-        private final String version;
-        private final WeakReference<ClassLoader> reference;
-
-        private TrackedClassLoader(String version, WeakReference<ClassLoader> reference) {
-            this.version = version;
-            this.reference = reference;
         }
     }
 }

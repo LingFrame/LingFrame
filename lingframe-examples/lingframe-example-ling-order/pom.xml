@@ -51,7 +51,7 @@
         <!-- SpringDoc for API Documentation -->
         <dependency>
             <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-ui</artifactId>
+            <artifactId>${springdoc.artifactId}</artifactId>
         </dependency>
 
     </dependencies>

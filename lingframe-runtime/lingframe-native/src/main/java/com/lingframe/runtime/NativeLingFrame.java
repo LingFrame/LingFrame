@@ -14,6 +14,7 @@ import com.lingframe.core.ling.DefaultLingResourceManager;
 import com.lingframe.core.ling.DefaultLingServiceRegistry;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.resource.DefaultLeakDetector;
+import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.resource.BasicResourceGuard;
 import com.lingframe.core.ling.LingRepository;
@@ -92,11 +93,12 @@ public class NativeLingFrame {
                 filterRegistry);
 
         RESOURCE_MANAGER = new DefaultLingResourceManager(lingRepository, eventBus, invokableMethodCache);
+        LeakDetector leakDetector = new DefaultLeakDetector(eventBus, config);
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
                 pipelineEngine,
                 Collections.singletonList(new BasicResourceGuard()),
                 RESOURCE_MANAGER,
-                new DefaultLeakDetector(eventBus, config));
+                leakDetector);
 
         LingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(
                 containerFactory,
@@ -113,7 +115,7 @@ public class NativeLingFrame {
                 RUNTIME_COORDINATOR);
 
         if (config != null && config.isDevMode() && lifecycleEngine instanceof DefaultLingLifecycleEngine) {
-            HOT_SWAP_WATCHER = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus);
+            HOT_SWAP_WATCHER = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus, leakDetector);
             ((DefaultLingLifecycleEngine) lifecycleEngine).setHotSwapWatcher(HOT_SWAP_WATCHER);
         }
 

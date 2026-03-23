@@ -29,6 +29,8 @@ public class MonitoringEvents {
         private final String action;
         private final String resource;
         private final String capability;
+        private final String source;
+        private final String ruleSource;
         private final PermissionAuditResult result;
         private final String failureReason;
         private final long costNanos;
@@ -40,6 +42,8 @@ public class MonitoringEvents {
                 String action,
                 String resource,
                 String capability,
+                String source,
+                String ruleSource,
                 PermissionAuditResult result,
                 String failureReason,
                 long costNanos) {
@@ -49,6 +53,8 @@ public class MonitoringEvents {
             this.action = action;
             this.resource = resource;
             this.capability = capability;
+            this.source = source;
+            this.ruleSource = ruleSource;
             this.result = result;
             this.failureReason = failureReason;
             this.costNanos = costNanos;
@@ -61,6 +67,8 @@ public class MonitoringEvents {
                     null,
                     action,
                     resource,
+                    null,
+                    null,
                     null,
                     success ? PermissionAuditResult.ALLOWED : PermissionAuditResult.DENIED,
                     null,
@@ -87,13 +95,41 @@ public class MonitoringEvents {
     }
 
     @Getter
-    @RequiredArgsConstructor
     public static class AlertNotifyEvent implements LingEvent {
+        private final String traceId;
         private final String level;
         private final String type;
         private final String lingId;
         private final String message;
-        private final long timestamp = System.currentTimeMillis();
+        private final String source;
+        private final String ruleSource;
+        private final long timestamp;
+
+        public AlertNotifyEvent(String level, String type, String lingId, String message) {
+            this(null, level, type, lingId, message, null, null);
+        }
+
+        public AlertNotifyEvent(String traceId, String level, String type, String lingId, String message) {
+            this(traceId, level, type, lingId, message, null, null);
+        }
+
+        public AlertNotifyEvent(
+                String traceId,
+                String level,
+                String type,
+                String lingId,
+                String message,
+                String source,
+                String ruleSource) {
+            this.traceId = traceId;
+            this.level = level;
+            this.type = type;
+            this.lingId = lingId;
+            this.message = message;
+            this.source = source;
+            this.ruleSource = ruleSource;
+            this.timestamp = System.currentTimeMillis();
+        }
     }
 
     @Getter

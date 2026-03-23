@@ -23,13 +23,20 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.StringHttpMessageConverter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -42,6 +49,8 @@ import java.util.Set;
  */
 @Slf4j
 public class SpringLingContainer implements LingContainer {
+
+    private static final String DISABLE_LOGGING_SHUTDOWN_HOOK = "logging.register-shutdown-hook=false";
 
     private static final RequestMethod[] DEFAULT_HTTP_METHODS = new RequestMethod[] {
             RequestMethod.GET,
@@ -88,6 +97,8 @@ public class SpringLingContainer implements LingContainer {
     @Override
     public void start(LingContext lingContext) {
         this.lingContext = lingContext;
+        // 禁用 Boot 日志系统的全局 shutdown hook，避免其通过全局 handler 持有灵元 ClassLoader。
+        builder.properties(DISABLE_LOGGING_SHUTDOWN_HOOK);
 
         // 劫持线程上下文类加载器（TCCL）
         Thread t = Thread.currentThread();
@@ -152,6 +163,23 @@ public class SpringLingContainer implements LingContainer {
 
             // 自动配置灵元独立数据源
             LingDataSourceRegistrar.register(context, lingClassLoader, lingId);
+
+            // 🔥 注入灵元私有的 HandlerAdapter，防止 DTO 等类污染宿主缓存
+            context.registerBean(RequestMappingHandlerAdapter.class, () -> {
+                RequestMappingHandlerAdapter adapter = new RequestMappingHandlerAdapter();
+                // 必须设置 MessageConverters，否则无法处理 JSON
+                // 补全 StringHttpMessageConverter 以处理基础响应，增强健壮性
+                List<HttpMessageConverter<?>> converters = new ArrayList<>();
+                converters.add(new StringHttpMessageConverter());
+                converters.add(new MappingJackson2HttpMessageConverter());
+                adapter.setMessageConverters(converters);
+                
+                // 重要：必须显式调用以加载默认的 ArgumentResolvers 和 ReturnValueHandlers
+                // 否则类似 @RequestBody 的参数解析逻辑不会生效
+                adapter.setApplicationContext(context);
+                adapter.afterPropertiesSet();
+                return adapter;
+            });
         }
     }
 
@@ -393,6 +421,22 @@ public class SpringLingContainer implements LingContainer {
                     mappingBuilder.produces(produces);
                 }
                 RequestMappingInfo requestMappingInfo = mappingBuilder.build();
+                
+                String opSummary = null;
+                String opDescription = null;
+                String[] opTags = null;
+                try {
+                    // 使用字符串类名动态搜索，避免对 swagger-annotations 的强编译依赖
+                    AnnotationAttributes opAttr = AnnotatedElementUtils.findMergedAnnotationAttributes(
+                            method, "io.swagger.v3.oas.annotations.Operation", false, false);
+                    if (opAttr != null) {
+                        opSummary = opAttr.getString("summary");
+                        opDescription = opAttr.getString("description");
+                        opTags = opAttr.getStringArray("tags");
+                    }
+                } catch (Throwable ignored) {
+                    // 即使类路径无 Swagger 也不影响基本路由注册
+                }
 
                 WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
                         .lingId(lingId)
@@ -414,6 +458,9 @@ public class SpringLingContainer implements LingContainer {
                         .requiredPermission(permission)
                         .shouldAudit(shouldAudit)
                         .auditAction(auditAction)
+                        .opSummary(opSummary)
+                        .opDescription(opDescription)
+                        .opTags(opTags != null ? Arrays.copyOf(opTags, opTags.length) : null)
                         .requestMappingInfo(requestMappingInfo)
                         .build();
                 metadata.minimizeHostReferences();
@@ -571,8 +618,26 @@ public class SpringLingContainer implements LingContainer {
 
             // ✅ 从主容器获取 ObjectMapper，而不是靠 @Autowired
             try {
-                ObjectMapper om = this.mainContext.getBean(ObjectMapper.class);
-                JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
+            if (this.mainContext != null) {
+                try {
+                    // 1. 清理宿主主容器中的 ObjectMapper 缓存 (最重要的，因为网关走这里)
+                    Map<String, ObjectMapper> hostOms = this.mainContext.getBeansOfType(ObjectMapper.class);
+                    for (ObjectMapper om : hostOms.values()) {
+                        JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
+                    }
+                    
+                    // 2. 清理灵元内部容器中的 ObjectMapper 缓存 (防止内部引用不释放)
+                    if (this.context != null) {
+                        Map<String, ObjectMapper> lingOms = this.context.getBeansOfType(ObjectMapper.class);
+                        for (ObjectMapper om : lingOms.values()) {
+                            JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
+                        }
+                    }
+                    log.info("[{}] Jackson caches evicted successfully", lingId);
+                } catch (Exception e) {
+                    log.warn("[{}] Failed to evict Jackson caches", lingId, e);
+                }
+            }
             } catch (Exception e) {
                 log.warn("清理 Jackson 缓存失败", e);
             }
@@ -589,8 +654,14 @@ public class SpringLingContainer implements LingContainer {
                     }
                 }
             }
-
-            context.close();
+            // 5. 关闭上下文 (核心隔离点)
+            try {
+                context.close();
+                log.info("[{}] Spring ApplicationContext closed successfully", lingId);
+            } catch (Exception e) {
+                // 🔥 关键修复：隔离上下文关闭异常，防止阻断整机卸载
+                log.error("[{}] Error during Spring ApplicationContext close, forcing reference cleanup", lingId, e);
+            }
         }
 
         // 🔥 第二阶段清理会由 DefaultLingLifecycleEngine 调用 resourceGuard.cleanup()
@@ -605,15 +676,17 @@ public class SpringLingContainer implements LingContainer {
             }
         }
 
-        this.builder = null; // SpringApplicationBuilder 持有 ResourceLoader → ClassLoader
-        this.context = null; // ApplicationContext 持有 BeanFactory → 所有 Bean → Class → ClassLoader
-        this.mainContext = null; // 主容器引用也必须断开
+        // 彻底断开所有强引用，辅助 GC 回收 ClassLoader
+        this.builder = null; 
+        this.context = null; 
+        this.mainContext = null; 
         this.classLoader = null;
         this.lingContext = null;
         this.webInterfaceManager = null;
         this.excludedPackages = null;
         this.customizers = null;
         this.version = null;
+        log.debug("[{}] Container references cleared", (lingContext != null) ? lingContext.getLingId() : "unknown");
     }
 
     @Override
