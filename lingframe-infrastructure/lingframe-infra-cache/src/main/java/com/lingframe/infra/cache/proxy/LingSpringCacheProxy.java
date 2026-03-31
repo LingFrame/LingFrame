@@ -24,11 +24,11 @@ public class LingSpringCacheProxy implements Cache {
 
     private final PermissionService permissionService;
 
-    private void checkPermission(String operation) {
+    private void checkPermission(String operation, AccessType accessType) {
         String callerLingId = LingCallContext.getLingId();
         if (callerLingId == null) return;
 
-        boolean allowed = permissionService.isAllowed(callerLingId, "cache:local", AccessType.WRITE);
+        boolean allowed = permissionService.isAllowed(callerLingId, "cache:local", accessType);
         permissionService.audit(callerLingId, "cache:local", operation, allowed);
 
         if (!allowed) {
@@ -38,67 +38,69 @@ public class LingSpringCacheProxy implements Cache {
 
     @Override
     public String getName() {
-        checkPermission("get");
+        checkPermission("getName", AccessType.READ);
         return target.getName();
     }
 
     @Override
     public Object getNativeCache() {
-        checkPermission("getNativeCache");
+        // 暴露原生缓存句柄可能绕开治理代理，先保持保守策略。
+        checkPermission("getNativeCache", AccessType.WRITE);
         return target.getNativeCache();
     }
 
     @Override
     public ValueWrapper get(@NonNull Object key) {
-        checkPermission("get");
+        checkPermission("get", AccessType.READ);
         return target.get(key);
     }
 
     @Override
     public <T> T get(@NonNull Object key, Class<T> type) {
-        checkPermission("get");
+        checkPermission("get", AccessType.READ);
         return target.get(key, type);
     }
 
     @Override
     public <T> T get(@NonNull Object key, @NonNull Callable<T> valueLoader) {
-        checkPermission("get");
+        // valueLoader 可能在缓存缺失时写入新值，因此按 WRITE 治理。
+        checkPermission("get", AccessType.WRITE);
         return target.get(key, valueLoader);
     }
 
     @Override
     public void put(@NonNull Object key, @NonNull Object value) {
-        checkPermission("put");
+        checkPermission("put", AccessType.WRITE);
         target.put(key, value);
     }
 
     @Override
     public void evict(@NonNull Object key) {
-        checkPermission("evict");
+        checkPermission("evict", AccessType.WRITE);
         target.evict(key);
     }
 
     @Override
     public void clear() {
-        checkPermission("clear");
+        checkPermission("clear", AccessType.WRITE);
         target.clear();
     }
 
     @Override
     public @Nullable ValueWrapper putIfAbsent(@NonNull Object key, @Nullable Object value) {
-        checkPermission("putIfAbsent");
+        checkPermission("putIfAbsent", AccessType.WRITE);
         return target.putIfAbsent(key, value);
     }
 
     @Override
     public boolean evictIfPresent(@NonNull Object key) {
-        checkPermission("evictIfPresent");
+        checkPermission("evictIfPresent", AccessType.WRITE);
         return target.evictIfPresent(key);
     }
 
     @Override
     public boolean invalidate() {
-        checkPermission("invalidate");
+        checkPermission("invalidate", AccessType.WRITE);
         return target.invalidate();
     }
 
