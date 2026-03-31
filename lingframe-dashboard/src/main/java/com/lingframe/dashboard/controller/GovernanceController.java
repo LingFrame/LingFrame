@@ -2,6 +2,7 @@ package com.lingframe.dashboard.controller;
 
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.dashboard.dto.ApiResponse;
+import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
@@ -59,10 +60,40 @@ public class GovernanceController {
             @RequestBody GovernancePolicy policy) {
         try {
             dashboardService.updateGovernancePolicy(lingId, policy);
-            return ApiResponse.ok("策略已更新", policy);
+            return ApiResponse.ok("策略已更新", registry.getPatch(lingId));
         } catch (Exception e) {
             log.error("Failed to update patch for: {}", lingId, e);
             return ApiResponse.error("策略更新失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取灵元当前生效的调用治理配置。
+     */
+    @GetMapping("/{lingId}/invocation")
+    public ApiResponse<InvocationGovernanceDTO> getInvocationGovernance(@PathVariable String lingId) {
+        try {
+            return ApiResponse.ok(dashboardService.getInvocationGovernance(lingId));
+        } catch (Exception e) {
+            log.error("Failed to get invocation governance for: {}", lingId, e);
+            return ApiResponse.error("获取调用治理失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 更新调用治理配置。
+     * 与资源权限分开，避免控制面继续把两种语义混在一起。
+     */
+    @PostMapping("/{lingId}/invocation")
+    public ApiResponse<InvocationGovernanceDTO> updateInvocationGovernance(
+            @PathVariable String lingId,
+            @RequestBody InvocationGovernanceDTO dto) {
+        try {
+            InvocationGovernanceDTO updated = dashboardService.updateInvocationGovernance(lingId, dto);
+            return ApiResponse.ok("调用治理已更新", updated);
+        } catch (Exception e) {
+            log.error("Failed to update invocation governance for: {}", lingId, e);
+            return ApiResponse.error("调用治理更新失败: " + e.getMessage());
         }
     }
 

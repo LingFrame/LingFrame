@@ -54,6 +54,7 @@ public class LingInfoConverter {
                 .status(runtime.currentStatus().name())
                 .versionDetails(versionDetails)
                 .permissions(extractPermissions(lingId, permissionService, policy))
+                .invocationGovernance(extractInvocationGovernance(runtime, policy))
                 .installedAt(runtime.getInstalledAt())
                 .build();
     }
@@ -103,6 +104,31 @@ public class LingInfoConverter {
                 .cacheRead(cacheRead)
                 .cacheWrite(cacheWrite)
                 .ipcServices(ipcServices)
+                .build();
+    }
+
+    private LingInfoDTO.InvocationGovernance extractInvocationGovernance(LingRuntime runtime, GovernancePolicy policy) {
+        GovernancePolicy.InvocationPolicy invocation = policy == null ? null : policy.getInvocation();
+        Integer timeoutMs = invocation == null ? null : invocation.getTimeoutMs();
+        Integer rateLimitPerSecond = invocation == null ? null : invocation.getRateLimitPerSecond();
+        Integer maxConcurrentThreads = invocation == null ? null : invocation.getMaxConcurrentThreads();
+
+        if (runtime != null && runtime.getConfig() != null) {
+            if (timeoutMs == null) {
+                timeoutMs = runtime.getConfig().getDefaultTimeoutMs();
+            }
+            if (rateLimitPerSecond == null) {
+                rateLimitPerSecond = runtime.getConfig().getRateLimitPerSecond();
+            }
+            if (maxConcurrentThreads == null) {
+                maxConcurrentThreads = runtime.getConfig().getBulkheadMaxConcurrent();
+            }
+        }
+
+        return LingInfoDTO.InvocationGovernance.builder()
+                .timeoutMs(timeoutMs)
+                .rateLimitPerSecond(rateLimitPerSecond)
+                .maxConcurrentThreads(maxConcurrentThreads)
                 .build();
     }
 

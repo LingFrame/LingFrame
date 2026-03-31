@@ -43,6 +43,18 @@ public class InvocationGovernanceState {
      */
     private Integer timeoutMs;
 
+    /**
+     * 治理阶段计算出的限流阈值（QPS）。
+     * 弹性治理阶段优先消费这里的最终值。
+     */
+    private Integer rateLimitPerSecond;
+
+    /**
+     * 治理阶段计算出的最大并发线程数。
+     * 线程隔离阶段优先消费这里的最终值。
+     */
+    private Integer maxConcurrentThreads;
+
     void reset() {
         this.requiredPermission = null;
         this.accessType = null;
@@ -50,6 +62,8 @@ public class InvocationGovernanceState {
         this.auditAction = null;
         this.ruleSource = null;
         this.timeoutMs = null;
+        this.rateLimitPerSecond = null;
+        this.maxConcurrentThreads = null;
     }
 
     void copyFrom(InvocationGovernanceState source) {
@@ -62,5 +76,7 @@ public class InvocationGovernanceState {
         this.auditAction = source.auditAction;
         this.ruleSource = source.ruleSource;
         this.timeoutMs = source.timeoutMs;
+        this.rateLimitPerSecond = source.rateLimitPerSecond;
+        this.maxConcurrentThreads = source.maxConcurrentThreads;
     }
 }

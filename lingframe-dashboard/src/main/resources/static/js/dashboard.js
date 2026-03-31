@@ -30,6 +30,7 @@ createApp({
             status: false,
             canary: false,
             permissions: false,
+            invocation: false,
             stats: false,
             simulate: false
         });
@@ -92,6 +93,12 @@ createApp({
         
         // 灵元健康指标
         const lingHealthMetrics = reactive({});
+
+        const invocationForm = reactive({
+            timeoutMs: '',
+            rateLimitPerSecond: '',
+            maxConcurrentThreads: ''
+        });
 
         let eventSource = null;
         let timeTimer = null;
@@ -244,6 +251,7 @@ createApp({
 
             // 同步 IPC 开关状态
             syncIpcSwitch();
+            syncInvocationForm();
         };
 
         const doUpdateStatus = async (newStatus) => {
@@ -634,6 +642,45 @@ createApp({
             canaryPct.value = 0;
             updateCanaryConfigLocally();
             await updateCanaryConfig();
+        };
+
+        const normalizeNullableInt = (value) => {
+            if (value === '' || value === null || value === undefined) {
+                return null;
+            }
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+        };
+
+        const syncInvocationForm = () => {
+            const current = activeLing.value?.invocationGovernance || {};
+            invocationForm.timeoutMs = current.timeoutMs ?? '';
+            invocationForm.rateLimitPerSecond = current.rateLimitPerSecond ?? '';
+            invocationForm.maxConcurrentThreads = current.maxConcurrentThreads ?? '';
+        };
+
+        const saveInvocationGovernance = async () => {
+            if (!activeId.value) return;
+
+            loading.invocation = true;
+            try {
+                const updated = await api.post(`/governance/${activeId.value}/invocation`, {
+                    timeoutMs: normalizeNullableInt(invocationForm.timeoutMs),
+                    rateLimitPerSecond: normalizeNullableInt(invocationForm.rateLimitPerSecond),
+                    maxConcurrentThreads: normalizeNullableInt(invocationForm.maxConcurrentThreads)
+                });
+
+                const idx = lings.value.findIndex(p => p.lingId === activeId.value);
+                if (idx !== -1) {
+                    lings.value[idx].invocationGovernance = updated;
+                }
+                syncInvocationForm();
+                showToast(t('toast.invocationUpdated'), 'success');
+            } catch (e) {
+                showToast(t('toast.invocationUpdateFailed') + ': ' + e.message, 'error');
+            } finally {
+                loading.invocation = false;
+            }
         };
 
         // ==================== 权限操作 ====================
@@ -1233,6 +1280,11 @@ createApp({
             updateEnvMode(newVal);
         });
 
+        watch(activeLing, () => {
+            syncIpcSwitch();
+            syncInvocationForm();
+        });
+
         // 监听 locale 变化，按需更新时间格式（可选）
         watch(locale, () => {
             updateTime();
@@ -1271,11 +1323,13 @@ createApp({
 
             perfMetrics,
             lingHealthMetrics,
+            invocationForm,
 
             activeLing, canCanary, canOperate, canActivate, canDeactivate, displayLogs, availableVersions,
 
             refreshLings, selectLing, updateStatus, requestUnload,
             confirmModalAction, updateCanaryConfig, updateCanaryConfigLocally, resetCanary, togglePerm, toggleIpc,
+            saveInvocationGovernance,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
             formatDrift, formatTime, formatSize,

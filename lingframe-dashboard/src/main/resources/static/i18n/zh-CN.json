@@ -95,10 +95,16 @@
     "reload": "热重载",
     "unload": "卸载",
     "permissions": "资源权限",
+    "invocationGovernance": "调用治理",
+    "hotPatch": "Hot Patch",
     "dbRead": "DB 读",
     "dbWrite": "DB 写",
     "cacheRead": "Cache 读",
-    "cacheWrite": "Cache 写"
+    "cacheWrite": "Cache 写",
+    "timeoutMs": "超时 (ms)",
+    "rateLimitPerSecond": "限流 (QPS)",
+    "maxConcurrentThreads": "最大并发线程",
+    "saveInvocation": "保存调用治理"
   },
   "demo": {
     "title": "功能演练",
@@ -165,7 +171,9 @@
     "reloadSuccess": "灵元重载成功",
     "reloadFailed": "灵元重载失败",
     "lingVersionUnloaded": "版本 {version} 卸载成功",
-    "getTimelineFailed": "获取时间线失败"
+    "getTimelineFailed": "获取时间线失败",
+    "invocationUpdated": "调用治理已更新",
+    "invocationUpdateFailed": "调用治理更新失败"
   },
   "performance": {
     "title": "系统性能",

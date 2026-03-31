@@ -95,10 +95,16 @@
         "reload": "Hot Reload",
         "unload": "Unload",
         "permissions": "Permissions",
+        "invocationGovernance": "Invocation Governance",
+        "hotPatch": "Hot Patch",
         "dbRead": "DB Read",
         "dbWrite": "DB Write",
         "cacheRead": "Cache Read",
-        "cacheWrite": "Cache Write"
+        "cacheWrite": "Cache Write",
+        "timeoutMs": "Timeout (ms)",
+        "rateLimitPerSecond": "Rate Limit (QPS)",
+        "maxConcurrentThreads": "Max Concurrent Threads",
+        "saveInvocation": "Save Invocation Governance"
     },
     "demo": {
         "title": "Feature Demo",
@@ -165,7 +171,9 @@
         "reloadSuccess": "Ling reloaded successfully",
         "reloadFailed": "Ling reload failed",
         "lingVersionUnloaded": "Version {version} unloaded successfully",
-        "getTimelineFailed": "Failed to get timeline"
+        "getTimelineFailed": "Failed to get timeline",
+        "invocationUpdated": "Invocation governance updated",
+        "invocationUpdateFailed": "Invocation governance update failed"
   },
   "performance": {
     "title": "System Performance",

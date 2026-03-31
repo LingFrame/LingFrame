@@ -37,7 +37,7 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
 
     // 按 lingId 管理弹性组件实例
     private final ConcurrentHashMap<String, CircuitBreaker> breakers = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, RateLimiter> limiters = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, LimiterHolder> limiters = new ConcurrentHashMap<>();
 
     public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus, RuntimeCoordinator runtimeCoordinator) {
         this.lingRepository = lingRepository;
@@ -71,7 +71,7 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         String lingId = fqsid.split(":")[0];
 
         // 1. 限流检查
-        RateLimiter limiter = getLimiter(lingId);
+        RateLimiter limiter = getLimiter(lingId, ctx);
         if (limiter != null && !limiter.tryAcquire()) {
             log.warn("[Resilience:{}] Rate limited, rejecting request: {}", lingId, fqsid);
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.RATE_LIMITED);
@@ -127,19 +127,33 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         });
     }
 
-    private RateLimiter getLimiter(String lingId) {
-        return limiters.computeIfAbsent(lingId, id -> {
+    private RateLimiter getLimiter(String lingId, InvocationContext ctx) {
+        LimiterHolder holder = limiters.compute(lingId, (id, existing) -> {
             LingRuntime runtime = lingRepository.getRuntime(id);
-            if (runtime == null)
+            if (runtime == null) {
                 return null;
-            LingRuntimeConfig config = runtime.getConfig();
-            // 使用 bulkheadMaxConcurrent 作为限流 QPS 基线
-            int rateLimit = config.getRateLimitPerSecond();
-            if (rateLimit <= 0) {
-                rateLimit = config.getBulkheadMaxConcurrent();
             }
-            return new TokenBucketRateLimiter(id, rateLimit, rateLimit);
+
+            int rateLimit = resolveRateLimit(ctx, runtime.getConfig());
+            if (existing != null && existing.rateLimitPerSecond == rateLimit) {
+                return existing;
+            }
+            return new LimiterHolder(rateLimit, new TokenBucketRateLimiter(id, rateLimit, rateLimit));
         });
+        return holder == null ? null : holder.limiter;
+    }
+
+    private int resolveRateLimit(InvocationContext ctx, LingRuntimeConfig config) {
+        Integer governedRateLimit = ctx.governance().getRateLimitPerSecond();
+        if (governedRateLimit != null && governedRateLimit > 0) {
+            return governedRateLimit;
+        }
+
+        int rateLimit = config.getRateLimitPerSecond();
+        if (rateLimit <= 0) {
+            rateLimit = config.getBulkheadMaxConcurrent();
+        }
+        return Math.max(1, rateLimit);
     }
 
     /**
@@ -185,6 +199,16 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             }
         } catch (Exception e) {
             log.debug("[Resilience:{}] Failed to recover from DEGRADED: {}", lingId, e.getMessage());
+        }
+    }
+
+    private static final class LimiterHolder {
+        private final int rateLimitPerSecond;
+        private final RateLimiter limiter;
+
+        private LimiterHolder(int rateLimitPerSecond, RateLimiter limiter) {
+            this.rateLimitPerSecond = rateLimitPerSecond;
+            this.limiter = limiter;
         }
     }
 }

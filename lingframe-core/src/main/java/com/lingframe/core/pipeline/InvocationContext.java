@@ -236,6 +236,22 @@ public class InvocationContext {
         governanceState.setTimeoutMs(timeoutMs);
     }
 
+    public Integer getRateLimitPerSecond() {
+        return governanceState.getRateLimitPerSecond();
+    }
+
+    public void setRateLimitPerSecond(Integer rateLimitPerSecond) {
+        governanceState.setRateLimitPerSecond(rateLimitPerSecond);
+    }
+
+    public Integer getMaxConcurrentThreads() {
+        return governanceState.getMaxConcurrentThreads();
+    }
+
+    public void setMaxConcurrentThreads(Integer maxConcurrentThreads) {
+        governanceState.setMaxConcurrentThreads(maxConcurrentThreads);
+    }
+
     /**
      * 执行模式访问器。
      */

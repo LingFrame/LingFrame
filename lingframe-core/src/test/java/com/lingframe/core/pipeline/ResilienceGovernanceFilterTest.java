@@ -137,6 +137,24 @@ class ResilienceGovernanceFilterTest {
             assertEquals(LingInvocationException.ErrorKind.CIRCUIT_OPEN, cbEx.getKind());
             verify(filterChain, times(10)).doFilter(context);
         }
+
+        @Test
+        @DisplayName("治理限流阈值变化后应切换到新的限流器配置")
+        void doFilter_WhenGovernedRateLimitChanges_ShouldRefreshLimiter() throws Throwable {
+            setupMocks(100, 1000);
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            context.governance().setRateLimitPerSecond(100);
+            assertEquals(expected, filter.doFilter(context, filterChain));
+
+            context.governance().setRateLimitPerSecond(1);
+            assertEquals(expected, filter.doFilter(context, filterChain));
+
+            LingInvocationException rateLimitEx = assertThrows(LingInvocationException.class,
+                    () -> filter.doFilter(context, filterChain));
+            assertEquals(LingInvocationException.ErrorKind.RATE_LIMITED, rateLimitEx.getKind());
+        }
     }
 
     private void setupMocks(int maxConcurrent, int defaultTimeoutMs) {

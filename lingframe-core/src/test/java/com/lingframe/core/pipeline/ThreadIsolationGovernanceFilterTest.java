@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -123,6 +124,101 @@ class ThreadIsolationGovernanceFilterTest {
             } finally {
                 filter.evict("ling1");
                 context.recycle();
+            }
+        }
+
+        @Test
+        @DisplayName("治理最大并发变更后应切换到新的隔离线程池规格")
+        void shouldRefreshExecutorWhenGovernedMaxThreadsChanges() throws Exception {
+            LingRepository repository = new DefaultLingRepository();
+            LingRuntimeConfig config = LingRuntimeConfig.builder()
+                    .bulkheadMaxConcurrent(2)
+                    .defaultTimeoutMs(2000)
+                    .build();
+            EventBus eventBus = new EventBus();
+            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            repository.register(runtime);
+
+            ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
+            ExecutorService caller = Executors.newFixedThreadPool(2);
+
+            CountDownLatch firstEnteredA = new CountDownLatch(1);
+            CountDownLatch firstEnteredB = new CountDownLatch(1);
+            CountDownLatch firstRelease = new CountDownLatch(1);
+
+            LingFilterChain firstChainA = context -> {
+                firstEnteredA.countDown();
+                firstRelease.await(2, TimeUnit.SECONDS);
+                return "a";
+            };
+            LingFilterChain firstChainB = context -> {
+                firstEnteredB.countDown();
+                firstRelease.await(2, TimeUnit.SECONDS);
+                return "b";
+            };
+
+            InvocationContext firstContext = InvocationContext.obtain();
+            firstContext.setServiceFQSID("ling1:TestService");
+            firstContext.governance().setMaxConcurrentThreads(2);
+            InvocationContext secondContext = InvocationContext.obtain();
+            secondContext.setServiceFQSID("ling1:TestService");
+            secondContext.governance().setMaxConcurrentThreads(2);
+
+            CountDownLatch secondEntered = new CountDownLatch(1);
+            CountDownLatch secondRelease = new CountDownLatch(1);
+            LingFilterChain secondChain = context -> {
+                secondEntered.countDown();
+                secondRelease.await(2, TimeUnit.SECONDS);
+                return "c";
+            };
+
+            InvocationContext thirdContext = InvocationContext.obtain();
+            thirdContext.setServiceFQSID("ling1:TestService");
+            thirdContext.governance().setMaxConcurrentThreads(1);
+            InvocationContext fourthContext = InvocationContext.obtain();
+            fourthContext.setServiceFQSID("ling1:TestService");
+            fourthContext.governance().setMaxConcurrentThreads(1);
+
+            try {
+                Future<?> firstFuture = caller.submit(() -> {
+                    try {
+                        filter.doFilter(firstContext, firstChainA);
+                    } catch (Throwable ignored) {
+                    }
+                });
+                Future<?> secondFuture = caller.submit(() -> {
+                    try {
+                        filter.doFilter(secondContext, firstChainB);
+                    } catch (Throwable ignored) {
+                    }
+                });
+
+                assertTrue(firstEnteredA.await(1, TimeUnit.SECONDS));
+                assertTrue(firstEnteredB.await(1, TimeUnit.SECONDS));
+
+                firstRelease.countDown();
+                firstFuture.get(2, TimeUnit.SECONDS);
+                secondFuture.get(2, TimeUnit.SECONDS);
+
+                caller.submit(() -> {
+                    try {
+                        filter.doFilter(thirdContext, secondChain);
+                    } catch (Throwable ignored) {
+                    }
+                });
+                assertTrue(secondEntered.await(1, TimeUnit.SECONDS));
+
+                LingInvocationException exception = assertThrows(LingInvocationException.class,
+                        () -> filter.doFilter(fourthContext, secondChain));
+                assertEquals(LingInvocationException.ErrorKind.RATE_LIMITED, exception.getKind());
+            } finally {
+                secondRelease.countDown();
+                caller.shutdownNow();
+                filter.evict("ling1");
+                firstContext.recycle();
+                secondContext.recycle();
+                thirdContext.recycle();
+                fourthContext.recycle();
             }
         }
     }

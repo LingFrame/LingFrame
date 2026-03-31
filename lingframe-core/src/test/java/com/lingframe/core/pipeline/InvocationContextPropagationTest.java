@@ -75,6 +75,8 @@ class InvocationContextPropagationTest {
             parent.setTargetLingId("target-b");
             parent.resolution().setTargetClassName("demo.Service");
             parent.governance().setTimeoutMs(99);
+            parent.governance().setRateLimitPerSecond(7);
+            parent.governance().setMaxConcurrentThreads(3);
             parent.setExecutionMode(InvocationExecutionMode.SIMULATION);
             InvocationContext previous = parent.attach();
 
@@ -93,6 +95,8 @@ class InvocationContextPropagationTest {
                             + "|" + child.getTargetLingId()
                             + "|" + child.resolution().getTargetClassName()
                             + "|" + child.governance().getTimeoutMs()
+                            + "|" + child.governance().getRateLimitPerSecond()
+                            + "|" + child.governance().getMaxConcurrentThreads()
                             + "|" + child.getExecutionMode()
                             + "|" + LingCallContext.getLingId()
                             + "|" + LingCallContext.getTraceId()
@@ -102,7 +106,7 @@ class InvocationContextPropagationTest {
                 ExecutorService executor = Executors.newSingleThreadExecutor();
                 try {
                     String result = executor.submit(wrapped).get(5, TimeUnit.SECONDS);
-                    assertEquals("trace-parent|caller-a|target-b|demo.Service|99|SIMULATION|ling-a|trace-ctx|canary",
+                    assertEquals("trace-parent|caller-a|target-b|demo.Service|99|7|3|SIMULATION|ling-a|trace-ctx|canary",
                             result);
                 } finally {
                     executor.shutdownNow();

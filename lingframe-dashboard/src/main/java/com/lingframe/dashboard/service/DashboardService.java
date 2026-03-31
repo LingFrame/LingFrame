@@ -18,6 +18,7 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.LingInfoDTO;
+import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.core.exception.LingInstallException;
@@ -92,18 +93,32 @@ public class DashboardService {
     }
 
     private GovernancePolicy getEffectivePolicy(String lingId) {
-        // 优先获取动态补丁
-        GovernancePolicy policy = governanceRegistry.getPatch(lingId);
-        if (policy != null) {
-            return policy;
+        GovernancePolicy staticPolicy = getStaticPolicy(lingId);
+        GovernancePolicy patch = governanceRegistry.getPatch(lingId);
+        if (staticPolicy == null && patch == null) {
+            return null;
         }
-        // 降级使用静态定义
+        return GovernancePolicy.merge(staticPolicy, patch);
+    }
+
+    private GovernancePolicy getStaticPolicy(String lingId) {
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime != null && runtime.getInstancePool().getDefault() != null
                 && runtime.getInstancePool().getDefault().getDefinition() != null) {
-            return runtime.getInstancePool().getDefault().getDefinition().getGovernance();
+            GovernancePolicy governance = runtime.getInstancePool().getDefault().getDefinition().getGovernance();
+            return governance == null ? null : governance.copy();
         }
-        return null; // 无策略
+        return null;
+    }
+
+    private GovernancePolicy getPatchForUpdate(String lingId) {
+        GovernancePolicy patch = governanceRegistry.getPatch(lingId);
+        return patch == null ? new GovernancePolicy() : patch.copy();
+    }
+
+    private void persistPolicyPatch(String lingId, GovernancePolicy patch) {
+        governanceRegistry.updatePatch(lingId, patch);
+        syncPermissionsFromPolicy(lingId, getEffectivePolicy(lingId));
     }
 
     public LingInfoDTO installLing(File file) {
@@ -237,8 +252,10 @@ public class DashboardService {
                 log.info("[Dashboard] State transitioned to ACTIVE for ling: {}", lingId);
                 addLifecycleEvent(lingId, version, "ACTIVE", "灵元激活", "灵元 " + lingId + " 已激活并开始处理请求");
 
-                GovernancePolicy policy = governanceRegistry.getPatch(lingId);
-                if (policy == null || policy.getCapabilities() == null || policy.getCapabilities().isEmpty()) {
+                GovernancePolicy effectivePolicy = getEffectivePolicy(lingId);
+                if (effectivePolicy == null
+                        || effectivePolicy.getCapabilities() == null
+                        || effectivePolicy.getCapabilities().isEmpty()) {
                     log.info("[Dashboard] Initializing default permissions for ling: {}", lingId);
 
                     List<GovernancePolicy.CapabilityRule> defaultCapabilities = Arrays.asList(
@@ -255,14 +272,13 @@ public class DashboardService {
                                     .accessType(AccessType.EXECUTE.name())
                                     .build());
 
-                    if (policy == null) {
-                        policy = new GovernancePolicy();
-                    }
-                    policy.setCapabilities(defaultCapabilities);
-                    governanceRegistry.updatePatch(lingId, policy);
+                    GovernancePolicy patch = getPatchForUpdate(lingId);
+                    patch.setCapabilities(defaultCapabilities);
+                    governanceRegistry.updatePatch(lingId, patch);
+                    effectivePolicy = getEffectivePolicy(lingId);
                 }
 
-                syncPermissionsFromPolicy(lingId, policy);
+                syncPermissionsFromPolicy(lingId, effectivePolicy);
                 break;
             case INACTIVE:
                 TransitionResult<RuntimeStatus> inactiveResult = runtimeCoordinator.transition(lingId, RuntimeStatus.INACTIVE);
@@ -344,10 +360,7 @@ public class DashboardService {
         log.info("Calculated permissions: SQL={}, Cache={}", sqlAccess, cacheAccess);
 
         // 2. 同步到治理策略并持久化
-        GovernancePolicy policy = governanceRegistry.getPatch(lingId);
-        if (policy == null) {
-            policy = new GovernancePolicy();
-        }
+        GovernancePolicy policy = getPatchForUpdate(lingId);
 
         // 构建/合并 capabilities 列表
         Map<String, GovernancePolicy.CapabilityRule> ruleMap = new HashMap<>();
@@ -397,8 +410,7 @@ public class DashboardService {
 
         // 4. 设置回策略并同步到运行时
         policy.setCapabilities(new ArrayList<>(ruleMap.values()));
-        governanceRegistry.updatePatch(lingId, policy);
-        syncPermissionsFromPolicy(lingId, policy);
+        persistPolicyPatch(lingId, policy);
 
         log.info("Permission update completed and persisted");
         log.info("========================================");
@@ -429,8 +441,39 @@ public class DashboardService {
      * 以治理策略为唯一来源，刷新运行时权限表。
      */
     public void updateGovernancePolicy(String lingId, GovernancePolicy policy) {
-        governanceRegistry.updatePatch(lingId, policy);
-        syncPermissionsFromPolicy(lingId, policy);
+        GovernancePolicy mergedPatch = GovernancePolicy.merge(getPatchForUpdate(lingId), policy);
+        persistPolicyPatch(lingId, mergedPatch);
+    }
+
+    /**
+     * 更新调用治理配置。
+     * 这里只更新 invocation 分区，不干扰 capabilities / permissions / audits。
+     */
+    public InvocationGovernanceDTO updateInvocationGovernance(String lingId, InvocationGovernanceDTO dto) {
+        GovernancePolicy patch = getPatchForUpdate(lingId);
+        GovernancePolicy.InvocationPolicy invocation = patch.getInvocation();
+        if (invocation == null) {
+            invocation = new GovernancePolicy.InvocationPolicy();
+        }
+
+        invocation.setTimeoutMs(dto.getTimeoutMs());
+        invocation.setRateLimitPerSecond(dto.getRateLimitPerSecond());
+        invocation.setMaxConcurrentThreads(dto.getMaxConcurrentThreads());
+        patch.setInvocation(invocation);
+
+        persistPolicyPatch(lingId, patch);
+        return getInvocationGovernance(lingId);
+    }
+
+    public InvocationGovernanceDTO getInvocationGovernance(String lingId) {
+        GovernancePolicy effectivePolicy = getEffectivePolicy(lingId);
+        GovernancePolicy.InvocationPolicy invocation =
+                effectivePolicy == null ? null : effectivePolicy.getInvocation();
+        return InvocationGovernanceDTO.builder()
+                .timeoutMs(invocation == null ? null : invocation.getTimeoutMs())
+                .rateLimitPerSecond(invocation == null ? null : invocation.getRateLimitPerSecond())
+                .maxConcurrentThreads(invocation == null ? null : invocation.getMaxConcurrentThreads())
+                .build();
     }
 
     private void syncPermissionsFromPolicy(String lingId, GovernancePolicy policy) {

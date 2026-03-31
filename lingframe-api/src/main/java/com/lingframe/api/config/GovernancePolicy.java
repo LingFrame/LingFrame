@@ -27,6 +27,13 @@ public class GovernancePolicy implements Serializable {
     @Builder.Default
     private List<AuditRule> audits = new ArrayList<>();
 
+    /**
+     * 调用治理配置。
+     * 与 capabilities / permissions / audits 分区，避免把调用控制语义继续塞进资源权限列表。
+     */
+    @Builder.Default
+    private InvocationPolicy invocation = new InvocationPolicy();
+
     public GovernancePolicy copy() {
         GovernancePolicy copy = new GovernancePolicy();
 
@@ -48,7 +55,56 @@ public class GovernancePolicy implements Serializable {
                     .collect(Collectors.toCollection(ArrayList::new));
         }
 
+        if (this.invocation != null) {
+            copy.invocation = this.invocation.copy();
+        }
+
         return copy;
+    }
+
+    /**
+     * 将补丁策略合并到当前策略。
+     * <p>
+     * 规则：
+     * 1. permissions / capabilities / audits 采用“非空列表覆盖”；
+     * 2. invocation 采用字段级非 null 覆盖。
+     * </p>
+     */
+    public void applyPatch(GovernancePolicy patch) {
+        if (patch == null) {
+            return;
+        }
+
+        if (patch.permissions != null && !patch.permissions.isEmpty()) {
+            this.permissions = patch.permissions.stream()
+                    .map(PermissionRule::copy)
+                    .collect(Collectors.toCollection(ArrayList::new));
+        }
+
+        if (patch.capabilities != null && !patch.capabilities.isEmpty()) {
+            this.capabilities = patch.capabilities.stream()
+                    .map(CapabilityRule::copy)
+                    .collect(Collectors.toCollection(ArrayList::new));
+        }
+
+        if (patch.audits != null && !patch.audits.isEmpty()) {
+            this.audits = patch.audits.stream()
+                    .map(AuditRule::copy)
+                    .collect(Collectors.toCollection(ArrayList::new));
+        }
+
+        if (patch.invocation != null) {
+            if (this.invocation == null) {
+                this.invocation = new InvocationPolicy();
+            }
+            this.invocation.applyPatch(patch.invocation);
+        }
+    }
+
+    public static GovernancePolicy merge(GovernancePolicy base, GovernancePolicy patch) {
+        GovernancePolicy merged = base == null ? new GovernancePolicy() : base.copy();
+        merged.applyPatch(patch);
+        return merged;
     }
 
     /**
@@ -107,6 +163,44 @@ public class GovernancePolicy implements Serializable {
             copy.action = this.action;
             copy.enabled = this.enabled;
             return copy;
+        }
+    }
+
+    /**
+     * 调用治理规则。
+     * 第一阶段只收敛当前已有真实消费方的 3 个字段，先把热调闭环建立起来。
+     */
+    @Getter
+    @Setter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class InvocationPolicy implements Serializable {
+        private Integer timeoutMs;
+        private Integer rateLimitPerSecond;
+        private Integer maxConcurrentThreads;
+
+        public InvocationPolicy copy() {
+            InvocationPolicy copy = new InvocationPolicy();
+            copy.timeoutMs = this.timeoutMs;
+            copy.rateLimitPerSecond = this.rateLimitPerSecond;
+            copy.maxConcurrentThreads = this.maxConcurrentThreads;
+            return copy;
+        }
+
+        public void applyPatch(InvocationPolicy patch) {
+            if (patch == null) {
+                return;
+            }
+            if (patch.timeoutMs != null) {
+                this.timeoutMs = patch.timeoutMs;
+            }
+            if (patch.rateLimitPerSecond != null) {
+                this.rateLimitPerSecond = patch.rateLimitPerSecond;
+            }
+            if (patch.maxConcurrentThreads != null) {
+                this.maxConcurrentThreads = patch.maxConcurrentThreads;
+            }
         }
     }
 

@@ -25,7 +25,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
     private static final ClassLoader CORE_CLASSLOADER = ThreadIsolationGovernanceFilter.class.getClassLoader();
 
     private final LingRepository lingRepository;
-    private final Map<String, ExecutorService> executors = new ConcurrentHashMap<>();
+    private final Map<String, ExecutorHolder> executors = new ConcurrentHashMap<>();
 
     public ThreadIsolationGovernanceFilter(LingRepository lingRepository) {
         this.lingRepository = lingRepository;
@@ -54,7 +54,8 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
 
         LingRuntimeConfig config = runtime.getConfig();
         int timeoutMs = resolveTimeout(ctx, config);
-        ExecutorService executor = getExecutor(lingId, config);
+        int maxThreads = resolveMaxThreads(ctx, config);
+        ExecutorService executor = getExecutor(lingId, maxThreads);
         LingCallContextSnapshot snapshot = LingCallContextSnapshot.capture();
         int inheritedTraceCount = traceCount(ctx);
 
@@ -141,47 +142,92 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         return config.getDefaultTimeoutMs();
     }
 
-    private ExecutorService getExecutor(String lingId, LingRuntimeConfig config) {
-        return executors.computeIfAbsent(lingId, id -> {
-            int maxThreads = config.getBulkheadMaxConcurrent();
-            log.debug("[Isolation:{}] Initializing isolated thread pool with maxThreads={}", id, maxThreads);
-            return new ThreadPoolExecutor(
-                    Math.min(2, maxThreads),
-                    maxThreads,
-                    60L,
-                    TimeUnit.SECONDS,
-                    new SynchronousQueue<>(),
-                    new ThreadFactory() {
-                        private int counter = 0;
+    private int resolveMaxThreads(InvocationContext ctx, LingRuntimeConfig config) {
+        Integer governedMaxThreads = ctx.governance().getMaxConcurrentThreads();
+        if (governedMaxThreads != null && governedMaxThreads > 0) {
+            return governedMaxThreads;
+        }
+        return Math.max(1, config.getBulkheadMaxConcurrent());
+    }
 
-                        @Override
-                        public Thread newThread(Runnable runnable) {
-                            Thread thread = new Thread(runnable, "Ling-Iso-" + id + "-" + (++counter));
-                            thread.setDaemon(true);
-                            // ⚠️ 常驻线程只挂核心 ClassLoader；单次任务内再临时切换，避免线程把灵元 ClassLoader 挂死
-                            thread.setContextClassLoader(CORE_CLASSLOADER);
-                            return thread;
-                        }
-                    },
-                    new ThreadPoolExecutor.AbortPolicy());
+    private ExecutorService getExecutor(String lingId, int maxThreads) {
+        ExecutorHolder holder = executors.compute(lingId, (id, existing) -> {
+            if (existing != null && existing.maxThreads == maxThreads && !existing.executor.isShutdown()) {
+                return existing;
+            }
+
+            if (existing != null) {
+                retireExecutor(id, existing.executor);
+            }
+
+            log.debug("[Isolation:{}] Initializing isolated thread pool with maxThreads={}", id, maxThreads);
+            return new ExecutorHolder(maxThreads, createExecutor(id, maxThreads));
         });
+        return holder.executor;
+    }
+
+    private ExecutorService createExecutor(String lingId, int maxThreads) {
+        return new ThreadPoolExecutor(
+                Math.min(2, maxThreads),
+                maxThreads,
+                60L,
+                TimeUnit.SECONDS,
+                new SynchronousQueue<>(),
+                new ThreadFactory() {
+                    private int counter = 0;
+
+                    @Override
+                    public Thread newThread(Runnable runnable) {
+                        Thread thread = new Thread(runnable, "Ling-Iso-" + lingId + "-" + (++counter));
+                        thread.setDaemon(true);
+                        // ⚠️ 常驻线程只挂核心 ClassLoader；单次任务内再临时切换，避免线程把灵元 ClassLoader 挂死
+                        thread.setContextClassLoader(CORE_CLASSLOADER);
+                        return thread;
+                    }
+                },
+                new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    private void retireExecutor(String lingId, ExecutorService executor) {
+        if (executor == null || executor.isShutdown()) {
+            return;
+        }
+        executor.shutdown();
+        log.debug("[Isolation:{}] Retiring isolated thread pool after governance config change", lingId);
+    }
+
+    private void shutdownExecutorImmediately(String lingId, ExecutorService executor) {
+        if (executor == null || executor.isShutdown()) {
+            return;
+        }
+        executor.shutdownNow();
+        try {
+            if (!executor.awaitTermination(3, TimeUnit.SECONDS)) {
+                log.warn("[Isolation:{}] Thread pool did not terminate within the grace period", lingId);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**
      * 灵元卸载时驱逐隔离线程池，防止线程泄漏。
      */
     public void evict(String lingId) {
-        ExecutorService executor = executors.remove(lingId);
-        if (executor != null && !executor.isShutdown()) {
-            executor.shutdownNow();
-            try {
-                if (!executor.awaitTermination(3, TimeUnit.SECONDS)) {
-                    log.warn("[Isolation:{}] Thread pool did not terminate within the grace period", lingId);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+        ExecutorHolder holder = executors.remove(lingId);
+        if (holder != null) {
+            shutdownExecutorImmediately(lingId, holder.executor);
             log.debug("[Isolation:{}] Evicted isolated thread pool", lingId);
+        }
+    }
+
+    private static final class ExecutorHolder {
+        private final int maxThreads;
+        private final ExecutorService executor;
+
+        private ExecutorHolder(int maxThreads, ExecutorService executor) {
+            this.maxThreads = maxThreads;
+            this.executor = executor;
         }
     }
 }
