@@ -216,6 +216,14 @@ public class FilterRegistry {
         }
     }
 
+    ResilienceGovernanceFilter getResilienceFilter() {
+        return resilienceFilter;
+    }
+
+    ThreadIsolationGovernanceFilter getIsolationFilter() {
+        return isolationFilter;
+    }
+
     public int evictMethodCache(String lingId) {
         if (methodCache == null || lingId == null || lingId.isEmpty()) {
             return 0;

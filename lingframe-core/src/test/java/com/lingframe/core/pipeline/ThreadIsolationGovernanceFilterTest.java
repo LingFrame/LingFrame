@@ -21,7 +21,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -219,6 +222,72 @@ class ThreadIsolationGovernanceFilterTest {
                 secondContext.recycle();
                 thirdContext.recycle();
                 fourthContext.recycle();
+            }
+        }
+
+        @Test
+        @DisplayName("隔离调用结束后工作线程 TCCL 应恢复为 Core ClassLoader")
+        void shouldRestoreCoreClassLoaderAfterIsolatedInvocation() throws Throwable {
+            LingRepository repository = new DefaultLingRepository();
+            LingRuntimeConfig config = LingRuntimeConfig.builder()
+                    .bulkheadMaxConcurrent(1)
+                    .defaultTimeoutMs(1000)
+                    .build();
+            EventBus eventBus = new EventBus();
+            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            repository.register(runtime);
+
+            ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
+            InvocationContext context = InvocationContext.obtain();
+            ClassLoader targetClassLoader = new ClassLoader(getClass().getClassLoader()) {
+            };
+            context.setServiceFQSID("ling1:TestService");
+            context.resolution().setTargetClassLoader(targetClassLoader);
+
+            AtomicReference<Thread> workerThread = new AtomicReference<>();
+            LingFilterChain chain = current -> {
+                workerThread.set(Thread.currentThread());
+                assertSame(targetClassLoader, Thread.currentThread().getContextClassLoader());
+                return "ok";
+            };
+
+            try {
+                assertEquals("ok", filter.doFilter(context, chain));
+                assertNotNull(workerThread.get());
+                assertSame(ThreadIsolationGovernanceFilter.class.getClassLoader(),
+                        workerThread.get().getContextClassLoader());
+            } finally {
+                filter.evict("ling1");
+                context.recycle();
+            }
+        }
+
+        @Test
+        @DisplayName("卸载驱逐后不应继续保留隔离线程池缓存")
+        void shouldReleaseExecutorStateAfterEvict() throws Throwable {
+            LingRepository repository = new DefaultLingRepository();
+            LingRuntimeConfig config = LingRuntimeConfig.builder()
+                    .bulkheadMaxConcurrent(1)
+                    .defaultTimeoutMs(1000)
+                    .build();
+            EventBus eventBus = new EventBus();
+            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            repository.register(runtime);
+
+            ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
+            InvocationContext context = InvocationContext.obtain();
+            context.setServiceFQSID("ling1:TestService");
+
+            try {
+                assertEquals("ok", filter.doFilter(context, current -> "ok"));
+                assertTrue(filter.hasExecutor("ling1"));
+
+                filter.evict("ling1");
+
+                assertFalse(filter.hasExecutor("ling1"));
+            } finally {
+                filter.evict("ling1");
+                context.recycle();
             }
         }
     }

@@ -221,6 +221,10 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         }
     }
 
+    boolean hasExecutor(String lingId) {
+        return executors.containsKey(lingId);
+    }
+
     private static final class ExecutorHolder {
         private final int maxThreads;
         private final ExecutorService executor;

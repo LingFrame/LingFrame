@@ -164,6 +164,14 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         limiters.remove(lingId);
     }
 
+    boolean hasBreaker(String lingId) {
+        return breakers.containsKey(lingId);
+    }
+
+    boolean hasLimiter(String lingId) {
+        return limiters.containsKey(lingId);
+    }
+
     /**
      * 熔断打开时，将灵元宏观状态从 ACTIVE 转为 DEGRADED。
      * 仅在当前状态为 ACTIVE 时才转换，避免重复操作或在 STOPPING 时误触发。
