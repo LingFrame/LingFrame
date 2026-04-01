@@ -19,6 +19,7 @@ import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.web.servlet.HandlerExecutionChain;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
@@ -158,6 +159,7 @@ class SpringLingContainerUnloadRegressionTest {
             container.start(lingContext);
             assertTrue(container.isActive());
             assertNotNull(host.manager.resolveRoute(new MockHttpServletRequest("GET", routePath)));
+            assertEquals("pong", performWebRequest(host, routePath));
             assertFalse(containsBootShutdownHookReference(lingClassLoader), findBootShutdownHookReference(lingClassLoader));
 
             executor = SpringLingContainerUnloadRegressionSupport.awaitExecutor();
@@ -342,6 +344,15 @@ class SpringLingContainerUnloadRegressionTest {
         return (HandlerExecutionChain) ReflectionUtils.invokeMethod(getHandlerMethod, mapping, request);
     }
 
+    private String performWebRequest(TestHost host, String routePath) throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", routePath);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        HandlerExecutionChain chain = getHandlerExecutionChain(host.hostMapping, request);
+        assertNotNull(chain);
+        host.hostAdapter.handle(request, response, chain.getHandler());
+        return response.getContentAsString();
+    }
+
     private Class<?> findServletInterface(ClassLoader cl, String interfaceName) {
         try {
             return Class.forName("jakarta.servlet.http." + interfaceName, false, cl);
@@ -387,13 +398,16 @@ class SpringLingContainerUnloadRegressionTest {
     private static final class TestHost implements AutoCloseable {
         private final GenericApplicationContext hostContext;
         private final RequestMappingHandlerMapping hostMapping;
+        private final RequestMappingHandlerAdapter hostAdapter;
         private final WebInterfaceManager manager;
 
         private TestHost(GenericApplicationContext hostContext,
                 RequestMappingHandlerMapping hostMapping,
+                RequestMappingHandlerAdapter hostAdapter,
                 WebInterfaceManager manager) {
             this.hostContext = hostContext;
             this.hostMapping = hostMapping;
+            this.hostAdapter = hostAdapter;
             this.manager = manager;
         }
 
@@ -412,7 +426,7 @@ class SpringLingContainerUnloadRegressionTest {
 
             WebInterfaceManager manager = new WebInterfaceManager(null, null);
             manager.init(hostMapping, hostAdapter, hostContext);
-            return new TestHost(hostContext, hostMapping, manager);
+            return new TestHost(hostContext, hostMapping, hostAdapter, manager);
         }
 
         @Override
