@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-@DisplayName("LingController 测试")
+@DisplayName("灵元控制器测试")
 class LingControllerTest {
 
     @Test
@@ -61,7 +61,7 @@ class LingControllerTest {
     }
 
     @Test
-    @DisplayName("健康指标总览接口应返回 ling 摘要与版本明细")
+    @DisplayName("健康指标总览接口应返回灵元摘要与版本明细")
     void getAllLingHealthShouldReturnSummaryAndVersions() {
         DashboardService dashboardService = mock(DashboardService.class);
         MetricsCollector metricsCollector = mock(MetricsCollector.class);
@@ -104,7 +104,7 @@ class LingControllerTest {
     }
 
     @Test
-    @DisplayName("治理指标总览接口应返回 ling 摘要与版本明细")
+    @DisplayName("治理指标总览接口应返回灵元摘要与版本明细")
     void getAllLingGovernanceMetricsShouldReturnSummaryAndVersions() {
         DashboardService dashboardService = mock(DashboardService.class);
         MetricsCollector metricsCollector = mock(MetricsCollector.class);

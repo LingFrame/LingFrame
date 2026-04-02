@@ -52,7 +52,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
-@DisplayName("SpringLingContainer unload regression")
+@DisplayName("SpringLingContainer 卸载回归测试")
 class SpringLingContainerUnloadRegressionTest {
 
     private static final String APP_CLASS_NAME = "sample.springling.SampleLingApp";
@@ -66,7 +66,7 @@ class SpringLingContainerUnloadRegressionTest {
     }
 
     @Test
-    @DisplayName("should release Spring host side references after stop cleanup and close")
+    @DisplayName("停止清理并关闭后应释放 Spring 宿主侧引用")
     void shouldReleaseSpringHostSideReferencesAfterStopCleanupAndClose() throws Exception {
         try (TestHost host = TestHost.create()) {
             CycleResult cycle = runCycle(host, "order-ling");
@@ -82,7 +82,7 @@ class SpringLingContainerUnloadRegressionTest {
     }
 
     @Test
-    @DisplayName("should remain collectible across repeated Spring container cycles")
+    @DisplayName("重复 Spring 容器启停后仍应可被回收")
     void shouldRemainCollectibleAcrossRepeatedSpringContainerCycles() throws Exception {
         try (TestHost host = TestHost.create()) {
             for (int i = 0; i < 3; i++) {
@@ -424,7 +424,7 @@ class SpringLingContainerUnloadRegressionTest {
             hostMapping.setApplicationContext(hostContext);
             hostMapping.afterPropertiesSet();
 
-            WebInterfaceManager manager = new WebInterfaceManager(null, null);
+        WebInterfaceManager manager = new WebInterfaceManager(null, null, null);
             manager.init(hostMapping, hostAdapter, hostContext);
             return new TestHost(hostContext, hostMapping, hostAdapter, manager);
         }

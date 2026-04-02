@@ -3,10 +3,13 @@ package com.lingframe.starter.filter;
 import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.metrics.LingHealthMetrics;
+import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.starter.config.LingFrameProperties;
+import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import com.lingframe.starter.web.WebInterfaceMetadata;
 import com.lingframe.starter.web.WebGovernanceSupport;
 import com.lingframe.starter.web.WebRequestFacade;
@@ -19,6 +22,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerExecutionChain;
@@ -41,6 +45,8 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
     private final InvocationPipelineEngine pipelineEngine;
     private final LingFrameProperties properties;
     private final RequestMappingHandlerMapping requestMappingHandlerMapping;
+    private final ObjectProvider<MetricsCollector> metricsCollectorProvider;
+    private final EntryInvocationGovernanceResolver invocationGovernanceResolver;
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request,
@@ -77,10 +83,13 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         LingCallContext.setLingId(lingId);
 
         InvocationContext ctx = null;
+        long startNanos = System.nanoTime();
+        Throwable downstreamError = null;
         try {
             try {
                 Method method = GOVERNANCE_SUPPORT.resolveGovernedMethod(isLingRequest, lingMeta, handlerMethod, lingId);
-                ctx = GOVERNANCE_SUPPORT.buildInvocationContext(requestFacade, method, lingId, lingMeta);
+                ctx = GOVERNANCE_SUPPORT.buildInvocationContext(
+                        requestFacade, method, lingId, lingMeta, invocationGovernanceResolver);
                 ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
                 if (lingRoute != null) {
                     GOVERNANCE_SUPPORT.preResolveLingTarget(ctx, lingRoute);
@@ -103,7 +112,11 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             }
 
             filterChain.doFilter(request, response);
+        } catch (Throwable t) {
+            downstreamError = t;
+            throw t;
         } finally {
+            recordWebMetrics(request, response, ctx, lingId, isLingRequest, startNanos, downstreamError);
             if (ctx != null) {
                 ctx.recycle();
             }
@@ -141,6 +154,65 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             log.debug("Failed to resolve handler for {}: {}", request.getRequestURI(), e.getMessage());
         }
         return null;
+    }
+
+    private void recordWebMetrics(HttpServletRequest request,
+            HttpServletResponse response,
+            InvocationContext ctx,
+            String lingId,
+            boolean isLingRequest,
+            long startNanos,
+            Throwable error) {
+        if (!isLingRequest && !LING_CORE_ID.equals(lingId)) {
+            return;
+        }
+
+        MetricsCollector metricsCollector = metricsCollectorProvider != null ? metricsCollectorProvider.getIfAvailable() : null;
+        if (metricsCollector == null || lingId == null || lingId.isEmpty()) {
+            return;
+        }
+
+        long costMs = (System.nanoTime() - startNanos) / 1_000_000;
+        String version = resolveVersion(request, ctx);
+        LingHealthMetrics metrics = metricsCollector.getOrCreate(lingId);
+        LingHealthMetrics versionMetrics = metricsCollector.getOrCreate(lingId, version);
+
+        boolean success = error == null && response.getStatus() < 500;
+        if (success) {
+            metrics.recordSuccess(costMs);
+            if (versionMetrics != metrics) {
+                versionMetrics.recordSuccess(costMs);
+            }
+            return;
+        }
+
+        boolean isTimeout = response.getStatus() == HttpServletResponse.SC_GATEWAY_TIMEOUT || isTimeoutError(error);
+        metrics.recordFailure(costMs, isTimeout);
+        if (versionMetrics != metrics) {
+            versionMetrics.recordFailure(costMs, isTimeout);
+        }
+    }
+
+    private String resolveVersion(HttpServletRequest request, InvocationContext ctx) {
+        Object versionAttr = request.getAttribute("ling.target.version");
+        if (versionAttr instanceof String && !((String) versionAttr).isEmpty()) {
+            return (String) versionAttr;
+        }
+        return ctx != null ? ctx.getTargetVersion() : null;
+    }
+
+    private boolean isTimeoutError(Throwable error) {
+        if (error == null) {
+            return false;
+        }
+        String message = error.getMessage();
+        if (message != null) {
+            String lower = message.toLowerCase();
+            if (lower.contains("timeout") || lower.contains("timed out")) {
+                return true;
+            }
+        }
+        return isTimeoutError(error.getCause());
     }
 
     private static final class ServletWebRequestFacade implements WebRequestFacade {

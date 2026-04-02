@@ -10,6 +10,7 @@ import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.strategy.GovernanceStrategy;
 import com.lingframe.api.exception.LingInvocationException;
+import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aopalliance.intercept.MethodInterceptor;
@@ -31,6 +32,7 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
     private final InvocationPipelineEngine pipelineEngine;
     private final boolean governInternalCalls;
     private final boolean checkPermissions;
+    private final EntryInvocationGovernanceResolver invocationGovernanceResolver;
     private static final String LING_CORE_ID = "lingcore-app";
 
     @Override
@@ -150,6 +152,9 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         ctx.setMetadata(new HashMap<>());
         ctx.setLabels(new HashMap<>());
         ctx.setRuleSource(null); // 这里尚未进入规则仲裁阶段，因此显式置空
+        if (invocationGovernanceResolver != null) {
+            invocationGovernanceResolver.applyTo(ctx, LING_CORE_ID);
+        }
 
         // 入口已经拿到了 Method 元信息，就直接喂给 resolution 分区，后续治理与终端无需重复猜测
         ctx.resolution().setTargetClassName(method.getDeclaringClass().getName());

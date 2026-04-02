@@ -27,7 +27,7 @@ class LingOpenApiCustomizerTest {
     }
 
     @Test
-    @DisplayName("grouped api-doc request should inject ling paths using springdoc group config")
+    @DisplayName("分组 api-doc 请求应按 SpringDoc 分组配置注入灵元路径")
     void shouldInjectLingPathsForGroupedApiDocRequest() throws Exception {
         Method targetMethod = DemoController.class.getMethod("listUsers");
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
@@ -45,7 +45,7 @@ class LingOpenApiCustomizerTest {
                 .opSummary("list users")
                 .build();
 
-        WebInterfaceManager manager = new WebInterfaceManager(null, null) {
+        WebInterfaceManager manager = new WebInterfaceManager(null, null, null) {
             @Override
             public Map<String, List<WebInterfaceMetadata>> getMetadataMap() {
                 return Collections.singletonMap(metadata.buildRouteKey(), Collections.singletonList(metadata));

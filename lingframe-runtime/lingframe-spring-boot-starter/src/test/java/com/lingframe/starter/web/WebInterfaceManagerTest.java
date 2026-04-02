@@ -55,12 +55,12 @@ class WebInterfaceManagerTest {
     }
 
     @Test
-    @DisplayName("unregisterSync 应移除路由索引")
+    @DisplayName("调用 unregisterSync 时应移除路由索引")
     void shouldUnregisterSynchronously() throws Exception {
         hostContext = new GenericApplicationContext();
         hostContext.refresh();
 
-        manager = new WebInterfaceManager(null, null);
+        manager = new WebInterfaceManager(null, null, null);
         manager.init(hostMapping, null, hostContext);
 
         DemoController controller = new DemoController();
@@ -92,12 +92,12 @@ class WebInterfaceManagerTest {
     }
 
     @Test
-    @DisplayName("registerSync 应按 params 条件区分同一路径路由")
+    @DisplayName("调用 registerSync 时应按 params 条件区分同一路径路由")
     void shouldKeepSamePathRoutesDistinctByParamsCondition() throws Exception {
         hostContext = new GenericApplicationContext();
         hostContext.refresh();
 
-        manager = new WebInterfaceManager(null, null);
+        manager = new WebInterfaceManager(null, null, null);
         manager.init(hostMapping, null, hostContext);
 
         DemoController controller = new DemoController();
@@ -119,13 +119,13 @@ class WebInterfaceManagerTest {
     }
 
     @Test
-    @DisplayName("unregisterSync 后缓存路由仍应可继续分发")
+    @DisplayName("调用 unregisterSync 后缓存路由仍应可继续分发")
     void shouldDispatchCachedRouteAfterUnregisterSync() throws Exception {
         hostContext = new GenericApplicationContext();
         hostContext.refresh();
 
         RequestMappingHandlerAdapter hostAdapter = createHostAdapter(hostContext);
-        manager = new WebInterfaceManager(null, null);
+        manager = new WebInterfaceManager(null, null, null);
         manager.init(hostMapping, hostAdapter, hostContext);
 
         DemoController controller = new DemoController();
@@ -169,12 +169,12 @@ class WebInterfaceManagerTest {
     }
 
     @Test
-    @DisplayName("registerSync 应能够处理继承的 Controller 方法")
+    @DisplayName("调用 registerSync 时应能够处理继承的 Controller 方法")
     void shouldHandleInheritedMethodRegistration() throws Exception {
         hostContext = new GenericApplicationContext();
         hostContext.refresh();
 
-        manager = new WebInterfaceManager(null, null);
+        manager = new WebInterfaceManager(null, null, null);
         manager.init(hostMapping, null, hostContext);
 
         FirstInheritedController firstController = new FirstInheritedController();
@@ -200,13 +200,13 @@ class WebInterfaceManagerTest {
     }
 
     @Test
-    @DisplayName("registerSync 应向宿主映射暴露 SpringDoc 可见的真实 HandlerMethod")
+    @DisplayName("调用 registerSync 时应向宿主映射暴露 SpringDoc 可见的真实 HandlerMethod")
     void shouldExposeSpringDocCompatibleHandlerMethodThroughHostMapping() throws Exception {
         hostContext = new GenericApplicationContext();
         hostContext.refresh();
 
         RequestMappingHandlerMapping realHostMapping = createHostMapping(hostContext);
-        manager = new WebInterfaceManager(null, null);
+        manager = new WebInterfaceManager(null, null, null);
         manager.init(realHostMapping, null, hostContext);
 
         DemoController controller = new DemoController();
@@ -246,13 +246,13 @@ class WebInterfaceManagerTest {
     }
 
     @Test
-    @DisplayName("unregisterSync 应在旧版本卸载后刷新宿主兼容映射")
+    @DisplayName("调用 unregisterSync 时应在旧版本卸载后刷新宿主兼容映射")
     void shouldRefreshHostCompatibilityMappingAfterRegisteredVersionIsRemoved() throws Exception {
         hostContext = new GenericApplicationContext();
         hostContext.refresh();
 
         RequestMappingHandlerMapping realHostMapping = createHostMapping(hostContext);
-        manager = new WebInterfaceManager(null, null);
+        manager = new WebInterfaceManager(null, null, null);
         manager.init(realHostMapping, null, hostContext);
 
         ClassLoader v1Loader = new ClassLoader() {
