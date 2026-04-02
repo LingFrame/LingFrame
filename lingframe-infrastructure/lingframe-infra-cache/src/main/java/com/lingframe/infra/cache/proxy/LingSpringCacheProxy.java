@@ -21,8 +21,12 @@ import java.util.concurrent.Callable;
 public class LingSpringCacheProxy implements Cache {
 
     private final Cache target;
-
+    private final String cacheName;
     private final PermissionService permissionService;
+
+    public LingSpringCacheProxy(Cache target, PermissionService permissionService) {
+        this(target, target == null ? "local-cache" : target.getName(), permissionService);
+    }
 
     private void checkPermission(String operation, AccessType accessType) {
         String callerLingId = LingCallContext.getLingId();
@@ -52,32 +56,32 @@ public class LingSpringCacheProxy implements Cache {
     @Override
     public ValueWrapper get(@NonNull Object key) {
         checkPermission("get", AccessType.READ);
-        return target.get(key);
+        return target.get(CacheNamespaceSupport.namespaceKey(cacheName, key));
     }
 
     @Override
     public <T> T get(@NonNull Object key, Class<T> type) {
         checkPermission("get", AccessType.READ);
-        return target.get(key, type);
+        return target.get(CacheNamespaceSupport.namespaceKey(cacheName, key), type);
     }
 
     @Override
     public <T> T get(@NonNull Object key, @NonNull Callable<T> valueLoader) {
         // valueLoader 可能在缓存缺失时写入新值，因此按 WRITE 治理。
         checkPermission("get", AccessType.WRITE);
-        return target.get(key, valueLoader);
+        return target.get(CacheNamespaceSupport.namespaceKey(cacheName, key), valueLoader);
     }
 
     @Override
     public void put(@NonNull Object key, @NonNull Object value) {
         checkPermission("put", AccessType.WRITE);
-        target.put(key, value);
+        target.put(CacheNamespaceSupport.namespaceKey(cacheName, key), value);
     }
 
     @Override
     public void evict(@NonNull Object key) {
         checkPermission("evict", AccessType.WRITE);
-        target.evict(key);
+        target.evict(CacheNamespaceSupport.namespaceKey(cacheName, key));
     }
 
     @Override
@@ -89,13 +93,13 @@ public class LingSpringCacheProxy implements Cache {
     @Override
     public @Nullable ValueWrapper putIfAbsent(@NonNull Object key, @Nullable Object value) {
         checkPermission("putIfAbsent", AccessType.WRITE);
-        return target.putIfAbsent(key, value);
+        return target.putIfAbsent(CacheNamespaceSupport.namespaceKey(cacheName, key), value);
     }
 
     @Override
     public boolean evictIfPresent(@NonNull Object key) {
         checkPermission("evictIfPresent", AccessType.WRITE);
-        return target.evictIfPresent(key);
+        return target.evictIfPresent(CacheNamespaceSupport.namespaceKey(cacheName, key));
     }
 
     @Override

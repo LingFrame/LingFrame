@@ -8,7 +8,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.lang.reflect.Method;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Redis 操作权限拦截器
@@ -54,19 +59,14 @@ public class RedisPermissionInterceptor implements MethodInterceptor {
         // 实际场景可能需要更细致的映射，比如 opsForValue() 应该返回代理对象
         // 这里主要拦截 RedisTemplate 自身的方法，如 delete, hasKey, expire 等
         AccessType accessType = inferAccessType(methodName);
-        String capability = "cache:redis";
+        List<String> capabilities = resolveCapabilities(invocation);
+        ResolvedCapability resolvedCapability = resolveCapability(callerLingId, accessType, capabilities);
 
         // 权限检查
-        boolean allowed = permissionService.isAllowed(callerLingId, capability, accessType);
+        boolean allowed = resolvedCapability.allowed;
 
         // 审计日志 (异步)
-        // 记录具体的 Key 通常作为参数 0
-        String resource = "redis";
-        if (invocation.getArguments().length > 0 && invocation.getArguments()[0] != null) {
-            resource = invocation.getArguments()[0].toString();
-        }
-
-        permissionService.audit(callerLingId, capability, methodName, allowed);
+        permissionService.audit(callerLingId, resolvedCapability.auditCapability, methodName, allowed);
 
         if (!allowed) {
             log.warn("Ling [{}] denied access to Redis: {}", callerLingId, methodName);
@@ -94,5 +94,91 @@ public class RedisPermissionInterceptor implements MethodInterceptor {
 
     private boolean isObjectMethod(String name) {
         return "toString".equals(name) || "hashCode".equals(name) || "equals".equals(name) || "getClass".equals(name);
+    }
+
+    private ResolvedCapability resolveCapability(String callerLingId, AccessType accessType, List<String> capabilities) {
+        if (capabilities != null && !capabilities.isEmpty()) {
+            boolean allAllowed = true;
+            for (String capability : capabilities) {
+                if (!permissionService.isAllowed(callerLingId, capability, accessType)) {
+                    allAllowed = false;
+                    break;
+                }
+            }
+            if (allAllowed) {
+                return new ResolvedCapability(
+                        capabilities.size() == 1 ? capabilities.get(0) : String.join(", ", capabilities),
+                        true);
+            }
+        }
+        return new ResolvedCapability("cache:redis",
+                permissionService.isAllowed(callerLingId, "cache:redis", accessType));
+    }
+
+    private List<String> resolveCapabilities(MethodInvocation invocation) {
+        List<String> keyPatterns = inferKeyPatterns(invocation.getArguments());
+        List<String> capabilities = new ArrayList<>();
+        for (String keyPattern : keyPatterns) {
+            capabilities.add("cache:redis:" + keyPattern);
+        }
+        return capabilities;
+    }
+
+    private List<String> inferKeyPatterns(Object[] args) {
+        Set<String> patterns = new LinkedHashSet<>();
+        if (args == null || args.length == 0 || args[0] == null) {
+            return new ArrayList<>(patterns);
+        }
+        Object candidate = args[0];
+        if (candidate instanceof String) {
+            addPattern(patterns, candidate);
+            return new ArrayList<>(patterns);
+        }
+        if (candidate instanceof Object[]) {
+            for (Object key : (Object[]) candidate) {
+                addPattern(patterns, key);
+            }
+            return new ArrayList<>(patterns);
+        }
+        if (candidate instanceof Iterable) {
+            Iterator<?> iterator = ((Iterable<?>) candidate).iterator();
+            if (iterator.hasNext()) {
+                do {
+                    addPattern(patterns, iterator.next());
+                } while (iterator.hasNext());
+            }
+        }
+        return new ArrayList<>(patterns);
+    }
+
+    private void addPattern(Set<String> patterns, Object candidate) {
+        if (!(candidate instanceof String)) {
+            return;
+        }
+        String pattern = toPattern((String) candidate);
+        if (pattern != null) {
+            patterns.add(pattern);
+        }
+    }
+
+    private static final class ResolvedCapability {
+        private final String auditCapability;
+        private final boolean allowed;
+
+        private ResolvedCapability(String auditCapability, boolean allowed) {
+            this.auditCapability = auditCapability;
+            this.allowed = allowed;
+        }
+    }
+
+    private String toPattern(String key) {
+        if (key == null || key.trim().isEmpty()) {
+            return null;
+        }
+        int separator = key.indexOf(':');
+        if (separator <= 0) {
+            return "key:" + key;
+        }
+        return "key:" + key.substring(0, separator) + ":*";
     }
 }

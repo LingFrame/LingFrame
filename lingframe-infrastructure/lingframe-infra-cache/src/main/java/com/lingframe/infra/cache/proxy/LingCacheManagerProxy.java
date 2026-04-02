@@ -25,7 +25,7 @@ public class LingCacheManagerProxy implements CacheManager {
             return null;
         // 🔥 关键：无论底层是 RedisCache 还是 CaffeineCache，统一套上治理壳
         // 这里的 LingCacheProxy 是针对 org.springframework.cache.Cache 接口的通用代理
-        return new LingSpringCacheProxy(cache, permissionService);
+        return new LingSpringCacheProxy(cache, name, permissionService);
     }
 
     @Override

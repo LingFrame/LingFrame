@@ -54,6 +54,13 @@ public class LingInfoDTO {
         private boolean fileAccess = false;
         @Builder.Default
         private List<String> ipcServices = new ArrayList<>();
+        @Builder.Default
+        private List<String> sqlCapabilities = new ArrayList<>();
+        @Builder.Default
+        private List<String> redisCapabilities = new ArrayList<>();
+        @Builder.Default
+        private List<String> extraCapabilities = new ArrayList<>();
+        private String localCacheNamespaceStrategy;
     }
 
     @Data

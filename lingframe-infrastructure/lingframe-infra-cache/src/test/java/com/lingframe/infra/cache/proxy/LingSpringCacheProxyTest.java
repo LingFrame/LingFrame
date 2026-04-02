@@ -13,6 +13,7 @@ import org.springframework.cache.Cache;
 import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
@@ -42,14 +43,22 @@ class LingSpringCacheProxyTest {
             Cache.ValueWrapper valueWrapper = mock(Cache.ValueWrapper.class);
             PermissionService permissionService = mock(PermissionService.class);
             when(permissionService.isAllowed("ling-a", "cache:local", AccessType.READ)).thenReturn(true);
-            when(target.get("user:1")).thenReturn(valueWrapper);
+            when(target.get(org.mockito.ArgumentMatchers.any())).thenReturn(valueWrapper);
 
             LingCallContext.setLingId("ling-a");
+            when(target.getName()).thenReturn("users");
             LingSpringCacheProxy proxy = new LingSpringCacheProxy(target, permissionService);
 
             assertSame(valueWrapper, proxy.get("user:1"));
             verify(permissionService).isAllowed("ling-a", "cache:local", AccessType.READ);
             verify(permissionService).audit("ling-a", "cache:local", "get", true);
+            org.mockito.ArgumentCaptor<Object> keyCaptor = org.mockito.ArgumentCaptor.forClass(Object.class);
+            verify(target).get(keyCaptor.capture());
+            CacheNamespaceSupport.NamespacedKey namespacedKey =
+                    assertInstanceOf(CacheNamespaceSupport.NamespacedKey.class, keyCaptor.getValue());
+            assertEquals("ling-a", namespacedKey.getLingId());
+            assertEquals("users", namespacedKey.getCacheName());
+            assertEquals("user:1", namespacedKey.getRawKey());
         }
 
         @Test
@@ -59,9 +68,10 @@ class LingSpringCacheProxyTest {
             PermissionService permissionService = mock(PermissionService.class);
             Callable<String> loader = () -> "tom";
             when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(true);
-            when(target.get(eq("user:1"), same(loader))).thenReturn("tom");
+            when(target.get(org.mockito.ArgumentMatchers.any(), same(loader))).thenReturn("tom");
 
             LingCallContext.setLingId("ling-a");
+            when(target.getName()).thenReturn("users");
             LingSpringCacheProxy proxy = new LingSpringCacheProxy(target, permissionService);
 
             assertEquals("tom", proxy.get("user:1", loader));
@@ -79,6 +89,7 @@ class LingSpringCacheProxyTest {
             when(target.getNativeCache()).thenReturn(nativeCache);
 
             LingCallContext.setLingId("ling-a");
+            when(target.getName()).thenReturn("users");
             LingSpringCacheProxy proxy = new LingSpringCacheProxy(target, permissionService);
 
             assertSame(nativeCache, proxy.getNativeCache());
@@ -94,6 +105,7 @@ class LingSpringCacheProxyTest {
             when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(false);
 
             LingCallContext.setLingId("ling-a");
+            when(target.getName()).thenReturn("users");
             LingSpringCacheProxy proxy = new LingSpringCacheProxy(target, permissionService);
 
             PermissionDeniedException ex = assertThrows(PermissionDeniedException.class, () -> proxy.put("user:1", "tom"));
@@ -118,6 +130,33 @@ class LingSpringCacheProxyTest {
 
             assertEquals("users", proxy.getName());
             verifyNoInteractions(permissionService);
+        }
+    }
+
+    @Nested
+    @DisplayName("命名空间隔离")
+    class NamespaceIsolationTests {
+
+        @Test
+        @DisplayName("put 应按灵元与缓存名包装底层 key")
+        void shouldNamespaceKeyForPut() {
+            Cache target = mock(Cache.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(true);
+            when(target.getName()).thenReturn("users");
+
+            LingCallContext.setLingId("ling-a");
+            LingSpringCacheProxy proxy = new LingSpringCacheProxy(target, permissionService);
+
+            proxy.put("user:1", "tom");
+
+            org.mockito.ArgumentCaptor<Object> keyCaptor = org.mockito.ArgumentCaptor.forClass(Object.class);
+            verify(target).put(keyCaptor.capture(), eq("tom"));
+            CacheNamespaceSupport.NamespacedKey namespacedKey =
+                    assertInstanceOf(CacheNamespaceSupport.NamespacedKey.class, keyCaptor.getValue());
+            assertEquals("ling-a", namespacedKey.getLingId());
+            assertEquals("users", namespacedKey.getCacheName());
+            assertEquals("user:1", namespacedKey.getRawKey());
         }
     }
 }

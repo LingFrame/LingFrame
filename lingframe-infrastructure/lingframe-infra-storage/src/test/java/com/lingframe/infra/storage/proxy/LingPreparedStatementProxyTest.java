@@ -26,6 +26,9 @@ import static org.mockito.Mockito.when;
 class LingPreparedStatementProxyTest {
 
     private static final String SELECT_SQL = "select * from users where id = ?";
+    private static final String SCHEMA_SELECT_SQL = "select * from public.users where id = ?";
+    private static final String JOIN_SELECT_SQL =
+            "select u.id, o.id from users u join orders o on u.id = o.user_id where u.id = ?";
     private static final String DELETE_SQL = "delete from users where id = ?";
     private static final String MALFORMED_SQL = "not-valid-sql";
 
@@ -46,15 +49,15 @@ class LingPreparedStatementProxyTest {
             PreparedStatement target = mock(PreparedStatement.class);
             ResultSet resultSet = mock(ResultSet.class);
             PermissionService permissionService = mock(PermissionService.class);
-            when(permissionService.isAllowed("ling-a", "storage:sql", AccessType.READ)).thenReturn(true);
+            when(permissionService.isAllowed("ling-a", "storage:sql:table:users", AccessType.READ)).thenReturn(true);
             when(target.executeQuery()).thenReturn(resultSet);
 
             LingCallContext.setLingId("ling-a");
             LingPreparedStatementProxy proxy = new LingPreparedStatementProxy(target, permissionService, SELECT_SQL);
 
             assertSame(resultSet, proxy.executeQuery());
-            verify(permissionService).isAllowed("ling-a", "storage:sql", AccessType.READ);
-            verify(permissionService).audit("ling-a", "storage:sql", SELECT_SQL, true);
+            verify(permissionService).isAllowed("ling-a", "storage:sql:table:users", AccessType.READ);
+            verify(permissionService).audit("ling-a", "storage:sql:table:users", SELECT_SQL, true);
             assertEquals(AccessType.READ, SqlParseCache.get("ling-a", SELECT_SQL));
         }
 
@@ -74,6 +77,51 @@ class LingPreparedStatementProxyTest {
             verify(permissionService).audit("ling-a", "storage:sql", DELETE_SQL, false);
             verify(target, never()).executeUpdate();
             assertEquals(AccessType.WRITE, SqlParseCache.get("ling-a", DELETE_SQL));
+        }
+
+        @Test
+        @DisplayName("表级 capability 未命中时应回退到通用 SQL 权限")
+        void shouldFallbackToGenericCapabilityWhenTableCapabilityDenied() throws SQLException {
+            PreparedStatement target = mock(PreparedStatement.class);
+            ResultSet resultSet = mock(ResultSet.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "storage:sql:table:public.users", AccessType.READ))
+                    .thenReturn(false);
+            when(permissionService.isAllowed("ling-a", "storage:sql:table:users", AccessType.READ))
+                    .thenReturn(false);
+            when(permissionService.isAllowed("ling-a", "storage:sql", AccessType.READ)).thenReturn(true);
+            when(target.executeQuery()).thenReturn(resultSet);
+
+            LingCallContext.setLingId("ling-a");
+            LingPreparedStatementProxy proxy =
+                    new LingPreparedStatementProxy(target, permissionService, SCHEMA_SELECT_SQL);
+
+            assertSame(resultSet, proxy.executeQuery());
+            verify(permissionService).isAllowed("ling-a", "storage:sql:table:public.users", AccessType.READ);
+            verify(permissionService).isAllowed("ling-a", "storage:sql:table:users", AccessType.READ);
+            verify(permissionService).isAllowed("ling-a", "storage:sql", AccessType.READ);
+            verify(permissionService).audit("ling-a", "storage:sql", SCHEMA_SELECT_SQL, true);
+        }
+
+        @Test
+        @DisplayName("多表语句应要求所有表级 capability 均被允许")
+        void shouldRequireAllTableCapabilitiesForMultiTableSql() throws SQLException {
+            PreparedStatement target = mock(PreparedStatement.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "storage:sql:table:users", AccessType.READ)).thenReturn(true);
+            when(permissionService.isAllowed("ling-a", "storage:sql:table:orders", AccessType.READ)).thenReturn(false);
+            when(permissionService.isAllowed("ling-a", "storage:sql", AccessType.READ)).thenReturn(false);
+
+            LingCallContext.setLingId("ling-a");
+            LingPreparedStatementProxy proxy = new LingPreparedStatementProxy(target, permissionService, JOIN_SELECT_SQL);
+
+            SQLException ex = assertThrows(SQLException.class, proxy::executeQuery);
+            assertInstanceOf(PermissionDeniedException.class, ex.getCause());
+            verify(permissionService).isAllowed("ling-a", "storage:sql:table:users", AccessType.READ);
+            verify(permissionService).isAllowed("ling-a", "storage:sql:table:orders", AccessType.READ);
+            verify(permissionService).isAllowed("ling-a", "storage:sql", AccessType.READ);
+            verify(permissionService).audit("ling-a", "storage:sql", JOIN_SELECT_SQL, false);
+            verify(target, never()).executeQuery();
         }
 
         @Test

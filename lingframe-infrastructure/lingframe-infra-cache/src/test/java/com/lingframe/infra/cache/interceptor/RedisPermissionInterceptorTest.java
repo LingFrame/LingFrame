@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -34,24 +35,25 @@ class RedisPermissionInterceptorTest {
     class PermissionInferenceTests {
 
         @Test
-        @DisplayName("get 前缀方法应按 READ 鉴权")
-        void shouldTreatGetPrefixAsRead() throws Throwable {
+        @DisplayName("get 前缀方法应优先按 key pattern 的 READ 权限鉴权")
+        void shouldTreatGetPrefixAsReadWithKeyPatternCapability() throws Throwable {
             PermissionService permissionService = mock(PermissionService.class);
-            when(permissionService.isAllowed("ling-a", "cache:redis", AccessType.READ)).thenReturn(true);
+            when(permissionService.isAllowed("ling-a", "cache:redis:key:user:*", AccessType.READ)).thenReturn(true);
             MethodInvocation invocation = mockInvocation(method("getValue", String.class), "ok", "user:1");
 
             LingCallContext.setLingId("ling-a");
             RedisPermissionInterceptor interceptor = new RedisPermissionInterceptor(permissionService);
 
             assertEquals("ok", interceptor.invoke(invocation));
-            verify(permissionService).isAllowed("ling-a", "cache:redis", AccessType.READ);
-            verify(permissionService).audit("ling-a", "cache:redis", "getValue", true);
+            verify(permissionService).isAllowed("ling-a", "cache:redis:key:user:*", AccessType.READ);
+            verify(permissionService).audit("ling-a", "cache:redis:key:user:*", "getValue", true);
         }
 
         @Test
-        @DisplayName("delete 前缀方法应按 WRITE 鉴权")
-        void shouldTreatDeletePrefixAsWrite() throws Throwable {
+        @DisplayName("key pattern 未命中时应回退到通用 Redis WRITE 权限")
+        void shouldFallbackToGenericCapabilityWhenPatternPermissionIsMissing() throws Throwable {
             PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "cache:redis:key:user:*", AccessType.WRITE)).thenReturn(false);
             when(permissionService.isAllowed("ling-a", "cache:redis", AccessType.WRITE)).thenReturn(false);
             MethodInvocation invocation = mockInvocation(method("deleteValue", String.class), 1L, "user:1");
 
@@ -60,9 +62,56 @@ class RedisPermissionInterceptorTest {
 
             PermissionDeniedException ex = assertThrows(PermissionDeniedException.class, () -> interceptor.invoke(invocation));
             assertEquals("Ling [ling-a] denied access to Redis operation: deleteValue", ex.getMessage());
+            verify(permissionService).isAllowed("ling-a", "cache:redis:key:user:*", AccessType.WRITE);
             verify(permissionService).isAllowed("ling-a", "cache:redis", AccessType.WRITE);
             verify(permissionService).audit("ling-a", "cache:redis", "deleteValue", false);
             verify(invocation, never()).proceed();
+        }
+
+        @Test
+        @DisplayName("多 key 操作应要求所有 key pattern capability 均被允许")
+        void shouldRequireAllKeyPatternsForMultiKeyOperation() throws Throwable {
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "cache:redis:key:user:*", AccessType.WRITE)).thenReturn(true);
+            when(permissionService.isAllowed("ling-a", "cache:redis:key:order:*", AccessType.WRITE)).thenReturn(false);
+            when(permissionService.isAllowed("ling-a", "cache:redis", AccessType.WRITE)).thenReturn(false);
+            MethodInvocation invocation = mockInvocation(
+                    method("deleteValues", Iterable.class),
+                    2L,
+                    Arrays.asList("user:1", "order:2"));
+
+            LingCallContext.setLingId("ling-a");
+            RedisPermissionInterceptor interceptor = new RedisPermissionInterceptor(permissionService);
+
+            PermissionDeniedException ex = assertThrows(PermissionDeniedException.class, () -> interceptor.invoke(invocation));
+            assertEquals("Ling [ling-a] denied access to Redis operation: deleteValues", ex.getMessage());
+            verify(permissionService).isAllowed("ling-a", "cache:redis:key:user:*", AccessType.WRITE);
+            verify(permissionService).isAllowed("ling-a", "cache:redis:key:order:*", AccessType.WRITE);
+            verify(permissionService).isAllowed("ling-a", "cache:redis", AccessType.WRITE);
+            verify(permissionService).audit("ling-a", "cache:redis", "deleteValues", false);
+            verify(invocation, never()).proceed();
+        }
+
+        @Test
+        @DisplayName("多 key 操作全部命中时应审计所有具体 key pattern")
+        void shouldAuditAllSpecificPatternsWhenMultiKeyOperationIsAllowed() throws Throwable {
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "cache:redis:key:user:*", AccessType.WRITE)).thenReturn(true);
+            when(permissionService.isAllowed("ling-a", "cache:redis:key:order:*", AccessType.WRITE)).thenReturn(true);
+            MethodInvocation invocation = mockInvocation(
+                    method("deleteValues", Iterable.class),
+                    2L,
+                    Arrays.asList("user:1", "order:2"));
+
+            LingCallContext.setLingId("ling-a");
+            RedisPermissionInterceptor interceptor = new RedisPermissionInterceptor(permissionService);
+
+            assertEquals(2L, interceptor.invoke(invocation));
+            verify(permissionService).audit(
+                    "ling-a",
+                    "cache:redis:key:user:*, cache:redis:key:order:*",
+                    "deleteValues",
+                    true);
         }
     }
 
@@ -130,6 +179,10 @@ class RedisPermissionInterceptorTest {
 
         public Long deleteValue(String key) {
             return 1L;
+        }
+
+        public Long deleteValues(Iterable<String> keys) {
+            return 2L;
         }
     }
 }

@@ -77,6 +77,92 @@ If both requests return normally, you already have a working LingFrame runtime.
 
 ---
 
+## Another 5 Minutes: Verify The Current Closed Loop
+
+If you want to confirm that the example is not only "running" but already has a real control surface, observability path, and unload loop, continue with the steps below.
+
+### 1. Open the Dashboard
+
+Visit:
+
+```text
+http://localhost:8888/dashboard.html
+```
+
+You should see loaded lings, health data, governance configuration, timeline data, and related control-surface information.
+
+### 2. Inspect loaded lings and versions
+
+```bash
+curl http://localhost:8888/lingframe/dashboard/lings
+```
+
+In the default example setup, you will usually see:
+
+- `order-ling:1.0.0`
+- `user-ling:1.0.0`
+- `user-ling:1.1.0-canary`
+
+### 3. Inspect health and governance metrics
+
+```bash
+curl http://localhost:8888/lingframe/dashboard/lings/health/all
+curl http://localhost:8888/lingframe/dashboard/lings/governance/all
+```
+
+These endpoints already expose:
+
+- ling-level summaries
+- version-level details
+- collected governance signals
+
+### 4. Push a first-stage invocation governance patch
+
+```bash
+curl -X POST http://localhost:8888/lingframe/dashboard/governance/user-ling/invocation \
+  -H "Content-Type: application/json" \
+  -d "{\"timeoutMs\":3000,\"rateLimitPerSecond\":1,\"maxConcurrentThreads\":1}"
+```
+
+These are the first-stage invocation governance fields already closed in the current runtime:
+
+- `timeoutMs`
+- `rateLimitPerSecond`
+- `maxConcurrentThreads`
+
+### 5. Send requests again and observe changes
+
+```bash
+curl http://localhost:8888/user-ling/user/listUsers
+curl http://localhost:8888/lingframe/dashboard/lings/health/all
+curl http://localhost:8888/lingframe/dashboard/lings/governance/all
+```
+
+You should observe:
+
+- health metrics changing after real requests
+- governance metrics reflecting signals such as rate limiting or timeout-related behavior
+
+### 6. Verify structured uninstall precheck
+
+```bash
+curl -X DELETE http://localhost:8888/lingframe/dashboard/lings/uninstall/user-ling/1.1.0-canary
+```
+
+This now returns a structured uninstall result rather than only a simple success/failure flag, including:
+
+- whether uninstall was actually triggered
+- the overall risk level
+- a list of risk summaries
+
+Note:
+
+- the current default strategy is "warn, do not block"
+- so uninstall may still continue even when the precheck reports risk
+- post-uninstall passive leak diagnostics are still retained and were not replaced by the precheck
+
+---
+
 ## What Just Started
 
 ### LingCore
@@ -139,6 +225,12 @@ Once the example is up, you have already verified four things:
 - shared contracts are preloaded before lings start
 - cross-ling calls do not bypass the governance kernel
 - the example setup is enough to continue with real development docs
+
+If you also complete the Dashboard / governance / uninstall verification above, you additionally confirm that:
+
+- the control surface can hot-adjust first-stage invocation governance parameters
+- health and governance metrics change after real requests
+- uninstall precheck, real uninstall, and post-uninstall diagnostics already form one runtime loop
 
 The next thing worth validating is not only whether another ling can be loaded, but whether the same runtime path stays orderly through reload, unload, and cleanup scenarios.
 

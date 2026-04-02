@@ -10,8 +10,6 @@ This document collects common questions and answers about LingFrame.
 
 **A:** LingFrame is an order framework for JVM single-process long-running systems. It focuses on solving the problem of monolithic systems gradually losing control over time, rather than simply "splitting into microservices."
 
-See [Core Community Consensus](../.arts/core-community-consensus.zh-CN.md).
-
 ### Q2: What's the difference between LingFrame and OSGi?
 
 **A:**

@@ -13,6 +13,7 @@ import com.lingframe.core.router.CanaryRouter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -90,10 +91,25 @@ public class LingInfoConverter {
 
         // 提取 IPC 权限
         List<String> ipcServices = new ArrayList<>();
+        List<String> sqlCapabilities = new ArrayList<>();
+        List<String> redisCapabilities = new ArrayList<>();
+        List<String> extraCapabilities = new ArrayList<>();
         if (policy != null && policy.getCapabilities() != null) {
             for (GovernancePolicy.CapabilityRule rule : policy.getCapabilities()) {
-                if (rule.getCapability().startsWith("ipc:")) {
-                    ipcServices.add(rule.getCapability().substring(4)); // 去掉 ipc: 前缀
+                if (rule == null || rule.getCapability() == null) {
+                    continue;
+                }
+                String capability = rule.getCapability();
+                if (capability.startsWith("ipc:")) {
+                    ipcServices.add(capability.substring(4)); // 去掉 ipc: 前缀
+                } else if (capability.startsWith("storage:sql:table:")) {
+                    sqlCapabilities.add(capability);
+                } else if (capability.startsWith("cache:redis:")) {
+                    redisCapabilities.add(capability);
+                } else if (!Objects.equals(capability, Capabilities.STORAGE_SQL)
+                        && !Objects.equals(capability, Capabilities.CACHE_LOCAL)
+                        && !Objects.equals(capability, Capabilities.Ling_ENABLE)) {
+                    extraCapabilities.add(capability);
                 }
             }
         }
@@ -104,6 +120,10 @@ public class LingInfoConverter {
                 .cacheRead(cacheRead)
                 .cacheWrite(cacheWrite)
                 .ipcServices(ipcServices)
+                .sqlCapabilities(sqlCapabilities)
+                .redisCapabilities(redisCapabilities)
+                .extraCapabilities(extraCapabilities)
+                .localCacheNamespaceStrategy("lingId + cacheName + rawKey")
                 .build();
     }
 
