@@ -7,6 +7,15 @@ package com.lingframe.core.spi;
  */
 public interface LeakDetector {
 
+    default LeakRiskReport checkBefore(String lingId, String version, ClassLoader classLoader) {
+        return LeakRiskReport.checkFailed(
+                lingId,
+                version,
+                "Leak precheck is not implemented by detector " + getClass().getName(),
+                null,
+                getClass().getName());
+    }
+
     /**
      * 启动对 ClassLoader 的泄露检测
      *

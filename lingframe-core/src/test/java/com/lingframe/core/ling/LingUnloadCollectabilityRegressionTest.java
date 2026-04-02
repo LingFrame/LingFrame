@@ -14,6 +14,7 @@ import com.lingframe.core.pipeline.LatestVersionPolicy;
 import com.lingframe.core.pipeline.ResilienceGovernanceFilter;
 import com.lingframe.core.pipeline.ThreadIsolationGovernanceFilter;
 import com.lingframe.core.security.DangerousApiVerifier;
+import com.lingframe.core.spi.LeakRiskLevel;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.LingLoaderFactory;
@@ -105,6 +106,30 @@ class LingUnloadCollectabilityRegressionTest {
         }
     }
 
+    @Test
+    @DisplayName("应支持带预检返回的卸载链路且仍保持可回收")
+    void shouldRemainCollectibleWhenUndeployWithReportReturnsPrecheckSummary() throws Throwable {
+        TestRuntime runtime = createTestRuntime();
+        try {
+            CycleResult cycle = runCycle(runtime, "with-report", false, true);
+
+            assertEquals("echo:with-report", cycle.invocationResult);
+            assertTrue(cycle.classLoaderClosed);
+            assertFalse(cycle.runtimeStillRegistered);
+            assertFalse(cycle.hasLimiter);
+            assertFalse(cycle.hasBreaker);
+            assertFalse(cycle.hasExecutor);
+            assertTrue(cycle.classLoaderCollected);
+            assertEquals(LeakRiskLevel.CHECK_FAILED, cycle.overallRiskLevel);
+            assertTrue(cycle.uninstallTriggered);
+
+            verify(runtime.serviceRegistry).evict(LING_ID);
+            verify(runtime.permissionService).removeLing(LING_ID);
+        } finally {
+            runtime.shutdown();
+        }
+    }
+
     private TestRuntime createTestRuntime() throws Exception {
         Path workspace = Files.createTempDirectory("ling-lifecycle-regression");
         Path sourceDir = workspace.resolve("src");
@@ -178,6 +203,11 @@ class LingUnloadCollectabilityRegressionTest {
     }
 
     private CycleResult runCycle(TestRuntime runtime, String input, boolean repeated) throws Throwable {
+        return runCycle(runtime, input, repeated, false);
+    }
+
+    private CycleResult runCycle(TestRuntime runtime, String input, boolean repeated, boolean useUndeployWithReport)
+            throws Throwable {
         LingDefinition definition = new LingDefinition();
         definition.setId(LING_ID);
         definition.setVersion(VERSION);
@@ -202,7 +232,15 @@ class LingUnloadCollectabilityRegressionTest {
         assertTrue(invokeBoolean(resilienceFilter, "hasBreaker", LING_ID));
         assertTrue(invokeBoolean(isolationFilter, "hasExecutor", LING_ID));
 
-        runtime.lifecycleEngine.undeploy(LING_ID);
+        LeakRiskLevel overallRiskLevel = null;
+        boolean uninstallTriggered = false;
+        if (useUndeployWithReport) {
+            LingUninstallResult uninstallResult = runtime.lifecycleEngine.undeployWithReport(LING_ID);
+            overallRiskLevel = uninstallResult.getOverallRiskLevel();
+            uninstallTriggered = uninstallResult.isUninstallTriggered();
+        } else {
+            runtime.lifecycleEngine.undeploy(LING_ID);
+        }
 
         boolean hasLimiter = invokeBoolean(resilienceFilter, "hasLimiter", LING_ID);
         boolean hasBreaker = invokeBoolean(resilienceFilter, "hasBreaker", LING_ID);
@@ -221,7 +259,9 @@ class LingUnloadCollectabilityRegressionTest {
                 hasLimiter,
                 hasBreaker,
                 hasExecutor,
-                classLoaderRef.get() == null);
+                classLoaderRef.get() == null,
+                overallRiskLevel,
+                uninstallTriggered);
     }
 
     private Object invokeBusinessMethod(InvocationPipelineEngine pipelineEngine, String input) {
@@ -436,14 +476,18 @@ class LingUnloadCollectabilityRegressionTest {
         private final boolean hasBreaker;
         private final boolean hasExecutor;
         private final boolean classLoaderCollected;
+        private final LeakRiskLevel overallRiskLevel;
+        private final boolean uninstallTriggered;
 
         private CycleResult(Object invocationResult,
-                boolean classLoaderClosed,
-                boolean runtimeStillRegistered,
-                boolean hasLimiter,
-                boolean hasBreaker,
-                boolean hasExecutor,
-                boolean classLoaderCollected) {
+                            boolean classLoaderClosed,
+                            boolean runtimeStillRegistered,
+                            boolean hasLimiter,
+                            boolean hasBreaker,
+                            boolean hasExecutor,
+                            boolean classLoaderCollected,
+                            LeakRiskLevel overallRiskLevel,
+                            boolean uninstallTriggered) {
             this.invocationResult = invocationResult;
             this.classLoaderClosed = classLoaderClosed;
             this.runtimeStillRegistered = runtimeStillRegistered;
@@ -451,6 +495,8 @@ class LingUnloadCollectabilityRegressionTest {
             this.hasBreaker = hasBreaker;
             this.hasExecutor = hasExecutor;
             this.classLoaderCollected = classLoaderCollected;
+            this.overallRiskLevel = overallRiskLevel;
+            this.uninstallTriggered = uninstallTriggered;
         }
     }
 }

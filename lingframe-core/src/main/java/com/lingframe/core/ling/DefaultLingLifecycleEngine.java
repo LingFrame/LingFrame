@@ -19,6 +19,7 @@ import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.resource.DefaultLeakDetector;
 import com.lingframe.core.security.ApiOverrideVerifier;
 import com.lingframe.core.security.DangerousApiVerifier;
+import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.LingLoaderFactory;
@@ -182,33 +183,52 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
 
     @Override
     public void undeploy(String lingId) {
+        undeployWithReport(lingId);
+    }
+
+    @Override
+    public LingUninstallResult undeployWithReport(String lingId) {
         log.info("Uninstalling ling: {}", lingId);
 
         LingRuntime runtime = findRuntimeOrWarn(lingId);
         if (runtime == null) {
-            return;
+            return LingUninstallResult.notTriggered(lingId, null, Collections.emptyList());
         }
 
+        List<LeakRiskReport> reports = unloadCoordinator.checkBeforeLingUnload(
+                lingId,
+                new ArrayList<>(runtime.getInstancePool().getAllInstances()));
         drainInstances(lingId, runtime.getInstancePool().getActiveInstances(),
                 runtime.getConfig().getForceCleanupDelaySeconds());
         doFullUndeploy(lingId, runtime);
+        return LingUninstallResult.triggered(lingId, null, reports);
     }
 
     @Override
     public void undeploy(String lingId, String version) {
+        undeployWithReport(lingId, version);
+    }
+
+    @Override
+    public LingUninstallResult undeployWithReport(String lingId, String version) {
         log.info("Uninstalling ling: {} version: {}", lingId, version);
 
         LingRuntime runtime = findRuntimeOrWarn(lingId);
         if (runtime == null) {
-            return;
+            return LingUninstallResult.notTriggered(lingId, version, Collections.emptyList());
         }
 
         LingInstance targetInstance = findActiveInstanceOrWarn(lingId, runtime, version);
         if (targetInstance == null) {
-            return;
+            return LingUninstallResult.notTriggered(lingId, version, Collections.emptyList());
         }
 
+        LeakRiskReport report = unloadCoordinator.checkBeforeVersionUnload(
+                lingId,
+                targetInstance.getVersion(),
+                targetInstance.getClassLoader());
         undeploySelectedInstance(lingId, runtime, targetInstance);
+        return LingUninstallResult.triggered(lingId, version, Collections.singletonList(report));
     }
 
     @Override

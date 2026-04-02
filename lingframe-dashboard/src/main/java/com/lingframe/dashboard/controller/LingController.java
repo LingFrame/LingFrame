@@ -133,10 +133,10 @@ public class LingController {
      * 彻底回收灵元占用的 ClassLoader 及相关资源。
      */
     @DeleteMapping("/uninstall/{lingId}")
-    public ApiResponse<Void> uninstall(@PathVariable String lingId) {
+    public ApiResponse<LingUninstallResultDTO> uninstall(@PathVariable String lingId) {
         try {
-            dashboardService.uninstallLing(lingId);
-            return ApiResponse.ok("卸载成功", null);
+            LingUninstallResultDTO result = dashboardService.uninstallLing(lingId);
+            return ApiResponse.ok("卸载成功", result);
         } catch (Exception e) {
             log.error("Uninstall failed: {}", lingId, e);
             return ApiResponse.error("卸载失败: " + e.getMessage());
@@ -147,10 +147,10 @@ public class LingController {
      * 按版本卸载灵元
      */
     @DeleteMapping("/uninstall/{lingId}/{version}")
-    public ApiResponse<Void> uninstallVersion(@PathVariable String lingId, @PathVariable String version) {
+    public ApiResponse<LingUninstallResultDTO> uninstallVersion(@PathVariable String lingId, @PathVariable String version) {
         try {
-            dashboardService.uninstallLing(lingId, version);
-            return ApiResponse.ok("版本 " + version + " 卸载成功", null);
+            LingUninstallResultDTO result = dashboardService.uninstallLing(lingId, version);
+            return ApiResponse.ok("版本 " + version + " 卸载成功", result);
         } catch (Exception e) {
             log.error("Uninstall failed for: {}:{}", lingId, version, e);
             return ApiResponse.error("卸载特定版本失败: " + e.getMessage());
@@ -276,13 +276,16 @@ public class LingController {
      * 获取所有灵元的健康指标
      */
     @GetMapping("/health/all")
-    public ApiResponse<Map<String, MetricsSnapshot>> getAllLingHealth() {
+    public ApiResponse<Map<String, LingHealthViewDTO>> getAllLingHealth() {
         try {
-            Map<String, MetricsSnapshot> allMetrics = metricsCollector.getAllSnapshots().stream()
+            Map<String, LingHealthViewDTO> allMetrics = metricsCollector.getAllSnapshots().stream()
                     .collect(Collectors.toMap(
                             MetricsSnapshot::getLingId,
-                            snapshot -> snapshot,
-                            (existing, replacement) -> existing
+                            snapshot -> LingHealthViewDTO.builder()
+                                    .summary(snapshot)
+                                    .versions(metricsCollector.getVersionSnapshots(snapshot.getLingId()))
+                                    .build(),
+                            (existing, replacement) -> replacement
                     ));
             return ApiResponse.ok(allMetrics);
         } catch (Exception e) {

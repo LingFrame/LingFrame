@@ -16,12 +16,15 @@ import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.ling.LingUninstallResult;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.core.exception.LingInstallException;
+import com.lingframe.dashboard.dto.LeakRiskReportDTO;
+import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
 import com.lingframe.core.router.CanaryRouter;
@@ -153,21 +156,27 @@ public class DashboardService {
         return "true".equalsIgnoreCase(String.valueOf(value));
     }
 
-    public void uninstallLing(String lingId) {
+    public LingUninstallResultDTO uninstallLing(String lingId) {
         try {
             canaryRouter.removeCanaryConfig(lingId);
-            lifecycleEngine.undeploy(lingId);
-            addLifecycleEvent(lingId, "", "DEAD", "灵元完全卸载", "灵元 " + lingId + " 已完全卸载，所有版本均已移除");
+            LingUninstallResult result = lifecycleEngine.undeployWithReport(lingId);
+            if (result.isUninstallTriggered()) {
+                addLifecycleEvent(lingId, "", "DEAD", "灵元完全卸载", "灵元 " + lingId + " 已完全卸载，所有版本均已移除");
+            }
+            return toUninstallResultDTO(result);
         } catch (Exception e) {
             throw new LingInstallException(lingId, "Failed to uninstall ling: " + e.getMessage(), e);
         }
     }
 
-    public void uninstallLing(String lingId, String version) {
+    public LingUninstallResultDTO uninstallLing(String lingId, String version) {
         try {
             canaryRouter.removeCanaryConfig(lingId);
-            lifecycleEngine.undeploy(lingId, version);
-            addLifecycleEvent(lingId, version, "UNLOAD", "灵元版本卸载", "灵元 " + lingId + " 版本 " + version + " 已卸载");
+            LingUninstallResult result = lifecycleEngine.undeployWithReport(lingId, version);
+            if (result.isUninstallTriggered()) {
+                addLifecycleEvent(lingId, version, "UNLOAD", "灵元版本卸载", "灵元 " + lingId + " 版本 " + version + " 已卸载");
+            }
+            return toUninstallResultDTO(result);
         } catch (Exception e) {
             throw new LingInstallException(lingId,
                     "Failed to uninstall ling version " + version + ": " + e.getMessage(), e);
@@ -591,6 +600,28 @@ public class DashboardService {
         }
         props.put("reload", true);
         props.put("reloadVersion", reloadVersion);
+    }
+
+    private LingUninstallResultDTO toUninstallResultDTO(LingUninstallResult result) {
+        List<LeakRiskReportDTO> reports = result.getReports().stream()
+                .map(report -> LeakRiskReportDTO.builder()
+                        .lingId(report.getLingId())
+                        .version(report.getVersion())
+                        .level(report.getLevel())
+                        .summary(report.getSummary())
+                        .details(report.getDetails())
+                        .checker(report.getChecker())
+                        .timestamp(report.getTimestamp())
+                        .build())
+                .collect(Collectors.toList());
+
+        return LingUninstallResultDTO.builder()
+                .lingId(result.getLingId())
+                .version(result.getVersion())
+                .uninstallTriggered(result.isUninstallTriggered())
+                .overallRiskLevel(result.getOverallRiskLevel())
+                .reports(reports)
+                .build();
     }
 
 }

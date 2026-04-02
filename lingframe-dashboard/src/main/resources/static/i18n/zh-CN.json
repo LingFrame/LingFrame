@@ -171,6 +171,12 @@
     "reloadSuccess": "灵元重载成功",
     "reloadFailed": "灵元重载失败",
     "lingVersionUnloaded": "版本 {version} 卸载成功",
+    "uninstallTriggeredFalse": "卸载请求已返回，但未触发实际卸载",
+    "uninstallPrecheckNoRisk": "{message}，预检未发现明显泄漏风险",
+    "uninstallPrecheckRisk": "{message}，预检提示存在泄漏风险",
+    "uninstallPrecheckRiskWithSummary": "{message}，预检提示风险：{summary}",
+    "uninstallPrecheckFailed": "{message}，预检未完成，请结合卸载后事件继续观察",
+    "uninstallPrecheckFailedWithSummary": "{message}，预检未完成：{summary}",
     "getTimelineFailed": "获取时间线失败",
     "invocationUpdated": "调用治理已更新",
     "invocationUpdateFailed": "调用治理更新失败"
@@ -188,5 +194,39 @@
     "selectLing": "选择灵元",
     "allLings": "所有灵元",
     "noEvents": "暂无事件记录"
+  },
+  "uninstallResult": {
+      "title": "卸载结果详情",
+      "lingLabel": "灵元",
+      "versionLabel": "版本",
+      "actionLabel": "卸载动作",
+    "precheckLabel": "预检结论",
+    "triggeredYes": "已触发",
+    "triggeredNo": "未触发",
+    "levelNoRisk": "无明显风险",
+    "levelRiskDetected": "发现风险",
+    "levelCheckFailed": "预检未完成",
+    "levelUnknown": "未知",
+    "notice": "当前策略为提示不拦截：即使预检发现风险，卸载动作仍可能已触发。",
+    "detailTitle": "预检明细",
+      "detailCountSuffix": "条",
+      "noDetails": "未返回额外明细",
+      "unknownChecker": "未知检查器",
+      "noSummary": "无摘要"
+  },
+  "healthCard": {
+      "title": "灵元健康",
+      "version": "版本",
+      "versionBreakdown": "版本分布",
+      "versionCountSuffix": "个版本",
+      "qps": "QPS",
+      "errorRate": "错误率",
+      "avgLatencyMs": "平均延迟",
+      "p99LatencyMs": "P99 延迟",
+      "activeRequests": "活跃请求",
+      "trafficWeight": "流量占比",
+      "empty": "暂未采集到该灵元的健康指标",
+      "versionEmpty": "该版本暂未采集到健康指标",
+      "unknown": "未知"
   }
 }

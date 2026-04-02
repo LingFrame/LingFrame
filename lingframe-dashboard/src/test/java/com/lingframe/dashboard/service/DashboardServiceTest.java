@@ -8,10 +8,14 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.ling.LingLifecycleEngine;
+import com.lingframe.core.ling.LingUninstallResult;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.router.CanaryRouter;
+import com.lingframe.core.spi.LeakRiskLevel;
+import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
+import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -25,6 +29,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -204,6 +209,59 @@ class DashboardServiceTest {
 
             verify(permissionService).removeLing("ling1");
             verify(permissionService).grant("ling1", Capabilities.CACHE_LOCAL, AccessType.WRITE);
+        }
+    }
+
+    @Nested
+    @DisplayName("卸载预检返回")
+    class UninstallPrecheckTests {
+
+        @Test
+        @DisplayName("卸载灵元时应返回结构化风险摘要")
+        void uninstallLingShouldReturnStructuredRiskSummary() {
+            DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
+                    governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator);
+            LeakRiskReport report = LeakRiskReport.riskDetected(
+                    "ling1",
+                    "1.0.0",
+                    "risk detected",
+                    Arrays.asList("thread=worker-1"),
+                    "test");
+            when(lifecycleEngine.undeployWithReport("ling1"))
+                    .thenReturn(LingUninstallResult.triggered("ling1", null, Arrays.asList(report)));
+
+            LingUninstallResultDTO result = service.uninstallLing("ling1");
+
+            assertNotNull(result);
+            assertTrue(result.isUninstallTriggered());
+            assertEquals(LeakRiskLevel.RISK_DETECTED, result.getOverallRiskLevel());
+            assertEquals(1, result.getReports().size());
+            assertEquals("thread=worker-1", result.getReports().get(0).getDetails().get(0));
+            verify(canaryRouter).removeCanaryConfig("ling1");
+        }
+
+        @Test
+        @DisplayName("按版本卸载时应返回对应版本的风险摘要")
+        void uninstallLingVersionShouldReturnVersionScopedRiskSummary() {
+            DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
+                    governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator);
+            LeakRiskReport report = LeakRiskReport.checkFailed(
+                    "ling1",
+                    "1.0.1",
+                    "check failed",
+                    Arrays.asList("IllegalStateException"),
+                    "test");
+            when(lifecycleEngine.undeployWithReport("ling1", "1.0.1"))
+                    .thenReturn(LingUninstallResult.triggered("ling1", "1.0.1", Arrays.asList(report)));
+
+            LingUninstallResultDTO result = service.uninstallLing("ling1", "1.0.1");
+
+            assertNotNull(result);
+            assertTrue(result.isUninstallTriggered());
+            assertEquals("1.0.1", result.getVersion());
+            assertEquals(LeakRiskLevel.CHECK_FAILED, result.getOverallRiskLevel());
+            assertEquals(1, result.getReports().size());
+            verify(canaryRouter).removeCanaryConfig("ling1");
         }
     }
 }

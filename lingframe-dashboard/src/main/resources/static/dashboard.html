@@ -132,6 +132,76 @@
             </div>
         </div>
 
+        <div v-if="uninstallResultModal.show" class="modal-overlay" @click.self="closeUninstallResultModal">
+            <div class="modal-content uninstall-result-modal">
+                <div class="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                        <h3 class="font-bold text-white text-lg">{{ uninstallResultModal.title }}</h3>
+                        <p class="text-sm text-slate-400 mt-1">{{ uninstallResultModal.message }}</p>
+                    </div>
+                    <button @click="closeUninstallResultModal" class="text-slate-400 hover:text-white">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div v-if="uninstallResultModal.result" class="space-y-4">
+                    <div class="uninstall-result-summary">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="result-meta-item">
+                                <span class="result-meta-label">{{ t('uninstallResult.lingLabel') || 'Ling' }}</span>
+                                <span class="result-meta-value">{{ uninstallResultModal.result.lingId || '-' }}</span>
+                            </div>
+                            <div class="result-meta-item">
+                                <span class="result-meta-label">{{ t('uninstallResult.versionLabel') || 'Version' }}</span>
+                                <span class="result-meta-value">{{ uninstallResultModal.result.version || t('modal.allVersions') }}</span>
+                            </div>
+                            <div class="result-meta-item">
+                                <span class="result-meta-label">{{ t('uninstallResult.actionLabel') || '卸载动作' }}</span>
+                                <span class="result-meta-value">{{ getUninstallTriggerLabel(uninstallResultModal.result.uninstallTriggered) }}</span>
+                            </div>
+                            <div class="result-meta-item">
+                                <span class="result-meta-label">{{ t('uninstallResult.precheckLabel') || '预检结论' }}</span>
+                                <span :class="getUninstallRiskClass(uninstallResultModal.result.overallRiskLevel)">
+                                    {{ getUninstallRiskLabel(uninstallResultModal.result.overallRiskLevel) }}
+                                </span>
+                            </div>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-3">
+                            {{ t('uninstallResult.notice') || '当前策略为提示不拦截：即使预检发现风险，卸载动作仍可能已触发。' }}
+                        </p>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-sm font-bold text-white">{{ t('uninstallResult.detailTitle') || '预检明细' }}</h4>
+                            <span class="text-xs text-slate-500">{{ uninstallResultModal.result.reports?.length || 0 }} {{ t('uninstallResult.detailCountSuffix') || '条' }}</span>
+                        </div>
+                        <div v-if="!uninstallResultModal.result.reports || uninstallResultModal.result.reports.length === 0" class="result-empty">
+                            {{ t('uninstallResult.noDetails') || '未返回额外明细' }}
+                        </div>
+                        <div v-else class="space-y-3">
+                            <div v-for="(report, index) in uninstallResultModal.result.reports" :key="`${report.checker || 'checker'}-${index}`" class="result-report-card">
+                                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span :class="getUninstallRiskClass(report.level)">{{ getUninstallRiskLabel(report.level) }}</span>
+                                        <span class="text-xs text-slate-500">{{ report.checker || (t('uninstallResult.unknownChecker') || 'unknown-checker') }}</span>
+                                    </div>
+                                    <span class="text-xs text-slate-500">{{ report.version || uninstallResultModal.result.version || t('modal.allVersions') }}</span>
+                                </div>
+                                <p class="text-sm text-slate-200">{{ report.summary || (t('uninstallResult.noSummary') || '无摘要') }}</p>
+                                <ul v-if="report.details && report.details.length" class="result-detail-list">
+                                    <li v-for="(detail, detailIndex) in report.details" :key="detailIndex">{{ detail }}</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-end mt-6">
+                    <button @click="closeUninstallResultModal" class="px-4 py-2 rounded-lg text-base font-medium bg-slate-700 hover:bg-slate-600 text-white">
+                        {{ t('modal.confirm') }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- 侧边栏 -->
         <aside class="sidebar" :class="{ open: sidebarOpen }">
             <div class="p-5 border-b border-slate-700">
@@ -785,6 +855,92 @@
                                 </div>
 
                                 <template v-else>
+                                    <div class="health-card mb-4">
+                                        <div class="flex items-center justify-between gap-3 mb-3">
+                                            <div>
+                                                <h4 class="text-sm font-bold text-white">{{ t('healthCard.title') }}</h4>
+                                                <p class="text-xs text-slate-400 mt-1">{{ activeLing?.lingId }}</p>
+                                            </div>
+                                            <span
+                                                v-if="activeLingHealth"
+                                                :class="getLingHealthStatusClass(activeLingHealth.healthStatus)">
+                                                {{ activeLingHealth.healthStatus || t('healthCard.unknown') }}
+                                            </span>
+                                            <span v-else class="risk-badge risk-unknown">
+                                                {{ t('healthCard.unknown') }}
+                                            </span>
+                                        </div>
+                                        <div v-if="activeLingHealth" class="grid grid-cols-2 gap-3">
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('healthCard.qps') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.qps, 1) }}</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('healthCard.errorRate') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.errorRate, 2) }}%</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('healthCard.avgLatencyMs') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.avgLatencyMs, 1) }} ms</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('healthCard.p99LatencyMs') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.p99LatencyMs, 1) }} ms</span>
+                                            </div>
+                                            <div class="health-metric health-metric-full">
+                                                <span class="health-metric-label">{{ t('healthCard.activeRequests') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.activeRequests, 0) }}</span>
+                                            </div>
+                                        </div>
+                                        <div v-else class="result-empty">
+                                            {{ t('healthCard.empty') }}
+                                        </div>
+                                        <div v-if="activeLingVersionHealth.length" class="health-version-section">
+                                            <div class="flex items-center justify-between gap-2 mb-3">
+                                                <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('healthCard.versionBreakdown') }}</h5>
+                                                <span class="text-xs text-slate-500">{{ activeLingVersionHealth.length }} {{ t('healthCard.versionCountSuffix') }}</span>
+                                            </div>
+                                            <div class="space-y-3">
+                                                <div v-for="versionHealth in activeLingVersionHealth" :key="versionHealth.version" class="health-version-card">
+                                                    <div class="flex items-center justify-between gap-3 mb-3">
+                                                        <div>
+                                                            <div class="flex items-center gap-2 flex-wrap">
+                                                                <span class="text-sm font-mono font-bold text-white">{{ versionHealth.version }}</span>
+                                                                <span class="text-[11px] font-semibold text-slate-400">{{ getLingHealthRoleLabel(versionHealth) }}</span>
+                                                            </div>
+                                                            <p class="text-xs text-slate-500 mt-1">{{ versionHealth.trafficWeight }}% {{ t('healthCard.trafficWeight') }}</p>
+                                                        </div>
+                                                        <span
+                                                            :class="getLingHealthStatusClass(versionHealth.metrics?.healthStatus || 'UNKNOWN')">
+                                                            {{ versionHealth.metrics?.healthStatus || t('healthCard.unknown') }}
+                                                        </span>
+                                                    </div>
+                                                    <div v-if="versionHealth.metrics" class="grid grid-cols-2 gap-2">
+                                                        <div class="health-metric compact">
+                                                            <span class="health-metric-label">{{ t('healthCard.qps') }}</span>
+                                                            <span class="health-metric-value">{{ formatMetricNumber(versionHealth.metrics.qps, 1) }}</span>
+                                                        </div>
+                                                        <div class="health-metric compact">
+                                                            <span class="health-metric-label">{{ t('healthCard.errorRate') }}</span>
+                                                            <span class="health-metric-value">{{ formatMetricNumber(versionHealth.metrics.errorRate, 2) }}%</span>
+                                                        </div>
+                                                        <div class="health-metric compact">
+                                                            <span class="health-metric-label">{{ t('healthCard.avgLatencyMs') }}</span>
+                                                            <span class="health-metric-value">{{ formatMetricNumber(versionHealth.metrics.avgLatencyMs, 1) }} ms</span>
+                                                        </div>
+                                                        <div class="health-metric compact">
+                                                            <span class="health-metric-label">{{ t('healthCard.p99LatencyMs') }}</span>
+                                                            <span class="health-metric-value">{{ formatMetricNumber(versionHealth.metrics.p99LatencyMs, 1) }} ms</span>
+                                                        </div>
+                                                    </div>
+                                                    <div v-else class="result-empty">
+                                                        {{ t('healthCard.versionEmpty') }}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <!-- 灵元管理中枢 -->
                                         <div class="space-y-4">
                                             <div class="grid grid-cols-2 gap-2">

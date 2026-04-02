@@ -171,6 +171,12 @@
         "reloadSuccess": "Ling reloaded successfully",
         "reloadFailed": "Ling reload failed",
         "lingVersionUnloaded": "Version {version} unloaded successfully",
+        "uninstallTriggeredFalse": "Uninstall request returned without triggering actual unload",
+        "uninstallPrecheckNoRisk": "{message}, precheck found no obvious leak risk",
+        "uninstallPrecheckRisk": "{message}, precheck detected leak risk",
+        "uninstallPrecheckRiskWithSummary": "{message}, precheck detected leak risk: {summary}",
+        "uninstallPrecheckFailed": "{message}, precheck did not complete, please observe post-unload events",
+        "uninstallPrecheckFailedWithSummary": "{message}, precheck did not complete: {summary}",
         "getTimelineFailed": "Failed to get timeline",
         "invocationUpdated": "Invocation governance updated",
         "invocationUpdateFailed": "Invocation governance update failed"
@@ -188,5 +194,39 @@
     "selectLing": "Select Ling",
     "allLings": "All Lings",
     "noEvents": "No events found"
+  },
+  "uninstallResult": {
+      "title": "Uninstall Result",
+      "lingLabel": "Ling",
+      "versionLabel": "Version",
+      "actionLabel": "Unload Action",
+    "precheckLabel": "Precheck Result",
+    "triggeredYes": "Triggered",
+    "triggeredNo": "Not Triggered",
+    "levelNoRisk": "No Obvious Risk",
+    "levelRiskDetected": "Risk Detected",
+    "levelCheckFailed": "Precheck Incomplete",
+    "levelUnknown": "Unknown",
+    "notice": "Current strategy is warn-but-not-block: uninstall may still be triggered even when precheck reports risk.",
+    "detailTitle": "Precheck Details",
+      "detailCountSuffix": "items",
+      "noDetails": "No additional details returned",
+      "unknownChecker": "Unknown Checker",
+      "noSummary": "No summary"
+  },
+  "healthCard": {
+      "title": "Ling Health",
+      "version": "Version",
+      "versionBreakdown": "Version Breakdown",
+      "versionCountSuffix": "versions",
+      "qps": "QPS",
+      "errorRate": "Error Rate",
+      "avgLatencyMs": "Avg Latency",
+      "p99LatencyMs": "P99 Latency",
+      "activeRequests": "Active Requests",
+      "trafficWeight": "traffic weight",
+      "empty": "No health metrics have been collected for this ling yet",
+      "versionEmpty": "No health metrics have been collected for this version yet",
+      "unknown": "Unknown"
   }
 }

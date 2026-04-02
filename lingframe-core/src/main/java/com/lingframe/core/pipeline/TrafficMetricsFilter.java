@@ -194,12 +194,19 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
         }
         
         LingHealthMetrics metrics = metricsCollector.getOrCreate(lingId);
+        LingHealthMetrics versionMetrics = metricsCollector.getOrCreate(lingId, extractVersion(ctx));
         
         if (success) {
             metrics.recordSuccess(costMs);
+            if (versionMetrics != metrics) {
+                versionMetrics.recordSuccess(costMs);
+            }
         } else {
             boolean isTimeout = isTimeoutError(error);
             metrics.recordFailure(costMs, isTimeout);
+            if (versionMetrics != metrics) {
+                versionMetrics.recordFailure(costMs, isTimeout);
+            }
         }
     }
     
@@ -218,6 +225,14 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
         }
         
         return null;
+    }
+
+    private String extractVersion(InvocationContext ctx) {
+        if (ctx.getTargetVersion() != null && !ctx.getTargetVersion().isBlank()) {
+            return ctx.getTargetVersion();
+        }
+        LingRuntime runtime = ctx.getRuntime();
+        return runtime != null ? runtime.getInstancePool().getVersion() : null;
     }
     
     /**

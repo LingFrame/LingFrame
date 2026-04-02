@@ -34,11 +34,21 @@ public interface LingLifecycleEngine {
      */
     void undeploy(String lingId);
 
+    default LingUninstallResult undeployWithReport(String lingId) {
+        undeploy(lingId);
+        return LingUninstallResult.triggered(lingId, null, null);
+    }
+
     /**
      * 卸载某个具体版本。
      * 如果它已经是最后一个版本，则连同运行时一起移除。
      */
     void undeploy(String lingId, String version);
+
+    default LingUninstallResult undeployWithReport(String lingId, String version) {
+        undeploy(lingId, version);
+        return LingUninstallResult.triggered(lingId, version, null);
+    }
 
     /**
      * 卸载某个具体实例对象。
