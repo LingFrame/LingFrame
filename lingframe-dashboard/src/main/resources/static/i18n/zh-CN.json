@@ -182,13 +182,20 @@
     "invocationUpdateFailed": "调用治理更新失败"
   },
   "performance": {
-    "title": "系统性能",
-    "realtime": "实时监控",
-    "memory": "内存",
-    "heap": "堆内存",
-    "threads": "活跃线程",
-    "gc": "GC 次数"
-  },
+      "title": "系统性能",
+      "realtime": "实时监控",
+      "cpu": "CPU",
+      "jvmMemory": "JVM 内存",
+      "memory": "内存",
+      "heap": "堆内存",
+      "used": "已用",
+      "allocated": "分配",
+      "metaspace": "Metaspace",
+      "loadedClasses": "已加载类",
+      "unloadedClasses": "卸载类",
+      "threads": "活跃线程",
+      "gc": "GC 次数"
+    },
   "timeline": {
     "title": "灵元生命周期时间线",
     "selectLing": "选择灵元",
@@ -228,5 +235,16 @@
       "empty": "暂未采集到该灵元的健康指标",
       "versionEmpty": "该版本暂未采集到健康指标",
       "unknown": "未知"
+  },
+  "governanceCard": {
+      "title": "治理信号",
+      "signalDetected": "已观测到信号",
+      "noSignal": "暂无异常信号",
+      "rateLimitedRequests": "限流拒绝",
+      "timeoutRequests": "超时次数",
+      "circuitOpenedCount": "熔断打开",
+      "circuitOpenRejections": "熔断拒绝",
+      "empty": "暂未采集到治理信号",
+      "versionEmpty": "该版本暂未采集到治理信号"
   }
 }

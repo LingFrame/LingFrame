@@ -292,7 +292,7 @@ lingframe:
 
 ### Q27: Prometheus/Grafana 集成什么时候支持？
 
-**A:** 在 Phase 4 规划中，详见 [路线图](roadmap.md)。
+**A:** 当前已经支持 Micrometer 指标桥接。若宿主应用提供 `MeterRegistry`，LingFrame 会自动注册灵元健康指标与治理信号指标；若宿主再引入 `micrometer-registry-prometheus` 并暴露 `/actuator/prometheus`，即可直接被 Prometheus 抓取。示例可参考 `lingframe-example-lingcore-app`。
 
 ### Q28: 消息代理（Kafka/RabbitMQ）什么时候支持？
 

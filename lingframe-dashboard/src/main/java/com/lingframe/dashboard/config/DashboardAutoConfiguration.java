@@ -8,16 +8,21 @@ import com.lingframe.core.governance.LocalGovernanceRegistry;
 
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.core.router.CanaryRouter;
+import com.lingframe.dashboard.metrics.LingMetricsMeterBridge;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LogStreamService;
 import com.lingframe.dashboard.service.SimulateService;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
@@ -84,6 +89,21 @@ public class DashboardAutoConfiguration {
     @Bean
     public MetricsCollector metricsCollector(LingRepository lingRepository) {
         return new MetricsCollector(lingRepository);
+    }
+
+    @Bean
+    public GovernanceMetricsCollector governanceMetricsCollector() {
+        return new GovernanceMetricsCollector();
+    }
+
+    @Bean
+    @ConditionalOnClass(MeterRegistry.class)
+    @ConditionalOnBean(MeterRegistry.class)
+    public LingMetricsMeterBridge lingMetricsMeterBridge(
+            MeterRegistry meterRegistry,
+            MetricsCollector metricsCollector,
+            GovernanceMetricsCollector governanceMetricsCollector) {
+        return new LingMetricsMeterBridge(meterRegistry, metricsCollector, governanceMetricsCollector);
     }
 
     @Bean

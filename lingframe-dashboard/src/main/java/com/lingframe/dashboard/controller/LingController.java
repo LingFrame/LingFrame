@@ -2,6 +2,8 @@ package com.lingframe.dashboard.controller;
 
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
+import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
 import com.lingframe.core.metrics.JVMMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
@@ -34,15 +36,18 @@ public class LingController {
     private final LingFrameConfig lingFrameConfig;
     private final DashboardService dashboardService;
     private final MetricsCollector metricsCollector;
+    private final GovernanceMetricsCollector governanceMetricsCollector;
     private final boolean installEnabled;
 
     public LingController(LingFrameConfig lingFrameConfig,
             DashboardService dashboardService,
             MetricsCollector metricsCollector,
+            GovernanceMetricsCollector governanceMetricsCollector,
             @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
         this.lingFrameConfig = lingFrameConfig;
         this.dashboardService = dashboardService;
         this.metricsCollector = metricsCollector;
+        this.governanceMetricsCollector = governanceMetricsCollector;
         this.installEnabled = installEnabled;
     }
 
@@ -291,6 +296,25 @@ public class LingController {
         } catch (Exception e) {
             log.error("Failed to get all health metrics", e);
             return ApiResponse.error("获取健康指标失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/governance/all")
+    public ApiResponse<Map<String, LingGovernanceMetricsViewDTO>> getAllLingGovernanceMetrics() {
+        try {
+            Map<String, LingGovernanceMetricsViewDTO> allMetrics = governanceMetricsCollector.getAllSummaries().values().stream()
+                    .collect(Collectors.toMap(
+                            GovernanceMetricsSnapshot::getLingId,
+                            snapshot -> LingGovernanceMetricsViewDTO.builder()
+                                    .summary(snapshot)
+                                    .versions(governanceMetricsCollector.getVersionSnapshots(snapshot.getLingId()))
+                                    .build(),
+                            (existing, replacement) -> replacement
+                    ));
+            return ApiResponse.ok(allMetrics);
+        } catch (Exception e) {
+            log.error("Failed to get governance metrics", e);
+            return ApiResponse.error("获取治理指标失败: " + e.getMessage());
         }
     }
     

@@ -2,8 +2,6 @@
 
 本文档描述灵珑当前的可观测性能力。
 
-> ⚠️ **注意**：本文档仅描述已实现的功能。Prometheus/Grafana/ELK 集成正在规划中，详见 [路线图](roadmap.md)。
-
 ---
 
 ## 当前已实现
@@ -62,7 +60,41 @@ GET /lingframe/dashboard/lings/{lingId}/health
 GET /lingframe/dashboard/lings/health/all
 ```
 
-### 4. 流量统计
+当前返回同时包含：
+
+- ling 级汇总 `summary`
+- version 级明细 `versions`
+
+已覆盖字段包括：
+
+- `qps`
+- `errorRate`
+- `avgLatencyMs`
+- `p99LatencyMs`
+- `activeRequests`
+- `healthStatus`
+
+Dashboard 已直接消费这批数据并展示灵元总览与版本对比。
+
+### 4. 调用治理信号快照
+
+**全量治理信号**：
+```
+GET /lingframe/dashboard/lings/governance/all
+```
+
+当前可观察：
+
+- `rateLimitedRequests`
+- `timeoutRequests`
+- `circuitOpenedCount`
+- `circuitOpenRejections`
+- `bulkheadRejectedRequests`
+- `recoveryCount`
+
+同样支持 ling 级汇总 `summary` 与 version 级明细 `versions`。
+
+### 5. 流量统计
 
 **获取灵元流量统计**：
 ```
@@ -76,7 +108,29 @@ GET /lingframe/dashboard/lings/{lingId}/stats
 POST /lingframe/dashboard/lings/{lingId}/stats/reset
 ```
 
-### 5. EventBus 事件机制
+### 6. Micrometer 指标桥接
+
+`lingframe-dashboard` 已内置可选 Micrometer 桥接。
+
+当宿主应用提供 `MeterRegistry` 时，会自动注册以下 gauge：
+
+- `lingframe.ling.health.qps`
+- `lingframe.ling.health.error_rate`
+- `lingframe.ling.health.p99_latency_ms`
+- `lingframe.ling.health.active_requests`
+- `lingframe.ling.version.health.qps`
+- `lingframe.ling.version.health.error_rate`
+- `lingframe.ling.governance.rate_limited_total`
+- `lingframe.ling.governance.timeout_total`
+- `lingframe.ling.governance.circuit_opened_total`
+- `lingframe.ling.governance.circuit_rejected_total`
+
+说明：
+
+- LingFrame 已完成指标桥接，不强制宿主采用某种监控后端
+- 若宿主同时引入 `micrometer-registry-prometheus` 并暴露 actuator 端点，即可通过 Prometheus 抓取
+
+### 7. EventBus 事件机制
 
 灵珑内置 EventBus，支持两种订阅模式：
 
@@ -94,18 +148,28 @@ eventBus.subscribeGlobal(MyEvent.class, event -> {
 });
 ```
 
----
+## 宿主接入 Prometheus
 
-## 规划中
+最小接入条件：
 
-以下功能在 [路线图](roadmap.md) Phase 4 中规划：
+1. 宿主引入 `spring-boot-starter-actuator`
+2. 宿主引入 `micrometer-registry-prometheus`
+3. 宿主暴露 `/actuator/prometheus`
 
-| 功能 | 状态 |
-|------|------|
-| Micrometer 集成 | ⏳ 规划中 |
-| Prometheus 采集支持 | ⏳ 规划中 |
-| 自定义 Metrics 扩展 | ⏳ 规划中 |
-| 灵元级调用指标（次数、成功率、耗时） | ⏳ 规划中 |
+示例配置：
+
+```yaml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+```
+
+示例应用 `lingframe-example-lingcore-app` 已补齐这组配置，可直接作为抓取样例。
 
 ---
 

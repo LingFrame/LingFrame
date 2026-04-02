@@ -2,8 +2,6 @@
 
 This document describes LingFrame's current observability capabilities.
 
-> ⚠️ **Note**: This document only describes implemented features. Prometheus/Grafana/ELK integration is planned, see [Roadmap](roadmap.md).
-
 ---
 
 ## Currently Implemented
@@ -62,7 +60,41 @@ GET /lingframe/dashboard/lings/{lingId}/health
 GET /lingframe/dashboard/lings/health/all
 ```
 
-### 4. Traffic Statistics
+The response now includes:
+
+- ling-level `summary`
+- version-level `versions`
+
+Available fields include:
+
+- `qps`
+- `errorRate`
+- `avgLatencyMs`
+- `p99LatencyMs`
+- `activeRequests`
+- `healthStatus`
+
+Dashboard already consumes and displays both ling summary and per-version comparison.
+
+### 4. Governance Signal Snapshots
+
+**All Governance Signals**:
+```
+GET /lingframe/dashboard/lings/governance/all
+```
+
+Currently exposed:
+
+- `rateLimitedRequests`
+- `timeoutRequests`
+- `circuitOpenedCount`
+- `circuitOpenRejections`
+- `bulkheadRejectedRequests`
+- `recoveryCount`
+
+Both ling-level `summary` and version-level `versions` are available.
+
+### 5. Traffic Statistics
 
 **Get Ling Traffic Stats**:
 ```
@@ -76,7 +108,29 @@ Returns: Total requests, version distribution, active requests, window start tim
 POST /lingframe/dashboard/lings/{lingId}/stats/reset
 ```
 
-### 5. EventBus Mechanism
+### 6. Micrometer Bridge
+
+`lingframe-dashboard` now provides an optional Micrometer bridge.
+
+When the host application provides a `MeterRegistry`, LingFrame registers gauges for:
+
+- `lingframe.ling.health.qps`
+- `lingframe.ling.health.error_rate`
+- `lingframe.ling.health.p99_latency_ms`
+- `lingframe.ling.health.active_requests`
+- `lingframe.ling.version.health.qps`
+- `lingframe.ling.version.health.error_rate`
+- `lingframe.ling.governance.rate_limited_total`
+- `lingframe.ling.governance.timeout_total`
+- `lingframe.ling.governance.circuit_opened_total`
+- `lingframe.ling.governance.circuit_rejected_total`
+
+Notes:
+
+- LingFrame now ships the bridge, but does not force a specific monitoring backend
+- If the host also adds `micrometer-registry-prometheus` and exposes actuator endpoints, Prometheus can scrape the metrics directly
+
+### 7. EventBus Mechanism
 
 LingFrame has a built-in EventBus supporting two subscription modes:
 
@@ -94,18 +148,28 @@ eventBus.subscribeGlobal(MyEvent.class, event -> {
 });
 ```
 
----
+## Prometheus Integration in Hosts
 
-## Planned
+Minimum host requirements:
 
-The following features are planned in [Roadmap](roadmap.md) Phase 4:
+1. Add `spring-boot-starter-actuator`
+2. Add `micrometer-registry-prometheus`
+3. Expose `/actuator/prometheus`
 
-| Feature | Status |
-|---------|--------|
-| Micrometer integration | ⏳ Planned |
-| Prometheus collection support | ⏳ Planned |
-| Custom Metrics extension | ⏳ Planned |
-| Ling-level invocation metrics (count, success rate, latency) | ⏳ Planned |
+Example configuration:
+
+```yaml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+```
+
+The sample app `lingframe-example-lingcore-app` has been updated with this setup and can be used as a working reference.
 
 ---
 

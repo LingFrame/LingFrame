@@ -4,6 +4,7 @@ import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 import org.slf4j.Logger;
@@ -25,10 +26,16 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
     private static final ClassLoader CORE_CLASSLOADER = ThreadIsolationGovernanceFilter.class.getClassLoader();
 
     private final LingRepository lingRepository;
+    private final GovernanceMetricsCollector governanceMetricsCollector;
     private final Map<String, ExecutorHolder> executors = new ConcurrentHashMap<>();
 
     public ThreadIsolationGovernanceFilter(LingRepository lingRepository) {
+        this(lingRepository, null);
+    }
+
+    public ThreadIsolationGovernanceFilter(LingRepository lingRepository, GovernanceMetricsCollector governanceMetricsCollector) {
         this.lingRepository = lingRepository;
+        this.governanceMetricsCollector = governanceMetricsCollector;
     }
 
     @Override
@@ -91,6 +98,9 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
             future = executor.submit(isolatedTask);
         } catch (RejectedExecutionException e) {
             log.warn("[Isolation:{}] Execution rejected because bulkhead is full for {}", lingId, fqsid);
+            if (governanceMetricsCollector != null) {
+                governanceMetricsCollector.recordBulkheadRejected(lingId, ctx.getTargetVersion());
+            }
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.RATE_LIMITED, e);
         }
 
@@ -99,6 +109,9 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         } catch (TimeoutException e) {
             future.cancel(true);
             log.error("[Isolation:{}] Execution timed out after {} ms for {}", lingId, timeoutMs, fqsid);
+            if (governanceMetricsCollector != null) {
+                governanceMetricsCollector.recordTimeout(lingId, ctx.getTargetVersion());
+            }
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.TIMEOUT);
         } catch (ExecutionException e) {
             Throwable cause = unwrapExecutionCause(e.getCause());

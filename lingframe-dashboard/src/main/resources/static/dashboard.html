@@ -514,13 +514,13 @@
                                 </div>
                                 <span class="text-xs text-slate-500">{{ t('performance.realtime') || '实时监控' }}</span>
                             </div>
-                            <div class="p-4 space-y-4">
-                                <!-- CPU 使用率 -->
-                                <div>
-                                    <div class="flex justify-between items-center mb-2">
-                                        <span class="text-xs text-slate-400 flex items-center gap-1">
-                                            <i class="fa-solid fa-microchip text-slate-500"></i> CPU
-                                        </span>
+                                <div class="p-4 space-y-4">
+                                    <!-- CPU 使用率 -->
+                                    <div>
+                                        <div class="flex justify-between items-center mb-2">
+                                            <span class="text-xs text-slate-400 flex items-center gap-1">
+                                                <i class="fa-solid fa-microchip text-slate-500"></i> {{ t('performance.cpu') }}
+                                            </span>
                                         <span class="text-sm font-mono font-bold" :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">
                                             {{ perfMetrics.cpu }}%
                                         </span>
@@ -533,11 +533,11 @@
                                 </div>
 
                                 <!-- JVM 内存 (堆 + 非堆) -->
-                                <div>
-                                    <div class="flex justify-between items-center mb-2">
-                                        <span class="text-xs text-slate-400 flex items-center gap-1">
-                                            <i class="fa-solid fa-memory text-slate-500"></i> JVM 内存
-                                        </span>
+                                    <div>
+                                        <div class="flex justify-between items-center mb-2">
+                                            <span class="text-xs text-slate-400 flex items-center gap-1">
+                                                <i class="fa-solid fa-memory text-slate-500"></i> {{ t('performance.jvmMemory') }}
+                                            </span>
                                         <span class="text-sm font-mono font-bold" :class="perfMetrics.memory > 80 ? 'text-red-400' : perfMetrics.memory > 60 ? 'text-amber-400' : 'text-blue-400'">
                                             {{ perfMetrics.memory }}%
                                         </span>
@@ -546,18 +546,18 @@
                                         <div class="h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]"
                                             :class="perfMetrics.memory > 80 ? 'bg-red-500 shadow-red-500/30' : perfMetrics.memory > 60 ? 'bg-amber-500 shadow-amber-500/30' : 'bg-blue-500 shadow-blue-500/30'"
                                             :style="{ width: Math.max(3, perfMetrics.memory) + '%' }"></div>
-                                    </div>
-                                    <div class="text-xs text-slate-500 mt-1 text-right font-mono">
-                                        已用 {{ perfMetrics.memoryUsed }}MB / 分配 {{ perfMetrics.memoryTotal }}MB
-                                    </div>
-                                </div>
+                                      </div>
+                                      <div class="text-xs text-slate-500 mt-1 text-right font-mono">
+                                        {{ t('performance.used') }} {{ perfMetrics.memoryUsed }}MB / {{ t('performance.allocated') }} {{ perfMetrics.memoryTotal }}MB
+                                      </div>
+                                  </div>
 
                                 <!-- 堆内存详情 -->
                                 <div class="bg-slate-800/30 rounded-lg p-3">
-                                    <div class="flex justify-between items-center mb-2">
-                                        <span class="text-xs text-slate-400 flex items-center gap-1">
-                                            <i class="fa-solid fa-cubes text-purple-500"></i> 堆内存
-                                        </span>
+                                      <div class="flex justify-between items-center mb-2">
+                                          <span class="text-xs text-slate-400 flex items-center gap-1">
+                                              <i class="fa-solid fa-cubes text-purple-500"></i> {{ t('performance.heap') }}
+                                          </span>
                                         <span class="text-xs font-mono font-bold text-purple-400">
                                             {{ Math.round(perfMetrics.heapUsed / perfMetrics.heapMax * 100) }}%
                                         </span>
@@ -591,12 +591,12 @@
                                 
                                 <!-- Metaspace & 类加载 -->
                                 <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
-                                    <div class="bg-slate-800/50 rounded-lg p-3">
-                                        <div class="flex items-center justify-between mb-1">
-                                            <span class="text-[10px] text-slate-500 uppercase">Metaspace</span>
-                                            <span class="text-xs font-mono font-bold" :class="perfMetrics.metaspaceUsage > 80 ? 'text-red-400' : 'text-emerald-400'">
-                                                {{ perfMetrics.metaspaceUsage }}%
-                                            </span>
+                                      <div class="bg-slate-800/50 rounded-lg p-3">
+                                          <div class="flex items-center justify-between mb-1">
+                                              <span class="text-[10px] text-slate-500 uppercase">{{ t('performance.metaspace') }}</span>
+                                              <span class="text-xs font-mono font-bold" :class="perfMetrics.metaspaceUsage > 80 ? 'text-red-400' : 'text-emerald-400'">
+                                                  {{ perfMetrics.metaspaceUsage }}%
+                                              </span>
                                         </div>
                                         <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden">
                                             <div class="h-full bg-emerald-500 rounded-full transition-all duration-500"
@@ -606,17 +606,17 @@
                                             {{ perfMetrics.metaspaceUsed }}KB / {{ perfMetrics.metaspaceMax }}KB
                                         </div>
                                     </div>
-                                    <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                        <div class="flex items-center justify-center gap-1 mb-1">
-                                            <i class="fa-solid fa-cube text-amber-500 text-xs"></i>
-                                            <span class="text-[10px] text-slate-500 uppercase">已加载类</span>
-                                        </div>
-                                        <span class="text-lg font-mono font-bold text-amber-400">{{ perfMetrics.loadedClassCount }}</span>
-                                        <div class="text-[10px] text-slate-500 mt-1">
-                                            卸载: {{ perfMetrics.unloadedClassCount }}
-                                        </div>
-                                    </div>
-                                </div>
+                                      <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                          <div class="flex items-center justify-center gap-1 mb-1">
+                                              <i class="fa-solid fa-cube text-amber-500 text-xs"></i>
+                                              <span class="text-[10px] text-slate-500 uppercase">{{ t('performance.loadedClasses') }}</span>
+                                          </div>
+                                          <span class="text-lg font-mono font-bold text-amber-400">{{ perfMetrics.loadedClassCount }}</span>
+                                          <div class="text-[10px] text-slate-500 mt-1">
+                                              {{ t('performance.unloadedClasses') }}: {{ perfMetrics.unloadedClassCount }}
+                                          </div>
+                                      </div>
+                                  </div>
                             </div>
                         </div>
                     </div>
@@ -935,6 +935,73 @@
                                                     </div>
                                                     <div v-else class="result-empty">
                                                         {{ t('healthCard.versionEmpty') }}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="health-version-section">
+                                            <div class="flex items-center justify-between gap-2 mb-3">
+                                                <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('governanceCard.title') }}</h5>
+                                                <span v-if="hasGovernanceSignals(activeLingGovernance)" class="risk-badge risk-warn">{{ t('governanceCard.signalDetected') }}</span>
+                                                <span v-else class="risk-badge risk-safe">{{ t('governanceCard.noSignal') }}</span>
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-3" v-if="activeLingGovernance">
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.rateLimitedRequests') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.rateLimitedRequests, 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.timeoutRequests') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.timeoutRequests, 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.circuitOpenedCount') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.circuitOpenedCount, 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.circuitOpenRejections') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.circuitOpenRejections, 0) }}</span>
+                                                </div>
+                                            </div>
+                                            <div v-else class="result-empty">
+                                                {{ t('governanceCard.empty') }}
+                                            </div>
+                                            <div v-if="activeLingVersionGovernance.length" class="health-version-section">
+                                                <div class="space-y-3">
+                                                    <div v-for="versionGovernance in activeLingVersionGovernance" :key="`${versionGovernance.version}-governance`" class="health-version-card">
+                                                        <div class="flex items-center justify-between gap-3 mb-3">
+                                                            <div>
+                                                                <div class="flex items-center gap-2 flex-wrap">
+                                                                    <span class="text-sm font-mono font-bold text-white">{{ versionGovernance.version }}</span>
+                                                                    <span class="text-[11px] font-semibold text-slate-400">{{ getLingHealthRoleLabel(versionGovernance) }}</span>
+                                                                </div>
+                                                                <p class="text-xs text-slate-500 mt-1">{{ versionGovernance.trafficWeight }}% {{ t('healthCard.trafficWeight') }}</p>
+                                                            </div>
+                                                            <span :class="hasGovernanceSignals(versionGovernance.metrics) ? 'risk-badge risk-warn' : 'risk-badge risk-safe'">
+                                                                {{ hasGovernanceSignals(versionGovernance.metrics) ? t('governanceCard.signalDetected') : t('governanceCard.noSignal') }}
+                                                            </span>
+                                                        </div>
+                                                        <div v-if="versionGovernance.metrics" class="grid grid-cols-2 gap-2">
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.rateLimitedRequests') }}</span>
+                                                                <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.rateLimitedRequests, 0) }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.timeoutRequests') }}</span>
+                                                                <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.timeoutRequests, 0) }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.circuitOpenedCount') }}</span>
+                                                                <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.circuitOpenedCount, 0) }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.circuitOpenRejections') }}</span>
+                                                                <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.circuitOpenRejections, 0) }}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div v-else class="result-empty">
+                                                            {{ t('governanceCard.versionEmpty') }}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>

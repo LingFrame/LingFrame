@@ -228,7 +228,7 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
     }
 
     private String extractVersion(InvocationContext ctx) {
-        if (ctx.getTargetVersion() != null && !ctx.getTargetVersion().isBlank()) {
+        if (ctx.getTargetVersion() != null && !ctx.getTargetVersion().isEmpty()) {
             return ctx.getTargetVersion();
         }
         LingRuntime runtime = ctx.getRuntime();

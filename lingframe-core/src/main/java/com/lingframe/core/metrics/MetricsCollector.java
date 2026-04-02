@@ -29,7 +29,7 @@ public class MetricsCollector {
     }
 
     public LingHealthMetrics getOrCreate(String lingId, String version) {
-        if (version == null || version.isBlank()) {
+        if (version == null || version.isEmpty()) {
             return getOrCreate(lingId);
         }
         return versionMetricsMap.computeIfAbsent(versionKey(lingId, version), key -> {

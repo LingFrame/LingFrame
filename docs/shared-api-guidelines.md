@@ -65,6 +65,23 @@ Practical meaning:
 
 ---
 
+## Why This Design — Escaping Dependency Hell
+
+Traditional modular frameworks (OSGi being the most notorious example) push dependency resolution to runtime: module A tries to find module B at startup, hangs or fails if B is not ready, and leaves you wrestling with deployment ordering, version conflicts, and circular dependencies. This is the most painful part of modular systems.
+
+LingFrame makes a deliberate choice to cut that path entirely:
+
+- **Contracts are fixed at process startup** (preload → freeze). Every ling that loads afterward sees the same immutable set of interfaces.
+- **Consumers do not wait for producers**: `order-ling` holds a reference to `UserQueryService` regardless of whether `user-ling` is loaded. Whether the call succeeds is decided at invocation time, not at startup.
+- **Fast-fail, not hang**: if no implementation is available at call time, a `LingNotFoundException` is thrown immediately. The process does not stall waiting for a producer to arrive.
+- **Producers plug in transparently**: once `user-ling` is hot-deployed, `SmartServiceProxy` routes calls to the new implementation automatically. Consumers see nothing change.
+
+The result: lings have no startup-order dependencies on each other, no version negotiation, and no circular dependency problem. Each ling is a genuinely independently hot-swappable execution unit.
+
+The trade-off is stated honestly: **an already-loaded shared contract cannot be hot-updated**. Contract changes require a process restart. That constraint is the price of keeping the entire dependency model simple.
+
+---
+
 ## Bootstrap Boundary You Must Respect
 
 In `0.3.0`, `Shared API` bootstrap order is explicit:

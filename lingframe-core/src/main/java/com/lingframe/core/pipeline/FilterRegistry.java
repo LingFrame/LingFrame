@@ -6,6 +6,7 @@ import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.LingServiceInvoker;
 import com.lingframe.core.spi.TrafficRouter;
@@ -61,11 +62,21 @@ public class FilterRegistry {
         initialize(lingRepository, trafficRouter, eventBus, null);
     }
 
+    public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
+            RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector) {
+        initializeInternal(lingRepository, trafficRouter, eventBus, runtimeCoordinator, governanceMetricsCollector);
+    }
+
     /**
      * 初始化内建过滤器。
      */
     public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
             RuntimeCoordinator runtimeCoordinator) {
+        initializeInternal(lingRepository, trafficRouter, eventBus, runtimeCoordinator, null);
+    }
+
+    private void initializeInternal(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
+            RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector) {
         // ⚠️ 内建过滤器的顺序不是偶然结果，而是“事实 -> 决策 -> 执行”的固定协议。
         builtinFilters.clear();
 
@@ -74,11 +85,11 @@ public class FilterRegistry {
                 lingRepository,
                 trafficRouter != null ? trafficRouter : new LatestVersionPolicy());
         ResilienceGovernanceFilter resilience = new ResilienceGovernanceFilter(
-                lingRepository, eventBus, runtimeCoordinator);
+                lingRepository, eventBus, runtimeCoordinator, governanceMetricsCollector);
         ContextIsolationFilter resolution = new ContextIsolationFilter();
         GovernanceDecisionFilter governance = new GovernanceDecisionFilter(lingRepository, governanceArbitrator);
         PermissionGovernanceFilter permission = new PermissionGovernanceFilter(permissionService);
-        ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(lingRepository);
+        ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(lingRepository, governanceMetricsCollector);
         TerminalInvokerFilter terminal = new TerminalInvokerFilter(methodCache, serviceInvoker);
 
         this.resilienceFilter = resilience;

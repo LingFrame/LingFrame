@@ -100,6 +100,7 @@ createApp({
         
         // 灵元健康指标
         const lingHealthMetrics = reactive({});
+        const lingGovernanceMetrics = reactive({});
 
         const invocationForm = reactive({
             timeoutMs: '',
@@ -135,6 +136,17 @@ createApp({
                 return [];
             }
             const versionMetrics = lingHealthMetrics[activeId.value]?.versions || {};
+            return activeLing.value.versionDetails.map(versionInfo => ({
+                ...versionInfo,
+                metrics: versionMetrics[versionInfo.version] || null
+            }));
+        });
+        const activeLingGovernance = computed(() => activeId.value ? lingGovernanceMetrics[activeId.value]?.summary || null : null);
+        const activeLingVersionGovernance = computed(() => {
+            if (!activeId.value || !activeLing.value?.versionDetails) {
+                return [];
+            }
+            const versionMetrics = lingGovernanceMetrics[activeId.value]?.versions || {};
             return activeLing.value.versionDetails.map(versionInfo => ({
                 ...versionInfo,
                 metrics: versionMetrics[versionInfo.version] || null
@@ -1222,6 +1234,17 @@ createApp({
             return t('healthCard.version');
         };
 
+        const hasGovernanceSignals = (metrics) => {
+            if (!metrics) {
+                return false;
+            }
+            return Number(metrics.rateLimitedRequests || 0) > 0
+                || Number(metrics.timeoutRequests || 0) > 0
+                || Number(metrics.circuitOpenRejections || 0) > 0
+                || Number(metrics.circuitOpenedCount || 0) > 0
+                || Number(metrics.bulkheadRejectedRequests || 0) > 0;
+        };
+
         const formatTime = (ts) => {
             if (!ts) return '--:--:--';
             const d = new Date(ts);
@@ -1434,6 +1457,24 @@ createApp({
             }
         };
 
+        const fetchLingGovernanceMetrics = async () => {
+            try {
+                const data = await api.get('/lings/governance/all');
+                if (data) {
+                    Object.keys(lingGovernanceMetrics).forEach(lingId => {
+                        if (!data[lingId]) {
+                            delete lingGovernanceMetrics[lingId];
+                        }
+                    });
+                    Object.keys(data).forEach(lingId => {
+                        lingGovernanceMetrics[lingId] = data[lingId];
+                    });
+                }
+            } catch (e) {
+                console.log('Failed to fetch ling governance metrics:', e.message);
+            }
+        };
+
         onMounted(async () => {
             updateTime();
             timeTimer = setInterval(updateTime, 1000);
@@ -1452,7 +1493,9 @@ createApp({
             perfTimer = setInterval(fetchPerformanceMetrics, 3000);
             
             fetchLingHealthMetrics();
+            fetchLingGovernanceMetrics();
             setInterval(fetchLingHealthMetrics, 5000);
+            setInterval(fetchLingGovernanceMetrics, 5000);
         });
 
         // ==================== 监听环境切换 ====================
@@ -1502,10 +1545,10 @@ createApp({
             stats, loading, modal, toasts, envLabels, uploadModal, timelineModal,
 
             perfMetrics,
-            lingHealthMetrics,
+            lingHealthMetrics, lingGovernanceMetrics,
             invocationForm,
 
-            activeLing, activeLingHealth, activeLingVersionHealth, canCanary, canOperate, canActivate, canDeactivate, displayLogs, availableVersions,
+            activeLing, activeLingHealth, activeLingVersionHealth, activeLingGovernance, activeLingVersionGovernance, canCanary, canOperate, canActivate, canDeactivate, displayLogs, availableVersions,
 
             refreshLings, selectLing, updateStatus, requestUnload,
             confirmModalAction, updateCanaryConfig, updateCanaryConfigLocally, resetCanary, togglePerm, toggleIpc,
@@ -1514,10 +1557,10 @@ createApp({
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
             formatDrift, formatTime, formatSize, formatMetricNumber,
             getStatusClass, getLingShortName, getLingTagClass, getLogColor,
-            getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass, getLingHealthStatusClass, getLingHealthRoleLabel,
+            getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass, getLingHealthStatusClass, getLingHealthRoleLabel, hasGovernanceSignals,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
             openTimelineModal, closeTimelineModal, loadTimelineData,
-            doUpdateStatus, fetchPerformanceMetrics, fetchLingHealthMetrics,
+            doUpdateStatus, fetchPerformanceMetrics, fetchLingHealthMetrics, fetchLingGovernanceMetrics,
             uninstallResultModal, closeUninstallResultModal, getUninstallRiskLabel, getUninstallRiskClass, getUninstallTriggerLabel
         };
     }

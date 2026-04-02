@@ -24,6 +24,7 @@ import com.lingframe.core.invoker.FastLingServiceInvoker;
 import com.lingframe.core.spi.LingServiceInvoker;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.*;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.resource.DefaultLeakDetector;
 import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.pipeline.FilterRegistry;
@@ -311,15 +312,17 @@ public class LingFrameCoreConfiguration {
             PermissionService permissionService,
             ObjectProvider<LingServiceInvoker> invokerProvider,
             ObjectProvider<GovernanceArbitrator> arbitratorProvider,
+            ObjectProvider<GovernanceMetricsCollector> governanceMetricsCollectorProvider,
             TrafficRouter trafficRouter,
             EventBus eventBus,
             RuntimeCoordinator runtimeCoordinator) {
         LingServiceInvoker invoker = invokerProvider.getIfAvailable();
         GovernanceArbitrator arbitrator = arbitratorProvider.getIfAvailable();
+        GovernanceMetricsCollector governanceMetricsCollector = governanceMetricsCollectorProvider.getIfAvailable();
         FilterRegistry registry = registryProvider
                 .getIfAvailable(() -> new FilterRegistry(methodCache, permissionService, invoker, arbitrator));
         // 初始化内置 Filter 并注入依赖（构造器注入）
-        registry.initialize(lingRepository, trafficRouter, eventBus, runtimeCoordinator);
+        registry.initialize(lingRepository, trafficRouter, eventBus, runtimeCoordinator, governanceMetricsCollector);
         // 从灵核 ClassLoader 加载 SPI 扩展
         registry.loadSpiFilters(Thread.currentThread().getContextClassLoader());
         return new InvocationPipelineEngine(registry);

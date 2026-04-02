@@ -7,6 +7,7 @@ import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.resilience.CircuitBreaker;
 import com.lingframe.core.resilience.RateLimiter;
 import com.lingframe.core.resilience.SlidingWindowCircuitBreaker;
@@ -34,26 +35,31 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
     private final LingRepository lingRepository;
     private final EventBus eventBus;
     private final RuntimeCoordinator runtimeCoordinator;
+    private final GovernanceMetricsCollector governanceMetricsCollector;
 
     // 按 lingId 管理弹性组件实例
     private final ConcurrentHashMap<String, CircuitBreaker> breakers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, LimiterHolder> limiters = new ConcurrentHashMap<>();
 
     public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus, RuntimeCoordinator runtimeCoordinator) {
+        this(lingRepository, eventBus, runtimeCoordinator, null);
+    }
+
+    public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus, RuntimeCoordinator runtimeCoordinator,
+                                      GovernanceMetricsCollector governanceMetricsCollector) {
         this.lingRepository = lingRepository;
         this.eventBus = eventBus;
         this.runtimeCoordinator = runtimeCoordinator;
+        this.governanceMetricsCollector = governanceMetricsCollector;
     }
 
     public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus) {
-        this(lingRepository, eventBus, null);
+        this(lingRepository, eventBus, null, null);
     }
 
     /** 无参构造保持向后兼容（弹性治理不生效，仅透传） */
     public ResilienceGovernanceFilter() {
-        this.lingRepository = null;
-        this.eventBus = null;
-        this.runtimeCoordinator = null;
+        this(null, null, null, null);
     }
 
     @Override
@@ -74,6 +80,9 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         RateLimiter limiter = getLimiter(lingId, ctx);
         if (limiter != null && !limiter.tryAcquire()) {
             log.warn("[Resilience:{}] Rate limited, rejecting request: {}", lingId, fqsid);
+            if (governanceMetricsCollector != null) {
+                governanceMetricsCollector.recordRateLimited(lingId, ctx.getTargetVersion());
+            }
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.RATE_LIMITED);
         }
 
@@ -81,9 +90,12 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         CircuitBreaker breaker = getBreaker(lingId);
         if (breaker != null && !breaker.tryAcquirePermission()) {
             log.warn("[Resilience:{}] Circuit breaker OPEN, rejecting request: {}", lingId, fqsid);
+            if (governanceMetricsCollector != null) {
+                governanceMetricsCollector.recordCircuitOpenRejected(lingId, ctx.getTargetVersion());
+            }
 
             // 🔥 熔断打开 → 将灵元宏观状态转为 DEGRADED
-            transitionToDegraded(lingId);
+            transitionToDegraded(lingId, ctx.getTargetVersion());
 
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.CIRCUIT_OPEN);
         }
@@ -176,13 +188,16 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
      * 熔断打开时，将灵元宏观状态从 ACTIVE 转为 DEGRADED。
      * 仅在当前状态为 ACTIVE 时才转换，避免重复操作或在 STOPPING 时误触发。
      */
-    private void transitionToDegraded(String lingId) {
+    private void transitionToDegraded(String lingId, String version) {
         if (lingRepository == null || runtimeCoordinator == null)
             return;
         try {
             LingRuntime runtime = lingRepository.getRuntime(lingId);
             if (runtime != null && runtime.currentStatus() == RuntimeStatus.ACTIVE) {
                 runtimeCoordinator.transition(lingId, RuntimeStatus.DEGRADED);
+                if (governanceMetricsCollector != null) {
+                    governanceMetricsCollector.recordCircuitOpened(lingId, version);
+                }
                 log.warn("[Resilience:{}] Circuit breaker opened, runtime transitioned to DEGRADED", lingId);
             }
         } catch (Exception e) {
@@ -202,6 +217,9 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
                 LingRuntime runtime = lingRepository.getRuntime(lingId);
                 if (runtime != null && runtime.currentStatus() == RuntimeStatus.DEGRADED) {
                     runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
+                    if (governanceMetricsCollector != null) {
+                        governanceMetricsCollector.recordRecovered(lingId, runtime.getInstancePool().getVersion());
+                    }
                     log.info("[Resilience:{}] Circuit breaker recovered, runtime transitioned back to ACTIVE", lingId);
                 }
             }

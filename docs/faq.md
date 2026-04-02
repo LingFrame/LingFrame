@@ -292,7 +292,7 @@ lingframe:
 
 ### Q27: When will Prometheus/Grafana integration be supported?
 
-**A:** Planned in Phase 4, see [Roadmap](roadmap.md).
+**A:** Micrometer bridging is already supported. When the host application provides a `MeterRegistry`, LingFrame automatically registers ling health and governance signal gauges. If the host also adds `micrometer-registry-prometheus` and exposes `/actuator/prometheus`, Prometheus can scrape them directly. See `lingframe-example-lingcore-app` for a working sample.
 
 ### Q28: When will message brokers (Kafka/RabbitMQ) be supported?
 

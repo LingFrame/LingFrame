@@ -182,13 +182,20 @@
         "invocationUpdateFailed": "Invocation governance update failed"
   },
   "performance": {
-    "title": "System Performance",
-    "realtime": "Real-time Monitor",
-    "memory": "Memory",
-    "heap": "Heap Memory",
-    "threads": "Active Threads",
-    "gc": "GC Count"
-  },
+      "title": "System Performance",
+      "realtime": "Real-time Monitor",
+      "cpu": "CPU",
+      "jvmMemory": "JVM Memory",
+      "memory": "Memory",
+      "heap": "Heap Memory",
+      "used": "Used",
+      "allocated": "Allocated",
+      "metaspace": "Metaspace",
+      "loadedClasses": "Loaded Classes",
+      "unloadedClasses": "Unloaded Classes",
+      "threads": "Active Threads",
+      "gc": "GC Count"
+    },
   "timeline": {
     "title": "Ling Lifecycle Timeline",
     "selectLing": "Select Ling",
@@ -228,5 +235,16 @@
       "empty": "No health metrics have been collected for this ling yet",
       "versionEmpty": "No health metrics have been collected for this version yet",
       "unknown": "Unknown"
+  },
+  "governanceCard": {
+      "title": "Governance Signals",
+      "signalDetected": "Signals Detected",
+      "noSignal": "No Signals",
+      "rateLimitedRequests": "Rate Limited",
+      "timeoutRequests": "Timeouts",
+      "circuitOpenedCount": "Circuit Opened",
+      "circuitOpenRejections": "Circuit Rejected",
+      "empty": "No governance signals have been collected for this ling yet",
+      "versionEmpty": "No governance signals have been collected for this version yet"
   }
 }
