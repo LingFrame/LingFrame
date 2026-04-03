@@ -176,6 +176,14 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         limiters.remove(lingId);
     }
 
+    /**
+     * 受控恢复时仅重置弹性治理状态，不清空限流配置。
+     * 这样可以在不丢失运行时预算的前提下，清掉 OPEN / HALF_OPEN 熔断器痕迹。
+     */
+    public boolean recover(String lingId) {
+        return breakers.remove(lingId) != null;
+    }
+
     boolean hasBreaker(String lingId) {
         return breakers.containsKey(lingId);
     }

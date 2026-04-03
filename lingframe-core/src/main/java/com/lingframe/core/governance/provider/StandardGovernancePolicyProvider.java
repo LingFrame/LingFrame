@@ -175,6 +175,14 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
                 builder.maxConcurrentThreads(invocation.getMaxConcurrentThreads());
                 invocationOverride = true;
             }
+            if (invocation.getRetryCount() != null) {
+                builder.retryCount(invocation.getRetryCount());
+                invocationOverride = true;
+            }
+            if (invocation.getFallbackValue() != null) {
+                builder.fallbackValue(invocation.getFallbackValue());
+                invocationOverride = true;
+            }
         }
 
         return new PolicyOverlayResult(accessControlOverride, invocationOverride);

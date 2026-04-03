@@ -230,6 +230,13 @@ public class FilterRegistry {
         }
     }
 
+    public boolean recoverLingGovernance(String lingId) {
+        if (resilienceFilter == null) {
+            return false;
+        }
+        return resilienceFilter.recover(lingId);
+    }
+
     ResilienceGovernanceFilter getResilienceFilter() {
         return resilienceFilter;
     }

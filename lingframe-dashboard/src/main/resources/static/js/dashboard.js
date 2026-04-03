@@ -105,7 +105,9 @@ createApp({
         const invocationForm = reactive({
             timeoutMs: '',
             rateLimitPerSecond: '',
-            maxConcurrentThreads: ''
+            maxConcurrentThreads: '',
+            retryCount: '',
+            fallbackValue: ''
         });
 
         let eventSource = null;
@@ -130,6 +132,7 @@ createApp({
         const canOperate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
         const canActivate = computed(() => activeLing.value?.status === 'INACTIVE');
         const canDeactivate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
+        const canRecover = computed(() => activeLing.value?.status === 'DEGRADED');
         const activeLingHealth = computed(() => activeId.value ? lingHealthMetrics[activeId.value]?.summary || null : null);
         const activeLingVersionHealth = computed(() => {
             if (!activeId.value || !activeLing.value?.versionDetails) {
@@ -432,6 +435,10 @@ createApp({
             }
             if (newStatus === 'INACTIVE' && currentStatus !== 'ACTIVE' && currentStatus !== 'DEGRADED') {
                 showToast(t('toast.cannotDeactivateFrom') + ': ' + currentStatus, 'error');
+                return;
+            }
+            if (newStatus === 'RECOVERING' && currentStatus !== 'DEGRADED') {
+                showToast(t('toast.cannotRecoverFrom') + ': ' + currentStatus, 'error');
                 return;
             }
             
@@ -819,6 +826,8 @@ createApp({
             invocationForm.timeoutMs = current.timeoutMs ?? '';
             invocationForm.rateLimitPerSecond = current.rateLimitPerSecond ?? '';
             invocationForm.maxConcurrentThreads = current.maxConcurrentThreads ?? '';
+            invocationForm.retryCount = current.retryCount ?? '';
+            invocationForm.fallbackValue = current.fallbackValue ?? '';
         };
 
         const saveInvocationGovernance = async () => {
@@ -829,7 +838,9 @@ createApp({
                 const updated = await api.post(`/governance/${activeId.value}/invocation`, {
                     timeoutMs: normalizeNullableInt(invocationForm.timeoutMs),
                     rateLimitPerSecond: normalizeNullableInt(invocationForm.rateLimitPerSecond),
-                    maxConcurrentThreads: normalizeNullableInt(invocationForm.maxConcurrentThreads)
+                    maxConcurrentThreads: normalizeNullableInt(invocationForm.maxConcurrentThreads),
+                    retryCount: normalizeNullableInt(invocationForm.retryCount),
+                    fallbackValue: invocationForm.fallbackValue || null
                 });
 
                 const idx = lings.value.findIndex(p => p.lingId === activeId.value);
@@ -1258,6 +1269,7 @@ createApp({
             'READY_FOR_USE': 'status-loaded',
             'IN_USE': 'status-active',
             'DEGRADED': 'status-error',
+            'RECOVERING': 'status-loading',
             'REMOVED': 'status-unloaded',
             'RETIRED': 'status-unloaded',
             'STARTING': 'status-loading',
@@ -1301,6 +1313,8 @@ createApp({
                     return 'bg-blue-500/20 text-blue-400 border-2 border-blue-500';
                 case 'ACTIVE':
                     return 'bg-green-500/20 text-green-400 border-2 border-green-500';
+                case 'RECOVERING':
+                    return 'bg-cyan-500/20 text-cyan-400 border-2 border-cyan-500';
                 case 'STOPPING':
                     return 'bg-amber-500/20 text-amber-400 border-2 border-amber-500';
                 case 'DEAD':
@@ -1322,6 +1336,8 @@ createApp({
                     return 'fa-solid fa-check-circle';
                 case 'ACTIVE':
                     return 'fa-solid fa-play-circle';
+                case 'RECOVERING':
+                    return 'fa-solid fa-rotate';
                 case 'STOPPING':
                     return 'fa-solid fa-pause-circle';
                 case 'DEAD':
@@ -1343,6 +1359,8 @@ createApp({
                     return 'bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded';
                 case 'ACTIVE':
                     return 'bg-green-500/20 text-green-400 px-2 py-0.5 rounded';
+                case 'RECOVERING':
+                    return 'bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded';
                 case 'STOPPING':
                     return 'bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded';
                 case 'DEAD':
@@ -1548,7 +1566,7 @@ createApp({
             lingHealthMetrics, lingGovernanceMetrics,
             invocationForm,
 
-            activeLing, activeLingHealth, activeLingVersionHealth, activeLingGovernance, activeLingVersionGovernance, canCanary, canOperate, canActivate, canDeactivate, displayLogs, availableVersions,
+            activeLing, activeLingHealth, activeLingVersionHealth, activeLingGovernance, activeLingVersionGovernance, canCanary, canOperate, canActivate, canDeactivate, canRecover, displayLogs, availableVersions,
 
             refreshLings, selectLing, updateStatus, requestUnload,
             confirmModalAction, updateCanaryConfig, updateCanaryConfigLocally, resetCanary, togglePerm, toggleIpc,

@@ -179,12 +179,16 @@ public class GovernancePolicy implements Serializable {
         private Integer timeoutMs;
         private Integer rateLimitPerSecond;
         private Integer maxConcurrentThreads;
+        private Integer retryCount;
+        private String fallbackValue;
 
         public InvocationPolicy copy() {
             InvocationPolicy copy = new InvocationPolicy();
             copy.timeoutMs = this.timeoutMs;
             copy.rateLimitPerSecond = this.rateLimitPerSecond;
             copy.maxConcurrentThreads = this.maxConcurrentThreads;
+            copy.retryCount = this.retryCount;
+            copy.fallbackValue = this.fallbackValue;
             return copy;
         }
 
@@ -200,6 +204,12 @@ public class GovernancePolicy implements Serializable {
             }
             if (patch.maxConcurrentThreads != null) {
                 this.maxConcurrentThreads = patch.maxConcurrentThreads;
+            }
+            if (patch.retryCount != null) {
+                this.retryCount = patch.retryCount;
+            }
+            if (patch.fallbackValue != null) {
+                this.fallbackValue = patch.fallbackValue;
             }
         }
     }

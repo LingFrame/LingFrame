@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.never;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -197,6 +198,8 @@ class DashboardServiceTest {
                     .timeoutMs(1200)
                     .rateLimitPerSecond(9)
                     .maxConcurrentThreads(4)
+                    .retryCount(2)
+                    .fallbackValue("fallback-ok")
                     .build();
 
             InvocationGovernanceDTO result = service.updateInvocationGovernance("ling1", dto);
@@ -206,9 +209,36 @@ class DashboardServiceTest {
             assertEquals(Integer.valueOf(1200), saved.getInvocation().getTimeoutMs());
             assertEquals(Integer.valueOf(9), result.getRateLimitPerSecond());
             assertEquals(Integer.valueOf(4), result.getMaxConcurrentThreads());
+            assertEquals(Integer.valueOf(2), result.getRetryCount());
+            assertEquals("fallback-ok", result.getFallbackValue());
 
             verify(permissionService).removeLing("ling1");
             verify(permissionService).grant("ling1", Capabilities.CACHE_LOCAL, AccessType.WRITE);
+        }
+    }
+
+    @Nested
+    @DisplayName("受控恢复")
+    class RecoverTests {
+
+        @Test
+        @DisplayName("恢复状态更新时应触发生命周期引擎恢复")
+        void updateStatusShouldTriggerRecover() {
+            DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
+                    governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator);
+
+            com.lingframe.core.ling.LingRuntime runtime = org.mockito.Mockito.mock(com.lingframe.core.ling.LingRuntime.class);
+            com.lingframe.core.ling.InstancePool instancePool = org.mockito.Mockito.mock(com.lingframe.core.ling.InstancePool.class);
+            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
+            when(runtime.currentStatus()).thenReturn(com.lingframe.core.fsm.RuntimeStatus.DEGRADED);
+            when(runtime.getInstancePool()).thenReturn(instancePool);
+            when(instancePool.getDefault()).thenReturn(null);
+            when(lingInfoConverter.toDTO(eq(runtime), eq(canaryRouter), eq(permissionService), any())).thenReturn(null);
+
+            service.updateStatus("ling1", com.lingframe.core.fsm.RuntimeStatus.RECOVERING, "1.0.0");
+
+            verify(lifecycleEngine).recover("ling1", "1.0.0");
+            verify(runtimeCoordinator, never()).transition(eq("ling1"), eq(com.lingframe.core.fsm.RuntimeStatus.RECOVERING));
         }
     }
 

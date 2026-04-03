@@ -160,5 +160,11 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
         if (decision.getMaxConcurrentThreads() != null) {
             governanceState.setMaxConcurrentThreads(decision.getMaxConcurrentThreads());
         }
+        if (decision.getRetryCount() != null) {
+            governanceState.setRetryCount(decision.getRetryCount());
+        }
+        if (decision.getFallbackValue() != null) {
+            governanceState.setFallbackValue(decision.getFallbackValue());
+        }
     }
 }

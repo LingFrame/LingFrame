@@ -187,6 +187,40 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
     }
 
     @Override
+    public void recover(String lingId, String version) {
+        LingRuntime runtime = findRuntimeOrWarn(lingId);
+        if (runtime == null) {
+            throw new IllegalStateException("Ling not found: " + lingId);
+        }
+
+        LingInstance targetInstance = version == null
+                ? selectRecoverableInstance(runtime)
+                : findActiveInstanceOrWarn(lingId, runtime, version);
+        if (targetInstance == null) {
+            throw new IllegalStateException("No recoverable instance found for ling " + lingId);
+        }
+
+        runtimeCoordinator.transition(lingId, RuntimeStatus.RECOVERING);
+        if (pipelineEngine != null) {
+            pipelineEngine.recoverLingGovernance(lingId);
+        }
+
+        if (targetInstance.currentStatus() == com.lingframe.core.fsm.InstanceStatus.ERROR) {
+            recoverErroredInstance(lingId, targetInstance);
+            return;
+        }
+
+        if (runtime.getInstancePool().hasAvailableInstance()) {
+            runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
+            log.info("[{}] Runtime governance state recovered without instance restart", lingId);
+            return;
+        }
+
+        runtimeCoordinator.transition(lingId, RuntimeStatus.DEGRADED);
+        throw new IllegalStateException("Runtime recovery did not find any READY instance for ling " + lingId);
+    }
+
+    @Override
     public LingUninstallResult undeployWithReport(String lingId) {
         log.info("Uninstalling ling: {}", lingId);
 
@@ -373,6 +407,49 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
             log.warn("Ling instance not found or already dying for: {}:{}", lingId, version);
         }
         return targetInstance;
+    }
+
+    private LingInstance selectRecoverableInstance(LingRuntime runtime) {
+        if (runtime == null) {
+            return null;
+        }
+        for (LingInstance instance : runtime.getInstancePool().getAllInstances()) {
+            if (instance.currentStatus() == com.lingframe.core.fsm.InstanceStatus.ERROR) {
+                return instance;
+            }
+        }
+        LingInstance defaultInstance = runtime.getInstancePool().getDefault();
+        if (defaultInstance != null) {
+            return defaultInstance;
+        }
+        List<LingInstance> active = runtime.getInstancePool().getActiveInstances();
+        return active.isEmpty() ? null : active.get(0);
+    }
+
+    private void recoverErroredInstance(String lingId, LingInstance instance) {
+        try {
+            instanceCoordinator.recovering(instance);
+            startPreparedInstance(instance, createLingContext(lingId));
+            instanceCoordinator.markReady(instance);
+            runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
+            log.info("[{}] Instance {} recovered successfully", lingId, instance.getVersion());
+        } catch (Throwable t) {
+            log.error("[{}] Failed to recover instance {}", lingId, instance.getVersion(), t);
+            safeTransitionToError(instance);
+            runtimeCoordinator.transition(lingId, RuntimeStatus.DEGRADED);
+            throw t;
+        }
+    }
+
+    private void safeTransitionToError(LingInstance instance) {
+        if (instance == null || instance.currentStatus() == com.lingframe.core.fsm.InstanceStatus.ERROR) {
+            return;
+        }
+        try {
+            instanceCoordinator.error(instance);
+        } catch (Exception e) {
+            log.warn("Failed to route instance {} back to ERROR after recovery failure", instance.getVersion(), e);
+        }
     }
 
     private void undeploySelectedInstance(String lingId, LingRuntime runtime, LingInstance targetInstance) {

@@ -92,6 +92,7 @@
         "lifecycle": "Lifecycle",
         "activate": "Activate",
         "inactivate": "Inactivate",
+        "recover": "Recover",
         "reload": "Hot Reload",
         "unload": "Unload",
         "permissions": "Permissions",
@@ -111,6 +112,8 @@
     "timeoutMs": "Timeout (ms)",
     "rateLimitPerSecond": "Rate Limit (QPS)",
     "maxConcurrentThreads": "Max Concurrent Threads",
+    "retryCount": "Retry Count",
+    "fallbackValue": "Fallback Value",
     "saveInvocation": "Save Invocation Governance"
   },
     "demo": {
@@ -151,6 +154,9 @@
         "getLingsFailed": "Failed to get ling list",
         "statusUpdated": "Status updated to {status}",
         "statusUpdateFailed": "Failed to update status",
+        "cannotActivateFrom": "Activation is not allowed from current status",
+        "cannotDeactivateFrom": "Deactivation is not allowed from current status",
+        "cannotRecoverFrom": "Recovery is not allowed from current status",
         "lingUnloaded": "Ling unloaded",
         "unloadFailed": "Unload failed",
         "canarySet": "Canary ratio set to {percent}%",
@@ -203,6 +209,14 @@
       "threads": "Active Threads",
       "gc": "GC Count"
     },
+  "status": {
+    "active": "ACTIVE",
+    "inactive": "INACTIVE",
+    "degraded": "DEGRADED",
+    "recovering": "RECOVERING",
+    "stopping": "STOPPING",
+    "removed": "REMOVED"
+  },
   "timeline": {
     "title": "Ling Lifecycle Timeline",
     "selectLing": "Select Ling",

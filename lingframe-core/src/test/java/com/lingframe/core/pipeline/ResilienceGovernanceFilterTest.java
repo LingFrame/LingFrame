@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -172,6 +173,22 @@ class ResilienceGovernanceFilterTest {
             filter.evict("demo-ling");
 
             assertFalse(filter.hasLimiter("demo-ling"));
+            assertFalse(filter.hasBreaker("demo-ling"));
+        }
+
+        @Test
+        @DisplayName("恢复治理状态时应只重置熔断器")
+        void recover_ShouldOnlyClearBreakerState() throws Throwable {
+            setupMocks(10, 1000);
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            assertEquals(expected, filter.doFilter(context, filterChain));
+            assertTrue(filter.hasLimiter("demo-ling"));
+            assertTrue(filter.hasBreaker("demo-ling"));
+
+            assertTrue(filter.recover("demo-ling"));
+            assertTrue(filter.hasLimiter("demo-ling"));
             assertFalse(filter.hasBreaker("demo-ling"));
         }
     }

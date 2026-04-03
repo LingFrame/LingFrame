@@ -252,6 +252,22 @@ public class InvocationContext {
         governanceState.setMaxConcurrentThreads(maxConcurrentThreads);
     }
 
+    public Integer getRetryCount() {
+        return governanceState.getRetryCount();
+    }
+
+    public void setRetryCount(Integer retryCount) {
+        governanceState.setRetryCount(retryCount);
+    }
+
+    public String getFallbackValue() {
+        return governanceState.getFallbackValue();
+    }
+
+    public void setFallbackValue(String fallbackValue) {
+        governanceState.setFallbackValue(fallbackValue);
+    }
+
     /**
      * 执行模式访问器。
      */

@@ -303,6 +303,18 @@ public class DashboardService {
                 permissionService.revoke(lingId, Capabilities.Ling_ENABLE);
                 log.info("[Dashboard] Revoked Ling_ENABLE permission from {}, ling deactivated", lingId);
                 break;
+            case RECOVERING:
+                lifecycleEngine.recover(lingId, version);
+                log.info("[Dashboard] Recovery triggered for ling: {} version: {}", lingId, version);
+                addLifecycleEvent(lingId, version, "RECOVERING", "灵元恢复中",
+                        version == null
+                                ? "灵元 " + lingId + " 已进入受控恢复流程"
+                                : "灵元 " + lingId + " 版本 " + version + " 已进入受控恢复流程");
+                addLifecycleEvent(lingId, version, "ACTIVE", "灵元恢复完成",
+                        version == null
+                                ? "灵元 " + lingId + " 已恢复到可服务状态"
+                                : "灵元 " + lingId + " 版本 " + version + " 已恢复到可服务状态");
+                break;
             case REMOVED:
                 lifecycleEngine.undeploy(lingId);
                 break;
@@ -468,6 +480,8 @@ public class DashboardService {
         invocation.setTimeoutMs(dto.getTimeoutMs());
         invocation.setRateLimitPerSecond(dto.getRateLimitPerSecond());
         invocation.setMaxConcurrentThreads(dto.getMaxConcurrentThreads());
+        invocation.setRetryCount(dto.getRetryCount());
+        invocation.setFallbackValue(dto.getFallbackValue());
         patch.setInvocation(invocation);
 
         persistPolicyPatch(lingId, patch);
@@ -482,6 +496,8 @@ public class DashboardService {
                 .timeoutMs(invocation == null ? null : invocation.getTimeoutMs())
                 .rateLimitPerSecond(invocation == null ? null : invocation.getRateLimitPerSecond())
                 .maxConcurrentThreads(invocation == null ? null : invocation.getMaxConcurrentThreads())
+                .retryCount(invocation == null ? null : invocation.getRetryCount())
+                .fallbackValue(invocation == null ? null : invocation.getFallbackValue())
                 .build();
     }
 

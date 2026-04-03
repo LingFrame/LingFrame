@@ -1016,6 +1016,9 @@
                                                 <button @click="updateStatus('INACTIVE')" :disabled="!canDeactivate"
                                                     class="action-btn bg-blue-600 text-white" :class="{ 'opacity-50 cursor-not-allowed': !canDeactivate }">{{ t('control.inactivate') }}</button>
                                             </div>
+                                            <button @click="updateStatus('RECOVERING')" :disabled="!canRecover"
+                                                class="w-full py-2 bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 rounded-lg font-bold"
+                                                :class="{ 'opacity-50 cursor-not-allowed': !canRecover }">{{ t('control.recover') }}</button>
                                             <button @click="requestUnloadWithName(activeId)"
                                                 class="w-full py-2 bg-red-600/20 text-red-400 border border-red-500/30 rounded-lg font-bold">{{
                                                 t('control.unload') }}</button>
@@ -1078,6 +1081,9 @@
                                                     class="action-btn bg-blue-600 text-white" :class="{ 'opacity-50 cursor-not-allowed': !canDeactivate }">{{ t('control.inactivate')
                                                     }}</button>
                                             </div>
+                                            <button @click="updateStatus('RECOVERING')" :disabled="!canRecover"
+                                                class="w-full py-2 bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 rounded-lg font-bold"
+                                                :class="{ 'opacity-50 cursor-not-allowed': !canRecover }">{{ t('control.recover') }}</button>
                                             <button @click="requestUnloadWithName(activeId)"
                                                 class="w-full py-2 bg-red-600/20 text-red-400 border border-red-500/30 rounded-lg font-bold">{{
                                                 t('control.unload') }}</button>
@@ -1185,6 +1191,16 @@
                                                 <div>
                                                     <label class="text-xs text-slate-400 block mb-1">{{ t('control.maxConcurrentThreads') }}</label>
                                                     <input v-model="invocationForm.maxConcurrentThreads" type="number" min="1"
+                                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs text-slate-400 block mb-1">{{ t('control.retryCount') }}</label>
+                                                    <input v-model="invocationForm.retryCount" type="number" min="0"
+                                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs text-slate-400 block mb-1">{{ t('control.fallbackValue') }}</label>
+                                                    <input v-model="invocationForm.fallbackValue" type="text"
                                                         class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
                                                 </div>
                                                 <button @click="saveInvocationGovernance"

@@ -45,6 +45,13 @@ public class InvocationPipelineEngine {
         registry.evictLingResources(lingId);
     }
 
+    /**
+     * 受控恢复时重置与该灵元绑定的治理状态。
+     */
+    public boolean recoverLingGovernance(String lingId) {
+        return registry != null && registry.recoverLingGovernance(lingId);
+    }
+
     public int evictMethodCache(String lingId) {
         return registry.evictMethodCache(lingId);
     }

@@ -55,6 +55,18 @@ public class InvocationGovernanceState {
      */
     private Integer maxConcurrentThreads;
 
+    /**
+     * 治理阶段计算出的重试次数。
+     * 终端执行阶段消费这里的结果，避免“声明了 retry 但从未真正生效”。
+     */
+    private Integer retryCount;
+
+    /**
+     * 重试耗尽后的回退值。
+     * 先保持字符串形态，避免在治理层提前绑定目标方法返回类型。
+     */
+    private String fallbackValue;
+
     void reset() {
         this.requiredPermission = null;
         this.accessType = null;
@@ -64,6 +76,8 @@ public class InvocationGovernanceState {
         this.timeoutMs = null;
         this.rateLimitPerSecond = null;
         this.maxConcurrentThreads = null;
+        this.retryCount = null;
+        this.fallbackValue = null;
     }
 
     void copyFrom(InvocationGovernanceState source) {
@@ -78,5 +92,7 @@ public class InvocationGovernanceState {
         this.timeoutMs = source.timeoutMs;
         this.rateLimitPerSecond = source.rateLimitPerSecond;
         this.maxConcurrentThreads = source.maxConcurrentThreads;
+        this.retryCount = source.retryCount;
+        this.fallbackValue = source.fallbackValue;
     }
 }

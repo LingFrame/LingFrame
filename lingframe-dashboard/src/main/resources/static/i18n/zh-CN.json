@@ -92,6 +92,7 @@
     "lifecycle": "生命周期",
     "activate": "激活",
     "inactivate": "停用",
+    "recover": "恢复",
     "reload": "热重载",
     "unload": "卸载",
     "permissions": "资源权限",
@@ -111,6 +112,8 @@
     "timeoutMs": "超时 (ms)",
     "rateLimitPerSecond": "限流 (QPS)",
     "maxConcurrentThreads": "最大并发线程",
+    "retryCount": "重试次数",
+    "fallbackValue": "回退值",
     "saveInvocation": "保存调用治理"
   },
   "demo": {
@@ -151,6 +154,9 @@
     "getLingsFailed": "获取灵元列表失败",
     "statusUpdated": "状态已更新为 {status}",
     "statusUpdateFailed": "状态更新失败",
+    "cannotActivateFrom": "当前状态不允许激活",
+    "cannotDeactivateFrom": "当前状态不允许停用",
+    "cannotRecoverFrom": "当前状态不允许恢复",
     "lingUnloaded": "灵元已卸载",
     "unloadFailed": "卸载失败",
     "canarySet": "灰度比例已设置为 {percent}%",
@@ -203,6 +209,14 @@
       "threads": "活跃线程",
       "gc": "GC 次数"
     },
+  "status": {
+    "active": "激活",
+    "inactive": "未激活",
+    "degraded": "降级",
+    "recovering": "恢复中",
+    "stopping": "停止中",
+    "removed": "已卸载"
+  },
   "timeline": {
     "title": "灵元生命周期时间线",
     "selectLing": "选择灵元",

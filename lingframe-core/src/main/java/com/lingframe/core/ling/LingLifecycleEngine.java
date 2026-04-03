@@ -59,4 +59,16 @@ public interface LingLifecycleEngine {
             undeploy(lingId, instance.getVersion());
         }
     }
+
+    /**
+     * 触发一次受控恢复。
+     * 用于 ERROR / DEGRADED 场景下清理治理态、重试实例启动并收敛回稳定状态。
+     */
+    default void recover(String lingId) {
+        recover(lingId, null);
+    }
+
+    default void recover(String lingId, String version) {
+        throw new UnsupportedOperationException("Recovery is not supported by current lifecycle engine");
+    }
 }

@@ -5,6 +5,7 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LeakRiskLevel;
 import com.lingframe.core.spi.LeakRiskReport;
@@ -19,6 +20,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -139,6 +141,66 @@ class DefaultLingLifecycleEngineTest {
             verify(unloadCoordinator).checkBeforeVersionUnload("ling1", "1.0.0", targetClassLoader);
             verify(unloadCoordinator).onVersionUnload("ling1", "1.0.0", targetClassLoader);
             verify(unloadCoordinator).detectLeak("ling1", "1.0.0", targetClassLoader);
+        } finally {
+            runtimeCoordinator.stop();
+        }
+    }
+
+    @Test
+    @DisplayName("recover 应重置治理状态并把错误实例拉回 READY")
+    void recoverShouldDriveErroredInstanceBackToReady() {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        ContainerFactory containerFactory = mock(ContainerFactory.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        LingLoaderFactory loaderFactory = mock(LingLoaderFactory.class);
+        LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
+        InvocationPipelineEngine pipelineEngine = mock(InvocationPipelineEngine.class);
+
+        DefaultLingRepository repository = new DefaultLingRepository();
+        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(
+                containerFactory,
+                permissionService,
+                loaderFactory,
+                Collections.emptyList(),
+                eventBus,
+                LingFrameConfig.builder().build(),
+                repository,
+                serviceRegistry,
+                pipelineEngine,
+                null,
+                mock(LingUnloadCoordinator.class),
+                runtimeCoordinator);
+
+        LingContainer container = mock(LingContainer.class);
+        when(container.isActive()).thenReturn(true);
+        when(container.getClassLoader()).thenReturn(getClass().getClassLoader());
+
+        LingDefinition definition = new LingDefinition();
+        definition.setId("ling1");
+        definition.setVersion("1.0.0");
+        definition.setMainClass("demo.Main");
+
+        LingInstance instance = new LingInstance(container, definition, eventBus);
+        InstanceCoordinator coordinator = new InstanceCoordinator(eventBus);
+        coordinator.prepare(instance);
+        coordinator.start(instance);
+        coordinator.error(instance);
+
+        LingRuntime runtime = new LingRuntime("ling1", LingRuntimeConfig.defaults(), eventBus, runtimeCoordinator);
+        runtime.getInstancePool().addInstance(instance, true);
+        repository.register(runtime);
+
+        try {
+            engine.recover("ling1", "1.0.0");
+
+            assertEquals(com.lingframe.core.fsm.InstanceStatus.READY, instance.currentStatus());
+            assertEquals(com.lingframe.core.fsm.RuntimeStatus.ACTIVE, runtime.currentStatus());
+            verify(pipelineEngine).recoverLingGovernance("ling1");
+            verify(container).start(org.mockito.ArgumentMatchers.any());
+            verify(container, never()).stop();
         } finally {
             runtimeCoordinator.stop();
         }

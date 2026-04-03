@@ -12,11 +12,7 @@ import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.update.Update;
 import net.sf.jsqlparser.util.TablesNamesFinder;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 /**
  * SQL 权限辅助工具。
@@ -32,7 +28,7 @@ final class SqlPermissionSupport {
 
     static SqlPermissionPlan analyze(String sql) {
         if (sql == null || sql.trim().isEmpty()) {
-            return new SqlPermissionPlan(AccessType.EXECUTE, List.of());
+            return new SqlPermissionPlan(AccessType.EXECUTE, Collections.emptyList());
         }
 
         try {
@@ -41,7 +37,7 @@ final class SqlPermissionSupport {
         } catch (JSQLParserException e) {
             // 解析失败时维持保守策略，仍回退到通用 capability + EXECUTE 权限要求。
             log.error("[SQL Parse Error] Rejecting ambiguous SQL: {}", sql);
-            return new SqlPermissionPlan(AccessType.EXECUTE, List.of());
+            return new SqlPermissionPlan(AccessType.EXECUTE, Collections.emptyList());
         }
     }
 
@@ -121,7 +117,7 @@ final class SqlPermissionSupport {
 
         SqlPermissionPlan(AccessType accessType, List<String> capabilities) {
             this.accessType = accessType;
-            this.capabilities = capabilities == null ? List.of() : List.copyOf(capabilities);
+            this.capabilities = capabilities == null ? Collections.emptyList() : Collections.unmodifiableList(capabilities);
         }
 
         AccessType getAccessType() {
