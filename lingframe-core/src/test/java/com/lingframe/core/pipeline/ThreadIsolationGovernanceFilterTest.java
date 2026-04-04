@@ -7,6 +7,7 @@ import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.spi.LingFilterChain;
 import org.junit.jupiter.api.DisplayName;
@@ -27,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 @DisplayName("ThreadIsolationGovernanceFilter 测试")
 class ThreadIsolationGovernanceFilterTest {
@@ -322,6 +324,46 @@ class ThreadIsolationGovernanceFilterTest {
                 LingInvocationException exception = assertThrows(LingInvocationException.class,
                         () -> filter.doFilter(context, slowChain));
                 assertEquals(LingInvocationException.ErrorKind.TIMEOUT, exception.getKind());
+            } finally {
+                filter.evict("ling1");
+                context.recycle();
+            }
+        }
+
+        @Test
+        @DisplayName("应记录线程预算、CPU 预算与内存估算观测")
+        void shouldRecordBudgetObservations() throws Throwable {
+            LingRepository repository = new DefaultLingRepository();
+            LingRuntimeConfig config = LingRuntimeConfig.builder()
+                    .bulkheadMaxConcurrent(2)
+                    .defaultTimeoutMs(1000)
+                    .build();
+            EventBus eventBus = new EventBus();
+            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            repository.register(runtime);
+            GovernanceMetricsCollector collector = new GovernanceMetricsCollector();
+
+            ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository, collector);
+            InvocationContext context = InvocationContext.obtain();
+            context.setServiceFQSID("ling1:TestService");
+            context.setTargetVersion("1.0.0");
+            context.governance().setMaxConcurrentThreads(2);
+            context.governance().setCpuBudgetMsPerMinute(500);
+            context.governance().setMemoryBudgetMb(8);
+
+            try {
+                assertEquals("ok", filter.doFilter(context, current -> {
+                    byte[] buffer = new byte[128 * 1024];
+                    return buffer.length > 0 ? "ok" : "fail";
+                }));
+
+                com.lingframe.core.metrics.GovernanceMetricsSnapshot snapshot = collector.getSummary("ling1");
+                assertEquals(2, snapshot.getMaxConcurrentThreadsBudget());
+                assertEquals(500, snapshot.getCpuBudgetMsPerMinute());
+                assertEquals(8, snapshot.getMemoryBudgetMb());
+                assertTrue(snapshot.getCpuTimeMsLastMinute() >= 0);
+                assertTrue(snapshot.getEstimatedHeapDeltaBytes() >= 0);
+                assertNotEquals(0L, snapshot.getTimestamp());
             } finally {
                 filter.evict("ling1");
                 context.recycle();

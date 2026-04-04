@@ -132,6 +132,10 @@ public class LingInfoConverter {
         Integer timeoutMs = invocation == null ? null : invocation.getTimeoutMs();
         Integer rateLimitPerSecond = invocation == null ? null : invocation.getRateLimitPerSecond();
         Integer maxConcurrentThreads = invocation == null ? null : invocation.getMaxConcurrentThreads();
+        Integer retryCount = invocation == null ? null : invocation.getRetryCount();
+        String fallbackValue = invocation == null ? null : invocation.getFallbackValue();
+        Integer cpuBudgetMsPerMinute = invocation == null ? null : invocation.getCpuBudgetMsPerMinute();
+        Integer memoryBudgetMb = invocation == null ? null : invocation.getMemoryBudgetMb();
 
         if (runtime != null && runtime.getConfig() != null) {
             if (timeoutMs == null) {
@@ -149,6 +153,10 @@ public class LingInfoConverter {
                 .timeoutMs(timeoutMs)
                 .rateLimitPerSecond(rateLimitPerSecond)
                 .maxConcurrentThreads(maxConcurrentThreads)
+                .retryCount(retryCount)
+                .fallbackValue(fallbackValue)
+                .cpuBudgetMsPerMinute(cpuBudgetMsPerMinute)
+                .memoryBudgetMb(memoryBudgetMb)
                 .build();
     }
 

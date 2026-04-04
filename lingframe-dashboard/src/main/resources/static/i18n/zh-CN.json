@@ -114,6 +114,8 @@
     "maxConcurrentThreads": "最大并发线程",
     "retryCount": "重试次数",
     "fallbackValue": "回退值",
+    "cpuBudgetMsPerMinute": "CPU 预算 (ms/分钟)",
+    "memoryBudgetMb": "内存预算 (MB)",
     "saveInvocation": "保存调用治理"
   },
   "demo": {
@@ -265,6 +267,15 @@
       "timeoutRequests": "超时次数",
       "circuitOpenedCount": "熔断打开",
       "circuitOpenRejections": "熔断拒绝",
+      "activeThreads": "活跃隔离线程",
+      "threadBudget": "线程预算",
+      "threadUsage": "线程预算使用率",
+      "cpuTimeLastMinute": "近一分钟 CPU",
+      "cpuBudgetUsage": "CPU 预算使用率",
+      "estimatedHeapDelta": "估算堆增量",
+      "threadBudgetExceeded": "线程预算告警",
+      "cpuBudgetExceeded": "CPU 预算告警",
+      "memoryBudgetExceeded": "内存预算告警",
       "empty": "暂未采集到治理信号",
       "versionEmpty": "该版本暂未采集到治理信号"
   }

@@ -963,6 +963,42 @@
                                                     <span class="health-metric-label">{{ t('governanceCard.circuitOpenRejections') }}</span>
                                                     <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.circuitOpenRejections, 0) }}</span>
                                                 </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.activeThreads') }}</span>
+                                                    <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.activeIsolatedThreads, '') }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.threadBudget') }}</span>
+                                                    <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.maxConcurrentThreadsBudget, '') }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.threadUsage') }}</span>
+                                                    <span class="health-metric-value">{{ formatBudgetPercent(activeLingGovernance.activeIsolatedThreads, activeLingGovernance.maxConcurrentThreadsBudget) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.cpuBudgetUsage') }}</span>
+                                                    <span class="health-metric-value">{{ formatBudgetPercent(activeLingGovernance.cpuTimeMsLastMinute, activeLingGovernance.cpuBudgetMsPerMinute) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.cpuTimeLastMinute') }}</span>
+                                                    <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.cpuTimeMsLastMinute, ' ms') }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.estimatedHeapDelta') }}</span>
+                                                    <span class="health-metric-value">{{ formatSize(activeLingGovernance.estimatedHeapDeltaBytes || 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.threadBudgetExceeded') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.threadBudgetExceededCount, 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.cpuBudgetExceeded') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.cpuBudgetExceededCount, 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.memoryBudgetExceeded') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.memoryBudgetExceededCount, 0) }}</span>
+                                                </div>
                                             </div>
                                             <div v-else class="result-empty">
                                                 {{ t('governanceCard.empty') }}
@@ -998,6 +1034,22 @@
                                                             <div class="health-metric compact">
                                                                 <span class="health-metric-label">{{ t('governanceCard.circuitOpenRejections') }}</span>
                                                                 <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.circuitOpenRejections, 0) }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.activeThreads') }}</span>
+                                                                <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.activeIsolatedThreads, '') }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.threadBudget') }}</span>
+                                                                <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.maxConcurrentThreadsBudget, '') }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.cpuTimeLastMinute') }}</span>
+                                                                <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.cpuTimeMsLastMinute, ' ms') }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.estimatedHeapDelta') }}</span>
+                                                                <span class="health-metric-value">{{ formatSize(versionGovernance.metrics.estimatedHeapDeltaBytes || 0) }}</span>
                                                             </div>
                                                         </div>
                                                         <div v-else class="result-empty">
@@ -1202,6 +1254,16 @@
                                                 <div>
                                                     <label class="text-xs text-slate-400 block mb-1">{{ t('control.fallbackValue') }}</label>
                                                     <input data-testid="invocation-fallback" v-model="invocationForm.fallbackValue" type="text"
+                                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs text-slate-400 block mb-1">{{ t('control.cpuBudgetMsPerMinute') }}</label>
+                                                    <input v-model="invocationForm.cpuBudgetMsPerMinute" type="number" min="0"
+                                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs text-slate-400 block mb-1">{{ t('control.memoryBudgetMb') }}</label>
+                                                    <input v-model="invocationForm.memoryBudgetMb" type="number" min="0"
                                                         class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
                                                 </div>
                                                 <button data-testid="save-invocation-governance" @click="saveInvocationGovernance"

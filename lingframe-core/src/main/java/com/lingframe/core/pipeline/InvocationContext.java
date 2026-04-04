@@ -268,6 +268,22 @@ public class InvocationContext {
         governanceState.setFallbackValue(fallbackValue);
     }
 
+    public Integer getCpuBudgetMsPerMinute() {
+        return governanceState.getCpuBudgetMsPerMinute();
+    }
+
+    public void setCpuBudgetMsPerMinute(Integer cpuBudgetMsPerMinute) {
+        governanceState.setCpuBudgetMsPerMinute(cpuBudgetMsPerMinute);
+    }
+
+    public Integer getMemoryBudgetMb() {
+        return governanceState.getMemoryBudgetMb();
+    }
+
+    public void setMemoryBudgetMb(Integer memoryBudgetMb) {
+        governanceState.setMemoryBudgetMb(memoryBudgetMb);
+    }
+
     /**
      * 执行模式访问器。
      */

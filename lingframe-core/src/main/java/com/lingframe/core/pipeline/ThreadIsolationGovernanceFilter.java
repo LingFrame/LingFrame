@@ -10,6 +10,8 @@ import com.lingframe.core.spi.LingInvocationFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.util.Map;
 import java.util.concurrent.*;
 
@@ -24,6 +26,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
 
     private static final Logger log = LoggerFactory.getLogger(ThreadIsolationGovernanceFilter.class);
     private static final ClassLoader CORE_CLASSLOADER = ThreadIsolationGovernanceFilter.class.getClassLoader();
+    private static final ThreadMXBean THREAD_MX_BEAN = ManagementFactory.getThreadMXBean();
 
     private final LingRepository lingRepository;
     private final GovernanceMetricsCollector governanceMetricsCollector;
@@ -62,7 +65,9 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         LingRuntimeConfig config = runtime.getConfig();
         int timeoutMs = resolveTimeout(ctx, config);
         int maxThreads = resolveMaxThreads(ctx, config);
-        ExecutorService executor = getExecutor(lingId, maxThreads);
+        ExecutorHolder executorHolder = getExecutorHolder(lingId, maxThreads);
+        ExecutorService executor = executorHolder.executor;
+        recordThreadBudgetSnapshot(lingId, ctx, executorHolder);
         LingCallContextSnapshot snapshot = LingCallContextSnapshot.capture();
         int inheritedTraceCount = traceCount(ctx);
 
@@ -71,6 +76,8 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
             InvocationContext previous = child.attach();
             LingCallContextSnapshot previousSnapshot = LingCallContextSnapshot.apply(snapshot);
             ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+            long beforeCpuTimeNs = currentThreadCpuTime();
+            long beforeHeapBytes = usedHeapBytes();
             try {
                 child.copyFrom(ctx);
                 ClassLoader targetClassLoader = child.resolution().getTargetClassLoader();
@@ -85,6 +92,9 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
             } catch (Throwable throwable) {
                 throw new ExecutionException(throwable);
             } finally {
+                recordBudgetObservations(lingId, child,
+                        currentThreadCpuTime() - beforeCpuTimeNs,
+                        Math.max(0L, usedHeapBytes() - beforeHeapBytes));
                 mergeNewTraces(ctx, child, inheritedTraceCount);
                 Thread.currentThread().setContextClassLoader(originalClassLoader);
                 LingCallContextSnapshot.restore(previousSnapshot);
@@ -100,6 +110,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
             log.warn("[Isolation:{}] Execution rejected because bulkhead is full for {}", lingId, fqsid);
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordBulkheadRejected(lingId, ctx.getTargetVersion());
+                recordThreadBudgetSnapshot(lingId, ctx, executorHolder);
             }
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.RATE_LIMITED, e);
         }
@@ -122,6 +133,8 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
+        } finally {
+            recordThreadBudgetSnapshot(lingId, ctx, executorHolder);
         }
     }
 
@@ -163,8 +176,8 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         return Math.max(1, config.getBulkheadMaxConcurrent());
     }
 
-    private ExecutorService getExecutor(String lingId, int maxThreads) {
-        ExecutorHolder holder = executors.compute(lingId, (id, existing) -> {
+    private ExecutorHolder getExecutorHolder(String lingId, int maxThreads) {
+        return executors.compute(lingId, (id, existing) -> {
             if (existing != null && existing.maxThreads == maxThreads && !existing.executor.isShutdown()) {
                 return existing;
             }
@@ -176,10 +189,9 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
             log.debug("[Isolation:{}] Initializing isolated thread pool with maxThreads={}", id, maxThreads);
             return new ExecutorHolder(maxThreads, createExecutor(id, maxThreads));
         });
-        return holder.executor;
     }
 
-    private ExecutorService createExecutor(String lingId, int maxThreads) {
+    private ThreadPoolExecutor createExecutor(String lingId, int maxThreads) {
         return new ThreadPoolExecutor(
                 Math.min(2, maxThreads),
                 maxThreads,
@@ -238,11 +250,59 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         return executors.containsKey(lingId);
     }
 
+    private void recordThreadBudgetSnapshot(String lingId, InvocationContext ctx, ExecutorHolder executorHolder) {
+        if (governanceMetricsCollector == null || executorHolder == null) {
+            return;
+        }
+        ThreadPoolExecutor executor = executorHolder.executor;
+        governanceMetricsCollector.recordThreadBudgetSnapshot(
+                lingId,
+                ctx == null ? null : ctx.getTargetVersion(),
+                executor.getActiveCount(),
+                executorHolder.maxThreads);
+    }
+
+    private void recordBudgetObservations(String lingId, InvocationContext ctx, long cpuTimeNs, long estimatedHeapDeltaBytes) {
+        if (governanceMetricsCollector == null || ctx == null) {
+            return;
+        }
+        governanceMetricsCollector.recordCpuBudgetObservation(
+                lingId,
+                ctx.getTargetVersion(),
+                TimeUnit.NANOSECONDS.toMillis(Math.max(0L, cpuTimeNs)),
+                ctx.governance().getCpuBudgetMsPerMinute());
+        governanceMetricsCollector.recordMemoryBudgetObservation(
+                lingId,
+                ctx.getTargetVersion(),
+                estimatedHeapDeltaBytes,
+                ctx.governance().getMemoryBudgetMb());
+    }
+
+    private long currentThreadCpuTime() {
+        if (!THREAD_MX_BEAN.isCurrentThreadCpuTimeSupported()) {
+            return 0L;
+        }
+        if (!THREAD_MX_BEAN.isThreadCpuTimeEnabled()) {
+            try {
+                THREAD_MX_BEAN.setThreadCpuTimeEnabled(true);
+            } catch (UnsupportedOperationException | SecurityException ignored) {
+                return 0L;
+            }
+        }
+        long cpuTime = THREAD_MX_BEAN.getCurrentThreadCpuTime();
+        return Math.max(0L, cpuTime);
+    }
+
+    private long usedHeapBytes() {
+        Runtime runtime = Runtime.getRuntime();
+        return runtime.totalMemory() - runtime.freeMemory();
+    }
+
     private static final class ExecutorHolder {
         private final int maxThreads;
-        private final ExecutorService executor;
+        private final ThreadPoolExecutor executor;
 
-        private ExecutorHolder(int maxThreads, ExecutorService executor) {
+        private ExecutorHolder(int maxThreads, ThreadPoolExecutor executor) {
             this.maxThreads = maxThreads;
             this.executor = executor;
         }

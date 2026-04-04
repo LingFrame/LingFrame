@@ -12,6 +12,15 @@ public class GovernanceMetricsSnapshot {
     private long circuitOpenedCount;
     private long bulkheadRejectedRequests;
     private long recoveryCount;
+    private int activeIsolatedThreads;
+    private int maxConcurrentThreadsBudget;
+    private long threadBudgetExceededCount;
+    private long cpuTimeMsLastMinute;
+    private Integer cpuBudgetMsPerMinute;
+    private long cpuBudgetExceededCount;
+    private long estimatedHeapDeltaBytes;
+    private Integer memoryBudgetMb;
+    private long memoryBudgetExceededCount;
     private long timestamp;
 
     public static GovernanceMetricsSnapshot empty(String lingId) {

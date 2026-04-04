@@ -19,4 +19,6 @@ public class InvocationGovernanceDTO {
     private Integer maxConcurrentThreads;
     private Integer retryCount;
     private String fallbackValue;
+    private Integer cpuBudgetMsPerMinute;
+    private Integer memoryBudgetMb;
 }

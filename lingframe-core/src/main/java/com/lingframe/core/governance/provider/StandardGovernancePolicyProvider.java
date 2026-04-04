@@ -183,6 +183,14 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
                 builder.fallbackValue(invocation.getFallbackValue());
                 invocationOverride = true;
             }
+            if (invocation.getCpuBudgetMsPerMinute() != null) {
+                builder.cpuBudgetMsPerMinute(invocation.getCpuBudgetMsPerMinute());
+                invocationOverride = true;
+            }
+            if (invocation.getMemoryBudgetMb() != null) {
+                builder.memoryBudgetMb(invocation.getMemoryBudgetMb());
+                invocationOverride = true;
+            }
         }
 
         return new PolicyOverlayResult(accessControlOverride, invocationOverride);

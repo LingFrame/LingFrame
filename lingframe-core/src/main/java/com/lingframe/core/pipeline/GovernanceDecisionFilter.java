@@ -166,5 +166,11 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
         if (decision.getFallbackValue() != null) {
             governanceState.setFallbackValue(decision.getFallbackValue());
         }
+        if (decision.getCpuBudgetMsPerMinute() != null) {
+            governanceState.setCpuBudgetMsPerMinute(decision.getCpuBudgetMsPerMinute());
+        }
+        if (decision.getMemoryBudgetMb() != null) {
+            governanceState.setMemoryBudgetMb(decision.getMemoryBudgetMb());
+        }
     }
 }

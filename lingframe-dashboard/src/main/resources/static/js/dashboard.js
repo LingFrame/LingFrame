@@ -107,7 +107,9 @@ createApp({
             rateLimitPerSecond: '',
             maxConcurrentThreads: '',
             retryCount: '',
-            fallbackValue: ''
+            fallbackValue: '',
+            cpuBudgetMsPerMinute: '',
+            memoryBudgetMb: ''
         });
 
         let eventSource = null;
@@ -828,6 +830,8 @@ createApp({
             invocationForm.maxConcurrentThreads = current.maxConcurrentThreads ?? '';
             invocationForm.retryCount = current.retryCount ?? '';
             invocationForm.fallbackValue = current.fallbackValue ?? '';
+            invocationForm.cpuBudgetMsPerMinute = current.cpuBudgetMsPerMinute ?? '';
+            invocationForm.memoryBudgetMb = current.memoryBudgetMb ?? '';
         };
 
         const saveInvocationGovernance = async () => {
@@ -840,7 +844,9 @@ createApp({
                     rateLimitPerSecond: normalizeNullableInt(invocationForm.rateLimitPerSecond),
                     maxConcurrentThreads: normalizeNullableInt(invocationForm.maxConcurrentThreads),
                     retryCount: normalizeNullableInt(invocationForm.retryCount),
-                    fallbackValue: invocationForm.fallbackValue || null
+                    fallbackValue: invocationForm.fallbackValue || null,
+                    cpuBudgetMsPerMinute: normalizeNullableInt(invocationForm.cpuBudgetMsPerMinute),
+                    memoryBudgetMb: normalizeNullableInt(invocationForm.memoryBudgetMb)
                 });
 
                 const idx = lings.value.findIndex(p => p.lingId === activeId.value);
@@ -1253,7 +1259,26 @@ createApp({
                 || Number(metrics.timeoutRequests || 0) > 0
                 || Number(metrics.circuitOpenRejections || 0) > 0
                 || Number(metrics.circuitOpenedCount || 0) > 0
-                || Number(metrics.bulkheadRejectedRequests || 0) > 0;
+                || Number(metrics.bulkheadRejectedRequests || 0) > 0
+                || Number(metrics.threadBudgetExceededCount || 0) > 0
+                || Number(metrics.cpuBudgetExceededCount || 0) > 0
+                || Number(metrics.memoryBudgetExceededCount || 0) > 0;
+        };
+
+        const formatBudgetPercent = (used, budget) => {
+            const usedNum = Number(used || 0);
+            const budgetNum = Number(budget || 0);
+            if (!Number.isFinite(usedNum) || !Number.isFinite(budgetNum) || budgetNum <= 0) {
+                return '--';
+            }
+            return `${((usedNum * 100) / budgetNum).toFixed(1)}%`;
+        };
+
+        const formatBudgetValue = (value, suffix = '') => {
+            if (value === null || value === undefined || value === '') {
+                return '--';
+            }
+            return `${value}${suffix}`;
         };
 
         const formatTime = (ts) => {
@@ -1573,7 +1598,7 @@ createApp({
             saveInvocationGovernance,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
-            formatDrift, formatTime, formatSize, formatMetricNumber,
+            formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue,
             getStatusClass, getLingShortName, getLingTagClass, getLogColor,
             getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass, getLingHealthStatusClass, getLingHealthRoleLabel, hasGovernanceSignals,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,

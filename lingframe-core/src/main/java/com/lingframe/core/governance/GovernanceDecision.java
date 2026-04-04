@@ -23,6 +23,8 @@ public class GovernanceDecision {
     private Integer maxConcurrentThreads;
     private Integer retryCount;
     private String fallbackValue;
+    private Integer cpuBudgetMsPerMinute;
+    private Integer memoryBudgetMb;
 
     // 快速构建空对象
     public static GovernanceDecision empty() {
@@ -42,6 +44,8 @@ public class GovernanceDecision {
                 || rateLimitPerSecond != null
                 || maxConcurrentThreads != null
                 || retryCount != null
-                || fallbackValue != null;
+                || fallbackValue != null
+                || cpuBudgetMsPerMinute != null
+                || memoryBudgetMb != null;
     }
 }

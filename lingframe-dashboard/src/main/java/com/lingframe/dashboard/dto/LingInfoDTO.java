@@ -71,5 +71,9 @@ public class LingInfoDTO {
         private Integer timeoutMs;
         private Integer rateLimitPerSecond;
         private Integer maxConcurrentThreads;
+        private Integer retryCount;
+        private String fallbackValue;
+        private Integer cpuBudgetMsPerMinute;
+        private Integer memoryBudgetMb;
     }
 }

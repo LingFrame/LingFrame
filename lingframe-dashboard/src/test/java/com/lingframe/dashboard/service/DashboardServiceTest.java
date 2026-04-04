@@ -200,6 +200,8 @@ class DashboardServiceTest {
                     .maxConcurrentThreads(4)
                     .retryCount(2)
                     .fallbackValue("fallback-ok")
+                    .cpuBudgetMsPerMinute(600)
+                    .memoryBudgetMb(48)
                     .build();
 
             InvocationGovernanceDTO result = service.updateInvocationGovernance("ling1", dto);
@@ -211,6 +213,8 @@ class DashboardServiceTest {
             assertEquals(Integer.valueOf(4), result.getMaxConcurrentThreads());
             assertEquals(Integer.valueOf(2), result.getRetryCount());
             assertEquals("fallback-ok", result.getFallbackValue());
+            assertEquals(Integer.valueOf(600), result.getCpuBudgetMsPerMinute());
+            assertEquals(Integer.valueOf(48), result.getMemoryBudgetMb());
 
             verify(permissionService).removeLing("ling1");
             verify(permissionService).grant("ling1", Capabilities.CACHE_LOCAL, AccessType.WRITE);

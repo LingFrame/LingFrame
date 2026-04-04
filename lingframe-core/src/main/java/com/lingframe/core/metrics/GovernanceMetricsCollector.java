@@ -38,6 +38,18 @@ public class GovernanceMetricsCollector {
         mutate(lingId, version, GovernanceMetricBucket::incrementRecoveryCount);
     }
 
+    public void recordThreadBudgetSnapshot(String lingId, String version, int activeThreads, int maxThreads) {
+        mutate(lingId, version, bucket -> bucket.recordThreadBudgetSnapshot(activeThreads, maxThreads));
+    }
+
+    public void recordCpuBudgetObservation(String lingId, String version, long cpuTimeMs, Integer cpuBudgetMsPerMinute) {
+        mutate(lingId, version, bucket -> bucket.recordCpuBudgetObservation(cpuTimeMs, cpuBudgetMsPerMinute));
+    }
+
+    public void recordMemoryBudgetObservation(String lingId, String version, long estimatedHeapDeltaBytes, Integer memoryBudgetMb) {
+        mutate(lingId, version, bucket -> bucket.recordMemoryBudgetObservation(estimatedHeapDeltaBytes, memoryBudgetMb));
+    }
+
     public GovernanceMetricsSnapshot getSummary(String lingId) {
         GovernanceMetricBucket bucket = summaryBuckets.get(lingId);
         if (bucket != null) {
@@ -99,10 +111,29 @@ public class GovernanceMetricsCollector {
             snapshot.setCircuitOpenedCount(snapshot.getCircuitOpenedCount() + versionSnapshot.getCircuitOpenedCount());
             snapshot.setBulkheadRejectedRequests(snapshot.getBulkheadRejectedRequests() + versionSnapshot.getBulkheadRejectedRequests());
             snapshot.setRecoveryCount(snapshot.getRecoveryCount() + versionSnapshot.getRecoveryCount());
+            snapshot.setActiveIsolatedThreads(snapshot.getActiveIsolatedThreads() + versionSnapshot.getActiveIsolatedThreads());
+            snapshot.setMaxConcurrentThreadsBudget(snapshot.getMaxConcurrentThreadsBudget() + versionSnapshot.getMaxConcurrentThreadsBudget());
+            snapshot.setThreadBudgetExceededCount(snapshot.getThreadBudgetExceededCount() + versionSnapshot.getThreadBudgetExceededCount());
+            snapshot.setCpuTimeMsLastMinute(snapshot.getCpuTimeMsLastMinute() + versionSnapshot.getCpuTimeMsLastMinute());
+            snapshot.setCpuBudgetExceededCount(snapshot.getCpuBudgetExceededCount() + versionSnapshot.getCpuBudgetExceededCount());
+            snapshot.setEstimatedHeapDeltaBytes(Math.max(snapshot.getEstimatedHeapDeltaBytes(), versionSnapshot.getEstimatedHeapDeltaBytes()));
+            snapshot.setMemoryBudgetExceededCount(snapshot.getMemoryBudgetExceededCount() + versionSnapshot.getMemoryBudgetExceededCount());
+            snapshot.setCpuBudgetMsPerMinute(sumNullable(snapshot.getCpuBudgetMsPerMinute(), versionSnapshot.getCpuBudgetMsPerMinute()));
+            snapshot.setMemoryBudgetMb(sumNullable(snapshot.getMemoryBudgetMb(), versionSnapshot.getMemoryBudgetMb()));
             timestamp = Math.max(timestamp, versionSnapshot.getTimestamp());
         }
         snapshot.setTimestamp(timestamp > 0 ? timestamp : System.currentTimeMillis());
         return snapshot;
+    }
+
+    private Integer sumNullable(Integer left, Integer right) {
+        if (left == null) {
+            return right;
+        }
+        if (right == null) {
+            return left;
+        }
+        return left + right;
     }
 
     private String versionKey(String lingId, String version) {
@@ -124,6 +155,16 @@ public class GovernanceMetricsCollector {
         private final LongAdder circuitOpenedCount = new LongAdder();
         private final LongAdder bulkheadRejectedRequests = new LongAdder();
         private final LongAdder recoveryCount = new LongAdder();
+        private final LongAdder threadBudgetExceededCount = new LongAdder();
+        private final LongAdder cpuBudgetExceededCount = new LongAdder();
+        private final LongAdder memoryBudgetExceededCount = new LongAdder();
+        private volatile int activeIsolatedThreads;
+        private volatile int maxConcurrentThreadsBudget;
+        private volatile long cpuTimeWindowStart = System.currentTimeMillis();
+        private volatile long cpuTimeMsLastMinute;
+        private volatile Integer cpuBudgetMsPerMinute;
+        private volatile long estimatedHeapDeltaBytes;
+        private volatile Integer memoryBudgetMb;
         private volatile long timestamp = System.currentTimeMillis();
 
         private GovernanceMetricBucket(String lingId) {
@@ -157,11 +198,41 @@ public class GovernanceMetricsCollector {
 
         private void incrementBulkheadRejectedRequests() {
             bulkheadRejectedRequests.increment();
+            threadBudgetExceededCount.increment();
             touch();
         }
 
         private void incrementRecoveryCount() {
             recoveryCount.increment();
+            touch();
+        }
+
+        private void recordThreadBudgetSnapshot(int activeThreads, int maxThreads) {
+            this.activeIsolatedThreads = Math.max(0, activeThreads);
+            this.maxConcurrentThreadsBudget = Math.max(0, maxThreads);
+            touch();
+        }
+
+        private synchronized void recordCpuBudgetObservation(long cpuTimeMs, Integer budgetMsPerMinute) {
+            long now = System.currentTimeMillis();
+            if (now - cpuTimeWindowStart >= 60_000L) {
+                cpuTimeWindowStart = now;
+                cpuTimeMsLastMinute = 0L;
+            }
+            cpuTimeMsLastMinute += Math.max(0L, cpuTimeMs);
+            cpuBudgetMsPerMinute = budgetMsPerMinute;
+            if (budgetMsPerMinute != null && budgetMsPerMinute > 0 && cpuTimeMsLastMinute > budgetMsPerMinute) {
+                cpuBudgetExceededCount.increment();
+            }
+            touch();
+        }
+
+        private void recordMemoryBudgetObservation(long heapDeltaBytes, Integer budgetMb) {
+            estimatedHeapDeltaBytes = Math.max(estimatedHeapDeltaBytes, Math.max(0L, heapDeltaBytes));
+            memoryBudgetMb = budgetMb;
+            if (budgetMb != null && budgetMb > 0 && estimatedHeapDeltaBytes > budgetMb * 1024L * 1024L) {
+                memoryBudgetExceededCount.increment();
+            }
             touch();
         }
 
@@ -179,6 +250,15 @@ public class GovernanceMetricsCollector {
             snapshot.setCircuitOpenedCount(circuitOpenedCount.sum());
             snapshot.setBulkheadRejectedRequests(bulkheadRejectedRequests.sum());
             snapshot.setRecoveryCount(recoveryCount.sum());
+            snapshot.setActiveIsolatedThreads(activeIsolatedThreads);
+            snapshot.setMaxConcurrentThreadsBudget(maxConcurrentThreadsBudget);
+            snapshot.setThreadBudgetExceededCount(threadBudgetExceededCount.sum());
+            snapshot.setCpuTimeMsLastMinute(cpuTimeMsLastMinute);
+            snapshot.setCpuBudgetMsPerMinute(cpuBudgetMsPerMinute);
+            snapshot.setCpuBudgetExceededCount(cpuBudgetExceededCount.sum());
+            snapshot.setEstimatedHeapDeltaBytes(estimatedHeapDeltaBytes);
+            snapshot.setMemoryBudgetMb(memoryBudgetMb);
+            snapshot.setMemoryBudgetExceededCount(memoryBudgetExceededCount.sum());
             snapshot.setTimestamp(timestamp);
             return snapshot;
         }

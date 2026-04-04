@@ -62,6 +62,8 @@ class LingInfoConverterTest {
                         .capability("ipc:order-ling")
                         .accessType(AccessType.EXECUTE.name())
                         .build()));
+        policy.getInvocation().setCpuBudgetMsPerMinute(900);
+        policy.getInvocation().setMemoryBudgetMb(64);
 
         LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, canaryRouter, permissionService, policy);
 
@@ -73,5 +75,7 @@ class LingInfoConverterTest {
         assertEquals("custom:export", dto.getPermissions().getExtraCapabilities().get(0));
         assertTrue(dto.getPermissions().getIpcServices().contains("order-ling"));
         assertEquals("lingId + cacheName + rawKey", dto.getPermissions().getLocalCacheNamespaceStrategy());
+        assertEquals(900, dto.getInvocationGovernance().getCpuBudgetMsPerMinute());
+        assertEquals(64, dto.getInvocationGovernance().getMemoryBudgetMb());
     }
 }

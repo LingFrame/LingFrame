@@ -114,6 +114,8 @@
     "maxConcurrentThreads": "Max Concurrent Threads",
     "retryCount": "Retry Count",
     "fallbackValue": "Fallback Value",
+    "cpuBudgetMsPerMinute": "CPU Budget (ms/min)",
+    "memoryBudgetMb": "Memory Budget (MB)",
     "saveInvocation": "Save Invocation Governance"
   },
     "demo": {
@@ -265,6 +267,15 @@
       "timeoutRequests": "Timeouts",
       "circuitOpenedCount": "Circuit Opened",
       "circuitOpenRejections": "Circuit Rejected",
+      "activeThreads": "Active Isolated Threads",
+      "threadBudget": "Thread Budget",
+      "threadUsage": "Thread Budget Usage",
+      "cpuTimeLastMinute": "CPU Last Minute",
+      "cpuBudgetUsage": "CPU Budget Usage",
+      "estimatedHeapDelta": "Estimated Heap Delta",
+      "threadBudgetExceeded": "Thread Budget Alerts",
+      "cpuBudgetExceeded": "CPU Budget Alerts",
+      "memoryBudgetExceeded": "Memory Budget Alerts",
       "empty": "No governance signals have been collected for this ling yet",
       "versionEmpty": "No governance signals have been collected for this version yet"
   }

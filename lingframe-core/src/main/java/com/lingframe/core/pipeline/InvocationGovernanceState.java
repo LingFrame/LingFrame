@@ -67,6 +67,18 @@ public class InvocationGovernanceState {
      */
     private String fallbackValue;
 
+    /**
+     * 每分钟 CPU 预算（毫秒）。
+     * 当前阶段只做观测与告警，不做硬拒绝。
+     */
+    private Integer cpuBudgetMsPerMinute;
+
+    /**
+     * 内存预算（MB）。
+     * 当前阶段只做估算与告警，不做虚假的硬限制。
+     */
+    private Integer memoryBudgetMb;
+
     void reset() {
         this.requiredPermission = null;
         this.accessType = null;
@@ -78,6 +90,8 @@ public class InvocationGovernanceState {
         this.maxConcurrentThreads = null;
         this.retryCount = null;
         this.fallbackValue = null;
+        this.cpuBudgetMsPerMinute = null;
+        this.memoryBudgetMb = null;
     }
 
     void copyFrom(InvocationGovernanceState source) {
@@ -94,5 +108,7 @@ public class InvocationGovernanceState {
         this.maxConcurrentThreads = source.maxConcurrentThreads;
         this.retryCount = source.retryCount;
         this.fallbackValue = source.fallbackValue;
+        this.cpuBudgetMsPerMinute = source.cpuBudgetMsPerMinute;
+        this.memoryBudgetMb = source.memoryBudgetMb;
     }
 }

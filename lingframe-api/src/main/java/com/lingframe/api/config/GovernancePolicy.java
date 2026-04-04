@@ -181,6 +181,8 @@ public class GovernancePolicy implements Serializable {
         private Integer maxConcurrentThreads;
         private Integer retryCount;
         private String fallbackValue;
+        private Integer cpuBudgetMsPerMinute;
+        private Integer memoryBudgetMb;
 
         public InvocationPolicy copy() {
             InvocationPolicy copy = new InvocationPolicy();
@@ -189,6 +191,8 @@ public class GovernancePolicy implements Serializable {
             copy.maxConcurrentThreads = this.maxConcurrentThreads;
             copy.retryCount = this.retryCount;
             copy.fallbackValue = this.fallbackValue;
+            copy.cpuBudgetMsPerMinute = this.cpuBudgetMsPerMinute;
+            copy.memoryBudgetMb = this.memoryBudgetMb;
             return copy;
         }
 
@@ -210,6 +214,12 @@ public class GovernancePolicy implements Serializable {
             }
             if (patch.fallbackValue != null) {
                 this.fallbackValue = patch.fallbackValue;
+            }
+            if (patch.cpuBudgetMsPerMinute != null) {
+                this.cpuBudgetMsPerMinute = patch.cpuBudgetMsPerMinute;
+            }
+            if (patch.memoryBudgetMb != null) {
+                this.memoryBudgetMb = patch.memoryBudgetMb;
             }
         }
     }

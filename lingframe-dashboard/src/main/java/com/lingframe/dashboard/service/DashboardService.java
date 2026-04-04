@@ -482,6 +482,8 @@ public class DashboardService {
         invocation.setMaxConcurrentThreads(dto.getMaxConcurrentThreads());
         invocation.setRetryCount(dto.getRetryCount());
         invocation.setFallbackValue(dto.getFallbackValue());
+        invocation.setCpuBudgetMsPerMinute(dto.getCpuBudgetMsPerMinute());
+        invocation.setMemoryBudgetMb(dto.getMemoryBudgetMb());
         patch.setInvocation(invocation);
 
         persistPolicyPatch(lingId, patch);
@@ -498,6 +500,8 @@ public class DashboardService {
                 .maxConcurrentThreads(invocation == null ? null : invocation.getMaxConcurrentThreads())
                 .retryCount(invocation == null ? null : invocation.getRetryCount())
                 .fallbackValue(invocation == null ? null : invocation.getFallbackValue())
+                .cpuBudgetMsPerMinute(invocation == null ? null : invocation.getCpuBudgetMsPerMinute())
+                .memoryBudgetMb(invocation == null ? null : invocation.getMemoryBudgetMb())
                 .build();
     }
 
