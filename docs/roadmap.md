@@ -105,7 +105,7 @@ Core Capabilities:
 ### Implemented
 - ✅ Ecosystem extension SPIs are in place (`LingInvocationFilter`, `ServiceExporter`, `LingContextCustomizer`, `LingDeployService`)
 - ✅ `LingInvocationFilter` is already wired into the unified governance pipeline and can extend the filter chain through runtime assembly
-- ✅ `LingDeployService` already has a default implementation (`DefaultLingDeployService`)
+- ✅ `LingDeployService` already has a default implementation (`DefaultLingDeployService`, currently supporting local files and `http/https` downloads)
 - ✅ Developer Experience (Auto-activate units after installation in devMode)
 
 ### Current Stage Notes

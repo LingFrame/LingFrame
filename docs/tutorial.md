@@ -607,7 +607,7 @@ mvn spring-boot:run
 
 > Dashboard is a governance control plane, not just a page.
 
-Dashboard URL: `http://localhost:8888/lingframe/dashboard/`
+Dashboard URL: `http://localhost:8888/dashboard.html`
 
 **List Lings**:
 

@@ -57,7 +57,8 @@ If you remember LingFrame in only one sentence, let it be this:
 
 ## 📖 Start Here
 
-- **First time reading LingFrame**: start with [getting-started.md](docs/getting-started.md)
+- **Want the shortest runnable path**: start with [QUICK_START.md](./QUICK_START.md)
+- **Want the full onboarding path**: start with [getting-started.md](docs/getting-started.md)
 - **Want to quickly understand what problem it solves**: read [practical-entry.md](docs/practical-entry.md)
 - **Want to see how far the `0.3.0` architecture has already converged**: read [technical-entry.md](docs/technical-entry.md)
 - **Want to understand why LingFrame is designed this way**: read [WHY.md](WHY.md)
@@ -175,7 +176,8 @@ It simply refuses to dump all complexity onto the user at once.
 
 ## 💬 If You Want To Continue
 
-- Want to run it first: read [getting-started.md](docs/getting-started.md)
+- Want the shortest hands-on path: read [QUICK_START.md](./QUICK_START.md)
+- Want the full onboarding path: read [getting-started.md](docs/getting-started.md)
 - Want to understand `0.3.0` from the implementation side: read [technical-entry.md](docs/technical-entry.md)
 - Want to see what role the dashboard plays in the current version: read [dashboard.md](docs/dashboard.md)
 - Want terminology help: read [glossary.md](docs/glossary.md)

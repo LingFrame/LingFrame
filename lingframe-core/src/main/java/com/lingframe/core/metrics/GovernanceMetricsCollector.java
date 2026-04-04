@@ -165,6 +165,8 @@ public class GovernanceMetricsCollector {
         private volatile Integer cpuBudgetMsPerMinute;
         private volatile long estimatedHeapDeltaBytes;
         private volatile Integer memoryBudgetMb;
+        private volatile boolean cpuBudgetCurrentlyExceeded;
+        private volatile boolean memoryBudgetCurrentlyExceeded;
         private volatile long timestamp = System.currentTimeMillis();
 
         private GovernanceMetricBucket(String lingId) {
@@ -218,21 +220,26 @@ public class GovernanceMetricsCollector {
             if (now - cpuTimeWindowStart >= 60_000L) {
                 cpuTimeWindowStart = now;
                 cpuTimeMsLastMinute = 0L;
+                cpuBudgetCurrentlyExceeded = false;
             }
             cpuTimeMsLastMinute += Math.max(0L, cpuTimeMs);
             cpuBudgetMsPerMinute = budgetMsPerMinute;
-            if (budgetMsPerMinute != null && budgetMsPerMinute > 0 && cpuTimeMsLastMinute > budgetMsPerMinute) {
+            boolean exceeded = budgetMsPerMinute != null && budgetMsPerMinute > 0 && cpuTimeMsLastMinute > budgetMsPerMinute;
+            if (exceeded && !cpuBudgetCurrentlyExceeded) {
                 cpuBudgetExceededCount.increment();
             }
+            cpuBudgetCurrentlyExceeded = exceeded;
             touch();
         }
 
         private void recordMemoryBudgetObservation(long heapDeltaBytes, Integer budgetMb) {
             estimatedHeapDeltaBytes = Math.max(estimatedHeapDeltaBytes, Math.max(0L, heapDeltaBytes));
             memoryBudgetMb = budgetMb;
-            if (budgetMb != null && budgetMb > 0 && estimatedHeapDeltaBytes > budgetMb * 1024L * 1024L) {
+            boolean exceeded = budgetMb != null && budgetMb > 0 && estimatedHeapDeltaBytes > budgetMb * 1024L * 1024L;
+            if (exceeded && !memoryBudgetCurrentlyExceeded) {
                 memoryBudgetExceededCount.increment();
             }
+            memoryBudgetCurrentlyExceeded = exceeded;
             touch();
         }
 

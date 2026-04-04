@@ -1,8 +1,13 @@
 # Getting Started
 
-This guide is the shortest path for a first-time LingFrame user.
+This is the **formal onboarding guide**.
 
-It is intentionally about one thing only: **getting a runnable example up and understanding the minimum vocabulary**.
+If you only want the shortest runnable path, start with the repository root `QUICK_START.md`.  
+This guide is for what comes next:
+
+- what actually starts in the sample
+- why the runtime path works
+- how to continue from “it runs” to “I understand how to use it”
 
 If you only want one thing from this page, remember this:
 

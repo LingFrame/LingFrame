@@ -105,7 +105,7 @@
 ### 已实现
 - ✅ 生态级扩展 SPI 已建立（`LingInvocationFilter`、`ServiceExporter`、`LingContextCustomizer`、`LingDeployService`）
 - ✅ `LingInvocationFilter` 已接入统一治理 Pipeline，可通过运行时装配动态扩展 Filter 链
-- ✅ `LingDeployService` 已有默认实现（`DefaultLingDeployService`）
+- ✅ `LingDeployService` 已有默认实现（`DefaultLingDeployService`，当前默认支持本地文件与 `http/https` 下载）
 - ✅ 开发体验增强（devMode 下灵元安装后自动激活）
 
 ### 当前阶段说明

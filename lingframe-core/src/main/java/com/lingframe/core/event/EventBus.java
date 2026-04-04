@@ -6,8 +6,15 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 框架事件总线。
@@ -22,6 +29,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 @Slf4j
 public class EventBus {
+
+    private static final int DEFAULT_ASYNC_THREADS = 2;
+    private static final int DEFAULT_ASYNC_QUEUE_CAPACITY = 1024;
 
     /**
      * 监听器包装器。
@@ -59,6 +69,30 @@ public class EventBus {
      * eventType → 监听器列表（含灵元级和全局）
      */
     private final Map<Class<? extends LingEvent>, List<ListenerWrapper>> listeners = new ConcurrentHashMap<>();
+    private final ThreadPoolExecutor asyncDispatcher;
+    private final AtomicLong droppedAsyncEvents = new AtomicLong(0);
+    private final AtomicLong submittedAsyncEvents = new AtomicLong(0);
+
+    public EventBus() {
+        this(DEFAULT_ASYNC_THREADS, DEFAULT_ASYNC_QUEUE_CAPACITY);
+    }
+
+    public EventBus(int asyncThreads, int asyncQueueCapacity) {
+        BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(Math.max(1, asyncQueueCapacity));
+        this.asyncDispatcher = new ThreadPoolExecutor(
+                Math.max(1, asyncThreads),
+                Math.max(1, asyncThreads),
+                30L,
+                TimeUnit.SECONDS,
+                queue,
+                new EventBusThreadFactory(),
+                (r, executor) -> {
+                    droppedAsyncEvents.incrementAndGet();
+                    log.warn("Dropping async event task because EventBus async queue is full (queueSize={}, activeThreads={})",
+                            executor.getQueue().size(), executor.getActiveCount());
+                });
+        this.asyncDispatcher.allowCoreThreadTimeOut(true);
+    }
 
     /* ==================== 灵元级订阅 ==================== */
 
@@ -160,12 +194,36 @@ public class EventBus {
      * <p>
      * 单个监听器的异常不会中断分发流程，保证所有监听器都有机会执行。
      */
-    @SuppressWarnings("unchecked")
     public <E extends LingEvent> void publish(E event) {
         List<ListenerWrapper> wrappers = listeners.get(event.getClass());
         if (wrappers == null || wrappers.isEmpty()) {
             return;
         }
+        if (isAsyncEvent(event)) {
+            dispatchAsync(event, wrappers);
+            return;
+        }
+        dispatchSync(event, wrappers);
+    }
+
+    public long getDroppedAsyncEvents() {
+        return droppedAsyncEvents.get();
+    }
+
+    public long getSubmittedAsyncEvents() {
+        return submittedAsyncEvents.get();
+    }
+
+    public int getAsyncQueueDepth() {
+        return asyncDispatcher.getQueue().size();
+    }
+
+    public void shutdown() {
+        asyncDispatcher.shutdownNow();
+    }
+
+    @SuppressWarnings("unchecked")
+    private <E extends LingEvent> void dispatchSync(E event, List<ListenerWrapper> wrappers) {
         for (ListenerWrapper wrapper : wrappers) {
             try {
                 LingEventListener<E> castListener = (LingEventListener<E>) wrapper.listener();
@@ -178,6 +236,48 @@ public class EventBus {
                         wrapper.isGlobal() ? "GLOBAL" : wrapper.lingId(),
                         e.getMessage(), e);
             }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private <E extends LingEvent> void dispatchAsync(E event, List<ListenerWrapper> wrappers) {
+        for (ListenerWrapper wrapper : wrappers) {
+            try {
+                submittedAsyncEvents.incrementAndGet();
+                asyncDispatcher.execute(() -> {
+                    try {
+                        LingEventListener<E> castListener = (LingEventListener<E>) wrapper.listener();
+                        castListener.onEvent(event);
+                    } catch (Exception e) {
+                        log.error("Error dispatching async event [{}] to listener [{}] (ling={}): {}",
+                                event.getClass().getSimpleName(),
+                                wrapper.listener().getClass().getName(),
+                                wrapper.isGlobal() ? "GLOBAL" : wrapper.lingId(),
+                                e.getMessage(), e);
+                    }
+                });
+            } catch (RejectedExecutionException e) {
+                droppedAsyncEvents.incrementAndGet();
+                log.warn("Rejected async event [{}] for listener [{}]",
+                        event.getClass().getSimpleName(), wrapper.listener().getClass().getName());
+            }
+        }
+    }
+
+    private boolean isAsyncEvent(LingEvent event) {
+        return event != null
+                && event.getClass().getName().startsWith("com.lingframe.core.event.monitor.");
+    }
+
+    private static final class EventBusThreadFactory implements ThreadFactory {
+        private int counter = 0;
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable, "ling-eventbus-async-" + (++counter));
+            thread.setDaemon(true);
+            thread.setContextClassLoader(EventBus.class.getClassLoader());
+            return thread;
         }
     }
 }

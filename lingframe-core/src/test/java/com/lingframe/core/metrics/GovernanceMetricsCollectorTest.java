@@ -38,4 +38,22 @@ class GovernanceMetricsCollectorTest {
         assertEquals(500, versions.get("1.1.0").getCpuBudgetMsPerMinute());
         assertEquals(16, versions.get("1.1.0").getMemoryBudgetMb());
     }
+
+    @Test
+    @DisplayName("预算告警计数应按越线次数累计，而不是按每次采样累计")
+    void shouldCountBudgetExceededByTransitions() {
+        GovernanceMetricsCollector collector = new GovernanceMetricsCollector();
+
+        collector.recordCpuBudgetObservation("order-ling", "1.0.0", 300, 500);
+        collector.recordCpuBudgetObservation("order-ling", "1.0.0", 300, 500);
+        collector.recordCpuBudgetObservation("order-ling", "1.0.0", 50, 500);
+
+        collector.recordMemoryBudgetObservation("order-ling", "1.0.0", 2 * 1024 * 1024L, 1);
+        collector.recordMemoryBudgetObservation("order-ling", "1.0.0", 3 * 1024 * 1024L, 1);
+
+        GovernanceMetricsSnapshot snapshot = collector.getVersionSnapshots("order-ling").get("1.0.0");
+
+        assertEquals(1, snapshot.getCpuBudgetExceededCount());
+        assertEquals(1, snapshot.getMemoryBudgetExceededCount());
+    }
 }

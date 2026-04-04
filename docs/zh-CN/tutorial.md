@@ -607,7 +607,7 @@ mvn spring-boot:run
 
 > Dashboard 是治理控制面，而不只是一个页面。
 
-Dashboard 地址：`http://localhost:8888/lingframe/dashboard/`
+Dashboard 地址：`http://localhost:8888/dashboard.html`
 
 **查看灵元列表**：
 

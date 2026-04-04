@@ -107,12 +107,11 @@ public class NativeLingContainer implements LingContainer {
     // ==================== 服务扫描与注册逻辑 ====================
 
     private void scanAndRegisterServices(LingContext context) {
-        DefaultLingContext coreCtx = null;
         if (!(context instanceof DefaultLingContext)) {
-            coreCtx = (DefaultLingContext) context;
             log.warn("[{}] Context is not DefaultLingContext, skipping service registration.", lingId);
             return;
         }
+        DefaultLingContext coreCtx = (DefaultLingContext) context;
 
         log.info("[{}] Scanning for @LingService...", lingId);
         Set<Class<?>> classes = scanClasses();
