@@ -12,6 +12,11 @@
     <name>LingFrame :: Example :: LINGCORE App</name>
     <description>示例灵元核心应用</description>
 
+    <properties>
+        <lingframe.runE2E>false</lingframe.runE2E>
+        <skipITs>true</skipITs>
+    </properties>
+
     <dependencies>
 
         <dependency>
@@ -54,6 +59,24 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-example-ling-user</artifactId>
+            <version>${revision}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-example-ling-user-canary</artifactId>
+            <version>${revision}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-example-ling-order</artifactId>
+            <version>${revision}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -131,6 +154,59 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <excludes>
+                        <exclude>**/ObservabilityClosedLoopIntegrationTest.java</exclude>
+                        <exclude>**/DashboardUiSmokeIntegrationTest.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>add-it-test-source</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>src/it/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <skipITs>${skipITs}</skipITs>
+                    <systemPropertyVariables>
+                        <lingframe.runE2E>${lingframe.runE2E}</lingframe.runE2E>
+                    </systemPropertyVariables>
+                    <includes>
+                        <include>**/ObservabilityClosedLoopIntegrationTest.class</include>
+                        <include>**/DashboardUiSmokeIntegrationTest.class</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
 
         </plugins>

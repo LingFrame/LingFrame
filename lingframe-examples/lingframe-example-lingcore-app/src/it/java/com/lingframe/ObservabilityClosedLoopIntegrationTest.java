@@ -20,6 +20,7 @@ import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
@@ -60,6 +61,7 @@ import static org.junit.jupiter.api.Assertions.fail;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
 )
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@EnabledIfSystemProperty(named = "lingframe.runE2E", matches = "true")
 @DisplayName("观测闭环集成回归")
 class ObservabilityClosedLoopIntegrationTest {
 

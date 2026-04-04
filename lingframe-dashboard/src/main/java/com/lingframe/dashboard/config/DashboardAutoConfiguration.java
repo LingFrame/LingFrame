@@ -115,11 +115,11 @@ public class DashboardAutoConfiguration {
             @Override
             public void addViewControllers(ViewControllerRegistry registry) {
                 registry.addRedirectViewController("/lingframe/dashboard/ui", "/lingframe/dashboard/ui/");
-                registry.addViewController("/lingframe/dashboard/ui/").setViewName("forward:/lingframe/dashboard/ui/index.html");
+                registry.addViewController("/lingframe/dashboard/ui/").setViewName("forward:/dashboard.html");
                 registry.addViewController("/lingframe/dashboard/ui/{path:[^\\.]*}")
-                        .setViewName("forward:/lingframe/dashboard/ui/index.html");
+                        .setViewName("forward:/dashboard.html");
                 registry.addViewController("/lingframe/dashboard/ui/**/{path:[^\\.]*}")
-                        .setViewName("forward:/lingframe/dashboard/ui/index.html");
+                        .setViewName("forward:/dashboard.html");
             }
         };
     }
