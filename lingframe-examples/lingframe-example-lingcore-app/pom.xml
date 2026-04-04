@@ -92,6 +92,14 @@
 
     <profiles>
         <profile>
+            <id>integration-check</id>
+            <properties>
+                <lingframe.runE2E>true</lingframe.runE2E>
+                <skipITs>false</skipITs>
+            </properties>
+        </profile>
+
+        <profile>
             <id>spring-boot2</id>
             <activation>
                 <activeByDefault>true</activeByDefault>

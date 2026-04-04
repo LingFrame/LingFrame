@@ -59,13 +59,13 @@ If it returns normally, the minimum runtime path is working:
 Observability closed loop:
 
 ```powershell
-mvn -pl lingframe-examples/lingframe-example-lingcore-app -am verify "-DskipITs=false" "-Dlingframe.runE2E=true" "-Dit.test=ObservabilityClosedLoopIntegrationTest"
+mvn -pl lingframe-examples/lingframe-example-lingcore-app -am -Pintegration-check verify "-Dit.test=ObservabilityClosedLoopIntegrationTest"
 ```
 
 Browser-level dashboard smoke:
 
 ```powershell
-mvn -pl lingframe-examples/lingframe-example-lingcore-app -am verify "-DskipITs=false" "-Dlingframe.runE2E=true" "-Dit.test=DashboardUiSmokeIntegrationTest"
+mvn -pl lingframe-examples/lingframe-example-lingcore-app -am -Pintegration-check verify "-Dit.test=DashboardUiSmokeIntegrationTest"
 ```
 
 ## 7. What to read next

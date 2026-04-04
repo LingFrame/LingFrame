@@ -67,6 +67,14 @@ If you remember LingFrame in only one sentence, let it be this:
 > You do not need to read the whole documentation set in one pass.  
 > LingFrame lets you stop at any point and continue later.
 
+## Testing
+
+- Default verification: `mvn test`
+- Run both example smoke integrations together:
+  `mvn -pl lingframe-examples/lingframe-example-lingcore-app -am -Pintegration-check verify`
+- Run one smoke integration only when needed:
+  `mvn -pl lingframe-examples/lingframe-example-lingcore-app -am -Pintegration-check verify "-Dit.test=ObservabilityClosedLoopIntegrationTest"`
+
 ---
 
 ![LingFrame Dashboard Example](./docs/images/dashboard.0.3.0.png)

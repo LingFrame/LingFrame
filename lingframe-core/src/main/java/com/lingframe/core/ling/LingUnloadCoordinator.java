@@ -12,7 +12,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * 统一编排卸载后置动作，避免生命周期引擎膨胀为“上帝类”。
+ * 统一编排卸载后置动作。
  */
 @Slf4j
 @RequiredArgsConstructor

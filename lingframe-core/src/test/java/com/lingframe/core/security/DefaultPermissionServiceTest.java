@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,6 +43,7 @@ class DefaultPermissionServiceTest {
         LingFrameConfig.current().setDevMode(false);
         LingCallContext.clear();
         InvocationContext.detach(null);
+        eventBus.shutdown();
     }
 
     @Nested
@@ -112,7 +114,7 @@ class DefaultPermissionServiceTest {
                 ctx.recycle();
             }
 
-            MonitoringEvents.AlertNotifyEvent event = captured.get();
+            MonitoringEvents.AlertNotifyEvent event = awaitEvent(captured, Duration.ofSeconds(2));
             assertNotNull(event);
             assertEquals("trace-dev", event.getTraceId());
             assertEquals("WARNING", event.getLevel());
@@ -150,7 +152,7 @@ class DefaultPermissionServiceTest {
                 ctx.recycle();
             }
 
-            MonitoringEvents.AuditLogEvent event = captured.get();
+            MonitoringEvents.AuditLogEvent event = awaitEvent(captured, Duration.ofSeconds(2));
             assertNotNull(event);
             assertEquals("trace-audit", event.getTraceId());
             assertEquals("ling-a", event.getLingId());
@@ -174,5 +176,20 @@ class DefaultPermissionServiceTest {
         ctx.setRuleSource("AnnotationPolicy");
         ctx.attach();
         return ctx;
+    }
+
+    private <T> T awaitEvent(AtomicReference<T> captured, Duration timeout) {
+        long deadlineNanos = System.nanoTime() + timeout.toNanos();
+        T event = captured.get();
+        while (event == null && System.nanoTime() < deadlineNanos) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            event = captured.get();
+        }
+        return event;
     }
 }
