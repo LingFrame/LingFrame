@@ -49,7 +49,7 @@ public class UserQueryServiceImpl implements UserQueryService {
 
 ---
 
-## Classloader Reality In 0.3.0
+## Classloader Reality In The Current Implementation
 
 The current runtime uses a three-level relationship:
 
@@ -84,7 +84,7 @@ The trade-off is stated honestly: **an already-loaded shared contract cannot be 
 
 ## Bootstrap Boundary You Must Respect
 
-In `0.3.0`, `Shared API` bootstrap order is explicit:
+In the current runtime, `Shared API` bootstrap order is explicit:
 
 1. preload shared jars or classes directories
 2. register shared package prefixes

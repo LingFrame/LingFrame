@@ -2,7 +2,7 @@
 
 本教程将带你从零开始，完成一个完整的灵珑应用开发。
 
-> ⚠️ **注意**：本教程基于 `0.3.0` 版本的实际代码结构编写。
+> ⚠️ **注意**：本教程基于当前实际代码结构编写。
 
 ---
 
@@ -68,7 +68,7 @@ mkdir -p lings/order-ling
             <dependency>
                 <groupId>com.lingframe</groupId>
                 <artifactId>lingframe-bom</artifactId>
-                <version>0.3.0</version>
+                <version>${lingframe.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -700,7 +700,7 @@ curl http://localhost:8888/lingframe/dashboard/lings/metrics
 
 ## 关键差异说明
 
-本教程与实际 `0.3.0` 代码的关键差异：
+本教程与当前实际代码的关键差异：
 
 | 项目 | 教程示例 | 实际代码规范 |
 |------|----------|--------------|

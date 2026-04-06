@@ -13,7 +13,7 @@ If you only want one thing from this page, remember this:
 
 > LingFrame helps you load and govern isolated lings inside one JVM process, without forcing a microservice rewrite.
 
-For `0.3.0`, this is not only a demo of "lings can be loaded".  
+For the current public implementation, this is not only a demo of "lings can be loaded".
 It is also your first look at a runtime path that is governable, convergent, and ready to be validated later against disciplined unload behavior.
 
 ---
@@ -38,7 +38,7 @@ You will see three things in one run:
 - JDK 17+ for the main example path
 - Maven 3.8+
 
-`0.3.0` also supports JDK 8 and Spring Boot 2.x, but the example app remains the easiest place to start.
+The current runtime also supports JDK 8 and Spring Boot 2.x, but the example app remains the easiest place to start.
 
 ---
 
@@ -121,7 +121,7 @@ These endpoints already expose:
 - version-level details
 - collected governance signals
 
-### 4. Push a first-stage invocation governance patch
+### 4. Push an invocation governance patch
 
 ```bash
 curl -X POST http://localhost:8888/lingframe/dashboard/governance/user-ling/invocation \
@@ -129,7 +129,7 @@ curl -X POST http://localhost:8888/lingframe/dashboard/governance/user-ling/invo
   -d "{\"timeoutMs\":3000,\"rateLimitPerSecond\":1,\"maxConcurrentThreads\":1}"
 ```
 
-These are the first-stage invocation governance fields already closed in the current runtime:
+These are the invocation governance fields already closed in the current runtime:
 
 - `timeoutMs`
 - `rateLimitPerSecond`
@@ -233,7 +233,7 @@ Once the example is up, you have already verified four things:
 
 If you also complete the Dashboard / governance / uninstall verification above, you additionally confirm that:
 
-- the control surface can hot-adjust first-stage invocation governance parameters
+- the control surface can hot-adjust invocation governance parameters
 - health and governance metrics change after real requests
 - uninstall precheck, real uninstall, and post-uninstall diagnostics already form one runtime loop
 

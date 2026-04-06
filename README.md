@@ -60,7 +60,7 @@ If you remember LingFrame in only one sentence, let it be this:
 - **Want the shortest runnable path**: start with [QUICK_START.md](./QUICK_START.md)
 - **Want the full onboarding path**: start with [getting-started.md](docs/getting-started.md)
 - **Want to quickly understand what problem it solves**: read [practical-entry.md](docs/practical-entry.md)
-- **Want to see how far the `0.3.0` architecture has already converged**: read [technical-entry.md](docs/technical-entry.md)
+- **Want to see how far the current architecture has already converged**: read [technical-entry.md](docs/technical-entry.md)
 - **Want to understand why LingFrame is designed this way**: read [WHY.md](WHY.md)
 - **Want to understand what LingFrame insists on**: read [MANIFESTO.md](MANIFESTO.md)
 
@@ -77,7 +77,7 @@ If you remember LingFrame in only one sentence, let it be this:
 
 ---
 
-![LingFrame Dashboard Example](./docs/images/dashboard.0.3.0.png)
+![LingFrame Dashboard Example](./docs/images/dashboard.png)
 
 *The current dashboard is already a usable governance control surface, not just a display page.*
 
@@ -127,11 +127,9 @@ It only tries to put decisions back where they should happen.
 
 ---
 
-## 🚀 Current Stage
+## 🚀 Current Implemented Capabilities
 
-### 🔹 v0.3.0 · Nirvana
-
-The focus of this stage is not to keep adding scattered outward-facing capabilities,  
+The current implementation focus is not to keep adding scattered outward-facing capabilities,
 but to truly converge the governance mechanisms that already exist into a stable, reusable, explainable runtime spine.
 
 The core scope clearly delivered in the current release includes:
@@ -186,8 +184,8 @@ It simply refuses to dump all complexity onto the user at once.
 
 - Want the shortest hands-on path: read [QUICK_START.md](./QUICK_START.md)
 - Want the full onboarding path: read [getting-started.md](docs/getting-started.md)
-- Want to understand `0.3.0` from the implementation side: read [technical-entry.md](docs/technical-entry.md)
-- Want to see what role the dashboard plays in the current version: read [dashboard.md](docs/dashboard.md)
+- Want to understand the current public capabilities from the implementation side: read [technical-entry.md](docs/technical-entry.md)
+- Want to see what role the dashboard plays in the current runtime: read [dashboard.md](docs/dashboard.md)
 - Want terminology help: read [glossary.md](docs/glossary.md)
 
 If you stop here, that is completely fine too.

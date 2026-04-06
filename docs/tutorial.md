@@ -2,7 +2,7 @@
 
 This tutorial will guide you through building a complete LingFrame application from scratch.
 
-> ⚠️ **Note**: This tutorial is based on the `0.3.0` version's actual code structure.
+> ⚠️ **Note**: This tutorial is based on the current actual code structure.
 
 ---
 
@@ -68,7 +68,7 @@ mkdir -p lings/order-ling
             <dependency>
                 <groupId>com.lingframe</groupId>
                 <artifactId>lingframe-bom</artifactId>
-                <version>0.3.0</version>
+                <version>${lingframe.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -700,7 +700,7 @@ curl http://localhost:8888/lingframe/dashboard/lings/metrics
 
 ## Key Differences
 
-Key differences between this tutorial and actual `0.3.0` code:
+Key differences between this tutorial and the current actual code:
 
 | Item | Tutorial Example | Actual Code Convention |
 |------|------------------|------------------------|

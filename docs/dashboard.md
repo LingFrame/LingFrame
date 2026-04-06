@@ -1,6 +1,6 @@
 # Dashboard: Governance Control Surface
 
-LingFrame Dashboard in `0.3.0` should be understood first as a runtime governance control surface, not as a frontend showcase.
+LingFrame Dashboard should be understood first as a runtime governance control surface, not as a frontend showcase.
 
 The shipped codebase exposes a real backend surface for ling lifecycle operations, governance patching, simulation, metrics, health snapshots, and SSE event streaming. The UI is only one consumer of that backend.
 
@@ -23,6 +23,43 @@ It is that the dashboard is already consuming real runtime state, real event str
 
 From the project-identity perspective, the dashboard is not only showing governance features.  
 It is gathering long-running runtime evidence, unload-side signals, and operational feedback into one control surface.
+
+## Service Layer Responsibilities
+
+The dashboard service layer has already been split once so that runtime control does not stay trapped in a single fat service.
+
+### Entry Layer
+
+- [DashboardService.java](../lingframe-dashboard/src/main/java/com/lingframe/dashboard/service/DashboardService.java)
+  keeps query entry points, delegation, and a small amount of response assembly.
+
+### Governance And Timeline
+
+- [DashboardGovernanceSupport.java](../lingframe-dashboard/src/main/java/com/lingframe/dashboard/service/DashboardGovernanceSupport.java)
+  handles governance patch merge, permission sync, and invocation-governance updates.
+- [DashboardLifecycleEventStore.java](../lingframe-dashboard/src/main/java/com/lingframe/dashboard/service/DashboardLifecycleEventStore.java)
+  owns lifecycle timeline storage and trimming.
+
+### Status And Lifecycle Operations
+
+- [DashboardStatusCoordinator.java](../lingframe-dashboard/src/main/java/com/lingframe/dashboard/service/DashboardStatusCoordinator.java)
+  coordinates status transitions, side effects, and lifecycle timeline writes.
+- [DashboardLingSourceResolver.java](../lingframe-dashboard/src/main/java/com/lingframe/dashboard/service/DashboardLingSourceResolver.java)
+  resolves reload source locations, selects instances, and generates reload versions.
+- [DashboardLingOperations.java](../lingframe-dashboard/src/main/java/com/lingframe/dashboard/service/DashboardLingOperations.java)
+  orchestrates install, uninstall, uninstall-by-version, and reload operations.
+- [DashboardUninstallResultMapper.java](../lingframe-dashboard/src/main/java/com/lingframe/dashboard/service/DashboardUninstallResultMapper.java)
+  converts unload results into dashboard DTOs.
+
+The split is also covered by dedicated tests:
+
+- [DashboardServiceTest.java](../lingframe-dashboard/src/test/java/com/lingframe/dashboard/service/DashboardServiceTest.java)
+- [DashboardGovernanceSupportTest.java](../lingframe-dashboard/src/test/java/com/lingframe/dashboard/service/DashboardGovernanceSupportTest.java)
+- [DashboardLifecycleEventStoreTest.java](../lingframe-dashboard/src/test/java/com/lingframe/dashboard/service/DashboardLifecycleEventStoreTest.java)
+- [DashboardStatusCoordinatorTest.java](../lingframe-dashboard/src/test/java/com/lingframe/dashboard/service/DashboardStatusCoordinatorTest.java)
+- [DashboardLingSourceResolverTest.java](../lingframe-dashboard/src/test/java/com/lingframe/dashboard/service/DashboardLingSourceResolverTest.java)
+- [DashboardLingOperationsTest.java](../lingframe-dashboard/src/test/java/com/lingframe/dashboard/service/DashboardLingOperationsTest.java)
+- [DashboardUninstallResultMapperTest.java](../lingframe-dashboard/src/test/java/com/lingframe/dashboard/service/DashboardUninstallResultMapperTest.java)
 
 ## Integration Steps
 
@@ -55,7 +92,7 @@ Install is additionally gated by `lingframe.dashboard.install-enabled=true`.
 
 Reload is only available when `lingframe.dev-mode=true`.
 
-![LingFrame Dashboard Example](./images/dashboard.0.3.0.png)
+![LingFrame Dashboard Example](./images/dashboard.png)
 *Figure: one possible UI consumer of the dashboard backend surface.*
 
 ## API Endpoints
@@ -81,6 +118,7 @@ Once Dashboard is enabled, the following REST APIs are available:
 | POST   | `/lingframe/dashboard/lings/{lingId}/canary` | Configure canary strategy |
 
 Request Body Example:
+
 ```json
 {
   "percent": 10,
@@ -155,5 +193,5 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
 2. Install is disabled by default and requires `lingframe.dashboard.install-enabled=true`.
 3. Reload is a dev-mode capability and is rejected when `lingframe.dev-mode=false`.
 4. CORS is open by default in the current implementation; production deployments should add proper access control in front of the dashboard surface.
-5. The backend API surface is the `0.3.0` truth source; UI packaging details are secondary to the runtime control contract.
+5. The backend API surface is the truth source; UI packaging details are secondary to the runtime control contract.
 6. Dashboard is best understood as an observation and operation entry for the runtime kernel, not as a separate system alongside it.

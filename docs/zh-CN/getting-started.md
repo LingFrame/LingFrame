@@ -13,7 +13,7 @@
 
 > 灵珑让你在一个 JVM 进程里加载并治理彼此隔离的业务灵元，而不是一上来就把系统拆成微服务。
 
-对 `0.3.0` 来说，这不只是“把灵元加载起来”的演示，  
+对当前公开实现来说，这不只是“把灵元加载起来”的演示，
 也是你第一次接触一条可治理、可收敛、并且后续可继续验证规范热卸载的运行时链路。
 
 ---
@@ -38,7 +38,7 @@
 - JDK 17+ 作为主示例路径
 - Maven 3.8+
 
-`0.3.0` 同时支持 JDK 8 与 Spring Boot 2.x，但示例工程仍然是最容易上手的入口。
+当前运行时同时支持 JDK 8 与 Spring Boot 2.x，但示例工程仍然是最容易上手的入口。
 
 ---
 
@@ -121,7 +121,7 @@ curl http://localhost:8888/lingframe/dashboard/lings/governance/all
 - version 级明细
 - 当前已采集到的治理信号
 
-### 4. 对 `user-ling` 下发第一阶段调用治理补丁
+### 4. 对 `user-ling` 下发调用治理补丁
 
 ```bash
 curl -X POST http://localhost:8888/lingframe/dashboard/governance/user-ling/invocation \
@@ -129,7 +129,7 @@ curl -X POST http://localhost:8888/lingframe/dashboard/governance/user-ling/invo
   -d "{\"timeoutMs\":3000,\"rateLimitPerSecond\":1,\"maxConcurrentThreads\":1}"
 ```
 
-这一步对应当前已经闭环的第一阶段调用治理参数：
+这一步对应当前已经闭环的调用治理参数：
 
 - `timeoutMs`
 - `rateLimitPerSecond`
@@ -233,7 +233,7 @@ lingframe:
 
 如果你继续完成上面的 Dashboard / 治理 / 卸载验证，你还会额外看到：
 
-- 控制面可以热调第一阶段调用治理参数
+- 控制面可以热调调用治理参数
 - 健康指标与治理指标会在真实请求后变化
 - 卸载前预检、真实卸载与卸载后诊断已经形成一条主链
 

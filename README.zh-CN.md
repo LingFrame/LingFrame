@@ -68,7 +68,7 @@
 - **想先快速跑通**：先看 [QUICK_START.zh-CN.md](./QUICK_START.zh-CN.md)
 - **想正式入门**：看 [getting-started.md](docs/zh-CN/getting-started.md)
 - **想快速理解它解决什么问题**：看 [practical-entry.md](docs/zh-CN/practical-entry.md)
-- **想了解 `0.3.0` 当前架构已经做到哪一步**：看 [technical-entry.md](docs/zh-CN/technical-entry.md)
+- **想了解当前架构已经做到哪一步**：看 [technical-entry.md](docs/zh-CN/technical-entry.md)
 - **想理解灵珑为什么这样设计**：看 [WHY.md](WHY.md)
 - **想理解灵珑坚持什么**：看 [MANIFESTO.md](MANIFESTO.md)
 
@@ -127,11 +127,9 @@
 
 ---
 
-## 🚀 当前阶段
+## 🚀 当前已实现能力
 
-### 🔹 v0.3.0 · 涅槃
-
-这一阶段的重点，不是继续向外堆分散能力，  
+当前实现的重点，不是继续向外堆分散能力，
 而是把已经存在的治理机制真正收束成一条稳定、可复用、可解释的运行时主链。
 
 当前已经明确交付的核心内容包括：
@@ -186,7 +184,7 @@
 
 - 想先快速跑通：看 [QUICK_START.zh-CN.md](./QUICK_START.zh-CN.md)
 - 想正式入门：看 [getting-started.md](docs/zh-CN/getting-started.md)
-- 想从源码实现理解 `0.3.0`：看 [technical-entry.md](docs/zh-CN/technical-entry.md)
+- 想从源码实现理解当前公开能力：看 [technical-entry.md](docs/zh-CN/technical-entry.md)
 - 想看 Dashboard 在当前版本里扮演什么角色：看 [dashboard.md](docs/zh-CN/dashboard.md)
 - 想了解术语：看 [glossary.md](docs/zh-CN/glossary.md)
 

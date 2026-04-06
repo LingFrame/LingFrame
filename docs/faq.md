@@ -144,8 +144,10 @@ LingFrame ensures dependent lings are loaded first.
 - ✅ @Autowired dependency injection
 - ✅ @Value configuration injection
 - ✅ @Transactional transactions
-- ⚠️ @Configuration needs attention for ClassLoader isolation
-- ❌ @SpringBootApplication not supported (lings are not standalone applications)
+- ✅ `@SpringBootApplication` can be used on ling entry classes in the current example-style setup
+- ⚠️ `@Configuration` and auto-configuration behavior still need classloader-boundary awareness
+
+Even when a ling uses Spring Boot annotations, it is still loaded as a ling inside LingCore rather than becoming a separate host application.
 
 ---
 
@@ -247,23 +249,22 @@ lingframe:
 
 **A:**
 
-| JDK Version | Support Level |
+| Runtime path | Current status |
 |-------------|---------------|
-| JDK 8 | ✅ Supported (some features limited) |
-| JDK 11 | ✅ Supported |
-| JDK 17 | ✅ Fully supported (recommended) |
-| JDK 21 | ✅ Supported |
+| JDK 8 + Spring Boot 2.7.x | ✅ Supported through `lingframe-spring-boot2-starter` |
+| JDK 17 + Spring Boot 3.x | ✅ Mainline supported path through `lingframe-spring-boot3-starter` |
+| Newer JDKs on the Boot 3 line | ⚠️ Possible depending on the host stack, but current public examples and dependency profiles center on JDK 17 |
 
 ### Q23: Which Spring Boot versions does LingFrame support?
 
 **A:**
 
-| Spring Boot Version | Support Level |
+| Spring Boot line | Current status |
 |---------------------|---------------|
-| 2.7.x | ✅ Supported (some features limited) |
-| 3.0.x | ✅ Supported |
-| 3.1.x | ✅ Supported |
-| 3.2.x | ✅ Fully supported (recommended) |
+| 2.7.x | ✅ Supported through `lingframe-spring-boot2-starter` (the repository currently pins `2.7.18`) |
+| 3.x | ✅ Supported through `lingframe-spring-boot3-starter` (the repository currently pins `3.5.6`) |
+
+If you want the most code-aligned answer, follow the profiles and starter modules in the repository rather than assuming a broader compatibility matrix than the current build actually declares.
 
 ### Q24: How to participate in LingFrame development?
 
@@ -294,4 +295,6 @@ lingframe:
 
 ### Q28: When will message brokers (Kafka/RabbitMQ) be supported?
 
-**A:** Planned in Phase 5 ecosystem completion, see [Roadmap](roadmap.md).
+**A:** Message-broker proxies are **not part of the current public capability set yet**.
+
+What exists today is the extension surface that such work would build on, such as pipeline/filter SPIs and deploy/export customization points. Kafka / RabbitMQ style proxies still belong to future ecosystem work rather than shipped capability. See [Roadmap](roadmap.md).

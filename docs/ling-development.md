@@ -1,6 +1,6 @@
 # Ling Development Guide
 
-This guide explains how to build a ling that fits the public `0.3.0` runtime.
+This guide explains how to build a ling that fits the current public runtime boundary.
 
 It is written for developers who are new to LingFrame, so it starts from the smallest working shape instead of the most feature-rich one.
 
@@ -187,7 +187,7 @@ mvn clean package
 
 ## What The Kernel Already Gives You
 
-In `0.3.0`, business lings do not need to implement the kernel itself.
+In the current implementation, business lings do not need to implement the kernel itself.
 
 The runtime already gives you:
 

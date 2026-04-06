@@ -49,7 +49,7 @@ public class UserQueryServiceImpl implements UserQueryService {
 
 ---
 
-## `0.3.0` 里的 classloader 现实
+## 当前实现里的 classloader 现实
 
 当前运行时可以大体理解成三层关系：
 
@@ -84,7 +84,7 @@ public class UserQueryServiceImpl implements UserQueryService {
 
 ## 必须尊重的启动边界
 
-在 `0.3.0` 里，`Shared API` 的启动顺序已经是显式规则：
+在当前运行时里，`Shared API` 的启动顺序已经是显式规则：
 
 1. preload 共享 JAR 或 classes 目录
 2. 注册共享包前缀

@@ -82,9 +82,9 @@ cd lingframe-examples/lingframe-example-lingcore-app && mvn spring-boot:run
 
 `TrafficMetricsFilter` → `MacroStateGuardFilter` → `CanaryRoutingFilter` → `ResilienceGovernanceFilter` → `ContextIsolationFilter` → `GovernanceDecisionFilter` → `PermissionGovernanceFilter` → `ThreadIsolationGovernanceFilter` → `TerminalInvokerFilter`
 
-三种执行模式：`REAL`（真实执行）、`SIMULATION`（模拟）、`GOVERN_ONLY`（仅治理）。
+三种执行模式：`NORMAL`（真实执行）、`SIMULATION`（模拟）、`GOVERN_ONLY`（仅治理）。
 
-各入口对应模式：灵元服务调用用 `REAL`，灵核 Bean 方法拦截用 `GOVERN_ONLY`，Dashboard 模拟用 `SIMULATION`。
+各入口对应模式：灵元服务调用用 `NORMAL`，灵核 Bean 方法拦截用 `GOVERN_ONLY`，Dashboard 模拟用 `SIMULATION`。
 
 ### 类加载隔离
 

@@ -1,6 +1,6 @@
 # Observability
 
-This document describes LingFrame's current observability capabilities.
+This document describes the observability capabilities already implemented in LingFrame.
 
 ---
 
@@ -8,19 +8,19 @@ This document describes LingFrame's current observability capabilities.
 
 ### 1. Dashboard SSE Event Stream
 
-LingFrame provides real-time event stream via Dashboard SSE (Server-Sent Events).
+LingFrame provides a real-time event stream through Dashboard SSE (Server-Sent Events).
 
 **Endpoint**: `GET /lingframe/dashboard/stream`
 
-**Supported Event Types**:
+**Currently supported event types**:
 
 | Event Type | Description |
 |------------|-------------|
 | `trace` | Invocation trace events |
 | `audit` | Audit events |
 | `lifecycle` | Lifecycle events |
-| `circuit-breaker` | Circuit breaker state changes |
-| `leak-detection` | Leak detection events |
+| `circuit-breaker` | Circuit-breaker state changes |
+| `leak-detection` | Leak-detection events |
 
 **Usage Example**:
 
@@ -35,32 +35,34 @@ eventSource.onmessage = (event) => {
 
 ### 2. JVM and System Metrics
 
-Get JVM metrics snapshot via Dashboard API:
+You can fetch JVM metrics snapshots through the Dashboard API:
 
 **Endpoint**: `GET /lingframe/dashboard/lings/metrics`
 
-**Returned Content**:
+**Current response content**:
 
 | Category | Metrics |
 |----------|---------|
-| CPU | System CPU usage, Process CPU load |
-| Memory | Total memory, Heap, Non-heap, Metaspace |
-| JVM | GC count/duration, Class loading, Threads |
+| CPU | System CPU usage, process CPU load |
+| Memory | Total memory, heap, non-heap, metaspace |
+| JVM | GC count/duration, class loading, threads |
 | System | System load |
 
 ### 3. Ling Health Snapshots
 
-**Single Ling Health Snapshot**:
+**Single-ling health snapshot**:
+
 ```
 GET /lingframe/dashboard/lings/{lingId}/health
 ```
 
-**All Lings Health Snapshot**:
+**All-ling health snapshot**:
+
 ```
 GET /lingframe/dashboard/lings/health/all
 ```
 
-The response now includes:
+The response now contains:
 
 - ling-level `summary`
 - version-level `versions`
@@ -74,11 +76,12 @@ Available fields include:
 - `activeRequests`
 - `healthStatus`
 
-Dashboard already consumes and displays both ling summary and per-version comparison.
+Dashboard already consumes and displays these values for both overview and version comparison.
 
 ### 4. Governance Signal Snapshots
 
-**All Governance Signals**:
+**All governance signals**:
+
 ```
 GET /lingframe/dashboard/lings/governance/all
 ```
@@ -92,27 +95,34 @@ Currently exposed:
 - `bulkheadRejectedRequests`
 - `recoveryCount`
 
-Both ling-level `summary` and version-level `versions` are available.
+Both ling-level `summary` and version-level `versions` are supported.
 
 ### 5. Traffic Statistics
 
-**Get Ling Traffic Stats**:
+**Get ling traffic stats**:
+
 ```
 GET /lingframe/dashboard/lings/{lingId}/stats
 ```
 
-Returns: Total requests, version distribution, active requests, window start time.
+Returns:
 
-**Reset Statistics**:
+- total requests
+- version distribution
+- active requests
+- statistics-window start
+
+**Reset statistics**:
+
 ```
 POST /lingframe/dashboard/lings/{lingId}/stats/reset
 ```
 
 ### 6. Micrometer Bridge
 
-`lingframe-dashboard` now provides an optional Micrometer bridge.
+`lingframe-dashboard` ships with an optional Micrometer bridge.
 
-When the host application provides a `MeterRegistry`, LingFrame registers gauges for:
+When the host application provides a `MeterRegistry`, LingFrame registers the following gauges:
 
 - `lingframe.ling.health.qps`
 - `lingframe.ling.health.error_rate`
@@ -127,34 +137,38 @@ When the host application provides a `MeterRegistry`, LingFrame registers gauges
 
 Notes:
 
-- LingFrame now ships the bridge, but does not force a specific monitoring backend
-- If the host also adds `micrometer-registry-prometheus` and exposes actuator endpoints, Prometheus can scrape the metrics directly
+- LingFrame now provides the bridge, but does not force a specific monitoring backend
+- If the host also adds `micrometer-registry-prometheus` and exposes actuator endpoints, Prometheus can scrape these metrics directly
 
 ### 7. EventBus Mechanism
 
-LingFrame has a built-in EventBus supporting two subscription modes:
+LingFrame has a built-in EventBus with two subscription modes:
 
-**Ling-level Subscription** (auto-cleaned on ling unload):
+**Ling-level subscription** (auto-cleaned on ling unload):
+
 ```java
 eventBus.subscribe(lingId, MyEvent.class, event -> {
-    // Handle event
+    // handle event
 });
 ```
 
-**Global Subscription** (for framework-level components):
+**Global subscription** (for framework-level components):
+
 ```java
 eventBus.subscribeGlobal(MyEvent.class, event -> {
-    // Handle event
+    // handle event
 });
 ```
 
-## Prometheus Integration in Hosts
+---
+
+## Prometheus Integration In Hosts
 
 Minimum host requirements:
 
-1. Add `spring-boot-starter-actuator`
-2. Add `micrometer-registry-prometheus`
-3. Expose `/actuator/prometheus`
+1. add `spring-boot-starter-actuator`
+2. add `micrometer-registry-prometheus`
+3. expose `/actuator/prometheus`
 
 Example configuration:
 
@@ -169,7 +183,7 @@ management:
       enabled: true
 ```
 
-The sample app `lingframe-example-lingcore-app` has been updated with this setup and can be used as a working reference.
+The sample app `lingframe-example-lingcore-app` already contains this setup and can be used as a working reference.
 
 ---
 
@@ -182,7 +196,7 @@ logging:
   level:
     root: INFO
     com.lingframe: INFO
-    # Enable for debugging
+    # enable for debugging
     com.lingframe.core.fsm: DEBUG
     com.lingframe.core.pipeline: DEBUG
     com.lingframe.core.classloader: DEBUG
@@ -190,7 +204,7 @@ logging:
 
 ### Audit Logging
 
-Methods annotated with `@Auditable` will log audit entries:
+Methods annotated with `@Auditable` will write audit entries:
 
 ```java
 @Auditable(action = "createOrder", resource = "order")
@@ -201,6 +215,6 @@ public OrderInfo createOrder(CreateOrderRequest request) {
 
 ---
 
-## Working with Dashboard
+## Working With Dashboard
 
-Dashboard is the main entry point for observability capabilities. See [Dashboard Documentation](dashboard.md).
+Dashboard is the main entry point for current observability capabilities. See [Dashboard Documentation](dashboard.md).
