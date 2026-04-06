@@ -134,7 +134,7 @@
 
 当前已经明确交付的核心内容包括：
 
-- 围绕 `InvocationPipelineEngine` 与 `FilterRegistry` 收束统一治理 Pipeline
+- 围绕 `InvocationPipelineEngine` 收束统一治理主链，并通过分区的 `InvocationContext` 终结魔术键泛滥 
 - 明确三种执行模式：`NORMAL`、`SIMULATION`、`GOVERN_ONLY`
 - 让灵元调用、Spring Boot 2 / 3 Web 治理、灵核 Bean 拦截、Dashboard 模拟共用同一条治理内核
 - 将运行时状态收束为 `InstanceStatus` 与 `RuntimeStatus` 双层模型，并分别由 `InstanceCoordinator`、`RuntimeCoordinator` 负责状态写入

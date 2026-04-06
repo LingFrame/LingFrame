@@ -1,144 +1,142 @@
 # Practical Entry
 
-If you are not here to study framework history, but to decide whether LingFrame fits your current system, start here.
+If you are not here to study framework history, but want to judge whether "LingFrame is suitable for my current system," this is the best place to start.
 
-This page does not discuss idealized vision. It answers:
+This page does not discuss ideal blueprints. It only answers:
 
-- which problems are worth solving with LingFrame first
-- what a safe first adoption path looks like
-- how far the current codebase has already converged
+- What problems are most worth solving with LingFrame first?
+- How should the first round of integration proceed?
+- To what degree has the current codebase achieved this?
 
-## Use LingFrame For These Problems First
+## Solve These Problems With LingFrame First
 
-The most suitable current use cases are not “I want to build a whole platform”, but practical problems like:
+The most suitable scenarios for introducing LingFrame early on are not "I want to build an entire ecosystem platform," but rather real, grounded problems:
 
-- the system has been running for years and nobody dares to touch it
-- you need to gradually rebuild boundaries without full downtime
-- you want governance capabilities on one unified spine instead of scattering them across layers
-- you want multi-version coexistence, canary, permission, audit, and unload to become explainable
+- The system has been running for a long time, and no one dares to change it carelessly.
+- You need to gradually reconstruct boundaries without incurring downtime.
+- You want to centralize governance capabilities into one unified main chain, rather than scattering them across layers.
+- You want multi-version co-existence, canary releases, permissions, audits, and unloads to become explainable.
 
-If your goal is only:
+If your desires are merely:
 
-- to build a very simple plugin system
-- to assemble a front-end extension market quickly
-- to convert a monolith into distributed architecture immediately
+- Playing around with a simple plugin system.
+- Quickly assembling a frontend extension marketplace.
+- Instantly rewriting a monolith into microservices.
 
-then LingFrame in its current form is probably not the right first tool.
+Then LingFrame is not currently the most appropriate tool for your job.
 
-## Recommended Adoption Path
+## Recommended Integration Path
 
-### Phase 1: Start with one non-core ling
+### Phase 1: Choose a Non-Core Ling First
 
-Do not split the most critical business first.
+For your first step, do not immediately dismantle your most critical business logic.
 
-A safer first move is:
+The safer approach right now is:
 
-- choose one capability with relatively clean boundaries
-- make it a ling first
-- validate install, invocation, governance, unload, and observability around that boundary
+- Select a business capability with relatively clear boundaries.
+- Turn it into a ling first.
+- Step through the full chain: install, invoke, governance, unload, and observability.
 
-### Phase 2: Move the contract first, then the business
+### Phase 2: Move Contracts First, Business Second
 
-Shared API is still a strong boundary.
+`Shared API` is still a hard boundary today.
 
-So the safer order is:
+Therefore, the recommended order is:
 
-1. define the Shared API contract first
-2. implement business lings around that contract
-3. do not put implementation classes into Shared API
+1. Define the Shared API contracts first.
+2. Implement the business ling around those contracts.
+3. Keep implementation classes out of the Shared API.
 
-### Phase 3: Observe governance behavior in dev mode first
+### Phase 3: Observe Governance Behavior in Dev Mode First
 
-LingFrame already provides:
+LingFrame currently provides:
 
-- dashboard control surface
-- metrics and health snapshots
-- SSE event streaming
-- simulation testing
+- Dashboard control surface.
+- Metrics and health snapshots.
+- SSE event streams.
+- Simulation testing.
 
-So the first adoption round should not only ask “does it run?” It should also ask:
+So the first round of integration shouldn't just confirm "can it run?", but should observe:
 
-- does lifecycle converge?
-- are governance and permission signals visible?
-- does unload at least enter the disciplined path?
+- Has the lifecycle converged?
+- Are permissions and governance signals visible?
+- Does the unload action walk the standardized chain?
 
-### Phase 4: Introduce canary only after the ling is stable
+### Phase 4: Introduce Canary After the Ling is Stable
 
-Canary capability is already available, but it is best introduced after the ling itself is stable.
+Canary release capabilities are already usable today, but are better suited to be introduced after the ling itself is stable.
 
-Recommended order:
+Recommended sequence:
 
-1. make a single-version path stable
-2. validate reload / multi-version coexistence
-3. then introduce canary
+1. Run the single-version flow first.
+2. Verify hot-reload / multi-version co-existence next.
+3. Introduce canary last.
 
-## Three Technical Facts You Need Before Adopting
+## Three Technical Facts You Should Know Before Integration
 
-### 1. LingFrame already has a unified governance spine
+### 1. LingFrame Already Has a Unified Governance Main Chain
 
-The current design is not “every entry builds its own governance stack”.
-
-The main anchors are:
+Right now, we don't have separate governance chains for separate entry points. We prefer reuse:
 
 - `InvocationPipelineEngine`
 - `FilterRegistry`
 
-So during the first adoption round, do not build a parallel governance chain on the side.
+This means during the first round of integration, you shouldn't assemble your own bypassed governance chain on the side.
 
-### 2. LingFrame already has a dual runtime-state model
+### 2. LingFrame Already Has a Dual-Layer Runtime State Model
 
-State has already converged into:
+State has converged down to:
 
 - `InstanceStatus`
 - `RuntimeStatus`
 
-So during the first adoption round, do not scatter runtime state back into aggregate objects or business code.
+So during the first integration attempt, do not scatter runtime state back onto aggregate objects or business objects.
 
-### 3. LingFrame already treats disciplined hot unload as a formal capability
+### 3. LingFrame is Actively Advancing Standardized Hot Unloads as a Formal Capability
 
-The current codebase does not only support loading lings. It already includes:
+The current codebase does more than just load lings. It officially includes:
 
-- drain
-- teardown
-- resource eviction
-- leak detection
+- Draining.
+- Teardown.
+- Resource eviction.
+- Leak detection.
 
-So first-round design must think about “how this will unload later”, not only “how to load it now”.
+So when designing the first integration, you must consider "how will it be unloaded later" from the very beginning.
 
-## A Safe First-Round Checklist
+## A Safe First-Round Go-Live Checklist
 
-If you want the first adoption round to stay stable, at minimum verify:
+If you want your first release to be solid, at least confirm:
 
-1. is the Shared API contract stable?
-2. does the ling depend only on `lingframe-api`?
-3. does invocation go through the unified governance spine?
-4. can Dashboard see state, metrics, and timeline?
-5. can the unload path at least reach precheck and teardown?
+1. Are the Shared API contracts stable?
+2. Does the ling only depend on `lingframe-api`?
+3. Do invocations pass through the unified governance chain?
+4. Can you see states, metrics, and timelines in the Dashboard?
+5. Can the completely unload chain run down to precheck and teardown successfully?
 
-## The Most Common Beginner Mistakes
+## Common Pitfalls for Newcomers
 
-### Treating Shared API as a shared implementation layer
+### Treating Shared API As a Shared Implementation Layer
 
-That is the most common boundary regression.
+This is the most common way boundaries regress.
 
-Shared API should only contain:
+The Shared API today should strictly hold:
 
-- interfaces
-- DTOs
-- essential annotations
+- Interfaces.
+- DTOs.
+- Necessary annotations.
 
-It should not carry shared business implementation.
+It should not be stuffed with implementation logic.
 
-### Validating load but not unload
+### Verifying Loading But Skipping Unloading
 
-If you only prove “it can be installed” but never check “how it will be removed”, then the value for long-running systems stays limited.
+If you only prove "it can be loaded in" but never verify "how it gets unloaded," the value for long-running systems is extremely limited.
 
-### Bypassing the unified governance spine
+### Bypassing the Unified Governance Main Chain
 
-If web, beans, and ling invocation all end up using separate governance logic, the system will fragment again later.
+If Web, Bean, and Ling-to-Ling invocations each run their own custom governance logic, they are guaranteed to fragment again down the line.
 
-## The Most Realistic Way To Use LingFrame Today
+## The Most Realistic Usage Strategy at The Current Stage
 
-The practical current approach is not “lingify the whole system in one go”, but:
+The most realistic approach today is not "LingFrame-ify the entire system at once," but rather:
 
-> choose one controlled boundary first, build runtime order, control surface, and unload path there, then expand gradually.
+> Choose a controllable boundary first, establish runtime order, the control surface, and the unload chain, then expand the scope gradually.

@@ -35,7 +35,7 @@ If you are reading the codebase for the first time, keep that lens in mind.
 
 | Capability | What is currently implemented | Main anchors |
 | :-- | :-- | :-- |
-| Unified invocation governance | explicit filter-based governance chain with startup order validation | `InvocationPipelineEngine`, `FilterRegistry` |
+| Unified invocation governance | explicit filter-based governance chain with startup order validation, eliminating magic keys via partitioned `InvocationContext` (`routing`/`resolution`/`governance`/`execution`) | `InvocationPipelineEngine`, `InvocationContext` |
 | Runtime state convergence | instance lifecycle and macro runtime availability are separated and event-linked | `InstanceStatus`, `RuntimeStatus`, `InstanceCoordinator`, `RuntimeCoordinator` |
 | Web governance | Spring Boot 2 / 3 request entry points can borrow the kernel in `GOVERN_ONLY` mode | `LingWebGovernanceFilter` |
 | Bean governance | LingCore beans can reuse the pipeline through AOP interception | `LingCoreBeanGovernanceInterceptor` |

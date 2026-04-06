@@ -34,7 +34,7 @@
 
 | 能力 | 当前已实现内容 | 主要锚点 |
 | :-- | :-- | :-- |
-| 统一调用治理 | 显式 Filter 主链，并在启动时校验阶段顺序 | `InvocationPipelineEngine`, `FilterRegistry` |
+| 统一调用治理 | 显式 Filter 主链并在启动时校验顺序，`InvocationContext` 按 `routing/resolution/governance/execution` 降解魔术键 | `InvocationPipelineEngine`, `InvocationContext` |
 | 运行时状态收敛 | 实例生命周期与宏观运行时可用性分层建模，并通过事件联动 | `InstanceStatus`, `RuntimeStatus`, `InstanceCoordinator`, `RuntimeCoordinator` |
 | Web 治理 | Spring Boot 2 / 3 请求入口可通过 `GOVERN_ONLY` 借道内核 | `LingWebGovernanceFilter` |
 | Bean 治理 | 灵核 Bean 通过 AOP 复用 Pipeline | `LingCoreBeanGovernanceInterceptor` |

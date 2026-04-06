@@ -137,6 +137,8 @@ Dashboard 后端控制面默认暴露在：
 | GET | `/lingframe/dashboard/governance/rules` | 获取全部治理补丁 |
 | GET | `/lingframe/dashboard/governance/{lingId}` | 获取单个灵元治理策略 |
 | POST | `/lingframe/dashboard/governance/patch/{lingId}` | 更新治理策略补丁 |
+| GET | `/lingframe/dashboard/governance/{lingId}/invocation` | 获取灵元当前调用治理配置 |
+| POST | `/lingframe/dashboard/governance/{lingId}/invocation` | 更新调用治理配置（超时、限流、并发） |
 | POST | `/lingframe/dashboard/governance/{lingId}/permissions` | 更新资源权限与 IPC 授权 |
 
 ### 流量统计
@@ -153,6 +155,8 @@ Dashboard 后端控制面默认暴露在：
 | GET | `/lingframe/dashboard/lings/metrics` | 获取 JVM 指标快照 |
 | GET | `/lingframe/dashboard/lings/{lingId}/health` | 获取单个灵元健康快照 |
 | GET | `/lingframe/dashboard/lings/health/all` | 获取所有灵元健康快照 |
+| GET | `/lingframe/dashboard/lings/governance/all` | 获取所有灵元治理信号快照 |
+| GET | `/lingframe/dashboard/lings/timeline` | 获取生命周期时间线事件 |
 
 ### 模拟测试
 

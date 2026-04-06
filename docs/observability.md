@@ -1,26 +1,26 @@
 # Observability
 
-This document describes the observability capabilities already implemented in LingFrame.
+This document describes the observability capabilities currently landed in LingFrame.
 
 ---
 
 ## Currently Implemented
 
-### 1. Dashboard SSE Event Stream
+### 1. Dashboard SSE Event Streams
 
-LingFrame provides a real-time event stream through Dashboard SSE (Server-Sent Events).
+LingFrame provides real-time event streams based on Server-Sent Events (SSE) via the Dashboard.
 
 **Endpoint**: `GET /lingframe/dashboard/stream`
 
-**Currently supported event types**:
+**Currently Supported Event Types**:
 
 | Event Type | Description |
-|------------|-------------|
-| `trace` | Invocation trace events |
-| `audit` | Audit events |
-| `lifecycle` | Lifecycle events |
-| `circuit-breaker` | Circuit-breaker state changes |
-| `leak-detection` | Leak-detection events |
+|----------|------|
+| `trace` | Invocation trace event |
+| `audit` | Audit event |
+| `lifecycle` | Lifecycle event |
+| `circuit-breaker` | Circuit breaker state change |
+| `leak-detection` | Leak detection event |
 
 **Usage Example**:
 
@@ -33,41 +33,41 @@ eventSource.onmessage = (event) => {
 };
 ```
 
-### 2. JVM and System Metrics
+### 2. JVM & System Metrics
 
-You can fetch JVM metrics snapshots through the Dashboard API:
+JVM metric snapshots can be fetched via the Dashboard API:
 
 **Endpoint**: `GET /lingframe/dashboard/lings/metrics`
 
-**Current response content**:
+**Current Output Fields**:
 
-| Category | Metrics |
-|----------|---------|
-| CPU | System CPU usage, process CPU load |
-| Memory | Total memory, heap, non-heap, metaspace |
-| JVM | GC count/duration, class loading, threads |
+| Metric Category | Specific Metrics |
+|----------|----------|
+| CPU | System CPU usage, Process CPU load |
+| Memory | Total memory, Heap, Non-heap, Metaspace |
+| JVM | GC count/time, Class loading, Threads |
 | System | System load |
 
 ### 3. Ling Health Snapshots
 
-**Single-ling health snapshot**:
+**Single Ling Health Snapshot**:
 
 ```
 GET /lingframe/dashboard/lings/{lingId}/health
 ```
 
-**All-ling health snapshot**:
+**All Lings Health Snapshot**:
 
 ```
 GET /lingframe/dashboard/lings/health/all
 ```
 
-The response now contains:
+The response includes:
 
-- ling-level `summary`
-- version-level `versions`
+- A ling-level `summary`
+- Version-level `versions` list
 
-Available fields include:
+Covered fields include:
 
 - `qps`
 - `errorRate`
@@ -76,17 +76,17 @@ Available fields include:
 - `activeRequests`
 - `healthStatus`
 
-Dashboard already consumes and displays these values for both overview and version comparison.
+The Dashboard UI natively consumes and displays this data for overviews and version comparisons.
 
 ### 4. Governance Signal Snapshots
 
-**All governance signals**:
+**All Governance Signals**:
 
 ```
 GET /lingframe/dashboard/lings/governance/all
 ```
 
-Currently exposed:
+Currently observable points:
 
 - `rateLimitedRequests`
 - `timeoutRequests`
@@ -95,11 +95,11 @@ Currently exposed:
 - `bulkheadRejectedRequests`
 - `recoveryCount`
 
-Both ling-level `summary` and version-level `versions` are supported.
+These similarly support a ling-level `summary` and version-level `versions` list.
 
 ### 5. Traffic Statistics
 
-**Get ling traffic stats**:
+**Get Traffic Statistics for a Ling**:
 
 ```
 GET /lingframe/dashboard/lings/{lingId}/stats
@@ -107,22 +107,22 @@ GET /lingframe/dashboard/lings/{lingId}/stats
 
 Returns:
 
-- total requests
-- version distribution
-- active requests
-- statistics-window start
+- Total request count
+- Version routing counts
+- Active requests
+- The start timestamp of the statistical window
 
-**Reset statistics**:
+**Reset Statistics**:
 
 ```
 POST /lingframe/dashboard/lings/{lingId}/stats/reset
 ```
 
-### 6. Micrometer Bridge
+### 6. Micrometer Metrics Bridging
 
-`lingframe-dashboard` ships with an optional Micrometer bridge.
+`lingframe-dashboard` has an optional built-in Micrometer bridge.
 
-When the host application provides a `MeterRegistry`, LingFrame registers the following gauges:
+When the host application provides a `MeterRegistry`, the following gauges will automatically be registered:
 
 - `lingframe.ling.health.qps`
 - `lingframe.ling.health.error_rate`
@@ -135,40 +135,40 @@ When the host application provides a `MeterRegistry`, LingFrame registers the fo
 - `lingframe.ling.governance.circuit_opened_total`
 - `lingframe.ling.governance.circuit_rejected_total`
 
-Notes:
+Clarifications:
 
-- LingFrame now provides the bridge, but does not force a specific monitoring backend
-- If the host also adds `micrometer-registry-prometheus` and exposes actuator endpoints, Prometheus can scrape these metrics directly
+- LingFrame has prepared the metric bridging but does not force the host to adopt a specific monitoring backend.
+- If the host imports `micrometer-registry-prometheus` and exposes the actuator endpoint, these metrics can be scraped by Prometheus.
 
 ### 7. EventBus Mechanism
 
-LingFrame has a built-in EventBus with two subscription modes:
+LingFrame features a built-in EventBus supporting two subscription modes:
 
-**Ling-level subscription** (auto-cleaned on ling unload):
+**Ling-Level Subscription** (Cleaned up automatically when the ling is unloaded):
 
 ```java
 eventBus.subscribe(lingId, MyEvent.class, event -> {
-    // handle event
+    // Process event
 });
 ```
 
-**Global subscription** (for framework-level components):
+**Global Subscription** (Used by framework-level components):
 
 ```java
 eventBus.subscribeGlobal(MyEvent.class, event -> {
-    // handle event
+    // Process event
 });
 ```
 
 ---
 
-## Prometheus Integration In Hosts
+## Integrating the Host with Prometheus
 
-Minimum host requirements:
+Minimum requirements for integration:
 
-1. add `spring-boot-starter-actuator`
-2. add `micrometer-registry-prometheus`
-3. expose `/actuator/prometheus`
+1. Host imports `spring-boot-starter-actuator`
+2. Host imports `micrometer-registry-prometheus`
+3. Host exposes `/actuator/prometheus`
 
 Example configuration:
 
@@ -183,11 +183,11 @@ management:
       enabled: true
 ```
 
-The sample app `lingframe-example-lingcore-app` already contains this setup and can be used as a working reference.
+The example application `lingframe-example-lingcore-app` has already adopted this configuration and can be used directly as a scraping reference.
 
 ---
 
-## Logging Configuration
+## Log Configuration
 
 ### Recommended Log Levels
 
@@ -196,15 +196,15 @@ logging:
   level:
     root: INFO
     com.lingframe: INFO
-    # enable for debugging
+    # Turn on during debugging:
     com.lingframe.core.fsm: DEBUG
     com.lingframe.core.pipeline: DEBUG
     com.lingframe.core.classloader: DEBUG
 ```
 
-### Audit Logging
+### Audit Logs
 
-Methods annotated with `@Auditable` will write audit entries:
+Methods annotated with `@Auditable` automatically generate audit logs:
 
 ```java
 @Auditable(action = "createOrder", resource = "order")
@@ -215,6 +215,6 @@ public OrderInfo createOrder(CreateOrderRequest request) {
 
 ---
 
-## Working With Dashboard
+## Using Together with the Dashboard
 
-Dashboard is the main entry point for current observability capabilities. See [Dashboard Documentation](dashboard.md).
+The Dashboard is currently the main interface for these observability capabilities. See the [Dashboard Documentation](dashboard.md) for more details.

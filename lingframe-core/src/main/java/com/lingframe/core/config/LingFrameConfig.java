@@ -153,7 +153,7 @@ public class LingFrameConfig {
      * 当为 false 时，灵核应用自动拥有所有权限
      */
     @Builder.Default
-    private boolean hostCheckPermissions = false;
+    private boolean lingCoreCheckPermissions = false;
 
     @Builder.Default
     private int leakDetectionMaxConcurrentAggressiveChecks = 2;

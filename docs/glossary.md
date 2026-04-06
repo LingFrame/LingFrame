@@ -1,70 +1,70 @@
 # Glossary
 
-This page is for first-time LingFrame readers.
+This document is prepared for developers encountering LingFrame for the first time.
 
-If the rest of the docs feel dense, start here and then come back.
+If other documents feel too dense, read through this page first. Returning to the other material will feel remarkably easier.
 
 ---
 
 ## LingFrame
 
-The project as a whole: a JVM runtime-governance framework for long-running systems.
+The overall project name: an order-keeping architecture and JVM runtime governance framework for long-running systems.
 
 ## LingCore
 
-`LingCore`, the host application.
+The host application process running the governance kernel.
 
 ## Ling
 
-`Ling`, a business unit that is independently loaded, isolated, and governed inside the LingCore process.
+The isolated business unit that is independently loaded, managed, and governed within the LingCore process.
 
 ## Shared API
 
-The process-level public contract boundary between LingCore and lings, or between lings.
+The process-level shared contract boundary bridging LingCore to Lings, or Lings to Lings.
 
-It is currently used for:
+It is currently utilized to carry:
 
-- interfaces
-- DTOs
-- essential annotations
-- essential constants
+- Interfaces
+- DTOs (Data Transfer Objects)
+- Essential annotations
+- Essential constants
 
 ## Governance Kernel
 
-The runtime core layer that applies governance consistently.
+The core runtime layer responsible for applying unified application governance rules.
 
 ## Invocation Pipeline
 
-The ordered main path that handles invocation-governance decisions.
+The strictly ordered primary execution chain running all invocation governance decisions.
 
 ## `NORMAL`
 
-Run governance and execute the real terminal invocation.
+Execution mode: exercises all governance components alongside the actual terminal invocation.
 
 ## `SIMULATION`
 
-Run the real governance path without producing real business side effects.
+Execution mode: exercises the real governance path logic, but does not produce actual business side-effects.
 
 ## `GOVERN_ONLY`
 
-Run governance but skip terminal execution inside the pipeline.
+Execution mode: exercises the governance flow, but cuts the Pipeline short, omitting the final terminal invocation entirely.
 
 ## `InstanceStatus`
 
-Lifecycle state of one concrete ling instance.
+The distinct lifecycle state belonging to a specific Ling instance.
 
 ## `RuntimeStatus`
 
-Macro availability state of a ling runtime from the LingCore point of view.
+The macro availability state that a Ling as a whole currently exposes from the perspective of LingCore.
 
 ## Dashboard
 
-Dashboard should currently be understood as a governance control surface, not just a page.
+Right now, the Dashboard should be more deeply understood as the runtime governance control surface, rather than merely a frontend webpage.
 
 ## Canary
 
-Route a portion of traffic to a selected ling version or instance instead of sending all traffic through the default path.
+Routing a deliberate subset of incoming traffic to a specific Ling version or instance, instead of dispatching everything to the default path.
 
 ## Unload Cleanup
 
-The runtime work that happens when a ling is removed: draining requests, evicting resources, clearing classloader-related state, and running leak diagnostics.
+When a Ling is explicitly removed, the runtime will drain requests, evict resources, clear classloader-linked states, and finally execute passive leak diagnostics.

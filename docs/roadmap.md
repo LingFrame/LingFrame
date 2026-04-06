@@ -1,119 +1,119 @@
 # Roadmap
 
-This document describes the evolution roadmap of LingFrame.
+This document outlines the evolutionary roadmap for LingFrame.
 
-> 💡 For currently implemented features, please refer to [Architecture Design](architecture.md)
+> 💡 For currently implemented codebase capabilities, please refer to [Architecture](architecture.md).
 
 ## Positioning
 
-> **JVM Runtime Governance Kernel**
+> **JVM-level Runtime Governance Kernel**
 
 Core Capabilities:
 
-- **Observability**
-- **Controllability**
-- **Auditability**
+- **Observability** (Making behavior visible)
+- **Controllability** (Making behavior steerable)
+- **Auditability** (Making behavior trackable)
 
 ---
 
-## Phase 1: Three-Tier Architecture ✅ Completed
+## Phase 1: 3-Layer Architecture ✅ Completed
 
-**Goal**: Verify feasibility of in-JVM governance
+**Goal**: Validate the feasibility of intra-JVM governance.
 
-- ✅ Unit Lifecycle Management
-- ✅ Child-First ClassLoader Isolation
-- ✅ Spring Parent-Child Context Isolation
-- ✅ Three-Tier ClassLoader Architecture (SharedApiClassLoader)
-- ✅ Service Routing (@LingService + @LingReference)
-- ✅ Basic Permission Governance
-- ✅ Infrastructure Proxy (Storage / Cache)
-
----
-
-## Phase 2: Visual Governance ✅ Basic Completion
-
-**Goal**: Visual Operation Entry
-
-- ✅ Dashboard Unit Management
-- ✅ Unit Status Control (Start/Stop/Hot Swap)
-- ✅ Dynamic Permission Adjustment
-- ✅ Canary Release Configuration
-- ✅ Simulation APIs (resource / IPC / stress routing)
-- ✅ SSE event stream (`/lingframe/dashboard/stream`)
-- ✅ JVM metrics and ling health snapshots
-- ⏳ Dashboard UI Polish
+- ✅ Ling lifecycle management
+- ✅ Child-First classloader isolation
+- ✅ Spring parent-child context isolation
+- ✅ 3-Layer classloader boundaries (`SharedApiClassLoader`)
+- ✅ Service routing (`@LingService` + `@LingReference`)
+- ✅ Foundational permission governance
+- ✅ Infrastructure proxy chains (Storage / Cache)
 
 ---
 
-## Phase 3: Complete Governance Capabilities ✅ Completed
+## Phase 2: Visualized Governance ✅ Progressing
 
-**Goal**: Comprehensive Runtime Governance
+**Goal**: Visual operations control surface.
 
-### Implemented
-- ✅ Permission Control (@RequiresPermission)
-- ✅ Security Audit (@Auditable)
-- ✅ Full Tracing (LingCallContext)
-- ✅ Canary Release (CanaryRouter)
-- ✅ Circuit Breaker (SlidingWindowCircuitBreaker)
-- ✅ Rate Limiting (TokenBucketRateLimiter)
-- ✅ Timeout Control & Fallback (SmartServiceProxy integrated)
-- ✅ Retry (GovernanceKernel integrated)
-- ✅ Complex Routing (LabelMatchRouter with Weight-based and Tag-based routing)
-- ✅ Unified invocation governance spine (`InvocationPipelineEngine` + `FilterRegistry`)
-- ✅ Three execution modes: `NORMAL`, `SIMULATION`, and `GOVERN_ONLY`
-- ✅ Shared governance kernel for web requests, LingCore beans, and dashboard simulation
-- ✅ Dual runtime state model (`InstanceStatus` / `RuntimeStatus`)
-- ✅ Converged state ownership through `InstanceCoordinator` / `RuntimeCoordinator`
-- ✅ Lifecycle orchestration through `DefaultLingLifecycleEngine`
-- ✅ Unload cleanup, resource eviction, and leak detection as formal runtime responsibilities
-- ✅ Shared API bootstrap ordering and boundary freezing (`SharedApiManager`)
+- ✅ Dashboard Ling management
+- ✅ Ling state commands (start/stop/reload)
+- ✅ Dynamic permission adjustment
+- ✅ Canary routing configuration
+- ✅ Simulation testing endpoints (Resource / IPC / Stress routing)
+- ✅ SSE event streams (`/lingframe/dashboard/stream`)
+- ✅ JVM metrics & Ling health snapshots
+- ⏳ Dashboard UI polish
 
 ---
 
-## Phase 4: Observability 🔄 In Progress
+## Phase 3: Comprehensive Governance Capabilities ✅ Completed
 
-**Goal**: Comprehensive Monitoring Capabilities
+**Goal**: Implement comprehensive runtime governance logic.
 
-### Already Available
-- ✅ Dashboard SSE monitoring stream
-- ✅ trace / audit / lifecycle / circuit-breaker / leak-detection event output
-- ✅ JVM / system metrics collection (CPU, process CPU load, total memory, heap, non-heap, metaspace, class loading, threads, GC, system load)
-- ✅ per-ling and all-ling health snapshots
+### Achieved
+- ✅ Permission control (`@RequiresPermission`)
+- ✅ Security Auditing (`@Auditable`)
+- ✅ Full-chain tracing (`LingCallContext`)
+- ✅ Canary routing (`CanaryRouter`)
+- ✅ Circuit breakers (`SlidingWindowCircuitBreaker`)
+- ✅ Rate limiting (`TokenBucketRateLimiter`)
+- ✅ Timeout constraints & Fallbacks (Integrated within `SmartServiceProxy`)
+- ✅ Retry mechanisms (Based on GovernanceKernel retry counts)
+- ✅ Complex routing distribution (Label matching & weights via `LabelMatchRouter`)
+- ✅ Unified overarching invocation governance chain (`InvocationPipelineEngine` + `FilterRegistry`)
+- ✅ Tri-mode execution: `NORMAL` / `SIMULATION` / `GOVERN_ONLY`
+- ✅ Web requests, LingCore Beans, and Dashboard simulations sharing a single execution convergence spine
+- ✅ Dual-layer runtime state model (`InstanceStatus` / `RuntimeStatus`)
+- ✅ Converged state write authority down to `InstanceCoordinator` / `RuntimeCoordinator`
+- ✅ Centralized lifecycle orchestration to `DefaultLingLifecycleEngine`
+- ✅ Added formally disciplined active resource eviction, teardowns, and leak checks
+- ✅ Explicit Shared API boot phases and boundary freezes (`SharedApiManager`)
+
+---
+
+## Phase 4: Observability 🔄 Work in Progress
+
+**Goal**: Robust monitoring solutions.
+
+### Achieved
+- ✅ Dashboard SSE event streams
+- ✅ Standardized payload dumps for trace/audit/lifecycle/circuit/leak-detection events
+- ✅ Out-of-the-box JVM & System metrics (CPU, Memory, Metaspace, GC, Threads, Load)
+- ✅ Single Ling & All Ling health snapshots
 
 ### System Metrics
-- ✅ CPU / process CPU load
-- ✅ total memory / heap / non-heap / metaspace
-- ✅ JVM metrics (GC, class loading, threads)
-- ✅ system load
+- ✅ CPU / Process CPU load
+- ✅ Total Memory / Heap / Non-heap / Metaspace
+- ✅ JVM internals (GC runs, Threads, Class counts)
+- ✅ System Load
 
-### Unit Metrics
-- Call Count, Success Rate, Latency per Unit
-- Unit Resource Usage
-- Exception Statistics
+### Ling Metrics
+- Invocation counts, success rates, latency distribution.
+- Ling resource consumption.
+- Exception distribution statistics.
 
-### Technical Solution
-- Integrate Micrometer
-- Support Prometheus Collection
-- Custom Metrics Extension
+### Implementation Stack
+- Micrometer integration pattern.
+- Supporting Prometheus scraping pipelines.
+- Custom metrics extension paths.
 
 ---
 
-## Phase 5: Ecosystem Perfection 🔄 In Progress
+## Phase 5: Ecosystem Expansions 🔄 Work in Progress
 
-**Goal**: Complete Infrastructure Proxy Ecosystem and Exoskeleton Extensions
+**Goal**: Mature infrastructure proxy ecosystem and exoskeleton integrations.
 
-### Implemented
-- ✅ Ecosystem extension SPIs are in place (`LingInvocationFilter`, `ServiceExporter`, `LingContextCustomizer`, `LingDeployService`)
-- ✅ `LingInvocationFilter` is already wired into the unified governance pipeline and can extend the filter chain through runtime assembly
-- ✅ `LingDeployService` already has a default implementation (`DefaultLingDeployService`, currently supporting local files and `http/https` downloads)
-- ✅ Developer Experience (Auto-activate units after installation in devMode)
+### Achieved
+- ✅ Ecosystem SPI extension points finalized (`LingInvocationFilter`, `ServiceExporter`, `LingContextCustomizer`, `LingDeployService`)
+- ✅ `LingInvocationFilter` integrated directly into the unified governance Pipeline, allowing dynamic post-boot Filter chain extensions
+- ✅ Default implementations supplied for `LingDeployService` indicating local/http/https package resolutions
+- ✅ Dev experience boosters (auto-activation post-install under `devMode`)
 
-### Current Stage Notes
-- `ServiceExporter` and `LingContextCustomizer` are already public extension points, but they are still more like outer integration skeletons than a fully populated ecosystem
-- The current goal is to make extension boundaries real first, not to claim that the whole ecosystem is already finished
+### Current State Assessment
+- `ServiceExporter` and `LingContextCustomizer` are structurally exposed but act heavily as exoskeleton sockets. External ecosystem adaptors will eventually need to be supplemented.
+- The overarching goal of the ecosystem extension phase was "setting up the boundary first", not announcing all implementations finished.
 
-### To Be Implemented
-- ⏳ Message Proxy (Kafka / RabbitMQ)
-- ⏳ Search Proxy (Elasticsearch)
-- ⏳ More Infrastructure Proxies
-- ⏳ Complete Examples and Tutorials
+### Upcoming
+- ⏳ Messaging proxy (Kafka / RabbitMQ)
+- ⏳ Search proxy (Elasticsearch)
+- ⏳ More infrastructure proxy adapters
+- ⏳ Exhaustive sets of examples & tutorials

@@ -57,6 +57,17 @@ If you want one sentence for the center of gravity of this document, use this:
 
 The important shift in the current implementation is not just that these filters exist. It is that they now form the formal runtime path used by more than one entry surface.
 
+### Invocation Context (InvocationContext)
+
+To prevent the proliferation of traditional `Map<String, Object>`-based magic keys, LingFrame enforces a strict structural protocol for its context. `InvocationContext` acts as the single pass-through object across the pipeline and is explicitly partitioned into four protocol areas:
+
+- `routingState`: Facts used for routing intent (e.g., target version, labels).
+- `resolutionState`: Short-lived strong references like classloaders and methods (requires strict eviction upon reclamation to prevent cross-invocation leaks).
+- `governanceState`: Immutable operational intents such as permissions, audits, and rate limit quotas.
+- `executionState`: Controls whether the invocation will trigger real side effects or just record a trace.
+
+This design makes pipeline data flow highly traceable and robust.
+
 ---
 
 ## Execution Modes
@@ -191,7 +202,7 @@ The current implementation also tightens the relationship between governance and
 - `MonitoringEvents` defines a shared event vocabulary for trace, audit, alert, circuit-breaker, and leak-detection events.
 - `LogStreamService` streams those events to the dashboard through SSE.
 - `InvocationPipelineEngine.evictLingResources` and method cache eviction support unload cleanup.
-- `DefaultLeakDetector` reports bounded dev-mode diagnostics and passive prod-mode diagnostics.
+- `DefaultLeakDetector` supports tiered leak diagnostics (including `DEV_AGGRESSIVE` for active diagnostics, `DEV_BOUNDED` for graceful degradation, and `PROD_PASSIVE` for passive prod-mode observation), utilizing bounded concurrency to prevent GC storms during investigation.
 
 The important architectural shift is that the dashboard is increasingly consuming **real kernel evidence** instead of a parallel interpretation layer.
 

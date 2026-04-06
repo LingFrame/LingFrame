@@ -134,7 +134,7 @@ but to truly converge the governance mechanisms that already exist into a stable
 
 The core scope clearly delivered in the current release includes:
 
-- converging a unified governance pipeline around `InvocationPipelineEngine` and `FilterRegistry`
+- converging a unified governance pipeline around `InvocationPipelineEngine`, terminating the proliferation of magic keys through a partitioned `InvocationContext`
 - making three execution modes explicit: `NORMAL`, `SIMULATION`, and `GOVERN_ONLY`
 - letting ling invocation, Spring Boot 2 / 3 web governance, LingCore bean interception, and dashboard simulation share the same governance kernel
 - converging runtime state into the dual-layer model of `InstanceStatus` and `RuntimeStatus`, written respectively by `InstanceCoordinator` and `RuntimeCoordinator`

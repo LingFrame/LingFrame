@@ -168,7 +168,7 @@ public class LingFrameCoreConfiguration {
                 .corePoolSize(Runtime.getRuntime().availableProcessors())
                 .lingCoreGovernanceEnabled(properties.getLingCoreGovernance().isEnabled())
                 .lingCoreGovernanceInternalCalls(properties.getLingCoreGovernance().isGovernInternalCalls())
-                .hostCheckPermissions(properties.getLingCoreGovernance().isCheckPermissions())
+                .lingCoreCheckPermissions(properties.getLingCoreGovernance().isCheckPermissions())
                 .preloadApiJars(properties.getPreloadApiJars())
                 .apiOverrideCheckEnabled(properties.isApiOverrideCheckEnabled())
                 .build();

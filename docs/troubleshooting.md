@@ -101,9 +101,7 @@ grep "close ClassLoader" logs/lingframe.log
 3. Enable leak detection:
 ```yaml
 lingframe:
-  leak-detection:
-    enabled: true
-    mode: DEVELOPMENT  # Stricter in development mode
+  dev-mode: true  # Enable DEV_AGGRESSIVE leak diagnostics in development mode
 ```
 
 ---
@@ -264,9 +262,8 @@ grep "CanaryRouting\|LabelMatchRouter" logs/lingframe.log
 1. Enable leak detection:
 ```yaml
 lingframe:
-  leak-detection:
-    enabled: true
-    mode: DEVELOPMENT
+  dev-mode: true  # Enables DEV_AGGRESSIVE and DEV_BOUNDED diagnostics
+  # Production mode (dev-mode: false) automatically falls back to PROD_PASSIVE for passive observation
 ```
 
 2. View leak reports:

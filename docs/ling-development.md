@@ -1,33 +1,29 @@
-# Ling Development Guide
+# Business Ling Development Guide
 
-This guide explains how to build a ling that fits the current public runtime boundary.
-
-It is written for developers who are new to LingFrame, so it starts from the smallest working shape instead of the most feature-rich one.
+This guide explains how to write a business ling that respects the current public runtime boundaries.
 
 ---
 
-## What A Ling Is
+## What Exactly Is a Ling?
 
-A ling is a business runtime unit that:
+A ling is a business unit that:
 
-- is loaded into LingCore at runtime
-- has its own classloader and lifecycle
-- exposes services through LingFrame contracts
-- runs under governance instead of bypassing the kernel
+- Runs inside the LingCore process.
+- Owns its own classloader and lifecycle.
+- Exposes services through LingFrame contracts.
+- Runs under the governance kernel.
 
-If you are still mapping the vocabulary, see [Glossary](glossary.md).
+If you are unfamiliar with the terminology, please review the [Glossary](glossary.md) first.
 
 ---
 
-## The Smallest Useful Ling
+## What Does a Minimum Viable Ling Need?
 
-Your ling needs three things:
+- A Maven module
+- An entry class implementing `Ling`
+- A `ling.yml` descriptor file
 
-- a Maven module
-- an entry class implementing `Ling`
-- a `ling.yml` descriptor
-
-### 1. Maven setup
+### 1. Maven Dependencies
 
 ```xml
 <dependencies>
@@ -44,7 +40,7 @@ Your ling needs three things:
 </dependencies>
 ```
 
-### 2. Entry class
+### 2. Entry Class
 
 ```java
 @SpringBootApplication
@@ -73,14 +69,14 @@ mainClass: com.example.myling.MyLing
 
 ---
 
-## Exposing Services
+## How to Expose Services
 
-Use `@LingService` on the producer implementation.
+Use `@LingService` on the producer implementation class.
 
-LingFrame follows a consumer-driven contract model:
+LingFrame follows the "consumer-driven contract" model:
 
-- the consumer defines the interface it needs
-- the producer ling implements that interface
+- The consumer defines the interface it needs.
+- The producer ling implements that interface.
 
 ```java
 public interface UserQueryService {
@@ -100,15 +96,15 @@ public class UserQueryServiceImpl implements UserQueryService {
 }
 ```
 
-The final global identifier is `lingId:serviceId`.
+The final service identity format is: `lingId:serviceId`.
 
 ---
 
-## Calling Other Lings
+## How to Invoke Other Lings
 
-In newcomer projects, use these options in this order.
+The recommended order of approach is:
 
-### Option 1. `@LingReference`
+### Method 1: `@LingReference`
 
 ```java
 @Component
@@ -125,21 +121,19 @@ public class OrderService {
 }
 ```
 
-### Option 2. `LingContext.getService()`
+### Method 2: `LingContext.getService()`
 
-Use this when you want explicit lookup behavior.
+Use this when you want to explicitly handle the "service existence" check.
 
-### Option 3. `LingContext.invoke()`
+### Method 3: `LingContext.invoke()`
 
-Use this only when you intentionally want looser coupling through FQSID strings.
+Use this only when you specifically want tighter decoupling via the FQSID (Fully Qualified Service ID).
 
 ---
 
-## Declaring Governance
+## How to Declare Governance Requirements
 
-Governance should be explicit, not accidental.
-
-### Permission declaration in `ling.yml`
+### Declare Permissions in `ling.yml`
 
 ```yaml
 governance:
@@ -150,7 +144,7 @@ governance:
       permissionId: "WRITE"
 ```
 
-### Annotation-based declaration
+### Supplement Semantics via Annotations
 
 ```java
 @RequiresPermission("user:write")
@@ -160,7 +154,7 @@ public UserDTO createUser(CreateUserRequest request) {
 }
 ```
 
-### Development mode
+### Dev Mode
 
 ```yaml
 lingframe:
@@ -169,15 +163,15 @@ lingframe:
 
 ---
 
-## Packaging And Loading
+## How to Package and Load
 
-### Development path
+### Development Path
 
-Point LingCore at source roots and recompile the ling as you work.
+Point LingCore to the source code root and recompile the ling while developing.
 
-### Production path
+### Production Path
 
-Package the ling as a jar and place it under `ling-home`.
+Package the ling into a jar and place it in the `ling-home` directory.
 
 ```bash
 mvn clean package
@@ -185,34 +179,34 @@ mvn clean package
 
 ---
 
-## What The Kernel Already Gives You
+## What the Runtime Has Already Done For You
 
-In the current implementation, business lings do not need to implement the kernel itself.
+In the current implementation, a business ling does not need to implement the governance kernel itself.
 
-The runtime already gives you:
+The runtime already provides:
 
-- unified invocation governance
-- runtime lifecycle coordination
-- canary routing
-- simulation support
-- unload cleanup hooks
-- leak diagnostics
+- Unified invocation governance
+- Lifecycle coordination
+- Canary routing
+- Simulation support
+- Unload cleanup hooks
+- Leak diagnostics
 
-Your main job is to:
+Your primary responsibilities are:
 
-- define a clear contract
-- implement business logic
-- declare permissions honestly
+- Write the contract clearly.
+- Write the business implementation cleanly.
+- Declare permissions honestly.
 
 ---
 
 ## Best Practices
 
-- keep the first ling small
-- keep `Shared API` contract-only
-- prefer `@LingReference` for your first call path
-- declare permissions in `ling.yml`
-- use SLF4J logging instead of `System.out`
-- avoid depending on `lingframe-core` from ordinary business lings
+- Keep your first batch of lings as small as possible.
+- Put only contracts in the `Shared API`.
+- Prefer `@LingReference` for your first invocation path.
+- Explicitly declare permissions in `ling.yml`.
+- Use SLF4J logging.
+- Do not let ordinary business lings directly depend on `lingframe-core`.
 
-If you need the contract boundary next, go to [Shared API Guidelines](shared-api-guidelines.md); if you need infrastructure proxy patterns, go to [Infrastructure Development Guide](infrastructure-development.md).
+Next steps: if you want to understand the contract boundary, head to [Shared API Guidelines](shared-api-guidelines.md); if you want to understand the infrastructure proxy model, head to [Infrastructure Development Guide](infrastructure-development.md).

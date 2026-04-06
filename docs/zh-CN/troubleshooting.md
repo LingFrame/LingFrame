@@ -101,9 +101,7 @@ grep "close ClassLoader" logs/lingframe.log
 3. 启用泄漏检测：
 ```yaml
 lingframe:
-  leak-detection:
-    enabled: true
-    mode: DEVELOPMENT  # 开发模式更严格
+  dev-mode: true  # 开发模式下通过 DEV_AGGRESSIVE 进行激进泄漏诊断
 ```
 
 ---
@@ -264,9 +262,8 @@ grep "CanaryRouting\|LabelMatchRouter" logs/lingframe.log
 1. 启用泄漏检测：
 ```yaml
 lingframe:
-  leak-detection:
-    enabled: true
-    mode: DEVELOPMENT
+  dev-mode: true  # 开发模式下启用激进诊断（DEV_AGGRESSIVE）与有界降级（DEV_BOUNDED）
+  # 生产模式（dev-mode: false）自动回退到 PROD_PASSIVE 模式进行无损被动观测
 ```
 
 2. 查看泄漏报告：

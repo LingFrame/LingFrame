@@ -1,50 +1,49 @@
 # Getting Started
 
-This is the **formal onboarding guide**.
+This document is the **formal getting-started guide**.
 
-If you only want the shortest runnable path, start with the repository root `QUICK_START.md`.  
-This guide is for what comes next:
+If you just want to get the examples up and running first, prioritize reading `QUICK_START.md` in the repository root.
+This document, however, focuses on explaining what happens after you get it running:
 
-- what actually starts in the sample
-- why the runtime path works
-- how to continue from “it runs” to “I understand how to use it”
+- What exactly was started in the example?
+- Why do these steps work?
+- How should you continue understanding and using LingFrame?
 
-If you only want one thing from this page, remember this:
+If you only remember one sentence, remember this:
 
-> LingFrame helps you load and govern isolated lings inside one JVM process, without forcing a microservice rewrite.
+> LingFrame lets you load and govern isolated business lings within a single JVM process, rather than forcing you to split the system into microservices right from the start.
 
-For the current public implementation, this is not only a demo of "lings can be loaded".
-It is also your first look at a runtime path that is governable, convergent, and ready to be validated later against disciplined unload behavior.
+For the current public implementation, this is not just a demonstration of "getting lings loaded." It is your first encounter with a governable, convergent runtime chain that can later be verified for disciplined hot unloads.
 
 ---
 
-## What You Will Run
+## What You Are About to Run
 
-In the example project, you will start one LingCore application and let it load two sample lings:
+In the example project, you will start a LingCore application and tell it to load two example lings:
 
 - `user-ling`
 - `order-ling`
 
-You will see three things in one run:
+In this single run, you will simultaneously see three things:
 
-- lings can be loaded into the same process
-- LingCore can call ling services through shared contracts
-- governance still sits in the middle of that call path
+- Lings can be loaded within the same process.
+- LingCore can invoke ling services via shared contracts.
+- The invocation process still passes through the governance kernel.
 
 ---
 
-## Prerequisites
+## Environment Requirements
 
-- JDK 17+ for the main example path
+- JDK 17+ (as the main example path)
 - Maven 3.8+
 
-The current runtime also supports JDK 8 and Spring Boot 2.x, but the example app remains the easiest place to start.
+The current runtime simultaneously supports both JDK 8 and Spring Boot 2.x, but the example project remains the easiest entry point for beginners.
 
 ---
 
-## 5-Minute Run
+## Running in 5 Minutes
 
-### 1. Clone the repository
+### 1. Clone the Repository
 
 ```bash
 # GitHub
@@ -57,71 +56,71 @@ git clone https://atomgit.com/lingframe/LingFrame.git
 git clone https://gitee.com/LingFrame/LingFrame.git
 ```
 
-### 2. Build the project
+### 2. Build the Project
 
 ```bash
 cd LingFrame
 mvn clean install -DskipTests
 ```
 
-### 3. Start the example LingCore application
+### 3. Start the Example LingCore Application
 
 ```bash
 cd lingframe-examples/lingframe-example-lingcore-app
 mvn spring-boot:run
 ```
 
-### 4. Verify the example is alive
+### 4. Verify the Example
 
 ```bash
 curl http://localhost:8888/user-ling/user/listUsers
 curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
 ```
 
-If both requests return normally, you already have a working LingFrame runtime.
+If both of these requests return normally, you already have a runnable LingFrame runtime.
 
 ---
 
-## Another 5 Minutes: Verify The Current Closed Loop
+## Taking Another 5 Minutes: Verifying Current Closed-Loop Governance
 
-If you want to confirm that the example is not only "running" but already has a real control surface, observability path, and unload loop, continue with the steps below.
+If you want to confirm that the current example doesn't just "run," but truly possesses a closed-loop control surface, observability, and unloading capability, you can continue with the following steps.
 
 ### 1. Open the Dashboard
 
-Visit:
+Visit in your browser:
 
 ```text
 http://localhost:8888/dashboard.html
 ```
 
-You should see loaded lings, health data, governance configuration, timeline data, and related control-surface information.
+You should see a list of currently loaded lings, as well as control surface information like health metrics, governance configs, and timelines.
 
-### 2. Inspect loaded lings and versions
+### 2. View Current Lings and Versions
 
 ```bash
 curl http://localhost:8888/lingframe/dashboard/lings
 ```
 
-In the default example setup, you will usually see:
+In the default example, you'll generally see:
 
 - `order-ling:1.0.0`
 - `user-ling:1.0.0`
 - `user-ling:1.1.0-canary`
 
-### 3. Inspect health and governance metrics
+### 3. Check Health and Governance Metrics
 
 ```bash
 curl http://localhost:8888/lingframe/dashboard/lings/health/all
 curl http://localhost:8888/lingframe/dashboard/lings/governance/all
 ```
 
-These endpoints already expose:
+Here you can directly see:
 
-- ling-level summaries
-- version-level details
-- collected governance signals
+- Ling-level summaries
+- Version-level details
+- Currently collected governance signals
 
-### 4. Push an invocation governance patch
+### 4. Push a Governance Patch to `user-ling`
 
 ```bash
 curl -X POST http://localhost:8888/lingframe/dashboard/governance/user-ling/invocation \
@@ -129,13 +128,13 @@ curl -X POST http://localhost:8888/lingframe/dashboard/governance/user-ling/invo
   -d "{\"timeoutMs\":3000,\"rateLimitPerSecond\":1,\"maxConcurrentThreads\":1}"
 ```
 
-These are the invocation governance fields already closed in the current runtime:
+This step corresponds to the currently closed-loop invocation governance parameters:
 
 - `timeoutMs`
 - `rateLimitPerSecond`
 - `maxConcurrentThreads`
 
-### 5. Send requests again and observe changes
+### 5. Send Requests Again and Observe Changes
 
 ```bash
 curl http://localhost:8888/user-ling/user/listUsers
@@ -143,58 +142,58 @@ curl http://localhost:8888/lingframe/dashboard/lings/health/all
 curl http://localhost:8888/lingframe/dashboard/lings/governance/all
 ```
 
-You should observe:
+You should be able to see:
 
-- health metrics changing after real requests
-- governance metrics reflecting signals such as rate limiting or timeout-related behavior
+- Changes in request count, latency, and QPS in the health metrics.
+- Signaling changes locally triggered by rate limit/timeouts in the governance metrics.
 
-### 6. Verify structured uninstall precheck
+### 6. Verify Structured Unload Precheck
 
 ```bash
 curl -X DELETE http://localhost:8888/lingframe/dashboard/lings/uninstall/user-ling/1.1.0-canary
 ```
 
-This now returns a structured uninstall result rather than only a simple success/failure flag, including:
+What this step returns is no longer simply success/failure, but a structured unload result representing:
 
-- whether uninstall was actually triggered
-- the overall risk level
-- a list of risk summaries
+- Whether the unload was actually triggered.
+- Overall risk level.
+- A summary list of risks.
 
 Note:
 
-- the current default strategy is "warn, do not block"
-- so uninstall may still continue even when the precheck reports risk
-- post-uninstall passive leak diagnostics are still retained and were not replaced by the precheck
+- The current default strategy is "prompt but do not block."
+- So even if the precheck returns risk warnings, the main unload process may still proceed.
+- The passive leak detection chain post-unload is still preserved, and has not been replaced by the pre-unload precheck.
 
 ---
 
-## What Just Started
+## What Exactly Did You Just Start?
 
 ### LingCore
 
-`LingCore` is the LingCore-side application inside the current process. It owns the runtime, the governance kernel, and the shared contract boundary.
+`LingCore` is the core-side application within the current process. It owns the runtime, the governance kernel, and the shared contract boundaries.
 
 ### Ling
 
-A `Ling` is a separately loaded business runtime unit with its own classloader and lifecycle.
+`Ling` is the isolated business unit being deployed independently inside the LingCore process.
 
 ### Shared API
 
-`Shared API` is the process-level contract layer. Interfaces and DTOs that cross the LingCore / ling boundary belong here.
+The `Shared API` is the process-level common contract layer bridging LingCore and Lings, or bridging between Lings. Interfaces and DTOs intended to cross boundaries belong here.
 
-For a beginner, it is enough to remember:
+As a beginner, remember these three definitions:
 
-- LingCore is the LingCore-side application in the current process
-- lings are isolated business runtime units
-- Shared API is the contract both sides agree on
+- LingCore is the core application executing in the current process.
+- Ling is the isolated business unit.
+- Shared API is the mutually respected contract between them.
 
-For terminology details, see [Glossary](glossary.md).
+For terminology details, see the [Glossary](glossary.md).
 
 ---
 
-## Minimal Example Configuration
+## Minimal Viable Configuration
 
-The example app already contains working configuration. The important parts are:
+The example application arrives with functional configs. The most critical parts are these:
 
 ```yaml
 server:
@@ -213,30 +212,30 @@ lingframe:
     - lingframe-examples/lingframe-example-ling-user
 ```
 
-This means:
+What this config expresses is:
 
-- LingFrame runtime is enabled
-- the process runs in developer-friendly mode
-- shared contracts are preloaded before lings start
-- local example lings are discovered from source roots
+- Enable the LingFrame runtime.
+- Run in developer-friendly mode.
+- Preload shared contracts before starting the lings.
+- Discover lings from the local example source paths.
 
 ---
 
-## What This Run Already Proves
+## What Does This Execution Prove?
 
-Once the example is up, you have already verified four things:
+When the example runs successfully, you have actually verified four things:
 
-- LingCore can discover and load lings inside one process
-- shared contracts are preloaded before lings start
-- cross-ling calls do not bypass the governance kernel
-- the example setup is enough to continue with real development docs
+- LingCore can discover and load lings within a single process.
+- Shared contracts are preloaded before lings start.
+- Cross-ling invocations do not bypass the governance kernel.
+- The current example configs are ready for you to read further into the development documentation.
 
-If you also complete the Dashboard / governance / uninstall verification above, you additionally confirm that:
+If you continue and complete the Dashboard/governance/unload validations above, you'll additionally see:
 
-- the control surface can hot-adjust invocation governance parameters
-- health and governance metrics change after real requests
-- uninstall precheck, real uninstall, and post-uninstall diagnostics already form one runtime loop
+- The control surface can hot-adjust invocation governance parameters.
+- Health and governance metrics change following real requests.
+- The pre-unload precheck, true unload run, and post-unload diagnostics have formed a primary chain.
 
-The next thing worth validating is not only whether another ling can be loaded, but whether the same runtime path stays orderly through reload, unload, and cleanup scenarios.
+The next thing most worth verifying is not just "can we load another ling," but whether this runtime chain can stay orderly under reload/unload/cleanup scenarios.
 
-Continue with [Practical Entry](practical-entry.md) for rollout decisions, or go straight to [Ling Development Guide](ling-development.md) if you want to start writing lings.
+Next, if you want to judge how to adapt this, read [Practical Entry](practical-entry.md). If you want to dive straight into writing lings, jump to [Ling Development Guide](ling-development.md).

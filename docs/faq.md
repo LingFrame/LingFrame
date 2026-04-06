@@ -8,113 +8,113 @@ This document collects common questions and answers about LingFrame.
 
 ### Q1: What is LingFrame?
 
-**A:** LingFrame is an order framework for JVM single-process long-running systems. It focuses on solving the problem of monolithic systems gradually losing control over time, rather than simply "splitting into microservices."
+**A:** LingFrame is an order-keeping architecture for JVM-based, single-process, long-running systems. It focuses on resolving the gradual loss of control in monolithic systems running over long periods, rather than simply "splitting everything into microservices."
 
-### Q2: What's the difference between LingFrame and OSGi?
+### Q2: What is the difference between LingFrame and OSGi?
 
 **A:**
 
-| Aspect | LingFrame | OSGi |
-|--------|-----------|------|
-| Positioning | Runtime governance framework | Modular system |
-| Learning curve | Lower | Higher |
-| Spring integration | Native support | Requires extra configuration |
-| Governance capabilities | Built-in circuit breaker/rate limiter/permissions | Needs extra implementation |
-| Hot reload | Supported | Supported |
+| Comparison Point | LingFrame | OSGi |
+|--------|------|------|
+| Positioning | Runtime Governance Framework | Modular System |
+| Learning Curve | Lower | Higher |
+| Spring Integration | Natively Supported | Requires Extra Config |
+| Governance | Built-in circuit breakers, rate limits, permissions | Requires custom implementations |
+| Hot Updates | Supported | Supported |
 
-### Q3: What's the relationship between LingFrame and Spring Boot?
+### Q3: What is the relationship between LingFrame and Spring Boot?
 
-**A:** LingFrame is built on Spring Boot and provides Spring Boot Starters for quick integration. It's not a replacement for Spring Boot, but adds runtime governance capabilities on top of it.
+**A:** LingFrame is built on top of Spring Boot and provides a Spring Boot Starter for rapid integration. It is not a replacement for Spring Boot, but rather provides runtime governance capabilities on top of it.
 
 ### Q4: What is a "Ling"?
 
-**A:** A Ling (灵元) is a core concept in LingFrame, referring to a business unit that is independently loaded and managed within the host application (LingCore) process. It can be understood as a "governed plugin."
+**A:** A Ling (from the Chinese "灵元") is a core concept in LingFrame. It refers to a business unit that is independently loaded and managed within the host application (LingCore) process. You can think of it as a "governed plugin."
 
-### Q5: What scenarios is LingFrame suitable for?
+### Q5: What scenarios is LingFrame suited for?
 
 **A:**
 
 ✅ Suitable for:
-- Monolithic systems that have been running for years and cannot be easily stopped or rewritten
-- Teams that want to gradually introduce isolation, canary releases, rate limiting, circuit breakers, and permission auditing
-- Teams that want to establish runtime order without overturning existing systems
+- Monolithic systems that have been running for years and cannot easily incur downtime or be rewritten.
+- Teams that want to gradually introduce isolation, canary routing, rate limiting, circuit breaking, and permission auditing.
+- Scenarios where you want to establish runtime order without tearing down the existing system.
 
 ❌ Not suitable for:
-- Using as a microservices replacement
-- Pure frontend plugin markets or low-code platforms
-- Expecting automatic elimination of business complexity
+- Being a microservices replacement.
+- Purely frontend plugin marketplaces or low-code platforms.
+- Expecting automatic elimination of underlying business complexity.
 
 ---
 
 ## 2. Architecture and Design
 
-### Q6: Why adopt a dual-state machine design?
+### Q6: Why adopt a dual-layer state machine design?
 
-**A:** The dual-state machine (InstanceStatus + RuntimeStatus) design aims to:
+**A:** The design goals of the dual-layer state machine (`InstanceStatus` + `RuntimeStatus`) are:
 
-1. **Clear state ownership**: Instance state and runtime state are managed by different coordinators
-2. **Event-driven linkage**: The two layers are linked through events, not by objects writing to each other's state
-3. **Observability**: All state changes have events published for tracking
+1. **Clear State Ownership**: Instance state and runtime state are managed by completely separate coordinators.
+2. **Event-Driven Linkage**: The two layers are linked via events, avoiding objects directly writing states backwards and forwards.
+3. **Observability**: State mutations are accompanied by published events, which makes tracking easier.
 
-See [Dual State Machine Architecture](runtime-dual-state-machine-architecture.md).
+See [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md) for more details.
 
-### Q7: Why can't Shared API be hot-updated?
+### Q7: Why can't the Shared API be hot-updated?
 
-**A:** Shared API is the process-level public contract boundary. If hot updates were allowed:
+**A:** The Shared API serves as the process-level common contract boundary. If we allowed hot updates, it would cause:
 
-1. Different lings would see different versions of contracts
-2. The same class loaded by different ClassLoaders would cause ClassCastException
-3. The type system would become inconsistent
+1. Different Lings seeing different contract versions simultaneously.
+2. The same class being loaded by different ClassLoaders, resulting in `ClassCastException`s.
+3. System-wide structural distortion for strongly typed elements.
 
-Therefore, Shared API is preloaded and frozen before ling loading, and changes require process restart.
+Therefore, the Shared API is preloaded and frozen prior to loading Lings. Changing the shared contract still requires restarting the process.
 
-See [Shared API Guidelines](shared-api-guidelines.md).
+See [Shared API Guidelines](shared-api-guidelines.md) for details.
 
-### Q8: Why does Pipeline have so many stages?
+### Q8: Why is the Pipeline divided into so many phases?
 
-**A:** Pipeline stage division is for:
+**A:** The Pipeline phases are divided to ensure:
 
-1. **Separation of concerns**: Each Filter does one thing
-2. **Clear dependencies**: Stage order is validated at startup to avoid runtime issues
-3. **Extensibility**: Custom Filters can be inserted at any stage
+1. **Separation of Concerns**: Each Filter only handles one specific task.
+2. **Strict Dependencies**: Start-up checks validate phase sequences to prevent late runtime failures.
+3. **Extendability**: Custom Filters can be inserted safely at intentional points.
 
-### Q9: What are the risks of Child-First ClassLoader?
+### Q9: What are the risks of a Child-First ClassLoader?
 
-**A:** Child-First means lings preferentially load their own classes, which may cause:
+**A:** Child-First means the Ling prioritizes loading its own classes first, which can cause:
 
-1. **Version conflicts**: Library versions used by ling differ from LingCore
-2. **Type incompatibility**: Same class loaded by different ClassLoaders
+1. **Version Conflicts**: The Ling uses a different library version than the LingCore.
+2. **Type Incompatibility**: The same class gets loaded by different ClassLoaders.
 
 Solutions:
-- Use Shared API to share common classes
-- Declare dependencies in `ling.yml`
+- Use the Shared API to share common classes.
+- Declare dependencies in the `ling.yml` intelligently.
 
 ---
 
-## 3. Usage Questions
+## 3. Usage Issues
 
-### Q10: How to debug ling code?
+### Q10: How do I debug Ling code?
 
 **A:** Several ways:
 
-1. **Remote debugging**: Add `-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005` at startup
-2. **Development mode**: Set `dev-mode: true` to enable hot reload
-3. **Log debugging**: Adjust log level to DEBUG or TRACE
+1. **Remote Debugging**: Append `-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005` to the JVM startup arguments.
+2. **Dev Mode**: Set `dev-mode: true` to enable streamlined hot updates.
+3. **Log Debugging**: Increase the log level for related packages to DEBUG or TRACE.
 
-### Q11: How do lings communicate with each other?
+### Q11: How do Lings communicate with each other?
 
 **A:** Lings communicate through service interfaces:
 
 ```java
-// Use @LingReference to inject services from other lings
-// The framework will search for Beans implementing the interface across all installed Lings
+// Use @LingReference to inject a service provided by another Ling.
+// The framework will scan installed Lings to find the Bean implementing this interface.
 @LingReference
 private UserService userService;
 ```
 
-### Q12: How to implement canary release?
+### Q12: How do I execute a Canary Release?
 
-**A:** Configure via Dashboard API:
+**A:** Through the Dashboard API configuration:
 
 ```bash
 curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
@@ -122,11 +122,11 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
   -d '{"percent": 20, "canaryVersion": "2.0.0"}'
 ```
 
-See [Dashboard Documentation](dashboard.md).
+See [Dashboard Docs](dashboard.md) for details.
 
-### Q13: How to handle ling dependencies?
+### Q13: How are Ling dependencies handled?
 
-**A:** Declare dependencies in `ling.yml`:
+**A:** Declare dependencies directly inside `ling.yml`:
 
 ```yaml
 dependencies:
@@ -134,77 +134,73 @@ dependencies:
   - common-ling
 ```
 
-LingFrame ensures dependent lings are loaded first.
+LingFrame will sequence the boots so depending Lings are loaded last.
 
-### Q14: What Spring features can lings use?
+### Q14: Which Spring features can a Ling use?
 
-**A:** Lings can use most Spring features:
+**A:** Lings can use most Spring features normally:
 
-- ✅ @Component / @Service / @Repository
-- ✅ @Autowired dependency injection
-- ✅ @Value configuration injection
-- ✅ @Transactional transactions
-- ✅ `@SpringBootApplication` can be used on ling entry classes in the current example-style setup
-- ⚠️ `@Configuration` and auto-configuration behavior still need classloader-boundary awareness
-
-Even when a ling uses Spring Boot annotations, it is still loaded as a ling inside LingCore rather than becoming a separate host application.
+- ✅ `@Component` / `@Service` / `@Repository`
+- ✅ `@Autowired` Dependency Injection
+- ✅ `@Value` Configuration properties
+- ✅ `@Transactional` Transactions
+- ⚠️ `@Configuration` (Requires mindfulness towards ClassLoader isolation)
+- ✅ `@SpringBootApplication` is supported (standard entry point for Spring Boot Lings).
 
 ---
 
 ## 4. Troubleshooting
 
-### Q15: What to do if ling fails to load?
+### Q15: What if my Ling fails to load?
 
-**A:** Check these aspects:
+**A:** Check these vectors:
 
-1. **Logs**: Check error messages in logs
-2. **Classpath**: Ensure ling JAR contains all necessary classes
-3. **Dependencies**: Ensure dependent lings are loaded
-4. **Permissions**: Ensure ling has necessary capabilities
+1. **Logs**: Examine the error stack in your logs.
+2. **Classpath**: Make sure the Ling's JAR actually contains all necessary classes.
+3. **Dependencies**: Verify that the Lings it depends on have already loaded successfully.
+4. **Permissions**: Make sure the Ling is granted the necessary capabilities.
 
-See [Troubleshooting Guide](troubleshooting.md) for detailed steps.
+For a detailed walkthrough, see the [Troubleshooting Manual](troubleshooting.md).
 
-### Q16: What to do if memory keeps growing?
+### Q16: What if memory usage keeps growing?
 
-**A:** Possible causes:
+**A:** Likely causes:
 
-1. **ClassLoader leak**: Check if ling has uncleared static collections
-2. **ThreadLocal leak**: Ensure ThreadLocal is cleared when ling stops
-3. **Listener leak**: Use EventBus instead of manually registering listeners
+1. **ClassLoader Leaks**: Check if a Ling left static collections uncleaned.
+2. **ThreadLocal Leaks**: Ensure the Ling properly cleans up its ThreadLocals when stopped.
+3. **Listener Leaks**: Prefer using the provided EventBus instead of manually registering persistent framework listeners.
 
-Enable leak detection:
+Leak detection is a built-in runtime capability requiring no separate config toggle. In dev mode (`dev-mode: true`), aggressive diagnostics (`DEV_AGGRESSIVE` / `DEV_BOUNDED`) are automatically enabled. In production mode, the system degrades to passive observation (`PROD_PASSIVE`):
 ```yaml
 lingframe:
-  leak-detection:
-    enabled: true
-    mode: DEVELOPMENT
+  dev-mode: true  # Automatically enables aggressive leak diagnostics
 ```
 
-### Q17: What to do if circuit breaker stays open?
+### Q17: What if the circuit breaker remains OPEN continuously?
 
 **A:**
 
-1. Check if downstream service is healthy
-2. Adjust circuit breaker threshold (in governance config)
-3. Check circuit breaker status via Dashboard
+1. Check whether downstream services are actually functioning.
+2. Tune the circuit breaker thresholds (via governance configuration).
+3. Observe the circuit breaker state directly from the Dashboard.
 
-### Q18: How to check ling status?
+### Q18: How can I check a Ling's status?
 
-**A:** Via Dashboard API:
+**A:** Via the Dashboard APIs:
 
 ```bash
-# View all lings
+# View all Lings
 curl http://localhost:8888/lingframe/dashboard/lings
 
-# View single ling
+# View a single Ling
 curl http://localhost:8888/lingframe/dashboard/lings/{lingId}
 ```
 
 ---
 
-## 5. Dashboard Related
+## 5. Dashboard Specifics
 
-### Q19: How to enable Dashboard?
+### Q19: How do I turn on the Dashboard?
 
 **A:**
 
@@ -214,7 +210,7 @@ lingframe:
     enabled: true
 ```
 
-Add dependency:
+Also, add the dependency to your LingCore pom:
 ```xml
 <dependency>
     <groupId>com.lingframe</groupId>
@@ -222,9 +218,9 @@ Add dependency:
 </dependency>
 ```
 
-### Q20: Why can't I use the Dashboard install endpoint?
+### Q20: Why can't I use the installation endpoint on the Dashboard?
 
-**A:** The install endpoint is disabled by default, enable it explicitly:
+**A:** The install endpoint is turned off by default for security, requiring explicit enablement:
 
 ```yaml
 lingframe:
@@ -232,9 +228,9 @@ lingframe:
     install-enabled: true
 ```
 
-### Q21: Why does hot reload return 403?
+### Q21: Why does the hot-reload endpoint return a 403?
 
-**A:** Hot reload is only available in development mode:
+**A:** Hot-reload capabilities are rigidly confined to developer mode:
 
 ```yaml
 lingframe:
@@ -249,52 +245,51 @@ lingframe:
 
 **A:**
 
-| Runtime path | Current status |
-|-------------|---------------|
-| JDK 8 + Spring Boot 2.7.x | ✅ Supported through `lingframe-spring-boot2-starter` |
-| JDK 17 + Spring Boot 3.x | ✅ Mainline supported path through `lingframe-spring-boot3-starter` |
-| Newer JDKs on the Boot 3 line | ⚠️ Possible depending on the host stack, but current public examples and dependency profiles center on JDK 17 |
+| JDK Version | Support Level |
+|----------|----------|
+| JDK 8 | ✅ Supported (Some features constrained) |
+| JDK 11 | ✅ Supported |
+| JDK 17 | ✅ Fully Supported (Recommended) |
+| JDK 21 | ✅ Supported |
 
 ### Q23: Which Spring Boot versions does LingFrame support?
 
 **A:**
 
-| Spring Boot line | Current status |
-|---------------------|---------------|
-| 2.7.x | ✅ Supported through `lingframe-spring-boot2-starter` (the repository currently pins `2.7.18`) |
-| 3.x | ✅ Supported through `lingframe-spring-boot3-starter` (the repository currently pins `3.5.6`) |
+| Spring Boot Version | Support Level |
+|------------------|----------|
+| 2.7.x | ✅ Supported (Some features constrained) |
+| 3.0.x | ✅ Supported |
+| 3.1.x | ✅ Supported |
+| 3.2.x | ✅ Fully Supported (Recommended) |
 
-If you want the most code-aligned answer, follow the profiles and starter modules in the repository rather than assuming a broader compatibility matrix than the current build actually declares.
-
-### Q24: How to participate in LingFrame development?
+### Q24: How can I contribute to LingFrame?
 
 **A:**
 
 1. Fork the repository
-2. Read the contributing guide
-3. Submit Pull Request
+2. Read the contributing guidelines
+3. Submit a Pull Request
 
 ### Q25: Where can I get help?
 
 **A:**
 
-- **Documentation**: Documents in this directory
-- **Issues**: Submit issue reports
+- **Documentation**: All documents in this directory.
+- **Issues**: Submit an issue request.
 
 ### Q26: What is LingFrame's open source license?
 
-**A:** Apache License 2.0, free for commercial use.
+**A:** Apache License 2.0. It can be freely used in commercial projects.
 
 ---
 
-## 7. Roadmap Related
+## 7. Roadmap Associated
 
-### Q27: When will Prometheus/Grafana integration be supported?
+### Q27: When will Prometheus/Grafana integrations be supported?
 
-**A:** Micrometer bridging is already supported. When the host application provides a `MeterRegistry`, LingFrame automatically registers ling health and governance signal gauges. If the host also adds `micrometer-registry-prometheus` and exposes `/actuator/prometheus`, Prometheus can scrape them directly. See `lingframe-example-lingcore-app` for a working sample.
+**A:** We already support Micrometer metric bridging today. If the host application supplies a `MeterRegistry`, LingFrame will automatically register Ling health and governance signal metrics. If the host then introduces `micrometer-registry-prometheus` and exposes `/actuator/prometheus`, those metrics can be scraped directly by Prometheus. See the `lingframe-example-lingcore-app` for a demonstration.
 
-### Q28: When will message brokers (Kafka/RabbitMQ) be supported?
+### Q28: When will Messaging Proxies (Kafka/RabbitMQ) be supported?
 
-**A:** Message-broker proxies are **not part of the current public capability set yet**.
-
-What exists today is the extension surface that such work would build on, such as pipeline/filter SPIs and deploy/export customization points. Kafka / RabbitMQ style proxies still belong to future ecosystem work rather than shipped capability. See [Roadmap](roadmap.md).
+**A:** This is planned during the Phase 5 Ecosystem Expansion phase. See the [Roadmap](roadmap.md) for details.

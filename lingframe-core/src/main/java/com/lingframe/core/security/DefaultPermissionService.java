@@ -42,7 +42,7 @@ public class DefaultPermissionService implements PermissionService {
             return false;
         }
 
-        if (LING_CORE_ID.equals(lingId) && !LingFrameConfig.current().isHostCheckPermissions()) {
+        if (LING_CORE_ID.equals(lingId) && !LingFrameConfig.current().isLingCoreCheckPermissions()) {
             log.debug("[Auth] LINGCORE application bypassed");
             return true;
         }

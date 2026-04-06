@@ -56,6 +56,17 @@
 当前实现的关键，不只是“这些 Filter 存在”，
 而是它们已经组成了对多个入口都可复用的正式运行时主链。
 
+### 调用上下文 (InvocationContext)
+
+为防止传统的基于 `Map<String, Object>` 的魔术键（Magic Key）泛滥，灵珑强制规范了调用上下文的传输结构。`InvocationContext` 作为贯穿 Pipeline 的唯一通行证，被显式划分为四大协议分区：
+
+- `routingState`（路由分区）：指明请求应发往哪个实例（如目标版本、标签）。
+- `resolutionState`（解析分区）：承载类加载器、方法等短命强引用（强制要求在回收时物理清空，严防跨调用残留）。
+- `governanceState`（治理分区）：承载权限、审计、限流、超时等不可篡改的运维意图。
+- `executionState`（执行分区）：掌管当前调用是否触发真实副作用或记录追踪迹。
+
+这种设计使得 Pipeline 的数据流动具备了极强的可追溯性和健壮性。
+
 ---
 
 ## 执行模式
@@ -193,7 +204,7 @@
 - `MonitoringEvents` 定义 trace、audit、alert、circuit-breaker、leak-detection 等统一事件语义
 - `LogStreamService` 通过 SSE 把这些事件流推送到 Dashboard
 - `InvocationPipelineEngine.evictLingResources` 与方法缓存驱逐支撑卸载清理
-- `DefaultLeakDetector` 在开发态与生产态采用不同诊断策略
+- `DefaultLeakDetector` 支持分级泄漏诊断策略（包含 `DEV_AGGRESSIVE` 激进诊断、`DEV_BOUNDED` 降级有界诊断、`PROD_PASSIVE` 生产态被动观测三种模式），并通过有界并发限制避免在排查时引发 GC 风暴
 
 架构上的重要变化在于：Dashboard 开始消费**真实内核证据**，而不是单独维护一层解释视图。
 

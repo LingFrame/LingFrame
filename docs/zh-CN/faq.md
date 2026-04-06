@@ -145,7 +145,7 @@ dependencies:
 - ✅ @Value 配置注入
 - ✅ @Transactional 事务
 - ⚠️ @Configuration 需要注意 ClassLoader 隔离
-- ❌ @SpringBootApplication 不支持（灵元不是独立应用）
+- ✅ @SpringBootApplication 支持（Spring Boot 灵元的标准入口方式）
 
 ---
 
@@ -170,12 +170,10 @@ dependencies:
 2. **ThreadLocal 泄漏**：确保灵元停止时清理 ThreadLocal
 3. **监听器泄漏**：使用 EventBus 而不是手动注册监听器
 
-启用泄漏检测：
+泄漏检测是运行时内建能力，无需额外配置开关。开发模式下（`dev-mode: true`）自动启用激进诊断（`DEV_AGGRESSIVE` / `DEV_BOUNDED`），生产模式下自动降级为被动观测（`PROD_PASSIVE`）：
 ```yaml
 lingframe:
-  leak-detection:
-    enabled: true
-    mode: DEVELOPMENT
+  dev-mode: true  # 开发模式自动启用激进泄漏诊断
 ```
 
 ### Q17: 熔断器一直打开怎么办？
