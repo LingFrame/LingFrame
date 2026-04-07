@@ -4,9 +4,12 @@ import com.lingframe.api.exception.LingException;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.metrics.LingHealthMetrics;
+import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.spi.TrafficRouter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.CachedIntrospectionResults;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -50,14 +53,18 @@ public class WebInterfaceManager implements WebRouteResolver {
 
     private final DefaultWebRouteResolver routeResolver;
     private final SpringWebHostSupport hostSupport = new SpringWebHostSupport();
+    private final ObjectProvider<MetricsCollector> metricsCollectorProvider;
 
     public static final String REQUEST_METADATA_KEY = "ling.web.metadata";
     public static final String REQUEST_ROUTE_RESOLUTION_KEY = "ling.web.route.resolution";
     public static final String REQUEST_TARGET_VERSION_KEY = "ling.target.version";
 
-    public WebInterfaceManager(LingRepository lingRepository, TrafficRouter trafficRouter) {
+    public WebInterfaceManager(LingRepository lingRepository,
+            TrafficRouter trafficRouter,
+            ObjectProvider<MetricsCollector> metricsCollectorProvider) {
         this.routeResolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
+        this.metricsCollectorProvider = metricsCollectorProvider;
     }
 
     public void init(RequestMappingHandlerMapping mapping,
@@ -309,11 +316,64 @@ public class WebInterfaceManager implements WebRouteResolver {
         if (targetLoader != null) {
             Thread.currentThread().setContextClassLoader(targetLoader);
         }
+        long startNanos = System.nanoTime();
         try {
-            return hostSupport.invokeTarget(meta, routeId, webRequest);
+            Object result = hostSupport.invokeTarget(meta, routeId, webRequest);
+            recordMetrics(meta, resolution, startNanos, true, null);
+            return result;
+        } catch (Exception ex) {
+            recordMetrics(meta, resolution, startNanos, false, ex);
+            throw ex;
         } finally {
             Thread.currentThread().setContextClassLoader(original);
         }
+    }
+
+    private void recordMetrics(WebInterfaceMetadata meta,
+            WebRouteResolution resolution,
+            long startNanos,
+            boolean success,
+            Throwable error) {
+        MetricsCollector metricsCollector = metricsCollectorProvider != null ? metricsCollectorProvider.getIfAvailable() : null;
+        if (metricsCollector == null || meta == null || meta.getLingId() == null || meta.getLingId().isEmpty()) {
+            return;
+        }
+
+        long costMs = (System.nanoTime() - startNanos) / 1_000_000;
+        String lingId = meta.getLingId();
+        String version = resolution != null && resolution.getTargetInstance() != null
+                ? resolution.getTargetInstance().getVersion()
+                : meta.getVersion();
+
+        LingHealthMetrics metrics = metricsCollector.getOrCreate(lingId);
+        LingHealthMetrics versionMetrics = metricsCollector.getOrCreate(lingId, version);
+        if (success) {
+            metrics.recordSuccess(costMs);
+            if (versionMetrics != metrics) {
+                versionMetrics.recordSuccess(costMs);
+            }
+            return;
+        }
+
+        boolean isTimeout = isTimeoutError(error);
+        metrics.recordFailure(costMs, isTimeout);
+        if (versionMetrics != metrics) {
+            versionMetrics.recordFailure(costMs, isTimeout);
+        }
+    }
+
+    private boolean isTimeoutError(Throwable error) {
+        if (error == null) {
+            return false;
+        }
+        String message = error.getMessage();
+        if (message != null) {
+            String lower = message.toLowerCase();
+            if (lower.contains("timeout") || lower.contains("timed out")) {
+                return true;
+            }
+        }
+        return isTimeoutError(error.getCause());
     }
 
     public LingGatewayHandler gatewayHandler() {

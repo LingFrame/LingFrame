@@ -84,6 +84,8 @@ class LocalGovernanceRegistryTest {
             policy.getPermissions().add(GovernancePolicy.PermissionRule.builder()
                     .permissionId("perm-2")
                     .build());
+            policy.getInvocation().setTimeoutMs(1500);
+            policy.getInvocation().setRateLimitPerSecond(9);
             registry.updatePatch("Ling-2", policy);
 
             LocalGovernanceRegistry newRegistry = new LocalGovernanceRegistry(eventBus, configFile.getAbsolutePath());
@@ -92,6 +94,8 @@ class LocalGovernanceRegistryTest {
             assertNotNull(loadedPolicy);
             assertFalse(loadedPolicy.getPermissions().isEmpty());
             assertEquals("perm-2", loadedPolicy.getPermissions().get(0).getPermissionId());
+            assertEquals(Integer.valueOf(1500), loadedPolicy.getInvocation().getTimeoutMs());
+            assertEquals(Integer.valueOf(9), loadedPolicy.getInvocation().getRateLimitPerSecond());
         }
     }
 }

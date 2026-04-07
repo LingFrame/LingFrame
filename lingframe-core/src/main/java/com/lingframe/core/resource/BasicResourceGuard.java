@@ -1,5 +1,7 @@
 package com.lingframe.core.resource;
 
+import com.lingframe.core.event.EventBus;
+import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.spi.ResourceGuard;
 import lombok.extern.slf4j.Slf4j;
 
@@ -19,6 +21,64 @@ import java.util.concurrent.ExecutorService;
 
 @Slf4j
 public class BasicResourceGuard implements ResourceGuard {
+
+    public static final class CapabilitySnapshot {
+        private final int jdkVersion;
+        private final boolean threadTargetAccessible;
+        private final boolean threadAccessControlAccessible;
+        private final boolean accessControlContextAccessible;
+        private final boolean virtualThreadIntrospectionAvailable;
+        private final boolean driverManagerAccessible;
+
+        CapabilitySnapshot(int jdkVersion,
+                           boolean threadTargetAccessible,
+                           boolean threadAccessControlAccessible,
+                           boolean accessControlContextAccessible,
+                           boolean virtualThreadIntrospectionAvailable,
+                           boolean driverManagerAccessible) {
+            this.jdkVersion = jdkVersion;
+            this.threadTargetAccessible = threadTargetAccessible;
+            this.threadAccessControlAccessible = threadAccessControlAccessible;
+            this.accessControlContextAccessible = accessControlContextAccessible;
+            this.virtualThreadIntrospectionAvailable = virtualThreadIntrospectionAvailable;
+            this.driverManagerAccessible = driverManagerAccessible;
+        }
+
+        public int getJdkVersion() {
+            return jdkVersion;
+        }
+
+        public boolean isThreadTargetAccessible() {
+            return threadTargetAccessible;
+        }
+
+        public boolean isThreadAccessControlAccessible() {
+            return threadAccessControlAccessible;
+        }
+
+        public boolean isAccessControlContextAccessible() {
+            return accessControlContextAccessible;
+        }
+
+        public boolean isVirtualThreadIntrospectionAvailable() {
+            return virtualThreadIntrospectionAvailable;
+        }
+
+        public boolean isDriverManagerAccessible() {
+            return driverManagerAccessible;
+        }
+
+        public String toSummary() {
+            return String.format(
+                    "jdk=%d,target=%s,acc=%s,accContext=%s,virtualThread=%s,driverManager=%s",
+                    jdkVersion,
+                    threadTargetAccessible,
+                    threadAccessControlAccessible,
+                    accessControlContextAccessible,
+                    virtualThreadIntrospectionAvailable,
+                    driverManagerAccessible);
+        }
+    }
 
     private static final int JDK_VERSION = detectJdkVersion();
 
@@ -46,6 +106,15 @@ public class BasicResourceGuard implements ResourceGuard {
      * DriverManager.registeredDrivers 字段是否可用
      */
     private static final Field DRIVER_MANAGER_FIELD = probeField(DriverManager.class, "registeredDrivers");
+    private static final CapabilitySnapshot CAPABILITY_SNAPSHOT = new CapabilitySnapshot(
+            JDK_VERSION,
+            THREAD_TARGET_FIELD != null,
+            THREAD_ACC_FIELD != null,
+            ACC_CONTEXT_FIELD != null,
+            THREAD_IS_VIRTUAL != null,
+            DRIVER_MANAGER_FIELD != null);
+
+    private final EventBus eventBus;
 
     private static int detectJdkVersion() {
         try {
@@ -147,6 +216,16 @@ public class BasicResourceGuard implements ResourceGuard {
     // =========================================================================
 
     public BasicResourceGuard() {
+        this(null);
+    }
+
+    public BasicResourceGuard(EventBus eventBus) {
+        this.eventBus = eventBus;
+        publishCapabilitySnapshot("BasicResourceGuard");
+    }
+
+    public CapabilitySnapshot getCapabilitySnapshot() {
+        return CAPABILITY_SNAPSHOT;
     }
 
     @Override
@@ -183,6 +262,21 @@ public class BasicResourceGuard implements ResourceGuard {
     }
 
     public void shutdown() {
+    }
+
+    protected void publishCapabilitySnapshot(String runtime) {
+        if (eventBus == null) {
+            return;
+        }
+        eventBus.publish(new MonitoringEvents.ResourceCleanupCapabilityEvent(
+                runtime,
+                CAPABILITY_SNAPSHOT.getJdkVersion(),
+                CAPABILITY_SNAPSHOT.isThreadTargetAccessible(),
+                CAPABILITY_SNAPSHOT.isThreadAccessControlAccessible(),
+                CAPABILITY_SNAPSHOT.isAccessControlContextAccessible(),
+                CAPABILITY_SNAPSHOT.isVirtualThreadIntrospectionAvailable(),
+                CAPABILITY_SNAPSHOT.isDriverManagerAccessible(),
+                CAPABILITY_SNAPSHOT.toSummary()));
     }
 
     // =========================================================================

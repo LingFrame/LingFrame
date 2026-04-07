@@ -3,6 +3,7 @@ package com.lingframe.runtime;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.classloader.SharedApiClassLoader;
+import com.lingframe.core.classloader.SharedApiManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.dev.HotSwapWatcher;
@@ -49,6 +50,8 @@ public class NativeLingFrame {
     private static HotSwapWatcher HOT_SWAP_WATCHER;
     private static DefaultLingResourceManager RESOURCE_MANAGER;
     private static RuntimeCoordinator RUNTIME_COORDINATOR;
+    private static SharedApiManager SHARED_API_MANAGER;
+    private static LeakDetector LEAK_DETECTOR;
 
     /**
      * 使用默认配置启动灵珑。
@@ -77,6 +80,9 @@ public class NativeLingFrame {
         // 准备核心组件
         DefaultPermissionService permissionService = new DefaultPermissionService(eventBus);
         DefaultLingLoaderFactory loaderFactory = new DefaultLingLoaderFactory();
+        SHARED_API_MANAGER = new SharedApiManager(Thread.currentThread().getContextClassLoader(), config);
+        SHARED_API_MANAGER.preloadFromConfig();
+        SHARED_API_MANAGER.freezeSharedBoundary();
 
         // 创建 Native 专用的容器工厂
         NativeContainerFactory containerFactory = new NativeContainerFactory();
@@ -93,12 +99,12 @@ public class NativeLingFrame {
                 filterRegistry);
 
         RESOURCE_MANAGER = new DefaultLingResourceManager(lingRepository, eventBus, invokableMethodCache);
-        LeakDetector leakDetector = new DefaultLeakDetector(eventBus, config);
+        LEAK_DETECTOR = new DefaultLeakDetector(eventBus, config);
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
                 pipelineEngine,
-                Collections.singletonList(new BasicResourceGuard()),
+                Collections.singletonList(new BasicResourceGuard(eventBus)),
                 RESOURCE_MANAGER,
-                leakDetector);
+                LEAK_DETECTOR);
 
         LingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(
                 containerFactory,
@@ -115,7 +121,7 @@ public class NativeLingFrame {
                 RUNTIME_COORDINATOR);
 
         if (config != null && config.isDevMode() && lifecycleEngine instanceof DefaultLingLifecycleEngine) {
-            HOT_SWAP_WATCHER = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus, leakDetector);
+            HOT_SWAP_WATCHER = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus, LEAK_DETECTOR);
             ((DefaultLingLifecycleEngine) lifecycleEngine).setHotSwapWatcher(HOT_SWAP_WATCHER);
         }
 
@@ -131,19 +137,7 @@ public class NativeLingFrame {
         }
 
         // 注册关闭钩子
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            log.info("LingFrame shutting down...");
-            if (HOT_SWAP_WATCHER != null) {
-                HOT_SWAP_WATCHER.shutdown();
-            }
-            if (RESOURCE_MANAGER != null) {
-                RESOURCE_MANAGER.shutdown();
-            }
-            if (RUNTIME_COORDINATOR != null) {
-                RUNTIME_COORDINATOR.stop();
-            }
-            SharedApiClassLoader.resetInstance();
-        }));
+        Runtime.getRuntime().addShutdownHook(new Thread(NativeLingFrame::shutdown));
 
         GLOBAL_LIFECYCLE_ENGINE = lifecycleEngine;
         started.set(true);
@@ -151,6 +145,43 @@ public class NativeLingFrame {
         log.info("LingFrame Native started in {} ms", System.currentTimeMillis() - start);
 
         return lifecycleEngine;
+    }
+
+    /**
+     * 鍏抽棴 Native runtime 骞舵竻鐞嗗叏灞€鐘舵€併€?
+     */
+    public static synchronized void shutdown() {
+        if (!started.get()) {
+            return;
+        }
+
+        log.info("LingFrame shutting down...");
+        if (HOT_SWAP_WATCHER != null) {
+            HOT_SWAP_WATCHER.shutdown();
+            HOT_SWAP_WATCHER = null;
+        }
+        if (LEAK_DETECTOR != null) {
+            LEAK_DETECTOR.shutdown();
+            LEAK_DETECTOR = null;
+        }
+        if (RESOURCE_MANAGER != null) {
+            RESOURCE_MANAGER.shutdown();
+            RESOURCE_MANAGER = null;
+        }
+        if (RUNTIME_COORDINATOR != null) {
+            RUNTIME_COORDINATOR.stop();
+            RUNTIME_COORDINATOR = null;
+        }
+        if (SHARED_API_MANAGER != null) {
+            SHARED_API_MANAGER.shutdown();
+            SHARED_API_MANAGER = null;
+        } else {
+            SharedApiClassLoader.resetInstance();
+        }
+
+        GLOBAL_LIFECYCLE_ENGINE = null;
+        HOST_CONTEXT = null;
+        started.set(false);
     }
 
     private static LingServiceInvoker resolveInvoker(ClassLoader hostClassLoader) {

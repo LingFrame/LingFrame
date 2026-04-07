@@ -81,6 +81,18 @@ public class MacroStateGuardFilter implements LingInvocationFilter {
                 }
                 throw new LingInvocationException(fqsid,
                         LingInvocationException.ErrorKind.STATE_REJECTED, stoppingMessage);
+            case RECOVERING:
+                String recoveringMessage = "Ling [" + lingId + "] is recovering";
+                if (ctx.isSimulation()) {
+                    ctx.addTrace(EngineTrace.builder()
+                            .source("MacroStateGuardFilter")
+                            .action("Simulation blocked because " + recoveringMessage)
+                            .type("WARN")
+                            .depth(1)
+                            .build());
+                }
+                throw new LingInvocationException(fqsid,
+                        LingInvocationException.ErrorKind.STATE_REJECTED, recoveringMessage);
             default:
                 throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.STATE_REJECTED);
         }

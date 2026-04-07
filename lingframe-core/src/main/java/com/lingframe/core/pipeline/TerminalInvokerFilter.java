@@ -88,18 +88,56 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
             return "Simulation Success for: " + ctx.getServiceFQSID() + "#" + ctx.getMethodName();
         }
 
-        try {
-            if (invoker instanceof FastLingServiceInvoker) {
-                Object[] args = concatArgs(serviceBean, ctx.getArgs());
-                return ((FastLingServiceInvoker) invoker).invokeFast(target, handle, args);
+        int configuredRetryCount = Math.max(0, ctx.governance().getRetryCount() == null ? 0 : ctx.governance().getRetryCount());
+        int maxAttempts = configuredRetryCount + 1;
+        Throwable lastFailure = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return invokeTerminalTarget(ctx, target, serviceBean, handle, resolvedTypes);
+            } catch (Throwable throwable) {
+                lastFailure = unwrapInvocationFailure(ctx, throwable);
+                if (!shouldRetry(lastFailure) || attempt >= maxAttempts) {
+                    String fallbackValue = ctx.governance().getFallbackValue();
+                    if (fallbackValue != null) {
+                        log.warn("[TerminalInvoker] Invocation failed after {} attempt(s), returning fallback for {}",
+                                attempt, ctx.getServiceFQSID());
+                        return fallbackValue;
+                    }
+                    throw lastFailure;
+                }
+                log.warn("[TerminalInvoker] Invocation failed on attempt {}/{}, retrying {}",
+                        attempt, maxAttempts, ctx.getServiceFQSID(), lastFailure);
             }
-
-            Method method = serviceBean.getClass().getMethod(ctx.getMethodName(), resolvedTypes);
-            return invoker.invoke(target, serviceBean, method, ctx.getArgs());
-        } catch (Throwable throwable) {
-            throw new LingInvocationException(ctx.getServiceFQSID(),
-                    LingInvocationException.ErrorKind.INVOKE_ERROR, throwable);
         }
+        throw lastFailure;
+    }
+
+    private Object invokeTerminalTarget(InvocationContext ctx, LingInstance target, Object serviceBean,
+                                        MethodHandle handle, Class<?>[] resolvedTypes) throws Throwable {
+        if (invoker instanceof FastLingServiceInvoker) {
+            Object[] args = concatArgs(serviceBean, ctx.getArgs());
+            return ((FastLingServiceInvoker) invoker).invokeFast(target, handle, args);
+        }
+
+        Method method = serviceBean.getClass().getMethod(ctx.getMethodName(), resolvedTypes);
+        return invoker.invoke(target, serviceBean, method, ctx.getArgs());
+    }
+
+    private Throwable unwrapInvocationFailure(InvocationContext ctx, Throwable throwable) {
+        if (throwable instanceof LingInvocationException) {
+            return throwable;
+        }
+        return new LingInvocationException(ctx.getServiceFQSID(),
+                LingInvocationException.ErrorKind.INVOKE_ERROR, throwable);
+    }
+
+    private boolean shouldRetry(Throwable throwable) {
+        if (!(throwable instanceof LingInvocationException)) {
+            return true;
+        }
+        LingInvocationException invocationException = (LingInvocationException) throwable;
+        return invocationException.getKind() == LingInvocationException.ErrorKind.INVOKE_ERROR
+                || invocationException.getKind() == LingInvocationException.ErrorKind.INTERNAL_ERROR;
     }
 
     private MethodHandle resolveMethodHandle(InvocationContext ctx, Object serviceBean, Class<?>[] resolvedTypes, String cacheKey) {

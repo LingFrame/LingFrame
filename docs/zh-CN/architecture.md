@@ -1,6 +1,6 @@
 # 架构设计
 
-本文描述的是**当前代码里真实落地的 `0.3.0` 对外架构**。  
+本文描述的是**当前代码里真实落地的对外架构**。
 它刻意避开已经不再符合运行时现状的旧叙事。
 
 如果用一句话概括这份架构文档的重点，那就是：
@@ -23,7 +23,7 @@
 
 ## 模块布局
 
-| 模块 | `0.3.0` 中的角色 |
+| 模块 | 当前角色 |
 | :-- | :-- |
 | `lingframe-api` | 契约、注解、异常、安全抽象 |
 | `lingframe-core` | Pipeline、路由、运行时状态、生命周期编排、事件总线、治理逻辑 |
@@ -53,8 +53,19 @@
 | `ThreadIsolationGovernanceFilter` | 执行线程隔离与切换 |
 | `TerminalInvokerFilter` | 执行真实终端调用、生成模拟结果，或在特定模式下跳过终端执行 |
 
-`0.3.0` 的关键，不只是“这些 Filter 存在”，  
+当前实现的关键，不只是“这些 Filter 存在”，
 而是它们已经组成了对多个入口都可复用的正式运行时主链。
+
+### 调用上下文 (InvocationContext)
+
+为防止传统的基于 `Map<String, Object>` 的魔术键（Magic Key）泛滥，灵珑强制规范了调用上下文的传输结构。`InvocationContext` 作为贯穿 Pipeline 的唯一通行证，被显式划分为四大协议分区：
+
+- `routingState`（路由分区）：指明请求应发往哪个实例（如目标版本、标签）。
+- `resolutionState`（解析分区）：承载类加载器、方法等短命强引用（强制要求在回收时物理清空，严防跨调用残留）。
+- `governanceState`（治理分区）：承载权限、审计、限流、超时等不可篡改的运维意图。
+- `executionState`（执行分区）：掌管当前调用是否触发真实副作用或记录追踪迹。
+
+这种设计使得 Pipeline 的数据流动具备了极强的可追溯性和健壮性。
 
 ---
 
@@ -74,7 +85,7 @@
 
 ## 生命周期编排
 
-`DefaultLingLifecycleEngine` 是 `0.3.0` 中已经落地的顶层生命周期编排器。
+`DefaultLingLifecycleEngine` 是当前已经落地的顶层生命周期编排器。
 
 它负责把部署、重载、卸载意图翻译成有序运行时动作，  
 但不会把状态写入权重新揉回一个对象里；真正的状态写入仍然由 `InstanceCoordinator` 与 `RuntimeCoordinator` 负责。
@@ -101,7 +112,7 @@
 - 驱逐服务、Pipeline 持有资源、缓存与 ClassLoader 关联状态
 - 把泄漏诊断纳入卸载完成流程
 
-这也是 `0.3.0` 能被视为“架构收敛版”的重要原因之一。
+这也是当前架构已经形成收敛主线的重要原因之一。
 
 这里真正特别的，不是系统“支持卸载”这件事本身，  
 而是卸载已经被当成需要正式编排、清理和诊断的运行时职责。
@@ -124,7 +135,7 @@
 
 ## 运行时状态所有权模型
 
-`0.3.0` 正式把运行时状态收束为两层。
+当前实现已经把运行时状态正式收束为两层。
 
 ### 实例层
 
@@ -164,7 +175,7 @@
 - `RuntimeCoordinator` 订阅这些事实
 - 运行时层基于快照重新聚合宏观状态
 
-这就是 `0.3.0` 最核心的收敛点之一。
+这就是当前架构最核心的收敛点之一。
 
 如果你想继续看状态所有权和联动链路的完整说明，直接读 [运行时双层状态机架构设计](runtime-dual-state-machine-architecture.md)。
 
@@ -181,19 +192,19 @@
 | 灵核 Bean 方法 | `LingCoreBeanGovernanceInterceptor` | 在 AOP 拦截中通过 `GOVERN_ONLY` 复用治理能力 |
 | Dashboard 模拟 | `SimulateService` | 通过 `SIMULATION` 跑真实治理链路但不产生真实副作用 |
 
-这也是 `0.3.0` 与更早“功能拼装阶段”的本质差别。
+这也是当前实现与更早零散能力拼装状态的本质差别。
 
 ---
 
 ## 可观测性与清理
 
-`0.3.0` 进一步拉近了治理与运维的关系。
+当前实现进一步拉近了治理与运维的关系。
 
 - `EngineTrace` 用来保留可解释的决策追踪
 - `MonitoringEvents` 定义 trace、audit、alert、circuit-breaker、leak-detection 等统一事件语义
 - `LogStreamService` 通过 SSE 把这些事件流推送到 Dashboard
 - `InvocationPipelineEngine.evictLingResources` 与方法缓存驱逐支撑卸载清理
-- `DefaultLeakDetector` 在开发态与生产态采用不同诊断策略
+- `DefaultLeakDetector` 支持分级泄漏诊断策略（包含 `DEV_AGGRESSIVE` 激进诊断、`DEV_BOUNDED` 降级有界诊断、`PROD_PASSIVE` 生产态被动观测三种模式），并通过有界并发限制避免在排查时引发 GC 风暴
 
 架构上的重要变化在于：Dashboard 开始消费**真实内核证据**，而不是单独维护一层解释视图。
 
@@ -204,7 +215,7 @@
 
 ## 当前边界
 
-当前对外公开的 `0.3.0` 架构仍然有清晰边界：
+当前对外公开的架构仍然有清晰边界：
 
 - 它仍然是**单进程**治理内核
 - `Shared API` 仍然是**进程级契约边界**

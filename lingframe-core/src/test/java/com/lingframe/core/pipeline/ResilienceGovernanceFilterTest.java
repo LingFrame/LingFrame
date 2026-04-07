@@ -16,8 +16,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -136,6 +139,57 @@ class ResilienceGovernanceFilterTest {
 
             assertEquals(LingInvocationException.ErrorKind.CIRCUIT_OPEN, cbEx.getKind());
             verify(filterChain, times(10)).doFilter(context);
+        }
+
+        @Test
+        @DisplayName("治理限流阈值变化后应切换到新的限流器配置")
+        void doFilter_WhenGovernedRateLimitChanges_ShouldRefreshLimiter() throws Throwable {
+            setupMocks(100, 1000);
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            context.governance().setRateLimitPerSecond(100);
+            assertEquals(expected, filter.doFilter(context, filterChain));
+
+            context.governance().setRateLimitPerSecond(1);
+            assertEquals(expected, filter.doFilter(context, filterChain));
+
+            LingInvocationException rateLimitEx = assertThrows(LingInvocationException.class,
+                    () -> filter.doFilter(context, filterChain));
+            assertEquals(LingInvocationException.ErrorKind.RATE_LIMITED, rateLimitEx.getKind());
+        }
+
+        @Test
+        @DisplayName("卸载驱逐后应同步清理熔断与限流状态")
+        void doFilter_WhenEvicted_ShouldReleaseBreakerAndLimiterState() throws Throwable {
+            setupMocks(10, 1000);
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            assertEquals(expected, filter.doFilter(context, filterChain));
+            assertTrue(filter.hasLimiter("demo-ling"));
+            assertTrue(filter.hasBreaker("demo-ling"));
+
+            filter.evict("demo-ling");
+
+            assertFalse(filter.hasLimiter("demo-ling"));
+            assertFalse(filter.hasBreaker("demo-ling"));
+        }
+
+        @Test
+        @DisplayName("恢复治理状态时应只重置熔断器")
+        void recover_ShouldOnlyClearBreakerState() throws Throwable {
+            setupMocks(10, 1000);
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            assertEquals(expected, filter.doFilter(context, filterChain));
+            assertTrue(filter.hasLimiter("demo-ling"));
+            assertTrue(filter.hasBreaker("demo-ling"));
+
+            assertTrue(filter.recover("demo-ling"));
+            assertTrue(filter.hasLimiter("demo-ling"));
+            assertFalse(filter.hasBreaker("demo-ling"));
         }
     }
 

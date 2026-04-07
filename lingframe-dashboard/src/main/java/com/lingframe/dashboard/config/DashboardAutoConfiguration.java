@@ -8,16 +8,23 @@ import com.lingframe.core.governance.LocalGovernanceRegistry;
 
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.core.router.CanaryRouter;
+import com.lingframe.dashboard.metrics.LingMetricsMeterBridge;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LogStreamService;
+import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import com.lingframe.dashboard.service.SimulateService;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
@@ -80,10 +87,32 @@ public class DashboardAutoConfiguration {
     public LogStreamService logStreamService(EventBus eventBus) {
         return new LogStreamService(eventBus);
     }
+
+    @Bean
+    public RuntimeDiagnosticsService runtimeDiagnosticsService(EventBus eventBus) {
+        return new RuntimeDiagnosticsService(eventBus);
+    }
     
     @Bean
+    @ConditionalOnMissingBean
     public MetricsCollector metricsCollector(LingRepository lingRepository) {
         return new MetricsCollector(lingRepository);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public GovernanceMetricsCollector governanceMetricsCollector() {
+        return new GovernanceMetricsCollector();
+    }
+
+    @Bean
+    @ConditionalOnClass(MeterRegistry.class)
+    @ConditionalOnBean(MeterRegistry.class)
+    public LingMetricsMeterBridge lingMetricsMeterBridge(
+            MeterRegistry meterRegistry,
+            MetricsCollector metricsCollector,
+            GovernanceMetricsCollector governanceMetricsCollector) {
+        return new LingMetricsMeterBridge(meterRegistry, metricsCollector, governanceMetricsCollector);
     }
 
     @Bean
@@ -92,11 +121,11 @@ public class DashboardAutoConfiguration {
             @Override
             public void addViewControllers(ViewControllerRegistry registry) {
                 registry.addRedirectViewController("/lingframe/dashboard/ui", "/lingframe/dashboard/ui/");
-                registry.addViewController("/lingframe/dashboard/ui/").setViewName("forward:/lingframe/dashboard/ui/index.html");
+                registry.addViewController("/lingframe/dashboard/ui/").setViewName("forward:/dashboard.html");
                 registry.addViewController("/lingframe/dashboard/ui/{path:[^\\.]*}")
-                        .setViewName("forward:/lingframe/dashboard/ui/index.html");
+                        .setViewName("forward:/dashboard.html");
                 registry.addViewController("/lingframe/dashboard/ui/**/{path:[^\\.]*}")
-                        .setViewName("forward:/lingframe/dashboard/ui/index.html");
+                        .setViewName("forward:/dashboard.html");
             }
         };
     }

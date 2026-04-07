@@ -1,14 +1,19 @@
 # 快速开始
 
-这份文档是第一次接触灵珑时的最短路径。
+这份文档是**正式入门文档**。
 
-它刻意只解决一件事：**先把示例跑起来，并建立最小术语感**。
+如果你只想先把示例跑起来，请优先看仓库根目录的 `QUICK_START.zh-CN.md`。  
+这份文档则负责在跑通之后，继续解释：
+
+- 示例里到底启动了什么
+- 为什么这些步骤成立
+- 后续应该如何继续理解和使用 LingFrame
 
 如果你只记住一句话，请记住：
 
 > 灵珑让你在一个 JVM 进程里加载并治理彼此隔离的业务灵元，而不是一上来就把系统拆成微服务。
 
-对 `0.3.0` 来说，这不只是“把灵元加载起来”的演示，  
+对当前公开实现来说，这不只是“把灵元加载起来”的演示，
 也是你第一次接触一条可治理、可收敛、并且后续可继续验证规范热卸载的运行时链路。
 
 ---
@@ -33,7 +38,7 @@
 - JDK 17+ 作为主示例路径
 - Maven 3.8+
 
-`0.3.0` 同时支持 JDK 8 与 Spring Boot 2.x，但示例工程仍然是最容易上手的入口。
+当前运行时同时支持 JDK 8 与 Spring Boot 2.x，但示例工程仍然是最容易上手的入口。
 
 ---
 
@@ -74,6 +79,92 @@ curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
 ```
 
 如果这两个请求都能正常返回，你已经拥有一个可运行的灵珑运行时。
+
+---
+
+## 再多 5 分钟：验证当前已经闭环的治理能力
+
+如果你想确认当前示例不只是“能跑”，而是真的已经具备控制面、观测和卸载闭环，可以继续做下面几步。
+
+### 1. 打开 Dashboard
+
+浏览器访问：
+
+```text
+http://localhost:8888/dashboard.html
+```
+
+你应该能看到当前已加载的灵元列表，以及健康指标、治理配置、时间线等控制面信息。
+
+### 2. 查看当前灵元与版本
+
+```bash
+curl http://localhost:8888/lingframe/dashboard/lings
+```
+
+在默认示例里，通常能看到：
+
+- `order-ling:1.0.0`
+- `user-ling:1.0.0`
+- `user-ling:1.1.0-canary`
+
+### 3. 查看健康指标与治理指标
+
+```bash
+curl http://localhost:8888/lingframe/dashboard/lings/health/all
+curl http://localhost:8888/lingframe/dashboard/lings/governance/all
+```
+
+这里可以直接看到：
+
+- 灵元级 summary
+- version 级明细
+- 当前已采集到的治理信号
+
+### 4. 对 `user-ling` 下发调用治理补丁
+
+```bash
+curl -X POST http://localhost:8888/lingframe/dashboard/governance/user-ling/invocation \
+  -H "Content-Type: application/json" \
+  -d "{\"timeoutMs\":3000,\"rateLimitPerSecond\":1,\"maxConcurrentThreads\":1}"
+```
+
+这一步对应当前已经闭环的调用治理参数：
+
+- `timeoutMs`
+- `rateLimitPerSecond`
+- `maxConcurrentThreads`
+
+### 5. 再次发起请求，并观察治理与观测是否变化
+
+```bash
+curl http://localhost:8888/user-ling/user/listUsers
+curl http://localhost:8888/lingframe/dashboard/lings/health/all
+curl http://localhost:8888/lingframe/dashboard/lings/governance/all
+```
+
+你应该能看到：
+
+- 健康指标中的请求数、延迟、QPS 变化
+- 治理指标中的限流/超时等信号变化
+
+### 6. 验证结构化卸载预检
+
+```bash
+curl -X DELETE http://localhost:8888/lingframe/dashboard/lings/uninstall/user-ling/1.1.0-canary
+```
+
+这一步返回的已经不只是简单成功/失败，而是结构化卸载结果，包含：
+
+- 是否真正触发卸载
+- 总体风险级别
+- 风险摘要列表
+
+注意：
+
+- 当前默认策略是“提示但不阻断”
+- 所以即便预检返回风险提示，卸载主流程仍可能继续执行
+- 卸载后的被动泄漏诊断链路仍然保留，并没有被卸载前预检替代
 
 ---
 
@@ -139,6 +230,12 @@ lingframe:
 - 共享契约会在灵元启动前先 preload
 - 跨灵元调用不会绕过治理内核
 - 当前示例配置已经足够继续阅读开发文档
+
+如果你继续完成上面的 Dashboard / 治理 / 卸载验证，你还会额外看到：
+
+- 控制面可以热调调用治理参数
+- 健康指标与治理指标会在真实请求后变化
+- 卸载前预检、真实卸载与卸载后诊断已经形成一条主链
 
 下一步最值得继续验证的，不只是“还能不能再加载一个灵元”，  
 而是这条运行时链路在 reload / unload / cleanup 场景下能否继续保持有序。

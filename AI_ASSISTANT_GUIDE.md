@@ -1,47 +1,47 @@
-# AI Assistant Guide
+# AI Assistant Development Guide
 
-> When AI assistants modify LingFrame code, tests, or documentation, [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md) remains the authoritative rule source.
+> When modifying LingFrame code, tests, and documentation, AI must uniformly treat [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md) as the absolute source of truth for standards.
 >
-> This file is not a duplicate of the manual. It only keeps the extra execution rules AI assistants must pay special attention to.
+> This document is not a duplicate of the manual, but rather retains specific execution rules that AI assistants must additionally heed.
 
-## 1. Follow The Development Manual First
+## 1. Follow the Development Manual First
 
-Before starting any modification, an AI assistant should at minimum read:
+Before an AI assistant begins any modification, it should at least read:
 
 1. [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md)
-2. the relevant code
-3. the relevant tests
-4. the relevant architecture docs
+2. The code of the involved modules
+3. The corresponding tests
+4. The corresponding architecture documents
 
-If the work touches AI agent system design, AI capability boundaries, a single intelligent entry point, or route derivation, still use the current codebase, tests, and development manual as the source of truth. Do not reference unpublished internal planning material in public documentation.
+If the context involves AI Agent architecture design, AI capability boundaries, unique intelligence entries, or route inferences, the current codebase, tests, and development manual act as the definitive reality. Do NOT quote unreleased internal planning materials in public documentation.
 
-## 2. Extra Rules AI Must Pay Attention To
+## 2. Rules AI Must Specifically Pay Attention To
 
-- identify the boundary before touching code
-- identify the single source of truth and the write authority before designing a change
-- comments must be in Chinese and logs must be in English
-- in Chinese contexts, prefer the project name `灵珑`; if both names are needed, use `灵珑（LingFrame）`
-- use the terminology `灵核` and `灵元`; do not write `host` or `plugin`
-- do not bypass `InstanceCoordinator` / `RuntimeCoordinator` to mutate state directly
-- do not delete high-value design comments, pitfall notes, or risk warnings just to unify style
-- test display names should use Chinese, with `@Nested + @DisplayName` preferred
-- treat `Shared API` as a process-level public contract: a brand-new JAR may be hot-loaded, but an already loaded JAR must not be hot-updated or hot-unloaded; contract replacement requires a process restart
-- changes involving architecture boundaries, state machines, lifecycle, governance semantics, or Shared API contracts must update tests and documentation together
+- Identify boundaries first before touching code.
+- Confirm the single source of truth and write authority first before designing modifications.
+- Code comments MUST be in Chinese, logs MUST be in English.
+- In Chinese contexts, prioritize using "灵珑" for the project name; if an English name is needed, write "灵珑（LingFrame）".
+- Unify terminology uses to strictly be "灵核" and "灵元". Do not use "宿主 (Host)" or "插件 (Plugin)".
+- Do not bypass `InstanceCoordinator` / `RuntimeCoordinator` to directly modify status.
+- Do not delete high-value design explanations, pitfall notes, or risk warnings in comments just for the sake of "unified style."
+- Test display names must uniformly be in Chinese, prioritizing `@Nested + @DisplayName`.
+- Treat `Shared API` as the process-level common contract: New JARs can be hot-loaded, but already loaded JARs are not allowed to be hot-updated or hot-unloaded. Replacements of contracts must restart the process.
+- Any changes involving architecture boundaries, state machines, lifecycles, governance semantics, or Shared API contracts must simultaneously update tests and documentation.
 
-## 3. Minimum Actions Before AI Modifies Anything
+## 3. Minimum Actions Before AI Modifies
 
-- determine which layer this change belongs to first: instance, runtime, membership, orchestration, unload, adaptation, or documentation
-- confirm who has write authority, who is read-only, and who orchestrates
-- confirm whether the change affects tests, logs, documentation, or terminology
+- Ascertain which layer this modification belongs to: instance layer, runtime layer, membership layer, orchestration layer, unload layer, adapter layer, or documentation layer.
+- Affirm who holds the write authority, who is read-only, and who orchestrates.
+- Confirm whether this modification will impact tests, logs, documentation, and terminology.
 
-If the assistant cannot answer "who has write authority", it should not start modifying anything.
+If you cannot answer "who holds write authority", you should not begin modifying.
 
-## 4. Minimum Delivery After AI Modifies Something
+## 4. Minimum Deliverables After AI Modifies
 
-- code that keeps boundaries intact
-- tests that cover critical semantics
-- synchronized documentation
-- consistent terminology
-- no new spread of implicit state or stringly typed magic keys
+- The code holds the line on its boundaries.
+- The tests cover key semantics.
+- Documentation is synchronized.
+- Terminology is unified.
+- There is no spread or introduction of new implicit state and string magic-keys.
 
-If old documentation or legacy implementation conflicts with this file, follow this file and the development manual.
+If older documents or historical implementations conflict with this document, this document and the development manual shall prevail.

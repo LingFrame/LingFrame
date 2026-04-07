@@ -11,6 +11,7 @@ import java.util.Collection;
  * │ 实例聚合条件                          │ 建议状态      │
  * ├──────────────────────────────────────┼──────────────┤
  * │ 无活跃实例（全部 DEAD 或集合为空）      │ INACTIVE     │
+ * │ RECOVERING 进行中                     │ RECOVERING   │
  * │ 有 READY 且错误率 < 阈值              │ ACTIVE       │
  * │ 有 READY 但错误率 ≥ 阈值              │ DEGRADED     │
  * │ 无 READY，但有 ERROR                 │ DEGRADED     │
@@ -49,10 +50,17 @@ public class DefaultRuntimeEvaluationPolicy implements RuntimeEvaluationPolicy {
         long total = instanceStates.size();
         long ready = 0;
         long error = 0;
+        long recovering = 0;
 
         for (InstanceStatus s : instanceStates) {
             if (s == InstanceStatus.READY) ready++;
             if (s == InstanceStatus.ERROR) error++;
+            if (s == InstanceStatus.RECOVERING) recovering++;
+        }
+
+        // 恢复态优先：只要当前仍有实例处于受控恢复，就让控制面明确看到过程态。
+        if (recovering > 0) {
+            return RuntimeStatus.RECOVERING;
         }
 
         // 有可用实例，根据错误率判断健康度

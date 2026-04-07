@@ -31,7 +31,7 @@ public class CaffeineWrapperProcessor implements BeanPostProcessor, ApplicationC
             if (applicationContext != null) {
                 try {
                     PermissionService permissionService = applicationContext.getBean(PermissionService.class);
-                    return new LingCaffeineCacheProxy<>((Cache) bean, permissionService);
+                    return new LingCaffeineCacheProxy<>((Cache) bean, beanName, permissionService);
                 } catch (Exception e) {
                     log.error("Failed to wrap Caffeine Cache: {}", e.getMessage(), e);
                 }

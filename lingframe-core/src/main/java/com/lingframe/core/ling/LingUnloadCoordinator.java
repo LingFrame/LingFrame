@@ -2,14 +2,17 @@ package com.lingframe.core.ling;
 
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.spi.LeakDetector;
+import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.core.spi.ResourceGuard;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
- * 统一编排卸载后置动作，避免生命周期引擎膨胀为“上帝类”。
+ * 统一编排卸载后置动作。
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -48,6 +51,51 @@ public class LingUnloadCoordinator {
      */
     public void onFailureCleanup(ClassLoader classLoader) {
         cleanupWithGuards("fault-cleanup", null, classLoader);
+    }
+
+    public LeakRiskReport checkBeforeVersionUnload(String lingId, String version, ClassLoader classLoader) {
+        if (classLoader == null) {
+            return LeakRiskReport.checkFailed(
+                    lingId,
+                    version,
+                    "Target ClassLoader is unavailable before unload",
+                    null,
+                    leakDetector == null ? getClass().getName() : leakDetector.getClass().getName());
+        }
+        if (leakDetector == null) {
+            return LeakRiskReport.checkFailed(
+                    lingId,
+                    version,
+                    "Leak precheck is unavailable because no LeakDetector is configured",
+                    null,
+                    getClass().getName());
+        }
+        try {
+            return leakDetector.checkBefore(lingId, version, classLoader);
+        } catch (Exception e) {
+            log.error("[{}] Leak precheck failed for version {} with detector: {}", lingId, version,
+                    leakDetector.getClass().getName(), e);
+            return LeakRiskReport.checkFailed(
+                    lingId,
+                    version,
+                    "Leak precheck failed: " + e.getMessage(),
+                    Collections.singletonList(e.getClass().getName()),
+                    leakDetector.getClass().getName());
+        }
+    }
+
+    public List<LeakRiskReport> checkBeforeLingUnload(String lingId, List<LingInstance> instances) {
+        if (instances == null || instances.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<LeakRiskReport> reports = new ArrayList<>();
+        for (LingInstance instance : instances) {
+            if (instance == null) {
+                continue;
+            }
+            reports.add(checkBeforeVersionUnload(lingId, instance.getVersion(), instance.getClassLoader()));
+        }
+        return reports;
     }
 
     /**

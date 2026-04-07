@@ -10,8 +10,9 @@ import java.util.*;
  * <p>
  * 注意：当前版本里它同时承担了两类语义：
  * 1. 宏观可用性事实：INACTIVE / ACTIVE / DEGRADED
- * 2. 运维生命周期意图：STOPPING / REMOVED
- * 因此 STOPPING / REMOVED 在实现里具有更高优先级，会压制后续聚合评估。
+ * 2. 运维恢复意图：RECOVERING
+ * 3. 运维生命周期意图：STOPPING / REMOVED
+ * 因此 RECOVERING / STOPPING / REMOVED 在实现里具有更高优先级，会压制后续聚合评估。
  */
 public enum RuntimeStatus {
 
@@ -28,6 +29,11 @@ public enum RuntimeStatus {
      */
     DEGRADED,
     /**
+     * 受控恢复中。
+     * 表示运维已触发恢复链路，实例层或治理层正在收敛回稳定态。
+     */
+    RECOVERING,
+    /**
      * 优雅关闭中，排空存量请求
      */
     STOPPING,
@@ -43,9 +49,10 @@ public enum RuntimeStatus {
 
     static {
         Map<RuntimeStatus, Set<RuntimeStatus>> m = new EnumMap<>(RuntimeStatus.class);
-        m.put(INACTIVE, EnumSet.of(ACTIVE, REMOVED));
-        m.put(ACTIVE, EnumSet.of(DEGRADED, STOPPING, INACTIVE));
-        m.put(DEGRADED, EnumSet.of(ACTIVE, STOPPING, INACTIVE));
+        m.put(INACTIVE, EnumSet.of(ACTIVE, DEGRADED, RECOVERING, REMOVED));
+        m.put(ACTIVE, EnumSet.of(DEGRADED, RECOVERING, STOPPING, INACTIVE));
+        m.put(DEGRADED, EnumSet.of(ACTIVE, RECOVERING, STOPPING, INACTIVE));
+        m.put(RECOVERING, EnumSet.of(ACTIVE, DEGRADED, INACTIVE, STOPPING));
         m.put(STOPPING, EnumSet.of(REMOVED));
         m.put(REMOVED, Collections.emptySet());       // 终态
         TRANSITIONS = Collections.unmodifiableMap(m);

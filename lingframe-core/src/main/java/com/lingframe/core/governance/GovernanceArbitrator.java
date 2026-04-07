@@ -31,8 +31,8 @@ public class GovernanceArbitrator {
         for (GovernancePolicyProvider provider : providers) {
             GovernanceDecision decision = provider.resolve(runtime, method, ctx);
 
-            // 只要决策中包含核心控制信息 (权限或审计)，即视为有效决策 (First Win 策略)
-            if (decision != null && (decision.getRequiredPermission() != null || decision.getAuditEnabled() != null)) {
+            // 只要 provider 产出了任何治理指令，就视为有效决策 (First Win 策略)。
+            if (decision != null && decision.hasAnyDirective()) {
                 return decision;
             }
         }

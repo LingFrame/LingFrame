@@ -57,18 +57,27 @@ If you remember LingFrame in only one sentence, let it be this:
 
 ## 📖 Start Here
 
-- **First time reading LingFrame**: start with [getting-started.md](docs/getting-started.md)
+- **Want the shortest runnable path**: start with [QUICK_START.md](./QUICK_START.md)
+- **Want the full onboarding path**: start with [getting-started.md](docs/getting-started.md)
 - **Want to quickly understand what problem it solves**: read [practical-entry.md](docs/practical-entry.md)
-- **Want to see how far the `0.3.0` architecture has already converged**: read [technical-entry.md](docs/technical-entry.md)
+- **Want to see how far the current architecture has already converged**: read [technical-entry.md](docs/technical-entry.md)
 - **Want to understand why LingFrame is designed this way**: read [WHY.md](WHY.md)
 - **Want to understand what LingFrame insists on**: read [MANIFESTO.md](MANIFESTO.md)
 
 > You do not need to read the whole documentation set in one pass.  
 > LingFrame lets you stop at any point and continue later.
 
+## Testing
+
+- Default verification: `mvn test`
+- Run both example smoke integrations together:
+  `mvn -pl lingframe-examples/lingframe-example-lingcore-app -am -Pintegration-check verify`
+- Run one smoke integration only when needed:
+  `mvn -pl lingframe-examples/lingframe-example-lingcore-app -am -Pintegration-check verify "-Dit.test=ObservabilityClosedLoopIntegrationTest"`
+
 ---
 
-![LingFrame Dashboard Example](./docs/images/dashboard.0.3.0.png)
+![LingFrame Dashboard Example](./docs/images/dashboard.png)
 
 *The current dashboard is already a usable governance control surface, not just a display page.*
 
@@ -118,16 +127,14 @@ It only tries to put decisions back where they should happen.
 
 ---
 
-## 🚀 Current Stage
+## 🚀 Current Implemented Capabilities
 
-### 🔹 v0.3.0 · Nirvana
-
-The focus of this stage is not to keep adding scattered outward-facing capabilities,  
+The current implementation focus is not to keep adding scattered outward-facing capabilities,
 but to truly converge the governance mechanisms that already exist into a stable, reusable, explainable runtime spine.
 
 The core scope clearly delivered in the current release includes:
 
-- converging a unified governance pipeline around `InvocationPipelineEngine` and `FilterRegistry`
+- converging a unified governance pipeline around `InvocationPipelineEngine`, terminating the proliferation of magic keys through a partitioned `InvocationContext`
 - making three execution modes explicit: `NORMAL`, `SIMULATION`, and `GOVERN_ONLY`
 - letting ling invocation, Spring Boot 2 / 3 web governance, LingCore bean interception, and dashboard simulation share the same governance kernel
 - converging runtime state into the dual-layer model of `InstanceStatus` and `RuntimeStatus`, written respectively by `InstanceCoordinator` and `RuntimeCoordinator`
@@ -175,9 +182,10 @@ It simply refuses to dump all complexity onto the user at once.
 
 ## 💬 If You Want To Continue
 
-- Want to run it first: read [getting-started.md](docs/getting-started.md)
-- Want to understand `0.3.0` from the implementation side: read [technical-entry.md](docs/technical-entry.md)
-- Want to see what role the dashboard plays in the current version: read [dashboard.md](docs/dashboard.md)
+- Want the shortest hands-on path: read [QUICK_START.md](./QUICK_START.md)
+- Want the full onboarding path: read [getting-started.md](docs/getting-started.md)
+- Want to understand the current public capabilities from the implementation side: read [technical-entry.md](docs/technical-entry.md)
+- Want to see what role the dashboard plays in the current runtime: read [dashboard.md](docs/dashboard.md)
 - Want terminology help: read [glossary.md](docs/glossary.md)
 
 If you stop here, that is completely fine too.

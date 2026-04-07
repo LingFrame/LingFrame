@@ -7,6 +7,7 @@ import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.resilience.CircuitBreaker;
 import com.lingframe.core.resilience.RateLimiter;
 import com.lingframe.core.resilience.SlidingWindowCircuitBreaker;
@@ -34,26 +35,31 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
     private final LingRepository lingRepository;
     private final EventBus eventBus;
     private final RuntimeCoordinator runtimeCoordinator;
+    private final GovernanceMetricsCollector governanceMetricsCollector;
 
     // 按 lingId 管理弹性组件实例
     private final ConcurrentHashMap<String, CircuitBreaker> breakers = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, RateLimiter> limiters = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, LimiterHolder> limiters = new ConcurrentHashMap<>();
 
     public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus, RuntimeCoordinator runtimeCoordinator) {
+        this(lingRepository, eventBus, runtimeCoordinator, null);
+    }
+
+    public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus, RuntimeCoordinator runtimeCoordinator,
+                                      GovernanceMetricsCollector governanceMetricsCollector) {
         this.lingRepository = lingRepository;
         this.eventBus = eventBus;
         this.runtimeCoordinator = runtimeCoordinator;
+        this.governanceMetricsCollector = governanceMetricsCollector;
     }
 
     public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus) {
-        this(lingRepository, eventBus, null);
+        this(lingRepository, eventBus, null, null);
     }
 
     /** 无参构造保持向后兼容（弹性治理不生效，仅透传） */
     public ResilienceGovernanceFilter() {
-        this.lingRepository = null;
-        this.eventBus = null;
-        this.runtimeCoordinator = null;
+        this(null, null, null, null);
     }
 
     @Override
@@ -71,9 +77,12 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         String lingId = fqsid.split(":")[0];
 
         // 1. 限流检查
-        RateLimiter limiter = getLimiter(lingId);
+        RateLimiter limiter = getLimiter(lingId, ctx);
         if (limiter != null && !limiter.tryAcquire()) {
             log.warn("[Resilience:{}] Rate limited, rejecting request: {}", lingId, fqsid);
+            if (governanceMetricsCollector != null) {
+                governanceMetricsCollector.recordRateLimited(lingId, ctx.getTargetVersion());
+            }
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.RATE_LIMITED);
         }
 
@@ -81,9 +90,12 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         CircuitBreaker breaker = getBreaker(lingId);
         if (breaker != null && !breaker.tryAcquirePermission()) {
             log.warn("[Resilience:{}] Circuit breaker OPEN, rejecting request: {}", lingId, fqsid);
+            if (governanceMetricsCollector != null) {
+                governanceMetricsCollector.recordCircuitOpenRejected(lingId, ctx.getTargetVersion());
+            }
 
             // 🔥 熔断打开 → 将灵元宏观状态转为 DEGRADED
-            transitionToDegraded(lingId);
+            transitionToDegraded(lingId, ctx.getTargetVersion());
 
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.CIRCUIT_OPEN);
         }
@@ -127,19 +139,33 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         });
     }
 
-    private RateLimiter getLimiter(String lingId) {
-        return limiters.computeIfAbsent(lingId, id -> {
+    private RateLimiter getLimiter(String lingId, InvocationContext ctx) {
+        LimiterHolder holder = limiters.compute(lingId, (id, existing) -> {
             LingRuntime runtime = lingRepository.getRuntime(id);
-            if (runtime == null)
+            if (runtime == null) {
                 return null;
-            LingRuntimeConfig config = runtime.getConfig();
-            // 使用 bulkheadMaxConcurrent 作为限流 QPS 基线
-            int rateLimit = config.getRateLimitPerSecond();
-            if (rateLimit <= 0) {
-                rateLimit = config.getBulkheadMaxConcurrent();
             }
-            return new TokenBucketRateLimiter(id, rateLimit, rateLimit);
+
+            int rateLimit = resolveRateLimit(ctx, runtime.getConfig());
+            if (existing != null && existing.rateLimitPerSecond == rateLimit) {
+                return existing;
+            }
+            return new LimiterHolder(rateLimit, new TokenBucketRateLimiter(id, rateLimit, rateLimit));
         });
+        return holder == null ? null : holder.limiter;
+    }
+
+    private int resolveRateLimit(InvocationContext ctx, LingRuntimeConfig config) {
+        Integer governedRateLimit = ctx.governance().getRateLimitPerSecond();
+        if (governedRateLimit != null && governedRateLimit > 0) {
+            return governedRateLimit;
+        }
+
+        int rateLimit = config.getRateLimitPerSecond();
+        if (rateLimit <= 0) {
+            rateLimit = config.getBulkheadMaxConcurrent();
+        }
+        return Math.max(1, rateLimit);
     }
 
     /**
@@ -151,16 +177,35 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
     }
 
     /**
+     * 受控恢复时仅重置弹性治理状态，不清空限流配置。
+     * 这样可以在不丢失运行时预算的前提下，清掉 OPEN / HALF_OPEN 熔断器痕迹。
+     */
+    public boolean recover(String lingId) {
+        return breakers.remove(lingId) != null;
+    }
+
+    boolean hasBreaker(String lingId) {
+        return breakers.containsKey(lingId);
+    }
+
+    boolean hasLimiter(String lingId) {
+        return limiters.containsKey(lingId);
+    }
+
+    /**
      * 熔断打开时，将灵元宏观状态从 ACTIVE 转为 DEGRADED。
      * 仅在当前状态为 ACTIVE 时才转换，避免重复操作或在 STOPPING 时误触发。
      */
-    private void transitionToDegraded(String lingId) {
+    private void transitionToDegraded(String lingId, String version) {
         if (lingRepository == null || runtimeCoordinator == null)
             return;
         try {
             LingRuntime runtime = lingRepository.getRuntime(lingId);
             if (runtime != null && runtime.currentStatus() == RuntimeStatus.ACTIVE) {
                 runtimeCoordinator.transition(lingId, RuntimeStatus.DEGRADED);
+                if (governanceMetricsCollector != null) {
+                    governanceMetricsCollector.recordCircuitOpened(lingId, version);
+                }
                 log.warn("[Resilience:{}] Circuit breaker opened, runtime transitioned to DEGRADED", lingId);
             }
         } catch (Exception e) {
@@ -180,11 +225,24 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
                 LingRuntime runtime = lingRepository.getRuntime(lingId);
                 if (runtime != null && runtime.currentStatus() == RuntimeStatus.DEGRADED) {
                     runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
+                    if (governanceMetricsCollector != null) {
+                        governanceMetricsCollector.recordRecovered(lingId, runtime.getInstancePool().getVersion());
+                    }
                     log.info("[Resilience:{}] Circuit breaker recovered, runtime transitioned back to ACTIVE", lingId);
                 }
             }
         } catch (Exception e) {
             log.debug("[Resilience:{}] Failed to recover from DEGRADED: {}", lingId, e.getMessage());
+        }
+    }
+
+    private static final class LimiterHolder {
+        private final int rateLimitPerSecond;
+        private final RateLimiter limiter;
+
+        private LimiterHolder(int rateLimitPerSecond, RateLimiter limiter) {
+            this.rateLimitPerSecond = rateLimitPerSecond;
+            this.limiter = limiter;
         }
     }
 }

@@ -4,10 +4,15 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.spi.LeakDetector;
+import com.lingframe.core.spi.LeakRiskReport;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -78,6 +83,57 @@ public class DefaultLeakDetector implements LeakDetector {
         } else {
             detectLeakPassive(lingId, version, classLoader, triggerTimeMillis);
         }
+    }
+
+    @Override
+    public LeakRiskReport checkBefore(String lingId, String version, ClassLoader classLoader) {
+        if (classLoader == null) {
+            return LeakRiskReport.checkFailed(
+                    lingId,
+                    version,
+                    "Target ClassLoader is unavailable before unload",
+                    null,
+                    getClass().getName());
+        }
+
+        try {
+            List<String> threadRisks = findThreadContextClassLoaderRisks(classLoader);
+            if (!threadRisks.isEmpty()) {
+                return LeakRiskReport.riskDetected(
+                        lingId,
+                        version,
+                        "Detected live threads whose TCCL still points to target ClassLoader",
+                        threadRisks,
+                        getClass().getName());
+            }
+            return LeakRiskReport.noRisk(
+                    lingId,
+                    version,
+                    "No obvious pre-unload leak signals detected",
+                    Collections.emptyList(),
+                    getClass().getName());
+        } catch (Exception e) {
+            return LeakRiskReport.checkFailed(
+                    lingId,
+                    version,
+                    "Leak precheck failed: " + e.getMessage(),
+                    Collections.singletonList(e.getClass().getName()),
+                    getClass().getName());
+        }
+    }
+
+    List<String> findThreadContextClassLoaderRisks(ClassLoader classLoader) {
+        Map<Thread, StackTraceElement[]> threadSnapshots = Thread.getAllStackTraces();
+        List<String> details = new ArrayList<>();
+        for (Thread thread : threadSnapshots.keySet()) {
+            if (thread == null || !thread.isAlive()) {
+                continue;
+            }
+            if (thread.getContextClassLoader() == classLoader) {
+                details.add("thread=" + thread.getName() + ", state=" + thread.getState());
+            }
+        }
+        return details;
     }
 
     private void detectLeakAggressive(String lingId, String version, ClassLoader classLoader, long triggerTimeMillis) {

@@ -19,6 +19,7 @@ public class LingInfoDTO {
     private String status; // 全局聚合状态: ACTIVE, INACTIVE, DEGRADED, STOPPING, REMOVED
     private List<VersionInfo> versionDetails; // 所有运行版本的明细树
     private ResourcePermissions permissions;
+    private InvocationGovernance invocationGovernance;
     private long installedAt; // 安装时间戳
     private Map<String, Object> metadata;
 
@@ -53,5 +54,26 @@ public class LingInfoDTO {
         private boolean fileAccess = false;
         @Builder.Default
         private List<String> ipcServices = new ArrayList<>();
+        @Builder.Default
+        private List<String> sqlCapabilities = new ArrayList<>();
+        @Builder.Default
+        private List<String> redisCapabilities = new ArrayList<>();
+        @Builder.Default
+        private List<String> extraCapabilities = new ArrayList<>();
+        private String localCacheNamespaceStrategy;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class InvocationGovernance {
+        private Integer timeoutMs;
+        private Integer rateLimitPerSecond;
+        private Integer maxConcurrentThreads;
+        private Integer retryCount;
+        private String fallbackValue;
+        private Integer cpuBudgetMsPerMinute;
+        private Integer memoryBudgetMb;
     }
 }

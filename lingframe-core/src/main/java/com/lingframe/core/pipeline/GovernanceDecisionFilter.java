@@ -154,5 +154,23 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
             long timeoutMs = timeout.toMillis();
             governanceState.setTimeoutMs(timeoutMs > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) timeoutMs);
         }
+        if (decision.getRateLimitPerSecond() != null) {
+            governanceState.setRateLimitPerSecond(decision.getRateLimitPerSecond());
+        }
+        if (decision.getMaxConcurrentThreads() != null) {
+            governanceState.setMaxConcurrentThreads(decision.getMaxConcurrentThreads());
+        }
+        if (decision.getRetryCount() != null) {
+            governanceState.setRetryCount(decision.getRetryCount());
+        }
+        if (decision.getFallbackValue() != null) {
+            governanceState.setFallbackValue(decision.getFallbackValue());
+        }
+        if (decision.getCpuBudgetMsPerMinute() != null) {
+            governanceState.setCpuBudgetMsPerMinute(decision.getCpuBudgetMsPerMinute());
+        }
+        if (decision.getMemoryBudgetMb() != null) {
+            governanceState.setMemoryBudgetMb(decision.getMemoryBudgetMb());
+        }
     }
 }
