@@ -278,5 +278,16 @@
       "memoryBudgetExceeded": "内存预算告警",
       "empty": "暂未采集到治理信号",
       "versionEmpty": "该版本暂未采集到治理信号"
+  },
+  "runtimeReadiness": {
+      "title": "运行时治理就绪度",
+      "empty": "暂未观测到运行时治理就绪状态。",
+      "summary": "摘要",
+      "sharedBoundaryFrozen": "共享边界冻结",
+      "diagnosticsCount": "诊断快照数量",
+      "blockers": "阻塞项",
+      "warnings": "告警",
+      "capabilitiesTitle": "资源清理能力",
+      "capabilitiesEmpty": "暂未观测到资源清理能力快照。"
   }
 }

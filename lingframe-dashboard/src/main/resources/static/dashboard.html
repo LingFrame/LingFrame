@@ -1056,10 +1056,76 @@
                                                             {{ t('governanceCard.versionEmpty') }}
                                                         </div>
                                                     </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="health-version-section">
+                                                <div class="flex items-center justify-between gap-2 mb-3">
+                                                    <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('runtimeReadiness.title') }}</h5>
+                                                    <span :class="[
+                                                        'risk-badge',
+                                                        runtimeGovernanceReadiness.status === 'READY' ? 'risk-safe'
+                                                        : runtimeGovernanceReadiness.status === 'BLOCKED' ? 'risk-danger'
+                                                        : runtimeGovernanceReadiness.status === 'LIMITED' ? 'risk-warn'
+                                                        : 'risk-unknown'
+                                                    ]">
+                                                        {{ runtimeGovernanceReadiness.status || 'UNKNOWN' }}
+                                                    </span>
+                                                </div>
+                                                <div v-if="!runtimeGovernanceReadiness.summary" class="result-empty">
+                                                    {{ t('runtimeReadiness.empty') }}
+                                                </div>
+                                                <div v-else class="space-y-3">
+                                                    <div class="health-metric health-metric-full compact">
+                                                        <span class="health-metric-label">{{ t('runtimeReadiness.summary') }}</span>
+                                                        <span class="health-metric-value text-sm">{{ runtimeGovernanceReadiness.summary }}</span>
+                                                    </div>
+                                                    <div class="grid grid-cols-2 gap-2">
+                                                        <div class="health-metric compact">
+                                                            <span class="health-metric-label">{{ t('runtimeReadiness.sharedBoundaryFrozen') }}</span>
+                                                            <span class="health-metric-value">{{ runtimeGovernanceReadiness.sharedApiBoundaryFrozen ? 'true' : 'false' }}</span>
+                                                        </div>
+                                                        <div class="health-metric compact">
+                                                            <span class="health-metric-label">{{ t('runtimeReadiness.diagnosticsCount') }}</span>
+                                                            <span class="health-metric-value">{{ runtimeGovernanceReadiness.diagnosticsCount }}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div v-if="runtimeGovernanceReadiness.blockers && runtimeGovernanceReadiness.blockers.length" class="space-y-2">
+                                                        <div class="text-xs font-black tracking-widest text-red-400 uppercase">{{ t('runtimeReadiness.blockers') }}</div>
+                                                        <div v-for="blocker in runtimeGovernanceReadiness.blockers" :key="blocker" class="governance-note governance-note-danger">{{ blocker }}</div>
+                                                    </div>
+                                                    <div v-if="runtimeGovernanceReadiness.warnings && runtimeGovernanceReadiness.warnings.length" class="space-y-2">
+                                                        <div class="text-xs font-black tracking-widest text-amber-400 uppercase">{{ t('runtimeReadiness.warnings') }}</div>
+                                                        <div v-for="warning in runtimeGovernanceReadiness.warnings" :key="warning" class="governance-note governance-note-warn">{{ warning }}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="health-version-section">
+                                                <div class="flex items-center justify-between gap-2 mb-3">
+                                                    <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('runtimeReadiness.capabilitiesTitle') }}</h5>
+                                                    <span class="risk-badge risk-info">{{ runtimeDiagnosticsList.length }}</span>
+                                                </div>
+                                                <div v-if="!runtimeDiagnosticsList.length" class="result-empty">
+                                                    {{ t('runtimeReadiness.capabilitiesEmpty') }}
+                                                </div>
+                                                <div v-else class="space-y-3">
+                                                    <div v-for="diagnostic in runtimeDiagnosticsList" :key="diagnostic.runtime" class="health-version-card">
+                                                        <div class="flex items-center justify-between gap-3 mb-2">
+                                                            <div>
+                                                                <div class="flex items-center gap-2 flex-wrap">
+                                                                    <span class="text-sm font-mono font-bold text-white">{{ diagnostic.runtime }}</span>
+                                                                    <span class="text-[11px] font-semibold text-slate-400">JDK {{ diagnostic.jdkVersion }}</span>
+                                                                </div>
+                                                            </div>
+                                                            <span class="risk-badge risk-info">CAPABILITY</span>
+                                                        </div>
+                                                        <div class="governance-note governance-note-info">{{ diagnostic.summary }}</div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
 
                                     <!-- 灵元管理中枢 -->
                                         <div class="space-y-4">

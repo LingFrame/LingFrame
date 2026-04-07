@@ -278,5 +278,16 @@
       "memoryBudgetExceeded": "Memory Budget Alerts",
       "empty": "No governance signals have been collected for this ling yet",
       "versionEmpty": "No governance signals have been collected for this version yet"
+  },
+  "runtimeReadiness": {
+      "title": "Runtime Governance Readiness",
+      "empty": "Runtime governance readiness has not been observed yet.",
+      "summary": "Summary",
+      "sharedBoundaryFrozen": "Shared Boundary Frozen",
+      "diagnosticsCount": "Diagnostics Count",
+      "blockers": "Blockers",
+      "warnings": "Warnings",
+      "capabilitiesTitle": "Resource Cleanup Capabilities",
+      "capabilitiesEmpty": "Runtime cleanup capability snapshots have not been observed yet."
   }
 }

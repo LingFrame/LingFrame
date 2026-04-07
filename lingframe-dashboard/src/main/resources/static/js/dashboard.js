@@ -101,6 +101,15 @@ createApp({
         // 灵元健康指标
         const lingHealthMetrics = reactive({});
         const lingGovernanceMetrics = reactive({});
+        const runtimeDiagnostics = reactive({});
+        const runtimeGovernanceReadiness = reactive({
+            status: 'UNKNOWN',
+            summary: '',
+            sharedApiBoundaryFrozen: false,
+            diagnosticsCount: 0,
+            blockers: [],
+            warnings: []
+        });
 
         const invocationForm = reactive({
             timeoutMs: '',
@@ -157,6 +166,7 @@ createApp({
                 metrics: versionMetrics[versionInfo.version] || null
             }));
         });
+        const runtimeDiagnosticsList = computed(() => Object.values(runtimeDiagnostics));
         const sseStatusText = computed(() => ({
             connected: t('sidebar.sseConnected'),
             connecting: t('sidebar.sseConnecting'),
@@ -1518,6 +1528,40 @@ createApp({
             }
         };
 
+        const fetchRuntimeDiagnostics = async () => {
+            try {
+                const data = await api.get('/lings/metrics/runtime-diagnostics');
+                if (data) {
+                    Object.keys(runtimeDiagnostics).forEach(runtime => {
+                        if (!data[runtime]) {
+                            delete runtimeDiagnostics[runtime];
+                        }
+                    });
+                    Object.keys(data).forEach(runtime => {
+                        runtimeDiagnostics[runtime] = data[runtime];
+                    });
+                }
+            } catch (e) {
+                console.log('Failed to fetch runtime diagnostics:', e.message);
+            }
+        };
+
+        const fetchRuntimeGovernanceReadiness = async () => {
+            try {
+                const data = await api.get('/lings/metrics/runtime-governance-readiness');
+                if (data) {
+                    runtimeGovernanceReadiness.status = data.status || 'UNKNOWN';
+                    runtimeGovernanceReadiness.summary = data.summary || '';
+                    runtimeGovernanceReadiness.sharedApiBoundaryFrozen = !!data.sharedApiBoundaryFrozen;
+                    runtimeGovernanceReadiness.diagnosticsCount = data.diagnosticsCount || 0;
+                    runtimeGovernanceReadiness.blockers = Array.isArray(data.blockers) ? data.blockers : [];
+                    runtimeGovernanceReadiness.warnings = Array.isArray(data.warnings) ? data.warnings : [];
+                }
+            } catch (e) {
+                console.log('Failed to fetch runtime governance readiness:', e.message);
+            }
+        };
+
         onMounted(async () => {
             updateTime();
             timeTimer = setInterval(updateTime, 1000);
@@ -1537,8 +1581,12 @@ createApp({
             
             fetchLingHealthMetrics();
             fetchLingGovernanceMetrics();
+            fetchRuntimeDiagnostics();
+            fetchRuntimeGovernanceReadiness();
             setInterval(fetchLingHealthMetrics, 5000);
             setInterval(fetchLingGovernanceMetrics, 5000);
+            setInterval(fetchRuntimeDiagnostics, 5000);
+            setInterval(fetchRuntimeGovernanceReadiness, 5000);
         });
 
         // ==================== 监听环境切换 ====================
@@ -1588,7 +1636,7 @@ createApp({
             stats, loading, modal, toasts, envLabels, uploadModal, timelineModal,
 
             perfMetrics,
-            lingHealthMetrics, lingGovernanceMetrics,
+            lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,
             invocationForm,
 
             activeLing, activeLingHealth, activeLingVersionHealth, activeLingGovernance, activeLingVersionGovernance, canCanary, canOperate, canActivate, canDeactivate, canRecover, displayLogs, availableVersions,
@@ -1603,7 +1651,7 @@ createApp({
             getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass, getLingHealthStatusClass, getLingHealthRoleLabel, hasGovernanceSignals,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
             openTimelineModal, closeTimelineModal, loadTimelineData,
-            doUpdateStatus, fetchPerformanceMetrics, fetchLingHealthMetrics, fetchLingGovernanceMetrics,
+            doUpdateStatus, fetchPerformanceMetrics, fetchLingHealthMetrics, fetchLingGovernanceMetrics, fetchRuntimeDiagnostics, fetchRuntimeGovernanceReadiness,
             uninstallResultModal, closeUninstallResultModal, getUninstallRiskLabel, getUninstallRiskClass, getUninstallTriggerLabel
         };
     }

@@ -11,7 +11,10 @@ import com.lingframe.dashboard.dto.LeakRiskReportDTO;
 import com.lingframe.dashboard.dto.LingGovernanceMetricsViewDTO;
 import com.lingframe.dashboard.dto.LingHealthViewDTO;
 import com.lingframe.dashboard.dto.LingUninstallResultDTO;
+import com.lingframe.dashboard.dto.ResourceCleanupCapabilityDTO;
+import com.lingframe.dashboard.dto.RuntimeGovernanceReadinessDTO;
 import com.lingframe.dashboard.service.DashboardService;
+import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -35,8 +38,10 @@ class LingControllerTest {
         DashboardService dashboardService = mock(DashboardService.class);
         MetricsCollector metricsCollector = mock(MetricsCollector.class);
         GovernanceMetricsCollector governanceMetricsCollector = mock(GovernanceMetricsCollector.class);
+        RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
-        LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector, false);
+        LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
+                runtimeDiagnosticsService, false);
 
         LingUninstallResultDTO dto = LingUninstallResultDTO.builder()
                 .lingId("ling1")
@@ -65,8 +70,10 @@ class LingControllerTest {
         DashboardService dashboardService = mock(DashboardService.class);
         MetricsCollector metricsCollector = mock(MetricsCollector.class);
         GovernanceMetricsCollector governanceMetricsCollector = mock(GovernanceMetricsCollector.class);
+        RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
-        LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector, false);
+        LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
+                runtimeDiagnosticsService, false);
 
         MetricsSnapshot summary = new MetricsSnapshot();
         summary.setLingId("ling1");
@@ -108,8 +115,10 @@ class LingControllerTest {
         DashboardService dashboardService = mock(DashboardService.class);
         MetricsCollector metricsCollector = mock(MetricsCollector.class);
         GovernanceMetricsCollector governanceMetricsCollector = mock(GovernanceMetricsCollector.class);
+        RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
-        LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector, false);
+        LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
+                runtimeDiagnosticsService, false);
 
         GovernanceMetricsSnapshot summary = new GovernanceMetricsSnapshot();
         summary.setLingId("ling1");
@@ -140,5 +149,64 @@ class LingControllerTest {
         assertNotNull(dto);
         assertEquals(3, dto.getSummary().getRateLimitedRequests());
         assertEquals(2, dto.getVersions().get("1.1.0").getTimeoutRequests());
+    }
+
+    @Test
+    @DisplayName("运行时诊断接口应返回资源清理能力快照")
+    void getRuntimeDiagnosticsShouldReturnCleanupCapabilities() {
+        DashboardService dashboardService = mock(DashboardService.class);
+        MetricsCollector metricsCollector = mock(MetricsCollector.class);
+        GovernanceMetricsCollector governanceMetricsCollector = mock(GovernanceMetricsCollector.class);
+        RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
+        LingFrameConfig config = mock(LingFrameConfig.class);
+        LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
+                runtimeDiagnosticsService, false);
+
+        ResourceCleanupCapabilityDTO dto = ResourceCleanupCapabilityDTO.builder()
+                .runtime("BasicResourceGuard")
+                .jdkVersion(17)
+                .threadTargetAccessible(false)
+                .driverManagerAccessible(false)
+                .summary("jdk=17,target=false")
+                .build();
+        Map<String, ResourceCleanupCapabilityDTO> diagnostics = new LinkedHashMap<>();
+        diagnostics.put("BasicResourceGuard", dto);
+        when(runtimeDiagnosticsService.getCleanupCapabilities()).thenReturn(diagnostics);
+
+        ApiResponse<Map<String, ResourceCleanupCapabilityDTO>> response = controller.getRuntimeDiagnostics();
+
+        assertTrue(response.isSuccess());
+        assertNotNull(response.getData());
+        assertEquals(1, response.getData().size());
+        assertEquals(17, response.getData().get("BasicResourceGuard").getJdkVersion());
+    }
+
+    @Test
+    @DisplayName("运行时治理就绪度接口应返回统一诊断结论")
+    void getRuntimeGovernanceReadinessShouldReturnUnifiedReadinessView() {
+        DashboardService dashboardService = mock(DashboardService.class);
+        MetricsCollector metricsCollector = mock(MetricsCollector.class);
+        GovernanceMetricsCollector governanceMetricsCollector = mock(GovernanceMetricsCollector.class);
+        RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
+        LingFrameConfig config = mock(LingFrameConfig.class);
+        LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
+                runtimeDiagnosticsService, false);
+
+        RuntimeGovernanceReadinessDTO dto = RuntimeGovernanceReadinessDTO.builder()
+                .status("LIMITED")
+                .summary("Runtime governance is active, but some diagnostics indicate capability limits.")
+                .sharedApiBoundaryFrozen(true)
+                .diagnosticsCount(2)
+                .warnings(Collections.singletonList("BasicResourceGuard: DriverManager cleanup is unavailable on this JVM"))
+                .build();
+        when(runtimeDiagnosticsService.getGovernanceReadiness()).thenReturn(dto);
+
+        ApiResponse<RuntimeGovernanceReadinessDTO> response = controller.getRuntimeGovernanceReadiness();
+
+        assertTrue(response.isSuccess());
+        assertNotNull(response.getData());
+        assertEquals("LIMITED", response.getData().getStatus());
+        assertTrue(response.getData().isSharedApiBoundaryFrozen());
+        assertEquals(2, response.getData().getDiagnosticsCount());
     }
 }

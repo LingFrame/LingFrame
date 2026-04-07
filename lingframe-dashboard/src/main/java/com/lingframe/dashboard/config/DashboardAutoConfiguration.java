@@ -17,6 +17,7 @@ import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.metrics.LingMetricsMeterBridge;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LogStreamService;
+import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import com.lingframe.dashboard.service.SimulateService;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -85,6 +86,11 @@ public class DashboardAutoConfiguration {
     @Bean
     public LogStreamService logStreamService(EventBus eventBus) {
         return new LogStreamService(eventBus);
+    }
+
+    @Bean
+    public RuntimeDiagnosticsService runtimeDiagnosticsService(EventBus eventBus) {
+        return new RuntimeDiagnosticsService(eventBus);
     }
     
     @Bean

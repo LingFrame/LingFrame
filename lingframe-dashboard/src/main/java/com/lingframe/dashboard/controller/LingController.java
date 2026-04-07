@@ -9,6 +9,7 @@ import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.DashboardService;
+import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,17 +38,20 @@ public class LingController {
     private final DashboardService dashboardService;
     private final MetricsCollector metricsCollector;
     private final GovernanceMetricsCollector governanceMetricsCollector;
+    private final RuntimeDiagnosticsService runtimeDiagnosticsService;
     private final boolean installEnabled;
 
     public LingController(LingFrameConfig lingFrameConfig,
             DashboardService dashboardService,
             MetricsCollector metricsCollector,
             GovernanceMetricsCollector governanceMetricsCollector,
+            RuntimeDiagnosticsService runtimeDiagnosticsService,
             @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
         this.lingFrameConfig = lingFrameConfig;
         this.dashboardService = dashboardService;
         this.metricsCollector = metricsCollector;
         this.governanceMetricsCollector = governanceMetricsCollector;
+        this.runtimeDiagnosticsService = runtimeDiagnosticsService;
         this.installEnabled = installEnabled;
     }
 
@@ -296,6 +300,26 @@ public class LingController {
         } catch (Exception e) {
             log.error("Failed to get all health metrics", e);
             return ApiResponse.error("获取健康指标失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/metrics/runtime-diagnostics")
+    public ApiResponse<Map<String, ResourceCleanupCapabilityDTO>> getRuntimeDiagnostics() {
+        try {
+            return ApiResponse.ok(runtimeDiagnosticsService.getCleanupCapabilities());
+        } catch (Exception e) {
+            log.error("Failed to get runtime diagnostics", e);
+            return ApiResponse.error("获取运行时诊断失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/metrics/runtime-governance-readiness")
+    public ApiResponse<RuntimeGovernanceReadinessDTO> getRuntimeGovernanceReadiness() {
+        try {
+            return ApiResponse.ok(runtimeDiagnosticsService.getGovernanceReadiness());
+        } catch (Exception e) {
+            log.error("Failed to get runtime governance readiness", e);
+            return ApiResponse.error("获取运行时治理就绪度失败: " + e.getMessage());
         }
     }
 

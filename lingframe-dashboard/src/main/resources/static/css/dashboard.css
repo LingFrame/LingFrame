@@ -583,6 +583,32 @@ body {
     background: rgba(15, 23, 42, 0.78);
 }
 
+.governance-note {
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    border: 1px solid transparent;
+}
+
+.governance-note-info {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.18);
+    color: #bfdbfe;
+}
+
+.governance-note-warn {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.2);
+    color: #fde68a;
+}
+
+.governance-note-danger {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.2);
+    color: #fecaca;
+}
+
 .health-version-section {
     margin-top: 16px;
     padding-top: 16px;
@@ -648,6 +674,12 @@ body {
     background: rgba(59, 130, 246, 0.18);
     color: #93c5fd;
     border-color: rgba(59, 130, 246, 0.35);
+}
+
+.risk-info {
+    background: rgba(14, 165, 233, 0.18);
+    color: #7dd3fc;
+    border-color: rgba(14, 165, 233, 0.35);
 }
 
 .result-report-card {
