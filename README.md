@@ -35,8 +35,6 @@
   <strong>English</strong> | <a href="./README.zh-CN.md">中文</a>
 </p>
 
----
-
 LingFrame is a **JVM runtime governance framework for long-running systems**.
 
 It does not ask you to rewrite the system immediately, and it does not force an instant move to microservices.  
@@ -66,16 +64,6 @@ If you remember LingFrame in only one sentence, let it be this:
 
 > You do not need to read the whole documentation set in one pass.  
 > LingFrame lets you stop at any point and continue later.
-
-## Testing
-
-- Default verification: `mvn test`
-- Run both example smoke integrations together:
-  `mvn -pl lingframe-examples/lingframe-example-lingcore-app -am -Pintegration-check verify`
-- Run one smoke integration only when needed:
-  `mvn -pl lingframe-examples/lingframe-example-lingcore-app -am -Pintegration-check verify "-Dit.test=ObservabilityClosedLoopIntegrationTest"`
-
----
 
 ![LingFrame Dashboard Example](./docs/images/dashboard.png)
 

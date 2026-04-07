@@ -35,16 +35,6 @@
   <a href="./README.md">English</a> | <strong>中文</strong>
 </p>
 
-## 测试入口
-
-- 默认验证集：`mvn test`
-- 一次跑完两个示例集成冒烟：
-  `mvn -pl lingframe-examples/lingframe-example-lingcore-app -am -Pintegration-check verify`
-- 只跑单个集成冒烟时：
-  `mvn -pl lingframe-examples/lingframe-example-lingcore-app -am -Pintegration-check verify "-Dit.test=ObservabilityClosedLoopIntegrationTest"`
-
----
-
 灵珑是一个面向长期运行系统的 **JVM 运行时治理框架**。
 
 它不要求你立刻重写系统，也不强迫你马上拆成微服务。  
