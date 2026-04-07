@@ -1,15 +1,15 @@
-# Contributing Guide
+# Contributing Guidelines
 
-Thanks for being willing to contribute to LingFrame.
+Thank you for your interest in LingFrame.
 
-This file is the public contribution entry point.  
-The truly authoritative development rules are still defined in [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md).
+This document serves as the outward-facing entry point for contributions.  
+The truly authoritative development rules are strictly bound to [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md).
 
-If this is your first time contributing to the project, do not start by changing code immediately. Understand the project stance first, then the public architecture, and only then enter the development manual. That will save you many wrong turns.
+If this is your first time participating in this project, we strongly advise against jumping straight into modifying code. Adopting the project's stance, familiarizing yourself with the public architecture, and reading the development manual first will save you a formidable amount of detours.
 
 ---
 
-## Read These First
+## Read These Before You Start
 
 1. [WHY.md](WHY.md)
 2. [MANIFESTO.md](MANIFESTO.md)
@@ -18,96 +18,96 @@ If this is your first time contributing to the project, do not start by changing
 5. [docs/architecture.md](docs/architecture.md)
 6. [DEVELOPMENT_MANUAL.md](DEVELOPMENT_MANUAL.md)
 
-If old comments, stale docs, local habits, or partially cleaned legacy implementation conflict with the development manual, follow the manual first.
+If old comments, old documentation, habitual localized patterns, or incompletely scrubbed legacy implementations conflict with the development manual, the development manual takes unquestioned precedence.
 
 ---
 
-## Good First Contribution Areas
+## Suitable Directions for First-Time Contributors
 
-If this is your first contribution, prioritize one of the following:
+If this is your first foray into the codebase, give priority consideration to these types of tasks:
 
-- documentation corrections based on the real implementation
-- readability improvements to example projects
-- test coverage for already shipped behavior
-- small bug fixes that do not touch architecture boundaries
+- Documentation amendments matching factual implementations.
+- Readability improvements across example projects.
+- Injecting previously absent tests around already-delivered behaviors.
+- Small bug fixes that do not interact with macro-architectural boundaries.
 
-It is not recommended to use a first contribution for:
+It is highly discouraged to tackle these on your very first contribution:
 
-- state machine semantic rewrites
-- Shared API contract changes
-- classloader boundary changes
-- lifecycle orchestration refactors
-- global terminology rewrites without checking code and documentation together
+- Rewriting state machine semantics out-of-the-blue.
+- Toggling Shared API contracts.
+- Modifying classloader hierarchies.
+- Refactoring lifecycle orchestrations.
+- Sweeping global terminology replacements without meticulously syncing accompanying tests and documents.
 
 ---
 
-## Minimum Requirements Before Submission
+## Minimum Requirements Before Submitting
 
-- the project builds successfully
-- relevant tests pass
-- the change does not break architecture boundaries
-- if the change touches state machines, lifecycle, governance semantics, or Shared API, tests must be updated together
-- if the change touches terminology, boundaries, or behavior, documentation must be updated together
+- The codebase builds properly.
+- Relevant tests pass flawlessly.
+- Modifications have carefully refrained from wrecking architectural boundaries.
+- If changes graze state machines, lifecycles, governance semantics, or Shared API thresholds, testing layers MUST be updated concurrently.
+- If changes sway terminology, boundaries, or runtime behaviors, documentation MUST be synchronized properly.
 
 ---
 
 ## Non-Negotiable Rules
 
-- comments must be in Chinese
-- logs must be in English
-- use `LingCore` and `Ling` in English contexts
-- use `灵核` and `灵元` in Chinese contexts
-- do not delete high-value rationale comments, pitfall notes, or risk warnings just to make code look cleaner
-- test display names should use Chinese
+- Code comments MUST be in Chinese.
+- Execution logs MUST be in English.
+- In English contexts, use the names `LingCore` and `Ling`.
+- In Chinese contexts, use the names "灵核" and "灵元".
+- Do not delete high-value architectural reasoning, pitfall accounts, or risk-flagging comments merely for the visual sake of "cleaner code".
+- Test display names should be designated in Chinese.
 
 ---
 
-## Shared API Hard Constraint
+## The Hard Constraints of the Shared API
 
-Treat `Shared API` as a process-level public contract boundary, not as a normal shared dependency.
+The `Shared API` must be respected fundamentally as the **process-level common contract boundary**, not simply treated as just another shared Maven dependency.
 
-- contract design should follow consumer-driven contracts
-- prefer backward-compatible incremental evolution
-- a brand-new shared API JAR may be introduced before the boundary is frozen
-- an already loaded shared API JAR must not be hot-updated or hot-unloaded
-- changes to existing contracts must take effect through a process restart
+- Contract designs adhere to the consumer-driven paradigm.
+- Upgradable pathways must overwhelmingly prioritize backward-compatible, incremental evolutions.
+- Entirely novel Shared API JARs are permitted entry prior to boundary `freeze`.
+- Shared API JARs that are already loaded are absolutely forbidden from being hot-updated or hot-unloaded.
+- Breaking modifications upon existing contracts intrinsically mandate process restarts to execute safely.
 
-This is one of the most important contribution constraints in the project.
-
----
-
-## Which Changes Are Architecture-Level Changes
-
-The following changes are all architecture-level changes. If you only change code but do not update tests and docs, the work usually cannot be considered complete:
-
-- state machine semantic changes
-- lifecycle orchestration changes
-- ownership or write-boundary changes
-- classloader boundary changes
-- Shared API contract changes
-- `timeout`, `permission`, `unload`, or `audit` semantic changes
-
-If you touch these, the PR must explain both the reason and the impact clearly.
+This remains one of the single most pivotal contribution constraints across the entire project structure.
 
 ---
 
-## A Practical Contribution Flow
+## What Counts as Macro-Architectural Overhauls?
 
-1. Sync the latest code.
-2. Read the relevant docs before starting.
-3. Solve the current problem with the smallest possible change.
-4. Verify the build and relevant tests.
-5. Re-check whether documentation also needs updating.
-6. When submitting the PR, clearly explain:
-   - what changed
-   - why it changed
-   - how it was verified
-   - whether architecture, tests, or docs were affected
+The following sets of modifications all count as architectural-grade overhauls. If pull requests for these solely alter code without replenishing test suites and rewriting documentation proofs, they cannot typically be marked complete:
+
+- State machine semantic drift.
+- Orchestration cycle phase shifts.
+- Re-aligning write authority and ownership boundaries.
+- Classloader isolation revisions.
+- Shared API contract ruptures.
+- Semantic changes around `timeout`, `permission`, `unload`, or `audit` assertions.
+
+If you interact with these zones, your PR must explicitly spell out the motivation and blast radius.
 
 ---
 
-## One Reminder For First-Time Contributors
+## A Pragmatic Contribution Flow
 
-> When in doubt, preserve boundaries.
+1. Sync up with the absolute latest upstream code.
+2. Read the relevant document paths before laying a finger on files.
+3. Fix the active crisis utilizing minimal-impact alterations.
+4. Extensively verify the build and surrounding ecosystem tests.
+5. Double-check whether any structural documentation inherently mandates rewriting.
+6. Submit a PR explicitly spelling out:
+   - What changed.
+   - Why it changed exactly that way.
+   - How it can be verified.
+   - Note down whether it bruised architecture, tests, or documentation arrays.
 
-Many truly dangerous changes in LingFrame do not look like "big changes" at first. They often begin as a small convenience and then gradually weaken shared API discipline, lifecycle ownership, or governance consistency.
+---
+
+## A Final Caution to First-Timers
+
+> Inside LingFrame: when in doubt, prioritize protecting the boundaries.
+
+Countless actually hazardous PRs rarely enter masquerading as "massive sweeping rewrites." Instead, they creep in starting as tiny, "convenience-minded tweaks" that slowly whittle down Shared API disciplines, erode lifecycle ownership restrictions, and disintegrate governance consistencies.

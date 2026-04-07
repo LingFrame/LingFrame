@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-@DisplayName("SpringApplicationShutdownHook 归因测试")
+@DisplayName("SpringApplicationShutdownHook 归因回归测试")
 class SpringApplicationShutdownHookAttributionTest {
 
     @AfterEach
@@ -43,7 +43,7 @@ class SpringApplicationShutdownHookAttributionTest {
     }
 
     @Test
-    @DisplayName("registerShutdownHook(false) 的普通应用不应登记到 Boot 全局 shutdown hook")
+    @DisplayName("关闭 registerShutdownHook 的普通应用不应登记到 Boot 全局 shutdown hook")
     void plainApplicationShouldNotBeTrackedWhenShutdownHookDisabled() throws Exception {
         ConfigurableApplicationContext context = new SpringApplicationBuilder(PlainApp.class)
                 .web(WebApplicationType.NONE)
@@ -75,7 +75,7 @@ class SpringApplicationShutdownHookAttributionTest {
     }
 
     @Test
-    @DisplayName("SpringLingContainer 启动前应显式关闭 logging shutdown hook")
+    @DisplayName("SpringLingContainer 启动前应显式关闭日志 shutdown hook")
     void springLingContainerShouldDisableLoggingShutdownHookBeforeRun() {
         RecordingSpringApplicationBuilder builder = new RecordingSpringApplicationBuilder();
         SpringLingContainer container = new SpringLingContainer(

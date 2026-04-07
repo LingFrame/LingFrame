@@ -2,11 +2,14 @@ package com.lingframe.dashboard.controller;
 
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
+import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
 import com.lingframe.core.metrics.JVMMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.DashboardService;
+import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,15 +37,21 @@ public class LingController {
     private final LingFrameConfig lingFrameConfig;
     private final DashboardService dashboardService;
     private final MetricsCollector metricsCollector;
+    private final GovernanceMetricsCollector governanceMetricsCollector;
+    private final RuntimeDiagnosticsService runtimeDiagnosticsService;
     private final boolean installEnabled;
 
     public LingController(LingFrameConfig lingFrameConfig,
             DashboardService dashboardService,
             MetricsCollector metricsCollector,
+            GovernanceMetricsCollector governanceMetricsCollector,
+            RuntimeDiagnosticsService runtimeDiagnosticsService,
             @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
         this.lingFrameConfig = lingFrameConfig;
         this.dashboardService = dashboardService;
         this.metricsCollector = metricsCollector;
+        this.governanceMetricsCollector = governanceMetricsCollector;
+        this.runtimeDiagnosticsService = runtimeDiagnosticsService;
         this.installEnabled = installEnabled;
     }
 
@@ -133,10 +142,10 @@ public class LingController {
      * 彻底回收灵元占用的 ClassLoader 及相关资源。
      */
     @DeleteMapping("/uninstall/{lingId}")
-    public ApiResponse<Void> uninstall(@PathVariable String lingId) {
+    public ApiResponse<LingUninstallResultDTO> uninstall(@PathVariable String lingId) {
         try {
-            dashboardService.uninstallLing(lingId);
-            return ApiResponse.ok("卸载成功", null);
+            LingUninstallResultDTO result = dashboardService.uninstallLing(lingId);
+            return ApiResponse.ok("卸载成功", result);
         } catch (Exception e) {
             log.error("Uninstall failed: {}", lingId, e);
             return ApiResponse.error("卸载失败: " + e.getMessage());
@@ -147,10 +156,10 @@ public class LingController {
      * 按版本卸载灵元
      */
     @DeleteMapping("/uninstall/{lingId}/{version}")
-    public ApiResponse<Void> uninstallVersion(@PathVariable String lingId, @PathVariable String version) {
+    public ApiResponse<LingUninstallResultDTO> uninstallVersion(@PathVariable String lingId, @PathVariable String version) {
         try {
-            dashboardService.uninstallLing(lingId, version);
-            return ApiResponse.ok("版本 " + version + " 卸载成功", null);
+            LingUninstallResultDTO result = dashboardService.uninstallLing(lingId, version);
+            return ApiResponse.ok("版本 " + version + " 卸载成功", result);
         } catch (Exception e) {
             log.error("Uninstall failed for: {}:{}", lingId, version, e);
             return ApiResponse.error("卸载特定版本失败: " + e.getMessage());
@@ -276,18 +285,60 @@ public class LingController {
      * 获取所有灵元的健康指标
      */
     @GetMapping("/health/all")
-    public ApiResponse<Map<String, MetricsSnapshot>> getAllLingHealth() {
+    public ApiResponse<Map<String, LingHealthViewDTO>> getAllLingHealth() {
         try {
-            Map<String, MetricsSnapshot> allMetrics = metricsCollector.getAllSnapshots().stream()
+            Map<String, LingHealthViewDTO> allMetrics = metricsCollector.getAllSnapshots().stream()
                     .collect(Collectors.toMap(
                             MetricsSnapshot::getLingId,
-                            snapshot -> snapshot,
-                            (existing, replacement) -> existing
+                            snapshot -> LingHealthViewDTO.builder()
+                                    .summary(snapshot)
+                                    .versions(metricsCollector.getVersionSnapshots(snapshot.getLingId()))
+                                    .build(),
+                            (existing, replacement) -> replacement
                     ));
             return ApiResponse.ok(allMetrics);
         } catch (Exception e) {
             log.error("Failed to get all health metrics", e);
             return ApiResponse.error("获取健康指标失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/metrics/runtime-diagnostics")
+    public ApiResponse<Map<String, ResourceCleanupCapabilityDTO>> getRuntimeDiagnostics() {
+        try {
+            return ApiResponse.ok(runtimeDiagnosticsService.getCleanupCapabilities());
+        } catch (Exception e) {
+            log.error("Failed to get runtime diagnostics", e);
+            return ApiResponse.error("获取运行时诊断失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/metrics/runtime-governance-readiness")
+    public ApiResponse<RuntimeGovernanceReadinessDTO> getRuntimeGovernanceReadiness() {
+        try {
+            return ApiResponse.ok(runtimeDiagnosticsService.getGovernanceReadiness());
+        } catch (Exception e) {
+            log.error("Failed to get runtime governance readiness", e);
+            return ApiResponse.error("获取运行时治理就绪度失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/governance/all")
+    public ApiResponse<Map<String, LingGovernanceMetricsViewDTO>> getAllLingGovernanceMetrics() {
+        try {
+            Map<String, LingGovernanceMetricsViewDTO> allMetrics = governanceMetricsCollector.getAllSummaries().values().stream()
+                    .collect(Collectors.toMap(
+                            GovernanceMetricsSnapshot::getLingId,
+                            snapshot -> LingGovernanceMetricsViewDTO.builder()
+                                    .summary(snapshot)
+                                    .versions(governanceMetricsCollector.getVersionSnapshots(snapshot.getLingId()))
+                                    .build(),
+                            (existing, replacement) -> replacement
+                    ));
+            return ApiResponse.ok(allMetrics);
+        } catch (Exception e) {
+            log.error("Failed to get governance metrics", e);
+            return ApiResponse.error("获取治理指标失败: " + e.getMessage());
         }
     }
     

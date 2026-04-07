@@ -161,4 +161,36 @@ public class MonitoringEvents {
             this.timestamp = System.currentTimeMillis();
         }
     }
+
+    @Getter
+    public static class ResourceCleanupCapabilityEvent implements LingEvent {
+        private final String runtime;
+        private final int jdkVersion;
+        private final boolean threadTargetAccessible;
+        private final boolean threadAccessControlAccessible;
+        private final boolean accessControlContextAccessible;
+        private final boolean virtualThreadIntrospectionAvailable;
+        private final boolean driverManagerAccessible;
+        private final String summary;
+        private final long timestamp;
+
+        public ResourceCleanupCapabilityEvent(String runtime,
+                                              int jdkVersion,
+                                              boolean threadTargetAccessible,
+                                              boolean threadAccessControlAccessible,
+                                              boolean accessControlContextAccessible,
+                                              boolean virtualThreadIntrospectionAvailable,
+                                              boolean driverManagerAccessible,
+                                              String summary) {
+            this.runtime = runtime;
+            this.jdkVersion = jdkVersion;
+            this.threadTargetAccessible = threadTargetAccessible;
+            this.threadAccessControlAccessible = threadAccessControlAccessible;
+            this.accessControlContextAccessible = accessControlContextAccessible;
+            this.virtualThreadIntrospectionAvailable = virtualThreadIntrospectionAvailable;
+            this.driverManagerAccessible = driverManagerAccessible;
+            this.summary = summary;
+            this.timestamp = System.currentTimeMillis();
+        }
+    }
 }

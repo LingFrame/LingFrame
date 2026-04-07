@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "springdoc.group-configs[0].paths-to-match=/**-ling/**"
         }
 )
-@DisplayName("WebInterfaceManager SpringDoc SB3 integration")
+@DisplayName("WebInterfaceManager SpringDoc SB3 集成测试")
 @Disabled("SpringDoc + Boot3 test classpath is unstable in module isolation; grouped-doc coverage lives in LingOpenApiCustomizerTest")
 class WebInterfaceManagerSpringDocIntegrationTest {
 
@@ -62,7 +62,7 @@ class WebInterfaceManagerSpringDocIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Test
-    @DisplayName("grouped SpringDoc should expose dynamic ling endpoint")
+    @DisplayName("分组 SpringDoc 应暴露动态灵元端点")
     void shouldExposeDynamicLingEndpointInGroupedSpringDoc() throws Exception {
         HandlerMethod handlerMethod = awaitHandlerMethod(LING_PATH);
         assertNotNull(handlerMethod);
@@ -76,7 +76,7 @@ class WebInterfaceManagerSpringDocIntegrationTest {
     }
 
     @Test
-    @DisplayName("swagger-config should expose lings grouped doc entry")
+    @DisplayName("swagger-config 应暴露 lings 分组文档入口")
     void shouldExposeLingGroupInSwaggerConfig() throws Exception {
         awaitHandlerMethod(LING_PATH);
 

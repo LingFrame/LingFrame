@@ -1,25 +1,23 @@
 # Infrastructure Development Guide
 
-This guide explains the infrastructure layer from a practical `0.3.0` perspective.
+This guide is based on real code and explains how to understand the infrastructure layer.
 
-> infrastructure modules are not ordinary feature lings, they are governance-aware proxy paths around shared capabilities such as storage and cache.
-
----
-
-## Why The Infrastructure Layer Exists
-
-The infrastructure layer lets the runtime:
-
-- centralize capability access
-- enforce permissions close to the operation point
-- emit audit evidence
-- keep business code relatively unaware of proxy mechanics
+> Infrastructure modules are not ordinary business lings. They are proxy paths that provide governance awareness around shared capabilities, like storage and caching.
 
 ---
 
-## What Is Actually Implemented Today
+## Why Is an Infrastructure Layer Needed?
 
-In the public `0.3.0` codebase, the clearest implemented paths are:
+The point of the infrastructure layer is to allow the runtime to:
+
+- Centralize capability entry points.
+- Perform permission control as close to the actual operation as possible.
+- Generate auditing evidence.
+- Keep business code mostly oblivious to the proxy details.
+
+## What Has Already Been Implemented?
+
+The clearest implementation paths currently are:
 
 - `lingframe-infra-storage`
 - `lingframe-infra-cache`
@@ -28,9 +26,9 @@ In the public `0.3.0` codebase, the clearest implemented paths are:
 
 ## Storage Proxy Path
 
-The storage module wraps JDBC access so SQL operations can be observed and governed near execution.
+The storage module leverages JDBC wrapping to ensure SQL operations are observed and governed near the point of execution.
 
-Key pieces include:
+Key components include:
 
 - `DataSourceWrapperProcessor`
 - `LingDataSourceProxy`
@@ -38,7 +36,7 @@ Key pieces include:
 - `LingStatementProxy`
 - `LingPreparedStatementProxy`
 
-Capability example:
+Typical capability:
 
 - `storage:sql`
 
@@ -46,68 +44,67 @@ Capability example:
 
 ## Cache Proxy Path
 
-The cache module governs local cache and Redis-oriented access paths.
+The caching module is responsible for governing local caches and Redis-related access paths.
 
-Key pieces include:
+Key components include:
 
 - `SpringCacheWrapperProcessor`
 - `LingCacheManagerProxy`
 - `LingSpringCacheProxy`
 - `RedisPermissionInterceptor`
 
-Capability examples:
+Typical capabilities:
 
 - `cache:local`
 - `cache:redis`
 
 ---
 
-## How To Think About Capability IDs
+## How to Understand Capabilities
 
-Capability IDs should be:
+Capability identifiers should be:
 
-- stable
-- explicit
-- close to the real underlying capability
+- Stable
+- Unambiguous
+- As close to the real underlying capability as possible
 
-Examples:
+Common identifiers in the current codebase:
 
 - `storage:sql`
 - `cache:local`
 - `cache:redis`
 
-Business lings declare what they need in `ling.yml`.
-
 ---
 
-## When To Build A New Infrastructure Proxy
+## When Is It Worth Creating a New Infrastructure Proxy?
 
-Create a new infrastructure proxy path when:
+It is only worth adding a new proxy path if the following conditions hold true:
 
-- the capability is shared by more than one ling
-- access should be governed consistently
-- permission and audit need to happen near the real operation
+- The capability will be shared across multiple lings.
+- The capability requires unified governance.
+- Permissions and auditing should be closely tied to where the true operation happens.
 
 ---
 
 ## Minimal Extension Pattern
 
-Most infrastructure extensions follow the same broad shape:
+Most infrastructure extensions follow the same structure:
 
-1. wrap or intercept the underlying capability
-2. derive an access type such as `READ`, `WRITE`, or `EXECUTE`
-3. ask the permission service
-4. emit audit evidence
-5. continue or reject
+1. Wrap or intercept the entry point to the underlying capability.
+2. Infer the access type (`READ` / `WRITE` / `EXECUTE`, etc.).
+3. Call the permission service.
+4. Produce auditing evidence.
+5. Continue execution or reject immediately.
 
 ---
 
 ## Best Practices
 
-- keep the proxy transparent to business users
-- put the interception point as close as possible to the real operation
-- keep capability naming consistent
-- avoid blocking business flow with expensive audit work when an async path exists
-- document what is truly implemented versus still aspirational
+- Keep the proxy transparent to business consumers.
+- Place interception points as close to the actual operation as possible.
+- Maintain consistent capability naming.
+- If using an asynchronous auditing path, ensure auditing does not block the main business flow.
+- Clearly distinguish between "already implemented paths" and "future directions."
 
-Continue with [Ling Development Guide](ling-development.md) if you want the business-ling side, or [Shared API Guidelines](shared-api-guidelines.md) if you want the contract side.
+If you need to return to the business ling side, read the [Business Ling Development Guide](ling-development.md);
+If you need to review contract boundaries, read the [Shared API Guidelines](shared-api-guidelines.md).

@@ -8,6 +8,14 @@ user-ling: !!com.lingframe.api.config.GovernancePolicy
     capability: cache:local
   - accessType: WRITE
     capability: storage:sql
+  invocation:
+    cpuBudgetMsPerMinute: null
+    fallbackValue: ui-fallback
+    maxConcurrentThreads: 2
+    memoryBudgetMb: null
+    rateLimitPerSecond: 5
+    retryCount: 1
+    timeoutMs: 1600
   permissions: [
     ]
 order-ling: !!com.lingframe.api.config.GovernancePolicy
@@ -20,5 +28,13 @@ order-ling: !!com.lingframe.api.config.GovernancePolicy
     capability: cache:local
   - accessType: WRITE
     capability: storage:sql
+  invocation:
+    cpuBudgetMsPerMinute: null
+    fallbackValue: null
+    maxConcurrentThreads: null
+    memoryBudgetMb: null
+    rateLimitPerSecond: null
+    retryCount: null
+    timeoutMs: null
   permissions: [
     ]

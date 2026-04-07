@@ -30,6 +30,7 @@ createApp({
             status: false,
             canary: false,
             permissions: false,
+            invocation: false,
             stats: false,
             simulate: false
         });
@@ -45,6 +46,13 @@ createApp({
             selectedVersion: '',
             versionSelectLabel: '',
             onConfirm: null
+        });
+
+        const uninstallResultModal = reactive({
+            show: false,
+            title: '',
+            message: '',
+            result: null
         });
 
         const uploadModal = reactive({
@@ -92,6 +100,26 @@ createApp({
         
         // 灵元健康指标
         const lingHealthMetrics = reactive({});
+        const lingGovernanceMetrics = reactive({});
+        const runtimeDiagnostics = reactive({});
+        const runtimeGovernanceReadiness = reactive({
+            status: 'UNKNOWN',
+            summary: '',
+            sharedApiBoundaryFrozen: false,
+            diagnosticsCount: 0,
+            blockers: [],
+            warnings: []
+        });
+
+        const invocationForm = reactive({
+            timeoutMs: '',
+            rateLimitPerSecond: '',
+            maxConcurrentThreads: '',
+            retryCount: '',
+            fallbackValue: '',
+            cpuBudgetMsPerMinute: '',
+            memoryBudgetMb: ''
+        });
 
         let eventSource = null;
         let timeTimer = null;
@@ -99,6 +127,7 @@ createApp({
         let perfTimer = null;
         let logIdCounter = 0;
         let toastIdCounter = 0;
+        let pendingUninstallToastResult = null;
 
         // 日志筛选和聚合相关
         const logAggregationMode = ref(false);
@@ -114,6 +143,30 @@ createApp({
         const canOperate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
         const canActivate = computed(() => activeLing.value?.status === 'INACTIVE');
         const canDeactivate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
+        const canRecover = computed(() => activeLing.value?.status === 'DEGRADED');
+        const activeLingHealth = computed(() => activeId.value ? lingHealthMetrics[activeId.value]?.summary || null : null);
+        const activeLingVersionHealth = computed(() => {
+            if (!activeId.value || !activeLing.value?.versionDetails) {
+                return [];
+            }
+            const versionMetrics = lingHealthMetrics[activeId.value]?.versions || {};
+            return activeLing.value.versionDetails.map(versionInfo => ({
+                ...versionInfo,
+                metrics: versionMetrics[versionInfo.version] || null
+            }));
+        });
+        const activeLingGovernance = computed(() => activeId.value ? lingGovernanceMetrics[activeId.value]?.summary || null : null);
+        const activeLingVersionGovernance = computed(() => {
+            if (!activeId.value || !activeLing.value?.versionDetails) {
+                return [];
+            }
+            const versionMetrics = lingGovernanceMetrics[activeId.value]?.versions || {};
+            return activeLing.value.versionDetails.map(versionInfo => ({
+                ...versionInfo,
+                metrics: versionMetrics[versionInfo.version] || null
+            }));
+        });
+        const runtimeDiagnosticsList = computed(() => Object.values(runtimeDiagnostics));
         const sseStatusText = computed(() => ({
             connected: t('sidebar.sseConnected'),
             connecting: t('sidebar.sseConnecting'),
@@ -172,11 +225,130 @@ createApp({
 
         // ==================== Toast 通知 ====================
         const showToast = (message, type = 'info') => {
+            const toastMessage = pendingUninstallToastResult && type === 'success'
+                ? buildUninstallToastMessage(pendingUninstallToastResult, message)
+                : message;
+            const toastType = pendingUninstallToastResult && type === 'success'
+                ? getUninstallToastType(pendingUninstallToastResult)
+                : type;
+            pendingUninstallToastResult = null;
             const id = ++toastIdCounter;
-            toasts.value.push({ id, message, type });
+            toasts.value.push({ id, message: toastMessage, type: toastType });
             setTimeout(() => {
                 toasts.value = toasts.value.filter(t => t.id !== id);
             }, 3000);
+        };
+
+        const summarizeLeakReports = (reports = []) => reports
+            .filter(report => report && report.summary)
+            .slice(0, 2)
+            .map(report => {
+                const scope = report.version
+                    ? `${report.lingId || activeId.value || 'ling'}@${report.version}`
+                    : (report.lingId || activeId.value || 'ling');
+                return `${scope}: ${report.summary}`;
+            })
+            .join('; ');
+
+        const getUninstallToastType = (result) => {
+            if (!result || !result.uninstallTriggered) {
+                return 'info';
+            }
+            return result.overallRiskLevel === 'NO_RISK' ? 'success' : 'info';
+        };
+
+        const translateOrFallback = (key, fallback, params = {}) => {
+            const translated = t(key, params);
+            return translated === key ? fallback : translated;
+        };
+
+        const buildUninstallToastMessage = (result, fallbackMessage) => {
+            if (!result) {
+                return fallbackMessage;
+            }
+
+            const reportSummary = summarizeLeakReports(result.reports);
+            const baseMessage = result.uninstallTriggered === false
+                ? translateOrFallback('toast.uninstallTriggeredFalse', fallbackMessage)
+                : fallbackMessage;
+
+            if (result.overallRiskLevel === 'NO_RISK') {
+                return translateOrFallback(
+                    'toast.uninstallPrecheckNoRisk',
+                    baseMessage,
+                    { message: baseMessage }
+                );
+            }
+            if (result.overallRiskLevel === 'RISK_DETECTED') {
+                return reportSummary
+                    ? translateOrFallback(
+                        'toast.uninstallPrecheckRiskWithSummary',
+                        `${baseMessage}: ${reportSummary}`,
+                        { message: baseMessage, summary: reportSummary }
+                    )
+                    : translateOrFallback(
+                        'toast.uninstallPrecheckRisk',
+                        baseMessage,
+                        { message: baseMessage }
+                    );
+            }
+            if (result.overallRiskLevel === 'CHECK_FAILED') {
+                return reportSummary
+                    ? translateOrFallback(
+                        'toast.uninstallPrecheckFailedWithSummary',
+                        `${baseMessage}: ${reportSummary}`,
+                        { message: baseMessage, summary: reportSummary }
+                    )
+                    : translateOrFallback(
+                        'toast.uninstallPrecheckFailed',
+                        baseMessage,
+                        { message: baseMessage }
+                    );
+            }
+            return baseMessage;
+        };
+
+        const getUninstallRiskLabel = (level) => {
+            const keyMap = {
+                NO_RISK: 'uninstallResult.levelNoRisk',
+                RISK_DETECTED: 'uninstallResult.levelRiskDetected',
+                CHECK_FAILED: 'uninstallResult.levelCheckFailed'
+            };
+            const fallbackMap = {
+                NO_RISK: '无明显风险',
+                RISK_DETECTED: '发现风险',
+                CHECK_FAILED: '预检未完成'
+            };
+            const key = keyMap[level] || 'uninstallResult.levelUnknown';
+            return translateOrFallback(key, fallbackMap[level] || '未知');
+        };
+
+        const getUninstallTriggerLabel = (triggered) => translateOrFallback(
+            triggered ? 'uninstallResult.triggeredYes' : 'uninstallResult.triggeredNo',
+            triggered ? '已触发' : '未触发'
+        );
+
+        const getUninstallRiskClass = (level) => ({
+            NO_RISK: 'risk-badge risk-safe',
+            RISK_DETECTED: 'risk-badge risk-warn',
+            CHECK_FAILED: 'risk-badge risk-unknown'
+        }[level] || 'risk-badge risk-unknown');
+
+        const openUninstallResultModal = (result, fallbackMessage) => {
+            if (!result) {
+                return;
+            }
+            uninstallResultModal.title = translateOrFallback('uninstallResult.title', '卸载结果详情');
+            uninstallResultModal.message = buildUninstallToastMessage(result, fallbackMessage);
+            uninstallResultModal.result = result;
+            uninstallResultModal.show = true;
+        };
+
+        const closeUninstallResultModal = () => {
+            uninstallResultModal.show = false;
+            uninstallResultModal.title = '';
+            uninstallResultModal.message = '';
+            uninstallResultModal.result = null;
         };
 
         // ==================== API 调用 ====================
@@ -244,6 +416,7 @@ createApp({
 
             // 同步 IPC 开关状态
             syncIpcSwitch();
+            syncInvocationForm();
         };
 
         const doUpdateStatus = async (newStatus) => {
@@ -276,6 +449,10 @@ createApp({
                 showToast(t('toast.cannotDeactivateFrom') + ': ' + currentStatus, 'error');
                 return;
             }
+            if (newStatus === 'RECOVERING' && currentStatus !== 'DEGRADED') {
+                showToast(t('toast.cannotRecoverFrom') + ': ' + currentStatus, 'error');
+                return;
+            }
             
             doUpdateStatus(newStatus);
         };
@@ -300,11 +477,13 @@ createApp({
                             url += `/${modal.selectedVersion}`;
                         }
 
-                        await api.delete(url);
+                        const result = await api.delete(url);
+                        pendingUninstallToastResult = result;
 
                         if (modal.selectedVersion && modal.versions.length > 1) {
                             // 仅仅是删除了某个版本，刷新部分信息即可
                             showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`, 'success');
+                            openUninstallResultModal(result, t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`);
                             refreshLings(); // 简单起见，重新拉取最新状态
                         } else {
                             // 全量删除 或 最后一个版本被删除
@@ -312,6 +491,7 @@ createApp({
                             activeId.value = null;
                             Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
                             showToast(t('toast.lingUnloaded'), 'success');
+                            openUninstallResultModal(result, t('toast.lingUnloaded'));
                         }
                     } catch (e) {
                         showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
@@ -330,11 +510,13 @@ createApp({
             modal.onConfirm = async () => {
                 modal.loading = true;
                 try {
-                    await api.delete(`/lings/uninstall/${activeId.value}`);
+                    const result = await api.delete(`/lings/uninstall/${activeId.value}`);
+                    pendingUninstallToastResult = result;
                     lings.value = lings.value.filter(p => p.lingId !== activeId.value);
                     activeId.value = null;
                     Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
                     showToast(t('toast.lingUnloaded'), 'success');
+                    openUninstallResultModal(result, t('toast.lingUnloaded'));
                 } catch (e) {
                     showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
                 } finally {
@@ -517,10 +699,12 @@ createApp({
                             url += `/${modal.selectedVersion}`;
                         }
 
-                        await api.delete(url);
+                        const result = await api.delete(url);
+                        pendingUninstallToastResult = result;
 
                         if (modal.selectedVersion && modal.versions.length > 1) {
                             showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`, 'success');
+                            openUninstallResultModal(result, t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`);
                             refreshLings();
                         } else {
                             lings.value = lings.value.filter(p => p.lingId !== lingId);
@@ -529,6 +713,7 @@ createApp({
                                 Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 }); // Reset stats
                             }
                             showToast(t('toast.lingUnloaded'), 'success');
+                            openUninstallResultModal(result, t('toast.lingUnloaded'));
                         }
                     } catch (e) {
                         showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
@@ -547,13 +732,15 @@ createApp({
             modal.onConfirm = async () => {
                 modal.loading = true;
                 try {
-                    await api.delete(`/lings/uninstall/${lingId}`);
+                    const result = await api.delete(`/lings/uninstall/${lingId}`);
+                    pendingUninstallToastResult = result;
                     lings.value = lings.value.filter(p => p.lingId !== lingId);
                     if (activeId.value === lingId) {
                         activeId.value = null;
                         Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 }); // Reset stats
                     }
                     showToast(t('toast.lingUnloaded'), 'success');
+                    openUninstallResultModal(result, t('toast.lingUnloaded'));
                 } catch (e) {
                     showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
                 } finally {
@@ -572,8 +759,10 @@ createApp({
             modal.onConfirm = async () => {
                 modal.loading = true;
                 try {
-                    await api.delete(`/lings/uninstall/${lingId}/${version}`);
+                    const result = await api.delete(`/lings/uninstall/${lingId}/${version}`);
+                    pendingUninstallToastResult = result;
                     showToast(t('toast.lingVersionUnloaded', { version }) || `版本 ${version} 卸载成功`, 'success');
+                    openUninstallResultModal(result, t('toast.lingVersionUnloaded', { version }) || `版本 ${version} 卸载成功`);
                     refreshLings();
                 } catch (e) {
                     showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
@@ -634,6 +823,53 @@ createApp({
             canaryPct.value = 0;
             updateCanaryConfigLocally();
             await updateCanaryConfig();
+        };
+
+        const normalizeNullableInt = (value) => {
+            if (value === '' || value === null || value === undefined) {
+                return null;
+            }
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+        };
+
+        const syncInvocationForm = () => {
+            const current = activeLing.value?.invocationGovernance || {};
+            invocationForm.timeoutMs = current.timeoutMs ?? '';
+            invocationForm.rateLimitPerSecond = current.rateLimitPerSecond ?? '';
+            invocationForm.maxConcurrentThreads = current.maxConcurrentThreads ?? '';
+            invocationForm.retryCount = current.retryCount ?? '';
+            invocationForm.fallbackValue = current.fallbackValue ?? '';
+            invocationForm.cpuBudgetMsPerMinute = current.cpuBudgetMsPerMinute ?? '';
+            invocationForm.memoryBudgetMb = current.memoryBudgetMb ?? '';
+        };
+
+        const saveInvocationGovernance = async () => {
+            if (!activeId.value) return;
+
+            loading.invocation = true;
+            try {
+                const updated = await api.post(`/governance/${activeId.value}/invocation`, {
+                    timeoutMs: normalizeNullableInt(invocationForm.timeoutMs),
+                    rateLimitPerSecond: normalizeNullableInt(invocationForm.rateLimitPerSecond),
+                    maxConcurrentThreads: normalizeNullableInt(invocationForm.maxConcurrentThreads),
+                    retryCount: normalizeNullableInt(invocationForm.retryCount),
+                    fallbackValue: invocationForm.fallbackValue || null,
+                    cpuBudgetMsPerMinute: normalizeNullableInt(invocationForm.cpuBudgetMsPerMinute),
+                    memoryBudgetMb: normalizeNullableInt(invocationForm.memoryBudgetMb)
+                });
+
+                const idx = lings.value.findIndex(p => p.lingId === activeId.value);
+                if (idx !== -1) {
+                    lings.value[idx].invocationGovernance = updated;
+                }
+                syncInvocationForm();
+                showToast(t('toast.invocationUpdated'), 'success');
+            } catch (e) {
+                showToast(t('toast.invocationUpdateFailed') + ': ' + e.message, 'error');
+            } finally {
+                loading.invocation = false;
+            }
         };
 
         // ==================== 权限操作 ====================
@@ -1000,6 +1236,61 @@ createApp({
             return (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
         };
 
+        const formatMetricNumber = (value, digits = 1) => {
+            const num = Number(value || 0);
+            return Number.isFinite(num) ? num.toFixed(digits) : (0).toFixed(digits);
+        };
+
+        const getLingHealthStatusClass = (status) => ({
+            HEALTHY: 'risk-badge risk-safe',
+            WARNING: 'risk-badge risk-warn',
+            UNHEALTHY: 'risk-badge risk-danger',
+            UNKNOWN: 'risk-badge risk-unknown'
+        }[status] || 'risk-badge risk-unknown');
+
+        const getLingHealthRoleLabel = (versionInfo) => {
+            if (!versionInfo) {
+                return t('healthCard.unknown');
+            }
+            if (versionInfo.isDefault) {
+                return t('traffic.stable');
+            }
+            if (versionInfo.isCanary) {
+                return t('traffic.canary');
+            }
+            return t('healthCard.version');
+        };
+
+        const hasGovernanceSignals = (metrics) => {
+            if (!metrics) {
+                return false;
+            }
+            return Number(metrics.rateLimitedRequests || 0) > 0
+                || Number(metrics.timeoutRequests || 0) > 0
+                || Number(metrics.circuitOpenRejections || 0) > 0
+                || Number(metrics.circuitOpenedCount || 0) > 0
+                || Number(metrics.bulkheadRejectedRequests || 0) > 0
+                || Number(metrics.threadBudgetExceededCount || 0) > 0
+                || Number(metrics.cpuBudgetExceededCount || 0) > 0
+                || Number(metrics.memoryBudgetExceededCount || 0) > 0;
+        };
+
+        const formatBudgetPercent = (used, budget) => {
+            const usedNum = Number(used || 0);
+            const budgetNum = Number(budget || 0);
+            if (!Number.isFinite(usedNum) || !Number.isFinite(budgetNum) || budgetNum <= 0) {
+                return '--';
+            }
+            return `${((usedNum * 100) / budgetNum).toFixed(1)}%`;
+        };
+
+        const formatBudgetValue = (value, suffix = '') => {
+            if (value === null || value === undefined || value === '') {
+                return '--';
+            }
+            return `${value}${suffix}`;
+        };
+
         const formatTime = (ts) => {
             if (!ts) return '--:--:--';
             const d = new Date(ts);
@@ -1013,6 +1304,7 @@ createApp({
             'READY_FOR_USE': 'status-loaded',
             'IN_USE': 'status-active',
             'DEGRADED': 'status-error',
+            'RECOVERING': 'status-loading',
             'REMOVED': 'status-unloaded',
             'RETIRED': 'status-unloaded',
             'STARTING': 'status-loading',
@@ -1056,6 +1348,8 @@ createApp({
                     return 'bg-blue-500/20 text-blue-400 border-2 border-blue-500';
                 case 'ACTIVE':
                     return 'bg-green-500/20 text-green-400 border-2 border-green-500';
+                case 'RECOVERING':
+                    return 'bg-cyan-500/20 text-cyan-400 border-2 border-cyan-500';
                 case 'STOPPING':
                     return 'bg-amber-500/20 text-amber-400 border-2 border-amber-500';
                 case 'DEAD':
@@ -1077,6 +1371,8 @@ createApp({
                     return 'fa-solid fa-check-circle';
                 case 'ACTIVE':
                     return 'fa-solid fa-play-circle';
+                case 'RECOVERING':
+                    return 'fa-solid fa-rotate';
                 case 'STOPPING':
                     return 'fa-solid fa-pause-circle';
                 case 'DEAD':
@@ -1098,6 +1394,8 @@ createApp({
                     return 'bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded';
                 case 'ACTIVE':
                     return 'bg-green-500/20 text-green-400 px-2 py-0.5 rounded';
+                case 'RECOVERING':
+                    return 'bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded';
                 case 'STOPPING':
                     return 'bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded';
                 case 'DEAD':
@@ -1198,12 +1496,69 @@ createApp({
             try {
                 const data = await api.get('/lings/health/all');
                 if (data) {
+                    Object.keys(lingHealthMetrics).forEach(lingId => {
+                        if (!data[lingId]) {
+                            delete lingHealthMetrics[lingId];
+                        }
+                    });
                     Object.keys(data).forEach(lingId => {
                         lingHealthMetrics[lingId] = data[lingId];
                     });
                 }
             } catch (e) {
                 console.log('Failed to fetch ling health metrics:', e.message);
+            }
+        };
+
+        const fetchLingGovernanceMetrics = async () => {
+            try {
+                const data = await api.get('/lings/governance/all');
+                if (data) {
+                    Object.keys(lingGovernanceMetrics).forEach(lingId => {
+                        if (!data[lingId]) {
+                            delete lingGovernanceMetrics[lingId];
+                        }
+                    });
+                    Object.keys(data).forEach(lingId => {
+                        lingGovernanceMetrics[lingId] = data[lingId];
+                    });
+                }
+            } catch (e) {
+                console.log('Failed to fetch ling governance metrics:', e.message);
+            }
+        };
+
+        const fetchRuntimeDiagnostics = async () => {
+            try {
+                const data = await api.get('/lings/metrics/runtime-diagnostics');
+                if (data) {
+                    Object.keys(runtimeDiagnostics).forEach(runtime => {
+                        if (!data[runtime]) {
+                            delete runtimeDiagnostics[runtime];
+                        }
+                    });
+                    Object.keys(data).forEach(runtime => {
+                        runtimeDiagnostics[runtime] = data[runtime];
+                    });
+                }
+            } catch (e) {
+                console.log('Failed to fetch runtime diagnostics:', e.message);
+            }
+        };
+
+        const fetchRuntimeGovernanceReadiness = async () => {
+            try {
+                const data = await api.get('/lings/metrics/runtime-governance-readiness');
+                if (data) {
+                    runtimeGovernanceReadiness.status = data.status || 'UNKNOWN';
+                    runtimeGovernanceReadiness.summary = data.summary || '';
+                    runtimeGovernanceReadiness.sharedApiBoundaryFrozen = !!data.sharedApiBoundaryFrozen;
+                    runtimeGovernanceReadiness.diagnosticsCount = data.diagnosticsCount || 0;
+                    runtimeGovernanceReadiness.blockers = Array.isArray(data.blockers) ? data.blockers : [];
+                    runtimeGovernanceReadiness.warnings = Array.isArray(data.warnings) ? data.warnings : [];
+                }
+            } catch (e) {
+                console.log('Failed to fetch runtime governance readiness:', e.message);
             }
         };
 
@@ -1225,12 +1580,23 @@ createApp({
             perfTimer = setInterval(fetchPerformanceMetrics, 3000);
             
             fetchLingHealthMetrics();
+            fetchLingGovernanceMetrics();
+            fetchRuntimeDiagnostics();
+            fetchRuntimeGovernanceReadiness();
             setInterval(fetchLingHealthMetrics, 5000);
+            setInterval(fetchLingGovernanceMetrics, 5000);
+            setInterval(fetchRuntimeDiagnostics, 5000);
+            setInterval(fetchRuntimeGovernanceReadiness, 5000);
         });
 
         // ==================== 监听环境切换 ====================
         watch(currentEnv, (newVal) => {
             updateEnvMode(newVal);
+        });
+
+        watch(activeLing, () => {
+            syncIpcSwitch();
+            syncInvocationForm();
         });
 
         // 监听 locale 变化，按需更新时间格式（可选）
@@ -1270,20 +1636,23 @@ createApp({
             stats, loading, modal, toasts, envLabels, uploadModal, timelineModal,
 
             perfMetrics,
-            lingHealthMetrics,
+            lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,
+            invocationForm,
 
-            activeLing, canCanary, canOperate, canActivate, canDeactivate, displayLogs, availableVersions,
+            activeLing, activeLingHealth, activeLingVersionHealth, activeLingGovernance, activeLingVersionGovernance, canCanary, canOperate, canActivate, canDeactivate, canRecover, displayLogs, availableVersions,
 
             refreshLings, selectLing, updateStatus, requestUnload,
             confirmModalAction, updateCanaryConfig, updateCanaryConfigLocally, resetCanary, togglePerm, toggleIpc,
+            saveInvocationGovernance,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
-            formatDrift, formatTime, formatSize,
+            formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue,
             getStatusClass, getLingShortName, getLingTagClass, getLogColor,
-            getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass,
+            getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass, getLingHealthStatusClass, getLingHealthRoleLabel, hasGovernanceSignals,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
             openTimelineModal, closeTimelineModal, loadTimelineData,
-            doUpdateStatus, fetchPerformanceMetrics, fetchLingHealthMetrics
+            doUpdateStatus, fetchPerformanceMetrics, fetchLingHealthMetrics, fetchLingGovernanceMetrics, fetchRuntimeDiagnostics, fetchRuntimeGovernanceReadiness,
+            uninstallResultModal, closeUninstallResultModal, getUninstallRiskLabel, getUninstallRiskClass, getUninstallTriggerLabel
         };
     }
 }).mount('#app');

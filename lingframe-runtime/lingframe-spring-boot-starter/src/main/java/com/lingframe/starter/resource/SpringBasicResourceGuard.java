@@ -2,6 +2,7 @@ package com.lingframe.starter.resource;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.TypeFactory;
+import com.lingframe.core.event.EventBus;
 import com.lingframe.core.resource.BasicResourceGuard;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.CachedIntrospectionResults;
@@ -64,6 +65,15 @@ public class SpringBasicResourceGuard extends BasicResourceGuard implements Spri
             log.debug("Failed to detect Spring version: {}", e.getMessage());
         }
         return 5; // 默认 Spring 5
+    }
+
+    public SpringBasicResourceGuard() {
+        this(null);
+    }
+
+    public SpringBasicResourceGuard(EventBus eventBus) {
+        super(eventBus);
+        publishCapabilitySnapshot("SpringBasicResourceGuard");
     }
 
     @Override

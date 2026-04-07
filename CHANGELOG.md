@@ -6,89 +6,89 @@ All notable changes to this project will be documented in this file.
 
 ### 🚀 Added
 
-- Unified governance pipeline around `InvocationPipelineEngine` and `FilterRegistry`, with explicit phases and execution modes: `NORMAL`, `SIMULATION`, and `GOVERN_ONLY`
-- Reuse of the same kernel path for ling-to-ling invocation, Spring Boot 2/3 web governance, LingCore bean interception, and dashboard simulation
-- Dashboard simulation through the real governance chain, plus SSE event streaming for trace, audit, circuit-breaker, lifecycle, and leak-detection events
+- Converged unified governance Pipeline around `InvocationPipelineEngine` and `FilterRegistry`, explicitly supporting `NORMAL`, `SIMULATION`, and `GOVERN_ONLY` execution modes.
+- Allowed Ling-to-Ling invocations, Spring Boot 2/3 Web requests, LingCore Bean interceptions, and Dashboard simulations to share the same unified kernel path.
+- Enabled the Dashboard to execute simulations via the actual governance chain, and output real `trace`, `audit`, `circuit-breaker`, `lifecycle`, and `leak-detection` events via SSE.
 
 ### 🛠 Changed
 
-- Runtime state ownership now converges around `InstanceStatus`, `RuntimeStatus`, `InstanceCoordinator`, and `RuntimeCoordinator`
-- Lifecycle orchestration is more explicit: deploy, side-by-side reload, drain-before-unload, and cleanup now form a clearer runtime path
-- `SharedApiManager` enforces the shared API bootstrap order: preload, register packages, freeze the boundary, then load lings
-- Unload cleanup now includes pipeline resource eviction and leak diagnostics as part of runtime responsibility
+- Converged runtime state write authority securely into `InstanceStatus`, `RuntimeStatus`, `InstanceCoordinator`, and `RuntimeCoordinator`.
+- Lifecycle orchestration became more explicit: Deployments, hot-reloads, unload after draining, and cleanup form a clearer decoupled runtime path.
+- Restructured `SharedApiManager` to enforce a strict shared API boot order: preloading -> register packages -> freeze boundary -> load lings.
+- Unload cleanup was officially incorporated into Pipeline resource eviction and memory leak diagnostics.
 
 ### ⚠️ Notes
 
-- Public release scope: pipeline convergence, runtime convergence, dashboard governance/control surface, lifecycle orchestration, shared API boundary freezing, and long-running stability work
+- The delivery baseline for `0.3.0` involves Phase 3 capabilities: Pipeline convergence, runtime state convergence, Dashboard governance/control surface, lifecycle orchestration, Shared API boundary freeze, and disciplines related to long-running stability.
 
 ## [V0.2.0] - 2026-02-23
 
-### 🚀 New Features
+### 🚀 Features
 
-- **Resilience Governance**: Full implementation of Circuit Breaking (Sliding Window), Rate Limiting (Token Bucket), Retry, and Fallback mechanisms in `GovernanceKernel`.
-- **Ecosystem Compatibility**: Added support for JDK 8 and Spring Boot 2.7.x, alongside the primary JDK 17 / Spring Boot 3.x support.
-- **Developer Productivity**:
-    - New `dev-mode` for loose runtime permissions.
-    - Automatic activation of Lings upon installation in development mode.
-    - Integrated SpringDoc (Swagger) support with API grouping (Core, Lings, Host).
+- **Resilience Governance**: Fully implemented sliding window circuit breaking, token bucket rate limiting, retry, and fallback mechanisms inside the `GovernanceKernel`.
+- **Ecosystem Compatibility**: On top of JDK 17 / Spring Boot 3.x, added massive backward-compatibility support for JDK 8 and Spring Boot 2.7.x.
+- **Developer Experience**:
+    - Introduced a `dev-mode` facilitating a more forgiving runtime permission model during debugging.
+    - Achieved auto-activation post-installation during dev-mode, bypassing manual status toggling.
+    - Integrated SpringDoc (Swagger) support with split group capabilities (Core, Lings, Apps).
 
-### 🛠 Refactoring & Improvements
+### 🛠 Refactoring
 
-- **Global Terminology Refactor**: Renamed all "Plugin" related terms to "Ling" and "Host" to "LingCore" for conceptual consistency.
-- **Improved Isolation**: Enhanced `SmartServiceProxy` and `InvocationExecutor` to bolster unit boundary auditing.
-- **Infrastructure SPI**: Optimized `StorageService` and `CacheService` proxies for better stability.
+- **Global Terminology Synchronization**: Renamed all instances of "Plugin" into "Ling", and all instances of "Host" into "LingCore" to enforce profound concept unity.
+- **Enhanced Isolation**: Refined `SmartServiceProxy` and `InvocationExecutor` to bolster Ling boundary auditing capacities.
+- **Infrastructure SPIs**: Stabilized proxies backing `StorageService` and `CacheService`.
 
 ### 🐛 Bug Fixes
 
-- **Memory Leak Mitigation**: Systematically addressed potential ClassLoader memory leaks during Ling hot-swapping by clearing known Spring caches and Jakarta EL/Objenesis static references.
-- **Path Matching**: Fixed various path matching issues in Swagger and Web interface mappings.
+- **Memory Leak Mitigation**: Systematically sanitized Spring cache retention and Jakarta EL/Objenesis static cache references, substantially relieving ClassLoader memory leaks during hot reloads.
+- **Path Matching Compatibility**: Overcame numerous Swagger mapping path mismatches resulting from Spring Boot URL generation rules.
 
 ## [V0.1.0-Preview] - 2026-02-01
 
-> **Maiden Phase (Preview)**: This release validates the feasibility of in-process JVM runtime governance.
+> **Preview Version**: This iteration validated the core feasibility of governed runtimes strictly within a single JVM process.
 > Focus: Boundaries, Isolation, and Control.
 
-### 🚀 New Features
+### 🚀 Features
 
 #### Core Architecture (JVM Runtime Governance)
-- **Three-Tier ClassLoader Architecture**: Implemented `HostClassLoader` -> `SharedApiClassLoader` -> `LingClassLoader` hierarchy to ensure strict isolation while allowing controlled sharing.
-- **Child-First Class Loading**: Lings load their own dependencies first to prevent "Dependency Hell" with the LingCore application.
-- **Spring Context Isolation**: Each ling runs in its own Spring `ApplicationContext`, ensuring bean isolation and distinct lifecycles.
+- **3-Layer ClassLoader Architecture**: Formed the `HostClassLoader` -> `SharedApiClassLoader` -> `LingClassLoader` hierarchy, assuring robust isolation aligned with controlled sharing constraints.
+- **Child-First Loader Semantics**: Empowered Lings to prioritize their own internal dependencies first, preventing fatal dependency-hells against LingCore payloads.
+- **Spring Context Isolation**: Every Ling operates within isolated disparate Spring `ApplicationContext` closures to secure Bean segregation and lifecycle autonomy.
 
-#### ling System
-- **Lifecycle Management**: Full support for `LOAD`, `START`, `STOP`, `UNLOAD`, and hot-reload capabilities via `LingManager`.
-- **Manifest Configuration**: Defined `ling.yml` standard for declaring metadata, dependencies, and required capabilities.
-- **Service Export/Import**:
-  - `@LingService`: Export beans as cross-boundary services.
-  - `@LingReference`: Inject services from other Lings or the LingCore.
+#### Ling System
+- **Lifecycle Management**: Fostered complete coverage for `LOAD`, `START`, `STOP`, `UNLOAD`, and hot-reloading through the `LingManager`.
+- **Manifest Properties**: Stabilized the `ling.yml` descriptor contract to dictate metadata, required capabilities, and dependency tree links.
+- **Service Exports & Imports**:
+  - `@LingService`: Exposes a Bean outwardly as a boundary-traversing governance-aware service.
+  - `@LingReference`: Injects proxy handles bound to services originating from diverse Lings or the LingCore.
 
 #### Governance & Security
-- **Permission Control**:
-  - Implemented `GovernancePolicy` for defining Access Control Lists (ACLs).
-  - Added `@RequiresPermission` for fine-grained, method-level authorization.
-- **Audit & Trace**:
-  - `@Auditable` annotation for recording sensitive operations.
-  - `TraceContext` for propagating request metadata across ling boundaries.
+- **Permission Modeling**:
+  - Furnished `GovernancePolicy` to orchestrate Access Control Lists (ACL).
+  - Deployed `@RequiresPermission` validating granular method-level execution access.
+- **Auditing and Tracing**:
+  - Implemented the `@Auditable` annotation for recording sensitive executions.
+  - Constructed `TraceContext` to securely ferry request metadata across isolation borders.
 - **Traffic Routing**:
-  - `LabelMatchRouter` implementation for canary releases and tag-based traffic routing.
+  - `LabelMatchRouter` operationalized, powering Label-driven matching architectures and canary releases.
 
 #### Dashboard & Operations
-- **Visual Management**: Web-based Dashboard (preview) for monitoring ling status and managing configurations.
-- **Dynamic Control**:
-  - Start/Stop Lings via UI/API.
-  - Hot-reload Lings without restarting the JVM.
-  - Adjust permission policies at runtime.
+- **Visual Administrative Control Surface**: Deployed a rudimentary Web Dashboard to observe states and tweak profiles.
+- **Dynamic Capabilities**:
+  - Starting and Stopping Lings via HTTP boundaries.
+  - Hot Reloading Lings devoid of total JVM reboot mandates.
+  - Splicing Permissions actively during runtime.
 
 #### Infrastructure SPI
-- **Proxy Abstractions**:
-  - `StorageService` proxy for file operations.
-  - `CacheService` proxy for caching (Local/Remote).
+- **Proxy Scaffolding**:
+  - Bootstrapped `StorageService` logic for file IO.
+  - Configured `CacheService` for localized and off-machine caches.
 
-### ⚠️ Technical Boundaries & Limitations
-- **Single Process Only**: Designed for monolithic modification, not a distributed microservice framework.
-- **Compatibility**: Built for JDK 17 (LTS) and Spring Boot 3.x.
-- **Pending Features** (Phase 3): Circuit Breaking, Rate Limiting, and Fallback mechanisms are defined but not yet fully operational.
+### ⚠️ Technical Boundaries & Constraints
+- **Single Process Exclusivity**: Designed purposefully as a monolith modifier, not as an inter-machine RPC microservices framework.
+- **Framework Grounding**: Base compiled against JDK 17 (LTS) & Spring Boot 3.x.
+- **To-Be-Implemented Features**: (Referred to Phase 3) Circuit breaking, Rate Limiting, and Fallbacks mappings established but pending comprehensive execution deployments.
 
-### 🛠 Infrastructure
-- Established standard Maven multi-unit project structure (`core`, `api`, `dashboard`, `runtime`, `infrastructure`).
-- Integrated `maven-compiler-Ling` and `flatten-maven-Ling` for build standardization.
+### 🛠 Infrastructure Tooling
+- Instated standard Maven multi-Ling compositional profiles (`core`, `api`, `dashboard`, `runtime`, `infrastructure`).
+- Fused `maven-compiler-Ling` elements with `flatten-maven-Ling` strategies to harmonize build environments.

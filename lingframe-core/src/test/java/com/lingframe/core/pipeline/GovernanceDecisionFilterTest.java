@@ -60,6 +60,10 @@ class GovernanceDecisionFilterTest {
             assertEquals("PING_CALL", context.getAuditAction());
             assertEquals("TestPolicy", context.getRuleSource());
             assertEquals(Integer.valueOf(1234), context.governance().getTimeoutMs());
+            assertEquals(Integer.valueOf(8), context.governance().getRateLimitPerSecond());
+            assertEquals(Integer.valueOf(3), context.governance().getMaxConcurrentThreads());
+            assertEquals(Integer.valueOf(2), context.governance().getRetryCount());
+            assertEquals("fallback-pong", context.governance().getFallbackValue());
 
             context.recycle();
         }
@@ -87,6 +91,10 @@ class GovernanceDecisionFilterTest {
             assertEquals("PING_CALL", context.getAuditAction());
             assertEquals("TestPolicy", context.getRuleSource());
             assertEquals(Integer.valueOf(100), context.governance().getTimeoutMs());
+            assertEquals(Integer.valueOf(8), context.governance().getRateLimitPerSecond());
+            assertEquals(Integer.valueOf(3), context.governance().getMaxConcurrentThreads());
+            assertEquals(Integer.valueOf(2), context.governance().getRetryCount());
+            assertEquals("fallback-pong", context.governance().getFallbackValue());
             assertEquals("ping", context.resolution().getResolvedMethod().getName());
 
             context.recycle();
@@ -179,6 +187,10 @@ class GovernanceDecisionFilterTest {
                         .auditEnabled(true)
                         .auditAction("PING_CALL")
                         .timeout(Duration.ofMillis(timeoutMs))
+                        .rateLimitPerSecond(8)
+                        .maxConcurrentThreads(3)
+                        .retryCount(2)
+                        .fallbackValue("fallback-pong")
                         .source("TestPolicy")
                         .build();
             }

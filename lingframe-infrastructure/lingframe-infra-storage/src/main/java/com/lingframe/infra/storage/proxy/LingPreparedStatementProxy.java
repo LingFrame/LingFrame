@@ -14,13 +14,6 @@ import java.net.URL;
 import java.sql.*;
 import java.util.Calendar;
 
-import net.sf.jsqlparser.JSQLParserException;
-import net.sf.jsqlparser.parser.CCJSqlParserUtil;
-import net.sf.jsqlparser.statement.select.Select;
-import net.sf.jsqlparser.statement.insert.Insert;
-import net.sf.jsqlparser.statement.update.Update;
-import net.sf.jsqlparser.statement.delete.Delete;
-
 @Slf4j
 @RequiredArgsConstructor
 public class LingPreparedStatementProxy implements PreparedStatement {
@@ -37,6 +30,7 @@ public class LingPreparedStatementProxy implements PreparedStatement {
 
     // 预解析的结果
     private final AccessType preParsedAccessType;
+    private final java.util.List<String> preParsedCapabilities;
 
     // SQL解析结果缓存 (LRU缓存)
 
@@ -51,7 +45,9 @@ public class LingPreparedStatementProxy implements PreparedStatement {
                 : sql;
 
         // 在构造时预解析SQL类型，完成后即扔掉对长 SQL 的强引用
-        this.preParsedAccessType = parseSqlForAccessTypeWithCache(sql);
+        SqlPermissionSupport.SqlPermissionPlan plan = parseSqlPermissionPlanWithCache(sql);
+        this.preParsedAccessType = plan.getAccessType();
+        this.preParsedCapabilities = plan.getCapabilities();
     }
 
     // --- 核心鉴权逻辑 ---
@@ -75,62 +71,46 @@ public class LingPreparedStatementProxy implements PreparedStatement {
         }
 
         // 2. 使用预解析的结果
-        boolean allowed = permissionService.isAllowed(callerLingId, "storage:sql", preParsedAccessType);
+        SqlPermissionSupport.ResolvedCapability resolvedCapability = SqlPermissionSupport.resolveCapability(
+                permissionService,
+                callerLingId,
+                new SqlPermissionSupport.SqlPermissionPlan(preParsedAccessType, preParsedCapabilities));
 
         // 3. 上报审计 (异步)
-        permissionService.audit(callerLingId, "storage:sql", sqlAuditSummary, allowed);
+        permissionService.audit(callerLingId,
+                resolvedCapability.getCapability(),
+                sqlAuditSummary,
+                resolvedCapability.isAllowed());
 
-        if (!allowed) {
+        if (!resolvedCapability.isAllowed()) {
             throw new SQLException(new PermissionDeniedException(
                     "Ling [" + callerLingId + "] denied access to SQL. Summary: " + sqlAuditSummary));
         }
     }
 
     /**
-     * 带缓存的SQL解析
+     * 带缓存的 SQL 解析。
      *
      * @param sql SQL语句
-     * @return 访问类型
+     * @return 权限计划
      */
-    private AccessType parseSqlForAccessTypeWithCache(String sql) {
+    private SqlPermissionSupport.SqlPermissionPlan parseSqlPermissionPlanWithCache(String sql) {
         // 检查缓存
         String cacheLingId = LingCallContext.getLingId();
         AccessType cachedAccessType = SqlParseCache.get(cacheLingId, sql);
         if (cachedAccessType != null) {
-            return cachedAccessType;
+            return new SqlPermissionSupport.SqlPermissionPlan(
+                    cachedAccessType,
+                    SqlPermissionSupport.analyze(sql).getCapabilities());
         }
 
         // 缓存未命中或已过期，重新解析
-        AccessType accessType = parseSqlForAccessType(sql);
+        SqlPermissionSupport.SqlPermissionPlan plan = SqlPermissionSupport.analyze(sql);
 
         // 更新缓存
-        SqlParseCache.put(cacheLingId, sql, accessType);
+        SqlParseCache.put(cacheLingId, sql, plan.getAccessType());
 
-        return accessType;
-    }
-
-    /**
-     * 分级SQL解析策略
-     *
-     * @param sql SQL语句
-     * @return 访问类型
-     */
-    private AccessType parseSqlForAccessType(String sql) {
-        // 使用 JSqlParser
-        try {
-            Object statement = CCJSqlParserUtil.parse(sql.trim());
-            if (statement instanceof Select) {
-                return AccessType.READ;
-            } else if (statement instanceof Insert || statement instanceof Update || statement instanceof Delete) {
-                return AccessType.WRITE;
-            } else {
-                return AccessType.EXECUTE;
-            }
-        } catch (JSQLParserException e) {
-            // 原则：如果解析失败（可能是畸形 SQL），直接拒绝或默认 EXECUTE（最高权限要求）
-            log.error("[SQL Parse Error] Rejecting ambiguous SQL: {}", sql);
-            return AccessType.EXECUTE;
-        }
+        return plan;
     }
 
     @Override

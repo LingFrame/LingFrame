@@ -1,5 +1,7 @@
 package com.lingframe.core.resource;
 
+import com.lingframe.core.event.EventBus;
+import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.spi.ResourceGuard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,7 +14,9 @@ import java.net.URLClassLoader;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.util.Enumeration;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -83,5 +87,57 @@ class BasicResourceGuardTest {
             }
             return count;
         }
+    }
+
+    @Nested
+    @DisplayName("能力快照")
+    class CapabilitySnapshotTests {
+
+        @Test
+        @DisplayName("应暴露结构化能力快照")
+        void shouldExposeStructuredCapabilitySnapshot() {
+            BasicResourceGuard guard = new BasicResourceGuard();
+
+            BasicResourceGuard.CapabilitySnapshot snapshot = guard.getCapabilitySnapshot();
+
+            assertNotNull(snapshot);
+            assertTrue(snapshot.getJdkVersion() >= 8);
+            assertNotNull(snapshot.toSummary());
+            assertFalse(snapshot.toSummary().isEmpty());
+        }
+
+        @Test
+        @DisplayName("带事件总线时应发布资源清理能力事件")
+        void shouldPublishCapabilityEventWhenEventBusProvided() {
+            EventBus eventBus = new EventBus();
+            AtomicReference<MonitoringEvents.ResourceCleanupCapabilityEvent> captured = new AtomicReference<>();
+            eventBus.subscribe("test-listener", MonitoringEvents.ResourceCleanupCapabilityEvent.class, captured::set);
+
+            new BasicResourceGuard(eventBus);
+
+            MonitoringEvents.ResourceCleanupCapabilityEvent event = awaitEvent(captured, Duration.ofSeconds(2));
+            assertNotNull(event);
+            assertEquals("BasicResourceGuard", event.getRuntime());
+            assertTrue(event.getJdkVersion() >= 8);
+            assertNotNull(event.getSummary());
+        }
+    }
+
+    private <T> T awaitEvent(AtomicReference<T> captured, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            T event = captured.get();
+            if (event != null) {
+                return event;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                fail("Interrupted while waiting for event");
+            }
+        }
+        fail("Timed out waiting for event");
+        return null;
     }
 }

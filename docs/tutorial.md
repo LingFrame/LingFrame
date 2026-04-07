@@ -1,8 +1,8 @@
-# Tutorial: From Zero to Hero
+# Practical Tutorial: from Scratch
 
-This tutorial will guide you through building a complete LingFrame application from scratch.
+This tutorial will take you step-by-step from zero to a complete LingFrame application.
 
-> ⚠️ **Note**: This tutorial is based on the `0.3.0` version's actual code structure.
+> ⚠️ **Note**: This tutorial is written against the current actual codebase structure.
 
 ---
 
@@ -12,28 +12,26 @@ We will build a simple order management system:
 
 ```
 LingCore
-    │
-    ├── user-ling (User Service Ling)
-    │   └── Provides user query capabilities
-    │
-    └── order-ling (Order Service Ling)
-        ├── Depends on user-ling for user info
-        └── Provides order creation and query capabilities
+    �?    ├── user-ling (User Service Ling)
+    �?  └── Provides user query capabilities
+    �?    └── order-ling (Order Service Ling)
+        ├── Depends on user-ling to fetch user info
+        └── Provides order creation, query capabilities
 ```
 
 ---
 
-## Part 1: Environment Setup
+## Part 1: Environment Preparation
 
 ### 1.1 System Requirements
 
 | Software | Version |
-|----------|---------|
+|------|------|
 | JDK | 17 or 8 |
 | Maven | 3.6+ |
 | Spring Boot | 3.x or 2.7.x |
 
-### 1.2 Create Project Structure
+### 1.2 Creating the Project Structure
 
 ```bash
 mkdir lingframe-demo
@@ -68,7 +66,7 @@ mkdir -p lings/order-ling
             <dependency>
                 <groupId>com.lingframe</groupId>
                 <artifactId>lingframe-bom</artifactId>
-                <version>0.3.0</version>
+                <version>${lingframe.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -79,9 +77,9 @@ mkdir -p lings/order-ling
 
 ---
 
-## Part 2: Define Shared Contract
+## Part 2: Defining Shared Contracts
 
-### 2.1 Create Shared API Module
+### 2.1 Create the Shared API Module
 
 ```xml
 <!-- shared-api/pom.xml -->
@@ -104,9 +102,9 @@ mkdir -p lings/order-ling
 </project>
 ```
 
-### 2.2 Define User Query Service Interface
+### 2.2 Define the User Query Service Interface
 
-> ⚠️ **Important**: Shared API is the process-level public contract boundary between LingCore and Lings. Interfaces and DTOs used across boundaries should be placed here.
+> ⚠️ **Important**: `Shared API` is the process-level common contract boundary between LingCore and Lings. Any interfaces and DTOs used across this boundary must be placed here.
 
 ```java
 // shared-api/src/main/java/com/example/api/UserQueryService.java
@@ -120,7 +118,7 @@ public interface UserQueryService {
 }
 ```
 
-### 2.3 Define User DTO
+### 2.3 Define the User DTO
 
 ```java
 // shared-api/src/main/java/com/example/api/UserDTO.java
@@ -152,7 +150,7 @@ public class UserDTO implements Serializable {
 
 ---
 
-## Part 3: Create LingCore Application
+## Part 3: Creating the LingCore App
 
 ### 3.1 LingCore POM Configuration
 
@@ -194,7 +192,7 @@ public class UserDTO implements Serializable {
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         
-        <!-- Database Support (for demo) -->
+        <!-- Database capabilities (needed for example) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
@@ -237,14 +235,14 @@ lingframe:
   enabled: true
   dev-mode: true
   
-  # Shared API preload paths
+  # Shared API preload path
   preload-api-jars:
     - ../shared-api
     
-  # Ling home directory
+  # Ling home folder
   ling-home: lings
   
-  # Additional ling directories (development mode)
+  # Extra ling roots (for dev mode)
   ling-roots:
     - ../lings/user-ling
     - ../lings/order-ling
@@ -259,7 +257,7 @@ logging:
     com.lingframe: INFO
 ```
 
-### 3.3 Main Application Class
+### 3.3 Main Class
 
 ```java
 // ling-core/src/main/java/com/example/LingCoreApplication.java
@@ -278,7 +276,7 @@ public class LingCoreApplication {
 
 ---
 
-## Part 4: Create User Service Ling
+## Part 4: Building the User Service Ling
 
 ### 4.1 Ling POM Configuration
 
@@ -327,7 +325,7 @@ public class LingCoreApplication {
 
 ### 4.2 Ling Manifest
 
-> ⚠️ **Note**: `ling.yml` uses camelCase naming, such as `mainClass`, `accessType`.
+> ⚠️ **Note**: `ling.yml` uses camelCase for keys like `mainClass` and `accessType`.
 
 ```yaml
 # lings/user-ling/src/main/resources/ling.yml
@@ -340,7 +338,7 @@ mainClass: "com.example.user.UserApplication"
 governance:
   permissions: []
   
-  # Ling capability requests
+  # Declaring required capabilities
   capabilities:
     - capability: "storage:sql"
       accessType: "WRITE"
@@ -351,7 +349,7 @@ properties:
   mark: "demo"
 ```
 
-### 4.3 Ling Entry Class
+### 4.3 Ling Application Class
 
 ```java
 // lings/user-ling/src/main/java/com/example/user/UserApplication.java
@@ -392,7 +390,7 @@ public interface UserService {
 
 ### 4.5 Service Implementation
 
-> ⚠️ **Important**: Use `@LingService` annotation to mark methods, declaring them as externally exposed capabilities. LingCore uses this annotation as the key basis for RPC protocol contracts and routing dispatch.
+> ⚠️ **Important**: Use the `@LingService` annotation on methods to declare an externally exposed capability. LingCore uses this annotation as the key basis for RPC contract tracking and routing dispatch.
 
 ```java
 // lings/user-ling/src/main/java/com/example/user/service/impl/UserServiceImpl.java
@@ -451,7 +449,7 @@ public class UserServiceImpl implements UserService {
         );
     }
 
-    @LingService(id = "create_user", desc = "Create user")
+    @LingService(id = "create_user", desc = "Create single user")
     @RequiresPermission(Capabilities.STORAGE_SQL)
     @Auditable(action = "CREATE_USER", resource = "user")
     @Override
@@ -467,7 +465,7 @@ public class UserServiceImpl implements UserService {
 
 ---
 
-## Part 5: Create Order Service Ling
+## Part 5: Building the Order Service Ling
 
 ### 5.1 Ling Manifest
 
@@ -491,7 +489,7 @@ governance:
       accessType: "EXECUTE"
 ```
 
-### 5.2 Ling Entry Class
+### 5.2 Ling Application Class
 
 ```java
 // lings/order-ling/src/main/java/com/example/order/OrderApplication.java
@@ -510,9 +508,9 @@ public class OrderApplication {
 }
 ```
 
-### 5.3 Service Implementation (Cross-Ling Call)
+### 5.3 Service Implementation (Cross-Ling Invocation)
 
-> ⚠️ **Important**: Use `@LingReference` to inject service interfaces provided by other Lings. The framework will search for Beans implementing the interface across all installed Lings.
+> ⚠️ **Important**: Use `@LingReference` to inject a service interface provided by another ling. The framework automatically finds the Bean implementing this interface amongst installed lings.
 
 ```java
 // lings/order-ling/src/main/java/com/example/order/service/impl/OrderServiceImpl.java
@@ -545,7 +543,7 @@ public class OrderServiceImpl implements OrderService {
 
     private final JdbcTemplate jdbcTemplate;
 
-    @LingService(id = "get_order", desc = "Get order by ID")
+    @LingService(id = "get_order", desc = "Query Order By ID")
     @RequiresPermission(Capabilities.STORAGE_SQL)
     @Override
     public OrderDTO getOrderById(Long orderId) {
@@ -556,7 +554,7 @@ public class OrderServiceImpl implements OrderService {
                 new BeanPropertyRowMapper<>(OrderDTO.class),
                 orderId
             );
-            // Get user info via cross-Ling call
+            // Fetch User info via cross-ling invocation
             if (order != null && order.getUserId() != null) {
                 userQueryService.findById(order.getUserId()).ifPresent(
                     user -> order.setUserName(user.getUserName())
@@ -569,7 +567,7 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    @LingService(id = "create_order", desc = "Create order")
+    @LingService(id = "create_order", desc = "Create Order")
     @RequiresPermission(Capabilities.STORAGE_SQL)
     @Override
     public OrderDTO createOrder(Long userId, String productName) {
@@ -588,15 +586,15 @@ public class OrderServiceImpl implements OrderService {
 
 ---
 
-## Part 6: Run and Test
+## Part 6: Running and Testing
 
-### 6.1 Build Project
+### 6.1 Build Projects
 
 ```bash
 mvn clean package -DskipTests
 ```
 
-### 6.2 Start LingCore Application
+### 6.2 Start LingCore App
 
 ```bash
 cd ling-core
@@ -605,9 +603,9 @@ mvn spring-boot:run
 
 ### 6.3 Manage Lings via Dashboard
 
-> Dashboard is a governance control plane, not just a page.
+> Dashboard is a governance control surface, not just a static page.
 
-Dashboard URL: `http://localhost:8888/lingframe/dashboard/`
+Dashboard UI: `http://localhost:8888/dashboard.html`
 
 **List Lings**:
 
@@ -627,37 +625,37 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/status \
   -d '{"status": "ACTIVE"}'
 ```
 
-### 6.4 Test Calls
+### 6.4 Let's Test
 
 ```bash
-# Create user
-curl -X POST "http://localhost:8888/user-ling/user/createUser?name=John&email=john@example.com"
+# Create User
+curl -X POST "http://localhost:8888/user-ling/user/createUser?name=ZhangSan&email=zhangsan@example.com"
 
-# Query user
+# Query User
 curl "http://localhost:8888/user-ling/user/queryUser?userId=1"
 
-# List users
+# List Users
 curl http://localhost:8888/user-ling/user/listUsers
 ```
 
 ---
 
-## Part 7: Hot Reload Demo
+## Part 7: Hot-Reload Demo
 
-> ⚠️ Hot reload is only available in development mode (`dev-mode: true`)
+> ⚠️ Hot-reload is only available in development mode (`dev-mode: true`)
 
 ### 7.1 Modify Ling Code
 
-Modify `UserServiceImpl`, add logging or change business logic.
+Modify `UserServiceImpl`, maybe by adding a log or altering business logic.
 
-### 7.2 Rebuild
+### 7.2 Recompile
 
 ```bash
 cd lings/user-ling
 mvn clean package -DskipTests
 ```
 
-### 7.3 Hot Reload
+### 7.3 Hot-Reload It
 
 ```bash
 curl -X POST http://localhost:8888/lingframe/dashboard/lings/user-ling/reload
@@ -665,11 +663,11 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/user-ling/reload
 
 ---
 
-## Part 8: Governance Capabilities Demo
+## Part 8: Governance Demo
 
-### 8.1 Canary Release
+### 8.1 Canary Releases
 
-> Canary is routing a portion of traffic to a specified Ling version or instance.
+> Canary routing shifts a subset of traffic over to a specialized ling version.
 
 ```bash
 curl -X POST http://localhost:8888/lingframe/dashboard/lings/user-ling/canary \
@@ -677,22 +675,22 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/user-ling/canary \
   -d '{"percent": 20, "canaryVersion": "1.1.0"}'
 ```
 
-### 8.2 Traffic Statistics
+### 8.2 Traffic Stats
 
 ```bash
 curl http://localhost:8888/lingframe/dashboard/lings/user-ling/stats
 ```
 
-### 8.3 Health Metrics
+### 8.3 Health Snapshots
 
 ```bash
-# Single ling health metrics
+# Single ling health
 curl http://localhost:8888/lingframe/dashboard/lings/user-ling/health
 
-# All lings health metrics
+# All lings health
 curl http://localhost:8888/lingframe/dashboard/lings/health/all
 
-# JVM metrics
+# JVM Metrics
 curl http://localhost:8888/lingframe/dashboard/lings/metrics
 ```
 
@@ -700,34 +698,34 @@ curl http://localhost:8888/lingframe/dashboard/lings/metrics
 
 ## Key Differences
 
-Key differences between this tutorial and actual `0.3.0` code:
+If tracing the actual codebase vs. this tutorial, mind these details:
 
-| Item | Tutorial Example | Actual Code Convention |
-|------|------------------|------------------------|
-| ling.yml main class field | `main-class` | `mainClass` (camelCase) |
-| Ling entry class | Implements `Ling` interface | `@SpringBootApplication` |
-| Service registration | `@LingService(serviceId = "...")` | `@LingService(id = "...", desc = "...")` |
-| Cross-Ling call | `@LingReference(lingId = "...", serviceId = "...")` | `@LingReference` (auto-match) |
-| capabilities format | `name` / `access-type` | `capability` / `accessType` |
+| Item | Tutorial | Actual Code Checks |
+|------|----------|--------------|
+| `ling.yml` main class field | `main-class` | `mainClass` (camelCase) |
+| Ling App class | implements `Ling` | `@SpringBootApplication` |
+| Service Registry | `@LingService(serviceId = "...")` | `@LingService(id = "...", desc = "...")` |
+| Cross-ling Call | `@LingReference(lingId = "...", serviceId = "...")` | `@LingReference` (Auto Match) |
+| Capabilities Config | `name` / `access-type` | `capability` / `accessType` |
 
 ---
 
-## Summary
+## Conclusion
 
-Through this tutorial, you have learned:
+Through this tutorial, you have learned to:
 
-1. ✅ Create Shared API contract module
-2. ✅ Create LingCore application
-3. ✅ Create independent Ling modules
-4. ✅ Implement cross-Ling calls
-5. ✅ Use Dashboard API to manage Lings
-6. ✅ Perform hot reload operations
-7. ✅ Use canary release and traffic statistics capabilities
+1. �?Create Shared API modules
+2. �?Create the LingCore application
+3. �?Create an independent Ling module
+4. �?Achieve a cross-ling invocation
+5. �?Use the Dashboard API to manage lings
+6. �?Execute hot-reloads
+7. �?Use canary releases and traffic statistics features
 
-Next Steps:
+Recommended next steps:
 
-- Read [Troubleshooting Guide](troubleshooting.md) for common issues
-- Read [Observability](observability.md) for monitoring capabilities
-- Read [Architecture](architecture.md) for deep understanding of framework principles
-- Read [Dashboard Documentation](dashboard.md) for complete Dashboard API
-- Check [Example Projects](../../lingframe-examples) for more actual code
+- Read [Troubleshooting](troubleshooting.md) for dealing with errors.
+- Read [Observability](observability.md) to understand monitoring capabilities.
+- Read [Architecture](architecture.md) for a deeper conceptual framing.
+- Read [Dashboard Docs](dashboard.md) to comprehend the full Dashboard API layout.
+- Look at the [Examples Folder](../lingframe-examples) to read more code paths.

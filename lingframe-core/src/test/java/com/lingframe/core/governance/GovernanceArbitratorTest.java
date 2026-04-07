@@ -90,5 +90,23 @@ class GovernanceArbitratorTest {
 
             assertNull(result);
         }
+
+        @Test
+        @DisplayName("仅包含调用治理参数的决策也应视为有效结果")
+        void testArbitrate_ShouldTreatInvocationDirectiveAsEffectiveDecision() {
+            when(provider1.getOrder()).thenReturn(10);
+
+            GovernanceDecision decision = GovernanceDecision.builder()
+                    .rateLimitPerSecond(7)
+                    .maxConcurrentThreads(3)
+                    .build();
+            when(provider1.resolve(any(), any(), any())).thenReturn(decision);
+
+            GovernanceArbitrator arbitrator = new GovernanceArbitrator(Collections.singletonList(provider1));
+            GovernanceDecision result = arbitrator.arbitrate(runtime, method, null);
+
+            assertEquals(Integer.valueOf(7), result.getRateLimitPerSecond());
+            assertEquals(Integer.valueOf(3), result.getMaxConcurrentThreads());
+        }
     }
 }

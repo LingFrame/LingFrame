@@ -150,7 +150,7 @@ public class SharedApiClassLoader extends URLClassLoader {
 
         try {
             // 🔥 只扫描并登记类名，不主动 preload Class 对象，避免过早触发类初始化
-            scanClassesDir(classesDir, classesDir, classesDir.getName());
+            scanClassesDir(classesDir, classesDir, dirPath);
             addURL(classesDir.toURI().toURL());
             loadedJars.add(dirPath);
             log.info("📦 [SharedApi] Loaded classes directory {}", classesDir.getName());
@@ -189,10 +189,11 @@ public class SharedApiClassLoader extends URLClassLoader {
             String className = relativePath.substring(0, relativePath.length() - 6).replace('/', '.');
             String existingSource = classSourceMap.get(className);
             if (existingSource != null) {
-                log.warn("⚠️ [SharedApi] Class conflict detected: {} already loaded from {}", className, existingSource);
-            } else {
-                classSourceMap.put(className, sourceName);
+                throw new ClassLoaderException(null, sourceName,
+                        String.format("Shared API class conflict detected: %s already loaded from %s",
+                                className, existingSource));
             }
+            classSourceMap.put(className, sourceName);
         }
     }
 
@@ -208,11 +209,11 @@ public class SharedApiClassLoader extends URLClassLoader {
                     .forEach(className -> {
                         String existingSource = classSourceMap.get(className);
                         if (existingSource != null) {
-                            log.warn("⚠️ [SharedApi] Class conflict detected: {} already loaded from {}, version in {} will be ignored",
-                                    className, existingSource, jarName);
-                        } else {
-                            classSourceMap.put(className, jarName);
+                            throw new ClassLoaderException(null, jarFile.getAbsolutePath(),
+                                    String.format("Shared API class conflict detected: %s already loaded from %s",
+                                            className, existingSource));
                         }
+                        classSourceMap.put(className, jarName);
                     });
         }
     }

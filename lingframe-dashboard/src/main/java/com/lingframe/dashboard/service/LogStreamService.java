@@ -95,6 +95,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         eventBus.subscribe("lingframe-dashboard", MonitoringEvents.AlertNotifyEvent.class, this::handleAlert);
         eventBus.subscribe("lingframe-dashboard", MonitoringEvents.CircuitBreakerStateEvent.class, this::handleCircuitBreaker);
         eventBus.subscribe("lingframe-dashboard", MonitoringEvents.LeakDetectionEvent.class, this::handleLeakDetection);
+        eventBus.subscribe("lingframe-dashboard", MonitoringEvents.ResourceCleanupCapabilityEvent.class, this::handleCleanupCapability);
 
         // 订阅状态变化事件
         eventBus.subscribe("lingframe-dashboard", InstanceStateChangedEvent.class, this::handleInstanceStateChange);
@@ -249,6 +250,21 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                 .content(content)
                 .tag(event.isCollected() ? "OK" : "FAIL")
                 .level(level)
+                .timestamp(event.getTimestamp())
+                .build();
+        broadcast(logStreamDTO);
+    }
+
+    private void handleCleanupCapability(MonitoringEvents.ResourceCleanupCapabilityEvent event) {
+        String content = String.format("%s capabilities: %s",
+                event.getRuntime(),
+                event.getSummary());
+
+        LogStreamDTO logStreamDTO = LogStreamDTO.builder()
+                .type("RUNTIME_DIAGNOSTIC")
+                .content(content)
+                .tag("RESOURCE_CLEANUP_CAPABILITY")
+                .level("INFO")
                 .timestamp(event.getTimestamp())
                 .build();
         broadcast(logStreamDTO);

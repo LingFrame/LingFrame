@@ -146,6 +146,20 @@ class MacroStateGuardFilterTest {
         }
 
         @Test
+        @DisplayName("运行时为 RECOVERING 时应抛出状态拒绝")
+        void doFilter_WhenStatusIsRecovering_ShouldThrowStateRejected() {
+            context.setServiceFQSID("demo-ling:com.example.DemoService");
+            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+            when(lingRuntime.currentStatus()).thenReturn(RuntimeStatus.RECOVERING);
+
+            LingInvocationException ex = assertThrows(LingInvocationException.class,
+                    () -> filter.doFilter(context, filterChain));
+
+            assertEquals(LingInvocationException.ErrorKind.STATE_REJECTED, ex.getKind());
+            verifyNoInteractions(filterChain);
+        }
+
+        @Test
         @DisplayName("运行时为 REMOVED 时应抛出路由失败")
         void doFilter_WhenStatusIsRemoved_ShouldThrowRouteFailure() {
             context.setServiceFQSID("demo-ling:com.example.DemoService");

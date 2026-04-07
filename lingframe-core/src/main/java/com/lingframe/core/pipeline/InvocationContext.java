@@ -236,6 +236,54 @@ public class InvocationContext {
         governanceState.setTimeoutMs(timeoutMs);
     }
 
+    public Integer getRateLimitPerSecond() {
+        return governanceState.getRateLimitPerSecond();
+    }
+
+    public void setRateLimitPerSecond(Integer rateLimitPerSecond) {
+        governanceState.setRateLimitPerSecond(rateLimitPerSecond);
+    }
+
+    public Integer getMaxConcurrentThreads() {
+        return governanceState.getMaxConcurrentThreads();
+    }
+
+    public void setMaxConcurrentThreads(Integer maxConcurrentThreads) {
+        governanceState.setMaxConcurrentThreads(maxConcurrentThreads);
+    }
+
+    public Integer getRetryCount() {
+        return governanceState.getRetryCount();
+    }
+
+    public void setRetryCount(Integer retryCount) {
+        governanceState.setRetryCount(retryCount);
+    }
+
+    public String getFallbackValue() {
+        return governanceState.getFallbackValue();
+    }
+
+    public void setFallbackValue(String fallbackValue) {
+        governanceState.setFallbackValue(fallbackValue);
+    }
+
+    public Integer getCpuBudgetMsPerMinute() {
+        return governanceState.getCpuBudgetMsPerMinute();
+    }
+
+    public void setCpuBudgetMsPerMinute(Integer cpuBudgetMsPerMinute) {
+        governanceState.setCpuBudgetMsPerMinute(cpuBudgetMsPerMinute);
+    }
+
+    public Integer getMemoryBudgetMb() {
+        return governanceState.getMemoryBudgetMb();
+    }
+
+    public void setMemoryBudgetMb(Integer memoryBudgetMb) {
+        governanceState.setMemoryBudgetMb(memoryBudgetMb);
+    }
+
     /**
      * 执行模式访问器。
      */
