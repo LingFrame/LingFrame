@@ -102,7 +102,7 @@ public class NativeLingFrame {
         LEAK_DETECTOR = new DefaultLeakDetector(eventBus, config);
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
                 pipelineEngine,
-                Collections.singletonList(new BasicResourceGuard()),
+                Collections.singletonList(new BasicResourceGuard(eventBus)),
                 RESOURCE_MANAGER,
                 LEAK_DETECTOR);
 

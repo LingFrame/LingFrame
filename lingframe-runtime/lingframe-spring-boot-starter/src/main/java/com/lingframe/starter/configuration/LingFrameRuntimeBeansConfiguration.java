@@ -59,8 +59,8 @@ public class LingFrameRuntimeBeansConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public ResourceGuard resourceGuard() {
-        return new SpringBasicResourceGuard();
+    public ResourceGuard resourceGuard(EventBus eventBus) {
+        return new SpringBasicResourceGuard(eventBus);
     }
 
     @Bean
