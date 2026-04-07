@@ -34,11 +34,21 @@ public interface LingLifecycleEngine {
      */
     void undeploy(String lingId);
 
+    default LingUninstallResult undeployWithReport(String lingId) {
+        undeploy(lingId);
+        return LingUninstallResult.triggered(lingId, null, null);
+    }
+
     /**
      * 卸载某个具体版本。
      * 如果它已经是最后一个版本，则连同运行时一起移除。
      */
     void undeploy(String lingId, String version);
+
+    default LingUninstallResult undeployWithReport(String lingId, String version) {
+        undeploy(lingId, version);
+        return LingUninstallResult.triggered(lingId, version, null);
+    }
 
     /**
      * 卸载某个具体实例对象。
@@ -48,5 +58,17 @@ public interface LingLifecycleEngine {
         if (instance != null) {
             undeploy(lingId, instance.getVersion());
         }
+    }
+
+    /**
+     * 触发一次受控恢复。
+     * 用于 ERROR / DEGRADED 场景下清理治理态、重试实例启动并收敛回稳定状态。
+     */
+    default void recover(String lingId) {
+        recover(lingId, null);
+    }
+
+    default void recover(String lingId, String version) {
+        throw new UnsupportedOperationException("Recovery is not supported by current lifecycle engine");
     }
 }

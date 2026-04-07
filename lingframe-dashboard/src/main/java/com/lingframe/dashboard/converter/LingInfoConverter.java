@@ -13,6 +13,7 @@ import com.lingframe.core.router.CanaryRouter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -54,6 +55,7 @@ public class LingInfoConverter {
                 .status(runtime.currentStatus().name())
                 .versionDetails(versionDetails)
                 .permissions(extractPermissions(lingId, permissionService, policy))
+                .invocationGovernance(extractInvocationGovernance(runtime, policy))
                 .installedAt(runtime.getInstalledAt())
                 .build();
     }
@@ -89,10 +91,25 @@ public class LingInfoConverter {
 
         // 提取 IPC 权限
         List<String> ipcServices = new ArrayList<>();
+        List<String> sqlCapabilities = new ArrayList<>();
+        List<String> redisCapabilities = new ArrayList<>();
+        List<String> extraCapabilities = new ArrayList<>();
         if (policy != null && policy.getCapabilities() != null) {
             for (GovernancePolicy.CapabilityRule rule : policy.getCapabilities()) {
-                if (rule.getCapability().startsWith("ipc:")) {
-                    ipcServices.add(rule.getCapability().substring(4)); // 去掉 ipc: 前缀
+                if (rule == null || rule.getCapability() == null) {
+                    continue;
+                }
+                String capability = rule.getCapability();
+                if (capability.startsWith("ipc:")) {
+                    ipcServices.add(capability.substring(4)); // 去掉 ipc: 前缀
+                } else if (capability.startsWith("storage:sql:table:")) {
+                    sqlCapabilities.add(capability);
+                } else if (capability.startsWith("cache:redis:")) {
+                    redisCapabilities.add(capability);
+                } else if (!Objects.equals(capability, Capabilities.STORAGE_SQL)
+                        && !Objects.equals(capability, Capabilities.CACHE_LOCAL)
+                        && !Objects.equals(capability, Capabilities.Ling_ENABLE)) {
+                    extraCapabilities.add(capability);
                 }
             }
         }
@@ -103,6 +120,43 @@ public class LingInfoConverter {
                 .cacheRead(cacheRead)
                 .cacheWrite(cacheWrite)
                 .ipcServices(ipcServices)
+                .sqlCapabilities(sqlCapabilities)
+                .redisCapabilities(redisCapabilities)
+                .extraCapabilities(extraCapabilities)
+                .localCacheNamespaceStrategy("lingId + cacheName + rawKey")
+                .build();
+    }
+
+    private LingInfoDTO.InvocationGovernance extractInvocationGovernance(LingRuntime runtime, GovernancePolicy policy) {
+        GovernancePolicy.InvocationPolicy invocation = policy == null ? null : policy.getInvocation();
+        Integer timeoutMs = invocation == null ? null : invocation.getTimeoutMs();
+        Integer rateLimitPerSecond = invocation == null ? null : invocation.getRateLimitPerSecond();
+        Integer maxConcurrentThreads = invocation == null ? null : invocation.getMaxConcurrentThreads();
+        Integer retryCount = invocation == null ? null : invocation.getRetryCount();
+        String fallbackValue = invocation == null ? null : invocation.getFallbackValue();
+        Integer cpuBudgetMsPerMinute = invocation == null ? null : invocation.getCpuBudgetMsPerMinute();
+        Integer memoryBudgetMb = invocation == null ? null : invocation.getMemoryBudgetMb();
+
+        if (runtime != null && runtime.getConfig() != null) {
+            if (timeoutMs == null) {
+                timeoutMs = runtime.getConfig().getDefaultTimeoutMs();
+            }
+            if (rateLimitPerSecond == null) {
+                rateLimitPerSecond = runtime.getConfig().getRateLimitPerSecond();
+            }
+            if (maxConcurrentThreads == null) {
+                maxConcurrentThreads = runtime.getConfig().getBulkheadMaxConcurrent();
+            }
+        }
+
+        return LingInfoDTO.InvocationGovernance.builder()
+                .timeoutMs(timeoutMs)
+                .rateLimitPerSecond(rateLimitPerSecond)
+                .maxConcurrentThreads(maxConcurrentThreads)
+                .retryCount(retryCount)
+                .fallbackValue(fallbackValue)
+                .cpuBudgetMsPerMinute(cpuBudgetMsPerMinute)
+                .memoryBudgetMb(memoryBudgetMb)
                 .build();
     }
 

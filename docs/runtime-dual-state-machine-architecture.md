@@ -1,54 +1,56 @@
 # Runtime Dual-State Machine Architecture
 
-This document describes the current dual-state runtime model around `LingRuntime` and `LingInstance`.
+This document describes the current dual-state runtime model around `LingRuntime` / `LingInstance` in LingFrame.
 
-It is focused on **why this split exists, what each layer owns, and which architectural constraints must remain stable**.
+It is focused on answering: **why this split exists, what each layer actually owns, and which architectural constraints must remain stable**.
 
-If you want practical code-reading, debugging, and extension guidance, use [Runtime Dual-State Machine Guide](runtime-dual-state-machine-guide.md).
+If you want a more practical guide on "how to read the code, how to debug, how to extend", please read the [Runtime Dual-State Machine Guide](runtime-dual-state-machine-guide.md) instead.
 
-The design is not about adding state machines for their own sake. It exists to solve three practical problems inside a single JVM process:
+It is not a design created "for the sake of state machines." It exists to solve the three most easily out-of-control problems in a single JVM, single-process, multi-version concurrent scenario:
 
-1. A single instance lifecycle must be predictable and protected from arbitrary external mutation.
-2. The macro runtime state of one ling must have a single source of truth.
-3. Lifecycle orchestration, state mutation, and pool membership changes must be layered instead of mixed together.
+1. A single instance's lifecycle must be predictable and cannot be arbitrarily rewritten by the outside.
+2. The runtime state after multi-instance aggregation must have a single source of truth, avoiding objects writing states to each other.
+3. Lifecycle orchestration, state mutation, and pool membership changes must be layered; otherwise, the codebase becomes increasingly tangled.
 
-## Short Version
+## One-Sentence Summary
 
-Treat the runtime as two linked layers:
+Treat this model as two layers:
 
-- **Instance Layer**: "what is the factual lifecycle state of one concrete instance?"
-- **Runtime Layer**: "what macro state does this ling expose as a whole?"
+- **Instance Layer**: Describes "what factual state a specific version instance is currently in."
+- **Runtime Layer**: Describes "what macro state this ling as a whole exposes to the outside."
 
-The layers are linked by events, not by direct cross-object mutation.
+The two layers do not directly write to each other's states; they are linked only via events.
 
-## Why Two Layers
+## Why It Must Be Two Layers
 
-If everything is pushed into one state machine, three problems appear quickly:
+If there is only one layer of state machine, three architectural problems arise:
 
-1. Single-instance facts and runtime-level intent become mixed.
-2. Orchestration code starts mutating state directly "for convenience".
-3. Blue-green deployment and graceful undeploy become hard to model, because "new version starting", "old version draining", and "runtime still serving" happen at the same time.
+1. Single instance facts and runtime macro intents become mixed, making state semantics increasingly muddy.
+2. Lifecycle orchestration code, for the sake of "convenience," will directly alter object states, eventually allowing anyone to write state.
+3. During blue-green deployments, hot reloads, or graceful unloads, composite scenarios emerge (e.g., "new version starting, old version draining, but overall runtime still available"), which a single-layer model cannot express.
 
-After the split:
+After the dual-layer split, semantics can be cleanly separated:
 
-- `InstanceStatus` models per-instance facts.
-- `RuntimeStatus` models macro runtime availability and operational intent.
+- **InstanceStatus** focuses on the true lifecycle of a single instance.
+- **RuntimeStatus** focuses on the overall runtime macro health and operational intent.
 
 ## Core Roles
 
-| Role | Layer | Responsibility | Owns write authority |
+| Role | Layer | Responsibility | Owns State Write Authority |
 | --- | --- | --- | --- |
-| `LingInstance` | Instance | Holds the concrete runtime entity and the per-instance FSM carrier | No public write authority |
-| `InstanceCoordinator` | Instance | Only formal writer for instance state, publishes instance events | Yes |
-| `InstancePool` | Kernel membership | Manages active instances, default instance, and dying queue | No, membership only |
-| `LingRuntime` | Runtime aggregate | Holds config, stats, and instance pool, exposes a read-only runtime view | No |
-| `RuntimeCoordinator` | Runtime | Owns `RuntimeStatus`, maintains snapshots, aggregates macro state | Yes |
-| `DefaultLingLifecycleEngine` | Orchestration | Translates deploy / undeploy intent into phases and drives deploy / undeploy order | No |
-| `LingUnloadCoordinator` | Unload cleanup | Evicts pipeline/runtime resources, delegates guard cleanup, and runs leak detection | No |
+| `LingInstance` | Instance Layer | Holds the single-instance running entity and the instance-level FSM carrier | No, not exposed externally |
+| `InstanceCoordinator` | Instance Layer | The **only** formal write entry for instance state, publishes instance state events | Yes |
+| `InstancePool` | Core Membership | Manages active instances, the default instance, and the dying queue | No, only manages membership |
+| `LingRuntime` | Runtime Aggregate | Holds configs, stats, and the instance pool; exposes a read-only runtime view | No |
+| `RuntimeCoordinator` | Runtime Layer | Holds the `RuntimeStatus` FSM, aggregates instance snapshots, publishes runtime events | Yes |
+| `DefaultLingLifecycleEngine` | Orchestration Layer | Translates deploy/unload intents into phased actions, drives deployment/unload sequence | No, orchestrates but ignores direct state modification |
+| `LingUnloadCoordinator` | Unload Cleanup | Reclaims pipeline resources, cleans invocation guards, and runs leak detection | No |
 
 ## What Each State Machine Owns
 
 ### Instance Layer: `InstanceStatus`
+
+The instance layer expresses the true lifecycle facts of a single version instance.
 
 ```text
 CREATED -> LOADING -> STARTING -> READY -> STOPPING -> DEAD
@@ -56,11 +58,23 @@ CREATED -> LOADING -> STARTING -> READY -> STOPPING -> DEAD
     +--------> ERROR -----+----------+----------+
 ```
 
-This layer answers one question:
+Semantic priorities:
 
-> What lifecycle fact is true for this specific instance right now?
+- `CREATED`: Object constructed, loading has not begun.
+- `LOADING`: Bytecode verification, metadata preparation, pre-deployment phase.
+- `STARTING`: Container is starting.
+- `READY`: Instance can accept traffic.
+- `STOPPING`: Instance has stopped accepting new traffic and is gracefully draining.
+- `DEAD`: Instance is completely destroyed.
+- `ERROR`: Error state, allowed to converge to `STOPPING` or `DEAD`.
+
+The instance layer answers only one question:
+
+> What lifecycle phase is this specific instance factually in right now?
 
 ### Runtime Layer: `RuntimeStatus`
+
+The runtime layer expresses the macro state the entire ling presents externally.
 
 ```text
 INACTIVE <-> ACTIVE <-> DEGRADED
@@ -68,131 +82,147 @@ INACTIVE <-> ACTIVE <-> DEGRADED
     +--------> STOPPING -> REMOVED
 ```
 
-This layer answers a different question:
+Semantic priorities:
 
-> What macro state should the whole ling expose right now?
+- `INACTIVE`: Registered, but no serviceable instances exist.
+- `ACTIVE`: Overall serviceable.
+- `DEGRADED`: Overall serviceable, but degraded.
+- `STOPPING`: Operations actively requested to enter the shutdown process.
+- `REMOVED`: Completely removed.
 
-One important implementation reality remains:
+One fact must be made clear here:
 
-- `INACTIVE / ACTIVE / DEGRADED` are factual macro states.
-- `STOPPING / REMOVED` also carry operational intent.
+`RuntimeStatus` currently carries two types of semantics simultaneously:
 
-That is why `STOPPING` suppresses later aggregation and only allows progress to `REMOVED`.
+1. **Factual State**: `INACTIVE / ACTIVE / DEGRADED`
+2. **Operational Intent**: `STOPPING / REMOVED`
 
-## Why `LingRuntime` No Longer Owns a Runtime FSM
+This is also why once `STOPPING` is entered, subsequent aggregation evaluations are suppressed and it cannot be "pulled back" by the instance layer.
 
-This was the key convergence point.
+## Why `LingRuntime` No Longer Owns the Runtime FSM
 
-If `LingRuntime` keeps its own runtime FSM, two architectural failures become likely:
+This is the key to the current architectural convergence.
 
-1. orchestration code writes runtime state directly through the aggregate object
-2. `LingRuntime` and `RuntimeCoordinator` drift into dual sources of truth
+If `LingRuntime` holds the runtime FSM itself, it naturally induces two types of errors:
 
-The current rule is strict:
+1. Lifecycle orchestration code will directly mutate state through `LingRuntime`.
+2. `RuntimeCoordinator` and `LingRuntime` would each maintain a state, splitting the source of truth.
 
-- runtime FSM exists only in `RuntimeCoordinator`
-- `LingRuntime` reads through `currentStatus()`
-- external runtime mutation must go through `RuntimeCoordinator`
+The current rule is:
 
-## Why `LingInstance` Still Keeps an Internal FSM
+- The runtime FSM **only** exists in `RuntimeCoordinator`.
+- `LingRuntime` reads it only via `currentStatus()`.
+- External changes to `RuntimeStatus` must go through `RuntimeCoordinator`.
 
-This is the most common misunderstanding.
+This allows the runtime layer to regain a "single source of truth."
 
-Keeping the FSM inside `LingInstance` does **not** mean reopening public state mutation.
+## Why `LingInstance` Still Retains the State Machine
 
-It stays there for three reasons:
+This is the most easily misunderstood point.
 
-1. an instance lifecycle still needs an atomic consistency primitive
-2. `InstanceCoordinator` needs a CAS-backed carrier to drive transitions
-3. the FSM naturally belongs to the instance boundary
+Retaining the instance-level FSM inside `LingInstance` does **not** mean it re-opens state write permission to the outside.
 
-But the public rule is equally strict:
+It is retained for exactly three reasons:
 
-- no raw `StateMachine` exposure
-- no public `markReady()` / `destroy()` style mutators on `LingInstance`
-- only `InstanceCoordinator` may drive transitions through package-private access
+1. The single instance lifecycle inherently needs an atomic consistency carrier.
+2. `InstanceCoordinator` needs a CAS-backed mechanism to drive state transitions.
+3. The state machine follows the instance object, which best fits object boundaries.
 
-So the final structure is:
+Simultaneously, the external rules are rigid:
 
-- the FSM stays inside the object
-- write authority stays in the coordinator
+- `StateMachine` must not be exposed.
+- Public state-altering methods like `markReady()` or `destroy()` must not be exposed.
+- Only `InstanceCoordinator` can drive state changes via package-private access.
 
-## Event-Driven Linkage Instead of Cross-Writing
+So the current structure is:
 
-The linkage path is intentionally one-way:
+- **The state machine is inside the object.**
+- **The write authority is in the hands of the coordinator.**
+
+This is not a contradiction; it is a separation of responsibilities.
+
+## Event Linkage, Not Object Cross-Writing
+
+The critical linkage chain for the dual-layer state machine is as follows:
 
 ```text
 InstanceCoordinator
-  -> drives InstanceStatus
-  -> publishes InstanceStateChangedEvent
+  -> drive InstanceStatus
+  -> publish InstanceStateChangedEvent
 
 RuntimeCoordinator
-  -> subscribes to instance events
-  -> updates snapshots[lingId][version]
-  -> reevaluates RuntimeStatus
-  -> publishes RuntimeStateChangedEvent
+  -> subscribe instance events
+  -> update snapshots[lingId][version]
+  -> reevaluate RuntimeStatus
+  -> publish RuntimeStateChangedEvent
 
 LingRuntime
-  -> observes runtime events
-  -> tightens LingCore-side runtime behavior when STOPPING / REMOVED
+  -> subscribe runtime events
+  -> tighten LingCore-side runtime behavior when STOPPING / REMOVED
 ```
 
-This means:
+It must be emphasized here:
 
-- `InstanceCoordinator` does not write `RuntimeStatus`
-- `RuntimeCoordinator` does not mutate `LingInstance`
-- `LingRuntime` does not keep a second runtime FSM
+- `InstanceCoordinator` does not directly write to `RuntimeStatus`.
+- `RuntimeCoordinator` does not directly mutate `LingInstance`.
+- `LingRuntime` does not reverse-hold the runtime FSM.
 
-## Why Snapshots Matter
+They form a one-way linkage chain through events, rather than invading each other.
 
-`RuntimeCoordinator` aggregates from snapshots:
+## Why Snapshots Are Important
+
+`RuntimeCoordinator` does not explicitly traverse the object graph to deduce runtime state; instead, it maintains a snapshot of instance states:
 
 ```text
 snapshots[lingId][version] = InstanceStatus
 ```
 
-Instead of scanning live object graphs directly.
+There are four benefits to doing this:
 
-Benefits:
+1. Aggregation computation only relies on factual snapshots, not complex object structures.
+2. The instance layer and runtime layer can decouple behind event boundaries.
+3. Under concurrency, as long as events eventually arrive, the runtime layer can re-converge.
+4. The logic for `STOPPING -> REMOVED` ("wait for all instances to disappear before completing") becomes much clearer.
 
-1. aggregation depends on facts, not aggregate object structure
-2. instance and runtime layers stay decoupled behind event boundaries
-3. concurrent reevaluation remains easier to reason about
-4. `STOPPING -> REMOVED` becomes "all factual instances are gone", not "some object said so"
+## Boundaries Between Orchestration Layer and State Layer
 
-## Orchestration Boundary
+### What the Orchestration Layer Does
 
-### What orchestration does
+- `DefaultLingLifecycleEngine` splits the deploy/unload intents into phases.
+- `DefaultLingLifecycleEngine` handles the overall sequence of instance startup, pool admission, retirement, and unloading.
+- `LingUnloadCoordinator` is responsible for post-unload resource cleanup and leak detection.
 
-- `DefaultLingLifecycleEngine` defines phase order
-- `DefaultLingLifecycleEngine` drives startup, pool commit, retirement, and undeploy sequencing
-- `LingUnloadCoordinator` handles unload-side cleanup and leak detection
+### What the Orchestration Layer Must Not Do
 
-### What orchestration must not do
+- It must not directly modify `LingRuntime` state.
+- It must not directly expose the `LingInstance` state machine.
+- It must not bypass coordinators to publish state events itself.
 
-- directly mutate `RuntimeStatus`
-- re-expose raw instance state machines
-- bypass coordinators and publish "implied" state changes
+Summarized in one sentence:
 
-In one sentence:
+> The orchestration layer determines the order; coordinators determine the state.
 
-> orchestration decides order, coordinators decide state.
+## Architectural View of Typical Linkages
 
-## Architectural Reading Of Typical Flows
-
-### First deployment
+### First Deployment
 
 ```text
 register runtime
 -> prepare instance (CREATED -> LOADING)
 -> start instance (LOADING -> STARTING)
--> commit to pool
+-> add to instance pool
 -> mark ready (STARTING -> READY)
--> runtime snapshot sees READY
--> runtime reevaluates (INACTIVE -> ACTIVE)
+-> runtime snapshots sees READY
+-> runtime reevaluate (INACTIVE -> ACTIVE)
 ```
 
-### Reload / version switch
+Design objective:
+
+- First ensure the runtime aggregator is registered.
+- Then publish instance events.
+- When the `READY` event appears, the instance pool membership is already visible on the runtime side.
+
+### Hot Reload / Multi-Version Switch
 
 ```text
 old default = v1
@@ -204,42 +234,69 @@ deploy v2
 -> v1 tearDown -> DEAD
 ```
 
-### Undeploy
+Design focus:
+
+- The new version must start successfully before switching the default route.
+- The old version does not disappear immediately; it enters the `dyingQueue`.
+- Graceful drainage is guaranteed jointly by instance layer status and reference counting.
+
+### Unload
 
 ```text
 runtime shutdown
 -> RuntimeStatus enters STOPPING
--> instance pool rejects new members
--> each instance tears down
+-> instance pool stops accepting new instances
+-> each instance tearDown
 -> snapshots become empty
 -> RuntimeStatus goes STOPPING -> REMOVED
--> runtime is purged
+-> purge runtime
 ```
 
-## Hard Rules
+Design focus:
 
-Treat the following as architectural red lines:
+- `STOPPING` is an intent state at the runtime layer.
+- `REMOVED` can only be entered once instance layer facts have been completely cleared.
 
-1. Do not add raw state mutation outside coordinators.
-2. Do not let `LingRuntime` own a second runtime FSM.
-3. Do not turn `InstancePool` into a lifecycle manager.
-4. Do not let runtime and instance layers write each other directly.
-5. Do not reintroduce compatibility mutators just for convenience.
+## Current Hard Constraints
 
-## Current Reality and Future Evolution
+Treat the following rules as architectural red lines:
 
-Two realities still matter:
+1. Do not directly manipulate the state machine in business code or normal LingCore integration code.
+2. Do not allow `LingRuntime` to hold a second runtime FSM.
+3. Do not rewrite `InstancePool` to act as a "lifecycle manager".
+4. Do not allow direct state-writing between the instance layer and the runtime layer.
+5. Do not re-expose compatibility-related state manipulation APIs for convenience.
 
-### `RuntimeStatus` still mixes fact and intent
+## Present Abstract Realities
 
-That is a conscious tradeoff, not a hidden bug.
+Although a major convergence has been completed, two realities must be acknowledged:
 
-It keeps shutdown stable today, but it also means future evolution may eventually split macro facts from operational commands.
+### First, `RuntimeStatus` Still Mixes Facts With Intents
 
-### Lifecycle ordering still matters
+This is a conscious tradeoff in the current implementation, not a bug.
 
-Pool commit, default switch, old-version retirement, and teardown are inherently ordered operations.
+Benefits:
+- Simplifies implementation.
+- Keeps the runtime shutdown process highly stable.
 
-The goal of the current design is not to remove ordering. The goal is to centralize ordering in orchestration and centralize write authority in coordinators.
+Costs:
+- `STOPPING` semantics are not exactly in the same category as `ACTIVE / DEGRADED`.
+- If governance models become more granular in the future, we may need to split "factual states" and "operational command states".
 
-Continue with [Runtime Dual-State Machine Guide](runtime-dual-state-machine-guide.md) if you want to follow actual code paths, extension rules, and debugging entry points.
+### Second, the Instance Pool and Lifecycle Orchestration Still Retain Order Coupling
+
+This is an unavoidable reality on the LingCore side, as "joining the pool," "switching default routes," "retiring the old version," and "destroying resources" inherently have an ordering requirement.
+
+The current approach is not to eliminate this ordering, but to centralize ordering within the orchestration layer while centralizing write authority within the coordinators.
+
+## Architectural Benefits
+
+After this round of convergence, the core benefits brought by this model are:
+
+1. **Unique Single Source of Truth for State**: Both the runtime layer and instance layer have only one formal write entry.
+2. **Clear Linkage Direction**: Instance facts move upwards, and runtime aggregation draws the conclusion.
+3. **Readable Orchestration Code**: Phase ordering and state writing are no longer conflated.
+4. **Stable Multi-Version Governance**: Blue-green, hot reloads, and unloads are easier to reason about.
+5. **Grasp for Future Evolutions**: If we split "factual state / intent state" in the future, the existing boundary can support it.
+
+If you are going to continue reading, modifying, or troubleshooting the codebase, head straight to the [Runtime Dual-State Machine Guide](runtime-dual-state-machine-guide.md).

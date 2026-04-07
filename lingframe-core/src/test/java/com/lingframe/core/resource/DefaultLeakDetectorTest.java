@@ -3,9 +3,13 @@ package com.lingframe.core.resource;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
+import com.lingframe.core.spi.LeakRiskLevel;
+import com.lingframe.core.spi.LeakRiskReport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -129,6 +133,79 @@ class DefaultLeakDetectorTest {
             assertFalse(event.isCollected());
             assertEquals(DefaultLeakDetector.MODE_PROD_PASSIVE, event.getDetectionMode());
             assertTrue(event.getMessage().contains("passive window"));
+        } finally {
+            detector.shutdown();
+        }
+    }
+
+    @Test
+    @DisplayName("卸载前预检在无明显信号时应返回无风险")
+    void checkBeforeShouldReturnNoRiskWhenNoObviousSignalExists() {
+        DefaultLeakDetector detector = new DefaultLeakDetector(new EventBus(), LingFrameConfig.builder().build());
+        try {
+            LeakRiskReport report = detector.checkBefore("ling-a", "v1", new ClassLoader() {
+            });
+
+            assertNotNull(report);
+            assertEquals(LeakRiskLevel.NO_RISK, report.getLevel());
+            assertTrue(report.getDetails().isEmpty());
+        } finally {
+            detector.shutdown();
+        }
+    }
+
+    @Test
+    @DisplayName("卸载前预检在检测到 TCCL 指向目标加载器时应返回风险")
+    void checkBeforeShouldReturnRiskDetectedWhenTcclStillPointsToTargetClassLoader() throws Exception {
+        DefaultLeakDetector detector = new DefaultLeakDetector(new EventBus(), LingFrameConfig.builder().build());
+        CountDownLatch ready = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        ClassLoader target = new ClassLoader() {
+        };
+        Thread worker = new Thread(() -> {
+            Thread.currentThread().setContextClassLoader(target);
+            ready.countDown();
+            try {
+                release.await(2, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "leak-risk-precheck-worker");
+        worker.start();
+
+        try {
+            assertTrue(ready.await(2, TimeUnit.SECONDS));
+
+            LeakRiskReport report = detector.checkBefore("ling-a", "v2", target);
+
+            assertNotNull(report);
+            assertEquals(LeakRiskLevel.RISK_DETECTED, report.getLevel());
+            assertFalse(report.getDetails().isEmpty());
+            assertTrue(report.getDetails().get(0).contains("leak-risk-precheck-worker"));
+        } finally {
+            release.countDown();
+            worker.join(2000);
+            detector.shutdown();
+        }
+    }
+
+    @Test
+    @DisplayName("卸载前预检异常时应降级为检查失败")
+    void checkBeforeShouldReturnCheckFailedWhenPrecheckThrows() {
+        DefaultLeakDetector detector = new DefaultLeakDetector(new EventBus(), LingFrameConfig.builder().build()) {
+            @Override
+            List<String> findThreadContextClassLoaderRisks(ClassLoader classLoader) {
+                throw new IllegalStateException("boom");
+            }
+        };
+
+        try {
+            LeakRiskReport report = detector.checkBefore("ling-a", "v3", new ClassLoader() {
+            });
+
+            assertNotNull(report);
+            assertEquals(LeakRiskLevel.CHECK_FAILED, report.getLevel());
+            assertEquals(Collections.singletonList(IllegalStateException.class.getName()), report.getDetails());
         } finally {
             detector.shutdown();
         }

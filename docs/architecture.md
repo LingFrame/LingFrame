@@ -1,6 +1,6 @@
 # Architecture Design
 
-This document describes the **public `0.3.0` architecture that is actually implemented in the current codebase**.
+This document describes the **public architecture that is actually implemented in the current codebase**.
 
 It intentionally avoids older architecture narratives that no longer match the runtime.
 
@@ -24,7 +24,7 @@ If you want one sentence for the center of gravity of this document, use this:
 
 ## Module Layout
 
-| Module | Role in `0.3.0` |
+| Module | Current role |
 | :-- | :-- |
 | `lingframe-api` | contracts, annotations, exceptions, security abstractions |
 | `lingframe-core` | pipeline engine, routing, runtime state, lifecycle coordination, event bus, governance logic |
@@ -55,7 +55,18 @@ If you want one sentence for the center of gravity of this document, use this:
 | `ThreadIsolationGovernanceFilter` | apply execution isolation and thread handoff |
 | `TerminalInvokerFilter` | perform terminal invocation, simulation result generation, or skip terminal execution based on mode |
 
-The important shift in `0.3.0` is not just that these filters exist. It is that they now form the formal runtime path used by more than one entry surface.
+The important shift in the current implementation is not just that these filters exist. It is that they now form the formal runtime path used by more than one entry surface.
+
+### Invocation Context (InvocationContext)
+
+To prevent the proliferation of traditional `Map<String, Object>`-based magic keys, LingFrame enforces a strict structural protocol for its context. `InvocationContext` acts as the single pass-through object across the pipeline and is explicitly partitioned into four protocol areas:
+
+- `routingState`: Facts used for routing intent (e.g., target version, labels).
+- `resolutionState`: Short-lived strong references like classloaders and methods (requires strict eviction upon reclamation to prevent cross-invocation leaks).
+- `governanceState`: Immutable operational intents such as permissions, audits, and rate limit quotas.
+- `executionState`: Controls whether the invocation will trigger real side effects or just record a trace.
+
+This design makes pipeline data flow highly traceable and robust.
 
 ---
 
@@ -75,7 +86,7 @@ This is the key mechanism that allows more entry points to reuse one kernel inst
 
 ## Lifecycle Orchestration
 
-`DefaultLingLifecycleEngine` is the top-level lifecycle orchestrator in the shipped `0.3.0` runtime.
+`DefaultLingLifecycleEngine` is the top-level lifecycle orchestrator in the current runtime.
 
 It translates deploy, reload, and unload intent into ordered runtime actions while leaving state writes to `InstanceCoordinator` and `RuntimeCoordinator`.
 
@@ -101,7 +112,7 @@ It translates deploy, reload, and unload intent into ordered runtime actions whi
 - evict services, pipeline-held resources, caches, and classloader-owned state
 - perform leak detection as part of unload completion
 
-This is part of why `0.3.0` is a convergence release rather than just a feature add.
+This is part of why the current architecture has already formed a convergence spine rather than remaining a simple feature add.
 
 What matters here is not merely that unload exists, but that unload is treated as an orchestrated runtime responsibility with cleanup and diagnostics.
 
@@ -122,7 +133,7 @@ This is an intentional process-level rule. A brand-new shared contract can be in
 
 ## Runtime Ownership Model
 
-`0.3.0` formalizes runtime state into two layers.
+The current implementation formalizes runtime state into two layers.
 
 ### Instance Layer
 
@@ -162,7 +173,7 @@ The linkage is event-driven rather than object-mutating-object:
 - `RuntimeCoordinator` subscribes to those facts
 - runtime macro state is reevaluated from snapshots
 
-That separation is the main architectural convergence point in `0.3.0`.
+That separation is one of the main architectural convergence points in the current runtime.
 
 For the full state-ownership explanation, continue with [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md).
 
@@ -179,19 +190,19 @@ The same kernel is now reused by multiple entry paths.
 | LingCore bean methods | `LingCoreBeanGovernanceInterceptor` | uses `GOVERN_ONLY` around AOP-intercepted bean execution |
 | Dashboard simulations | `SimulateService` | uses `SIMULATION` to run the real governance chain without real side effects |
 
-This is what makes `0.3.0` meaningfully different from the earlier “feature collection” stage.
+This is what makes the current implementation meaningfully different from the earlier "feature collection" state.
 
 ---
 
 ## Observability And Cleanup
 
-`0.3.0` also tightens the relationship between governance and operations.
+The current implementation also tightens the relationship between governance and operations.
 
 - `EngineTrace` captures explainable decision traces for simulation and kernel reasoning.
 - `MonitoringEvents` defines a shared event vocabulary for trace, audit, alert, circuit-breaker, and leak-detection events.
 - `LogStreamService` streams those events to the dashboard through SSE.
 - `InvocationPipelineEngine.evictLingResources` and method cache eviction support unload cleanup.
-- `DefaultLeakDetector` reports bounded dev-mode diagnostics and passive prod-mode diagnostics.
+- `DefaultLeakDetector` supports tiered leak diagnostics (including `DEV_AGGRESSIVE` for active diagnostics, `DEV_BOUNDED` for graceful degradation, and `PROD_PASSIVE` for passive prod-mode observation), utilizing bounded concurrency to prevent GC storms during investigation.
 
 The important architectural shift is that the dashboard is increasingly consuming **real kernel evidence** instead of a parallel interpretation layer.
 
@@ -201,7 +212,7 @@ That is also part of what separates LingFrame from a simpler "dynamic loading pl
 
 ## Current Boundaries
 
-The public `0.3.0` architecture still has clear boundaries:
+The current public architecture still has clear boundaries:
 
 - it is a **single-process** governance kernel
 - `Shared API` remains a **process-level contract boundary**

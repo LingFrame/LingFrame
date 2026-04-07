@@ -10,6 +10,7 @@ import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.strategy.GovernanceStrategy;
+import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.web.method.HandlerMethod;
 
@@ -60,7 +61,8 @@ public final class WebGovernanceSupport {
     public InvocationContext buildInvocationContext(WebRequestFacade request,
                                                     Method method,
                                                     String lingId,
-                                                    WebInterfaceMetadata meta) {
+                                                    WebInterfaceMetadata meta,
+                                                    EntryInvocationGovernanceResolver invocationGovernanceResolver) {
         String permission = resolvePermission(method, meta);
         boolean shouldAudit = resolveShouldAudit(request, method, meta);
         String auditAction = resolveAuditAction(request, method, meta);
@@ -92,6 +94,9 @@ public final class WebGovernanceSupport {
         ctx.setMetadata(resolveMetadata(request));
         ctx.setLabels(new HashMap<String, String>());
         ctx.setRuleSource(null);
+        if (invocationGovernanceResolver != null) {
+            invocationGovernanceResolver.applyTo(ctx, lingId);
+        }
         return ctx;
     }
 

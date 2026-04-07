@@ -10,7 +10,9 @@ import java.util.*;
  * <pre>
  * 状态主链：CREATED → LOADING → STARTING → READY → STOPPING → DEAD
  *    ↘         ↘          ↘        ↘         ↘
- * 异常支路：ERROR ───→ STOPPING / DEAD
+ * 异常支路：ERROR → RECOVERING → STARTING → READY
+ *                  ↘
+ *                   DEAD
  * </pre>
  * "是否参与路由"由流量策略层决定，不体现为实例状态。
  * 运行时状态 `RuntimeStatus` 由多个实例状态 `InstanceStatus` 聚合而来，但两层状态机彼此不直接写对方。
@@ -42,6 +44,11 @@ public enum InstanceStatus {
      */
     DEAD,
     /**
+     * 受控恢复中。
+     * 允许在不直接销毁实例对象的前提下重新拉起容器。
+     */
+    RECOVERING,
+    /**
      * 异常态，可由任何活跃状态进入
      */
     ERROR;
@@ -58,7 +65,8 @@ public enum InstanceStatus {
         m.put(STARTING, EnumSet.of(READY, ERROR));
         m.put(READY, EnumSet.of(STOPPING, ERROR));
         m.put(STOPPING, EnumSet.of(DEAD, ERROR));  // 关闭失败允许进入 ERROR
-        m.put(ERROR, EnumSet.of(STOPPING, DEAD));   // 可重试关闭或直接销毁
+        m.put(ERROR, EnumSet.of(RECOVERING, STOPPING, DEAD));   // 可进入恢复、重试关闭或直接销毁
+        m.put(RECOVERING, EnumSet.of(STARTING, ERROR, DEAD));
         m.put(DEAD, Collections.emptySet());       // 终态，不可跃迁
         TRANSITIONS = Collections.unmodifiableMap(m);
     }

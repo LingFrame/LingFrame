@@ -1,43 +1,43 @@
-# Runtime Dual-State Machine Guide
+# Runtime Dual-State Machine Technical Guide
 
-This guide is for someone who has never seen this architecture before and needs a practical way to understand, debug, and extend it.
+This document is for developers encountering this design for the first time. The focus isn't to preach "how great the concept is," but rather to help you truly read, debug, and extend this architecture.
 
-It is focused on **how to follow the code, where to debug, and how to change the model without breaking boundaries**.
+It answers these core questions: **how to trace the code, where things often go wrong, and how to extend without breaking boundaries**.
 
-If you want the architectural rationale first, read [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md).
+If you prefer to understand the design motivations and stability constraints first, please refer to the [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md).
 
-## Start With Three Sentences
+## Establish a Minimal Mental Model First
 
-Do not try to memorize every class first.
+Do not try to memorize every single class right away.
 
-Just remember:
+You only need to remember these three sentences first:
 
-1. `InstanceCoordinator` writes instance state.
-2. `RuntimeCoordinator` writes runtime state.
-3. the lifecycle engine orchestrates order, but it does not own state truth.
+1. **Instance state** is written by `InstanceCoordinator`.
+2. **Runtime state** is written by `RuntimeCoordinator`.
+3. **Lifecycle orchestration** is sequenced by the lifecycle engine, but it does not directly own the source of truth for states.
 
-If you keep these three sentences in mind, the code becomes much easier to read.
+If you can hold onto these three rules, the code will not seem chaotic when you read it later.
 
-## The Five Objects That Matter Most
+## The Five Most Critical Objects
 
 ### `LingInstance`
 
-Represents one concrete versioned runtime entity.
+It represents the true executing entity of a specific version.
 
-Think of it as:
+You can think of it as:
 
-- a container
-- definition data
-- an internal instance FSM
-- an active-request counter
+- A container.
+- A set of definition metadata.
+- An internal instance state machine.
+- An active request counter.
 
-It carries facts, but it does not expose public state mutation.
+It takes responsibility for "carrying facts," but it is NOT responsible for "exposing state modification externally."
 
 ### `InstanceCoordinator`
 
-The only formal writer of instance state.
+This is the only formal write-entry for instance states.
 
-Typical entry points:
+Common entries include:
 
 - `prepare()`
 - `start()`
@@ -46,46 +46,46 @@ Typical entry points:
 - `error()`
 - `tearDown()`
 
-If some other class starts mutating `LingInstance` state directly, that is usually an architectural boundary violation.
+If you see someone trying to change the state of `LingInstance` directly from elsewhere, that is usually a boundary violation.
 
 ### `InstancePool`
 
-Only handles membership:
+It only manages pool membership relations:
 
-- which instances are active
-- which instance is default
-- which instances are in the dying queue
+- Which instances are currently alive.
+- Which instance is the default instance.
+- Which instances have entered the `dyingQueue`.
 
-It is not the lifecycle owner and not the runtime state machine.
+It is not a state machine itself, nor is it the master lifecycle controller.
 
 ### `LingRuntime`
 
-The aggregate runtime view, not the owner of runtime state.
+It is the runtime aggregate, not the runtime state machine owner.
 
-It holds:
+It is responsible for:
 
-- config
-- stats
-- the instance pool
-- a read-only status view
+- Configurations.
+- Statistics.
+- The instance pool.
+- Exposing a read-only state view externally.
 
-It does not own:
+It is NOT responsible for:
 
-- runtime state mutation
-- instance lifecycle mutation
-- full deploy / undeploy orchestration
+- Directly writing `RuntimeStatus`.
+- Driving the instance state machine.
+- Orchestrating the complete deploy/unload flows.
 
 ### `RuntimeCoordinator`
 
-The owner of `RuntimeStatus`.
+This is the sole owner of `RuntimeStatus`.
 
-It listens to instance events, updates snapshots, and aggregates macro runtime state.
+It listens to instance-layer events, maintains snapshots, and aggregates the runtime state.
 
-If you only read one class to understand the linkage between the two layers, read this one.
+If you only pick one class to understand "how the dual-layer state machines link together," read this one first.
 
-## How To Read the Deploy Flow
+## How to Read the Deployment Chain
 
-Follow this path:
+We recommend tracing in this exact sequence:
 
 1. `DefaultLingLifecycleEngine.deploy()`
 2. `ensureRuntimeForDeployment()`
@@ -94,21 +94,23 @@ Follow this path:
 5. `startPreparedInstance()`
 6. `publishReadyInstance()`
 
-While reading, ask three questions:
+While reading, focus on three things:
 
-1. who defines the order?
-2. who writes instance state?
-3. who decides runtime state?
+1. Who is orchestrating the order?
+2. Who is writing the instance state?
+3. Who formally decides the runtime state?
 
-The answers should always be:
+You will see:
 
-- engine defines order
-- `InstanceCoordinator` writes instance state
-- `RuntimeCoordinator` decides runtime state
+- The engine oversees the stage sequencing.
+- `InstanceCoordinator` handles the instance state.
+- `RuntimeCoordinator` handles the runtime state.
 
-## How To Read the Undeploy Flow
+This is the backbone of the current architecture.
 
-Follow this path:
+## How to Read the Unload Chain
+
+We recommend tracing in this sequence:
 
 1. `DefaultLingLifecycleEngine.undeploy()`
 2. `enterRuntimeStopping()`
@@ -118,144 +120,166 @@ Follow this path:
 6. `RuntimeCoordinator.onInstanceStateChanged()` / `onInstanceDestroyed()`
 7. `tryFinishShutdown()`
 
-Pay attention to:
+While reading, closely observe:
 
-- why runtime enters `STOPPING` first
-- why teardown still publishes events
-- why undeploy does not directly force `REMOVED`
+- Why the runtime is pushed to `STOPPING` first.
+- Why events are sent even after the instance is destroyed.
+- Why the runtime is not simply set to `REMOVED` directly inside `undeploy()`.
 
-Because `REMOVED` must be supported by cleared instance facts, not by orchestration declaration alone.
+The reason is simple:
 
-## Why Pool Commit Happens Before READY
+`REMOVED` must be supported by the fact that "all instances are factual gone," instead of the orchestration layer blindly declaring it.
 
-Current order in `publishReadyInstance()`:
+## Why Enter the Pool Before Marking READY
+
+In the current implementation, `publishReadyInstance()` runs in this order:
 
 1. `instancePool.addInstance(instance, isDefault)`
 2. `instanceCoordinator.markReady(instance)`
 
-This is intentional.
+This order is not accidental.
 
-It guarantees that if the READY event makes the runtime aggregate to `ACTIVE`, the runtime-side membership view already contains the instance.
+It ensures that:
 
-Without that order, you can briefly get:
+- When the `READY` event aggregates the runtime into `ACTIVE`,
+- The runtime side's membership view can already see this instance.
 
-- runtime says `ACTIVE`
-- the pool still cannot see the instance
+Otherwise, you would briefly encounter a very nasty inconsistency:
 
-That kind of split-brain moment is dangerous in a governance framework.
+- The runtime state is already `ACTIVE`...
+- ...but the instance is not yet in the pool.
+
+Such transient fragmentation is extremely dangerous within a governance framework.
 
 ## Common Misunderstandings
 
-### "Two-layer FSM means two totally independent FSMs"
+### Misunderstanding 1: Dual-layer state machines are completely isolated independent state machines.
 
-Not correct.
+Incorrect.
 
-They are independent in **state ownership**, but linked through **event-driven convergence**.
+They are not entirely unrelated. Instead:
 
-### "`InstancePool` can probably manage full lifecycle too"
+- **Sources of truth are independent.**
+- **Linkage chains still exist.**
 
-No.
+Meaning, "they independently own state" but "they eventually converge through event linkage."
 
-Once `InstancePool` starts owning full lifecycle, membership, state mutation, and resource cleanup get mixed again.
+### Misunderstanding 2: `InstancePool` can conveniently handle the full lifecycle.
 
-### "`RuntimeCoordinator` could just scan live objects directly"
+Incorrect.
 
-That seems simpler short-term, but it creates tighter coupling, weaker boundaries, and worse reasoning under concurrency.
+`InstancePool` can only adjust pool membership; it cannot evolve into a master orchestrator for deployments and unloads.
 
-Snapshots are an explicit boundary.
+The moment it starts overseeing the full lifecycle, state writing, membership relations, and resource reclamations will devolve back into a tangled mess.
 
-## Safe Extension Rules
+### Misunderstanding 3: Direct object-graph scanning by `RuntimeCoordinator` is simpler.
 
-### Adding an instance state
+Superficially simple, but worse in the long run.
 
-Ask:
+Because if you scan the object graph directly:
 
-1. is this a lifecycle fact or just a routing policy?
-2. does it really need to be an FSM state?
-3. can the transition graph remain one-way and convergent?
+- The runtime layer tightly couples with the instance object structure.
+- State consistency bounds become harder to guarantee under concurrency.
+- The state linkage boundaries disappear again.
 
-If it is really "should this receive traffic?", it often belongs to policy rather than `InstanceStatus`.
+Snapshots add an extra layer, but they preserve the boundary.
 
-### Adding a runtime state
+## How to Extend Without Breaking the Architecture
 
-Ask:
+### Scenario 1: Adding a new instance state
 
-1. is this truly a macro runtime state?
-2. is it a fact state or an operational intent state?
+Ask yourself three questions first:
 
-If those two concepts are starting to collide badly, then further separation may be justified. Otherwise, avoid abstracting too early.
+1. Is this a factual single-instance lifecycle state, or a routing strategy flag?
+2. Does it genuinely need to be an FSM state instead of an attached property?
+3. By adding it, is the state machine still unidirectional, acyclic, and capable of convergence?
 
-### Adding a deploy phase
+If it is just a strategy toggle like "should this participate in traffic?", it normally should not be crammed into `InstanceStatus`.
 
-Change orchestration first:
+### Scenario 2: Adding a new runtime state
+
+Ask yourself two questions first:
+
+1. Is this a macro state that the runtime as a whole exposes externally?
+2. Is it a factual state, or an operational command state?
+
+If these two categories clashing naturally limits you, then consider splitting `RuntimeStatus` into two layers. Otherwise, do not abstract just for the sake of abstraction.
+
+### Scenario 3: Adding a new deployment phase
+
+Modify the orchestration layer first:
 
 - `DefaultLingLifecycleEngine`
-- `LingUnloadCoordinator` when the change affects unload cleanup
+- If changes involve unload cleanup, look at `LingUnloadCoordinator` too.
 
-Do not start by changing coordinators unless state ownership itself is changing.
+Do not start by modifying the coordinators.
 
-### Adding runtime governance linkage
+Because most phase extensions are "sequence extensions", not "changes in state ownership."
 
-Place it on the right layer:
+### Scenario 4: Adding new runtime governance linkages
 
-- instance fact change -> instance event chain
-- runtime macro change -> runtime event chain
-- membership change -> kernel membership layer
+First, clarify which layer it should hook into:
 
-Do not cross-write state across layers.
+- If instance facts change, hook into the instance event chain.
+- If runtime macro attributes change, hook into the runtime event chain.
+- If pool membership changes, hook into the Core's membership layer.
 
-## How To Debug
+Do not stealthily write states across layers.
 
-### Deployment looks wrong
+## What to Check When Debugging
 
-Check:
+### Debugging Deployment Failures
+
+Review these first:
 
 1. `DefaultLingLifecycleEngine.deploy()`
 2. `InstanceCoordinator.prepare()/start()/markReady()`
 3. `RuntimeCoordinator.onInstanceStateChanged()`
 
-If the instance is already `READY` but runtime is still `INACTIVE`, the first suspects are:
+If an instance is already `READY` but the runtime remains `INACTIVE`, your primary suspects are:
 
-- event was not published
-- snapshot was not updated
-- evaluation policy did not aggregate the snapshot to `ACTIVE`
+- The event was never emitted.
+- The snapshot was not updated.
+- The aggregation strategy evaluated the snapshot and failed to return `ACTIVE`.
 
-### Undeploy is stuck
+### Debugging Unloads That Are Stuck
 
-Check:
+Review these first:
 
 1. `InstancePool.dyingQueue`
 2. `LingInstance.getActiveRequestCount()`
 3. `InstanceCoordinator.tearDown()`
 4. `RuntimeCoordinator.tryFinishShutdown()`
 
-Typical causes:
+Typical causes usually are:
 
-- the instance is not idle yet
-- teardown never reached `DEAD`
-- snapshot entries still remain, so runtime cannot move to `REMOVED`
+- The instance is not idle; draining has not completed.
+- Teardown never progressed to `DEAD`.
+- Snapshots retain version entries, so the runtime cannot reach `REMOVED`.
 
-### Runtime jumps back from `STOPPING`
+### Debugging State Rebounds
 
-That usually means someone bypassed the boundary and wrote state directly, or the suppression logic in `RuntimeCoordinator.reevaluate()` was broken.
+If the runtime enters `STOPPING` and is then pulled back to `ACTIVE`, it usually means someone bypassed current constraints to directly write states they shouldn't, or broke the suppression logic for `STOPPING` inside `RuntimeCoordinator.reevaluate()`.
 
-## What To Review In Code Changes
+## What to Focus on During Code Reviews
 
-Whenever a patch touches lifecycle or state, check:
+When reviewing state-related changes, run through this checklist directly:
 
-1. Did it introduce a new state mutation path outside a coordinator?
-2. Did it let `LingRuntime` own runtime FSM again?
-3. Did it expose raw state machine access from `LingInstance`?
-4. Did it make `InstancePool` responsible for more than membership?
-5. Did it let orchestration write runtime state directly?
-6. Did it break the event linkage chain?
-7. Did it make the state boundary harder to explain to the next reader?
+1. Did the PR add a state write entry that bypasses the coordinator?
+2. Did it make `LingRuntime` hold its own runtime FSM again?
+3. Did it expose the raw state machine of `LingInstance` again?
+4. Did it give `InstancePool` responsibilities beyond membership relation?
+5. Did it make the orchestration layer write to runtime states directly rather than through a coordinator?
+6. Is the event linkage chain broken?
+7. Did it make this set of state boundaries harder to explain to the next maintainer?
 
-If any answer is yes, the patch needs scrutiny.
+If the answer to any of these is "yes," proceed with extreme caution.
 
-## Suggested Reading Order For Newcomers
+## Recommended Reading Path for Newcomers
 
-1. this guide
+If you have never encountered this design before, the safest reading sequence is:
+
+1. This document
 2. [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md)
 3. `InstanceStatus`
 4. `RuntimeStatus`
@@ -266,3 +290,13 @@ If any answer is yes, the patch needs scrutiny.
 9. `LingRuntime`
 10. `DefaultLingLifecycleEngine`
 11. `LingUnloadCoordinator`
+
+## One Last Piece of Advice
+
+When trying to understand this architecture, avoid endlessly asking "why not just put everything inside one object."
+
+The question you really should be asking is:
+
+> "Is this piece of code currently sequencing operations, carrying a fact, maintaining member relations, or deciding a macro state?"
+
+Once that question is clear, the class responsibility boundaries naturally become clear.

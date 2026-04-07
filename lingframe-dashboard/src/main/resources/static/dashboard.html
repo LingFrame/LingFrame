@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>灵珑 | 核心治理中心</title>
     <!-- 本地资源 -->
-    <script src="js/vue.global.prod.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/vue.global.prod.js" defer></script>
+    <script src="https://cdn.tailwindcss.com" defer></script>
     <!--<link rel="stylesheet" href="css/tailwindcss.css">-->
     <link rel="stylesheet" href="css/fontawesome.min.css">
     <link rel="stylesheet" href="css/jetbrains-mono.css">
@@ -127,6 +127,76 @@
                         <span v-if="modal.loading" class="spinner"
                             style="width:14px;height:14px;border-width:2px;"></span>
                         {{ modal.actionText }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="uninstallResultModal.show" class="modal-overlay" @click.self="closeUninstallResultModal">
+            <div class="modal-content uninstall-result-modal">
+                <div class="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                        <h3 class="font-bold text-white text-lg">{{ uninstallResultModal.title }}</h3>
+                        <p class="text-sm text-slate-400 mt-1">{{ uninstallResultModal.message }}</p>
+                    </div>
+                    <button @click="closeUninstallResultModal" class="text-slate-400 hover:text-white">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div v-if="uninstallResultModal.result" class="space-y-4">
+                    <div class="uninstall-result-summary">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="result-meta-item">
+                                <span class="result-meta-label">{{ t('uninstallResult.lingLabel') || 'Ling' }}</span>
+                                <span class="result-meta-value">{{ uninstallResultModal.result.lingId || '-' }}</span>
+                            </div>
+                            <div class="result-meta-item">
+                                <span class="result-meta-label">{{ t('uninstallResult.versionLabel') || 'Version' }}</span>
+                                <span class="result-meta-value">{{ uninstallResultModal.result.version || t('modal.allVersions') }}</span>
+                            </div>
+                            <div class="result-meta-item">
+                                <span class="result-meta-label">{{ t('uninstallResult.actionLabel') || '卸载动作' }}</span>
+                                <span class="result-meta-value">{{ getUninstallTriggerLabel(uninstallResultModal.result.uninstallTriggered) }}</span>
+                            </div>
+                            <div class="result-meta-item">
+                                <span class="result-meta-label">{{ t('uninstallResult.precheckLabel') || '预检结论' }}</span>
+                                <span :class="getUninstallRiskClass(uninstallResultModal.result.overallRiskLevel)">
+                                    {{ getUninstallRiskLabel(uninstallResultModal.result.overallRiskLevel) }}
+                                </span>
+                            </div>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-3">
+                            {{ t('uninstallResult.notice') || '当前策略为提示不拦截：即使预检发现风险，卸载动作仍可能已触发。' }}
+                        </p>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-sm font-bold text-white">{{ t('uninstallResult.detailTitle') || '预检明细' }}</h4>
+                            <span class="text-xs text-slate-500">{{ uninstallResultModal.result.reports?.length || 0 }} {{ t('uninstallResult.detailCountSuffix') || '条' }}</span>
+                        </div>
+                        <div v-if="!uninstallResultModal.result.reports || uninstallResultModal.result.reports.length === 0" class="result-empty">
+                            {{ t('uninstallResult.noDetails') || '未返回额外明细' }}
+                        </div>
+                        <div v-else class="space-y-3">
+                            <div v-for="(report, index) in uninstallResultModal.result.reports" :key="`${report.checker || 'checker'}-${index}`" class="result-report-card">
+                                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span :class="getUninstallRiskClass(report.level)">{{ getUninstallRiskLabel(report.level) }}</span>
+                                        <span class="text-xs text-slate-500">{{ report.checker || (t('uninstallResult.unknownChecker') || 'unknown-checker') }}</span>
+                                    </div>
+                                    <span class="text-xs text-slate-500">{{ report.version || uninstallResultModal.result.version || t('modal.allVersions') }}</span>
+                                </div>
+                                <p class="text-sm text-slate-200">{{ report.summary || (t('uninstallResult.noSummary') || '无摘要') }}</p>
+                                <ul v-if="report.details && report.details.length" class="result-detail-list">
+                                    <li v-for="(detail, detailIndex) in report.details" :key="detailIndex">{{ detail }}</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-end mt-6">
+                    <button @click="closeUninstallResultModal" class="px-4 py-2 rounded-lg text-base font-medium bg-slate-700 hover:bg-slate-600 text-white">
+                        {{ t('modal.confirm') }}
                     </button>
                 </div>
             </div>
@@ -377,6 +447,7 @@
 
                             <div class="overflow-y-auto overflow-x-hidden max-h-[400px]" v-else>
                                 <div v-for="p in lings" :key="p.lingId" @click="selectLing(p.lingId)"
+                                    :data-testid="'ling-item-' + p.lingId"
                                     :class="['Ling-item', activeId === p.lingId ? 'active' : '']">
                                     <div class="flex justify-between items-start mb-2">
                                         <span class="font-medium text-white text-base truncate pr-2"
@@ -444,13 +515,13 @@
                                 </div>
                                 <span class="text-xs text-slate-500">{{ t('performance.realtime') || '实时监控' }}</span>
                             </div>
-                            <div class="p-4 space-y-4">
-                                <!-- CPU 使用率 -->
-                                <div>
-                                    <div class="flex justify-between items-center mb-2">
-                                        <span class="text-xs text-slate-400 flex items-center gap-1">
-                                            <i class="fa-solid fa-microchip text-slate-500"></i> CPU
-                                        </span>
+                                <div class="p-4 space-y-4">
+                                    <!-- CPU 使用率 -->
+                                    <div>
+                                        <div class="flex justify-between items-center mb-2">
+                                            <span class="text-xs text-slate-400 flex items-center gap-1">
+                                                <i class="fa-solid fa-microchip text-slate-500"></i> {{ t('performance.cpu') }}
+                                            </span>
                                         <span class="text-sm font-mono font-bold" :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">
                                             {{ perfMetrics.cpu }}%
                                         </span>
@@ -463,11 +534,11 @@
                                 </div>
 
                                 <!-- JVM 内存 (堆 + 非堆) -->
-                                <div>
-                                    <div class="flex justify-between items-center mb-2">
-                                        <span class="text-xs text-slate-400 flex items-center gap-1">
-                                            <i class="fa-solid fa-memory text-slate-500"></i> JVM 内存
-                                        </span>
+                                    <div>
+                                        <div class="flex justify-between items-center mb-2">
+                                            <span class="text-xs text-slate-400 flex items-center gap-1">
+                                                <i class="fa-solid fa-memory text-slate-500"></i> {{ t('performance.jvmMemory') }}
+                                            </span>
                                         <span class="text-sm font-mono font-bold" :class="perfMetrics.memory > 80 ? 'text-red-400' : perfMetrics.memory > 60 ? 'text-amber-400' : 'text-blue-400'">
                                             {{ perfMetrics.memory }}%
                                         </span>
@@ -476,18 +547,18 @@
                                         <div class="h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]"
                                             :class="perfMetrics.memory > 80 ? 'bg-red-500 shadow-red-500/30' : perfMetrics.memory > 60 ? 'bg-amber-500 shadow-amber-500/30' : 'bg-blue-500 shadow-blue-500/30'"
                                             :style="{ width: Math.max(3, perfMetrics.memory) + '%' }"></div>
-                                    </div>
-                                    <div class="text-xs text-slate-500 mt-1 text-right font-mono">
-                                        已用 {{ perfMetrics.memoryUsed }}MB / 分配 {{ perfMetrics.memoryTotal }}MB
-                                    </div>
-                                </div>
+                                      </div>
+                                      <div class="text-xs text-slate-500 mt-1 text-right font-mono">
+                                        {{ t('performance.used') }} {{ perfMetrics.memoryUsed }}MB / {{ t('performance.allocated') }} {{ perfMetrics.memoryTotal }}MB
+                                      </div>
+                                  </div>
 
                                 <!-- 堆内存详情 -->
                                 <div class="bg-slate-800/30 rounded-lg p-3">
-                                    <div class="flex justify-between items-center mb-2">
-                                        <span class="text-xs text-slate-400 flex items-center gap-1">
-                                            <i class="fa-solid fa-cubes text-purple-500"></i> 堆内存
-                                        </span>
+                                      <div class="flex justify-between items-center mb-2">
+                                          <span class="text-xs text-slate-400 flex items-center gap-1">
+                                              <i class="fa-solid fa-cubes text-purple-500"></i> {{ t('performance.heap') }}
+                                          </span>
                                         <span class="text-xs font-mono font-bold text-purple-400">
                                             {{ Math.round(perfMetrics.heapUsed / perfMetrics.heapMax * 100) }}%
                                         </span>
@@ -521,12 +592,12 @@
                                 
                                 <!-- Metaspace & 类加载 -->
                                 <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
-                                    <div class="bg-slate-800/50 rounded-lg p-3">
-                                        <div class="flex items-center justify-between mb-1">
-                                            <span class="text-[10px] text-slate-500 uppercase">Metaspace</span>
-                                            <span class="text-xs font-mono font-bold" :class="perfMetrics.metaspaceUsage > 80 ? 'text-red-400' : 'text-emerald-400'">
-                                                {{ perfMetrics.metaspaceUsage }}%
-                                            </span>
+                                      <div class="bg-slate-800/50 rounded-lg p-3">
+                                          <div class="flex items-center justify-between mb-1">
+                                              <span class="text-[10px] text-slate-500 uppercase">{{ t('performance.metaspace') }}</span>
+                                              <span class="text-xs font-mono font-bold" :class="perfMetrics.metaspaceUsage > 80 ? 'text-red-400' : 'text-emerald-400'">
+                                                  {{ perfMetrics.metaspaceUsage }}%
+                                              </span>
                                         </div>
                                         <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden">
                                             <div class="h-full bg-emerald-500 rounded-full transition-all duration-500"
@@ -536,17 +607,17 @@
                                             {{ perfMetrics.metaspaceUsed }}KB / {{ perfMetrics.metaspaceMax }}KB
                                         </div>
                                     </div>
-                                    <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                        <div class="flex items-center justify-center gap-1 mb-1">
-                                            <i class="fa-solid fa-cube text-amber-500 text-xs"></i>
-                                            <span class="text-[10px] text-slate-500 uppercase">已加载类</span>
-                                        </div>
-                                        <span class="text-lg font-mono font-bold text-amber-400">{{ perfMetrics.loadedClassCount }}</span>
-                                        <div class="text-[10px] text-slate-500 mt-1">
-                                            卸载: {{ perfMetrics.unloadedClassCount }}
-                                        </div>
-                                    </div>
-                                </div>
+                                      <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                          <div class="flex items-center justify-center gap-1 mb-1">
+                                              <i class="fa-solid fa-cube text-amber-500 text-xs"></i>
+                                              <span class="text-[10px] text-slate-500 uppercase">{{ t('performance.loadedClasses') }}</span>
+                                          </div>
+                                          <span class="text-lg font-mono font-bold text-amber-400">{{ perfMetrics.loadedClassCount }}</span>
+                                          <div class="text-[10px] text-slate-500 mt-1">
+                                              {{ t('performance.unloadedClasses') }}: {{ perfMetrics.unloadedClassCount }}
+                                          </div>
+                                      </div>
+                                  </div>
                             </div>
                         </div>
                     </div>
@@ -785,15 +856,289 @@
                                 </div>
 
                                 <template v-else>
+                                    <div class="health-card mb-4">
+                                        <div class="flex items-center justify-between gap-3 mb-3">
+                                            <div>
+                                                <h4 class="text-sm font-bold text-white">{{ t('healthCard.title') }}</h4>
+                                                <p class="text-xs text-slate-400 mt-1">{{ activeLing?.lingId }}</p>
+                                            </div>
+                                            <span
+                                                v-if="activeLingHealth"
+                                                :class="getLingHealthStatusClass(activeLingHealth.healthStatus)">
+                                                {{ activeLingHealth.healthStatus || t('healthCard.unknown') }}
+                                            </span>
+                                            <span v-else class="risk-badge risk-unknown">
+                                                {{ t('healthCard.unknown') }}
+                                            </span>
+                                        </div>
+                                        <div v-if="activeLingHealth" class="grid grid-cols-2 gap-3">
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('healthCard.qps') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.qps, 1) }}</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('healthCard.errorRate') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.errorRate, 2) }}%</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('healthCard.avgLatencyMs') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.avgLatencyMs, 1) }} ms</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('healthCard.p99LatencyMs') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.p99LatencyMs, 1) }} ms</span>
+                                            </div>
+                                            <div class="health-metric health-metric-full">
+                                                <span class="health-metric-label">{{ t('healthCard.activeRequests') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.activeRequests, 0) }}</span>
+                                            </div>
+                                        </div>
+                                        <div v-else class="result-empty">
+                                            {{ t('healthCard.empty') }}
+                                        </div>
+                                        <div v-if="activeLingVersionHealth.length" class="health-version-section">
+                                            <div class="flex items-center justify-between gap-2 mb-3">
+                                                <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('healthCard.versionBreakdown') }}</h5>
+                                                <span class="text-xs text-slate-500">{{ activeLingVersionHealth.length }} {{ t('healthCard.versionCountSuffix') }}</span>
+                                            </div>
+                                            <div class="space-y-3">
+                                                <div v-for="versionHealth in activeLingVersionHealth" :key="versionHealth.version" class="health-version-card">
+                                                    <div class="flex items-center justify-between gap-3 mb-3">
+                                                        <div>
+                                                            <div class="flex items-center gap-2 flex-wrap">
+                                                                <span class="text-sm font-mono font-bold text-white">{{ versionHealth.version }}</span>
+                                                                <span class="text-[11px] font-semibold text-slate-400">{{ getLingHealthRoleLabel(versionHealth) }}</span>
+                                                            </div>
+                                                            <p class="text-xs text-slate-500 mt-1">{{ versionHealth.trafficWeight }}% {{ t('healthCard.trafficWeight') }}</p>
+                                                        </div>
+                                                        <span
+                                                            :class="getLingHealthStatusClass(versionHealth.metrics?.healthStatus || 'UNKNOWN')">
+                                                            {{ versionHealth.metrics?.healthStatus || t('healthCard.unknown') }}
+                                                        </span>
+                                                    </div>
+                                                    <div v-if="versionHealth.metrics" class="grid grid-cols-2 gap-2">
+                                                        <div class="health-metric compact">
+                                                            <span class="health-metric-label">{{ t('healthCard.qps') }}</span>
+                                                            <span class="health-metric-value">{{ formatMetricNumber(versionHealth.metrics.qps, 1) }}</span>
+                                                        </div>
+                                                        <div class="health-metric compact">
+                                                            <span class="health-metric-label">{{ t('healthCard.errorRate') }}</span>
+                                                            <span class="health-metric-value">{{ formatMetricNumber(versionHealth.metrics.errorRate, 2) }}%</span>
+                                                        </div>
+                                                        <div class="health-metric compact">
+                                                            <span class="health-metric-label">{{ t('healthCard.avgLatencyMs') }}</span>
+                                                            <span class="health-metric-value">{{ formatMetricNumber(versionHealth.metrics.avgLatencyMs, 1) }} ms</span>
+                                                        </div>
+                                                        <div class="health-metric compact">
+                                                            <span class="health-metric-label">{{ t('healthCard.p99LatencyMs') }}</span>
+                                                            <span class="health-metric-value">{{ formatMetricNumber(versionHealth.metrics.p99LatencyMs, 1) }} ms</span>
+                                                        </div>
+                                                    </div>
+                                                    <div v-else class="result-empty">
+                                                        {{ t('healthCard.versionEmpty') }}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="health-version-section">
+                                            <div class="flex items-center justify-between gap-2 mb-3">
+                                                <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('governanceCard.title') }}</h5>
+                                                <span v-if="hasGovernanceSignals(activeLingGovernance)" class="risk-badge risk-warn">{{ t('governanceCard.signalDetected') }}</span>
+                                                <span v-else class="risk-badge risk-safe">{{ t('governanceCard.noSignal') }}</span>
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-3" v-if="activeLingGovernance">
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.rateLimitedRequests') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.rateLimitedRequests, 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.timeoutRequests') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.timeoutRequests, 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.circuitOpenedCount') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.circuitOpenedCount, 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.circuitOpenRejections') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.circuitOpenRejections, 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.activeThreads') }}</span>
+                                                    <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.activeIsolatedThreads, '') }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.threadBudget') }}</span>
+                                                    <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.maxConcurrentThreadsBudget, '') }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.threadUsage') }}</span>
+                                                    <span class="health-metric-value">{{ formatBudgetPercent(activeLingGovernance.activeIsolatedThreads, activeLingGovernance.maxConcurrentThreadsBudget) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.cpuBudgetUsage') }}</span>
+                                                    <span class="health-metric-value">{{ formatBudgetPercent(activeLingGovernance.cpuTimeMsLastMinute, activeLingGovernance.cpuBudgetMsPerMinute) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.cpuTimeLastMinute') }}</span>
+                                                    <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.cpuTimeMsLastMinute, ' ms') }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.estimatedHeapDelta') }}</span>
+                                                    <span class="health-metric-value">{{ formatSize(activeLingGovernance.estimatedHeapDeltaBytes || 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.threadBudgetExceeded') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.threadBudgetExceededCount, 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.cpuBudgetExceeded') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.cpuBudgetExceededCount, 0) }}</span>
+                                                </div>
+                                                <div class="health-metric compact">
+                                                    <span class="health-metric-label">{{ t('governanceCard.memoryBudgetExceeded') }}</span>
+                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.memoryBudgetExceededCount, 0) }}</span>
+                                                </div>
+                                            </div>
+                                            <div v-else class="result-empty">
+                                                {{ t('governanceCard.empty') }}
+                                            </div>
+                                            <div v-if="activeLingVersionGovernance.length" class="health-version-section">
+                                                <div class="space-y-3">
+                                                    <div v-for="versionGovernance in activeLingVersionGovernance" :key="`${versionGovernance.version}-governance`" class="health-version-card">
+                                                        <div class="flex items-center justify-between gap-3 mb-3">
+                                                            <div>
+                                                                <div class="flex items-center gap-2 flex-wrap">
+                                                                    <span class="text-sm font-mono font-bold text-white">{{ versionGovernance.version }}</span>
+                                                                    <span class="text-[11px] font-semibold text-slate-400">{{ getLingHealthRoleLabel(versionGovernance) }}</span>
+                                                                </div>
+                                                                <p class="text-xs text-slate-500 mt-1">{{ versionGovernance.trafficWeight }}% {{ t('healthCard.trafficWeight') }}</p>
+                                                            </div>
+                                                            <span :class="hasGovernanceSignals(versionGovernance.metrics) ? 'risk-badge risk-warn' : 'risk-badge risk-safe'">
+                                                                {{ hasGovernanceSignals(versionGovernance.metrics) ? t('governanceCard.signalDetected') : t('governanceCard.noSignal') }}
+                                                            </span>
+                                                        </div>
+                                                        <div v-if="versionGovernance.metrics" class="grid grid-cols-2 gap-2">
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.rateLimitedRequests') }}</span>
+                                                                <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.rateLimitedRequests, 0) }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.timeoutRequests') }}</span>
+                                                                <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.timeoutRequests, 0) }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.circuitOpenedCount') }}</span>
+                                                                <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.circuitOpenedCount, 0) }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.circuitOpenRejections') }}</span>
+                                                                <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.circuitOpenRejections, 0) }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.activeThreads') }}</span>
+                                                                <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.activeIsolatedThreads, '') }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.threadBudget') }}</span>
+                                                                <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.maxConcurrentThreadsBudget, '') }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.cpuTimeLastMinute') }}</span>
+                                                                <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.cpuTimeMsLastMinute, ' ms') }}</span>
+                                                            </div>
+                                                            <div class="health-metric compact">
+                                                                <span class="health-metric-label">{{ t('governanceCard.estimatedHeapDelta') }}</span>
+                                                                <span class="health-metric-value">{{ formatSize(versionGovernance.metrics.estimatedHeapDeltaBytes || 0) }}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div v-else class="result-empty">
+                                                            {{ t('governanceCard.versionEmpty') }}
+                                                        </div>
+                                                    </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="health-version-section">
+                                                <div class="flex items-center justify-between gap-2 mb-3">
+                                                    <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('runtimeReadiness.title') }}</h5>
+                                                    <span :class="[
+                                                        'risk-badge',
+                                                        runtimeGovernanceReadiness.status === 'READY' ? 'risk-safe'
+                                                        : runtimeGovernanceReadiness.status === 'BLOCKED' ? 'risk-danger'
+                                                        : runtimeGovernanceReadiness.status === 'LIMITED' ? 'risk-warn'
+                                                        : 'risk-unknown'
+                                                    ]">
+                                                        {{ runtimeGovernanceReadiness.status || 'UNKNOWN' }}
+                                                    </span>
+                                                </div>
+                                                <div v-if="!runtimeGovernanceReadiness.summary" class="result-empty">
+                                                    {{ t('runtimeReadiness.empty') }}
+                                                </div>
+                                                <div v-else class="space-y-3">
+                                                    <div class="health-metric health-metric-full compact">
+                                                        <span class="health-metric-label">{{ t('runtimeReadiness.summary') }}</span>
+                                                        <span class="health-metric-value text-sm">{{ runtimeGovernanceReadiness.summary }}</span>
+                                                    </div>
+                                                    <div class="grid grid-cols-2 gap-2">
+                                                        <div class="health-metric compact">
+                                                            <span class="health-metric-label">{{ t('runtimeReadiness.sharedBoundaryFrozen') }}</span>
+                                                            <span class="health-metric-value">{{ runtimeGovernanceReadiness.sharedApiBoundaryFrozen ? 'true' : 'false' }}</span>
+                                                        </div>
+                                                        <div class="health-metric compact">
+                                                            <span class="health-metric-label">{{ t('runtimeReadiness.diagnosticsCount') }}</span>
+                                                            <span class="health-metric-value">{{ runtimeGovernanceReadiness.diagnosticsCount }}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div v-if="runtimeGovernanceReadiness.blockers && runtimeGovernanceReadiness.blockers.length" class="space-y-2">
+                                                        <div class="text-xs font-black tracking-widest text-red-400 uppercase">{{ t('runtimeReadiness.blockers') }}</div>
+                                                        <div v-for="blocker in runtimeGovernanceReadiness.blockers" :key="blocker" class="governance-note governance-note-danger">{{ blocker }}</div>
+                                                    </div>
+                                                    <div v-if="runtimeGovernanceReadiness.warnings && runtimeGovernanceReadiness.warnings.length" class="space-y-2">
+                                                        <div class="text-xs font-black tracking-widest text-amber-400 uppercase">{{ t('runtimeReadiness.warnings') }}</div>
+                                                        <div v-for="warning in runtimeGovernanceReadiness.warnings" :key="warning" class="governance-note governance-note-warn">{{ warning }}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="health-version-section">
+                                                <div class="flex items-center justify-between gap-2 mb-3">
+                                                    <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('runtimeReadiness.capabilitiesTitle') }}</h5>
+                                                    <span class="risk-badge risk-info">{{ runtimeDiagnosticsList.length }}</span>
+                                                </div>
+                                                <div v-if="!runtimeDiagnosticsList.length" class="result-empty">
+                                                    {{ t('runtimeReadiness.capabilitiesEmpty') }}
+                                                </div>
+                                                <div v-else class="space-y-3">
+                                                    <div v-for="diagnostic in runtimeDiagnosticsList" :key="diagnostic.runtime" class="health-version-card">
+                                                        <div class="flex items-center justify-between gap-3 mb-2">
+                                                            <div>
+                                                                <div class="flex items-center gap-2 flex-wrap">
+                                                                    <span class="text-sm font-mono font-bold text-white">{{ diagnostic.runtime }}</span>
+                                                                    <span class="text-[11px] font-semibold text-slate-400">JDK {{ diagnostic.jdkVersion }}</span>
+                                                                </div>
+                                                            </div>
+                                                            <span class="risk-badge risk-info">CAPABILITY</span>
+                                                        </div>
+                                                        <div class="governance-note governance-note-info">{{ diagnostic.summary }}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
                                     <!-- 灵元管理中枢 -->
                                         <div class="space-y-4">
                                             <div class="grid grid-cols-2 gap-2">
-                                                <button @click="updateStatus('ACTIVE')" :disabled="!canActivate"
+                                                <button data-testid="control-activate" @click="updateStatus('ACTIVE')" :disabled="!canActivate"
                                                     class="action-btn bg-green-600 text-white" :class="{ 'opacity-50 cursor-not-allowed': !canActivate }">{{ t('control.activate') }}</button>
-                                                <button @click="updateStatus('INACTIVE')" :disabled="!canDeactivate"
+                                                <button data-testid="control-inactivate" @click="updateStatus('INACTIVE')" :disabled="!canDeactivate"
                                                     class="action-btn bg-blue-600 text-white" :class="{ 'opacity-50 cursor-not-allowed': !canDeactivate }">{{ t('control.inactivate') }}</button>
                                             </div>
-                                            <button @click="requestUnloadWithName(activeId)"
+                                            <button data-testid="control-recover" @click="updateStatus('RECOVERING')" :disabled="!canRecover"
+                                                class="w-full py-2 bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 rounded-lg font-bold"
+                                                :class="{ 'opacity-50 cursor-not-allowed': !canRecover }">{{ t('control.recover') }}</button>
+                                            <button data-testid="control-unload" @click="requestUnloadWithName(activeId)"
                                                 class="w-full py-2 bg-red-600/20 text-red-400 border border-red-500/30 rounded-lg font-bold">{{
                                                 t('control.unload') }}</button>
 
@@ -848,14 +1193,17 @@
                                         <div v-if="(!activeLing?.versionDetails || activeLing?.versionDetails.length === 0)"
                                             class="space-y-3">
                                             <div class="grid grid-cols-2 gap-2">
-                                                <button @click="updateStatus('ACTIVE')" :disabled="!canActivate"
+                                                <button data-testid="control-activate-fallback" @click="updateStatus('ACTIVE')" :disabled="!canActivate"
                                                     class="action-btn bg-green-600 text-white" :class="{ 'opacity-50 cursor-not-allowed': !canActivate }">{{ t('control.activate')
                                                     }}</button>
-                                                <button @click="updateStatus('INACTIVE')" :disabled="!canDeactivate"
+                                                <button data-testid="control-inactivate-fallback" @click="updateStatus('INACTIVE')" :disabled="!canDeactivate"
                                                     class="action-btn bg-blue-600 text-white" :class="{ 'opacity-50 cursor-not-allowed': !canDeactivate }">{{ t('control.inactivate')
                                                     }}</button>
                                             </div>
-                                            <button @click="requestUnloadWithName(activeId)"
+                                            <button data-testid="control-recover-fallback" @click="updateStatus('RECOVERING')" :disabled="!canRecover"
+                                                class="w-full py-2 bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 rounded-lg font-bold"
+                                                :class="{ 'opacity-50 cursor-not-allowed': !canRecover }">{{ t('control.recover') }}</button>
+                                            <button data-testid="control-unload-fallback" @click="requestUnloadWithName(activeId)"
                                                 class="w-full py-2 bg-red-600/20 text-red-400 border border-red-500/30 rounded-lg font-bold">{{
                                                 t('control.unload') }}</button>
                                         </div>
@@ -887,6 +1235,107 @@
                                                     :disabled="loading.permissions"
                                                     :class="activeLing?.permissions?.cacheWrite !== false ? 'perm-btn on' : 'perm-btn off'">
                                                     <i class="fa-solid fa-bolt mr-1"></i> {{ t('control.cacheWrite') }}
+                                                </button>
+                                            </div>
+
+                                            <div class="mt-4 space-y-3">
+                                                <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+                                                    <div class="flex items-center justify-between gap-3 mb-2">
+                                                        <span class="text-xs font-bold text-slate-300">{{ t('control.localCacheNamespaceTitle') }}</span>
+                                                        <span class="text-[10px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                                                            {{ t('control.namespaceEnabled') }}
+                                                        </span>
+                                                    </div>
+                                                    <p class="text-xs text-slate-400 font-mono break-all">
+                                                        {{ activeLing?.permissions?.localCacheNamespaceStrategy || 'lingId + cacheName + rawKey' }}
+                                                    </p>
+                                                </div>
+
+                                                <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+                                                    <div class="text-xs font-bold text-slate-300 mb-2">{{ t('control.sqlCapabilitiesTitle') }}</div>
+                                                    <div v-if="activeLing?.permissions?.sqlCapabilities?.length" class="flex flex-wrap gap-2">
+                                                        <span v-for="cap in activeLing.permissions.sqlCapabilities" :key="cap"
+                                                            class="text-[10px] px-2 py-1 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-mono break-all">
+                                                            {{ cap }}
+                                                        </span>
+                                                    </div>
+                                                    <p v-else class="text-xs text-slate-500">{{ t('control.noFineGrainedSql') }}</p>
+                                                </div>
+
+                                                <div class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+                                                    <div class="text-xs font-bold text-slate-300 mb-2">{{ t('control.redisCapabilitiesTitle') }}</div>
+                                                    <div v-if="activeLing?.permissions?.redisCapabilities?.length" class="flex flex-wrap gap-2">
+                                                        <span v-for="cap in activeLing.permissions.redisCapabilities" :key="cap"
+                                                            class="text-[10px] px-2 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono break-all">
+                                                            {{ cap }}
+                                                        </span>
+                                                    </div>
+                                                    <p v-else class="text-xs text-slate-500">{{ t('control.noFineGrainedRedis') }}</p>
+                                                </div>
+
+                                                <div v-if="activeLing?.permissions?.extraCapabilities?.length"
+                                                    class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+                                                    <div class="text-xs font-bold text-slate-300 mb-2">{{ t('control.extraCapabilitiesTitle') }}</div>
+                                                    <div class="flex flex-wrap gap-2">
+                                                        <span v-for="cap in activeLing.permissions.extraCapabilities" :key="cap"
+                                                            class="text-[10px] px-2 py-1 rounded bg-slate-700 text-slate-200 border border-slate-600 font-mono break-all">
+                                                            {{ cap }}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="border-t border-slate-700 my-6"></div>
+
+                                        <div>
+                                            <div class="flex items-center justify-between mb-3">
+                                                <label
+                                                    class="text-[10px] text-slate-500 uppercase font-black tracking-widest block">{{
+                                                    t('control.invocationGovernance') }}</label>
+                                                <span class="text-[10px] text-slate-500">{{ t('control.hotPatch') }}</span>
+                                            </div>
+
+                                            <div class="space-y-3">
+                                                <div>
+                                                    <label class="text-xs text-slate-400 block mb-1">{{ t('control.timeoutMs') }}</label>
+                                                    <input data-testid="invocation-timeout" v-model="invocationForm.timeoutMs" type="number" min="0"
+                                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs text-slate-400 block mb-1">{{ t('control.rateLimitPerSecond') }}</label>
+                                                    <input data-testid="invocation-rate-limit" v-model="invocationForm.rateLimitPerSecond" type="number" min="0"
+                                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs text-slate-400 block mb-1">{{ t('control.maxConcurrentThreads') }}</label>
+                                                    <input data-testid="invocation-max-threads" v-model="invocationForm.maxConcurrentThreads" type="number" min="1"
+                                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs text-slate-400 block mb-1">{{ t('control.retryCount') }}</label>
+                                                    <input data-testid="invocation-retry-count" v-model="invocationForm.retryCount" type="number" min="0"
+                                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs text-slate-400 block mb-1">{{ t('control.fallbackValue') }}</label>
+                                                    <input data-testid="invocation-fallback" v-model="invocationForm.fallbackValue" type="text"
+                                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs text-slate-400 block mb-1">{{ t('control.cpuBudgetMsPerMinute') }}</label>
+                                                    <input v-model="invocationForm.cpuBudgetMsPerMinute" type="number" min="0"
+                                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs text-slate-400 block mb-1">{{ t('control.memoryBudgetMb') }}</label>
+                                                    <input v-model="invocationForm.memoryBudgetMb" type="number" min="0"
+                                                        class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                </div>
+                                                <button data-testid="save-invocation-governance" @click="saveInvocationGovernance"
+                                                    :disabled="loading.invocation || !activeLing"
+                                                    class="w-full py-2 bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 rounded-lg font-bold hover:bg-cyan-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                                                    <i class="fa-solid fa-sliders mr-1"></i> {{ t('control.saveInvocation') }}
                                                 </button>
                                             </div>
                                         </div>
@@ -995,7 +1444,7 @@
         </main>
     </div>
 
-    <script src="js/dashboard.js"></script>
+    <script src="js/dashboard.js" defer></script>
 </body>
 
 </html>

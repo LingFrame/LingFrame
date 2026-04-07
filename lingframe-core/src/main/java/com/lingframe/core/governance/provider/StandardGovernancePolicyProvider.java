@@ -15,6 +15,8 @@ import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Method;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -56,105 +58,171 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
         // 全限定名匹配键: lingId.methodName (可扩展为包含类名)
         String fullSign = pid + "." + mName;
 
-        // === P0: 灵核 YAML 强制规则 (最高优先级) ===
-        for (CompiledRule cr : lingCoreRules) {
-            if (cr.pattern.matcher(fullSign).matches()) {
-                LingCoreGovernanceRule r = cr.rule;
-                return GovernanceDecision.builder()
-                        .requiredPermission(r.getPermission())
-                        .accessType(r.getAccessType())
-                        .auditEnabled(r.getAuditEnabled())
-                        .auditAction(r.getAuditAction())
-                        .timeout(r.getTimeout())
-                        .source("LINGCORE Rule")
-                        .build();
+        GovernanceDecision.GovernanceDecisionBuilder builder = GovernanceDecision.builder();
+        List<String> sources = new ArrayList<>();
+
+        // === P4: 智能推导 (兜底基础值) ===
+        builder.requiredPermission(GovernanceStrategy.inferPermission(method));
+        builder.accessType(GovernanceStrategy.inferAccessType(mName));
+        sources.add("Inference");
+
+        // === P3: 代码级注解 ===
+        boolean hasAnnotationOverride = applyAnnotationOverlay(builder, method);
+        if (hasAnnotationOverride) {
+            replacePrimarySource(sources, "Annotation");
+        }
+
+        // === P2: 灵元定义 (ling.yml) ===
+        GovernancePolicy lingPolicy = null;
+        if (runtime != null) {
+            LingInstance instance = runtime.getInstancePool().getDefault();
+            if (instance != null && instance.getDefinition() != null) {
+                lingPolicy = instance.getDefinition().getGovernance();
+                PolicyOverlayResult definitionOverlay = applyPolicyOverlay(builder, lingPolicy, mName);
+                if (definitionOverlay.isAccessControlOverride()) {
+                    replacePrimarySource(sources, "Ling Definition");
+                }
             }
         }
 
         // === P1: 动态补丁 (HotFix) ===
         if (localRegistry != null) {
             GovernancePolicy patch = localRegistry.getPatch(pid);
-            GovernanceDecision d1 = matchPolicy(patch, mName, "Patch");
-            if (d1 != null)
-                return d1;
-        }
-
-        // === P2: 灵元定义 (ling.yml) ===
-        if (runtime != null) {
-            LingInstance instance = runtime.getInstancePool().getDefault();
-            if (instance != null && instance.getDefinition() != null) {
-                GovernanceDecision d2 = matchPolicy(instance.getDefinition().getGovernance(), mName,
-                        "Ling Definition");
-                if (d2 != null)
-                    return d2;
+            PolicyOverlayResult patchOverlay = applyPolicyOverlay(builder, patch, mName);
+            if (patchOverlay.isAccessControlOverride()) {
+                replacePrimarySource(sources, "Patch");
             }
         }
 
-        // === P3 & P4: 代码级 (注解 & 推导) ===
-        GovernanceDecision.GovernanceDecisionBuilder builder = GovernanceDecision.builder();
-
-        // 权限注解
-        RequiresPermission permAnn = method.getAnnotation(RequiresPermission.class);
-        if (permAnn != null) {
-            builder.requiredPermission(permAnn.value());
-            builder.source("Annotation");
-            // 如果注解有 access 属性可在此处读取，目前使用默认或推导
-        } else {
-            // 智能推导权限 (仅作为默认值)
-            builder.requiredPermission(GovernanceStrategy.inferPermission(method));
-            builder.source("Inference");
+        // === P0: 灵核 YAML 强制规则 (最高优先级) ===
+        for (CompiledRule cr : lingCoreRules) {
+            if (cr.pattern.matcher(fullSign).matches()) {
+                LingCoreGovernanceRule r = cr.rule;
+                applyCoreRuleOverlay(builder, r);
+                replacePrimarySource(sources, "LINGCORE Rule");
+                break;
+            }
         }
 
-        // 审计注解
-        if (method.isAnnotationPresent(Auditable.class)) {
-            builder.auditEnabled(true);
-            Auditable auditAnn = method.getAnnotation(Auditable.class);
-            builder.auditAction(auditAnn.action());
-        }
-
-        // AccessType 推导 (兜底)
-        builder.accessType(GovernanceStrategy.inferAccessType(mName));
-
-        return builder.build();
+        builder.source(String.join(" <- ", sources));
+        GovernanceDecision decision = builder.build();
+        return decision.hasAnyDirective() ? decision : null;
     }
 
     // --- 辅助方法 ---
 
-    private GovernanceDecision matchPolicy(GovernancePolicy policy, String methodName, String sourceName) {
-        if (policy == null)
-            return null;
+    private boolean applyAnnotationOverlay(GovernanceDecision.GovernanceDecisionBuilder builder, Method method) {
+        boolean overridden = false;
 
-        String perm = null;
+        RequiresPermission permAnn = method.getAnnotation(RequiresPermission.class);
+        if (permAnn != null) {
+            builder.requiredPermission(permAnn.value());
+            overridden = true;
+        }
+
+        if (method.isAnnotationPresent(Auditable.class)) {
+            Auditable auditAnn = method.getAnnotation(Auditable.class);
+            builder.auditEnabled(true);
+            builder.auditAction(auditAnn.action());
+            overridden = true;
+        }
+
+        return overridden;
+    }
+
+    private PolicyOverlayResult applyPolicyOverlay(GovernanceDecision.GovernanceDecisionBuilder builder,
+                                                   GovernancePolicy policy,
+                                                   String methodName) {
+        if (policy == null) {
+            return PolicyOverlayResult.none();
+        }
+
+        boolean accessControlOverride = false;
+        boolean invocationOverride = false;
+
         if (policy.getPermissions() != null) {
             for (GovernancePolicy.PermissionRule rule : policy.getPermissions()) {
                 if (isMatch(rule.getMethodPattern(), methodName)) {
-                    perm = rule.getPermissionId();
+                    builder.requiredPermission(rule.getPermissionId());
+                    accessControlOverride = true;
                     break;
                 }
             }
         }
 
-        Boolean audit = null;
-        String action = null;
         if (policy.getAudits() != null) {
             for (GovernancePolicy.AuditRule rule : policy.getAudits()) {
                 if (isMatch(rule.getMethodPattern(), methodName)) {
-                    audit = rule.isEnabled();
-                    action = rule.getAction();
+                    builder.auditEnabled(rule.isEnabled());
+                    builder.auditAction(rule.getAction());
+                    accessControlOverride = true;
                     break;
                 }
             }
         }
 
-        if (perm != null || audit != null) {
-            return GovernanceDecision.builder()
-                    .requiredPermission(perm)
-                    .auditEnabled(audit)
-                    .auditAction(action)
-                    .source(sourceName)
-                    .build();
+        GovernancePolicy.InvocationPolicy invocation = policy.getInvocation();
+        if (invocation != null) {
+            if (invocation.getTimeoutMs() != null) {
+                builder.timeout(Duration.ofMillis(invocation.getTimeoutMs()));
+                invocationOverride = true;
+            }
+            if (invocation.getRateLimitPerSecond() != null) {
+                builder.rateLimitPerSecond(invocation.getRateLimitPerSecond());
+                invocationOverride = true;
+            }
+            if (invocation.getMaxConcurrentThreads() != null) {
+                builder.maxConcurrentThreads(invocation.getMaxConcurrentThreads());
+                invocationOverride = true;
+            }
+            if (invocation.getRetryCount() != null) {
+                builder.retryCount(invocation.getRetryCount());
+                invocationOverride = true;
+            }
+            if (invocation.getFallbackValue() != null) {
+                builder.fallbackValue(invocation.getFallbackValue());
+                invocationOverride = true;
+            }
+            if (invocation.getCpuBudgetMsPerMinute() != null) {
+                builder.cpuBudgetMsPerMinute(invocation.getCpuBudgetMsPerMinute());
+                invocationOverride = true;
+            }
+            if (invocation.getMemoryBudgetMb() != null) {
+                builder.memoryBudgetMb(invocation.getMemoryBudgetMb());
+                invocationOverride = true;
+            }
         }
-        return null;
+
+        return new PolicyOverlayResult(accessControlOverride, invocationOverride);
+    }
+
+    private void applyCoreRuleOverlay(GovernanceDecision.GovernanceDecisionBuilder builder, LingCoreGovernanceRule rule) {
+        if (rule.getPermission() != null) {
+            builder.requiredPermission(rule.getPermission());
+        }
+        if (rule.getAccessType() != null) {
+            builder.accessType(rule.getAccessType());
+        }
+        if (rule.getAuditEnabled() != null) {
+            builder.auditEnabled(rule.getAuditEnabled());
+        }
+        if (rule.getAuditAction() != null) {
+            builder.auditAction(rule.getAuditAction());
+        }
+        if (rule.getTimeout() != null) {
+            builder.timeout(rule.getTimeout());
+        }
+        if (rule.getRetryCount() != null) {
+            builder.retryCount(rule.getRetryCount());
+        }
+        if (rule.getFallbackValue() != null) {
+            builder.fallbackValue(rule.getFallbackValue());
+        }
+    }
+
+    private void replacePrimarySource(List<String> sources, String source) {
+        sources.remove(source);
+        sources.add(0, source);
     }
 
     private Pattern compilePattern(String antPattern) {
@@ -169,5 +237,15 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
         if (pattern.equals(methodName))
             return true;
         return pattern.endsWith("*") && methodName.startsWith(pattern.substring(0, pattern.length() - 1));
+    }
+
+    @Value
+    private static class PolicyOverlayResult {
+        boolean accessControlOverride;
+        boolean invocationOverride;
+
+        static PolicyOverlayResult none() {
+            return new PolicyOverlayResult(false, false);
+        }
     }
 }

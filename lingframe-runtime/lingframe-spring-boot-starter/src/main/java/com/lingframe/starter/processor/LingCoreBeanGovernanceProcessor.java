@@ -5,6 +5,7 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 
 import com.lingframe.starter.config.LingFrameProperties;
+import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import com.lingframe.starter.interceptor.LingCoreBeanGovernanceInterceptor;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +39,7 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
     private PermissionService permissionService;
     private InvocationPipelineEngine pipelineEngine;
     private LingFrameProperties properties;
+    private EntryInvocationGovernanceResolver invocationGovernanceResolver;
 
     // 需要被拦截的注解类型（排除 Controller/RestController，由 LingWebGovernanceInterceptor 处理）
     private static final Set<Class<? extends Annotation>> GOVERNANCE_ANNOTATIONS = new HashSet<>(Arrays.asList(
@@ -151,12 +153,24 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
         return properties;
     }
 
+    private EntryInvocationGovernanceResolver getInvocationGovernanceResolver() {
+        if (invocationGovernanceResolver == null && applicationContext != null) {
+            try {
+                invocationGovernanceResolver = applicationContext.getBean(EntryInvocationGovernanceResolver.class);
+            } catch (Exception e) {
+                log.debug("EntryInvocationGovernanceResolver not available yet");
+            }
+        }
+        return invocationGovernanceResolver;
+    }
+
     @Override
     public Object postProcessAfterInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
         // 懒加载获取核心组件
         PermissionService permService = getPermissionService();
         InvocationPipelineEngine engine = getPipelineEngine();
         LingFrameProperties props = getProperties();
+        EntryInvocationGovernanceResolver resolver = getInvocationGovernanceResolver();
 
         // 如果核心组件未准备好，直接返回
         if (permService == null || engine == null || props == null) {
@@ -181,7 +195,8 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
             proxyFactory.addAdvice(new LingCoreBeanGovernanceInterceptor(
                     engine,
                     props.getLingCoreGovernance().isGovernInternalCalls(),
-                    props.getLingCoreGovernance().isCheckPermissions()));
+                    props.getLingCoreGovernance().isCheckPermissions(),
+                    resolver));
             Object proxy = proxyFactory.getProxy();
             log.info("[Governance] Successfully governed LINGCORE bean: {} ({})", beanName,
                     bean.getClass().getSimpleName());

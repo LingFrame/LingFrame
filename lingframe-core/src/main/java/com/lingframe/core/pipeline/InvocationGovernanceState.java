@@ -43,6 +43,42 @@ public class InvocationGovernanceState {
      */
     private Integer timeoutMs;
 
+    /**
+     * 治理阶段计算出的限流阈值（QPS）。
+     * 弹性治理阶段优先消费这里的最终值。
+     */
+    private Integer rateLimitPerSecond;
+
+    /**
+     * 治理阶段计算出的最大并发线程数。
+     * 线程隔离阶段优先消费这里的最终值。
+     */
+    private Integer maxConcurrentThreads;
+
+    /**
+     * 治理阶段计算出的重试次数。
+     * 终端执行阶段消费这里的结果，避免“声明了 retry 但从未真正生效”。
+     */
+    private Integer retryCount;
+
+    /**
+     * 重试耗尽后的回退值。
+     * 先保持字符串形态，避免在治理层提前绑定目标方法返回类型。
+     */
+    private String fallbackValue;
+
+    /**
+     * 每分钟 CPU 预算（毫秒）。
+     * 当前阶段只做观测与告警，不做硬拒绝。
+     */
+    private Integer cpuBudgetMsPerMinute;
+
+    /**
+     * 内存预算（MB）。
+     * 当前阶段只做估算与告警，不做虚假的硬限制。
+     */
+    private Integer memoryBudgetMb;
+
     void reset() {
         this.requiredPermission = null;
         this.accessType = null;
@@ -50,6 +86,12 @@ public class InvocationGovernanceState {
         this.auditAction = null;
         this.ruleSource = null;
         this.timeoutMs = null;
+        this.rateLimitPerSecond = null;
+        this.maxConcurrentThreads = null;
+        this.retryCount = null;
+        this.fallbackValue = null;
+        this.cpuBudgetMsPerMinute = null;
+        this.memoryBudgetMb = null;
     }
 
     void copyFrom(InvocationGovernanceState source) {
@@ -62,5 +104,11 @@ public class InvocationGovernanceState {
         this.auditAction = source.auditAction;
         this.ruleSource = source.ruleSource;
         this.timeoutMs = source.timeoutMs;
+        this.rateLimitPerSecond = source.rateLimitPerSecond;
+        this.maxConcurrentThreads = source.maxConcurrentThreads;
+        this.retryCount = source.retryCount;
+        this.fallbackValue = source.fallbackValue;
+        this.cpuBudgetMsPerMinute = source.cpuBudgetMsPerMinute;
+        this.memoryBudgetMb = source.memoryBudgetMb;
     }
 }

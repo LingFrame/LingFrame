@@ -6,6 +6,7 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.starter.config.LingFrameProperties;
+import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
 import com.lingframe.starter.web.WebRouteResolution;
@@ -51,6 +52,8 @@ class LingWebGovernanceFilterTest {
     private LingRuntime runtime;
     @Mock
     private LingInstance targetInstance;
+    @Mock
+    private EntryInvocationGovernanceResolver invocationGovernanceResolver;
 
     @Test
     @DisplayName("应使用灵元元数据中的目标方法与预解析实例")
@@ -58,7 +61,8 @@ class LingWebGovernanceFilterTest {
         LingFrameProperties properties = new LingFrameProperties();
         properties.getLingCoreGovernance().setEnabled(true);
         LingWebGovernanceFilter filter = new LingWebGovernanceFilter(
-                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping);
+                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, null,
+                invocationGovernanceResolver);
 
         DemoController controller = new DemoController();
         Method targetMethod = DemoController.class.getMethod("detail");
@@ -133,7 +137,8 @@ class LingWebGovernanceFilterTest {
         LingFrameProperties properties = new LingFrameProperties();
         properties.getLingCoreGovernance().setEnabled(false);
         LingWebGovernanceFilter filter = new LingWebGovernanceFilter(
-                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping);
+                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, null,
+                invocationGovernanceResolver);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/host/demo/detail");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -157,7 +162,8 @@ class LingWebGovernanceFilterTest {
         LingFrameProperties properties = new LingFrameProperties();
         properties.getLingCoreGovernance().setEnabled(true);
         LingWebGovernanceFilter filter = new LingWebGovernanceFilter(
-                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping);
+                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, null,
+                invocationGovernanceResolver);
 
         DemoController controller = new DemoController();
         Method targetMethod = DemoController.class.getMethod("detail");
@@ -192,7 +198,8 @@ class LingWebGovernanceFilterTest {
         LingFrameProperties properties = new LingFrameProperties();
         properties.getLingCoreGovernance().setEnabled(true);
         LingWebGovernanceFilter filter = new LingWebGovernanceFilter(
-                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping);
+                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, null,
+                invocationGovernanceResolver);
 
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
                 .lingId("ling-a")

@@ -42,7 +42,7 @@ public class DefaultPermissionService implements PermissionService {
             return false;
         }
 
-        if (LING_CORE_ID.equals(lingId) && !LingFrameConfig.current().isHostCheckPermissions()) {
+        if (LING_CORE_ID.equals(lingId) && !LingFrameConfig.current().isLingCoreCheckPermissions()) {
             log.debug("[Auth] LINGCORE application bypassed");
             return true;
         }
@@ -163,6 +163,8 @@ public class DefaultPermissionService implements PermissionService {
                 record.getCostNanos());
 
         if (eventBus != null) {
+            // MonitoringEvents.* 由 EventBus 异步分发。
+            // 这里保证事件已发布，但消费方应按最终一致语义处理，而不是假定同步送达。
             eventBus.publish(new MonitoringEvents.AuditLogEvent(
                     traceId,
                     callerLingId,
@@ -217,6 +219,7 @@ public class DefaultPermissionService implements PermissionService {
                 lingId,
                 capability,
                 accessType);
+        // Dev 模式告警同样通过异步监控事件投递，适合监控与 Dashboard 消费。
         eventBus.publish(new MonitoringEvents.AlertNotifyEvent(
                 traceId,
                 "WARNING",

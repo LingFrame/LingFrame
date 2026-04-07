@@ -60,6 +60,10 @@ final class InstanceCoordinator {
         doTransition(instance, InstanceStatus.ERROR);
     }
 
+    public void recovering(LingInstance instance) {
+        doTransition(instance, InstanceStatus.RECOVERING);
+    }
+
     private void doTransition(LingInstance instance, InstanceStatus target) {
         doTransition(instance, target, snapshotIdentity(instance));
     }

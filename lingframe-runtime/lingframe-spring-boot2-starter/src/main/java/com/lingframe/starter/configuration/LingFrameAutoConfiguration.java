@@ -1,13 +1,16 @@
 package com.lingframe.starter.configuration;
 
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.filter.LingWebGovernanceFilter;
+import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import com.lingframe.starter.web.LingGatewayHandlerMapping;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebRouteResolver;
 import com.lingframe.starter.web.LingOpenApiCustomizerAdapter;
 import org.springdoc.core.customizers.OpenApiCustomiser;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -36,11 +39,13 @@ public class LingFrameAutoConfiguration {
             WebRouteResolver webRouteResolver,
             InvocationPipelineEngine pipelineEngine,
             LingFrameProperties properties,
+            EntryInvocationGovernanceResolver invocationGovernanceResolver,
+            ObjectProvider<MetricsCollector> metricsCollectorProvider,
             @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping) {
         FilterRegistrationBean<LingWebGovernanceFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(
                 new LingWebGovernanceFilter(webRouteResolver, pipelineEngine, properties,
-                        handlerMapping));
+                        handlerMapping, metricsCollectorProvider, invocationGovernanceResolver));
         registration.addUrlPatterns("/*");
         registration.setOrder(1);
         registration.setName("lingWebGovernanceFilter");

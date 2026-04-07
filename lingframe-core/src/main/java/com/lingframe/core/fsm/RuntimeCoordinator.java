@@ -203,7 +203,7 @@ public class RuntimeCoordinator {
      * 主动关闭一个 Ling 的运行时（管理员/运维触发）。
      * <p>
      * `STOPPING` 在当前版本中属于“运维意图态”。
-     * 一旦进入 STOPPING，就不再允许实例层事实把它重新拉回 ACTIVE / DEGRADED。
+     * 一旦进入 STOPPING，就不再允许实例层事实把它重新拉回 ACTIVE / DEGRADED / RECOVERING。
      * 当所有实例都 DEAD 后，由 {@link #reevaluate} 自动跃迁到 REMOVED。
      */
     public void shutdown(String lingId) {
@@ -280,7 +280,7 @@ public class RuntimeCoordinator {
             RuntimeStatus current = fsm.current();
 
             // `STOPPING` 是运维意图态。
-            // 一旦进入 STOPPING，runtime 不允许再被“实例变好了”拉回 ACTIVE / DEGRADED，
+            // 一旦进入 STOPPING，runtime 不允许再被“实例变好了”拉回 ACTIVE / DEGRADED / RECOVERING，
             // 只允许在实例全部消失后继续前进到 REMOVED。
             if (current == RuntimeStatus.STOPPING) {
                 tryFinishShutdown(lingId, fsm);

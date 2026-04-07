@@ -6,6 +6,8 @@ import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
+import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.LingServiceInvoker;
 import com.lingframe.core.spi.TrafficRouter;
@@ -58,7 +60,13 @@ public class FilterRegistry {
     }
 
     public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus) {
-        initialize(lingRepository, trafficRouter, eventBus, null);
+        initialize(lingRepository, trafficRouter, eventBus, null, null, null);
+    }
+
+    public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
+            MetricsCollector metricsCollector,
+            RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector) {
+        initializeInternal(lingRepository, trafficRouter, eventBus, metricsCollector, runtimeCoordinator, governanceMetricsCollector);
     }
 
     /**
@@ -66,6 +74,12 @@ public class FilterRegistry {
      */
     public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
             RuntimeCoordinator runtimeCoordinator) {
+        initializeInternal(lingRepository, trafficRouter, eventBus, null, runtimeCoordinator, null);
+    }
+
+    private void initializeInternal(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
+            MetricsCollector metricsCollector,
+            RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector) {
         // ⚠️ 内建过滤器的顺序不是偶然结果，而是“事实 -> 决策 -> 执行”的固定协议。
         builtinFilters.clear();
 
@@ -74,17 +88,17 @@ public class FilterRegistry {
                 lingRepository,
                 trafficRouter != null ? trafficRouter : new LatestVersionPolicy());
         ResilienceGovernanceFilter resilience = new ResilienceGovernanceFilter(
-                lingRepository, eventBus, runtimeCoordinator);
+                lingRepository, eventBus, runtimeCoordinator, governanceMetricsCollector);
         ContextIsolationFilter resolution = new ContextIsolationFilter();
         GovernanceDecisionFilter governance = new GovernanceDecisionFilter(lingRepository, governanceArbitrator);
         PermissionGovernanceFilter permission = new PermissionGovernanceFilter(permissionService);
-        ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(lingRepository);
+        ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(lingRepository, governanceMetricsCollector);
         TerminalInvokerFilter terminal = new TerminalInvokerFilter(methodCache, serviceInvoker);
 
         this.resilienceFilter = resilience;
         this.isolationFilter = threadIsolation;
 
-        builtinFilters.add(new TrafficMetricsFilter(lingRepository, null, eventBus));
+        builtinFilters.add(new TrafficMetricsFilter(lingRepository, metricsCollector, eventBus));
         builtinFilters.add(stateGuard);
         builtinFilters.add(routing);
         builtinFilters.add(resilience);
@@ -214,6 +228,21 @@ public class FilterRegistry {
         if (isolationFilter != null) {
             isolationFilter.evict(lingId);
         }
+    }
+
+    public boolean recoverLingGovernance(String lingId) {
+        if (resilienceFilter == null) {
+            return false;
+        }
+        return resilienceFilter.recover(lingId);
+    }
+
+    ResilienceGovernanceFilter getResilienceFilter() {
+        return resilienceFilter;
+    }
+
+    ThreadIsolationGovernanceFilter getIsolationFilter() {
+        return isolationFilter;
     }
 
     public int evictMethodCache(String lingId) {
