@@ -93,6 +93,7 @@
     <profiles>
         <profile>
             <id>integration-check</id>
+            <!-- 这里只打开集成验证开关，不负责选择 Spring Boot 运行时线。 -->
             <properties>
                 <lingframe.runE2E>true</lingframe.runE2E>
                 <skipITs>false</skipITs>
@@ -199,6 +200,9 @@
                 <version>3.2.5</version>
                 <configuration>
                     <skipITs>${skipITs}</skipITs>
+                    <!-- 两个集成用例都会启动完整灵核，分开 fork 可以避免静态状态串扰。 -->
+                    <forkCount>1</forkCount>
+                    <reuseForks>false</reuseForks>
                     <systemPropertyVariables>
                         <lingframe.runE2E>${lingframe.runE2E}</lingframe.runE2E>
                     </systemPropertyVariables>

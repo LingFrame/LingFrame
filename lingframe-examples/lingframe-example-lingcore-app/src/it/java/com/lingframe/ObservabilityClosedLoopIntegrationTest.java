@@ -2,13 +2,7 @@ package com.lingframe;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lingframe.config.OpenApiConfig;
-import com.lingframe.controller.LingCoreController;
-import com.lingframe.dashboard.config.DashboardAutoConfiguration;
-import com.lingframe.dashboard.controller.GovernanceController;
-import com.lingframe.dashboard.controller.LingController;
 import com.lingframe.api.exception.LingInvocationException;
-import com.lingframe.service.LingCoreService;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationExecutionMode;
@@ -22,13 +16,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.web.server.LocalServerPort;
-import org.springframework.cache.annotation.EnableCaching;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -57,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 @SpringBootTest(
-        classes = ObservabilityClosedLoopIntegrationTest.ObservabilityTestApplication.class,
+        classes = ObservabilityTestApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
 )
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -364,22 +354,5 @@ class ObservabilityClosedLoopIntegrationTest {
             }
         }
         return null;
-    }
-
-    @EnableCaching
-    @Import({
-            DashboardAutoConfiguration.class,
-            LingController.class,
-            GovernanceController.class
-    })
-    @SpringBootApplication(
-            exclude = RedisAutoConfiguration.class,
-            scanBasePackageClasses = {
-                    LingCoreController.class,
-                    LingCoreService.class,
-                    OpenApiConfig.class
-            }
-    )
-    static class ObservabilityTestApplication {
     }
 }

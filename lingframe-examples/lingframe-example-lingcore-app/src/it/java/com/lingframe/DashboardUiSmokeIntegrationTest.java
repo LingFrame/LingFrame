@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
-        classes = ObservabilityClosedLoopIntegrationTest.ObservabilityTestApplication.class,
+        classes = ObservabilityTestApplication.class,
         properties = {
                 "spring.datasource.url=jdbc:h2:mem:lingframe_dashboard_ui;DB_CLOSE_DELAY=0;MODE=MySQL",
                 "server.port=18888"
@@ -85,11 +85,30 @@ class DashboardUiSmokeIntegrationTest {
     }
 
     private String resolveBrowserExecutable() {
+        String[] environmentCandidates = new String[] {
+                System.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"),
+                System.getenv("CHROME_BIN"),
+                System.getenv("GOOGLE_CHROME_BIN"),
+                System.getenv("EDGE_BIN")
+        };
+        for (String candidate : environmentCandidates) {
+            if (candidate != null && new File(candidate).isFile()) {
+                return candidate;
+            }
+        }
+
         String[] candidates = new String[] {
                 "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
                 "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
                 "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-                "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+                "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+                "/usr/bin/google-chrome",
+                "/usr/bin/google-chrome-stable",
+                "/usr/bin/chromium",
+                "/usr/bin/chromium-browser",
+                "/snap/bin/chromium",
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
         };
         for (String candidate : candidates) {
             if (new File(candidate).isFile()) {

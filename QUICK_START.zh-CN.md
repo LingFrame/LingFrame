@@ -59,13 +59,13 @@ curl http://localhost:8888/user-ling/user/listUsers
 观测闭环回归：
 
 ```powershell
-mvn -pl lingframe-examples/lingframe-example-lingcore-app -am -Pintegration-check verify "-Dit.test=ObservabilityClosedLoopIntegrationTest"
+mvn -pl lingframe-examples/lingframe-example-lingcore-app -am "-Pspring-boot2,integration-check" verify "-Dit.test=ObservabilityClosedLoopIntegrationTest"
 ```
 
 Dashboard 浏览器级冒烟：
 
 ```powershell
-mvn -pl lingframe-examples/lingframe-example-lingcore-app -am -Pintegration-check verify "-Dit.test=DashboardUiSmokeIntegrationTest"
+mvn -pl lingframe-examples/lingframe-example-lingcore-app -am "-Pspring-boot2,integration-check" verify "-Dit.test=DashboardUiSmokeIntegrationTest"
 ```
 
 ## 7. 下一步看什么
