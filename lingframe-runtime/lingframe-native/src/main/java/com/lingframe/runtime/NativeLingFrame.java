@@ -16,7 +16,9 @@ import com.lingframe.core.ling.DefaultLingServiceRegistry;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.resource.DefaultLeakDetector;
 import com.lingframe.core.spi.LeakDetector;
-import com.lingframe.core.ling.LingLifecycleEngine;
+import com.lingframe.core.ling.LingFrameRuntime;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
+import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.resource.BasicResourceGuard;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
@@ -25,6 +27,7 @@ import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.pipeline.LatestVersionPolicy;
+import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.LingServiceInvoker;
@@ -45,7 +48,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class NativeLingFrame {
 
     private static final AtomicBoolean started = new AtomicBoolean(false);
-    private static LingLifecycleEngine GLOBAL_LIFECYCLE_ENGINE;
+    private static LingFrameRuntime GLOBAL_LIFECYCLE_ENGINE;
     private static LingContext HOST_CONTEXT;
     private static HotSwapWatcher HOT_SWAP_WATCHER;
     private static DefaultLingResourceManager RESOURCE_MANAGER;
@@ -56,14 +59,14 @@ public class NativeLingFrame {
     /**
      * 使用默认配置启动灵珑。
      */
-    public static LingLifecycleEngine start() {
+    public static LingFrameRuntime start() {
         return start(LingFrameConfig.current());
     }
 
     /**
      * 使用自定义配置启动灵珑。
      */
-    public static LingLifecycleEngine start(LingFrameConfig config) {
+    public static LingFrameRuntime start(LingFrameConfig config) {
         if (started.get()) {
             log.warn("LingFrame is already started.");
             return GLOBAL_LIFECYCLE_ENGINE;
@@ -92,9 +95,14 @@ public class NativeLingFrame {
 
         InvokableMethodCache invokableMethodCache = new InvokableMethodCache();
         LingServiceInvoker invoker = resolveInvoker(Thread.currentThread().getContextClassLoader());
+
+        MetricsCollector metricsCollector = new MetricsCollector(lingRepository);
+        GovernanceMetricsCollector governanceMetricsCollector = new GovernanceMetricsCollector();
+
         FilterRegistry filterRegistry = new FilterRegistry(invokableMethodCache, permissionService, invoker, null);
-        // 初始化内置 Filter 并注入依赖
-        filterRegistry.initialize(lingRepository, new LatestVersionPolicy(), eventBus, RUNTIME_COORDINATOR);
+        CanaryRouter canaryRouter = new CanaryRouter(new LatestVersionPolicy());
+        filterRegistry.initialize(lingRepository, canaryRouter, eventBus,
+                metricsCollector, RUNTIME_COORDINATOR, governanceMetricsCollector);
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(
                 filterRegistry);
 
@@ -106,7 +114,7 @@ public class NativeLingFrame {
                 RESOURCE_MANAGER,
                 LEAK_DETECTOR);
 
-        LingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(
+        DefaultLingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(
                 containerFactory,
                 permissionService,
                 loaderFactory,
@@ -120,9 +128,13 @@ public class NativeLingFrame {
                 unloadCoordinator,
                 RUNTIME_COORDINATOR);
 
-        if (config != null && config.isDevMode() && lifecycleEngine instanceof DefaultLingLifecycleEngine) {
+        lifecycleEngine.setCanaryConfigurable(canaryRouter);
+        lifecycleEngine.setMetricsCollector(metricsCollector);
+        lifecycleEngine.setGovernanceMetricsCollector(governanceMetricsCollector);
+
+        if (config != null && config.isDevMode()) {
             HOT_SWAP_WATCHER = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus, LEAK_DETECTOR);
-            ((DefaultLingLifecycleEngine) lifecycleEngine).setHotSwapWatcher(HOT_SWAP_WATCHER);
+            lifecycleEngine.setHotSwapWatcher(HOT_SWAP_WATCHER);
         }
 
         // 注册一个特殊的 "lingcore-app" 上下文
@@ -148,7 +160,7 @@ public class NativeLingFrame {
     }
 
     /**
-     * 鍏抽棴 Native runtime 骞舵竻鐞嗗叏灞€鐘舵€併€?
+     * 关闭 Native runtime 并清理全局状态。
      */
     public static synchronized void shutdown() {
         if (!started.get()) {

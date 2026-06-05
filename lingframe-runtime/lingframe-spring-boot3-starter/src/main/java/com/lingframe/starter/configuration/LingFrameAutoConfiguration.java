@@ -75,7 +75,7 @@ public class LingFrameAutoConfiguration {
                 if (bean instanceof GroupedOpenApi) {
                     GroupedOpenApi groupedOpenApi = (GroupedOpenApi) bean;
                     
-                    // SpringDoc 2.x 鐨?GroupedOpenApi 瀛楁鍚嶅彲鑳芥槸 postProcessors 鎴?openApiCustomisers
+                    // SpringDoc 2.x 的 GroupedOpenApi 字段名可能是 postProcessors 或 openApiCustomisers
                     try {
                         Field field = ReflectionUtils.findField(GroupedOpenApi.class, "openApiCustomisers");
                         if (field == null) {

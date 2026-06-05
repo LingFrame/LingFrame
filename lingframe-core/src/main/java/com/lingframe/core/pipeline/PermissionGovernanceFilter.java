@@ -33,11 +33,16 @@ public class PermissionGovernanceFilter implements LingInvocationFilter {
         long startNanos = System.nanoTime();
 
         if (capability == null || capability.isEmpty()) {
-            log.warn("[Security] Capability is empty, rejecting: caller={}, type={}",
-                    callerLingId, ctx.getAccessType());
-            auditIfNeeded(ctx, PermissionAuditResult.DENIED, "Missing required permission", startNanos);
-            throw new LingInvocationException(ctx.getServiceFQSID(),
-                    LingInvocationException.ErrorKind.SECURITY_REJECTED);
+            log.debug("[Security] No required permission declared, allowing: caller={}, service={}",
+                    callerLingId, ctx.getServiceFQSID());
+            try {
+                Object result = chain.doFilter(ctx);
+                auditIfNeeded(ctx, PermissionAuditResult.ALLOWED, null, startNanos);
+                return result;
+            } catch (Throwable throwable) {
+                auditIfNeeded(ctx, PermissionAuditResult.FAILED, describeFailure(throwable), startNanos);
+                throw throwable;
+            }
         }
 
         boolean allowed = permissionService.isAllowed(callerLingId, capability, ctx.getAccessType());

@@ -1,7 +1,10 @@
 package com.lingframe.core.governance.provider;
 
 import com.lingframe.api.annotation.Auditable;
+import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.annotation.RequiresPermission;
+
+import java.lang.annotation.Annotation;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.core.governance.GovernanceDecision;
 import com.lingframe.core.governance.LingCoreGovernanceRule;
@@ -115,19 +118,48 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
         boolean overridden = false;
 
         RequiresPermission permAnn = method.getAnnotation(RequiresPermission.class);
+        if (permAnn == null) {
+            permAnn = findInterfaceAnnotation(method, RequiresPermission.class);
+        }
         if (permAnn != null) {
             builder.requiredPermission(permAnn.value());
             overridden = true;
         }
 
-        if (method.isAnnotationPresent(Auditable.class)) {
-            Auditable auditAnn = method.getAnnotation(Auditable.class);
+        Auditable auditAnn = method.getAnnotation(Auditable.class);
+        if (auditAnn == null) {
+            auditAnn = findInterfaceAnnotation(method, Auditable.class);
+        }
+        if (auditAnn != null) {
             builder.auditEnabled(true);
             builder.auditAction(auditAnn.action());
             overridden = true;
         }
 
+        LingService lingServiceAnn = method.getAnnotation(LingService.class);
+        if (lingServiceAnn == null) {
+            lingServiceAnn = findInterfaceAnnotation(method, LingService.class);
+        }
+        if (lingServiceAnn != null && lingServiceAnn.timeout() > 0) {
+            builder.timeout(Duration.ofMillis(lingServiceAnn.timeout()));
+            overridden = true;
+        }
+
         return overridden;
+    }
+
+    private <A extends Annotation> A findInterfaceAnnotation(Method method, Class<A> annotationType) {
+        for (Class<?> iface : method.getDeclaringClass().getInterfaces()) {
+            try {
+                Method ifaceMethod = iface.getMethod(method.getName(), method.getParameterTypes());
+                A ann = ifaceMethod.getAnnotation(annotationType);
+                if (ann != null) {
+                    return ann;
+                }
+            } catch (NoSuchMethodException ignored) {
+            }
+        }
+        return null;
     }
 
     private PolicyOverlayResult applyPolicyOverlay(GovernanceDecision.GovernanceDecisionBuilder builder,

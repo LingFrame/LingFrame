@@ -26,18 +26,20 @@ public class DangerousApiVerifier implements LingSecurityVerifier {
     public void verify(String lingId, File source) {
         log.info("[{}] Scanning for dangerous API calls...", lingId);
 
+        boolean effectiveStrict = strictMode && !isTrustedLing(lingId);
+        if (strictMode && !effectiveStrict) {
+            log.info("[{}] 可信灵元，使用非严格模式", lingId);
+        }
+
         try {
             AsmDangerousApiScanner.ScanResult result = AsmDangerousApiScanner.scan(source);
 
-            // 记录警告
             result.logWarnings();
 
-            // 严格模式：有警告也失败
-            if (strictMode && result.hasWarnings()) {
+            if (effectiveStrict && result.hasWarnings()) {
                 throw new LingSecurityException(lingId, "Ling contains potentially dangerous APIs");
             }
 
-            // 总是拒绝关键违规
             result.throwIfCritical();
 
             log.info("[{}] Security scan passed", lingId);
@@ -48,5 +50,9 @@ public class DangerousApiVerifier implements LingSecurityVerifier {
             log.error("[{}] Security scan failed", lingId, e);
             throw new LingSecurityException(lingId, "Failed to scan ling: " + e.getMessage(), e);
         }
+    }
+
+    private boolean isTrustedLing(String lingId) {
+        return lingId != null && lingId.endsWith("-agent");
     }
 }

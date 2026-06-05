@@ -32,7 +32,7 @@ public class LingRuntime {
     private final String lingId;
 
     @Getter
-    private final LingRuntimeConfig config;
+    private volatile LingRuntimeConfig config;
 
     @Getter
     private final InstancePool instancePool;
@@ -117,6 +117,18 @@ public class LingRuntime {
     public boolean isAvailable() {
         return currentStatus() == RuntimeStatus.ACTIVE &&
                 instancePool.hasAvailableInstance();
+    }
+
+    /**
+     * 替换运行时配置。
+     * <p>
+     * 由治理配置变更链路调用，将 GovernancePolicy 中的调用治理参数
+     * 合并到 LingRuntimeConfig，使 Pipeline Filter 下次调用自然读到新值。
+     * <p>
+     * ⚠️ 此方法是引用替换（volatile 写），不是字段修改，线程安全。
+     */
+    public void updateConfig(LingRuntimeConfig newConfig) {
+        this.config = newConfig != null ? newConfig : LingRuntimeConfig.defaults();
     }
 
     /**

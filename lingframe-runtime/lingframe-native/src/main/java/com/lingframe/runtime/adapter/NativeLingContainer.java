@@ -223,7 +223,23 @@ public class NativeLingContainer implements LingContainer {
 
     @Override
     public Object getBean(String beanName) {
-        return null; // 不支持按名查找
+        if (beanName != null && lingInstance != null) {
+            try {
+                ClassLoader cl = lingInstance.getClass().getClassLoader();
+                if (cl != null) {
+                    Class<?> targetClass = cl.loadClass(beanName);
+                    if (targetClass.isInstance(lingInstance)) {
+                        return lingInstance;
+                    }
+                }
+            } catch (ClassNotFoundException ignored) {
+            }
+            if (beanName.equals(lingId) || lingId.endsWith(":" + beanName)) {
+                return lingInstance;
+            }
+            return lingInstance;
+        }
+        return null;
     }
 
     @Override

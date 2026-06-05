@@ -9,19 +9,24 @@ import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.api.event.lifecycle.LingUninstallingEvent;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.alert.AlertManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
+import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.resource.DefaultLeakDetector;
 import com.lingframe.core.security.ApiOverrideVerifier;
 import com.lingframe.core.security.DangerousApiVerifier;
+import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
+import com.lingframe.core.spi.CanaryConfigurable;
 import com.lingframe.core.spi.LingLoaderFactory;
 import com.lingframe.core.spi.LingSecurityVerifier;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +37,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+
 
 /**
  * 顶层生命周期编排器。
@@ -42,7 +49,7 @@ import java.util.Objects;
  * {@link InstanceCoordinator}。
  */
 @Slf4j
-public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
+public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
     private final ContainerFactory containerFactory;
     private final LingLoaderFactory lingLoaderFactory;
@@ -57,9 +64,15 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
     private final InvocationPipelineEngine pipelineEngine;
     private final LingUnloadCoordinator unloadCoordinator;
     private HotSwapWatcher hotSwapWatcher;
+    private CanaryConfigurable canaryConfigurable;
 
     private final InstanceCoordinator instanceCoordinator;
     private final RuntimeCoordinator runtimeCoordinator;
+
+    private MetricsCollector metricsCollector;
+    private GovernanceMetricsCollector governanceMetricsCollector;
+    private AlertManager alertManager;
+    private LeakDetector leakDetector;
 
     public DefaultLingLifecycleEngine(ContainerFactory containerFactory,
                                       PermissionService permissionService,
@@ -130,10 +143,76 @@ public class DefaultLingLifecycleEngine implements LingLifecycleEngine {
         this.hotSwapWatcher = hotSwapWatcher;
         this.instanceCoordinator = new InstanceCoordinator(eventBus);
         this.runtimeCoordinator = Objects.requireNonNull(runtimeCoordinator, "RuntimeCoordinator is required");
+
+        this.metricsCollector = new MetricsCollector(lingRepository);
+        this.governanceMetricsCollector = new GovernanceMetricsCollector();
+        this.alertManager = new AlertManager();
+        this.leakDetector = this.unloadCoordinator.getLeakDetector();
     }
 
     public void setHotSwapWatcher(HotSwapWatcher hotSwapWatcher) {
         this.hotSwapWatcher = hotSwapWatcher;
+    }
+
+    public void setCanaryConfigurable(CanaryConfigurable canaryConfigurable) {
+        this.canaryConfigurable = canaryConfigurable;
+    }
+
+    @Override
+    public LingRepository getRepository() {
+        return lingRepository;
+    }
+
+    @Override
+    public LingServiceRegistry getServiceRegistry() {
+        return lingServiceRegistry;
+    }
+
+    @Override
+    public InvocationPipelineEngine getPipelineEngine() {
+        return pipelineEngine;
+    }
+
+    @Override
+    public EventBus getEventBus() {
+        return eventBus;
+    }
+
+    @Override
+    public Optional<CanaryConfigurable> getCanaryConfigurable() {
+        return Optional.ofNullable(canaryConfigurable);
+    }
+
+    @Override
+    public Optional<MetricsCollector> getMetricsCollector() {
+        return Optional.ofNullable(metricsCollector);
+    }
+
+    @Override
+    public Optional<GovernanceMetricsCollector> getGovernanceMetricsCollector() {
+        return Optional.ofNullable(governanceMetricsCollector);
+    }
+
+    @Override
+    public Optional<AlertManager> getAlertManager() {
+        return Optional.ofNullable(alertManager);
+    }
+
+    @Override
+    public Optional<LeakDetector> getLeakDetector() {
+        return Optional.ofNullable(leakDetector);
+    }
+
+    public void setMetricsCollector(MetricsCollector metricsCollector) {
+        this.metricsCollector = metricsCollector;
+    }
+
+    public void setGovernanceMetricsCollector(GovernanceMetricsCollector governanceMetricsCollector) {
+        this.governanceMetricsCollector = governanceMetricsCollector;
+    }
+
+    public void setAlertManager(AlertManager alertManager) {
+        this.alertManager = alertManager;
     }
 
     @Override

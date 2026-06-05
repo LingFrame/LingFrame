@@ -23,6 +23,10 @@ public class LingUnloadCoordinator {
     private final LingResourceManager lingResourceManager;
     private final LeakDetector leakDetector;
 
+    public LeakDetector getLeakDetector() {
+        return leakDetector;
+    }
+
     /**
      * 版本级卸载后的清理动作。
      */
