@@ -39,6 +39,10 @@ public class InstancePool {
     // 死亡队列：存放待销毁的旧版本
     private final ConcurrentLinkedQueue<LingInstance> dyingQueue = new ConcurrentLinkedQueue<>();
 
+    // 成员变更互斥锁：保护 activePool/dyingQueue/defaultInstance 的复合操作
+    // 使用私有锁对象，避免外部持有 LingInstance 引用导致的锁逃逸和潜在死锁
+    private final Object membershipLock = new Object();
+
     // 关停标记，避免关停期间并发写入
     private volatile boolean isShuttingDown = false;
 
@@ -142,16 +146,18 @@ public class InstancePool {
             return null;
         }
 
-        activePool.add(instance);
-        log.debug("[{}] Added instance {} to active pool, pool size: {}",
-                lingId, instance.getVersion(), activePool.size());
+        synchronized (membershipLock) {
+            activePool.add(instance);
+            log.debug("[{}] Added instance {} to active pool, pool size: {}",
+                    lingId, instance.getVersion(), activePool.size());
 
-        if (isDefault) {
-            LingInstance old = defaultInstance.getAndSet(instance);
-            if (old != null && old != instance) {
-                log.info("[{}] Replaced default instance: {} -> {}",
-                        lingId, old.getVersion(), instance.getVersion());
-                return old;
+            if (isDefault) {
+                LingInstance old = defaultInstance.getAndSet(instance);
+                if (old != null && old != instance) {
+                    log.info("[{}] Replaced default instance: {} -> {}",
+                            lingId, old.getVersion(), instance.getVersion());
+                    return old;
+                }
             }
         }
 
@@ -175,16 +181,21 @@ public class InstancePool {
             log.debug("[{}] Instance {} marked STOPPING via InstanceCoordinator",
                     lingId, instance.getVersion());
         }
-        activePool.remove(instance);
-        dyingQueue.add(instance);
 
-        // 若该实例曾是主实例，从活跃池选举新的主实例
-        if (defaultInstance.compareAndSet(instance, null)) {
-            if (!activePool.isEmpty()) {
-                LingInstance newDefault = activePool.get(0);
-                defaultInstance.set(newDefault);
-                log.info("[{}] Default instance moved to dying, promoted {} to new default", lingId,
-                        newDefault.getVersion());
+        // 成员变更必须串行化，防止并发 moveToDying/removeInstance 导致 dyingQueue 不一致
+        synchronized (membershipLock) {
+            activePool.remove(instance);
+            dyingQueue.add(instance);
+
+            // 若该实例曾是主实例，原子选举新的主实例（避免中间 null 窗口）
+            if (defaultInstance.get() == instance) {
+                LingInstance newDefault = activePool.isEmpty() ? null : activePool.get(0);
+                if (defaultInstance.compareAndSet(instance, newDefault)) {
+                    if (newDefault != null) {
+                        log.info("[{}] Default instance moved to dying, promoted {} to new default", lingId,
+                                newDefault.getVersion());
+                    }
+                }
             }
         }
 
@@ -202,15 +213,20 @@ public class InstancePool {
         if (instance == null) {
             return;
         }
-        activePool.remove(instance);
-        dyingQueue.remove(instance);
 
-        // 若为默认实例，清除默认标记并选举新主
-        if (defaultInstance.compareAndSet(instance, null)) {
-            if (!activePool.isEmpty()) {
-                LingInstance newDefault = activePool.get(0);
-                defaultInstance.set(newDefault);
-                log.info("[{}] Default instance removed, promoted {} to new default", lingId, newDefault.getVersion());
+        // 与 moveToDying 共用 membershipLock，确保成员操作串行化
+        synchronized (membershipLock) {
+            activePool.remove(instance);
+            dyingQueue.remove(instance);
+
+            // 若为默认实例，原子选举新主（避免中间 null 窗口）
+            if (defaultInstance.get() == instance) {
+                LingInstance newDefault = activePool.isEmpty() ? null : activePool.get(0);
+                if (defaultInstance.compareAndSet(instance, newDefault)) {
+                    if (newDefault != null) {
+                        log.info("[{}] Default instance removed, promoted {} to new default", lingId, newDefault.getVersion());
+                    }
+                }
             }
         }
     }

@@ -44,3 +44,5 @@ docs/images/lingframe-cover.png
 /lingframe-dashboard-web
 .preferences
 .jlsp/**
+# Maven Shade Plugin 生成物
+dependency-reduced-pom.xml

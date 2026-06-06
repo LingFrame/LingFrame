@@ -353,6 +353,70 @@
                         </execution>
                     </executions>
                 </plugin>
+
+                <!-- SpotBugs 静态分析 -->
+                <plugin>
+                    <groupId>com.github.spotbugs</groupId>
+                    <artifactId>spotbugs-maven-plugin</artifactId>
+                    <version>4.8.3.0</version>
+                    <dependencies>
+                        <dependency>
+                            <groupId>com.github.spotbugs</groupId>
+                            <artifactId>spotbugs</artifactId>
+                            <version>4.8.3</version>
+                        </dependency>
+                    </dependencies>
+                    <configuration>
+                        <effort>Max</effort>
+                        <threshold>High</threshold>
+                        <failOnError>true</failOnError>
+                        <excludeFilterFile>${maven.multiModuleProjectDirectory}/lingframe-config/spotbugs-exclude.xml</excludeFilterFile>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>spotbugs-check</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Checkstyle 代码风格检查 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-checkstyle-plugin</artifactId>
+                    <version>3.3.1</version>
+                    <dependencies>
+                        <dependency>
+                            <groupId>com.puppycrawl.tools</groupId>
+                            <artifactId>checkstyle</artifactId>
+                            <!-- 8.45.1 是最后一个官方支持 JDK8 运行的版本 -->
+                            <version>8.45.1</version>
+                        </dependency>
+                    </dependencies>
+                    <configuration>
+                        <!-- 通过 file: URL 引用 lingframe-config 下的规则文件，
+                             ${maven.multiModuleProjectDirectory} 由 Maven 3.3.1+ 自动设置为多模块项目根目录，
+                             确保所有子模块都能正确定位配置文件。 -->
+                        <configLocation>file:///${maven.multiModuleProjectDirectory}/lingframe-config/checkstyle-rules.xml</configLocation>
+                        <encoding>UTF-8</encoding>
+                        <consoleOutput>true</consoleOutput>
+                        <failsOnError>true</failsOnError>
+                        <linkXRef>false</linkXRef>
+                        <skip>${checkstyle.skip}</skip>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>checkstyle-check</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
             </plugins>
         </pluginManagement>
 

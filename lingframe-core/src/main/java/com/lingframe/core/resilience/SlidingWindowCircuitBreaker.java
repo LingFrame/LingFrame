@@ -38,9 +38,11 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
     private final AtomicInteger failureCount = new AtomicInteger(0);
     private final AtomicInteger slowCount = new AtomicInteger(0);
 
-    // 半开状态下的试探计数
-    private final AtomicInteger permittedNumberOfCallsInHalfOpenState = new AtomicInteger(10);
+    // 半开状态下的试探参数（构造后不可变）
+    private final int permittedNumberOfCallsInHalfOpenState;
     private final AtomicInteger successfulCallsInHalfOpenState = new AtomicInteger(0);
+    /** 当前 HALF_OPEN 状态下已放行的试探请求数 */
+    private final AtomicInteger halfOpenTrialCount = new AtomicInteger(0);
 
     private final EventBus eventBus;
 
@@ -61,6 +63,7 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
         this.slidingWindowSize = slidingWindowSize;
         this.minimumNumberOfCalls = minimumNumberOfCalls;
         this.waitDurationInOpenStateMs = waitDurationInOpenStateMs;
+        this.permittedNumberOfCallsInHalfOpenState = 10;
 
         this.failureWindow = new boolean[slidingWindowSize];
         this.slowWindow = new boolean[slidingWindowSize];
@@ -82,6 +85,7 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
                 if (state.compareAndSet(State.OPEN, State.HALF_OPEN)) {
                     stateTransitionTime.set(now);
                     successfulCallsInHalfOpenState.set(0);
+                    halfOpenTrialCount.set(0);
                     log.info("[Breaker:{}] State changed: OPEN -> HALF_OPEN (Trial starts)", name);
                     return true;
                 }
@@ -90,8 +94,16 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
         }
 
         if (currentState == State.HALF_OPEN) {
-            // 这里可以做简单并发控制，暂略
-            return true;
+            // CAS 循环精确限制试探数，避免 incrementAndGet + 条件检查的竞态窗口
+            while (true) {
+                int current = halfOpenTrialCount.get();
+                if (current >= permittedNumberOfCallsInHalfOpenState) {
+                    return false;
+                }
+                if (halfOpenTrialCount.compareAndSet(current, current + 1)) {
+                    return true;
+                }
+            }
         }
 
         return true;
@@ -121,7 +133,7 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
                 transitionToOpen();
             } else {
                 int successes = successfulCallsInHalfOpenState.incrementAndGet();
-                if (successes >= permittedNumberOfCallsInHalfOpenState.get()) {
+                if (successes >= permittedNumberOfCallsInHalfOpenState) {
                     transitionToClosed();
                 }
             }

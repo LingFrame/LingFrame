@@ -18,18 +18,63 @@ public class AsmDangerousApiScanner {
 
     private static final Set<String> FORBIDDEN_METHODS;
     private static final Set<String> WARN_METHODS;
+    private static final Set<String> WARN_PREFIXES;
+    /** 前缀 → 风险分类的显式映射，避免 contains() 误分类 */
+    private static final Map<String, String> PREFIX_CATEGORY;
 
     static {
         Set<String> forbidden = new HashSet<>();
+        // JVM 终止
         forbidden.add("java/lang/System.exit(I)V");
         forbidden.add("java/lang/Runtime.exit(I)V");
         forbidden.add("java/lang/Runtime.halt(I)V");
         FORBIDDEN_METHODS = Collections.unmodifiableSet(forbidden);
 
         Set<String> warn = new HashSet<>();
+        // 进程执行
         warn.add("java/lang/Runtime.exec");
         warn.add("java/lang/ProcessBuilder.start");
         WARN_METHODS = Collections.unmodifiableSet(warn);
+
+        // 前缀匹配的警告规则（反射、Unsafe、文件/网络 I/O）
+        Set<String> warnPrefixes = new LinkedHashSet<>();
+        Map<String, String> categoryMap = new LinkedHashMap<>();
+
+        // 反射操作
+        String catReflection = "Reflection";
+        warnPrefixes.add("java/lang/Class.forName");           categoryMap.put("java/lang/Class.forName", catReflection);
+        warnPrefixes.add("java/lang/reflect/AccessibleObject.setAccessible"); categoryMap.put("java/lang/reflect/AccessibleObject.setAccessible", catReflection);
+        warnPrefixes.add("java/lang/reflect/Method.invoke");   categoryMap.put("java/lang/reflect/Method.invoke", catReflection);
+        warnPrefixes.add("java/lang/reflect/Constructor.newInstance"); categoryMap.put("java/lang/reflect/Constructor.newInstance", catReflection);
+        warnPrefixes.add("java/lang/reflect/Field.set");       categoryMap.put("java/lang/reflect/Field.set", catReflection);
+        warnPrefixes.add("java/lang/reflect/Field.get");       categoryMap.put("java/lang/reflect/Field.get", catReflection);
+
+        // Unsafe
+        String catUnsafe = "sun.misc.Unsafe";
+        warnPrefixes.add("sun/misc/Unsafe.");                  categoryMap.put("sun/misc/Unsafe.", catUnsafe);
+
+        // 文件 I/O
+        String catFileIO = "File I/O";
+        warnPrefixes.add("java/io/FileInputStream.<init>");    categoryMap.put("java/io/FileInputStream.<init>", catFileIO);
+        warnPrefixes.add("java/io/FileOutputStream.<init>");   categoryMap.put("java/io/FileOutputStream.<init>", catFileIO);
+        warnPrefixes.add("java/io/FileReader.<init>");         categoryMap.put("java/io/FileReader.<init>", catFileIO);
+        warnPrefixes.add("java/io/FileWriter.<init>");         categoryMap.put("java/io/FileWriter.<init>", catFileIO);
+        warnPrefixes.add("java/io/RandomAccessFile.<init>");   categoryMap.put("java/io/RandomAccessFile.<init>", catFileIO);
+        warnPrefixes.add("java/nio/file/Files.write");         categoryMap.put("java/nio/file/Files.write", catFileIO);
+        warnPrefixes.add("java/nio/file/Files.delete");        categoryMap.put("java/nio/file/Files.delete", catFileIO);
+        warnPrefixes.add("java/nio/file/Files.move");          categoryMap.put("java/nio/file/Files.move", catFileIO);
+
+        // 网络 I/O
+        String catNetworkIO = "Network I/O";
+        warnPrefixes.add("java/net/Socket.<init>");            categoryMap.put("java/net/Socket.<init>", catNetworkIO);
+        warnPrefixes.add("java/net/ServerSocket.<init>");      categoryMap.put("java/net/ServerSocket.<init>", catNetworkIO);
+        warnPrefixes.add("java/net/DatagramSocket.<init>");    categoryMap.put("java/net/DatagramSocket.<init>", catNetworkIO);
+        warnPrefixes.add("java/net/URL.openStream");           categoryMap.put("java/net/URL.openStream", catNetworkIO);
+        warnPrefixes.add("java/net/URL.openConnection");       categoryMap.put("java/net/URL.openConnection", catNetworkIO);
+        warnPrefixes.add("java/net/HttpURLConnection.connect"); categoryMap.put("java/net/HttpURLConnection.connect", catNetworkIO);
+
+        WARN_PREFIXES = Collections.unmodifiableSet(warnPrefixes);
+        PREFIX_CATEGORY = Collections.unmodifiableMap(categoryMap);
     }
 
     public static ScanResult scan(File source) throws IOException {
@@ -119,7 +164,7 @@ public class AsmDangerousApiScanner {
                                     "Forbidden API: This call would terminate the JVM"));
                         }
 
-                        // 检查警告的方法
+                        // 检查警告的方法（前缀匹配）
                         for (String warn : WARN_METHODS) {
                             if (methodPrefix.startsWith(warn)) {
                                 warnings.add(new Violation(
@@ -130,6 +175,18 @@ public class AsmDangerousApiScanner {
                                 break;
                             }
                         }
+
+                        // 检查扩展警告规则（前缀匹配：反射、Unsafe、文件/网络 I/O）
+                        for (String prefix : WARN_PREFIXES) {
+                            if (fullMethod.startsWith(prefix) || methodPrefix.startsWith(prefix)) {
+                                warnings.add(new Violation(
+                                        currentClass,
+                                        fullMethod,
+                                        ViolationType.WARNING,
+                                        "Potentially dangerous API: " + categorize(prefix)));
+                                break;
+                            }
+                        }
                     }
                 };
             }
@@ -137,6 +194,13 @@ public class AsmDangerousApiScanner {
     }
 
     // ==================== 结果类 ====================
+
+    /**
+     * 根据规则前缀查找风险分类
+     */
+    private static String categorize(String prefix) {
+        return PREFIX_CATEGORY.getOrDefault(prefix, "Unknown");
+    }
 
     public enum ViolationType {
         CRITICAL, WARNING

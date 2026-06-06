@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE module PUBLIC
+        "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+        "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<!--
+    LingFrame 项目自定义 Checkstyle 规则集
+    基于 Google Java Style，针对框架项目特点做适度放宽
+-->
+<module name="Checker">
+    <property name="charset" value="UTF-8"/>
+    <property name="severity" value="warning"/>
+    <property name="fileExtensions" value="java"/>
+
+    <!-- 抑制规则（内联，避免外部文件路径的跨平台编码问题） -->
+    <!-- Lombok 生成代码无法通过 Checkstyle 检查 -->
+    <module name="SuppressionSingleFilter">
+        <property name="files" value=".*[\\/]target[\\/].*"/>
+        <property name="checks" value=".*"/>
+    </module>
+    <!-- 基准测试代码放宽复杂度限制 -->
+    <module name="SuppressionSingleFilter">
+        <property name="files" value=".*Benchmark\.java$"/>
+        <property name="checks" value="CyclomaticComplexity,MethodLength"/>
+    </module>
+    <!-- 示例代码不强制风格 -->
+    <module name="SuppressionSingleFilter">
+        <property name="files" value=".*lingframe-examples[\\/].*"/>
+        <property name="checks" value=".*"/>
+    </module>
+
+    <!-- 文件尾部换行 -->
+    <module name="NewlineAtEndOfFile"/>
+
+    <!-- 禁止 Tab -->
+    <module name="FileTabCharacter">
+        <property name="eachLine" value="true"/>
+    </module>
+
+    <module name="TreeWalker">
+        <!-- 命名规范 -->
+        <module name="ConstantName">
+            <property name="format" value="^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"/>
+        </module>
+        <module name="LocalVariableName">
+            <property name="format" value="^[a-z][a-zA-Z0-9]*$"/>
+        </module>
+        <module name="MemberName">
+            <property name="format" value="^[a-z][a-zA-Z0-9]*$"/>
+        </module>
+        <module name="MethodName">
+            <property name="format" value="^[a-z][a-zA-Z0-9]*$"/>
+        </module>
+        <module name="PackageName">
+            <property name="format" value="^[a-z]+(\.[a-z][a-z0-9]*)*$"/>
+        </module>
+        <module name="ParameterName">
+            <property name="format" value="^[a-z][a-zA-Z0-9]*$"/>
+        </module>
+        <module name="TypeName">
+            <property name="format" value="^[A-Z][a-zA-Z0-9]*$"/>
+        </module>
+
+        <!-- Import 规范 -->
+        <module name="AvoidStarImport"/>
+        <module name="RedundantImport"/>
+        <module name="UnusedImports"/>
+
+        <!-- 代码复杂度 -->
+        <module name="CyclomaticComplexity">
+            <property name="max" value="15"/>
+        </module>
+        <module name="MethodLength">
+            <property name="max" value="200"/>
+        </module>
+
+        <!-- 基础质量 -->
+        <module name="EmptyBlock">
+            <property name="option" value="TEXT"/>
+        </module>
+        <module name="LeftCurly"/>
+        <module name="RightCurly"/>
+        <module name="DefaultComesLast"/>
+        <module name="FallThrough"/>
+        <module name="MultipleVariableDeclarations"/>
+        <module name="StringLiteralEquality"/>
+        <module name="EqualsHashCode"/>
+
+        <!-- 空行控制 -->
+        <module name="EmptyLineSeparator">
+            <property name="allowNoEmptyLineBetweenFields" value="true"/>
+            <property name="allowMultipleEmptyLines" value="false"/>
+        </module>
+
+        <!-- 修饰符顺序 -->
+        <module name="ModifierOrder"/>
+
+        <!-- 数组风格 -->
+        <module name="ArrayTypeStyle"/>
+
+        <!-- SuppressWarnings 持有者 -->
+        <module name="SuppressWarningsHolder"/>
+    </module>
+</module>

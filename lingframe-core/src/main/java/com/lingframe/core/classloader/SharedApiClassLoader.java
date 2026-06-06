@@ -5,6 +5,7 @@ import com.lingframe.core.exception.ClassLoaderException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -43,6 +44,9 @@ public class SharedApiClassLoader extends URLClassLoader {
 
     // 🔒 边界冻结后不允许继续向共享层塞入新契约
     private static volatile boolean BOUNDARY_FROZEN;
+
+    // 关闭标记，防止重复关闭
+    private volatile boolean closed = false;
 
     // 已加载的 JAR / classes 目录路径，用于幂等去重
     private final Set<String> loadedJars = ConcurrentHashMap.newKeySet();
@@ -250,6 +254,25 @@ public class SharedApiClassLoader extends URLClassLoader {
             }
         }
         return packages;
+    }
+
+    /**
+     * 覆写 close()：释放 JAR 文件句柄并清理 URLClassPath 内部缓存。
+     * <p>
+     * 与 {@link LingClassLoader#close()} 对齐，确保 resetInstance 场景下
+     * 文件句柄被彻底释放，避免 Windows 下 JAR 文件锁定。
+     */
+    @Override
+    public void close() throws IOException {
+        if (closed) {
+            log.debug("[SharedApi] ClassLoader already closed");
+            return;
+        }
+
+        closed = true;
+        super.close();
+        ClassLoaderCleanupUtil.cleanupUrlClassPath(this, "[SharedApi]");
+        log.info("[SharedApi] ClassLoader closed and internal caches cleared");
     }
 
     @Override

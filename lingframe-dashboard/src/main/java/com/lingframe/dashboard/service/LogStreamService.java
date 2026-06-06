@@ -57,6 +57,9 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     private final EventBus eventBus;
     private static final ClassLoader CORE_CLASSLOADER = LogStreamService.class.getClassLoader();
 
+    /** 最大 SSE 连接数，防止恶意/异常场景 OOM */
+    private static final int MAX_CONNECTIONS = 100;
+
     /**
      * 维护所有活跃的 SSE 连接。
      */
@@ -119,6 +122,13 @@ public class LogStreamService implements InitializingBean, DisposableBean {
      * @return SSE 发射器实例
      */
     public SseEmitter createEmitter() {
+        if (emitters.size() >= MAX_CONNECTIONS) {
+            log.warn("SSE connection rejected: max connections ({}) reached", MAX_CONNECTIONS);
+            SseEmitter rejected = new SseEmitter(0L);
+            rejected.completeWithError(new RuntimeException("Max SSE connections reached: " + MAX_CONNECTIONS));
+            return rejected;
+        }
+
         SseEmitter emitter = new SseEmitter(0L);
 
         emitter.onCompletion(() -> removeEmitter(emitter));
@@ -507,6 +517,16 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         eventBus.unsubscribeAll("lingframe-dashboard");
         dispatcher.shutdownNow();
         scheduler.shutdownNow();
+        try {
+            if (!dispatcher.awaitTermination(5, TimeUnit.SECONDS)) {
+                log.warn("SSE dispatcher did not terminate within 5s");
+            }
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                log.warn("SSE scheduler did not terminate within 5s");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         emitters.forEach(SseEmitter::complete);
     }
 

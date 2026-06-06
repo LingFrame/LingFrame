@@ -2,8 +2,10 @@ package com.lingframe.api.exception;
 
 /**
  * 当熔断器打开或限流器拒绝时抛出
+ * <p>
+ * 继承 LingException，确保 catch(LingException) 能统一捕获框架异常。
  */
-public class CallNotPermittedException extends RuntimeException {
+public class CallNotPermittedException extends LingException {
 
     private final String resourceId;
     private final String reason;
