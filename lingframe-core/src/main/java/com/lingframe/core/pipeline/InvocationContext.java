@@ -57,6 +57,16 @@ public class InvocationContext {
     private String targetVersion;
 
     /**
+     * FQSID 解析缓存：lingId 部分。
+     * <p>
+     * 多个 Filter（MacroStateGuard/Resilience/ContextIsolation/ThreadIsolation）
+     * 都需要从 fqsid 提取 lingId，缓存避免重复 split。
+     */
+    private transient String cachedLingId;
+    /** FQSID 解析缓存：serviceName 部分 */
+    private transient String cachedServiceName;
+
+    /**
      * 运行时对象必须走弱引用。
      * 否则对象池里的 InvocationContext 会把 Runtime 与其背后的灵元 ClassLoader 长期挂住。
      */
@@ -172,6 +182,46 @@ public class InvocationContext {
      */
     public InvocationExecutionState execution() {
         return executionState;
+    }
+
+    /**
+     * 从 FQSID 中提取 lingId，结果缓存避免重复 split。
+     * <p>
+     * FQSID 格式为 {@code lingId:serviceName}，多个 Filter 都需要提取 lingId，
+     * 缓存后同一次调用只需 split 一次。
+     *
+     * @return lingId，如果 FQSID 为 null 则返回 null
+     */
+    public String getLingIdFromFqsid() {
+        if (cachedLingId != null) {
+            return cachedLingId;
+        }
+        if (serviceFQSID == null) {
+            return null;
+        }
+        // 一次性 split，同时缓存 lingId 和 serviceName
+        String[] parts = serviceFQSID.split(":", 2);
+        cachedLingId = parts[0];
+        cachedServiceName = parts.length > 1 ? parts[1] : null;
+        return cachedLingId;
+    }
+
+    /**
+     * 从 FQSID 中提取 serviceName 部分，结果缓存避免重复 split。
+     *
+     * @return serviceName，如果 FQSID 为 null 则返回 null
+     */
+    public String getServiceNameFromFqsid() {
+        if (cachedServiceName != null) {
+            return cachedServiceName;
+        }
+        if (serviceFQSID == null) {
+            return null;
+        }
+        String[] parts = serviceFQSID.split(":", 2);
+        cachedLingId = parts[0];
+        cachedServiceName = parts.length > 1 ? parts[1] : null;
+        return cachedServiceName;
     }
 
     /**
@@ -325,6 +375,8 @@ public class InvocationContext {
         this.args = null;
         this.targetLingId = null;
         this.targetVersion = null;
+        this.cachedLingId = null;
+        this.cachedServiceName = null;
         this.runtimeRef = null; // ⚠️ 物理清空 WeakReference 容器本身，而不只是等待 referent 自己失效
 
         this.traceId = null;
@@ -361,6 +413,8 @@ public class InvocationContext {
         this.args = source.args;
         this.targetLingId = source.targetLingId;
         this.targetVersion = source.targetVersion;
+        this.cachedLingId = source.cachedLingId;
+        this.cachedServiceName = source.cachedServiceName;
         this.runtimeRef = source.runtimeRef;
 
         this.traceId = source.traceId;

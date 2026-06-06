@@ -25,7 +25,7 @@ public class InvocationPipelineEngine {
         // 将上下文挂载为当前线程活跃上下文，使 Pipeline 内部（含 wrap() 跨线程传播）可通过 current() 发现
         InvocationContext prev = ctx.attach();
         try {
-            LingFilterChain chain = new DefaultFilterChain(registry.getOrderedFilters(), 0);
+            LingFilterChain chain = new DefaultFilterChain(registry.getOrderedFilters());
             return chain.doFilter(ctx);
         } catch (LingInvocationException e) {
             throw e;

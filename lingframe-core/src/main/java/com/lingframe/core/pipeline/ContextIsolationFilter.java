@@ -70,11 +70,10 @@ public class ContextIsolationFilter implements LingInvocationFilter {
 
     private String resolveTargetClassName(InvocationContext ctx) {
         // FQSID 约定形如 lingId:serviceName[#method]，这里抽出服务类名供后续解析和取 Bean 使用
-        String fqsid = ctx.getServiceFQSID();
-        if (fqsid == null) {
+        String serviceName = ctx.getServiceNameFromFqsid();
+        if (serviceName == null) {
             return null;
         }
-        String serviceName = fqsid.split(":", 2)[1];
         if (serviceName.contains("#")) {
             return serviceName.split("#", 2)[0];
         }

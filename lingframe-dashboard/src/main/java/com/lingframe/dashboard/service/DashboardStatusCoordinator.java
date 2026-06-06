@@ -6,6 +6,7 @@ import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.fsm.StateMachine;
 import com.lingframe.core.fsm.TransitionResult;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import lombok.extern.slf4j.Slf4j;
@@ -121,5 +122,19 @@ public class DashboardStatusCoordinator {
                 .capability(capability)
                 .accessType(accessType.name())
                 .build();
+    }
+
+    /**
+     * 获取指定灵元的运行时状态
+     */
+    RuntimeStatus getRuntimeStatus(String lingId) {
+        return runtimeCoordinator.getStatus(lingId);
+    }
+
+    /**
+     * 获取指定灵元的运行时状态机（用于查询转换历史）
+     */
+    StateMachine<RuntimeStatus> getRuntimeMachine(String lingId) {
+        return runtimeCoordinator.getMachine(lingId);
     }
 }

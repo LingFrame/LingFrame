@@ -1,5 +1,7 @@
 package com.lingframe.core.pipeline;
 
+import com.lingframe.api.resilience.FallbackCause;
+import com.lingframe.api.resilience.FallbackProvider;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
@@ -37,6 +39,9 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
     private final RuntimeCoordinator runtimeCoordinator;
     private final GovernanceMetricsCollector governanceMetricsCollector;
 
+    /** 可插拔的降级策略，为 null 时直接抛异常 */
+    private volatile FallbackProvider fallbackProvider;
+
     // 按 lingId 管理弹性组件实例
     private final ConcurrentHashMap<String, CircuitBreaker> breakers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, LimiterHolder> limiters = new ConcurrentHashMap<>();
@@ -62,6 +67,16 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         this(null, null, null, null);
     }
 
+    /**
+     * 设置降级策略。
+     * <p>
+     * 设置后，熔断打开或限流拒绝时将优先调用降级策略获取响应，
+     * 仅当降级策略返回 null 时才抛出异常。
+     */
+    public void setFallbackProvider(FallbackProvider fallbackProvider) {
+        this.fallbackProvider = fallbackProvider;
+    }
+
     @Override
     public int getOrder() {
         return FilterPhase.RESILIENCE;
@@ -74,7 +89,7 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             return chain.doFilter(ctx);
         }
 
-        String lingId = fqsid.split(":")[0];
+        String lingId = ctx.getLingIdFromFqsid();
 
         // 1. 限流检查
         RateLimiter limiter = getLimiter(lingId, ctx);
@@ -82,6 +97,10 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             log.warn("[Resilience:{}] Rate limited, rejecting request: {}", lingId, fqsid);
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordRateLimited(lingId, ctx.getTargetVersion());
+            }
+            Object fallbackResult = tryFallback(fqsid, FallbackCause.RATE_LIMITED);
+            if (fallbackResult != null) {
+                return fallbackResult;
             }
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.RATE_LIMITED);
         }
@@ -94,9 +113,13 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
                 governanceMetricsCollector.recordCircuitOpenRejected(lingId, ctx.getTargetVersion());
             }
 
-            // 🔥 熔断打开 → 将灵元宏观状态转为 DEGRADED
+            // 熔断打开 → 将灵元宏观状态转为 DEGRADED
             transitionToDegraded(lingId, ctx.getTargetVersion());
 
+            Object fallbackResult = tryFallback(fqsid, FallbackCause.CIRCUIT_OPEN);
+            if (fallbackResult != null) {
+                return fallbackResult;
+            }
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.CIRCUIT_OPEN);
         }
 
@@ -233,6 +256,28 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             }
         } catch (Exception e) {
             log.debug("[Resilience:{}] Failed to recover from DEGRADED: {}", lingId, e.getMessage());
+        }
+    }
+
+    /**
+     * 尝试调用降级策略获取响应。
+     *
+     * @return 降级结果，null 表示无法降级
+     */
+    private Object tryFallback(String fqsid, FallbackCause cause) {
+        FallbackProvider provider = this.fallbackProvider;
+        if (provider == null) {
+            return null;
+        }
+        try {
+            Object result = provider.fallback(fqsid, cause);
+            if (result != null) {
+                log.info("[Resilience] Fallback succeeded for cause={}, fqsid={}", cause, fqsid);
+            }
+            return result;
+        } catch (Throwable t) {
+            log.warn("[Resilience] Fallback failed for cause={}, fqsid={}: {}", cause, fqsid, t.getMessage());
+            return null;
         }
     }
 

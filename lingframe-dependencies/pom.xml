@@ -417,6 +417,46 @@
                         </execution>
                     </executions>
                 </plugin>
+
+                <!-- Javadoc API 参考 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>3.4.1</version>
+                    <configuration>
+                        <encoding>UTF-8</encoding>
+                        <charset>UTF-8</charset>
+                        <docencoding>UTF-8</docencoding>
+                        <doclint>all,-missing,-html</doclint>
+                        <quiet>true</quiet>
+                        <failOnError>false</failOnError>
+                    </configuration>
+                </plugin>
+
+                <!-- OWASP 依赖漏洞扫描 -->
+                <plugin>
+                    <groupId>org.owasp</groupId>
+                    <artifactId>dependency-check-maven</artifactId>
+                    <version>10.0.4</version>
+                    <configuration>
+                        <!-- CVSS 评分阈值：HIGH(7.0+) 和 CRITICAL 导致构建失败 -->
+                        <failBuildOnCVSS>7.0</failBuildOnCVSS>
+                        <!-- 抑制文件：处理误报 -->
+                        <suppressionFile>${maven.multiModuleProjectDirectory}/lingframe-config/dependency-check-suppressions.xml</suppressionFile>
+                        <!-- 输出格式 -->
+                        <formats>
+                            <format>HTML</format>
+                            <format>JSON</format>
+                        </formats>
+                        <!-- 跳过 provided 和 test 作用域的依赖 -->
+                        <skipProvidedScope>true</skipProvidedScope>
+                        <skipTestScope>true</skipTestScope>
+                        <!-- NVD API 密钥（可选，提升速率限制） -->
+                        <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+                        <!-- 数据缓存目录，避免每次全量下载 -->
+                        <dataDirectory>${java.io.tmpdir}/dependency-check-data</dataDirectory>
+                    </configuration>
+                </plugin>
             </plugins>
         </pluginManagement>
 

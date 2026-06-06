@@ -10,6 +10,9 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 运行时状态协调器，也是 {@link RuntimeStatus} 状态机的唯一拥有者。
@@ -53,6 +56,11 @@ public class RuntimeCoordinator {
     private static final int MAX_RETRIES = 3;
 
     /**
+     * DEGRADED 灵元健康检查间隔（秒）
+     */
+    private static final long HEALTH_CHECK_INTERVAL_SECONDS = 30;
+
+    /**
      * `lingId -> 运行时状态机`
      * 这是运行时宏观状态的正式真源。
      */
@@ -83,6 +91,16 @@ public class RuntimeCoordinator {
     private final LingEventListener<InstanceStateChangedEvent> stateChangedListener;
     private final LingEventListener<InstanceDestroyedEvent> destroyedListener;
 
+    /**
+     * DEGRADED 灵元定时健康检查调度器。
+     * <p>
+     * 当灵元因熔断打开进入 DEGRADED 后，如果没有新请求经过 Pipeline，
+     * {@code tryRecoverFromDegraded} 不会被触发，DEGRADED 将持续。
+     * 此调度器周期性扫描所有 DEGRADED 灵元并触发 reevaluate，
+     * 作为事件驱动路径的兜底保障。
+     */
+    private volatile ScheduledExecutorService healthCheckExecutor;
+
     public RuntimeCoordinator(EventBus eventBus) {
         this(eventBus, new DefaultRuntimeEvaluationPolicy());
     }
@@ -103,21 +121,23 @@ public class RuntimeCoordinator {
     /* ==================== 生命周期管理 ==================== */
 
     /**
-     * 启动协调器：注册全局事件监听器
+     * 启动协调器：注册全局事件监听器 + 启动 DEGRADED 健康检查
      */
     public void start() {
         log.info("RuntimeCoordinator starting, subscribing to instance events");
         eventBus.subscribeGlobal(InstanceStateChangedEvent.class, stateChangedListener);
         eventBus.subscribeGlobal(InstanceDestroyedEvent.class, destroyedListener);
+        startHealthCheck();
     }
 
     /**
-     * 停止协调器：注销全局事件监听器
+     * 停止协调器：注销全局事件监听器 + 停止健康检查
      */
     public void stop() {
         log.info("RuntimeCoordinator stopping, unsubscribing from instance events");
         eventBus.unsubscribeGlobal(InstanceStateChangedEvent.class, stateChangedListener);
         eventBus.unsubscribeGlobal(InstanceDestroyedEvent.class, destroyedListener);
+        stopHealthCheck();
     }
 
     /* ==================== Ling 注册与注销 ==================== */
@@ -146,6 +166,17 @@ public class RuntimeCoordinator {
     public RuntimeStatus getStatus(String lingId) {
         StateMachine<RuntimeStatus> fsm = machines.get(lingId);
         return fsm != null ? fsm.current() : null;
+    }
+
+    /**
+     * 获取指定 Ling 的运行时状态机（用于查询转换历史等）。
+     * 未注册返回 null。
+     *
+     * @param lingId Ling 标识
+     * @return 运行时状态机，可能为 null
+     */
+    public StateMachine<RuntimeStatus> getMachine(String lingId) {
+        return machines.get(lingId);
     }
 
     /* ==================== 事件监听入口 ==================== */
@@ -362,5 +393,73 @@ public class RuntimeCoordinator {
             return;
         }
         eventBus.publish(new RuntimeStateChangedEvent(lingId, result.from(), result.target()));
+    }
+
+    /* ==================== DEGRADED 定时健康检查 ==================== */
+
+    private void startHealthCheck() {
+        if (healthCheckExecutor != null) {
+            return;
+        }
+        synchronized (this) {
+            if (healthCheckExecutor != null) {
+                return;
+            }
+            ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "lingframe-degraded-health-check");
+                t.setDaemon(true);
+                return t;
+            });
+            executor.scheduleAtFixedRate(
+                    this::checkDegradedLings,
+                    HEALTH_CHECK_INTERVAL_SECONDS,
+                    HEALTH_CHECK_INTERVAL_SECONDS,
+                    TimeUnit.SECONDS);
+            healthCheckExecutor = executor;
+            log.info("DEGRADED health check started (interval={}s)", HEALTH_CHECK_INTERVAL_SECONDS);
+        }
+    }
+
+    private void stopHealthCheck() {
+        ScheduledExecutorService executor;
+        synchronized (this) {
+            executor = healthCheckExecutor;
+            if (executor == null) {
+                return;
+            }
+            healthCheckExecutor = null;
+        }
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+                log.warn("DEGRADED health check executor did not terminate in 5s, forced shutdown");
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        log.info("DEGRADED health check stopped");
+    }
+
+    /**
+     * 扫描所有 DEGRADED 灵元，触发 reevaluate。
+     * <p>
+     * 这是事件驱动路径的兜底：当灵元因熔断打开进入 DEGRADED，
+     * 但没有新请求经过 Pipeline 触发 {@code tryRecoverFromDegraded} 时，
+     * 此定时任务确保 DEGRADED 灵元最终能被重新评估。
+     */
+    private void checkDegradedLings() {
+        try {
+            for (String lingId : machines.keySet()) {
+                StateMachine<RuntimeStatus> fsm = machines.get(lingId);
+                if (fsm != null && fsm.current() == RuntimeStatus.DEGRADED) {
+                    log.debug("Health check: reevaluating DEGRADED ling [{}]", lingId);
+                    reevaluate(lingId);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("DEGRADED health check failed: {}", e.getMessage());
+        }
     }
 }

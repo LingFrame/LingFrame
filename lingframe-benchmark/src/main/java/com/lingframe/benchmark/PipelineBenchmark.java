@@ -174,7 +174,7 @@ public class PipelineBenchmark {
     public void filterChainOverhead(Blackhole bh) throws Throwable {
         InvocationContext ctx = InvocationContext.obtain();
         try {
-            LingFilterChain chain = new DefaultFilterChain(chainFilters, 0);
+            LingFilterChain chain = new DefaultFilterChain(chainFilters);
             Object result = chain.doFilter(ctx);
             bh.consume(result);
         } finally {

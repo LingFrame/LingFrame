@@ -255,8 +255,11 @@ public class BasicResourceGuard implements ResourceGuard {
         // 4. ThreadLocal 清理
         clearThreadLocals(lingId, classLoader);
 
-        // 5. 清理审计 ShutdownHook
-        clearAuditShutdownHook(lingId, classLoader);
+        // 5. 清理灵元注册的 ShutdownHook（按 ClassLoader 归属全量匹配）
+        int hookCount = clearShutdownHooks(lingId, classLoader);
+        if (hookCount > 0) {
+            log.info("[{}] Removed {} shutdown hook(s)", lingId, hookCount);
+        }
 
         log.info("[{}] Resource cleanup completed", lingId);
     }
@@ -307,10 +310,23 @@ public class BasicResourceGuard implements ResourceGuard {
     }
 
     // =========================================================================
-    // ShutdownHook 清理（审计线程）
+    // ShutdownHook 清理（按 ClassLoader 归属全量匹配）
     // =========================================================================
 
-    private void clearAuditShutdownHook(String lingId, ClassLoader classLoader) {
+    /**
+     * 清理由目标 ClassLoader 注册的所有 ShutdownHook。
+     * <p>
+     * 匹配规则（二选一）：
+     * <ul>
+     *   <li>Hook 线程的 contextClassLoader 与目标 ClassLoader 相同</li>
+     *   <li>Hook 线程的 Class（即 Runnable 的实际类）由目标 ClassLoader 加载</li>
+     * </ul>
+     * 第二条规则覆盖灵元自定义 Hook 名的场景——只要 Hook 类由灵元 ClassLoader 加载，
+     * 无论线程名叫什么，都会被清理。
+     *
+     * @return 移除的 Hook 数量
+     */
+    private int clearShutdownHooks(String lingId, ClassLoader classLoader) {
         try {
             Class<?> hooksClass = Class.forName("java.lang.ApplicationShutdownHooks");
             Field hooksField = hooksClass.getDeclaredField("hooks");
@@ -318,28 +334,43 @@ public class BasicResourceGuard implements ResourceGuard {
             @SuppressWarnings("unchecked")
             Map<Thread, Thread> hooks = (Map<Thread, Thread>) hooksField.get(null);
             if (hooks == null || hooks.isEmpty()) {
-                return;
+                return 0;
             }
             List<Thread> toRemove = new CopyOnWriteArrayList<>();
             hooks.forEach((hook, value) -> {
                 if (hook == null) {
                     return;
                 }
+                // 规则 1：Hook 线程的 contextClassLoader 属于目标灵元
                 ClassLoader tccl = hook.getContextClassLoader();
-                if (tccl == classLoader && hook.getName().contains("audit-shutdown-hook")) {
+                if (tccl == classLoader) {
+                    toRemove.add(hook);
+                    return;
+                }
+                // 规则 2：Hook 的 Runnable 类由目标灵元 ClassLoader 加载
+                // 覆盖灵元自定义 Hook 名的场景（如 "my-cleanup-hook"）
+                ClassLoader hookClassCL = hook.getClass().getClassLoader();
+                if (hookClassCL == classLoader) {
                     toRemove.add(hook);
                 }
             });
             for (Thread hook : toRemove) {
                 try {
                     Runtime.getRuntime().removeShutdownHook(hook);
-                    log.info("[{}] Removed audit shutdown hook: {}", lingId, hook.getName());
+                    log.info("[{}] Removed shutdown hook: {} (class={})",
+                            lingId, hook.getName(), hook.getClass().getName());
+                } catch (IllegalStateException e) {
+                    // JVM 正在退出，无法移除
+                    log.debug("[{}] Cannot remove shutdown hook during JVM shutdown: {}",
+                            lingId, hook.getName());
                 } catch (Exception e) {
-                    log.debug("[{}] Failed to remove audit shutdown hook: {}", lingId, e.getMessage());
+                    log.debug("[{}] Failed to remove shutdown hook: {}", lingId, e.getMessage());
                 }
             }
+            return toRemove.size();
         } catch (Exception e) {
-            log.debug("[{}] Audit shutdown hook cleanup failed: {}", lingId, e.getMessage());
+            log.debug("[{}] Shutdown hook cleanup failed: {}", lingId, e.getMessage());
+            return 0;
         }
     }
 

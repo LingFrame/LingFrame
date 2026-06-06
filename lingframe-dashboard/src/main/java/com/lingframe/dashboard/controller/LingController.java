@@ -355,6 +355,21 @@ public class LingController {
         }
     }
 
+    /**
+     * 获取指定灵元的状态机转换历史。
+     * <p>
+     * 返回运行时状态机的环形缓冲区快照，用于故障回溯和状态转换时间线展示。
+     */
+    @GetMapping("/{lingId}/transitions")
+    public ApiResponse<List<TransitionHistoryDTO>> getTransitionHistory(@PathVariable String lingId) {
+        try {
+            return ApiResponse.ok(dashboardService.getTransitionHistory(lingId));
+        } catch (Exception e) {
+            log.error("Failed to get transition history for ling: {}", lingId, e);
+            return ApiResponse.error("获取状态转换历史失败: " + e.getMessage());
+        }
+    }
+
     // 内部类：请求体
     @Data
     public static class LingStatusRequest {

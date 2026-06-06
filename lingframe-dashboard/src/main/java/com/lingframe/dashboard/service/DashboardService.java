@@ -7,6 +7,8 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.fsm.StateMachine;
+import com.lingframe.core.fsm.TransitionRecord;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
@@ -16,11 +18,13 @@ import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
+import com.lingframe.dashboard.dto.TransitionHistoryDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -206,5 +210,39 @@ public class DashboardService {
 
     public InvocationGovernanceDTO getInvocationGovernance(String lingId) {
         return governanceSupport.getInvocationGovernance(lingId);
+    }
+
+    /**
+     * 获取指定灵元的运行时状态机转换历史。
+     * <p>
+     * 从 {@link RuntimeCoordinator} 持有的状态机中读取环形缓冲区快照，
+     * 转换为 DTO 供 Dashboard 展示状态转换时间线。
+     *
+     * @param lingId 灵元标识
+     * @return 转换历史列表（从旧到新），灵元不存在时返回空列表
+     */
+    public List<TransitionHistoryDTO> getTransitionHistory(String lingId) {
+        RuntimeStatus status = statusCoordinator.getRuntimeStatus(lingId);
+        if (status == null) {
+            return Collections.emptyList();
+        }
+
+        StateMachine<RuntimeStatus> fsm = statusCoordinator.getRuntimeMachine(lingId);
+        if (fsm == null) {
+            return Collections.emptyList();
+        }
+
+        return fsm.history().stream()
+                .map(this::toTransitionHistoryDTO)
+                .collect(Collectors.toList());
+    }
+
+    private TransitionHistoryDTO toTransitionHistoryDTO(TransitionRecord<RuntimeStatus> record) {
+        return TransitionHistoryDTO.builder()
+                .contextId(record.contextId())
+                .from(record.from().name())
+                .to(record.to().name())
+                .timestamp(record.timestamp())
+                .build();
     }
 }

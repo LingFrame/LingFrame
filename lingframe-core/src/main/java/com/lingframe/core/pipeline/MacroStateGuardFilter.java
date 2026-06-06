@@ -32,7 +32,7 @@ public class MacroStateGuardFilter implements LingInvocationFilter {
             return chain.doFilter(ctx);
         }
 
-        String lingId = fqsid.split(":", 2)[0];
+        String lingId = ctx.getLingIdFromFqsid();
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             if (ctx.isGovernOnly()) {
