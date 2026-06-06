@@ -270,7 +270,8 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.2.5</version>
                     <configuration>
-                        <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+                        <!-- @{argLine} 延迟替换：让 JaCoCo prepare-agent 注入的 agent 参数先生效 -->
+                        <argLine>@{argLine} -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -278,8 +279,79 @@
                     <artifactId>maven-failsafe-plugin</artifactId>
                     <version>3.2.5</version>
                     <configuration>
-                        <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+                        <!-- @{argLine} 延迟替换：让 JaCoCo prepare-agent 注入的 agent 参数先生效 -->
+                        <argLine>@{argLine} -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
                     </configuration>
+                </plugin>
+
+                <!-- JaCoCo 覆盖率 -->
+                <plugin>
+                    <groupId>org.jacoco</groupId>
+                    <artifactId>jacoco-maven-plugin</artifactId>
+                    <version>0.8.12</version>
+                    <executions>
+                        <execution>
+                            <id>prepare-agent</id>
+                            <goals>
+                                <goal>prepare-agent</goal>
+                            </goals>
+                            <configuration>
+                                <!--
+                                    使用 java.io.tmpdir 避免 Windows 中文路径导致 agent 无法写入 exec 文件。
+                                    默认的 ${project.build.directory}/jacoco.exec 在中文路径下会写入失败。
+                                -->
+                                <destFile>${java.io.tmpdir}/jacoco/${project.artifactId}.exec</destFile>
+                                <!--
+                                    排除运行时动态编译的测试灵元类。
+                                    JaCoCo InjectedClassRuntime 对每个加载了被插桩类的 ClassLoader
+                                    维持 ConcurrentHashMap<ClassLoader, Accessor> 强引用，
+                                    导致自定义 ClassLoader 无法被 GC 回收，
+                                    进而使 LingUnloadCollectabilityRegressionTest 的零泄漏断言失败。
+                                -->
+                                <excludes>
+                                    <exclude>sample/ling/**</exclude>
+                                </excludes>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>report</id>
+                            <phase>test</phase>
+                            <goals>
+                                <goal>report</goal>
+                            </goals>
+                            <configuration>
+                                <dataFile>${java.io.tmpdir}/jacoco/${project.artifactId}.exec</dataFile>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>check</id>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                            <configuration>
+                                <dataFile>${java.io.tmpdir}/jacoco/${project.artifactId}.exec</dataFile>
+                                <rules>
+                                    <rule>
+                                        <element>BUNDLE</element>
+                                        <limits>
+                                            <limit>
+                                                <counter>LINE</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <!-- 当前 0.60，逐步提升 -->
+                                                <minimum>0.55</minimum>
+                                            </limit>
+                                            <limit>
+                                                <counter>BRANCH</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <!-- 当前 0.46，逐步提升 -->
+                                                <minimum>0.40</minimum>
+                                            </limit>
+                                        </limits>
+                                    </rule>
+                                </rules>
+                            </configuration>
+                        </execution>
+                    </executions>
                 </plugin>
             </plugins>
         </pluginManagement>

@@ -24,13 +24,14 @@ import static org.mockito.Mockito.when;
 class PermissionGovernanceFilterTest {
 
     @Test
-    @DisplayName("缺失所需权限时应拒绝调用并记录审计")
-    void rejectsWhenCapabilityMissing() throws Throwable {
+    @DisplayName("权限校验拒绝时应拒绝调用并记录审计")
+    void rejectsWhenPermissionDenied() throws Throwable {
         PermissionService permissionService = mock(PermissionService.class);
+        when(permissionService.isAllowed("ling1", "perm:write", AccessType.EXECUTE)).thenReturn(false);
         PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService);
 
         InvocationContext ctx = createContext();
-        ctx.setRequiredPermission(null);
+        ctx.setRequiredPermission("perm:write");
 
         LingFilterChain chain = current -> null;
         LingInvocationException ex = assertThrows(LingInvocationException.class, () -> filter.doFilter(ctx, chain));
@@ -38,8 +39,26 @@ class PermissionGovernanceFilterTest {
 
         PermissionAuditRecord record = captureAudit(permissionService);
         assertEquals(PermissionAuditResult.DENIED, record.getResult());
-        assertEquals("Missing required permission", record.getFailureReason());
+        assertEquals("Permission denied", record.getFailureReason());
         assertEquals("alice", record.getPrincipal());
+
+        ctx.recycle();
+    }
+
+    @Test
+    @DisplayName("无权限声明时应放行并记录允许审计")
+    void allowsWhenNoCapabilityDeclared() throws Throwable {
+        PermissionService permissionService = mock(PermissionService.class);
+        PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService);
+
+        InvocationContext ctx = createContext();
+        ctx.setRequiredPermission(null);
+
+        Object result = filter.doFilter(ctx, current -> "ok");
+        assertEquals("ok", result);
+
+        PermissionAuditRecord record = captureAudit(permissionService);
+        assertEquals(PermissionAuditResult.ALLOWED, record.getResult());
 
         ctx.recycle();
     }
