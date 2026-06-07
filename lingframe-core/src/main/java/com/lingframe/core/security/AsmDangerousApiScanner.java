@@ -78,6 +78,9 @@ public class AsmDangerousApiScanner {
     }
 
     public static ScanResult scan(File source) throws IOException {
+        if (source == null || !source.exists()) {
+            return new ScanResult(Collections.emptyList(), Collections.emptyList());
+        }
         if (source.isDirectory()) {
             return scanDirectory(source);
         } else if (source.getName().endsWith(".jar")) {

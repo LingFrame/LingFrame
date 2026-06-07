@@ -1,12 +1,10 @@
 package com.lingframe.benchmark;
 
 import com.lingframe.api.event.LingEvent;
-import com.lingframe.api.event.LingEventListener;
 import com.lingframe.core.event.EventBus;
 import org.openjdk.jmh.annotations.*;
 
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 事件总线性能基准测试
@@ -16,9 +14,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>
  * 测试场景覆盖：
  * <ul>
- *   <li>publishToLingListeners —— 发布到灵元级监听器（5 个）</li>
- *   <li>publishToGlobalListener —— 发布到全局监听器（1 个）</li>
- *   <li>publishNoListeners —— 发布到无匹配监听器的事件类型</li>
+ * <li>publishToLingListeners —— 发布到灵元级监听器（5 个）</li>
+ * <li>publishToGlobalListener —— 发布到全局监听器（1 个）</li>
+ * <li>publishNoListeners —— 发布到无匹配监听器的事件类型</li>
  * </ul>
  * <p>
  * 关键设计：灵元级和全局级使用不同的事件类型，确保 publish 只触发目标监听器，
@@ -26,17 +24,19 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>
  * 并发场景见 {@link EventBusConcurrentBenchmark}。
  *
- * <p>运行方式：
+ * <p>
+ * 运行方式：
+ * 
  * <pre>
  * mvn -pl lingframe-benchmark package -Pbenchmark -am -DskipTests
- * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar EventBusBenchmark
+ * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar EventBusBenchmark -f 3 -prof gc
  * </pre>
  */
-@BenchmarkMode({Mode.Throughput, Mode.AverageTime})
+@BenchmarkMode({ Mode.Throughput, Mode.AverageTime })
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 1)
 @Measurement(iterations = 5, time = 2)
-@Fork(1)
+@Fork(value = 1, jvmArgs = { "-Xms2g", "-Xmx2g", "-XX:+UseG1GC", "-XX:+AlwaysPreTouch", "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn" })
 @State(Scope.Benchmark)
 public class EventBusBenchmark {
 
@@ -71,8 +71,13 @@ public class EventBusBenchmark {
     }
 
     private EventBus eventBus;
-    private final AtomicLong lingReceivedCount = new AtomicLong(0);
-    private final AtomicLong globalReceivedCount = new AtomicLong(0);
+
+    /**
+     * 用 volatile sink 替代 AtomicLong，消除 CAS 争用噪声。
+     * volatile write 模拟"最轻量的真实副作用"，既避免 JIT 消除监听器调用，
+     * 又不引入 CAS 重试带来的额外争用。
+     */
+    private volatile long sink;
 
     @Setup(Level.Trial)
     public void setup() {
@@ -82,13 +87,13 @@ public class EventBusBenchmark {
         for (int i = 0; i < 5; i++) {
             final String lingId = "bench-ling-" + i;
             eventBus.subscribe(lingId, BenchLingEvent.class, event -> {
-                lingReceivedCount.incrementAndGet();
+                sink = System.nanoTime();
             });
         }
 
         // 全局监听器只订阅 BenchGlobalEvent
         eventBus.subscribeGlobal(BenchGlobalEvent.class, event -> {
-            globalReceivedCount.incrementAndGet();
+            sink = System.nanoTime();
         });
     }
 

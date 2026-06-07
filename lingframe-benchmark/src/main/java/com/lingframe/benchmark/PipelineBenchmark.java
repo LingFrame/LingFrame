@@ -1,11 +1,9 @@
 package com.lingframe.benchmark;
 
 import com.lingframe.api.security.AccessType;
-import com.lingframe.core.ling.*;
 import com.lingframe.core.pipeline.*;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
-import com.lingframe.core.spi.LingServiceInvoker;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 
@@ -20,24 +18,25 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * 测试场景覆盖：
  * <ul>
- *   <li>happyPathPipeline —— 正常通过路径：灵元已注册、状态 ACTIVE、权限放行、终端执行</li>
- *   <li>governOnlyPipeline —— GOVERN_ONLY 模式：治理校验后跳过终端调用</li>
- *   <li>simulationPipeline —— SIMULATION 模式：走完全链路但不执行真实业务</li>
- *   <li>contextObtainAndRecycle —— InvocationContext 对象池 obtain/recycle 开销</li>
- *   <li>filterChainOverhead —— DefaultFilterChain 链式传递开销</li>
+ * <li>happyPathPipeline —— 正常通过路径：灵元已注册、状态 ACTIVE、权限放行、终端执行</li>
+ * <li>governOnlyPipeline —— GOVERN_ONLY 模式：治理校验后跳过终端调用</li>
+ * <li>simulationPipeline —— SIMULATION 模式：走完全链路但不执行真实业务</li>
+ * <li>contextObtainAndRecycle —— InvocationContext 对象池 obtain/recycle 开销</li>
+ * <li>filterChainOverhead —— DefaultFilterChain 链式传递开销</li>
  * </ul>
  * <p>
  * 运行方式：
+ * 
  * <pre>
  * mvn -pl lingframe-benchmark package -Pbenchmark -am -DskipTests
- * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar PipelineBenchmark
+ * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar PipelineBenchmark -f 3 -prof gc
  * </pre>
  */
-@BenchmarkMode({Mode.AverageTime, Mode.SampleTime})
+@BenchmarkMode({ Mode.AverageTime, Mode.SampleTime })
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 2)
 @Measurement(iterations = 5, time = 3)
-@Fork(1)
+@Fork(value = 1, jvmArgs = { "-Xms2g", "-Xmx2g", "-XX:+UseG1GC", "-XX:+AlwaysPreTouch", "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn" })
 @State(Scope.Benchmark)
 public class PipelineBenchmark {
 

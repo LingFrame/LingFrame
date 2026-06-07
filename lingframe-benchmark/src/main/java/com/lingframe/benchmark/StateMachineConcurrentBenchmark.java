@@ -16,16 +16,17 @@ import java.util.concurrent.TimeUnit;
  * 共享一个状态机实例，多线程同时尝试转换，验证 CAS 在高争用下的吞吐量。
  * <p>
  * 运行方式：
+ * 
  * <pre>
  * mvn -pl lingframe-benchmark package -Pbenchmark -am -DskipTests
- * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar StateMachineConcurrentBenchmark
+ * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar StateMachineConcurrentBenchmark -f 3 -prof gc
  * </pre>
  */
-@BenchmarkMode({Mode.Throughput, Mode.AverageTime})
+@BenchmarkMode({ Mode.Throughput, Mode.AverageTime })
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 1)
 @Measurement(iterations = 5, time = 2)
-@Fork(1)
+@Fork(value = 1, jvmArgs = { "-Xms2g", "-Xmx2g", "-XX:+UseG1GC", "-XX:+AlwaysPreTouch", "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn" })
 @State(Scope.Benchmark)
 public class StateMachineConcurrentBenchmark {
 
@@ -41,9 +42,12 @@ public class StateMachineConcurrentBenchmark {
         TRANSITIONS.put(TestStatus.LOADING, java.util.EnumSet.<TestStatus>of(TestStatus.STARTING, TestStatus.ERROR));
         TRANSITIONS.put(TestStatus.STARTING, java.util.EnumSet.<TestStatus>of(TestStatus.READY, TestStatus.ERROR));
         TRANSITIONS.put(TestStatus.READY, java.util.EnumSet.<TestStatus>of(TestStatus.STOPPING, TestStatus.ERROR));
-        TRANSITIONS.put(TestStatus.STOPPING, java.util.EnumSet.<TestStatus>of(TestStatus.DEAD, TestStatus.ERROR, TestStatus.READY));
-        TRANSITIONS.put(TestStatus.ERROR, java.util.EnumSet.<TestStatus>of(TestStatus.RECOVERING, TestStatus.STOPPING, TestStatus.DEAD));
-        TRANSITIONS.put(TestStatus.RECOVERING, java.util.EnumSet.<TestStatus>of(TestStatus.STARTING, TestStatus.ERROR, TestStatus.DEAD));
+        TRANSITIONS.put(TestStatus.STOPPING,
+                java.util.EnumSet.<TestStatus>of(TestStatus.DEAD, TestStatus.ERROR, TestStatus.READY));
+        TRANSITIONS.put(TestStatus.ERROR,
+                java.util.EnumSet.<TestStatus>of(TestStatus.RECOVERING, TestStatus.STOPPING, TestStatus.DEAD));
+        TRANSITIONS.put(TestStatus.RECOVERING,
+                java.util.EnumSet.<TestStatus>of(TestStatus.STARTING, TestStatus.ERROR, TestStatus.DEAD));
         TRANSITIONS.put(TestStatus.DEAD, java.util.EnumSet.<TestStatus>noneOf(TestStatus.class));
     }
 

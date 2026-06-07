@@ -5,7 +5,6 @@ import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Files;
@@ -20,21 +19,24 @@ import java.util.concurrent.TimeUnit;
  * 测量 LingClassLoader 的创建、类加载和关闭的端到端耗时，
  * 为热部署/热卸载场景提供性能基线。
  *
- * <p>运行方式：
+ * <p>
+ * 运行方式：
+ * 
  * <pre>
  * mvn -pl lingframe-benchmark package -DskipTests
  * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar ClassLoaderBenchmark
  * </pre>
  */
-@BenchmarkMode({Mode.AverageTime, Mode.SampleTime})
+@BenchmarkMode({ Mode.AverageTime, Mode.SampleTime })
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 2)
 @Measurement(iterations = 5, time = 3)
-@Fork(1)
+@Fork(value = 1, jvmArgs = { "-Xms2g", "-Xmx2g", "-XX:+UseG1GC", "-XX:+AlwaysPreTouch",
+        "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn" })
 @State(Scope.Benchmark)
 public class ClassLoaderBenchmark {
 
-    @Param({"1", "5", "10"})
+    @Param({ "1", "5", "10" })
     private int jarCount;
 
     private URL[] jarUrls;
@@ -107,8 +109,7 @@ public class ClassLoaderBenchmark {
         LingClassLoader cl = new LingClassLoader(
                 "bench-ling",
                 jarUrls,
-                ClassLoader.getSystemClassLoader()
-        );
+                ClassLoader.getSystemClassLoader());
         bh.consume(cl);
         cl.close();
     }
@@ -123,8 +124,7 @@ public class ClassLoaderBenchmark {
         LingClassLoader cl = new LingClassLoader(
                 "bench-ling",
                 jarUrls,
-                ClassLoader.getSystemClassLoader()
-        );
+                ClassLoader.getSystemClassLoader());
         bh.consume(cl);
         unclosedLoaders.add(cl);
     }
@@ -136,7 +136,7 @@ public class ClassLoaderBenchmark {
             jos.putNextEntry(entry);
             // 写入最小的合法 class 文件头（magic number + version）
             // 这不需要是有效的 class 文件，只要 JAR 结构正确即可
-            jos.write(new byte[]{
+            jos.write(new byte[] {
                     (byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE, // magic
                     0x00, 0x00, 0x00, 0x3D, // version (Java 17 = 61)
                     0x00, 0x03, // constant pool count

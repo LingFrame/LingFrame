@@ -17,14 +17,14 @@ import java.util.concurrent.TimeUnit;
  * 运行方式：
  * <pre>
  * mvn -pl lingframe-benchmark package -Pbenchmark -am -DskipTests
- * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar RepositoryBenchmark
+ * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar RepositoryBenchmark -f 3 -prof gc
  * </pre>
  */
 @BenchmarkMode({Mode.Throughput, Mode.AverageTime})
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 1)
 @Measurement(iterations = 5, time = 2)
-@Fork(1)
+@Fork(value = 1, jvmArgs = {"-Xms2g", "-Xmx2g", "-XX:+UseG1GC", "-XX:+AlwaysPreTouch", "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn"})
 @State(Scope.Benchmark)
 public class RepositoryBenchmark {
 
@@ -33,6 +33,27 @@ public class RepositoryBenchmark {
     /** 灵元数量参数 */
     @Param({"1", "10", "50"})
     private int lingCount;
+
+    /**
+     * 线程局部状态：预计算分散 key，避免 benchmark 方法中的字符串拼接噪声。
+     * <p>
+     * 旧版在 benchmark 方法中做 Thread.currentThread().getId() % lingCount + 字符串拼接，
+     * 这些开销可能比被测的 ConcurrentHashMap.get() 本身还大，严重扭曲结果。
+     */
+    @State(Scope.Thread)
+    public static class ThreadState {
+        String distributedKey;
+
+        /**
+         * 通过外部注入的 RepositoryBenchmark 获取 lingCount。
+         * JMH 在 @Setup 中可以注入同一 benchmark 类的 @State 实例。
+         */
+        @Setup(Level.Trial)
+        public void setup(RepositoryBenchmark parent) {
+            int threadIndex = (int) (Thread.currentThread().getId() % parent.lingCount);
+            distributedKey = "bench-ling-" + threadIndex;
+        }
+    }
 
     @Setup(Level.Trial)
     public void setup() {
@@ -72,12 +93,13 @@ public class RepositoryBenchmark {
 
     /**
      * 8 线程并发 getRuntime（分散到不同 lingId，减少争用）
+     * <p>
+     * 使用预计算的 distributedKey，消除每次迭代的字符串拼接噪声。
      */
     @Benchmark
     @Threads(8)
-    public void getRuntime_8Threads_Distributed(Blackhole bh) {
-        int threadId = (int) (Thread.currentThread().getId() % lingCount);
-        bh.consume(repository.getRuntime("bench-ling-" + threadId));
+    public void getRuntime_8Threads_Distributed(ThreadState ts, Blackhole bh) {
+        bh.consume(repository.getRuntime(ts.distributedKey));
     }
 
     /**

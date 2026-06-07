@@ -1,7 +1,6 @@
 package com.lingframe.benchmark;
 
 import com.lingframe.api.security.AccessType;
-import com.lingframe.core.ling.*;
 import com.lingframe.core.pipeline.*;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
@@ -16,16 +15,17 @@ import java.util.concurrent.TimeUnit;
  * 在并发调用时是否存在争用瓶颈。
  * <p>
  * 运行方式：
+ * 
  * <pre>
  * mvn -pl lingframe-benchmark package -Pbenchmark -am -DskipTests
  * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar PipelineConcurrentBenchmark
  * </pre>
  */
-@BenchmarkMode({Mode.Throughput, Mode.AverageTime})
+@BenchmarkMode({ Mode.Throughput, Mode.AverageTime })
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 1)
 @Measurement(iterations = 5, time = 2)
-@Fork(1)
+@Fork(value = 1, jvmArgs = { "-Xms2g", "-Xmx2g", "-XX:+UseG1GC", "-XX:+AlwaysPreTouch", "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn" })
 @State(Scope.Benchmark)
 public class PipelineConcurrentBenchmark {
 

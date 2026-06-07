@@ -129,6 +129,21 @@ public class FilterRegistry {
         invalidateCache();
     }
 
+    /**
+     * 移除之前动态注入的过滤器。
+     * <p>
+     * 灵元卸载或 benchmark 循环中使用，移除后缓存自动失效。
+     *
+     * @return 是否成功移除
+     */
+    public boolean removeDynamicFilter(LingInvocationFilter filter) {
+        boolean removed = this.spiFilters.remove(filter);
+        if (removed) {
+            invalidateCache();
+        }
+        return removed;
+    }
+
     public List<LingInvocationFilter> getOrderedFilters() {
         List<LingInvocationFilter> cached = orderedCache;
         if (cached != null) {

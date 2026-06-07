@@ -19,30 +19,30 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * 测试场景覆盖：
  * <ul>
- *   <li>singleTransition —— 单线程状态转换基线（READY → STOPPING）</li>
+ *   <li>singleRoundTrip —— 单线程往返转换（READY → STOPPING → READY），报告值为两次 CAS 之和</li>
  *   <li>idempotentTransition —— 幂等转换（目标态 = 当前态）</li>
  *   <li>readCurrentState —— 读取当前状态（无写入）</li>
  * </ul>
  * <p>
  * 关键设计：
- * 使用 @State(Scope.Thread) + @Setup(Level.Trial)，每个线程在 Trial 开始时
- * 创建一次 StateMachine，避免 @Setup(Level.Invocation) 每次迭代重建对象
- * 带来的分配噪声。singleTransition 通过 @TearDown(Level.Invocation) 将
- * 状态机从 STOPPING 重置回 READY，确保下次迭代可继续转换。
+ * 使用 round-trip 测量法替代旧版的 @TearDown(Level.Invocation) 重置方案。
+ * Level.Invocation 对纳秒级操作有显著测量干扰（JMH 官方警告），
+ * round-trip 在 benchmark 方法内完成状态往返，消除框架开销噪声。
+ * 单次 CAS 转换开销 ≈ singleRoundTrip / 2。
  * <p>
  * 并发场景见 {@link StateMachineConcurrentBenchmark}。
  *
  * <p>运行方式：
  * <pre>
  * mvn -pl lingframe-benchmark package -Pbenchmark -am -DskipTests
- * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar StateMachineBenchmark
+ * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar StateMachineBenchmark -f 3 -prof gc
  * </pre>
  */
 @BenchmarkMode({Mode.Throughput, Mode.AverageTime})
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 1)
 @Measurement(iterations = 5, time = 2)
-@Fork(1)
+@Fork(value = 1, jvmArgs = {"-Xms2g", "-Xmx2g", "-XX:+UseG1GC", "-XX:+AlwaysPreTouch", "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn"})
 @State(Scope.Thread)
 public class StateMachineBenchmark {
 
@@ -74,27 +74,16 @@ public class StateMachineBenchmark {
     }
 
     /**
-     * 基线测量：单次状态转换（READY → STOPPING）的延迟
+     * 基线测量：往返状态转换（READY → STOPPING → READY）的延迟
      * <p>
-     * 这代表了一次灵元关停请求在状态机层面的开销。
-     * 通过 @TearDown 将状态重置回 READY，确保下次迭代可继续转换。
+     * 使用 round-trip 法替代 @TearDown(Level.Invocation)：
+     * 在 benchmark 方法内完成正向转换和反向重置，消除 Level.Invocation 的框架噪声。
+     * 单次 CAS 转换开销 ≈ 报告值 / 2。
      */
     @Benchmark
-    public TransitionResult<TestStatus> singleTransition() {
-        return stateMachine.transition(TestStatus.STOPPING);
-    }
-
-    /**
-     * singleTransition 的重置逻辑：STOPPING → READY
-     * <p>
-     * 注意：此重置操作本身不纳入 singleTransition 的测量范围，
-     * JMH 保证 @TearDown 在测量时间窗口之外执行。
-     */
-    @TearDown(Level.Invocation)
-    public void resetAfterTransition() {
-        if (stateMachine.current() == TestStatus.STOPPING) {
-            stateMachine.transition(TestStatus.READY);
-        }
+    public void singleRoundTrip(Blackhole bh) {
+        bh.consume(stateMachine.transition(TestStatus.STOPPING));
+        bh.consume(stateMachine.transition(TestStatus.READY));
     }
 
     /**

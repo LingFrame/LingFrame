@@ -33,21 +33,21 @@ import java.util.concurrent.TimeUnit;
  * getCachedFilterList 使用 @State(Scope.Benchmark)，registry 全生命周期只组装一次，
  * 后续全部走 volatile read 缓存路径。
  * <p>
- * reassembleAfterInvalidation 使用 @State(Scope.Thread)，每次迭代重建 registry
- * 并添加动态过滤器触发缓存失效，测量的是"排序 + 契约校验"的真实开销，
- * 不引入反射调用的噪声。
+ * reassembleAfterInvalidation 使用 @State(Scope.Benchmark)，在 @Setup(Level.Trial) 中
+ * 构建一次 FilterRegistry，benchmark 方法内通过 add/get/remove 循环触发缓存失效和重组装，
+ * 避免 @Setup(Level.Invocation) 带来的测量噪声。
  * <p>
  * 运行方式：
  * <pre>
  * mvn -pl lingframe-benchmark package -Pbenchmark -am -DskipTests
- * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar FilterRegistryBenchmark
+ * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar FilterRegistryBenchmark -f 3 -prof gc
  * </pre>
  */
 @BenchmarkMode({Mode.AverageTime, Mode.Throughput})
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 1)
 @Measurement(iterations = 5, time = 2)
-@Fork(1)
+@Fork(value = 1, jvmArgs = {"-Xms2g", "-Xmx2g", "-XX:+UseG1GC", "-XX:+AlwaysPreTouch", "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn"})
 public class FilterRegistryBenchmark {
 
     /**
@@ -78,18 +78,20 @@ public class FilterRegistryBenchmark {
     /**
      * 缓存失效后重组装的 State
      * <p>
-     * 每次迭代重建 registry 并添加动态过滤器，确保 getOrderedFilters 必须重新组装。
-     * 不使用反射，通过 addDynamicFilter 自然触发 invalidateCache()。
+     * 在 @Setup(Level.Trial) 中构建一次 FilterRegistry，
+     * benchmark 方法内通过 addDynamicFilter → getOrderedFilters → removeDynamicFilter
+     * 循环实现"每次迭代都走重组装路径"的效果。
      * <p>
-     * 每次迭代的测量范围：new FilterRegistry + initialize + addDynamicFilter + getOrderedFilters。
-     * 其中前两步是固定开销（setup cost），可通过与 getCachedFilterList 的差值推算
-     * "排序 + 契约校验"的增量开销。
+     * 相比旧版 @Setup(Level.Invocation) 每次重建整个 EventBus + FilterRegistry 的方案：
+     * 1. 消除了 Level.Invocation 的测量框架噪声
+     * 2. 排除了对象构造开销（只测纯重组装）
+     * 3. 预创建静态过滤器实例，避免匿名类分配噪声
      */
-    @State(Scope.Thread)
+    @State(Scope.Benchmark)
     public static class ReassembleState {
         public FilterRegistry registry;
 
-        /** 预创建动态过滤器，避免 @Setup(Level.Invocation) 中每次 new 匿名类引入分配噪声 */
+        /** 预创建动态过滤器，避免每次迭代 new 匿名类引入分配噪声 */
         static final LingInvocationFilter DYNAMIC_FILTER = new LingInvocationFilter() {
             @Override
             public int getOrder() {
@@ -103,7 +105,7 @@ public class FilterRegistryBenchmark {
             }
         };
 
-        @Setup(Level.Invocation)
+        @Setup(Level.Trial)
         public void setup() {
             EventBus eventBus = new EventBus();
             PermissionService permissionService = new DefaultPermissionService(eventBus);
@@ -131,19 +133,21 @@ public class FilterRegistryBenchmark {
     /**
      * 测量缓存失效后重新组装的开销
      * <p>
-     * 每次迭代重建 registry 并添加动态过滤器，确保 getOrderedFilters 必须重新组装
-     * （排序 + 契约校验）。addDynamicFilter 内部调用 invalidateCache()，
-     * 使 orderedCache = null，下次 getOrderedFilters 必须重新计算。
+     * 每次迭代：addDynamicFilter（触发 invalidateCache） → getOrderedFilters（重组装）
+     * → removeDynamicFilter（触发 invalidateCache，为下次迭代准备）。
      * <p>
-     * 注意：此方法包含 registry 构造和初始化的固定开销。
-     * "纯重组装"增量开销 = 此方法耗时 - registry 构造初始化耗时（需另建基线测量）。
+     * 报告的延迟包含 add + get + remove 三步操作。
+     * 其中 add 和 remove 各含一次 ArrayList 操作 + volatile write（invalidateCache），
+     * get 包含排序 + 契约校验。纯重组装开销 ≈ 结果 - 2 × (ArrayList 操作 + volatile write)。
      */
     @Benchmark
     public List<LingInvocationFilter> reassembleAfterInvalidation(ReassembleState state, Blackhole bh) {
-        // addDynamicFilter 内部调用 invalidateCache()，使下次 getOrderedFilters 必须重组装
+        // addDynamicFilter 内部调用 invalidateCache()
         state.registry.addDynamicFilter(ReassembleState.DYNAMIC_FILTER);
         List<LingInvocationFilter> filters = state.registry.getOrderedFilters();
         bh.consume(filters);
+        // 移除过滤器恢复初始状态，removeDynamicFilter 内部也调用 invalidateCache()
+        state.registry.removeDynamicFilter(ReassembleState.DYNAMIC_FILTER);
         return filters;
     }
 }
