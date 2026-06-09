@@ -49,6 +49,13 @@
             <artifactId>slf4j-simple</artifactId>
             <version>${slf4j.version}</version>
         </dependency>
+
+        <!-- ASM (用于动态生成合法字节码) -->
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm</artifactId>
+            <version>9.6</version>
+        </dependency>
     </dependencies>
 
     <build>

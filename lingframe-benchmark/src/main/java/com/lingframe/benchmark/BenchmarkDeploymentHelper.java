@@ -19,6 +19,8 @@ import com.lingframe.core.resource.DefaultLeakDetector;
 import com.bench.TestService;
 
 import java.io.File;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.Collections;
 
 /**
@@ -29,6 +31,7 @@ import java.util.Collections;
  * 而非通过反射 hack 绕过框架的封装边界。
  * <p>
  * 部署流程：
+ * 
  * <pre>
  * deploy()
  *   → RuntimeCoordinator.register(lingId)        // 宏观状态 CREATED
@@ -46,8 +49,20 @@ public class BenchmarkDeploymentHelper {
     private final InvocationPipelineEngine pipelineEngine;
     private final FilterRegistry filterRegistry;
     private final DefaultLeakDetector leakDetector;
+    private final RuntimeCoordinator runtimeCoordinator;
 
     public BenchmarkDeploymentHelper() {
+        // 定制全局 LingFrameConfig 模板，提供极大的限流额度与并发限制，避免压测拦截与瓶颈
+        LingRuntimeConfig customRuntimeConfig = LingRuntimeConfig.builder()
+                .rateLimitPerSecond(1000000000) // 10亿，相当于不限流
+                .bulkheadMaxConcurrent(1000000) // 100万，舱壁极大值
+                .build();
+        LingFrameConfig customFrameConfig = LingFrameConfig.builder()
+                .runtimeConfig(customRuntimeConfig)
+                .build();
+        LingFrameConfig.clear();
+        LingFrameConfig.init(customFrameConfig);
+
         this.eventBus = new EventBus();
         this.lingRepository = new DefaultLingRepository();
         this.leakDetector = new DefaultLeakDetector();
@@ -61,8 +76,8 @@ public class BenchmarkDeploymentHelper {
 
         this.pipelineEngine = new InvocationPipelineEngine(filterRegistry);
 
-        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
-        runtimeCoordinator.start();
+        this.runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        this.runtimeCoordinator.start();
 
         DefaultLingResourceManager resourceManager = new DefaultLingResourceManager(
                 lingRepository, eventBus, methodCache);
@@ -74,7 +89,7 @@ public class BenchmarkDeploymentHelper {
                 new BenchmarkContainerFactory(),
                 permissionService,
                 new BenchmarkLoaderFactory(),
-                Collections.<LingSecurityVerifier>emptyList(),     // verifiers
+                Collections.<LingSecurityVerifier>emptyList(), // verifiers
                 eventBus,
                 LingFrameConfig.current(),
                 lingRepository,
@@ -95,6 +110,13 @@ public class BenchmarkDeploymentHelper {
         lifecycleEngine.deploy(definition, null, true, Collections.<String, String>emptyMap());
     }
 
+    /**
+     * 通过双层状态机正确卸载一个灵元并回收全部关联资源
+     */
+    public void undeployLing(String lingId) {
+        lifecycleEngine.undeploy(lingId);
+    }
+
     public DefaultLingRepository getLingRepository() {
         return lingRepository;
     }
@@ -109,6 +131,10 @@ public class BenchmarkDeploymentHelper {
 
     public FilterRegistry getFilterRegistry() {
         return filterRegistry;
+    }
+
+    public RuntimeCoordinator getRuntimeCoordinator() {
+        return runtimeCoordinator;
     }
 
     /**
@@ -129,7 +155,8 @@ public class BenchmarkDeploymentHelper {
      * Benchmark 专用的 LingContainer
      * <p>
      * 提供一个真实的 {@link TestService} Bean，
-     * 使 Pipeline NORMAL 模式能走通终端调用（loadClass → getBean(Class) → MethodHandle → ping()），
+     * 使 Pipeline NORMAL 模式能走通终端调用（loadClass → getBean(Class) → MethodHandle →
+     * ping()），
      * 而非走 ClassNotFoundException → 兜底 getBean(String) 的噪声路径。
      */
     private static class BenchmarkContainer implements LingContainer {
@@ -177,7 +204,7 @@ public class BenchmarkDeploymentHelper {
 
         @Override
         public String[] getBeanNames() {
-            return new String[]{"com.bench.TestService"};
+            return new String[] { "com.bench.TestService" };
         }
 
         @Override
@@ -195,7 +222,7 @@ public class BenchmarkDeploymentHelper {
     private static class BenchmarkLoaderFactory implements LingLoaderFactory {
         @Override
         public ClassLoader create(String lingId, File sourceFile, ClassLoader parent) {
-            return parent;
+            return new URLClassLoader(new URL[0], parent);
         }
     }
 }

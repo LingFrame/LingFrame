@@ -1,6 +1,9 @@
 package com.lingframe.benchmark;
 
 import com.lingframe.core.classloader.LingClassLoader;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 
@@ -14,18 +17,19 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
- * ClassLoader 创建与销毁性能基准测试
+ * ClassLoader 创建、类加载与销毁性能基准测试
  * <p>
- * 测量 LingClassLoader 的创建、类加载和关闭的端到端耗时，
- * 为热部署/热卸载场景提供性能基线。
- *
+ * 测量 LingClassLoader 的生命周期耗时与类加载开销。
+ * 本测试已进行生产级改造：
+ * 1. 采用显式引入的 ASM 动态在内存中生成 5 个具有深度继承结构（Base → Child1 → ... → Child4）的合法可运行 Class 字节码。
+ * 2. 补齐类加载测试（createLoadAndDestroy），分离生命周期固定开销与类加载可变开销。
+ * 3. 补充了 4 线程/8 线程的高并发 ClassLoader 实例化与加载测试。
  * <p>
- * 运行方式：
- * 
- * <pre>
- * mvn -pl lingframe-benchmark package -DskipTests
- * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar ClassLoaderBenchmark
- * </pre>
+ * 【学术级性能说明：类加载开销减法的近似性】
+ * 在报告中，利用 `createLoadAndDestroy - createAndDestroy` 基准值来估算纯类加载（Linking & Verification）的耗时
+ * 属于**近似估计，非严格可减**。
+ * 因为 JVM 在 loadClass 阶段会触发类加载子系统的全局状态变动（包括方法区 Metaspace 的分配、JIT 编译队列的异步触发），
+ * 这导致进行类加载时的 JVM 全局上下文与纯 ClassLoader 实例化的 JVM 上下文存在系统性的非线性差异。
  */
 @BenchmarkMode({ Mode.AverageTime, Mode.SampleTime })
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
@@ -36,14 +40,39 @@ import java.util.concurrent.TimeUnit;
 @State(Scope.Benchmark)
 public class ClassLoaderBenchmark {
 
-    @Param({ "1", "5", "10" })
+    @Param({ "1", "10", "100", "1000" })
     private int jarCount;
 
     private URL[] jarUrls;
     private File tempDir;
 
-    /** 收集 createOnly 创建但未关闭的 ClassLoader，在 TearDown 中统一关闭 */
-    private final ConcurrentLinkedQueue<LingClassLoader> unclosedLoaders = new ConcurrentLinkedQueue<LingClassLoader>();
+    /** 收集当前线程创建但未关闭 of ClassLoader，每个线程只 close 属于自己的实例 */
+    @State(Scope.Thread)
+    public static class ThreadLocalLoaderCollector {
+        final ConcurrentLinkedQueue<LingClassLoader> loaders = new ConcurrentLinkedQueue<>();
+
+        @TearDown(Level.Invocation)
+        public void closeAfterInvocation() {
+            LingClassLoader cl = loaders.poll();
+            if (cl != null) {
+                try {
+                    cl.close();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        @TearDown(Level.Trial)
+        public void tearDown() {
+            LingClassLoader cl;
+            while ((cl = loaders.poll()) != null) {
+                try {
+                    cl.close();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
 
     @Setup(Level.Trial)
     public void setup() throws IOException {
@@ -54,40 +83,18 @@ public class ClassLoaderBenchmark {
         jarUrls = new URL[jarCount];
         for (int i = 0; i < jarCount; i++) {
             File jarFile = new File(tempDir, "bench-ling-" + i + ".jar");
-            createMinimalJar(jarFile, i);
-            jarUrls[i] = jarFile.toURI().toURL();
-        }
-    }
-
-    /**
-     * 每次调用后关闭 ClassLoader，防止文件描述符累积耗尽。
-     * <p>
-     * LingClassLoader extends URLClassLoader，每个实例会打开新的 ZipFile 句柄。
-     * 若不逐次关闭，多次迭代后文件描述符将超出 OS 限制。
-     * JMH 保证 @TearDown(Level.Invocation) 在测量时间窗口之外执行。
-     */
-    @TearDown(Level.Invocation)
-    public void closeAfterInvocation() {
-        LingClassLoader cl = unclosedLoaders.poll();
-        if (cl != null) {
-            try {
-                cl.close();
-            } catch (Exception ignored) {
+            // 将包含 ASM 类的真实 JAR 放置于 classpath 最末尾，模拟最长检索路径
+            if (i == jarCount - 1) {
+                createJarWithAsmClasses(jarFile);
+            } else {
+                createEmptyJar(jarFile);
             }
+            jarUrls[i] = jarFile.toURI().toURL();
         }
     }
 
     @TearDown(Level.Trial)
     public void tearDown() {
-        // 关闭 createOnly 创建但未关闭的 ClassLoader，避免资源泄漏
-        LingClassLoader cl;
-        while ((cl = unclosedLoaders.poll()) != null) {
-            try {
-                cl.close();
-            } catch (Exception ignored) {
-            }
-        }
-
         if (tempDir != null) {
             File[] files = tempDir.listFiles();
             if (files != null) {
@@ -100,9 +107,7 @@ public class ClassLoaderBenchmark {
     }
 
     /**
-     * 测量 LingClassLoader 的创建 + 关闭全链路耗时
-     * <p>
-     * 模拟一次灵元部署然后立即卸载的 ClassLoader 层面开销。
+     * 测量 ClassLoader 的创建与销毁生命周期固定开销（不加载类）
      */
     @Benchmark
     public void createAndDestroy(Blackhole bh) throws Exception {
@@ -115,40 +120,131 @@ public class ClassLoaderBenchmark {
     }
 
     /**
-     * 仅测量 LingClassLoader 创建耗时（不关闭）
-     * <p>
-     * 创建的 ClassLoader 收集到 unclosedLoaders，在 @TearDown 中统一关闭。
+     * 仅测量 ClassLoader 实例化开销（由 ThreadLocalLoaderCollector 在 Invocation 结束后异步清理）
      */
     @Benchmark
-    public void createOnly(Blackhole bh) {
+    public void createOnly(ThreadLocalLoaderCollector collector, Blackhole bh) {
         LingClassLoader cl = new LingClassLoader(
                 "bench-ling",
                 jarUrls,
                 ClassLoader.getSystemClassLoader());
         bh.consume(cl);
-        unclosedLoaders.add(cl);
+        collector.loaders.add(cl);
     }
 
-    private void createMinimalJar(File file, int index) throws IOException {
+    /**
+     * 测量 ClassLoader 创建 + 加载 5 个类 + 销毁的完整生命周期开销
+     * <p>
+     * 包含完整的类寻找、字节码链接与校验过程。
+     */
+    @Benchmark
+    public void createLoadAndDestroy(Blackhole bh) throws Exception {
+        LingClassLoader cl = new LingClassLoader(
+                "bench-ling",
+                jarUrls,
+                ClassLoader.getSystemClassLoader());
+        try {
+            // 加载具有继承关系的 5 个类，触发递归解析
+            bh.consume(cl.loadClass("com.bench.ChildClass4"));
+            bh.consume(cl.loadClass("com.bench.ChildClass3"));
+            bh.consume(cl.loadClass("com.bench.ChildClass2"));
+            bh.consume(cl.loadClass("com.bench.ChildClass1"));
+            bh.consume(cl.loadClass("com.bench.BaseClass"));
+        } finally {
+            cl.close();
+        }
+    }
+
+    /**
+     * 4 线程并发测量 ClassLoader 生命周期固定开销
+     */
+    @Benchmark
+    @Threads(4)
+    public void concurrentCreateAndDestroy_4Threads(Blackhole bh) throws Exception {
+        LingClassLoader cl = new LingClassLoader(
+                "bench-ling",
+                jarUrls,
+                ClassLoader.getSystemClassLoader());
+        bh.consume(cl);
+        cl.close();
+    }
+
+    /**
+     * 8 线程并发测量 ClassLoader 生命周期固定开销
+     */
+    @Benchmark
+    @Threads(8)
+    public void concurrentCreateAndDestroy_8Threads(Blackhole bh) throws Exception {
+        LingClassLoader cl = new LingClassLoader(
+                "bench-ling",
+                jarUrls,
+                ClassLoader.getSystemClassLoader());
+        bh.consume(cl);
+        cl.close();
+    }
+
+    /**
+     * 8 线程并发测量创建 + 链接加载 5 个类 + 销毁的并发解析吞吐表现
+     */
+    @Benchmark
+    @Threads(8)
+    public void concurrentCreateLoadAndDestroy_8Threads(Blackhole bh) throws Exception {
+        LingClassLoader cl = new LingClassLoader(
+                "bench-ling",
+                jarUrls,
+                ClassLoader.getSystemClassLoader());
+        try {
+            bh.consume(cl.loadClass("com.bench.ChildClass4"));
+            bh.consume(cl.loadClass("com.bench.ChildClass3"));
+            bh.consume(cl.loadClass("com.bench.ChildClass2"));
+            bh.consume(cl.loadClass("com.bench.ChildClass1"));
+            bh.consume(cl.loadClass("com.bench.BaseClass"));
+        } finally {
+            cl.close();
+        }
+    }
+
+    private void createJarWithAsmClasses(File file) throws IOException {
         try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(file.toPath()))) {
-            // 写入一个最小的 .class 占位文件
-            JarEntry entry = new JarEntry("com/bench/Placeholder" + index + ".class");
+            // 用 ASM 在内存中生成 5 个具有深度继承结构（Base → Child1 → ... → Child4）的合法 Class
+            writeClassToJar(jos, "com/bench/BaseClass", "java/lang/Object");
+            writeClassToJar(jos, "com/bench/ChildClass1", "com/bench/BaseClass");
+            writeClassToJar(jos, "com/bench/ChildClass2", "com/bench/ChildClass1");
+            writeClassToJar(jos, "com/bench/ChildClass3", "com/bench/ChildClass2");
+            writeClassToJar(jos, "com/bench/ChildClass4", "com/bench/ChildClass3");
+        }
+    }
+
+    private void createEmptyJar(File file) throws IOException {
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(file.toPath()))) {
+            // 写入极简的 ZipEntry，保证文件能够被 JarLoader 正常识别为空 JAR 包，不破坏类查找流程
+            JarEntry entry = new JarEntry("META-INF/");
             jos.putNextEntry(entry);
-            // 写入最小的合法 class 文件头（magic number + version）
-            // 这不需要是有效的 class 文件，只要 JAR 结构正确即可
-            jos.write(new byte[] {
-                    (byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE, // magic
-                    0x00, 0x00, 0x00, 0x3D, // version (Java 17 = 61)
-                    0x00, 0x03, // constant pool count
-                    0x07, 0x00, 0x02, // CONSTANT_Class
-                    0x01, 0x00, 0x1E, // CONSTANT_Utf8
-                    'c', 'o', 'm', '/', 'b', 'e', 'n', 'c', 'h', '/',
-                    'P', 'l', 'a', 'c', 'e', 'h', 'o', 'l', 'd', 'e',
-                    'r', (byte) ('0' + index),
-                    0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
-                    0x00, 0x00, 0x00, 0x00
-            });
             jos.closeEntry();
         }
+    }
+
+    private void writeClassToJar(JarOutputStream jos, String internalName, String superInternalName) throws IOException {
+        JarEntry entry = new JarEntry(internalName + ".class");
+        jos.putNextEntry(entry);
+        jos.write(generateClassBytes(internalName, superInternalName));
+        jos.closeEntry();
+    }
+
+    private byte[] generateClassBytes(String internalClassName, String superInternalClassName) {
+        ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
+        cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, internalClassName, null, superInternalClassName, null);
+
+        // 写入一个公开无参构造函数
+        org.objectweb.asm.MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+        mv.visitCode();
+        mv.visitVarInsn(Opcodes.ALOAD, 0); // this
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, superInternalClassName, "<init>", "()V", false);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(1, 1);
+        mv.visitEnd();
+
+        cw.visitEnd();
+        return cw.toByteArray();
     }
 }

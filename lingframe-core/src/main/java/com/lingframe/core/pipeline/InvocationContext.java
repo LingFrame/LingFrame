@@ -192,17 +192,29 @@ public class InvocationContext {
      *
      * @return lingId，如果 FQSID 为 null 则返回 null
      */
-    public String getLingIdFromFqsid() {
-        if (cachedLingId != null) {
-            return cachedLingId;
-        }
+    public void setServiceFQSID(String serviceFQSID) {
+        this.serviceFQSID = serviceFQSID;
         if (serviceFQSID == null) {
-            return null;
+            this.cachedLingId = null;
+            this.cachedServiceName = null;
+        } else {
+            int colonIndex = serviceFQSID.indexOf(':');
+            if (colonIndex != -1) {
+                this.cachedLingId = serviceFQSID.substring(0, colonIndex);
+                this.cachedServiceName = serviceFQSID.substring(colonIndex + 1);
+            } else {
+                this.cachedLingId = serviceFQSID;
+                this.cachedServiceName = null;
+            }
         }
-        // 一次性 split，同时缓存 lingId 和 serviceName
-        String[] parts = serviceFQSID.split(":", 2);
-        cachedLingId = parts[0];
-        cachedServiceName = parts.length > 1 ? parts[1] : null;
+    }
+
+    /**
+     * 从 FQSID 中提取 lingId，结果缓存避免重复 split。
+     *
+     * @return lingId，如果 FQSID 为 null 则返回 null
+     */
+    public String getLingIdFromFqsid() {
         return cachedLingId;
     }
 
@@ -212,15 +224,6 @@ public class InvocationContext {
      * @return serviceName，如果 FQSID 为 null 则返回 null
      */
     public String getServiceNameFromFqsid() {
-        if (cachedServiceName != null) {
-            return cachedServiceName;
-        }
-        if (serviceFQSID == null) {
-            return null;
-        }
-        String[] parts = serviceFQSID.split(":", 2);
-        cachedLingId = parts[0];
-        cachedServiceName = parts.length > 1 ? parts[1] : null;
         return cachedServiceName;
     }
 

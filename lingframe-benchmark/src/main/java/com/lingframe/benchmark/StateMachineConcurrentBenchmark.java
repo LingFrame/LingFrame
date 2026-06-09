@@ -10,16 +10,24 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 状态机并发性能基准测试
+ * 状态机并发性能基准测试 (重构去锁版)
  * <p>
- * 测量多线程下 StateMachine CAS 转换的争用表现。
- * 共享一个状态机实例，多线程同时尝试转换，验证 CAS 在高争用下的吞吐量。
+ * 【学术级性能说明：CAS 争用率 (1/N) 与无锁环形推进】
+ * 在之前的单向状态跃迁压测中，重置逻辑使用了 synchronized 保护。这导致多线程并发时的性能上限被同步锁本身的
+ * 内核态挂起/唤醒开销所主导。
+ * 实际上，即便去除 synchronized，当 N 个线程竞争同一个单向状态跃迁（例如 READY → STOPPING）时，
+ * 由于状态机的当前状态只允许一个线程修改，其余 N-1 个线程必定会以 CONFLICT 失败。从数学概率上说，
+ * 并发 CAS 转换的成功率退化为 1/N，吞吐量会被碰撞率锁死在固定量级（与线程数无关）。
+ * <p>
+ * 为了测量底座状态机在无锁多核冲突下的真实物理自旋/跃迁上限，本次重构：
+ * 1. 采用环形无锁推进（CREATED → LOADING → ... → CREATED），让多线程并发将状态机像风车一样无锁流转推进。
+ * 2. 彻底移除所有 synchronized(resetLock) 限制，还原纯粹的 CAS (compareAndSet) 物理特征。
+ * 3. 补充了测试非法转换判定开销的测试项。
  * <p>
  * 运行方式：
- * 
  * <pre>
  * mvn -pl lingframe-benchmark package -Pbenchmark -am -DskipTests
- * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar StateMachineConcurrentBenchmark -f 3 -prof gc
+ * java -jar lingframe-benchmark/target/lingframe-benchmarks.jar StateMachineConcurrentBenchmark -f 3
  * </pre>
  */
 @BenchmarkMode({ Mode.Throughput, Mode.AverageTime })
@@ -31,41 +39,47 @@ import java.util.concurrent.TimeUnit;
 public class StateMachineConcurrentBenchmark {
 
     enum TestStatus {
-        CREATED, LOADING, STARTING, READY, STOPPING, ERROR, RECOVERING, DEAD
+        CREATED, LOADING, STARTING, READY, STOPPING, ERROR, RECOVERING
     }
 
     private static final Map<TestStatus, Set<TestStatus>> TRANSITIONS;
 
     static {
         TRANSITIONS = new java.util.EnumMap<TestStatus, Set<TestStatus>>(TestStatus.class);
-        TRANSITIONS.put(TestStatus.CREATED, java.util.EnumSet.<TestStatus>of(TestStatus.LOADING, TestStatus.ERROR));
-        TRANSITIONS.put(TestStatus.LOADING, java.util.EnumSet.<TestStatus>of(TestStatus.STARTING, TestStatus.ERROR));
-        TRANSITIONS.put(TestStatus.STARTING, java.util.EnumSet.<TestStatus>of(TestStatus.READY, TestStatus.ERROR));
-        TRANSITIONS.put(TestStatus.READY, java.util.EnumSet.<TestStatus>of(TestStatus.STOPPING, TestStatus.ERROR));
-        TRANSITIONS.put(TestStatus.STOPPING,
-                java.util.EnumSet.<TestStatus>of(TestStatus.DEAD, TestStatus.ERROR, TestStatus.READY));
-        TRANSITIONS.put(TestStatus.ERROR,
-                java.util.EnumSet.<TestStatus>of(TestStatus.RECOVERING, TestStatus.STOPPING, TestStatus.DEAD));
-        TRANSITIONS.put(TestStatus.RECOVERING,
-                java.util.EnumSet.<TestStatus>of(TestStatus.STARTING, TestStatus.ERROR, TestStatus.DEAD));
-        TRANSITIONS.put(TestStatus.DEAD, java.util.EnumSet.<TestStatus>noneOf(TestStatus.class));
+        // 构建完美的无分支单向环形流转跃迁表
+        TRANSITIONS.put(TestStatus.CREATED, java.util.EnumSet.of(TestStatus.LOADING));
+        TRANSITIONS.put(TestStatus.LOADING, java.util.EnumSet.of(TestStatus.STARTING));
+        TRANSITIONS.put(TestStatus.STARTING, java.util.EnumSet.of(TestStatus.READY));
+        TRANSITIONS.put(TestStatus.READY, java.util.EnumSet.of(TestStatus.STOPPING));
+        TRANSITIONS.put(TestStatus.STOPPING, java.util.EnumSet.of(TestStatus.ERROR));
+        TRANSITIONS.put(TestStatus.ERROR, java.util.EnumSet.of(TestStatus.RECOVERING));
+        TRANSITIONS.put(TestStatus.RECOVERING, java.util.EnumSet.of(TestStatus.CREATED));
     }
 
     private StateMachine<TestStatus> sharedStateMachine;
-
-    /** 确保重置操作只由一个线程完成的同步锁 */
-    private final Object resetLock = new Object();
 
     @Setup(Level.Trial)
     public void setup() {
         sharedStateMachine = new StateMachine<TestStatus>("concurrent-bench", TestStatus.READY, TRANSITIONS);
     }
 
+    private TestStatus getNextStatus(TestStatus curr) {
+        switch (curr) {
+            case CREATED: return TestStatus.LOADING;
+            case LOADING: return TestStatus.STARTING;
+            case STARTING: return TestStatus.READY;
+            case READY: return TestStatus.STOPPING;
+            case STOPPING: return TestStatus.ERROR;
+            case ERROR: return TestStatus.RECOVERING;
+            case RECOVERING: return TestStatus.CREATED;
+            default: return TestStatus.CREATED;
+        }
+    }
+
     /**
      * 4 线程并发读当前状态
      * <p>
-     * 模拟生产中多线程同时查询灵元运行时状态的场景。
-     * AtomicReference.get() 是无锁操作，预期吞吐量极高。
+     * 验证在极高并发读场景下，无锁 Volatile Read 的线性吞吐极限。
      */
     @Benchmark
     @Threads(4)
@@ -83,64 +97,60 @@ public class StateMachineConcurrentBenchmark {
     }
 
     /**
-     * 4 线程并发 CAS 转换（READY → STOPPING）
+     * 4 线程无锁环形 CAS 转换争用测试
      * <p>
-     * 只有一个线程能成功，其余得到 CONFLICT。
-     * 模拟"多个运维操作同时触发关停"的争用场景。
-     * 成功的线程通过 synchronized 保护重置逻辑，避免多线程同时重置导致状态机卡死。
+     * 多线程同时读取当前状态并计算下一状态，并发执行 CAS 争抢写入。
+     * 冲突的线程获得 CONFLICT，成功的线程推进状态机向前，完全无 synchronized 锁限制。
      */
     @Benchmark
     @Threads(4)
-    public void concurrentCasTransition(Blackhole bh) {
-        TransitionResult<TestStatus> result = sharedStateMachine.transition(TestStatus.STOPPING);
+    public void concurrentCasTransition_4Threads(Blackhole bh) {
+        TestStatus curr = sharedStateMachine.current();
+        TestStatus next = getNextStatus(curr);
+        TransitionResult<TestStatus> result = sharedStateMachine.transition(curr, next);
         bh.consume(result);
-        if (result.isSuccess()) {
-            synchronized (resetLock) {
-                // 双重检查：确保状态机仍在 STOPPING，避免重复重置
-                if (sharedStateMachine.current() == TestStatus.STOPPING) {
-                    sharedStateMachine.transition(TestStatus.STOPPING, TestStatus.READY);
-                }
-            }
-        }
     }
 
     /**
-     * 8 线程并发 CAS 转换
+     * 8 线程无锁环形 CAS 转换争用测试
      */
     @Benchmark
     @Threads(8)
     public void concurrentCasTransition_8Threads(Blackhole bh) {
-        TransitionResult<TestStatus> result = sharedStateMachine.transition(TestStatus.STOPPING);
+        TestStatus curr = sharedStateMachine.current();
+        TestStatus next = getNextStatus(curr);
+        TransitionResult<TestStatus> result = sharedStateMachine.transition(curr, next);
         bh.consume(result);
-        if (result.isSuccess()) {
-            synchronized (resetLock) {
-                if (sharedStateMachine.current() == TestStatus.STOPPING) {
-                    sharedStateMachine.transition(TestStatus.STOPPING, TestStatus.READY);
-                }
-            }
-        }
     }
 
     /**
      * 4 线程并发读写混合
      * <p>
-     * 模拟生产中"大量路由决策读 + 偶尔状态变更"的真实场景。
-     * 每次迭代先读一次状态，再尝试一次 CAS 转换。
-     * 大部分线程的 CAS 会失败（CONFLICT），只有少数成功，
-     * 这正是生产中"读多写少"的真实比例。
+     * 模拟高并发只读 + 间歇性无锁 CAS 写入的混合性能。
      */
     @Benchmark
     @Threads(4)
     public void concurrentReadWrite(Blackhole bh) {
         bh.consume(sharedStateMachine.current());
-        TransitionResult<TestStatus> result = sharedStateMachine.transition(TestStatus.STOPPING);
+        TestStatus curr = sharedStateMachine.current();
+        TestStatus next = getNextStatus(curr);
+        TransitionResult<TestStatus> result = sharedStateMachine.transition(curr, next);
         bh.consume(result);
-        if (result.isSuccess()) {
-            synchronized (resetLock) {
-                if (sharedStateMachine.current() == TestStatus.STOPPING) {
-                    sharedStateMachine.transition(TestStatus.STOPPING, TestStatus.READY);
-                }
-            }
-        }
+    }
+
+    /**
+     * 4 线程并发非法跃迁拒绝测试
+     * <p>
+     * 线程直接在处于 `READY` 状态的状态机上发起非法的 `STARTING` 跃迁。
+     * 根据转换表定义这属于非法流转。状态机将拒绝跃迁并返回 TransitionResult(ILLEGAL)。
+     * 此测试旨在测定条件过滤、状态校验及返回结果包装对象的纯 CPU 开销（不涉及异常抛出与栈展开）。
+     */
+    @Benchmark
+    @Threads(4)
+    public void concurrentRejectedTransition(Blackhole bh) {
+        // 由于 sharedStateMachine 始终处于风车推进中，我们显式传入期望值 READY 和非法值 STARTING。
+        // 这将稳定触发非法转换拒绝路径，不依赖状态机当前状态。
+        TransitionResult<TestStatus> result = sharedStateMachine.transition(TestStatus.READY, TestStatus.STARTING);
+        bh.consume(result);
     }
 }

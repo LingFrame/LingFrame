@@ -36,7 +36,12 @@ import java.util.concurrent.TimeUnit;
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 2)
 @Measurement(iterations = 5, time = 3)
-@Fork(value = 1, jvmArgs = { "-Xms2g", "-Xmx2g", "-XX:+UseG1GC", "-XX:+AlwaysPreTouch", "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn" })
+@Fork(value = 1, jvmArgs = {
+        "-Xms2g", "-Xmx2g", "-XX:+UseG1GC", "-XX:+AlwaysPreTouch",
+        "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn",
+        "-XX:CompileCommand=dontinline,com/lingframe/core/pipeline/InvocationPipelineEngine::invoke",
+        "-XX:CompileCommand=dontinline,com/lingframe/core/event/EventBus::publish"
+})
 @State(Scope.Benchmark)
 public class PipelineBenchmark {
 

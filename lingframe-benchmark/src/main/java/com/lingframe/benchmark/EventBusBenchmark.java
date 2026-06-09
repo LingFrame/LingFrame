@@ -36,7 +36,12 @@ import java.util.concurrent.TimeUnit;
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 1)
 @Measurement(iterations = 5, time = 2)
-@Fork(value = 1, jvmArgs = { "-Xms2g", "-Xmx2g", "-XX:+UseG1GC", "-XX:+AlwaysPreTouch", "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn" })
+@Fork(value = 1, jvmArgs = {
+        "-Xms2g", "-Xmx2g", "-XX:+UseG1GC", "-XX:+AlwaysPreTouch",
+        "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn",
+        "-XX:CompileCommand=dontinline,com/lingframe/core/pipeline/InvocationPipelineEngine::invoke",
+        "-XX:CompileCommand=dontinline,com/lingframe/core/event/EventBus::publish"
+})
 @State(Scope.Benchmark)
 public class EventBusBenchmark {
 
@@ -76,6 +81,10 @@ public class EventBusBenchmark {
      * 用 volatile sink 替代 AtomicLong，消除 CAS 争用噪声。
      * volatile write 模拟"最轻量的真实副作用"，既避免 JIT 消除监听器调用，
      * 又不引入 CAS 重试带来的额外争用。
+     * <p>
+     * 注意：不能使用 System.nanoTime()，因为 JNI 系统调用开销（~25-40ns）
+     * 远超 AtomicLong CAS（~5-10ns），会严重扭曲 EventBus 的真实延迟。
+     * 使用常量写入 sink = 1L（~5ns），与 CAS 开销相当，不会引入额外噪声。
      */
     private volatile long sink;
 
@@ -87,13 +96,13 @@ public class EventBusBenchmark {
         for (int i = 0; i < 5; i++) {
             final String lingId = "bench-ling-" + i;
             eventBus.subscribe(lingId, BenchLingEvent.class, event -> {
-                sink = System.nanoTime();
+                sink = 1L;
             });
         }
 
         // 全局监听器只订阅 BenchGlobalEvent
         eventBus.subscribeGlobal(BenchGlobalEvent.class, event -> {
-            sink = System.nanoTime();
+            sink = 1L;
         });
     }
 

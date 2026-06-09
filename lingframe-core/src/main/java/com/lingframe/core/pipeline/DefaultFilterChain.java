@@ -1,5 +1,7 @@
 package com.lingframe.core.pipeline;
 
+import java.util.List;
+
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 
@@ -14,7 +16,7 @@ public class DefaultFilterChain implements LingFilterChain {
     private final LingInvocationFilter[] filters;
     private final int index;
 
-    public DefaultFilterChain(java.util.List<LingInvocationFilter> filters) {
+    public DefaultFilterChain(List<LingInvocationFilter> filters) {
         this.filters = filters.toArray(new LingInvocationFilter[0]);
         this.index = 0;
     }

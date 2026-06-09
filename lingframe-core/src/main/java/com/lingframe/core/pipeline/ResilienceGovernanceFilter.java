@@ -94,7 +94,7 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         // 1. 限流检查
         RateLimiter limiter = getLimiter(lingId, ctx);
         if (limiter != null && !limiter.tryAcquire()) {
-            log.warn("[Resilience:{}] Rate limited, rejecting request: {}", lingId, fqsid);
+            log.debug("[Resilience:{}] Rate limited, rejecting request: {}", lingId, fqsid);
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordRateLimited(lingId, ctx.getTargetVersion());
             }
@@ -108,7 +108,7 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         // 2. 熔断检查
         CircuitBreaker breaker = getBreaker(lingId);
         if (breaker != null && !breaker.tryAcquirePermission()) {
-            log.warn("[Resilience:{}] Circuit breaker OPEN, rejecting request: {}", lingId, fqsid);
+            log.debug("[Resilience:{}] Circuit breaker OPEN, rejecting request: {}", lingId, fqsid);
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordCircuitOpenRejected(lingId, ctx.getTargetVersion());
             }
@@ -163,13 +163,25 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
     }
 
     private RateLimiter getLimiter(String lingId, InvocationContext ctx) {
-        LimiterHolder holder = limiters.compute(lingId, (id, existing) -> {
-            LingRuntime runtime = lingRepository.getRuntime(id);
-            if (runtime == null) {
-                return null;
+        LimiterHolder holder = limiters.get(lingId);
+        if (holder != null) {
+            Integer governedRateLimit = ctx.governance().getRateLimitPerSecond();
+            if (governedRateLimit == null || governedRateLimit <= 0) {
+                return holder.limiter;
             }
+        }
 
-            int rateLimit = resolveRateLimit(ctx, runtime.getConfig());
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
+        if (runtime == null) {
+            return null;
+        }
+
+        int rateLimit = resolveRateLimit(ctx, runtime.getConfig());
+        if (holder != null && holder.rateLimitPerSecond == rateLimit) {
+            return holder.limiter;
+        }
+
+        holder = limiters.compute(lingId, (id, existing) -> {
             if (existing != null && existing.rateLimitPerSecond == rateLimit) {
                 return existing;
             }
