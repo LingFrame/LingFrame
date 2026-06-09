@@ -2,23 +2,26 @@ package com.lingframe.core.ling;
 
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.spi.CanaryConfigurable;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LeakRiskLevel;
 import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.LingLoaderFactory;
+import com.lingframe.core.alert.AlertManager;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
+import com.lingframe.core.metrics.MetricsCollector;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -204,5 +207,148 @@ class DefaultLingLifecycleEngineTest {
         } finally {
             runtimeCoordinator.stop();
         }
+    }
+
+    @Test
+    @DisplayName("getter 方法返回正确值")
+    void shouldReturnGetters() {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        ContainerFactory containerFactory = mock(ContainerFactory.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        LingLoaderFactory loaderFactory = mock(LingLoaderFactory.class);
+        LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
+        InvocationPipelineEngine pipelineEngine = mock(InvocationPipelineEngine.class);
+
+        DefaultLingRepository repository = new DefaultLingRepository();
+        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(
+                containerFactory,
+                permissionService,
+                loaderFactory,
+                Collections.emptyList(),
+                eventBus,
+                LingFrameConfig.builder().build(),
+                repository,
+                serviceRegistry,
+                pipelineEngine,
+                null,
+                mock(LingUnloadCoordinator.class),
+                runtimeCoordinator);
+
+        assertSame(repository, engine.getRepository());
+        assertSame(serviceRegistry, engine.getServiceRegistry());
+        assertSame(pipelineEngine, engine.getPipelineEngine());
+        assertSame(eventBus, engine.getEventBus());
+
+        runtimeCoordinator.stop();
+    }
+
+    @Test
+    @DisplayName("setMetricsCollector 和 getter 正常工作")
+    void shouldSetAndGetMetricsCollector() {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
+
+        // 构造器已初始化 MetricsCollector
+        assertTrue(engine.getMetricsCollector().isPresent());
+        MetricsCollector metricsCollector = mock(MetricsCollector.class);
+        engine.setMetricsCollector(metricsCollector);
+        assertSame(metricsCollector, engine.getMetricsCollector().get());
+
+        runtimeCoordinator.stop();
+    }
+
+    @Test
+    @DisplayName("setGovernanceMetricsCollector 和 getter 正常工作")
+    void shouldSetAndGetGovernanceMetricsCollector() {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
+
+        // 构造器已初始化 GovernanceMetricsCollector
+        assertTrue(engine.getGovernanceMetricsCollector().isPresent());
+        GovernanceMetricsCollector gmc = mock(GovernanceMetricsCollector.class);
+        engine.setGovernanceMetricsCollector(gmc);
+        assertSame(gmc, engine.getGovernanceMetricsCollector().get());
+
+        runtimeCoordinator.stop();
+    }
+
+    @Test
+    @DisplayName("setAlertManager 和 getter 正常工作")
+    void shouldSetAndGetAlertManager() {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
+
+        // 构造器已初始化 AlertManager
+        assertTrue(engine.getAlertManager().isPresent());
+        AlertManager alertManager = mock(AlertManager.class);
+        engine.setAlertManager(alertManager);
+        assertSame(alertManager, engine.getAlertManager().get());
+
+        runtimeCoordinator.stop();
+    }
+
+    @Test
+    @DisplayName("getLeakDetector 默认为空")
+    void shouldReturnEmptyLeakDetector() {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
+        assertFalse(engine.getLeakDetector().isPresent());
+
+        runtimeCoordinator.stop();
+    }
+
+    @Test
+    @DisplayName("setHotSwapWatcher 和 getCanaryConfigurable 正常工作")
+    void shouldSetHotSwapWatcherAndCanaryConfigurable() {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
+
+        HotSwapWatcher watcher = mock(HotSwapWatcher.class);
+        engine.setHotSwapWatcher(watcher);
+
+        CanaryConfigurable canary = mock(CanaryConfigurable.class);
+        engine.setCanaryConfigurable(canary);
+        assertTrue(engine.getCanaryConfigurable().isPresent());
+
+        runtimeCoordinator.stop();
+    }
+
+    private DefaultLingLifecycleEngine createMinimalEngine(EventBus eventBus, RuntimeCoordinator runtimeCoordinator) {
+        ContainerFactory containerFactory = mock(ContainerFactory.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        LingLoaderFactory loaderFactory = mock(LingLoaderFactory.class);
+        LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
+
+        return new DefaultLingLifecycleEngine(
+                containerFactory,
+                permissionService,
+                loaderFactory,
+                Collections.emptyList(),
+                eventBus,
+                LingFrameConfig.builder().build(),
+                new DefaultLingRepository(),
+                serviceRegistry,
+                null,
+                null,
+                mock(LingUnloadCoordinator.class),
+                runtimeCoordinator);
     }
 }

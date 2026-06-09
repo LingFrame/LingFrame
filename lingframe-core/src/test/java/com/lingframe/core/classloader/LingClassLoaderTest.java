@@ -6,12 +6,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.net.URL;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Enumeration;
 
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("LingClassLoader 测试")
 class LingClassLoaderTest {
@@ -50,6 +51,24 @@ class LingClassLoaderTest {
             assertThrows(ClassLoaderException.class, () -> classLoader.loadClass("java.lang.String"));
             assertNull(classLoader.getResource("any/resource"));
         }
+
+        @Test
+        @DisplayName("关闭后 getResources 返回空枚举")
+        void shouldReturnEmptyResourcesAfterClose() throws Exception {
+            LingClassLoader classLoader = new LingClassLoader("ling-closed-res", new URL[0], ClassLoader.getSystemClassLoader());
+            classLoader.close();
+
+            Enumeration<URL> resources = classLoader.getResources("any/resource");
+            assertFalse(resources.hasMoreElements());
+        }
+
+        @Test
+        @DisplayName("重复 close 不报错")
+        void shouldHandleDoubleClose() throws IOException {
+            LingClassLoader classLoader = new LingClassLoader("ling-dblclose", new URL[0], ClassLoader.getSystemClassLoader());
+            classLoader.close();
+            assertDoesNotThrow(() -> classLoader.close());
+        }
     }
 
     @Nested
@@ -64,5 +83,126 @@ class LingClassLoaderTest {
             assertThrows(IllegalStateException.class,
                     () -> LingClassLoader.addSharedApiPackages(Collections.singletonList("demo.shared.")));
         }
+
+        @Test
+        @DisplayName("addSharedApiPackages 正常添加")
+        void shouldAddSharedApiPackages() {
+            LingClassLoader.addSharedApiPackages(Arrays.asList("com.shared.api.", "com.shared.dto."));
+            // 不抛异常即成功
+        }
+
+        @Test
+        @DisplayName("addSharedApiPackages null 不报错")
+        void shouldHandleNullSharedApiPackages() {
+            assertDoesNotThrow(() -> LingClassLoader.addSharedApiPackages(null));
+        }
+
+        @Test
+        @DisplayName("clearSharedApiPackages 清空包列表")
+        void shouldClearSharedApiPackages() {
+            LingClassLoader.addSharedApiPackages(Arrays.asList("com.shared.api."));
+            LingClassLoader.clearSharedApiPackages();
+        }
+
+        @Test
+        @DisplayName("冻结后 clearSharedApiPackages 抛异常")
+        void shouldRejectClearAfterFreeze() {
+            LingClassLoader.freezeSharedApiBoundary();
+            assertThrows(IllegalStateException.class, () -> LingClassLoader.clearSharedApiPackages());
+        }
+
+        @Test
+        @DisplayName("addParentDelegatePackages 正常添加")
+        void shouldAddParentDelegatePackages() {
+            LingClassLoader.addParentDelegatePackages(Arrays.asList("com.example.lib."));
+        }
+
+        @Test
+        @DisplayName("addParentDelegatePackages null 不报错")
+        void shouldHandleNullParentDelegatePackages() {
+            assertDoesNotThrow(() -> LingClassLoader.addParentDelegatePackages(null));
+        }
+
+        @Test
+        @DisplayName("冻结后 addParentDelegatePackages 抛异常")
+        void shouldRejectAddParentAfterFreeze() {
+            LingClassLoader.freezeSharedApiBoundary();
+            assertThrows(IllegalStateException.class,
+                    () -> LingClassLoader.addParentDelegatePackages(Arrays.asList("com.example.lib.")));
+        }
+
+        @Test
+        @DisplayName("removeParentDelegatePackages 正常移除")
+        void shouldRemoveParentDelegatePackages() {
+            LingClassLoader.addParentDelegatePackages(Arrays.asList("com.example.lib."));
+            LingClassLoader.removeParentDelegatePackages(Arrays.asList("com.example.lib."));
+        }
+
+        @Test
+        @DisplayName("冻结后 removeParentDelegatePackages 抛异常")
+        void shouldRejectRemoveParentAfterFreeze() {
+            LingClassLoader.freezeSharedApiBoundary();
+            assertThrows(IllegalStateException.class,
+                    () -> LingClassLoader.removeParentDelegatePackages(Arrays.asList("com.example.lib.")));
+        }
+
+        @Test
+        @DisplayName("resetSharedApiBoundary 重置冻结状态")
+        void shouldResetBoundary() {
+            LingClassLoader.freezeSharedApiBoundary();
+            LingClassLoader.resetSharedApiBoundary();
+            // 重置后可以再次添加
+            assertDoesNotThrow(() -> LingClassLoader.addSharedApiPackages(Arrays.asList("com.test.")));
+        }
+    }
+
+    @Nested
+    @DisplayName("类加载行为")
+    class LoadClassTests {
+
+        @Test
+        @DisplayName("白名单包委派给父加载器")
+        void shouldDelegateWhitelistedPackages() throws Exception {
+            try (LingClassLoader cl = new LingClassLoader("ling-delegate", new URL[0], ClassLoader.getSystemClassLoader())) {
+                // java.lang.String 在白名单中，应由父加载器加载
+                Class<?> stringClass = cl.loadClass("java.lang.String");
+                assertSame(String.class, stringClass);
+            }
+        }
+
+        @Test
+        @DisplayName("共享 API 包委派给父加载器")
+        void shouldDelegateSharedApiPackages() throws Exception {
+            // org.yaml.snakeyaml 已在 FORCE_PARENT_PACKAGES 中，这里额外验证 sharedApiPackages 机制
+            LingClassLoader.addSharedApiPackages(Arrays.asList("org.yaml.snakeyaml."));
+            try (LingClassLoader cl = new LingClassLoader("ling-shared", new URL[0], ClassLoader.getSystemClassLoader())) {
+                // org.yaml.snakeyaml.Yaml 应由父加载器加载
+                Class<?> clazz = cl.loadClass("org.yaml.snakeyaml.Yaml");
+                assertNotNull(clazz);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("toString 包含 lingId")
+    void shouldToStringContainLingId() {
+        LingClassLoader cl = new LingClassLoader("my-ling", new URL[0], ClassLoader.getSystemClassLoader());
+        String str = cl.toString();
+        assertTrue(str.contains("my-ling"));
+        assertTrue(str.contains("LingClassLoader"));
+    }
+
+    @Test
+    @DisplayName("getLingId 返回正确的 ID")
+    void shouldReturnCorrectLingId() {
+        LingClassLoader cl = new LingClassLoader("test-id", new URL[0], ClassLoader.getSystemClassLoader());
+        assertEquals("test-id", cl.getLingId());
+    }
+
+    @Test
+    @DisplayName("两参数构造器使用 unknown 作为 lingId")
+    void shouldUseUnknownAsDefaultLingId() {
+        LingClassLoader cl = new LingClassLoader(new URL[0], ClassLoader.getSystemClassLoader());
+        assertEquals("unknown", cl.getLingId());
     }
 }

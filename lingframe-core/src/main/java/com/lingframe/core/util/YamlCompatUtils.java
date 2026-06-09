@@ -19,7 +19,7 @@ public class YamlCompatUtils {
 
     /**
      * 创建兼容 SnakeYAML 1.x / 2.x 的 Yaml 实例。
-     *
+     * <p>
      * 在 SnakeYAML 2.x 中，默认禁止 `!!` 全局标签（安全加固），
      * 需要通过 TagInspector 显式放行 com.lingframe.* 包下的类型。
      * 在 SnakeYAML 1.x 中没有此限制，`TagInspector` 接口也不存在，因此直接回退即可。

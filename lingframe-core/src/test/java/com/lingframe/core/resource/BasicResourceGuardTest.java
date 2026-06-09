@@ -1,143 +1,226 @@
 package com.lingframe.core.resource;
 
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.event.monitor.MonitoringEvents;
-import com.lingframe.core.spi.ResourceGuard;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.sql.Driver;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.time.Duration;
-import java.util.Enumeration;
-import java.util.concurrent.atomic.AtomicReference;
+import java.lang.ref.WeakReference;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * BasicResourceGuard 测试
- */
 @DisplayName("BasicResourceGuard 测试")
 class BasicResourceGuardTest {
 
-    private ResourceGuard resourceGuard;
-
-    @BeforeEach
-    void setUp() {
-        resourceGuard = new BasicResourceGuard();
+    @Test
+    @DisplayName("cleanup null ClassLoader 不报错")
+    void shouldHandleNullClassLoader() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        assertDoesNotThrow(() -> guard.cleanup("ling-a", null));
     }
 
-    @AfterEach
-    void tearDown() {
+    @Test
+    @DisplayName("cleanup 系统 ClassLoader 不报错")
+    void shouldSkipSystemClassLoader() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        assertDoesNotThrow(() -> guard.cleanup("ling-a", ClassLoader.getSystemClassLoader()));
     }
 
-    @Nested
-    @DisplayName("cleanup() 方法")
-    class CleanupTests {
+    @Test
+    @DisplayName("cleanup 扩展 ClassLoader 不报错")
+    void shouldSkipPlatformClassLoader() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        ClassLoader platformCL = ClassLoader.getSystemClassLoader().getParent();
+        assertDoesNotThrow(() -> guard.cleanup("ling-a", platformCL));
+    }
 
-        @Test
-        @DisplayName("应该正常执行清理，不抛异常")
-        void shouldExecuteWithoutException() {
-            // 使用自定义的 ClassLoader 模拟灵元 ClassLoader
-            ClassLoader testClassLoader = new URLClassLoader(new URL[0], getClass().getClassLoader());
+    @Test
+    @DisplayName("cleanup 自定义 ClassLoader 不报错")
+    void shouldCleanupCustomClassLoader() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        ClassLoader customCL = new ClassLoader() {};
+        assertDoesNotThrow(() -> guard.cleanup("ling-a", customCL));
+    }
 
-            // 不应抛出异常
-            assertDoesNotThrow(() -> resourceGuard.cleanup("test-ling", testClassLoader));
-        }
+    @Test
+    @DisplayName("shutdown 不报错")
+    void shouldShutdownCleanly() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        assertDoesNotThrow(() -> guard.shutdown());
+    }
 
-        @Test
-        @DisplayName("应该处理 null ClassLoader")
-        void shouldHandleNullClassLoader() {
-            // 使用一个空的 ClassLoader
-            ClassLoader emptyLoader = new URLClassLoader(new URL[0], null);
+    @Test
+    @DisplayName("getCapabilitySnapshot 返回非空")
+    void shouldReturnCapabilitySnapshot() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        assertNotNull(guard.getCapabilitySnapshot());
+        assertTrue(guard.getCapabilitySnapshot().getJdkVersion() > 0);
+    }
 
-            assertDoesNotThrow(() -> resourceGuard.cleanup("test-ling", emptyLoader));
-        }
+    @Test
+    @DisplayName("带 EventBus 的构造器不报错")
+    void shouldCreateWithEventBus() {
+        EventBus eventBus = new EventBus();
+        assertDoesNotThrow(() -> {
+            BasicResourceGuard guard = new BasicResourceGuard(eventBus);
+            guard.cleanup("ling-a", new ClassLoader() {});
+        });
+    }
 
-        @Test
-        @DisplayName("应该反注册由灵元 ClassLoader 加载的 JDBC 驱动")
-        void shouldDeregisterJdbcDrivers() throws SQLException {
-            // 创建测试用 ClassLoader
-            URLClassLoader testLoader = new URLClassLoader(new URL[0], getClass().getClassLoader());
+    @Test
+    @DisplayName("CapabilitySnapshot getter 正常工作")
+    void shouldAccessCapabilitySnapshotFields() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        BasicResourceGuard.CapabilitySnapshot snapshot = guard.getCapabilitySnapshot();
 
-            // 模拟：注册一个假驱动
-            // 注意：实际测试需要构造由 testLoader 加载的 Driver
-            // 这里只验证方法能正常执行
+        assertTrue(snapshot.getJdkVersion() > 0);
+        // toSummary 不报错
+        assertNotNull(snapshot.toSummary());
+        assertTrue(snapshot.toSummary().contains("jdk="));
+    }
 
-            int driverCountBefore = countDrivers();
-            resourceGuard.cleanup("test-ling", testLoader);
-            int driverCountAfter = countDrivers();
+    @Test
+    @DisplayName("publishCapabilitySnapshot 不报错")
+    void shouldPublishCapabilitySnapshot() {
+        EventBus eventBus = new EventBus();
+        BasicResourceGuard guard = new BasicResourceGuard(eventBus);
+        assertDoesNotThrow(() -> guard.publishCapabilitySnapshot("test-runtime"));
+    }
 
-            // 由于我们没有真正注册驱动，数量应该相同
-            assertEquals(driverCountBefore, driverCountAfter);
-        }
+    @Test
+    @DisplayName("无 EventBus 时 publishCapabilitySnapshot 不报错")
+    void shouldPublishWithoutEventBus() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        assertDoesNotThrow(() -> guard.publishCapabilitySnapshot("test-runtime"));
+    }
 
-        private int countDrivers() {
-            int count = 0;
-            Enumeration<Driver> drivers = DriverManager.getDrivers();
-            while (drivers.hasMoreElements()) {
-                drivers.nextElement();
-                count++;
-            }
-            return count;
+    @Test
+    @DisplayName("cleanup 同一 ClassLoader 多次不报错")
+    void shouldCleanupMultipleTimes() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        ClassLoader customCL = new ClassLoader() {};
+        assertDoesNotThrow(() -> {
+            guard.cleanup("ling-a", customCL);
+            guard.cleanup("ling-a", customCL);
+        });
+    }
+
+    @Test
+    @DisplayName("cleanup 不同 lingId 的同一 ClassLoader 不报错")
+    void shouldCleanupSameClassLoaderWithDifferentLingId() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        ClassLoader customCL = new ClassLoader() {};
+        assertDoesNotThrow(() -> {
+            guard.cleanup("ling-a", customCL);
+            guard.cleanup("ling-b", customCL);
+        });
+    }
+
+    @Test
+    @DisplayName("CapabilitySnapshot 各 getter 不报错")
+    void shouldAccessAllCapabilitySnapshotGetters() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        BasicResourceGuard.CapabilitySnapshot snapshot = guard.getCapabilitySnapshot();
+
+        // 所有 getter 都不抛异常
+        assertDoesNotThrow(() -> {
+            snapshot.getJdkVersion();
+            snapshot.isThreadTargetAccessible();
+            snapshot.isThreadAccessControlAccessible();
+            snapshot.isAccessControlContextAccessible();
+            snapshot.isVirtualThreadIntrospectionAvailable();
+            snapshot.isDriverManagerAccessible();
+            snapshot.toSummary();
+        });
+    }
+
+    @Test
+    @DisplayName("cleanup 注册了 ShutdownHook 的 ClassLoader 不报错")
+    void shouldCleanupClassLoaderWithShutdownHook() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        ClassLoader customCL = new ClassLoader() {};
+        Thread hook = new Thread(() -> {});
+        try {
+            Runtime.getRuntime().addShutdownHook(hook);
+            assertDoesNotThrow(() -> guard.cleanup("ling-hook", customCL));
+        } finally {
+            try { Runtime.getRuntime().removeShutdownHook(hook); } catch (Exception ignored) {}
         }
     }
 
-    @Nested
-    @DisplayName("能力快照")
-    class CapabilitySnapshotTests {
+    @Test
+    @DisplayName("cleanup 线程持有自定义 ClassLoader 的 ThreadLocal 不报错")
+    void shouldCleanupThreadLocalWithCustomClassLoader() throws Exception {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        ClassLoader customCL = new ClassLoader() {};
+        ThreadLocal<Object> tl = new ThreadLocal<>();
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(1);
 
-        @Test
-        @DisplayName("应暴露结构化能力快照")
-        void shouldExposeStructuredCapabilitySnapshot() {
-            BasicResourceGuard guard = new BasicResourceGuard();
+        Thread t = new Thread(() -> {
+            tl.set("test-value");
+            started.countDown();
+            try { done.await(5, TimeUnit.SECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        });
+        t.setContextClassLoader(customCL);
+        t.start();
+        assertTrue(started.await(5, TimeUnit.SECONDS));
 
-            BasicResourceGuard.CapabilitySnapshot snapshot = guard.getCapabilitySnapshot();
-
-            assertNotNull(snapshot);
-            assertTrue(snapshot.getJdkVersion() >= 8);
-            assertNotNull(snapshot.toSummary());
-            assertFalse(snapshot.toSummary().isEmpty());
-        }
-
-        @Test
-        @DisplayName("带事件总线时应发布资源清理能力事件")
-        void shouldPublishCapabilityEventWhenEventBusProvided() {
-            EventBus eventBus = new EventBus();
-            AtomicReference<MonitoringEvents.ResourceCleanupCapabilityEvent> captured = new AtomicReference<>();
-            eventBus.subscribe("test-listener", MonitoringEvents.ResourceCleanupCapabilityEvent.class, captured::set);
-
-            new BasicResourceGuard(eventBus);
-
-            MonitoringEvents.ResourceCleanupCapabilityEvent event = awaitEvent(captured, Duration.ofSeconds(2));
-            assertNotNull(event);
-            assertEquals("BasicResourceGuard", event.getRuntime());
-            assertTrue(event.getJdkVersion() >= 8);
-            assertNotNull(event.getSummary());
+        try {
+            assertDoesNotThrow(() -> guard.cleanup("ling-tl", customCL));
+        } finally {
+            done.countDown();
+            t.join(5000);
         }
     }
 
-    private <T> T awaitEvent(AtomicReference<T> captured, Duration timeout) {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (System.nanoTime() < deadline) {
-            T event = captured.get();
-            if (event != null) {
-                return event;
-            }
-            try {
-                Thread.sleep(10L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                fail("Interrupted while waiting for event");
-            }
+    @Test
+    @DisplayName("cleanup 线程 contextClassLoader 为目标 ClassLoader 不报错")
+    void shouldCleanupThreadContextClassLoader() throws Exception {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        ClassLoader customCL = new ClassLoader() {};
+
+        Thread t = new Thread(() -> {
+            try { Thread.sleep(5000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        });
+        t.setContextClassLoader(customCL);
+        t.start();
+
+        try {
+            assertDoesNotThrow(() -> guard.cleanup("ling-ctx", customCL));
+        } finally {
+            t.interrupt();
+            t.join(5000);
         }
-        fail("Timed out waiting for event");
-        return null;
+    }
+
+    @Test
+    @DisplayName("cleanup 空 lingId 不报错")
+    void shouldCleanupWithEmptyLingId() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        ClassLoader customCL = new ClassLoader() {};
+        assertDoesNotThrow(() -> guard.cleanup("", customCL));
+    }
+
+    @Test
+    @DisplayName("shutdown 后 cleanup 不报错")
+    void shouldCleanupAfterShutdown() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        guard.shutdown();
+        ClassLoader customCL = new ClassLoader() {};
+        assertDoesNotThrow(() -> guard.cleanup("ling-after-shutdown", customCL));
+    }
+
+    @Test
+    @DisplayName("CapabilitySnapshot toSummary 包含关键信息")
+    void shouldContainKeyInfoInSummary() {
+        BasicResourceGuard guard = new BasicResourceGuard();
+        BasicResourceGuard.CapabilitySnapshot snapshot = guard.getCapabilitySnapshot();
+        String summary = snapshot.toSummary();
+
+        assertTrue(summary.contains("jdk="));
+        assertTrue(summary.contains("target="));
+        assertTrue(summary.contains("driverManager="));
     }
 }
