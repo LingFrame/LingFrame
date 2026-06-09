@@ -21,6 +21,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- 添加编译参数 -->
         <maven.compiler.parameters>true</maven.compiler.parameters>
+        <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
 
         <!-- 工具库 - 通用版本 -->
         <mysql.version>8.0.33</mysql.version>
@@ -270,8 +271,7 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.2.5</version>
                     <configuration>
-                        <!-- @{argLine} 延迟替换：让 JaCoCo prepare-agent 注入的 agent 参数先生效 -->
-                        <argLine>@{argLine} -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+                        <argLine>@{argLine}</argLine>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -279,8 +279,7 @@
                     <artifactId>maven-failsafe-plugin</artifactId>
                     <version>3.2.5</version>
                     <configuration>
-                        <!-- @{argLine} 延迟替换：让 JaCoCo prepare-agent 注入的 agent 参数先生效 -->
-                        <argLine>@{argLine} -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+                        <argLine>@{argLine}</argLine>
                     </configuration>
                 </plugin>
 

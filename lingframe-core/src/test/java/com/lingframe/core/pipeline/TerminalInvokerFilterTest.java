@@ -25,15 +25,7 @@ class TerminalInvokerFilterTest {
         LingInstance instance = buildReadyInstance(container);
 
         AtomicInteger attempts = new AtomicInteger(0);
-        LingServiceInvoker flakyInvoker = new LingServiceInvoker() {
-            @Override
-            public Object invoke(LingInstance ignored, Object bean, Method method, Object[] args) throws Exception {
-                if (attempts.getAndIncrement() < 2) {
-                    throw new IllegalStateException("transient");
-                }
-                return method.invoke(bean, args);
-            }
-        };
+        LingServiceInvoker flakyInvoker = new FlakyInvoker(attempts);
 
         TerminalInvokerFilter filter = new TerminalInvokerFilter(new InvokableMethodCache(), flakyInvoker);
         InvocationContext context = buildInvocationContext(instance, 2, null);
@@ -55,13 +47,7 @@ class TerminalInvokerFilterTest {
         LingInstance instance = buildReadyInstance(container);
 
         AtomicInteger attempts = new AtomicInteger(0);
-        LingServiceInvoker failingInvoker = new LingServiceInvoker() {
-            @Override
-            public Object invoke(LingInstance ignored, Object bean, Method method, Object[] args) {
-                attempts.incrementAndGet();
-                throw new IllegalStateException("still failing");
-            }
-        };
+        LingServiceInvoker failingInvoker = new FailingInvoker(attempts);
 
         TerminalInvokerFilter filter = new TerminalInvokerFilter(new InvokableMethodCache(), failingInvoker);
         InvocationContext context = buildInvocationContext(instance, 1, "fallback-value");
@@ -102,6 +88,32 @@ class TerminalInvokerFilterTest {
         context.governance().setRetryCount(retryCount);
         context.governance().setFallbackValue(fallbackValue);
         return context;
+    }
+
+    private static class FlakyInvoker implements LingServiceInvoker {
+        private final AtomicInteger attempts;
+        public FlakyInvoker(AtomicInteger attempts) {
+            this.attempts = attempts;
+        }
+        @Override
+        public Object invoke(LingInstance instance, Object bean, Method method, Object[] args) throws Exception {
+            if (attempts.getAndIncrement() < 2) {
+                throw new IllegalStateException("transient");
+            }
+            return method.invoke(bean, args);
+        }
+    }
+
+    private static class FailingInvoker implements LingServiceInvoker {
+        private final AtomicInteger attempts;
+        public FailingInvoker(AtomicInteger attempts) {
+            this.attempts = attempts;
+        }
+        @Override
+        public Object invoke(LingInstance instance, Object bean, Method method, Object[] args) throws Exception {
+            attempts.incrementAndGet();
+            throw new IllegalStateException("still failing");
+        }
     }
 
     public static class TestService {

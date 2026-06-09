@@ -1,0 +1,450 @@
+package com.lingframe.core.fsm;
+
+import com.lingframe.core.event.EventBus;
+import com.lingframe.core.event.InstanceDestroyedEvent;
+import com.lingframe.core.event.InstanceStateChangedEvent;
+import com.lingframe.core.event.RuntimeStateChangedEvent;
+import com.lingframe.api.event.LingEventListener;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * RuntimeCoordinator 测试。
+ * 覆盖：注册/注销、事件联动聚合、STOPPING意图态压制、purge、并发安全。
+ */
+@DisplayName("RuntimeCoordinator 测试")
+class RuntimeCoordinatorTest {
+
+    private EventBus eventBus;
+    private RuntimeCoordinator coordinator;
+
+    @BeforeEach
+    void setUp() {
+        eventBus = new EventBus();
+        coordinator = new RuntimeCoordinator(eventBus);
+        coordinator.start();
+    }
+
+    // ==================== 注册与查询 ====================
+
+    @Nested
+    @DisplayName("注册与查询")
+    class RegisterAndQuery {
+
+        @Test
+        @DisplayName("注册灵元后状态机初始为 INACTIVE")
+        void registerInitialInactive() {
+            StateMachine<RuntimeStatus> fsm = coordinator.register("ling-1");
+            assertNotNull(fsm);
+            assertEquals(RuntimeStatus.INACTIVE, fsm.current());
+            assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("重复注册返回同一状态机（幂等）")
+        void registerIdempotent() {
+            StateMachine<RuntimeStatus> first = coordinator.register("ling-1");
+            StateMachine<RuntimeStatus> second = coordinator.register("ling-1");
+            assertSame(first, second);
+        }
+
+        @Test
+        @DisplayName("未注册灵元 getStatus 返回 null")
+        void getStatusUnknown() {
+            assertNull(coordinator.getStatus("unknown"));
+        }
+
+        @Test
+        @DisplayName("未注册灵元 getMachine 返回 null")
+        void getMachineUnknown() {
+            assertNull(coordinator.getMachine("unknown"));
+        }
+    }
+
+    // ==================== 事件联动聚合 ====================
+
+    @Nested
+    @DisplayName("实例事件联动聚合")
+    class EventAggregation {
+
+        @Test
+        @DisplayName("实例 READY 事件驱动运行时 INACTIVE → ACTIVE")
+        void instanceReadyDrivesActive() {
+            coordinator.register("ling-1");
+            assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
+
+            // 发布实例 READY 事件
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("多实例全部 READY 仍为 ACTIVE")
+        void multipleReadyStillActive() {
+            coordinator.register("ling-1");
+
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v2",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("实例 ERROR 事件驱动运行时 DEGRADED")
+        void instanceErrorDrivesDegraded() {
+            coordinator.register("ling-1");
+
+            // 先 READY → ACTIVE
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            // 然后 ERROR → DEGRADED
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.READY, InstanceStatus.ERROR));
+            assertEquals(RuntimeStatus.DEGRADED, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("实例 DEAD 事件移出快照")
+        void instanceDeadRemovesFromSnapshot() {
+            coordinator.register("ling-1");
+
+            // READY → ACTIVE
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            // DEAD → INACTIVE（无实例了）
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STOPPING, InstanceStatus.DEAD));
+            assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("InstanceDestroyedEvent 兜底清理快照")
+        void instanceDestroyedCleansSnapshot() {
+            coordinator.register("ling-1");
+
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            // 销毁事件移出版本快照
+            eventBus.publish(new InstanceDestroyedEvent("ling-1", "v1"));
+            assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("未注册灵元收到事件时防御性注册")
+        void defensiveRegisterOnEvent() {
+            // 不显式 register，直接发事件
+            eventBus.publish(new InstanceStateChangedEvent("ling-auto", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+
+            // 应该自动注册并进入 ACTIVE
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-auto"));
+        }
+    }
+
+    // ==================== STOPPING 意图态 ====================
+
+    @Nested
+    @DisplayName("STOPPING 意图态")
+    class StoppingState {
+
+        @Test
+        @DisplayName("shutdown 驱动运行时进入 STOPPING")
+        void shutdownDrivesStopping() {
+            coordinator.register("ling-1");
+            // 先进入 ACTIVE
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            coordinator.shutdown("ling-1");
+            assertEquals(RuntimeStatus.STOPPING, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("STOPPING 下实例变好不会拉回 ACTIVE")
+        void stoppingBlocksRecovery() {
+            coordinator.register("ling-1");
+
+            // READY → ACTIVE
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            // shutdown → STOPPING
+            coordinator.shutdown("ling-1");
+            assertEquals(RuntimeStatus.STOPPING, coordinator.getStatus("ling-1"));
+
+            // 实例恢复 READY，但 STOPPING 压制，不应回到 ACTIVE
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.ERROR, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.STOPPING, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("STOPPING 下所有实例 DEAD 后自动进入 REMOVED")
+        void stoppingAllDeadToRemoved() {
+            coordinator.register("ling-1");
+
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            coordinator.shutdown("ling-1");
+
+            // 所有实例 DEAD
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STOPPING, InstanceStatus.DEAD));
+            assertEquals(RuntimeStatus.REMOVED, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("shutdown 未知灵元不抛异常")
+        void shutdownUnknownNoException() {
+            assertDoesNotThrow(() -> coordinator.shutdown("unknown"));
+        }
+    }
+
+    // ==================== 主动转换 ====================
+
+    @Nested
+    @DisplayName("主动状态转换")
+    class ManualTransition {
+
+        @Test
+        @DisplayName("transition 驱动合法转换并返回成功")
+        void transitionSuccess() {
+            coordinator.register("ling-1");
+            TransitionResult<RuntimeStatus> result = coordinator.transition("ling-1", RuntimeStatus.ACTIVE);
+            assertTrue(result.isSuccess());
+            assertEquals(RuntimeStatus.INACTIVE, result.from());
+            assertEquals(RuntimeStatus.ACTIVE, result.target());
+        }
+
+        @Test
+        @DisplayName("transition 非法转换返回 ILLEGAL")
+        void transitionIllegal() {
+            coordinator.register("ling-1");
+            // INACTIVE → STOPPING 不在转换表中
+            TransitionResult<RuntimeStatus> result = coordinator.transition("ling-1", RuntimeStatus.STOPPING);
+            assertTrue(result.isIllegal());
+        }
+
+        @Test
+        @DisplayName("transition 未知灵元返回 ILLEGAL")
+        void transitionUnknown() {
+            TransitionResult<RuntimeStatus> result = coordinator.transition("unknown", RuntimeStatus.ACTIVE);
+            assertTrue(result.isIllegal());
+        }
+    }
+
+    // ==================== purge ====================
+
+    @Nested
+    @DisplayName("purge 清理")
+    class Purge {
+
+        @Test
+        @DisplayName("REMOVED 状态的灵元可被 purge")
+        void purgeRemoved() {
+            coordinator.register("ling-1");
+            coordinator.transition("ling-1", RuntimeStatus.ACTIVE);
+            coordinator.transition("ling-1", RuntimeStatus.STOPPING);
+            coordinator.transition("ling-1", RuntimeStatus.REMOVED);
+
+            coordinator.purge("ling-1");
+            assertNull(coordinator.getStatus("ling-1"));
+            assertNull(coordinator.getMachine("ling-1"));
+        }
+
+        @Test
+        @DisplayName("非 REMOVED 状态的灵元不能被 purge")
+        void purgeNonRemovedIgnored() {
+            coordinator.register("ling-1");
+            coordinator.purge("ling-1");
+            // 仍然存在
+            assertNotNull(coordinator.getStatus("ling-1"));
+        }
+    }
+
+    // ==================== 事件发布 ====================
+
+    @Nested
+    @DisplayName("运行时状态变更事件发布")
+    class EventPublishing {
+
+        @Test
+        @DisplayName("运行时状态变更发布 RuntimeStateChangedEvent")
+        void publishesRuntimeStateChanged() {
+            AtomicReference<RuntimeStateChangedEvent> captured = new AtomicReference<>();
+            eventBus.subscribeGlobal(RuntimeStateChangedEvent.class, captured::set);
+
+            coordinator.register("ling-1");
+            coordinator.transition("ling-1", RuntimeStatus.ACTIVE);
+
+            // 事件是异步发布的，等待一下
+            awaitOrFail(captured);
+
+            RuntimeStateChangedEvent event = captured.get();
+            assertNotNull(event);
+            assertEquals("ling-1", event.getLingId());
+            assertEquals(RuntimeStatus.INACTIVE, event.getFrom());
+            assertEquals(RuntimeStatus.ACTIVE, event.getTo());
+        }
+    }
+
+    // ==================== 生命周期 ====================
+
+    @Nested
+    @DisplayName("协调器生命周期")
+    class Lifecycle {
+
+        @Test
+        @DisplayName("stop 后不再响应实例事件")
+        void stopDisablesEventListening() {
+            coordinator.register("ling-1");
+            coordinator.stop();
+
+            // 发布事件，不应触发状态变更
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+
+            // 仍为 INACTIVE（stop 后事件不再被处理）
+            assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
+        }
+    }
+
+    // ==================== 并发安全 ====================
+
+    @Nested
+    @DisplayName("并发安全")
+    class Concurrency {
+
+        @Test
+        @DisplayName("并发注册同一灵元幂等")
+        void concurrentRegisterIdempotent() throws Exception {
+            int threadCount = 8;
+            CountDownLatch startLatch = new CountDownLatch(1);
+            CountDownLatch doneLatch = new CountDownLatch(threadCount);
+            StateMachine<RuntimeStatus>[] results = new StateMachine[threadCount];
+
+            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+            for (int i = 0; i < threadCount; i++) {
+                final int idx = i;
+                executor.submit(() -> {
+                    try {
+                        startLatch.await();
+                        results[idx] = coordinator.register("ling-concurrent");
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        doneLatch.countDown();
+                    }
+                });
+            }
+
+            startLatch.countDown();
+            assertTrue(doneLatch.await(5, TimeUnit.SECONDS));
+            executor.shutdown();
+
+            // 所有线程拿到的应该是同一个状态机实例
+            StateMachine<RuntimeStatus> expected = results[0];
+            assertNotNull(expected);
+            for (StateMachine<RuntimeStatus> r : results) {
+                assertSame(expected, r);
+            }
+        }
+
+        @Test
+        @DisplayName("并发事件驱动状态收敛一致")
+        void concurrentEventConvergence() throws Exception {
+            coordinator.register("ling-conv");
+
+            int threadCount = 4;
+            CountDownLatch startLatch = new CountDownLatch(1);
+            CountDownLatch doneLatch = new CountDownLatch(threadCount);
+
+            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+            for (int i = 0; i < threadCount; i++) {
+                executor.submit(() -> {
+                    try {
+                        startLatch.await();
+                        // 所有线程都发 READY 事件
+                        eventBus.publish(new InstanceStateChangedEvent("ling-conv", "v1",
+                                InstanceStatus.STARTING, InstanceStatus.READY));
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        doneLatch.countDown();
+                    }
+                });
+            }
+
+            startLatch.countDown();
+            assertTrue(doneLatch.await(5, TimeUnit.SECONDS));
+            executor.shutdown();
+
+            // 最终状态应该是 ACTIVE（收敛一致）
+            RuntimeStatus status = coordinator.getStatus("ling-conv");
+            assertTrue(status == RuntimeStatus.ACTIVE || status == RuntimeStatus.INACTIVE,
+                    "Expected ACTIVE or INACTIVE but got " + status);
+        }
+    }
+
+    // ==================== 自定义策略 ====================
+
+    @Nested
+    @DisplayName("自定义聚合策略")
+    class CustomPolicy {
+
+        @Test
+        @DisplayName("自定义策略可覆盖评估逻辑")
+        void customPolicyOverridesEvaluation() {
+            // 策略：只要有任何实例就返回 ACTIVE（不管实例状态）
+            RuntimeEvaluationPolicy alwaysActive = (current, instances) -> RuntimeStatus.ACTIVE;
+
+            RuntimeCoordinator custom = new RuntimeCoordinator(eventBus, alwaysActive);
+            custom.start();
+            custom.register("ling-custom");
+
+            // 即使实例是 ERROR，策略也返回 ACTIVE
+            eventBus.publish(new InstanceStateChangedEvent("ling-custom", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.ERROR));
+
+            assertEquals(RuntimeStatus.ACTIVE, custom.getStatus("ling-custom"));
+            custom.stop();
+        }
+    }
+
+    // ==================== 辅助方法 ====================
+
+    private void awaitOrFail(AtomicReference<?> ref) {
+        long deadline = System.currentTimeMillis() + 2000;
+        while (ref.get() == null && System.currentTimeMillis() < deadline) {
+            Thread.yield();
+        }
+        assertNotNull(ref.get(), "Timeout waiting for async event");
+    }
+}

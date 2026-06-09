@@ -44,8 +44,8 @@ class BasicResourceGuardTest {
         @Test
         @DisplayName("应该正常执行清理，不抛异常")
         void shouldExecuteWithoutException() {
-            // 使用当前类加载器模拟
-            ClassLoader testClassLoader = getClass().getClassLoader();
+            // 使用自定义的 ClassLoader 模拟灵元 ClassLoader
+            ClassLoader testClassLoader = new URLClassLoader(new URL[0], getClass().getClassLoader());
 
             // 不应抛出异常
             assertDoesNotThrow(() -> resourceGuard.cleanup("test-ling", testClassLoader));

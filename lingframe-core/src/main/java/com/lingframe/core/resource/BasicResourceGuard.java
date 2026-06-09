@@ -230,6 +230,11 @@ public class BasicResourceGuard implements ResourceGuard {
 
     @Override
     public void cleanup(String lingId, ClassLoader classLoader) {
+        if (classLoader == null || classLoader == ClassLoader.getSystemClassLoader()
+                || (ClassLoader.getSystemClassLoader() != null && classLoader == ClassLoader.getSystemClassLoader().getParent())) {
+            log.warn("[{}] Skip resource cleanup for null, system or platform ClassLoader to protect host environment.", lingId);
+            return;
+        }
         log.info("[{}] Starting resource cleanup (JDK {})...", lingId, JDK_VERSION);
         log.info("[{}] Target ClassLoader: {}@{}", lingId,
                 classLoader.getClass().getSimpleName(),

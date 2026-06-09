@@ -64,7 +64,7 @@ public class DefaultLingLoaderFactory implements LingLoaderFactory {
             // 生产模式：JAR 包
             return new URL[] { sourceFile.toURI().toURL() };
         } else {
-            throw new InvalidArgumentException("sourceFile", "Unsupported source file type: " + sourceFile);
+            throw new ClassLoaderException(null, sourceFile.getPath(), "Unsupported source file type: " + sourceFile);
         }
     }
 }
