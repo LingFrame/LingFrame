@@ -19,9 +19,26 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 3. 资源加载 Child-First（防止误读到灵核配置）
  * 4. 安全关闭（防止关闭后继续被误用）
  * <p>
- * ⚠️ 这里的共享 API 包前缀和额外父委派包，不是“普通运行时配置”，而是类加载边界本身。
+ * ⚠️ 这里的共享 API 包前缀和额外父委派包，不是"普通运行时配置"，而是类加载边界本身。
  * 一旦灵元开始装载实现类，就必须冻结这条边界；否则同名类可能在不同时间走出不同的委派路径，
  * 最终演变成最难排查的 ClassCastException / LinkageError。
+ * <p>
+ * <b>JDK 17+ 卸载前提条件</b>：
+ * <ul>
+ *   <li>JDK 17 默认强封装内部 API，灵元卸载时 {@code BasicResourceGuard} 通过反射清理
+ *       {@code ThreadLocal}/{@code ResourceBundle} 等持有灵元 ClassLoader 引用的内部缓存，
+ *       需要以下 JVM 参数开放访问：
+ *       <pre>
+ *       --add-opens java.base/java.lang=ALL-UNNAMED
+ *       --add-opens java.base/java.lang.reflect=ALL-UNNAMED
+ *       --add-opens java.base/java.util=ALL-UNNAMED
+ *       --add-opens java.base/sun.nio.ch=ALL-UNNAMED
+ *       </pre>
+ *   </li>
+ *   <li>缺少上述参数时，卸载仍可执行但反射清理会静默失败，
+ *       可能导致灵元 ClassLoader 无法被 GC 回收（Metaspace 泄漏）</li>
+ *   <li>JDK 8 无需任何额外参数</li>
+ * </ul>
  */
 @Slf4j
 public class LingClassLoader extends URLClassLoader {

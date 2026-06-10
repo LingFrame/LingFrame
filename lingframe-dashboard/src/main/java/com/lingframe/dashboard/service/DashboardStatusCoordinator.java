@@ -56,16 +56,38 @@ public class DashboardStatusCoordinator {
         }
     }
 
+    /**
+     * 激活灵元。
+     * <p>
+     * 通过 {@link LingLifecycleEngine#recover} 编排恢复，而非直接 transition(ACTIVE)。
+     * 这样确保实例层先就绪，再由 RuntimeCoordinator 聚合出 ACTIVE，
+     * 避免"运行时说可服务但实例未就绪"的割裂。
+     * <p>
+     * 仅当灵元当前处于 INACTIVE（无可用实例）时才走 recover 路径；
+     * 若已有可用实例，则直接 transition(ACTIVE) 即可。
+     */
     private void activateLing(String lingId, String version, RuntimeStatus currentStatus) {
-        TransitionResult<RuntimeStatus> activeResult = runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
-        if (!activeResult.isSuccess()) {
-            String errorMessage = String.format("Cannot transition %s to ACTIVE from %s: %s",
-                    lingId, currentStatus, activeResult.code());
-            log.warn("[Dashboard] {}", errorMessage);
-            throw new IllegalStateException(errorMessage);
+        if (currentStatus == RuntimeStatus.INACTIVE) {
+            // INACTIVE 说明无可用实例，需要通过 recover 编排恢复
+            try {
+                lifecycleEngine.recover(lingId, version);
+            } catch (Exception e) {
+                String errorMessage = String.format("Cannot recover %s to ACTIVE: %s", lingId, e.getMessage());
+                log.warn("[Dashboard] {}", errorMessage);
+                throw new IllegalStateException(errorMessage, e);
+            }
+        } else {
+            // 非 INACTIVE（如 DEGRADED/RECOVERING），直接 transition 即可
+            TransitionResult<RuntimeStatus> activeResult = runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
+            if (!activeResult.isSuccess()) {
+                String errorMessage = String.format("Cannot transition %s to ACTIVE from %s: %s",
+                        lingId, currentStatus, activeResult.code());
+                log.warn("[Dashboard] {}", errorMessage);
+                throw new IllegalStateException(errorMessage);
+            }
         }
 
-        log.info("[Dashboard] State transitioned to ACTIVE for ling: {}", lingId);
+        log.info("[Dashboard] Ling {} activated from {}", lingId, currentStatus);
         lifecycleEventStore.addEvent(lingId, version, "ACTIVE", "灵元激活", "灵元 " + lingId + " 已激活并开始处理请求");
 
         GovernancePolicy effectivePolicy = governanceSupport.getEffectivePolicy(lingId);

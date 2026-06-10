@@ -4,6 +4,7 @@ import com.lingframe.core.ling.LingRuntimeConfig;
 import lombok.Builder;
 import lombok.Data;
 import lombok.ToString;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,6 +19,7 @@ import java.util.List;
  * 2. 运行时模板 (Runtime Template)
  * 3. 跨 ClassLoader 配置
  */
+@Slf4j
 @Data
 @Builder
 @ToString
@@ -58,6 +60,53 @@ public class LingFrameConfig {
             return;
         }
         INSTANCE = config;
+        checkJdkCompatibility();
+    }
+
+    /**
+     * 检测 JDK 版本兼容性，JDK 16+ 缺少 --add-opens 时发出警告。
+     */
+    private static void checkJdkCompatibility() {
+        int jdkVersion = jdkMajorVersion();
+        if (jdkVersion >= 16) {
+            List<String> missing = new ArrayList<>();
+            // getDeclaredField 不会因强封装失败，必须尝试 setAccessible 才能检测到访问限制
+            try {
+                java.lang.reflect.Field targetField = Thread.class.getDeclaredField("target");
+                targetField.setAccessible(true);
+            } catch (NoSuchFieldException e) {
+                // 字段不存在（极端情况），不视为访问限制
+            } catch (RuntimeException e) {
+                // InaccessibleObjectException (JDK 16+) 是 RuntimeException 子类
+                missing.add("--add-opens java.base/java.lang=ALL-UNNAMED");
+            }
+            try {
+                java.lang.reflect.Field driversField = java.sql.DriverManager.class.getDeclaredField("drivers");
+                driversField.setAccessible(true);
+            } catch (NoSuchFieldException e) {
+                // 字段不存在
+            } catch (RuntimeException e) {
+                missing.add("--add-opens java.sql/java.sql=ALL-UNNAMED");
+            }
+            if (!missing.isEmpty()) {
+                log.warn("[LingFrame] JDK {} 检测到强封装限制，灵元卸载时反射清理可能静默失败（Metaspace 泄漏风险）。\n" +
+                        "  建议添加以下 JVM 参数：\n  {}", jdkVersion, String.join("\n  ", missing));
+            } else {
+                log.info("[LingFrame] JDK {} --add-opens 检测通过，灵元卸载反射清理可用", jdkVersion);
+            }
+        }
+    }
+
+    private static int jdkMajorVersion() {
+        String version = System.getProperty("java.specification.version", "1.8");
+        if (version.startsWith("1.")) {
+            return Integer.parseInt(version.substring(2));
+        }
+        int dot = version.indexOf('.');
+        if (dot > 0) {
+            return Integer.parseInt(version.substring(0, dot));
+        }
+        return Integer.parseInt(version);
     }
 
     /**

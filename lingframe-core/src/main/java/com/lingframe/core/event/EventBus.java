@@ -26,9 +26,25 @@ import java.util.concurrent.atomic.AtomicLong;
  * </ul>
  * <p>
  * publish 时两类监听器都会被分发，灵元级优先、全局其次（顺序不保证业务语义，仅为确定性调试）。
+ * <p>
+ * 异步溢出策略：
+ * <ul>
+ *   <li>{@link OverflowPolicy#DISCARD}（默认）：满队列时丢弃任务并计数</li>
+ *   <li>{@link OverflowPolicy#BLOCK}：满队列时阻塞调用线程直到有空间</li>
+ * </ul>
  */
 @Slf4j
 public class EventBus {
+
+    /**
+     * 异步队列溢出策略
+     */
+    public enum OverflowPolicy {
+        /** 满队列时丢弃任务并计数 */
+        DISCARD,
+        /** 满队列时阻塞调用线程直到有空间 */
+        BLOCK
+    }
 
     private static final int DEFAULT_ASYNC_THREADS = 2;
     private static final int DEFAULT_ASYNC_QUEUE_CAPACITY = 1024;
@@ -70,14 +86,24 @@ public class EventBus {
      */
     private final Map<Class<? extends LingEvent>, List<ListenerWrapper>> listeners = new ConcurrentHashMap<>();
     private final ThreadPoolExecutor asyncDispatcher;
+    private final OverflowPolicy overflowPolicy;
     private final AtomicLong droppedAsyncEvents = new AtomicLong(0);
     private final AtomicLong submittedAsyncEvents = new AtomicLong(0);
 
     public EventBus() {
-        this(DEFAULT_ASYNC_THREADS, DEFAULT_ASYNC_QUEUE_CAPACITY);
+        this(DEFAULT_ASYNC_THREADS, DEFAULT_ASYNC_QUEUE_CAPACITY, OverflowPolicy.DISCARD);
     }
 
     public EventBus(int asyncThreads, int asyncQueueCapacity) {
+        this(asyncThreads, asyncQueueCapacity, OverflowPolicy.DISCARD);
+    }
+
+    public EventBus(OverflowPolicy overflowPolicy) {
+        this(DEFAULT_ASYNC_THREADS, DEFAULT_ASYNC_QUEUE_CAPACITY, overflowPolicy);
+    }
+
+    public EventBus(int asyncThreads, int asyncQueueCapacity, OverflowPolicy overflowPolicy) {
+        this.overflowPolicy = overflowPolicy != null ? overflowPolicy : OverflowPolicy.DISCARD;
         BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(Math.max(1, asyncQueueCapacity));
         this.asyncDispatcher = new ThreadPoolExecutor(
                 Math.max(1, asyncThreads),
@@ -86,11 +112,7 @@ public class EventBus {
                 TimeUnit.SECONDS,
                 queue,
                 NamedThreadFactory.daemon("ling-eventbus-async", EventBus.class.getClassLoader()),
-                (r, executor) -> {
-                    droppedAsyncEvents.incrementAndGet();
-                    log.warn("Dropping async event task because EventBus async queue is full (queueSize={}, activeThreads={})",
-                            executor.getQueue().size(), executor.getActiveCount());
-                });
+                new OverflowHandler(overflowPolicy, droppedAsyncEvents));
         this.asyncDispatcher.allowCoreThreadTimeOut(true);
     }
 
@@ -214,10 +236,6 @@ public class EventBus {
         return submittedAsyncEvents.get();
     }
 
-    public int getAsyncQueueDepth() {
-        return asyncDispatcher.getQueue().size();
-    }
-
     public void shutdown() {
         asyncDispatcher.shutdownNow();
     }
@@ -244,7 +262,7 @@ public class EventBus {
         for (ListenerWrapper wrapper : wrappers) {
             try {
                 submittedAsyncEvents.incrementAndGet();
-                asyncDispatcher.execute(() -> {
+                Runnable task = () -> {
                     try {
                         LingEventListener<E> castListener = (LingEventListener<E>) wrapper.listener();
                         castListener.onEvent(event);
@@ -255,7 +273,9 @@ public class EventBus {
                                 wrapper.isGlobal() ? "GLOBAL" : wrapper.lingId(),
                                 e.getMessage(), e);
                     }
-                });
+                };
+                // 统一走 execute()，溢出策略由 OverflowHandler 处理
+                asyncDispatcher.execute(task);
             } catch (RejectedExecutionException e) {
                 droppedAsyncEvents.incrementAndGet();
                 log.warn("Rejected async event [{}] for listener [{}]",
@@ -267,5 +287,54 @@ public class EventBus {
     private boolean isAsyncEvent(LingEvent event) {
         return event != null
                 && event.getClass().getName().startsWith("com.lingframe.core.event.monitor.");
+    }
+
+    // ==================== 指标暴露 ====================
+
+    public int getQueueSize() {
+        return asyncDispatcher.getQueue().size();
+    }
+
+    public int getQueueRemainingCapacity() {
+        return asyncDispatcher.getQueue().remainingCapacity();
+    }
+
+    public OverflowPolicy getOverflowPolicy() {
+        return overflowPolicy;
+    }
+
+    /**
+     * 异步队列溢出处理器。
+     * <ul>
+     *   <li>DISCARD：丢弃任务并计数</li>
+     *   <li>BLOCK：阻塞调用线程直到队列有空间</li>
+     * </ul>
+     */
+    private static class OverflowHandler implements java.util.concurrent.RejectedExecutionHandler {
+        private final OverflowPolicy policy;
+        private final AtomicLong dropCounter;
+
+        OverflowHandler(OverflowPolicy policy, AtomicLong dropCounter) {
+            this.policy = policy;
+            this.dropCounter = dropCounter;
+        }
+
+        @Override
+        public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+            if (policy == OverflowPolicy.BLOCK) {
+                try {
+                    // 阻塞调用线程直到队列有空间
+                    executor.getQueue().put(r);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    dropCounter.incrementAndGet();
+                    log.warn("Interrupted while blocking on async event task");
+                }
+            } else {
+                dropCounter.incrementAndGet();
+                log.warn("Dropping async event task because EventBus async queue is full (queueSize={}, activeThreads={})",
+                        executor.getQueue().size(), executor.getActiveCount());
+            }
+        }
     }
 }

@@ -1,6 +1,7 @@
 package com.lingframe.dashboard.controller;
 
 import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.event.EventBus;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
 import com.lingframe.core.metrics.MetricsCollector;
@@ -41,7 +42,7 @@ class LingControllerTest {
         RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
-                runtimeDiagnosticsService, false);
+                runtimeDiagnosticsService, mock(EventBus.class), false);
 
         LingUninstallResultDTO dto = LingUninstallResultDTO.builder()
                 .lingId("ling1")
@@ -73,7 +74,7 @@ class LingControllerTest {
         RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
-                runtimeDiagnosticsService, false);
+                runtimeDiagnosticsService, mock(EventBus.class), false);
 
         MetricsSnapshot summary = new MetricsSnapshot();
         summary.setLingId("ling1");
@@ -118,7 +119,7 @@ class LingControllerTest {
         RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
-                runtimeDiagnosticsService, false);
+                runtimeDiagnosticsService, mock(EventBus.class), false);
 
         GovernanceMetricsSnapshot summary = new GovernanceMetricsSnapshot();
         summary.setLingId("ling1");
@@ -160,7 +161,7 @@ class LingControllerTest {
         RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
-                runtimeDiagnosticsService, false);
+                runtimeDiagnosticsService, mock(EventBus.class), false);
 
         ResourceCleanupCapabilityDTO dto = ResourceCleanupCapabilityDTO.builder()
                 .runtime("BasicResourceGuard")
@@ -190,7 +191,7 @@ class LingControllerTest {
         RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
-                runtimeDiagnosticsService, false);
+                runtimeDiagnosticsService, mock(EventBus.class), false);
 
         RuntimeGovernanceReadinessDTO dto = RuntimeGovernanceReadinessDTO.builder()
                 .status("LIMITED")

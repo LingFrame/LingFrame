@@ -2,6 +2,7 @@ package com.lingframe.starter.configuration;
 
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.classloader.SharedApiManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.DefaultLingContext;
@@ -167,10 +168,12 @@ public class LingFrameLifecycleBeansConfiguration {
 
     /**
      * 灵核上下文关闭时重置静态状态，确保下一个灵核能正常启动。
+     * 同时关闭 AuditManager 线程池，确保审计记录在容器关闭前落盘。
      */
     @Bean
     DisposableBean lingFrameStaticStateResetter() {
         return () -> {
+            AuditManager.shutdown();
             BOOTSTRAP_DONE.set(false);
             LingFrameConfig.clear();
         };

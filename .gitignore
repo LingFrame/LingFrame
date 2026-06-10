@@ -46,3 +46,9 @@ docs/images/lingframe-cover.png
 .jlsp/**
 # Maven Shade Plugin 生成物
 dependency-reduced-pom.xml
+
+# Benchmark 产物
+benchmark-*.txt
+benchmark-*.md
+BENCHMARK*
+*profile*.txt

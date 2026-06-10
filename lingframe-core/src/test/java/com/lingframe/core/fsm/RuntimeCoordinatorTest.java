@@ -406,10 +406,10 @@ class RuntimeCoordinatorTest {
             assertTrue(doneLatch.await(5, TimeUnit.SECONDS));
             executor.shutdown();
 
-            // 最终状态应该是 ACTIVE（收敛一致）
+            // 所有事件都是 READY，最终状态应收敛为 ACTIVE
             RuntimeStatus status = coordinator.getStatus("ling-conv");
-            assertTrue(status == RuntimeStatus.ACTIVE || status == RuntimeStatus.INACTIVE,
-                    "Expected ACTIVE or INACTIVE but got " + status);
+            assertEquals(RuntimeStatus.ACTIVE, status,
+                    "所有 READY 事件后状态应收敛为 ACTIVE");
         }
     }
 
@@ -435,6 +435,114 @@ class RuntimeCoordinatorTest {
 
             assertEquals(RuntimeStatus.ACTIVE, custom.getStatus("ling-custom"));
             custom.stop();
+        }
+    }
+
+    // ==================== transition vs reevaluate 冲突契约 ====================
+
+    @Nested
+    @DisplayName("transition 与 reevaluate 冲突契约")
+    class TransitionVsReevaluateConflict {
+
+        @Test
+        @DisplayName("STOPPING 下 transition 不会被 reevaluate 拉回 ACTIVE")
+        void stoppingTransitionNotOverriddenByReevaluate() {
+            coordinator.register("ling-1");
+
+            // 先进入 ACTIVE
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            // 运维触发 shutdown → STOPPING
+            coordinator.shutdown("ling-1");
+            assertEquals(RuntimeStatus.STOPPING, coordinator.getStatus("ling-1"));
+
+            // 实例 READY 事件触发 reevaluate，但 STOPPING 压制不应回到 ACTIVE
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.ERROR, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.STOPPING, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("DEGRADED 下 transition(ACTIVE) 不会被后续 ERROR 事件覆盖")
+        void degradedTransitionActiveNotOverriddenByErrorEvent() {
+            coordinator.register("ling-1");
+
+            // READY → ACTIVE
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            // ERROR → DEGRADED
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.READY, InstanceStatus.ERROR));
+            assertEquals(RuntimeStatus.DEGRADED, coordinator.getStatus("ling-1"));
+
+            // 运维主动 transition(ACTIVE)
+            TransitionResult<RuntimeStatus> result = coordinator.transition("ling-1", RuntimeStatus.ACTIVE);
+            assertTrue(result.isSuccess());
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            // 后续 ERROR 事件触发 reevaluate 可能再次降级——这是预期行为
+            // 但关键点是：运维的 transition 在那一刻确实生效了
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.READY, InstanceStatus.ERROR));
+            assertEquals(RuntimeStatus.DEGRADED, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("INACTIVE 下 transition(ACTIVE) 后实例 READY 事件不冲突")
+        void inactiveTransitionActiveThenInstanceReadyNoConflict() {
+            coordinator.register("ling-1");
+            assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
+
+            // 运维直接 transition(ACTIVE)（无可用实例）
+            coordinator.transition("ling-1", RuntimeStatus.ACTIVE);
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            // 实例 READY 事件触发 reevaluate，聚合结果也是 ACTIVE，不冲突
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("transition(ACTIVE) 后所有实例 DEAD 触发 reevaluate 回 INACTIVE")
+        void transitionActiveThenAllDeadReevaluateInactive() {
+            coordinator.register("ling-1");
+
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            // 所有实例 DEAD → reevaluate 推回 INACTIVE
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STOPPING, InstanceStatus.DEAD));
+            assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("RECOVERING 下 transition(ACTIVE) 优先于 reevaluate")
+        void recoveringTransitionActiveOverridesReevaluate() {
+            coordinator.register("ling-1");
+
+            // READY → ACTIVE
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            // ERROR → DEGRADED
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.READY, InstanceStatus.ERROR));
+            assertEquals(RuntimeStatus.DEGRADED, coordinator.getStatus("ling-1"));
+
+            // 运维触发 RECOVERING
+            coordinator.transition("ling-1", RuntimeStatus.RECOVERING);
+            assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-1"));
+
+            // 实例恢复 READY → reevaluate 推到 ACTIVE
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+                    InstanceStatus.ERROR, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
         }
     }
 

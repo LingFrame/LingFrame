@@ -1,6 +1,7 @@
 package com.lingframe.runtime;
 
 import com.lingframe.api.config.LingDefinition;
+import com.lingframe.api.exception.ServiceUnavailableException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.ling.DefaultLingLifecycleEngine;
 import com.lingframe.core.ling.LingInstance;
@@ -85,6 +86,40 @@ class NativeLingFrameTest {
         NativeLingFrame.shutdown();
 
         assertDoesNotThrow(() -> LingClassLoader.addSharedApiPackages(Collections.singletonList("demo.shared.")));
+    }
+
+    @Test
+    @DisplayName("shutdown 后可重新 start，状态完全重置")
+    void shouldRestartAfterShutdown() {
+        LingFrameConfig config = LingFrameConfig.builder()
+                .lingHome(tempDir.toString())
+                .lingRoots(Collections.emptyList())
+                .preloadApiJars(Collections.emptyList())
+                .build();
+        LingFrameConfig.clear();
+
+        // 第一次启动
+        LingLifecycleEngine first = NativeLingFrame.start(config);
+        assertNotNull(first);
+        assertNotNull(NativeLingFrame.getHostContext());
+
+        // 关闭
+        NativeLingFrame.shutdown();
+        assertThrows(ServiceUnavailableException.class, NativeLingFrame::getHostContext);
+
+        // 重新启动
+        LingFrameConfig config2 = LingFrameConfig.builder()
+                .lingHome(tempDir.toString())
+                .lingRoots(Collections.emptyList())
+                .preloadApiJars(Collections.emptyList())
+                .build();
+        LingFrameConfig.clear();
+
+        LingLifecycleEngine second = NativeLingFrame.start(config2);
+        assertNotNull(second);
+        assertNotNull(NativeLingFrame.getHostContext());
+
+        NativeLingFrame.shutdown();
     }
 
     @Test

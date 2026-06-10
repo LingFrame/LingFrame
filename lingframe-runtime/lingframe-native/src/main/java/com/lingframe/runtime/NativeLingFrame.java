@@ -1,6 +1,8 @@
 package com.lingframe.runtime;
 
 import com.lingframe.api.context.LingContext;
+import com.lingframe.api.exception.ServiceUnavailableException;
+import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.classloader.SharedApiClassLoader;
 import com.lingframe.core.classloader.SharedApiManager;
@@ -17,6 +19,7 @@ import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.resource.DefaultLeakDetector;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.ling.LingFrameRuntime;
+import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.resource.BasicResourceGuard;
@@ -34,7 +37,6 @@ import com.lingframe.core.spi.LingServiceInvoker;
 import com.lingframe.core.invoker.FastLingServiceInvoker;
 import com.lingframe.runtime.adapter.NativeContainerFactory;
 import lombok.extern.slf4j.Slf4j;
-import com.lingframe.api.exception.ServiceUnavailableException;
 
 import java.util.Collections;
 import java.util.ServiceLoader;
@@ -43,6 +45,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * 灵珑 Native 启动器。
  * 灵核应用通过此类一键启动框架。
+ * <p>
+ * 生命周期对称性：
+ * <ul>
+ *   <li>{@link #start} → 初始化所有组件、扫描灵元、注册关闭钩子</li>
+ *   <li>{@link #shutdown} → 卸载灵元、关闭 EventBus/AuditManager、释放资源</li>
+ * </ul>
  */
 @Slf4j
 public class NativeLingFrame {
@@ -55,6 +63,8 @@ public class NativeLingFrame {
     private static RuntimeCoordinator RUNTIME_COORDINATOR;
     private static SharedApiManager SHARED_API_MANAGER;
     private static LeakDetector LEAK_DETECTOR;
+    private static EventBus EVENT_BUS;
+    private static LingRepository LING_REPOSITORY;
 
     /**
      * 使用默认配置启动灵珑。
@@ -77,6 +87,7 @@ public class NativeLingFrame {
 
         // 准备基础设施
         EventBus eventBus = new EventBus();
+        EVENT_BUS = eventBus;
         RUNTIME_COORDINATOR = new RuntimeCoordinator(eventBus);
         RUNTIME_COORDINATOR.start();
 
@@ -91,6 +102,7 @@ public class NativeLingFrame {
         NativeContainerFactory containerFactory = new NativeContainerFactory();
 
         LingRepository lingRepository = new DefaultLingRepository();
+        LING_REPOSITORY = lingRepository;
         LingServiceRegistry lingServiceRegistry = new DefaultLingServiceRegistry();
 
         InvokableMethodCache invokableMethodCache = new InvokableMethodCache();
@@ -161,6 +173,18 @@ public class NativeLingFrame {
 
     /**
      * 关闭 Native runtime 并清理全局状态。
+     * <p>
+     * 关闭顺序与 Spring 路径对称：
+     * <ol>
+     *   <li>卸载所有已安装灵元</li>
+     *   <li>关闭 HotSwapWatcher</li>
+     *   <li>关闭 LeakDetector</li>
+     *   <li>关闭 ResourceManager</li>
+     *   <li>关闭 RuntimeCoordinator</li>
+     *   <li>关闭 EventBus</li>
+     *   <li>关闭 AuditManager</li>
+     *   <li>关闭 SharedApiManager</li>
+     * </ol>
      */
     public static synchronized void shutdown() {
         if (!started.get()) {
@@ -168,22 +192,53 @@ public class NativeLingFrame {
         }
 
         log.info("LingFrame shutting down...");
+
+        // 1. 卸载所有已安装灵元
+        if (GLOBAL_LIFECYCLE_ENGINE != null && LING_REPOSITORY != null) {
+            try {
+                String[] lingIds = LING_REPOSITORY.getAllRuntimes().stream()
+                        .map(LingRuntime::getLingId).toArray(String[]::new);
+                for (String lingId : lingIds) {
+                    try {
+                        GLOBAL_LIFECYCLE_ENGINE.undeploy(lingId);
+                        log.info("Uninstalled ling: {}", lingId);
+                    } catch (Exception e) {
+                        log.warn("Failed to uninstall ling: {}", lingId, e);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to enumerate lings for uninstall", e);
+            }
+        }
+
+        // 2. 关闭 HotSwapWatcher
         if (HOT_SWAP_WATCHER != null) {
             HOT_SWAP_WATCHER.shutdown();
             HOT_SWAP_WATCHER = null;
         }
+        // 3. 关闭 LeakDetector
         if (LEAK_DETECTOR != null) {
             LEAK_DETECTOR.shutdown();
             LEAK_DETECTOR = null;
         }
+        // 4. 关闭 ResourceManager
         if (RESOURCE_MANAGER != null) {
             RESOURCE_MANAGER.shutdown();
             RESOURCE_MANAGER = null;
         }
+        // 5. 关闭 RuntimeCoordinator
         if (RUNTIME_COORDINATOR != null) {
             RUNTIME_COORDINATOR.stop();
             RUNTIME_COORDINATOR = null;
         }
+        // 6. 关闭 EventBus
+        if (EVENT_BUS != null) {
+            EVENT_BUS.shutdown();
+            EVENT_BUS = null;
+        }
+        // 7. 关闭 AuditManager
+        AuditManager.shutdown();
+        // 8. 关闭 SharedApiManager
         if (SHARED_API_MANAGER != null) {
             SHARED_API_MANAGER.shutdown();
             SHARED_API_MANAGER = null;
@@ -193,7 +248,10 @@ public class NativeLingFrame {
 
         GLOBAL_LIFECYCLE_ENGINE = null;
         HOST_CONTEXT = null;
+        LING_REPOSITORY = null;
         started.set(false);
+
+        log.info("LingFrame shutdown complete.");
     }
 
     private static LingServiceInvoker resolveInvoker(ClassLoader hostClassLoader) {

@@ -1,6 +1,8 @@
 package com.lingframe.dashboard.controller;
 
+import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
@@ -39,6 +41,7 @@ public class LingController {
     private final MetricsCollector metricsCollector;
     private final GovernanceMetricsCollector governanceMetricsCollector;
     private final RuntimeDiagnosticsService runtimeDiagnosticsService;
+    private final EventBus eventBus;
     private final boolean installEnabled;
 
     public LingController(LingFrameConfig lingFrameConfig,
@@ -46,12 +49,14 @@ public class LingController {
             MetricsCollector metricsCollector,
             GovernanceMetricsCollector governanceMetricsCollector,
             RuntimeDiagnosticsService runtimeDiagnosticsService,
+            EventBus eventBus,
             @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
         this.lingFrameConfig = lingFrameConfig;
         this.dashboardService = dashboardService;
         this.metricsCollector = metricsCollector;
         this.governanceMetricsCollector = governanceMetricsCollector;
         this.runtimeDiagnosticsService = runtimeDiagnosticsService;
+        this.eventBus = eventBus;
         this.installEnabled = installEnabled;
     }
 
@@ -367,6 +372,31 @@ public class LingController {
         } catch (Exception e) {
             log.error("Failed to get transition history for ling: {}", lingId, e);
             return ApiResponse.error("获取状态转换历史失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取 EventBus 和 AuditManager 的内部指标。
+     * <p>
+     * 包含异步事件丢弃数、提交数、队列容量及审计丢弃数，
+     * 用于监控事件管道健康度。
+     */
+    @GetMapping("/metrics/event-pipeline")
+    public ApiResponse<Map<String, Object>> getEventPipelineMetrics() {
+        try {
+            Map<String, Object> metrics = new HashMap<>();
+            metrics.put("eventBusDroppedCount", eventBus.getDroppedAsyncEvents());
+            metrics.put("eventBusSubmittedCount", eventBus.getSubmittedAsyncEvents());
+            metrics.put("eventBusQueueSize", eventBus.getQueueSize());
+            metrics.put("eventBusQueueRemainingCapacity", eventBus.getQueueRemainingCapacity());
+            metrics.put("eventBusOverflowPolicy", eventBus.getOverflowPolicy().name());
+            metrics.put("auditDiscardCount", AuditManager.getDiscardCount());
+            metrics.put("auditOverflowPolicy", AuditManager.getOverflowPolicy().name());
+            metrics.put("auditShutdown", AuditManager.isShutdown());
+            return ApiResponse.ok(metrics);
+        } catch (Exception e) {
+            log.error("Failed to get event pipeline metrics", e);
+            return ApiResponse.error("获取事件管道指标失败: " + e.getMessage());
         }
     }
 
