@@ -10,6 +10,7 @@ import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.LeakDetector;
+import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -46,11 +47,7 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
     private final AtomicBoolean isStarted = new AtomicBoolean(false);
 
     private final ScheduledExecutorService debounceExecutor = Executors.newSingleThreadScheduledExecutor(
-            r -> {
-                Thread thread = new Thread(r, "lingframe-hotswap-debounce");
-                thread.setDaemon(true);
-                return thread;
-            });
+            NamedThreadFactory.daemon("lingframe-hotswap-debounce"));
 
     // ✅ 改为 volatile，防止并发问题
     private volatile ScheduledFuture<?> debounceTask;
@@ -257,13 +254,18 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         }
     }
 
+    private static final int MAX_CONSECUTIVE_ERRORS = 5;
+    private static final long ERROR_RETRY_MILLIS = 1000;
+
     private void startWatchLoop() {
         Thread thread = new Thread(() -> {
+            int consecutiveErrors = 0;
             while (true) {
                 try {
                     if (watchService == null)
                         break;
                     WatchKey key = watchService.take();
+                    consecutiveErrors = 0;
                     String lingId = keyLingMap.get(key);
                     if (lingId != null) {
                         scheduleReload(lingId);
@@ -275,7 +277,18 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
                 } catch (InterruptedException | ClosedWatchServiceException e) {
                     break;
                 } catch (Exception e) {
-                    log.error("Error in HotSwap loop", e);
+                    consecutiveErrors++;
+                    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                        log.error("HotSwap watch loop exiting after {} consecutive errors", consecutiveErrors, e);
+                        break;
+                    }
+                    log.warn("HotSwap watch loop error ({}/{}), retrying in {}ms",
+                            consecutiveErrors, MAX_CONSECUTIVE_ERRORS, ERROR_RETRY_MILLIS, e);
+                    try {
+                        Thread.sleep(ERROR_RETRY_MILLIS);
+                    } catch (InterruptedException ie) {
+                        break;
+                    }
                 }
             }
         });

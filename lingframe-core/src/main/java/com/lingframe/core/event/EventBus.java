@@ -2,6 +2,7 @@ package com.lingframe.core.event;
 
 import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.event.LingEventListener;
+import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -11,7 +12,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -85,7 +85,7 @@ public class EventBus {
                 30L,
                 TimeUnit.SECONDS,
                 queue,
-                new EventBusThreadFactory(),
+                NamedThreadFactory.daemon("ling-eventbus-async", EventBus.class.getClassLoader()),
                 (r, executor) -> {
                     droppedAsyncEvents.incrementAndGet();
                     log.warn("Dropping async event task because EventBus async queue is full (queueSize={}, activeThreads={})",
@@ -267,17 +267,5 @@ public class EventBus {
     private boolean isAsyncEvent(LingEvent event) {
         return event != null
                 && event.getClass().getName().startsWith("com.lingframe.core.event.monitor.");
-    }
-
-    private static final class EventBusThreadFactory implements ThreadFactory {
-        private int counter = 0;
-
-        @Override
-        public Thread newThread(Runnable runnable) {
-            Thread thread = new Thread(runnable, "ling-eventbus-async-" + (++counter));
-            thread.setDaemon(true);
-            thread.setContextClassLoader(EventBus.class.getClassLoader());
-            return thread;
-        }
     }
 }

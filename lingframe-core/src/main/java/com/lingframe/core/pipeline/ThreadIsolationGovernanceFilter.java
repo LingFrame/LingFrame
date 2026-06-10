@@ -7,6 +7,7 @@ import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
+import com.lingframe.core.util.NamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -198,18 +199,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
                 60L,
                 TimeUnit.SECONDS,
                 new SynchronousQueue<>(),
-                new ThreadFactory() {
-                    private int counter = 0;
-
-                    @Override
-                    public Thread newThread(Runnable runnable) {
-                        Thread thread = new Thread(runnable, "Ling-Iso-" + lingId + "-" + (++counter));
-                        thread.setDaemon(true);
-                        // ⚠️ 常驻线程只挂核心 ClassLoader；单次任务内再临时切换，避免线程把灵元 ClassLoader 挂死
-                        thread.setContextClassLoader(CORE_CLASSLOADER);
-                        return thread;
-                    }
-                },
+                NamedThreadFactory.daemon("Ling-Iso-" + lingId, CORE_CLASSLOADER),
                 new ThreadPoolExecutor.AbortPolicy());
     }
 

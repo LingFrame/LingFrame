@@ -5,6 +5,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.InstanceDestroyedEvent;
 import com.lingframe.core.event.InstanceStateChangedEvent;
 import com.lingframe.core.event.RuntimeStateChangedEvent;
+import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
@@ -405,11 +406,8 @@ public class RuntimeCoordinator {
             if (healthCheckExecutor != null) {
                 return;
             }
-            ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "lingframe-degraded-health-check");
-                t.setDaemon(true);
-                return t;
-            });
+            ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(
+                    NamedThreadFactory.daemon("lingframe-degraded-health-check"));
             executor.scheduleAtFixedRate(
                     this::checkDegradedLings,
                     HEALTH_CHECK_INTERVAL_SECONDS,

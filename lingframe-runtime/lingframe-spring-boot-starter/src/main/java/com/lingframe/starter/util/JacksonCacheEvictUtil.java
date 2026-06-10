@@ -103,7 +103,9 @@ public class JacksonCacheEvictUtil {
             if (map instanceof Map) {
                 ((Map<?, ?>) map).clear();
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.trace("Failed to clear map field '{}': {}", fieldName, e.getMessage());
+        }
     }
 
     private static void invokeClear(Object obj) {
@@ -120,13 +122,17 @@ public class JacksonCacheEvictUtil {
                 if (innerMap instanceof Map) {
                     ((Map<?, ?>) innerMap).clear();
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.trace("LRUMap _map field not accessible: {}", e.getMessage());
+            }
 
             // 尝试直接调用 clear 方法
             Method clear = obj.getClass().getMethod("clear");
             clear.setAccessible(true);
             clear.invoke(obj);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.trace("Failed to invoke clear on {}: {}", obj.getClass().getName(), e.getMessage());
+        }
     }
 
     private static Object getFieldValue(Object obj, String fieldName) throws Exception {

@@ -76,8 +76,9 @@ final class ClassLoaderCleanupUtil {
                 }
                 closeSingleLoaderJar(loader, logPrefix);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // 不同 JVM 版本的字段布局可能不同
+            log.trace("{} Failed to close loader JARs: {}", logPrefix, e.getMessage());
         }
     }
 
@@ -93,8 +94,9 @@ final class ClassLoaderCleanupUtil {
                 ((ZipFile) jarFile).close();
                 log.debug("{} Closed ZipFile via reflection", logPrefix);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // 非 JarLoader 或字段不可访问
+            log.trace("{} Failed to close single loader jar: {}", logPrefix, e.getMessage());
         }
     }
 
@@ -106,8 +108,9 @@ final class ClassLoaderCleanupUtil {
             if (value instanceof List<?>) {
                 ((List<?>) value).clear();
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // 不同 JVM 版本中该字段可能不存在或不可访问
+            log.trace("Failed to clear field list '{}': {}", fieldName, e.getMessage());
         }
     }
 
@@ -119,8 +122,9 @@ final class ClassLoaderCleanupUtil {
             if (value instanceof Map<?, ?>) {
                 ((Map<?, ?>) value).clear();
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // 不同 JVM 版本的字段布局可能不同
+            log.trace("Failed to clear field map '{}': {}", fieldName, e.getMessage());
         }
     }
 
@@ -129,8 +133,9 @@ final class ClassLoaderCleanupUtil {
             Field closedField = ucp.getClass().getDeclaredField("closed");
             closedField.setAccessible(true);
             closedField.set(ucp, true);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // 低版本 JDK 没有此字段
+            log.trace("Failed to mark URLClassPath as closed: {}", e.getMessage());
         }
     }
 }

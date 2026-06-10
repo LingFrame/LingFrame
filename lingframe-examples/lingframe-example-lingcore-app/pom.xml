@@ -94,10 +94,24 @@
         <profile>
             <id>integration-check</id>
             <!-- 这里只打开集成验证开关，不负责选择 Spring Boot 运行时线。 -->
+            <!--
+                注意：显式激活此 profile 会导致 activeByDefault 的 spring-boot2 profile 被 Maven 停用，
+                因此需要在此处也声明 boot2 专属依赖，以免运行时适配器（如 JavaxRepeatableReadInputStream）缺失。
+            -->
             <properties>
                 <lingframe.runE2E>true</lingframe.runE2E>
                 <skipITs>false</skipITs>
             </properties>
+            <dependencies>
+                <dependency>
+                    <groupId>com.lingframe</groupId>
+                    <artifactId>lingframe-spring-boot2-starter</artifactId>
+                </dependency>
+                <dependency>
+                    <groupId>org.springdoc</groupId>
+                    <artifactId>${springdoc.artifactId}</artifactId>
+                </dependency>
+            </dependencies>
         </profile>
 
         <profile>

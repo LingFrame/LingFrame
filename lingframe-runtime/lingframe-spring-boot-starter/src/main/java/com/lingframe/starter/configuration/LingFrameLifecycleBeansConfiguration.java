@@ -36,6 +36,7 @@ import com.lingframe.starter.event.ServiceExporterListener;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.starter.web.WebInterfaceManager;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -161,6 +162,17 @@ public class LingFrameLifecycleBeansConfiguration {
             sharedApiManager.preloadFromConfig();
             sharedApiManager.freezeSharedBoundary();
             discoveryService.scanAndLoad();
+        };
+    }
+
+    /**
+     * 灵核上下文关闭时重置静态状态，确保下一个灵核能正常启动。
+     */
+    @Bean
+    DisposableBean lingFrameStaticStateResetter() {
+        return () -> {
+            BOOTSTRAP_DONE.set(false);
+            LingFrameConfig.clear();
         };
     }
 

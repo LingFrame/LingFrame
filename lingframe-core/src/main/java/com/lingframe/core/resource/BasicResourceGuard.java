@@ -457,18 +457,19 @@ public class BasicResourceGuard implements ResourceGuard {
                 if (acc != null && referencesClassLoader(acc, classLoader)) {
                     return true;
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.trace("Failed to check ACC on thread {}: {}", t.getName(), e.getMessage());
             }
         }
 
-        // 3. target 的 ClassLoader
         if (THREAD_TARGET_FIELD != null) {
             try {
                 Object target = THREAD_TARGET_FIELD.get(t);
                 if (target != null && target.getClass().getClassLoader() == classLoader) {
                     return true;
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.trace("Failed to check target on thread {}: {}", t.getName(), e.getMessage());
             }
         }
 
@@ -506,7 +507,8 @@ public class BasicResourceGuard implements ResourceGuard {
                 t.setContextClassLoader(null);
                 log.info("[{}] Cleared contextClassLoader on thread: {}", lingId, t.getName());
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.trace("[{}] Failed to clear contextClassLoader on thread {}: {}", lingId, t.getName(), e.getMessage());
         }
 
         // inheritedAccessControlContext（Java < 24）
@@ -569,10 +571,12 @@ public class BasicResourceGuard implements ResourceGuard {
                             log.info("[{}] Shut down executor via {}.{}", lingId, className, fieldName);
                             return;
                         }
-                    } catch (NoSuchFieldException ignored) {
+                    } catch (NoSuchFieldException e) {
+                        log.trace("Field {} not found on {}: {}", fieldName, className, e.getMessage());
                     }
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.trace("[{}] Failed to shut down executor via reflection: {}", lingId, e.getMessage());
             }
         }
 
@@ -714,7 +718,8 @@ public class BasicResourceGuard implements ResourceGuard {
                     log.info("[{}] Interrupting thread created by target CL: {}", lingId, t.getName());
                     t.interrupt();
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.trace("[{}] Failed to scan/interrupt thread {}: {}", lingId, t.getName(), e.getMessage());
             }
         }
     }
@@ -780,10 +785,12 @@ public class BasicResourceGuard implements ResourceGuard {
                     Object pdCl = getClMethod.invoke(pd);
                     if (pdCl == cl)
                         return true;
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    log.trace("Failed to check ProtectionDomain classloader: {}", e.getMessage());
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.trace("Failed to scan ProtectionDomains: {}", e.getMessage());
         }
         return false;
     }
@@ -979,7 +986,8 @@ public class BasicResourceGuard implements ResourceGuard {
                     if (deepReferencesClassLoader(fieldValue, cl, depth - 1, visited)) {
                         return true;
                     }
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    log.trace("Failed to inspect field {}.{}: {}", current.getSimpleName(), f.getName(), e.getMessage());
                 }
             }
             current = current.getSuperclass();
@@ -1016,7 +1024,8 @@ public class BasicResourceGuard implements ResourceGuard {
                     if (isClassLoaderRelated(item, cl))
                         return true;
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.trace("Failed to iterate container: {}", e.getMessage());
             }
         }
         if (obj instanceof Map) {
@@ -1026,7 +1035,8 @@ public class BasicResourceGuard implements ResourceGuard {
                             || isClassLoaderRelated(entry.getValue(), cl))
                         return true;
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.trace("Failed to iterate map: {}", e.getMessage());
             }
         }
         if (obj.getClass().isArray() && !obj.getClass().getComponentType().isPrimitive()) {
@@ -1036,7 +1046,8 @@ public class BasicResourceGuard implements ResourceGuard {
                     if (isClassLoaderRelated(Array.get(obj, i), cl))
                         return true;
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.trace("Failed to iterate array: {}", e.getMessage());
             }
         }
 

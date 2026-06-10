@@ -5,6 +5,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LeakRiskReport;
+import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.ref.ReferenceQueue;
@@ -59,11 +60,7 @@ public class DefaultLeakDetector implements LeakDetector {
         this.queuePollMillis = Math.max(100, effectiveConfig.getLeakDetectionQueuePollMillis());
         this.scheduler = new ScheduledThreadPoolExecutor(
                 Math.max(1, this.maxConcurrentAggressiveChecks),
-                runnable -> {
-                    Thread thread = new Thread(runnable, "lingframe-leak-detector");
-                    thread.setDaemon(true);
-                    return thread;
-                });
+                NamedThreadFactory.daemon("lingframe-leak-detector"));
         this.scheduler.setRemoveOnCancelPolicy(true);
 
         if (!devMode) {

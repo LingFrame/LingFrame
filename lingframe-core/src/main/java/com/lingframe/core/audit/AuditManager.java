@@ -1,6 +1,7 @@
 package com.lingframe.core.audit;
 
 import com.lingframe.api.security.PermissionAuditResult;
+import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.CompletableFuture;
@@ -25,14 +26,7 @@ public class AuditManager {
             0L,
             TimeUnit.MILLISECONDS,
             new LinkedBlockingQueue<>(1000),
-            runnable -> {
-                Thread thread = new Thread(runnable, "lingframe-audit-logger");
-                thread.setDaemon(true);
-                thread.setContextClassLoader(CORE_CLASSLOADER);
-                thread.setUncaughtExceptionHandler(
-                        (t, e) -> log.error("Thread pool thread {} exception: {}", t.getName(), e.getMessage()));
-                return thread;
-            },
+            NamedThreadFactory.daemon("lingframe-audit-logger", CORE_CLASSLOADER),
             (runnable, executor) -> {
                 long count = DISCARD_COUNT.incrementAndGet();
                 if (count == 1 || count % 100 == 0) {

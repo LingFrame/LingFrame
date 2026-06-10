@@ -48,8 +48,10 @@ public class LingFrameConfig {
 
     /**
      * 初始化全局实例 (由 Starter 启动时调用一次)
+     * <p>
+     * 线程安全：使用 synchronized 防止并发初始化竞态
      */
-    public static void init(LingFrameConfig config) {
+    public static synchronized void init(LingFrameConfig config) {
         if (INSTANCE != null) {
             // 防止灵元加载 Spring 上下文时覆盖灵核的全局配置
             // 例如：LINGCORE 已开启 DevMode，灵元启动默认配置为 false，若覆盖则导致 DevMode 失效
@@ -62,7 +64,7 @@ public class LingFrameConfig {
      * 清理全局配置
      * 场景：灵元测试 teardown
      */
-    public static void clear() {
+    public static synchronized void clear() {
         INSTANCE = null;
     }
 
