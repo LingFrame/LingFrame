@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.lang.management.ManagementFactory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -264,7 +265,15 @@ public class LingController {
             
             metrics.put("availableProcessors", jvmMetrics.getAvailableProcessors());
             metrics.put("systemLoadAverage", jvmMetrics.getSystemLoadAverage());
-            
+
+            // JVM 基础信息
+            metrics.put("jvmVersion", System.getProperty("java.version", ""));
+            metrics.put("jvmVendor", System.getProperty("java.vendor", ""));
+            metrics.put("osName", System.getProperty("os.name", ""));
+            metrics.put("osArch", System.getProperty("os.arch", ""));
+            metrics.put("uptimeMs", ManagementFactory.getRuntimeMXBean().getUptime());
+            metrics.put("pid", getProcessId());
+
             return ApiResponse.ok(metrics);
         } catch (Exception e) {
             log.error("Failed to get metrics", e);
@@ -410,5 +419,10 @@ public class LingController {
     @Data
     public static class LingReloadRequest {
         private String version;
+    }
+
+    private static String getProcessId() {
+        String name = ManagementFactory.getRuntimeMXBean().getName();
+        return name.contains("@") ? name.substring(0, name.indexOf('@')) : name;
     }
 }

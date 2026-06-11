@@ -11,13 +11,14 @@ public interface LingServiceRegistry {
 
     /**
      * 注册方法级别元数据
-     * 
+     *
      * @param serviceFQSID   服务的全限定字符串短标识，如 "user:UserService"
      * @param className      Spring Bean 对应目标类的全限定名
      * @param methodName     方法名称
      * @param parameterTypes 方法参数类型签名
+     * @param returnType     方法返回类型全限定名
      */
-    void registerServiceMetadata(String serviceFQSID, String className, String methodName, String[] parameterTypes);
+    void registerServiceMetadata(String serviceFQSID, String className, String methodName, String[] parameterTypes, String returnType);
 
     /**
      * 获取服务对应的目标类名
@@ -28,6 +29,12 @@ public interface LingServiceRegistry {
      * 提取指定服务的所有方法元数据。
      */
     List<String> getProviderMethods(String serviceFQSID);
+
+    /**
+     * 获取指定服务方法的返回类型。
+     * 签名格式：methodName(paramType1,paramType2)
+     */
+    String getReturnType(String serviceFQSID, String methodSignature);
 
     /**
      * 验证某个服务接口上是否存在对应的方法参数签名。

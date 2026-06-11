@@ -12,7 +12,9 @@
     "envTest": "测试环境",
     "envProd": "生产环境",
     "coreFeatures": "核心功能",
+    "monitor": "系统监控",
     "governance": "治理中心",
+    "verification": "服务验证",
     "sseConnected": "SSE 已连接",
     "sseConnecting": "SSE 连接中...",
     "sseDisconnected": "SSE 断开",
@@ -40,7 +42,8 @@
   "lingList": {
     "title": "灵元列表",
     "count": "{n} 个",
-    "empty": "暂无已安装灵元"
+    "empty": "暂无已安装灵元",
+    "search": "搜索灵元..."
   },
   "traffic": {
     "title": "流量分发",
@@ -129,6 +132,22 @@
     "writeCache": "写Cache",
     "ipcAuth": "IPC 授权"
   },
+  "playground": {
+    "title": "服务演练场",
+    "noServices": "暂无注册服务",
+    "noMethods": "无方法",
+    "invoke": "调用",
+    "executing": "执行中...",
+    "args": "参数",
+    "result": "返回值",
+    "error": "错误",
+    "duration": "耗时",
+    "noResult": "暂无调用结果",
+    "traces": "治理追踪",
+    "paramInput": "输入参数值",
+    "returnType": "返回",
+    "method": "方法"
+  },
   "audit": {
     "success": "SUCCESS",
     "denied": "DENIED",
@@ -211,6 +230,27 @@
       "threads": "活跃线程",
       "gc": "GC 次数"
     },
+  "monitor": {
+      "title": "系统监控",
+      "basicInfo": "基础信息",
+      "jvmVersion": "JVM 版本",
+      "jvmVendor": "JVM 供应商",
+      "osName": "操作系统",
+      "osArch": "系统架构",
+      "uptime": "运行时间",
+      "pid": "进程 ID",
+      "metricsTitle": "实时指标",
+      "chartTitle": "历史趋势",
+      "timeRange": "时间区间",
+      "last5m": "近 5 分钟",
+      "last15m": "近 15 分钟",
+      "last30m": "近 30 分钟",
+      "last1h": "近 1 小时",
+      "last3h": "近 3 小时",
+      "custom": "自定义",
+      "gcTime": "GC 耗时",
+      "classCount": "类对象数"
+  },
   "status": {
     "active": "激活",
     "inactive": "未激活",

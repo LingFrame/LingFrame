@@ -138,8 +138,9 @@ public class DefaultLingContext implements LingContext {
         for (int i = 0; i < paramTypes.length; i++) {
             paramNames[i] = paramTypes[i].getName();
         }
+        String returnTypeName = method.getReturnType().getName();
         lingServiceRegistry.registerServiceMetadata(fqsid, method.getDeclaringClass().getName(), methodName,
-                paramNames);
+                paramNames, returnTypeName);
     }
 
     private String[] parseParamTypeNames(String signature) {

@@ -8,6 +8,7 @@
     <!-- 本地资源 -->
     <script src="js/vue.global.prod.js" defer></script>
     <script src="https://cdn.tailwindcss.com" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
     <!--<link rel="stylesheet" href="css/tailwindcss.css">-->
     <link rel="stylesheet" href="css/fontawesome.min.css">
     <link rel="stylesheet" href="css/jetbrains-mono.css">
@@ -234,14 +235,55 @@
             </div>
 
             <!-- 导航菜单 -->
-            <nav class="flex-grow py-4">
+            <nav class="flex-shrink-0 py-4">
                 <div class="text-sm text-slate-500 uppercase tracking-wider px-5 mb-2">{{ t('sidebar.coreFeatures') }}
                 </div>
-                <div class="sidebar-item active">
+                <div :class="['sidebar-item', activeNav === 'monitor' ? 'active' : '']" @click="activeNav = 'monitor'">
+                    <i class="fa-solid fa-chart-line w-4"></i>
+                    <span class="text-base">{{ t('sidebar.monitor') }}</span>
+                </div>
+                <div :class="['sidebar-item', activeNav === 'governance' ? 'active' : '']" @click="activeNav = 'governance'">
                     <i class="fa-solid fa-gauge-high w-4"></i>
                     <span class="text-base">{{ t('sidebar.governance') }}</span>
                 </div>
+                <div :class="['sidebar-item', activeNav === 'verification' ? 'active' : '']" @click="activeNav = 'verification'">
+                    <i class="fa-solid fa-flask-vial w-4"></i>
+                    <span class="text-base">{{ t('sidebar.verification') }}</span>
+                </div>
             </nav>
+
+            <!-- 灵元列表（常驻侧边栏） -->
+            <div class="flex-grow overflow-y-auto px-3 py-2 border-t border-slate-700">
+                <div class="text-sm text-slate-500 uppercase tracking-wider px-2 mb-2">{{ t('lingList.title') }}
+                    <span class="text-xs text-slate-600">{{ t('lingList.count', {n: lings.length}) }}</span>
+                </div>
+                <!-- 搜索筛选 -->
+                <div class="px-2 mb-2">
+                    <input v-model="lingSearch" type="text" :placeholder="t('lingList.search')"
+                        class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500">
+                </div>
+                <div v-if="lings.length === 0" class="text-xs text-slate-600 px-2 py-4 text-center">
+                    {{ t('lingList.empty') }}
+                </div>
+                <div v-for="p in filteredLings" :key="p.lingId"
+                    :class="['ling-item', activeId === p.lingId ? 'active' : '']"
+                    @click="selectLing(p.lingId)">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-white truncate">{{ getLingShortName(p.lingId) }}</span>
+                        <span :class="['status-tag', getLingTagClass(p.status)]">{{ t('status.' + p.status?.toLowerCase()) || p.status }}</span>
+                    </div>
+                    <div v-if="p.versionDetails && p.versionDetails.length > 0" class="mt-1.5">
+                        <div v-for="v in p.versionDetails" :key="v.version" class="flex items-center justify-between text-[10px] mb-0.5">
+                            <span class="text-slate-400 font-mono">{{ v.version }}</span>
+                            <span class="text-slate-500">{{ v.trafficWeight != null ? v.trafficWeight + '%' : '' }}</span>
+                        </div>
+                    </div>
+                    <div v-else class="flex gap-2 flex-wrap mt-1">
+                        <span v-if="p.activeVersion" class="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">{{ p.activeVersion }}</span>
+                        <span v-if="p.canaryVersion" class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">{{ p.canaryVersion }}</span>
+                    </div>
+                </div>
+            </div>
 
             <!-- 底部状态 -->
             <div class="p-4 border-t border-slate-700">
@@ -267,9 +309,9 @@
                         <i class="fa-solid fa-bars"></i>
                     </button>
                     <div class="flex items-center gap-3">
-                        <span class="text-base font-medium text-white">{{ t('sidebar.governance') }}</span>
-                        <i class="fa-solid fa-chevron-right text-slate-600 text-sm"></i>
-                        <span class="text-base text-slate-400">{{ activeId || t('header.notSelected') }}</span>
+                        <span class="text-base font-medium text-white">{{ t('sidebar.' + activeNav) }}</span>
+                        <i class="fa-solid fa-chevron-right text-slate-600 text-sm" v-if="activeId"></i>
+                        <span class="text-base text-slate-400" v-if="activeId">{{ activeId }}</span>
                     </div>
                 </div>
                 <!-- 顶部工具栏右侧 -->
@@ -424,209 +466,138 @@
             </div>
 
             <div class="flex-grow overflow-auto p-6">
-                <div class="content-grid grid grid-cols-12 gap-6 max-w-[1600px] mx-auto">
+                <div class="max-w-[1600px] mx-auto">
 
-                    <!-- 左列：灵元列表 + 性能监控 -->
-                    <div class="col-span-12 lg:col-span-3 space-y-6">
-                        <!-- 灵元列表 -->
-                        <div class="card relative">
+                    <!-- ==================== 系统监控视图 ==================== -->
+                    <div v-if="activeNav === 'monitor'">
+                        <!-- 基础信息卡片 -->
+                        <div class="card mb-6">
                             <div class="card-header">
-                                <h3 class="font-bold text-base text-white">{{ t('lingList.title') }}</h3>
-                                <span class="text-sm text-slate-500">{{ t('lingList.count', { n: lings.length })
-                                    }}</span>
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-server text-blue-400"></i>
+                                    <h3 class="font-bold text-base text-white">{{ t('monitor.basicInfo') }}</h3>
+                                </div>
                             </div>
-
-                            <div v-if="loading.lings && lings.length === 0" class="loading-overlay">
-                                <div class="spinner"></div>
-                            </div>
-
-                            <div v-if="!loading.lings && lings.length === 0" class="p-8 text-center">
-                                <i class="fa-solid fa-puzzle-piece text-3xl text-slate-600 mb-3"></i>
-                                <p class="text-base text-slate-500">{{ t('lingList.empty') }}</p>
-                            </div>
-
-                            <div class="overflow-y-auto overflow-x-hidden max-h-[400px]" v-else>
-                                <div v-for="p in lings" :key="p.lingId" @click="selectLing(p.lingId)"
-                                    :data-testid="'ling-item-' + p.lingId"
-                                    :class="['Ling-item', activeId === p.lingId ? 'active' : '']">
-                                    <div class="flex justify-between items-start mb-2">
-                                        <span class="font-medium text-white text-base truncate pr-2"
-                                            :title="p.lingId">{{
-                                            p.lingId }}</span>
-                                        <div class="flex gap-2 items-center">
-                                            <span
-                                                :class="['text-[11px] px-2 py-0.5 rounded-full flex-shrink-0 font-black uppercase tracking-tighter', getStatusClass(p.status)]">
-                                                {{ p.status }}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <!-- 侧边栏双效染色 (字号再次加大 & 颜色深度对应) -->
-                                    <div class="mt-3 space-y-1.5 ml-1"
-                                        v-if="p.versionDetails && p.versionDetails.length > 0">
-                                        <div v-for="v in p.versionDetails" :key="v.version" :class="[
-                                                v.isDefault ? 'bg-blue-600/20 border-l-4 border-l-blue-500 shadow-[inset_0_0_15px_rgba(59,130,246,0.1)]' : 
-                                                v.isCanary ? 'bg-amber-600/20 border-l-4 border-l-amber-500 shadow-[inset_0_0_15px_rgba(245,158,11,0.1)]' : 'pl-3 border-l-2 border-slate-700'
-                                            ]"
-                                            class="flex justify-between items-center text-sm py-2 px-3 rounded-r transition-all hover:brightness-125">
-                                            <div class="flex items-center gap-2">
-                                                <div
-                                                    :class="['w-2 h-2 rounded-full', getStatusClass(v.status).replace('status-', 'bg-')]">
-                                                </div>
-                                                <!-- 直接染色，不透传，确保显示 -->
-                                                <span v-if="v.isDefault"
-                                                    class="font-mono font-black shrink-0 text-blue-400">{{ v.version
-                                                    }}</span>
-                                                <span v-else-if="v.isCanary"
-                                                    class="font-mono font-black shrink-0 text-amber-400">{{ v.version
-                                                    }}</span>
-                                                <span v-else class="font-mono font-black shrink-0 text-slate-200">{{
-                                                    v.version }}</span>
-                                            </div>
-                                            <!-- 比例数字同步染色 -->
-                                            <span class="font-mono font-black"
-                                                :class="v.isDefault ? 'text-blue-300' : v.isCanary ? 'text-amber-300' : 'text-slate-400'">{{
-                                                v.trafficWeight }}%</span>
-                                        </div>
-                                    </div>
-
-                                    <div class="flex justify-between items-center mt-2" v-else>
-                                        <div class="flex gap-2 flex-wrap">
-                                            <span v-if="p.activeVersion"
-                                                class="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">
-                                                {{ p.activeVersion }}
-                                            </span>
-                                            <span v-if="p.canaryVersion"
-                                                class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">
-                                                {{ p.canaryVersion }}
-                                            </span>
-                                        </div>
-                                    </div>
+                            <div class="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.jvmVersion') }}</div>
+                                    <div class="text-sm font-mono text-white truncate">{{ jvmInfo.version }}</div>
+                                </div>
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.jvmVendor') }}</div>
+                                    <div class="text-sm font-mono text-white truncate">{{ jvmInfo.vendor }}</div>
+                                </div>
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.osName') }}</div>
+                                    <div class="text-sm font-mono text-white truncate">{{ jvmInfo.osName }}</div>
+                                </div>
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.osArch') }}</div>
+                                    <div class="text-sm font-mono text-white truncate">{{ jvmInfo.osArch }}</div>
+                                </div>
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.uptime') }}</div>
+                                    <div class="text-sm font-mono text-white">{{ formatUptime(jvmInfo.uptimeMs) }}</div>
+                                </div>
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.pid') }}</div>
+                                    <div class="text-sm font-mono text-white">{{ jvmInfo.pid }}</div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- 设备性能监控 -->
-                        <div class="card relative">
+                        <!-- 实时指标 -->
+                        <div class="card mb-6">
                             <div class="card-header">
                                 <div class="flex items-center gap-2">
-                                    <i class="fa-solid fa-microchip text-blue-400"></i>
-                                    <h3 class="font-bold text-base text-white">{{ t('performance.title') || '系统性能' }}</h3>
+                                    <i class="fa-solid fa-gauge text-emerald-400"></i>
+                                    <h3 class="font-bold text-base text-white">{{ t('monitor.metricsTitle') }}</h3>
                                 </div>
-                                <span class="text-xs text-slate-500">{{ t('performance.realtime') || '实时监控' }}</span>
                             </div>
-                                <div class="p-4 space-y-4">
-                                    <!-- CPU 使用率 -->
-                                    <div>
-                                        <div class="flex justify-between items-center mb-2">
-                                            <span class="text-xs text-slate-400 flex items-center gap-1">
-                                                <i class="fa-solid fa-microchip text-slate-500"></i> {{ t('performance.cpu') }}
-                                            </span>
-                                        <span class="text-sm font-mono font-bold" :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">
-                                            {{ perfMetrics.cpu }}%
-                                        </span>
-                                    </div>
-                                    <div class="h-3 bg-slate-800 rounded-full overflow-hidden">
-                                        <div class="h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]"
-                                            :class="perfMetrics.cpu > 80 ? 'bg-red-500 shadow-red-500/30' : perfMetrics.cpu > 60 ? 'bg-amber-500 shadow-amber-500/30' : 'bg-green-500 shadow-green-500/30'"
+                            <div class="p-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+                                <!-- CPU -->
+                                <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.cpu') }}</div>
+                                    <div class="text-xl font-mono font-bold" :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">{{ perfMetrics.cpu }}%</div>
+                                    <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden mt-2">
+                                        <div class="h-full rounded-full transition-all duration-500"
+                                            :class="perfMetrics.cpu > 80 ? 'bg-red-500' : perfMetrics.cpu > 60 ? 'bg-amber-500' : 'bg-green-500'"
                                             :style="{ width: Math.max(3, perfMetrics.cpu) + '%' }"></div>
                                     </div>
                                 </div>
+                                <!-- 堆内存 -->
+                                <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.heap') }}</div>
+                                    <div class="text-xl font-mono font-bold text-purple-400">{{ perfMetrics.heapUsage }}%</div>
+                                    <div class="text-[10px] text-slate-500 mt-1 font-mono">{{ perfMetrics.heapUsed }}MB / {{ perfMetrics.heapMax }}MB</div>
+                                </div>
+                                <!-- 元空间 -->
+                                <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.metaspace') }}</div>
+                                    <div class="text-xl font-mono font-bold" :class="perfMetrics.metaspaceUsage > 80 ? 'text-red-400' : 'text-emerald-400'">{{ perfMetrics.metaspaceUsage }}%</div>
+                                    <div class="text-[10px] text-slate-500 mt-1 font-mono">{{ perfMetrics.metaspaceUsed }}KB / {{ perfMetrics.metaspaceMax }}KB</div>
+                                </div>
+                                <!-- 线程数 -->
+                                <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.threads') }}</div>
+                                    <div class="text-xl font-mono font-bold text-cyan-400">{{ perfMetrics.threads }}</div>
+                                    <div class="text-[10px] text-slate-500 mt-1">Peak: {{ perfMetrics.peakThreads }}</div>
+                                </div>
+                                <!-- GC 次数 -->
+                                <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.gc') }}</div>
+                                    <div class="text-xl font-mono font-bold text-pink-400">{{ perfMetrics.gcCount }}</div>
+                                </div>
+                                <!-- GC 耗时 -->
+                                <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.gcTime') }}</div>
+                                    <div class="text-xl font-mono font-bold text-orange-400">{{ perfMetrics.gcTimeMs }}ms</div>
+                                </div>
+                                <!-- 类对象数 -->
+                                <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.classCount') }}</div>
+                                    <div class="text-xl font-mono font-bold text-amber-400">{{ perfMetrics.loadedClassCount }}</div>
+                                    <div class="text-[10px] text-slate-500 mt-1">{{ t('performance.unloadedClasses') }}: {{ perfMetrics.unloadedClassCount }}</div>
+                                </div>
+                            </div>
+                        </div>
 
-                                <!-- JVM 内存 (堆 + 非堆) -->
-                                    <div>
-                                        <div class="flex justify-between items-center mb-2">
-                                            <span class="text-xs text-slate-400 flex items-center gap-1">
-                                                <i class="fa-solid fa-memory text-slate-500"></i> {{ t('performance.jvmMemory') }}
-                                            </span>
-                                        <span class="text-sm font-mono font-bold" :class="perfMetrics.memory > 80 ? 'text-red-400' : perfMetrics.memory > 60 ? 'text-amber-400' : 'text-blue-400'">
-                                            {{ perfMetrics.memory }}%
-                                        </span>
-                                    </div>
-                                    <div class="h-3 bg-slate-800 rounded-full overflow-hidden">
-                                        <div class="h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]"
-                                            :class="perfMetrics.memory > 80 ? 'bg-red-500 shadow-red-500/30' : perfMetrics.memory > 60 ? 'bg-amber-500 shadow-amber-500/30' : 'bg-blue-500 shadow-blue-500/30'"
-                                            :style="{ width: Math.max(3, perfMetrics.memory) + '%' }"></div>
-                                      </div>
-                                      <div class="text-xs text-slate-500 mt-1 text-right font-mono">
-                                        {{ t('performance.used') }} {{ perfMetrics.memoryUsed }}MB / {{ t('performance.allocated') }} {{ perfMetrics.memoryTotal }}MB
-                                      </div>
-                                  </div>
-
-                                <!-- 堆内存详情 -->
-                                <div class="bg-slate-800/30 rounded-lg p-3">
-                                      <div class="flex justify-between items-center mb-2">
-                                          <span class="text-xs text-slate-400 flex items-center gap-1">
-                                              <i class="fa-solid fa-cubes text-purple-500"></i> {{ t('performance.heap') }}
-                                          </span>
-                                        <span class="text-xs font-mono font-bold text-purple-400">
-                                            {{ Math.round(perfMetrics.heapUsed / perfMetrics.heapMax * 100) }}%
-                                        </span>
-                                    </div>
-                                    <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
-                                        <div class="h-full bg-purple-500 rounded-full transition-all duration-500"
-                                            :style="{ width: Math.max(2, perfMetrics.heapUsed / perfMetrics.heapMax * 100) + '%' }"></div>
-                                    </div>
-                                    <div class="text-xs text-slate-500 mt-1 text-right font-mono">
-                                        {{ perfMetrics.heapUsed }}MB / {{ perfMetrics.heapMax }}MB
+                        <!-- 历史趋势折线图 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-chart-area text-indigo-400"></i>
+                                    <h3 class="font-bold text-base text-white">{{ t('monitor.chartTitle') }}</h3>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs text-slate-500">{{ t('monitor.timeRange') }}:</span>
+                                    <select v-model="chartTimeRange" class="bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-blue-500">
+                                        <option value="5m">{{ t('monitor.last5m') }}</option>
+                                        <option value="15m">{{ t('monitor.last15m') }}</option>
+                                        <option value="30m">{{ t('monitor.last30m') }}</option>
+                                        <option value="1h">{{ t('monitor.last1h') }}</option>
+                                        <option value="3h">{{ t('monitor.last3h') }}</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                <div v-for="chart in monitorCharts" :key="chart.key" class="bg-slate-800/30 rounded-lg p-3">
+                                    <div class="text-xs text-slate-400 mb-2">{{ chart.label }}</div>
+                                    <div style="height: 120px; position: relative;">
+                                        <canvas :id="'chart-' + chart.key"></canvas>
                                     </div>
                                 </div>
-
-                                <!-- 线程数 & GC 次数 网格布局 -->
-                                <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
-                                    <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                        <div class="flex items-center justify-center gap-1 mb-1">
-                                            <i class="fa-solid fa-code-branch text-cyan-500 text-xs"></i>
-                                            <span class="text-[10px] text-slate-500 uppercase">{{ t('performance.threads') || '活跃线程' }}</span>
-                                        </div>
-                                        <span class="text-lg font-mono font-bold text-cyan-400">{{ perfMetrics.threads }}</span>
-                                    </div>
-                                    <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                        <div class="flex items-center justify-center gap-1 mb-1">
-                                            <i class="fa-solid fa-recycle text-pink-500 text-xs"></i>
-                                            <span class="text-[10px] text-slate-500 uppercase">{{ t('performance.gc') || 'GC 次数' }}</span>
-                                        </div>
-                                        <span class="text-lg font-mono font-bold text-pink-400">{{ perfMetrics.gcCount }}</span>
-                                    </div>
-                                </div>
-                                
-                                <!-- Metaspace & 类加载 -->
-                                <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
-                                      <div class="bg-slate-800/50 rounded-lg p-3">
-                                          <div class="flex items-center justify-between mb-1">
-                                              <span class="text-[10px] text-slate-500 uppercase">{{ t('performance.metaspace') }}</span>
-                                              <span class="text-xs font-mono font-bold" :class="perfMetrics.metaspaceUsage > 80 ? 'text-red-400' : 'text-emerald-400'">
-                                                  {{ perfMetrics.metaspaceUsage }}%
-                                              </span>
-                                        </div>
-                                        <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                                            <div class="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                                                :style="{ width: Math.max(2, perfMetrics.metaspaceUsage) + '%' }"></div>
-                                        </div>
-                                        <div class="text-[10px] text-slate-500 mt-1 font-mono">
-                                            {{ perfMetrics.metaspaceUsed }}KB / {{ perfMetrics.metaspaceMax }}KB
-                                        </div>
-                                    </div>
-                                      <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                          <div class="flex items-center justify-center gap-1 mb-1">
-                                              <i class="fa-solid fa-cube text-amber-500 text-xs"></i>
-                                              <span class="text-[10px] text-slate-500 uppercase">{{ t('performance.loadedClasses') }}</span>
-                                          </div>
-                                          <span class="text-lg font-mono font-bold text-amber-400">{{ perfMetrics.loadedClassCount }}</span>
-                                          <div class="text-[10px] text-slate-500 mt-1">
-                                              {{ t('performance.unloadedClasses') }}: {{ perfMetrics.unloadedClassCount }}
-                                          </div>
-                                      </div>
-                                  </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 中列：流量控制 + 日志 -->
-                    <div class="col-span-12 lg:col-span-6 space-y-6">
+                    <!-- ==================== 治理中心视图 ==================== -->
+                    <div v-if="activeNav === 'governance'" class="content-grid grid grid-cols-12 gap-6">
 
-                        <!-- 流量分发 -->
-                        <div class="card relative">
+                        <!-- 左列：流量控制 + 灵元管理 -->
+                        <div class="col-span-12 lg:col-span-7 space-y-6">
+                            <!-- 流量分发 -->
+                            <div class="card relative">
                             <div v-if="loading.canary" class="loading-overlay">
                                 <div class="spinner"></div>
                             </div>
@@ -737,397 +708,26 @@
                             </div>
                         </div>
 
-                        <!-- 日志追踪 -->
-                        <div class="card flex flex-col relative" style="height: 500px;">
-                            <div class="card-header flex-shrink-0">
-                                <div class="flex items-center gap-3">
-                                    <h3 class="font-bold text-base text-white">{{ t('logs.title') }}</h3>
-                                    <div :class="['connection-dot', sseStatus]" :title="sseStatusText"></div>
-                                    <div class="flex bg-slate-800 rounded-lg overflow-hidden">
-                                        <button @click="logViewMode = 'current'"
-                                            :class="logViewMode === 'current' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
-                                            class="px-3 py-1 text-xs font-bold transition-all">
-                                            {{ t('logs.current') }}
-                                        </button>
-                                        <button @click="logViewMode = 'all'"
-                                            :class="logViewMode === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'"
-                                            class="px-3 py-1 text-xs font-bold transition-all">
-                                            {{ t('logs.all') }}
-                                        </button>
-                                    </div>
-                                    <button @click="logAggregationMode = !logAggregationMode"
-                                        :class="logAggregationMode ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'"
-                                        class="px-3 py-1 text-xs font-bold transition-all rounded-lg flex items-center gap-1">
-                                        <i class="fa-solid fa-layer-group"></i>
-                                        {{ t('logs.aggregationMode') }}
-                                    </button>
+                            <!-- 灵元管理 -->
+                            <div class="card relative">
+                                <div v-if="loading.status" class="loading-overlay">
+                                    <div class="spinner"></div>
                                 </div>
-                                <div class="flex items-center gap-3 text-slate-500">
-                                    <span class="text-xs font-mono">{{ displayLogs.length }}/{{ logs.length
-                                        }}</span>
-                                    <button @click="clearLogs" class="hover:text-white transition-all">
-                                        <i class="fa-solid fa-eraser"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <!-- 日志筛选栏 -->
-                            <div class="p-4 border-t border-slate-700 bg-slate-800/50">
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div>
-                                        <label class="text-sm text-slate-400 block mb-1">{{ t('logs.filterByVersion') }}</label>
-                                        <select v-model="logFilters.version" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors">
-                                            <option value="">{{ t('logs.allVersions') }}</option>
-                                            <option v-for="version in availableVersions" :key="version" :value="version">{{ version }}</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label class="text-sm text-slate-400 block mb-1">{{ t('logs.filterByEventType') }}</label>
-                                        <select v-model="logFilters.eventType" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors">
-                                            <option value="">{{ t('logs.allEventTypes') }}</option>
-                                            <option value="LOADING">{{ t('logs.eventTypeLoading') }}</option>
-                                            <option value="UNLOADING">{{ t('logs.eventTypeUnloading') }}</option>
-                                            <option value="GC">{{ t('logs.eventTypeGC') }}</option>
-                                            <option value="ERROR">{{ t('logs.eventTypeError') }}</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label class="text-sm text-slate-400 block mb-1">{{ t('logs.filterByKeyword') }}</label>
-                                        <div class="relative">
-                                            <input v-model="logFilters.keyword" @input="filterLogs" type="text" :placeholder="t('logs.keywordPlaceholder')" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors pl-9">
-                                            <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500"></i>
-                                        </div>
+
+                                <div class="card-header">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-sliders text-blue-400"></i>
+                                        <h3 class="font-bold text-base text-white">{{ t('control.title') }}</h3>
                                     </div>
                                 </div>
-                                <div class="mt-3 flex justify-end gap-2">
-                                    <button @click="resetLogFilters" class="px-3 py-1 text-xs bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition-colors">
-                                        {{ t('logs.resetFilters') }}
-                                    </button>
-                                    <button @click="filterLogs" class="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors">
-                                        {{ t('logs.applyFilters') }}
-                                    </button>
-                                </div>
-                            </div>
-                            <div ref="logContainer" @scroll="handleLogScroll"
-                                class="log-container flex-grow overflow-y-auto p-4">
-                                <div v-if="displayLogs.length === 0" class="text-slate-500 text-center py-12">
-                                    <i class="fa-solid fa-inbox text-3xl mb-3 block"></i>
-                                    <span class="text-sm">{{ sseStatus === 'connected' ? t('logs.waiting') :
-                                        t('logs.connecting') }}</span>
-                                </div>
-                                <div v-for="l in displayLogs" :key="l.id" class="log-line">
-                                    <span class="trace-tag">#{{ l.traceId || '------' }}</span>
-                                    <span v-if="logViewMode === 'all'" :class="getLingTagClass(l.lingId)"
-                                        class="text-[11px] px-1.5 py-0.5 rounded font-bold flex-shrink-0">
-                                        {{ getLingShortName(l.lingId) }}
-                                    </span>
-                                    <span :class="getLogColor(l)" class="flex-grow">
-                                        <i v-if="l.type === 'LEAK_DETECTION'" :class="l.tag === 'OK' ? 'fa-solid fa-check-circle text-green-400' : 'fa-solid fa-times-circle text-red-400'" class="mr-1"></i>
-                                        <span v-if="l.depth" class="inline-block"
-                                            :style="{width: (l.depth * 12) + 'px'}"></span>
-                                        {{ l.content }}
-                                    </span>
-                                    <span class="text-[11px] text-slate-600 flex-shrink-0">{{ formatTime(l.timestamp)
-                                        }}</span>
-                                </div>
-                            </div>
-                            <div v-if="isUserScrolling" @click="scrollToTop"
-                                class="absolute bottom-4 right-4 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm cursor-pointer hover:bg-blue-500 transition-all shadow-lg">
-                                <i class="fa-solid fa-arrow-up mr-1"></i> {{ t('logs.newLogs') }}
-                            </div>
-                        </div>
-                    </div>
+                                <div class="p-4">
+                                    <div v-if="!activeLing" class="text-center py-6">
+                                        <i class="fa-solid fa-hand-pointer text-2xl text-slate-600 mb-2"></i>
+                                        <p class="text-sm text-slate-500">{{ t('control.selectLing') }}</p>
+                                    </div>
 
-                    <!-- 右列：控制面板 -->
-                    <div class="col-span-12 lg:col-span-3 xl:col-span-3 space-y-6" style="min-width: 280px; max-width: 320px;">
-
-                        <!-- 灵元控制 -->
-                        <div class="card relative">
-                            <div v-if="loading.status" class="loading-overlay">
-                                <div class="spinner"></div>
-                            </div>
-
-                            <div class="card-header">
-                                <h3 class="font-bold text-base text-white">{{ t('control.title') }}</h3>
-                            </div>
-                            <div class="p-4">
-                                <div v-if="!activeLing" class="text-center py-6">
-                                    <i class="fa-solid fa-hand-pointer text-2xl text-slate-600 mb-2"></i>
-                                    <p class="text-sm text-slate-500">{{ t('control.selectLing') }}</p>
-                                </div>
-
-                                <template v-else>
-                                    <div class="health-card mb-4">
-                                        <div class="flex items-center justify-between gap-3 mb-3">
-                                            <div>
-                                                <h4 class="text-sm font-bold text-white">{{ t('healthCard.title') }}</h4>
-                                                <p class="text-xs text-slate-400 mt-1">{{ activeLing?.lingId }}</p>
-                                            </div>
-                                            <span
-                                                v-if="activeLingHealth"
-                                                :class="getLingHealthStatusClass(activeLingHealth.healthStatus)">
-                                                {{ activeLingHealth.healthStatus || t('healthCard.unknown') }}
-                                            </span>
-                                            <span v-else class="risk-badge risk-unknown">
-                                                {{ t('healthCard.unknown') }}
-                                            </span>
-                                        </div>
-                                        <div v-if="activeLingHealth" class="grid grid-cols-2 gap-3">
-                                            <div class="health-metric">
-                                                <span class="health-metric-label">{{ t('healthCard.qps') }}</span>
-                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.qps, 1) }}</span>
-                                            </div>
-                                            <div class="health-metric">
-                                                <span class="health-metric-label">{{ t('healthCard.errorRate') }}</span>
-                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.errorRate, 2) }}%</span>
-                                            </div>
-                                            <div class="health-metric">
-                                                <span class="health-metric-label">{{ t('healthCard.avgLatencyMs') }}</span>
-                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.avgLatencyMs, 1) }} ms</span>
-                                            </div>
-                                            <div class="health-metric">
-                                                <span class="health-metric-label">{{ t('healthCard.p99LatencyMs') }}</span>
-                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.p99LatencyMs, 1) }} ms</span>
-                                            </div>
-                                            <div class="health-metric health-metric-full">
-                                                <span class="health-metric-label">{{ t('healthCard.activeRequests') }}</span>
-                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.activeRequests, 0) }}</span>
-                                            </div>
-                                        </div>
-                                        <div v-else class="result-empty">
-                                            {{ t('healthCard.empty') }}
-                                        </div>
-                                        <div v-if="activeLingVersionHealth.length" class="health-version-section">
-                                            <div class="flex items-center justify-between gap-2 mb-3">
-                                                <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('healthCard.versionBreakdown') }}</h5>
-                                                <span class="text-xs text-slate-500">{{ activeLingVersionHealth.length }} {{ t('healthCard.versionCountSuffix') }}</span>
-                                            </div>
-                                            <div class="space-y-3">
-                                                <div v-for="versionHealth in activeLingVersionHealth" :key="versionHealth.version" class="health-version-card">
-                                                    <div class="flex items-center justify-between gap-3 mb-3">
-                                                        <div>
-                                                            <div class="flex items-center gap-2 flex-wrap">
-                                                                <span class="text-sm font-mono font-bold text-white">{{ versionHealth.version }}</span>
-                                                                <span class="text-[11px] font-semibold text-slate-400">{{ getLingHealthRoleLabel(versionHealth) }}</span>
-                                                            </div>
-                                                            <p class="text-xs text-slate-500 mt-1">{{ versionHealth.trafficWeight }}% {{ t('healthCard.trafficWeight') }}</p>
-                                                        </div>
-                                                        <span
-                                                            :class="getLingHealthStatusClass(versionHealth.metrics?.healthStatus || 'UNKNOWN')">
-                                                            {{ versionHealth.metrics?.healthStatus || t('healthCard.unknown') }}
-                                                        </span>
-                                                    </div>
-                                                    <div v-if="versionHealth.metrics" class="grid grid-cols-2 gap-2">
-                                                        <div class="health-metric compact">
-                                                            <span class="health-metric-label">{{ t('healthCard.qps') }}</span>
-                                                            <span class="health-metric-value">{{ formatMetricNumber(versionHealth.metrics.qps, 1) }}</span>
-                                                        </div>
-                                                        <div class="health-metric compact">
-                                                            <span class="health-metric-label">{{ t('healthCard.errorRate') }}</span>
-                                                            <span class="health-metric-value">{{ formatMetricNumber(versionHealth.metrics.errorRate, 2) }}%</span>
-                                                        </div>
-                                                        <div class="health-metric compact">
-                                                            <span class="health-metric-label">{{ t('healthCard.avgLatencyMs') }}</span>
-                                                            <span class="health-metric-value">{{ formatMetricNumber(versionHealth.metrics.avgLatencyMs, 1) }} ms</span>
-                                                        </div>
-                                                        <div class="health-metric compact">
-                                                            <span class="health-metric-label">{{ t('healthCard.p99LatencyMs') }}</span>
-                                                            <span class="health-metric-value">{{ formatMetricNumber(versionHealth.metrics.p99LatencyMs, 1) }} ms</span>
-                                                        </div>
-                                                    </div>
-                                                    <div v-else class="result-empty">
-                                                        {{ t('healthCard.versionEmpty') }}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="health-version-section">
-                                            <div class="flex items-center justify-between gap-2 mb-3">
-                                                <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('governanceCard.title') }}</h5>
-                                                <span v-if="hasGovernanceSignals(activeLingGovernance)" class="risk-badge risk-warn">{{ t('governanceCard.signalDetected') }}</span>
-                                                <span v-else class="risk-badge risk-safe">{{ t('governanceCard.noSignal') }}</span>
-                                            </div>
-                                            <div class="grid grid-cols-2 gap-3" v-if="activeLingGovernance">
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.rateLimitedRequests') }}</span>
-                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.rateLimitedRequests, 0) }}</span>
-                                                </div>
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.timeoutRequests') }}</span>
-                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.timeoutRequests, 0) }}</span>
-                                                </div>
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.circuitOpenedCount') }}</span>
-                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.circuitOpenedCount, 0) }}</span>
-                                                </div>
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.circuitOpenRejections') }}</span>
-                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.circuitOpenRejections, 0) }}</span>
-                                                </div>
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.activeThreads') }}</span>
-                                                    <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.activeIsolatedThreads, '') }}</span>
-                                                </div>
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.threadBudget') }}</span>
-                                                    <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.maxConcurrentThreadsBudget, '') }}</span>
-                                                </div>
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.threadUsage') }}</span>
-                                                    <span class="health-metric-value">{{ formatBudgetPercent(activeLingGovernance.activeIsolatedThreads, activeLingGovernance.maxConcurrentThreadsBudget) }}</span>
-                                                </div>
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.cpuBudgetUsage') }}</span>
-                                                    <span class="health-metric-value">{{ formatBudgetPercent(activeLingGovernance.cpuTimeMsLastMinute, activeLingGovernance.cpuBudgetMsPerMinute) }}</span>
-                                                </div>
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.cpuTimeLastMinute') }}</span>
-                                                    <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.cpuTimeMsLastMinute, ' ms') }}</span>
-                                                </div>
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.estimatedHeapDelta') }}</span>
-                                                    <span class="health-metric-value">{{ formatSize(activeLingGovernance.estimatedHeapDeltaBytes || 0) }}</span>
-                                                </div>
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.threadBudgetExceeded') }}</span>
-                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.threadBudgetExceededCount, 0) }}</span>
-                                                </div>
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.cpuBudgetExceeded') }}</span>
-                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.cpuBudgetExceededCount, 0) }}</span>
-                                                </div>
-                                                <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.memoryBudgetExceeded') }}</span>
-                                                    <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.memoryBudgetExceededCount, 0) }}</span>
-                                                </div>
-                                            </div>
-                                            <div v-else class="result-empty">
-                                                {{ t('governanceCard.empty') }}
-                                            </div>
-                                            <div v-if="activeLingVersionGovernance.length" class="health-version-section">
-                                                <div class="space-y-3">
-                                                    <div v-for="versionGovernance in activeLingVersionGovernance" :key="`${versionGovernance.version}-governance`" class="health-version-card">
-                                                        <div class="flex items-center justify-between gap-3 mb-3">
-                                                            <div>
-                                                                <div class="flex items-center gap-2 flex-wrap">
-                                                                    <span class="text-sm font-mono font-bold text-white">{{ versionGovernance.version }}</span>
-                                                                    <span class="text-[11px] font-semibold text-slate-400">{{ getLingHealthRoleLabel(versionGovernance) }}</span>
-                                                                </div>
-                                                                <p class="text-xs text-slate-500 mt-1">{{ versionGovernance.trafficWeight }}% {{ t('healthCard.trafficWeight') }}</p>
-                                                            </div>
-                                                            <span :class="hasGovernanceSignals(versionGovernance.metrics) ? 'risk-badge risk-warn' : 'risk-badge risk-safe'">
-                                                                {{ hasGovernanceSignals(versionGovernance.metrics) ? t('governanceCard.signalDetected') : t('governanceCard.noSignal') }}
-                                                            </span>
-                                                        </div>
-                                                        <div v-if="versionGovernance.metrics" class="grid grid-cols-2 gap-2">
-                                                            <div class="health-metric compact">
-                                                                <span class="health-metric-label">{{ t('governanceCard.rateLimitedRequests') }}</span>
-                                                                <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.rateLimitedRequests, 0) }}</span>
-                                                            </div>
-                                                            <div class="health-metric compact">
-                                                                <span class="health-metric-label">{{ t('governanceCard.timeoutRequests') }}</span>
-                                                                <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.timeoutRequests, 0) }}</span>
-                                                            </div>
-                                                            <div class="health-metric compact">
-                                                                <span class="health-metric-label">{{ t('governanceCard.circuitOpenedCount') }}</span>
-                                                                <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.circuitOpenedCount, 0) }}</span>
-                                                            </div>
-                                                            <div class="health-metric compact">
-                                                                <span class="health-metric-label">{{ t('governanceCard.circuitOpenRejections') }}</span>
-                                                                <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.circuitOpenRejections, 0) }}</span>
-                                                            </div>
-                                                            <div class="health-metric compact">
-                                                                <span class="health-metric-label">{{ t('governanceCard.activeThreads') }}</span>
-                                                                <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.activeIsolatedThreads, '') }}</span>
-                                                            </div>
-                                                            <div class="health-metric compact">
-                                                                <span class="health-metric-label">{{ t('governanceCard.threadBudget') }}</span>
-                                                                <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.maxConcurrentThreadsBudget, '') }}</span>
-                                                            </div>
-                                                            <div class="health-metric compact">
-                                                                <span class="health-metric-label">{{ t('governanceCard.cpuTimeLastMinute') }}</span>
-                                                                <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.cpuTimeMsLastMinute, ' ms') }}</span>
-                                                            </div>
-                                                            <div class="health-metric compact">
-                                                                <span class="health-metric-label">{{ t('governanceCard.estimatedHeapDelta') }}</span>
-                                                                <span class="health-metric-value">{{ formatSize(versionGovernance.metrics.estimatedHeapDeltaBytes || 0) }}</span>
-                                                            </div>
-                                                        </div>
-                                                        <div v-else class="result-empty">
-                                                            {{ t('governanceCard.versionEmpty') }}
-                                                        </div>
-                                                    </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div class="health-version-section">
-                                                <div class="flex items-center justify-between gap-2 mb-3">
-                                                    <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('runtimeReadiness.title') }}</h5>
-                                                    <span :class="[
-                                                        'risk-badge',
-                                                        runtimeGovernanceReadiness.status === 'READY' ? 'risk-safe'
-                                                        : runtimeGovernanceReadiness.status === 'BLOCKED' ? 'risk-danger'
-                                                        : runtimeGovernanceReadiness.status === 'LIMITED' ? 'risk-warn'
-                                                        : 'risk-unknown'
-                                                    ]">
-                                                        {{ runtimeGovernanceReadiness.status || 'UNKNOWN' }}
-                                                    </span>
-                                                </div>
-                                                <div v-if="!runtimeGovernanceReadiness.summary" class="result-empty">
-                                                    {{ t('runtimeReadiness.empty') }}
-                                                </div>
-                                                <div v-else class="space-y-3">
-                                                    <div class="health-metric health-metric-full compact">
-                                                        <span class="health-metric-label">{{ t('runtimeReadiness.summary') }}</span>
-                                                        <span class="health-metric-value text-sm">{{ runtimeGovernanceReadiness.summary }}</span>
-                                                    </div>
-                                                    <div class="grid grid-cols-2 gap-2">
-                                                        <div class="health-metric compact">
-                                                            <span class="health-metric-label">{{ t('runtimeReadiness.sharedBoundaryFrozen') }}</span>
-                                                            <span class="health-metric-value">{{ runtimeGovernanceReadiness.sharedApiBoundaryFrozen ? 'true' : 'false' }}</span>
-                                                        </div>
-                                                        <div class="health-metric compact">
-                                                            <span class="health-metric-label">{{ t('runtimeReadiness.diagnosticsCount') }}</span>
-                                                            <span class="health-metric-value">{{ runtimeGovernanceReadiness.diagnosticsCount }}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div v-if="runtimeGovernanceReadiness.blockers && runtimeGovernanceReadiness.blockers.length" class="space-y-2">
-                                                        <div class="text-xs font-black tracking-widest text-red-400 uppercase">{{ t('runtimeReadiness.blockers') }}</div>
-                                                        <div v-for="blocker in runtimeGovernanceReadiness.blockers" :key="blocker" class="governance-note governance-note-danger">{{ blocker }}</div>
-                                                    </div>
-                                                    <div v-if="runtimeGovernanceReadiness.warnings && runtimeGovernanceReadiness.warnings.length" class="space-y-2">
-                                                        <div class="text-xs font-black tracking-widest text-amber-400 uppercase">{{ t('runtimeReadiness.warnings') }}</div>
-                                                        <div v-for="warning in runtimeGovernanceReadiness.warnings" :key="warning" class="governance-note governance-note-warn">{{ warning }}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div class="health-version-section">
-                                                <div class="flex items-center justify-between gap-2 mb-3">
-                                                    <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('runtimeReadiness.capabilitiesTitle') }}</h5>
-                                                    <span class="risk-badge risk-info">{{ runtimeDiagnosticsList.length }}</span>
-                                                </div>
-                                                <div v-if="!runtimeDiagnosticsList.length" class="result-empty">
-                                                    {{ t('runtimeReadiness.capabilitiesEmpty') }}
-                                                </div>
-                                                <div v-else class="space-y-3">
-                                                    <div v-for="diagnostic in runtimeDiagnosticsList" :key="diagnostic.runtime" class="health-version-card">
-                                                        <div class="flex items-center justify-between gap-3 mb-2">
-                                                            <div>
-                                                                <div class="flex items-center gap-2 flex-wrap">
-                                                                    <span class="text-sm font-mono font-bold text-white">{{ diagnostic.runtime }}</span>
-                                                                    <span class="text-[11px] font-semibold text-slate-400">JDK {{ diagnostic.jdkVersion }}</span>
-                                                                </div>
-                                                            </div>
-                                                            <span class="risk-badge risk-info">CAPABILITY</span>
-                                                        </div>
-                                                        <div class="governance-note governance-note-info">{{ diagnostic.summary }}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                    <!-- 灵元管理中枢 -->
+                                    <template v-else>
+                                        <!-- 灵元管理中枢 -->
                                         <div class="space-y-4">
                                             <div class="grid grid-cols-2 gap-2">
                                                 <button data-testid="control-activate" @click="updateStatus('ACTIVE')" :disabled="!canActivate"
@@ -1145,33 +745,24 @@
                                             <div v-for="v in activeLing?.versionDetails" :key="v.version"
                                             class="bg-[#111827] border border-[#1f2937] rounded-xl p-4 shadow-lg transition-all hover:border-[#2a3441]">
 
-                                            <!-- 卡片头部: 垂直布局避免拥挤 -->
                                             <div class="mb-3">
                                                 <div class="flex items-center justify-between mb-2">
-                                                    <!-- 版本号: 缩小字号防止换行 -->
-                                                    <span class="text-lg font-mono font-bold tracking-tight truncate max-w-[140px]" 
+                                                    <span class="text-lg font-mono font-bold tracking-tight truncate max-w-[140px]"
                                                         :class="v.isDefault ? 'text-blue-400' : v.isCanary ? 'text-amber-400' : 'text-white'"
                                                         :title="v.version">
                                                         {{ v.version }}
                                                     </span>
-                                                    <!-- 流量占比 -->
                                                     <div class="text-xl font-mono font-bold"
                                                         :class="v.isDefault ? 'text-blue-400' : v.isCanary ? 'text-amber-400' : 'text-white'">
                                                         {{ v.trafficWeight }}%
                                                     </div>
                                                 </div>
-                                                <!-- 状态标签单独一行 -->
                                                 <span :class="['inline-block text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter', getStatusClass(v.status)]">
                                                     {{ v.status }}
                                                 </span>
                                             </div>
 
-                                            <!-- 操作按钮组: 固定2列布局 -->
                                             <div class="grid grid-cols-2 gap-2">
-                                                <!-- 激活/暂停 -->
-                                                
-
-                                                <!-- 热重载 -->
                                                 <button
                                                     v-if="currentEnv === 'dev' && (v.status === 'ACTIVE' || v.status === 'IN_USE' || v.status === 'READY' || v.status === 'READY_FOR_USE')"
                                                     @click="doReloadLing(activeId, v.version)"
@@ -1179,8 +770,6 @@
                                                     <i class="fa-solid fa-rotate text-xs"></i>
                                                     {{ t('control.reload') }}
                                                 </button>
-
-                                                <!-- 卸载: 统一显示在次要位置 -->
                                                 <button @click="requestUnloadSpecific(activeId, v.version)"
                                                     class="flex items-center justify-center gap-2 bg-red-900/30 hover:bg-red-600/90 text-red-400 hover:text-white border border-red-500/30 font-bold py-2 rounded-lg transition-all active:scale-95">
                                                     <i class="fa-solid fa-trash-can"></i>
@@ -1189,16 +778,13 @@
                                             </div>
                                         </div>
 
-                                        <!-- 若灵元无多版本细节，显示兜底批量按钮 -->
                                         <div v-if="(!activeLing?.versionDetails || activeLing?.versionDetails.length === 0)"
                                             class="space-y-3">
                                             <div class="grid grid-cols-2 gap-2">
                                                 <button data-testid="control-activate-fallback" @click="updateStatus('ACTIVE')" :disabled="!canActivate"
-                                                    class="action-btn bg-green-600 text-white" :class="{ 'opacity-50 cursor-not-allowed': !canActivate }">{{ t('control.activate')
-                                                    }}</button>
+                                                    class="action-btn bg-green-600 text-white" :class="{ 'opacity-50 cursor-not-allowed': !canActivate }">{{ t('control.activate') }}</button>
                                                 <button data-testid="control-inactivate-fallback" @click="updateStatus('INACTIVE')" :disabled="!canDeactivate"
-                                                    class="action-btn bg-blue-600 text-white" :class="{ 'opacity-50 cursor-not-allowed': !canDeactivate }">{{ t('control.inactivate')
-                                                    }}</button>
+                                                    class="action-btn bg-blue-600 text-white" :class="{ 'opacity-50 cursor-not-allowed': !canDeactivate }">{{ t('control.inactivate') }}</button>
                                             </div>
                                             <button data-testid="control-recover-fallback" @click="updateStatus('RECOVERING')" :disabled="!canRecover"
                                                 class="w-full py-2 bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 rounded-lg font-bold"
@@ -1208,14 +794,11 @@
                                                 t('control.unload') }}</button>
                                         </div>
 
-                                        <!-- 分割线 -->
                                         <div class="border-t border-slate-700 my-6"></div>
 
-                                        <!-- 资源权限 (调整至底部) -->
+                                        <!-- 资源权限 -->
                                         <div>
-                                            <label
-                                                class="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-3 block">{{
-                                                t('control.permissions') }}</label>
+                                            <label class="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-3 block">{{ t('control.permissions') }}</label>
                                             <div class="grid grid-cols-2 gap-2">
                                                 <button @click="togglePerm('dbRead')" :disabled="loading.permissions"
                                                     :class="activeLing?.permissions?.dbRead !== false ? 'perm-btn on' : 'perm-btn off'">
@@ -1231,8 +814,7 @@
                                                     :class="activeLing?.permissions?.cacheRead !== false ? 'perm-btn on' : 'perm-btn off'">
                                                     <i class="fa-solid fa-bolt mr-1"></i> {{ t('control.cacheRead') }}
                                                 </button>
-                                                <button @click="togglePerm('cacheWrite')"
-                                                    :disabled="loading.permissions"
+                                                <button @click="togglePerm('cacheWrite')" :disabled="loading.permissions"
                                                     :class="activeLing?.permissions?.cacheWrite !== false ? 'perm-btn on' : 'perm-btn off'">
                                                     <i class="fa-solid fa-bolt mr-1"></i> {{ t('control.cacheWrite') }}
                                                 </button>
@@ -1288,14 +870,12 @@
 
                                         <div class="border-t border-slate-700 my-6"></div>
 
+                                        <!-- 调用治理 -->
                                         <div>
                                             <div class="flex items-center justify-between mb-3">
-                                                <label
-                                                    class="text-[10px] text-slate-500 uppercase font-black tracking-widest block">{{
-                                                    t('control.invocationGovernance') }}</label>
+                                                <label class="text-[10px] text-slate-500 uppercase font-black tracking-widest block">{{ t('control.invocationGovernance') }}</label>
                                                 <span class="text-[10px] text-slate-500">{{ t('control.hotPatch') }}</span>
                                             </div>
-
                                             <div class="space-y-3">
                                                 <div>
                                                     <label class="text-xs text-slate-400 block mb-1">{{ t('control.timeoutMs') }}</label>
@@ -1339,10 +919,319 @@
                                                 </button>
                                             </div>
                                         </div>
-                                    </div>
-                                </template>
+                                    </template>
+                                </div>
                             </div>
                         </div>
+
+                        <!-- 右列：健康指标 + 治理指标 + 审计结果 -->
+                        <div class="col-span-12 lg:col-span-5 space-y-6">
+                            <!-- 健康指标 -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-heart-pulse text-emerald-400"></i>
+                                        <h3 class="font-bold text-base text-white">{{ t('healthCard.title') }}</h3>
+                                    </div>
+                                </div>
+                                <div class="p-4">
+                                    <div v-if="!activeLing" class="text-center py-6">
+                                        <i class="fa-solid fa-hand-pointer text-2xl text-slate-600 mb-2"></i>
+                                        <p class="text-sm text-slate-500">{{ t('control.selectLing') }}</p>
+                                    </div>
+                                    <template v-else>
+                                        <div class="flex items-center justify-between gap-3 mb-3">
+                                            <p class="text-xs text-slate-400">{{ activeLing?.lingId }}</p>
+                                            <span
+                                                v-if="activeLingHealth"
+                                                :class="getLingHealthStatusClass(activeLingHealth.healthStatus)">
+                                                {{ activeLingHealth.healthStatus || t('healthCard.unknown') }}
+                                            </span>
+                                            <span v-else class="risk-badge risk-unknown">
+                                                {{ t('healthCard.unknown') }}
+                                            </span>
+                                        </div>
+                                        <div v-if="activeLingHealth" class="grid grid-cols-2 gap-3">
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('healthCard.qps') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.qps) }}</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('healthCard.errorRate') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.errorRate, 2) }}%</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('healthCard.avgLatency') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.avgLatencyMs, 0) }} ms</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('healthCard.p99Latency') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.p99LatencyMs, 0) }} ms</span>
+                                            </div>
+                                        </div>
+                                        <div v-else class="result-empty">
+                                            {{ t('healthCard.empty') }}
+                                        </div>
+
+                                        <!-- 版本健康指标 -->
+                                        <div v-if="activeLingVersionHealth && activeLingVersionHealth.length" class="space-y-3 mt-4">
+                                            <div v-for="versionHealth in activeLingVersionHealth" :key="versionHealth.version" class="health-version-section">
+                                                <div class="flex items-center justify-between gap-2 mb-2">
+                                                    <div class="flex items-center gap-2 flex-wrap">
+                                                        <span class="text-sm font-mono font-bold text-white">{{ versionHealth.version }}</span>
+                                                        <span class="text-[11px] font-semibold text-slate-400">{{ getLingHealthRoleLabel(versionHealth) }}</span>
+                                                    </div>
+                                                    <span :class="getLingHealthStatusClass(versionHealth.healthStatus)">
+                                                        {{ versionHealth.healthStatus || t('healthCard.unknown') }}
+                                                    </span>
+                                                </div>
+                                                <div class="grid grid-cols-2 gap-2">
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('healthCard.qps') }}</span>
+                                                        <span class="health-metric-value">{{ formatMetricNumber(versionHealth.qps) }}</span>
+                                                    </div>
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('healthCard.errorRate') }}</span>
+                                                        <span class="health-metric-value">{{ formatMetricNumber(versionHealth.errorRate, 2) }}%</span>
+                                                    </div>
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('healthCard.avgLatency') }}</span>
+                                                        <span class="health-metric-value">{{ formatMetricNumber(versionHealth.avgLatencyMs, 0) }} ms</span>
+                                                    </div>
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('healthCard.p99Latency') }}</span>
+                                                        <span class="health-metric-value">{{ formatMetricNumber(versionHealth.p99LatencyMs, 0) }} ms</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- 治理指标 -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-shield-halved text-cyan-400"></i>
+                                        <h3 class="font-bold text-base text-white">{{ t('governanceCard.title') }}</h3>
+                                    </div>
+                                </div>
+                                <div class="p-4">
+                                    <div v-if="!activeLing" class="text-center py-6">
+                                        <i class="fa-solid fa-hand-pointer text-2xl text-slate-600 mb-2"></i>
+                                        <p class="text-sm text-slate-500">{{ t('control.selectLing') }}</p>
+                                    </div>
+                                    <template v-else>
+                                        <div class="flex items-center justify-between gap-3 mb-3">
+                                            <p class="text-xs text-slate-400">{{ activeLing?.lingId }}</p>
+                                            <span :class="hasGovernanceSignals(activeLingGovernance) ? 'risk-badge risk-warn' : 'risk-badge risk-safe'">
+                                                {{ hasGovernanceSignals(activeLingGovernance) ? t('governanceCard.signalDetected') : t('governanceCard.noSignal') }}
+                                            </span>
+                                        </div>
+                                        <div v-if="activeLingGovernance" class="grid grid-cols-2 gap-3">
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('governanceCard.rateLimitedRequests') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.rateLimitedRequests, 0) }}</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('governanceCard.timeoutRequests') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.timeoutRequests, 0) }}</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('governanceCard.circuitOpenedCount') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.circuitOpenedCount, 0) }}</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('governanceCard.circuitOpenRejections') }}</span>
+                                                <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.circuitOpenRejections, 0) }}</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('governanceCard.activeThreads') }}</span>
+                                                <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.activeIsolatedThreads, '') }}</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('governanceCard.threadBudget') }}</span>
+                                                <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.maxConcurrentThreadsBudget, '') }}</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('governanceCard.cpuTimeLastMinute') }}</span>
+                                                <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.cpuTimeMsLastMinute, ' ms') }}</span>
+                                            </div>
+                                            <div class="health-metric">
+                                                <span class="health-metric-label">{{ t('governanceCard.estimatedHeapDelta') }}</span>
+                                                <span class="health-metric-value">{{ formatSize(activeLingGovernance.estimatedHeapDeltaBytes || 0) }}</span>
+                                            </div>
+                                        </div>
+                                        <div v-else class="result-empty">
+                                            {{ t('governanceCard.empty') }}
+                                        </div>
+
+                                        <!-- 版本治理指标 -->
+                                        <div v-if="activeLingVersionGovernance && activeLingVersionGovernance.length" class="space-y-3 mt-4">
+                                            <div v-for="versionGovernance in activeLingVersionGovernance" :key="versionGovernance.version" class="health-version-section">
+                                                <div class="flex items-center justify-between gap-2 mb-2">
+                                                    <div class="flex items-center gap-2 flex-wrap">
+                                                        <span class="text-sm font-mono font-bold text-white">{{ versionGovernance.version }}</span>
+                                                        <span class="text-[11px] font-semibold text-slate-400">{{ getLingHealthRoleLabel(versionGovernance) }}</span>
+                                                    </div>
+                                                    <p class="text-xs text-slate-500 mt-1">{{ versionGovernance.trafficWeight }}% {{ t('healthCard.trafficWeight') }}</p>
+                                                    <span :class="hasGovernanceSignals(versionGovernance.metrics) ? 'risk-badge risk-warn' : 'risk-badge risk-safe'">
+                                                        {{ hasGovernanceSignals(versionGovernance.metrics) ? t('governanceCard.signalDetected') : t('governanceCard.noSignal') }}
+                                                    </span>
+                                                </div>
+                                                <div v-if="versionGovernance.metrics" class="grid grid-cols-2 gap-2">
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('governanceCard.rateLimitedRequests') }}</span>
+                                                        <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.rateLimitedRequests, 0) }}</span>
+                                                    </div>
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('governanceCard.timeoutRequests') }}</span>
+                                                        <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.timeoutRequests, 0) }}</span>
+                                                    </div>
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('governanceCard.circuitOpenedCount') }}</span>
+                                                        <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.circuitOpenedCount, 0) }}</span>
+                                                    </div>
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('governanceCard.circuitOpenRejections') }}</span>
+                                                        <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.circuitOpenRejections, 0) }}</span>
+                                                    </div>
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('governanceCard.activeThreads') }}</span>
+                                                        <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.activeIsolatedThreads, '') }}</span>
+                                                    </div>
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('governanceCard.threadBudget') }}</span>
+                                                        <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.maxConcurrentThreadsBudget, '') }}</span>
+                                                    </div>
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('governanceCard.cpuTimeLastMinute') }}</span>
+                                                        <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.cpuTimeMsLastMinute, ' ms') }}</span>
+                                                    </div>
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('governanceCard.estimatedHeapDelta') }}</span>
+                                                        <span class="health-metric-value">{{ formatSize(versionGovernance.metrics.estimatedHeapDeltaBytes || 0) }}</span>
+                                                    </div>
+                                                </div>
+                                                <div v-else class="result-empty">
+                                                    {{ t('governanceCard.versionEmpty') }}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 运行时治理就绪 -->
+                                        <div class="health-version-section mt-4">
+                                            <div class="flex items-center justify-between gap-2 mb-3">
+                                                <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('runtimeReadiness.title') }}</h5>
+                                                <span :class="[
+                                                    'risk-badge',
+                                                    runtimeGovernanceReadiness.status === 'READY' ? 'risk-safe'
+                                                    : runtimeGovernanceReadiness.status === 'BLOCKED' ? 'risk-danger'
+                                                    : runtimeGovernanceReadiness.status === 'LIMITED' ? 'risk-warn'
+                                                    : 'risk-unknown'
+                                                ]">
+                                                    {{ runtimeGovernanceReadiness.status || 'UNKNOWN' }}
+                                                </span>
+                                            </div>
+                                            <div v-if="!runtimeGovernanceReadiness.summary" class="result-empty">
+                                                {{ t('runtimeReadiness.empty') }}
+                                            </div>
+                                            <div v-else class="space-y-3">
+                                                <div class="health-metric health-metric-full compact">
+                                                    <span class="health-metric-label">{{ t('runtimeReadiness.summary') }}</span>
+                                                    <span class="health-metric-value text-sm">{{ runtimeGovernanceReadiness.summary }}</span>
+                                                </div>
+                                                <div class="grid grid-cols-2 gap-2">
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('runtimeReadiness.sharedBoundaryFrozen') }}</span>
+                                                        <span class="health-metric-value">{{ runtimeGovernanceReadiness.sharedApiBoundaryFrozen ? 'true' : 'false' }}</span>
+                                                    </div>
+                                                    <div class="health-metric compact">
+                                                        <span class="health-metric-label">{{ t('runtimeReadiness.diagnosticsCount') }}</span>
+                                                        <span class="health-metric-value">{{ runtimeGovernanceReadiness.diagnosticsCount }}</span>
+                                                    </div>
+                                                </div>
+                                                <div v-if="runtimeGovernanceReadiness.blockers && runtimeGovernanceReadiness.blockers.length" class="space-y-2">
+                                                    <div class="text-xs font-black tracking-widest text-red-400 uppercase">{{ t('runtimeReadiness.blockers') }}</div>
+                                                    <div v-for="blocker in runtimeGovernanceReadiness.blockers" :key="blocker" class="governance-note governance-note-danger">{{ blocker }}</div>
+                                                </div>
+                                                <div v-if="runtimeGovernanceReadiness.warnings && runtimeGovernanceReadiness.warnings.length" class="space-y-2">
+                                                    <div class="text-xs font-black tracking-widest text-amber-400 uppercase">{{ t('runtimeReadiness.warnings') }}</div>
+                                                    <div v-for="warning in runtimeGovernanceReadiness.warnings" :key="warning" class="governance-note governance-note-warn">{{ warning }}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 运行时能力 -->
+                                        <div class="health-version-section mt-4">
+                                            <div class="flex items-center justify-between gap-2 mb-3">
+                                                <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">{{ t('runtimeReadiness.capabilitiesTitle') }}</h5>
+                                                <span class="risk-badge risk-info">{{ runtimeDiagnosticsList.length }}</span>
+                                            </div>
+                                            <div v-if="!runtimeDiagnosticsList.length" class="result-empty">
+                                                {{ t('runtimeReadiness.capabilitiesEmpty') }}
+                                            </div>
+                                            <div v-else class="space-y-3">
+                                                <div v-for="diagnostic in runtimeDiagnosticsList" :key="diagnostic.runtime" class="health-version-card">
+                                                    <div class="flex items-center justify-between gap-3 mb-2">
+                                                        <div>
+                                                            <div class="flex items-center gap-2 flex-wrap">
+                                                                <span class="text-sm font-mono font-bold text-white">{{ diagnostic.runtime }}</span>
+                                                                <span class="text-[11px] font-semibold text-slate-400">JDK {{ diagnostic.jdkVersion }}</span>
+                                                            </div>
+                                                        </div>
+                                                        <span class="risk-badge risk-info">CAPABILITY</span>
+                                                    </div>
+                                                    <div class="governance-note governance-note-info">{{ diagnostic.summary }}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- 审计结果 -->
+                            <div v-if="lastAudit"
+                                :class="lastAudit.allowed ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'"
+                                class="card border p-4">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex items-center gap-2">
+                                        <i :class="lastAudit.allowed ? 'fa-solid fa-check-circle text-green-400' : 'fa-solid fa-times-circle text-red-400'"></i>
+                                        <span class="font-bold text-sm" :class="lastAudit.allowed ? 'text-green-400' : 'text-red-400'">
+                                            {{ lastAudit.allowed ? t('audit.success') : t('audit.denied') }}
+                                        </span>
+                                        <span v-if="lastAudit.devModeBypass"
+                                            class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 ml-2 animate-pulse">
+                                            <i class="fa-solid fa-shield-cat mr-1"></i> {{ t('audit.devPass') }}
+                                        </span>
+                                    </div>
+                                    <button @click="lastAudit = null" class="text-slate-500 hover:text-white">
+                                        <i class="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                                <p class="text-sm mt-2 font-mono" :class="lastAudit.allowed ? 'text-green-300' : 'text-red-300'">
+                                    [{{ lastAudit.traceId }}] {{ lastAudit.message }}
+                                </p>
+                                <div v-if="lastAudit.ruleSource"
+                                    class="mt-2 pt-2 border-t border-slate-700/50 text-xs text-slate-500 flex items-center gap-2">
+                                    <span class="flex items-center gap-1">
+                                        <i class="fa-solid fa-gavel"></i>
+                                        {{ t('audit.ruleSource') }}:
+                                    </span>
+                                    <span class="font-mono text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
+                                        {{ lastAudit.ruleSource }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ==================== 服务验证视图 ==================== -->
+                    <div v-if="activeNav === 'verification'" class="content-grid grid grid-cols-12 gap-6">
+
+                        <!-- 左列：功能演练 + 服务演练场 -->
+                        <div class="col-span-12 lg:col-span-7 space-y-6">
 
                         <!-- 功能演练 -->
                         <div class="card">
@@ -1398,45 +1287,128 @@
                             </div>
                         </div>
 
-                        <!-- 审计结果 -->
-                        <div v-if="lastAudit"
-                            :class="lastAudit.allowed ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'"
-                            class="card border p-4">
-                            <div class="flex justify-between items-start">
-                                <div class="flex items-center gap-2">
-                                    <i
-                                        :class="lastAudit.allowed ? 'fa-solid fa-check-circle text-green-400' : 'fa-solid fa-times-circle text-red-400'"></i>
-                                    <span class="font-bold text-sm"
-                                        :class="lastAudit.allowed ? 'text-green-400' : 'text-red-400'">
-                                        {{ lastAudit.allowed ? t('audit.success') : t('audit.denied') }}
-                                    </span>
-                                    <!-- 开发模式豁免标签 -->
-                                    <span v-if="lastAudit.devModeBypass"
-                                        class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 ml-2 animate-pulse">
-                                        <i class="fa-solid fa-shield-cat mr-1"></i> {{ t('audit.devPass') }}
-                                    </span>
-                                </div>
-                                <button @click="lastAudit = null" class="text-slate-500 hover:text-white">
-                                    <i class="fa-solid fa-xmark"></i>
-                                </button>
+                        <!-- 服务演练场 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="font-bold text-base text-white">{{ t('playground.title') }}</h3>
+                                <span v-if="playgroundLoading" class="text-xs text-slate-400">
+                                    <i class="fa-solid fa-spinner fa-spin"></i>
+                                </span>
                             </div>
-                            <p class="text-sm mt-2 font-mono"
-                                :class="lastAudit.allowed ? 'text-green-300' : 'text-red-300'">
-                                [{{ lastAudit.traceId }}] {{ lastAudit.message }}
-                            </p>
-                            <!-- 规则来源展示 -->
-                            <div v-if="lastAudit.ruleSource"
-                                class="mt-2 pt-2 border-t border-slate-700/50 text-xs text-slate-500 flex items-center gap-2">
-                                <span class="flex items-center gap-1">
-                                    <i class="fa-solid fa-gavel"></i>
-                                    {{ t('audit.ruleSource') }}:
-                                </span>
-                                <span
-                                    class="font-mono text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
-                                    {{ lastAudit.ruleSource }}
-                                </span>
+                            <div class="p-4">
+                                <div v-if="!activeId" class="text-center py-4">
+                                    <i class="fa-solid fa-hand-pointer text-xl text-slate-600 mb-2"></i>
+                                    <p class="text-sm text-slate-500">{{ t('control.selectLing') }}</p>
+                                </div>
+                                <div v-else-if="playgroundServices.length === 0 && !playgroundLoading" class="text-center py-4">
+                                    <i class="fa-solid fa-plug-circle-xmark text-xl text-slate-600 mb-2"></i>
+                                    <p class="text-sm text-slate-500">{{ t('playground.noServices') }}</p>
+                                </div>
+                                <div v-else class="space-y-3">
+                                    <div v-for="svc in playgroundServices" :key="svc.fqsid"
+                                        class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+                                        <div class="text-xs font-mono text-blue-400 mb-2 truncate" :title="svc.fqsid">
+                                            {{ svc.fqsid.split(':')[1] || svc.fqsid }}
+                                        </div>
+                                        <div v-if="!svc.methods || svc.methods.length === 0" class="text-xs text-slate-500">
+                                            {{ t('playground.noMethods') }}
+                                        </div>
+                                        <div v-else class="space-y-2">
+                                            <div v-for="method in svc.methods" :key="method.signature"
+                                                class="rounded border border-slate-700/50 bg-slate-800/50 p-2">
+                                                <div class="flex items-center justify-between gap-2 mb-1">
+                                                    <div class="text-xs font-mono text-slate-300 truncate">
+                                                        <span class="text-emerald-400">{{ method.name }}</span>(<span class="text-slate-500">{{ method.parameterTypes.join(', ') }}</span>)
+                                                    </div>
+                                                    <span class="text-[10px] text-slate-500">{{ t('playground.returnType') }}: {{ method.returnType }}</span>
+                                                </div>
+                                                <!-- 参数输入 -->
+                                                <div v-if="method.parameterTypes.length > 0" class="space-y-1 mb-2">
+                                                    <div v-for="(paramType, idx) in method.parameterTypes" :key="idx"
+                                                        class="flex items-center gap-2">
+                                                        <span class="text-[10px] text-slate-500 font-mono w-24 truncate">{{ paramType }}</span>
+                                                        <input v-model="playgroundArgs[getInvokeKey(svc.fqsid, method.signature) + '::' + idx]"
+                                                            :placeholder="t('playground.paramInput')"
+                                                            class="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500">
+                                                    </div>
+                                                </div>
+                                                <button @click="invokeService(svc.fqsid, method)"
+                                                    :disabled="playgroundInvoking[getInvokeKey(svc.fqsid, method.signature)] || !canOperate"
+                                                    class="w-full py-1 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded text-xs font-bold hover:bg-blue-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                                                    <i v-if="playgroundInvoking[getInvokeKey(svc.fqsid, method.signature)]" class="fa-solid fa-spinner fa-spin mr-1"></i>
+                                                    <i v-else class="fa-solid fa-play mr-1"></i>
+                                                    {{ playgroundInvoking[getInvokeKey(svc.fqsid, method.signature)] ? t('playground.executing') : t('playground.invoke') }}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 调用结果 -->
+                                <div v-if="playgroundResult" class="mt-4 rounded-lg border p-3"
+                                    :class="playgroundResult.success ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="text-xs font-bold"
+                                            :class="playgroundResult.success ? 'text-green-400' : 'text-red-400'">
+                                            {{ playgroundResult.success ? t('playground.result') : t('playground.error') }}
+                                        </span>
+                                        <span class="text-[10px] text-slate-500">{{ playgroundResult.durationMs }} ms</span>
+                                    </div>
+                                    <div v-if="playgroundResult.success" class="text-sm font-mono text-green-300 break-all">
+                                        {{ JSON.stringify(playgroundResult.result) }}
+                                    </div>
+                                    <div v-else class="text-sm font-mono text-red-300 break-all">
+                                        {{ playgroundResult.error }}
+                                    </div>
+                                    <!-- 治理追踪 -->
+                                    <div v-if="playgroundResult.traces && playgroundResult.traces.length" class="mt-2 pt-2 border-t border-slate-700/50">
+                                        <div class="text-[10px] text-slate-500 mb-1">{{ t('playground.traces') }}</div>
+                                        <div class="space-y-1">
+                                            <div v-for="(trace, idx) in playgroundResult.traces" :key="idx"
+                                                class="text-[10px] font-mono flex items-center gap-1">
+                                                <span :class="trace.type === 'PASS' || trace.type === 'IN' ? 'text-green-400' : trace.type === 'FAIL' || trace.type === 'ERROR' ? 'text-red-400' : 'text-amber-400'">
+                                                    {{ trace.type }}
+                                                </span>
+                                                <span class="text-slate-400">{{ trace.source }}</span>
+                                                <span class="text-slate-500 truncate">{{ trace.action }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+
+                        </div>
+
+                        <!-- 右列：日志追踪 -->
+                        <div class="col-span-12 lg:col-span-5 space-y-6">
+                            <!-- 日志追踪 -->
+                            <div class="card flex flex-col relative" style="height: 600px;">
+                                <div class="card-header flex-shrink-0">
+                                    <div class="flex items-center gap-3">
+                                        <h3 class="font-bold text-base text-white">{{ t('logs.title') }}</h3>
+                                    </div>
+                                </div>
+                                <div class="flex-1 overflow-y-auto p-4 space-y-1" ref="logContainer" @scroll="handleLogScroll">
+                                    <div v-if="displayLogs.length === 0" class="text-center py-8">
+                                        <i class="fa-solid fa-satellite-dish text-2xl text-slate-600 mb-2"></i>
+                                        <p class="text-sm text-slate-500">{{ t('logs.waiting') }}</p>
+                                    </div>
+                                    <div v-for="log in displayLogs" :key="log.id" class="text-xs font-mono py-0.5"
+                                        :class="getLogColor(log.eventType)">
+                                        <span class="text-slate-500">[{{ formatTime(log.timestamp) }}]</span>
+                                        <span class="text-slate-400">[{{ log.lingId }}]</span>
+                                        <span v-if="log.version" class="text-slate-500">[{{ log.version }}]</span>
+                                        <span :class="getLogColor(log.eventType)">{{ log.message }}</span>
+                                    </div>
+                                </div>
+                                <div v-if="isUserScrolling" @click="scrollToTop"
+                                    class="absolute bottom-4 right-4 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm cursor-pointer hover:bg-blue-500 transition-all shadow-lg">
+                                    <i class="fa-solid fa-arrow-up mr-1"></i> {{ t('logs.newLogs') }}
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
 
                 </div>

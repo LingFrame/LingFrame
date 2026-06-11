@@ -12,7 +12,9 @@
         "envTest": "Testing",
         "envProd": "Production",
         "coreFeatures": "Core Features",
+        "monitor": "System Monitor",
         "governance": "Governance",
+        "verification": "Service Verification",
         "sseConnected": "SSE Connected",
         "sseConnecting": "SSE Connecting...",
         "sseDisconnected": "SSE Disconnected",
@@ -40,7 +42,8 @@
     "lingList": {
         "title": "Ling List",
         "count": "{n} lings",
-        "empty": "No lings installed"
+        "empty": "No lings installed",
+        "search": "Search lings..."
     },
     "traffic": {
         "title": "Traffic Control",
@@ -129,6 +132,22 @@
         "writeCache": "Write Cache",
         "ipcAuth": "IPC Auth"
     },
+    "playground": {
+        "title": "Service Playground",
+        "noServices": "No registered services",
+        "noMethods": "No methods",
+        "invoke": "Invoke",
+        "executing": "Executing...",
+        "args": "Args",
+        "result": "Result",
+        "error": "Error",
+        "duration": "Duration",
+        "noResult": "No invocation result yet",
+        "traces": "Governance Traces",
+        "paramInput": "Enter parameter value",
+        "returnType": "Return",
+        "method": "Method"
+    },
     "audit": {
         "success": "SUCCESS",
         "denied": "DENIED",
@@ -211,6 +230,27 @@
       "threads": "Active Threads",
       "gc": "GC Count"
     },
+  "monitor": {
+      "title": "System Monitor",
+      "basicInfo": "Basic Info",
+      "jvmVersion": "JVM Version",
+      "jvmVendor": "JVM Vendor",
+      "osName": "OS",
+      "osArch": "Architecture",
+      "uptime": "Uptime",
+      "pid": "Process ID",
+      "metricsTitle": "Real-time Metrics",
+      "chartTitle": "Historical Trends",
+      "timeRange": "Time Range",
+      "last5m": "Last 5 min",
+      "last15m": "Last 15 min",
+      "last30m": "Last 30 min",
+      "last1h": "Last 1 hour",
+      "last3h": "Last 3 hours",
+      "custom": "Custom",
+      "gcTime": "GC Time",
+      "classCount": "Class Count"
+  },
   "status": {
     "active": "ACTIVE",
     "inactive": "INACTIVE",

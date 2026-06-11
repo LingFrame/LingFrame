@@ -8,6 +8,8 @@ createApp({
         // ==================== 状态 ====================
         const lings = ref([]);
         const activeId = ref(null);
+        const activeNav = ref('monitor');
+        const lingSearch = ref('');
         const canaryPct = ref(0);
         const isAuto = ref(false);
         const ipcEnabled = ref(true);
@@ -97,7 +99,45 @@ createApp({
             availableProcessors: 0,
             systemLoadAverage: 0
         });
-        
+
+        // JVM 基础信息
+        const jvmInfo = reactive({
+            version: '',
+            vendor: '',
+            osName: '',
+            osArch: '',
+            uptimeMs: 0,
+            pid: ''
+        });
+
+        // 性能历史数据（折线图用，普通对象避免响应式开销）
+        const chartTimeRange = ref('30m');
+        const perfHistory = {
+            timestamps: [],
+            cpu: [],
+            heapUsage: [],
+            metaspaceUsage: [],
+            threads: [],
+            gcCount: [],
+            gcTimeMs: [],
+            loadedClassCount: []
+        };
+        const MAX_HISTORY_POINTS = 3600; // 最多保留 3600 个数据点（3秒间隔约3小时）
+
+        // Chart.js 实例缓存
+        const chartInstances = {};
+
+        // 监控图表配置
+        const monitorCharts = computed(() => [
+            { key: 'cpu', label: t('performance.cpu'), color: '#22c55e', isPercent: true },
+            { key: 'heapUsage', label: t('performance.heap'), color: '#a855f7', isPercent: true },
+            { key: 'metaspaceUsage', label: t('performance.metaspace'), color: '#10b981', isPercent: true },
+            { key: 'threads', label: t('performance.threads'), color: '#06b6d4', isPercent: false },
+            { key: 'gcCount', label: t('performance.gc'), color: '#ec4899', isPercent: false },
+            { key: 'gcTimeMs', label: t('monitor.gcTime'), color: '#f97316', isPercent: false },
+            { key: 'loadedClassCount', label: t('monitor.classCount'), color: '#f59e0b', isPercent: false }
+        ]);
+
         // 灵元健康指标
         const lingHealthMetrics = reactive({});
         const lingGovernanceMetrics = reactive({});
@@ -139,6 +179,11 @@ createApp({
 
         // ==================== 计算属性 ====================
         const activeLing = computed(() => lings.value.find(p => p.lingId === activeId.value));
+        const filteredLings = computed(() => {
+            const q = lingSearch.value.trim().toLowerCase();
+            if (!q) return lings.value;
+            return lings.value.filter(p => p.lingId.toLowerCase().includes(q));
+        });
         const canCanary = computed(() => (activeLing.value?.versionDetails?.length || 0) >= 2);
         const canOperate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
         const canActivate = computed(() => activeLing.value?.status === 'INACTIVE');
@@ -1092,6 +1137,62 @@ createApp({
             lastAudit.value = null;
         };
 
+        // ==================== 服务演练场 ====================
+        const playgroundServices = ref([]);
+        const playgroundLoading = ref(false);
+        const playgroundInvoking = ref({});
+        const playgroundArgs = reactive({});
+        const playgroundResult = ref(null);
+
+        const fetchPlaygroundServices = async () => {
+            if (!activeId.value) {
+                playgroundServices.value = [];
+                return;
+            }
+            playgroundLoading.value = true;
+            try {
+                const data = await api.get(`/playground/lings/${activeId.value}/services`);
+                playgroundServices.value = data || [];
+                playgroundResult.value = null;
+            } catch (e) {
+                playgroundServices.value = [];
+            } finally {
+                playgroundLoading.value = false;
+            }
+        };
+
+        const invokeService = async (fqsid, method) => {
+            const key = `${fqsid}::${method.signature}`;
+            playgroundInvoking[key] = true;
+            try {
+                // 按参数索引收集各输入框的值
+                const paramTypes = method.parameterTypes || [];
+                const args = paramTypes.map((_, idx) => playgroundArgs[key + '::' + idx] ?? null);
+                const result = await api.post(`/playground/lings/${activeId.value}/invoke`, {
+                    fqsid,
+                    methodName: method.name,
+                    parameterTypes: paramTypes,
+                    args: args
+                });
+                playgroundResult.value = result;
+            } catch (e) {
+                playgroundResult.value = { success: false, error: e.message, durationMs: 0, traces: [] };
+            } finally {
+                playgroundInvoking[key] = false;
+            }
+        };
+
+        const getInvokeKey = (fqsid, signature) => `${fqsid}::${signature}`;
+
+        // 选中灵元时自动加载服务列表
+        watch(activeId, (newId) => {
+            playgroundServices.value = [];
+            playgroundResult.value = null;
+            if (newId) {
+                fetchPlaygroundServices();
+            }
+        });
+
         // ==================== SSE 日志流 ====================
         const connectSSE = () => {
             if (eventSource) {
@@ -1485,6 +1586,41 @@ createApp({
                     perfMetrics.gcTimeMs = data.gcTimeMs || 0;
                     perfMetrics.availableProcessors = data.availableProcessors || 0;
                     perfMetrics.systemLoadAverage = data.systemLoadAverage || 0;
+
+                    // 更新 JVM 基础信息
+                    if (data.jvmVersion) jvmInfo.version = data.jvmVersion;
+                    if (data.jvmVendor) jvmInfo.vendor = data.jvmVendor;
+                    if (data.osName) jvmInfo.osName = data.osName;
+                    if (data.osArch) jvmInfo.osArch = data.osArch;
+                    if (data.uptimeMs) jvmInfo.uptimeMs = data.uptimeMs;
+                    if (data.pid) jvmInfo.pid = data.pid;
+
+                    // 追加历史数据
+                    const now = Date.now();
+                    perfHistory.timestamps.push(now);
+                    perfHistory.cpu.push(perfMetrics.cpu);
+                    perfHistory.heapUsage.push(perfMetrics.heapUsage);
+                    perfHistory.metaspaceUsage.push(perfMetrics.metaspaceUsage);
+                    perfHistory.threads.push(perfMetrics.threads);
+                    perfHistory.gcCount.push(perfMetrics.gcCount);
+                    perfHistory.gcTimeMs.push(perfMetrics.gcTimeMs);
+                    perfHistory.loadedClassCount.push(perfMetrics.loadedClassCount);
+
+                    // 限制历史数据长度
+                    if (perfHistory.timestamps.length > MAX_HISTORY_POINTS) {
+                        const excess = perfHistory.timestamps.length - MAX_HISTORY_POINTS;
+                        perfHistory.timestamps.splice(0, excess);
+                        perfHistory.cpu.splice(0, excess);
+                        perfHistory.heapUsage.splice(0, excess);
+                        perfHistory.metaspaceUsage.splice(0, excess);
+                        perfHistory.threads.splice(0, excess);
+                        perfHistory.gcCount.splice(0, excess);
+                        perfHistory.gcTimeMs.splice(0, excess);
+                        perfHistory.loadedClassCount.splice(0, excess);
+                    }
+
+                    // 绘制折线图
+                    drawMonitorCharts();
                 }
             } catch (e) {
                 console.log('Failed to fetch metrics:', e.message);
@@ -1604,6 +1740,26 @@ createApp({
             updateTime();
         });
 
+        // 销毁所有 Chart 实例
+        const destroyCharts = () => {
+            Object.values(chartInstances).forEach(c => c.destroy());
+            Object.keys(chartInstances).forEach(k => delete chartInstances[k]);
+        };
+
+        // 监听时间区间切换，销毁旧实例后重绘
+        watch(chartTimeRange, () => {
+            destroyCharts();
+            nextTick(() => drawMonitorCharts());
+        });
+
+        // 监听导航切换，切换到监控页时重绘图表
+        watch(activeNav, (val) => {
+            if (val === 'monitor') {
+                destroyCharts();
+                nextTick(() => drawMonitorCharts());
+            }
+        });
+
         const updateEnvMode = async (env) => {
             try {
                 await api.post('/simulate/config/mode', { testEnv: env });
@@ -1619,23 +1775,137 @@ createApp({
             }
         };
 
+        // 格式化运行时间
+        const formatUptime = (ms) => {
+            if (!ms) return '-';
+            const s = Math.floor(ms / 1000);
+            const d = Math.floor(s / 86400);
+            const h = Math.floor((s % 86400) / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            if (d > 0) return `${d}d ${h}h ${m}m`;
+            if (h > 0) return `${h}h ${m}m`;
+            return `${m}m`;
+        };
+
+        // 绘制监控折线图
+        const drawMonitorCharts = () => {
+            if (activeNav.value !== 'monitor') return;
+            if (typeof Chart === 'undefined') return;
+
+            const rangeMs = { '5m': 300000, '15m': 900000, '30m': 1800000, '1h': 3600000, '3h': 10800000 }[chartTimeRange.value] || 1800000;
+            const cutoff = Date.now() - rangeMs;
+            const startIdx = perfHistory.timestamps.findIndex(t => t >= cutoff);
+            if (startIdx < 0) return;
+
+            const timestamps = perfHistory.timestamps.slice(startIdx);
+            const labels = timestamps.map(ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+
+            monitorCharts.value.forEach(chart => {
+                const canvas = document.getElementById('chart-' + chart.key);
+                if (!canvas) return;
+                const data = perfHistory[chart.key].slice(startIdx);
+                if (data.length < 2) return;
+
+                // 复用或创建 Chart 实例
+                let instance = chartInstances[chart.key];
+                if (instance) {
+                    instance.data.labels = labels;
+                    instance.data.datasets[0].data = data;
+                    instance.update('none'); // 跳过动画，提升性能
+                    return;
+                }
+
+                // 创建新实例
+                const ctx = canvas.getContext('2d');
+                const gradient = ctx.createLinearGradient(0, 0, 0, 120);
+                gradient.addColorStop(0, chart.color + '40');
+                gradient.addColorStop(1, chart.color + '05');
+
+                chartInstances[chart.key] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            borderColor: chart.color,
+                            backgroundColor: gradient,
+                            borderWidth: 1.5,
+                            fill: true,
+                            pointRadius: 0,
+                            pointHitRadius: 6,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(15,23,42,0.9)',
+                                titleColor: '#94a3b8',
+                                bodyColor: '#e2e8f0',
+                                borderColor: '#334155',
+                                borderWidth: 1,
+                                padding: 8,
+                                displayColors: false,
+                                callbacks: {
+                                    label: (ctx) => chart.isPercent ? ctx.parsed.y.toFixed(1) + '%' : ctx.parsed.y
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                display: true,
+                                ticks: {
+                                    color: 'rgba(148,163,184,0.5)',
+                                    font: { size: 9 },
+                                    maxTicksLimit: 6,
+                                    maxRotation: 0
+                                },
+                                grid: { color: 'rgba(100,116,139,0.1)' }
+                            },
+                            y: {
+                                display: true,
+                                min: chart.isPercent ? 0 : undefined,
+                                max: chart.isPercent ? 100 : undefined,
+                                ticks: {
+                                    color: 'rgba(148,163,184,0.5)',
+                                    font: { size: 9 },
+                                    maxTicksLimit: 5,
+                                    callback: (v) => chart.isPercent ? v + '%' : v
+                                },
+                                grid: { color: 'rgba(100,116,139,0.1)' }
+                            }
+                        }
+                    }
+                });
+            });
+        };
+
         // 清理定时器
         onUnmounted(() => {
             if (timeTimer) clearInterval(timeTimer);
             if (stressTimer) clearInterval(stressTimer);
             if (perfTimer) clearInterval(perfTimer);
             if (eventSource) eventSource.close();
+            destroyCharts();
         });
 
         return {
             locale, supportedLocales, switchLocale, t,
 
-            lings, activeId, canaryPct, isAuto, ipcEnabled, ipcTarget,
+            lings, activeId, activeNav, lingSearch, filteredLings, canaryPct, isAuto, ipcEnabled, ipcTarget,
             logs, lastAudit, logViewMode, logAggregationMode, logFilters, logContainer, isUserScrolling, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
             stats, loading, modal, toasts, envLabels, uploadModal, timelineModal,
 
-            perfMetrics,
+            perfMetrics, jvmInfo, chartTimeRange, monitorCharts,
             lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,
             invocationForm,
 
@@ -1645,8 +1915,10 @@ createApp({
             confirmModalAction, updateCanaryConfig, updateCanaryConfigLocally, resetCanary, togglePerm, toggleIpc,
             saveInvocationGovernance,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
+            playgroundServices, playgroundLoading, playgroundInvoking, playgroundArgs, playgroundResult,
+            fetchPlaygroundServices, invokeService, getInvokeKey,
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
-            formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue,
+            formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue, formatUptime,
             getStatusClass, getLingShortName, getLingTagClass, getLogColor,
             getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass, getLingHealthStatusClass, getLingHealthRoleLabel, hasGovernanceSignals,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,

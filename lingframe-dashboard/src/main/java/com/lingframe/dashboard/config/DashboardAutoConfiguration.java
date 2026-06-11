@@ -8,6 +8,7 @@ import com.lingframe.core.governance.LocalGovernanceRegistry;
 
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
@@ -19,6 +20,7 @@ import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LogStreamService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import com.lingframe.dashboard.service.SimulateService;
+import com.lingframe.dashboard.service.ServicePlaygroundService;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -81,6 +83,14 @@ public class DashboardAutoConfiguration {
             PermissionService permissionService,
             InvocationPipelineEngine pipelineEngine) {
         return new SimulateService(lingRepository, eventBus, canaryRouter, permissionService, pipelineEngine);
+    }
+
+    @Bean
+    public ServicePlaygroundService servicePlaygroundService(
+            LingServiceRegistry lingServiceRegistry,
+            LingRepository lingRepository,
+            InvocationPipelineEngine pipelineEngine) {
+        return new ServicePlaygroundService(lingServiceRegistry, lingRepository, pipelineEngine);
     }
 
     @Bean

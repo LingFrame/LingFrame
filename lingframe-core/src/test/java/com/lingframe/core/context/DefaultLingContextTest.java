@@ -110,7 +110,8 @@ class DefaultLingContextTest {
                 eq("ling-a:service.echo"),
                 eq("com.lingframe.core.context.DefaultLingContextTest$TestService"),
                 eq("echo"),
-                any(String[].class));
+                any(String[].class),
+                eq("java.lang.String"));
     }
 
     @Test
