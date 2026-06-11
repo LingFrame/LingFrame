@@ -30,9 +30,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+import com.lingframe.core.metrics.MetricsCollector;
+import com.lingframe.core.metrics.LingHealthMetrics;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("WebInterfaceManager 测试")
@@ -435,5 +436,156 @@ class WebInterfaceManagerTest {
     }
 
     static class SecondInheritedController extends BaseController {
+    }
+
+    @Test
+    @DisplayName("测试同步注册与注销时的线程中断或执行异常")
+    void testRegisterUnregisterSyncExceptions() throws Exception {
+        manager = new WebInterfaceManager(null, null, null);
+        
+        java.lang.reflect.Field field = WebInterfaceManager.class.getDeclaredField("registryExecutor");
+        field.setAccessible(true);
+        java.util.concurrent.ExecutorService mockExecutor = mock(java.util.concurrent.ExecutorService.class);
+        field.set(manager, mockExecutor);
+
+        WebInterfaceMetadata metadata = WebInterfaceMetadata.builder().build();
+
+        // 1. 模拟 submit 抛出 InterruptedException
+        java.util.concurrent.Future<?> mockFutureInterrupted = mock(java.util.concurrent.Future.class);
+        when(mockFutureInterrupted.get()).thenThrow(new InterruptedException("Interrupted"));
+        when(mockExecutor.submit(any(Runnable.class))).thenAnswer(inv -> mockFutureInterrupted);
+
+        assertThrows(LingException.class, () -> manager.registerSync(metadata));
+        assertThrows(LingException.class, () -> manager.unregisterSync("ling-a", null));
+
+        // 2. 模拟 submit 抛出 ExecutionException
+        java.util.concurrent.Future<?> mockFutureExecution = mock(java.util.concurrent.Future.class);
+        when(mockFutureExecution.get()).thenThrow(new java.util.concurrent.ExecutionException("error", new RuntimeException("root cause")));
+        when(mockExecutor.submit(any(Runnable.class))).thenAnswer(inv -> mockFutureExecution);
+
+        assertThrows(LingException.class, () -> manager.registerSync(metadata));
+        assertThrows(LingException.class, () -> manager.unregisterSync("ling-a", null));
+    }
+
+    @Test
+    @DisplayName("同一路径注册同版本但不同签名的方法时应抛出冲突异常")
+    void testConflictRegistration() throws Exception {
+        hostContext = new GenericApplicationContext();
+        hostContext.refresh();
+
+        manager = new WebInterfaceManager(null, null, null);
+        manager.init(hostMapping, null, hostContext);
+
+        DemoController controller = new DemoController();
+        Method detailMethod = DemoController.class.getMethod("detail");
+        Method fullMethod = DemoController.class.getMethod("full");
+
+        WebInterfaceMetadata v1_detail = WebInterfaceMetadata.builder()
+                .lingId("ling-a")
+                .version("v1")
+                .targetBean(controller)
+                .targetMethod(detailMethod)
+                .classLoader(DemoController.class.getClassLoader())
+                .urlPattern("/ling-a/demo/route")
+                .httpMethod("GET")
+                .build();
+
+        WebInterfaceMetadata v1_full = WebInterfaceMetadata.builder()
+                .lingId("ling-a")
+                .version("v1")
+                .targetBean(controller)
+                .targetMethod(fullMethod)
+                .classLoader(DemoController.class.getClassLoader())
+                .urlPattern("/ling-a/demo/route")
+                .httpMethod("GET")
+                .build();
+
+        manager.registerSync(v1_detail);
+        LingException ex = assertThrows(LingException.class, () -> manager.registerSync(v1_full));
+        Throwable rootCause = ex;
+        while (rootCause.getCause() != null) {
+            rootCause = rootCause.getCause();
+        }
+        assertTrue(rootCause instanceof IllegalStateException);
+        assertTrue(rootCause.getMessage().contains("Conflicting"));
+    }
+
+    @Test
+    @DisplayName("测试分发已解析路由时的异常处理及 Metrics 超时分支")
+    void testDispatchResolvedExceptionsAndMetrics() throws Exception {
+        hostContext = new GenericApplicationContext();
+        hostContext.refresh();
+        RequestMappingHandlerAdapter hostAdapter = createHostAdapter(hostContext);
+
+        org.springframework.beans.factory.ObjectProvider<MetricsCollector> metricsProvider = mock(org.springframework.beans.factory.ObjectProvider.class);
+        MetricsCollector collector = mock(MetricsCollector.class);
+        LingHealthMetrics health = mock(LingHealthMetrics.class);
+        
+        when(metricsProvider.getIfAvailable()).thenReturn(collector);
+        when(collector.getOrCreate(anyString())).thenReturn(health);
+        when(collector.getOrCreate(anyString(), any())).thenReturn(health);
+
+        manager = new WebInterfaceManager(null, null, metricsProvider);
+        manager.init(hostMapping, hostAdapter, hostContext);
+
+        // 1. meta 为 null 的异常分支
+        assertThrows(LingException.class, () -> manager.dispatch(null));
+
+        ExceptionController controller = new ExceptionController();
+        Method failMethod = ExceptionController.class.getMethod("fail");
+        Method timeoutMethod = ExceptionController.class.getMethod("timeout");
+
+        org.springframework.context.ApplicationContext mockLingContext = mock(org.springframework.context.ApplicationContext.class);
+        when(mockLingContext.getBean(RequestMappingHandlerAdapter.class)).thenReturn(hostAdapter);
+
+        WebInterfaceMetadata metaFail = WebInterfaceMetadata.builder()
+                .lingId("ling-a")
+                .version("v1")
+                .targetBean(controller)
+                .targetMethod(failMethod)
+                .classLoader(DemoController.class.getClassLoader())
+                .lingApplicationContext(mockLingContext)
+                .httpMethod("GET")
+                .urlPattern("/fail")
+                .build();
+
+        WebInterfaceMetadata metaTimeout = WebInterfaceMetadata.builder()
+                .lingId("ling-a")
+                .version("v1")
+                .targetBean(controller)
+                .targetMethod(timeoutMethod)
+                .classLoader(DemoController.class.getClassLoader())
+                .lingApplicationContext(mockLingContext)
+                .httpMethod("GET")
+                .urlPattern("/timeout")
+                .build();
+
+        java.lang.reflect.Field mapField = WebInterfaceManager.class.getDeclaredField("metadataMap");
+        mapField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, java.util.List<WebInterfaceMetadata>> metadataMap = (java.util.Map<String, java.util.List<WebInterfaceMetadata>>) mapField.get(manager);
+        metadataMap.put("GET#/fail", java.util.Collections.singletonList(metaFail));
+        metadataMap.put("GET#/timeout", java.util.Collections.singletonList(metaTimeout));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/test");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        ServletWebRequest webRequest = createServletWebRequest(request, response);
+
+        // 2.1 模拟普通业务异常
+        assertThrows(Exception.class, () -> manager.dispatch("GET#/fail", webRequest));
+        verify(health).recordFailure(anyLong(), eq(false));
+
+        // 2.2 模拟超时异常
+        assertThrows(Exception.class, () -> manager.dispatch("GET#/timeout", webRequest));
+        verify(health).recordFailure(anyLong(), eq(true));
+    }
+
+    static class ExceptionController {
+        public String fail() {
+            throw new RuntimeException("Biz Error");
+        }
+        public String timeout() throws Exception {
+            throw new java.util.concurrent.TimeoutException("Read timed out");
+        }
     }
 }

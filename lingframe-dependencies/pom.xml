@@ -337,13 +337,13 @@
                                                 <counter>LINE</counter>
                                                 <value>COVEREDRATIO</value>
                                                 <!-- 当前 0.60，逐步提升 -->
-                                                <minimum>0.55</minimum>
+                                                <minimum>0.60</minimum>
                                             </limit>
                                             <limit>
                                                 <counter>BRANCH</counter>
                                                 <value>COVEREDRATIO</value>
                                                 <!-- 当前 0.46，逐步提升 -->
-                                                <minimum>0.40</minimum>
+                                                <minimum>0.50</minimum>
                                             </limit>
                                         </limits>
                                     </rule>

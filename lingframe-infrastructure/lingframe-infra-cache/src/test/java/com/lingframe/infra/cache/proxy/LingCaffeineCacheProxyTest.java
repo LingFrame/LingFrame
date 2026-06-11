@@ -156,4 +156,66 @@ class LingCaffeineCacheProxyTest {
             assertEquals("tom", result.get("user:1"));
         }
     }
+
+    @Nested
+    @DisplayName("其他缓存方法测试")
+    class OtherCacheMethodsTests {
+
+        @Test
+        @DisplayName("测试 getAll, putAll, invalidate, estimatedSize, cleanUp 等方法的常规操作")
+        void testVariousCacheOperations() {
+            Cache<String, String> target = mockStringCache();
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(true);
+            when(permissionService.isAllowed("ling-a", "cache:local", AccessType.READ)).thenReturn(true);
+
+            LingCallContext.setLingId("ling-a");
+            LingCaffeineCacheProxy<String, String> proxy = new LingCaffeineCacheProxy<>(target, "users", permissionService);
+
+            // 1. getAll
+            java.util.Map<Object, Object> loaded = new java.util.LinkedHashMap<>();
+            loaded.put(new CacheNamespaceSupport.NamespacedKey("ling-a", "users", "k1"), "v1");
+            org.mockito.Mockito.doReturn(loaded).when(target).getAll(
+                    org.mockito.ArgumentMatchers.any(),
+                    org.mockito.ArgumentMatchers.any()
+            );
+            java.util.Map<String, String> getAllResult = proxy.getAll(
+                    java.util.Collections.singletonList("k1"),
+                    keys -> java.util.Collections.singletonMap("k1", "v1")
+            );
+            assertEquals("v1", getAllResult.get("k1"));
+
+            // 2. putAll
+            proxy.putAll(java.util.Collections.singletonMap("k1", "v1"));
+            verify(target).putAll(org.mockito.ArgumentMatchers.any());
+
+            // 3. invalidate
+            proxy.invalidate("k1");
+            verify(target).invalidate(org.mockito.ArgumentMatchers.any());
+
+            // 4. invalidateAll(Iterable)
+            proxy.invalidateAll(java.util.Collections.singletonList("k1"));
+            verify(target).invalidateAll(org.mockito.ArgumentMatchers.any());
+
+            // 5. invalidateAll()
+            proxy.invalidateAll();
+            verify(target).invalidateAll();
+
+            // 6. estimatedSize
+            when(target.estimatedSize()).thenReturn(100L);
+            assertEquals(100L, proxy.estimatedSize());
+
+            // 7. cleanUp
+            proxy.cleanUp();
+            verify(target).cleanUp();
+
+            // 8. asMap
+            proxy.asMap();
+            verify(target).asMap();
+
+            // 9. policy
+            proxy.policy();
+            verify(target).policy();
+        }
+    }
 }

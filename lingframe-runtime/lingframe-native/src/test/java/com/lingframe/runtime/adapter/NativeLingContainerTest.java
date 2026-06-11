@@ -22,7 +22,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("NativeLingContainer 测试")
 class NativeLingContainerTest {
@@ -139,5 +139,207 @@ class NativeLingContainerTest {
         public String echo() {
             return "ok";
         }
+    }
+
+    @Test
+    @DisplayName("主类没有实现 Ling 接口应抛出 LingInstallException 且其 cause 为 InvalidArgumentException")
+    void shouldThrowWhenMainClassDoesNotImplementLing() {
+        com.lingframe.core.exception.LingInstallException ex = assertThrows(com.lingframe.core.exception.LingInstallException.class, () -> {
+            new NativeLingContainer(
+                    "native-ling",
+                    String.class,
+                    String.class.getClassLoader(),
+                    new File(".")
+            );
+        });
+        assertTrue(ex.getCause() instanceof com.lingframe.api.exception.InvalidArgumentException);
+    }
+
+    public static class BadConstructorLing implements Ling {
+        public BadConstructorLing() {
+            throw new RuntimeException("Constructor failed");
+        }
+        @Override
+        public void onStart(LingContext context) {}
+        @Override
+        public void onStop(LingContext context) {}
+    }
+
+    @Test
+    @DisplayName("主类实例化失败应抛出 LingInstallException")
+    void shouldThrowWhenConstructorThrows() {
+        assertThrows(com.lingframe.core.exception.LingInstallException.class, () -> {
+            new NativeLingContainer(
+                    "native-ling",
+                    BadConstructorLing.class,
+                    BadConstructorLing.class.getClassLoader(),
+                    new File(".")
+            );
+        });
+    }
+
+    public static class StartExceptionLing implements Ling {
+        @Override
+        public void onStart(LingContext context) {
+            throw new RuntimeException("Start error");
+        }
+        @Override
+        public void onStop(LingContext context) {}
+    }
+
+    @Test
+    @DisplayName("启动失败时应抛出 LingInstallException 且容器为非激活状态")
+    void shouldBeInactiveAndThrowWhenStartThrows() {
+        NativeLingContainer container = new NativeLingContainer(
+                "native-ling",
+                StartExceptionLing.class,
+                StartExceptionLing.class.getClassLoader(),
+                new File(".")
+        );
+        LingContext context = new MinimalLingContext("native-ling");
+        assertThrows(com.lingframe.core.exception.LingInstallException.class, () -> container.start(context));
+        assertFalse(container.isActive());
+    }
+
+    public static class StopExceptionLing implements Ling {
+        @Override
+        public void onStart(LingContext context) {}
+        @Override
+        public void onStop(LingContext context) {
+            throw new RuntimeException("Stop error");
+        }
+    }
+
+    @Test
+    @DisplayName("停止抛出异常时容器应该能正常处理")
+    void shouldHandleExceptionDuringStop() {
+        NativeLingContainer container = new NativeLingContainer(
+                "native-ling",
+                StopExceptionLing.class,
+                StopExceptionLing.class.getClassLoader(),
+                new File(".")
+        );
+        LingContext context = new MinimalLingContext("native-ling");
+        container.start(context);
+        assertTrue(container.isActive());
+        assertDoesNotThrow(container::stop);
+        assertFalse(container.isActive());
+    }
+
+    @Test
+    @DisplayName("未启动时 stop 应直接返回")
+    void shouldReturnDirectlyWhenStopCalledBeforeStart() {
+        NativeLingContainer container = new NativeLingContainer(
+                "native-ling",
+                TestNativeLing.class,
+                TestNativeLing.class.getClassLoader(),
+                new File(".")
+        );
+        assertFalse(container.isActive());
+        assertDoesNotThrow(container::stop);
+    }
+
+    public static class NonInstantiableServiceBean {
+        private NonInstantiableServiceBean() {
+            throw new RuntimeException("Can't instantiate");
+        }
+        @LingService(id = "bad")
+        public void test() {}
+    }
+
+    @Test
+    @DisplayName("服务方法所在类无法实例化时 registerService 应记录日志而不崩溃")
+    void shouldHandleBeanInstantiationFailureInServiceRegistration() throws Exception {
+        EventBus eventBus = new EventBus();
+        DefaultLingRepository repository = new DefaultLingRepository();
+        DefaultLingServiceRegistry registry = new DefaultLingServiceRegistry();
+        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus);
+        FilterRegistry filterRegistry = new FilterRegistry(new InvokableMethodCache(), permissionService);
+        filterRegistry.initialize(repository, new LatestVersionPolicy(), eventBus);
+        InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(filterRegistry);
+        DefaultLingContext context = new DefaultLingContext("native-ling", repository, registry, pipelineEngine, permissionService, eventBus);
+
+        NativeLingContainer container = new NativeLingContainer(
+                "native-ling",
+                TestNativeLing.class,
+                TestNativeLing.class.getClassLoader(),
+                new File("E:\\Codes\\灵珑\\LingFrame\\lingframe-runtime\\lingframe-native\\target\\test-classes")
+        );
+        container.start(context);
+        
+        java.lang.reflect.Method registerMethod = NativeLingContainer.class.getDeclaredMethod(
+                "registerService", DefaultLingContext.class, Class.class, java.lang.reflect.Method.class, LingService.class
+        );
+        registerMethod.setAccessible(true);
+        java.lang.reflect.Method badMethod = NonInstantiableServiceBean.class.getDeclaredMethod("test");
+        LingService anno = badMethod.getAnnotation(LingService.class);
+
+        assertDoesNotThrow(() -> registerMethod.invoke(container, context, NonInstantiableServiceBean.class, badMethod, anno));
+        container.stop();
+    }
+
+    @Test
+    @DisplayName("支持 JAR 文件的扫描分支")
+    void shouldScanClassesFromJarFile() throws Exception {
+        File tempJar = File.createTempFile("test-ling-", ".jar");
+        tempJar.deleteOnExit();
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(new java.io.FileOutputStream(tempJar))) {
+            java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry("com/lingframe/runtime/adapter/NativeLingContainerTest$TestNativeLing.class");
+            zos.putNextEntry(entry);
+            zos.write(new byte[0]);
+            zos.closeEntry();
+
+            java.util.zip.ZipEntry entryFilter = new java.util.zip.ZipEntry("com/lingframe/runtime/adapter/package-info.class");
+            zos.putNextEntry(entryFilter);
+            zos.write(new byte[0]);
+            zos.closeEntry();
+
+            java.util.zip.ZipEntry entryBad = new java.util.zip.ZipEntry("com/lingframe/runtime/adapter/NonExistClass.class");
+            zos.putNextEntry(entryBad);
+            zos.write(new byte[0]);
+            zos.closeEntry();
+        }
+
+        NativeLingContainer container = new NativeLingContainer(
+                "native-ling",
+                TestNativeLing.class,
+                TestNativeLing.class.getClassLoader(),
+                tempJar
+        );
+
+        EventBus eventBus = new EventBus();
+        DefaultLingRepository repository = new DefaultLingRepository();
+        DefaultLingServiceRegistry registry = new DefaultLingServiceRegistry();
+        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus);
+        FilterRegistry filterRegistry = new FilterRegistry(new InvokableMethodCache(), permissionService);
+        filterRegistry.initialize(repository, new LatestVersionPolicy(), eventBus);
+        InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(filterRegistry);
+        DefaultLingContext context = new DefaultLingContext("native-ling", repository, registry, pipelineEngine, permissionService, eventBus);
+
+        container.start(context);
+        assertTrue(container.isActive());
+        container.stop();
+    }
+
+    @Test
+    @DisplayName("getBean 及其他辅助方法获取验证")
+    void testGetBeanAndHelperMethods() {
+        NativeLingContainer container = new NativeLingContainer(
+                "native-ling",
+                TestNativeLing.class,
+                TestNativeLing.class.getClassLoader(),
+                new File(".")
+        );
+
+        assertNotNull(container.getClassLoader());
+        assertArrayEquals(new String[0], container.getBeanNames());
+
+        assertNotNull(container.getBean(TestNativeLing.class));
+        assertNull(container.getBean(String.class));
+
+        assertNotNull(container.getBean("com.lingframe.runtime.adapter.NativeLingContainerTest$TestNativeLing"));
+        assertNotNull(container.getBean("native-ling"));
+        assertNull(container.getBean((String)null));
+        assertNotNull(container.getBean("non-exist-bean"));
     }
 }

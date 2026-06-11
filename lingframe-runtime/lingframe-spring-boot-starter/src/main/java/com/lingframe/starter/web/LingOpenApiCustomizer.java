@@ -263,7 +263,7 @@ public class LingOpenApiCustomizer implements LingOpenApiCustomizerAdapter {
                 + "_"
                 + metadata.getTargetMethodName()
                 + "_"
-                + Math.abs(metadata.buildRouteKey().hashCode()));
+                + (metadata.buildRouteKey().hashCode() & Integer.MAX_VALUE));
 
         ApiResponses responses = new ApiResponses();
         ApiResponse okResponse = new ApiResponse().description("OK (Delegated to LingFrame)");

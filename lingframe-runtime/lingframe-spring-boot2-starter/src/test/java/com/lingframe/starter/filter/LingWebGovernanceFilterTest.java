@@ -3,6 +3,8 @@ package com.lingframe.starter.filter;
 import com.lingframe.api.security.AuditMetadataKeys;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.metrics.LingHealthMetrics;
+import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.starter.config.LingFrameProperties;
@@ -16,8 +18,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.HandlerExecutionChain;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import javax.servlet.FilterChain;
@@ -25,14 +31,9 @@ import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("LingWebGovernanceFilter 测试")
@@ -52,6 +53,10 @@ class LingWebGovernanceFilterTest {
     private LingInstance targetInstance;
     @Mock
     private EntryInvocationGovernanceResolver invocationGovernanceResolver;
+    @Mock
+    private MetricsCollector metricsCollector;
+    @Mock
+    private LingHealthMetrics healthMetrics;
 
     @Test
     @DisplayName("应使用灵元元数据中的目标方法与预解析实例")
@@ -196,6 +201,225 @@ class LingWebGovernanceFilterTest {
         assertNotNull(response.getErrorMessage());
         verify(pipelineEngine, never()).invoke(any(InvocationContext.class));
         verify(filterChain, never()).doFilter(request, response);
+    }
+
+    @Test
+    @DisplayName("非灵元请求且核心治理未启用时应直接放行")
+    void testNonLingRequestCoreGovernanceDisabled() throws Exception {
+        LingFrameProperties properties = new LingFrameProperties();
+        properties.getLingCoreGovernance().setEnabled(false); // 禁用核心治理
+        
+        LingWebGovernanceFilter filter = new LingWebGovernanceFilter(
+                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, null,
+                invocationGovernanceResolver);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/host/api");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        when(webRouteResolver.resolveRoute(request)).thenReturn(null);
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        verify(pipelineEngine, never()).invoke(any());
+    }
+
+    @Test
+    @DisplayName("非灵元请求且无法解析出 HandlerMethod 时应直接放行")
+    void testNonLingRequestNoHandlerMethod() throws Exception {
+        LingFrameProperties properties = new LingFrameProperties();
+        properties.getLingCoreGovernance().setEnabled(true);
+        
+        LingWebGovernanceFilter filter = new LingWebGovernanceFilter(
+                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, null,
+                invocationGovernanceResolver);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/host/api");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        when(webRouteResolver.resolveRoute(request)).thenReturn(null);
+        when(requestMappingHandlerMapping.getHandler(any())).thenReturn(null);
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        verify(pipelineEngine, never()).invoke(any());
+    }
+
+    @Test
+    @DisplayName("灵元请求且启用治理应走治理流程并记录 Metrics")
+    void testLingRequestWithMetrics() throws Exception {
+        LingFrameProperties properties = new LingFrameProperties();
+        properties.getLingCoreGovernance().setEnabled(true);
+        
+        ObjectProvider<MetricsCollector> metricsProvider = mock(ObjectProvider.class);
+        when(metricsProvider.getIfAvailable()).thenReturn(metricsCollector);
+        when(metricsCollector.getOrCreate(anyString())).thenReturn(healthMetrics);
+        when(metricsCollector.getOrCreate(anyString(), any())).thenReturn(healthMetrics);
+
+        LingWebGovernanceFilter filter = new LingWebGovernanceFilter(
+                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, metricsProvider,
+                invocationGovernanceResolver);
+
+        DemoController controller = new DemoController();
+        Method expectedMethod = DemoController.class.getMethod("detail");
+        WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
+                .lingId("ling-a")
+                .version("v1")
+                .targetBean(controller)
+                .targetMethod(expectedMethod)
+                .classLoader(DemoController.class.getClassLoader())
+                .build();
+        WebRouteResolution resolution = new WebRouteResolution("GET#/detail", metadata, runtime, targetInstance);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/detail");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(targetInstance.getVersion()).thenReturn("v1");
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        verify(pipelineEngine).invoke(any(InvocationContext.class));
+        verify(filterChain).doFilter(request, response);
+        verify(healthMetrics).recordSuccess(anyLong());
+    }
+
+    @Test
+    @DisplayName("治理失败拒绝时应返回正确的 HTTP 状态码")
+    void testGovernanceFailureStatusCodes() throws Exception {
+        LingFrameProperties properties = new LingFrameProperties();
+        properties.getLingCoreGovernance().setEnabled(true);
+
+        LingWebGovernanceFilter filter = new LingWebGovernanceFilter(
+                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, null,
+                invocationGovernanceResolver);
+
+        DemoController controller = new DemoController();
+        Method targetMethod = DemoController.class.getMethod("detail");
+        WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
+                .lingId("ling-a")
+                .targetBean(controller)
+                .targetMethod(targetMethod)
+                .classLoader(DemoController.class.getClassLoader())
+                .build();
+        WebRouteResolution resolution = new WebRouteResolution("GET#/detail", metadata, runtime, targetInstance);
+
+        // 1. 安全校验异常 (SECURITY_REJECTED) -> 403
+        {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", "/detail");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+            when(targetInstance.getVersion()).thenReturn("v1");
+
+            doThrow(new com.lingframe.api.exception.LingInvocationException(
+                    "ling-a:http",
+                    com.lingframe.api.exception.LingInvocationException.ErrorKind.SECURITY_REJECTED,
+                    "Access denied"
+            )).when(pipelineEngine).invoke(any());
+
+            filter.doFilterInternal(request, response, filterChain);
+            assertEquals(403, response.getStatus());
+        }
+
+        // 2. 状态异常 (STATE_REJECTED) -> 503
+        {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", "/detail");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+
+            doThrow(new com.lingframe.api.exception.LingInvocationException(
+                    "ling-a:http",
+                    com.lingframe.api.exception.LingInvocationException.ErrorKind.STATE_REJECTED,
+                    "Ling is disabled"
+            )).when(pipelineEngine).invoke(any());
+
+            filter.doFilterInternal(request, response, filterChain);
+            assertEquals(503, response.getStatus());
+        }
+
+        // 3. 其它未知异常 -> 500
+        {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", "/detail");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+
+            doThrow(new com.lingframe.api.exception.LingInvocationException(
+                    "ling-a:http",
+                    com.lingframe.api.exception.LingInvocationException.ErrorKind.RATE_LIMITED,
+                    "Unexpected server error"
+            )).when(pipelineEngine).invoke(any());
+
+            filter.doFilterInternal(request, response, filterChain);
+            assertEquals(500, response.getStatus());
+        }
+    }
+
+    @Test
+    @DisplayName("下游业务逻辑抛出异常或超时应记录相应的 Metrics")
+    void testMetricsWithFailureAndTimeout() throws Exception {
+        LingFrameProperties properties = new LingFrameProperties();
+        properties.getLingCoreGovernance().setEnabled(true);
+
+        ObjectProvider<MetricsCollector> metricsProvider = mock(ObjectProvider.class);
+        when(metricsProvider.getIfAvailable()).thenReturn(metricsCollector);
+        when(metricsCollector.getOrCreate(anyString())).thenReturn(healthMetrics);
+        when(metricsCollector.getOrCreate(anyString(), any())).thenReturn(healthMetrics);
+
+        LingWebGovernanceFilter filter = new LingWebGovernanceFilter(
+                webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, metricsProvider,
+                invocationGovernanceResolver);
+
+        DemoController controller = new DemoController();
+        Method targetMethod = DemoController.class.getMethod("detail");
+        WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
+                .lingId("ling-a")
+                .targetBean(controller)
+                .targetMethod(targetMethod)
+                .classLoader(DemoController.class.getClassLoader())
+                .build();
+        WebRouteResolution resolution = new WebRouteResolution("GET#/detail", metadata, runtime, targetInstance);
+
+        // 1. 下游普通异常 (Exception)
+        {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", "/detail");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+            when(targetInstance.getVersion()).thenReturn("v1");
+            
+            // 模拟 filterChain 抛出 RuntimeException
+            Answer<Void> throwAnswer = inv -> {
+                throw new RuntimeException("Biz Error");
+            };
+            doAnswer(throwAnswer).when(filterChain).doFilter(any(), any());
+            doReturn(null).when(pipelineEngine).invoke(any());
+
+            try {
+                filter.doFilterInternal(request, response, filterChain);
+            } catch (Exception e) {
+                // Expected
+            }
+            verify(healthMetrics).recordFailure(anyLong(), eq(false));
+        }
+
+        // 2. 下游超时异常 (TimeoutException)
+        {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", "/detail");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+
+            Answer<Void> throwTimeout = inv -> {
+                throw new java.util.concurrent.TimeoutException("Read timed out");
+            };
+            doAnswer(throwTimeout).when(filterChain).doFilter(any(), any());
+
+            try {
+                filter.doFilterInternal(request, response, filterChain);
+            } catch (Exception e) {
+                // Expected
+            }
+            verify(healthMetrics).recordFailure(anyLong(), eq(true));
+        }
     }
 
     static class DemoController {
