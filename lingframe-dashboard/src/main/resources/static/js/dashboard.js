@@ -19,6 +19,8 @@ createApp({
         const logViewMode = ref('current');
         const logContainer = ref(null);
         const isUserScrolling = ref(false);
+        const logPaused = ref(false);
+        const logPausedBuffer = []; // 暂停期间缓存的日志（上限 500 条）
         const sidebarOpen = ref(false);
         const currentEnv = ref('dev');
         const currentTime = ref('');
@@ -99,6 +101,17 @@ createApp({
             availableProcessors: 0,
             systemLoadAverage: 0
         });
+
+        // 前值记录（用于趋势箭头）
+        const prevMetrics = { cpu: 0, heapUsage: 0, metaspaceUsage: 0, threads: 0, gcCount: 0, gcTimeMs: 0, loadedClassCount: 0 };
+
+        // 趋势箭头：返回 'up' / 'down' / 'stable'
+        const getTrend = (key) => {
+            const prev = prevMetrics[key];
+            const curr = perfMetrics[key];
+            if (prev === curr) return 'stable';
+            return curr > prev ? 'up' : 'down';
+        };
 
         // JVM 基础信息
         const jvmInfo = reactive({
@@ -1188,13 +1201,21 @@ createApp({
         watch(activeId, (newId) => {
             playgroundServices.value = [];
             playgroundResult.value = null;
+            // 切换灵元后主区域滚动到顶部
+            const mainArea = document.querySelector('.main-area');
+            if (mainArea) mainArea.scrollTop = 0;
             if (newId) {
                 fetchPlaygroundServices();
             }
         });
 
         // ==================== SSE 日志流 ====================
+        let sseRetryDelay = 1000; // 初始重连延迟 1s
+        const SSE_RETRY_MAX = 30000; // 最大延迟 30s
+        let sseRetryTimer = null;
+
         const connectSSE = () => {
+            if (sseRetryTimer) { clearTimeout(sseRetryTimer); sseRetryTimer = null; }
             if (eventSource) {
                 eventSource.close();
             }
@@ -1204,35 +1225,31 @@ createApp({
 
             eventSource.onopen = () => {
                 sseStatus.value = 'connected';
-                console.log(new Date(), 'SSE connected');
+                sseRetryDelay = 1000; // 连接成功，重置延迟
             };
-        // ... 其余 SSE 实现基本保持不变，日志内容为动态生成 ...
 
-            // 🔥 添加通用消息监听器
-            eventSource.onmessage = (e) => {
-                console.log('SSE onmessage:', e);
+            eventSource.onmessage = () => {
+                // 通用消息（忽略）
             };
 
             eventSource.addEventListener('log-event', (e) => {
-                console.log('SSE log-event received:', e.data);  // 🔥 调试
                 try {
                     const data = JSON.parse(e.data);
-                    console.log('Parsed data:', data);  // 🔥 调试
                     addLog(data);
                 } catch (err) {
-                    console.warn('Failed to parse log event', err);
+                    // 忽略解析失败的日志
                 }
             });
 
             eventSource.addEventListener('ping', () => {
                 // 心跳
-                console.log('SSE ping received');  // 🔥 调试
             });
 
             eventSource.onerror = () => {
                 sseStatus.value = 'disconnected';
-                console.log('SSE disconnected, reconnecting...');
-                setTimeout(connectSSE, 3000);
+                if (sseRetryTimer) clearTimeout(sseRetryTimer);
+                sseRetryTimer = setTimeout(connectSSE, sseRetryDelay);
+                sseRetryDelay = Math.min(sseRetryDelay * 2, SSE_RETRY_MAX);
             };
         };
 
@@ -1248,6 +1265,14 @@ createApp({
                 depth: data.depth || 0,
                 timestamp: data.timestamp
             };
+
+            // 暂停时只缓存，不操作 logs 数组
+            if (logPaused.value) {
+                if (logPausedBuffer.length < 500) {
+                    logPausedBuffer.push(log);
+                }
+                return;
+            }
 
             logs.value.unshift(log);
             if (logs.value.length > 1000) {
@@ -1565,6 +1590,11 @@ createApp({
             try {
                 const data = await api.get('/lings/metrics');
                 if (data) {
+                    // 保存前值（用于趋势箭头）
+                    Object.keys(prevMetrics).forEach(k => {
+                        prevMetrics[k] = perfMetrics[k];
+                    });
+
                     perfMetrics.cpu = data.cpuUsage || 0;
                     perfMetrics.processCpuLoad = data.processCpuLoad || 0;
                     perfMetrics.memory = data.memoryUsage || 0;
@@ -1760,6 +1790,17 @@ createApp({
             }
         });
 
+        // 日志暂停恢复：批量追加缓存日志
+        watch(logPaused, (paused) => {
+            if (!paused && logPausedBuffer.length > 0) {
+                logs.value.unshift(...logPausedBuffer);
+                if (logs.value.length > 1000) {
+                    logs.value = logs.value.slice(0, 1000);
+                }
+                logPausedBuffer.length = 0;
+            }
+        });
+
         const updateEnvMode = async (env) => {
             try {
                 await api.post('/simulate/config/mode', { testEnv: env });
@@ -1785,6 +1826,17 @@ createApp({
             if (d > 0) return `${d}d ${h}h ${m}m`;
             if (h > 0) return `${h}h ${m}m`;
             return `${m}m`;
+        };
+
+        // 格式化服务演练场结果
+        const formatPlaygroundResult = (result) => {
+            if (result === null || result === undefined) return 'null';
+            if (typeof result === 'string') return result;
+            try {
+                return JSON.stringify(result, null, 2);
+            } catch {
+                return String(result);
+            }
         };
 
         // 绘制监控折线图
@@ -1888,6 +1940,19 @@ createApp({
             });
         };
 
+        // 页面不可见时暂停轮询，可见时恢复
+        const handleVisibility = () => {
+            if (document.hidden) {
+                if (perfTimer) { clearInterval(perfTimer); perfTimer = null; }
+            } else {
+                if (!perfTimer) {
+                    fetchPerformanceMetrics();
+                    perfTimer = setInterval(fetchPerformanceMetrics, 3000);
+                }
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+
         // 清理定时器
         onUnmounted(() => {
             if (timeTimer) clearInterval(timeTimer);
@@ -1895,13 +1960,14 @@ createApp({
             if (perfTimer) clearInterval(perfTimer);
             if (eventSource) eventSource.close();
             destroyCharts();
+            document.removeEventListener('visibilitychange', handleVisibility);
         });
 
         return {
             locale, supportedLocales, switchLocale, t,
 
             lings, activeId, activeNav, lingSearch, filteredLings, canaryPct, isAuto, ipcEnabled, ipcTarget,
-            logs, lastAudit, logViewMode, logAggregationMode, logFilters, logContainer, isUserScrolling, sidebarOpen,
+            logs, lastAudit, logViewMode, logAggregationMode, logFilters, logContainer, isUserScrolling, logPaused, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
             stats, loading, modal, toasts, envLabels, uploadModal, timelineModal,
 
@@ -1918,8 +1984,8 @@ createApp({
             playgroundServices, playgroundLoading, playgroundInvoking, playgroundArgs, playgroundResult,
             fetchPlaygroundServices, invokeService, getInvokeKey,
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
-            formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue, formatUptime,
-            getStatusClass, getLingShortName, getLingTagClass, getLogColor,
+            formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue, formatUptime, formatPlaygroundResult,
+            getStatusClass, getLingShortName, getLingTagClass, getLogColor, getTrend,
             getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass, getLingHealthStatusClass, getLingHealthRoleLabel, hasGovernanceSignals,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
             openTimelineModal, closeTimelineModal, loadTimelineData,

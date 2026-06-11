@@ -75,6 +75,8 @@
     "waiting": "等待日志...",
     "connecting": "连接中...",
     "newLogs": "新日志",
+    "pause": "暂停",
+    "resume": "恢复",
     "aggregationMode": "聚合模式",
     "filterByVersion": "按版本筛选",
     "filterByEventType": "按事件类型筛选",

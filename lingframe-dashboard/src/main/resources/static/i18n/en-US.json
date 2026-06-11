@@ -75,6 +75,8 @@
         "waiting": "Waiting for logs...",
         "connecting": "Connecting...",
         "newLogs": "New Logs",
+        "pause": "Pause",
+        "resume": "Resume",
         "aggregationMode": "Aggregation Mode",
         "filterByVersion": "Filter by Version",
         "filterByEventType": "Filter by Event Type",

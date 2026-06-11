@@ -518,7 +518,11 @@
                                 <!-- CPU -->
                                 <div class="bg-slate-800/50 rounded-lg p-3 text-center">
                                     <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.cpu') }}</div>
-                                    <div class="text-xl font-mono font-bold" :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">{{ perfMetrics.cpu }}%</div>
+                                    <div class="flex items-center justify-center gap-1">
+                                        <span class="text-xl font-mono font-bold" :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">{{ perfMetrics.cpu }}%</span>
+                                        <i v-if="getTrend('cpu') === 'up'" class="fa-solid fa-arrow-up text-[10px] text-red-400"></i>
+                                        <i v-else-if="getTrend('cpu') === 'down'" class="fa-solid fa-arrow-down text-[10px] text-green-400"></i>
+                                    </div>
                                     <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden mt-2">
                                         <div class="h-full rounded-full transition-all duration-500"
                                             :class="perfMetrics.cpu > 80 ? 'bg-red-500' : perfMetrics.cpu > 60 ? 'bg-amber-500' : 'bg-green-500'"
@@ -528,35 +532,58 @@
                                 <!-- 堆内存 -->
                                 <div class="bg-slate-800/50 rounded-lg p-3 text-center">
                                     <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.heap') }}</div>
-                                    <div class="text-xl font-mono font-bold text-purple-400">{{ perfMetrics.heapUsage }}%</div>
+                                    <div class="flex items-center justify-center gap-1">
+                                        <span class="text-xl font-mono font-bold text-purple-400">{{ perfMetrics.heapUsage }}%</span>
+                                        <i v-if="getTrend('heapUsage') === 'up'" class="fa-solid fa-arrow-up text-[10px] text-red-400"></i>
+                                        <i v-else-if="getTrend('heapUsage') === 'down'" class="fa-solid fa-arrow-down text-[10px] text-green-400"></i>
+                                    </div>
                                     <div class="text-[10px] text-slate-500 mt-1 font-mono">{{ perfMetrics.heapUsed }}MB / {{ perfMetrics.heapMax }}MB</div>
                                 </div>
                                 <!-- 元空间 -->
                                 <div class="bg-slate-800/50 rounded-lg p-3 text-center">
                                     <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.metaspace') }}</div>
-                                    <div class="text-xl font-mono font-bold" :class="perfMetrics.metaspaceUsage > 80 ? 'text-red-400' : 'text-emerald-400'">{{ perfMetrics.metaspaceUsage }}%</div>
+                                    <div class="flex items-center justify-center gap-1">
+                                        <span class="text-xl font-mono font-bold" :class="perfMetrics.metaspaceUsage > 80 ? 'text-red-400' : 'text-emerald-400'">{{ perfMetrics.metaspaceUsage }}%</span>
+                                        <i v-if="getTrend('metaspaceUsage') === 'up'" class="fa-solid fa-arrow-up text-[10px] text-red-400"></i>
+                                        <i v-else-if="getTrend('metaspaceUsage') === 'down'" class="fa-solid fa-arrow-down text-[10px] text-green-400"></i>
+                                    </div>
                                     <div class="text-[10px] text-slate-500 mt-1 font-mono">{{ perfMetrics.metaspaceUsed }}KB / {{ perfMetrics.metaspaceMax }}KB</div>
                                 </div>
                                 <!-- 线程数 -->
                                 <div class="bg-slate-800/50 rounded-lg p-3 text-center">
                                     <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.threads') }}</div>
-                                    <div class="text-xl font-mono font-bold text-cyan-400">{{ perfMetrics.threads }}</div>
+                                    <div class="flex items-center justify-center gap-1">
+                                        <span class="text-xl font-mono font-bold text-cyan-400">{{ perfMetrics.threads }}</span>
+                                        <i v-if="getTrend('threads') === 'up'" class="fa-solid fa-arrow-up text-[10px] text-amber-400"></i>
+                                        <i v-else-if="getTrend('threads') === 'down'" class="fa-solid fa-arrow-down text-[10px] text-green-400"></i>
+                                    </div>
                                     <div class="text-[10px] text-slate-500 mt-1">Peak: {{ perfMetrics.peakThreads }}</div>
                                 </div>
                                 <!-- GC 次数 -->
                                 <div class="bg-slate-800/50 rounded-lg p-3 text-center">
                                     <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.gc') }}</div>
-                                    <div class="text-xl font-mono font-bold text-pink-400">{{ perfMetrics.gcCount }}</div>
+                                    <div class="flex items-center justify-center gap-1">
+                                        <span class="text-xl font-mono font-bold text-pink-400">{{ perfMetrics.gcCount }}</span>
+                                        <i v-if="getTrend('gcCount') === 'up'" class="fa-solid fa-arrow-up text-[10px] text-amber-400"></i>
+                                    </div>
                                 </div>
                                 <!-- GC 耗时 -->
                                 <div class="bg-slate-800/50 rounded-lg p-3 text-center">
                                     <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.gcTime') }}</div>
-                                    <div class="text-xl font-mono font-bold text-orange-400">{{ perfMetrics.gcTimeMs }}ms</div>
+                                    <div class="flex items-center justify-center gap-1">
+                                        <span class="text-xl font-mono font-bold text-orange-400">{{ perfMetrics.gcTimeMs }}ms</span>
+                                        <i v-if="getTrend('gcTimeMs') === 'up'" class="fa-solid fa-arrow-up text-[10px] text-amber-400"></i>
+                                        <i v-else-if="getTrend('gcTimeMs') === 'down'" class="fa-solid fa-arrow-down text-[10px] text-green-400"></i>
+                                    </div>
                                 </div>
                                 <!-- 类对象数 -->
                                 <div class="bg-slate-800/50 rounded-lg p-3 text-center">
                                     <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.classCount') }}</div>
-                                    <div class="text-xl font-mono font-bold text-amber-400">{{ perfMetrics.loadedClassCount }}</div>
+                                    <div class="flex items-center justify-center gap-1">
+                                        <span class="text-xl font-mono font-bold text-amber-400">{{ perfMetrics.loadedClassCount }}</span>
+                                        <i v-if="getTrend('loadedClassCount') === 'up'" class="fa-solid fa-arrow-up text-[10px] text-amber-400"></i>
+                                        <i v-else-if="getTrend('loadedClassCount') === 'down'" class="fa-solid fa-arrow-down text-[10px] text-green-400"></i>
+                                    </div>
                                     <div class="text-[10px] text-slate-500 mt-1">{{ t('performance.unloadedClasses') }}: {{ perfMetrics.unloadedClassCount }}</div>
                                 </div>
                             </div>
@@ -1354,8 +1381,8 @@
                                         </span>
                                         <span class="text-[10px] text-slate-500">{{ playgroundResult.durationMs }} ms</span>
                                     </div>
-                                    <div v-if="playgroundResult.success" class="text-sm font-mono text-green-300 break-all">
-                                        {{ JSON.stringify(playgroundResult.result) }}
+                                    <div v-if="playgroundResult.success" class="text-sm font-mono text-green-300 break-all whitespace-pre-wrap max-h-64 overflow-y-auto">
+                                        {{ formatPlaygroundResult(playgroundResult.result) }}
                                     </div>
                                     <div v-else class="text-sm font-mono text-red-300 break-all">
                                         {{ playgroundResult.error }}
@@ -1385,8 +1412,14 @@
                             <!-- 日志追踪 -->
                             <div class="card flex flex-col relative" style="height: 600px;">
                                 <div class="card-header flex-shrink-0">
-                                    <div class="flex items-center gap-3">
+                                    <div class="flex items-center justify-between">
                                         <h3 class="font-bold text-base text-white">{{ t('logs.title') }}</h3>
+                                        <button @click="logPaused = !logPaused"
+                                            class="text-xs px-2 py-1 rounded border transition-colors"
+                                            :class="logPaused ? 'bg-amber-500/20 border-amber-500/40 text-amber-400' : 'bg-slate-700 border-slate-600 text-slate-400 hover:text-white'">
+                                            <i :class="logPaused ? 'fa-solid fa-play' : 'fa-solid fa-pause'" class="mr-1"></i>
+                                            {{ logPaused ? t('logs.resume') : t('logs.pause') }}
+                                        </button>
                                     </div>
                                 </div>
                                 <div class="flex-1 overflow-y-auto p-4 space-y-1" ref="logContainer" @scroll="handleLogScroll">
