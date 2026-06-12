@@ -38,7 +38,7 @@ public class MetricsCollectorScheduler {
         });
 
         scheduler.scheduleAtFixedRate(this::collectAndSave, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
-        log.info("指标采集调度器已启动，间隔: {}s", intervalSeconds);
+        log.info("Metrics collector scheduler started, interval: {}s", intervalSeconds);
     }
 
     /**
@@ -47,7 +47,7 @@ public class MetricsCollectorScheduler {
     public void stop() {
         if (scheduler != null && !scheduler.isShutdown()) {
             scheduler.shutdown();
-            log.info("指标采集调度器已停止");
+            log.info("Metrics collector scheduler stopped");
         }
     }
 
@@ -56,7 +56,7 @@ public class MetricsCollectorScheduler {
             JVMMetrics metrics = JVMMetrics.collect();
             metricsStorage.saveSnapshot(metrics);
         } catch (Exception e) {
-            log.warn("采集或持久化 JVM 指标失败", e);
+            log.warn("Failed to collect or persist JVM metrics", e);
         }
     }
 }

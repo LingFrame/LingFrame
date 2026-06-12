@@ -176,7 +176,7 @@ public class DashboardGovernanceSupport {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             governanceStorage.saveInvocationConfig(lingId, mapper.writeValueAsString(policy));
         } catch (Exception e) {
-            log.warn("持久化治理策略失败: {}", lingId, e);
+            log.warn("Failed to persist governance strategy: {}", lingId, e);
         }
     }
 }

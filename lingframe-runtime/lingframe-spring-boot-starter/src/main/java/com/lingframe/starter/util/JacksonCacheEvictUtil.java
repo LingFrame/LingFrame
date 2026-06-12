@@ -15,9 +15,10 @@ public class JacksonCacheEvictUtil {
     private static final Logger log = LoggerFactory.getLogger(JacksonCacheEvictUtil.class);
 
     public static void evictByClassLoader(ObjectMapper objectMapper, ClassLoader targetLoader) {
-        if (objectMapper == null) return;
+        if (objectMapper == null)
+            return;
 
-        log.info("开始彻底清理 Jackson 缓存以释放 ClassLoader: {}", targetLoader);
+        log.info("Start completely clearing Jackson cache to release ClassLoader: {}", targetLoader);
 
         // 1. 清理 Serializer 缓存 (Map<TypeKey, JsonSerializer>)
         flushSerializerCache(objectMapper);
@@ -45,9 +46,9 @@ public class JacksonCacheEvictUtil {
             if (roMap instanceof AtomicReference) {
                 ((AtomicReference<?>) roMap).set(null);
             }
-            log.info("✅ SerializerCache 已彻底清空");
+            log.info("✅ SerializerCache cleared completely");
         } catch (Exception e) {
-            log.warn("清理 SerializerCache 失败: {}", e.getMessage());
+            log.warn("Failed to clear SerializerCache: {}", e.getMessage());
         }
     }
 
@@ -65,9 +66,9 @@ public class JacksonCacheEvictUtil {
             if (roMap instanceof AtomicReference) {
                 ((AtomicReference<?>) roMap).set(null);
             }
-            log.info("✅ DeserializerCache 已彻底清空");
+            log.info("✅ DeserializerCache cleared completely");
         } catch (Exception e) {
-            log.warn("清理 DeserializerCache 失败: {}", e.getMessage());
+            log.warn("Failed to clear DeserializerCache: {}", e.getMessage());
         }
     }
 
@@ -78,9 +79,9 @@ public class JacksonCacheEvictUtil {
 
             // 清空 LRUMap
             invokeClear(cache);
-            log.info("✅ TypeFactoryCache 已彻底清空");
+            log.info("✅ TypeFactoryCache cleared completely");
         } catch (Exception e) {
-            log.warn("清理 TypeFactoryCache 失败: {}", e.getMessage());
+            log.warn("Failed to clear TypeFactoryCache: {}", e.getMessage());
         }
     }
 
@@ -89,9 +90,9 @@ public class JacksonCacheEvictUtil {
             Object shared = DefaultConversionService.getSharedInstance();
             Object cache = getFieldValue(shared, "converterCache");
             invokeClear(cache);
-            log.info("✅ ConversionServiceCache 已清空");
+            log.info("✅ ConversionServiceCache cleared completely");
         } catch (Exception e) {
-            log.warn("清理 ConversionServiceCache 失败: {}", e.getMessage());
+            log.warn("Failed to clear ConversionServiceCache: {}", e.getMessage());
         }
     }
 
@@ -109,7 +110,8 @@ public class JacksonCacheEvictUtil {
     }
 
     private static void invokeClear(Object obj) {
-        if (obj == null) return;
+        if (obj == null)
+            return;
         try {
             // 如果是 Map
             if (obj instanceof Map) {

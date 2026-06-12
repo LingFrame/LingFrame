@@ -49,7 +49,7 @@ public class RateLimitFilter implements Filter {
         TokenBucket bucket = perIpBuckets.computeIfAbsent(clientIp, k -> new TokenBucket());
 
         if (!bucket.tryAcquire()) {
-            log.warn("请求限流: ip={}, path={}", clientIp, path);
+            log.warn("Request rate limited: ip={}, path={}", clientIp, path);
             HttpServletResponse httpResponse = (HttpServletResponse) response;
             httpResponse.setStatus(429);
             httpResponse.setContentType("application/json;charset=UTF-8");

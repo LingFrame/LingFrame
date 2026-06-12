@@ -36,7 +36,7 @@ public class ServicePlaygroundController {
         try {
             return ApiResponse.ok(playgroundService.getServices(lingId));
         } catch (Exception e) {
-            log.error("获取服务元数据失败: {}", lingId, e);
+            log.error("Failed to get service metadata: {}", lingId, e);
             return ApiResponse.error("获取服务元数据失败: " + e.getMessage());
         }
     }
@@ -54,7 +54,7 @@ public class ServicePlaygroundController {
                     request.getParameterTypes(), request.getArgs());
             return ApiResponse.ok(result);
         } catch (Exception e) {
-            log.error("服务调用失败: {}/{}", lingId, request.getFqsid(), e);
+            log.error("Service invocation failed: {}/{}", lingId, request.getFqsid(), e);
             return ApiResponse.error("服务调用失败: " + e.getMessage());
         }
     }

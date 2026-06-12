@@ -28,7 +28,7 @@ public class DangerousApiVerifier implements LingSecurityVerifier {
 
         boolean effectiveStrict = strictMode && !isTrustedLing(lingId);
         if (strictMode && !effectiveStrict) {
-            log.info("[{}] 可信灵元，使用非严格模式", lingId);
+            log.info("[{}] Trusted ling, using non-strict mode", lingId);
         }
 
         try {

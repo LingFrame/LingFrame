@@ -37,7 +37,7 @@ public class ReadOnlyInterceptor implements HandlerInterceptor {
             }
         }
 
-        log.warn("只读模式拒绝写操作: {} {}", method, uri);
+        log.warn("Write operation rejected in read-only mode: {} {}", method, uri);
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write("{\"success\":false,\"message\":\"当前为只读模式，写操作已禁用\"}");

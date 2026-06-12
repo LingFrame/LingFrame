@@ -639,7 +639,7 @@ public class SpringLingContainer implements LingContainer {
                 }
             }
             } catch (Exception e) {
-                log.warn("清理 Jackson 缓存失败", e);
+                log.warn("Failed to clear Jackson cache", e);
             }
 
             // 🔥 第一阶段清理：在 Context 关闭前执行 preCleanup

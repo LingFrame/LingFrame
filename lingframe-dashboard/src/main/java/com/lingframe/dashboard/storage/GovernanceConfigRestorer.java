@@ -33,7 +33,7 @@ public class GovernanceConfigRestorer {
         try {
             Map<String, Map<String, String>> allConfigs = governanceStorage.loadAllConfigs();
             if (allConfigs.isEmpty()) {
-                log.info("无持久化治理配置需要恢复");
+                log.info("No persisted governance configurations to restore");
                 return;
             }
 
@@ -53,7 +53,7 @@ public class GovernanceConfigRestorer {
                         canaryRouter.setCanaryConfig(lingId, percent, canaryVersion);
                         hasPatch = true;
                     } catch (Exception e) {
-                        log.warn("恢复灰度配置失败: lingId={}", lingId, e);
+                        log.warn("Failed to restore canary configuration: lingId={}", lingId, e);
                     }
                 }
 
@@ -71,7 +71,7 @@ public class GovernanceConfigRestorer {
                             mergedPatch = GovernancePolicy.merge(mergedPatch, policy);
                         }
                     } catch (Exception e) {
-                        log.warn("恢复治理配置失败，跳过: lingId={}, type={}", lingId, configEntry.getKey(), e);
+                        log.warn("Failed to restore governance configuration, skipped: lingId={}, type={}", lingId, configEntry.getKey(), e);
                     }
                 }
 
@@ -84,9 +84,9 @@ public class GovernanceConfigRestorer {
                     restored++;
                 }
             }
-            log.info("恢复治理配置完成: {} 个灵元", restored);
+            log.info("Governance configuration restoration completed: {} lings", restored);
         } catch (Exception e) {
-            log.warn("恢复治理配置失败（不影响启动）", e);
+            log.warn("Failed to restore governance configuration (does not affect startup)", e);
         }
     }
 }

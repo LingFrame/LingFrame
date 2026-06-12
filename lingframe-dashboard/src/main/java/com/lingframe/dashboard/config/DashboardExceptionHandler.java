@@ -21,7 +21,7 @@ public class DashboardExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, Object> handleBadRequest(IllegalArgumentException e) {
-        log.debug("请求参数错误: {}", e.getMessage());
+        log.debug("Request parameter error: {}", e.getMessage());
         Map<String, Object> result = new HashMap<>();
         result.put("success", false);
         result.put("message", e.getMessage() != null ? e.getMessage() : "参数错误");
@@ -31,7 +31,7 @@ public class DashboardExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public Map<String, Object> handleConflict(IllegalStateException e) {
-        log.debug("状态冲突: {}", e.getMessage());
+        log.debug("Status conflict: {}", e.getMessage());
         Map<String, Object> result = new HashMap<>();
         result.put("success", false);
         result.put("message", e.getMessage() != null ? e.getMessage() : "操作冲突");
@@ -42,7 +42,7 @@ public class DashboardExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Map<String, Object> handleGeneral(Exception e) {
         // 生产环境不暴露堆栈，仅记录日志
-        log.error("Dashboard 内部错误: {}", e.getClass().getSimpleName(), e);
+        log.error("Internal dashboard error: {}", e.getClass().getSimpleName(), e);
         Map<String, Object> result = new HashMap<>();
         result.put("success", false);
         result.put("message", "服务内部错误，请稍后重试");

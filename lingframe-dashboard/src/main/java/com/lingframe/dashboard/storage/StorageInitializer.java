@@ -30,7 +30,7 @@ public class StorageInitializer {
             createTables();
             cleanupExpiredData();
 
-            log.info("SQLite 存储初始化完成: {}", properties.getPath());
+            log.info("SQLite storage initialization completed: {}", properties.getPath());
         } catch (Exception e) {
             throw new IllegalStateException("SQLite 存储初始化失败", e);
         }
@@ -115,7 +115,7 @@ public class StorageInitializer {
             now - (long) properties.getMetricsRetentionDays() * 24 * 3600 * 1000
         );
         if (metricsDeleted > 0) {
-            log.info("清理过期指标数据: {} 条", metricsDeleted);
+            log.info("Cleaned up expired metrics data: {} records", metricsDeleted);
         }
 
         // 清理过期审计日志
@@ -124,7 +124,7 @@ public class StorageInitializer {
             now - (long) properties.getAuditRetentionDays() * 24 * 3600 * 1000
         );
         if (auditDeleted > 0) {
-            log.info("清理过期审计日志: {} 条", auditDeleted);
+            log.info("Cleaned up expired audit logs: {} records", auditDeleted);
         }
     }
 }

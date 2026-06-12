@@ -89,10 +89,10 @@ public class LingFrameConfig {
                 missing.add("--add-opens java.sql/java.sql=ALL-UNNAMED");
             }
             if (!missing.isEmpty()) {
-                log.warn("[LingFrame] JDK {} 检测到强封装限制，灵元卸载时反射清理可能静默失败（Metaspace 泄漏风险）。\n" +
-                        "  建议添加以下 JVM 参数：\n  {}", jdkVersion, String.join("\n  ", missing));
+                log.warn("[LingFrame] JDK {} detected strong encapsulation limits, reflection cleanup during ling unloading may fail silently (Metaspace leak risk).\n" +
+                        "  Recommended to add the following JVM arguments:\n  {}", jdkVersion, String.join("\n  ", missing));
             } else {
-                log.info("[LingFrame] JDK {} --add-opens 检测通过，灵元卸载反射清理可用", jdkVersion);
+                log.info("[LingFrame] JDK {} --add-opens detection passed, reflection cleanup is available for ling unloading", jdkVersion);
             }
         }
     }

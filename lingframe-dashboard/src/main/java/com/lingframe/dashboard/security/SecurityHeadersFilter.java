@@ -38,14 +38,14 @@ public class SecurityHeadersFilter implements Filter {
         }
         // Referrer 策略
         httpResponse.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-        // CSP：仅允许同源资源
+        // CSP：允许同源 + 白名单 CDN 资源
         httpResponse.setHeader("Content-Security-Policy",
             "default-src 'self'; " +
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net; " +
-            "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net; " +
-            "font-src 'self' cdn.jsdelivr.net; " +
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net cdn.tailwindcss.com; " +
+            "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdn.tailwindcss.com; " +
+            "font-src 'self' cdn.jsdelivr.net cdn.tailwindcss.com; " +
             "img-src 'self' data:; " +
-            "connect-src 'self'; " +
+            "connect-src 'self' cdn.jsdelivr.net; " +
             "frame-ancestors 'self'");
 
         chain.doFilter(request, response);

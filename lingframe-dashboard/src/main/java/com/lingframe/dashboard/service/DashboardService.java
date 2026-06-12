@@ -17,6 +17,7 @@ import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.LingUninstallResultDTO;
+import com.lingframe.dashboard.dto.LingPackageDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.dto.TransitionHistoryDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
@@ -147,12 +148,29 @@ public class DashboardService {
     }
 
     public LingUninstallResultDTO uninstallLing(String lingId) {
-        return uninstallResultMapper.toDto(lingOperations.uninstallLing(lingId));
+        return uninstallLing(lingId, false);
+    }
+
+    public LingUninstallResultDTO uninstallLing(String lingId, boolean deleteFile) {
+        LingUninstallResultDTO result = uninstallResultMapper.toDto(lingOperations.uninstallLing(lingId));
+        if (deleteFile) {
+            deleteHomePackageFile(lingId, null);
+        }
+        return result;
     }
 
     public LingUninstallResultDTO uninstallLing(String lingId, String version) {
-        return uninstallResultMapper.toDto(lingOperations.uninstallLing(lingId, version));
+        return uninstallLing(lingId, version, false);
     }
+
+    public LingUninstallResultDTO uninstallLing(String lingId, String version, boolean deleteFile) {
+        LingUninstallResultDTO result = uninstallResultMapper.toDto(lingOperations.uninstallLing(lingId, version));
+        if (deleteFile) {
+            deleteHomePackageFile(lingId, version);
+        }
+        return result;
+    }
+
 
     public LingInfoDTO reloadLing(String lingId, String version) {
         return getLingInfo(lingOperations.reloadLing(lingId, version));
@@ -191,7 +209,7 @@ public class DashboardService {
                 canaryData.put("canaryVersion", canaryVersion);
                 governanceStorage.saveCanaryConfig(lingId, mapper.writeValueAsString(canaryData));
             } catch (Exception e) {
-                log.warn("持久化灰度配置失败: {}", lingId, e);
+                log.warn("Failed to persist canary configuration: {}", lingId, e);
             }
         }
     }
@@ -270,5 +288,92 @@ public class DashboardService {
                 .to(record.to().name())
                 .timestamp(record.timestamp())
                 .build();
+    }
+
+    /**
+     * 扫描磁盘 ling-home 下的所有静态灵元 Jar 包及权限契约。
+     */
+    public List<LingPackageDTO> scanPackages() {
+        List<File> files = lingOperations.getLingSourceResolver().listHomeFiles();
+        if (files == null || files.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<LingPackageDTO> packageList = new java.util.ArrayList<>();
+        for (File file : files) {
+            try {
+                com.lingframe.api.config.LingDefinition definition = com.lingframe.core.loader.LingManifestLoader.parseDefinition(file);
+                if (definition == null) {
+                    continue;
+                }
+                
+                String lingId = definition.getId();
+                String version = definition.getVersion();
+                
+                boolean isInstalled = false;
+                LingRuntime runtime = lingRepository.getRuntime(lingId);
+                if (runtime != null) {
+                    isInstalled = runtime.getInstancePool().getInstance(version) != null;
+                }
+
+                List<String> declaredPerms = new java.util.ArrayList<>();
+                if (definition.getGovernance() != null) {
+                    if (definition.getGovernance().getCapabilities() != null) {
+                        for (com.lingframe.api.config.GovernancePolicy.CapabilityRule rule : definition.getGovernance().getCapabilities()) {
+                            if (rule.getCapability() != null) {
+                                declaredPerms.add(rule.getCapability() + " (" + (rule.getAccessType() != null ? rule.getAccessType() : "EXECUTE") + ")");
+                            }
+                        }
+                    }
+                    if (definition.getGovernance().getPermissions() != null) {
+                        for (com.lingframe.api.config.GovernancePolicy.PermissionRule rule : definition.getGovernance().getPermissions()) {
+                            if (rule.getMethodPattern() != null) {
+                                declaredPerms.add("Method: " + rule.getMethodPattern() + " [" + (rule.getPermissionId() != null ? rule.getPermissionId() : "ALLOW") + "]");
+                            }
+                        }
+                    }
+                }
+
+                packageList.add(LingPackageDTO.builder()
+                        .lingId(lingId)
+                        .version(version)
+                        .fileName(file.getName())
+                        .fileSize(file.length())
+                        .mainClass(definition.getMainClass())
+                        .isInstalled(isInstalled)
+                        .permissions(declaredPerms)
+                        .build());
+            } catch (Exception e) {
+                log.warn("Failed to parse disk package, skipped: {}", file.getName(), e);
+            }
+        }
+        return packageList;
+    }
+
+    /**
+     * 将磁盘上已存在的物理包重新部署冷启动
+     */
+    public LingInfoDTO deployPackage(String lingId, String version) {
+        File file = lingOperations.getLingSourceResolver().resolveSourceFile(lingId, version);
+        if (file == null || !file.exists()) {
+            throw new com.lingframe.core.exception.LingInstallException(lingId, "物理包文件不存在: " + lingId + ":" + version, null);
+        }
+        String id = lingOperations.installLing(file);
+        return getLingInfo(id);
+    }
+
+    private void deleteHomePackageFile(String lingId, String version) {
+        try {
+            File file = lingOperations.getLingSourceResolver().resolveSourceFile(lingId, version);
+            if (file != null && file.exists()) {
+                log.info("Deleted physical package file: {}", file.getAbsolutePath());
+                if (!file.delete()) {
+                    log.warn("Cannot delete file physically, will try to delete on JVM exit: {}", file.getAbsolutePath());
+                    file.deleteOnExit();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Exception deleting physical file: {}:{}", lingId, version, e);
+        }
     }
 }

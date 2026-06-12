@@ -40,6 +40,11 @@ public class DashboardLingOperations {
         this.lingSourceResolver = lingSourceResolver;
     }
 
+    public DashboardLingSourceResolver getLingSourceResolver() {
+        return this.lingSourceResolver;
+    }
+
+
     public String installLing(File file) {
         try {
             LingDefinition definition = LingManifestLoader.parseDefinition(file);

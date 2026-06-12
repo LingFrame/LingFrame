@@ -55,9 +55,9 @@ class LingControllerTest {
                         .summary("risk detected")
                         .build()))
                 .build();
-        when(dashboardService.uninstallLing("ling1")).thenReturn(dto);
+        when(dashboardService.uninstallLing("ling1", false)).thenReturn(dto);
 
-        ApiResponse<LingUninstallResultDTO> response = controller.uninstall("ling1");
+        ApiResponse<LingUninstallResultDTO> response = controller.uninstall("ling1", false);
 
         assertTrue(response.isSuccess());
         assertNotNull(response.getData());

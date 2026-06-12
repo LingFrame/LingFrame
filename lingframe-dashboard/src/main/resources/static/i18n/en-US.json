@@ -1,7 +1,7 @@
 {
   "branding": {
     "name": "LingFrame",
-    "icon": "L",
+    "icon": "images/logo.png",
     "codename": "Nirvana"
   },
     "title": "LingFrame | Governance Center",
@@ -20,7 +20,9 @@
         "sseConnecting": "SSE Connecting...",
         "sseDisconnected": "SSE Disconnected",
         "lingCount": "Lings",
-        "logCount": "Logs"
+        "logCount": "Logs",
+        "lingCenter": "Ling Center",
+        "lings": "Ling Center"
     },
     "header": {
         "notSelected": "Not Selected",
@@ -72,13 +74,14 @@
     },
     "logs": {
         "title": "Trace Logs",
-        "current": "Current",
-        "all": "All",
+        "current": "Current Ling",
+        "all": "All Logs",
         "waiting": "Waiting for logs...",
         "connecting": "Connecting...",
         "newLogs": "New Logs",
         "pause": "Pause",
         "resume": "Resume",
+        "clear": "Clear",
         "aggregationMode": "Aggregation Mode",
         "filterByVersion": "Filter by Version",
         "filterByEventType": "Filter by Event Type",
@@ -150,7 +153,8 @@
         "traces": "Governance Traces",
         "paramInput": "Enter parameter value",
         "returnType": "Return",
-        "method": "Method"
+        "method": "Method",
+        "methodsCount": "methods"
     },
     "audit": {
         "success": "SUCCESS",
@@ -361,5 +365,35 @@
   },
   "readonly": {
     "banner": "Read-Only Mode - Write operations disabled"
+  },
+  "lingCenter": {
+    "title": "Ling Lifecycle Center",
+    "instances": "Runtime Sandbox Instances",
+    "diskPackages": "Disk Artifacts Repository",
+    "fileName": "File Name",
+    "fileSize": "File Size",
+    "permissions": "Declared Capabilities Permissions",
+    "noPermissions": "No permission request declared",
+    "deploy": "Deploy Package",
+    "noPackages": "Disk artifacts repository is empty",
+    "uninstallKeepFile": "Undeploy Version (Keep File)",
+    "uninstallDeleteFile": "Undeploy Version (Delete File)",
+    "version": "Version"
+  },
+  "toastExtension": {
+    "deploySuccess": "Ling package deployed successfully",
+    "deployFailed": "Failed to deploy package",
+    "uninstallKeepFileSuccess": "Undeploy succeeded, package file is kept",
+    "uninstallDeleteFileSuccess": "彻底卸载成功, package file deleted from disk"
+  },
+  "onboarding": {
+    "title": "Developer Onboarding",
+    "subtitle": "Follow these three steps to quickly run the LingFrame dual-layer governance environment",
+    "step1Title": "Prepare Package",
+    "step1Desc": "Scan and ensure at least one physical Ling JAR package exists in the Disk Artifacts Repository.",
+    "step2Title": "Deploy and Activate",
+    "step2Desc": "Deploy a Ling from the repository, or find and activate it in the left runtime list.",
+    "step3Title": "Governance Interception Test",
+    "step3Desc": "Ensure at least one ACTIVE Ling instance exists, then run simulations in Service Verification."
   }
 }

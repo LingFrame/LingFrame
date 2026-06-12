@@ -42,7 +42,7 @@ public class SseTicketController {
         }
         String ticket = UUID.randomUUID().toString().replace("-", "");
         tickets.put(ticket, System.currentTimeMillis());
-        log.debug("签发 SSE ticket: {}", ticket);
+        log.debug("Issued SSE ticket: {}", ticket);
         Map<String, String> result = new HashMap<>();
         result.put("ticket", ticket);
         return result;
@@ -84,7 +84,7 @@ public class SseTicketController {
             }
         }
         if (removed > 0) {
-            log.debug("清理过期 SSE ticket: {} 个", removed);
+            log.debug("Cleaned up expired SSE tickets: {} tickets", removed);
         }
     }
 }

@@ -143,14 +143,12 @@ public class LingController {
         }
     }
 
-    /**
-     * 卸载灵元
-     * 彻底回收灵元占用的 ClassLoader 及相关资源。
-     */
     @DeleteMapping("/uninstall/{lingId}")
-    public ApiResponse<LingUninstallResultDTO> uninstall(@PathVariable String lingId) {
+    public ApiResponse<LingUninstallResultDTO> uninstall(
+            @PathVariable String lingId,
+            @RequestParam(value = "deleteFile", defaultValue = "false") boolean deleteFile) {
         try {
-            LingUninstallResultDTO result = dashboardService.uninstallLing(lingId);
+            LingUninstallResultDTO result = dashboardService.uninstallLing(lingId, deleteFile);
             return ApiResponse.ok("卸载成功", result);
         } catch (Exception e) {
             log.error("Uninstall failed: {}", lingId, e);
@@ -162,15 +160,19 @@ public class LingController {
      * 按版本卸载灵元
      */
     @DeleteMapping("/uninstall/{lingId}/{version}")
-    public ApiResponse<LingUninstallResultDTO> uninstallVersion(@PathVariable String lingId, @PathVariable String version) {
+    public ApiResponse<LingUninstallResultDTO> uninstallVersion(
+            @PathVariable String lingId,
+            @PathVariable String version,
+            @RequestParam(value = "deleteFile", defaultValue = "false") boolean deleteFile) {
         try {
-            LingUninstallResultDTO result = dashboardService.uninstallLing(lingId, version);
+            LingUninstallResultDTO result = dashboardService.uninstallLing(lingId, version, deleteFile);
             return ApiResponse.ok("版本 " + version + " 卸载成功", result);
         } catch (Exception e) {
             log.error("Uninstall failed for: {}:{}", lingId, version, e);
             return ApiResponse.error("卸载特定版本失败: " + e.getMessage());
         }
     }
+
 
     /**
      * 热重载灵元
@@ -418,6 +420,33 @@ public class LingController {
 
     @Data
     public static class LingReloadRequest {
+        private String version;
+    }
+
+    @GetMapping("/packages")
+    public ApiResponse<List<LingPackageDTO>> listPackages() {
+        try {
+            return ApiResponse.ok(dashboardService.scanPackages());
+        } catch (Exception e) {
+            log.error("Failed to scan packages", e);
+            return ApiResponse.error("扫描磁盘包失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/packages/deploy")
+    public ApiResponse<LingInfoDTO> deployPackage(@RequestBody DeployRequest request) {
+        try {
+            LingInfoDTO info = dashboardService.deployPackage(request.getLingId(), request.getVersion());
+            return ApiResponse.ok("部署成功", info);
+        } catch (Exception e) {
+            log.error("Failed to deploy package: {}:{}", request.getLingId(), request.getVersion(), e);
+            return ApiResponse.error("部署失败: " + e.getMessage());
+        }
+    }
+
+    @Data
+    public static class DeployRequest {
+        private String lingId;
         private String version;
     }
 

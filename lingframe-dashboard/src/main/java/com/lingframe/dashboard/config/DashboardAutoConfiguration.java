@@ -154,6 +154,17 @@ public class DashboardAutoConfiguration {
     @Bean("dashboardJdbcTemplate")
     @ConditionalOnProperty(prefix = "lingframe.dashboard.storage", name = "enabled", havingValue = "true", matchIfMissing = true)
     public JdbcTemplate dashboardJdbcTemplate(StorageProperties storageProperties) {
+        // 确保数据库文件所在目录存在，否则 SQLite 无法创建数据库文件
+        java.io.File dbFile = new java.io.File(storageProperties.getPath());
+        java.io.File parentDir = dbFile.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            if (parentDir.mkdirs()) {
+                log.info("[LingFrame] Created database directory: {}", parentDir.getAbsolutePath());
+            } else {
+                log.warn("[LingFrame] Failed to create database directory: {}", parentDir.getAbsolutePath());
+            }
+        }
+
         org.springframework.jdbc.datasource.DriverManagerDataSource ds = new org.springframework.jdbc.datasource.DriverManagerDataSource();
         ds.setDriverClassName("org.sqlite.JDBC");
         ds.setUrl("jdbc:sqlite:" + storageProperties.getPath());

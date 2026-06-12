@@ -22,6 +22,35 @@ public class DashboardLingSourceResolver {
         this.lingFrameConfig = lingFrameConfig;
     }
 
+    /**
+     * 列出磁盘 ling-home 目录下所有的 JAR 包物理文件。
+     */
+    public List<File> listHomeFiles() {
+        if (lingFrameConfig == null || lingFrameConfig.getLingHome() == null) {
+            return java.util.Collections.emptyList();
+        }
+        File home = new File(lingFrameConfig.getLingHome());
+        if (!home.exists() || !home.isDirectory()) {
+            return java.util.Collections.emptyList();
+        }
+        File[] files = home.listFiles();
+        if (files == null) {
+            return java.util.Collections.emptyList();
+        }
+        List<File> list = new java.util.ArrayList<File>();
+        for (File file : files) {
+            if (file.isFile() && file.getName().endsWith(".jar")) {
+                list.add(file);
+            }
+        }
+        return list;
+    }
+
+    public LingFrameConfig getLingFrameConfig() {
+        return this.lingFrameConfig;
+    }
+
+
     public LingInstance selectStableInstance(LingRuntime runtime) {
         if (runtime == null) {
             return null;

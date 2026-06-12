@@ -1,7 +1,7 @@
 {
   "branding": {
     "name": "灵珑",
-    "icon": "灵",
+    "icon": "images/logo.png",
     "codename": "涅槃"
   },
   "title": "灵珑 | 核心治理中心",
@@ -20,7 +20,9 @@
     "sseConnecting": "SSE 连接中...",
     "sseDisconnected": "SSE 断开",
     "lingCount": "灵元数",
-    "logCount": "日志"
+    "logCount": "日志",
+    "lingCenter": "灵元中心",
+    "lings": "灵元中心"
   },
   "header": {
     "notSelected": "未选择",
@@ -72,13 +74,14 @@
   },
   "logs": {
     "title": "追踪日志",
-    "current": "当前",
-    "all": "全部",
+    "current": "当前选中",
+    "all": "全部日志",
     "waiting": "等待日志...",
     "connecting": "连接中...",
     "newLogs": "新日志",
     "pause": "暂停",
     "resume": "恢复",
+    "clear": "清除",
     "aggregationMode": "聚合模式",
     "filterByVersion": "按版本筛选",
     "filterByEventType": "按事件类型筛选",
@@ -150,7 +153,8 @@
     "traces": "治理追踪",
     "paramInput": "输入参数值",
     "returnType": "返回",
-    "method": "方法"
+    "method": "方法",
+    "methodsCount": "个方法"
   },
   "audit": {
     "success": "SUCCESS",
@@ -361,5 +365,35 @@
   },
   "readonly": {
     "banner": "只读模式 - 写操作已禁用"
+  },
+  "lingCenter": {
+    "title": "灵元生命周期中心",
+    "instances": "运行时沙盒实例",
+    "diskPackages": "磁盘物理包仓库",
+    "fileName": "文件名",
+    "fileSize": "文件大小",
+    "permissions": "声明契约权限",
+    "noPermissions": "无权限契约声明",
+    "deploy": "一键部署",
+    "noPackages": "磁盘包仓库为空",
+    "uninstallKeepFile": "仅卸载版本 (保留包)",
+    "uninstallDeleteFile": "彻底卸载 (删除包)",
+    "version": "版本"
+  },
+  "toastExtension": {
+    "deploySuccess": "灵元部署成功",
+    "deployFailed": "灵元部署失败",
+    "uninstallKeepFileSuccess": "卸载版本成功，物理包已保留",
+    "uninstallDeleteFileSuccess": "彻底卸载成功，物理包已从磁盘删除"
+  },
+  "onboarding": {
+    "title": "开发者冷启动新手引导 (Onboarding)",
+    "subtitle": "按以下三步快速跑通灵珑双层治理环境",
+    "step1Title": "物理包准备",
+    "step1Desc": "在磁盘物理包仓库中扫描并存在至少一个灵元 JAR 包。",
+    "step2Title": "激活部署实例",
+    "step2Desc": "从仓库中部署灵元，或者在左侧的运行时列表中找到并激活它。",
+    "step3Title": "治理拦截测试",
+    "step3Desc": "拥有至少一个 ACTIVE 状态的灵元实例，可在服务验证中进行演练测试。"
   }
 }

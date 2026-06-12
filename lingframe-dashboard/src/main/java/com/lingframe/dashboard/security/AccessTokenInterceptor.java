@@ -30,7 +30,7 @@ public class AccessTokenInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        log.warn("访问令牌校验失败: {} {}", request.getMethod(), request.getRequestURI());
+        log.warn("Access token verification failed: {} {}", request.getMethod(), request.getRequestURI());
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write("{\"success\":false,\"message\":\"Unauthorized: invalid or missing access token\"}");

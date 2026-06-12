@@ -103,7 +103,7 @@ public class ServicePlaygroundService {
             }
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
-            log.warn("服务调用失败: {}/{} - {}", fqsid, methodName, e.getMessage());
+            log.warn("Service invocation failed: {}/{} - {}", fqsid, methodName, e.getMessage());
 
             return InvokeResultDTO.builder()
                     .success(false)

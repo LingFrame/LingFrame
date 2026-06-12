@@ -57,7 +57,7 @@ public class DatabaseBackupScheduler {
             try {
                 jdbcTemplate.execute("PRAGMA wal_checkpoint(TRUNCATE)");
             } catch (Exception e) {
-                log.warn("WAL checkpoint 失败，备份可能不完整: {}", e.getMessage());
+                log.warn("WAL checkpoint failed, backup may be incomplete: {}", e.getMessage());
             }
 
             String backupName = "dashboard_" + LocalDateTime.now().format(BACKUP_FMT) + ".db";
@@ -65,13 +65,13 @@ public class DatabaseBackupScheduler {
 
             Files.copy(dbFile.toPath(), backupPath, StandardCopyOption.REPLACE_EXISTING);
 
-            log.info("数据库备份完成: {}", backupPath);
+            log.info("Database backup completed: {}", backupPath);
 
             // 清理过期备份
             cleanupOldBackups(backupDir);
 
         } catch (Exception e) {
-            log.warn("数据库备份异常（不影响运行）", e);
+            log.warn("Database backup exception (does not affect operation)", e);
         }
     }
 
@@ -91,10 +91,10 @@ public class DatabaseBackupScheduler {
 
             for (int i = retention; i < backups.size(); i++) {
                 Files.deleteIfExists(backups.get(i));
-                log.debug("删除过期备份: {}", backups.get(i));
+                log.debug("Delete expired backup: {}", backups.get(i));
             }
         } catch (Exception e) {
-            log.warn("清理过期备份失败", e);
+            log.warn("Failed to clean up expired backups", e);
         }
     }
 }
