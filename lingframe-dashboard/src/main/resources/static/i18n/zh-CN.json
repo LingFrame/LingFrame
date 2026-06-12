@@ -12,6 +12,7 @@
     "envTest": "测试环境",
     "envProd": "生产环境",
     "coreFeatures": "核心功能",
+    "overview": "全局概览",
     "monitor": "系统监控",
     "governance": "治理中心",
     "verification": "服务验证",
@@ -43,7 +44,8 @@
     "title": "灵元列表",
     "count": "{n} 个",
     "empty": "暂无已安装灵元",
-    "search": "搜索灵元..."
+    "search": "搜索灵元...",
+    "services": "个服务"
   },
   "traffic": {
     "title": "流量分发",
@@ -335,6 +337,20 @@
       "warnings": "告警",
       "capabilitiesTitle": "资源清理能力",
       "capabilitiesEmpty": "暂未观测到资源清理能力快照。"
+  },
+  "overview": {
+    "heroSubtitle": "每个灵元独立运行、独立演进、独立治理，无任何依赖耦合",
+    "totalLings": "灵元总数",
+    "activeLings": "活跃灵元",
+    "canaryLings": "灰度中",
+    "starMap": "灵元星图",
+    "starMapHint": "点击节点选中灵元",
+    "noLings": "暂无灵元",
+    "noLingsHint": "安装你的第一个灵元，开始体验零依赖架构",
+    "goInstall": "安装灵元",
+    "keyMetrics": "关键指标",
+    "recentEvents": "最近事件",
+    "noEvents": "暂无事件"
   },
   "login": {
     "title": "访问认证",

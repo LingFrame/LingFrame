@@ -8,7 +8,7 @@ createApp({
         // ==================== 状态 ====================
         const lings = ref([]);
         const activeId = ref(null);
-        const activeNav = ref('monitor');
+        const activeNav = ref('overview');
         const lingSearch = ref('');
         const canaryPct = ref(0);
         const isAuto = ref(false);
@@ -216,6 +216,17 @@ createApp({
             cpuBudgetMsPerMinute: '',
             memoryBudgetMb: ''
         });
+
+        // 灵元首次出现时间记录（用于计算运行时长）
+        const lingFirstSeen = reactive({});
+
+        // 灵元服务数量缓存（从 playground 数据获取）
+        const lingServiceCounts = reactive({});
+
+        // 灵元星图状态
+        const starMapCanvas = ref(null);
+        const starMapHover = ref(null);
+        let starMapAnimFrame = null;
 
         let eventSource = null;
         let timeTimer = null;
@@ -1591,6 +1602,46 @@ createApp({
             return colors[idx % colors.length] || colors[0];
         };
 
+        // 灵元健康指示灯样式
+        const getLingHealthDotClass = (lingId) => {
+            const ling = lings.value.find(p => p.lingId === lingId);
+            const health = lingHealthMetrics[lingId]?.summary;
+            const isActive = ling && (ling.status === 'ACTIVE' || ling.status === 'DEGRADED');
+
+            if (health) {
+                const status = health.healthStatus;
+                if (status === 'HEALTHY') return isActive ? 'healthy pulse' : 'healthy';
+                if (status === 'WARNING') return 'degraded';
+                if (status === 'UNHEALTHY') return 'unhealthy';
+            }
+            // 无健康数据时，根据灵元状态推断
+            if (isActive) return 'healthy pulse';
+            if (ling?.status === 'INACTIVE') return 'unknown';
+            return 'unknown';
+        };
+
+        // 灵元运行时长（优先使用后端 installedAt，兜底用前端首次发现时间）
+        const getLingUptime = (lingId) => {
+            const ling = lings.value.find(p => p.lingId === lingId);
+            const startTime = ling?.installedAt || lingFirstSeen[lingId];
+            if (!startTime) return '';
+            const diff = Date.now() - startTime;
+            const minutes = Math.floor(diff / 60000);
+            if (minutes < 1) return '<1m';
+            if (minutes < 60) return minutes + 'm';
+            const hours = Math.floor(minutes / 60);
+            const remainMin = minutes % 60;
+            if (hours < 24) return hours + 'h ' + remainMin + 'm';
+            const days = Math.floor(hours / 24);
+            const remainHours = hours % 24;
+            return days + 'd ' + remainHours + 'h';
+        };
+
+        // 灵元服务数量
+        const getLingServiceCount = (lingId) => {
+            return lingServiceCounts[lingId] || 0;
+        };
+
         const getLogColor = (log) => {
             if (log.tag === 'FAIL' || log.tag === 'ERROR') return 'text-red-400';
             if (log.tag === 'OK' || log.tag === 'COMPLETE') return 'text-green-400';
@@ -1864,6 +1915,259 @@ createApp({
             }
         };
 
+        // ==================== 灵元星图 ====================
+        // 计算星图节点位置（圆形布局）
+        const getStarMapNodes = () => {
+            const canvas = starMapCanvas.value;
+            if (!canvas || lings.value.length === 0) return [];
+
+            const w = canvas.clientWidth;
+            const h = canvas.clientHeight;
+            const cx = w / 2;
+            const cy = h / 2;
+            const count = lings.value.length;
+            const radius = Math.min(cx, cy) - 50;
+
+            return lings.value.map((ling, i) => {
+                // 圆形均匀分布
+                const angle = (2 * Math.PI * i / count) - Math.PI / 2;
+                const x = cx + radius * Math.cos(angle);
+                const y = cy + radius * Math.sin(angle);
+
+                const health = lingHealthMetrics[ling.lingId]?.summary;
+                const isActive = ling.status === 'ACTIVE' || ling.status === 'DEGRADED';
+                const isCanary = (ling.versionDetails?.length || 0) >= 2;
+
+                let color = '#475569'; // 默认灰
+                let glowColor = 'rgba(71,85,105,0.3)';
+                if (health) {
+                    const status = health.healthStatus;
+                    if (status === 'HEALTHY') { color = '#10b981'; glowColor = 'rgba(16,185,129,0.4)'; }
+                    else if (status === 'WARNING') { color = '#f59e0b'; glowColor = 'rgba(245,158,11,0.4)'; }
+                    else if (status === 'UNHEALTHY') { color = '#ef4444'; glowColor = 'rgba(239,68,68,0.4)'; }
+                } else if (isActive) {
+                    color = '#10b981'; glowColor = 'rgba(16,185,129,0.4)';
+                }
+
+                return {
+                    lingId: ling.lingId,
+                    x, y, color, glowColor,
+                    isActive,
+                    isCanary,
+                    nodeRadius: isCanary ? 18 : 14,
+                    shortName: getLingShortName(ling.lingId),
+                    status: ling.status,
+                    versionCount: ling.versionDetails?.length || 1
+                };
+            });
+        };
+
+        // 绘制星图
+        const drawStarMap = () => {
+            const canvas = starMapCanvas.value;
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const w = canvas.clientWidth;
+            const h = canvas.clientHeight;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            ctx.scale(dpr, dpr);
+
+            // 清空画布
+            ctx.clearRect(0, 0, w, h);
+
+            const nodes = getStarMapNodes();
+            if (nodes.length === 0) return;
+
+            const time = Date.now() / 1000;
+            const cx = w / 2;
+            const cy = h / 2;
+
+            // 中心标识：零依赖
+            ctx.strokeStyle = 'rgba(99,102,241,0.2)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 24, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(129,140,248,0.7)';
+            ctx.font = '11px -apple-system, system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('零依赖', cx, cy);
+
+            // 绘制每个节点
+            nodes.forEach((node, index) => {
+                // 光晕效果
+                const pulseScale = node.isActive ? 1 + 0.15 * Math.sin(time * 2 + index) : 1;
+                const glowRadius = node.nodeRadius * 2.5 * pulseScale;
+
+                const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, glowRadius);
+                gradient.addColorStop(0, node.glowColor);
+                gradient.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, glowRadius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 灰度灵元双环
+                if (node.isCanary) {
+                    ctx.strokeStyle = 'rgba(245,158,11,0.4)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, node.nodeRadius + 5, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                // 主圆
+                ctx.fillStyle = node.color;
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, node.nodeRadius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 内部高光
+                const innerGrad = ctx.createRadialGradient(
+                    node.x - node.nodeRadius * 0.3, node.y - node.nodeRadius * 0.3, 0,
+                    node.x, node.y, node.nodeRadius
+                );
+                innerGrad.addColorStop(0, 'rgba(255,255,255,0.2)');
+                innerGrad.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = innerGrad;
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, node.nodeRadius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 名称标签
+                ctx.fillStyle = '#e2e8f0';
+                ctx.font = '11px -apple-system, system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'alphabetic';
+                ctx.fillText(node.shortName, node.x, node.y + node.nodeRadius + 16);
+            });
+
+            starMapAnimFrame = requestAnimationFrame(drawStarMap);
+        };
+
+        // 星图点击事件
+        const handleStarMapClick = (event) => {
+            const canvas = starMapCanvas.value;
+            if (!canvas) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            const nodes = getStarMapNodes();
+            for (const node of nodes) {
+                const dx = x - node.x;
+                const dy = y - node.y;
+                if (dx * dx + dy * dy <= (node.nodeRadius + 5) * (node.nodeRadius + 5)) {
+                    selectLing(node.lingId);
+                    return;
+                }
+            }
+        };
+
+        // 星图悬停事件
+        const handleStarMapMouseMove = (event) => {
+            const canvas = starMapCanvas.value;
+            if (!canvas) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            const nodes = getStarMapNodes();
+            let found = null;
+            for (const node of nodes) {
+                const dx = x - node.x;
+                const dy = y - node.y;
+                if (dx * dx + dy * dy <= (node.nodeRadius + 5) * (node.nodeRadius + 5)) {
+                    found = node;
+                    break;
+                }
+            }
+
+            if (found) {
+                starMapHover.value = {
+                    x: event.clientX - rect.left,
+                    y: event.clientY - rect.top,
+                    name: found.shortName,
+                    status: found.status,
+                    versions: found.versionCount > 1 ? found.versionCount + ' versions' : ''
+                };
+                canvas.style.cursor = 'pointer';
+            } else {
+                starMapHover.value = null;
+                canvas.style.cursor = 'default';
+            }
+        };
+
+        const handleStarMapMouseLeave = () => {
+            starMapHover.value = null;
+        };
+
+        // 监听导航切换到概览时启动星图
+        watch(activeNav, (nav) => {
+            if (nav === 'overview') {
+                nextTick(() => {
+                    if (starMapAnimFrame) cancelAnimationFrame(starMapAnimFrame);
+                    drawStarMap();
+                });
+            } else {
+                if (starMapAnimFrame) {
+                    cancelAnimationFrame(starMapAnimFrame);
+                    starMapAnimFrame = null;
+                }
+            }
+        });
+
+        // 监听灵元列表变化，更新首次发现时间和服务数量
+        watch(lings, (newLings) => {
+            const now = Date.now();
+            newLings.forEach(ling => {
+                if (!lingFirstSeen[ling.lingId]) {
+                    lingFirstSeen[ling.lingId] = now;
+                }
+            });
+            // 清理已移除灵元的记录
+            Object.keys(lingFirstSeen).forEach(id => {
+                if (!newLings.find(l => l.lingId === id)) {
+                    delete lingFirstSeen[id];
+                }
+            });
+        }, { deep: true });
+
+        // 监听 playground 数据变化，更新服务数量缓存
+        watch(playgroundServices, (services) => {
+            if (activeId.value) {
+                lingServiceCounts[activeId.value] = services ? services.length : 0;
+            }
+        });
+
+        // 批量获取所有灵元的服务数量
+        const fetchAllServiceCounts = async () => {
+            for (const ling of lings.value) {
+                if (lingServiceCounts[ling.lingId] === undefined) {
+                    try {
+                        const data = await api.get(`/playground/lings/${ling.lingId}/services`);
+                        lingServiceCounts[ling.lingId] = data ? data.length : 0;
+                    } catch (e) {
+                        lingServiceCounts[ling.lingId] = 0;
+                    }
+                }
+            }
+        };
+
+        // 灵元列表变化时，获取新灵元的服务数量
+        watch(lings, (newLings) => {
+            const hasNew = newLings.some(l => lingServiceCounts[l.lingId] === undefined);
+            if (hasNew) {
+                fetchAllServiceCounts();
+            }
+        });
+
         onMounted(async () => {
             updateTime();
             timeTimer = setInterval(updateTime, 1000);
@@ -2112,6 +2416,7 @@ createApp({
             if (stressTimer) clearInterval(stressTimer);
             if (perfTimer) clearInterval(perfTimer);
             if (eventSource) eventSource.close();
+            if (starMapAnimFrame) cancelAnimationFrame(starMapAnimFrame);
             destroyCharts();
             document.removeEventListener('visibilitychange', handleVisibility);
         });
@@ -2138,8 +2443,9 @@ createApp({
             fetchPlaygroundServices, invokeService, getInvokeKey,
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
             formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue, formatUptime, formatPlaygroundResult,
-            getStatusClass, getLingShortName, getLingTagClass, getLogColor, getTrend,
+            getStatusClass, getLingShortName, getLingTagClass, getLingHealthDotClass, getLingUptime, getLingServiceCount, getLogColor, getTrend,
             getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass, getLingHealthStatusClass, getLingHealthRoleLabel, hasGovernanceSignals,
+            starMapCanvas, starMapHover, handleStarMapClick, handleStarMapMouseMove, handleStarMapMouseLeave,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
             openTimelineModal, closeTimelineModal, loadTimelineData,
             doUpdateStatus, fetchPerformanceMetrics, fetchLingHealthMetrics, fetchLingGovernanceMetrics, fetchRuntimeDiagnostics, fetchRuntimeGovernanceReadiness,

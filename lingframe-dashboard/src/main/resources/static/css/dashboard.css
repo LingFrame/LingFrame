@@ -1026,3 +1026,62 @@ body {
 .auth-submit:hover {
     background: #74c7ec;
 }
+
+/* ==================== 灵元健康指示灯 ==================== */
+.ling-health-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: all 0.3s ease;
+}
+
+.ling-health-dot.healthy {
+    background: #10b981;
+    box-shadow: 0 0 4px rgba(16, 185, 129, 0.5);
+}
+
+.ling-health-dot.degraded {
+    background: #f59e0b;
+    box-shadow: 0 0 4px rgba(245, 158, 11, 0.5);
+}
+
+.ling-health-dot.unhealthy {
+    background: #ef4444;
+    box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
+}
+
+.ling-health-dot.unknown {
+    background: #475569;
+    box-shadow: none;
+}
+
+/* 活跃灵元呼吸灯 */
+.ling-health-dot.healthy.pulse {
+    animation: health-pulse 2s ease-in-out infinite;
+}
+
+@keyframes health-pulse {
+    0%, 100% { box-shadow: 0 0 4px rgba(16, 185, 129, 0.5); }
+    50% { box-shadow: 0 0 8px rgba(16, 185, 129, 0.8), 0 0 12px rgba(16, 185, 129, 0.3); }
+}
+
+/* ==================== 灵元星图 ==================== */
+.star-map-container {
+    background: radial-gradient(ellipse at center, #0f172a 0%, #050810 70%);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+}
+
+.star-map-tooltip {
+    position: absolute;
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px 12px;
+    pointer-events: none;
+    z-index: 10;
+    transform: translate(12px, -50%);
+    min-width: 120px;
+}

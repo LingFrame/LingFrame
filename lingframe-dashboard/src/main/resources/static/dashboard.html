@@ -254,6 +254,10 @@
             <nav class="flex-shrink-0 py-4">
                 <div class="text-sm text-slate-500 uppercase tracking-wider px-5 mb-2">{{ t('sidebar.coreFeatures') }}
                 </div>
+                <div :class="['sidebar-item', activeNav === 'overview' ? 'active' : '']" @click="activeNav = 'overview'">
+                    <i class="fa-solid fa-satellite-dish w-4"></i>
+                    <span class="text-base">{{ t('sidebar.overview') }}</span>
+                </div>
                 <div :class="['sidebar-item', activeNav === 'monitor' ? 'active' : '']" @click="activeNav = 'monitor'">
                     <i class="fa-solid fa-chart-line w-4"></i>
                     <span class="text-base">{{ t('sidebar.monitor') }}</span>
@@ -284,19 +288,43 @@
                 <div v-for="p in filteredLings" :key="p.lingId"
                     :class="['ling-item', activeId === p.lingId ? 'active' : '']"
                     @click="selectLing(p.lingId)">
+                    <!-- 灵元名称行：健康灯 + 名称 + 状态 -->
                     <div class="flex items-center justify-between">
-                        <span class="text-sm font-medium text-white truncate">{{ getLingShortName(p.lingId) }}</span>
+                        <div class="flex items-center gap-1.5 min-w-0">
+                            <span :class="['ling-health-dot', getLingHealthDotClass(p.lingId)]"></span>
+                            <span class="text-sm font-medium text-white truncate" :title="p.lingId">{{ getLingShortName(p.lingId) }}</span>
+                        </div>
                         <span :class="['status-tag', getLingTagClass(p.status)]">{{ t('status.' + p.status?.toLowerCase()) || p.status }}</span>
                     </div>
-                    <div v-if="p.versionDetails && p.versionDetails.length > 0" class="mt-1.5">
-                        <div v-for="v in p.versionDetails" :key="v.version" class="flex items-center justify-between text-[10px] mb-0.5">
-                            <span class="text-slate-400 font-mono">{{ v.version }}</span>
-                            <span class="text-slate-500">{{ v.trafficWeight != null ? v.trafficWeight + '%' : '' }}</span>
+                    <!-- 版本详情（多版本） -->
+                    <div v-if="p.versionDetails && p.versionDetails.length > 0" class="mt-1.5 space-y-1">
+                        <div v-for="v in p.versionDetails" :key="v.version" class="flex items-center gap-1.5 text-[10px]">
+                            <span class="font-mono truncate max-w-[80px]" :class="v.isCanary ? 'text-amber-400' : 'text-slate-400'" :title="v.version">{{ v.version }}</span>
+                            <span v-if="v.isCanary" class="text-[9px] px-1 py-px rounded bg-amber-500/20 text-amber-400 font-bold tracking-tight">CANARY</span>
+                            <span v-else-if="v.isDefault" class="text-[9px] px-1 py-px rounded bg-blue-500/20 text-blue-400 font-bold tracking-tight">STABLE</span>
+                            <div class="flex-1 h-1 bg-slate-700 rounded-full overflow-hidden min-w-[30px]">
+                                <div class="h-full rounded-full transition-all duration-500"
+                                    :class="v.isCanary ? 'bg-amber-500' : 'bg-blue-500'"
+                                    :style="{width: Math.max(3, v.trafficWeight || 0) + '%'}"></div>
+                            </div>
+                            <span class="text-slate-500 w-7 text-right">{{ v.trafficWeight != null ? v.trafficWeight + '%' : '' }}</span>
                         </div>
                     </div>
+                    <!-- 版本标签（单版本降级展示） -->
                     <div v-else class="flex gap-2 flex-wrap mt-1">
                         <span v-if="p.activeVersion" class="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">{{ p.activeVersion }}</span>
                         <span v-if="p.canaryVersion" class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">{{ p.canaryVersion }}</span>
+                    </div>
+                    <!-- 底部元信息 -->
+                    <div class="flex items-center gap-3 mt-1.5 text-[10px] text-slate-500">
+                        <span v-if="getLingUptime(p.lingId)" class="flex items-center gap-1">
+                            <i class="fa-solid fa-clock text-[8px]"></i>
+                            {{ getLingUptime(p.lingId) }}
+                        </span>
+                        <span v-if="getLingServiceCount(p.lingId) > 0" class="flex items-center gap-1">
+                            <i class="fa-solid fa-plug text-[8px]"></i>
+                            {{ getLingServiceCount(p.lingId) }} {{ t('lingList.services') }}
+                        </span>
                     </div>
                 </div>
             </div>
@@ -483,6 +511,114 @@
 
             <div class="flex-grow overflow-auto p-6">
                 <div class="max-w-[1600px] mx-auto">
+
+                    <!-- ==================== 全局概览视图 ==================== -->
+                    <div v-if="activeNav === 'overview'">
+                        <!-- 灵珑定位 -->
+                        <div class="mb-5 text-center">
+                            <p class="text-sm text-slate-400">{{ t('overview.heroSubtitle') }}</p>
+                        </div>
+
+                        <!-- 统计卡片 -->
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                            <div class="card p-4 text-center">
+                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('overview.totalLings') }}</div>
+                                <div class="text-3xl font-mono font-bold text-white">{{ lings.length }}</div>
+                            </div>
+                            <div class="card p-4 text-center">
+                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('overview.activeLings') }}</div>
+                                <div class="text-3xl font-mono font-bold text-green-400">{{ lings.filter(p => p.status === 'ACTIVE' || p.status === 'DEGRADED').length }}</div>
+                            </div>
+                            <div class="card p-4 text-center">
+                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('overview.canaryLings') }}</div>
+                                <div class="text-3xl font-mono font-bold text-amber-400">{{ lings.filter(p => (p.versionDetails?.length || 0) >= 2).length }}</div>
+                            </div>
+                        </div>
+
+                        <!-- 灵元星图 -->
+                        <div class="card mb-6">
+                            <div class="card-header">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-satellite-dish text-indigo-400"></i>
+                                    <h3 class="font-bold text-base text-white">{{ t('overview.starMap') }}</h3>
+                                </div>
+                                <span class="text-xs text-slate-500">{{ t('overview.starMapHint') }}</span>
+                            </div>
+                            <div class="p-4">
+                                <div v-if="lings.length === 0" class="text-center py-12">
+                                    <i class="fa-solid fa-cube text-4xl text-indigo-500/50 mb-4"></i>
+                                    <p class="text-base text-slate-300 mb-2">{{ t('overview.noLings') }}</p>
+                                    <p class="text-sm text-slate-500 mb-4">{{ t('overview.noLingsHint') }}</p>
+                                    <button @click="activeNav = 'governance'" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg transition-colors">
+                                        <i class="fa-solid fa-upload mr-1"></i>{{ t('overview.goInstall') }}
+                                    </button>
+                                </div>
+                                <div v-else class="star-map-container" style="height: 320px; position: relative;">
+                                    <canvas ref="starMapCanvas" @click="handleStarMapClick" @mousemove="handleStarMapMouseMove" @mouseleave="handleStarMapMouseLeave" style="width:100%;height:100%;"></canvas>
+                                    <!-- 悬停提示 -->
+                                    <div v-if="starMapHover" class="star-map-tooltip" :style="{left: starMapHover.x + 'px', top: starMapHover.y + 'px'}">
+                                        <div class="font-bold text-white text-sm">{{ starMapHover.name }}</div>
+                                        <div class="text-[10px] text-slate-400">{{ starMapHover.status }}</div>
+                                        <div v-if="starMapHover.versions" class="text-[10px] text-slate-500">{{ starMapHover.versions }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 关键指标摘要 + 最近事件 -->
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <!-- 关键指标 -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-gauge text-emerald-400"></i>
+                                        <h3 class="font-bold text-base text-white">{{ t('overview.keyMetrics') }}</h3>
+                                    </div>
+                                </div>
+                                <div class="p-4 grid grid-cols-2 gap-3">
+                                    <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                        <div class="text-[10px] text-slate-500 uppercase mb-1">CPU</div>
+                                        <div class="text-xl font-mono font-bold" :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">{{ perfMetrics.cpu }}%</div>
+                                    </div>
+                                    <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                        <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.heap') }}</div>
+                                        <div class="text-xl font-mono font-bold text-purple-400">{{ perfMetrics.heapUsage }}%</div>
+                                    </div>
+                                    <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                        <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.metaspace') }}</div>
+                                        <div class="text-xl font-mono font-bold text-emerald-400">{{ perfMetrics.metaspaceUsage }}%</div>
+                                    </div>
+                                    <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                                        <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.threads') }}</div>
+                                        <div class="text-xl font-mono font-bold text-cyan-400">{{ perfMetrics.threads }}</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 最近事件 -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-bolt text-amber-400"></i>
+                                        <h3 class="font-bold text-base text-white">{{ t('overview.recentEvents') }}</h3>
+                                    </div>
+                                </div>
+                                <div class="p-4 space-y-1 max-h-48 overflow-y-auto">
+                                    <div v-if="logs.length === 0" class="text-center py-6">
+                                        <i class="fa-solid fa-satellite-dish text-xl text-slate-600 mb-2"></i>
+                                        <p class="text-sm text-slate-500">{{ t('overview.noEvents') }}</p>
+                                    </div>
+                                    <div v-for="log in logs.slice(-10).reverse()" :key="log.id" class="text-xs font-mono py-0.5 flex items-center gap-2"
+                                        :class="getLogColor(log)">
+                                        <span class="text-slate-500 shrink-0">[{{ formatTime(log.timestamp) }}]</span>
+                                        <span class="text-slate-400 shrink-0">[{{ log.lingId }}]</span>
+                                        <span v-if="log.version" class="text-slate-500 shrink-0">[{{ log.version }}]</span>
+                                        <span class="truncate" :class="getLogColor(log)">{{ log.content }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- ==================== 系统监控视图 ==================== -->
                     <div v-if="activeNav === 'monitor'">
@@ -1447,11 +1583,11 @@
                                         <p class="text-sm text-slate-500">{{ t('logs.waiting') }}</p>
                                     </div>
                                     <div v-for="log in displayLogs" :key="log.id" class="text-xs font-mono py-0.5"
-                                        :class="getLogColor(log.eventType)">
+                                        :class="getLogColor(log)">
                                         <span class="text-slate-500">[{{ formatTime(log.timestamp) }}]</span>
                                         <span class="text-slate-400">[{{ log.lingId }}]</span>
                                         <span v-if="log.version" class="text-slate-500">[{{ log.version }}]</span>
-                                        <span :class="getLogColor(log.eventType)">{{ log.message }}</span>
+                                        <span :class="getLogColor(log)">{{ log.content }}</span>
                                     </div>
                                 </div>
                                 <div v-if="isUserScrolling" @click="scrollToTop"

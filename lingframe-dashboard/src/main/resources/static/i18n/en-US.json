@@ -12,6 +12,7 @@
         "envTest": "Testing",
         "envProd": "Production",
         "coreFeatures": "Core Features",
+        "overview": "Overview",
         "monitor": "System Monitor",
         "governance": "Governance",
         "verification": "Service Verification",
@@ -43,7 +44,8 @@
         "title": "Ling List",
         "count": "{n} lings",
         "empty": "No lings installed",
-        "search": "Search lings..."
+        "search": "Search lings...",
+        "services": "services"
     },
     "traffic": {
         "title": "Traffic Control",
@@ -335,6 +337,20 @@
       "warnings": "Warnings",
       "capabilitiesTitle": "Resource Cleanup Capabilities",
       "capabilitiesEmpty": "Runtime cleanup capability snapshots have not been observed yet."
+  },
+  "overview": {
+    "heroSubtitle": "Each Ling runs, evolves, and is governed independently — no dependency coupling",
+    "totalLings": "Total Lings",
+    "activeLings": "Active Lings",
+    "canaryLings": "Canary",
+    "starMap": "Ling Star Map",
+    "starMapHint": "Click a node to select",
+    "noLings": "No Lings Yet",
+    "noLingsHint": "Install your first Ling to experience zero-dependency architecture",
+    "goInstall": "Install Ling",
+    "keyMetrics": "Key Metrics",
+    "recentEvents": "Recent Events",
+    "noEvents": "No events yet"
   },
   "login": {
     "title": "Authentication",
