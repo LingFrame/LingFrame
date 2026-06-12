@@ -204,6 +204,7 @@
         "alsoDisabled": " (also disabled {perm})",
         "installSuccess": "Ling installed successfully",
         "installFailed": "Ling install failed",
+        "readonlyMode": "Read-only mode is active",
         "reloadSuccess": "Ling reloaded successfully",
         "reloadFailed": "Ling reload failed",
         "lingVersionUnloaded": "Version {version} unloaded successfully",
@@ -249,6 +250,9 @@
       "last30m": "Last 30 min",
       "last1h": "Last 1 hour",
       "last3h": "Last 3 hours",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "last7d": "Last 7 days",
       "custom": "Custom",
       "gcTime": "GC Time",
       "classCount": "Class Count"
@@ -331,5 +335,15 @@
       "warnings": "Warnings",
       "capabilitiesTitle": "Resource Cleanup Capabilities",
       "capabilitiesEmpty": "Runtime cleanup capability snapshots have not been observed yet."
+  },
+  "login": {
+    "title": "Authentication",
+    "desc": "Please enter your access token to continue",
+    "placeholder": "Access Token",
+    "submit": "Confirm",
+    "emptyToken": "Token cannot be empty"
+  },
+  "readonly": {
+    "banner": "Read-Only Mode - Write operations disabled"
   }
 }

@@ -16,11 +16,22 @@ import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.metrics.LingMetricsMeterBridge;
+import com.lingframe.dashboard.scheduler.MetricsCollectorScheduler;
+import com.lingframe.dashboard.security.AccessTokenInterceptor;
+import com.lingframe.dashboard.security.AccessTokenProperties;
+import com.lingframe.dashboard.security.ReadOnlyInterceptor;
+import com.lingframe.dashboard.security.ReadOnlyProperties;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LogStreamService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import com.lingframe.dashboard.service.SimulateService;
 import com.lingframe.dashboard.service.ServicePlaygroundService;
+import com.lingframe.dashboard.storage.AuditStorage;
+import com.lingframe.dashboard.storage.GovernanceConfigRestorer;
+import com.lingframe.dashboard.storage.GovernanceStorage;
+import com.lingframe.dashboard.storage.MetricsStorage;
+import com.lingframe.dashboard.storage.StorageInitializer;
+import com.lingframe.dashboard.storage.StorageProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -29,15 +40,22 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Slf4j
 @AutoConfiguration
 @ConditionalOnWebApplication
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
+@EnableConfigurationProperties({StorageProperties.class, AccessTokenProperties.class, ReadOnlyProperties.class})
 public class DashboardAutoConfiguration {
 
     public DashboardAutoConfiguration() {
@@ -68,11 +86,17 @@ public class DashboardAutoConfiguration {
             CanaryRouter canaryRouter,
             LingInfoConverter lingInfoConverter,
             PermissionService permissionService,
-            RuntimeCoordinator runtimeCoordinator) {
-        return new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository, governanceRegistry, canaryRouter,
+            RuntimeCoordinator runtimeCoordinator,
+            @Autowired(required = false) GovernanceStorage governanceStorage) {
+        DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository, governanceRegistry, canaryRouter,
                 lingInfoConverter,
                 permissionService,
                 runtimeCoordinator);
+        // 条件注入 GovernanceStorage（SQLite 启用时才有，禁用时为 null）
+        if (governanceStorage != null) {
+            service.setGovernanceStorage(governanceStorage);
+        }
+        return service;
     }
 
     @Bean
@@ -125,8 +149,76 @@ public class DashboardAutoConfiguration {
         return new LingMetricsMeterBridge(meterRegistry, metricsCollector, governanceMetricsCollector);
     }
 
+    // ==================== SQLite 持久化（条件注册） ====================
+
+    @Bean("dashboardJdbcTemplate")
+    @ConditionalOnProperty(prefix = "lingframe.dashboard.storage", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public JdbcTemplate dashboardJdbcTemplate(StorageProperties storageProperties) {
+        org.springframework.jdbc.datasource.DriverManagerDataSource ds = new org.springframework.jdbc.datasource.DriverManagerDataSource();
+        ds.setDriverClassName("org.sqlite.JDBC");
+        ds.setUrl("jdbc:sqlite:" + storageProperties.getPath());
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("journal_mode", "WAL");
+        props.setProperty("busy_timeout", "5000");
+        ds.setConnectionProperties(props);
+        return new JdbcTemplate(ds);
+    }
+
     @Bean
-    public WebMvcConfigurer dashboardWebMvcConfigurer() {
+    @ConditionalOnBean(name = "dashboardJdbcTemplate")
+    public StorageInitializer storageInitializer(JdbcTemplate dashboardJdbcTemplate, StorageProperties storageProperties) {
+        return new StorageInitializer(dashboardJdbcTemplate, storageProperties);
+    }
+
+    @Bean
+    @ConditionalOnBean(name = "dashboardJdbcTemplate")
+    public MetricsStorage metricsStorage(JdbcTemplate dashboardJdbcTemplate) {
+        return new MetricsStorage(dashboardJdbcTemplate);
+    }
+
+    @Bean
+    @ConditionalOnBean(name = "dashboardJdbcTemplate")
+    public GovernanceStorage governanceStorage(JdbcTemplate dashboardJdbcTemplate, ObjectMapper objectMapper) {
+        return new GovernanceStorage(dashboardJdbcTemplate, objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnBean(name = "dashboardJdbcTemplate")
+    public AuditStorage auditStorage(JdbcTemplate dashboardJdbcTemplate) {
+        return new AuditStorage(dashboardJdbcTemplate);
+    }
+
+    @Bean
+    @ConditionalOnBean(GovernanceStorage.class)
+    public GovernanceConfigRestorer governanceConfigRestorer(
+            GovernanceStorage governanceStorage,
+            LocalGovernanceRegistry governanceRegistry,
+            CanaryRouter canaryRouter) {
+        return new GovernanceConfigRestorer(governanceStorage, governanceRegistry, canaryRouter);
+    }
+
+    @Bean
+    @ConditionalOnBean(MetricsStorage.class)
+    public MetricsCollectorScheduler metricsCollectorScheduler(MetricsStorage metricsStorage, StorageProperties storageProperties) {
+        MetricsCollectorScheduler scheduler = new MetricsCollectorScheduler(metricsStorage, storageProperties);
+        scheduler.start();
+        return scheduler;
+    }
+
+    // ==================== AccessToken 安全 ====================
+
+    @Bean
+    @ConditionalOnProperty(prefix = "lingframe.dashboard.access-token", name = "enabled", havingValue = "true")
+    public AccessTokenInterceptor accessTokenInterceptor(AccessTokenProperties accessTokenProperties) {
+        return new AccessTokenInterceptor(accessTokenProperties);
+    }
+
+    // ==================== WebMvc 配置 ====================
+
+    @Bean
+    public WebMvcConfigurer dashboardWebMvcConfigurer(
+            @Autowired(required = false) AccessTokenInterceptor accessTokenInterceptor,
+            @Autowired(required = false) ReadOnlyInterceptor readOnlyInterceptor) {
         return new WebMvcConfigurer() {
             @Override
             public void addViewControllers(ViewControllerRegistry registry) {
@@ -137,7 +229,37 @@ public class DashboardAutoConfiguration {
                 registry.addViewController("/lingframe/dashboard/ui/**/{path:[^\\.]*}")
                         .setViewName("forward:/dashboard.html");
             }
+
+            @Override
+            public void addInterceptors(InterceptorRegistry registry) {
+                // 只读模式拦截器（优先级高于 token 拦截器）
+                if (readOnlyInterceptor != null) {
+                    registry.addInterceptor(readOnlyInterceptor)
+                            .addPathPatterns("/lingframe/dashboard/**")
+                            .excludePathPatterns(
+                                "/lingframe/dashboard/ui/**",
+                                "/lingframe/dashboard/stream"
+                            );
+                }
+                // Token 认证拦截器
+                if (accessTokenInterceptor != null) {
+                    registry.addInterceptor(accessTokenInterceptor)
+                            .addPathPatterns(
+                                "/lingframe/dashboard/lings/**",
+                                "/lingframe/dashboard/governance/**",
+                                "/lingframe/dashboard/simulate/**",
+                                "/lingframe/dashboard/playground/**",
+                                "/lingframe/dashboard/metrics/**",
+                                "/lingframe/dashboard/stream-ticket"
+                            );
+                }
+            }
         };
     }
 
+    @Bean
+    @ConditionalOnProperty(prefix = "lingframe.dashboard.readonly", name = "enabled", havingValue = "true")
+    public ReadOnlyInterceptor readOnlyInterceptor(ReadOnlyProperties readOnlyProperties) {
+        return new ReadOnlyInterceptor(readOnlyProperties);
+    }
 }

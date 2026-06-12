@@ -10,6 +10,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
+import com.lingframe.dashboard.storage.GovernanceStorage;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -21,9 +22,18 @@ import java.util.Map;
  */
 public class DashboardGovernanceSupport {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DashboardGovernanceSupport.class);
+
     private final LingRepository lingRepository;
     private final LocalGovernanceRegistry governanceRegistry;
     private final PermissionService permissionService;
+
+    // 持久化存储（可选，由 DashboardService.setGovernanceStorage 间接注入）
+    private GovernanceStorage governanceStorage;
+
+    public void setGovernanceStorage(GovernanceStorage governanceStorage) {
+        this.governanceStorage = governanceStorage;
+    }
 
     public DashboardGovernanceSupport(LingRepository lingRepository,
             LocalGovernanceRegistry governanceRegistry,
@@ -55,6 +65,7 @@ public class DashboardGovernanceSupport {
     public void updateGovernancePolicy(String lingId, GovernancePolicy policy) {
         GovernancePolicy mergedPatch = GovernancePolicy.merge(getPatchForUpdate(lingId), policy);
         persistPolicyPatch(lingId, mergedPatch);
+        persistToStorage(lingId, mergedPatch);
     }
 
     public void updatePermissions(String lingId, ResourcePermissionDTO dto) {
@@ -88,6 +99,7 @@ public class DashboardGovernanceSupport {
 
         policy.setCapabilities(new ArrayList<>(ruleMap.values()));
         persistPolicyPatch(lingId, policy);
+        persistToStorage(lingId, policy);
     }
 
     public InvocationGovernanceDTO updateInvocationGovernance(String lingId, InvocationGovernanceDTO dto) {
@@ -107,6 +119,7 @@ public class DashboardGovernanceSupport {
         patch.setInvocation(invocation);
 
         persistPolicyPatch(lingId, patch);
+        persistToStorage(lingId, patch);
         return getInvocationGovernance(lingId);
     }
 
@@ -150,5 +163,20 @@ public class DashboardGovernanceSupport {
             return AccessType.READ;
         }
         return AccessType.NONE;
+    }
+
+    /**
+     * 将治理策略持久化到 SQLite（异步容错，不影响主流程）
+     */
+    private void persistToStorage(String lingId, GovernancePolicy policy) {
+        if (governanceStorage == null) {
+            return;
+        }
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            governanceStorage.saveInvocationConfig(lingId, mapper.writeValueAsString(policy));
+        } catch (Exception e) {
+            log.warn("持久化治理策略失败: {}", lingId, e);
+        }
     }
 }

@@ -55,6 +55,17 @@ lingframe:
   dashboard:
     enabled: true
     install-enabled: true
+    # SQLite 持久化存储
+    storage:
+      enabled: true
+      path: ${user.home}/.lingframe/dashboard.db
+      metrics-retention-days: 7
+      audit-retention-days: 30
+      metrics-collect-interval-seconds: 30
+    # 访问令牌（生产环境建议设置，留空则不启用）
+    access-token:
+      enabled: false
+      token: ""
 
 # SpringDoc OpenAPI 配置
 springdoc:

@@ -930,3 +930,99 @@ body {
         grid-template-columns: 1fr !important;
     }
 }
+
+/* 只读模式：隐藏写操作按钮 */
+.readonly-mode button[data-testid="control-activate"],
+.readonly-mode button[data-testid="control-inactivate"],
+.readonly-mode button[data-testid="control-recover"],
+.readonly-mode button[data-testid="control-activate-fallback"],
+.readonly-mode button[data-testid="control-inactivate-fallback"],
+.readonly-mode button[data-testid="control-recover-fallback"],
+.readonly-mode button[data-testid="save-invocation-governance"],
+.readonly-mode .canary-controls,
+.readonly-mode .perm-toggle-group,
+.readonly-mode .simulate-group,
+.readonly-mode .playground-invoke-btn,
+.readonly-mode .upload-btn {
+    display: none !important;
+}
+
+/* 只读模式横幅 */
+.readonly-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    background: linear-gradient(90deg, #f59e0b, #d97706);
+    color: #1e1e2e;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    letter-spacing: 0.5px;
+}
+
+/* 认证遮罩 */
+.auth-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10001;
+}
+.auth-card {
+    background: #1e1e2e;
+    padding: 32px;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    width: 360px;
+    text-align: center;
+}
+.auth-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #cdd6f4;
+    margin-bottom: 8px;
+}
+.auth-desc {
+    font-size: 13px;
+    color: #a6adc8;
+    margin-bottom: 20px;
+}
+.auth-input {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid #45475a;
+    background: #313244;
+    color: #cdd6f4;
+    font-size: 14px;
+    outline: none;
+    box-sizing: border-box;
+}
+.auth-input:focus {
+    border-color: #89b4fa;
+}
+.auth-submit {
+    margin-top: 16px;
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: none;
+    background: #89b4fa;
+    color: #1e1e2e;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.auth-submit:hover {
+    background: #74c7ec;
+}

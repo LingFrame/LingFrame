@@ -26,6 +26,7 @@ createApp({
         const currentTime = ref('');
         const sseStatus = ref('disconnected');
         const toasts = ref([]);
+        const appState = reactive({ readonly: false });
 
         const stats = reactive({ total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0, active: 0 });
 
@@ -125,6 +126,48 @@ createApp({
 
         // 性能历史数据（折线图用，普通对象避免响应式开销）
         const chartTimeRange = ref('30m');
+
+        // 加载历史指标数据（从 SQLite 后端查询）
+        const loadHistoryMetrics = async () => {
+            const rangeMap = {
+                '5m':  { ms: 300000, interval: 0 },
+                '15m': { ms: 900000, interval: 0 },
+                '30m': { ms: 1800000, interval: 0 },
+                '1h':  { ms: 3600000, interval: 0 },
+                '3h':  { ms: 10800000, interval: 0 },
+                'today': { ms: null, interval: 60, start: new Date().setHours(0,0,0,0) },
+                'yesterday': { ms: null, interval: 120, start: new Date(Date.now() - 86400000).setHours(0,0,0,0), end: new Date(Date.now() - 86400000).setHours(23,59,59,999) },
+                '7d':  { ms: null, interval: 300, start: Date.now() - 7*86400000 }
+            };
+            const range = rangeMap[chartTimeRange.value];
+            if (!range) return;
+
+            try {
+                let start = range.start;
+                let end = range.end;
+                if (range.ms) {
+                    end = Date.now();
+                    start = end - range.ms;
+                }
+                const data = await api.get(`/metrics/history?start=${start}&end=${end}&interval=${range.interval}`);
+                if (data && data.length > 0) {
+                    // 清空现有历史数据，用后端数据替换
+                    perfHistory.timestamps = data.map(d => d.bucket || d.timestamp);
+                    perfHistory.cpu = data.map(d => d.cpu_usage);
+                    perfHistory.heapUsage = data.map(d => d.heap_usage);
+                    perfHistory.metaspaceUsage = data.map(d => d.metaspace_usage);
+                    perfHistory.threads = data.map(d => d.thread_count);
+                    perfHistory.gcCount = data.map(d => d.delta_gc_count || d.gc_count);
+                    perfHistory.gcTimeMs = data.map(d => d.delta_gc_time_ms || d.gc_time_ms);
+                    perfHistory.loadedClassCount = data.map(d => d.loaded_class_count);
+                    destroyCharts();
+                    nextTick(() => drawMonitorCharts());
+                }
+            } catch (e) {
+                // 历史查询失败不影响实时数据展示
+                console.warn('加载历史指标失败:', e);
+            }
+        };
         const perfHistory = {
             timestamps: [],
             cpu: [],
@@ -409,10 +452,79 @@ createApp({
             uninstallResultModal.result = null;
         };
 
+        // ==================== Token 与认证 ====================
+        const getToken = () => localStorage.getItem('lingframe_access_token') || '';
+        const withAuthHeaders = (headers = {}) => {
+            const token = getToken();
+            if (token) {
+                headers['X-Access-Token'] = token;
+            }
+            return headers;
+        };
+
+        // 认证状态：true 表示已认证（或无需认证），false 表示需要登录
+        const authenticated = ref(true);
+
+        // Vue 模板中的认证提交
+        const submitAuth = () => {
+            const input = document.getElementById('auth-token-input');
+            if (!input) return;
+            const token = input.value.trim();
+            if (!token) return;
+            localStorage.setItem('lingframe_access_token', token);
+            location.reload();
+        };
+
+        const showLoginPrompt = () => {
+            // 已存在登录弹窗则不重复创建
+            if (document.getElementById('login-overlay')) return;
+            authenticated.value = false;
+
+            const overlay = document.createElement('div');
+            overlay.id = 'login-overlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+            overlay.innerHTML = `
+                <div style="background:#1e1e2e;padding:32px;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.3);width:360px;text-align:center;">
+                    <div style="font-size:20px;font-weight:600;color:#cdd6f4;margin-bottom:8px;">${t('login.title', '访问认证')}</div>
+                    <div style="font-size:13px;color:#a6adc8;margin-bottom:20px;">${t('login.desc', '请输入访问令牌以继续')}</div>
+                    <input id="login-token-input" type="password" placeholder="${t('login.placeholder', 'Access Token')}"
+                        style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid #45475a;background:#313244;color:#cdd6f4;font-size:14px;outline:none;box-sizing:border-box;" />
+                    <div id="login-error" style="color:#f38ba8;font-size:12px;margin-top:8px;display:none;"></div>
+                    <button id="login-submit-btn"
+                        style="margin-top:16px;width:100%;padding:10px;border-radius:8px;border:none;background:#89b4fa;color:#1e1e2e;font-size:14px;font-weight:600;cursor:pointer;">
+                        ${t('login.submit', '确认')}
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            const input = document.getElementById('login-token-input');
+            const errorDiv = document.getElementById('login-error');
+            const submitBtn = document.getElementById('login-submit-btn');
+
+            const doLogin = () => {
+                const token = input.value.trim();
+                if (!token) {
+                    errorDiv.textContent = t('login.emptyToken', '令牌不能为空');
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                localStorage.setItem('lingframe_access_token', token);
+                overlay.remove();
+                location.reload();
+            };
+
+            submitBtn.addEventListener('click', doLogin);
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+            input.focus();
+        };
+
         // ==================== API 调用 ====================
         const api = {
             async get(path) {
-                const res = await fetch(API_BASE + path);
+                const res = await fetch(API_BASE + path, { credentials: 'same-origin', headers: withAuthHeaders() });
+                if (res.status === 401) { showLoginPrompt(); throw new Error('Unauthorized'); }
+                if (res.status === 403) { appState.readonly = true; }
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
                 return data.data;
@@ -420,9 +532,12 @@ createApp({
             async post(path, body = {}) {
                 const res = await fetch(API_BASE + path, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
+                    credentials: 'same-origin',
                     body: JSON.stringify(body)
                 });
+                if (res.status === 401) { showLoginPrompt(); throw new Error('Unauthorized'); }
+                if (res.status === 403) { appState.readonly = true; throw new Error(t('toast.readonlyMode', '当前为只读模式')); }
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
                 return data.data;
@@ -430,9 +545,12 @@ createApp({
             async delete(path, body = {}) {
                 const res = await fetch(API_BASE + path, {
                     method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
+                    credentials: 'same-origin',
                     body: JSON.stringify(body)
                 });
+                if (res.status === 401) { showLoginPrompt(); throw new Error('Unauthorized'); }
+                if (res.status === 403) { appState.readonly = true; throw new Error(t('toast.readonlyMode', '当前为只读模式')); }
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
                 return data.data;
@@ -676,6 +794,7 @@ createApp({
 
                 const res = await fetch(API_BASE + '/lings/install', {
                     method: 'POST',
+                    headers: withAuthHeaders(),
                     body: formData
                 });
                 const data = await res.json();
@@ -1221,7 +1340,16 @@ createApp({
             }
 
             sseStatus.value = 'connecting';
-            eventSource = new EventSource(API_BASE + '/stream');
+
+            // SSE 认证：先获取 ticket，再用 ticket 连接（EventSource 不支持自定义 Header）
+            try {
+                const ticketData = await api.get('/stream-ticket');
+                const ticketParam = ticketData.ticket ? '?ticket=' + encodeURIComponent(ticketData.ticket) : '';
+                eventSource = new EventSource(API_BASE + '/stream' + ticketParam);
+            } catch (e) {
+                // ticket 获取失败，尝试无 ticket 连接（兼容未启用 token 的场景）
+                eventSource = new EventSource(API_BASE + '/stream');
+            }
 
             eventSource.onopen = () => {
                 sseStatus.value = 'connected';
@@ -1243,6 +1371,14 @@ createApp({
 
             eventSource.addEventListener('ping', () => {
                 // 心跳
+            });
+
+            eventSource.addEventListener('auth-error', () => {
+                // SSE 认证失败，关闭连接并引导重新登录
+                eventSource.close();
+                eventSource = null;
+                sseStatus.value = 'disconnected';
+                showLoginPrompt();
             });
 
             eventSource.onerror = () => {
@@ -1736,6 +1872,18 @@ createApp({
             document.documentElement.lang = locale.value;
             nextTick(() => { document.title = t('title'); });
 
+            // 先探测认证状态：用轻量请求检测是否需要 token
+            try {
+                await api.get('/lings');
+                authenticated.value = true;
+            } catch (e) {
+                if (e.message === 'Unauthorized') {
+                    // 已弹出登录框，等待用户输入后页面会 reload
+                    return;
+                }
+                // 其他错误（如网络问题），继续加载
+            }
+
             refreshLings();
             console.log(new Date(), 'start connecting sse')
             connectSSE();
@@ -1776,10 +1924,15 @@ createApp({
             Object.keys(chartInstances).forEach(k => delete chartInstances[k]);
         };
 
-        // 监听时间区间切换，销毁旧实例后重绘
+        // 监听时间区间切换：长范围从后端查询，短范围用本地数据
         watch(chartTimeRange, () => {
-            destroyCharts();
-            nextTick(() => drawMonitorCharts());
+            const longRanges = ['today', 'yesterday', '7d'];
+            if (longRanges.includes(chartTimeRange.value)) {
+                loadHistoryMetrics();
+            } else {
+                destroyCharts();
+                nextTick(() => drawMonitorCharts());
+            }
         });
 
         // 监听导航切换，切换到监控页时重绘图表
@@ -1844,7 +1997,7 @@ createApp({
             if (activeNav.value !== 'monitor') return;
             if (typeof Chart === 'undefined') return;
 
-            const rangeMs = { '5m': 300000, '15m': 900000, '30m': 1800000, '1h': 3600000, '3h': 10800000 }[chartTimeRange.value] || 1800000;
+            const rangeMs = { '5m': 300000, '15m': 900000, '30m': 1800000, '1h': 3600000, '3h': 10800000, 'today': 86400000, 'yesterday': 86400000, '7d': 604800000 }[chartTimeRange.value] || 1800000;
             const cutoff = Date.now() - rangeMs;
             const startIdx = perfHistory.timestamps.findIndex(t => t >= cutoff);
             if (startIdx < 0) return;
@@ -1969,7 +2122,7 @@ createApp({
             lings, activeId, activeNav, lingSearch, filteredLings, canaryPct, isAuto, ipcEnabled, ipcTarget,
             logs, lastAudit, logViewMode, logAggregationMode, logFilters, logContainer, isUserScrolling, logPaused, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
-            stats, loading, modal, toasts, envLabels, uploadModal, timelineModal,
+            stats, loading, modal, toasts, envLabels, uploadModal, timelineModal, appState, authenticated, submitAuth,
 
             perfMetrics, jvmInfo, chartTimeRange, monitorCharts,
             lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,

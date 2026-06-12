@@ -20,6 +20,7 @@ import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.dto.TransitionHistoryDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
+import com.lingframe.dashboard.storage.GovernanceStorage;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
@@ -52,6 +53,19 @@ public class DashboardService {
     private final DashboardStatusCoordinator statusCoordinator;
     private final DashboardLingOperations lingOperations;
     private final DashboardUninstallResultMapper uninstallResultMapper;
+
+    // 持久化存储（可选，SQLite 启用时注入）
+    private GovernanceStorage governanceStorage;
+
+    /**
+     * 条件注入 GovernanceStorage，同时传递给 governanceSupport
+     */
+    public void setGovernanceStorage(GovernanceStorage governanceStorage) {
+        this.governanceStorage = governanceStorage;
+        if (this.governanceSupport != null) {
+            this.governanceSupport.setGovernanceStorage(governanceStorage);
+        }
+    }
 
     public DashboardService(LingFrameConfig lingFrameConfig,
             LingLifecycleEngine lifecycleEngine,
@@ -168,6 +182,18 @@ public class DashboardService {
             throw new LingNotFoundException(lingId);
         }
         canaryRouter.setCanaryConfig(lingId, percent, canaryVersion);
+        // 持久化灰度配置到 SQLite
+        if (governanceStorage != null) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                java.util.Map<String, Object> canaryData = new java.util.LinkedHashMap<>();
+                canaryData.put("percent", percent);
+                canaryData.put("canaryVersion", canaryVersion);
+                governanceStorage.saveCanaryConfig(lingId, mapper.writeValueAsString(canaryData));
+            } catch (Exception e) {
+                log.warn("持久化灰度配置失败: {}", lingId, e);
+            }
+        }
     }
 
     public TrafficStatsDTO getTrafficStats(String lingId) {

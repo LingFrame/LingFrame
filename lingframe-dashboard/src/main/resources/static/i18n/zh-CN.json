@@ -204,6 +204,7 @@
     "alsoDisabled": "（同时关闭 {perm}）",
     "installSuccess": "灵元安装成功",
     "installFailed": "灵元安装失败",
+    "readonlyMode": "当前为只读模式",
     "reloadSuccess": "灵元重载成功",
     "reloadFailed": "灵元重载失败",
     "lingVersionUnloaded": "版本 {version} 卸载成功",
@@ -249,6 +250,9 @@
       "last30m": "近 30 分钟",
       "last1h": "近 1 小时",
       "last3h": "近 3 小时",
+      "today": "今天",
+      "yesterday": "昨天",
+      "last7d": "近 7 天",
       "custom": "自定义",
       "gcTime": "GC 耗时",
       "classCount": "类对象数"
@@ -331,5 +335,15 @@
       "warnings": "告警",
       "capabilitiesTitle": "资源清理能力",
       "capabilitiesEmpty": "暂未观测到资源清理能力快照。"
+  },
+  "login": {
+    "title": "访问认证",
+    "desc": "请输入访问令牌以继续",
+    "placeholder": "Access Token",
+    "submit": "确认",
+    "emptyToken": "令牌不能为空"
+  },
+  "readonly": {
+    "banner": "只读模式 - 写操作已禁用"
   }
 }

@@ -85,7 +85,23 @@
 
 <body class="h-screen flex overflow-hidden">
 
-    <div id="app" class="flex w-full h-full">
+    <div id="app" class="flex w-full h-full" :class="{ 'readonly-mode': appState.readonly }">
+
+        <!-- 未认证遮罩 -->
+        <div v-if="!authenticated" class="auth-overlay">
+            <div class="auth-card">
+                <div class="auth-title">{{ t('login.title', '访问认证') }}</div>
+                <div class="auth-desc">{{ t('login.desc', '请输入访问令牌以继续') }}</div>
+                <input id="auth-token-input" type="password" :placeholder="t('login.placeholder', 'Access Token')" class="auth-input" @keydown.enter="submitAuth" />
+                <button class="auth-submit" @click="submitAuth">{{ t('login.submit', '确认') }}</button>
+            </div>
+        </div>
+
+        <!-- 只读模式横幅 -->
+        <div v-if="appState.readonly" class="readonly-banner">
+            <i class="fa-solid fa-lock" style="margin-right:6px;"></i>
+            {{ t('readonly.banner', '只读模式 - 写操作已禁用') }}
+        </div>
 
         <!-- Toast 通知 -->
         <div class="toast-container">
@@ -604,6 +620,9 @@
                                         <option value="30m">{{ t('monitor.last30m') }}</option>
                                         <option value="1h">{{ t('monitor.last1h') }}</option>
                                         <option value="3h">{{ t('monitor.last3h') }}</option>
+                                        <option value="today">{{ t('monitor.today') }}</option>
+                                        <option value="yesterday">{{ t('monitor.yesterday') }}</option>
+                                        <option value="7d">{{ t('monitor.last7d') }}</option>
                                     </select>
                                 </div>
                             </div>
