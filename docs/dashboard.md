@@ -200,6 +200,13 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
 1. The Dashboard is an optional module, enabled only when `lingframe.dashboard.enabled=true`.
 2. The installation endpoint is turned off by default, requiring an explicit `lingframe.dashboard.install-enabled=true`.
 3. Hot-reload capabilities purely belong to dev mode and will be blocked if `lingframe.dev-mode=false`.
-4. The current implementation leaves CORS open by default; production deployments should place auth and access-control upstream.
+4. CORS is enforced by a centralized `DashboardCorsFilter`. When access-token auth is enabled and no explicit `lingframe.dashboard.cors.allowed-origins` are configured, only same-origin requests are permitted. For cross-origin deployments, configure allowed origins explicitly:
+   ```yaml
+   lingframe:
+     dashboard:
+       cors:
+         allowed-origins:
+           - "https://admin.example.com"
+   ```
 5. The true backend API surface handles the source of facts that documents align with; UI bundling and shells are not the current focal point.
 6. The Dashboard is better understood as an observing and operating inlet for runtime governance, not an independent system walled off from the kernel.

@@ -40,5 +40,7 @@ public class ServiceMetadataDTO {
         private String returnType;
         /** 完整签名，如 "sayHello(java.lang.String)" */
         private String signature;
+        /** 显式服务的别名 FQSID，如 "order-ling:query_order" */
+        private String alternateFqsid;
     }
 }

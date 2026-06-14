@@ -48,20 +48,94 @@ html.theme-light {
 body {
     background: var(--gradient-bg);
     color: var(--text-primary);
-    font-family: -apple-system, system-ui, sans-serif;
+    font-family: Inter, Outfit, -apple-system, system-ui, sans-serif;
     min-height: 100vh;
     transition: background 0.3s, color 0.3s;
 }
 
-/* 玻璃拟态基础类 - 已禁用 */
+/* 玻璃拟态基础类 - 升级为现代高质感磨砂玻璃 */
 .glass {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
+    background: rgba(21, 27, 43, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+html.theme-light .glass {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .glass-strong {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
+    background: rgba(21, 27, 43, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+html.theme-light .glass-strong {
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+/* 呼吸渐变霓虹与流光特效 */
+.cyber-glow-active {
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.15), inset 0 0 10px rgba(16, 185, 129, 0.05);
+    border-color: rgba(16, 185, 129, 0.4) !important;
+    animation: active-glow 3s ease-in-out infinite;
+}
+
+@keyframes active-glow {
+    0%, 100% {
+        box-shadow: 0 0 12px rgba(16, 185, 129, 0.1), inset 0 0 8px rgba(16, 185, 129, 0.03);
+        border-color: rgba(16, 185, 129, 0.3) !important;
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.25), inset 0 0 12px rgba(16, 185, 129, 0.08);
+        border-color: rgba(16, 185, 129, 0.6) !important;
+    }
+}
+
+.cyber-glow-canary {
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.15), inset 0 0 10px rgba(245, 158, 11, 0.05);
+    border-color: rgba(245, 158, 11, 0.4) !important;
+    animation: canary-glow 3s ease-in-out infinite;
+}
+
+@keyframes canary-glow {
+    0%, 100% {
+        box-shadow: 0 0 12px rgba(245, 158, 11, 0.1), inset 0 0 8px rgba(245, 158, 11, 0.03);
+        border-color: rgba(245, 158, 11, 0.3) !important;
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(245, 158, 11, 0.25), inset 0 0 12px rgba(245, 158, 11, 0.08);
+        border-color: rgba(245, 158, 11, 0.6) !important;
+    }
+}
+
+.rainbow-hover {
+    position: relative;
+    z-index: 1;
+}
+
+.rainbow-hover::after {
+    content: '';
+    position: absolute;
+    inset: -1.5px;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ef4444, #f59e0b, #10b981, #3b82f6);
+    background-size: 400% 400%;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    animation: rainbow-flow 4s linear infinite;
+}
+
+.rainbow-hover:hover::after {
+    opacity: 1;
+}
+
+@keyframes rainbow-flow {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 400% 50%; }
 }
 
 /* 霓虹光效 */
@@ -483,8 +557,8 @@ body {
 
 /* 指标卡片 */
 .metric-card {
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     padding: 16px;
     text-align: center;
@@ -557,13 +631,13 @@ body {
 }
 
 .modal-content {
-    background: #111827;
-    border: 1px solid #2a3441;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
     border-radius: 16px;
     padding: 28px;
     max-width: 420px;
     width: 90%;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
     animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -583,18 +657,18 @@ body {
 }
 
 .uninstall-result-summary {
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
     border-radius: 12px;
     padding: 16px;
 }
 
 .health-card {
-    background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.82));
-    border: 1px solid #334155;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
     border-radius: 14px;
     padding: 16px;
-    box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .health-metric {
@@ -603,8 +677,8 @@ body {
     gap: 6px;
     padding: 12px;
     border-radius: 12px;
-    background: rgba(2, 6, 23, 0.42);
-    border: 1px solid rgba(51, 65, 85, 0.9);
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
 }
 
 .health-metric-full {
@@ -618,7 +692,7 @@ body {
 }
 
 .health-metric-value {
-    color: #f8fafc;
+    color: var(--text-primary);
     font-size: 18px;
     font-weight: 700;
     line-height: 1.2;
@@ -627,7 +701,8 @@ body {
 
 .health-metric.compact {
     padding: 10px;
-    background: rgba(15, 23, 42, 0.78);
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
 }
 
 .governance-note {
@@ -659,12 +734,12 @@ body {
 .health-version-section {
     margin-top: 16px;
     padding-top: 16px;
-    border-top: 1px solid rgba(51, 65, 85, 0.9);
+    border-top: 1px solid var(--border-color);
 }
 
 .health-version-card {
-    background: rgba(2, 6, 23, 0.34);
-    border: 1px solid rgba(51, 65, 85, 0.85);
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
     border-radius: 12px;
     padding: 12px;
 }
@@ -674,8 +749,8 @@ body {
     flex-direction: column;
     gap: 6px;
     padding: 12px;
-    background: rgba(15, 23, 42, 0.7);
-    border: 1px solid rgba(51, 65, 85, 0.8);
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
     border-radius: 10px;
 }
 
@@ -688,7 +763,7 @@ body {
 }
 
 .result-meta-value {
-    color: #e2e8f0;
+    color: var(--text-primary);
     font-size: 14px;
     font-weight: 600;
     word-break: break-word;
@@ -730,8 +805,8 @@ body {
 }
 
 .result-report-card {
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
     border-radius: 12px;
     padding: 14px 16px;
 }
@@ -739,17 +814,17 @@ body {
 .result-detail-list {
     margin-top: 10px;
     padding-left: 18px;
-    color: #cbd5e1;
+    color: var(--text-secondary);
     font-size: 13px;
     line-height: 1.6;
 }
 
 .result-empty {
-    border: 1px dashed #334155;
+    border: 1px dashed var(--border-color);
     border-radius: 12px;
     padding: 14px 16px;
-    color: #94a3b8;
-    background: rgba(15, 23, 42, 0.5);
+    color: var(--text-secondary);
+    background: var(--input-bg);
 }
 
 /* 环境标签 - 霓虹风格 */
@@ -949,7 +1024,12 @@ body {
     }
 }
 
-@media (max-width: 1024px) {
+/* 侧边栏遮罩（移动端点击外部关闭） */
+.sidebar-backdrop {
+    display: none;
+}
+
+@media (max-width: 1023px) {
     .sidebar {
         position: fixed;
         left: -240px;
@@ -963,18 +1043,39 @@ body {
         left: 0;
     }
 
+    .sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(2px);
+    }
+
     .main-area {
         margin-left: 0 !important;
     }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 639px) {
     .metric-grid {
         grid-template-columns: repeat(2, 1fr) !important;
     }
 
     .content-grid {
         grid-template-columns: 1fr !important;
+    }
+
+    /* 移动端头部工具栏紧凑化 */
+    .lang-switch {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.75rem;
+    }
+
+    /* 模态框移动端全宽 */
+    .modal-content {
+        max-width: 95vw !important;
+        margin: 0 8px;
     }
 }
 
@@ -1025,38 +1126,44 @@ body {
     justify-content: center;
     z-index: 10001;
 }
+
 .auth-card {
-    background: #1e1e2e;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
     padding: 32px;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    border-radius: 16px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
     width: 360px;
     text-align: center;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 }
 .auth-title {
     font-size: 20px;
-    font-weight: 600;
-    color: #cdd6f4;
+    font-weight: 700;
+    color: var(--text-primary);
     margin-bottom: 8px;
 }
 .auth-desc {
     font-size: 13px;
-    color: #a6adc8;
+    color: var(--text-secondary);
     margin-bottom: 20px;
 }
 .auth-input {
     width: 100%;
     padding: 10px 14px;
     border-radius: 8px;
-    border: 1px solid #45475a;
-    background: #313244;
-    color: #cdd6f4;
+    border: 1px solid var(--border-color);
+    background: var(--input-bg);
+    color: var(--text-primary);
     font-size: 14px;
     outline: none;
     box-sizing: border-box;
+    transition: all 0.2s;
 }
 .auth-input:focus {
-    border-color: #89b4fa;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 .auth-submit {
     margin-top: 16px;
@@ -1064,14 +1171,16 @@ body {
     padding: 10px;
     border-radius: 8px;
     border: none;
-    background: #89b4fa;
-    color: #1e1e2e;
+    background: var(--primary-color);
+    color: #fff;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
+    transition: all 0.2s;
 }
 .auth-submit:hover {
-    background: #74c7ec;
+    background: var(--primary-hover);
+    transform: translateY(-1px);
 }
 
 /* ==================== 灵元健康指示灯 ==================== */
@@ -1416,3 +1525,88 @@ html.theme-light .health-version-section {
     border-top: 1px solid var(--border-color) !important;
 }
 
+/* 亮色模式演练场卡片与边框自适应 */
+.theme-light .rounded-lg.border.border-slate-700.bg-slate-900\/50,
+.theme-light .rounded.border.border-slate-700\/50.bg-slate-800\/50 {
+    background-color: var(--input-bg) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* 折叠箭头微交互 */
+.fa-chevron-down, .fa-chevron-right {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ==================== 光敏 / 动画敏感降级 ==================== */
+@media (prefers-reduced-motion: reduce) {
+    /* 关闭所有 CSS 动画 */
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    /* 呼吸光效降级为静态边框 */
+    .cyber-glow-active {
+        box-shadow: none !important;
+        border-color: rgba(16, 185, 129, 0.5) !important;
+    }
+    .cyber-glow-canary {
+        box-shadow: none !important;
+        border-color: rgba(245, 158, 11, 0.5) !important;
+    }
+
+    /* 霓虹光效降级 */
+    .neon-blue, .neon-amber, .neon-green, .neon-red {
+        box-shadow: none !important;
+    }
+
+    /* 悬浮动画禁用 */
+    .hover-float:hover {
+        transform: none !important;
+        box-shadow: none !important;
+    }
+
+    /* 卡片悬浮禁用 */
+    .card:hover {
+        transform: none !important;
+    }
+
+    /* 彩虹边框禁用 */
+    .rainbow-hover::after {
+        display: none !important;
+    }
+
+    /* 扫描线禁用 */
+    .scanline::after {
+        display: none !important;
+    }
+
+    /* 涟漪效果禁用 */
+    .ripple::before {
+        display: none !important;
+    }
+
+    /* 侧边栏项悬浮位移禁用 */
+    .sidebar-item:hover {
+        transform: none !important;
+    }
+
+    /* 灵元列表左侧指示条降级为即时显示 */
+    .ling-item::before {
+        transition: none !important;
+    }
+
+    /* 状态标签光效降级 */
+    .status-active, .status-loaded, .status-loading {
+        box-shadow: none !important;
+    }
+
+    /* 滑块光效降级 */
+    .slider-custom::-webkit-slider-thumb:hover,
+    .slider-custom::-webkit-slider-thumb:active {
+        transform: none !important;
+        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3) !important;
+    }
+}

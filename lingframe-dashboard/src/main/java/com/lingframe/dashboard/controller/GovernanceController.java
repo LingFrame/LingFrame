@@ -17,7 +17,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/lingframe/dashboard/governance")
-@CrossOrigin(origins = "*") // 开发阶段允许跨域
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class GovernanceController {
 

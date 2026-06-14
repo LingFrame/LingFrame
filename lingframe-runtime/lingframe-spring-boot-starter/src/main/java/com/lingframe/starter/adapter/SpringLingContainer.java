@@ -212,6 +212,11 @@ public class SpringLingContainer implements LingContainer {
                 // 处理 AOP 代理，获取目标类
                 Class<?> targetClass = AopUtils.getTargetClass(bean);
 
+                // 防御式过滤：如果 targetClass 不是当前灵元的 ClassLoader 加载的，就跳过它，防止重复和误注册外部 Bean
+                if (targetClass.getClassLoader() != classLoader) {
+                    continue;
+                }
+
                 // 1. 显式 @LingService 注册 (FQSID: [LingID]:[ShortID])
                 ReflectionUtils.doWithMethods(targetClass, method -> {
                     LingService lingService = AnnotatedElementUtils.findMergedAnnotation(method, LingService.class);
@@ -232,8 +237,6 @@ public class SpringLingContainer implements LingContainer {
                                         ifaceMethod.getName(), ifaceMethod.getParameterTypes());
                                 String canonicalFqsid = lingId + ":" + iface.getName();
                                 coreCtx.registerProtocolService(canonicalFqsid, bean, implMethod);
-                                String fqsid = iface.getName() + ":" + ifaceMethod.getName();
-                                coreCtx.registerProtocolService(fqsid, bean, implMethod);
                             } catch (NoSuchMethodException ignored) {
                             }
                         }

@@ -235,13 +235,9 @@ public class DashboardService {
     }
 
     public void updatePermissions(String lingId, ResourcePermissionDTO dto) {
-        log.info("========== Starting Permission Update ==========");
-        log.info("Ling ID: {}", lingId);
-        log.info("Received permissions: dbRead={}, dbWrite={}, cacheRead={}, cacheWrite={}",
-                dto.isDbRead(), dto.isDbWrite(), dto.isCacheRead(), dto.isCacheWrite());
+        log.info("Updating permissions for ling {}: dbRead={}, dbWrite={}, cacheRead={}, cacheWrite={}",
+                lingId, dto.isDbRead(), dto.isDbWrite(), dto.isCacheRead(), dto.isCacheWrite());
         governanceSupport.updatePermissions(lingId, dto);
-        log.info("Permission update completed and persisted");
-        log.info("========================================");
     }
 
     public void updateGovernancePolicy(String lingId, GovernancePolicy policy) {

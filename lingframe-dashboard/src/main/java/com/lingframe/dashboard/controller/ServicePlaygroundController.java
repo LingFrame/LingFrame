@@ -22,7 +22,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/lingframe/dashboard/playground")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class ServicePlaygroundController {
 
@@ -37,7 +36,7 @@ public class ServicePlaygroundController {
             return ApiResponse.ok(playgroundService.getServices(lingId));
         } catch (Exception e) {
             log.error("Failed to get service metadata: {}", lingId, e);
-            return ApiResponse.error("获取服务元数据失败: " + e.getMessage());
+            return ApiResponse.error("Failed to get service metadata: " + e.getMessage());
         }
     }
 
@@ -55,7 +54,7 @@ public class ServicePlaygroundController {
             return ApiResponse.ok(result);
         } catch (Exception e) {
             log.error("Service invocation failed: {}/{}", lingId, request.getFqsid(), e);
-            return ApiResponse.error("服务调用失败: " + e.getMessage());
+            return ApiResponse.error("Service invocation failed: " + e.getMessage());
         }
     }
 

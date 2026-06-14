@@ -1,5 +1,8 @@
 package com.lingframe.dashboard.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lingframe.core.ling.InstancePool;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingServiceRegistry;
@@ -42,6 +45,8 @@ class ServicePlaygroundServiceTest {
     @Mock
     private InvocationPipelineEngine pipelineEngine;
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
     @Nested
     @DisplayName("getServices 元数据查询")
     class GetServicesTests {
@@ -49,7 +54,7 @@ class ServicePlaygroundServiceTest {
         @Test
         @DisplayName("当灵元未注册任何服务时返回空列表")
         void shouldReturnEmptyListWhenNoServicesRegistered() {
-            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine);
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine, objectMapper);
             when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(Collections.emptyList());
 
             List<ServiceMetadataDTO> services = playgroundService.getServices("test-ling");
@@ -61,7 +66,7 @@ class ServicePlaygroundServiceTest {
         @Test
         @DisplayName("当灵元注册服务时应正确返回结构化元数据")
         void shouldReturnStructuredMetadataWhenServicesRegistered() {
-            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine);
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine, objectMapper);
             when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(Arrays.asList("test-ling:EchoService"));
             when(serviceRegistry.getServiceClassName("test-ling:EchoService")).thenReturn("com.example.EchoServiceImpl");
             when(serviceRegistry.getProviderMethods("test-ling:EchoService")).thenReturn(Arrays.asList("echo(java.lang.String)", "ping()"));
@@ -88,6 +93,46 @@ class ServicePlaygroundServiceTest {
             assertEquals("void", pingMethod.getReturnType());
             assertEquals("ping()", pingMethod.getSignature());
         }
+
+        @Test
+        @DisplayName("当同时注册了接口服务和显式注解服务时，应合并显式服务为接口服务方法的别名并过滤掉显式服务卡片")
+        void shouldMergeExplicitServicesIntoInterfaceServices() {
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine, objectMapper);
+            
+            when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(Arrays.asList(
+                    "test-ling:com.example.OrderService",
+                    "test-ling:query_order"
+            ));
+            
+            when(serviceRegistry.getServiceClassName("test-ling:com.example.OrderService")).thenReturn("com.example.OrderServiceImpl");
+            when(serviceRegistry.getServiceClassName("test-ling:query_order")).thenReturn("com.example.OrderServiceImpl");
+            
+            when(serviceRegistry.getProviderMethods("test-ling:com.example.OrderService")).thenReturn(Arrays.asList("queryOrder(java.lang.Long)", "ping()"));
+            when(serviceRegistry.getProviderMethods("test-ling:query_order")).thenReturn(Arrays.asList("queryOrder(java.lang.Long)", "ping()"));
+            
+            when(serviceRegistry.getReturnType("test-ling:com.example.OrderService", "queryOrder(java.lang.Long)")).thenReturn("com.example.Order");
+            when(serviceRegistry.getReturnType("test-ling:com.example.OrderService", "ping()")).thenReturn("void");
+            when(serviceRegistry.getReturnType("test-ling:query_order", "queryOrder(java.lang.Long)")).thenReturn("com.example.Order");
+            when(serviceRegistry.getReturnType("test-ling:query_order", "ping()")).thenReturn("void");
+
+            List<ServiceMetadataDTO> services = playgroundService.getServices("test-ling");
+
+            assertEquals(1, services.size());
+            ServiceMetadataDTO serviceDto = services.get(0);
+            assertEquals("test-ling:com.example.OrderService", serviceDto.getFqsid());
+            assertEquals("com.example.OrderServiceImpl", serviceDto.getClassName());
+            assertEquals(2, serviceDto.getMethods().size());
+
+            ServiceMetadataDTO.MethodMetadata queryMethod = serviceDto.getMethods().get(0);
+            assertEquals("queryOrder", queryMethod.getName());
+            assertEquals(Arrays.asList("java.lang.Long"), queryMethod.getParameterTypes());
+            assertEquals("Order", queryMethod.getReturnType());
+            assertEquals("test-ling:query_order", queryMethod.getAlternateFqsid());
+
+            ServiceMetadataDTO.MethodMetadata pingMethod = serviceDto.getMethods().get(1);
+            assertEquals("ping", pingMethod.getName());
+            assertEquals("test-ling:query_order", pingMethod.getAlternateFqsid());
+        }
     }
 
     @Nested
@@ -97,19 +142,19 @@ class ServicePlaygroundServiceTest {
         @Test
         @DisplayName("调用不存在的灵元时返回失败")
         void shouldReturnErrorWhenLingNotExists() {
-            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine);
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine, objectMapper);
             when(repository.getRuntime("non-exist")).thenReturn(null);
 
             InvokeResultDTO result = playgroundService.invokeService("non-exist", "non-exist:Service", "hello", new String[0], new Object[0]);
 
             assertFalse(result.isSuccess());
-            assertTrue(result.getError().contains("灵元不存在"));
+            assertTrue(result.getError().contains("Ling not found"));
         }
 
         @Test
         @DisplayName("调用不可用的灵元时返回失败")
         void shouldReturnErrorWhenLingNotAvailable() {
-            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine);
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine, objectMapper);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(false);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
@@ -117,16 +162,17 @@ class ServicePlaygroundServiceTest {
             InvokeResultDTO result = playgroundService.invokeService("test-ling", "test-ling:Service", "hello", new String[0], new Object[0]);
 
             assertFalse(result.isSuccess());
-            assertTrue(result.getError().contains("灵元不可用"));
+            assertTrue(result.getError().contains("Ling not available"));
         }
 
         @Test
         @DisplayName("调用成功时应返回正确结果和治理轨迹并安全回收上下文")
         void shouldReturnSuccessResultAndTraceWhenInvokeSucceeds() {
-            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine);
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine, objectMapper);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
+            when(serviceRegistry.getServiceClassName("test-ling:Service")).thenReturn("com.example.Service");
 
             EngineTrace trace = EngineTrace.builder()
                     .source("filter-1")
@@ -137,6 +183,7 @@ class ServicePlaygroundServiceTest {
                 InvocationContext ctx = invocation.getArgument(0);
                 assertEquals("test-ling", ctx.getTargetLingId());
                 assertEquals("test-ling:Service", ctx.getServiceFQSID());
+                assertEquals("com.example.Service", ctx.resolution().getTargetClassName());
                 assertEquals("hello", ctx.getMethodName());
                 assertEquals("dashboard", ctx.getCallerLingId());
                 ctx.addTrace(trace);
@@ -165,10 +212,11 @@ class ServicePlaygroundServiceTest {
         @Test
         @DisplayName("调用抛出异常时应捕获并返回错误且安全回收上下文")
         void shouldReturnErrorResultWhenInvokeThrowsException() {
-            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine);
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine, objectMapper);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
+            when(serviceRegistry.getServiceClassName("test-ling:Service")).thenReturn("com.example.Service");
 
             when(pipelineEngine.invoke(any(InvocationContext.class))).thenThrow(new RuntimeException("biz error"));
 
@@ -183,6 +231,42 @@ class ServicePlaygroundServiceTest {
             assertFalse(result.isSuccess());
             assertEquals("biz error", result.getError());
             assertNull(InvocationContext.current());
+        }
+
+        @Test
+        @DisplayName("调用服务时若参数类型不匹配，应自动进行类型强转")
+        void shouldConvertArgumentsWhenTypesMismatch() {
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine, objectMapper);
+            LingRuntime runtime = mock(LingRuntime.class);
+            when(runtime.isAvailable()).thenReturn(true);
+            when(repository.getRuntime("test-ling")).thenReturn(runtime);
+            when(serviceRegistry.getServiceClassName("test-ling:Service")).thenReturn("com.example.Service");
+
+            InstancePool instancePool = mock(InstancePool.class);
+            LingInstance instance = mock(LingInstance.class);
+            when(runtime.getInstancePool()).thenReturn(instancePool);
+            when(instancePool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
+            when(instance.getClassLoader()).thenReturn(this.getClass().getClassLoader());
+
+            doAnswer(invocation -> {
+                InvocationContext ctx = invocation.getArgument(0);
+                Object[] args = ctx.getArgs();
+                assertEquals(1, args.length);
+                assertTrue(args[0] instanceof Long);
+                assertEquals(123L, args[0]);
+                return "convert-success";
+            }).when(pipelineEngine).invoke(any(InvocationContext.class));
+
+            InvokeResultDTO result = playgroundService.invokeService(
+                    "test-ling",
+                    "test-ling:Service",
+                    "queryOrder",
+                    new String[]{"java.lang.Long"},
+                    new Object[]{123}
+            );
+
+            assertTrue(result.isSuccess());
+            assertEquals("convert-success", result.getResult());
         }
     }
 }

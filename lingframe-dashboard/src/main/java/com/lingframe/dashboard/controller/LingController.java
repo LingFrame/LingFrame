@@ -33,7 +33,6 @@ import java.util.stream.Collectors;
 @Slf4j
 @RestController
 @RequestMapping("/lingframe/dashboard/lings")
-@CrossOrigin(origins = "*")
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class LingController {
 

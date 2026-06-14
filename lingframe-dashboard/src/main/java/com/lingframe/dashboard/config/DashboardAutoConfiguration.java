@@ -19,6 +19,7 @@ import com.lingframe.dashboard.metrics.LingMetricsMeterBridge;
 import com.lingframe.dashboard.scheduler.MetricsCollectorScheduler;
 import com.lingframe.dashboard.security.AccessTokenInterceptor;
 import com.lingframe.dashboard.security.AccessTokenProperties;
+import com.lingframe.dashboard.security.CorsProperties;
 import com.lingframe.dashboard.security.ReadOnlyInterceptor;
 import com.lingframe.dashboard.security.ReadOnlyProperties;
 import com.lingframe.dashboard.service.DashboardService;
@@ -55,7 +56,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @AutoConfiguration
 @ConditionalOnWebApplication
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
-@EnableConfigurationProperties({StorageProperties.class, AccessTokenProperties.class, ReadOnlyProperties.class})
+@EnableConfigurationProperties({StorageProperties.class, AccessTokenProperties.class, ReadOnlyProperties.class, CorsProperties.class})
 public class DashboardAutoConfiguration {
 
     public DashboardAutoConfiguration() {
@@ -113,8 +114,9 @@ public class DashboardAutoConfiguration {
     public ServicePlaygroundService servicePlaygroundService(
             LingServiceRegistry lingServiceRegistry,
             LingRepository lingRepository,
-            InvocationPipelineEngine pipelineEngine) {
-        return new ServicePlaygroundService(lingServiceRegistry, lingRepository, pipelineEngine);
+            InvocationPipelineEngine pipelineEngine,
+            ObjectMapper objectMapper) {
+        return new ServicePlaygroundService(lingServiceRegistry, lingRepository, pipelineEngine, objectMapper);
     }
 
     @Bean

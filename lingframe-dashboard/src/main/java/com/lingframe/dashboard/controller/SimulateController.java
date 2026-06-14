@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/lingframe/dashboard/simulate")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class SimulateController {
 

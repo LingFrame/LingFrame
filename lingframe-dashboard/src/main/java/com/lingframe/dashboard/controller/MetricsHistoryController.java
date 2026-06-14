@@ -20,7 +20,6 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/lingframe/dashboard/metrics")
-@CrossOrigin(origins = "*")
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 public class MetricsHistoryController {

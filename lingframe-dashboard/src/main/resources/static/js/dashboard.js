@@ -1521,8 +1521,9 @@ createApp({
                 // 按参数索引收集各输入框的值
                 const paramTypes = method.parameterTypes || [];
                 const args = paramTypes.map((_, idx) => playgroundArgs[key + '::' + idx] ?? null);
+                const targetFqsid = method.alternateFqsid || fqsid;
                 const result = await api.post(`/playground/lings/${activeId.value}/invoke`, {
-                    fqsid,
+                    fqsid: targetFqsid,
                     methodName: method.name,
                     parameterTypes: paramTypes,
                     args: args
@@ -2070,7 +2071,7 @@ createApp({
                     drawMonitorCharts();
                 }
             } catch (e) {
-                console.log('Failed to fetch metrics:', e.message);
+                console.warn('Failed to fetch metrics:', e.message);
             }
         };
 
@@ -2089,7 +2090,7 @@ createApp({
                     });
                 }
             } catch (e) {
-                console.log('Failed to fetch ling health metrics:', e.message);
+                console.warn('Failed to fetch ling health metrics:', e.message);
             }
         };
 
@@ -2107,7 +2108,7 @@ createApp({
                     });
                 }
             } catch (e) {
-                console.log('Failed to fetch ling governance metrics:', e.message);
+                console.warn('Failed to fetch ling governance metrics:', e.message);
             }
         };
 
@@ -2125,7 +2126,7 @@ createApp({
                     });
                 }
             } catch (e) {
-                console.log('Failed to fetch runtime diagnostics:', e.message);
+                console.warn('Failed to fetch runtime diagnostics:', e.message);
             }
         };
 
@@ -2141,7 +2142,7 @@ createApp({
                     runtimeGovernanceReadiness.warnings = Array.isArray(data.warnings) ? data.warnings : [];
                 }
             } catch (e) {
-                console.log('Failed to fetch runtime governance readiness:', e.message);
+                console.warn('Failed to fetch runtime governance readiness:', e.message);
             }
         };
 
@@ -2227,18 +2228,84 @@ createApp({
             ctx.textBaseline = 'middle';
             ctx.fillText('零依赖', cx, cy);
 
-            // 绘制每个节点
+            // 1. 绘制依赖连线与流动微粒
             nodes.forEach((node, index) => {
+                // 计算同步阻尼浮动偏移，使连线完美合拍
+                let nx = node.x;
+                let ny = node.y;
+                if (node.isActive) {
+                    const angle = (2 * Math.PI * index / nodes.length) - Math.PI / 2;
+                    const floatOffset = 4 * Math.sin(time * 1.2 + index);
+                    nx += Math.cos(angle) * floatOffset;
+                    ny += Math.sin(angle) * floatOffset;
+                }
+
+                // 虚线网络
+                ctx.strokeStyle = currentTheme.value === 'light' ? 'rgba(99, 102, 241, 0.12)' : 'rgba(99, 102, 241, 0.18)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(nx, ny);
+                ctx.stroke();
+                ctx.setLineDash([]); // 还原实线
+
+                // 数据流动微粒
+                if (node.isActive) {
+                    const pulseProgress = (time * 0.45 + index * 0.3) % 1;
+                    const px = cx + (nx - cx) * pulseProgress;
+                    const py = cy + (ny - cy) * pulseProgress;
+                    
+                    ctx.fillStyle = node.color;
+                    ctx.beginPath();
+                    ctx.arc(px, py, 3, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // 微粒光晕
+                    const particleGlow = ctx.createRadialGradient(px, py, 0, px, py, 6);
+                    particleGlow.addColorStop(0, node.glowColor);
+                    particleGlow.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = particleGlow;
+                    ctx.beginPath();
+                    ctx.arc(px, py, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+
+            // 2. 绘制每个节点
+            nodes.forEach((node, index) => {
+                // 同步浮动偏移（使用局部变量，不修改原始坐标，避免累积漂移）
+                let nx = node.x;
+                let ny = node.y;
+                if (node.isActive) {
+                    const angle = (2 * Math.PI * index / nodes.length) - Math.PI / 2;
+                    const floatOffset = 4 * Math.sin(time * 1.2 + index);
+                    nx += Math.cos(angle) * floatOffset;
+                    ny += Math.sin(angle) * floatOffset;
+                }
+
+                // 预警扩散雷达波纹
+                if (node.status === 'DEGRADED' || node.status === 'ERROR') {
+                    const radarTime = (time * 1.2 + index * 0.5) % 1;
+                    const radarRadius = node.nodeRadius + radarTime * 20;
+                    const radarOpacity = 1 - radarTime;
+                    ctx.strokeStyle = node.status === 'DEGRADED' ? `rgba(245, 158, 11, ${radarOpacity * 0.7})` : `rgba(239, 68, 68, ${radarOpacity * 0.7})`;
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(nx, ny, radarRadius, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
                 // 光晕效果
                 const pulseScale = node.isActive ? 1 + 0.15 * Math.sin(time * 2 + index) : 1;
                 const glowRadius = node.nodeRadius * 2.5 * pulseScale;
 
-                const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, glowRadius);
+                const gradient = ctx.createRadialGradient(nx, ny, 0, nx, ny, glowRadius);
                 gradient.addColorStop(0, node.glowColor);
                 gradient.addColorStop(1, 'rgba(0,0,0,0)');
                 ctx.fillStyle = gradient;
                 ctx.beginPath();
-                ctx.arc(node.x, node.y, glowRadius, 0, Math.PI * 2);
+                ctx.arc(nx, ny, glowRadius, 0, Math.PI * 2);
                 ctx.fill();
 
                 // 灰度灵元双环
@@ -2246,26 +2313,26 @@ createApp({
                     ctx.strokeStyle = 'rgba(245,158,11,0.4)';
                     ctx.lineWidth = 2;
                     ctx.beginPath();
-                    ctx.arc(node.x, node.y, node.nodeRadius + 5, 0, Math.PI * 2);
+                    ctx.arc(nx, ny, node.nodeRadius + 5, 0, Math.PI * 2);
                     ctx.stroke();
                 }
 
                 // 主圆
                 ctx.fillStyle = node.color;
                 ctx.beginPath();
-                ctx.arc(node.x, node.y, node.nodeRadius, 0, Math.PI * 2);
+                ctx.arc(nx, ny, node.nodeRadius, 0, Math.PI * 2);
                 ctx.fill();
 
                 // 内部高光
                 const innerGrad = ctx.createRadialGradient(
-                    node.x - node.nodeRadius * 0.3, node.y - node.nodeRadius * 0.3, 0,
-                    node.x, node.y, node.nodeRadius
+                    nx - node.nodeRadius * 0.3, ny - node.nodeRadius * 0.3, 0,
+                    nx, ny, node.nodeRadius
                 );
                 innerGrad.addColorStop(0, 'rgba(255,255,255,0.2)');
                 innerGrad.addColorStop(1, 'rgba(255,255,255,0)');
                 ctx.fillStyle = innerGrad;
                 ctx.beginPath();
-                ctx.arc(node.x, node.y, node.nodeRadius, 0, Math.PI * 2);
+                ctx.arc(nx, ny, node.nodeRadius, 0, Math.PI * 2);
                 ctx.fill();
 
                 // 名称标签
@@ -2273,10 +2340,14 @@ createApp({
                 ctx.font = '11px -apple-system, system-ui, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'alphabetic';
-                ctx.fillText(node.shortName, node.x, node.y + node.nodeRadius + 16);
+                ctx.fillText(node.shortName, nx, ny + node.nodeRadius + 16);
             });
 
-            starMapAnimFrame = requestAnimationFrame(drawStarMap);
+            // 尊重用户动画偏好：reduced-motion 时仅绘制一帧静态画面
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (!prefersReducedMotion) {
+                starMapAnimFrame = requestAnimationFrame(drawStarMap);
+            }
         };
 
         // 星图点击事件
@@ -2367,6 +2438,14 @@ createApp({
                     delete lingFirstSeen[id];
                 }
             });
+
+            // 初次加载或灵元列表更新时，如果当前在概览页且星图尚未渲染（未启动动画帧），则触发渲染
+            if (activeNav.value === 'overview' && !starMapAnimFrame && newLings.length > 0) {
+                nextTick(() => {
+                    if (starMapAnimFrame) cancelAnimationFrame(starMapAnimFrame);
+                    drawStarMap();
+                });
+            }
         }, { deep: true });
 
         // 监听 playground 数据变化，更新服务数量缓存
@@ -2421,7 +2500,6 @@ createApp({
 
             refreshLings();
             fetchPackages();
-            console.log(new Date(), 'start connecting sse')
             connectSSE();
 
             updateEnvMode(currentEnv.value);
@@ -2581,7 +2659,7 @@ createApp({
                     instance.options.scales.x.grid.color = gridColor;
                     instance.options.scales.y.ticks.color = ticksColor;
                     instance.options.scales.y.grid.color = gridColor;
-                    instance.update('none'); // 跳过动画，提升性能
+                    instance.update({ duration: 300, easing: "easeOutQuart" }); // 300ms 缓动过渡，平滑顺畅
                     return;
                 }
 
@@ -2609,7 +2687,10 @@ createApp({
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        animation: false,
+                        animation: {
+                            duration: 300,
+                            easing: "easeOutQuart"
+                        },
                         interaction: {
                             mode: 'index',
                             intersect: false

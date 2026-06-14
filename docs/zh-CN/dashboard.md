@@ -200,6 +200,13 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
 1. Dashboard 是可选模块，只有在 `lingframe.dashboard.enabled=true` 时才会启用。
 2. 安装接口默认关闭，需要显式设置 `lingframe.dashboard.install-enabled=true`。
 3. 热重载能力只属于开发态，`lingframe.dev-mode=false` 时会被拒绝。
-4. 当前实现默认开放 CORS，生产环境应在 Dashboard 前增加鉴权与访问控制。
+4. CORS 由集中式 `DashboardCorsFilter` 统一管控。当 access-token 认证已启用且未配置 `lingframe.dashboard.cors.allowed-origins` 时，仅允许同源请求。跨域部署场景需显式配置：
+   ```yaml
+   lingframe:
+     dashboard:
+       cors:
+         allowed-origins:
+           - "https://admin.example.com"
+   ```
 5. 真实后端 API 面才是文档应对齐的事实来源，UI 打包与前端壳层不是当前阶段重点。
 6. Dashboard 更适合被理解为运行时治理的观察与操作入口，而不是独立于内核之外的另一个系统。

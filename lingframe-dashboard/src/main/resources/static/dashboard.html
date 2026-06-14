@@ -9,7 +9,9 @@
     <script src="js/vue.global.prod.js" defer></script>
     <script src="https://cdn.tailwindcss.com" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
-    <!--<link rel="stylesheet" href="css/tailwindcss.css">-->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/fontawesome.min.css">
     <link rel="stylesheet" href="css/jetbrains-mono.css">
     <link rel="stylesheet" href="css/dashboard.css">
@@ -96,6 +98,14 @@
             font-weight: 800;
             letter-spacing: 0.5px;
             text-shadow: 0 0 30px rgba(239, 68, 68, 0.3);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .animate-phoenix {
+                animation: none !important;
+                background-size: 100% 100%;
+                text-shadow: none;
+            }
         }
     </style>
 </head>
@@ -249,6 +259,9 @@
             </div>
         </div>
     </div>
+
+    <!-- 侧边栏遮罩（移动端） -->
+    <div v-if="sidebarOpen" class="sidebar-backdrop" @click="sidebarOpen = false"></div>
 
     <!-- 侧边栏 -->
     <aside class="sidebar" :class="{ open: sidebarOpen }">
@@ -420,10 +433,6 @@
                     <i :class="currentTheme === 'light' ? 'fa-solid fa-moon text-amber-500' : 'fa-solid fa-sun text-yellow-400'"></i>
                 </button>
 
-                <!--<button @click="refreshLings" :disabled="loading.lings"
-                        class="text-slate-400 hover:text-white transition-all">
-                    <i :class="['fa-solid fa-arrows-rotate', loading.lings ? 'animate-spin' : '']"></i>
-                </button>-->
                 <span :class="['env-badge', 'env-' + currentEnv]">{{ t('envLabels.' + currentEnv) }}</span>
                 <div class="flex items-center gap-2 text-sm text-slate-400">
                     <i class="fa-solid fa-clock"></i>
@@ -1000,7 +1009,7 @@
                                 <h3 class="font-bold text-base text-white">{{ t('monitor.basicInfo') }}</h3>
                             </div>
                         </div>
-                        <div class="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                        <div class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                             <div class="bg-slate-800/50 rounded-lg p-3">
                                 <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.jvmVersion') }}
                                 </div>
@@ -1038,7 +1047,7 @@
                                 <h3 class="font-bold text-base text-white">{{ t('monitor.metricsTitle') }}</h3>
                             </div>
                         </div>
-                        <div class="p-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+                        <div class="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 gap-4">
                             <!-- CPU -->
                             <div class="bg-slate-800/50 rounded-lg p-3 text-center">
                                 <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.cpu') }}</div>
@@ -1256,7 +1265,7 @@
                                 </div>
 
                                 <!-- 指标卡片 -->
-                                <div class="metric-grid grid grid-cols-5 gap-3">
+                                <div class="metric-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                                     <div class="metric-card">
                                         <div class="text-xs text-slate-500 uppercase mb-1">{{ t('traffic.total') }}
                                         </div>
@@ -1750,7 +1759,7 @@
                                          class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
                                         <div class="flex items-center justify-between mb-2 cursor-pointer select-none" @click="toggleServiceExpand(svc.fqsid)">
                                             <div class="text-xs font-mono text-blue-400 truncate flex items-center gap-1.5" :title="svc.fqsid">
-                                                <i class="fa-solid" :class="isServiceExpanded(svc.fqsid) ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+                                                <i class="fa-solid fa-chevron-right transition-transform duration-200" :class="{ 'rotate-90': isServiceExpanded(svc.fqsid) }"></i>
                                                 <span>{{ svc.fqsid.split(':')[1] || svc.fqsid }}</span>
                                             </div>
                                             <span class="text-[10px] text-slate-500 font-semibold">{{ svc.methods?.length || 0 }} {{ t('playground.methodsCount') }}</span>
@@ -1764,10 +1773,11 @@
                                                 <div v-for="method in svc.methods" :key="method.signature"
                                                      class="rounded border border-slate-700/50 bg-slate-800/50 p-2">
                                                     <div class="flex items-center justify-between gap-2 mb-1">
-                                                        <div class="text-xs font-mono text-slate-300 truncate">
+                                                        <div class="text-xs font-mono text-slate-300 truncate flex items-center">
                                                             <span class="text-emerald-400">{{ method.name }}</span>(<span
                                                                 class="text-slate-500">{{ method.parameterTypes.join(', ')
                                                             }}</span>)
+                                                            <span v-if="method.alternateFqsid" class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 ml-2" :title="method.alternateFqsid">@LingService: {{ method.alternateFqsid.split(':')[1] }}</span>
                                                         </div>
                                                         <span class="text-[10px] text-slate-500">{{ t('playground.returnType')
                                                             }}: {{ method.returnType }}</span>
@@ -1799,36 +1809,42 @@
                                 </div>
 
                                 <!-- 调用结果 -->
-                                <div v-if="playgroundResult" class="mt-4 rounded-lg border p-3"
-                                     :class="playgroundResult.success ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <span class="text-xs font-bold"
-                                              :class="playgroundResult.success ? 'text-green-400' : 'text-red-400'">
-                                            {{ playgroundResult.success ? t('playground.result') : t('playground.error')
-                                            }}
-                                        </span>
-                                        <span class="text-[10px] text-slate-500">{{ playgroundResult.durationMs
-                                            }} ms</span>
+                                <div v-if="playgroundResult" class="mt-4 rounded-xl border border-slate-700/40 overflow-hidden shadow-2xl transition-all bg-slate-950/90 text-slate-300">
+                                    <!-- macOS 风格窗口头部 -->
+                                    <div class="flex items-center justify-between px-4 py-2.5 bg-slate-900/80 border-b border-slate-800/60">
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="w-2.5 h-2.5 rounded-full bg-red-500/60 shrink-0"></span>
+                                            <span class="w-2.5 h-2.5 rounded-full bg-yellow-500/60 shrink-0"></span>
+                                            <span class="w-2.5 h-2.5 rounded-full bg-green-500/60 shrink-0"></span>
+                                            <span class="text-xs font-bold font-sans ml-2" :class="playgroundResult.success ? 'text-green-400' : 'text-red-400'">
+                                                {{ playgroundResult.success ? t('playground.result') : t('playground.error') }}
+                                            </span>
+                                        </div>
+                                        <span class="text-[10px] font-mono text-slate-500">{{ playgroundResult.durationMs }} ms</span>
                                     </div>
-                                    <div v-if="playgroundResult.success"
-                                         class="text-sm font-mono text-green-300 break-all whitespace-pre-wrap max-h-64 overflow-y-auto">
-                                        {{ formatPlaygroundResult(playgroundResult.result) }}
-                                    </div>
-                                    <div v-else class="text-sm font-mono text-red-300 break-all">
-                                        {{ playgroundResult.error }}
-                                    </div>
-                                    <!-- 治理追踪 -->
-                                    <div v-if="playgroundResult.traces && playgroundResult.traces.length"
-                                         class="mt-2 pt-2 border-t border-slate-700/50">
-                                        <div class="text-[10px] text-slate-500 mb-1">{{ t('playground.traces') }}</div>
-                                        <div class="space-y-1">
-                                            <div v-for="(trace, idx) in playgroundResult.traces" :key="idx"
-                                                 class="text-[10px] font-mono flex items-center gap-1">
-                                                <span :class="trace.type === 'PASS' || trace.type === 'IN' ? 'text-green-400' : trace.type === 'FAIL' || trace.type === 'ERROR' ? 'text-red-400' : 'text-amber-400'">
-                                                    {{ trace.type }}
-                                                </span>
-                                                <span class="text-slate-400">{{ trace.source }}</span>
-                                                <span class="text-slate-500 truncate">{{ trace.action }}</span>
+                                    
+                                    <div class="p-4">
+                                        <div v-if="playgroundResult.success"
+                                             class="text-xs font-mono text-emerald-300 break-all whitespace-pre-wrap max-h-64 overflow-y-auto leading-relaxed">
+                                            {{ formatPlaygroundResult(playgroundResult.result) }}
+                                        </div>
+                                        <div v-else class="text-xs font-mono text-rose-300 break-all leading-relaxed">
+                                            {{ playgroundResult.error }}
+                                        </div>
+                                        
+                                        <!-- 治理追踪 -->
+                                        <div v-if="playgroundResult.traces && playgroundResult.traces.length"
+                                             class="mt-3 pt-3 border-t border-slate-800/80">
+                                            <div class="text-[10px] text-slate-500 mb-1.5 uppercase font-bold tracking-wider">{{ t('playground.traces') }}</div>
+                                            <div class="space-y-1">
+                                                <div v-for="(trace, idx) in playgroundResult.traces" :key="idx"
+                                                     class="text-[10px] font-mono flex items-center gap-2">
+                                                    <span :class="trace.type === 'PASS' || trace.type === 'IN' ? 'text-green-400' : trace.type === 'FAIL' || trace.type === 'ERROR' ? 'text-red-400' : 'text-amber-400'">
+                                                        {{ trace.type }}
+                                                    </span>
+                                                    <span class="text-slate-500 font-sans shrink-0">@{{ trace.source }}</span>
+                                                    <span class="text-slate-400 truncate" :title="trace.action">{{ trace.action }}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
