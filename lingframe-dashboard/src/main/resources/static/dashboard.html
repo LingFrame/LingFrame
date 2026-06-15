@@ -16,25 +16,10 @@
     <link rel="stylesheet" href="css/jetbrains-mono.css">
     <link rel="stylesheet" href="css/dashboard.css">
     <style>
-        /* CSS 变量系统 - 深色版 */
-        :root {
-            --primary-color: #3b82f6;
-            --primary-hover: #2563eb;
-            --secondary-color: #10b981;
-            --warning-color: #f59e0b;
-            --danger-color: #ef4444;
-            --info-color: #6366f1;
-            --dark-bg: #0a0f1a;
-            --card-bg: #151b2b;
-            --border-color: #2a3441;
-            --text-primary: #f1f5f9;
-            --text-secondary: #64748b;
-        }
-
         .lang-switch {
-            background-color: var(--card-bg);
+            background-color: var(--bg-card);
             color: var(--text-secondary);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--border);
             border-radius: 0.375rem;
             padding: 0.25rem 0.5rem;
             font-size: 0.875rem;
@@ -43,9 +28,9 @@
         }
 
         .lang-switch:hover {
-            color: #fff;
-            border-color: #475569;
-            background-color: #334155;
+            color: var(--text-primary);
+            border-color: var(--border);
+            background-color: var(--bg-hover);
             transform: translateY(-1px);
         }
 
@@ -148,27 +133,35 @@
                     <i class="fa-solid fa-triangle-exclamation"></i>
                 </div>
                 <div class="flex-grow">
-                    <h3 class="font-bold text-white">{{ modal.title }}</h3>
-                    <p class="text-base text-slate-400 mt-1">{{ modal.message }}</p>
+                    <h3 class="font-bold t-text">{{ modal.title }}</h3>
+                    <p class="text-base t-text-sub mt-1">{{ modal.message }}</p>
                     <!-- 版本选择 (仅在卸载且支持多版本时显示) -->
                     <div v-if="modal.showVersionSelect && modal.versions && modal.versions.length > 0" class="mt-3">
-                        <label class="text-sm text-slate-500 block mb-1">{{ modal.versionSelectLabel ||
+                        <label class="text-sm t-text-muted block mb-1">{{ modal.versionSelectLabel ||
                         (t('modal.selectVersion') || '选择要卸载的版本：') }}</label>
                         <select v-model="modal.selectedVersion"
-                                class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors">
+                                class="w-full t-bg-card border t-border rounded-lg px-3 py-2 text-sm t-text focus:outline-none focus:border-blue-500 transition-colors">
                             <option value="">{{ t('modal.allVersions') || '全量卸载 (所有版本)' }}</option>
                             <option v-for="v in modal.versions" :key="v" :value="v">{{ v }}</option>
                         </select>
+                    </div>
+                    <!-- 高危操作二次验证输入框 -->
+                    <div v-if="modal.isDanger" class="mt-3">
+                        <label class="text-sm text-red-400 block mb-1">
+                            {{ t('modal.dangerConfirmLabel') || '输入灵元 ID 以确认操作：' }}
+                        </label>
+                        <input type="text" v-model="modal.confirmInput" :placeholder="modal.expectedConfirmInput"
+                               class="w-full t-bg-card border t-border rounded-lg px-3 py-2 text-sm t-text focus:outline-none focus:border-red-500 transition-colors font-mono">
                     </div>
                 </div>
             </div>
             <div class="flex gap-3 justify-end">
                 <button @click="modal.show = false"
-                        class="px-4 py-2 rounded-lg text-base font-medium bg-slate-700 hover:bg-slate-600 text-white">
+                        class="px-4 py-2 rounded-lg text-base font-medium t-bg-hover hover:t-bg-hover t-text">
                     {{ t('modal.cancel') }}
                 </button>
-                <button @click="confirmModalAction" :disabled="modal.loading"
-                        class="px-4 py-2 rounded-lg text-base font-medium bg-red-600 hover:bg-red-500 text-white flex items-center gap-2">
+                <button @click="confirmModalAction" :disabled="modal.loading || (modal.isDanger && modal.confirmInput !== modal.expectedConfirmInput)"
+                        class="px-4 py-2 rounded-lg text-base font-medium bg-red-600 hover:bg-red-500 text-white flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
                         <span v-if="modal.loading" class="spinner"
                               style="width:14px;height:14px;border-width:2px;"></span>
                     {{ modal.actionText }}
@@ -181,10 +174,10 @@
         <div class="modal-content uninstall-result-modal">
             <div class="flex items-start justify-between gap-4 mb-4">
                 <div>
-                    <h3 class="font-bold text-white text-lg">{{ uninstallResultModal.title }}</h3>
-                    <p class="text-sm text-slate-400 mt-1">{{ uninstallResultModal.message }}</p>
+                    <h3 class="font-bold t-text text-lg">{{ uninstallResultModal.title }}</h3>
+                    <p class="text-sm t-text-sub mt-1">{{ uninstallResultModal.message }}</p>
                 </div>
-                <button @click="closeUninstallResultModal" class="text-slate-400 hover:text-white">
+                <button @click="closeUninstallResultModal" class="t-text-sub hover:t-text">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -213,16 +206,16 @@
                                 </span>
                         </div>
                     </div>
-                    <p class="text-xs text-slate-400 mt-3">
+                    <p class="text-xs t-text-sub mt-3">
                         {{ t('uninstallResult.notice') || '当前策略为提示不拦截：即使预检发现风险，卸载动作仍可能已触发。'
                         }}
                     </p>
                 </div>
                 <div class="space-y-3">
                     <div class="flex items-center justify-between">
-                        <h4 class="text-sm font-bold text-white">{{ t('uninstallResult.detailTitle') || '预检明细'
+                        <h4 class="text-sm font-bold t-text">{{ t('uninstallResult.detailTitle') || '预检明细'
                             }}</h4>
-                        <span class="text-xs text-slate-500">{{ uninstallResultModal.result.reports?.length || 0
+                        <span class="text-xs t-text-muted">{{ uninstallResultModal.result.reports?.length || 0
                             }} {{ t('uninstallResult.detailCountSuffix') || '条' }}</span>
                     </div>
                     <div v-if="!uninstallResultModal.result.reports || uninstallResultModal.result.reports.length === 0"
@@ -236,13 +229,13 @@
                                 <div class="flex items-center gap-2">
                                     <span :class="getUninstallRiskClass(report.level)">{{ getUninstallRiskLabel(report.level)
                                         }}</span>
-                                    <span class="text-xs text-slate-500">{{ report.checker || (t('uninstallResult.unknownChecker') || 'unknown-checker')
+                                    <span class="text-xs t-text-muted">{{ report.checker || (t('uninstallResult.unknownChecker') || 'unknown-checker')
                                         }}</span>
                                 </div>
-                                <span class="text-xs text-slate-500">{{ report.version || uninstallResultModal.result.version || t('modal.allVersions')
+                                <span class="text-xs t-text-muted">{{ report.version || uninstallResultModal.result.version || t('modal.allVersions')
                                     }}</span>
                             </div>
-                            <p class="text-sm text-slate-200">
+                            <p class="text-sm t-text">
                                 {{ report.summary || (t('uninstallResult.noSummary') || '无摘要') }}</p>
                             <ul v-if="report.details && report.details.length" class="result-detail-list">
                                 <li v-for="(detail, detailIndex) in report.details" :key="detailIndex">{{ detail }}</li>
@@ -253,7 +246,7 @@
             </div>
             <div class="flex justify-end mt-6">
                 <button @click="closeUninstallResultModal"
-                        class="px-4 py-2 rounded-lg text-base font-medium bg-slate-700 hover:bg-slate-600 text-white">
+                        class="px-4 py-2 rounded-lg text-base font-medium t-bg-hover hover:t-bg-hover t-text">
                     {{ t('modal.confirm') }}
                 </button>
             </div>
@@ -265,14 +258,14 @@
 
     <!-- 侧边栏 -->
     <aside class="sidebar" :class="{ open: sidebarOpen }">
-        <div class="p-5 border-b border-slate-700">
+        <div class="p-5 border-b t-border">
             <div class="flex items-center gap-3">
                 <img src="images/logo.png" class="w-18 h-18 object-contain rounded-lg shadow-lg" alt="Logo" />
                 <div>
-                    <h1 class="font-bold text-white text-lg tracking-tight">{{ t('branding.name') }}</h1>
+                    <h1 class="font-bold t-text text-lg tracking-tight">{{ t('branding.name') }}</h1>
                     <p class="text-xs font-mono tracking-wide mt-0.5 flex items-center">
-                        <span class="text-slate-500">{{ t('version') }}</span>
-                        <span class="mx-1.5 text-slate-700">·</span>
+                        <span class="t-text-muted">{{ t('version') }}</span>
+                        <span class="mx-1.5 t-text-muted">·</span>
                         <span class="animate-phoenix font-black italic">{{ t('branding.codename') }}</span>
                     </p>
                 </div>
@@ -280,11 +273,11 @@
         </div>
 
         <!-- 环境选择 -->
-        <div class="p-4 border-b border-slate-700">
-            <label class="text-sm text-slate-500 uppercase tracking-wider mb-2 block">{{ t('sidebar.currentEnv')
+        <div class="p-4 border-b t-border">
+            <label class="text-sm t-text-muted uppercase tracking-wider mb-2 block">{{ t('sidebar.currentEnv')
                 }}</label>
             <select v-model="currentEnv"
-                    class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-base text-white">
+                    class="w-full t-bg-card border t-border rounded-lg px-3 py-2 text-base t-text">
                 <option value="dev">{{ t('sidebar.envDev') }}</option>
                 <option value="test">{{ t('sidebar.envTest') }}</option>
                 <option value="prod">{{ t('sidebar.envProd') }}</option>
@@ -293,7 +286,7 @@
 
         <!-- 导航菜单 -->
         <nav class="flex-shrink-0 py-4">
-            <div class="text-sm text-slate-500 uppercase tracking-wider px-5 mb-2">{{ t('sidebar.coreFeatures') }}
+            <div class="text-sm t-text-muted uppercase tracking-wider px-5 mb-2">{{ t('sidebar.coreFeatures') }}
             </div>
             <div :class="['sidebar-item', activeNav === 'overview' ? 'active' : '']" @click="activeNav = 'overview'">
                 <i class="fa-solid fa-satellite-dish w-4"></i>
@@ -320,16 +313,16 @@
         </nav>
 
         <!-- 灵元列表（常驻侧边栏） -->
-        <div class="flex-grow overflow-y-auto px-3 py-2 border-t border-slate-700">
-            <div class="text-sm text-slate-500 uppercase tracking-wider px-2 mb-2">{{ t('lingList.title') }}
-                <span class="text-xs text-slate-600">{{ t('lingList.count', {n: lings.length}) }}</span>
+        <div class="flex-grow overflow-y-auto px-3 py-2 border-t t-border">
+            <div class="text-sm t-text-muted uppercase tracking-wider px-2 mb-2">{{ t('lingList.title') }}
+                <span class="text-xs t-text-muted">{{ t('lingList.count', {n: lings.length}) }}</span>
             </div>
             <!-- 搜索筛选 -->
             <div class="px-2 mb-2">
                 <input v-model="lingSearch" type="text" :placeholder="t('lingList.search')"
-                       class="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500">
+                       class="w-full t-bg-card border t-border rounded px-2 py-1 text-xs t-text t-text-muted focus:outline-none focus:border-blue-500">
             </div>
-            <div v-if="lings.length === 0" class="text-xs text-slate-600 px-2 py-4 text-center">
+            <div v-if="lings.length === 0" class="text-xs t-text-muted px-2 py-4 text-center">
                 {{ t('lingList.empty') }}
             </div>
             <div v-for="p in filteredLings" :key="p.lingId"
@@ -339,7 +332,7 @@
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-1.5 min-w-0">
                         <span :class="['ling-health-dot', getLingHealthDotClass(p.lingId)]"></span>
-                        <span class="text-base font-medium text-white truncate"
+                        <span class="text-base font-medium t-text truncate"
                               :title="p.lingId">{{ getLingShortName(p.lingId) }}</span>
                     </div>
                     <span :class="['status-tag px-2 py-0.5 rounded text-xs font-semibold tracking-wide', getLingTagClass(p.status)]">{{ t('status.' + p.status?.toLowerCase()) || p.status
@@ -349,13 +342,13 @@
                 <div v-if="p.versionDetails && p.versionDetails.length > 0" class="mt-1.5 space-y-1">
                     <div v-for="v in p.versionDetails" :key="v.version" class="flex items-center gap-1.5 text-xs">
                         <span class="font-mono truncate max-w-[100px]"
-                              :class="v.isCanary ? 'text-amber-400' : 'text-slate-400'" :title="v.version">{{ v.version
+                              :class="v.isCanary ? 'text-amber-400' : 't-text-sub'" :title="v.version">{{ v.version
                             }}</span>
                         <span v-if="v.isCanary"
                               class="text-[11px] px-1 py-px rounded bg-amber-500/20 text-amber-400 font-bold tracking-tight">CANARY</span>
                         <span v-else-if="v.isDefault"
                               class="text-[11px] px-1 py-px rounded bg-blue-500/20 text-blue-400 font-bold tracking-tight">STABLE</span>
-                        <span v-if="v.trafficWeight != null" class="text-slate-500 ml-auto">{{ v.trafficWeight
+                        <span v-if="v.trafficWeight != null" class="t-text-muted ml-auto">{{ v.trafficWeight
                             }}%</span>
                     </div>
                 </div>
@@ -368,7 +361,7 @@
                         }}</span>
                 </div>
                 <!-- 底部元信息 -->
-                <div class="flex items-center gap-3 mt-1.5 text-xs text-slate-500">
+                <div class="flex items-center gap-3 mt-1.5 text-xs t-text-muted">
                         <span v-if="getLingUptime(p.lingId)" class="flex items-center gap-1">
                             <i class="fa-solid fa-clock text-[10px]"></i>
                             {{ getLingUptime(p.lingId) }}
@@ -382,12 +375,12 @@
         </div>
 
         <!-- 底部状态 -->
-        <div class="p-4 border-t border-slate-700">
+        <div class="p-4 border-t t-border">
             <div class="flex items-center gap-2 text-sm">
                 <span :class="['connection-dot', sseStatus]"></span>
-                <span class="text-slate-400">{{ sseStatusText }}</span>
+                <span class="t-text-sub">{{ sseStatusText }}</span>
             </div>
-            <div class="text-sm text-slate-500 mt-1">
+            <div class="text-sm t-text-muted mt-1">
                 {{ t('sidebar.lingCount') }}: {{ lings.length }} | {{ t('sidebar.logCount') }}: {{ logs.length
                 }}
             </div>
@@ -399,15 +392,15 @@
 
         <!-- 顶部栏 -->
         <header
-                class="h-14 bg-slate-800/50 border-b border-slate-700 flex items-center justify-between px-6 flex-shrink-0">
+                class="h-14 t-bg-faint border-b t-border flex items-center justify-between px-6 flex-shrink-0">
             <div class="flex items-center gap-4">
-                <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden text-slate-400 hover:text-white">
+                <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden t-text-sub hover:t-text">
                     <i class="fa-solid fa-bars"></i>
                 </button>
                 <div class="flex items-center gap-3">
-                    <span class="text-base font-medium text-white">{{ t('sidebar.' + activeNav) }}</span>
-                    <i class="fa-solid fa-chevron-right text-slate-600 text-sm" v-if="activeId"></i>
-                    <span class="text-base text-slate-400" v-if="activeId">{{ activeId }}</span>
+                    <span class="text-base font-medium t-text">{{ t('sidebar.' + activeNav) }}</span>
+                    <i class="fa-solid fa-chevron-right t-text-muted text-sm" v-if="activeId"></i>
+                    <span class="text-base t-text-sub" v-if="activeId">{{ activeId }}</span>
                 </div>
             </div>
             <!-- 顶部工具栏右侧 -->
@@ -429,12 +422,12 @@
                     <option v-for="(label, key) in supportedLocales" :value="key" :key="key">{{ label }}</option>
                 </select>
 
-                <button @click="toggleTheme" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700/50 transition-all border border-slate-700/50 shrink-0" :title="currentTheme === 'light' ? 'Dark Mode' : 'Light Mode'">
+                <button @click="toggleTheme" class="w-8 h-8 rounded-lg flex items-center justify-center t-text-sub hover:t-text hover:t-bg-faint transition-all border t-border shrink-0" :title="currentTheme === 'light' ? 'Dark Mode' : 'Light Mode'">
                     <i :class="currentTheme === 'light' ? 'fa-solid fa-moon text-amber-500' : 'fa-solid fa-sun text-yellow-400'"></i>
                 </button>
 
                 <span :class="['env-badge', 'env-' + currentEnv]">{{ t('envLabels.' + currentEnv) }}</span>
-                <div class="flex items-center gap-2 text-sm text-slate-400">
+                <div class="flex items-center gap-2 text-sm t-text-sub">
                     <i class="fa-solid fa-clock"></i>
                     <span>{{ currentTime }}</span>
                 </div>
@@ -445,31 +438,31 @@
         <div v-if="uploadModal.show" class="modal-overlay" @click.self="closeUploadModal">
             <div class="modal-content" style="max-width: 500px;">
                 <div class="flex items-center justify-between mb-4">
-                    <h3 class="font-bold text-white text-lg">{{ t('upload.title') }}</h3>
-                    <button @click="closeUploadModal" class="text-slate-400 hover:text-white">
+                    <h3 class="font-bold t-text text-lg">{{ t('upload.title') }}</h3>
+                    <button @click="closeUploadModal" class="t-text-sub hover:t-text">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
 
-                <div class="upload-area border-2 border-dashed border-slate-600 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-slate-700/30 transition-all"
+                <div class="upload-area border-2 border-dashed t-border rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:t-bg-faint transition-all"
                      @click="$refs.fileInput.click()" @dragover.prevent @drop.prevent="handleFileDrop"
-                     :class="{'border-blue-500 bg-slate-700/30': uploadModal.isDragging}">
+                     :class="{'border-blue-500 t-bg-faint': uploadModal.isDragging}">
 
                     <input type="file" ref="fileInput" class="hidden" accept=".jar" @change="handleFileSelect">
 
                     <div v-if="!uploadModal.file">
-                        <i class="fa-solid fa-cloud-arrow-up text-4xl text-slate-500 mb-3"></i>
-                        <p class="text-white font-medium mb-1">{{ t('upload.dragText') }}</p>
-                        <p class="text-sm text-slate-500">{{ t('upload.supportText') }}</p>
+                        <i class="fa-solid fa-cloud-arrow-up text-4xl t-text-muted mb-3"></i>
+                        <p class="t-text font-medium mb-1">{{ t('upload.dragText') }}</p>
+                        <p class="text-sm t-text-muted">{{ t('upload.supportText') }}</p>
                     </div>
                     <div v-else class="text-left">
-                        <div class="flex items-center gap-3 bg-slate-700 p-3 rounded-lg mb-2">
+                        <div class="flex items-center gap-3 t-bg-hover p-3 rounded-lg mb-2">
                             <i class="fa-solid fa-file-zipper text-blue-400 text-xl"></i>
                             <div class="flex-grow overflow-hidden">
-                                <p class="text-white text-sm font-medium truncate">{{ uploadModal.file.name }}</p>
-                                <p class="text-xs text-slate-400">{{ formatSize(uploadModal.file.size) }}</p>
+                                <p class="t-text text-sm font-medium truncate">{{ uploadModal.file.name }}</p>
+                                <p class="text-xs t-text-sub">{{ formatSize(uploadModal.file.size) }}</p>
                             </div>
-                            <button @click.stop="uploadModal.file = null" class="text-slate-400 hover:text-red-400">
+                            <button @click.stop="uploadModal.file = null" class="t-text-sub hover:text-red-400">
                                 <i class="fa-solid fa-trash"></i>
                             </button>
                         </div>
@@ -478,11 +471,11 @@
 
                 <!-- 进度条 -->
                 <div v-if="uploadModal.uploading" class="mt-4">
-                    <div class="flex justify-between text-xs text-slate-400 mb-1">
+                    <div class="flex justify-between text-xs t-text-sub mb-1">
                         <span>{{ t('upload.uploading') }}...</span>
                         <span>{{ uploadModal.progress }}%</span>
                     </div>
-                    <div class="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                    <div class="w-full t-bg-hover rounded-full h-2 overflow-hidden">
                         <div class="bg-blue-600 h-2 rounded-full transition-all duration-300"
                              :style="{width: uploadModal.progress + '%'}"></div>
                     </div>
@@ -490,7 +483,7 @@
 
                 <div class="flex gap-3 justify-end mt-6">
                     <button @click="closeUploadModal"
-                            class="px-4 py-2 rounded-lg text-base font-medium bg-slate-700 hover:bg-slate-600 text-white">
+                            class="px-4 py-2 rounded-lg text-base font-medium t-bg-hover hover:t-bg-hover t-text">
                         {{ t('modal.cancel') }}
                     </button>
                     <button @click="startUpload" :disabled="!uploadModal.file || uploadModal.uploading"
@@ -506,20 +499,20 @@
         <div v-if="timelineModal.show" class="modal-overlay" @click.self="closeTimelineModal">
             <div class="modal-content" style="max-width: 900px; max-height: 80vh; overflow-y: auto;">
                 <div class="flex items-center justify-between mb-6">
-                    <h3 class="font-bold text-white text-xl flex items-center gap-2">
+                    <h3 class="font-bold t-text text-xl flex items-center gap-2">
                         <i class="fa-solid fa-timeline text-purple-400"></i>
                         {{ t('timeline.title') }}
                     </h3>
-                    <button @click="closeTimelineModal" class="text-slate-400 hover:text-white">
+                    <button @click="closeTimelineModal" class="t-text-sub hover:t-text">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
 
                 <!-- 灵元选择器 -->
                 <div class="mb-6">
-                    <label class="text-sm text-slate-500 block mb-2">{{ t('timeline.selectLing') }}</label>
+                    <label class="text-sm t-text-muted block mb-2">{{ t('timeline.selectLing') }}</label>
                     <select v-model="timelineModal.selectedLingId" @change="loadTimelineData"
-                            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500 transition-colors">
+                            class="w-full t-bg-card border t-border rounded-lg px-3 py-2 t-text focus:outline-none focus:border-purple-500 transition-colors">
                         <option value="">{{ t('timeline.allLings') }}</option>
                         <option v-for="ling in lings" :key="ling.lingId" :value="ling.lingId">{{ ling.lingId }}</option>
                     </select>
@@ -530,12 +523,12 @@
                     <div class="spinner"></div>
                 </div>
                 <div v-else-if="timelineModal.events.length === 0" class="py-10 text-center">
-                    <i class="fa-solid fa-clock text-3xl text-slate-600 mb-3"></i>
-                    <p class="text-base text-slate-500">{{ t('timeline.noEvents') }}</p>
+                    <i class="fa-solid fa-clock text-3xl t-text-muted mb-3"></i>
+                    <p class="text-base t-text-muted">{{ t('timeline.noEvents') }}</p>
                 </div>
                 <div v-else class="relative">
                     <!-- 时间线轴 -->
-                    <div class="absolute left-4 top-0 bottom-0 w-0.5 bg-slate-700"></div>
+                    <div class="absolute left-4 top-0 bottom-0 w-0.5 t-bg-hover"></div>
 
                     <!-- 时间线事件 -->
                     <div v-for="(event, index) in timelineModal.events" :key="event.id"
@@ -547,17 +540,17 @@
                         </div>
 
                         <!-- 事件内容 -->
-                        <div class="bg-slate-800 rounded-lg p-4 shadow-lg">
+                        <div class="t-bg-card rounded-lg p-4 shadow-lg">
                             <div class="flex justify-between items-start mb-2">
-                                <h4 class="font-bold text-white">{{ event.title }}</h4>
-                                <span class="text-xs text-slate-400">{{ formatTime(event.timestamp) }}</span>
+                                <h4 class="font-bold t-text">{{ event.title }}</h4>
+                                <span class="text-xs t-text-sub">{{ formatTime(event.timestamp) }}</span>
                             </div>
-                            <p class="text-sm text-slate-300 mb-3">{{ event.description }}</p>
+                            <p class="text-sm t-text-sub mb-3">{{ event.description }}</p>
                             <div class="flex flex-wrap gap-2">
-                                <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded">{{ event.lingId
+                                <span class="text-xs t-bg-hover t-text-sub px-2 py-0.5 rounded">{{ event.lingId
                                     }}</span>
                                 <span v-if="event.version"
-                                      class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded">{{ event.version
+                                      class="text-xs t-bg-hover t-text-sub px-2 py-0.5 rounded">{{ event.version
                                     }}</span>
                                 <span class="text-xs" :class="getTimelineEventTypeClass(event.type)">{{ event.type
                                     }}</span>
@@ -568,30 +561,30 @@
             </div>
         </div>
 
-        <div class="flex-grow overflow-auto p-6 main-content-wrapper" :class="{'console-expanded': consoleExpanded}">
+        <div class="flex-grow overflow-auto p-6 main-content-wrapper" :style="{ paddingBottom: consoleExpanded ? consoleHeight + 'px' : '40px' }">
             <div class="max-w-[1600px] mx-auto">
 
                 <!-- ==================== 全局概览视图 ==================== -->
                 <div v-if="activeNav === 'overview'">
                     <!-- 灵珑定位 -->
                     <div class="mb-5 text-center">
-                        <p class="text-sm text-slate-400">{{ t('overview.heroSubtitle') }}</p>
+                        <p class="text-sm t-text-sub">{{ t('overview.heroSubtitle') }}</p>
                     </div>
 
                     <!-- 统计卡片 -->
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                         <div class="card p-4 text-center">
-                            <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('overview.totalLings') }}</div>
-                            <div class="text-3xl font-mono font-bold text-white">{{ lings.length }}</div>
+                            <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('overview.totalLings') }}</div>
+                            <div class="text-3xl font-mono font-bold t-text">{{ lings.length }}</div>
                         </div>
                         <div class="card p-4 text-center">
-                            <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('overview.activeLings') }}</div>
+                            <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('overview.activeLings') }}</div>
                             <div class="text-3xl font-mono font-bold text-green-400">
                                 {{ lings.filter(p => p.status === 'ACTIVE' || p.status === 'DEGRADED').length }}
                             </div>
                         </div>
                         <div class="card p-4 text-center">
-                            <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('overview.canaryLings') }}</div>
+                            <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('overview.canaryLings') }}</div>
                             <div class="text-3xl font-mono font-bold text-amber-400">
                                 {{ lings.filter(p => (p.versionDetails?.length || 0) >= 2).length }}
                             </div>
@@ -603,48 +596,48 @@
                         <div class="card-header bg-transparent border-0 p-0 mb-4 flex items-center justify-between">
                             <div class="flex items-center gap-2">
                                 <i class="fa-solid fa-map-signs text-blue-400"></i>
-                                <h3 class="font-bold text-base text-white">{{ t('onboarding.title') }}</h3>
+                                <h3 class="font-bold text-base t-text">{{ t('onboarding.title') }}</h3>
                             </div>
-                            <span class="text-xs text-slate-500">{{ t('onboarding.subtitle') }}</span>
+                            <span class="text-xs t-text-muted">{{ t('onboarding.subtitle') }}</span>
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
                             <!-- 第一步 -->
                             <div class="flex items-start gap-4 p-4 rounded-xl border transition-all"
-                                 :class="onboardingSteps[0].done ? 'bg-green-500/10 border-green-500/30' : 'bg-slate-800/30 border-slate-700/50'">
+                                 :class="onboardingSteps[0].done ? 'bg-green-500/10 border-green-500/30' : 't-bg-faint t-border'">
                                 <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
-                                     :class="onboardingSteps[0].done ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-slate-700 text-slate-400'">
+                                     :class="onboardingSteps[0].done ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 't-bg-hover t-text-sub'">
                                     <i v-if="onboardingSteps[0].done" class="fa-solid fa-check"></i>
                                     <span v-else>1</span>
                                 </div>
                                 <div>
-                                    <h4 class="font-bold text-sm" :class="onboardingSteps[0].done ? 'text-green-400' : 'text-slate-300'">{{ t('onboarding.step1Title') }}</h4>
-                                    <p class="text-xs text-slate-500 mt-1">{{ t('onboarding.step1Desc') }}</p>
+                                    <h4 class="font-bold text-sm" :class="onboardingSteps[0].done ? 'text-green-400' : 't-text-sub'">{{ t('onboarding.step1Title') }}</h4>
+                                    <p class="text-xs t-text-muted mt-1">{{ t('onboarding.step1Desc') }}</p>
                                 </div>
                             </div>
                             <!-- 第二步 -->
                             <div class="flex items-start gap-4 p-4 rounded-xl border transition-all"
-                                 :class="onboardingSteps[1].done ? 'bg-green-500/10 border-green-500/30' : 'bg-slate-800/30 border-slate-700/50'">
+                                 :class="onboardingSteps[1].done ? 'bg-green-500/10 border-green-500/30' : 't-bg-faint t-border'">
                                 <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
-                                     :class="onboardingSteps[1].done ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-slate-700 text-slate-400'">
+                                     :class="onboardingSteps[1].done ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 't-bg-hover t-text-sub'">
                                     <i v-if="onboardingSteps[1].done" class="fa-solid fa-check"></i>
                                     <span v-else>2</span>
                                 </div>
                                 <div>
-                                    <h4 class="font-bold text-sm" :class="onboardingSteps[1].done ? 'text-green-400' : 'text-slate-300'">{{ t('onboarding.step2Title') }}</h4>
-                                    <p class="text-xs text-slate-500 mt-1">{{ t('onboarding.step2Desc') }}</p>
+                                    <h4 class="font-bold text-sm" :class="onboardingSteps[1].done ? 'text-green-400' : 't-text-sub'">{{ t('onboarding.step2Title') }}</h4>
+                                    <p class="text-xs t-text-muted mt-1">{{ t('onboarding.step2Desc') }}</p>
                                 </div>
                             </div>
                             <!-- 第三步 -->
                             <div class="flex items-start gap-4 p-4 rounded-xl border transition-all"
-                                 :class="onboardingSteps[2].done ? 'bg-green-500/10 border-green-500/30' : 'bg-slate-800/30 border-slate-700/50'">
+                                 :class="onboardingSteps[2].done ? 'bg-green-500/10 border-green-500/30' : 't-bg-faint t-border'">
                                 <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
-                                     :class="onboardingSteps[2].done ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-slate-700 text-slate-400'">
+                                     :class="onboardingSteps[2].done ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 't-bg-hover t-text-sub'">
                                     <i v-if="onboardingSteps[2].done" class="fa-solid fa-check"></i>
                                     <span v-else>3</span>
                                 </div>
                                 <div>
-                                    <h4 class="font-bold text-sm" :class="onboardingSteps[2].done ? 'text-green-400' : 'text-slate-300'">{{ t('onboarding.step3Title') }}</h4>
-                                    <p class="text-xs text-slate-500 mt-1">{{ t('onboarding.step3Desc') }}</p>
+                                    <h4 class="font-bold text-sm" :class="onboardingSteps[2].done ? 'text-green-400' : 't-text-sub'">{{ t('onboarding.step3Title') }}</h4>
+                                    <p class="text-xs t-text-muted mt-1">{{ t('onboarding.step3Desc') }}</p>
                                 </div>
                             </div>
                         </div>
@@ -655,15 +648,15 @@
                         <div class="card-header">
                             <div class="flex items-center gap-2">
                                 <i class="fa-solid fa-satellite-dish text-indigo-400"></i>
-                                <h3 class="font-bold text-base text-white">{{ t('overview.starMap') }}</h3>
+                                <h3 class="font-bold text-base t-text">{{ t('overview.starMap') }}</h3>
                             </div>
-                            <span class="text-xs text-slate-500">{{ t('overview.starMapHint') }}</span>
+                            <span class="text-xs t-text-muted">{{ t('overview.starMapHint') }}</span>
                         </div>
                         <div class="p-4">
                             <div v-if="lings.length === 0" class="text-center py-12">
                                 <i class="fa-solid fa-cube text-4xl text-indigo-500/50 mb-4"></i>
-                                <p class="text-base text-slate-300 mb-2">{{ t('overview.noLings') }}</p>
-                                <p class="text-sm text-slate-500 mb-4">{{ t('overview.noLingsHint') }}</p>
+                                <p class="text-base t-text-sub mb-2">{{ t('overview.noLings') }}</p>
+                                <p class="text-sm t-text-muted mb-4">{{ t('overview.noLingsHint') }}</p>
                                 <button @click="activeNav = 'governance'"
                                         class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg transition-colors">
                                     <i class="fa-solid fa-upload mr-1"></i>{{ t('overview.goInstall') }}
@@ -676,9 +669,9 @@
                                 <!-- 悬停提示 -->
                                 <div v-if="starMapHover" class="star-map-tooltip"
                                      :style="{left: starMapHover.x + 'px', top: starMapHover.y + 'px'}">
-                                    <div class="font-bold text-white text-sm">{{ starMapHover.name }}</div>
-                                    <div class="text-[10px] text-slate-400">{{ starMapHover.status }}</div>
-                                    <div v-if="starMapHover.versions" class="text-[10px] text-slate-500">
+                                    <div class="font-bold t-text text-sm">{{ starMapHover.name }}</div>
+                                    <div class="text-[10px] t-text-sub">{{ starMapHover.status }}</div>
+                                    <div v-if="starMapHover.versions" class="text-[10px] t-text-muted">
                                         {{ starMapHover.versions }}
                                     </div>
                                 </div>
@@ -693,34 +686,34 @@
                             <div class="card-header">
                                 <div class="flex items-center gap-2">
                                     <i class="fa-solid fa-gauge text-emerald-400"></i>
-                                    <h3 class="font-bold text-base text-white">{{ t('overview.keyMetrics') }}</h3>
+                                    <h3 class="font-bold text-base t-text">{{ t('overview.keyMetrics') }}</h3>
                                 </div>
                             </div>
                             <div class="p-4 grid grid-cols-2 gap-3">
-                                <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                    <div class="text-[10px] text-slate-500 uppercase mb-1">CPU</div>
+                                <div class="t-bg-faint rounded-lg p-3 text-center">
+                                    <div class="text-[10px] t-text-muted uppercase mb-1">CPU</div>
                                     <div class="text-xl font-mono font-bold"
                                          :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">
                                         {{ perfMetrics.cpu }}%
                                     </div>
                                 </div>
-                                <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.heap') }}
+                                <div class="t-bg-faint rounded-lg p-3 text-center">
+                                    <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('performance.heap') }}
                                     </div>
                                     <div class="text-xl font-mono font-bold text-purple-400">{{ perfMetrics.heapUsage
                                         }}%
                                     </div>
                                 </div>
-                                <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.metaspace')
+                                <div class="t-bg-faint rounded-lg p-3 text-center">
+                                    <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('performance.metaspace')
                                         }}
                                     </div>
                                     <div class="text-xl font-mono font-bold text-emerald-400">
                                         {{ perfMetrics.metaspaceUsage }}%
                                     </div>
                                 </div>
-                                <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                    <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.threads')
+                                <div class="t-bg-faint rounded-lg p-3 text-center">
+                                    <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('performance.threads')
                                         }}
                                     </div>
                                     <div class="text-xl font-mono font-bold text-cyan-400">{{ perfMetrics.threads }}
@@ -734,20 +727,20 @@
                             <div class="card-header">
                                 <div class="flex items-center gap-2">
                                     <i class="fa-solid fa-bolt text-amber-400"></i>
-                                    <h3 class="font-bold text-base text-white">{{ t('overview.recentEvents') }}</h3>
+                                    <h3 class="font-bold text-base t-text">{{ t('overview.recentEvents') }}</h3>
                                 </div>
                             </div>
                             <div class="p-4 space-y-1 max-h-48 overflow-y-auto">
                                 <div v-if="logs.length === 0" class="text-center py-6">
-                                    <i class="fa-solid fa-satellite-dish text-xl text-slate-600 mb-2"></i>
-                                    <p class="text-sm text-slate-500">{{ t('overview.noEvents') }}</p>
+                                    <i class="fa-solid fa-satellite-dish text-xl t-text-muted mb-2"></i>
+                                    <p class="text-sm t-text-muted">{{ t('overview.noEvents') }}</p>
                                 </div>
                                 <div v-for="log in logs.slice(-10).reverse()" :key="log.id"
                                      class="text-xs font-mono py-0.5 flex items-center gap-2"
                                      :class="getLogColor(log)">
-                                    <span class="text-slate-500 shrink-0">[{{ formatTime(log.timestamp) }}]</span>
-                                    <span class="text-slate-400 shrink-0">[{{ log.lingId }}]</span>
-                                    <span v-if="log.version" class="text-slate-500 shrink-0">[{{ log.version }}]</span>
+                                    <span class="t-text-muted shrink-0">[{{ formatTime(log.timestamp) }}]</span>
+                                    <span class="t-text-sub shrink-0">[{{ log.lingId }}]</span>
+                                    <span v-if="log.version" class="t-text-muted shrink-0">[{{ log.version }}]</span>
                                     <span class="truncate" :class="getLogColor(log)">{{ log.content }}</span>
                                 </div>
                             </div>
@@ -767,9 +760,9 @@
                             <div class="card-header">
                                 <div class="flex items-center gap-2">
                                     <i class="fa-solid fa-cube text-emerald-400"></i>
-                                    <h3 class="font-bold text-base text-white">
+                                    <h3 class="font-bold text-base t-text">
                                         {{ t('lingCenter.title') }}
-                                        <span v-if="activeId" class="text-sm font-mono text-slate-400 ml-2">[{{ activeId }}]</span>
+                                        <span v-if="activeId" class="text-sm font-mono t-text-sub ml-2">[{{ activeId }}]</span>
                                     </h3>
                                 </div>
                                 <span v-if="activeLing" :class="['status-tag px-2 py-0.5 rounded text-xs font-semibold tracking-wide', getLingTagClass(activeLing.status)]">
@@ -779,14 +772,14 @@
                             
                             <div class="p-5">
                                 <div v-if="!activeLing" class="text-center py-12">
-                                    <i class="fa-solid fa-hand-pointer text-4xl text-slate-600 mb-4"></i>
-                                    <p class="text-base text-slate-400">{{ t('control.selectLing') }}</p>
+                                    <i class="fa-solid fa-hand-pointer text-4xl t-text-muted mb-4"></i>
+                                    <p class="text-base t-text-sub">{{ t('control.selectLing') }}</p>
                                 </div>
                                 <div v-else class="space-y-6">
                                     
                                     <!-- 1. 生命周期 -->
                                     <div class="space-y-3">
-                                        <h4 class="text-sm font-bold text-white flex items-center gap-1.5">
+                                        <h4 class="text-sm font-bold t-text flex items-center gap-1.5">
                                             <i class="fa-solid fa-arrows-spin text-purple-400"></i>
                                             {{ t('control.lifecycle') }}
                                         </h4>
@@ -796,7 +789,7 @@
                                                 <i class="fa-solid fa-circle-play mr-1.5"></i>{{ t('control.activate') }}
                                             </button>
                                             <button @click="updateStatusForLing(activeLing.lingId, 'INACTIVE')" :disabled="!canDeactivate"
-                                                    class="action-btn px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                                                    class="action-btn px-4 py-2 rounded-lg t-bg-hover hover:t-bg-hover t-text font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                                                 <i class="fa-solid fa-circle-stop mr-1.5"></i>{{ t('control.inactivate') }}
                                             </button>
                                             <button @click="doReloadLing(activeLing.lingId)"
@@ -811,39 +804,39 @@
                                     </div>
                                     
                                     <!-- 2. 资源隔离 -->
-                                    <div class="border-t border-slate-700/60 pt-5 space-y-4">
-                                        <h4 class="text-sm font-bold text-white flex items-center gap-1.5">
+                                    <div class="border-t t-border pt-5 space-y-4">
+                                        <h4 class="text-sm font-bold t-text flex items-center gap-1.5">
                                             <i class="fa-solid fa-key text-cyan-400"></i>
                                             {{ t('control.permissions') }}
                                         </h4>
                                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                            <div class="flex items-center justify-between p-3 bg-slate-800/40 border border-slate-700/50 rounded-lg">
-                                                <span class="text-sm text-slate-300">{{ t('control.dbRead') }}</span>
-                                                <div @click="togglePerm('DB_READ')" :class="activeLing?.permissions?.dbRead !== false ? 'bg-green-500' : 'bg-slate-600'"
+                                            <div class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
+                                                <span class="text-sm t-text-sub">{{ t('control.dbRead') }}</span>
+                                                <div @click="togglePerm('DB_READ')" :class="activeLing?.permissions?.dbRead !== false ? 'bg-green-500' : 't-bg-hover'"
                                                      class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
                                                     <div :class="activeLing?.permissions?.dbRead !== false ? 'translate-x-5' : 'translate-x-1'"
                                                          class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
                                                 </div>
                                             </div>
-                                            <div class="flex items-center justify-between p-3 bg-slate-800/40 border border-slate-700/50 rounded-lg">
-                                                <span class="text-sm text-slate-300">{{ t('control.dbWrite') }}</span>
-                                                <div @click="togglePerm('DB_WRITE')" :class="activeLing?.permissions?.dbWrite !== false ? 'bg-green-500' : 'bg-slate-600'"
+                                            <div class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
+                                                <span class="text-sm t-text-sub">{{ t('control.dbWrite') }}</span>
+                                                <div @click="togglePerm('DB_WRITE')" :class="activeLing?.permissions?.dbWrite !== false ? 'bg-green-500' : 't-bg-hover'"
                                                      class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
                                                     <div :class="activeLing?.permissions?.dbWrite !== false ? 'translate-x-5' : 'translate-x-1'"
                                                          class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
                                                 </div>
                                             </div>
-                                            <div class="flex items-center justify-between p-3 bg-slate-800/40 border border-slate-700/50 rounded-lg">
-                                                <span class="text-sm text-slate-300">{{ t('control.cacheRead') }}</span>
-                                                <div @click="togglePerm('CACHE_READ')" :class="activeLing?.permissions?.cacheRead !== false ? 'bg-green-500' : 'bg-slate-600'"
+                                            <div class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
+                                                <span class="text-sm t-text-sub">{{ t('control.cacheRead') }}</span>
+                                                <div @click="togglePerm('CACHE_READ')" :class="activeLing?.permissions?.cacheRead !== false ? 'bg-green-500' : 't-bg-hover'"
                                                      class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
                                                     <div :class="activeLing?.permissions?.cacheRead !== false ? 'translate-x-5' : 'translate-x-1'"
                                                          class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
                                                 </div>
                                             </div>
-                                            <div class="flex items-center justify-between p-3 bg-slate-800/40 border border-slate-700/50 rounded-lg">
-                                                <span class="text-sm text-slate-300">{{ t('control.cacheWrite') }}</span>
-                                                <div @click="togglePerm('CACHE_WRITE')" :class="activeLing?.permissions?.cacheWrite !== false ? 'bg-green-500' : 'bg-slate-600'"
+                                            <div class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
+                                                <span class="text-sm t-text-sub">{{ t('control.cacheWrite') }}</span>
+                                                <div @click="togglePerm('CACHE_WRITE')" :class="activeLing?.permissions?.cacheWrite !== false ? 'bg-green-500' : 't-bg-hover'"
                                                      class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
                                                     <div :class="activeLing?.permissions?.cacheWrite !== false ? 'translate-x-5' : 'translate-x-1'"
                                                          class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
@@ -852,25 +845,25 @@
                                         </div>
                                         
                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-                                            <div class="p-3 bg-slate-800/30 border border-slate-700/50 rounded-lg">
+                                            <div class="p-3 t-bg-faint border t-border rounded-lg">
                                                 <div class="flex items-center justify-between">
-                                                    <span class="text-xs font-bold text-slate-400">{{ t('control.localCacheNamespaceTitle') }}</span>
+                                                    <span class="text-xs font-bold t-text-sub">{{ t('control.localCacheNamespaceTitle') }}</span>
                                                     <span class="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">{{ t('control.namespaceEnabled') }}</span>
                                                 </div>
-                                                <div class="text-xs font-mono text-slate-400 mt-2 truncate bg-slate-900 px-2 py-1 rounded">
+                                                <div class="text-xs font-mono t-text-sub mt-2 truncate t-bg-page px-2 py-1 rounded">
                                                     ns:{{ activeLing.lingId }}
                                                 </div>
                                             </div>
-                                            <div class="p-3 bg-slate-800/30 border border-slate-700/50 rounded-lg">
+                                            <div class="p-3 t-bg-faint border t-border rounded-lg">
                                                 <div class="flex items-center justify-between">
-                                                    <span class="text-xs font-bold text-slate-400">{{ t('demo.ipcAuth') }}</span>
-                                                    <span :class="[ipcEnabled ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 text-slate-500']" class="text-[10px] px-1.5 py-0.5 rounded">
+                                                    <span class="text-xs font-bold t-text-sub">{{ t('demo.ipcAuth') }}</span>
+                                                    <span :class="[ipcEnabled ? 'bg-green-500/20 text-green-400' : 't-bg-hover t-text-muted']" class="text-[10px] px-1.5 py-0.5 rounded">
                                                         {{ ipcEnabled ? 'ENABLED' : 'DISABLED' }}
                                                     </span>
                                                 </div>
-                                                <div class="text-xs text-slate-400 mt-2 flex items-center justify-between">
-                                                    <span class="font-mono bg-slate-900 px-2 py-1 rounded">target:{{ ipcTarget }}</span>
-                                                    <div @click="toggleIpc" :class="ipcEnabled ? 'bg-green-500' : 'bg-slate-600'"
+                                                <div class="text-xs t-text-sub mt-2 flex items-center justify-between">
+                                                    <span class="font-mono t-bg-page px-2 py-1 rounded">target:{{ ipcTarget }}</span>
+                                                    <div @click="toggleIpc" :class="ipcEnabled ? 'bg-green-500' : 't-bg-hover'"
                                                          class="w-8 h-4 rounded-full relative transition-all cursor-pointer">
                                                         <div :class="ipcEnabled ? 'translate-x-4' : 'translate-x-1'"
                                                              class="absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform"></div>
@@ -881,46 +874,46 @@
                                     </div>
                                     
                                     <!-- 3. 调用治理 -->
-                                    <div class="border-t border-slate-700/60 pt-5 space-y-4">
-                                        <h4 class="text-sm font-bold text-white flex items-center gap-1.5">
+                                    <div class="border-t t-border pt-5 space-y-4">
+                                        <h4 class="text-sm font-bold t-text flex items-center gap-1.5">
                                             <i class="fa-solid fa-sliders text-amber-400"></i>
                                             {{ t('control.invocationGovernance') }}
                                         </h4>
                                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                                             <div>
-                                                <label class="text-xs text-slate-400 block mb-1">{{ t('control.timeoutMs') }}</label>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.timeoutMs') }}</label>
                                                 <input v-model.number="invocationForm.timeoutMs" type="number" min="0"
-                                                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
                                             </div>
                                             <div>
-                                                <label class="text-xs text-slate-400 block mb-1">{{ t('control.rateLimitPerSecond') }}</label>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.rateLimitPerSecond') }}</label>
                                                 <input v-model.number="invocationForm.rateLimitPerSecond" type="number" min="0"
-                                                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
                                             </div>
                                             <div>
-                                                <label class="text-xs text-slate-400 block mb-1">{{ t('control.maxConcurrentThreads') }}</label>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.maxConcurrentThreads') }}</label>
                                                 <input v-model.number="invocationForm.maxConcurrentThreads" type="number" min="0"
-                                                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
                                             </div>
                                             <div>
-                                                <label class="text-xs text-slate-400 block mb-1">{{ t('control.retryCount') }}</label>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.retryCount') }}</label>
                                                 <input v-model.number="invocationForm.retryCount" type="number" min="0"
-                                                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
                                             </div>
                                             <div class="col-span-2">
-                                                <label class="text-xs text-slate-400 block mb-1">{{ t('control.fallbackValue') }}</label>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.fallbackValue') }}</label>
                                                 <input v-model="invocationForm.fallbackValue" type="text"
-                                                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
                                             </div>
                                             <div>
-                                                <label class="text-xs text-slate-400 block mb-1">{{ t('control.cpuBudgetMsPerMinute') }}</label>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.cpuBudgetMsPerMinute') }}</label>
                                                 <input v-model.number="invocationForm.cpuBudgetMsPerMinute" type="number" min="0"
-                                                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
                                             </div>
                                             <div>
-                                                <label class="text-xs text-slate-400 block mb-1">{{ t('control.memoryBudgetMb') }}</label>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.memoryBudgetMb') }}</label>
                                                 <input v-model.number="invocationForm.memoryBudgetMb" type="number" min="0"
-                                                       class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
                                             </div>
                                         </div>
                                         <button data-testid="save-invocation-governance" @click="saveInvocationGovernance" :disabled="loading.invocation || !activeLing"
@@ -941,27 +934,27 @@
                             <div class="card-header flex items-center justify-between">
                                 <div class="flex items-center gap-2">
                                     <i class="fa-solid fa-folder-open text-blue-400"></i>
-                                    <h3 class="font-bold text-base text-white">{{ t('lingCenter.diskPackages') }}</h3>
+                                    <h3 class="font-bold text-base t-text">{{ t('lingCenter.diskPackages') }}</h3>
                                 </div>
-                                <button @click="fetchPackages" :disabled="loading.lings" class="text-slate-400 hover:text-white transition-all">
+                                <button @click="fetchPackages" :disabled="loading.lings" class="t-text-sub hover:t-text transition-all">
                                     <i :class="['fa-solid fa-arrows-rotate', loading.lings ? 'animate-spin' : '']"></i>
                                 </button>
                             </div>
                             <!-- 物理包搜索过滤 -->
-                            <div class="px-4 pb-2 pt-2 border-b border-slate-700/30">
+                            <div class="px-4 pb-2 pt-2 border-b t-border">
                                 <input v-model="packageSearch" type="text" placeholder="搜索物理包 ID 或文件名..."
-                                       class="w-full bg-slate-800/60 border border-slate-700/50 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all font-sans">
+                                       class="w-full t-bg-sidebar border t-border rounded-lg px-3 py-1.5 text-xs t-text t-text-muted focus:outline-none focus:border-blue-500 transition-all font-sans">
                             </div>
                             <div class="p-4 space-y-3">
                                 <div v-if="filteredPackages.length === 0" class="text-center py-8">
-                                    <i class="fa-solid fa-box-open text-3xl text-slate-600 mb-2"></i>
-                                    <p class="text-sm text-slate-500">{{ t('lingCenter.noPackages') }}</p>
+                                    <i class="fa-solid fa-box-open text-3xl t-text-muted mb-2"></i>
+                                    <p class="text-sm t-text-muted">{{ t('lingCenter.noPackages') }}</p>
                                 </div>
-                                <div v-else v-for="pkg in filteredPackages" :key="pkg.fileName" class="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50 hover:border-slate-600 transition-all">
+                                <div v-else v-for="pkg in filteredPackages" :key="pkg.fileName" class="t-bg-faint rounded-lg p-3 border t-border hover:t-border transition-all">
                                     <div class="flex justify-between items-start gap-2">
                                         <div class="min-w-0 flex-1">
-                                            <div class="font-mono text-sm text-white truncate" :title="pkg.fileName">{{ pkg.fileName }}</div>
-                                            <div class="text-xs text-slate-500 mt-1 flex items-center gap-1.5 flex-wrap">
+                                            <div class="font-mono text-sm t-text truncate" :title="pkg.fileName">{{ pkg.fileName }}</div>
+                                            <div class="text-xs t-text-muted mt-1 flex items-center gap-1.5 flex-wrap">
                                                 <span>{{ t('lingCenter.fileSize') }}: {{ formatSize(pkg.fileSize) }}</span>
                                                 <span class="mx-0.5">·</span>
                                                 <span>ID: {{ pkg.lingId }} ({{ pkg.version }})</span>
@@ -972,7 +965,7 @@
                                         </div>
                                         <div class="flex gap-2 shrink-0">
                                             <button @click="deployPackage(pkg.lingId, pkg.version)" :disabled="pkg.isInstalled || pkg.installed"
-                                                    :class="[pkg.isInstalled || pkg.installed ? 'bg-slate-700 text-slate-500 cursor-not-allowed border border-slate-600/30' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-md hover:shadow-blue-500/20']"
+                                                    :class="[pkg.isInstalled || pkg.installed ? 't-bg-hover t-text-muted cursor-not-allowed border t-border' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-md hover:shadow-blue-500/20']"
                                                     class="px-2.5 py-1 rounded text-xs transition-colors font-medium">
                                                 {{ (pkg.isInstalled || pkg.installed) ? (t('status.active') || '已部署') : (t('lingCenter.deploy') || '部署') }}
                                             </button>
@@ -982,13 +975,13 @@
                                         </div>
                                     </div>
                                     
-                                    <div class="mt-2 pt-2 border-t border-slate-700/50">
-                                        <div class="text-[10px] text-slate-500 mb-1">{{ t('lingCenter.permissions') }}</div>
-                                        <div v-if="!pkg.permissions || pkg.permissions.length === 0" class="text-[10px] text-slate-600 italic">
+                                    <div class="mt-2 pt-2 border-t t-border">
+                                        <div class="text-[10px] t-text-muted mb-1">{{ t('lingCenter.permissions') }}</div>
+                                        <div v-if="!pkg.permissions || pkg.permissions.length === 0" class="text-[10px] t-text-muted italic">
                                             {{ t('lingCenter.noPermissions') }}
                                         </div>
                                         <div v-else class="flex flex-wrap gap-1.5">
-                                            <span v-for="p in pkg.permissions" :key="p" class="text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono">
+                                            <span v-for="p in pkg.permissions" :key="p" class="text-[9px] t-bg-hover t-text-sub px-1.5 py-0.5 rounded font-mono">
                                                 {{ p }}
                                             </span>
                                         </div>
@@ -1006,35 +999,35 @@
                         <div class="card-header">
                             <div class="flex items-center gap-2">
                                 <i class="fa-solid fa-server text-blue-400"></i>
-                                <h3 class="font-bold text-base text-white">{{ t('monitor.basicInfo') }}</h3>
+                                <h3 class="font-bold text-base t-text">{{ t('monitor.basicInfo') }}</h3>
                             </div>
                         </div>
                         <div class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                            <div class="bg-slate-800/50 rounded-lg p-3">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.jvmVersion') }}
+                            <div class="t-bg-faint rounded-lg p-3">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('monitor.jvmVersion') }}
                                 </div>
-                                <div class="text-sm font-mono text-white truncate">{{ jvmInfo.version }}</div>
+                                <div class="text-sm font-mono t-text truncate">{{ jvmInfo.version }}</div>
                             </div>
-                            <div class="bg-slate-800/50 rounded-lg p-3">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.jvmVendor') }}
+                            <div class="t-bg-faint rounded-lg p-3">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('monitor.jvmVendor') }}
                                 </div>
-                                <div class="text-sm font-mono text-white truncate">{{ jvmInfo.vendor }}</div>
+                                <div class="text-sm font-mono t-text truncate">{{ jvmInfo.vendor }}</div>
                             </div>
-                            <div class="bg-slate-800/50 rounded-lg p-3">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.osName') }}</div>
-                                <div class="text-sm font-mono text-white truncate">{{ jvmInfo.osName }}</div>
+                            <div class="t-bg-faint rounded-lg p-3">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('monitor.osName') }}</div>
+                                <div class="text-sm font-mono t-text truncate">{{ jvmInfo.osName }}</div>
                             </div>
-                            <div class="bg-slate-800/50 rounded-lg p-3">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.osArch') }}</div>
-                                <div class="text-sm font-mono text-white truncate">{{ jvmInfo.osArch }}</div>
+                            <div class="t-bg-faint rounded-lg p-3">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('monitor.osArch') }}</div>
+                                <div class="text-sm font-mono t-text truncate">{{ jvmInfo.osArch }}</div>
                             </div>
-                            <div class="bg-slate-800/50 rounded-lg p-3">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.uptime') }}</div>
-                                <div class="text-sm font-mono text-white">{{ formatUptime(jvmInfo.uptimeMs) }}</div>
+                            <div class="t-bg-faint rounded-lg p-3">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('monitor.uptime') }}</div>
+                                <div class="text-sm font-mono t-text">{{ formatUptime(jvmInfo.uptimeMs) }}</div>
                             </div>
-                            <div class="bg-slate-800/50 rounded-lg p-3">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.pid') }}</div>
-                                <div class="text-sm font-mono text-white">{{ jvmInfo.pid }}</div>
+                            <div class="t-bg-faint rounded-lg p-3">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('monitor.pid') }}</div>
+                                <div class="text-sm font-mono t-text">{{ jvmInfo.pid }}</div>
                             </div>
                         </div>
                     </div>
@@ -1044,13 +1037,13 @@
                         <div class="card-header">
                             <div class="flex items-center gap-2">
                                 <i class="fa-solid fa-gauge text-emerald-400"></i>
-                                <h3 class="font-bold text-base text-white">{{ t('monitor.metricsTitle') }}</h3>
+                                <h3 class="font-bold text-base t-text">{{ t('monitor.metricsTitle') }}</h3>
                             </div>
                         </div>
                         <div class="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 gap-4">
                             <!-- CPU -->
-                            <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.cpu') }}</div>
+                            <div class="t-bg-faint rounded-lg p-3 text-center">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('performance.cpu') }}</div>
                                 <div class="flex items-center justify-center gap-1">
                                     <span class="text-xl font-mono font-bold"
                                           :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">{{ perfMetrics.cpu
@@ -1060,15 +1053,15 @@
                                     <i v-else-if="getTrend('cpu') === 'down'"
                                        class="fa-solid fa-arrow-down text-[10px] text-green-400"></i>
                                 </div>
-                                <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden mt-2">
+                                <div class="h-1.5 t-bg-hover rounded-full overflow-hidden mt-2">
                                     <div class="h-full rounded-full transition-all duration-500"
                                          :class="perfMetrics.cpu > 80 ? 'bg-red-500' : perfMetrics.cpu > 60 ? 'bg-amber-500' : 'bg-green-500'"
                                          :style="{ width: Math.max(3, perfMetrics.cpu) + '%' }"></div>
                                 </div>
                             </div>
                             <!-- 堆内存 -->
-                            <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.heap') }}</div>
+                            <div class="t-bg-faint rounded-lg p-3 text-center">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('performance.heap') }}</div>
                                 <div class="flex items-center justify-center gap-1">
                                     <span class="text-xl font-mono font-bold text-purple-400">{{ perfMetrics.heapUsage
                                         }}%</span>
@@ -1077,13 +1070,13 @@
                                     <i v-else-if="getTrend('heapUsage') === 'down'"
                                        class="fa-solid fa-arrow-down text-[10px] text-green-400"></i>
                                 </div>
-                                <div class="text-[10px] text-slate-500 mt-1 font-mono">{{ perfMetrics.heapUsed }}MB /
+                                <div class="text-[10px] t-text-muted mt-1 font-mono">{{ perfMetrics.heapUsed }}MB /
                                     {{ perfMetrics.heapMax }}MB
                                 </div>
                             </div>
                             <!-- 元空间 -->
-                            <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.metaspace')
+                            <div class="t-bg-faint rounded-lg p-3 text-center">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('performance.metaspace')
                                     }}
                                 </div>
                                 <div class="flex items-center justify-center gap-1">
@@ -1095,13 +1088,13 @@
                                     <i v-else-if="getTrend('metaspaceUsage') === 'down'"
                                        class="fa-solid fa-arrow-down text-[10px] text-green-400"></i>
                                 </div>
-                                <div class="text-[10px] text-slate-500 mt-1 font-mono">{{ perfMetrics.metaspaceUsed }}KB
+                                <div class="text-[10px] t-text-muted mt-1 font-mono">{{ perfMetrics.metaspaceUsed }}KB
                                     / {{ perfMetrics.metaspaceMax }}KB
                                 </div>
                             </div>
                             <!-- 线程数 -->
-                            <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.threads') }}
+                            <div class="t-bg-faint rounded-lg p-3 text-center">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('performance.threads') }}
                                 </div>
                                 <div class="flex items-center justify-center gap-1">
                                     <span class="text-xl font-mono font-bold text-cyan-400">{{ perfMetrics.threads
@@ -1111,11 +1104,11 @@
                                     <i v-else-if="getTrend('threads') === 'down'"
                                        class="fa-solid fa-arrow-down text-[10px] text-green-400"></i>
                                 </div>
-                                <div class="text-[10px] text-slate-500 mt-1">Peak: {{ perfMetrics.peakThreads }}</div>
+                                <div class="text-[10px] t-text-muted mt-1">Peak: {{ perfMetrics.peakThreads }}</div>
                             </div>
                             <!-- GC 次数 -->
-                            <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('performance.gc') }}</div>
+                            <div class="t-bg-faint rounded-lg p-3 text-center">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('performance.gc') }}</div>
                                 <div class="flex items-center justify-center gap-1">
                                     <span class="text-xl font-mono font-bold text-pink-400">{{ perfMetrics.gcCount
                                         }}</span>
@@ -1124,8 +1117,8 @@
                                 </div>
                             </div>
                             <!-- GC 耗时 -->
-                            <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.gcTime') }}</div>
+                            <div class="t-bg-faint rounded-lg p-3 text-center">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('monitor.gcTime') }}</div>
                                 <div class="flex items-center justify-center gap-1">
                                     <span class="text-xl font-mono font-bold text-orange-400">{{ perfMetrics.gcTimeMs
                                         }}ms</span>
@@ -1136,8 +1129,8 @@
                                 </div>
                             </div>
                             <!-- 类对象数 -->
-                            <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                                <div class="text-[10px] text-slate-500 uppercase mb-1">{{ t('monitor.classCount') }}
+                            <div class="t-bg-faint rounded-lg p-3 text-center">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('monitor.classCount') }}
                                 </div>
                                 <div class="flex items-center justify-center gap-1">
                                     <span class="text-xl font-mono font-bold text-amber-400">{{ perfMetrics.loadedClassCount
@@ -1147,7 +1140,7 @@
                                     <i v-else-if="getTrend('loadedClassCount') === 'down'"
                                        class="fa-solid fa-arrow-down text-[10px] text-green-400"></i>
                                 </div>
-                                <div class="text-[10px] text-slate-500 mt-1">{{ t('performance.unloadedClasses') }}:
+                                <div class="text-[10px] t-text-muted mt-1">{{ t('performance.unloadedClasses') }}:
                                     {{ perfMetrics.unloadedClassCount }}
                                 </div>
                             </div>
@@ -1159,12 +1152,12 @@
                         <div class="card-header">
                             <div class="flex items-center gap-2">
                                 <i class="fa-solid fa-chart-area text-indigo-400"></i>
-                                <h3 class="font-bold text-base text-white">{{ t('monitor.chartTitle') }}</h3>
+                                <h3 class="font-bold text-base t-text">{{ t('monitor.chartTitle') }}</h3>
                             </div>
                             <div class="flex items-center gap-2">
-                                <span class="text-xs text-slate-500">{{ t('monitor.timeRange') }}:</span>
+                                <span class="text-xs t-text-muted">{{ t('monitor.timeRange') }}:</span>
                                 <select v-model="chartTimeRange"
-                                        class="bg-slate-700 text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-blue-500">
+                                        class="t-bg-hover t-text text-xs rounded px-2 py-1 border t-border focus:outline-none focus:border-blue-500">
                                     <option value="5m">{{ t('monitor.last5m') }}</option>
                                     <option value="15m">{{ t('monitor.last15m') }}</option>
                                     <option value="30m">{{ t('monitor.last30m') }}</option>
@@ -1177,8 +1170,8 @@
                             </div>
                         </div>
                         <div class="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                            <div v-for="chart in monitorCharts" :key="chart.key" class="bg-slate-800/30 rounded-lg p-3">
-                                <div class="text-xs text-slate-400 mb-2">{{ chart.label }}</div>
+                            <div v-for="chart in monitorCharts" :key="chart.key" class="t-bg-faint rounded-lg p-3">
+                                <div class="text-xs t-text-sub mb-2">{{ chart.label }}</div>
                                 <div style="height: 120px; position: relative;">
                                     <canvas :id="'chart-' + chart.key"></canvas>
                                 </div>
@@ -1200,9 +1193,9 @@
 
                             <div class="card-header">
                                 <div class="flex items-center gap-3">
-                                    <h3 class="font-bold text-base text-white">{{ t('traffic.title') }}</h3>
+                                    <h3 class="font-bold text-base t-text">{{ t('traffic.title') }}</h3>
                                     <span v-if="!activeLing"
-                                          class="text-xs bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">{{
+                                          class="text-xs t-bg-faint t-text-sub px-2 py-0.5 rounded">{{
                                             t('traffic.notSelected') }}</span>
                                     <span v-else-if="!canOperate"
                                           class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded">{{
@@ -1210,12 +1203,12 @@
                                     <span v-else-if="canCanary"
                                           class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">{{
                                             t('traffic.canary') }}</span>
-                                    <span v-else class="text-xs bg-slate-500/20 text-slate-400 px-2 py-0.5 rounded">{{
+                                    <span v-else class="text-xs t-bg-faint t-text-sub px-2 py-0.5 rounded">{{
                                             t('traffic.singleVersion') }}</span>
                                 </div>
                                 <div class="flex gap-2">
                                     <button @click="resetCanary" :disabled="!activeId || loading.canary"
-                                            class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
+                                            class="action-btn t-bg-hover hover:t-bg-hover t-text text-sm">
                                         <i class="fa-solid fa-rotate-right"></i>
                                         {{ t('traffic.reset') }}
                                     </button>
@@ -1249,14 +1242,14 @@
                                                class="slider-custom" :style="{'--p': (100-canaryPct)+'%'}">
                                     </template>
                                     <template v-else>
-                                        <div class="flex justify-between text-sm font-medium mb-3 text-slate-500">
+                                        <div class="flex justify-between text-sm font-medium mb-3 t-text-muted">
                                             <span>{{ t('traffic.stable') }} {{ activeLing?.activeVersion || '-' }}:
                                                 100%</span>
                                             <span>{{ t('traffic.canaryVersion') }}: {{ t('traffic.unavailable')
                                                 }}</span>
                                         </div>
                                         <input type="range" value="0" disabled class="slider-disabled">
-                                        <p class="text-sm text-slate-500 mt-3 text-center">
+                                        <p class="text-sm t-text-muted mt-3 text-center">
                                             <i class="fa-solid fa-info-circle mr-1"></i>
                                             {{ !activeLing ? t('traffic.selectLing') : !canOperate ?
                                                 t('traffic.lingInactive') : t('traffic.onlyOneVersion') }}
@@ -1267,9 +1260,9 @@
                                 <!-- 指标卡片 -->
                                 <div class="metric-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                                     <div class="metric-card">
-                                        <div class="text-xs text-slate-500 uppercase mb-1">{{ t('traffic.total') }}
+                                        <div class="text-xs t-text-muted uppercase mb-1">{{ t('traffic.total') }}
                                         </div>
-                                        <div class="text-xl font-bold text-white font-mono">{{ stats.total }}</div>
+                                        <div class="text-xl font-bold t-text font-mono">{{ stats.total }}</div>
                                     </div>
                                     <div class="metric-card border-blue-500/30">
                                         <div class="text-xs text-blue-400 uppercase mb-1">{{ t('traffic.v1Hit') }}</div>
@@ -1278,19 +1271,19 @@
                                     <div class="metric-card"
                                          :class="canCanary && canOperate ? 'border-amber-500/30' : ''">
                                         <div class="text-xs uppercase mb-1"
-                                             :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">{{
+                                             :class="canCanary && canOperate ? 'text-amber-400' : 't-text-muted'">{{
                                                 t('traffic.v2Hit') }}
                                         </div>
                                         <div class="text-xl font-bold font-mono"
-                                             :class="canCanary && canOperate ? 'text-amber-400' : 'text-slate-500'">
+                                             :class="canCanary && canOperate ? 'text-amber-400' : 't-text-muted'">
                                             {{ canCanary && canOperate ? stats.v2Pct + '%' : 'N/A' }}
                                         </div>
                                     </div>
                                     <div class="metric-card">
-                                        <div class="text-xs text-slate-500 uppercase mb-1">{{ t('traffic.drift') }}
+                                        <div class="text-xs t-text-muted uppercase mb-1">{{ t('traffic.drift') }}
                                         </div>
                                         <div class="text-xl font-bold font-mono"
-                                             :class="canCanary && canOperate ? (Math.abs(stats.v2Pct - canaryPct) > 2 ? 'text-red-400' : 'text-green-400') : 'text-slate-500'">
+                                             :class="canCanary && canOperate ? (Math.abs(stats.v2Pct - canaryPct) > 2 ? 'text-red-400' : 'text-green-400') : 't-text-muted'">
                                             {{ canCanary && canOperate ? formatDrift(stats.v2Pct - canaryPct) : 'N/A' }}
                                         </div>
                                     </div>
@@ -1309,17 +1302,17 @@
                             <div class="card-header">
                                 <div class="flex items-center gap-2">
                                     <i class="fa-solid fa-heart-pulse text-emerald-400"></i>
-                                    <h3 class="font-bold text-base text-white">{{ t('healthCard.title') }}</h3>
+                                    <h3 class="font-bold text-base t-text">{{ t('healthCard.title') }}</h3>
                                 </div>
                             </div>
                             <div class="p-4">
                                 <div v-if="!activeLing" class="text-center py-6">
-                                    <i class="fa-solid fa-hand-pointer text-2xl text-slate-600 mb-2"></i>
-                                    <p class="text-sm text-slate-500">{{ t('control.selectLing') }}</p>
+                                    <i class="fa-solid fa-hand-pointer text-2xl t-text-muted mb-2"></i>
+                                    <p class="text-sm t-text-muted">{{ t('control.selectLing') }}</p>
                                 </div>
                                 <template v-else>
                                     <div class="flex items-center justify-between gap-3 mb-3">
-                                        <p class="text-xs text-slate-400">{{ activeLing?.lingId }}</p>
+                                        <p class="text-xs t-text-sub">{{ activeLing?.lingId }}</p>
                                         <span
                                             v-if="activeLingHealth"
                                             :class="getLingHealthStatusClass(activeLingHealth.healthStatus)">
@@ -1356,8 +1349,8 @@
                                         <div v-for="versionHealth in activeLingVersionHealth" :key="versionHealth.version" class="health-version-section">
                                             <div class="flex items-center justify-between gap-2 mb-2">
                                                 <div class="flex items-center gap-2 flex-wrap">
-                                                    <span class="text-sm font-mono font-bold text-white">{{ versionHealth.version }}</span>
-                                                    <span class="text-[11px] font-semibold text-slate-400">{{ getLingHealthRoleLabel(versionHealth) }}</span>
+                                                    <span class="text-sm font-mono font-bold t-text">{{ versionHealth.version }}</span>
+                                                    <span class="text-[11px] font-semibold t-text-sub">{{ getLingHealthRoleLabel(versionHealth) }}</span>
                                                 </div>
                                                 <span :class="getLingHealthStatusClass(versionHealth.healthStatus)">
                                                     {{ versionHealth.healthStatus || t('healthCard.unknown') }}
@@ -1395,17 +1388,17 @@
                             <div class="card-header">
                                 <div class="flex items-center gap-2">
                                     <i class="fa-solid fa-shield-halved text-cyan-400"></i>
-                                    <h3 class="font-bold text-base text-white">{{ t('governanceCard.title') }}</h3>
+                                    <h3 class="font-bold text-base t-text">{{ t('governanceCard.title') }}</h3>
                                 </div>
                             </div>
                             <div class="p-4">
                                 <div v-if="!activeLing" class="text-center py-6">
-                                    <i class="fa-solid fa-hand-pointer text-2xl text-slate-600 mb-2"></i>
-                                    <p class="text-sm text-slate-500">{{ t('control.selectLing') }}</p>
+                                    <i class="fa-solid fa-hand-pointer text-2xl t-text-muted mb-2"></i>
+                                    <p class="text-sm t-text-muted">{{ t('control.selectLing') }}</p>
                                 </div>
                                 <template v-else>
                                     <div class="flex items-center justify-between gap-3 mb-3">
-                                        <p class="text-xs text-slate-400">{{ activeLing?.lingId }}</p>
+                                        <p class="text-xs t-text-sub">{{ activeLing?.lingId }}</p>
                                         <span :class="hasGovernanceSignals(activeLingGovernance) ? 'risk-badge risk-warn' : 'risk-badge risk-safe'">
                                                 {{ hasGovernanceSignals(activeLingGovernance) ? t('governanceCard.signalDetected') : t('governanceCard.noSignal')
                                             }}
@@ -1472,12 +1465,12 @@
                                              :key="versionGovernance.version" class="health-version-section">
                                             <div class="flex items-center justify-between gap-2 mb-2">
                                                 <div class="flex items-center gap-2 flex-wrap">
-                                                    <span class="text-sm font-mono font-bold text-white">{{ versionGovernance.version
+                                                    <span class="text-sm font-mono font-bold t-text">{{ versionGovernance.version
                                                         }}</span>
-                                                    <span class="text-[11px] font-semibold text-slate-400">{{ getLingHealthRoleLabel(versionGovernance)
+                                                    <span class="text-[11px] font-semibold t-text-sub">{{ getLingHealthRoleLabel(versionGovernance)
                                                         }}</span>
                                                 </div>
-                                                <p class="text-xs text-slate-500 mt-1">
+                                                <p class="text-xs t-text-muted mt-1">
                                                     {{ versionGovernance.trafficWeight }}%
                                                     {{ t('healthCard.trafficWeight') }}</p>
                                                 <span :class="hasGovernanceSignals(versionGovernance.metrics) ? 'risk-badge risk-warn' : 'risk-badge risk-safe'">
@@ -1544,7 +1537,7 @@
                                     <!-- 运行时治理就绪 -->
                                     <div class="health-version-section mt-4">
                                         <div class="flex items-center justify-between gap-2 mb-3">
-                                            <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">
+                                            <h5 class="text-xs font-black tracking-widest t-text-sub uppercase">
                                                 {{ t('runtimeReadiness.title') }}</h5>
                                             <span :class="[
                                                     'risk-badge',
@@ -1606,7 +1599,7 @@
                                     <!-- 运行时能力 -->
                                     <div class="health-version-section mt-4">
                                         <div class="flex items-center justify-between gap-2 mb-3">
-                                            <h5 class="text-xs font-black tracking-widest text-slate-400 uppercase">
+                                            <h5 class="text-xs font-black tracking-widest t-text-sub uppercase">
                                                 {{ t('runtimeReadiness.capabilitiesTitle') }}</h5>
                                             <span class="risk-badge risk-info">{{ runtimeDiagnosticsList.length
                                                 }}</span>
@@ -1620,9 +1613,9 @@
                                                 <div class="flex items-center justify-between gap-3 mb-2">
                                                     <div>
                                                         <div class="flex items-center gap-2 flex-wrap">
-                                                            <span class="text-sm font-mono font-bold text-white">{{ diagnostic.runtime
+                                                            <span class="text-sm font-mono font-bold t-text">{{ diagnostic.runtime
                                                                 }}</span>
-                                                            <span class="text-[11px] font-semibold text-slate-400">JDK {{ diagnostic.jdkVersion
+                                                            <span class="text-[11px] font-semibold t-text-sub">JDK {{ diagnostic.jdkVersion
                                                                 }}</span>
                                                         </div>
                                                     </div>
@@ -1654,7 +1647,7 @@
                                             <i class="fa-solid fa-shield-cat mr-1"></i> {{ t('audit.devPass') }}
                                         </span>
                                 </div>
-                                <button @click="lastAudit = null" class="text-slate-500 hover:text-white">
+                                <button @click="lastAudit = null" class="t-text-muted hover:t-text">
                                     <i class="fa-solid fa-xmark"></i>
                                 </button>
                             </div>
@@ -1663,7 +1656,7 @@
                                 [{{ lastAudit.traceId }}] {{ lastAudit.message }}
                             </p>
                             <div v-if="lastAudit.ruleSource"
-                                 class="mt-2 pt-2 border-t border-slate-700/50 text-xs text-slate-500 flex items-center gap-2">
+                                 class="mt-2 pt-2 border-t t-border text-xs t-text-muted flex items-center gap-2">
                                     <span class="flex items-center gap-1">
                                         <i class="fa-solid fa-gavel"></i>
                                         {{ t('audit.ruleSource') }}:
@@ -1685,7 +1678,7 @@
                         <!-- 功能演练 -->
                         <div class="card">
                             <div class="card-header">
-                                <h3 class="font-bold text-base text-white">{{ t('demo.title') }}</h3>
+                                <h3 class="font-bold text-base t-text">{{ t('demo.title') }}</h3>
                                 <span :class="canOperate ? 'text-green-400' : 'text-red-400'" class="text-xs font-bold">
                                     {{ canOperate ? t('demo.ready') : t('demo.inactive') }}
                                 </span>
@@ -1699,28 +1692,28 @@
 
                                 <div class="grid grid-cols-2 gap-2 mb-4">
                                     <button @click="simulate('dbRead')" :disabled="!canOperate || loading.simulate"
-                                            class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
+                                            class="action-btn t-bg-hover hover:t-bg-hover t-text text-sm">
                                         <i class="fa-solid fa-database"></i> {{ t('demo.readDb') }}
                                     </button>
                                     <button @click="simulate('dbWrite')" :disabled="!canOperate || loading.simulate"
-                                            class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
+                                            class="action-btn t-bg-hover hover:t-bg-hover t-text text-sm">
                                         <i class="fa-solid fa-pen"></i> {{ t('demo.writeDb') }}
                                     </button>
                                     <button @click="simulate('cacheRead')" :disabled="!canOperate || loading.simulate"
-                                            class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
+                                            class="action-btn t-bg-hover hover:t-bg-hover t-text text-sm">
                                         <i class="fa-solid fa-bolt"></i> {{ t('demo.readCache') }}
                                     </button>
                                     <button @click="simulate('cacheWrite')" :disabled="!canOperate || loading.simulate"
-                                            class="action-btn bg-slate-700 hover:bg-slate-600 text-white text-sm">
+                                            class="action-btn t-bg-hover hover:t-bg-hover t-text text-sm">
                                         <i class="fa-solid fa-bolt"></i> {{ t('demo.writeCache') }}
                                     </button>
                                 </div>
 
                                 <!-- IPC 测试 -->
-                                <div class="border-t border-slate-700 pt-4">
+                                <div class="border-t t-border pt-4">
                                     <div class="flex items-center justify-between mb-3">
-                                        <span class="text-sm font-medium text-slate-400">{{ t('demo.ipcAuth') }}</span>
-                                        <div @click="toggleIpc" :class="ipcEnabled ? 'bg-green-500' : 'bg-slate-600'"
+                                        <span class="text-sm font-medium t-text-sub">{{ t('demo.ipcAuth') }}</span>
+                                        <div @click="toggleIpc" :class="ipcEnabled ? 'bg-green-500' : 't-bg-hover'"
                                              class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
                                             <div :class="ipcEnabled ? 'translate-x-5' : 'translate-x-1'"
                                                  class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform">
@@ -1739,58 +1732,78 @@
                         <!-- 服务演练场 -->
                         <div class="card">
                             <div class="card-header">
-                                <h3 class="font-bold text-base text-white">{{ t('playground.title') }}</h3>
-                                <span v-if="playgroundLoading" class="text-xs text-slate-400">
+                                <h3 class="font-bold text-base t-text">{{ t('playground.title') }}</h3>
+                                <span v-if="playgroundLoading" class="text-xs t-text-sub">
                                     <i class="fa-solid fa-spinner fa-spin"></i>
                                 </span>
                             </div>
                             <div class="p-4">
                                 <div v-if="!activeId" class="text-center py-4">
-                                    <i class="fa-solid fa-hand-pointer text-xl text-slate-600 mb-2"></i>
-                                    <p class="text-sm text-slate-500">{{ t('control.selectLing') }}</p>
+                                    <i class="fa-solid fa-hand-pointer text-xl t-text-muted mb-2"></i>
+                                    <p class="text-sm t-text-muted">{{ t('control.selectLing') }}</p>
                                 </div>
                                 <div v-else-if="playgroundServices.length === 0 && !playgroundLoading"
                                      class="text-center py-4">
-                                    <i class="fa-solid fa-plug-circle-xmark text-xl text-slate-600 mb-2"></i>
-                                    <p class="text-sm text-slate-500">{{ t('playground.noServices') }}</p>
+                                    <i class="fa-solid fa-plug-circle-xmark text-xl t-text-muted mb-2"></i>
+                                    <p class="text-sm t-text-muted">{{ t('playground.noServices') }}</p>
                                 </div>
                                 <div v-else class="space-y-3">
                                     <div v-for="svc in playgroundServices" :key="svc.fqsid"
-                                         class="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+                                         class="rounded-lg border t-border t-bg-input p-3">
                                         <div class="flex items-center justify-between mb-2 cursor-pointer select-none" @click="toggleServiceExpand(svc.fqsid)">
                                             <div class="text-xs font-mono text-blue-400 truncate flex items-center gap-1.5" :title="svc.fqsid">
                                                 <i class="fa-solid fa-chevron-right transition-transform duration-200" :class="{ 'rotate-90': isServiceExpanded(svc.fqsid) }"></i>
                                                 <span>{{ svc.fqsid.split(':')[1] || svc.fqsid }}</span>
                                             </div>
-                                            <span class="text-[10px] text-slate-500 font-semibold">{{ svc.methods?.length || 0 }} {{ t('playground.methodsCount') }}</span>
+                                            <span class="text-[10px] t-text-muted font-semibold">{{ svc.methods?.length || 0 }} {{ t('playground.methodsCount') }}</span>
                                         </div>
-                                        <div v-if="isServiceExpanded(svc.fqsid)" class="mt-2 pt-2 border-t border-slate-800">
+                                        <div v-if="isServiceExpanded(svc.fqsid)" class="mt-2 pt-2 border-t t-border">
                                             <div v-if="!svc.methods || svc.methods.length === 0"
-                                                 class="text-xs text-slate-500">
+                                                 class="text-xs t-text-muted">
                                                 {{ t('playground.noMethods') }}
                                             </div>
                                             <div v-else class="space-y-2">
                                                 <div v-for="method in svc.methods" :key="method.signature"
-                                                     class="rounded border border-slate-700/50 bg-slate-800/50 p-2">
+                                                     class="rounded border t-border t-bg-faint p-2">
                                                     <div class="flex items-center justify-between gap-2 mb-1">
-                                                        <div class="text-xs font-mono text-slate-300 truncate flex items-center">
+                                                        <div class="text-xs font-mono t-text-sub truncate flex items-center">
                                                             <span class="text-emerald-400">{{ method.name }}</span>(<span
-                                                                class="text-slate-500">{{ method.parameterTypes.join(', ')
+                                                                class="t-text-muted">{{ method.parameterTypes.join(', ')
                                                             }}</span>)
                                                             <span v-if="method.alternateFqsid" class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 ml-2" :title="method.alternateFqsid">@LingService: {{ method.alternateFqsid.split(':')[1] }}</span>
                                                         </div>
-                                                        <span class="text-[10px] text-slate-500">{{ t('playground.returnType')
+                                                        <span class="text-[10px] t-text-muted">{{ t('playground.returnType')
                                                             }}: {{ method.returnType }}</span>
                                                     </div>
                                                     <!-- 参数输入 -->
-                                                    <div v-if="method.parameterTypes.length > 0" class="space-y-1 mb-2">
+                                                    <div v-if="method.parameterTypes.length > 0" class="space-y-1.5 mb-2">
                                                         <div v-for="(paramType, idx) in method.parameterTypes" :key="idx"
-                                                             class="flex items-center gap-2">
-                                                            <span class="text-[10px] text-slate-500 font-mono w-24 truncate">{{ paramType
-                                                                }}</span>
-                                                            <input v-model="playgroundArgs[getInvokeKey(svc.fqsid, method.signature) + '::' + idx]"
+                                                             class="flex items-start gap-2">
+                                                            <div class="flex flex-col w-24 flex-shrink-0">
+                                                                <span class="text-[10px] t-text-muted font-mono truncate" :title="paramType">{{ paramType }}</span>
+                                                                <!-- 复杂类型 DTO 专属魔棒模板 -->
+                                                                <button v-if="isComplexParameterType(paramType)" 
+                                                                        @click="prefillJsonTemplate(svc.fqsid, method.signature, idx)"
+                                                                        class="text-[9px] text-blue-400 hover:text-blue-300 font-bold flex items-center gap-0.5 mt-0.5"
+                                                                        title="填充 JSON 模板">
+                                                                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                                                    {{ t('playground.fillTemplate') || '预填模板' }}
+                                                                </button>
+                                                            </div>
+                                                            <!-- 简单类型：普通 input -->
+                                                            <input v-if="!isComplexParameterType(paramType)"
+                                                                   v-model="playgroundArgs[getInvokeKey(svc.fqsid, method.signature) + '::' + idx]"
                                                                    :placeholder="t('playground.paramInput')"
-                                                                   class="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500">
+                                                                   class="flex-1 t-bg-page border t-border rounded px-2 py-1 text-xs t-text focus:outline-none focus:border-blue-500">
+                                                            <!-- 复杂类型 JSON：textarea -->
+                                                            <textarea v-else
+                                                                      v-model="playgroundArgs[getInvokeKey(svc.fqsid, method.signature) + '::' + idx]"
+                                                                      placeholder='{
+  "id": 1,
+  "name": "test"
+}'
+                                                                      rows="3"
+                                                                      class="flex-1 t-bg-page border t-border rounded px-2 py-1 text-xs t-text focus:outline-none focus:border-blue-500 font-mono"></textarea>
                                                         </div>
                                                     </div>
                                                     <button @click="invokeService(svc.fqsid, method)"
@@ -1809,9 +1822,9 @@
                                 </div>
 
                                 <!-- 调用结果 -->
-                                <div v-if="playgroundResult" class="mt-4 rounded-xl border border-slate-700/40 overflow-hidden shadow-2xl transition-all bg-slate-950/90 text-slate-300">
+                                <div v-if="playgroundResult" class="mt-4 rounded-xl border t-border overflow-hidden shadow-2xl transition-all t-bg-input t-text-sub">
                                     <!-- macOS 风格窗口头部 -->
-                                    <div class="flex items-center justify-between px-4 py-2.5 bg-slate-900/80 border-b border-slate-800/60">
+                                    <div class="flex items-center justify-between px-4 py-2.5 t-bg-input border-b t-border">
                                         <div class="flex items-center gap-1.5">
                                             <span class="w-2.5 h-2.5 rounded-full bg-red-500/60 shrink-0"></span>
                                             <span class="w-2.5 h-2.5 rounded-full bg-yellow-500/60 shrink-0"></span>
@@ -1820,7 +1833,7 @@
                                                 {{ playgroundResult.success ? t('playground.result') : t('playground.error') }}
                                             </span>
                                         </div>
-                                        <span class="text-[10px] font-mono text-slate-500">{{ playgroundResult.durationMs }} ms</span>
+                                        <span class="text-[10px] font-mono t-text-muted">{{ playgroundResult.durationMs }} ms</span>
                                     </div>
                                     
                                     <div class="p-4">
@@ -1834,16 +1847,16 @@
                                         
                                         <!-- 治理追踪 -->
                                         <div v-if="playgroundResult.traces && playgroundResult.traces.length"
-                                             class="mt-3 pt-3 border-t border-slate-800/80">
-                                            <div class="text-[10px] text-slate-500 mb-1.5 uppercase font-bold tracking-wider">{{ t('playground.traces') }}</div>
+                                             class="mt-3 pt-3 border-t t-border">
+                                            <div class="text-[10px] t-text-muted mb-1.5 uppercase font-bold tracking-wider">{{ t('playground.traces') }}</div>
                                             <div class="space-y-1">
                                                 <div v-for="(trace, idx) in playgroundResult.traces" :key="idx"
                                                      class="text-[10px] font-mono flex items-center gap-2">
                                                     <span :class="trace.type === 'PASS' || trace.type === 'IN' ? 'text-green-400' : trace.type === 'FAIL' || trace.type === 'ERROR' ? 'text-red-400' : 'text-amber-400'">
                                                         {{ trace.type }}
                                                     </span>
-                                                    <span class="text-slate-500 font-sans shrink-0">@{{ trace.source }}</span>
-                                                    <span class="text-slate-400 truncate" :title="trace.action">{{ trace.action }}</span>
+                                                    <span class="t-text-muted font-sans shrink-0">@{{ trace.source }}</span>
+                                                    <span class="t-text-sub truncate" :title="trace.action">{{ trace.action }}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1861,7 +1874,8 @@
         </div>
 
         <!-- 全局日志控制台底栏 -->
-        <footer class="global-console-drawer font-mono" :class="{ 'expanded': consoleExpanded }">
+        <footer class="global-console-drawer font-mono" :style="{ height: consoleExpanded ? consoleHeight + 'px' : '40px' }">
+            <div class="console-resize-handle" @mousedown="startConsoleResize" @click.stop></div>
             <div class="console-header" @click="consoleExpanded = !consoleExpanded">
                 <div class="console-title-area">
                     <i class="fa-solid fa-terminal" :class="{ 'console-alert-pulse text-red-500': hasNewTraceAlert }"></i>
@@ -1869,12 +1883,27 @@
                     <span v-if="hasNewTraceAlert" class="text-xs text-red-500 font-normal">({{ t('logs.newLogs') }})</span>
                 </div>
                 <div class="console-toolbar" @click.stop>
-                    <select v-model="logViewMode" class="bg-slate-700 border border-slate-600 rounded text-xs text-white px-2 py-0.5 focus:outline-none focus:border-blue-500 mr-2 max-w-[150px] font-sans" @click.stop>
+                    <select v-model="logViewMode" class="t-bg-hover border t-border rounded text-xs t-text px-2 py-0.5 focus:outline-none focus:border-blue-500 mr-2 max-w-[120px] font-sans" @click.stop>
                         <option value="all">{{ t('logs.all', '全部日志') }}</option>
                         <option value="current" :disabled="!activeId">{{ t('logs.current', '当前选中') }}</option>
                         <option disabled v-if="lings.length > 0">──────────</option>
                         <option v-for="ling in lings" :key="ling.lingId" :value="ling.lingId">{{ ling.lingId }}</option>
                     </select>
+                    <!-- 日志级别过滤 -->
+                    <select v-model="logFilters.level" class="t-bg-hover border t-border rounded text-xs t-text px-2 py-0.5 focus:outline-none focus:border-blue-500 mr-2 max-w-[90px] font-sans" @click.stop>
+                        <option value="">ALL</option>
+                        <option value="INFO">INFO</option>
+                        <option value="WARN">WARN</option>
+                        <option value="ERROR">ERROR</option>
+                        <option value="AUDIT">AUDIT</option>
+                    </select>
+                    <!-- 日志关键字过滤 -->
+                    <input type="text" v-model="logFilters.keyword" :placeholder="t('logs.keywordPlaceholder', '过滤...')" class="t-bg-hover border t-border rounded text-xs t-text px-2 py-0.5 focus:outline-none focus:border-blue-500 mr-2 w-24 font-sans" @click.stop>
+                    <!-- 自动滚底开关 -->
+                    <button class="console-toolbar-btn mr-2" @click="autoScrollLogs = !autoScrollLogs">
+                        <i :class="autoScrollLogs ? 'fa-solid fa-square-caret-down text-blue-400' : 'fa-solid fa-square-caret-right text-slate-500'"></i>
+                        <span>Auto-Scroll</span>
+                    </button>
                     <button class="console-toolbar-btn" @click="logPaused = !logPaused">
                         <i :class="logPaused ? 'fa-solid fa-play text-green-400' : 'fa-solid fa-pause text-amber-400'"></i>
                         <span>{{ logPaused ? t('logs.resume', '恢复') : t('logs.pause', '暂停') }}</span>
@@ -1890,14 +1919,14 @@
             </div>
             <div class="console-body">
                 <div class="console-logs-wrapper" ref="globalLogContainer">
-                    <div v-if="displayLogs.length === 0" class="text-slate-500 text-xs text-center py-8">
+                    <div v-if="displayLogs.length === 0" class="t-text-muted text-xs text-center py-8">
                         <i class="fa-solid fa-satellite-dish text-base mb-2"></i>
                         <div>{{ t('logs.waiting') }}</div>
                     </div>
                     <div v-for="log in displayLogs.slice().reverse()" :key="log.id" class="text-xs font-mono py-0.5" :class="getLogColor(log)">
-                        <span class="text-slate-500">[{{ formatTime(log.timestamp) }}]</span>
+                        <span class="t-text-muted">[{{ formatTime(log.timestamp) }}]</span>
                         <span class="text-blue-400 font-bold">[{{ log.lingId }}]</span>
-                        <span v-if="log.version" class="text-slate-500">[{{ log.version }}]</span>
+                        <span v-if="log.version" class="t-text-muted">[{{ log.version }}]</span>
                         <span :class="getLogColor(log)">{{ log.content }}</span>
                     </div>
                 </div>

@@ -6,18 +6,31 @@
     --warning-color: #f59e0b;
     --danger-color: #ef4444;
     --info-color: #6366f1;
-    --dark-bg: #0a0f1a;
-    --card-bg: #151b2b;
-    --sidebar-bg: #111827;
-    --sidebar-hover: #1f2937;
-    --border-color: #2a3441;
+    /* 表面层级：页面 → 卡片 → 输入 → 悬停 → 极淡 */
+    --bg-page: #0a0f1a;
+    --bg-card: #151b2b;
+    --bg-input: #1f2937;
+    --bg-sidebar: #111827;
+    --bg-hover: #1f2937;
+    --bg-faint: rgba(31, 41, 55, 0.4);
+    /* 文字层级：主 → 副 → 辅助 */
     --text-primary: #f1f5f9;
-    --text-secondary: #64748b;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    /* 边框与装饰 */
+    --border: #2a3441;
     --header-bg: rgba(21, 27, 43, 0.5);
-    --input-bg: #1f2937;
     --log-line-hover: #151b2b;
     --gradient-bg: linear-gradient(135deg, #050810 0%, #0a0f1a 50%, #0f141f 100%);
     --star-map-text: #e2e8f0;
+    /* 阴影与涟漪 */
+    --shadow-sm: rgba(0, 0, 0, 0.1);
+    --shadow-md: rgba(0, 0, 0, 0.15);
+    --shadow-lg: rgba(0, 0, 0, 0.3);
+    --ripple-color: rgba(255, 255, 255, 0.25);
+    /* 遮罩层 */
+    --overlay-bg: rgba(0, 0, 0, 0.6);
+    --loading-overlay: rgba(10, 15, 26, 0.92);
 }
 
 html.theme-light {
@@ -27,18 +40,26 @@ html.theme-light {
     --warning-color: #f59e0b;
     --danger-color: #ef4444;
     --info-color: #6366f1;
-    --dark-bg: #f8fafc;
-    --card-bg: #ffffff;
-    --sidebar-bg: #f1f5f9;
-    --sidebar-hover: #e2e8f0;
-    --border-color: #cbd5e1;
+    --bg-page: #f1f5f9;
+    --bg-card: #ffffff;
+    --bg-input: #e2e8f0;
+    --bg-sidebar: #f1f5f9;
+    --bg-hover: #cbd5e1;
+    --bg-faint: rgba(241, 245, 249, 0.7);
     --text-primary: #0f172a;
-    --text-secondary: #64748b;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --border: #cbd5e1;
     --header-bg: rgba(241, 245, 249, 0.5);
-    --input-bg: #f1f5f9;
     --log-line-hover: #f1f5f9;
     --gradient-bg: linear-gradient(135deg, #f1f5f9 0%, #f8fafc 50%, #e2e8f0 100%);
     --star-map-text: #0f172a;
+    --shadow-sm: rgba(0, 0, 0, 0.04);
+    --shadow-md: rgba(0, 0, 0, 0.08);
+    --shadow-lg: rgba(0, 0, 0, 0.12);
+    --ripple-color: rgba(0, 0, 0, 0.08);
+    --overlay-bg: rgba(15, 23, 42, 0.35);
+    --loading-overlay: rgba(255, 255, 255, 0.88);
 }
 
 * {
@@ -61,7 +82,7 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.08);
 }
 html.theme-light .glass {
-    background: rgba(255, 255, 255, 0.7);
+    background: var(--bg-faint);
     border: 1px solid rgba(15, 23, 42, 0.08);
 }
 
@@ -198,7 +219,7 @@ html.theme-light .glass-strong {
 
 .hover-float:hover {
     transform: translateY(-4px);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 20px 40px var(--shadow-lg);
 }
 
 /* 按钮涟漪效果 */
@@ -214,7 +235,7 @@ html.theme-light .glass-strong {
     left: 50%;
     width: 0;
     height: 0;
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--ripple-color);
     border-radius: 50%;
     transform: translate(-50%, -50%);
     transition: width 0.6s, height 0.6s;
@@ -274,11 +295,11 @@ html.theme-light .glass-strong {
 /* 侧边栏 */
 .sidebar {
     width: 260px;
-    background: var(--sidebar-bg);
-    border-right: 1px solid var(--border-color);
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+    box-shadow: 4px 0 24px var(--shadow-md);
     transition: background 0.3s, border 0.3s;
 }
 
@@ -287,7 +308,7 @@ html.theme-light .glass-strong {
     display: flex;
     align-items: center;
     gap: 14px;
-    color: #6b7280;
+    color: var(--text-muted);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
     border-left: 3px solid transparent;
@@ -296,23 +317,23 @@ html.theme-light .glass-strong {
 }
 
 .sidebar-item:hover {
-    background: var(--sidebar-hover);
+    background: var(--bg-hover);
     color: var(--text-primary);
     transform: translateX(4px);
 }
 
 .sidebar-item.active {
-    background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, var(--sidebar-bg) 100%);
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, var(--bg-sidebar) 100%);
     color: var(--primary-color);
     border-left-color: var(--primary-color);
 }
 
 /* 卡片 */
 .card {
-    background: var(--card-bg);
+    background: var(--bg-card);
     border-radius: 16px;
-    border: 1px solid var(--border-color);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 32px var(--shadow-sm);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s, border 0.3s;
     overflow: hidden;
     position: relative;
@@ -320,17 +341,17 @@ html.theme-light .glass-strong {
 
 .card:hover {
     border-color: var(--primary-color);
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 12px 48px var(--shadow-md);
     transform: translateY(-2px);
 }
 
 .card-header {
     padding: 18px 24px;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: var(--sidebar-bg);
+    background: var(--bg-sidebar);
     transition: background 0.3s, border 0.3s;
 }
 
@@ -359,7 +380,7 @@ html.theme-light .glass-strong {
 }
 
 .ling-item:hover {
-    background: var(--sidebar-hover);
+    background: var(--bg-hover);
 }
 
 .ling-item:hover::before {
@@ -367,7 +388,7 @@ html.theme-light .glass-strong {
 }
 
 .ling-item.active {
-    background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, var(--card-bg) 60%, transparent 100%);
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, var(--bg-card) 60%, transparent 100%);
     border-left: 3px solid var(--primary-color);
     padding-left: 9px;
 }
@@ -417,35 +438,35 @@ html.theme-light .glass-strong {
     width: 100%;
     height: 10px;
     border-radius: 5px;
-    background: #334155;
+    background: var(--bg-input);
     outline: none;
     cursor: not-allowed;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+    box-shadow: inset 0 2px 4px var(--shadow-sm);
 }
 
 .slider-disabled::-webkit-slider-thumb {
     -webkit-appearance: none;
     width: 24px;
     height: 24px;
-    background: #64748b;
-    border: 3px solid #475569;
+    background: var(--text-muted);
+    border: 3px solid var(--border);
     border-radius: 50%;
     cursor: not-allowed;
 }
 
 /* 日志区域 */
 .log-container {
-    background: var(--dark-bg);
+    background: var(--bg-page);
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
     border-radius: 12px;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border);
     transition: background 0.3s, border 0.3s;
 }
 
 .log-line {
     padding: 8px 12px;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: flex-start;
     gap: 10px;
@@ -557,8 +578,8 @@ html.theme-light .glass-strong {
 
 /* 指标卡片 */
 .metric-card {
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 16px;
     text-align: center;
@@ -588,7 +609,7 @@ html.theme-light .glass-strong {
     left: 50%;
     width: 0;
     height: 0;
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--ripple-color);
     border-radius: 50%;
     transform: translate(-50%, -50%);
     transition: width 0.6s, height 0.6s;
@@ -601,7 +622,7 @@ html.theme-light .glass-strong {
 
 .action-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8px 20px var(--shadow-lg);
 }
 
 .action-btn:active:not(:disabled) {
@@ -617,7 +638,7 @@ html.theme-light .glass-strong {
 .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.7);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -631,13 +652,13 @@ html.theme-light .glass-strong {
 }
 
 .modal-content {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 16px;
     padding: 28px;
     max-width: 420px;
     width: 90%;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 24px 48px var(--shadow-lg);
     animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -657,18 +678,18 @@ html.theme-light .glass-strong {
 }
 
 .uninstall-result-summary {
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 16px;
 }
 
 .health-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 14px;
     padding: 16px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .health-metric {
@@ -677,8 +698,8 @@ html.theme-light .glass-strong {
     gap: 6px;
     padding: 12px;
     border-radius: 12px;
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
 }
 
 .health-metric-full {
@@ -686,7 +707,7 @@ html.theme-light .glass-strong {
 }
 
 .health-metric-label {
-    color: #94a3b8;
+    color: var(--text-muted);
     font-size: 12px;
     font-weight: 600;
 }
@@ -701,8 +722,8 @@ html.theme-light .glass-strong {
 
 .health-metric.compact {
     padding: 10px;
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
 }
 
 .governance-note {
@@ -734,12 +755,12 @@ html.theme-light .glass-strong {
 .health-version-section {
     margin-top: 16px;
     padding-top: 16px;
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--border);
 }
 
 .health-version-card {
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 12px;
 }
@@ -749,8 +770,8 @@ html.theme-light .glass-strong {
     flex-direction: column;
     gap: 6px;
     padding: 12px;
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
     border-radius: 10px;
 }
 
@@ -758,7 +779,7 @@ html.theme-light .glass-strong {
     font-size: 11px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #64748b;
+    color: var(--text-muted);
     font-weight: 700;
 }
 
@@ -804,9 +825,15 @@ html.theme-light .glass-strong {
     border-color: rgba(14, 165, 233, 0.35);
 }
 
+.risk-danger {
+    background: rgba(239, 68, 68, 0.18);
+    color: #fca5a5;
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
 .result-report-card {
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 14px 16px;
 }
@@ -820,11 +847,11 @@ html.theme-light .glass-strong {
 }
 
 .result-empty {
-    border: 1px dashed var(--border-color);
+    border: 1px dashed var(--border);
     border-radius: 12px;
     padding: 14px 16px;
     color: var(--text-secondary);
-    background: var(--input-bg);
+    background: var(--bg-input);
 }
 
 /* 环境标签 - 霓虹风格 */
@@ -863,7 +890,7 @@ html.theme-light .glass-strong {
 .loading-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(10, 15, 26, 0.95);
+    background: var(--loading-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -950,7 +977,7 @@ html.theme-light .glass-strong {
     align-items: center;
     gap: 12px;
     animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 32px var(--shadow-lg);
     min-width: 300px;
 }
 
@@ -970,6 +997,23 @@ html.theme-light .glass-strong {
     background: #1e3a8a;
     color: #93c5fd;
     border: 1px solid #3b82f6;
+}
+
+/* 亮色模式 Toast 适配 */
+html.theme-light .toast-success {
+    background: #d1fae5;
+    color: #065f46;
+    border-color: #6ee7b7;
+}
+html.theme-light .toast-error {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fca5a5;
+}
+html.theme-light .toast-info {
+    background: #dbeafe;
+    color: #1e40af;
+    border-color: #93c5fd;
 }
 
 @keyframes slideIn {
@@ -1005,16 +1049,16 @@ html.theme-light .glass-strong {
 }
 
 ::-webkit-scrollbar-track {
-    background: #1e293b;
+    background: var(--bg-input);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #475569;
+    background: var(--border);
     border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #64748b;
+    background: var(--text-muted);
 }
 
 /* 响应式 */
@@ -1120,7 +1164,7 @@ html.theme-light .glass-strong {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--overlay-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1128,11 +1172,11 @@ html.theme-light .glass-strong {
 }
 
 .auth-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     padding: 32px;
     border-radius: 16px;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 16px 48px var(--shadow-lg);
     width: 360px;
     text-align: center;
     backdrop-filter: blur(12px);
@@ -1153,8 +1197,8 @@ html.theme-light .glass-strong {
     width: 100%;
     padding: 10px 14px;
     border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--input-bg);
+    border: 1px solid var(--border);
+    background: var(--bg-input);
     color: var(--text-primary);
     font-size: 14px;
     outline: none;
@@ -1244,8 +1288,8 @@ html.theme-light .glass-strong {
 
 /* ==================== 灵元中心专属样式 ==================== */
 .package-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 18px;
     transition: all 0.3s;
@@ -1254,7 +1298,7 @@ html.theme-light .glass-strong {
 .package-card:hover {
     border-color: var(--primary-color);
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 8px 24px var(--shadow-md);
 }
 
 .permission-badge {
@@ -1273,102 +1317,159 @@ html.theme-light .glass-strong {
     gap: 6px;
 }
 
-/* ==================== 亮色主题 (Light Mode) 深度覆盖规则 ==================== */
-.theme-light .bg-slate-800,
-.theme-light .bg-slate-800\/50,
-.theme-light .bg-slate-800\/30,
-.theme-light .bg-slate-900,
-.theme-light .bg-slate-900\/50,
-.theme-light .bg-slate-950,
-.theme-light .bg-slate-950\/50,
-.theme-light .bg-slate-950\/80,
-.theme-light .bg-slate-900\/40,
-.theme-light .bg-slate-900\/80,
-.theme-light .bg-slate-900\/30,
-.theme-light .bg-slate-700\/30,
-.theme-light .bg-slate-800\/40,
-.theme-light .bg-purple-900\/20,
-.theme-light .bg-blue-900\/20,
-.theme-light .bg-emerald-900\/20,
-.theme-light .bg-slate-850 {
-    background-color: var(--input-bg) !important;
+/* ==================== 语义工具类（主题色自动适配） ==================== */
+.t-bg-page    { background-color: var(--bg-page); }
+.t-bg-card    { background-color: var(--bg-card); }
+.t-bg-input   { background-color: var(--bg-input); }
+.t-bg-sidebar { background-color: var(--bg-sidebar); }
+.t-bg-hover   { background-color: var(--bg-hover); }
+.t-bg-faint   { background-color: var(--bg-faint); }
+.t-text       { color: var(--text-primary); }
+.t-text-sub   { color: var(--text-secondary); }
+.t-text-muted { color: var(--text-muted); }
+.t-border     { border-color: var(--border); }
+.hover\:t-bg-faint:hover { background-color: var(--bg-faint); }
+.hover\:t-bg-hover:hover { background-color: var(--bg-hover); }
+.hover\:t-text:hover { color: var(--text-primary); }
+
+/* placeholder 文字颜色 */
+.t-text-muted::placeholder { color: var(--text-muted); }
+
+/* ==================== 状态标牌 亮色适配 ==================== */
+html.theme-light .status-active {
+    background: rgba(16, 185, 129, 0.12);
+    color: #059669;
+    border-color: rgba(5, 150, 105, 0.25);
+    box-shadow: none;
+}
+html.theme-light .status-loaded {
+    background: rgba(59, 130, 246, 0.12);
+    color: #2563eb;
+    border-color: rgba(37, 99, 235, 0.25);
+    box-shadow: none;
+}
+html.theme-light .status-unloaded {
+    background: rgba(148, 163, 184, 0.12);
+    color: #64748b;
+    border-color: rgba(100, 116, 139, 0.25);
+}
+html.theme-light .status-loading {
+    background: rgba(245, 158, 11, 0.12);
+    color: #d97706;
+    border-color: rgba(217, 119, 6, 0.25);
+    box-shadow: none;
+    animation: none;
+}
+html.theme-light .status-error {
+    background: rgba(239, 68, 68, 0.12);
+    color: #dc2626;
+    border-color: rgba(220, 38, 38, 0.25);
+    box-shadow: none;
 }
 
-.theme-light .bg-slate-700,
-.theme-light .bg-slate-700\/40 {
-    background-color: var(--sidebar-hover) !important;
+/* ==================== 环境标签 亮色适配 ==================== */
+html.theme-light .env-dev {
+    background: rgba(59, 130, 246, 0.12);
+    color: #1e40af;
+    border-color: rgba(30, 64, 175, 0.25);
+    box-shadow: none;
+}
+html.theme-light .env-test {
+    background: rgba(245, 158, 11, 0.12);
+    color: #92400e;
+    border-color: rgba(146, 64, 14, 0.25);
+    box-shadow: none;
+}
+html.theme-light .env-prod {
+    background: rgba(239, 68, 68, 0.12);
+    color: #991b1b;
+    border-color: rgba(153, 27, 27, 0.25);
+    box-shadow: none;
 }
 
-.theme-light .border-slate-700,
-.theme-light .border-slate-600,
-.theme-light .border-slate-800 {
-    border-color: var(--border-color) !important;
+/* ==================== 治理备注 亮色适配 ==================== */
+html.theme-light .governance-note-info {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.2);
+    color: #1e40af;
+}
+html.theme-light .governance-note-warn {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.2);
+    color: #92400e;
+}
+html.theme-light .governance-note-danger {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.2);
+    color: #991b1b;
 }
 
-.theme-light .text-slate-400,
-.theme-light .text-slate-300,
-.theme-light .text-slate-500,
-.theme-light .text-slate-200 {
-    color: var(--text-secondary) !important;
+/* ==================== 风险徽章 亮色适配 ==================== */
+html.theme-light .risk-safe { color: #059669; background: rgba(16,185,129,0.1); border-color: rgba(5,150,105,0.25); }
+html.theme-light .risk-warn { color: #d97706; background: rgba(245,158,11,0.1); border-color: rgba(217,119,6,0.25); }
+html.theme-light .risk-unknown { color: #2563eb; background: rgba(59,130,246,0.1); border-color: rgba(37,99,235,0.25); }
+html.theme-light .risk-info { color: #0284c7; background: rgba(14,165,233,0.1); border-color: rgba(14,165,233,0.25); }
+html.theme-light .risk-danger { color: #dc2626; background: rgba(239,68,68,0.1); border-color: rgba(220,38,38,0.25); }
+
+/* ==================== 健康卡片 亮色适配 ==================== */
+html.theme-light .health-card {
+    box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.04);
 }
 
-.theme-light .text-white {
-    color: var(--text-primary) !important;
+/* ==================== 审计结果 亮色适配 ==================== */
+html.theme-light .text-green-300 { color: #15803d; }
+html.theme-light .text-red-300 { color: #b91c1c; }
+
+/* ==================== 星图 亮色适配 ==================== */
+html.theme-light .star-map-container {
+    background: radial-gradient(ellipse at center, #ffffff 0%, #f1f5f9 70%);
+    border: 1px solid var(--border);
+}
+html.theme-light .star-map-tooltip {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: var(--border);
+    color: var(--text-primary);
 }
 
-.theme-light .modal-content {
-    background-color: var(--card-bg) !important;
-    border: 1px solid var(--border-color) !important;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08) !important;
+/* 亮色模式滑块与进度条自适应 */
+html.theme-light .slider-custom {
+    box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.15) !important;
 }
 
-.theme-light .result-meta-item,
-.theme-light .result-report-card,
-.theme-light .uninstall-result-summary,
-.theme-light .health-metric,
-.theme-light .health-version-card,
-.theme-light .result-report-card {
-    background-color: var(--input-bg) !important;
-    border-color: var(--border-color) !important;
+html.theme-light .slider-custom::-webkit-slider-thumb {
+    background: #ffffff !important;
+    box-shadow: 0 3px 8px rgba(59, 130, 246, 0.25) !important;
+    border-color: #3b82f6 !important;
 }
 
-.theme-light .result-meta-value,
-.theme-light .health-metric-value {
-    color: var(--text-primary) !important;
+html.theme-light .slider-custom::-webkit-slider-thumb:hover {
+    box-shadow: 0 5px 12px rgba(59, 130, 246, 0.35) !important;
 }
 
-.theme-light .bg-slate-950\/40 {
-    background-color: rgba(241, 245, 249, 0.8) !important;
+html.theme-light .slider-disabled {
+    background: #cbd5e1 !important;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08) !important;
 }
 
-.theme-light .bg-slate-800\/60 {
-    background-color: var(--sidebar-bg) !important;
+html.theme-light .slider-disabled::-webkit-slider-thumb {
+    background: #94a3b8 !important;
+    border-color: #64748b !important;
+    box-shadow: none !important;
 }
 
-.theme-light .bg-slate-600 {
-    background-color: #cbd5e1 !important;
+html.theme-light .text-blue-400 {
+    color: #2563eb !important;
 }
 
-.theme-light .border-slate-700\/30,
-.theme-light .border-slate-700\/50,
-.theme-light .border-slate-800\/30,
-.theme-light .border-slate-800\/50,
-.theme-light .border-slate-600\/30,
-.theme-light .border-slate-600\/50 {
-    border-color: var(--border-color) !important;
+html.theme-light .text-amber-400 {
+    color: #d97706 !important;
 }
 
-/* 亮色模式滚动条 */
-.theme-light ::-webkit-scrollbar-track {
-    background: var(--input-bg) !important;
-}
-
-.theme-light ::-webkit-scrollbar-thumb {
-    background: var(--border-color) !important;
-}
-
-.theme-light ::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary) !important;
+/* ==================== 权限按钮 亮色适配 ==================== */
+html.theme-light .perm-btn.off {
+    background: rgba(148, 163, 184, 0.15);
+    color: var(--text-muted);
+    border-color: rgba(148, 163, 184, 0.3);
 }
 
 /* ==================== 全局日志控制台底栏 (Trace Console Drawer) ==================== */
@@ -1381,7 +1482,7 @@ html.theme-light .glass-strong {
     background: rgba(21, 27, 43, 0.95);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--border);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     z-index: 45;
     box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.2);
@@ -1390,14 +1491,31 @@ html.theme-light .glass-strong {
     overflow: hidden;
 }
 
-.global-console-drawer.expanded {
-    height: 280px; /* 展开态高度 */
+.console-resize-handle {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    cursor: ns-resize;
+    z-index: 100;
+    background: transparent;
+    transition: background 0.2s;
 }
 
-/* 亮色模式下底栏自适应 */
-.theme-light .global-console-drawer {
+.console-resize-handle:hover {
+    background: var(--primary-color);
+}
+
+html.resizing .global-console-drawer {
+    transition: none !important;
+}
+
+/* 亮色模式下底栏自适应（底栏保留深色终端风格以确保日志可读性） */
+html.theme-light .global-console-drawer {
     background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.08);
+    border-top-color: #94a3b8;
+    box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.1);
 }
 
 .console-header {
@@ -1408,13 +1526,14 @@ html.theme-light .glass-strong {
     justify-content: space-between;
     cursor: pointer;
     background: rgba(2, 6, 23, 0.2);
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border);
     flex-shrink: 0;
     user-select: none;
 }
 
-.theme-light .console-header {
-    background: rgba(15, 23, 42, 0.03);
+html.theme-light .console-header {
+    background: rgba(15, 23, 42, 0.04);
+    border-bottom-color: #e2e8f0;
 }
 
 .console-title-area {
@@ -1451,7 +1570,7 @@ html.theme-light .glass-strong {
     background: rgba(255, 255, 255, 0.08);
 }
 
-.theme-light .console-toolbar-btn:hover {
+html.theme-light .console-toolbar-btn:hover {
     background: rgba(15, 23, 42, 0.05);
 }
 
@@ -1477,11 +1596,27 @@ html.theme-light .glass-strong {
     padding: 10px 20px;
     display: flex;
     flex-direction: column;
-    background: var(--dark-bg);
+    background: var(--bg-page);
 }
 
-.theme-light .console-body {
-    background: #0a0f1a !important; /* 强制保持深色终端底色以保证日志高亮字符可读性 */
+/* 底栏日志区域强制保持深色终端底色以保证日志高亮字符可读性 */
+html.theme-light .console-body {
+    background: #0a0f1a;
+    /* 终端底色保持深色，内部文本需回退到深色主题色值 */
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+}
+
+/* 底栏浅色模式：标题栏和下拉框边框适配 */
+html.theme-light .console-title-area {
+    color: var(--text-primary);
+}
+html.theme-light .console-body .t-text-muted {
+    color: #64748b;
+}
+html.theme-light .console-body .t-text-sub {
+    color: #94a3b8;
 }
 
 .console-logs-wrapper {
@@ -1501,40 +1636,35 @@ html.theme-light .glass-strong {
 
 /* 亮色主题额外净化覆盖 */
 html.theme-light .star-map-container {
-    background: radial-gradient(ellipse at center, #ffffff 0%, #f1f5f9 70%) !important;
-    border: 1px solid var(--border-color) !important;
+    background: radial-gradient(ellipse at center, #ffffff 0%, #f1f5f9 70%);
+    border: 1px solid var(--border);
 }
 
 html.theme-light .star-map-tooltip {
-    background: rgba(255, 255, 255, 0.95) !important;
-    border-color: var(--border-color) !important;
-    color: var(--text-primary) !important;
-}
-
-html.theme-light .metric-card {
-    background: var(--input-bg) !important;
-    border-color: var(--border-color) !important;
-}
-
-html.theme-light .health-metric.compact {
-    background: var(--input-bg) !important;
-    border-color: var(--border-color) !important;
-}
-
-html.theme-light .health-version-section {
-    border-top: 1px solid var(--border-color) !important;
-}
-
-/* 亮色模式演练场卡片与边框自适应 */
-.theme-light .rounded-lg.border.border-slate-700.bg-slate-900\/50,
-.theme-light .rounded.border.border-slate-700\/50.bg-slate-800\/50 {
-    background-color: var(--input-bg) !important;
-    border-color: var(--border-color) !important;
+    background: rgba(255, 255, 255, 0.95);
+    border-color: var(--border);
+    color: var(--text-primary);
 }
 
 /* 折叠箭头微交互 */
 .fa-chevron-down, .fa-chevron-right {
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ==================== 亮色主题高质感白玉磨砂弥散阴影重载 ==================== */
+html.theme-light .card {
+    box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 12px 40px -8px rgba(15, 23, 42, 0.03) !important;
+    border: 1px solid var(--border) !important;
+}
+
+html.theme-light .card:hover {
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 8px 30px -4px rgba(59, 130, 246, 0.15) !important;
+}
+
+html.theme-light .card-header {
+    background: #f8fafc !important;
+    border-bottom: 1px solid var(--border) !important;
 }
 
 /* ==================== 光敏 / 动画敏感降级 ==================== */

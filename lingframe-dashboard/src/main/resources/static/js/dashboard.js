@@ -59,7 +59,10 @@ createApp({
             versionSelectLabel: '',
             showDeleteFileOption: false,
             deleteFile: false,
-            onConfirm: null
+            onConfirm: null,
+            isDanger: false,
+            confirmInput: '',
+            expectedConfirmInput: ''
         });
 
         const uninstallResultModal = reactive({
@@ -254,8 +257,36 @@ createApp({
         const logFilters = reactive({
             version: '',
             eventType: '',
-            keyword: ''
+            keyword: '',
+            level: ''
         });
+
+        const consoleHeight = ref(280);
+        const autoScrollLogs = ref(true);
+        const isResizingConsole = ref(false);
+
+        const handleConsoleResize = (e) => {
+            if (!isResizingConsole.value) return;
+            const newHeight = window.innerHeight - e.clientY;
+            if (newHeight >= 100 && newHeight <= window.innerHeight * 0.8) {
+                consoleHeight.value = newHeight;
+            }
+        };
+
+        const stopConsoleResize = () => {
+            isResizingConsole.value = false;
+            document.documentElement.classList.remove('resizing');
+            document.removeEventListener('mousemove', handleConsoleResize);
+            document.removeEventListener('mouseup', stopConsoleResize);
+        };
+
+        const startConsoleResize = (e) => {
+            e.preventDefault();
+            isResizingConsole.value = true;
+            document.documentElement.classList.add('resizing');
+            document.addEventListener('mousemove', handleConsoleResize);
+            document.addEventListener('mouseup', stopConsoleResize);
+        };
 
         // ==================== 计算属性 ====================
         const activeLing = computed(() => lings.value.find(p => p.lingId === activeId.value));
@@ -343,6 +374,11 @@ createApp({
             // 按事件类型筛选
             if (logFilters.eventType) {
                 filteredLogs = filteredLogs.filter(l => l.type === logFilters.eventType);
+            }
+
+            // 按级别筛选
+            if (logFilters.level) {
+                filteredLogs = filteredLogs.filter(l => l.type === logFilters.level);
             }
 
             // 按关键词筛选
@@ -519,18 +555,19 @@ createApp({
             if (document.getElementById('login-overlay')) return;
             authenticated.value = false;
 
+            const isLight = currentTheme.value === 'light';
             const overlay = document.createElement('div');
             overlay.id = 'login-overlay';
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+            overlay.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:${isLight ? 'rgba(15,23,42,0.35)' : 'rgba(0,0,0,0.5)'};display:flex;align-items:center;justify-content:center;z-index:10000;`;
             overlay.innerHTML = `
-                <div style="background:#1e1e2e;padding:32px;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.3);width:360px;text-align:center;">
-                    <div style="font-size:20px;font-weight:600;color:#cdd6f4;margin-bottom:8px;">${t('login.title', '访问认证')}</div>
-                    <div style="font-size:13px;color:#a6adc8;margin-bottom:20px;">${t('login.desc', '请输入访问令牌以继续')}</div>
+                <div style="background:${isLight ? '#ffffff' : '#1e1e2e'};padding:32px;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,${isLight ? '0.1' : '0.3'});width:360px;text-align:center;border:1px solid ${isLight ? '#cbd5e1' : '#313244'};">
+                    <div style="font-size:20px;font-weight:600;color:${isLight ? '#0f172a' : '#cdd6f4'};margin-bottom:8px;">${t('login.title', '访问认证')}</div>
+                    <div style="font-size:13px;color:${isLight ? '#64748b' : '#a6adc8'};margin-bottom:20px;">${t('login.desc', '请输入访问令牌以继续')}</div>
                     <input id="login-token-input" type="password" placeholder="${t('login.placeholder', 'Access Token')}"
-                        style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid #45475a;background:#313244;color:#cdd6f4;font-size:14px;outline:none;box-sizing:border-box;" />
+                        style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid ${isLight ? '#cbd5e1' : '#45475a'};background:${isLight ? '#f1f5f9' : '#313244'};color:${isLight ? '#0f172a' : '#cdd6f4'};font-size:14px;outline:none;box-sizing:border-box;" />
                     <div id="login-error" style="color:#f38ba8;font-size:12px;margin-top:8px;display:none;"></div>
                     <button id="login-submit-btn"
-                        style="margin-top:16px;width:100%;padding:10px;border-radius:8px;border:none;background:#89b4fa;color:#1e1e2e;font-size:14px;font-weight:600;cursor:pointer;">
+                        style="margin-top:16px;width:100%;padding:10px;border-radius:8px;border:none;background:${isLight ? '#3b82f6' : '#89b4fa'};color:#ffffff;font-size:14px;font-weight:600;cursor:pointer;">
                         ${t('login.submit', '确认')}
                     </button>
                 </div>
@@ -674,6 +711,9 @@ createApp({
 
         const requestUnload = () => {
             if (!activeLing.value) return;
+            modal.isDanger = true;
+            modal.confirmInput = '';
+            modal.expectedConfirmInput = activeId.value;
             modal.title = t('modal.confirmUnload');
             modal.message = t('modal.unloadWarning', { lingId: activeId.value });
             modal.actionText = t('modal.unloadAction');
@@ -879,6 +919,9 @@ createApp({
 
         const reloadLing = (lingId) => {
             if (!activeLing.value) return;
+            modal.isDanger = false;
+            modal.confirmInput = '';
+            modal.expectedConfirmInput = '';
             const versions = activeLing.value.versionDetails?.map(v => v.version) || [];
             if (versions.length > 1) {
                 modal.title = t('modal.reloadTitle') || '确认热重载';
@@ -912,9 +955,39 @@ createApp({
                 htmlEl.classList.remove('theme-light');
                 htmlEl.classList.add('theme-dark');
             }
-            destroyCharts();
+            
+            // 为了平滑过渡，如果当前是在 monitor 页面，我们直接更新现有图表实例的颜色配置并 update
+            if (activeNav.value === 'monitor') {
+                const isLight = currentTheme.value === 'light';
+                const tooltipBg = isLight ? 'rgba(255,255,255,0.95)' : 'rgba(15,23,42,0.9)';
+                const tooltipBorder = isLight ? '#cbd5e1' : '#334155';
+                const tooltipTitle = isLight ? '#64748b' : '#94a3b8';
+                const tooltipBody = isLight ? '#0f172a' : '#e2e8f0';
+                const ticksColor = isLight ? 'rgba(15,23,42,0.6)' : 'rgba(148,163,184,0.5)';
+                const gridColor = isLight ? 'rgba(15,23,42,0.08)' : 'rgba(100,116,139,0.1)';
+
+                Object.values(chartInstances).forEach(instance => {
+                    if (instance) {
+                        instance.options.plugins.tooltip.backgroundColor = tooltipBg;
+                        instance.options.plugins.tooltip.borderColor = tooltipBorder;
+                        instance.options.plugins.tooltip.titleColor = tooltipTitle;
+                        instance.options.plugins.tooltip.bodyColor = tooltipBody;
+                        instance.options.scales.x.ticks.color = ticksColor;
+                        instance.options.scales.x.grid.color = gridColor;
+                        instance.options.scales.y.ticks.color = ticksColor;
+                        instance.options.scales.y.grid.color = gridColor;
+                        instance.update();
+                    }
+                });
+            } else {
+                // 如果不在 monitor 页面，销毁图表
+                destroyCharts();
+            }
+
             nextTick(() => {
-                drawMonitorCharts();
+                // 星图也需要重绘以适配主题色
+                if (starMapAnimFrame) cancelAnimationFrame(starMapAnimFrame);
+                drawStarMap();
             });
         };
 
@@ -944,6 +1017,9 @@ createApp({
         };
 
         const deletePackageFile = (lingId, version) => {
+            modal.isDanger = false;
+            modal.confirmInput = '';
+            modal.expectedConfirmInput = '';
             modal.title = t('lingCenter.uninstallDeleteFile') || '彻底删除物理包';
             modal.message = `确认要彻底从磁盘中删除灵元 ${lingId} (版本 ${version}) 的 JAR 文件吗？此操作无法撤销。`;
             modal.actionText = t('modal.confirm') || '确认';
@@ -1038,6 +1114,9 @@ createApp({
 
         const requestUnloadWithName = (lingId, deleteFileOption = false) => {
             const ling = lings.value.find(p => p.lingId === lingId);
+            modal.isDanger = true;
+            modal.confirmInput = '';
+            modal.expectedConfirmInput = lingId;
             modal.title = t('modal.confirmUnload');
             modal.message = t('modal.unloadWarning', { lingId });
             modal.actionText = t('modal.unloadAction');
@@ -1118,6 +1197,9 @@ createApp({
         };
 
         const requestUnloadSpecific = (lingId, version, deleteFileOption = false) => {
+            modal.isDanger = true;
+            modal.confirmInput = '';
+            modal.expectedConfirmInput = lingId;
             modal.title = t('modal.confirmUnload');
             modal.message = t('modal.unloadWarningSpecific', { lingId, version }) || `确认卸载服务 ${lingId} 的版本 ${version} 吗？`;
             modal.actionText = t('modal.unloadAction');
@@ -1538,6 +1620,22 @@ createApp({
 
         const getInvokeKey = (fqsid, signature) => `${fqsid}::${signature}`;
 
+        const isComplexParameterType = (typeName) => {
+            if (!typeName) return false;
+            const baseTypes = [
+                'int', 'long', 'double', 'float', 'boolean', 'char', 'byte', 'short',
+                'java.lang.String', 'java.lang.Long', 'java.lang.Integer', 'java.lang.Double',
+                'java.lang.Float', 'java.lang.Boolean', 'java.lang.Character', 'java.lang.Byte',
+                'java.lang.Short'
+            ];
+            return !baseTypes.includes(typeName);
+        };
+
+        const prefillJsonTemplate = (fqsid, signature, idx) => {
+            const key = getInvokeKey(fqsid, signature) + '::' + idx;
+            playgroundArgs[key] = '{\n  "id": 1,\n  "name": "test"\n}';
+        };
+
         // 选中灵元时自动加载服务列表
         watch(activeId, (newId) => {
             playgroundServices.value = [];
@@ -1648,7 +1746,7 @@ createApp({
                 });
             }
 
-            if (globalLogContainer.value) {
+            if (autoScrollLogs.value && globalLogContainer.value) {
                 nextTick(() => {
                     globalLogContainer.value.scrollTop = globalLogContainer.value.scrollHeight;
                 });
@@ -2336,10 +2434,19 @@ createApp({
                 ctx.fill();
 
                 // 名称标签
-                ctx.fillStyle = currentTheme.value === 'light' ? '#334155' : '#e2e8f0';
+                const labelColor = currentTheme.value === 'light' ? '#1e293b' : '#e2e8f0';
                 ctx.font = '11px -apple-system, system-ui, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'alphabetic';
+                // 亮色模式下为标签添加半透明背景衬底，避免连线交叉时文字难以辨识
+                if (currentTheme.value === 'light') {
+                    const textWidth = ctx.measureText(node.shortName).width;
+                    const labelX = nx - textWidth / 2 - 3;
+                    const labelY = ny + node.nodeRadius + 4;
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                    ctx.fillRect(labelX, labelY, textWidth + 6, 14);
+                }
+                ctx.fillStyle = labelColor;
                 ctx.fillText(node.shortName, nx, ny + node.nodeRadius + 16);
             });
 
@@ -2794,6 +2901,7 @@ createApp({
             logs, lastAudit, logViewMode, logAggregationMode, logFilters, logContainer, isUserScrolling, logPaused, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
             stats, loading, modal, toasts, envLabels, uploadModal, timelineModal, appState, authenticated, submitAuth,
+            consoleHeight, autoScrollLogs, startConsoleResize,
 
             perfMetrics, jvmInfo, chartTimeRange, monitorCharts,
             lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,
@@ -2808,6 +2916,7 @@ createApp({
             playgroundServices, playgroundLoading, playgroundInvoking, playgroundArgs, playgroundResult,
             expandedServices, toggleServiceExpand, isServiceExpanded,
             fetchPlaygroundServices, invokeService, getInvokeKey,
+            isComplexParameterType, prefillJsonTemplate,
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
             formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue, formatUptime, formatPlaygroundResult,
             getStatusClass, getLingShortName, getLingTagClass, getLingHealthDotClass, getLingUptime, getLingServiceCount, getLogColor, getTrend,
