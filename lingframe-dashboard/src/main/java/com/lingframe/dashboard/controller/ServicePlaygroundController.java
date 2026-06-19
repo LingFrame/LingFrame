@@ -50,7 +50,7 @@ public class ServicePlaygroundController {
         try {
             InvokeResultDTO result = playgroundService.invokeService(
                     lingId, request.getFqsid(), request.getMethodName(),
-                    request.getParameterTypes(), request.getArgs());
+                    request.getParameterTypes(), request.getArgs(), request.getVersion());
             return ApiResponse.ok(result);
         } catch (Exception e) {
             log.error("Service invocation failed: {}/{}", lingId, request.getFqsid(), e);
@@ -68,5 +68,10 @@ public class ServicePlaygroundController {
         private String[] parameterTypes;
         /** 调用参数值 */
         private Object[] args;
+        /**
+         * 目标版本号。
+         * 为空时走默认实例（稳定版）；指定时走对应版本实例，用于金丝雀接口验证。
+         */
+        private String version;
     }
 }

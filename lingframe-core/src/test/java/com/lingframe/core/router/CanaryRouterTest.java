@@ -2,11 +2,14 @@ package com.lingframe.core.router;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.spi.TrafficRouter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
@@ -169,5 +172,72 @@ class CanaryRouterTest {
         Map<String, Object> props = canary ? Collections.<String, Object>singletonMap("canary", true) : Collections.<String, Object>emptyMap();
         when(def.getProperties()).thenReturn(props);
         return inst;
+    }
+
+    /**
+     * 构造带 LingRuntime + InstancePool 的上下文，让 CanaryRouter 能走到
+     * findStableInstance 的「default 实例优先」分支。
+     * defaultInst 即「已被选举为新默认的实例」（通常是卸载稳定版后顶上的金丝雀）。
+     */
+    private InvocationContext mockContextWithDefault(String lingId, LingInstance defaultInst) {
+        InstancePool pool = mock(InstancePool.class);
+        when(pool.getDefault()).thenReturn(defaultInst);
+        LingRuntime runtime = mock(LingRuntime.class);
+        when(runtime.getLingId()).thenReturn(lingId);
+        when(runtime.getInstancePool()).thenReturn(pool);
+
+        InvocationContext ctx = mock(InvocationContext.class);
+        when(ctx.getRuntime()).thenReturn(runtime);
+        when(ctx.getTargetLingId()).thenReturn(lingId);
+        when(ctx.getServiceFQSID()).thenReturn(null);
+        return ctx;
+    }
+
+    @Nested
+    @DisplayName("卸载稳定版后的提升场景")
+    class PromoteScenarioTest {
+
+        @Test
+        @DisplayName("仅剩金丝雀时_路由兜底返回该实例而非null")
+        void shouldFallbackToOnlyCanaryCandidate() {
+            // 回归保护：卸载稳定版后只剩金丝雀，findStableInstance 的最终兜底
+            // 必须返回该金丝雀，不能因 canary 标记未清除就返回 null 导致调用失败。
+            LingInstance canary = mockInstance("ling-a", "2.0.0", true);
+            InvocationContext ctx = mockContextWithDefault("ling-a", canary);
+
+            router.setCanaryConfig("ling-a", 0, "2.0.0");
+
+            LingInstance result = router.route(Collections.singletonList(canary), ctx);
+            assertNotNull(result, "仅剩金丝雀时路由兜底必须返回该实例");
+            assertSame(canary, result);
+        }
+
+        @Test
+        @DisplayName("金丝雀已清除canary标记后被识别为稳定版")
+        void shouldTreatPromotedCanaryAsStable() {
+            // 金丝雀被 promoteToDefault 后 canary 标记已清除，此时它应被当作稳定版路由。
+            LingInstance promoted = mockInstance("ling-a", "2.0.0", false);
+            InvocationContext ctx = mockContextWithDefault("ling-a", promoted);
+
+            router.setCanaryConfig("ling-a", 0, "2.0.0");
+
+            LingInstance result = router.route(Collections.singletonList(promoted), ctx);
+            assertSame(promoted, result);
+        }
+
+        @Test
+        @DisplayName("金丝雀被提升为默认且canary标记已清除时_非金丝雀流量命中它")
+        void shouldRouteStableTrafficToPromotedCanary() {
+            // 双版本场景：旧稳定 S（将被卸载）+ 金丝雀 C。
+            // 这里模拟 C 已被提升：canary 标记清除、设为默认。
+            // 验证非金丝雀流量（percent=0）命中 C 而非报错。
+            LingInstance promotedCanary = mockInstance("ling-a", "2.0.0", false);
+            InvocationContext ctx = mockContextWithDefault("ling-a", promotedCanary);
+
+            router.setCanaryConfig("ling-a", 0, "2.0.0");
+
+            LingInstance result = router.route(Collections.singletonList(promotedCanary), ctx);
+            assertSame(promotedCanary, result);
+        }
     }
 }

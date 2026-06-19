@@ -145,7 +145,7 @@ class ServicePlaygroundServiceTest {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine, objectMapper);
             when(repository.getRuntime("non-exist")).thenReturn(null);
 
-            InvokeResultDTO result = playgroundService.invokeService("non-exist", "non-exist:Service", "hello", new String[0], new Object[0]);
+            InvokeResultDTO result = playgroundService.invokeService("non-exist", "non-exist:Service", "hello", new String[0], new Object[0], null);
 
             assertFalse(result.isSuccess());
             assertTrue(result.getError().contains("Ling not found"));
@@ -159,7 +159,7 @@ class ServicePlaygroundServiceTest {
             when(runtime.isAvailable()).thenReturn(false);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
 
-            InvokeResultDTO result = playgroundService.invokeService("test-ling", "test-ling:Service", "hello", new String[0], new Object[0]);
+            InvokeResultDTO result = playgroundService.invokeService("test-ling", "test-ling:Service", "hello", new String[0], new Object[0], null);
 
             assertFalse(result.isSuccess());
             assertTrue(result.getError().contains("Ling not available"));
@@ -195,7 +195,8 @@ class ServicePlaygroundServiceTest {
                     "test-ling:Service",
                     "hello",
                     new String[]{"java.lang.String"},
-                    new Object[]{"world"}
+                    new Object[]{"world"},
+                    null
             );
 
             assertTrue(result.isSuccess());
@@ -225,7 +226,8 @@ class ServicePlaygroundServiceTest {
                     "test-ling:Service",
                     "hello",
                     new String[]{"java.lang.String"},
-                    new Object[]{"world"}
+                    new Object[]{"world"},
+                    null
             );
 
             assertFalse(result.isSuccess());
@@ -262,7 +264,8 @@ class ServicePlaygroundServiceTest {
                     "test-ling:Service",
                     "queryOrder",
                     new String[]{"java.lang.Long"},
-                    new Object[]{123}
+                    new Object[]{123},
+                    null
             );
 
             assertTrue(result.isSuccess());

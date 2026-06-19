@@ -10,6 +10,7 @@ import java.net.URLConnection;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 灵元类加载器。
@@ -70,6 +71,16 @@ public class LingClassLoader extends URLClassLoader {
     private final String lingId;
     private volatile boolean closed = false;
 
+    // 存活实例计数器（构造时递增，close时递减），用于监控对照卸载真实情况
+    private static final AtomicLong ALIVE_COUNT = new AtomicLong(0);
+
+    /**
+     * 获取当前存活的 LingClassLoader 数量
+     */
+    public static long getAliveCount() {
+        return ALIVE_COUNT.get();
+    }
+
     public LingClassLoader(URL[] urls, ClassLoader parent) {
         this("unknown", urls, parent);
     }
@@ -91,6 +102,7 @@ public class LingClassLoader extends URLClassLoader {
         }
 
         log.debug("[{}] ClassLoader created with {} URLs", lingId, urls.length);
+        ALIVE_COUNT.incrementAndGet();
     }
 
     /**
@@ -256,6 +268,7 @@ public class LingClassLoader extends URLClassLoader {
         }
 
         closed = true;
+        ALIVE_COUNT.decrementAndGet();
         log.info("[{}] Closing ClassLoader...", lingId);
 
         try {

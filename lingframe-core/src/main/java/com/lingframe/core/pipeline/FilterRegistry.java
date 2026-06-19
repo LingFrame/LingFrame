@@ -266,4 +266,14 @@ public class FilterRegistry {
         }
         return methodCache.evictByPrefix(lingId + ":");
     }
+
+    /**
+     * 按完整前缀驱逐方法句柄缓存，用于版本级精确清理。
+     */
+    public int evictMethodCacheByPrefix(String prefix) {
+        if (methodCache == null || prefix == null || prefix.isEmpty()) {
+            return 0;
+        }
+        return methodCache.evictByPrefix(prefix);
+    }
 }

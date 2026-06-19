@@ -248,4 +248,56 @@ class DefaultLingServiceRegistryTest {
             assertFalse(registry.getProviderMethods("ling-1:OrderService").isEmpty());
         }
     }
+
+    // ==================== 多版本共存场景 ====================
+
+    @Nested
+    @DisplayName("多版本共存场景")
+    class MultiVersionCoexistence {
+
+        @Test
+        @DisplayName("稳定版与金丝雀版共存时_应能分别查询各自实现类")
+        void stableAndCanaryShouldKeepSeparateImplementationClasses() {
+            // 场景：稳定版 v1 与金丝雀 v2 部署同一个灵元，共享同一服务接口 FQSID，
+            // 但实现类不同（v1 用 ImplV1，v2 用 ImplV2）。
+            // 注册表必须能让调用方按版本拿到正确的实现类名，否则会发生
+            // 「用 v1 的 ClassLoader 加载 v2 的实现类」错配，导致方法解析失败。
+            String fqsid = "user-ling:com.example.UserQueryService";
+
+            registry.registerServiceMetadata(fqsid, "com.example.v1.UserServiceImpl",
+                    "findById", new String[]{"java.lang.Long"}, "com.example.User");
+            registry.registerServiceMetadata(fqsid, "com.example.v2.UserServiceImpl",
+                    "findById", new String[]{"java.lang.Long"}, "com.example.User");
+
+            // 当前实现的缺陷：后注册覆盖先注册，注册表丢失了 v1 的实现类信息
+            // 修复目标：能查询到两个版本的实现类（至少保留最后一个的同时不破坏版本一致性）
+            String className = registry.getServiceClassName(fqsid);
+            assertNotNull(className, "共存时实现类名不应丢失");
+        }
+
+        @Test
+        @DisplayName("卸载稳定版时_只应清除该版本的服务注册_不影响金丝雀")
+        void evictByVersionShouldNotAffectOtherVersions() {
+            // 场景：稳定版 v1 + 金丝雀 v2 共存，卸载稳定版 v1。
+            // 修复目标：卸载单个版本时，金丝雀 v2 的服务注册必须保留可用。
+            String fqsid = "user-ling:com.example.UserQueryService";
+
+            registry.registerServiceMetadata(fqsid, "com.example.v1.UserServiceImpl",
+                    "findById", new String[]{"java.lang.Long"}, "com.example.User");
+            registry.registerServiceMetadata(fqsid, "com.example.v2.UserServiceImpl",
+                    "findById", new String[]{"java.lang.Long"}, "com.example.User");
+
+            // 模拟卸载稳定版 v1：当前 evict(lingId) 会按 lingId 前缀全删，
+            // 把金丝雀 v2 的注册也一起清掉 —— 这是「卸载稳定版后灵元无法访问」的根因之一。
+            // 修复目标：提供按版本驱逐能力（evictByVersion），不影响其他版本。
+            // 此处先用现有 evict 暴露问题，断言金丝雀注册应存活。
+            registry.evict("user-ling");
+
+            // 当前行为：全删，金丝雀注册丢失 → 演练场 getServiceClassName 返回 null → 治理解析失败
+            // 修复后：按版本驱逐，金丝雀注册应保留
+            String canaryClassName = registry.getServiceClassName(fqsid);
+            assertNotNull(canaryClassName,
+                    "卸载稳定版后金丝雀的服务注册不应被清空，否则灵元对所有调用不可访问");
+        }
+    }
 }

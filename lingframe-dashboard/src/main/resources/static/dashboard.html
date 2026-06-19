@@ -8,13 +8,12 @@
     <!-- 本地资源 -->
     <script src="js/vue.global.prod.js" defer></script>
     <script src="https://cdn.tailwindcss.com" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="js/chart.umd.min.js" defer></script>
     <link rel="stylesheet" href="css/fontawesome.min.css">
     <link rel="stylesheet" href="css/jetbrains-mono.css">
     <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="vendor/driver/driver.css">
+    <script src="vendor/driver/driver.js.iife.js" defer></script>
     <style>
         .lang-switch {
             background-color: var(--bg-card);
@@ -106,6 +105,7 @@
             <div class="auth-desc">{{ t('login.desc', '请输入访问令牌以继续') }}</div>
             <input id="auth-token-input" type="password" :placeholder="t('login.placeholder', 'Access Token')"
                    class="auth-input" @keydown.enter="submitAuth"/>
+            <div v-if="loginError" class="auth-error">{{ loginError }}</div>
             <button class="auth-submit" @click="submitAuth">{{ t('login.submit', '确认') }}</button>
         </div>
     </div>
@@ -148,7 +148,7 @@
                     <!-- 高危操作二次验证输入框 -->
                     <div v-if="modal.isDanger" class="mt-3">
                         <label class="text-sm text-red-400 block mb-1">
-                            {{ t('modal.dangerConfirmLabel') || '输入灵元 ID 以确认操作：' }}
+                            {{ t('modal.dangerConfirmLabel', '输入灵元 ID 以确认操作：') }}
                         </label>
                         <input type="text" v-model="modal.confirmInput" :placeholder="modal.expectedConfirmInput"
                                class="w-full t-bg-card border t-border rounded-lg px-3 py-2 text-sm t-text focus:outline-none focus:border-red-500 transition-colors font-mono">
@@ -253,12 +253,68 @@
         </div>
     </div>
 
+    <!-- 服务演练场调用结果弹窗 -->
+    <div v-if="playgroundResultModal.show && playgroundResult" class="modal-overlay" @click.self="closePlaygroundResultModal">
+        <div class="modal-content" style="max-width: 640px;">
+            <!-- macOS 风格窗口头部 -->
+            <div class="flex items-center justify-between px-4 py-2.5 t-bg-input border-b t-border rounded-t-xl">
+                <div class="flex items-center gap-1.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-red-500/60 shrink-0"></span>
+                    <span class="w-2.5 h-2.5 rounded-full bg-yellow-500/60 shrink-0"></span>
+                    <span class="w-2.5 h-2.5 rounded-full bg-green-500/60 shrink-0"></span>
+                    <span class="text-xs font-bold font-sans ml-2" :class="playgroundResult.success ? 'text-green-400' : 'text-red-400'">
+                        {{ playgroundResult.success ? t('playground.result') : t('playground.error') }}
+                    </span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-[10px] font-mono t-text-muted">{{ playgroundResult.durationMs }} ms</span>
+                    <button @click="closePlaygroundResultModal" class="t-text-sub hover:t-text">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-4">
+                <div v-if="playgroundResult.success"
+                     class="text-xs font-mono text-emerald-300 break-all whitespace-pre-wrap max-h-64 overflow-y-auto leading-relaxed">
+                    {{ formatPlaygroundResult(playgroundResult.result) }}
+                </div>
+                <div v-else class="text-xs font-mono text-rose-300 break-all leading-relaxed">
+                    {{ playgroundResult.error }}
+                </div>
+
+                <!-- 治理追踪 -->
+                <div v-if="playgroundResult.traces && playgroundResult.traces.length"
+                     class="mt-3 pt-3 border-t t-border">
+                    <div class="text-[10px] t-text-muted mb-1.5 uppercase font-bold tracking-wider">{{ t('playground.traces') }}</div>
+                    <div class="space-y-1">
+                        <div v-for="(trace, idx) in playgroundResult.traces" :key="idx"
+                             class="text-[10px] font-mono flex items-center gap-2">
+                            <span :class="trace.type === 'PASS' || trace.type === 'IN' ? 'text-green-400' : trace.type === 'FAIL' || trace.type === 'ERROR' ? 'text-red-400' : 'text-amber-400'">
+                                {{ trace.type }}
+                            </span>
+                            <span class="t-text-muted font-sans shrink-0">@{{ trace.source }}</span>
+                            <span class="t-text-sub truncate" :title="trace.action">{{ trace.action }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end px-4 pb-4">
+                <button @click="closePlaygroundResultModal"
+                        class="px-4 py-2 rounded-lg text-sm font-medium t-bg-hover hover:t-bg-hover t-text">
+                    {{ t('modal.confirm') }}
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 侧边栏遮罩（移动端） -->
     <div v-if="sidebarOpen" class="sidebar-backdrop" @click="sidebarOpen = false"></div>
 
     <!-- 侧边栏 -->
     <aside class="sidebar" :class="{ open: sidebarOpen }">
-        <div class="p-5 border-b t-border">
+        <div class="p-5 border-b t-border tour-brand">
             <div class="flex items-center gap-3">
                 <img src="images/logo.png" class="w-18 h-18 object-contain rounded-lg shadow-lg" alt="Logo" />
                 <div>
@@ -301,19 +357,19 @@
                 <span class="text-base">{{ t('sidebar.monitor') }}</span>
             </div>
             <div :class="['sidebar-item', activeNav === 'governance' ? 'active' : '']"
-                 @click="activeNav = 'governance'">
+                 @click="activeNav = 'governance'" class="tour-nav-governance">
                 <i class="fa-solid fa-gauge-high w-4"></i>
                 <span class="text-base">{{ t('sidebar.governance') }}</span>
             </div>
             <div :class="['sidebar-item', activeNav === 'verification' ? 'active' : '']"
-                 @click="activeNav = 'verification'">
+                 @click="activeNav = 'verification'" class="tour-nav-verification">
                 <i class="fa-solid fa-flask-vial w-4"></i>
                 <span class="text-base">{{ t('sidebar.verification') }}</span>
             </div>
         </nav>
 
         <!-- 灵元列表（常驻侧边栏） -->
-        <div class="flex-grow overflow-y-auto px-3 py-2 border-t t-border">
+        <div class="flex-grow overflow-y-auto px-3 py-2 border-t t-border tour-ling-list">
             <div class="text-sm t-text-muted uppercase tracking-wider px-2 mb-2">{{ t('lingList.title') }}
                 <span class="text-xs t-text-muted">{{ t('lingList.count', {n: lings.length}) }}</span>
             </div>
@@ -332,8 +388,8 @@
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-1.5 min-w-0">
                         <span :class="['ling-health-dot', getLingHealthDotClass(p.lingId)]"></span>
-                        <span class="text-base font-medium t-text truncate"
-                              :title="p.lingId">{{ getLingShortName(p.lingId) }}</span>
+                        <span class="text-base font-medium t-text truncate font-mono"
+                              :title="p.lingId">{{ p.lingId }}</span>
                     </div>
                     <span :class="['status-tag px-2 py-0.5 rounded text-xs font-semibold tracking-wide', getLingTagClass(p.status)]">{{ t('status.' + p.status?.toLowerCase()) || p.status
                         }}</span>
@@ -376,6 +432,10 @@
 
         <!-- 底部状态 -->
         <div class="p-4 border-t t-border">
+            <button @click="startTour" class="tour-restart-btn w-full mb-3">
+                <i class="fa-solid fa-circle-question"></i>
+                <span>{{ t('tour.restart') }}</span>
+            </button>
             <div class="flex items-center gap-2 text-sm">
                 <span :class="['connection-dot', sseStatus]"></span>
                 <span class="t-text-sub">{{ sseStatusText }}</span>
@@ -592,7 +652,7 @@
                     </div>
 
                     <!-- 开发者冷启动新手引导 -->
-                    <div class="card p-5 mb-6">
+                    <div class="card p-5 mb-6 tour-checklist">
                         <div class="card-header bg-transparent border-0 p-0 mb-4 flex items-center justify-between">
                             <div class="flex items-center gap-2">
                                 <i class="fa-solid fa-map-signs text-blue-400"></i>
@@ -602,7 +662,8 @@
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
                             <!-- 第一步 -->
-                            <div class="flex items-start gap-4 p-4 rounded-xl border transition-all"
+                            <div @click="goToChecklistStep(1)"
+                                 class="flex items-start gap-4 p-4 rounded-xl border transition-all cursor-pointer hover:scale-[1.02]"
                                  :class="onboardingSteps[0].done ? 'bg-green-500/10 border-green-500/30' : 't-bg-faint t-border'">
                                 <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
                                      :class="onboardingSteps[0].done ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 't-bg-hover t-text-sub'">
@@ -628,7 +689,8 @@
                                 </div>
                             </div>
                             <!-- 第三步 -->
-                            <div class="flex items-start gap-4 p-4 rounded-xl border transition-all"
+                            <div @click="goToChecklistStep(3)"
+                                 class="flex items-start gap-4 p-4 rounded-xl border transition-all cursor-pointer hover:scale-[1.02]"
                                  :class="onboardingSteps[2].done ? 'bg-green-500/10 border-green-500/30' : 't-bg-faint t-border'">
                                 <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
                                      :class="onboardingSteps[2].done ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 't-bg-hover t-text-sub'">
@@ -644,7 +706,7 @@
                     </div>
 
                     <!-- 灵元星图 -->
-                    <div class="card mb-6">
+                    <div class="card mb-6 tour-star-map">
                         <div class="card-header">
                             <div class="flex items-center gap-2">
                                 <i class="fa-solid fa-satellite-dish text-indigo-400"></i>
@@ -689,12 +751,12 @@
                                     <h3 class="font-bold text-base t-text">{{ t('overview.keyMetrics') }}</h3>
                                 </div>
                             </div>
-                            <div class="p-4 grid grid-cols-2 gap-3">
+                            <div class="p-4 grid grid-cols-3 gap-3">
                                 <div class="t-bg-faint rounded-lg p-3 text-center">
                                     <div class="text-[10px] t-text-muted uppercase mb-1">CPU</div>
                                     <div class="text-xl font-mono font-bold"
                                          :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">
-                                        {{ perfMetrics.cpu }}%
+                                        {{ perfMetrics.cpu.toFixed(1) }}%
                                     </div>
                                 </div>
                                 <div class="t-bg-faint rounded-lg p-3 text-center">
@@ -719,6 +781,19 @@
                                     <div class="text-xl font-mono font-bold text-cyan-400">{{ perfMetrics.threads }}
                                     </div>
                                 </div>
+                                <div class="t-bg-faint rounded-lg p-3 text-center">
+                                    <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('monitor.classCount') }}
+                                    </div>
+                                    <div class="text-xl font-mono font-bold text-amber-400">
+                                        {{ perfMetrics.loadedClassCount }}
+                                    </div>
+                                </div>
+                                <div class="t-bg-faint rounded-lg p-3 text-center">
+                                    <div class="text-[10px] t-text-muted uppercase mb-1">ClassLoader</div>
+                                    <div class="text-xl font-mono font-bold text-violet-400">
+                                        {{ perfMetrics.lingClassLoaderCount }}
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -731,17 +806,16 @@
                                 </div>
                             </div>
                             <div class="p-4 space-y-1 max-h-48 overflow-y-auto">
-                                <div v-if="logs.length === 0" class="text-center py-6">
+                                <div v-if="recentEvents.length === 0" class="text-center py-6">
                                     <i class="fa-solid fa-satellite-dish text-xl t-text-muted mb-2"></i>
                                     <p class="text-sm t-text-muted">{{ t('overview.noEvents') }}</p>
                                 </div>
-                                <div v-for="log in logs.slice(-10).reverse()" :key="log.id"
-                                     class="text-xs font-mono py-0.5 flex items-center gap-2"
-                                     :class="getLogColor(log)">
-                                    <span class="t-text-muted shrink-0">[{{ formatTime(log.timestamp) }}]</span>
-                                    <span class="t-text-sub shrink-0">[{{ log.lingId }}]</span>
-                                    <span v-if="log.version" class="t-text-muted shrink-0">[{{ log.version }}]</span>
-                                    <span class="truncate" :class="getLogColor(log)">{{ log.content }}</span>
+                                <div v-for="event in recentEvents" :key="event.id"
+                                     class="text-xs font-mono py-0.5 flex items-center gap-2">
+                                    <span class="t-text-muted shrink-0">[{{ formatTime(event.timestamp) }}]</span>
+                                    <span class="t-text-sub shrink-0">[{{ event.lingId }}]</span>
+                                    <span v-if="event.version" class="t-text-muted shrink-0">[{{ event.version }}]</span>
+                                    <span class="truncate" :class="getTimelineEventTypeClass(event.type)">{{ event.title }}</span>
                                 </div>
                             </div>
                         </div>
@@ -776,30 +850,55 @@
                                     <p class="text-base t-text-sub">{{ t('control.selectLing') }}</p>
                                 </div>
                                 <div v-else class="space-y-6">
+
                                     
-                                    <!-- 1. 生命周期 -->
-                                    <div class="space-y-3">
+                                    <!-- 1.5 版本实例控制 -->
+                                    <div v-if="activeLing.versionDetails && activeLing.versionDetails.length > 0" class="border-t t-border pt-5 space-y-4">
                                         <h4 class="text-sm font-bold t-text flex items-center gap-1.5">
-                                            <i class="fa-solid fa-arrows-spin text-purple-400"></i>
-                                            {{ t('control.lifecycle') }}
+                                            <i class="fa-solid fa-layer-group text-blue-400"></i>
+                                            {{ t('control.versionInstances') }}
                                         </h4>
-                                        <div class="flex flex-wrap gap-2.5">
-                                            <button @click="updateStatusForLing(activeLing.lingId, 'ACTIVE')" :disabled="!canActivate"
-                                                    class="action-btn px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                                                <i class="fa-solid fa-circle-play mr-1.5"></i>{{ t('control.activate') }}
-                                            </button>
-                                            <button @click="updateStatusForLing(activeLing.lingId, 'INACTIVE')" :disabled="!canDeactivate"
-                                                    class="action-btn px-4 py-2 rounded-lg t-bg-hover hover:t-bg-hover t-text font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                                                <i class="fa-solid fa-circle-stop mr-1.5"></i>{{ t('control.inactivate') }}
-                                            </button>
-                                            <button @click="doReloadLing(activeLing.lingId)"
-                                                    class="action-btn px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm transition-all">
-                                                <i class="fa-solid fa-rotate mr-1.5"></i>{{ t('control.reload') }}
-                                            </button>
-                                            <button @click="requestUnloadWithName(activeLing.lingId, true)"
-                                                    class="action-btn px-4 py-2 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/20 font-medium text-sm transition-all">
-                                                <i class="fa-solid fa-trash-can mr-1.5"></i>{{ t('control.unload') }}
-                                            </button>
+                                        <div class="overflow-x-auto">
+                                            <table class="w-full text-left text-sm">
+                                                <thead>
+                                                    <tr class="t-text-sub border-b t-border">
+                                                        <th class="py-2 px-3 font-semibold">{{ t('control.version') }}</th>
+                                                        <th class="py-2 px-3 font-semibold">{{ t('control.status') }}</th>
+                                                        <th class="py-2 px-3 font-semibold">{{ t('control.traffic') }}</th>
+                                                        <th class="py-2 px-3 font-semibold">{{ t('control.actions') }}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr v-for="v in activeLing.versionDetails" :key="v.version" class="border-b t-border t-border-faint last:border-0 hover:t-bg-faint transition-colors">
+                                                        <td class="py-3 px-3 font-mono text-xs">
+                                                            {{ v.version }}
+                                                            <span v-if="v.isDefault" class="ml-1 text-[10px] bg-blue-500/20 text-blue-400 px-1 rounded">DEFAULT</span>
+                                                            <span v-if="v.isCanary" class="ml-1 text-[10px] bg-orange-500/20 text-orange-400 px-1 rounded">CANARY</span>
+                                                        </td>
+                                                        <td class="py-3 px-3">
+                                                            <span :class="['px-2 py-0.5 rounded text-[10px] font-bold tracking-wider', getLingTagClass(v.status)]">
+                                                                {{ v.status }}
+                                                            </span>
+                                                        </td>
+                                                        <td class="py-3 px-3">
+                                                            <div class="flex items-center gap-2">
+                                                                <div class="w-16 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                                                                    <div class="h-full rounded-full transition-all duration-500"
+                                                                         :class="v.isCanary ? 'bg-orange-400' : (v.isDefault ? 'bg-blue-400' : 'bg-slate-400')"
+                                                                         :style="{ width: `${v.trafficWeight}%` }"></div>
+                                                                </div>
+                                                                <span class="text-xs text-slate-500 font-mono">{{ v.trafficWeight }}%</span>
+                                                            </div>
+                                                        </td>
+                                                        <td class="py-3 px-3">
+                                                            <div class="flex gap-2">
+                                                                <button @click="doReloadLing(activeLing.lingId, v.version)" :disabled="loading.lings" class="text-blue-500 hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed" :title="t('control.reload')"><i class="fa-solid fa-rotate-right"></i></button>
+                                                                <button @click="requestUnloadSpecific(activeLing.lingId, v.version)" :disabled="loading.lings" class="text-red-500 hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed" :title="t('control.unload')"><i class="fa-solid fa-trash-can"></i></button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
                                     
@@ -851,7 +950,7 @@
                                                     <span class="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">{{ t('control.namespaceEnabled') }}</span>
                                                 </div>
                                                 <div class="text-xs font-mono t-text-sub mt-2 truncate t-bg-page px-2 py-1 rounded">
-                                                    ns:{{ activeLing.lingId }}
+                                                    {{ t('control.namespacePrefix') }}: {{ activeLing.lingId }}
                                                 </div>
                                             </div>
                                             <div class="p-3 t-bg-faint border t-border rounded-lg">
@@ -862,7 +961,7 @@
                                                     </span>
                                                 </div>
                                                 <div class="text-xs t-text-sub mt-2 flex items-center justify-between">
-                                                    <span class="font-mono t-bg-page px-2 py-1 rounded">target:{{ ipcTarget }}</span>
+                                                    <span class="font-mono t-bg-page px-2 py-1 rounded">{{ t('demo.target') }}: {{ ipcTarget }}</span>
                                                     <div @click="toggleIpc" :class="ipcEnabled ? 'bg-green-500' : 't-bg-hover'"
                                                          class="w-8 h-4 rounded-full relative transition-all cursor-pointer">
                                                         <div :class="ipcEnabled ? 'translate-x-4' : 'translate-x-1'"
@@ -1040,13 +1139,13 @@
                                 <h3 class="font-bold text-base t-text">{{ t('monitor.metricsTitle') }}</h3>
                             </div>
                         </div>
-                        <div class="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 gap-4">
+                        <div class="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8 gap-4">
                             <!-- CPU -->
                             <div class="t-bg-faint rounded-lg p-3 text-center">
                                 <div class="text-[10px] t-text-muted uppercase mb-1">{{ t('performance.cpu') }}</div>
                                 <div class="flex items-center justify-center gap-1">
                                     <span class="text-xl font-mono font-bold"
-                                          :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">{{ perfMetrics.cpu
+                                          :class="perfMetrics.cpu > 80 ? 'text-red-400' : perfMetrics.cpu > 60 ? 'text-amber-400' : 'text-green-400'">{{ perfMetrics.cpu.toFixed(1)
                                         }}%</span>
                                     <i v-if="getTrend('cpu') === 'up'"
                                        class="fa-solid fa-arrow-up text-[10px] text-red-400"></i>
@@ -1142,6 +1241,17 @@
                                 </div>
                                 <div class="text-[10px] t-text-muted mt-1">{{ t('performance.unloadedClasses') }}:
                                     {{ perfMetrics.unloadedClassCount }}
+                                </div>
+                            </div>
+                            <!-- LingClassLoader 存活数 -->
+                            <div class="t-bg-faint rounded-lg p-3 text-center">
+                                <div class="text-[10px] t-text-muted uppercase mb-1">ClassLoader</div>
+                                <div class="flex items-center justify-center gap-1">
+                                    <span class="text-xl font-mono font-bold text-violet-400">{{ perfMetrics.lingClassLoaderCount }}</span>
+                                    <i v-if="getTrend('lingClassLoaderCount') === 'up'"
+                                       class="fa-solid fa-arrow-up text-[10px] text-amber-400"></i>
+                                    <i v-else-if="getTrend('lingClassLoaderCount') === 'down'"
+                                       class="fa-solid fa-arrow-down text-[10px] text-green-400"></i>
                                 </div>
                             </div>
                         </div>
@@ -1324,19 +1434,19 @@
                                     </div>
                                     <div v-if="activeLingHealth" class="grid grid-cols-2 gap-3">
                                         <div class="health-metric">
-                                            <span class="health-metric-label">{{ t('healthCard.qps') }}</span>
+                                            <span class="health-metric-label" :title="t('healthCard.qpsHint')">{{ t('healthCard.qps') }}</span>
                                             <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.qps) }}</span>
                                         </div>
                                         <div class="health-metric">
-                                            <span class="health-metric-label">{{ t('healthCard.errorRate') }}</span>
+                                            <span class="health-metric-label" :title="t('healthCard.errorRateHint')">{{ t('healthCard.errorRate') }}</span>
                                             <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.errorRate, 2) }}%</span>
                                         </div>
                                         <div class="health-metric">
-                                            <span class="health-metric-label">{{ t('healthCard.avgLatency') }}</span>
+                                            <span class="health-metric-label" :title="t('healthCard.avgLatencyHint')">{{ t('healthCard.avgLatency') }}</span>
                                             <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.avgLatencyMs, 0) }} ms</span>
                                         </div>
                                         <div class="health-metric">
-                                            <span class="health-metric-label">{{ t('healthCard.p99Latency') }}</span>
+                                            <span class="health-metric-label" :title="t('healthCard.p99LatencyHint')">{{ t('healthCard.p99Latency') }}</span>
                                             <span class="health-metric-value">{{ formatMetricNumber(activeLingHealth.p99LatencyMs, 0) }} ms</span>
                                         </div>
                                     </div>
@@ -1358,19 +1468,19 @@
                                             </div>
                                             <div class="grid grid-cols-2 gap-2">
                                                 <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('healthCard.qps') }}</span>
+                                                    <span class="health-metric-label" :title="t('healthCard.qpsHint')">{{ t('healthCard.qps') }}</span>
                                                     <span class="health-metric-value">{{ formatMetricNumber(versionHealth.qps) }}</span>
                                                 </div>
                                                 <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('healthCard.errorRate') }}</span>
+                                                    <span class="health-metric-label" :title="t('healthCard.errorRateHint')">{{ t('healthCard.errorRate') }}</span>
                                                     <span class="health-metric-value">{{ formatMetricNumber(versionHealth.errorRate, 2) }}%</span>
                                                 </div>
                                                 <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('healthCard.avgLatency') }}</span>
+                                                    <span class="health-metric-label" :title="t('healthCard.avgLatencyHint')">{{ t('healthCard.avgLatency') }}</span>
                                                     <span class="health-metric-value">{{ formatMetricNumber(versionHealth.avgLatencyMs, 0) }} ms</span>
                                                 </div>
                                                 <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('healthCard.p99Latency') }}</span>
+                                                    <span class="health-metric-label" :title="t('healthCard.p99LatencyHint')">{{ t('healthCard.p99Latency') }}</span>
                                                     <span class="health-metric-value">{{ formatMetricNumber(versionHealth.p99LatencyMs, 0) }} ms</span>
                                                 </div>
                                             </div>
@@ -1406,49 +1516,49 @@
                                     </div>
                                     <div v-if="activeLingGovernance" class="grid grid-cols-2 gap-3">
                                         <div class="health-metric">
-                                            <span class="health-metric-label">{{ t('governanceCard.rateLimitedRequests')
+                                            <span class="health-metric-label" :title="t('governanceCard.rateLimitedRequestsHint')">{{ t('governanceCard.rateLimitedRequests')
                                                 }}</span>
                                             <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.rateLimitedRequests, 0)
                                                 }}</span>
                                         </div>
                                         <div class="health-metric">
-                                            <span class="health-metric-label">{{ t('governanceCard.timeoutRequests')
+                                            <span class="health-metric-label" :title="t('governanceCard.timeoutRequestsHint')">{{ t('governanceCard.timeoutRequests')
                                                 }}</span>
                                             <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.timeoutRequests, 0)
                                                 }}</span>
                                         </div>
                                         <div class="health-metric">
-                                            <span class="health-metric-label">{{ t('governanceCard.circuitOpenedCount')
+                                            <span class="health-metric-label" :title="t('governanceCard.circuitOpenedCountHint')">{{ t('governanceCard.circuitOpenedCount')
                                                 }}</span>
                                             <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.circuitOpenedCount, 0)
                                                 }}</span>
                                         </div>
                                         <div class="health-metric">
-                                            <span class="health-metric-label">{{ t('governanceCard.circuitOpenRejections')
+                                            <span class="health-metric-label" :title="t('governanceCard.circuitOpenRejectionsHint')">{{ t('governanceCard.circuitOpenRejections')
                                                 }}</span>
                                             <span class="health-metric-value">{{ formatMetricNumber(activeLingGovernance.circuitOpenRejections, 0)
                                                 }}</span>
                                         </div>
                                         <div class="health-metric">
-                                            <span class="health-metric-label">{{ t('governanceCard.activeThreads')
+                                            <span class="health-metric-label" :title="t('governanceCard.activeThreadsHint')">{{ t('governanceCard.activeThreads')
                                                 }}</span>
                                             <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.activeIsolatedThreads, '')
                                                 }}</span>
                                         </div>
                                         <div class="health-metric">
-                                            <span class="health-metric-label">{{ t('governanceCard.threadBudget')
+                                            <span class="health-metric-label" :title="t('governanceCard.threadBudgetHint')">{{ t('governanceCard.threadBudget')
                                                 }}</span>
                                             <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.maxConcurrentThreadsBudget, '')
                                                 }}</span>
                                         </div>
                                         <div class="health-metric">
-                                            <span class="health-metric-label">{{ t('governanceCard.cpuTimeLastMinute')
+                                            <span class="health-metric-label" :title="t('governanceCard.cpuTimeLastMinuteHint')">{{ t('governanceCard.cpuTimeLastMinute')
                                                 }}</span>
                                             <span class="health-metric-value">{{ formatBudgetValue(activeLingGovernance.cpuTimeMsLastMinute, ' ms')
                                                 }}</span>
                                         </div>
                                         <div class="health-metric">
-                                            <span class="health-metric-label">{{ t('governanceCard.estimatedHeapDelta')
+                                            <span class="health-metric-label" :title="t('governanceCard.estimatedHeapDeltaHint')">{{ t('governanceCard.estimatedHeapDelta')
                                                 }}</span>
                                             <span class="health-metric-value">{{ formatSize(activeLingGovernance.estimatedHeapDeltaBytes || 0)
                                                 }}</span>
@@ -1480,49 +1590,49 @@
                                             </div>
                                             <div v-if="versionGovernance.metrics" class="grid grid-cols-2 gap-2">
                                                 <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.rateLimitedRequests')
+                                                    <span class="health-metric-label" :title="t('governanceCard.rateLimitedRequestsHint')">{{ t('governanceCard.rateLimitedRequests')
                                                         }}</span>
                                                     <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.rateLimitedRequests, 0)
                                                         }}</span>
                                                 </div>
                                                 <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.timeoutRequests')
+                                                    <span class="health-metric-label" :title="t('governanceCard.timeoutRequestsHint')">{{ t('governanceCard.timeoutRequests')
                                                         }}</span>
                                                     <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.timeoutRequests, 0)
                                                         }}</span>
                                                 </div>
                                                 <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.circuitOpenedCount')
+                                                    <span class="health-metric-label" :title="t('governanceCard.circuitOpenedCountHint')">{{ t('governanceCard.circuitOpenedCount')
                                                         }}</span>
                                                     <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.circuitOpenedCount, 0)
                                                         }}</span>
                                                 </div>
                                                 <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.circuitOpenRejections')
+                                                    <span class="health-metric-label" :title="t('governanceCard.circuitOpenRejectionsHint')">{{ t('governanceCard.circuitOpenRejections')
                                                         }}</span>
                                                     <span class="health-metric-value">{{ formatMetricNumber(versionGovernance.metrics.circuitOpenRejections, 0)
                                                         }}</span>
                                                 </div>
                                                 <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.activeThreads')
+                                                    <span class="health-metric-label" :title="t('governanceCard.activeThreadsHint')">{{ t('governanceCard.activeThreads')
                                                         }}</span>
                                                     <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.activeIsolatedThreads, '')
                                                         }}</span>
                                                 </div>
                                                 <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.threadBudget')
+                                                    <span class="health-metric-label" :title="t('governanceCard.threadBudgetHint')">{{ t('governanceCard.threadBudget')
                                                         }}</span>
                                                     <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.maxConcurrentThreadsBudget, '')
                                                         }}</span>
                                                 </div>
                                                 <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.cpuTimeLastMinute')
+                                                    <span class="health-metric-label" :title="t('governanceCard.cpuTimeLastMinuteHint')">{{ t('governanceCard.cpuTimeLastMinute')
                                                         }}</span>
                                                     <span class="health-metric-value">{{ formatBudgetValue(versionGovernance.metrics.cpuTimeMsLastMinute, ' ms')
                                                         }}</span>
                                                 </div>
                                                 <div class="health-metric compact">
-                                                    <span class="health-metric-label">{{ t('governanceCard.estimatedHeapDelta')
+                                                    <span class="health-metric-label" :title="t('governanceCard.estimatedHeapDeltaHint')">{{ t('governanceCard.estimatedHeapDelta')
                                                         }}</span>
                                                     <span class="health-metric-value">{{ formatSize(versionGovernance.metrics.estimatedHeapDeltaBytes || 0)
                                                         }}</span>
@@ -1748,120 +1858,119 @@
                                     <p class="text-sm t-text-muted">{{ t('playground.noServices') }}</p>
                                 </div>
                                 <div v-else class="space-y-3">
-                                    <div v-for="svc in playgroundServices" :key="svc.fqsid"
-                                         class="rounded-lg border t-border t-bg-input p-3">
-                                        <div class="flex items-center justify-between mb-2 cursor-pointer select-none" @click="toggleServiceExpand(svc.fqsid)">
-                                            <div class="text-xs font-mono text-blue-400 truncate flex items-center gap-1.5" :title="svc.fqsid">
-                                                <i class="fa-solid fa-chevron-right transition-transform duration-200" :class="{ 'rotate-90': isServiceExpanded(svc.fqsid) }"></i>
-                                                <span>{{ svc.fqsid.split(':')[1] || svc.fqsid }}</span>
-                                            </div>
-                                            <span class="text-[10px] t-text-muted font-semibold">{{ svc.methods?.length || 0 }} {{ t('playground.methodsCount') }}</span>
-                                        </div>
-                                        <div v-if="isServiceExpanded(svc.fqsid)" class="mt-2 pt-2 border-t t-border">
-                                            <div v-if="!svc.methods || svc.methods.length === 0"
-                                                 class="text-xs t-text-muted">
-                                                {{ t('playground.noMethods') }}
-                                            </div>
-                                            <div v-else class="space-y-2">
-                                                <div v-for="method in svc.methods" :key="method.signature"
-                                                     class="rounded border t-border t-bg-faint p-2">
-                                                    <div class="flex items-center justify-between gap-2 mb-1">
-                                                        <div class="text-xs font-mono t-text-sub truncate flex items-center">
-                                                            <span class="text-emerald-400">{{ method.name }}</span>(<span
-                                                                class="t-text-muted">{{ method.parameterTypes.join(', ')
-                                                            }}</span>)
-                                                            <span v-if="method.alternateFqsid" class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 ml-2" :title="method.alternateFqsid">@LingService: {{ method.alternateFqsid.split(':')[1] }}</span>
-                                                        </div>
-                                                        <span class="text-[10px] t-text-muted">{{ t('playground.returnType')
-                                                            }}: {{ method.returnType }}</span>
+                                    <!-- 版本切换 Tab：仅多版本时显示 -->
+                                    <div v-if="playgroundVersionGroups.length > 1"
+                                         class="flex items-center gap-1.5 flex-wrap pb-2 border-b t-border">
+                                        <span class="text-[10px] t-text-muted mr-1">{{ t('playground.version') }}:</span>
+                                        <button v-for="grp in playgroundVersionGroups" :key="grp.version"
+                                                @click="selectPlaygroundVersion(grp.isDefault ? null : grp.version)"
+                                                :class="playgroundSelectedVersion === (grp.isDefault ? null : grp.version)
+                                                    ? 'bg-blue-600/30 text-blue-400 border-blue-500/50'
+                                                    : 't-bg-page t-text-sub t-border hover:border-blue-500/30'"
+                                                class="text-[10px] font-bold px-2 py-1 rounded border transition-all flex items-center gap-1">
+                                            <i v-if="grp.isDefault" class="fa-solid fa-shield-halved text-[9px]"></i>
+                                            <span class="font-mono">{{ grp.version }}</span>
+                                            <span v-if="grp.isDefault" class="text-[9px] opacity-70">({{ t('playground.stable') }})</span>
+                                            <span v-else class="text-[9px] opacity-70">({{ t('playground.canary') }})</span>
+                                        </button>
+                                    </div>
+
+                                    <!-- 当前选中版本下的服务列表 -->
+                                    <template v-for="grp in playgroundVersionGroups" :key="grp.version">
+                                        <template v-if="playgroundVersionGroups.length <= 1
+                                                        || playgroundSelectedVersion === (grp.isDefault ? null : grp.version)">
+                                            <div v-for="svc in grp.services" :key="grp.version + '::' + svc.fqsid"
+                                                 class="rounded-lg border t-border t-bg-input p-3">
+                                                <div class="flex items-center justify-between mb-2 cursor-pointer select-none"
+                                                     @click="toggleServiceExpand(grp.version + '::' + svc.fqsid)">
+                                                    <div class="text-xs font-mono text-blue-400 truncate flex items-center gap-1.5"
+                                                         :title="svc.fqsid">
+                                                        <i class="fa-solid fa-chevron-right transition-transform duration-200"
+                                                           :class="{ 'rotate-90': isServiceExpanded(grp.version + '::' + svc.fqsid) }"></i>
+                                                        <span>{{ svc.fqsid.split(':')[1] || svc.fqsid }}</span>
                                                     </div>
-                                                    <!-- 参数输入 -->
-                                                    <div v-if="method.parameterTypes.length > 0" class="space-y-1.5 mb-2">
-                                                        <div v-for="(paramType, idx) in method.parameterTypes" :key="idx"
-                                                             class="flex items-start gap-2">
-                                                            <div class="flex flex-col w-24 flex-shrink-0">
-                                                                <span class="text-[10px] t-text-muted font-mono truncate" :title="paramType">{{ paramType }}</span>
-                                                                <!-- 复杂类型 DTO 专属魔棒模板 -->
-                                                                <button v-if="isComplexParameterType(paramType)" 
-                                                                        @click="prefillJsonTemplate(svc.fqsid, method.signature, idx)"
-                                                                        class="text-[9px] text-blue-400 hover:text-blue-300 font-bold flex items-center gap-0.5 mt-0.5"
-                                                                        title="填充 JSON 模板">
-                                                                    <i class="fa-solid fa-wand-magic-sparkles"></i>
-                                                                    {{ t('playground.fillTemplate') || '预填模板' }}
-                                                                </button>
+                                                    <span class="text-[10px] t-text-muted font-semibold">
+                                                        {{ svc.methods?.length || 0 }} {{ t('playground.methodsCount') }}
+                                                    </span>
+                                                </div>
+                                                <div v-if="isServiceExpanded(grp.version + '::' + svc.fqsid)"
+                                                     class="mt-2 pt-2 border-t t-border">
+                                                    <div v-if="!svc.methods || svc.methods.length === 0"
+                                                         class="text-xs t-text-muted">
+                                                        {{ t('playground.noMethods') }}
+                                                    </div>
+                                                    <div v-else class="space-y-2">
+                                                        <div v-for="method in svc.methods" :key="method.signature"
+                                                             class="rounded border t-border t-bg-faint p-2">
+                                                            <div class="flex items-center justify-between gap-2 mb-1">
+                                                                <div class="text-xs font-mono t-text-sub truncate flex items-center">
+                                                                    <span class="text-emerald-400">{{ method.name }}</span>(<span
+                                                                        class="t-text-muted">{{ method.parameterTypes.join(', ')
+                                                                    }}</span>)
+                                                                    <span v-if="method.alternateFqsid"
+                                                                          class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 ml-2"
+                                                                          :title="method.alternateFqsid">@LingService: {{ method.alternateFqsid.split(':')[1] }}</span>
+                                                                    <!-- 多版本标签：方法在多版本可用时提示 -->
+                                                                    <span v-if="playgroundVersionGroups.length > 1 && method.versions && method.versions.length > 1"
+                                                                          class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30 ml-2"
+                                                                          :title="t('playground.multiVersionHint')">
+                                                                        <i class="fa-solid fa-code-branch mr-0.5"></i>{{ method.versions.length }}
+                                                                    </span>
+                                                                </div>
+                                                                <span class="text-[10px] t-text-muted">
+                                                                    {{ t('playground.returnType') }}: {{ method.returnType }}
+                                                                </span>
                                                             </div>
-                                                            <!-- 简单类型：普通 input -->
-                                                            <input v-if="!isComplexParameterType(paramType)"
-                                                                   v-model="playgroundArgs[getInvokeKey(svc.fqsid, method.signature) + '::' + idx]"
-                                                                   :placeholder="t('playground.paramInput')"
-                                                                   class="flex-1 t-bg-page border t-border rounded px-2 py-1 text-xs t-text focus:outline-none focus:border-blue-500">
-                                                            <!-- 复杂类型 JSON：textarea -->
-                                                            <textarea v-else
-                                                                      v-model="playgroundArgs[getInvokeKey(svc.fqsid, method.signature) + '::' + idx]"
-                                                                      placeholder='{
+                                                            <!-- 参数输入 -->
+                                                            <div v-if="method.parameterTypes.length > 0"
+                                                                 class="space-y-1.5 mb-2">
+                                                                <div v-for="(paramType, idx) in method.parameterTypes"
+                                                                     :key="idx" class="flex items-start gap-2">
+                                                                    <div class="flex flex-col w-24 flex-shrink-0">
+                                                                        <span class="text-[10px] t-text-muted font-mono truncate"
+                                                                              :title="paramType">{{ paramType }}</span>
+                                                                        <!-- 复杂类型 DTO 专属魔棒模板 -->
+                                                                        <button v-if="isComplexParameterType(paramType)"
+                                                                                @click="prefillJsonTemplate(svc.fqsid, method.signature, idx)"
+                                                                                class="text-[9px] text-blue-400 hover:text-blue-300 font-bold flex items-center gap-0.5 mt-0.5"
+                                                                                :title="t('playground.fillTemplate')">
+                                                                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                                                            {{ t('playground.fillTemplate') }}
+                                                                        </button>
+                                                                    </div>
+                                                                    <!-- 简单类型：普通 input -->
+                                                                    <input v-if="!isComplexParameterType(paramType)"
+                                                                           v-model="playgroundArgs[getInvokeKey(svc.fqsid, method.signature) + '::' + idx]"
+                                                                           :placeholder="t('playground.paramInput')"
+                                                                           class="flex-1 t-bg-page border t-border rounded px-2 py-1 text-xs t-text focus:outline-none focus:border-blue-500">
+                                                                    <!-- 复杂类型 JSON：textarea -->
+                                                                    <textarea v-else
+                                                                              v-model="playgroundArgs[getInvokeKey(svc.fqsid, method.signature) + '::' + idx]"
+                                                                              placeholder='{
   "id": 1,
   "name": "test"
 }'
-                                                                      rows="3"
-                                                                      class="flex-1 t-bg-page border t-border rounded px-2 py-1 text-xs t-text focus:outline-none focus:border-blue-500 font-mono"></textarea>
+                                                                              rows="3"
+                                                                              class="flex-1 t-bg-page border t-border rounded px-2 py-1 text-xs t-text focus:outline-none focus:border-blue-500 font-mono"></textarea>
+                                                                </div>
+                                                            </div>
+                                                            <button @click="invokeService(svc.fqsid, method, grp.isDefault ? null : grp.version)"
+                                                                    :disabled="playgroundInvoking[getInvokeKey(svc.fqsid, method.signature)] || !canOperate"
+                                                                    class="w-full py-1 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded text-xs font-bold hover:bg-blue-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                                                                <i v-if="playgroundInvoking[getInvokeKey(svc.fqsid, method.signature)]"
+                                                                   class="fa-solid fa-spinner fa-spin mr-1"></i>
+                                                                <i v-else class="fa-solid fa-play mr-1"></i>
+                                                                {{ playgroundInvoking[getInvokeKey(svc.fqsid, method.signature)] ? t('playground.executing') : t('playground.invoke') }}
+                                                            </button>
                                                         </div>
                                                     </div>
-                                                    <button @click="invokeService(svc.fqsid, method)"
-                                                            :disabled="playgroundInvoking[getInvokeKey(svc.fqsid, method.signature)] || !canOperate"
-                                                            class="w-full py-1 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded text-xs font-bold hover:bg-blue-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                                                        <i v-if="playgroundInvoking[getInvokeKey(svc.fqsid, method.signature)]"
-                                                           class="fa-solid fa-spinner fa-spin mr-1"></i>
-                                                        <i v-else class="fa-solid fa-play mr-1"></i>
-                                                        {{ playgroundInvoking[getInvokeKey(svc.fqsid, method.signature)] ? t('playground.executing') : t('playground.invoke')
-                                                        }}
-                                                    </button>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </div>
+                                        </template>
+                                    </template>
                                 </div>
 
-                                <!-- 调用结果 -->
-                                <div v-if="playgroundResult" class="mt-4 rounded-xl border t-border overflow-hidden shadow-2xl transition-all t-bg-input t-text-sub">
-                                    <!-- macOS 风格窗口头部 -->
-                                    <div class="flex items-center justify-between px-4 py-2.5 t-bg-input border-b t-border">
-                                        <div class="flex items-center gap-1.5">
-                                            <span class="w-2.5 h-2.5 rounded-full bg-red-500/60 shrink-0"></span>
-                                            <span class="w-2.5 h-2.5 rounded-full bg-yellow-500/60 shrink-0"></span>
-                                            <span class="w-2.5 h-2.5 rounded-full bg-green-500/60 shrink-0"></span>
-                                            <span class="text-xs font-bold font-sans ml-2" :class="playgroundResult.success ? 'text-green-400' : 'text-red-400'">
-                                                {{ playgroundResult.success ? t('playground.result') : t('playground.error') }}
-                                            </span>
-                                        </div>
-                                        <span class="text-[10px] font-mono t-text-muted">{{ playgroundResult.durationMs }} ms</span>
-                                    </div>
-                                    
-                                    <div class="p-4">
-                                        <div v-if="playgroundResult.success"
-                                             class="text-xs font-mono text-emerald-300 break-all whitespace-pre-wrap max-h-64 overflow-y-auto leading-relaxed">
-                                            {{ formatPlaygroundResult(playgroundResult.result) }}
-                                        </div>
-                                        <div v-else class="text-xs font-mono text-rose-300 break-all leading-relaxed">
-                                            {{ playgroundResult.error }}
-                                        </div>
-                                        
-                                        <!-- 治理追踪 -->
-                                        <div v-if="playgroundResult.traces && playgroundResult.traces.length"
-                                             class="mt-3 pt-3 border-t t-border">
-                                            <div class="text-[10px] t-text-muted mb-1.5 uppercase font-bold tracking-wider">{{ t('playground.traces') }}</div>
-                                            <div class="space-y-1">
-                                                <div v-for="(trace, idx) in playgroundResult.traces" :key="idx"
-                                                     class="text-[10px] font-mono flex items-center gap-2">
-                                                    <span :class="trace.type === 'PASS' || trace.type === 'IN' ? 'text-green-400' : trace.type === 'FAIL' || trace.type === 'ERROR' ? 'text-red-400' : 'text-amber-400'">
-                                                        {{ trace.type }}
-                                                    </span>
-                                                    <span class="t-text-muted font-sans shrink-0">@{{ trace.source }}</span>
-                                                    <span class="t-text-sub truncate" :title="trace.action">{{ trace.action }}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                <!-- 调用结果已移至弹窗显示，避免用户滚动到页面下方查看 -->
                             </div>
                         </div>
 

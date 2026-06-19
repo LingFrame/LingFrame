@@ -1,6 +1,7 @@
 package com.lingframe.dashboard.controller;
 
 import com.lingframe.core.audit.AuditManager;
+import com.lingframe.core.classloader.LingClassLoader;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeStatus;
@@ -21,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.lang.management.ManagementFactory;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -121,15 +123,31 @@ public class LingController {
             }
 
             String originalFilename = file.getOriginalFilename();
-            if (originalFilename == null || !originalFilename.endsWith(".jar")) {
-                return ApiResponse.error("文件必须是 JAR 包");
+            if (originalFilename == null) {
+                return ApiResponse.error("文件名为空");
+            }
+            
+            // 防目录穿越：提取安全文件名
+            String safeFilename = new File(originalFilename).getName();
+            if (!safeFilename.endsWith(".jar") || safeFilename.contains("..")) {
+                return ApiResponse.error("无效的文件名或扩展名");
+            }
+
+            // 魔法头探测（ZIP 格式 50 4B 03 04）
+            byte[] magicBytes = new byte[4];
+            try (java.io.InputStream is = file.getInputStream()) {
+                if (is.read(magicBytes) != 4 || 
+                    magicBytes[0] != 0x50 || magicBytes[1] != 0x4B || 
+                    magicBytes[2] != 0x03 || magicBytes[3] != 0x04) {
+                    return ApiResponse.error("非法文件格式，并非有效的 JAR 归档");
+                }
             }
 
             // 保存文件
             File lingDir = new File(lingFrameConfig.getLingHome()).getAbsoluteFile();
             if (!lingDir.exists())
                 lingDir.mkdirs();
-            File targetFile = new File(lingDir, originalFilename);
+            File targetFile = new File(lingDir, safeFilename);
             log.info("Saving uploaded ling to: {}", targetFile.getAbsolutePath());
             file.transferTo(targetFile);
             // 安装灵元
@@ -256,6 +274,7 @@ public class LingController {
             metrics.put("loadedClassCount", jvmMetrics.getLoadedClassCount());
             metrics.put("totalLoadedClassCount", jvmMetrics.getTotalLoadedClassCount());
             metrics.put("unloadedClassCount", jvmMetrics.getUnloadedClassCount());
+            metrics.put("lingClassLoaderCount", LingClassLoader.getAliveCount());
             
             metrics.put("threadCount", jvmMetrics.getThreadCount());
             metrics.put("daemonThreadCount", jvmMetrics.getDaemonThreadCount());
@@ -354,6 +373,54 @@ public class LingController {
         } catch (Exception e) {
             log.error("Failed to get governance metrics", e);
             return ApiResponse.error("获取治理指标失败: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 仪表盘轮询风暴优化聚合接口
+     */
+    @GetMapping("/dashboard-summary")
+    public ApiResponse<DashboardSummaryDTO> getDashboardSummary() {
+        try {
+            Map<String, LingHealthViewDTO> healthMetrics = metricsCollector.getAllSnapshots().stream()
+                    .collect(Collectors.toMap(
+                            MetricsSnapshot::getLingId,
+                            snapshot -> LingHealthViewDTO.builder()
+                                    .summary(snapshot)
+                                    .versions(metricsCollector.getVersionSnapshots(snapshot.getLingId()))
+                                    .build(),
+                            (existing, replacement) -> replacement
+                    ));
+                    
+            Map<String, LingGovernanceMetricsViewDTO> governanceMetrics = governanceMetricsCollector.getAllSummaries().values().stream()
+                    .collect(Collectors.toMap(
+                            GovernanceMetricsSnapshot::getLingId,
+                            snapshot -> LingGovernanceMetricsViewDTO.builder()
+                                    .summary(snapshot)
+                                    .versions(governanceMetricsCollector.getVersionSnapshots(snapshot.getLingId()))
+                                    .build(),
+                            (existing, replacement) -> replacement
+                    ));
+
+            // 最近生命周期事件：取全部事件的最后10条并倒序，用于概览页"最近事件"
+            List<DashboardService.LifecycleEvent> allEvents = dashboardService.getLifecycleEvents(null);
+            List<DashboardService.LifecycleEvent> recentEvents = new ArrayList<>();
+            if (allEvents != null && !allEvents.isEmpty()) {
+                int from = Math.max(0, allEvents.size() - 10);
+                recentEvents = new ArrayList<>(allEvents.subList(from, allEvents.size()));
+                java.util.Collections.reverse(recentEvents);
+            }
+
+            return ApiResponse.ok(DashboardSummaryDTO.builder()
+                    .healthMetrics(healthMetrics)
+                    .governanceMetrics(governanceMetrics)
+                    .runtimeDiagnostics(runtimeDiagnosticsService.getCleanupCapabilities())
+                    .runtimeGovernanceReadiness(runtimeDiagnosticsService.getGovernanceReadiness())
+                    .recentEvents(recentEvents)
+                    .build());
+        } catch (Exception e) {
+            log.error("Failed to get dashboard summary", e);
+            return ApiResponse.error("获取概览数据失败: " + e.getMessage());
         }
     }
     

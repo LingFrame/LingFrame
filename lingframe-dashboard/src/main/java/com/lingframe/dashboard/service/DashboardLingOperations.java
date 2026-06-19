@@ -16,6 +16,8 @@ import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Dashboard 灵元生命周期操作编排器。
@@ -27,6 +29,9 @@ public class DashboardLingOperations {
     private final CanaryRouter canaryRouter;
     private final DashboardLifecycleEventStore lifecycleEventStore;
     private final DashboardLingSourceResolver lingSourceResolver;
+
+    // 每个 lingId 独立的重载锁，防止并发 reload 导致版本号竞态和实例残留
+    private final Map<String, ReentrantLock> reloadLocks = new ConcurrentHashMap<>();
 
     public DashboardLingOperations(LingLifecycleEngine lifecycleEngine,
             LingRepository lingRepository,
@@ -105,6 +110,19 @@ public class DashboardLingOperations {
     }
 
     public String reloadLing(String lingId, String version) {
+        // 同一 lingId 的 reload 必须串行执行，避免：
+        // 1. buildReloadVersion 并发竞态生成重复版本号
+        // 2. target 实例在 deployForReload 期间被其他 reload tearDown，导致 undeploy 失败
+        ReentrantLock lock = reloadLocks.computeIfAbsent(lingId, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            return doReloadLing(lingId, version);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private String doReloadLing(String lingId, String version) {
         try {
             LingRuntime runtime = lingRepository.getRuntime(lingId);
             if (runtime == null) {
@@ -115,7 +133,10 @@ public class DashboardLingOperations {
                     ? runtime.getInstancePool().getInstance(version)
                     : lingSourceResolver.selectStableInstance(runtime);
             if (target == null) {
-                throw new LingInstallException(lingId, "No available instance to reload", null);
+                String message = version != null
+                        ? "版本 " + version + " 不存在或已被卸载"
+                        : "无可用实例可重载";
+                throw new LingInstallException(lingId, message, null);
             }
 
             String targetVersion = target.getVersion();

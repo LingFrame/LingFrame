@@ -27,19 +27,21 @@ public class LingInfoConverter {
             GovernancePolicy policy) {
         String lingId = runtime.getLingId();
         List<LingInstance> activeInstances = runtime.getInstancePool().getActiveInstances();
-        List<LingInstance> allInstances = runtime.getInstancePool().getAllInstances();
         int canaryPercent = canaryRouter.getCanaryPercent(lingId);
 
-        List<LingInfoDTO.VersionInfo> versionDetails = allInstances.stream().map(instance -> {
+        // 只展示活跃实例：dyingQueue 中的实例处于 STOPPING/DEAD 过渡态，
+        // 对前端用户无意义且会造成 reload 时短暂出现"多版本"的困惑。
+        // reload 场景下旧实例会先进入 dyingQueue 再被 tearDown，不应展示。
+        List<LingInfoDTO.VersionInfo> versionDetails = activeInstances.stream()
+                .filter(instance -> instance.getDefinition() != null)
+                .map(instance -> {
             boolean isCurCanary = isCanary(instance);
             boolean isCurDefault = instance == runtime.getInstancePool().getDefault();
             int weight = 0;
-            if (activeInstances.contains(instance)) {
-                if (isCurCanary) {
-                    weight = canaryPercent;
-                } else if (isCurDefault) {
-                    weight = 100 - canaryPercent;
-                }
+            if (isCurCanary) {
+                weight = canaryPercent;
+            } else if (isCurDefault) {
+                weight = 100 - canaryPercent;
             }
             return LingInfoDTO.VersionInfo.builder()
                     .version(instance.getVersion())

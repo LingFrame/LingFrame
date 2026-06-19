@@ -1,7 +1,7 @@
-package com.lingframe.example.user.controller;
+package com.lingframe.example.user.canary.controller;
 
-import com.lingframe.example.user.dto.UserDTO;
-import com.lingframe.example.user.service.UserService;
+import com.lingframe.example.user.canary.dto.UserDTO;
+import com.lingframe.example.user.canary.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;

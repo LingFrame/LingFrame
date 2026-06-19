@@ -32,6 +32,14 @@ public class LingUnloadCoordinator {
      */
     public void onVersionUnload(String lingId, String version, ClassLoader classLoader) {
         cleanupWithGuards(lingId, version, classLoader);
+        // 同步驱逐该版本的方法句柄缓存，避免依赖 InstanceDestroyedEvent 异步触发
+        // 异步事件到达前若 MethodHandle 仍持有目标 Class 的强引用，会推迟 ClassLoader 回收
+        if (pipelineEngine != null && version != null) {
+            int evicted = pipelineEngine.evictMethodCacheByPrefix(lingId + ":" + version + "@");
+            if (evicted > 0) {
+                log.info("[{}] Evicted {} method handles for version {}", lingId, evicted, version);
+            }
+        }
     }
 
     /**

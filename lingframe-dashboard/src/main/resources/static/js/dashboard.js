@@ -106,6 +106,7 @@ createApp({
             loadedClassCount: 0,
             totalLoadedClassCount: 0,
             unloadedClassCount: 0,
+            lingClassLoaderCount: 0,
             threads: 0,
             daemonThreads: 0,
             peakThreads: 0,
@@ -116,7 +117,7 @@ createApp({
         });
 
         // 前值记录（用于趋势箭头）
-        const prevMetrics = { cpu: 0, heapUsage: 0, metaspaceUsage: 0, threads: 0, gcCount: 0, gcTimeMs: 0, loadedClassCount: 0 };
+        const prevMetrics = { cpu: 0, heapUsage: 0, metaspaceUsage: 0, threads: 0, gcCount: 0, gcTimeMs: 0, loadedClassCount: 0, lingClassLoaderCount: 0 };
 
         // 趋势箭头：返回 'up' / 'down' / 'stable'
         const getTrend = (key) => {
@@ -166,12 +167,13 @@ createApp({
                     // 清空现有历史数据，用后端数据替换
                     perfHistory.timestamps = data.map(d => d.bucket || d.timestamp);
                     perfHistory.cpu = data.map(d => d.cpu_usage);
-                    perfHistory.heapUsage = data.map(d => d.heap_usage);
-                    perfHistory.metaspaceUsage = data.map(d => d.metaspace_usage);
+                    perfHistory.heapUsed = data.map(d => d.heap_used_mb);
+                    perfHistory.metaspaceUsed = data.map(d => d.metaspace_used_kb);
                     perfHistory.threads = data.map(d => d.thread_count);
                     perfHistory.gcCount = data.map(d => d.delta_gc_count || d.gc_count);
                     perfHistory.gcTimeMs = data.map(d => d.delta_gc_time_ms || d.gc_time_ms);
                     perfHistory.loadedClassCount = data.map(d => d.loaded_class_count);
+                    perfHistory.lingClassLoaderCount = data.map(d => d.ling_class_loader_count || 0);
                     destroyCharts();
                     nextTick(() => drawMonitorCharts());
                 }
@@ -183,12 +185,13 @@ createApp({
         const perfHistory = {
             timestamps: [],
             cpu: [],
-            heapUsage: [],
-            metaspaceUsage: [],
+            heapUsed: [],
+            metaspaceUsed: [],
             threads: [],
             gcCount: [],
             gcTimeMs: [],
-            loadedClassCount: []
+            loadedClassCount: [],
+            lingClassLoaderCount: []
         };
         const MAX_HISTORY_POINTS = 3600; // 最多保留 3600 个数据点（3秒间隔约3小时）
 
@@ -198,12 +201,13 @@ createApp({
         // 监控图表配置
         const monitorCharts = computed(() => [
             { key: 'cpu', label: t('performance.cpu'), color: '#22c55e', isPercent: true },
-            { key: 'heapUsage', label: t('performance.heap'), color: '#a855f7', isPercent: true },
-            { key: 'metaspaceUsage', label: t('performance.metaspace'), color: '#10b981', isPercent: true },
-            { key: 'threads', label: t('performance.threads'), color: '#06b6d4', isPercent: false },
-            { key: 'gcCount', label: t('performance.gc'), color: '#ec4899', isPercent: false },
-            { key: 'gcTimeMs', label: t('monitor.gcTime'), color: '#f97316', isPercent: false },
-            { key: 'loadedClassCount', label: t('monitor.classCount'), color: '#f59e0b', isPercent: false }
+            { key: 'heapUsed', label: t('performance.heap'), color: '#a855f7', isPercent: false, unit: 'MB' },
+            { key: 'metaspaceUsed', label: t('performance.metaspace'), color: '#10b981', isPercent: false, unit: 'KB' },
+            { key: 'threads', label: t('performance.threads'), color: '#06b6d4', isPercent: false, integerTicks: true },
+            { key: 'gcCount', label: t('performance.gc'), color: '#ec4899', isPercent: false, integerTicks: true },
+            { key: 'gcTimeMs', label: t('monitor.gcTime'), color: '#f97316', isPercent: false, integerTicks: true },
+            { key: 'loadedClassCount', label: t('monitor.classCount'), color: '#f59e0b', isPercent: false, integerTicks: true },
+            { key: 'lingClassLoaderCount', label: 'LingClassLoader', color: '#8b5cf6', isPercent: false, integerTicks: true }
         ]);
 
         // 灵元健康指标
@@ -218,6 +222,9 @@ createApp({
             blockers: [],
             warnings: []
         });
+
+        // 最近生命周期事件（来自 LifecycleEventStore，非日志截取）
+        const recentEvents = ref([]);
 
         const invocationForm = reactive({
             timeoutMs: '',
@@ -244,10 +251,7 @@ createApp({
         let timeTimer = null;
         let stressTimer = null;
         let perfTimer = null;
-        let healthTimer = null;
-        let governanceTimer = null;
-        let diagnosticsTimer = null;
-        let readinessTimer = null;
+        let summaryTimer = null;
         let logIdCounter = 0;
         let toastIdCounter = 0;
         let pendingUninstallToastResult = null;
@@ -339,7 +343,8 @@ createApp({
         const sseStatusText = computed(() => ({
             connected: t('sidebar.sseConnected'),
             connecting: t('sidebar.sseConnecting'),
-            disconnected: t('sidebar.sseDisconnected')
+            disconnected: t('sidebar.sseDisconnected'),
+            failed: t('sidebar.sseFailed', '连接失败')
         }[sseStatus.value]));
 
         // 获取可用的版本列表
@@ -539,60 +544,120 @@ createApp({
 
         // 认证状态：true 表示已认证（或无需认证），false 表示需要登录
         const authenticated = ref(true);
+        const loginError = ref('');
 
         // Vue 模板中的认证提交
         const submitAuth = () => {
             const input = document.getElementById('auth-token-input');
             if (!input) return;
             const token = input.value.trim();
-            if (!token) return;
+            if (!token) {
+                loginError.value = t('login.emptyToken', '令牌不能为空');
+                return;
+            }
+            loginError.value = '';
             localStorage.setItem('lingframe_access_token', token);
             location.reload();
         };
 
         const showLoginPrompt = () => {
-            // 已存在登录弹窗则不重复创建
-            if (document.getElementById('login-overlay')) return;
+            // 触发 Vue 声明式登录遮罩（dashboard.html 中的 auth-overlay）
             authenticated.value = false;
+        };
 
-            const isLight = currentTheme.value === 'light';
-            const overlay = document.createElement('div');
-            overlay.id = 'login-overlay';
-            overlay.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:${isLight ? 'rgba(15,23,42,0.35)' : 'rgba(0,0,0,0.5)'};display:flex;align-items:center;justify-content:center;z-index:10000;`;
-            overlay.innerHTML = `
-                <div style="background:${isLight ? '#ffffff' : '#1e1e2e'};padding:32px;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,${isLight ? '0.1' : '0.3'});width:360px;text-align:center;border:1px solid ${isLight ? '#cbd5e1' : '#313244'};">
-                    <div style="font-size:20px;font-weight:600;color:${isLight ? '#0f172a' : '#cdd6f4'};margin-bottom:8px;">${t('login.title', '访问认证')}</div>
-                    <div style="font-size:13px;color:${isLight ? '#64748b' : '#a6adc8'};margin-bottom:20px;">${t('login.desc', '请输入访问令牌以继续')}</div>
-                    <input id="login-token-input" type="password" placeholder="${t('login.placeholder', 'Access Token')}"
-                        style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid ${isLight ? '#cbd5e1' : '#45475a'};background:${isLight ? '#f1f5f9' : '#313244'};color:${isLight ? '#0f172a' : '#cdd6f4'};font-size:14px;outline:none;box-sizing:border-box;" />
-                    <div id="login-error" style="color:#f38ba8;font-size:12px;margin-top:8px;display:none;"></div>
-                    <button id="login-submit-btn"
-                        style="margin-top:16px;width:100%;padding:10px;border-radius:8px;border:none;background:${isLight ? '#3b82f6' : '#89b4fa'};color:#ffffff;font-size:14px;font-weight:600;cursor:pointer;">
-                        ${t('login.submit', '确认')}
-                    </button>
-                </div>
-            `;
-            document.body.appendChild(overlay);
+        // ==================== 交互式新手引导（Driver.js） ====================
+        // 与 onboardingSteps（冷启动清单状态）不同：这里是概念导览，引导陌生人理解灵珑
+        const TOUR_KEY = 'lingframe_tour_v1';
+        const shouldShowTour = () => !localStorage.getItem(TOUR_KEY);
 
-            const input = document.getElementById('login-token-input');
-            const errorDiv = document.getElementById('login-error');
-            const submitBtn = document.getElementById('login-submit-btn');
-
-            const doLogin = () => {
-                const token = input.value.trim();
-                if (!token) {
-                    errorDiv.textContent = t('login.emptyToken', '令牌不能为空');
-                    errorDiv.style.display = 'block';
-                    return;
+        // 构建引导步骤：元素选择器失效时 Driver.js 会居中显示气泡（容错）
+        const buildTourSteps = () => [
+            {
+                element: '.tour-brand',
+                popover: {
+                    title: t('tour.welcome.title'),
+                    description: t('tour.welcome.desc'),
+                    side: 'bottom',
+                    align: 'start'
                 }
-                localStorage.setItem('lingframe_access_token', token);
-                overlay.remove();
-                location.reload();
-            };
+            },
+            {
+                element: '.tour-ling-list',
+                popover: {
+                    title: t('tour.ling.title'),
+                    description: t('tour.ling.desc'),
+                    side: 'right'
+                }
+            },
+            {
+                element: '.tour-star-map',
+                popover: {
+                    title: t('tour.starMap.title'),
+                    description: t('tour.starMap.desc'),
+                    side: 'top'
+                }
+            },
+            {
+                element: '.tour-checklist',
+                popover: {
+                    title: t('tour.checklist.title'),
+                    description: t('tour.checklist.desc'),
+                    side: 'top'
+                }
+            },
+            {
+                element: '.tour-nav-governance',
+                popover: {
+                    title: t('tour.governance.title'),
+                    description: t('tour.governance.desc'),
+                    side: 'right'
+                }
+            },
+            {
+                element: '.tour-nav-verification',
+                popover: {
+                    title: t('tour.verification.title'),
+                    description: t('tour.verification.desc'),
+                    side: 'right'
+                }
+            }
+        ];
 
-            submitBtn.addEventListener('click', doLogin);
-            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
-            input.focus();
+        let tourDriver = null;
+        const startTour = () => {
+            // 容错：Driver.js 未加载则静默退出，不影响主功能
+            if (typeof window.driver === 'undefined' || !window.driver.js) return;
+            // 已有引导进行中则不重复触发
+            if (tourDriver) return;
+
+            tourDriver = window.driver.js.driver({
+                showProgress: true,
+                allowClose: true,
+                progressText: t('tour.progress'),
+                nextBtnText: t('tour.next'),
+                prevBtnText: t('tour.prev'),
+                doneBtnText: t('tour.done'),
+                popoverClass: 'lingframe-tour-popover',
+                steps: buildTourSteps(),
+                onDestroyed: () => {
+                    // 无论完成还是跳过都标记，避免每次访问都弹
+                    localStorage.setItem(TOUR_KEY, '1');
+                    tourDriver = null;
+                }
+            });
+            tourDriver.drive();
+        };
+
+        // 冷启动清单卡片点击跳转：让清单从"展示"变成"可执行引导"
+        const goToChecklistStep = (step) => {
+            if (step === 1) {
+                activeNav.value = 'lings';
+                nextTick(() => openUploadModal());
+            } else if (step === 2) {
+                activeNav.value = 'lings';
+            } else if (step === 3) {
+                activeNav.value = 'lings';
+            }
         };
 
         // ==================== API 调用 ====================
@@ -618,13 +683,17 @@ createApp({
                 if (!data.success) throw new Error(data.message);
                 return data.data;
             },
-            async delete(path, body = {}) {
-                const res = await fetch(API_BASE + path, {
+            async delete(path, body = null) {
+                const options = {
                     method: 'DELETE',
-                    headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
-                    credentials: 'same-origin',
-                    body: JSON.stringify(body)
-                });
+                    headers: withAuthHeaders(),
+                    credentials: 'same-origin'
+                };
+                if (body && Object.keys(body).length > 0) {
+                    options.headers['Content-Type'] = 'application/json';
+                    options.body = JSON.stringify(body);
+                }
+                const res = await fetch(API_BASE + path, options);
                 if (res.status === 401) { showLoginPrompt(); throw new Error('Unauthorized'); }
                 if (res.status === 403) { appState.readonly = true; throw new Error(t('toast.readonlyMode', '当前为只读模式')); }
                 const data = await res.json();
@@ -737,8 +806,8 @@ createApp({
 
                         if (modal.selectedVersion && modal.versions.length > 1) {
                             // 仅仅是删除了某个版本，刷新部分信息即可
-                            showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`, 'success');
-                            openUninstallResultModal(result, t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`);
+                            showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }), 'success');
+                            openUninstallResultModal(result, t('toast.lingVersionUnloaded', { version: modal.selectedVersion }));
                             refreshLings(); // 简单起见，重新拉取最新状态
                         } else {
                             // 全量删除 或 最后一个版本被删除
@@ -897,7 +966,7 @@ createApp({
             xhr.onerror = () => {
                 uploadModal.uploading = false;
                 uploadModal.progress = 0;
-                showToast(t('toast.installFailed') + ': 网络错误', 'error');
+                showToast(t('toast.installFailed') + ': ' + t('toast.networkError'), 'error');
             };
 
             xhr.send(formData);
@@ -1021,7 +1090,7 @@ createApp({
             modal.confirmInput = '';
             modal.expectedConfirmInput = '';
             modal.title = t('lingCenter.uninstallDeleteFile') || '彻底删除物理包';
-            modal.message = `确认要彻底从磁盘中删除灵元 ${lingId} (版本 ${version}) 的 JAR 文件吗？此操作无法撤销。`;
+            modal.message = t('modal.confirmDeleteFile', { lingId, version });
             modal.actionText = t('modal.confirm') || '确认';
             modal.showVersionSelect = false;
             modal.showDeleteFileOption = false;
@@ -1029,7 +1098,7 @@ createApp({
                 modal.loading = true;
                 try {
                     await api.delete(`/lings/uninstall/${lingId}/${version}?deleteFile=true`);
-                    showToast(t('toastExtension.uninstallDeleteFileSuccess') || '彻底卸载成功，物理包已从磁盘删除', 'success');
+                    showToast(t('toastExtension.uninstallDeleteFileSuccess'), 'success');
                     fetchPackages();
                 } catch (e) {
                     showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
@@ -1041,27 +1110,45 @@ createApp({
             modal.show = true;
         };
 
-        const updateStatusForLing = async (lingId, newStatus) => {
+        const updateStatusForLing = async (lingId, newStatus, version = null) => {
             const ling = lings.value.find(p => p.lingId === lingId);
             if (!ling) return;
 
-            const currentStatus = ling.status;
-            if (newStatus === 'ACTIVE' && currentStatus !== 'INACTIVE') {
-                showToast(t('toast.cannotActivateFrom') + ': ' + currentStatus, 'error');
-                return;
+            let currentStatus = ling.status;
+            if (version) {
+                const verInfo = ling.versionDetails?.find(v => v.version === version);
+                if (verInfo) currentStatus = verInfo.status;
             }
-            if (newStatus === 'INACTIVE' && currentStatus !== 'ACTIVE' && currentStatus !== 'DEGRADED') {
-                showToast(t('toast.cannotDeactivateFrom') + ': ' + currentStatus, 'error');
-                return;
-            }
-            if (newStatus === 'RECOVERING' && currentStatus !== 'DEGRADED') {
-                showToast(t('toast.cannotRecoverFrom') + ': ' + currentStatus, 'error');
-                return;
+
+            if (!version) {
+                if (newStatus === 'ACTIVE' && currentStatus !== 'INACTIVE') {
+                    showToast(t('toast.cannotActivateFrom') + ': ' + currentStatus, 'error');
+                    return;
+                }
+                if (newStatus === 'INACTIVE' && currentStatus !== 'ACTIVE' && currentStatus !== 'DEGRADED') {
+                    showToast(t('toast.cannotDeactivateFrom') + ': ' + currentStatus, 'error');
+                    return;
+                }
+                if (newStatus === 'RECOVERING' && currentStatus !== 'DEGRADED') {
+                    showToast(t('toast.cannotRecoverFrom') + ': ' + currentStatus, 'error');
+                    return;
+                }
+            } else {
+                if (newStatus === 'ACTIVE' && !['DEAD', 'ERROR', 'CREATED'].includes(currentStatus)) {
+                    showToast(t('toast.cannotActivateFrom') + ': ' + currentStatus, 'error');
+                    return;
+                }
+                if (newStatus === 'INACTIVE' && !['READY', 'STARTING', 'LOADING', 'RECOVERING'].includes(currentStatus)) {
+                    showToast(t('toast.cannotDeactivateFrom') + ': ' + currentStatus, 'error');
+                    return;
+                }
             }
 
             loading.status = true;
             try {
                 const body = { status: newStatus };
+                if (version) body.version = version;
+                
                 const updated = await api.post(`/lings/${lingId}/status`, body);
                 const idx = lings.value.findIndex(p => p.lingId === lingId);
                 if (idx !== -1 && updated) {
@@ -1143,8 +1230,8 @@ createApp({
                         pendingUninstallToastResult = result;
 
                         if (modal.selectedVersion && modal.versions.length > 1) {
-                            showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`, 'success');
-                            openUninstallResultModal(result, t('toast.lingVersionUnloaded', { version: modal.selectedVersion }) || `版本 ${modal.selectedVersion} 卸载成功`);
+                            showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }), 'success');
+                            openUninstallResultModal(result, t('toast.lingVersionUnloaded', { version: modal.selectedVersion }));
                             refreshLings();
                             fetchPackages();
                         } else {
@@ -1212,8 +1299,8 @@ createApp({
                 try {
                     const result = await api.delete(`/lings/uninstall/${lingId}/${version}?deleteFile=${modal.deleteFile}`);
                     pendingUninstallToastResult = result;
-                    showToast(t('toast.lingVersionUnloaded', { version }) || `版本 ${version} 卸载成功`, 'success');
-                    openUninstallResultModal(result, t('toast.lingVersionUnloaded', { version }) || `版本 ${version} 卸载成功`);
+                    showToast(t('toast.lingVersionUnloaded', { version }), 'success');
+                    openUninstallResultModal(result, t('toast.lingVersionUnloaded', { version }));
                     refreshLings();
                     fetchPackages();
                 } catch (e) {
@@ -1239,6 +1326,8 @@ createApp({
                 showToast(t('toast.canarySet', { percent: canaryPct.value }), 'success');
             } catch (e) {
                 showToast(t('toast.canaryFailed') + ': ' + e.message, 'error');
+                // 回滚前端状态，重新拉取最新数据
+                fetchDashboardSummary();
             } finally {
                 loading.canary = false;
             }
@@ -1398,7 +1487,7 @@ createApp({
                 }
 
                 showToast(message, 'success');
-                await fetchLingGovernanceMetrics();
+                await fetchDashboardSummary();
             } catch (e) {
                 showToast(t('toast.permUpdateFailed') + ': ' + e.message, 'error');
             } finally {
@@ -1569,6 +1658,8 @@ createApp({
         const playgroundInvoking = ref({});
         const playgroundArgs = reactive({});
         const playgroundResult = ref(null);
+        // 调用结果弹窗：避免用户滚动到页面下方查看结果
+        const playgroundResultModal = reactive({ show: false });
 
         const expandedServices = ref({});
         const toggleServiceExpand = (fqsid) => {
@@ -1596,7 +1687,7 @@ createApp({
             }
         };
 
-        const invokeService = async (fqsid, method) => {
+        const invokeService = async (fqsid, method, version) => {
             const key = `${fqsid}::${method.signature}`;
             playgroundInvoking[key] = true;
             try {
@@ -1608,17 +1699,81 @@ createApp({
                     fqsid: targetFqsid,
                     methodName: method.name,
                     parameterTypes: paramTypes,
-                    args: args
+                    args: args,
+                    version: version || null
                 });
                 playgroundResult.value = result;
+                playgroundResultModal.show = true;
             } catch (e) {
                 playgroundResult.value = { success: false, error: e.message, durationMs: 0, traces: [] };
+                playgroundResultModal.show = true;
             } finally {
                 playgroundInvoking[key] = false;
             }
         };
 
+        const closePlaygroundResultModal = () => {
+            playgroundResultModal.show = false;
+        };
+
         const getInvokeKey = (fqsid, signature) => `${fqsid}::${signature}`;
+
+        // 当前选中版本：null 表示稳定版（默认实例），指定版本号表示金丝雀
+        const playgroundSelectedVersion = ref(null);
+
+        // 按版本分组服务方法，供模板渲染
+        // 返回结构：[{ version, label, isDefault, services: [{fqsid, methods}] }]
+        const playgroundVersionGroups = computed(() => {
+            const services = playgroundServices.value;
+            if (!services || services.length === 0) return [];
+
+            // 收集所有版本号（保持稳定版优先）
+            const versionSet = new Set();
+            services.forEach(svc => {
+                (svc.methods || []).forEach(m => {
+                    (m.versions || []).forEach(v => versionSet.add(v));
+                });
+            });
+
+            // 稳定版排最前：从 versionDetails 中取 isDefault 标记的版本号
+            const defaultVer = activeLing.value?.versionDetails?.find(v => v.isDefault)?.version;
+            const versions = Array.from(versionSet).sort((a, b) => {
+                if (a === defaultVer) return -1;
+                if (b === defaultVer) return 1;
+                return 0;
+            });
+
+            return versions.map(version => {
+                // 过滤出该版本下可用的服务和方法
+                const versionServices = services
+                    .map(svc => {
+                        const methods = (svc.methods || []).filter(m =>
+                            (m.versions || []).includes(version)
+                        );
+                        if (methods.length === 0) return null;
+                        return { fqsid: svc.fqsid, className: svc.className, methods };
+                    })
+                    .filter(s => s !== null);
+
+                return {
+                    version,
+                    isDefault: version === defaultVer,
+                    services: versionServices
+                };
+            });
+        });
+
+        // 切换选中版本
+        const selectPlaygroundVersion = (version) => {
+            playgroundSelectedVersion.value = version;
+        };
+
+        // 判断方法是否在当前选中版本下可用
+        const isMethodInSelectedVersion = (method) => {
+            const selected = playgroundSelectedVersion.value;
+            if (!selected) return true; // null 表示默认走稳定版，由后端处理
+            return (method.versions || []).includes(selected);
+        };
 
         const isComplexParameterType = (typeName) => {
             if (!typeName) return false;
@@ -1637,9 +1792,12 @@ createApp({
         };
 
         // 选中灵元时自动加载服务列表
+        // 记录上一次的 activeId，供版本签名 watch 判断是否为灵元切换
+        let lastActiveIdForPlayground = activeId.value;
         watch(activeId, (newId) => {
             playgroundServices.value = [];
             playgroundResult.value = null;
+            playgroundSelectedVersion.value = null;
             // 切换灵元后主区域滚动到顶部
             const mainArea = document.querySelector('.main-area');
             if (mainArea) mainArea.scrollTop = 0;
@@ -1648,9 +1806,34 @@ createApp({
             }
         });
 
+        // 当前选中灵元的版本签名：版本号与状态组合字符串
+        // 热重载、卸载版本、部署包、上传安装等操作都会通过 refreshLings 更新 lings.value，
+        // 进而引起版本签名变化，自动刷新服务演练场列表，无需手动刷新整页
+        const activeLingVersionSignature = computed(() => {
+            const ling = activeLing.value;
+            if (!ling || !ling.versionDetails) return '';
+            return ling.versionDetails
+                .map(v => `${v.version}:${v.status}`)
+                .join(',');
+        });
+
+        watch(activeLingVersionSignature, (newSig, oldSig) => {
+            // 灵元切换由 watch(activeId) 负责，这里只处理同一灵元的版本变更
+            const currentId = activeId.value;
+            if (currentId !== lastActiveIdForPlayground) {
+                lastActiveIdForPlayground = currentId;
+                return;
+            }
+            if (currentId && newSig && newSig !== oldSig) {
+                fetchPlaygroundServices();
+            }
+        });
+
         // ==================== SSE 日志流 ====================
         let sseRetryDelay = 1000; // 初始重连延迟 1s
         const SSE_RETRY_MAX = 30000; // 最大延迟 30s
+        const SSE_MAX_RETRIES = 10; // 最大重试次数，超过后停止重连
+        let sseRetryCount = 0;
         let sseRetryTimer = null;
 
         const connectSSE = async () => {
@@ -1702,10 +1885,19 @@ createApp({
             });
 
             eventSource.onerror = () => {
+                // 显式关闭，阻止浏览器 EventSource 自动重连（由下方 setTimeout 统一控制）
+                eventSource.close();
+                eventSource = null;
                 sseStatus.value = 'disconnected';
+                if (sseRetryCount >= SSE_MAX_RETRIES) {
+                    // 超过最大重试次数，停止重连
+                    sseStatus.value = 'failed';
+                    return;
+                }
                 if (sseRetryTimer) clearTimeout(sseRetryTimer);
                 sseRetryTimer = setTimeout(connectSSE, sseRetryDelay);
                 sseRetryDelay = Math.min(sseRetryDelay * 2, SSE_RETRY_MAX);
+                sseRetryCount++;
             };
         };
 
@@ -2125,6 +2317,7 @@ createApp({
                     perfMetrics.loadedClassCount = data.loadedClassCount || 0;
                     perfMetrics.totalLoadedClassCount = data.totalLoadedClassCount || 0;
                     perfMetrics.unloadedClassCount = data.unloadedClassCount || 0;
+                    perfMetrics.lingClassLoaderCount = data.lingClassLoaderCount || 0;
                     perfMetrics.threads = data.threadCount || 0;
                     perfMetrics.daemonThreads = data.daemonThreadCount || 0;
                     perfMetrics.peakThreads = data.peakThreadCount || 0;
@@ -2145,24 +2338,29 @@ createApp({
                     const now = Date.now();
                     perfHistory.timestamps.push(now);
                     perfHistory.cpu.push(perfMetrics.cpu);
-                    perfHistory.heapUsage.push(perfMetrics.heapUsage);
-                    perfHistory.metaspaceUsage.push(perfMetrics.metaspaceUsage);
+                    perfHistory.heapUsed.push(perfMetrics.heapUsed);
+                    perfHistory.metaspaceUsed.push(perfMetrics.metaspaceUsed);
                     perfHistory.threads.push(perfMetrics.threads);
-                    perfHistory.gcCount.push(perfMetrics.gcCount);
-                    perfHistory.gcTimeMs.push(perfMetrics.gcTimeMs);
+                    // GC 改为区间增量，与历史图表一致
+                    const gcCountDelta = Math.max(0, perfMetrics.gcCount - (prevMetrics.gcCount || 0));
+                    const gcTimeDelta = Math.max(0, perfMetrics.gcTimeMs - (prevMetrics.gcTimeMs || 0));
+                    perfHistory.gcCount.push(gcCountDelta);
+                    perfHistory.gcTimeMs.push(gcTimeDelta);
                     perfHistory.loadedClassCount.push(perfMetrics.loadedClassCount);
+                    perfHistory.lingClassLoaderCount.push(perfMetrics.lingClassLoaderCount);
 
                     // 限制历史数据长度
                     if (perfHistory.timestamps.length > MAX_HISTORY_POINTS) {
                         const excess = perfHistory.timestamps.length - MAX_HISTORY_POINTS;
                         perfHistory.timestamps.splice(0, excess);
                         perfHistory.cpu.splice(0, excess);
-                        perfHistory.heapUsage.splice(0, excess);
-                        perfHistory.metaspaceUsage.splice(0, excess);
+                        perfHistory.heapUsed.splice(0, excess);
+                        perfHistory.metaspaceUsed.splice(0, excess);
                         perfHistory.threads.splice(0, excess);
                         perfHistory.gcCount.splice(0, excess);
                         perfHistory.gcTimeMs.splice(0, excess);
                         perfHistory.loadedClassCount.splice(0, excess);
+                        perfHistory.lingClassLoaderCount.splice(0, excess);
                     }
 
                     // 绘制折线图
@@ -2173,74 +2371,35 @@ createApp({
             }
         };
 
-        // 获取灵元健康指标
-        const fetchLingHealthMetrics = async () => {
+        const fetchDashboardSummary = async () => {
             try {
-                const data = await api.get('/lings/health/all');
+                const data = await api.get('/lings/dashboard-summary');
                 if (data) {
-                    Object.keys(lingHealthMetrics).forEach(lingId => {
-                        if (!data[lingId]) {
-                            delete lingHealthMetrics[lingId];
-                        }
-                    });
-                    Object.keys(data).forEach(lingId => {
-                        lingHealthMetrics[lingId] = data[lingId];
-                    });
-                }
-            } catch (e) {
-                console.warn('Failed to fetch ling health metrics:', e.message);
-            }
-        };
+                    const healthData = data.healthMetrics || {};
+                    Object.keys(lingHealthMetrics).forEach(k => { if (!healthData[k]) delete lingHealthMetrics[k]; });
+                    Object.keys(healthData).forEach(k => lingHealthMetrics[k] = healthData[k]);
+                    
+                    const govData = data.governanceMetrics || {};
+                    Object.keys(lingGovernanceMetrics).forEach(k => { if (!govData[k]) delete lingGovernanceMetrics[k]; });
+                    Object.keys(govData).forEach(k => lingGovernanceMetrics[k] = govData[k]);
 
-        const fetchLingGovernanceMetrics = async () => {
-            try {
-                const data = await api.get('/lings/governance/all');
-                if (data) {
-                    Object.keys(lingGovernanceMetrics).forEach(lingId => {
-                        if (!data[lingId]) {
-                            delete lingGovernanceMetrics[lingId];
-                        }
-                    });
-                    Object.keys(data).forEach(lingId => {
-                        lingGovernanceMetrics[lingId] = data[lingId];
-                    });
-                }
-            } catch (e) {
-                console.warn('Failed to fetch ling governance metrics:', e.message);
-            }
-        };
+                    const diagData = data.runtimeDiagnostics || {};
+                    Object.keys(runtimeDiagnostics).forEach(k => { if (!diagData[k]) delete runtimeDiagnostics[k]; });
+                    Object.keys(diagData).forEach(k => runtimeDiagnostics[k] = diagData[k]);
 
-        const fetchRuntimeDiagnostics = async () => {
-            try {
-                const data = await api.get('/lings/metrics/runtime-diagnostics');
-                if (data) {
-                    Object.keys(runtimeDiagnostics).forEach(runtime => {
-                        if (!data[runtime]) {
-                            delete runtimeDiagnostics[runtime];
-                        }
-                    });
-                    Object.keys(data).forEach(runtime => {
-                        runtimeDiagnostics[runtime] = data[runtime];
-                    });
-                }
-            } catch (e) {
-                console.warn('Failed to fetch runtime diagnostics:', e.message);
-            }
-        };
+                    const readyData = data.runtimeGovernanceReadiness || {};
+                    runtimeGovernanceReadiness.status = readyData.status || 'UNKNOWN';
+                    runtimeGovernanceReadiness.summary = readyData.summary || '';
+                    runtimeGovernanceReadiness.sharedApiBoundaryFrozen = !!readyData.sharedApiBoundaryFrozen;
+                    runtimeGovernanceReadiness.diagnosticsCount = readyData.diagnosticsCount || 0;
+                    runtimeGovernanceReadiness.blockers = Array.isArray(readyData.blockers) ? readyData.blockers : [];
+                    runtimeGovernanceReadiness.warnings = Array.isArray(readyData.warnings) ? readyData.warnings : [];
 
-        const fetchRuntimeGovernanceReadiness = async () => {
-            try {
-                const data = await api.get('/lings/metrics/runtime-governance-readiness');
-                if (data) {
-                    runtimeGovernanceReadiness.status = data.status || 'UNKNOWN';
-                    runtimeGovernanceReadiness.summary = data.summary || '';
-                    runtimeGovernanceReadiness.sharedApiBoundaryFrozen = !!data.sharedApiBoundaryFrozen;
-                    runtimeGovernanceReadiness.diagnosticsCount = data.diagnosticsCount || 0;
-                    runtimeGovernanceReadiness.blockers = Array.isArray(data.blockers) ? data.blockers : [];
-                    runtimeGovernanceReadiness.warnings = Array.isArray(data.warnings) ? data.warnings : [];
+                    // 最近生命周期事件
+                    recentEvents.value = Array.isArray(data.recentEvents) ? data.recentEvents : [];
                 }
             } catch (e) {
-                console.warn('Failed to fetch runtime governance readiness:', e.message);
+                console.warn('Failed to fetch dashboard summary:', e.message);
             }
         };
 
@@ -2292,7 +2451,18 @@ createApp({
         };
 
         // 绘制星图
-        const drawStarMap = () => {
+        let lastStarMapDrawTime = 0;
+        const drawStarMap = (timestamp) => {
+            if (!timestamp) timestamp = performance.now();
+            if (timestamp - lastStarMapDrawTime < 33) {
+                const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                if (!prefersReducedMotion) {
+                    starMapAnimFrame = requestAnimationFrame(drawStarMap);
+                }
+                return;
+            }
+            lastStarMapDrawTime = timestamp;
+
             const canvas = starMapCanvas.value;
             if (!canvas) return;
 
@@ -2562,18 +2732,18 @@ createApp({
             }
         });
 
-        // 批量获取所有灵元的服务数量
+        // 批量获取所有灵元的服务数量（并发优化）
         const fetchAllServiceCounts = async () => {
-            for (const ling of lings.value) {
-                if (lingServiceCounts[ling.lingId] === undefined) {
-                    try {
-                        const data = await api.get(`/playground/lings/${ling.lingId}/services`);
-                        lingServiceCounts[ling.lingId] = data ? data.length : 0;
-                    } catch (e) {
-                        lingServiceCounts[ling.lingId] = 0;
-                    }
+            const pendingLings = lings.value.filter(ling => lingServiceCounts[ling.lingId] === undefined);
+            if (pendingLings.length === 0) return;
+            await Promise.allSettled(pendingLings.map(async ling => {
+                try {
+                    const data = await api.get(`/playground/lings/${ling.lingId}/services`);
+                    lingServiceCounts[ling.lingId] = data ? data.length : 0;
+                } catch (e) {
+                    lingServiceCounts[ling.lingId] = 0;
                 }
-            }
+            }));
         };
 
         // 灵元列表变化时，获取新灵元的服务数量
@@ -2614,14 +2784,13 @@ createApp({
             fetchPerformanceMetrics();
             perfTimer = setInterval(fetchPerformanceMetrics, 3000);
 
-            fetchLingHealthMetrics();
-            fetchLingGovernanceMetrics();
-            fetchRuntimeDiagnostics();
-            fetchRuntimeGovernanceReadiness();
-            healthTimer = setInterval(fetchLingHealthMetrics, 5000);
-            governanceTimer = setInterval(fetchLingGovernanceMetrics, 5000);
-            diagnosticsTimer = setInterval(fetchRuntimeDiagnostics, 5000);
-            readinessTimer = setInterval(fetchRuntimeGovernanceReadiness, 5000);
+            fetchDashboardSummary();
+            summaryTimer = setInterval(fetchDashboardSummary, 5000);
+
+            // 首次访问且已认证：自动触发新手引导
+            if (shouldShowTour()) {
+                nextTick(() => startTour());
+            }
         });
 
         // ==================== 监听环境切换 ====================
@@ -2680,7 +2849,9 @@ createApp({
         // 日志暂停恢复：批量追加缓存日志
         watch(logPaused, (paused) => {
             if (!paused && logPausedBuffer.length > 0) {
-                logs.value.unshift(...logPausedBuffer);
+                // 截断日志防止超出 Vue 响应式极限，保证页面不会卡死
+                const itemsToInsert = logPausedBuffer.length > 500 ? logPausedBuffer.slice(0, 500) : logPausedBuffer;
+                logs.value.unshift(...itemsToInsert);
                 if (logs.value.length > 1000) {
                     logs.value = logs.value.slice(0, 1000);
                 }
@@ -2813,7 +2984,7 @@ createApp({
                                 padding: 8,
                                 displayColors: false,
                                 callbacks: {
-                                    label: (ctx) => chart.isPercent ? ctx.parsed.y.toFixed(1) + '%' : ctx.parsed.y
+                                    label: (ctx) => chart.isPercent ? ctx.parsed.y.toFixed(1) + '%' : (chart.unit ? ctx.parsed.y.toFixed(1) + ' ' + chart.unit : ctx.parsed.y)
                                 }
                             }
                         },
@@ -2836,7 +3007,8 @@ createApp({
                                     color: ticksColor,
                                     font: { size: 9 },
                                     maxTicksLimit: 5,
-                                    callback: (v) => chart.isPercent ? v + '%' : v
+                                    precision: chart.integerTicks ? 0 : undefined,
+                                    callback: (v) => chart.isPercent ? v + '%' : (chart.unit ? v + ' ' + chart.unit : v)
                                 },
                                 grid: { color: gridColor }
                             }
@@ -2850,30 +3022,15 @@ createApp({
         const handleVisibility = () => {
             if (document.hidden) {
                 if (perfTimer) { clearInterval(perfTimer); perfTimer = null; }
-                if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
-                if (governanceTimer) { clearInterval(governanceTimer); governanceTimer = null; }
-                if (diagnosticsTimer) { clearInterval(diagnosticsTimer); diagnosticsTimer = null; }
-                if (readinessTimer) { clearInterval(readinessTimer); readinessTimer = null; }
+                if (summaryTimer) { clearInterval(summaryTimer); summaryTimer = null; }
             } else {
                 if (!perfTimer) {
                     fetchPerformanceMetrics();
                     perfTimer = setInterval(fetchPerformanceMetrics, 3000);
                 }
-                if (!healthTimer) {
-                    fetchLingHealthMetrics();
-                    healthTimer = setInterval(fetchLingHealthMetrics, 5000);
-                }
-                if (!governanceTimer) {
-                    fetchLingGovernanceMetrics();
-                    governanceTimer = setInterval(fetchLingGovernanceMetrics, 5000);
-                }
-                if (!diagnosticsTimer) {
-                    fetchRuntimeDiagnostics();
-                    diagnosticsTimer = setInterval(fetchRuntimeDiagnostics, 5000);
-                }
-                if (!readinessTimer) {
-                    fetchRuntimeGovernanceReadiness();
-                    readinessTimer = setInterval(fetchRuntimeGovernanceReadiness, 5000);
+                if (!summaryTimer) {
+                    fetchDashboardSummary();
+                    summaryTimer = setInterval(fetchDashboardSummary, 5000);
                 }
             }
         };
@@ -2884,10 +3041,8 @@ createApp({
             if (timeTimer) clearInterval(timeTimer);
             if (stressTimer) clearInterval(stressTimer);
             if (perfTimer) clearInterval(perfTimer);
-            if (healthTimer) clearInterval(healthTimer);
-            if (governanceTimer) clearInterval(governanceTimer);
-            if (diagnosticsTimer) clearInterval(diagnosticsTimer);
-            if (readinessTimer) clearInterval(readinessTimer);
+            if (summaryTimer) clearInterval(summaryTimer);
+            if (sseRetryTimer) clearTimeout(sseRetryTimer);
             if (eventSource) eventSource.close();
             if (starMapAnimFrame) cancelAnimationFrame(starMapAnimFrame);
             destroyCharts();
@@ -2900,11 +3055,12 @@ createApp({
             lings, activeId, activeNav, lingSearch, filteredLings, canaryPct, isAuto, ipcEnabled, ipcTarget,
             logs, lastAudit, logViewMode, logAggregationMode, logFilters, logContainer, isUserScrolling, logPaused, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
-            stats, loading, modal, toasts, envLabels, uploadModal, timelineModal, appState, authenticated, submitAuth,
+            stats, loading, modal, toasts, envLabels, uploadModal, timelineModal, appState, authenticated, loginError, submitAuth,
             consoleHeight, autoScrollLogs, startConsoleResize,
 
             perfMetrics, jvmInfo, chartTimeRange, monitorCharts,
             lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,
+            recentEvents,
             invocationForm,
 
             activeLing, activeLingHealth, activeLingVersionHealth, activeLingGovernance, activeLingVersionGovernance, canCanary, canOperate, canActivate, canDeactivate, canRecover, displayLogs, availableVersions,
@@ -2914,9 +3070,11 @@ createApp({
             saveInvocationGovernance,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
             playgroundServices, playgroundLoading, playgroundInvoking, playgroundArgs, playgroundResult,
+            playgroundResultModal, closePlaygroundResultModal,
             expandedServices, toggleServiceExpand, isServiceExpanded,
             fetchPlaygroundServices, invokeService, getInvokeKey,
             isComplexParameterType, prefillJsonTemplate,
+            playgroundSelectedVersion, playgroundVersionGroups, selectPlaygroundVersion, isMethodInSelectedVersion,
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
             formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue, formatUptime, formatPlaygroundResult,
             getStatusClass, getLingShortName, getLingTagClass, getLingHealthDotClass, getLingUptime, getLingServiceCount, getLogColor, getTrend,
@@ -2924,11 +3082,12 @@ createApp({
             starMapCanvas, starMapHover, handleStarMapClick, handleStarMapMouseMove, handleStarMapMouseLeave,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
             openTimelineModal, closeTimelineModal, loadTimelineData,
-            doUpdateStatus, fetchPerformanceMetrics, fetchLingHealthMetrics, fetchLingGovernanceMetrics, fetchRuntimeDiagnostics, fetchRuntimeGovernanceReadiness,
+            doUpdateStatus, fetchPerformanceMetrics, fetchDashboardSummary,
             uninstallResultModal, closeUninstallResultModal, getUninstallRiskLabel, getUninstallRiskClass, getUninstallTriggerLabel,
 
             currentTheme, toggleTheme, packages, fetchPackages, deployPackage, deletePackageFile, updateStatusForLing, updateCanaryWeight, getLingCanaryWeight,
-            consoleExpanded, hasNewTraceAlert, globalLogContainer, onboardingSteps, packageSearch, filteredPackages
+            consoleExpanded, hasNewTraceAlert, globalLogContainer, onboardingSteps, packageSearch, filteredPackages,
+            startTour, goToChecklistStep
         };
     }
 }).mount('#app');

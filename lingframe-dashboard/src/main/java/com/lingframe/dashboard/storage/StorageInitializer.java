@@ -42,7 +42,7 @@ public class StorageInitializer {
             "CREATE TABLE IF NOT EXISTS metrics_snapshot (" +
             "  id INTEGER PRIMARY KEY AUTOINCREMENT," +
             "  timestamp BIGINT NOT NULL," +
-            "  cpu_usage INT," +
+            "  cpu_usage DOUBLE," +
             "  process_cpu_load DOUBLE," +
             "  heap_used_mb BIGINT," +
             "  heap_max_mb BIGINT," +

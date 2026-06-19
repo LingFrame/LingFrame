@@ -41,11 +41,11 @@ public class SecurityHeadersFilter implements Filter {
         // CSP：允许同源 + 白名单 CDN 资源
         httpResponse.setHeader("Content-Security-Policy",
             "default-src 'self'; " +
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net cdn.tailwindcss.com; " +
-            "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdn.tailwindcss.com; " +
-            "font-src 'self' cdn.jsdelivr.net cdn.tailwindcss.com; " +
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com; " +
+            "style-src 'self' 'unsafe-inline' cdn.tailwindcss.com; " +
+            "font-src 'self' data:; " +
             "img-src 'self' data:; " +
-            "connect-src 'self' cdn.jsdelivr.net; " +
+            "connect-src 'self'; " +
             "frame-ancestors 'self'");
 
         chain.doFilter(request, response);

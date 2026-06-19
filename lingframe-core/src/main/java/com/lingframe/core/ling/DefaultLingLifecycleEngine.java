@@ -248,7 +248,10 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             startPreparedInstance(instance, createLingContext(lingId));
             registerHotSwapIfNeeded(lingId, sourceFile, lingDefinition);
             publishReadyInstance(runtime, instance, isDefault);
-            grantDeclaredPermissions(lingId, lingDefinition);
+            // 仅首次部署时授予声明权限；reload 场景保留用户动态修改的权限，避免被重置
+            if (isNewRuntime) {
+                grantDeclaredPermissions(lingId, lingDefinition);
+            }
 
             eventBus.publish(new LingInstalledEvent(lingId, version));
             log.info("[{}] Installed successfully", lingId);
@@ -532,6 +535,11 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     }
 
     private void undeploySelectedInstance(String lingId, LingRuntime runtime, LingInstance targetInstance) {
+        // 先将实例移入 dyingQueue，确保 drain 期间 activePool 不再包含该实例。
+        // 这样并发查询（如 /lings 接口）不会看到正在卸载的旧版本，避免 reload 时出现"多版本"假象。
+        // moveToDying 内部会调用 instanceCoordinator.stop() 将状态置为 STOPPING。
+        runtime.getInstancePool().moveToDying(targetInstance);
+
         drainInstances(lingId, Collections.singletonList(targetInstance),
                 runtime.getConfig().getForceCleanupDelaySeconds());
         unloadSingleInstance(lingId, runtime, targetInstance);
@@ -683,8 +691,8 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
                 Thread.sleep(50);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.warn("[{}] Drain interrupted", lingId);
-                return;
+                log.warn("[{}] Drain interrupted, proceeding to unload", lingId);
+                break;
             }
         }
 

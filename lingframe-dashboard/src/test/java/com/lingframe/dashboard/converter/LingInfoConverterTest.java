@@ -1,14 +1,18 @@
 package com.lingframe.dashboard.converter;
 
 import com.lingframe.api.config.GovernancePolicy;
+import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.event.EventBus;
+import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.router.CanaryRouter;
+import com.lingframe.core.spi.LingContainer;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -77,5 +81,49 @@ class LingInfoConverterTest {
         assertEquals("lingId + cacheName + rawKey", dto.getPermissions().getLocalCacheNamespaceStrategy());
         assertEquals(900, dto.getInvocationGovernance().getCpuBudgetMsPerMinute());
         assertEquals(64, dto.getInvocationGovernance().getMemoryBudgetMb());
+    }
+
+    @Test
+    @DisplayName("reload 时序窗口：dyingQueue 中的旧实例不应出现在版本列表")
+    void shouldFilterDestroyedInstanceDuringReload() {
+        // 模拟 reload 场景：
+        // - activePool 有新实例（READY）
+        // - dyingQueue 有旧实例（STOPPING 状态，仍在 drain）
+        // 期望：versionDetails 只包含 activePool 中的新实例
+        LingRuntime runtime = mock(LingRuntime.class);
+        InstancePool instancePool = mock(InstancePool.class);
+        CanaryRouter canaryRouter = mock(CanaryRouter.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        EventBus eventBus = mock(EventBus.class);
+
+        when(runtime.getLingId()).thenReturn("ling-a");
+        when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
+        when(runtime.getInstancePool()).thenReturn(instancePool);
+        when(runtime.getInstalledAt()).thenReturn(123L);
+        when(canaryRouter.getCanaryPercent("ling-a")).thenReturn(0);
+
+        // 新实例：正常 READY 状态
+        LingDefinition newDef = new LingDefinition();
+        newDef.setId("ling-a");
+        newDef.setVersion("1.0.0-reload-1");
+        LingContainer newContainer = mock(LingContainer.class);
+        when(newContainer.isActive()).thenReturn(true);
+        LingInstance newInstance = new LingInstance(newContainer, newDef, eventBus);
+
+        // 旧实例：在 dyingQueue 中，STOPPING 状态（drain 中）
+        LingInstance oldInstance = mock(LingInstance.class);
+        when(oldInstance.getDefinition()).thenReturn(new LingDefinition());
+        when(oldInstance.getVersion()).thenReturn("1.0.0");
+        when(oldInstance.currentStatus()).thenReturn(com.lingframe.core.fsm.InstanceStatus.STOPPING);
+
+        // activeInstances 只含新实例，getAllInstances 含两者
+        when(instancePool.getActiveInstances()).thenReturn(Collections.singletonList(newInstance));
+        when(instancePool.getDefault()).thenReturn(newInstance);
+
+        LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, canaryRouter, permissionService, null);
+
+        // 只应返回 1 个版本（新实例），dyingQueue 中的旧实例不展示
+        assertEquals(1, dto.getVersionDetails().size());
+        assertEquals("1.0.0-reload-1", dto.getVersionDetails().get(0).getVersion());
     }
 }

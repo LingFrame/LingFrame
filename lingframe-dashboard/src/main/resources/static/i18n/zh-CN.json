@@ -19,6 +19,7 @@
     "sseConnected": "SSE 已连接",
     "sseConnecting": "SSE 连接中...",
     "sseDisconnected": "SSE 断开",
+    "sseFailed": "SSE 连接失败",
     "lingCount": "灵元数",
     "logCount": "日志",
     "lingCenter": "灵元中心",
@@ -113,7 +114,13 @@
     "cacheRead": "Cache 读",
     "cacheWrite": "Cache 写",
     "localCacheNamespaceTitle": "本地缓存命名空间",
-    "namespaceEnabled": "已隔离",
+    "namespacePrefix": "命名空间",
+    "namespaceEnabled": "已启用",
+    "versionInstances": "版本实例控制",
+    "version": "版本号",
+    "status": "状态",
+    "traffic": "流量",
+    "actions": "操作",
     "sqlCapabilitiesTitle": "SQL 细粒度能力",
     "redisCapabilitiesTitle": "Redis 细粒度能力",
     "extraCapabilitiesTitle": "其他细粒度能力",
@@ -129,15 +136,16 @@
     "saveInvocation": "保存调用治理"
   },
   "demo": {
-    "title": "功能演练",
+    "title": "功能演示",
     "ready": "READY",
     "inactive": "INACTIVE",
     "lingNotActive": "灵元未激活，请先激活",
-    "readDb": "读DB",
-    "writeDb": "写DB",
-    "readCache": "读Cache",
-    "writeCache": "写Cache",
-    "ipcAuth": "IPC 授权"
+    "readDb": "读 DB",
+    "writeDb": "写 DB",
+    "readCache": "读 Cache",
+    "writeCache": "写 Cache",
+    "ipcAuth": "IPC 调用",
+    "target": "目标"
   },
   "playground": {
     "title": "服务演练场",
@@ -154,7 +162,11 @@
     "paramInput": "输入参数值",
     "returnType": "返回",
     "method": "方法",
-    "methodsCount": "个方法"
+    "methodsCount": "个方法",
+    "version": "版本",
+    "stable": "稳定版",
+    "canary": "金丝雀",
+    "multiVersionHint": "该方法在多个版本均可用，切换上方版本标签可指定调用目标"
   },
   "audit": {
     "success": "SUCCESS",
@@ -177,7 +189,9 @@
     "actionInactivate": "停用",
     "actionReload": "热重载",
     "selectVersion": "选择要卸载的版本：",
-    "allVersions": "全量卸载 (所有版本)"
+    "allVersions": "全量卸载 (所有版本)",
+    "confirmDeleteFile": "确认要彻底从磁盘中删除灵元 {lingId} (版本 {version}) 的 JAR 文件吗？此操作无法恢复！",
+    "dangerConfirmLabel": "请输入灵元 ID 以确认操作："
   },
   "toast": {
     "getLingsFailed": "获取灵元列表失败",
@@ -222,7 +236,8 @@
     "uninstallPrecheckFailedWithSummary": "{message}，预检未完成：{summary}",
     "getTimelineFailed": "获取时间线失败",
     "invocationUpdated": "调用治理已更新",
-    "invocationUpdateFailed": "调用治理更新失败"
+    "invocationUpdateFailed": "调用治理更新失败",
+    "networkError": "网络错误"
   },
   "performance": {
       "title": "系统性能",
@@ -269,7 +284,12 @@
     "degraded": "降级",
     "recovering": "恢复中",
     "stopping": "停止中",
-    "removed": "已卸载"
+    "removed": "已卸载",
+    "default": "默认",
+    "canary": "灰度",
+    "ready": "就绪",
+    "starting": "启动中",
+    "dead": "死亡"
   },
   "timeline": {
     "title": "灵元生命周期时间线",
@@ -303,13 +323,17 @@
       "versionCountSuffix": "个版本",
       "qps": "QPS",
       "errorRate": "错误率",
-      "avgLatencyMs": "平均延迟",
-      "p99LatencyMs": "P99 延迟",
+      "avgLatency": "平均延迟",
+      "p99Latency": "P99 延迟",
       "activeRequests": "活跃请求",
       "trafficWeight": "流量占比",
       "empty": "暂未采集到该灵元的健康指标",
       "versionEmpty": "该版本暂未采集到健康指标",
-      "unknown": "未知"
+      "unknown": "未知",
+      "qpsHint": "每秒调用次数，反映灵元当前流量压力",
+      "errorRateHint": "失败请求占总请求的百分比",
+      "avgLatencyHint": "所有调用的平均响应时间",
+      "p99LatencyHint": "99% 的调用在此时间内完成，反映长尾延迟"
   },
   "governanceCard": {
       "title": "治理信号",
@@ -329,7 +353,15 @@
       "cpuBudgetExceeded": "CPU 预算告警",
       "memoryBudgetExceeded": "内存预算告警",
       "empty": "暂未采集到治理信号",
-      "versionEmpty": "该版本暂未采集到治理信号"
+      "versionEmpty": "该版本暂未采集到治理信号",
+      "rateLimitedRequestsHint": "触发速率限制被拒绝的请求数，超过配置的 QPS 上限时累计",
+      "timeoutRequestsHint": "超过治理超时阈值的调用次数",
+      "circuitOpenedCountHint": "熔断器从关闭转为打开的次数，错误率超阈值时触发",
+      "circuitOpenRejectionsHint": "熔断器打开期间被直接拒绝的请求数",
+      "activeThreadsHint": "当前灵元线程隔离池中的活跃线程数",
+      "threadBudgetHint": "线程隔离池的最大并发上限",
+      "cpuTimeLastMinuteHint": "近一分钟内灵元独占消耗的 CPU 时间",
+      "estimatedHeapDeltaHint": "灵元调用导致的堆内存增量估算值"
   },
   "runtimeReadiness": {
       "title": "运行时治理就绪度",
@@ -395,5 +427,36 @@
     "step2Desc": "从仓库中部署灵元，或者在左侧的运行时列表中找到并激活它。",
     "step3Title": "治理拦截测试",
     "step3Desc": "拥有至少一个 ACTIVE 状态的灵元实例，可在服务验证中进行演练测试。"
+  },
+  "tour": {
+    "restart": "新手引导",
+    "next": "下一步",
+    "prev": "上一步",
+    "done": "完成",
+    "progress": "{{current}} / {{total}}",
+    "welcome": {
+      "title": "欢迎体验灵珑",
+      "desc": "JVM 内统一治理内核，让长运行系统具备灵元热插拔、实时治理、无损推演能力。"
+    },
+    "ling": {
+      "title": "灵元 = 可热插拔模块",
+      "desc": "每个灵元独立 ClassLoader 隔离，支持多版本共存、灰度发布、热卸载。"
+    },
+    "starMap": {
+      "title": "运行时拓扑",
+      "desc": "流动光点 = 实时调用流量；涟漪 = 健康预警；颜色 = 健康状态。"
+    },
+    "checklist": {
+      "title": "从这里开始",
+      "desc": "三步走：上传灵元包 → 安装灵元 → 激活灵元。点击卡片可快速跳转。"
+    },
+    "governance": {
+      "title": "实时治理",
+      "desc": "激活后可配置灰度、限流、熔断、权限，所有治理实时生效。"
+    },
+    "verification": {
+      "title": "无损推演",
+      "desc": "模拟推演走真实治理链，所见即所得，不影响线上流量。"
+    }
   }
 }

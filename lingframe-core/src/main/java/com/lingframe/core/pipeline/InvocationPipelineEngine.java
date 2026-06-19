@@ -55,4 +55,14 @@ public class InvocationPipelineEngine {
     public int evictMethodCache(String lingId) {
         return registry.evictMethodCache(lingId);
     }
+
+    /**
+     * 按完整前缀驱逐方法句柄缓存，用于版本级精确清理。
+     *
+     * @param prefix 缓存 key 前缀，例如 "lingId:version@"
+     * @return 被驱逐的条目数
+     */
+    public int evictMethodCacheByPrefix(String prefix) {
+        return registry.evictMethodCacheByPrefix(prefix);
+    }
 }
