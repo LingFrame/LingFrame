@@ -159,6 +159,61 @@ createApp({
             localStorage.setItem('lingframe_gov_tab', key);
         };
 
+        // 调用治理预设方案（B3）
+        const GOVERNANCE_PRESETS = [
+            { key: 'conservative', name: '保守', timeoutMs: 1000, rateLimitPerSecond: 10, maxConcurrentThreads: 5, retryCount: 0, cpuBudgetMsPerMinute: 500, memoryBudgetMb: 128 },
+            { key: 'default',      name: '默认', timeoutMs: 3000, rateLimitPerSecond: 50, maxConcurrentThreads: 20, retryCount: 1, cpuBudgetMsPerMinute: 2000, memoryBudgetMb: 512 },
+            { key: 'aggressive',   name: '激进', timeoutMs: 10000, rateLimitPerSecond: 200, maxConcurrentThreads: 100, retryCount: 3, cpuBudgetMsPerMinute: 10000, memoryBudgetMb: 2048 }
+        ];
+        const selectedPreset = ref('');
+        const applyPreset = (presetKey) => {
+            if (!presetKey) return;
+            const preset = GOVERNANCE_PRESETS.find(p => p.key === presetKey);
+            if (!preset) return;
+            // 填充表单（fallbackValue 不覆盖，业务相关需手动填）
+            invocationForm.timeoutMs = preset.timeoutMs;
+            invocationForm.rateLimitPerSecond = preset.rateLimitPerSecond;
+            invocationForm.maxConcurrentThreads = preset.maxConcurrentThreads;
+            invocationForm.retryCount = preset.retryCount;
+            invocationForm.cpuBudgetMsPerMinute = preset.cpuBudgetMsPerMinute;
+            invocationForm.memoryBudgetMb = preset.memoryBudgetMb;
+        };
+
+        // 治理规则矩阵（B4）
+        const governanceMatrix = ref([]);
+        const matrixSortKey = ref('lingId');
+        const matrixSortAsc = ref(true);
+        const fetchGovernanceMatrix = async () => {
+            try {
+                const data = await api.get('/lings/governance/matrix');
+                governanceMatrix.value = data || [];
+            } catch (e) {
+                console.warn('Failed to fetch governance matrix:', e.message);
+            }
+        };
+        const sortedMatrix = () => {
+            const arr = [...governanceMatrix.value];
+            const key = matrixSortKey.value;
+            const asc = matrixSortAsc.value;
+            arr.sort((a, b) => {
+                const va = a[key];
+                const vb = b[key];
+                if (va === vb) return 0;
+                if (va === null || va === undefined) return 1;
+                if (vb === null || vb === undefined) return -1;
+                return asc ? (va < vb ? -1 : 1) : (va > vb ? -1 : 1);
+            });
+            return arr;
+        };
+        const sortMatrix = (key) => {
+            if (matrixSortKey.value === key) {
+                matrixSortAsc.value = !matrixSortAsc.value;
+            } else {
+                matrixSortKey.value = key;
+                matrixSortAsc.value = true;
+            }
+        };
+
         // 性能历史数据（折线图用，普通对象避免响应式开销）
         const chartTimeRange = ref('30m');
 
@@ -2865,11 +2920,13 @@ createApp({
             fetchLeakDetections();
             fetchThreadPoolStats();
             fetchGcDetails();
+            fetchGovernanceMatrix();
             lingDetailTimer = setInterval(() => {
                 fetchLingResourceMetrics();
                 fetchLeakDetections();
                 fetchThreadPoolStats();
                 fetchGcDetails();
+                fetchGovernanceMatrix();
             }, 5000);
 
             // 首次访问且已认证：自动触发新手引导
@@ -3147,6 +3204,8 @@ createApp({
             perfMetrics, jvmInfo, chartTimeRange, monitorCharts,
             lingResourceMetrics, leakDetections, threadPoolStats, gcDetails,
             governanceTabs, activeGovernanceTab, switchGovernanceTab,
+            GOVERNANCE_PRESETS, selectedPreset, applyPreset,
+            governanceMatrix, matrixSortKey, matrixSortAsc, fetchGovernanceMatrix, sortedMatrix, sortMatrix,
             lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,
             recentEvents,
             invocationForm,

@@ -404,6 +404,45 @@ public class LingController {
         return ApiResponse.ok(lingResourceMetricsCollector.getMetrics());
     }
 
+    /**
+     * 治理规则总览矩阵：遍历所有灵元的所有版本，聚合治理配置和资源权限。
+     * 用于快速发现配置漂移。
+     */
+    @GetMapping("/governance/matrix")
+    public ApiResponse<List<GovernanceMatrixRowDTO>> getGovernanceMatrix() {
+        try {
+            List<GovernanceMatrixRowDTO> rows = new ArrayList<>();
+            for (LingInfoDTO ling : dashboardService.getAllLingInfos()) {
+                if (ling == null || ling.getVersionDetails() == null) continue;
+                LingInfoDTO.InvocationGovernance gov = ling.getInvocationGovernance();
+                LingInfoDTO.ResourcePermissions perms = ling.getPermissions();
+                for (LingInfoDTO.VersionInfo v : ling.getVersionDetails()) {
+                    rows.add(GovernanceMatrixRowDTO.builder()
+                            .lingId(ling.getLingId())
+                            .version(v.getVersion())
+                            .isDefault(Boolean.TRUE.equals(v.getIsDefault()))
+                            .isCanary(Boolean.TRUE.equals(v.getIsCanary()))
+                            .trafficWeight(v.getTrafficWeight())
+                            .timeoutMs(gov != null ? gov.getTimeoutMs() : null)
+                            .rateLimitPerSecond(gov != null ? gov.getRateLimitPerSecond() : null)
+                            .maxConcurrentThreads(gov != null ? gov.getMaxConcurrentThreads() : null)
+                            .retryCount(gov != null ? gov.getRetryCount() : null)
+                            .cpuBudgetMsPerMinute(gov != null ? gov.getCpuBudgetMsPerMinute() : null)
+                            .memoryBudgetMb(gov != null ? gov.getMemoryBudgetMb() : null)
+                            .dbRead(perms != null ? perms.isDbRead() : null)
+                            .dbWrite(perms != null ? perms.isDbWrite() : null)
+                            .cacheRead(perms != null ? perms.isCacheRead() : null)
+                            .cacheWrite(perms != null ? perms.isCacheWrite() : null)
+                            .build());
+                }
+            }
+            return ApiResponse.ok(rows);
+        } catch (Exception e) {
+            log.error("Failed to get governance matrix", e);
+            return ApiResponse.error("获取治理规则矩阵失败: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/governance/all")
     public ApiResponse<Map<String, LingGovernanceMetricsViewDTO>> getAllLingGovernanceMetrics() {
         try {

@@ -1427,6 +1427,18 @@
                                         <p class="text-sm t-text-muted">{{ t('control.selectLing') }}</p>
                                     </div>
                                     <div v-else>
+                                        <!-- 预设方案下拉（B3） -->
+                                        <div class="flex items-center gap-3 mb-4 p-3 t-bg-faint border t-border rounded-lg">
+                                            <label class="text-xs font-bold t-text-sub whitespace-nowrap">
+                                                <i class="fa-solid fa-wand-magic-sparkles text-purple-400 mr-1"></i>预设方案
+                                            </label>
+                                            <select v-model="selectedPreset" @change="applyPreset(selectedPreset)"
+                                                    class="flex-1 t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
+                                                <option value="">— 选择预设 —</option>
+                                                <option v-for="p in GOVERNANCE_PRESETS" :key="p.key" :value="p.key">{{ p.name }}</option>
+                                            </select>
+                                            <span class="text-[10px] t-text-muted">选择后填充参数，可再微调</span>
+                                        </div>
                                         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                                             <div>
                                                 <label class="text-xs t-text-sub block mb-1">{{ t('control.timeoutMs') }}</label>
@@ -1470,6 +1482,71 @@
                                             {{ t('control.saveInvocation') }}
                                         </button>
                                     </div>
+                                </div>
+                            </div>
+
+                            <!-- 治理规则总览矩阵（B4） -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-table text-green-400"></i>
+                                        <h3 class="font-bold text-base t-text">治理规则总览</h3>
+                                        <span class="text-xs t-text-muted">点击列头排序，快速发现配置漂移</span>
+                                    </div>
+                                </div>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-xs">
+                                        <thead class="t-bg-faint">
+                                            <tr class="t-text-muted uppercase">
+                                                <th @click="sortMatrix('lingId')" class="text-left p-2 cursor-pointer hover:t-text">灵元ID {{ matrixSortKey==='lingId' ? (matrixSortAsc?'▲':'▼') : '' }}</th>
+                                                <th @click="sortMatrix('version')" class="text-left p-2 cursor-pointer hover:t-text">版本 {{ matrixSortKey==='version' ? (matrixSortAsc?'▲':'▼') : '' }}</th>
+                                                <th class="text-center p-2">角色</th>
+                                                <th @click="sortMatrix('trafficWeight')" class="text-right p-2 cursor-pointer hover:t-text">流量% {{ matrixSortKey==='trafficWeight' ? (matrixSortAsc?'▲':'▼') : '' }}</th>
+                                                <th @click="sortMatrix('timeoutMs')" class="text-right p-2 cursor-pointer hover:t-text">超时ms {{ matrixSortKey==='timeoutMs' ? (matrixSortAsc?'▲':'▼') : '' }}</th>
+                                                <th @click="sortMatrix('rateLimitPerSecond')" class="text-right p-2 cursor-pointer hover:t-text">限流/s {{ matrixSortKey==='rateLimitPerSecond' ? (matrixSortAsc?'▲':'▼') : '' }}</th>
+                                                <th @click="sortMatrix('maxConcurrentThreads')" class="text-right p-2 cursor-pointer hover:t-text">并发 {{ matrixSortKey==='maxConcurrentThreads' ? (matrixSortAsc?'▲':'▼') : '' }}</th>
+                                                <th @click="sortMatrix('retryCount')" class="text-right p-2 cursor-pointer hover:t-text">重试 {{ matrixSortKey==='retryCount' ? (matrixSortAsc?'▲':'▼') : '' }}</th>
+                                                <th @click="sortMatrix('cpuBudgetMsPerMinute')" class="text-right p-2 cursor-pointer hover:t-text">CPU预算 {{ matrixSortKey==='cpuBudgetMsPerMinute' ? (matrixSortAsc?'▲':'▼') : '' }}</th>
+                                                <th @click="sortMatrix('memoryBudgetMb')" class="text-right p-2 cursor-pointer hover:t-text">内存MB {{ matrixSortKey==='memoryBudgetMb' ? (matrixSortAsc?'▲':'▼') : '' }}</th>
+                                                <th class="text-center p-2">DB读</th>
+                                                <th class="text-center p-2">DB写</th>
+                                                <th class="text-center p-2">Cache读</th>
+                                                <th class="text-center p-2">Cache写</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-if="sortedMatrix().length === 0">
+                                                <td colspan="14" class="text-center t-text-muted p-4">暂无治理规则数据</td>
+                                            </tr>
+                                            <tr v-for="row in sortedMatrix()" :key="row.lingId + ':' + row.version" class="border-b t-border hover:t-bg-hover">
+                                                <td class="p-2 font-mono t-text">{{ row.lingId }}</td>
+                                                <td class="p-2 font-mono t-text-muted">{{ row.version }}</td>
+                                                <td class="p-2 text-center">
+                                                    <span v-if="row.isDefault" class="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded mr-1">默认</span>
+                                                    <span v-if="row.isCanary" class="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">金丝雀</span>
+                                                </td>
+                                                <td class="p-2 text-right font-mono">{{ row.trafficWeight }}</td>
+                                                <td class="p-2 text-right font-mono">{{ row.timeoutMs ?? '-' }}</td>
+                                                <td class="p-2 text-right font-mono">{{ row.rateLimitPerSecond ?? '-' }}</td>
+                                                <td class="p-2 text-right font-mono">{{ row.maxConcurrentThreads ?? '-' }}</td>
+                                                <td class="p-2 text-right font-mono">{{ row.retryCount ?? '-' }}</td>
+                                                <td class="p-2 text-right font-mono">{{ row.cpuBudgetMsPerMinute ?? '-' }}</td>
+                                                <td class="p-2 text-right font-mono">{{ row.memoryBudgetMb ?? '-' }}</td>
+                                                <td class="p-2 text-center">
+                                                    <i :class="row.dbRead !== false ? 'fa-solid fa-check text-green-400' : 'fa-solid fa-xmark text-red-400'"></i>
+                                                </td>
+                                                <td class="p-2 text-center">
+                                                    <i :class="row.dbWrite !== false ? 'fa-solid fa-check text-green-400' : 'fa-solid fa-xmark text-red-400'"></i>
+                                                </td>
+                                                <td class="p-2 text-center">
+                                                    <i :class="row.cacheRead !== false ? 'fa-solid fa-check text-green-400' : 'fa-solid fa-xmark text-red-400'"></i>
+                                                </td>
+                                                <td class="p-2 text-center">
+                                                    <i :class="row.cacheWrite !== false ? 'fa-solid fa-check text-green-400' : 'fa-solid fa-xmark text-red-400'"></i>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
