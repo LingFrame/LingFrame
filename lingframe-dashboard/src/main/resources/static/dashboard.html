@@ -902,47 +902,13 @@
                                         </div>
                                     </div>
                                     
-                                    <!-- 2. 资源隔离 -->
+                                    <!-- 2. 资源隔离（资源权限已迁移至治理中心） -->
                                     <div class="border-t t-border pt-5 space-y-4">
                                         <h4 class="text-sm font-bold t-text flex items-center gap-1.5">
                                             <i class="fa-solid fa-key text-cyan-400"></i>
                                             {{ t('control.permissions') }}
+                                            <span class="text-[10px] t-text-muted ml-2">资源权限已迁移至治理中心</span>
                                         </h4>
-                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                            <div class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
-                                                <span class="text-sm t-text-sub">{{ t('control.dbRead') }}</span>
-                                                <div @click="togglePerm('DB_READ')" :class="activeLing?.permissions?.dbRead !== false ? 'bg-green-500' : 't-bg-hover'"
-                                                     class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
-                                                    <div :class="activeLing?.permissions?.dbRead !== false ? 'translate-x-5' : 'translate-x-1'"
-                                                         class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
-                                                </div>
-                                            </div>
-                                            <div class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
-                                                <span class="text-sm t-text-sub">{{ t('control.dbWrite') }}</span>
-                                                <div @click="togglePerm('DB_WRITE')" :class="activeLing?.permissions?.dbWrite !== false ? 'bg-green-500' : 't-bg-hover'"
-                                                     class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
-                                                    <div :class="activeLing?.permissions?.dbWrite !== false ? 'translate-x-5' : 'translate-x-1'"
-                                                         class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
-                                                </div>
-                                            </div>
-                                            <div class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
-                                                <span class="text-sm t-text-sub">{{ t('control.cacheRead') }}</span>
-                                                <div @click="togglePerm('CACHE_READ')" :class="activeLing?.permissions?.cacheRead !== false ? 'bg-green-500' : 't-bg-hover'"
-                                                     class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
-                                                    <div :class="activeLing?.permissions?.cacheRead !== false ? 'translate-x-5' : 'translate-x-1'"
-                                                         class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
-                                                </div>
-                                            </div>
-                                            <div class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
-                                                <span class="text-sm t-text-sub">{{ t('control.cacheWrite') }}</span>
-                                                <div @click="togglePerm('CACHE_WRITE')" :class="activeLing?.permissions?.cacheWrite !== false ? 'bg-green-500' : 't-bg-hover'"
-                                                     class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
-                                                    <div :class="activeLing?.permissions?.cacheWrite !== false ? 'translate-x-5' : 'translate-x-1'"
-                                                         class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
                                             <div class="p-3 t-bg-faint border t-border rounded-lg">
                                                 <div class="flex items-center justify-between">
@@ -971,56 +937,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    
-                                    <!-- 3. 调用治理 -->
-                                    <div class="border-t t-border pt-5 space-y-4">
-                                        <h4 class="text-sm font-bold t-text flex items-center gap-1.5">
-                                            <i class="fa-solid fa-sliders text-amber-400"></i>
-                                            {{ t('control.invocationGovernance') }}
-                                        </h4>
-                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                            <div>
-                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.timeoutMs') }}</label>
-                                                <input v-model.number="invocationForm.timeoutMs" type="number" min="0"
-                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
-                                            </div>
-                                            <div>
-                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.rateLimitPerSecond') }}</label>
-                                                <input v-model.number="invocationForm.rateLimitPerSecond" type="number" min="0"
-                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
-                                            </div>
-                                            <div>
-                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.maxConcurrentThreads') }}</label>
-                                                <input v-model.number="invocationForm.maxConcurrentThreads" type="number" min="0"
-                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
-                                            </div>
-                                            <div>
-                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.retryCount') }}</label>
-                                                <input v-model.number="invocationForm.retryCount" type="number" min="0"
-                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
-                                            </div>
-                                            <div class="col-span-2">
-                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.fallbackValue') }}</label>
-                                                <input v-model="invocationForm.fallbackValue" type="text"
-                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
-                                            </div>
-                                            <div>
-                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.cpuBudgetMsPerMinute') }}</label>
-                                                <input v-model.number="invocationForm.cpuBudgetMsPerMinute" type="number" min="0"
-                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
-                                            </div>
-                                            <div>
-                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.memoryBudgetMb') }}</label>
-                                                <input v-model.number="invocationForm.memoryBudgetMb" type="number" min="0"
-                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
-                                            </div>
-                                        </div>
-                                        <button data-testid="save-invocation-governance" @click="saveInvocationGovernance" :disabled="loading.invocation || !activeLing"
-                                                class="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm">
-                                            <i class="fa-solid fa-floppy-disk mr-1.5"></i>
-                                            {{ t('control.saveInvocation') }}
-                                        </button>
-                                    </div>
+                                    <!-- 调用治理已迁移至治理中心 -->
                                     
                                 </div>
                             </div>
@@ -1432,7 +1349,149 @@
                 </div>
 
                 <!-- ==================== 治理中心视图 ==================== -->
-                <div v-if="activeNav === 'governance'" class="content-grid grid grid-cols-12 gap-6">
+                <div v-if="activeNav === 'governance'">
+                    <!-- Tab 导航栏 -->
+                    <div class="flex items-center gap-1 mb-6 border-b t-border">
+                        <button v-for="tab in governanceTabs" :key="tab.key"
+                                @click="switchGovernanceTab(tab.key)"
+                                :class="activeGovernanceTab === tab.key ? 'border-blue-500 text-blue-400' : 'border-transparent t-text-muted hover:t-text'"
+                                class="px-4 py-2 text-sm font-bold border-b-2 transition-all">
+                            {{ tab.label }}
+                        </button>
+                    </div>
+
+                    <!-- Tab 1: 治理配置（资源权限 + 调用治理） -->
+                    <div v-show="activeGovernanceTab === 'config'" class="grid grid-cols-12 gap-6">
+                        <div class="col-span-12 lg:col-span-7 space-y-6">
+                            <!-- 资源权限（从灵元中心迁移） -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-key text-cyan-400"></i>
+                                        <h3 class="font-bold text-base t-text">{{ t('control.permissions') }}</h3>
+                                    </div>
+                                </div>
+                                <div class="p-5">
+                                    <div v-if="!activeLing" class="text-center py-6">
+                                        <i class="fa-solid fa-hand-pointer text-2xl t-text-muted mb-2"></i>
+                                        <p class="text-sm t-text-muted">{{ t('control.selectLing') }}</p>
+                                    </div>
+                                    <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <div class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
+                                            <span class="text-sm t-text-sub">{{ t('control.dbRead') }}</span>
+                                            <div @click="togglePerm('DB_READ')" :class="activeLing?.permissions?.dbRead !== false ? 'bg-green-500' : 't-bg-hover'"
+                                                 class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                                                <div :class="activeLing?.permissions?.dbRead !== false ? 'translate-x-5' : 'translate-x-1'"
+                                                     class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
+                                            <span class="text-sm t-text-sub">{{ t('control.dbWrite') }}</span>
+                                            <div @click="togglePerm('DB_WRITE')" :class="activeLing?.permissions?.dbWrite !== false ? 'bg-green-500' : 't-bg-hover'"
+                                                 class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                                                <div :class="activeLing?.permissions?.dbWrite !== false ? 'translate-x-5' : 'translate-x-1'"
+                                                     class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
+                                            <span class="text-sm t-text-sub">{{ t('control.cacheRead') }}</span>
+                                            <div @click="togglePerm('CACHE_READ')" :class="activeLing?.permissions?.cacheRead !== false ? 'bg-green-500' : 't-bg-hover'"
+                                                 class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                                                <div :class="activeLing?.permissions?.cacheRead !== false ? 'translate-x-5' : 'translate-x-1'"
+                                                     class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
+                                            <span class="text-sm t-text-sub">{{ t('control.cacheWrite') }}</span>
+                                            <div @click="togglePerm('CACHE_WRITE')" :class="activeLing?.permissions?.cacheWrite !== false ? 'bg-green-500' : 't-bg-hover'"
+                                                 class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                                                <div :class="activeLing?.permissions?.cacheWrite !== false ? 'translate-x-5' : 'translate-x-1'"
+                                                     class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 调用治理（从灵元中心迁移） -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-sliders text-amber-400"></i>
+                                        <h3 class="font-bold text-base t-text">{{ t('control.invocationGovernance') }}</h3>
+                                    </div>
+                                </div>
+                                <div class="p-5">
+                                    <div v-if="!activeLing" class="text-center py-6">
+                                        <i class="fa-solid fa-hand-pointer text-2xl t-text-muted mb-2"></i>
+                                        <p class="text-sm t-text-muted">{{ t('control.selectLing') }}</p>
+                                    </div>
+                                    <div v-else>
+                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            <div>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.timeoutMs') }}</label>
+                                                <input v-model.number="invocationForm.timeoutMs" type="number" min="0"
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
+                                            </div>
+                                            <div>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.rateLimitPerSecond') }}</label>
+                                                <input v-model.number="invocationForm.rateLimitPerSecond" type="number" min="0"
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
+                                            </div>
+                                            <div>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.maxConcurrentThreads') }}</label>
+                                                <input v-model.number="invocationForm.maxConcurrentThreads" type="number" min="0"
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
+                                            </div>
+                                            <div>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.retryCount') }}</label>
+                                                <input v-model.number="invocationForm.retryCount" type="number" min="0"
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
+                                            </div>
+                                            <div class="col-span-2">
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.fallbackValue') }}</label>
+                                                <input v-model="invocationForm.fallbackValue" type="text"
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
+                                            </div>
+                                            <div>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.cpuBudgetMsPerMinute') }}</label>
+                                                <input v-model.number="invocationForm.cpuBudgetMsPerMinute" type="number" min="0"
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
+                                            </div>
+                                            <div>
+                                                <label class="text-xs t-text-sub block mb-1">{{ t('control.memoryBudgetMb') }}</label>
+                                                <input v-model.number="invocationForm.memoryBudgetMb" type="number" min="0"
+                                                       class="w-full t-bg-card border t-border rounded-lg px-3 py-1.5 text-sm t-text focus:outline-none focus:border-blue-500">
+                                            </div>
+                                        </div>
+                                        <button data-testid="save-invocation-governance" @click="saveInvocationGovernance" :disabled="loading.invocation || !activeLing"
+                                                class="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm mt-4">
+                                            <i class="fa-solid fa-floppy-disk mr-1.5"></i>
+                                            {{ t('control.saveInvocation') }}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-span-12 lg:col-span-5">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-circle-info text-blue-400"></i>
+                                        <h3 class="font-bold text-base t-text">治理配置说明</h3>
+                                    </div>
+                                </div>
+                                <div class="p-5 text-sm t-text-sub space-y-3">
+                                    <p><i class="fa-solid fa-key text-cyan-400 mr-1"></i> <b>资源权限</b>：控制灵元对 DB 和 Cache 的读写访问，关闭后灵元内调用将被拒绝。</p>
+                                    <p><i class="fa-solid fa-sliders text-amber-400 mr-1"></i> <b>调用治理</b>：配置超时、限流、并发、重试、预算等参数，对灵元所有调用生效。</p>
+                                    <p class="t-text-muted text-xs pt-2 border-t t-border">预设方案与治理规则总览将在后续版本接入。</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 2/3/4: 现有流量/健康/就绪内容 -->
+                    <div v-show="activeGovernanceTab !== 'config'" class="content-grid grid grid-cols-12 gap-6">
 
                     <!-- 左列：流量控制 + 灵元管理 -->
                     <div class="col-span-12 lg:col-span-7 space-y-6">
@@ -1918,6 +1977,7 @@
                             </div>
                         </div>
                     </div>
+                    </div><!-- end Tab 2/3/4 container -->
                 </div>
 
                 <!-- ==================== 服务验证视图 ==================== -->

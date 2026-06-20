@@ -146,6 +146,19 @@ createApp({
         // GC 详情（按收集器分离）
         const gcDetails = ref([]);
 
+        // 治理中心 Tab 状态（记忆到 localStorage）
+        const governanceTabs = [
+            { key: 'config', label: '治理配置' },
+            { key: 'traffic', label: '流量控制' },
+            { key: 'health', label: '健康观测' },
+            { key: 'readiness', label: '运行时就绪' }
+        ];
+        const activeGovernanceTab = ref(localStorage.getItem('lingframe_gov_tab') || 'config');
+        const switchGovernanceTab = (key) => {
+            activeGovernanceTab.value = key;
+            localStorage.setItem('lingframe_gov_tab', key);
+        };
+
         // 性能历史数据（折线图用，普通对象避免响应式开销）
         const chartTimeRange = ref('30m');
 
@@ -3133,6 +3146,7 @@ createApp({
 
             perfMetrics, jvmInfo, chartTimeRange, monitorCharts,
             lingResourceMetrics, leakDetections, threadPoolStats, gcDetails,
+            governanceTabs, activeGovernanceTab, switchGovernanceTab,
             lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,
             recentEvents,
             invocationForm,
