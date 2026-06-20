@@ -10,6 +10,7 @@ import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
 import com.lingframe.core.metrics.JVMMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
+import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
@@ -45,6 +46,7 @@ public class LingController {
     private final GovernanceMetricsCollector governanceMetricsCollector;
     private final RuntimeDiagnosticsService runtimeDiagnosticsService;
     private final LeakDetectionCacheService leakDetectionCacheService;
+    private final ThreadPoolStatsProvider threadPoolStatsProvider;
     private final EventBus eventBus;
     private final boolean installEnabled;
 
@@ -54,6 +56,7 @@ public class LingController {
             GovernanceMetricsCollector governanceMetricsCollector,
             RuntimeDiagnosticsService runtimeDiagnosticsService,
             LeakDetectionCacheService leakDetectionCacheService,
+            ThreadPoolStatsProvider threadPoolStatsProvider,
             EventBus eventBus,
             @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
         this.lingFrameConfig = lingFrameConfig;
@@ -62,6 +65,7 @@ public class LingController {
         this.governanceMetricsCollector = governanceMetricsCollector;
         this.runtimeDiagnosticsService = runtimeDiagnosticsService;
         this.leakDetectionCacheService = leakDetectionCacheService;
+        this.threadPoolStatsProvider = threadPoolStatsProvider;
         this.eventBus = eventBus;
         this.installEnabled = installEnabled;
     }
@@ -368,6 +372,24 @@ public class LingController {
     @GetMapping("/metrics/leak-detections")
     public ApiResponse<List<LeakDetectionRecordDTO>> getLeakDetections() {
         return ApiResponse.ok(leakDetectionCacheService.getRecords());
+    }
+
+    /**
+     * 获取各灵元隔离线程池状态。
+     */
+    @GetMapping("/metrics/thread-pools")
+    public ApiResponse<List<ThreadPoolStatsDTO>> getThreadPoolStats() {
+        List<ThreadPoolStatsDTO> result = threadPoolStatsProvider.getThreadPoolStats().stream()
+                .map(s -> ThreadPoolStatsDTO.builder()
+                        .lingId(s.getLingId())
+                        .activeCount(s.getActiveCount())
+                        .poolSize(s.getPoolSize())
+                        .maxThreads(s.getMaxThreads())
+                        .queueSize(s.getQueueSize())
+                        .completedTaskCount(s.getCompletedTaskCount())
+                        .build())
+                .collect(Collectors.toList());
+        return ApiResponse.ok(result);
     }
 
     @GetMapping("/governance/all")

@@ -10,6 +10,7 @@ import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.LingServiceInvoker;
+import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.core.spi.TrafficRouter;
 
 import java.util.ArrayList;
@@ -29,7 +30,7 @@ import java.util.ServiceLoader;
  * 哪个阶段能读什么、能写什么、依赖谁先完成，必须在启动时 fail-fast 校验出来，
  * 不能等线上流量进来再靠异常堆栈反推是哪个过滤器越界了。
  */
-public class FilterRegistry {
+public class FilterRegistry implements ThreadPoolStatsProvider {
 
     private final List<LingInvocationFilter> builtinFilters = new ArrayList<>();
     private final List<LingInvocationFilter> spiFilters = new ArrayList<>();
@@ -258,6 +259,14 @@ public class FilterRegistry {
 
     ThreadIsolationGovernanceFilter getIsolationFilter() {
         return isolationFilter;
+    }
+
+    @Override
+    public List<ThreadPoolStats> getThreadPoolStats() {
+        if (isolationFilter == null) {
+            return Collections.emptyList();
+        }
+        return isolationFilter.getThreadPoolStats();
     }
 
     public int evictMethodCache(String lingId) {

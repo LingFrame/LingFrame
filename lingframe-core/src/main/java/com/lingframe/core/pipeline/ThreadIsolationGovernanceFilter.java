@@ -7,12 +7,16 @@ import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
+import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.core.util.NamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 
@@ -23,7 +27,7 @@ import java.util.concurrent.*;
  * ⚠️ 线程池线程默认挂 CORE_CLASSLOADER，单次调用再临时切到目标灵元的 ClassLoader。
  * 如果让线程池常驻线程永久挂住灵元 ClassLoader，灵元卸载后最容易出现“功能没问题，但就是回收不掉”的隐性泄漏。
  */
-public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
+public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, ThreadPoolStatsProvider {
 
     private static final Logger log = LoggerFactory.getLogger(ThreadIsolationGovernanceFilter.class);
     private static final ClassLoader CORE_CLASSLOADER = ThreadIsolationGovernanceFilter.class.getClassLoader();
@@ -286,6 +290,29 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
     private long usedHeapBytes() {
         Runtime runtime = Runtime.getRuntime();
         return runtime.totalMemory() - runtime.freeMemory();
+    }
+
+    @Override
+    public List<ThreadPoolStats> getThreadPoolStats() {
+        if (executors.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<ThreadPoolStats> result = new ArrayList<>(executors.size());
+        for (Map.Entry<String, ExecutorHolder> entry : executors.entrySet()) {
+            ExecutorHolder holder = entry.getValue();
+            ThreadPoolExecutor pool = holder.executor;
+            if (pool == null || pool.isShutdown()) {
+                continue;
+            }
+            result.add(new ThreadPoolStats(
+                    entry.getKey(),
+                    pool.getActiveCount(),
+                    pool.getPoolSize(),
+                    holder.maxThreads,
+                    pool.getQueue() != null ? pool.getQueue().size() : 0,
+                    pool.getCompletedTaskCount()));
+        }
+        return result;
     }
 
     private static final class ExecutorHolder {
