@@ -12,6 +12,7 @@ import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.DashboardService;
+import com.lingframe.dashboard.service.LeakDetectionCacheService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +44,7 @@ public class LingController {
     private final MetricsCollector metricsCollector;
     private final GovernanceMetricsCollector governanceMetricsCollector;
     private final RuntimeDiagnosticsService runtimeDiagnosticsService;
+    private final LeakDetectionCacheService leakDetectionCacheService;
     private final EventBus eventBus;
     private final boolean installEnabled;
 
@@ -51,6 +53,7 @@ public class LingController {
             MetricsCollector metricsCollector,
             GovernanceMetricsCollector governanceMetricsCollector,
             RuntimeDiagnosticsService runtimeDiagnosticsService,
+            LeakDetectionCacheService leakDetectionCacheService,
             EventBus eventBus,
             @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
         this.lingFrameConfig = lingFrameConfig;
@@ -58,6 +61,7 @@ public class LingController {
         this.metricsCollector = metricsCollector;
         this.governanceMetricsCollector = governanceMetricsCollector;
         this.runtimeDiagnosticsService = runtimeDiagnosticsService;
+        this.leakDetectionCacheService = leakDetectionCacheService;
         this.eventBus = eventBus;
         this.installEnabled = installEnabled;
     }
@@ -356,6 +360,14 @@ public class LingController {
             log.error("Failed to get runtime governance readiness", e);
             return ApiResponse.error("获取运行时治理就绪度失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 获取泄漏检测记录，未回收的置顶。
+     */
+    @GetMapping("/metrics/leak-detections")
+    public ApiResponse<List<LeakDetectionRecordDTO>> getLeakDetections() {
+        return ApiResponse.ok(leakDetectionCacheService.getRecords());
     }
 
     @GetMapping("/governance/all")
