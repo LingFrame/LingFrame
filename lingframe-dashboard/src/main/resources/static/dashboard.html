@@ -1608,6 +1608,29 @@
                                 </div>
                             </div>
 
+                            <!-- 金丝雀决策建议（B5） -->
+                            <div v-if="canaryDecision && canCanary && canOperate"
+                                 :class="{
+                                    'bg-red-500/10 border-red-500/30 text-red-400': canaryDecision.recommendation === 'ROLLBACK',
+                                    'bg-green-500/10 border-green-500/30 text-green-400': canaryDecision.recommendation === 'FULL_RELEASE',
+                                    'bg-blue-500/10 border-blue-500/30 text-blue-400': canaryDecision.recommendation === 'OBSERVE'
+                                 }"
+                                 class="border-b px-5 py-3 flex items-center gap-3">
+                                <i :class="{
+                                    'fa-solid fa-circle-exclamation': canaryDecision.recommendation === 'ROLLBACK',
+                                    'fa-solid fa-circle-check': canaryDecision.recommendation === 'FULL_RELEASE',
+                                    'fa-solid fa-circle-info': canaryDecision.recommendation === 'OBSERVE'
+                                }"></i>
+                                <div class="flex-1">
+                                    <span class="font-bold text-sm">{{ canaryDecision.recommendation }}</span>
+                                    <span class="text-xs ml-2 opacity-80">{{ canaryDecision.reason }}</span>
+                                    <span v-if="canaryDecision.sufficientData" class="text-xs ml-2 opacity-60">
+                                        稳定版错误率 {{ (canaryDecision.stableErrorRate * 100).toFixed(2) }}% / 金丝雀 {{ (canaryDecision.canaryErrorRate * 100).toFixed(2) }}%；
+                                        稳定版 p99 {{ canaryDecision.stableP99 }}ms / 金丝雀 {{ canaryDecision.canaryP99 }}ms
+                                    </span>
+                                </div>
+                            </div>
+
                             <div class="p-5">
                                 <!-- 灰度滑块 -->
                                 <div class="mb-6">

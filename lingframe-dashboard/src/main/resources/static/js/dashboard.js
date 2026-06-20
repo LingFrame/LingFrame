@@ -379,6 +379,21 @@ createApp({
         });
         const canCanary = computed(() => (activeLing.value?.versionDetails?.length || 0) >= 2);
         const canOperate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
+
+        // 金丝雀决策辅助（B5）
+        const canaryDecision = ref(null);
+        const fetchCanaryDecision = async () => {
+            if (!activeLing.value || !canCanary.value) {
+                canaryDecision.value = null;
+                return;
+            }
+            try {
+                const data = await api.get(`/lings/${activeLing.value.lingId}/canary-decision`);
+                canaryDecision.value = data;
+            } catch (e) {
+                console.warn('Failed to fetch canary decision:', e.message);
+            }
+        };
         const canActivate = computed(() => activeLing.value?.status === 'INACTIVE');
         const canDeactivate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
         const canRecover = computed(() => activeLing.value?.status === 'DEGRADED');
@@ -2921,12 +2936,14 @@ createApp({
             fetchThreadPoolStats();
             fetchGcDetails();
             fetchGovernanceMatrix();
+            fetchCanaryDecision();
             lingDetailTimer = setInterval(() => {
                 fetchLingResourceMetrics();
                 fetchLeakDetections();
                 fetchThreadPoolStats();
                 fetchGcDetails();
                 fetchGovernanceMatrix();
+                fetchCanaryDecision();
             }, 5000);
 
             // 首次访问且已认证：自动触发新手引导
@@ -3206,6 +3223,7 @@ createApp({
             governanceTabs, activeGovernanceTab, switchGovernanceTab,
             GOVERNANCE_PRESETS, selectedPreset, applyPreset,
             governanceMatrix, matrixSortKey, matrixSortAsc, fetchGovernanceMatrix, sortedMatrix, sortMatrix,
+            canaryDecision, fetchCanaryDecision,
             lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,
             recentEvents,
             invocationForm,

@@ -16,6 +16,7 @@ import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.dto.ResourceCleanupCapabilityDTO;
 import com.lingframe.dashboard.dto.RuntimeGovernanceReadinessDTO;
 import com.lingframe.dashboard.service.DashboardService;
+import com.lingframe.dashboard.service.CanaryDecisionService;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
 import com.lingframe.dashboard.service.LingResourceMetricsCollector;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
@@ -47,6 +48,7 @@ class LingControllerTest {
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
                 runtimeDiagnosticsService, mock(LeakDetectionCacheService.class),
                 mock(LingResourceMetricsCollector.class), mock(ThreadPoolStatsProvider.class),
+                mock(CanaryDecisionService.class),
                 mock(EventBus.class), false);
 
         LingUninstallResultDTO dto = LingUninstallResultDTO.builder()
@@ -81,6 +83,7 @@ class LingControllerTest {
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
                 runtimeDiagnosticsService, mock(LeakDetectionCacheService.class),
                 mock(LingResourceMetricsCollector.class), mock(ThreadPoolStatsProvider.class),
+                mock(CanaryDecisionService.class),
                 mock(EventBus.class), false);
 
         MetricsSnapshot summary = new MetricsSnapshot();
@@ -128,6 +131,7 @@ class LingControllerTest {
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
                 runtimeDiagnosticsService, mock(LeakDetectionCacheService.class),
                 mock(LingResourceMetricsCollector.class), mock(ThreadPoolStatsProvider.class),
+                mock(CanaryDecisionService.class),
                 mock(EventBus.class), false);
 
         GovernanceMetricsSnapshot summary = new GovernanceMetricsSnapshot();
@@ -172,6 +176,7 @@ class LingControllerTest {
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
                 runtimeDiagnosticsService, mock(LeakDetectionCacheService.class),
                 mock(LingResourceMetricsCollector.class), mock(ThreadPoolStatsProvider.class),
+                mock(CanaryDecisionService.class),
                 mock(EventBus.class), false);
 
         ResourceCleanupCapabilityDTO dto = ResourceCleanupCapabilityDTO.builder()
@@ -204,6 +209,7 @@ class LingControllerTest {
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
                 runtimeDiagnosticsService, mock(LeakDetectionCacheService.class),
                 mock(LingResourceMetricsCollector.class), mock(ThreadPoolStatsProvider.class),
+                mock(CanaryDecisionService.class),
                 mock(EventBus.class), false);
 
         RuntimeGovernanceReadinessDTO dto = RuntimeGovernanceReadinessDTO.builder()

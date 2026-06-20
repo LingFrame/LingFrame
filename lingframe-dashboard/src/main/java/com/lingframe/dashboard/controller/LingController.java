@@ -13,6 +13,7 @@ import com.lingframe.core.metrics.MetricsSnapshot;
 import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.DashboardService;
+import com.lingframe.dashboard.service.CanaryDecisionService;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
 import com.lingframe.dashboard.service.LingResourceMetricsCollector;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
@@ -49,6 +50,7 @@ public class LingController {
     private final LeakDetectionCacheService leakDetectionCacheService;
     private final LingResourceMetricsCollector lingResourceMetricsCollector;
     private final ThreadPoolStatsProvider threadPoolStatsProvider;
+    private final CanaryDecisionService canaryDecisionService;
     private final EventBus eventBus;
     private final boolean installEnabled;
 
@@ -60,6 +62,7 @@ public class LingController {
             LeakDetectionCacheService leakDetectionCacheService,
             LingResourceMetricsCollector lingResourceMetricsCollector,
             ThreadPoolStatsProvider threadPoolStatsProvider,
+            CanaryDecisionService canaryDecisionService,
             EventBus eventBus,
             @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
         this.lingFrameConfig = lingFrameConfig;
@@ -70,6 +73,7 @@ public class LingController {
         this.leakDetectionCacheService = leakDetectionCacheService;
         this.lingResourceMetricsCollector = lingResourceMetricsCollector;
         this.threadPoolStatsProvider = threadPoolStatsProvider;
+        this.canaryDecisionService = canaryDecisionService;
         this.eventBus = eventBus;
         this.installEnabled = installEnabled;
     }
@@ -440,6 +444,19 @@ public class LingController {
         } catch (Exception e) {
             log.error("Failed to get governance matrix", e);
             return ApiResponse.error("获取治理规则矩阵失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 金丝雀发布决策辅助：基于稳定版与金丝雀版健康指标对比给出建议。
+     */
+    @GetMapping("/{lingId}/canary-decision")
+    public ApiResponse<CanaryDecisionDTO> getCanaryDecision(@PathVariable String lingId) {
+        try {
+            return ApiResponse.ok(canaryDecisionService.decide(lingId));
+        } catch (Exception e) {
+            log.error("Failed to get canary decision: {}", lingId, e);
+            return ApiResponse.error("获取金丝雀决策失败: " + e.getMessage());
         }
     }
 
