@@ -1,6 +1,6 @@
-package com.lingframe.example.user.canary.service;
+package com.lingframe.example.user.service;
 
-import com.lingframe.example.user.canary.dto.UserDTO;
+import com.lingframe.example.user.dto.UserDTO;
 
 import java.util.List;
 import java.util.Optional;

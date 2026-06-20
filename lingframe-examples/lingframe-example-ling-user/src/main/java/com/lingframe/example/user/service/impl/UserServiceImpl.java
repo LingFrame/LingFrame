@@ -1,11 +1,11 @@
-package com.lingframe.example.user.canary.service.impl;
+package com.lingframe.example.user.service.impl;
 
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.security.Capabilities;
-import com.lingframe.example.user.canary.dto.UserDTO;
-import com.lingframe.example.user.canary.service.UserService;
+import com.lingframe.example.user.dto.UserDTO;
+import com.lingframe.example.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;

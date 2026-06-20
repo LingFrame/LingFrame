@@ -59,6 +59,8 @@ public class JVMMetrics {
     
     private long gcCount;
     private long gcTimeMs;
+    // 按 GC 收集器分离的统计详情
+    private List<GcDetail> gcDetails;
     
     private long totalMemoryMB;
     private long freeMemoryMB;
@@ -205,18 +207,21 @@ public class JVMMetrics {
     private static void collectGCMetrics(JVMMetrics metrics) {
         long count = 0;
         long time = 0;
+        List<GcDetail> details = new java.util.ArrayList<>();
 
         for (GarbageCollectorMXBean gc : ManagementFactory.getGarbageCollectorMXBeans()) {
-            if (gc.getCollectionCount() >= 0) {
-                count += gc.getCollectionCount();
-            }
-            if (gc.getCollectionTime() >= 0) {
-                time += gc.getCollectionTime();
-            }
+            long gcCount = gc.getCollectionCount() >= 0 ? gc.getCollectionCount() : 0;
+            long gcTime = gc.getCollectionTime() >= 0 ? gc.getCollectionTime() : 0;
+
+            count += gcCount;
+            time += gcTime;
+
+            details.add(new GcDetail(gc.getName(), gcCount, gcTime));
         }
 
         metrics.setGcCount(count);
         metrics.setGcTimeMs(time);
+        metrics.setGcDetails(details);
     }
 
     // ================== CPU ==================

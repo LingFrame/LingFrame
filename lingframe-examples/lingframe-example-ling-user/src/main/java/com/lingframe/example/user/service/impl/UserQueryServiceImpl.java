@@ -1,4 +1,4 @@
-package com.lingframe.example.user.canary.service.impl;
+package com.lingframe.example.user.service.impl;
 
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.example.order.api.UserQueryService;

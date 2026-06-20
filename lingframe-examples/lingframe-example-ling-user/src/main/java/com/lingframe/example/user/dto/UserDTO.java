@@ -1,4 +1,4 @@
-package com.lingframe.example.user.canary.dto;
+package com.lingframe.example.user.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

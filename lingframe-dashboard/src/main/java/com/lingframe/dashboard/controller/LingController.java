@@ -282,6 +282,7 @@ public class LingController {
             
             metrics.put("gcCount", jvmMetrics.getGcCount());
             metrics.put("gcTimeMs", jvmMetrics.getGcTimeMs());
+            metrics.put("gcDetails", jvmMetrics.getGcDetails());
             
             metrics.put("availableProcessors", jvmMetrics.getAvailableProcessors());
             metrics.put("systemLoadAverage", jvmMetrics.getSystemLoadAverage());
