@@ -137,6 +137,15 @@ createApp({
             pid: ''
         });
 
+        // 灵元资源下钻指标
+        const lingResourceMetrics = ref([]);
+        // 泄漏检测记录
+        const leakDetections = ref([]);
+        // 线程池状态
+        const threadPoolStats = ref([]);
+        // GC 详情（按收集器分离）
+        const gcDetails = ref([]);
+
         // 性能历史数据（折线图用，普通对象避免响应式开销）
         const chartTimeRange = ref('30m');
 
@@ -252,6 +261,7 @@ createApp({
         let stressTimer = null;
         let perfTimer = null;
         let summaryTimer = null;
+        let lingDetailTimer = null;
         let logIdCounter = 0;
         let toastIdCounter = 0;
         let pendingUninstallToastResult = null;
@@ -2371,6 +2381,56 @@ createApp({
             }
         };
 
+        // 获取灵元资源下钻指标
+        const fetchLingResourceMetrics = async () => {
+            try {
+                const data = await api.get('/lings/metrics/per-ling');
+                lingResourceMetrics.value = data || [];
+            } catch (e) {
+                console.warn('Failed to fetch per-ling metrics:', e.message);
+            }
+        };
+
+        // 获取泄漏检测记录
+        const fetchLeakDetections = async () => {
+            try {
+                const data = await api.get('/lings/metrics/leak-detections');
+                leakDetections.value = data || [];
+            } catch (e) {
+                console.warn('Failed to fetch leak detections:', e.message);
+            }
+        };
+
+        // 获取线程池状态
+        const fetchThreadPoolStats = async () => {
+            try {
+                const data = await api.get('/lings/metrics/thread-pools');
+                threadPoolStats.value = data || [];
+            } catch (e) {
+                console.warn('Failed to fetch thread pool stats:', e.message);
+            }
+        };
+
+        // 获取 GC 详情（从 metrics 接口的 gcDetails 字段）
+        const fetchGcDetails = async () => {
+            try {
+                const data = await api.get('/lings/metrics');
+                gcDetails.value = (data && data.gcDetails) || [];
+            } catch (e) {
+                console.warn('Failed to fetch GC details:', e.message);
+            }
+        };
+
+        // 格式化字节为可读单位
+        const formatBytes = (bytes) => {
+            if (!bytes || bytes < 0) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let i = 0;
+            let v = bytes;
+            while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+            return v.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+        };
+
         const fetchDashboardSummary = async () => {
             try {
                 const data = await api.get('/lings/dashboard-summary');
@@ -2787,6 +2847,18 @@ createApp({
             fetchDashboardSummary();
             summaryTimer = setInterval(fetchDashboardSummary, 5000);
 
+            // 灵元资源下钻、泄漏检测、线程池、GC详情：5秒轮询
+            fetchLingResourceMetrics();
+            fetchLeakDetections();
+            fetchThreadPoolStats();
+            fetchGcDetails();
+            lingDetailTimer = setInterval(() => {
+                fetchLingResourceMetrics();
+                fetchLeakDetections();
+                fetchThreadPoolStats();
+                fetchGcDetails();
+            }, 5000);
+
             // 首次访问且已认证：自动触发新手引导
             if (shouldShowTour()) {
                 nextTick(() => startTour());
@@ -3042,6 +3114,7 @@ createApp({
             if (stressTimer) clearInterval(stressTimer);
             if (perfTimer) clearInterval(perfTimer);
             if (summaryTimer) clearInterval(summaryTimer);
+            if (lingDetailTimer) clearInterval(lingDetailTimer);
             if (sseRetryTimer) clearTimeout(sseRetryTimer);
             if (eventSource) eventSource.close();
             if (starMapAnimFrame) cancelAnimationFrame(starMapAnimFrame);
@@ -3059,6 +3132,7 @@ createApp({
             consoleHeight, autoScrollLogs, startConsoleResize,
 
             perfMetrics, jvmInfo, chartTimeRange, monitorCharts,
+            lingResourceMetrics, leakDetections, threadPoolStats, gcDetails,
             lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,
             recentEvents,
             invocationForm,
@@ -3083,6 +3157,7 @@ createApp({
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
             openTimelineModal, closeTimelineModal, loadTimelineData,
             doUpdateStatus, fetchPerformanceMetrics, fetchDashboardSummary,
+            fetchLingResourceMetrics, fetchLeakDetections, fetchThreadPoolStats, fetchGcDetails, formatBytes,
             uninstallResultModal, closeUninstallResultModal, getUninstallRiskLabel, getUninstallRiskClass, getUninstallTriggerLabel,
 
             currentTheme, toggleTheme, packages, fetchPackages, deployPackage, deletePackageFile, updateStatusForLing, updateCanaryWeight, getLingCanaryWeight,

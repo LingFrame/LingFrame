@@ -1288,6 +1288,147 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- 灵元资源下钻 -->
+                    <div class="card mb-6">
+                        <div class="card-header">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-layer-group text-cyan-400"></i>
+                                <h3 class="font-bold text-base t-text">灵元资源占用</h3>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="t-text-muted text-xs uppercase border-b t-border">
+                                        <th class="text-left p-2">灵元ID</th>
+                                        <th class="text-left p-2">版本</th>
+                                        <th class="text-right p-2">类数</th>
+                                        <th class="text-right p-2">线程数</th>
+                                        <th class="text-right p-2">CPU时间(ms)</th>
+                                        <th class="text-right p-2">堆增量</th>
+                                        <th class="text-right p-2" title="基于类数估算，非精确值">Metaspace(近似)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-if="lingResourceMetrics.length === 0">
+                                        <td colspan="7" class="text-center t-text-muted p-4">暂无灵元资源数据</td>
+                                    </tr>
+                                    <tr v-for="m in lingResourceMetrics" :key="m.lingId + ':' + m.version" class="border-b t-border hover:t-bg-hover">
+                                        <td class="p-2 font-mono t-text">{{ m.lingId }}</td>
+                                        <td class="p-2 font-mono t-text-muted">{{ m.version }}</td>
+                                        <td class="p-2 text-right font-mono text-amber-400">{{ m.loadedClassCount }}</td>
+                                        <td class="p-2 text-right font-mono text-blue-400">{{ m.activeThreadCount }}</td>
+                                        <td class="p-2 text-right font-mono text-purple-400">{{ m.cpuTimeMs }}</td>
+                                        <td class="p-2 text-right font-mono text-orange-400">{{ formatBytes(m.estimatedHeapDeltaBytes) }}</td>
+                                        <td class="p-2 text-right font-mono text-pink-400">{{ formatBytes(m.estimatedMetaspaceBytes) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 泄漏检测 + 线程池监控 双列 -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        <!-- 泄漏检测记录 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-triangle-exclamation text-red-400"></i>
+                                    <h3 class="font-bold text-base t-text">泄漏检测</h3>
+                                </div>
+                            </div>
+                            <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
+                                <table class="w-full text-sm">
+                                    <thead class="sticky top-0 t-bg-card">
+                                        <tr class="t-text-muted text-xs uppercase border-b t-border">
+                                            <th class="text-left p-2">灵元</th>
+                                            <th class="text-left p-2">版本</th>
+                                            <th class="text-center p-2">状态</th>
+                                            <th class="text-left p-2">消息</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-if="leakDetections.length === 0">
+                                            <td colspan="4" class="text-center t-text-muted p-4">无泄漏记录</td>
+                                        </tr>
+                                        <tr v-for="d in leakDetections" :key="d.lingId + ':' + d.version" class="border-b t-border hover:t-bg-hover">
+                                            <td class="p-2 font-mono t-text">{{ d.lingId }}</td>
+                                            <td class="p-2 font-mono t-text-muted">{{ d.version }}</td>
+                                            <td class="p-2 text-center">
+                                                <span v-if="!d.collected" class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded">疑似泄漏</span>
+                                                <span v-else class="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">已回收</span>
+                                            </td>
+                                            <td class="p-2 t-text-muted text-xs truncate" :title="d.message">{{ d.message }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- 线程池监控 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-thread text-indigo-400"></i>
+                                    <h3 class="font-bold text-base t-text">隔离线程池</h3>
+                                </div>
+                            </div>
+                            <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
+                                <table class="w-full text-sm">
+                                    <thead class="sticky top-0 t-bg-card">
+                                        <tr class="t-text-muted text-xs uppercase border-b t-border">
+                                            <th class="text-left p-2">灵元ID</th>
+                                            <th class="text-right p-2">活跃</th>
+                                            <th class="text-right p-2">池大小</th>
+                                            <th class="text-right p-2">最大</th>
+                                            <th class="text-right p-2">队列</th>
+                                            <th class="text-right p-2">已完成</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-if="threadPoolStats.length === 0">
+                                            <td colspan="6" class="text-center t-text-muted p-4">无线程池数据</td>
+                                        </tr>
+                                        <tr v-for="tp in threadPoolStats" :key="tp.lingId" class="border-b t-border hover:t-bg-hover">
+                                            <td class="p-2 font-mono t-text">{{ tp.lingId }}</td>
+                                            <td class="p-2 text-right font-mono" :class="tp.activeCount >= tp.maxThreads ? 'text-red-400' : 'text-blue-400'">{{ tp.activeCount }}</td>
+                                            <td class="p-2 text-right font-mono t-text-muted">{{ tp.poolSize }}</td>
+                                            <td class="p-2 text-right font-mono t-text-muted">{{ tp.maxThreads }}</td>
+                                            <td class="p-2 text-right font-mono" :class="tp.queueSize > 0 ? 'text-amber-400' : 't-text-muted'">{{ tp.queueSize }}</td>
+                                            <td class="p-2 text-right font-mono t-text-muted">{{ tp.completedTaskCount }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GC 详情 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-recycle text-pink-400"></i>
+                                <h3 class="font-bold text-base t-text">GC 收集器详情</h3>
+                            </div>
+                        </div>
+                        <div class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div v-if="gcDetails.length === 0" class="t-text-muted text-center py-4">暂无GC详情</div>
+                            <div v-for="gc in gcDetails" :key="gc.name" class="t-bg-faint rounded-lg p-3">
+                                <div class="text-xs t-text-muted uppercase mb-1">{{ gc.name }}</div>
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <span class="text-lg font-mono font-bold text-pink-400">{{ gc.count }}</span>
+                                        <span class="text-xs t-text-muted ml-1">次</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-lg font-mono font-bold text-orange-400">{{ gc.timeMs }}</span>
+                                        <span class="text-xs t-text-muted ml-1">ms</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ==================== 治理中心视图 ==================== -->
