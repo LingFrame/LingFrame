@@ -14,6 +14,7 @@ import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
+import com.lingframe.dashboard.service.LingResourceMetricsCollector;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +47,7 @@ public class LingController {
     private final GovernanceMetricsCollector governanceMetricsCollector;
     private final RuntimeDiagnosticsService runtimeDiagnosticsService;
     private final LeakDetectionCacheService leakDetectionCacheService;
+    private final LingResourceMetricsCollector lingResourceMetricsCollector;
     private final ThreadPoolStatsProvider threadPoolStatsProvider;
     private final EventBus eventBus;
     private final boolean installEnabled;
@@ -56,6 +58,7 @@ public class LingController {
             GovernanceMetricsCollector governanceMetricsCollector,
             RuntimeDiagnosticsService runtimeDiagnosticsService,
             LeakDetectionCacheService leakDetectionCacheService,
+            LingResourceMetricsCollector lingResourceMetricsCollector,
             ThreadPoolStatsProvider threadPoolStatsProvider,
             EventBus eventBus,
             @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
@@ -65,6 +68,7 @@ public class LingController {
         this.governanceMetricsCollector = governanceMetricsCollector;
         this.runtimeDiagnosticsService = runtimeDiagnosticsService;
         this.leakDetectionCacheService = leakDetectionCacheService;
+        this.lingResourceMetricsCollector = lingResourceMetricsCollector;
         this.threadPoolStatsProvider = threadPoolStatsProvider;
         this.eventBus = eventBus;
         this.installEnabled = installEnabled;
@@ -390,6 +394,14 @@ public class LingController {
                         .build())
                 .collect(Collectors.toList());
         return ApiResponse.ok(result);
+    }
+
+    /**
+     * 获取各灵元资源占用指标（类数/线程数/CPU/堆增量/Metaspace估算）。
+     */
+    @GetMapping("/metrics/per-ling")
+    public ApiResponse<List<LingResourceMetricsDTO>> getPerLingMetrics() {
+        return ApiResponse.ok(lingResourceMetricsCollector.getMetrics());
     }
 
     @GetMapping("/governance/all")

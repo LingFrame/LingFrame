@@ -7,6 +7,7 @@ import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
 import com.lingframe.core.spi.LeakRiskLevel;
+import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.LeakRiskReportDTO;
 import com.lingframe.dashboard.dto.LingGovernanceMetricsViewDTO;
@@ -15,6 +16,8 @@ import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.dto.ResourceCleanupCapabilityDTO;
 import com.lingframe.dashboard.dto.RuntimeGovernanceReadinessDTO;
 import com.lingframe.dashboard.service.DashboardService;
+import com.lingframe.dashboard.service.LeakDetectionCacheService;
+import com.lingframe.dashboard.service.LingResourceMetricsCollector;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,7 +45,9 @@ class LingControllerTest {
         RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
-                runtimeDiagnosticsService, mock(EventBus.class), false);
+                runtimeDiagnosticsService, mock(LeakDetectionCacheService.class),
+                mock(LingResourceMetricsCollector.class), mock(ThreadPoolStatsProvider.class),
+                mock(EventBus.class), false);
 
         LingUninstallResultDTO dto = LingUninstallResultDTO.builder()
                 .lingId("ling1")
@@ -74,7 +79,9 @@ class LingControllerTest {
         RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
-                runtimeDiagnosticsService, mock(EventBus.class), false);
+                runtimeDiagnosticsService, mock(LeakDetectionCacheService.class),
+                mock(LingResourceMetricsCollector.class), mock(ThreadPoolStatsProvider.class),
+                mock(EventBus.class), false);
 
         MetricsSnapshot summary = new MetricsSnapshot();
         summary.setLingId("ling1");
@@ -119,7 +126,9 @@ class LingControllerTest {
         RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
-                runtimeDiagnosticsService, mock(EventBus.class), false);
+                runtimeDiagnosticsService, mock(LeakDetectionCacheService.class),
+                mock(LingResourceMetricsCollector.class), mock(ThreadPoolStatsProvider.class),
+                mock(EventBus.class), false);
 
         GovernanceMetricsSnapshot summary = new GovernanceMetricsSnapshot();
         summary.setLingId("ling1");
@@ -161,7 +170,9 @@ class LingControllerTest {
         RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
-                runtimeDiagnosticsService, mock(EventBus.class), false);
+                runtimeDiagnosticsService, mock(LeakDetectionCacheService.class),
+                mock(LingResourceMetricsCollector.class), mock(ThreadPoolStatsProvider.class),
+                mock(EventBus.class), false);
 
         ResourceCleanupCapabilityDTO dto = ResourceCleanupCapabilityDTO.builder()
                 .runtime("BasicResourceGuard")
@@ -191,7 +202,9 @@ class LingControllerTest {
         RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         LingFrameConfig config = mock(LingFrameConfig.class);
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
-                runtimeDiagnosticsService, mock(EventBus.class), false);
+                runtimeDiagnosticsService, mock(LeakDetectionCacheService.class),
+                mock(LingResourceMetricsCollector.class), mock(ThreadPoolStatsProvider.class),
+                mock(EventBus.class), false);
 
         RuntimeGovernanceReadinessDTO dto = RuntimeGovernanceReadinessDTO.builder()
                 .status("LIMITED")
