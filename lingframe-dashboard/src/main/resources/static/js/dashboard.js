@@ -1793,10 +1793,20 @@ createApp({
                     methodName: method.name,
                     parameterTypes: paramTypes,
                     args: args,
-                    version: version || null
+                    version: version || null,
+                    routingMode: playgroundRoutingMode.value
                 });
                 playgroundResult.value = result;
                 playgroundResultModal.show = true;
+                // 记录最近调用，供"保存为用例"使用
+                playgroundLastCall.value = {
+                    lingId: activeId.value,
+                    fqsid: targetFqsid,
+                    methodName: method.name,
+                    parameterTypes: paramTypes,
+                    args: args,
+                    methodSignature: method.signature
+                };
             } catch (e) {
                 playgroundResult.value = { success: false, error: e.message, durationMs: 0, traces: [] };
                 playgroundResultModal.show = true;
@@ -1808,6 +1818,117 @@ createApp({
         const closePlaygroundResultModal = () => {
             playgroundResultModal.show = false;
         };
+
+        // ---- C1 用例保存/回放 ----
+        const playgroundLastCall = ref(null);
+        const playgroundCases = ref([]);
+        const playgroundCasePanelOpen = ref(false);
+        const PLAYGROUND_CASES_STORAGE_KEY = 'lingframe_playground_cases';
+
+        // 从 localStorage 加载用例
+        const loadPlaygroundCases = () => {
+            try {
+                const raw = localStorage.getItem(PLAYGROUND_CASES_STORAGE_KEY);
+                playgroundCases.value = raw ? JSON.parse(raw) : [];
+            } catch (e) {
+                playgroundCases.value = [];
+            }
+        };
+        // 持久化用例到 localStorage
+        const savePlaygroundCases = () => {
+            try {
+                localStorage.setItem(PLAYGROUND_CASES_STORAGE_KEY, JSON.stringify(playgroundCases.value));
+            } catch (e) {
+                console.warn('Failed to save playground cases:', e.message);
+            }
+        };
+        // 保存当前调用为用例
+        const saveCurrentAsCase = () => {
+            if (!playgroundLastCall.value) return;
+            const name = `${playgroundLastCall.value.methodName} @ ${new Date().toLocaleTimeString()}`;
+            const newCase = {
+                id: Date.now().toString(),
+                name,
+                ...playgroundLastCall.value
+            };
+            playgroundCases.value.unshift(newCase);
+            savePlaygroundCases();
+        };
+        // 回放用例：填充参数并自动调用
+        const replayCase = async (testCase) => {
+            if (!testCase || testCase.lingId !== activeId.value) return;
+            // 填充参数输入框
+            const key = `${testCase.fqsid}::${testCase.methodSignature}`;
+            (testCase.parameterTypes || []).forEach((_, idx) => {
+                playgroundArgs[key + '::' + idx] = testCase.args?.[idx] ?? null;
+            });
+            // 查找方法元数据以触发调用
+            const svc = playgroundServices.value.find(s => s.fqsid === testCase.fqsid
+                || (s.methods || []).some(m => m.alternateFqsid === testCase.fqsid));
+            if (!svc) return;
+            const method = (svc.methods || []).find(m => m.signature === testCase.methodSignature);
+            if (!method) return;
+            await invokeService(testCase.fqsid, method, null);
+        };
+        // 删除用例
+        const deleteCase = (caseId) => {
+            playgroundCases.value = playgroundCases.value.filter(c => c.id !== caseId);
+            savePlaygroundCases();
+        };
+        // 重命名用例
+        const renameCase = (caseId, newName) => {
+            const c = playgroundCases.value.find(c => c.id === caseId);
+            if (c) {
+                c.name = newName;
+                savePlaygroundCases();
+            }
+        };
+        // 导出用例为 JSON 文件
+        const exportCases = () => {
+            const blob = new Blob([JSON.stringify(playgroundCases.value, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `playground-cases-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+        // 导入用例 JSON 文件
+        const importCases = (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (Array.isArray(imported)) {
+                        // 为导入用例分配新 ID 避免冲突
+                        imported.forEach(c => { c.id = Date.now().toString() + Math.random().toString(36).slice(2); });
+                        playgroundCases.value = [...imported, ...playgroundCases.value];
+                        savePlaygroundCases();
+                    }
+                } catch (err) {
+                    console.warn('Failed to import cases:', err.message);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        };
+        // 按灵元 ID 分组用例
+        const playgroundCasesGrouped = computed(() => {
+            const groups = {};
+            playgroundCases.value.forEach(c => {
+                const lid = c.lingId || 'unknown';
+                if (!groups[lid]) groups[lid] = [];
+                groups[lid].push(c);
+            });
+            return Object.entries(groups).map(([lingId, cases]) => ({ lingId, cases }));
+        });
+
+        // ---- C2 按比例路由模式 ----
+        const playgroundRoutingMode = ref('SPECIFIED');
+
+        loadPlaygroundCases();
 
         const getInvokeKey = (fqsid, signature) => `${fqsid}::${signature}`;
 
@@ -3240,6 +3361,9 @@ createApp({
             fetchPlaygroundServices, invokeService, getInvokeKey,
             isComplexParameterType, prefillJsonTemplate,
             playgroundSelectedVersion, playgroundVersionGroups, selectPlaygroundVersion, isMethodInSelectedVersion,
+            playgroundLastCall, playgroundCases, playgroundCasePanelOpen, playgroundCasesGrouped,
+            saveCurrentAsCase, replayCase, deleteCase, renameCase, exportCases, importCases,
+            playgroundRoutingMode,
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
             formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue, formatUptime, formatPlaygroundResult,
             getStatusClass, getLingShortName, getLingTagClass, getLingHealthDotClass, getLingUptime, getLingServiceCount, getLogColor, getTrend,

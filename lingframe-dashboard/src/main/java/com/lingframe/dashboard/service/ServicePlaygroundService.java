@@ -8,6 +8,7 @@ import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.dto.InvokeResultDTO;
 import com.lingframe.dashboard.dto.ServiceMetadataDTO;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 /**
@@ -37,6 +39,7 @@ public class ServicePlaygroundService {
     private final LingRepository lingRepository;
     private final InvocationPipelineEngine pipelineEngine;
     private final ObjectMapper objectMapper;
+    private final CanaryRouter canaryRouter;
 
     /**
      * 获取指定灵元的所有服务元数据
@@ -192,7 +195,11 @@ public class ServicePlaygroundService {
         List<String> availableVersions = new ArrayList<>();
         for (LingInstance instance : instances) {
             ClassLoader cl = instance.getClassLoader();
-            if (cl == null) continue;
+            if (cl == null) {
+                // 无法验证时保留方法，与 isMethodAvailable 行为一致（向后兼容）
+                availableVersions.add(instance.getVersion());
+                continue;
+            }
             boolean available;
             if (interfaceService) {
                 // 接口服务：检查实例容器中是否有 Bean 实现该接口且包含目标方法
@@ -220,7 +227,10 @@ public class ServicePlaygroundService {
     private boolean isInterfaceMethodAvailableInInstance(String fqsid,
             ServiceMetadataDTO.MethodMetadata method, LingInstance instance) {
         ClassLoader cl = instance.getClassLoader();
-        if (cl == null) return false;
+        if (cl == null) {
+            // 无法验证时保留方法，与 isMethodAvailable 行为一致（向后兼容）
+            return true;
+        }
         String interfaceName = extractInterfaceName(fqsid);
         try {
             Class<?> iface = Class.forName(interfaceName, false, cl);
@@ -334,9 +344,21 @@ public class ServicePlaygroundService {
      */
     public InvokeResultDTO invokeService(String lingId, String fqsid, String methodName,
             String[] parameterTypes, Object[] args, String version) {
+        return invokeService(lingId, fqsid, methodName, parameterTypes, args, version, "SPECIFIED");
+    }
+
+    /**
+     * 真实调用灵元服务方法。
+     *
+     * @param version     目标版本号（仅 routingMode=SPECIFIED 时生效）
+     * @param routingMode 路由模式：SPECIFIED（指定版本，默认）/ PROPORTIONAL（按流量比例随机路由）
+     */
+    public InvokeResultDTO invokeService(String lingId, String fqsid, String methodName,
+            String[] parameterTypes, Object[] args, String version, String routingMode) {
         long start = System.currentTimeMillis();
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
         boolean classLoaderChanged = false;
+        boolean proportional = "PROPORTIONAL".equalsIgnoreCase(routingMode);
         try {
             LingRuntime runtime = lingRepository.getRuntime(lingId);
             if (runtime == null) {
@@ -354,8 +376,17 @@ public class ServicePlaygroundService {
                         .build();
             }
 
-            // 解析目标实例：指定版本时走对应实例，否则走默认实例（稳定版）
-            LingInstance targetInstance = resolveTargetInstance(runtime, version);
+            // 解析目标实例：按比例路由时按流量比例随机选择，否则指定版本或默认实例
+            LingInstance targetInstance;
+            String routedVersion = null;
+            if (proportional) {
+                targetInstance = resolveProportionalInstance(runtime);
+                if (targetInstance != null) {
+                    routedVersion = targetInstance.getVersion();
+                }
+            } else {
+                targetInstance = resolveTargetInstance(runtime, version);
+            }
             if (targetInstance == null) {
                 return InvokeResultDTO.builder()
                         .success(false)
@@ -425,6 +456,7 @@ public class ServicePlaygroundService {
                         .success(true)
                         .result(result)
                         .durationMs(duration)
+                        .routedVersion(routedVersion)
                         .traces(buildTraces(ctx.getTraces()))
                         .build();
             } finally {
@@ -653,6 +685,50 @@ public class ServicePlaygroundService {
             return instances.get(0);
         }
         return null;
+    }
+
+    /**
+     * 按流量分发比例随机选择目标实例（C2 按比例路由模式）。
+     * <p>
+     * 读取当前灵元的金丝雀配置（稳定版/金丝雀版比例），按比例随机路由。
+     * 只有一个版本时退化为该版本实例。
+     */
+    private LingInstance resolveProportionalInstance(LingRuntime runtime) {
+        if (runtime == null || runtime.getInstancePool() == null) {
+            return null;
+        }
+        List<LingInstance> instances = runtime.getInstancePool().getActiveInstances();
+        if (instances == null || instances.isEmpty()) {
+            return null;
+        }
+        // 单版本直接返回
+        if (instances.size() == 1) {
+            return instances.get(0);
+        }
+        LingInstance defaultInst = runtime.getInstancePool().getDefault();
+        // 读取金丝雀比例
+        CanaryRouter.CanaryConfig config = canaryRouter.getCanaryConfig(runtime.getLingId());
+        int canaryPercent = config != null ? config.getPercent() : 0;
+        // 按比例随机选择
+        int roll = ThreadLocalRandom.current().nextInt(100);
+        if (roll < canaryPercent) {
+            // 路由到金丝雀版
+            String canaryVersion = config != null ? config.getCanaryVersion() : null;
+            if (canaryVersion != null) {
+                LingInstance canary = runtime.getInstancePool().getInstance(canaryVersion);
+                if (canary != null) {
+                    return canary;
+                }
+            }
+            // 金丝雀版本未找到，退化为非默认实例
+            for (LingInstance inst : instances) {
+                if (!inst.equals(defaultInst)) {
+                    return inst;
+                }
+            }
+        }
+        // 路由到稳定版
+        return defaultInst != null ? defaultInst : instances.get(0);
     }
 
     /**

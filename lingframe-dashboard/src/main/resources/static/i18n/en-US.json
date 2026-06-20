@@ -166,7 +166,15 @@
         "version": "Version",
         "stable": "stable",
         "canary": "canary",
-        "multiVersionHint": "Method available in multiple versions. Switch the version tab above to target a specific version."
+        "multiVersionHint": "Method available in multiple versions. Switch the version tab above to target a specific version.",
+        "modeSpecified": "Specified",
+        "modeProportional": "Proportional",
+        "proportionalHint": "Proportional routing: ignores version selection, routes by traffic distribution ratio, actual routed version shown after invocation.",
+        "caseLibrary": "Cases",
+        "saveCase": "Save Current",
+        "export": "Export",
+        "import": "Import",
+        "noCases": "No saved cases"
     },
     "audit": {
         "success": "SUCCESS",

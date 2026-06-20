@@ -30,6 +30,9 @@ public class InvokeResultDTO {
     /** 调用耗时（毫秒） */
     private long durationMs;
 
+    /** 实际路由到的版本（按比例路由模式下返回） */
+    private String routedVersion;
+
     /** 治理追踪 */
     private List<TraceEntry> traces;
 

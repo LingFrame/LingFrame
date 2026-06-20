@@ -166,7 +166,15 @@
     "version": "版本",
     "stable": "稳定版",
     "canary": "金丝雀",
-    "multiVersionHint": "该方法在多个版本均可用，切换上方版本标签可指定调用目标"
+    "multiVersionHint": "该方法在多个版本均可用，切换上方版本标签可指定调用目标",
+    "modeSpecified": "指定版本",
+    "modeProportional": "按比例路由",
+    "proportionalHint": "按比例路由模式：忽略版本选择，按流量分发比例随机路由，调用后显示实际路由版本",
+    "caseLibrary": "用例库",
+    "saveCase": "保存当前",
+    "export": "导出",
+    "import": "导入",
+    "noCases": "暂无保存的用例"
   },
   "audit": {
     "success": "SUCCESS",
