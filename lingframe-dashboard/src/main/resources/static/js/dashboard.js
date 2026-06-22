@@ -88,7 +88,11 @@ createApp({
             events: []
         });
 
-        const envLabels = { dev: '开发', test: '测试', prod: '生产' };
+        const envLabels = computed(() => ({
+            dev: t('envLabels.dev'),
+            test: t('envLabels.test'),
+            prod: t('envLabels.prod')
+        }));
 
         // 性能监控数据
         const perfMetrics = reactive({
@@ -139,31 +143,61 @@ createApp({
 
         // 灵元资源下钻指标
         const lingResourceMetrics = ref([]);
+        // 灵元资源按 lingId 分组，版本作为子行
+        const lingResourceMetricsGrouped = computed(() => {
+            const groups = {};
+            lingResourceMetrics.value.forEach(m => {
+                const lid = m.lingId || 'unknown';
+                if (!groups[lid]) groups[lid] = { lingId: lid, versions: [], totalClasses: 0, totalThreads: 0, totalCpuMs: 0, totalHeapDelta: 0, totalMetaspace: 0 };
+                groups[lid].versions.push(m);
+                groups[lid].totalClasses += m.loadedClassCount || 0;
+                groups[lid].totalThreads += m.activeThreadCount || 0;
+                groups[lid].totalCpuMs += m.cpuTimeMs || 0;
+                groups[lid].totalHeapDelta += m.estimatedHeapDeltaBytes || 0;
+                groups[lid].totalMetaspace += m.estimatedMetaspaceBytes || 0;
+            });
+            return Object.values(groups);
+        });
         // 泄漏检测记录
         const leakDetections = ref([]);
         // 线程池状态
         const threadPoolStats = ref([]);
         // GC 详情（按收集器分离）
         const gcDetails = ref([]);
+        // GC 总计主指标
+        const gcTotal = computed(() => {
+            let totalCount = 0;
+            let totalTimeMs = 0;
+            gcDetails.value.forEach(gc => {
+                totalCount += gc.count || 0;
+                totalTimeMs += gc.timeMs || 0;
+            });
+            return { totalCount, totalTimeMs };
+        });
 
         // 治理中心 Tab 状态（记忆到 localStorage）
-        const governanceTabs = [
-            { key: 'config', label: '治理配置' },
-            { key: 'traffic', label: '流量控制' },
-            { key: 'health', label: '健康观测' },
-            { key: 'readiness', label: '运行时就绪' }
-        ];
+        const governanceTabs = computed(() => [
+            { key: 'config', label: t('governance.tabConfig') },
+            { key: 'traffic', label: t('governance.tabTraffic') },
+            { key: 'health', label: t('governance.tabHealth') },
+            { key: 'readiness', label: t('governance.tabReadiness') }
+        ]);
         const activeGovernanceTab = ref(localStorage.getItem('lingframe_gov_tab') || 'config');
         const switchGovernanceTab = (key) => {
             activeGovernanceTab.value = key;
             localStorage.setItem('lingframe_gov_tab', key);
         };
+        // 从治理规则总览跳转到治理配置详情（B4）
+        const jumpToGovernanceConfig = async (lingId) => {
+            await selectLing(lingId);
+            switchGovernanceTab('config');
+        };
 
         // 调用治理预设方案（B3）
         const GOVERNANCE_PRESETS = [
-            { key: 'conservative', name: '保守', timeoutMs: 1000, rateLimitPerSecond: 10, maxConcurrentThreads: 5, retryCount: 0, cpuBudgetMsPerMinute: 500, memoryBudgetMb: 128 },
-            { key: 'default',      name: '默认', timeoutMs: 3000, rateLimitPerSecond: 50, maxConcurrentThreads: 20, retryCount: 1, cpuBudgetMsPerMinute: 2000, memoryBudgetMb: 512 },
-            { key: 'aggressive',   name: '激进', timeoutMs: 10000, rateLimitPerSecond: 200, maxConcurrentThreads: 100, retryCount: 3, cpuBudgetMsPerMinute: 10000, memoryBudgetMb: 2048 }
+            { key: 'conservative', nameKey: 'governance.presetConservative', timeoutMs: 1000, rateLimitPerSecond: 10, maxConcurrentThreads: 5, retryCount: 0, cpuBudgetMsPerMinute: 500, memoryBudgetMb: 128 },
+            { key: 'default',      nameKey: 'governance.presetDefault', timeoutMs: 3000, rateLimitPerSecond: 50, maxConcurrentThreads: 20, retryCount: 1, cpuBudgetMsPerMinute: 2000, memoryBudgetMb: 512 },
+            { key: 'aggressive',   nameKey: 'governance.presetAggressive', timeoutMs: 10000, rateLimitPerSecond: 200, maxConcurrentThreads: 100, retryCount: 3, cpuBudgetMsPerMinute: 10000, memoryBudgetMb: 2048 }
         ];
         const selectedPreset = ref('');
         const applyPreset = (presetKey) => {
@@ -284,7 +318,7 @@ createApp({
             { key: 'gcCount', label: t('performance.gc'), color: '#ec4899', isPercent: false, integerTicks: true },
             { key: 'gcTimeMs', label: t('monitor.gcTime'), color: '#f97316', isPercent: false, integerTicks: true },
             { key: 'loadedClassCount', label: t('monitor.classCount'), color: '#f59e0b', isPercent: false, integerTicks: true },
-            { key: 'lingClassLoaderCount', label: 'LingClassLoader', color: '#8b5cf6', isPercent: false, integerTicks: true }
+            { key: 'lingClassLoaderCount', label: t('monitor.lingClassLoaderCount'), color: '#8b5cf6', isPercent: false, integerTicks: true }
         ]);
 
         // 灵元健康指标
@@ -318,11 +352,6 @@ createApp({
 
         // 灵元服务数量缓存（从 playground 数据获取）
         const lingServiceCounts = reactive({});
-
-        // 灵元星图状态
-        const starMapCanvas = ref(null);
-        const starMapHover = ref(null);
-        let starMapAnimFrame = null;
 
         let eventSource = null;
         let timeTimer = null;
@@ -683,18 +712,10 @@ createApp({
                 }
             },
             {
-                element: '.tour-star-map',
+                element: '.tour-ling-overview',
                 popover: {
-                    title: t('tour.starMap.title'),
-                    description: t('tour.starMap.desc'),
-                    side: 'top'
-                }
-            },
-            {
-                element: '.tour-checklist',
-                popover: {
-                    title: t('tour.checklist.title'),
-                    description: t('tour.checklist.desc'),
+                    title: t('tour.lingOverview.title'),
+                    description: t('tour.lingOverview.desc'),
                     side: 'top'
                 }
             },
@@ -1145,12 +1166,6 @@ createApp({
                 // 如果不在 monitor 页面，销毁图表
                 destroyCharts();
             }
-
-            nextTick(() => {
-                // 星图也需要重绘以适配主题色
-                if (starMapAnimFrame) cancelAnimationFrame(starMapAnimFrame);
-                drawStarMap();
-            });
         };
 
         const toggleTheme = () => {
@@ -1457,6 +1472,26 @@ createApp({
             canaryPct.value = 0;
             updateCanaryConfigLocally();
             await updateCanaryConfig();
+        };
+
+        // 金丝雀决策操作（B5）
+        const executeCanaryRollback = async () => {
+            // 回滚：金丝雀比例置 0，全部流量切回稳定版
+            canaryPct.value = 0;
+            updateCanaryConfigLocally();
+            await updateCanaryConfig();
+            await fetchCanaryDecision();
+        };
+        const executeCanaryFullRelease = async () => {
+            // 全量发布：金丝雀比例置 100，全部流量切到金丝雀版
+            canaryPct.value = 100;
+            updateCanaryConfigLocally();
+            await updateCanaryConfig();
+            await fetchCanaryDecision();
+        };
+        const refreshCanaryDecision = async () => {
+            // 继续观察：刷新决策数据
+            await fetchCanaryDecision();
         };
 
         const normalizeNullableInt = (value) => {
@@ -1843,8 +1878,14 @@ createApp({
             }
         };
         // 保存当前调用为用例
+        const MAX_PLAYGROUND_CASES = 50;
         const saveCurrentAsCase = () => {
             if (!playgroundLastCall.value) return;
+            // 超出上限提示导出后删除
+            if (playgroundCases.value.length >= MAX_PLAYGROUND_CASES) {
+                alert(t('playground.caseLimitExceeded'));
+                return;
+            }
             const name = `${playgroundLastCall.value.methodName} @ ${new Date().toLocaleTimeString()}`;
             const newCase = {
                 id: Date.now().toString(),
@@ -1881,6 +1922,13 @@ createApp({
             if (c) {
                 c.name = newName;
                 savePlaygroundCases();
+            }
+        };
+        // 触发重命名输入
+        const promptRenameCase = (testCase) => {
+            const newName = prompt(t('playground.renamePrompt'), testCase.name);
+            if (newName !== null && newName.trim() !== '') {
+                renameCase(testCase.id, newName.trim());
             }
         };
         // 导出用例为 JSON 文件
@@ -2257,6 +2305,11 @@ createApp({
                 return t('traffic.canary');
             }
             return t('healthCard.version');
+        };
+
+        const getVersionGovernance = (version) => {
+            if (!activeLingVersionGovernance.value || !version) return null;
+            return activeLingVersionGovernance.value.find(vg => vg.version === version);
         };
 
         const hasGovernanceSignals = (metrics) => {
@@ -2667,304 +2720,6 @@ createApp({
             }
         };
 
-        // ==================== 灵元星图 ====================
-        // 计算星图节点位置（圆形布局）
-        const getStarMapNodes = () => {
-            const canvas = starMapCanvas.value;
-            if (!canvas || lings.value.length === 0) return [];
-
-            const w = canvas.clientWidth;
-            const h = canvas.clientHeight;
-            const cx = w / 2;
-            const cy = h / 2;
-            const count = lings.value.length;
-            const radius = Math.min(cx, cy) - 50;
-
-            return lings.value.map((ling, i) => {
-                // 圆形均匀分布
-                const angle = (2 * Math.PI * i / count) - Math.PI / 2;
-                const x = cx + radius * Math.cos(angle);
-                const y = cy + radius * Math.sin(angle);
-
-                const health = lingHealthMetrics[ling.lingId]?.summary;
-                const isActive = ling.status === 'ACTIVE' || ling.status === 'DEGRADED';
-                const isCanary = (ling.versionDetails?.length || 0) >= 2;
-
-                let color = '#475569'; // 默认灰
-                let glowColor = 'rgba(71,85,105,0.3)';
-                if (health) {
-                    const status = health.healthStatus;
-                    if (status === 'HEALTHY') { color = '#10b981'; glowColor = 'rgba(16,185,129,0.4)'; }
-                    else if (status === 'WARNING') { color = '#f59e0b'; glowColor = 'rgba(245,158,11,0.4)'; }
-                    else if (status === 'UNHEALTHY') { color = '#ef4444'; glowColor = 'rgba(239,68,68,0.4)'; }
-                } else if (isActive) {
-                    color = '#10b981'; glowColor = 'rgba(16,185,129,0.4)';
-                }
-
-                return {
-                    lingId: ling.lingId,
-                    x, y, color, glowColor,
-                    isActive,
-                    isCanary,
-                    nodeRadius: isCanary ? 18 : 14,
-                    shortName: getLingShortName(ling.lingId),
-                    status: ling.status,
-                    versionCount: ling.versionDetails?.length || 1
-                };
-            });
-        };
-
-        // 绘制星图
-        let lastStarMapDrawTime = 0;
-        const drawStarMap = (timestamp) => {
-            if (!timestamp) timestamp = performance.now();
-            if (timestamp - lastStarMapDrawTime < 33) {
-                const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-                if (!prefersReducedMotion) {
-                    starMapAnimFrame = requestAnimationFrame(drawStarMap);
-                }
-                return;
-            }
-            lastStarMapDrawTime = timestamp;
-
-            const canvas = starMapCanvas.value;
-            if (!canvas) return;
-
-            const ctx = canvas.getContext('2d');
-            const dpr = window.devicePixelRatio || 1;
-            const w = canvas.clientWidth;
-            const h = canvas.clientHeight;
-            canvas.width = w * dpr;
-            canvas.height = h * dpr;
-            ctx.scale(dpr, dpr);
-
-            // 清空画布
-            ctx.clearRect(0, 0, w, h);
-
-            const nodes = getStarMapNodes();
-            if (nodes.length === 0) return;
-
-            const time = Date.now() / 1000;
-            const cx = w / 2;
-            const cy = h / 2;
-
-            // 中心标识：零依赖
-            ctx.strokeStyle = currentTheme.value === 'light' ? 'rgba(79, 70, 229, 0.15)' : 'rgba(99, 102, 241, 0.2)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.arc(cx, cy, 24, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.fillStyle = currentTheme.value === 'light' ? 'rgba(79, 70, 229, 0.8)' : 'rgba(129, 140, 248, 0.7)';
-            ctx.font = '11px -apple-system, system-ui, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('零依赖', cx, cy);
-
-            // 1. 绘制依赖连线与流动微粒
-            nodes.forEach((node, index) => {
-                // 计算同步阻尼浮动偏移，使连线完美合拍
-                let nx = node.x;
-                let ny = node.y;
-                if (node.isActive) {
-                    const angle = (2 * Math.PI * index / nodes.length) - Math.PI / 2;
-                    const floatOffset = 4 * Math.sin(time * 1.2 + index);
-                    nx += Math.cos(angle) * floatOffset;
-                    ny += Math.sin(angle) * floatOffset;
-                }
-
-                // 虚线网络
-                ctx.strokeStyle = currentTheme.value === 'light' ? 'rgba(99, 102, 241, 0.12)' : 'rgba(99, 102, 241, 0.18)';
-                ctx.lineWidth = 1.5;
-                ctx.setLineDash([4, 4]);
-                ctx.beginPath();
-                ctx.moveTo(cx, cy);
-                ctx.lineTo(nx, ny);
-                ctx.stroke();
-                ctx.setLineDash([]); // 还原实线
-
-                // 数据流动微粒
-                if (node.isActive) {
-                    const pulseProgress = (time * 0.45 + index * 0.3) % 1;
-                    const px = cx + (nx - cx) * pulseProgress;
-                    const py = cy + (ny - cy) * pulseProgress;
-                    
-                    ctx.fillStyle = node.color;
-                    ctx.beginPath();
-                    ctx.arc(px, py, 3, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    // 微粒光晕
-                    const particleGlow = ctx.createRadialGradient(px, py, 0, px, py, 6);
-                    particleGlow.addColorStop(0, node.glowColor);
-                    particleGlow.addColorStop(1, 'rgba(0,0,0,0)');
-                    ctx.fillStyle = particleGlow;
-                    ctx.beginPath();
-                    ctx.arc(px, py, 6, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            });
-
-            // 2. 绘制每个节点
-            nodes.forEach((node, index) => {
-                // 同步浮动偏移（使用局部变量，不修改原始坐标，避免累积漂移）
-                let nx = node.x;
-                let ny = node.y;
-                if (node.isActive) {
-                    const angle = (2 * Math.PI * index / nodes.length) - Math.PI / 2;
-                    const floatOffset = 4 * Math.sin(time * 1.2 + index);
-                    nx += Math.cos(angle) * floatOffset;
-                    ny += Math.sin(angle) * floatOffset;
-                }
-
-                // 预警扩散雷达波纹
-                if (node.status === 'DEGRADED' || node.status === 'ERROR') {
-                    const radarTime = (time * 1.2 + index * 0.5) % 1;
-                    const radarRadius = node.nodeRadius + radarTime * 20;
-                    const radarOpacity = 1 - radarTime;
-                    ctx.strokeStyle = node.status === 'DEGRADED' ? `rgba(245, 158, 11, ${radarOpacity * 0.7})` : `rgba(239, 68, 68, ${radarOpacity * 0.7})`;
-                    ctx.lineWidth = 1.5;
-                    ctx.beginPath();
-                    ctx.arc(nx, ny, radarRadius, 0, Math.PI * 2);
-                    ctx.stroke();
-                }
-
-                // 光晕效果
-                const pulseScale = node.isActive ? 1 + 0.15 * Math.sin(time * 2 + index) : 1;
-                const glowRadius = node.nodeRadius * 2.5 * pulseScale;
-
-                const gradient = ctx.createRadialGradient(nx, ny, 0, nx, ny, glowRadius);
-                gradient.addColorStop(0, node.glowColor);
-                gradient.addColorStop(1, 'rgba(0,0,0,0)');
-                ctx.fillStyle = gradient;
-                ctx.beginPath();
-                ctx.arc(nx, ny, glowRadius, 0, Math.PI * 2);
-                ctx.fill();
-
-                // 灰度灵元双环
-                if (node.isCanary) {
-                    ctx.strokeStyle = 'rgba(245,158,11,0.4)';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.arc(nx, ny, node.nodeRadius + 5, 0, Math.PI * 2);
-                    ctx.stroke();
-                }
-
-                // 主圆
-                ctx.fillStyle = node.color;
-                ctx.beginPath();
-                ctx.arc(nx, ny, node.nodeRadius, 0, Math.PI * 2);
-                ctx.fill();
-
-                // 内部高光
-                const innerGrad = ctx.createRadialGradient(
-                    nx - node.nodeRadius * 0.3, ny - node.nodeRadius * 0.3, 0,
-                    nx, ny, node.nodeRadius
-                );
-                innerGrad.addColorStop(0, 'rgba(255,255,255,0.2)');
-                innerGrad.addColorStop(1, 'rgba(255,255,255,0)');
-                ctx.fillStyle = innerGrad;
-                ctx.beginPath();
-                ctx.arc(nx, ny, node.nodeRadius, 0, Math.PI * 2);
-                ctx.fill();
-
-                // 名称标签
-                const labelColor = currentTheme.value === 'light' ? '#1e293b' : '#e2e8f0';
-                ctx.font = '11px -apple-system, system-ui, sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'alphabetic';
-                // 亮色模式下为标签添加半透明背景衬底，避免连线交叉时文字难以辨识
-                if (currentTheme.value === 'light') {
-                    const textWidth = ctx.measureText(node.shortName).width;
-                    const labelX = nx - textWidth / 2 - 3;
-                    const labelY = ny + node.nodeRadius + 4;
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-                    ctx.fillRect(labelX, labelY, textWidth + 6, 14);
-                }
-                ctx.fillStyle = labelColor;
-                ctx.fillText(node.shortName, nx, ny + node.nodeRadius + 16);
-            });
-
-            // 尊重用户动画偏好：reduced-motion 时仅绘制一帧静态画面
-            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-            if (!prefersReducedMotion) {
-                starMapAnimFrame = requestAnimationFrame(drawStarMap);
-            }
-        };
-
-        // 星图点击事件
-        const handleStarMapClick = (event) => {
-            const canvas = starMapCanvas.value;
-            if (!canvas) return;
-
-            const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-
-            const nodes = getStarMapNodes();
-            for (const node of nodes) {
-                const dx = x - node.x;
-                const dy = y - node.y;
-                if (dx * dx + dy * dy <= (node.nodeRadius + 5) * (node.nodeRadius + 5)) {
-                    selectLing(node.lingId);
-                    return;
-                }
-            }
-        };
-
-        // 星图悬停事件
-        const handleStarMapMouseMove = (event) => {
-            const canvas = starMapCanvas.value;
-            if (!canvas) return;
-
-            const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-
-            const nodes = getStarMapNodes();
-            let found = null;
-            for (const node of nodes) {
-                const dx = x - node.x;
-                const dy = y - node.y;
-                if (dx * dx + dy * dy <= (node.nodeRadius + 5) * (node.nodeRadius + 5)) {
-                    found = node;
-                    break;
-                }
-            }
-
-            if (found) {
-                starMapHover.value = {
-                    x: event.clientX - rect.left,
-                    y: event.clientY - rect.top,
-                    name: found.shortName,
-                    status: found.status,
-                    versions: found.versionCount > 1 ? found.versionCount + ' versions' : ''
-                };
-                canvas.style.cursor = 'pointer';
-            } else {
-                starMapHover.value = null;
-                canvas.style.cursor = 'default';
-            }
-        };
-
-        const handleStarMapMouseLeave = () => {
-            starMapHover.value = null;
-        };
-
-        // 监听导航切换到概览时启动星图
-        watch(activeNav, (nav) => {
-            if (nav === 'overview') {
-                nextTick(() => {
-                    if (starMapAnimFrame) cancelAnimationFrame(starMapAnimFrame);
-                    drawStarMap();
-                });
-            } else {
-                if (starMapAnimFrame) {
-                    cancelAnimationFrame(starMapAnimFrame);
-                    starMapAnimFrame = null;
-                }
-            }
-        });
-
         // 监听灵元列表变化，更新首次发现时间和服务数量
         watch(lings, (newLings) => {
             const now = Date.now();
@@ -2979,14 +2734,6 @@ createApp({
                     delete lingFirstSeen[id];
                 }
             });
-
-            // 初次加载或灵元列表更新时，如果当前在概览页且星图尚未渲染（未启动动画帧），则触发渲染
-            if (activeNav.value === 'overview' && !starMapAnimFrame && newLings.length > 0) {
-                nextTick(() => {
-                    if (starMapAnimFrame) cancelAnimationFrame(starMapAnimFrame);
-                    drawStarMap();
-                });
-            }
         }, { deep: true });
 
         // 监听 playground 数据变化，更新服务数量缓存
@@ -3325,7 +3072,6 @@ createApp({
             if (lingDetailTimer) clearInterval(lingDetailTimer);
             if (sseRetryTimer) clearTimeout(sseRetryTimer);
             if (eventSource) eventSource.close();
-            if (starMapAnimFrame) cancelAnimationFrame(starMapAnimFrame);
             destroyCharts();
             document.removeEventListener('visibilitychange', handleVisibility);
         });
@@ -3340,11 +3086,12 @@ createApp({
             consoleHeight, autoScrollLogs, startConsoleResize,
 
             perfMetrics, jvmInfo, chartTimeRange, monitorCharts,
-            lingResourceMetrics, leakDetections, threadPoolStats, gcDetails,
-            governanceTabs, activeGovernanceTab, switchGovernanceTab,
+            lingResourceMetrics, lingResourceMetricsGrouped, leakDetections, threadPoolStats, gcDetails, gcTotal,
+            governanceTabs, activeGovernanceTab, switchGovernanceTab, jumpToGovernanceConfig,
             GOVERNANCE_PRESETS, selectedPreset, applyPreset,
             governanceMatrix, matrixSortKey, matrixSortAsc, fetchGovernanceMatrix, sortedMatrix, sortMatrix,
             canaryDecision, fetchCanaryDecision,
+            executeCanaryRollback, executeCanaryFullRelease, refreshCanaryDecision,
             lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,
             recentEvents,
             invocationForm,
@@ -3362,13 +3109,12 @@ createApp({
             isComplexParameterType, prefillJsonTemplate,
             playgroundSelectedVersion, playgroundVersionGroups, selectPlaygroundVersion, isMethodInSelectedVersion,
             playgroundLastCall, playgroundCases, playgroundCasePanelOpen, playgroundCasesGrouped,
-            saveCurrentAsCase, replayCase, deleteCase, renameCase, exportCases, importCases,
+            saveCurrentAsCase, replayCase, deleteCase, renameCase, promptRenameCase, exportCases, importCases,
             playgroundRoutingMode,
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
             formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue, formatUptime, formatPlaygroundResult,
             getStatusClass, getLingShortName, getLingTagClass, getLingHealthDotClass, getLingUptime, getLingServiceCount, getLogColor, getTrend,
-            getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass, getLingHealthStatusClass, getLingHealthRoleLabel, hasGovernanceSignals,
-            starMapCanvas, starMapHover, handleStarMapClick, handleStarMapMouseMove, handleStarMapMouseLeave,
+            getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass, getLingHealthStatusClass, getLingHealthRoleLabel, getVersionGovernance, hasGovernanceSignals,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
             openTimelineModal, closeTimelineModal, loadTimelineData,
             doUpdateStatus, fetchPerformanceMetrics, fetchDashboardSummary,

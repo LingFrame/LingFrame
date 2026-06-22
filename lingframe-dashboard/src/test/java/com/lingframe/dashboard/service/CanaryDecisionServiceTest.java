@@ -127,4 +127,56 @@ class CanaryDecisionServiceTest {
         assertEquals("OBSERVE", result.getRecommendation());
         assertFalse(result.isSufficientData());
     }
+
+    @Test
+    @DisplayName("错误率波动超过0.5%时即使指标持平也应返回 OBSERVE")
+    void decide_errorRateFluctuation_returnsObserve() {
+        MetricsCollector collector = Mockito.mock(MetricsCollector.class);
+        // 稳定版错误率固定 1%，金丝雀版错误率波动
+        when(collector.getVersionSnapshots("ling1"))
+                .thenReturn(mapOf(
+                        snapshot(0.01, 150, 1000),
+                        snapshot(0.005, 140, 1000)));
+
+        CanaryDecisionService service = new CanaryDecisionService(collector);
+        // 模拟多次调用积累历史样本，制造波动
+        // 第1次：错误率 0.5%
+        service.decide("ling1");
+        // 第2次：错误率 1.2%（波动 0.7% > 0.5%）
+        when(collector.getVersionSnapshots("ling1"))
+                .thenReturn(mapOf(
+                        snapshot(0.01, 150, 1000),
+                        snapshot(0.012, 140, 1000)));
+        service.decide("ling1");
+        // 第3次：错误率 0.5%
+        when(collector.getVersionSnapshots("ling1"))
+                .thenReturn(mapOf(
+                        snapshot(0.01, 150, 1000),
+                        snapshot(0.005, 140, 1000)));
+        CanaryDecisionDTO result = service.decide("ling1");
+
+        // 波动 = 1.2% - 0.5% = 0.7% > 0.5%，应返回 OBSERVE
+        assertEquals("OBSERVE", result.getRecommendation());
+        assertTrue(result.getReason().contains("波动"), "应提示波动较大");
+    }
+
+    @Test
+    @DisplayName("错误率波动小于0.5%且指标持平时返回 FULL_RELEASE")
+    void decide_stableFluctuation_returnsFullRelease() {
+        MetricsCollector collector = Mockito.mock(MetricsCollector.class);
+        // 金丝雀错误率稳定在 0.5%，无波动
+        when(collector.getVersionSnapshots("ling1"))
+                .thenReturn(mapOf(
+                        snapshot(0.01, 150, 1000),
+                        snapshot(0.005, 140, 1000)));
+
+        CanaryDecisionService service = new CanaryDecisionService(collector);
+        // 积累3次稳定样本
+        service.decide("ling1");
+        service.decide("ling1");
+        CanaryDecisionDTO result = service.decide("ling1");
+
+        assertEquals("FULL_RELEASE", result.getRecommendation());
+        assertFalse(result.getReason().contains("波动"), "不应提示波动");
+    }
 }

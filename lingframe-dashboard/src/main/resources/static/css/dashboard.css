@@ -22,7 +22,6 @@
     --header-bg: rgba(21, 27, 43, 0.5);
     --log-line-hover: #151b2b;
     --gradient-bg: linear-gradient(135deg, #050810 0%, #0a0f1a 50%, #0f141f 100%);
-    --star-map-text: #e2e8f0;
     /* 阴影与涟漪 */
     --shadow-sm: rgba(0, 0, 0, 0.1);
     --shadow-md: rgba(0, 0, 0, 0.15);
@@ -31,6 +30,7 @@
     /* 遮罩层 */
     --overlay-bg: rgba(0, 0, 0, 0.6);
     --loading-overlay: rgba(10, 15, 26, 0.92);
+    --sidebar-width: 260px;
 }
 
 html.theme-light {
@@ -53,7 +53,6 @@ html.theme-light {
     --header-bg: rgba(241, 245, 249, 0.5);
     --log-line-hover: #f1f5f9;
     --gradient-bg: linear-gradient(135deg, #f1f5f9 0%, #f8fafc 50%, #e2e8f0 100%);
-    --star-map-text: #0f172a;
     --shadow-sm: rgba(0, 0, 0, 0.04);
     --shadow-md: rgba(0, 0, 0, 0.08);
     --shadow-lg: rgba(0, 0, 0, 0.12);
@@ -74,220 +73,6 @@ body {
     transition: background 0.3s, color 0.3s;
 }
 
-/* 玻璃拟态基础类 - 升级为现代高质感磨砂玻璃 */
-.glass {
-    background: rgba(21, 27, 43, 0.7);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-}
-html.theme-light .glass {
-    background: var(--bg-faint);
-    border: 1px solid rgba(15, 23, 42, 0.08);
-}
-
-.glass-strong {
-    background: rgba(21, 27, 43, 0.85);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-}
-html.theme-light .glass-strong {
-    background: rgba(255, 255, 255, 0.85);
-    border: 1px solid rgba(15, 23, 42, 0.12);
-}
-
-/* 呼吸渐变霓虹与流光特效 */
-.cyber-glow-active {
-    box-shadow: 0 0 15px rgba(16, 185, 129, 0.15), inset 0 0 10px rgba(16, 185, 129, 0.05);
-    border-color: rgba(16, 185, 129, 0.4) !important;
-    animation: active-glow 3s ease-in-out infinite;
-}
-
-@keyframes active-glow {
-    0%, 100% {
-        box-shadow: 0 0 12px rgba(16, 185, 129, 0.1), inset 0 0 8px rgba(16, 185, 129, 0.03);
-        border-color: rgba(16, 185, 129, 0.3) !important;
-    }
-    50% {
-        box-shadow: 0 0 20px rgba(16, 185, 129, 0.25), inset 0 0 12px rgba(16, 185, 129, 0.08);
-        border-color: rgba(16, 185, 129, 0.6) !important;
-    }
-}
-
-.cyber-glow-canary {
-    box-shadow: 0 0 15px rgba(245, 158, 11, 0.15), inset 0 0 10px rgba(245, 158, 11, 0.05);
-    border-color: rgba(245, 158, 11, 0.4) !important;
-    animation: canary-glow 3s ease-in-out infinite;
-}
-
-@keyframes canary-glow {
-    0%, 100% {
-        box-shadow: 0 0 12px rgba(245, 158, 11, 0.1), inset 0 0 8px rgba(245, 158, 11, 0.03);
-        border-color: rgba(245, 158, 11, 0.3) !important;
-    }
-    50% {
-        box-shadow: 0 0 20px rgba(245, 158, 11, 0.25), inset 0 0 12px rgba(245, 158, 11, 0.08);
-        border-color: rgba(245, 158, 11, 0.6) !important;
-    }
-}
-
-.rainbow-hover {
-    position: relative;
-    z-index: 1;
-}
-
-.rainbow-hover::after {
-    content: '';
-    position: absolute;
-    inset: -1.5px;
-    border-radius: inherit;
-    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ef4444, #f59e0b, #10b981, #3b82f6);
-    background-size: 400% 400%;
-    z-index: -1;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    animation: rainbow-flow 4s linear infinite;
-}
-
-.rainbow-hover:hover::after {
-    opacity: 1;
-}
-
-@keyframes rainbow-flow {
-    0% { background-position: 0% 50%; }
-    100% { background-position: 400% 50%; }
-}
-
-/* 霓虹光效 */
-.neon-blue {
-    box-shadow: 0 0 5px rgba(59, 130, 246, 0.3),
-                0 0 10px rgba(59, 130, 246, 0.2),
-                0 0 20px rgba(59, 130, 246, 0.1);
-    border-color: rgba(59, 130, 246, 0.5);
-}
-
-.neon-amber {
-    box-shadow: 0 0 5px rgba(245, 158, 11, 0.3),
-                0 0 10px rgba(245, 158, 11, 0.2),
-                0 0 20px rgba(245, 158, 11, 0.1);
-    border-color: rgba(245, 158, 11, 0.5);
-}
-
-.neon-green {
-    box-shadow: 0 0 5px rgba(34, 197, 94, 0.3),
-                0 0 10px rgba(34, 197, 94, 0.2),
-                0 0 20px rgba(34, 197, 94, 0.1);
-    border-color: rgba(34, 197, 94, 0.5);
-}
-
-.neon-red {
-    box-shadow: 0 0 5px rgba(239, 68, 68, 0.3),
-                0 0 10px rgba(239, 68, 68, 0.2),
-                0 0 20px rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.5);
-}
-
-/* 动态边框光效 */
-@keyframes border-glow-blue {
-    0%, 100% { border-color: rgba(59, 130, 246, 0.3); box-shadow: 0 0 5px rgba(59, 130, 246, 0.2); }
-    50% { border-color: rgba(59, 130, 246, 0.6); box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
-}
-
-@keyframes border-glow-amber {
-    0%, 100% { border-color: rgba(245, 158, 11, 0.3); box-shadow: 0 0 5px rgba(245, 158, 11, 0.2); }
-    50% { border-color: rgba(245, 158, 11, 0.6); box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
-}
-
-.animate-glow-blue {
-    animation: border-glow-blue 2s ease-in-out infinite;
-}
-
-.animate-glow-amber {
-    animation: border-glow-amber 2s ease-in-out infinite;
-}
-
-/* 悬浮动画 */
-@keyframes float {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-6px); }
-}
-
-.hover-float {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.hover-float:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 20px 40px var(--shadow-lg);
-}
-
-/* 按钮涟漪效果 */
-.ripple {
-    position: relative;
-    overflow: hidden;
-}
-
-.ripple::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    background: var(--ripple-color);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    transition: width 0.6s, height 0.6s;
-}
-
-.ripple:active::before {
-    width: 300px;
-    height: 300px;
-}
-
-/* 渐变文字 */
-.gradient-text {
-    background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #f472b6 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.gradient-text-blue {
-    background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-/* 扫描线效果 */
-@keyframes scanline {
-    0% { transform: translateY(-100%); }
-    100% { transform: translateY(100%); }
-}
-
-.scanline::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.5), transparent);
-    animation: scanline 3s linear infinite;
-    pointer-events: none;
-}
-
-/* 粒子背景容器 - 已禁用 */
-.particles-bg {
-    display: none;
-}
-
-.particle {
-    display: none;
-}
-
 .font-mono {
     font-family: 'JetBrains Mono', monospace;
 }
@@ -295,6 +80,7 @@ html.theme-light .glass-strong {
 /* 侧边栏 */
 .sidebar {
     width: 260px;
+    flex-shrink: 0;
     background: var(--bg-sidebar);
     border-right: 1px solid var(--border);
     display: flex;
@@ -343,6 +129,25 @@ html.theme-light .glass-strong {
     border-color: var(--primary-color);
     box-shadow: 0 12px 48px var(--shadow-md);
     transform: translateY(-2px);
+}
+
+/* 统一空状态模式 */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    text-align: center;
+}
+.empty-state-icon {
+    font-size: 1.5rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+}
+.empty-state-text {
+    font-size: 0.875rem;
+    color: var(--text-muted);
 }
 
 .card-header {
@@ -407,7 +212,7 @@ html.theme-light .glass-strong {
     width: 100%;
     height: 10px;
     border-radius: 5px;
-    background: linear-gradient(to right, #3b82f6 var(--p), #f59e0b var(--p));
+    background: linear-gradient(to right, var(--primary-color) var(--p), var(--warning-color) var(--p));
     outline: none;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
@@ -683,6 +488,12 @@ html.theme-light .glass-strong {
     border-radius: 12px;
     padding: 16px;
 }
+
+/* 模态框尺寸令牌 */
+.modal-sm { max-width: 420px; }
+.modal-md { max-width: 560px; }
+.modal-lg { max-width: 720px; }
+.modal-xl { max-width: 900px; }
 
 .health-card {
     background: var(--bg-card);
@@ -1063,6 +874,7 @@ html.theme-light .toast-info {
 
 /* 响应式 */
 @media (max-width: 1280px) {
+    :root { --sidebar-width: 200px; }
     .sidebar {
         width: 200px;
     }
@@ -1074,6 +886,7 @@ html.theme-light .toast-info {
 }
 
 @media (max-width: 1023px) {
+    :root { --sidebar-width: 0px; }
     .sidebar {
         position: fixed;
         left: -240px;
@@ -1338,25 +1151,6 @@ html.theme-light .toast-info {
     50% { box-shadow: 0 0 8px rgba(16, 185, 129, 0.8), 0 0 12px rgba(16, 185, 129, 0.3); }
 }
 
-/* ==================== 灵元星图 ==================== */
-.star-map-container {
-    background: radial-gradient(ellipse at center, #0f172a 0%, #050810 70%);
-    border-radius: 12px;
-    overflow: hidden;
-    position: relative;
-}
-
-.star-map-tooltip {
-    position: absolute;
-    background: rgba(15, 23, 42, 0.95);
-    border: 1px solid #334155;
-    border-radius: 8px;
-    padding: 8px 12px;
-    pointer-events: none;
-    z-index: 10;
-    transform: translate(12px, -50%);
-    min-width: 120px;
-}
 
 /* ==================== 灵元中心专属样式 ==================== */
 .package-card {
@@ -1406,6 +1200,11 @@ html.theme-light .toast-info {
 
 /* placeholder 文字颜色 */
 .t-text-muted::placeholder { color: var(--text-muted); }
+
+/* 统一趋势箭头色阶 */
+.trend-danger { color: #f87171; }
+.trend-warning { color: #fbbf24; }
+.trend-safe { color: #4ade80; }
 
 /* ==================== 状态标牌 亮色适配 ==================== */
 html.theme-light .status-active {
@@ -1492,16 +1291,6 @@ html.theme-light .health-card {
 html.theme-light .text-green-300 { color: #15803d; }
 html.theme-light .text-red-300 { color: #b91c1c; }
 
-/* ==================== 星图 亮色适配 ==================== */
-html.theme-light .star-map-container {
-    background: radial-gradient(ellipse at center, #ffffff 0%, #f1f5f9 70%);
-    border: 1px solid var(--border);
-}
-html.theme-light .star-map-tooltip {
-    background: rgba(255, 255, 255, 0.95);
-    border-color: var(--border);
-    color: var(--text-primary);
-}
 
 /* 亮色模式滑块与进度条自适应 */
 html.theme-light .slider-custom {
@@ -1548,7 +1337,7 @@ html.theme-light .perm-btn.off {
 .global-console-drawer {
     position: fixed;
     bottom: 0;
-    left: 260px; /* 避开左侧 sidebar 的宽度 */
+    left: var(--sidebar-width, 260px); /* 跟随侧边栏宽度变量 */
     right: 0;
     height: 40px; /* 默认折叠高度 */
     background: rgba(21, 27, 43, 0.95);
@@ -1705,17 +1494,6 @@ html.theme-light .console-body .text-slate-400 { color: #475569; }
     padding-bottom: 280px;
 }
 
-/* 亮色主题额外净化覆盖 */
-html.theme-light .star-map-container {
-    background: radial-gradient(ellipse at center, #ffffff 0%, #f1f5f9 70%);
-    border: 1px solid var(--border);
-}
-
-html.theme-light .star-map-tooltip {
-    background: rgba(255, 255, 255, 0.95);
-    border-color: var(--border);
-    color: var(--text-primary);
-}
 
 /* 折叠箭头微交互 */
 .fa-chevron-down, .fa-chevron-right {
@@ -1738,6 +1516,21 @@ html.theme-light .card-header {
     border-bottom: 1px solid var(--border) !important;
 }
 
+/* 治理矩阵首列固定 */
+.governance-matrix-table th:first-child,
+.governance-matrix-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--bg-card);
+}
+.governance-matrix-table thead th:first-child {
+    background: var(--bg-faint);
+}
+.governance-matrix-table tr:hover td:first-child {
+    background: var(--bg-hover);
+}
+
 /* ==================== 光敏 / 动画敏感降级 ==================== */
 @media (prefers-reduced-motion: reduce) {
     /* 关闭所有 CSS 动画 */
@@ -1748,45 +1541,9 @@ html.theme-light .card-header {
         scroll-behavior: auto !important;
     }
 
-    /* 呼吸光效降级为静态边框 */
-    .cyber-glow-active {
-        box-shadow: none !important;
-        border-color: rgba(16, 185, 129, 0.5) !important;
-    }
-    .cyber-glow-canary {
-        box-shadow: none !important;
-        border-color: rgba(245, 158, 11, 0.5) !important;
-    }
-
-    /* 霓虹光效降级 */
-    .neon-blue, .neon-amber, .neon-green, .neon-red {
-        box-shadow: none !important;
-    }
-
-    /* 悬浮动画禁用 */
-    .hover-float:hover {
-        transform: none !important;
-        box-shadow: none !important;
-    }
-
     /* 卡片悬浮禁用 */
     .card:hover {
         transform: none !important;
-    }
-
-    /* 彩虹边框禁用 */
-    .rainbow-hover::after {
-        display: none !important;
-    }
-
-    /* 扫描线禁用 */
-    .scanline::after {
-        display: none !important;
-    }
-
-    /* 涟漪效果禁用 */
-    .ripple::before {
-        display: none !important;
     }
 
     /* 侧边栏项悬浮位移禁用 */

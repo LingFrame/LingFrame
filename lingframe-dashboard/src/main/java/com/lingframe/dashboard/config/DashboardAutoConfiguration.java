@@ -115,8 +115,9 @@ public class DashboardAutoConfiguration {
             LingServiceRegistry lingServiceRegistry,
             LingRepository lingRepository,
             InvocationPipelineEngine pipelineEngine,
-            ObjectMapper objectMapper) {
-        return new ServicePlaygroundService(lingServiceRegistry, lingRepository, pipelineEngine, objectMapper);
+            ObjectMapper objectMapper,
+            CanaryRouter canaryRouter) {
+        return new ServicePlaygroundService(lingServiceRegistry, lingRepository, pipelineEngine, objectMapper, canaryRouter);
     }
 
     @Bean
@@ -128,7 +129,7 @@ public class DashboardAutoConfiguration {
     public RuntimeDiagnosticsService runtimeDiagnosticsService(EventBus eventBus) {
         return new RuntimeDiagnosticsService(eventBus);
     }
-    
+
     @Bean
     @ConditionalOnMissingBean
     public MetricsCollector metricsCollector(LingRepository lingRepository) {
@@ -250,20 +251,20 @@ public class DashboardAutoConfiguration {
                     registry.addInterceptor(readOnlyInterceptor)
                             .addPathPatterns("/lingframe/dashboard/**")
                             .excludePathPatterns(
-                                "/lingframe/dashboard/ui/**",
-                                "/lingframe/dashboard/stream"
+                                    "/lingframe/dashboard/ui/**",
+                                    "/lingframe/dashboard/stream"
                             );
                 }
                 // Token 认证拦截器
                 if (accessTokenInterceptor != null) {
                     registry.addInterceptor(accessTokenInterceptor)
                             .addPathPatterns(
-                                "/lingframe/dashboard/lings/**",
-                                "/lingframe/dashboard/governance/**",
-                                "/lingframe/dashboard/simulate/**",
-                                "/lingframe/dashboard/playground/**",
-                                "/lingframe/dashboard/metrics/**",
-                                "/lingframe/dashboard/stream-ticket"
+                                    "/lingframe/dashboard/lings/**",
+                                    "/lingframe/dashboard/governance/**",
+                                    "/lingframe/dashboard/simulate/**",
+                                    "/lingframe/dashboard/playground/**",
+                                    "/lingframe/dashboard/metrics/**",
+                                    "/lingframe/dashboard/stream-ticket"
                             );
                 }
             }

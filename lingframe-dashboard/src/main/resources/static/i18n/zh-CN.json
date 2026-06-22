@@ -107,6 +107,7 @@
     "reload": "热重载",
     "unload": "卸载",
     "permissions": "资源权限",
+    "resourceIsolation": "资源隔离",
     "invocationGovernance": "调用治理",
     "hotPatch": "Hot Patch",
     "dbRead": "DB 读",
@@ -174,7 +175,10 @@
     "saveCase": "保存当前",
     "export": "导出",
     "import": "导入",
-    "noCases": "暂无保存的用例"
+    "noCases": "暂无保存的用例",
+    "caseLimitExceeded": "用例数已达上限 50，请导出后删除旧用例再保存",
+    "rename": "重命名",
+    "renamePrompt": "请输入新的用例名称"
   },
   "audit": {
     "success": "SUCCESS",
@@ -284,7 +288,44 @@
       "last7d": "近 7 天",
       "custom": "自定义",
       "gcTime": "GC 耗时",
-      "classCount": "类对象数"
+      "classCount": "类对象数",
+      "resourceUsage": "灵元资源占用",
+      "resourceLingId": "灵元ID",
+      "resourceVersion": "版本",
+      "resourceClassCount": "类数",
+      "resourceThreadCount": "线程数",
+      "resourceCpuTime": "CPU时间(ms)",
+      "resourceHeapDelta": "堆增量",
+      "resourceMetaspace": "Metaspace(近似)",
+      "resourceMetaspaceHint": "基于类数估算，非精确值",
+      "resourceEmpty": "暂无灵元资源数据",
+      "resourceVersionSuffix": "个版本",
+      "leakTitle": "泄漏风险",
+      "leakLing": "灵元",
+      "leakVersion": "版本",
+      "leakMode": "检测模式",
+      "leakStatus": "状态",
+      "leakMessage": "消息",
+      "leakElapsed": "耗时",
+      "leakEmpty": "暂无泄漏检测结果",
+      "leakSuspected": "疑似泄漏✗",
+      "leakCollected": "已回收✓",
+      "threadPoolTitle": "线程池",
+      "threadPoolLingId": "灵元ID",
+      "threadPoolActive": "活跃",
+      "threadPoolSize": "池大小",
+      "threadPoolMax": "最大",
+      "threadPoolQueue": "队列",
+      "threadPoolCompleted": "已完成",
+      "threadPoolEmpty": "无线程池数据",
+      "gcTitle": "GC 收集器详情",
+      "gcTotalCount": "总次数",
+      "gcTotalTime": "总耗时",
+      "gcCountUnit": "次",
+      "gcTimeUnit": "ms",
+      "gcEmpty": "暂无GC详情",
+      "autoScroll": "自动滚动",
+      "lingClassLoaderCount": "LingClassLoader"
   },
   "status": {
     "active": "激活",
@@ -304,6 +345,22 @@
     "selectLing": "选择灵元",
     "allLings": "所有灵元",
     "noEvents": "暂无事件记录"
+  },
+  "canary": {
+    "rollback": "立即回滚",
+    "fullRelease": "全量发布",
+    "full_release": "全量发布",
+    "keepObserving": "继续观察",
+    "observe": "继续观察",
+    "reason": {
+      "insufficientData": "数据样本不足，建议继续观察",
+      "errorRateDegraded": "金丝雀错误率显著高于稳定版",
+      "latencyDegraded": "金丝雀延迟显著高于稳定版",
+      "fluctuationHigh": "金丝雀指标持平但错误率波动较大，建议继续观察",
+      "stableButInsufficientHistory": "金丝雀表现优于或持平稳定版（历史样本不足，波动数据待积累）",
+      "stableAndSuperior": "金丝雀表现优于或持平稳定版",
+      "inconclusive": "指标差异不显著，建议继续观察"
+    }
   },
   "uninstallResult": {
       "title": "卸载结果详情",
@@ -371,6 +428,50 @@
       "cpuTimeLastMinuteHint": "近一分钟内灵元独占消耗的 CPU 时间",
       "estimatedHeapDeltaHint": "灵元调用导致的堆内存增量估算值"
   },
+  "governance": {
+    "matrixRowHint": "点击跳转到该灵元的治理配置详情",
+    "tabConfig": "治理配置",
+    "tabTraffic": "流量控制",
+    "tabHealth": "健康观测",
+    "tabReadiness": "运行时就绪",
+    "presetLabel": "预设方案",
+    "presetConservative": "保守",
+    "presetDefault": "默认",
+    "presetAggressive": "激进",
+    "presetPlaceholder": "— 选择预设 —",
+    "presetHint": "选择后填充参数，可再微调",
+    "matrixTitle": "治理规则总览",
+    "matrixHint": "点击列头排序，快速发现配置漂移",
+    "matrixLingId": "灵元ID",
+    "matrixVersion": "版本",
+    "matrixRole": "角色",
+    "matrixTraffic": "流量%",
+    "matrixTimeout": "超时ms",
+    "matrixRateLimit": "限流/s",
+    "matrixConcurrent": "并发",
+    "matrixRetry": "重试",
+    "matrixCpuBudget": "CPU预算",
+    "matrixMemoryBudget": "内存MB",
+    "matrixDbRead": "DB读",
+    "matrixDbWrite": "DB写",
+    "matrixCacheRead": "Cache读",
+    "matrixCacheWrite": "Cache写",
+    "matrixEmpty": "暂无治理规则数据",
+    "matrixDefault": "默认",
+    "matrixCanary": "金丝雀",
+    "configTitle": "治理配置说明",
+    "canaryStableErrorRate": "稳定版错误率",
+    "canaryCanaryErrorRate": "金丝雀",
+    "canaryStableP99": "稳定版 p99",
+    "canaryCanaryP99": "金丝雀 p99",
+    "canaryDecisionData": "展开数据对比",
+    "configPermDesc": "控制灵元对 DB 和 Cache 的读写访问，关闭后灵元内调用将被拒绝。",
+    "configGovDesc": "配置超时、限流、并发、重试、预算等参数，对灵元所有调用生效。",
+    "configTabHint": "切换上方 Tab 可查看预设方案与治理规则总览矩阵，矩阵中点击灵元行可跳转到其治理配置详情。",
+    "canaryRollback": "回滚",
+    "canaryFullRelease": "全量发布",
+    "canaryObserve": "继续观察"
+  },
   "runtimeReadiness": {
       "title": "运行时治理就绪度",
       "empty": "暂未观测到运行时治理就绪状态。",
@@ -380,19 +481,25 @@
       "blockers": "阻塞项",
       "warnings": "告警",
       "capabilitiesTitle": "资源清理能力",
-      "capabilitiesEmpty": "暂未观测到资源清理能力快照。"
+      "capabilitiesEmpty": "暂未观测到资源清理能力快照。",
+      "yes": "是",
+      "no": "否",
+      "capabilityBadge": "能力项"
   },
   "overview": {
     "heroSubtitle": "每个灵元独立运行、独立演进、独立治理，无任何依赖耦合",
     "totalLings": "灵元总数",
     "activeLings": "活跃灵元",
     "canaryLings": "灰度中",
-    "starMap": "灵元星图",
-    "starMapHint": "点击节点选中灵元",
+    "startTour": "功能导览",
+    "lingOverview": "灵元状态速览",
+    "colName": "名称",
+    "colStatus": "状态",
+    "colVersion": "版本",
+    "colTraffic": "流量",
     "noLings": "暂无灵元",
     "noLingsHint": "安装你的第一个灵元，开始体验零依赖架构",
     "goInstall": "安装灵元",
-    "keyMetrics": "关键指标",
     "recentEvents": "最近事件",
     "noEvents": "暂无事件"
   },
@@ -418,7 +525,9 @@
     "noPackages": "磁盘包仓库为空",
     "uninstallKeepFile": "仅卸载版本 (保留包)",
     "uninstallDeleteFile": "彻底卸载 (删除包)",
-    "version": "版本"
+    "version": "版本",
+    "packageSearch": "搜索物理包 ID 或文件名...",
+    "deployed": "已部署"
   },
   "toastExtension": {
     "deploySuccess": "灵元部署成功",
@@ -450,13 +559,9 @@
       "title": "灵元 = 可热插拔模块",
       "desc": "每个灵元独立 ClassLoader 隔离，支持多版本共存、灰度发布、热卸载。"
     },
-    "starMap": {
-      "title": "运行时拓扑",
-      "desc": "流动光点 = 实时调用流量；涟漪 = 健康预警；颜色 = 健康状态。"
-    },
-    "checklist": {
-      "title": "从这里开始",
-      "desc": "三步走：上传灵元包 → 安装灵元 → 激活灵元。点击卡片可快速跳转。"
+    "lingOverview": {
+      "title": "灵元状态速览",
+      "desc": "一览所有灵元的运行状态、版本和流量分配，点击行可选中灵元。"
     },
     "governance": {
       "title": "实时治理",

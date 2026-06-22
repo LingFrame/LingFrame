@@ -107,6 +107,7 @@
         "reload": "Hot Reload",
         "unload": "Unload",
         "permissions": "Permissions",
+        "resourceIsolation": "Resource Isolation",
         "invocationGovernance": "Invocation Governance",
         "hotPatch": "Hot Patch",
         "dbRead": "DB Read",
@@ -174,7 +175,10 @@
         "saveCase": "Save Current",
         "export": "Export",
         "import": "Import",
-        "noCases": "No saved cases"
+        "noCases": "No saved cases",
+        "caseLimitExceeded": "Case limit (50) reached. Please export and delete old cases before saving.",
+        "rename": "Rename",
+        "renamePrompt": "Enter a new case name"
     },
     "audit": {
         "success": "SUCCESS",
@@ -284,7 +288,44 @@
       "last7d": "Last 7 days",
       "custom": "Custom",
       "gcTime": "GC Time",
-      "classCount": "Class Count"
+      "classCount": "Class Count",
+      "resourceUsage": "Ling Resource Usage",
+      "resourceLingId": "Ling ID",
+      "resourceVersion": "Version",
+      "resourceClassCount": "Classes",
+      "resourceThreadCount": "Threads",
+      "resourceCpuTime": "CPU Time(ms)",
+      "resourceHeapDelta": "Heap Delta",
+      "resourceMetaspace": "Metaspace(Est.)",
+      "resourceMetaspaceHint": "Estimated by class count, not precise",
+      "resourceEmpty": "No ling resource data available",
+      "resourceVersionSuffix": " versions",
+      "leakTitle": "Leak Risk",
+      "leakLing": "Ling",
+      "leakVersion": "Version",
+      "leakMode": "Detection Mode",
+      "leakStatus": "Status",
+      "leakMessage": "Message",
+      "leakElapsed": "Elapsed",
+      "leakEmpty": "No leak detection results yet",
+      "leakSuspected": "Suspected Leak✗",
+      "leakCollected": "Collected✓",
+      "threadPoolTitle": "Thread Pool",
+      "threadPoolLingId": "Ling ID",
+      "threadPoolActive": "Active",
+      "threadPoolSize": "Pool Size",
+      "threadPoolMax": "Max",
+      "threadPoolQueue": "Queue",
+      "threadPoolCompleted": "Completed",
+      "threadPoolEmpty": "No thread pool data",
+      "gcTitle": "GC Collector Details",
+      "gcTotalCount": "Total Count",
+      "gcTotalTime": "Total Time",
+      "gcCountUnit": "times",
+      "gcTimeUnit": "ms",
+      "gcEmpty": "No GC details",
+      "autoScroll": "Auto-Scroll",
+      "lingClassLoaderCount": "LingClassLoader"
   },
   "status": {
     "active": "ACTIVE",
@@ -304,6 +345,22 @@
     "selectLing": "Select Ling",
     "allLings": "All Lings",
     "noEvents": "No events found"
+  },
+  "canary": {
+    "rollback": "Rollback Now",
+    "fullRelease": "Full Release",
+    "full_release": "Full Release",
+    "keepObserving": "Keep Observing",
+    "observe": "Keep Observing",
+    "reason": {
+      "insufficientData": "Insufficient data samples, keep observing",
+      "errorRateDegraded": "Canary error rate significantly higher than stable",
+      "latencyDegraded": "Canary latency significantly higher than stable",
+      "fluctuationHigh": "Canary metrics match but error rate fluctuation is high, keep observing",
+      "stableButInsufficientHistory": "Canary matches or outperforms stable (insufficient history for fluctuation check)",
+      "stableAndSuperior": "Canary matches or outperforms stable",
+      "inconclusive": "Metrics difference is not significant, keep observing"
+    }
   },
   "uninstallResult": {
       "title": "Uninstall Result",
@@ -371,6 +428,50 @@
       "cpuTimeLastMinuteHint": "CPU time consumed exclusively by the ling in the last minute",
       "estimatedHeapDeltaHint": "Estimated heap memory delta caused by ling invocations"
   },
+  "governance": {
+    "matrixRowHint": "Click to jump to governance config for this ling",
+    "tabConfig": "Governance Config",
+    "tabTraffic": "Traffic Control",
+    "tabHealth": "Health Observation",
+    "tabReadiness": "Runtime Readiness",
+    "presetLabel": "Presets",
+    "presetConservative": "Conservative",
+    "presetDefault": "Default",
+    "presetAggressive": "Aggressive",
+    "presetPlaceholder": "— Select Preset —",
+    "presetHint": "Fills parameters, then fine-tune",
+    "matrixTitle": "Governance Rules Overview",
+    "matrixHint": "Click column headers to sort, quickly detect config drift",
+    "matrixLingId": "Ling ID",
+    "matrixVersion": "Version",
+    "matrixRole": "Role",
+    "matrixTraffic": "Traffic%",
+    "matrixTimeout": "Timeout ms",
+    "matrixRateLimit": "Rate/s",
+    "matrixConcurrent": "Concurrent",
+    "matrixRetry": "Retry",
+    "matrixCpuBudget": "CPU Budget",
+    "matrixMemoryBudget": "Memory MB",
+    "matrixDbRead": "DB Read",
+    "matrixDbWrite": "DB Write",
+    "matrixCacheRead": "Cache Read",
+    "matrixCacheWrite": "Cache Write",
+    "matrixEmpty": "No governance rules data",
+    "matrixDefault": "Default",
+    "matrixCanary": "Canary",
+    "configTitle": "Governance Config Guide",
+    "canaryStableErrorRate": "Stable Error Rate",
+    "canaryCanaryErrorRate": "Canary",
+    "canaryStableP99": "Stable P99",
+    "canaryCanaryP99": "Canary P99",
+    "canaryDecisionData": "Expand Data Comparison",
+    "configPermDesc": "Control ling's read/write access to DB and Cache; when disabled, calls within the ling will be rejected.",
+    "configGovDesc": "Configure timeout, rate limit, concurrency, retry, budget and other parameters; applies to all ling invocations.",
+    "configTabHint": "Switch tabs above to view preset schemes and governance rule matrix; click a ling row in the matrix to jump to its governance config details.",
+    "canaryRollback": "Rollback",
+    "canaryFullRelease": "Full Release",
+    "canaryObserve": "Keep Observing"
+  },
   "runtimeReadiness": {
       "title": "Runtime Governance Readiness",
       "empty": "Runtime governance readiness has not been observed yet.",
@@ -380,19 +481,25 @@
       "blockers": "Blockers",
       "warnings": "Warnings",
       "capabilitiesTitle": "Resource Cleanup Capabilities",
-      "capabilitiesEmpty": "Runtime cleanup capability snapshots have not been observed yet."
+      "capabilitiesEmpty": "Runtime cleanup capability snapshots have not been observed yet.",
+      "yes": "Yes",
+      "no": "No",
+      "capabilityBadge": "Capability"
   },
   "overview": {
     "heroSubtitle": "Each Ling runs, evolves, and is governed independently — no dependency coupling",
     "totalLings": "Total Lings",
     "activeLings": "Active Lings",
     "canaryLings": "Canary",
-    "starMap": "Ling Star Map",
-    "starMapHint": "Click a node to select",
+    "startTour": "Feature Tour",
+    "lingOverview": "Ling Status Overview",
+    "colName": "Name",
+    "colStatus": "Status",
+    "colVersion": "Version",
+    "colTraffic": "Traffic",
     "noLings": "No Lings Yet",
     "noLingsHint": "Install your first Ling to experience zero-dependency architecture",
     "goInstall": "Install Ling",
-    "keyMetrics": "Key Metrics",
     "recentEvents": "Recent Events",
     "noEvents": "No events yet"
   },
@@ -418,7 +525,9 @@
     "noPackages": "Disk artifacts repository is empty",
     "uninstallKeepFile": "Undeploy Version (Keep File)",
     "uninstallDeleteFile": "Undeploy Version (Delete File)",
-    "version": "Version"
+    "version": "Version",
+    "packageSearch": "Search package ID or file name...",
+    "deployed": "Deployed"
   },
   "toastExtension": {
     "deploySuccess": "Ling package deployed successfully",
@@ -450,13 +559,9 @@
       "title": "Ling = Hot-pluggable Module",
       "desc": "Each ling is isolated by independent ClassLoader, supporting multi-version coexistence, canary release, and hot unload."
     },
-    "starMap": {
-      "title": "Runtime Topology",
-      "desc": "Flowing particles = real-time traffic; ripples = health alerts; colors = health status."
-    },
-    "checklist": {
-      "title": "Start Here",
-      "desc": "Three steps: upload ling package → install ling → activate ling. Click cards to jump."
+    "lingOverview": {
+      "title": "Ling Status Overview",
+      "desc": "At a glance: runtime status, version, and traffic distribution for all lings. Click a row to select."
     },
     "governance": {
       "title": "Real-time Governance",
