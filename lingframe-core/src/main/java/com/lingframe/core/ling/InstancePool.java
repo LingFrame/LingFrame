@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -189,7 +190,7 @@ public class InstancePool {
 
             // 若该实例曾是主实例，原子选举新的主实例（避免中间 null 窗口）
             if (defaultInstance.get() == instance) {
-                LingInstance newDefault = activePool.isEmpty() ? null : activePool.get(0);
+                LingInstance newDefault = electDefaultCandidate();
                 if (defaultInstance.compareAndSet(instance, newDefault)) {
                     if (newDefault != null) {
                         log.info("[{}] Default instance moved to dying, promoted {} to new default", lingId,
@@ -221,7 +222,7 @@ public class InstancePool {
 
             // 若为默认实例，原子选举新主（避免中间 null 窗口）
             if (defaultInstance.get() == instance) {
-                LingInstance newDefault = activePool.isEmpty() ? null : activePool.get(0);
+                LingInstance newDefault = electDefaultCandidate();
                 if (defaultInstance.compareAndSet(instance, newDefault)) {
                     if (newDefault != null) {
                         log.info("[{}] Default instance removed, promoted {} to new default", lingId, newDefault.getVersion());
@@ -325,6 +326,88 @@ public class InstancePool {
                 activePool.size(),
                 dyingQueue.size(),
                 defaultInstance.get() != null);
+    }
+
+    /**
+     * 从活跃池中按确定性优先级选举新主候选。
+     * <p>
+     * 此前的实现是 {@code activePool.get(0)}，依赖 CopyOnWriteArrayList 的插入顺序，
+     * 选举结果不确定：并发 addInstance 时由调用时序决定，且可能把灰度实例选为默认，
+     * 等同于灰度全量上线，违反灰度语义。
+     * <p>
+     * 本方法只基于实例自身可用信息排序，不依赖 CanaryRouter（避免 core 内循环依赖）：
+     * <ol>
+     *   <li>READY 实例优先于非 READY 实例（保底路由到可用实例）；</li>
+     *   <li>同为 READY 时，版本号语义降序优先（新版本通常承载最新修复与能力）；</li>
+     *   <li>版本号相同则保持稳定顺序（按 activePool 自然顺序），避免无谓抖动。</li>
+     * </ol>
+     * 注意：版本号必须按语义版本序（1.10.0 &gt; 1.9.0），而非字典序。
+     * 字典序会把 1.9.0 排在 1.10.0 之前导致旧版本压制新版本，违反选举意图。
+     * <p>
+     * 调用方必须已持有 {@link #membershipLock}，因此本方法不加锁。
+     *
+     * @return 选举出的新主候选；活跃池为空时返回 null
+     */
+    private LingInstance electDefaultCandidate() {
+        if (activePool.isEmpty()) {
+            return null;
+        }
+        return activePool.stream()
+                .min(Comparator
+                        .comparing((LingInstance inst) -> !inst.isReady())   // READY 在前（!isReady=false=0 排序在前）
+                        .thenComparing(LingInstance::getVersion,
+                                InstancePool::compareVersionDescending))      // 语义版本降序
+                .orElse(null);
+    }
+
+    /**
+     * 语义版本号降序比较：返回值约定同 {@link Comparator#compare(Object, Object)}，
+     * 即 v1 &gt; v2 时返回负数（v1 排前），实现「新版本优先」。
+     * <p>
+     * 按 {@code .} 分段，每段尝试解析为数字：
+     * <ul>
+     *   <li>纯数字段按数值比较（1.10 &gt; 1.9，避免字典序陷阱）；</li>
+     *   <li>非数字段（如 alpha/beta/RC1）回退字典序，保证有确定顺序；</li>
+     *   <li>段数不一致时，缺失段视为 0（1.2 等价于 1.2.0）。</li>
+     * </ul>
+     * 非法或 null 输入兜底为相等，避免拖垮选举。
+     */
+    private static int compareVersionDescending(String v1, String v2) {
+        if (v1 == null || v2 == null) {
+            return 0;
+        }
+        String[] p1 = v1.split("\\.");
+        String[] p2 = v2.split("\\.");
+        int len = Math.max(p1.length, p2.length);
+        for (int i = 0; i < len; i++) {
+            String s1 = i < p1.length ? p1[i] : "";
+            String s2 = i < p2.length ? p2[i] : "";
+            int n1 = tryParseInt(s1);
+            int n2 = tryParseInt(s2);
+            int cmp;
+            if (n1 != Integer.MIN_VALUE && n2 != Integer.MIN_VALUE) {
+                // 两段都是数字：按数值比较
+                cmp = Integer.compare(n1, n2);
+            } else {
+                // 至少一段非数字：回退字典序（空串排前）
+                cmp = s1.compareTo(s2);
+            }
+            if (cmp != 0) {
+                return -cmp;   // 取负实现降序
+            }
+        }
+        return 0;
+    }
+
+    private static int tryParseInt(String s) {
+        if (s == null || s.isEmpty()) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException e) {
+            return Integer.MIN_VALUE;   // 哨兵值表示非数字
+        }
     }
 
     /**

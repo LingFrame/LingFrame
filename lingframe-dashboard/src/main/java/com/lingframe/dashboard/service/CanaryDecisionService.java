@@ -4,7 +4,6 @@ import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
 import com.lingframe.dashboard.dto.CanaryDecisionDTO;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -27,7 +26,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * 每次 decide 调用都会记录一次当前错误率，超出窗口的样本自动淘汰。
  */
 @Slf4j
-@Service
 public class CanaryDecisionService {
 
     /** 最小样本请求数，低于此值视为数据不足 */

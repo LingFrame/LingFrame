@@ -135,6 +135,10 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
                 tryRecoverFromDegraded(lingId, breaker);
             }
             return result;
+        } catch (Error e) {
+            // Error（OOM / StackOverflow）跳过熔断器 onError 副作用直接透传，
+            // 避免在 JVM 即将崩溃时再触发 breaker.onError 导致二次错误。
+            throw e;
         } catch (Throwable t) {
             if (breaker != null) {
                 long durationNanos = System.nanoTime() - startNanos;

@@ -68,14 +68,9 @@ public class DefaultLingContext implements LingContext {
             throw new InvalidArgumentException("serviceId", "Service ID cannot be empty.");
         }
 
-        String className = lingServiceRegistry.getServiceClassName(serviceId);
-        if (className == null) {
-            log.warn("Cannot find metadata for invokeService: {}", serviceId);
-            return Optional.empty();
-        }
-
         List<String> methods = lingServiceRegistry.getProviderMethods(serviceId);
         if (methods == null || methods.isEmpty()) {
+            log.warn("Cannot find metadata for invokeService: {}", serviceId);
             return Optional.empty();
         }
 
@@ -91,8 +86,8 @@ public class DefaultLingContext implements LingContext {
         ctx.setParameterTypeNames(paramTypeNames);
         ctx.setArgs(args);
 
-        // 入口层如果已经知道目标类名，就直接写入 resolution 分区，避免后续再通过字符串附件兜底传播
-        ctx.resolution().setTargetClassName(className);
+        // targetClassName 由 ContextIsolationFilter 从 FQSID 提取接口名填充，
+        // 不再从注册表预填，避免多版本下实现类名错配
         ctx.setExecutionMode(InvocationExecutionMode.NORMAL);
 
         try {
@@ -139,8 +134,7 @@ public class DefaultLingContext implements LingContext {
             paramNames[i] = paramTypes[i].getName();
         }
         String returnTypeName = method.getReturnType().getName();
-        lingServiceRegistry.registerServiceMetadata(fqsid, method.getDeclaringClass().getName(), methodName,
-                paramNames, returnTypeName);
+        lingServiceRegistry.registerServiceMetadata(fqsid, methodName, paramNames, returnTypeName);
     }
 
     private String[] parseParamTypeNames(String signature) {

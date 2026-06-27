@@ -18,14 +18,17 @@ public class GovernanceConfigRestorer {
     private final GovernanceStorage governanceStorage;
     private final LocalGovernanceRegistry governanceRegistry;
     private final CanaryRouter canaryRouter;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // 复用 Spring 容器中的单例 ObjectMapper，避免每次恢复都创建新实例
+    private final ObjectMapper objectMapper;
 
     public GovernanceConfigRestorer(GovernanceStorage governanceStorage,
                                     LocalGovernanceRegistry governanceRegistry,
-                                    CanaryRouter canaryRouter) {
+                                    CanaryRouter canaryRouter,
+                                    ObjectMapper objectMapper) {
         this.governanceStorage = governanceStorage;
         this.governanceRegistry = governanceRegistry;
         this.canaryRouter = canaryRouter;
+        this.objectMapper = objectMapper;
     }
 
     @PostConstruct

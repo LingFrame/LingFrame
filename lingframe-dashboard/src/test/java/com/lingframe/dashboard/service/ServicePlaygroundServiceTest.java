@@ -75,7 +75,6 @@ class ServicePlaygroundServiceTest {
         void shouldReturnStructuredMetadataWhenServicesRegistered() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository, pipelineEngine, objectMapper, canaryRouter);
             when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(Arrays.asList("test-ling:EchoService"));
-            when(serviceRegistry.getServiceClassName("test-ling:EchoService")).thenReturn("com.example.EchoServiceImpl");
             when(serviceRegistry.getProviderMethods("test-ling:EchoService")).thenReturn(Arrays.asList("echo(java.lang.String)", "ping()"));
             when(serviceRegistry.getReturnType("test-ling:EchoService", "echo(java.lang.String)")).thenReturn("java.lang.String");
             when(serviceRegistry.getReturnType("test-ling:EchoService", "ping()")).thenReturn("void");
@@ -95,7 +94,7 @@ class ServicePlaygroundServiceTest {
             assertEquals(1, services.size());
             ServiceMetadataDTO serviceDto = services.get(0);
             assertEquals("test-ling:EchoService", serviceDto.getFqsid());
-            assertEquals("com.example.EchoServiceImpl", serviceDto.getClassName());
+            assertNull(serviceDto.getClassName());
             assertEquals(2, serviceDto.getMethods().size());
 
             ServiceMetadataDTO.MethodMetadata echoMethod = serviceDto.getMethods().get(0);
@@ -120,10 +119,6 @@ class ServicePlaygroundServiceTest {
                     "test-ling:com.example.OrderService",
                     "test-ling:query_order"
             ));
-            
-            when(serviceRegistry.getServiceClassName("test-ling:com.example.OrderService")).thenReturn("com.example.OrderServiceImpl");
-            when(serviceRegistry.getServiceClassName("test-ling:query_order")).thenReturn("com.example.OrderServiceImpl");
-            
             when(serviceRegistry.getProviderMethods("test-ling:com.example.OrderService")).thenReturn(Arrays.asList("queryOrder(java.lang.Long)", "ping()"));
             when(serviceRegistry.getProviderMethods("test-ling:query_order")).thenReturn(Arrays.asList("queryOrder(java.lang.Long)", "ping()"));
             
@@ -147,7 +142,7 @@ class ServicePlaygroundServiceTest {
             assertEquals(1, services.size());
             ServiceMetadataDTO serviceDto = services.get(0);
             assertEquals("test-ling:com.example.OrderService", serviceDto.getFqsid());
-            assertEquals("com.example.OrderServiceImpl", serviceDto.getClassName());
+            assertNull(serviceDto.getClassName());
             assertEquals(2, serviceDto.getMethods().size());
 
             ServiceMetadataDTO.MethodMetadata queryMethod = serviceDto.getMethods().get(0);
@@ -199,7 +194,6 @@ class ServicePlaygroundServiceTest {
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
-            when(serviceRegistry.getServiceClassName("test-ling:Service")).thenReturn("com.example.Service");
 
             // 模拟可用实例
             InstancePool instancePool = mock(InstancePool.class);
@@ -219,7 +213,7 @@ class ServicePlaygroundServiceTest {
                 InvocationContext ctx = invocation.getArgument(0);
                 assertEquals("test-ling", ctx.getTargetLingId());
                 assertEquals("test-ling:Service", ctx.getServiceFQSID());
-                assertEquals("com.example.Service", ctx.resolution().getTargetClassName());
+                assertNull(ctx.resolution().getTargetClassName());
                 assertEquals("hello", ctx.getMethodName());
                 assertEquals("dashboard", ctx.getCallerLingId());
                 ctx.addTrace(trace);
@@ -253,7 +247,6 @@ class ServicePlaygroundServiceTest {
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
-            when(serviceRegistry.getServiceClassName("test-ling:Service")).thenReturn("com.example.Service");
 
             // 模拟可用实例
             InstancePool instancePool = mock(InstancePool.class);
@@ -287,7 +280,6 @@ class ServicePlaygroundServiceTest {
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
-            when(serviceRegistry.getServiceClassName("test-ling:Service")).thenReturn("com.example.Service");
 
             InstancePool instancePool = mock(InstancePool.class);
             LingInstance instance = mock(LingInstance.class);
@@ -328,7 +320,6 @@ class ServicePlaygroundServiceTest {
             when(runtime.isAvailable()).thenReturn(true);
             when(runtime.getLingId()).thenReturn("test-ling");
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
-            when(serviceRegistry.getServiceClassName("test-ling:Service")).thenReturn("com.example.Service");
 
             // 模拟双版本实例
             InstancePool instancePool = mock(InstancePool.class);
@@ -366,7 +357,6 @@ class ServicePlaygroundServiceTest {
             when(runtime.isAvailable()).thenReturn(true);
             when(runtime.getLingId()).thenReturn("test-ling");
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
-            when(serviceRegistry.getServiceClassName("test-ling:Service")).thenReturn("com.example.Service");
 
             InstancePool instancePool = mock(InstancePool.class);
             LingInstance stable = mock(LingInstance.class);
@@ -401,7 +391,6 @@ class ServicePlaygroundServiceTest {
             when(runtime.isAvailable()).thenReturn(true);
             when(runtime.getLingId()).thenReturn("test-ling");
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
-            when(serviceRegistry.getServiceClassName("test-ling:Service")).thenReturn("com.example.Service");
 
             InstancePool instancePool = mock(InstancePool.class);
             LingInstance stable = mock(LingInstance.class);

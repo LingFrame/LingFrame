@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -415,6 +416,87 @@ class InstancePoolTest {
             assertTrue(value.contains("active=1"));
             assertTrue(value.contains("dying=0"));
             assertTrue(value.contains("hasDefault=true"));
+        }
+    }
+
+    @Nested
+    @DisplayName("默认实例选举")
+    class DefaultElectionTests {
+
+        @Test
+        @DisplayName("默认实例下线时应按语义版本号选举最新版本为新主")
+        void shouldElectHighestSemanticVersionAsDefault() {
+            // 场景：稳定版 1.9.0（默认）与新版 1.10.0 并存。
+            // 字典序降序会错选 1.9.0（'9'>'1'），语义版本序应选 1.10.0。
+            LingInstance stable = createMockInstance("1.9.0");
+            LingInstance newer = createMockInstance("1.10.0");
+            pool.addInstance(stable, true);
+            pool.addInstance(newer, false);
+
+            pool.moveToDying(stable);
+
+            assertEquals(newer, pool.getDefault(),
+                    "默认实例下线后应选举语义版本号最大的实例为新主，而非字典序最大");
+        }
+
+        @Test
+        @DisplayName("多位数字版本号应按数值比较，避免字典序陷阱")
+        void shouldCompareMultiDigitVersionsNumerically() {
+            // 2.10.0 应优先于 2.9.0，验证多位数字段的数值比较
+            LingInstance v2_9 = createMockInstance("2.9.0");
+            LingInstance v2_10 = createMockInstance("2.10.0");
+            pool.addInstance(v2_9, true);
+            pool.addInstance(v2_10, false);
+
+            pool.moveToDying(v2_9);
+
+            assertEquals(v2_10, pool.getDefault(),
+                    "2.10.0 应优先于 2.9.0 被选举为新主");
+        }
+
+        @Test
+        @DisplayName("版本段数不一致时缺失段应视为零")
+        void shouldTreatMissingSegmentsAsZero() {
+            // 1.2 与 1.2.0 应等价；1.3 应优先于 1.2.9
+            LingInstance v1_2_9 = createMockInstance("1.2.9");
+            LingInstance v1_3 = createMockInstance("1.3");
+            pool.addInstance(v1_2_9, true);
+            pool.addInstance(v1_3, false);
+
+            pool.moveToDying(v1_2_9);
+
+            assertEquals(v1_3, pool.getDefault(),
+                    "1.3 应优先于 1.2.9，缺失段视为零后 1.3.0 > 1.2.9");
+        }
+
+        @Test
+        @DisplayName("非数字版本段应回退字典序比较")
+        void shouldFallbackToLexicographicForNonNumericSegments() {
+            // 1.0.0-RC2 与 1.0.0-RC10：纯数字回退字典序，RC2 > RC10（字典序）
+            // 但本测试验证非数字段不抛异常且有确定顺序
+            LingInstance rc2 = createMockInstance("1.0.0-RC2");
+            LingInstance rc10 = createMockInstance("1.0.0-RC10");
+            pool.addInstance(rc2, true);
+            pool.addInstance(rc10, false);
+
+            // 不论选哪个，关键是应有确定结果且不抛异常
+            pool.moveToDying(rc2);
+            assertNotNull(pool.getDefault(),
+                    "含非数字段的版本号选举应产生确定结果，不应抛异常");
+        }
+
+        @Test
+        @DisplayName("removeInstance 移除默认时也应按语义版本选举新主")
+        void removeInstanceShouldElectBySemanticVersion() {
+            LingInstance v1_5 = createMockInstance("1.5.0");
+            LingInstance v1_11 = createMockInstance("1.11.0");
+            pool.addInstance(v1_5, true);
+            pool.addInstance(v1_11, false);
+
+            pool.removeInstance(v1_5);
+
+            assertEquals(v1_11, pool.getDefault(),
+                    "removeInstance 移除默认后应选举 1.11.0（而非字典序的 1.5.0）");
         }
     }
 

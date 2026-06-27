@@ -314,68 +314,6 @@ public class SpringLingContainer implements LingContainer {
         }
     }
 
-    /**
-     * 解析单个方法并生成元数据（简化版，不再解析参数）
-     */
-    private void registerControllerMethod(String lingId, String beanName, Object bean, Method method,
-                                          RequestMapping classMapping, RequestMapping mapping) {
-        // 请求路径按 `/lingId/classUrl/methodUrl` 规则拼接
-        String baseUrl = classMapping != null && classMapping.path().length > 0 ? classMapping.path()[0] : "";
-        String methodUrl = mapping.path().length > 0 ? mapping.path()[0] : "";
-        String fullPath = null;
-
-        // 解析 HTTP 方法
-        String httpMethod = mapping.method().length > 0 ? mapping.method()[0].name() : "GET";
-
-        // 智能权限推导
-        String permission;
-        RequiresPermission permAnn = AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class);
-        if (permAnn != null) {
-            permission = permAnn.value();
-        } else {
-            permission = GovernanceStrategy.inferPermission(method);
-        }
-
-        // 智能审计推导
-        boolean shouldAudit = false;
-        String auditAction = method.getName();
-        Auditable auditAnn = AnnotatedElementUtils.findMergedAnnotation(method, Auditable.class);
-
-        if (auditAnn != null) {
-            shouldAudit = true;
-            auditAction = auditAnn.action();
-        } else if (!"GET".equals(httpMethod)) {
-            shouldAudit = true;
-            auditAction = httpMethod + " " + fullPath;
-        }
-
-        // 构建简化的元数据（不含参数定义，由 Spring 原生处理）
-        WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
-                .lingId(lingId)
-                .version(version)
-                .targetBeanName(beanName)
-                .targetBean(bean)
-                .targetClassName(resolveControllerClass(bean, method).getName())
-                .targetMethodName(method.getName())
-                .targetMethodParameterTypeNames(resolveParameterTypeNames(method))
-                .targetMethod(method)
-                .classLoader(this.classLoader)
-                .lingApplicationContext(this.context)
-                .urlPattern(fullPath)
-                .httpMethod(httpMethod)
-                .requiredPermission(permission)
-                .shouldAudit(shouldAudit)
-                .auditAction(auditAction)
-                .build();
-        metadata.minimizeHostReferences();
-
-        log.info("🌍 [LingFrame Web] Found Controller: {} [{}]", httpMethod, fullPath);
-
-        // 注册到 WebInterfaceManager
-        if (webInterfaceManager != null) {
-            webInterfaceManager.registerSync(metadata);
-        }
-    }
 
     private void registerControllerMappings(String lingId, String beanName, Object bean, Method method,
                                             RequestMapping classMapping, RequestMapping mapping) {

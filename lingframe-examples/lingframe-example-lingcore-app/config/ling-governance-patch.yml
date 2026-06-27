@@ -4,9 +4,17 @@ user-ling: !!com.lingframe.api.config.GovernancePolicy
   capabilities:
   - accessType: EXECUTE
     capability: Ling_ENABLE
-  - accessType: WRITE
+  - accessType: EXECUTE
+    capability: LING_ENABLE
+  - accessType: READ
     capability: cache:local
-  - accessType: WRITE
+  - accessType: EXECUTE
+    capability: ipc:user-ling
+  - accessType: EXECUTE
+    capability: ipc:ling-stress-web
+  - accessType: EXECUTE
+    capability: ipc:order-ling
+  - accessType: READ
     capability: storage:sql
   collaborationMode: PASSIVE
   invocation:
@@ -25,18 +33,24 @@ order-ling: !!com.lingframe.api.config.GovernancePolicy
   capabilities:
   - accessType: EXECUTE
     capability: Ling_ENABLE
+  - accessType: EXECUTE
+    capability: LING_ENABLE
   - accessType: WRITE
     capability: cache:local
+  - accessType: EXECUTE
+    capability: ipc:user-ling
+  - accessType: EXECUTE
+    capability: ipc:order-ling
   - accessType: WRITE
     capability: storage:sql
   collaborationMode: PASSIVE
   invocation:
-    cpuBudgetMsPerMinute: null
+    cpuBudgetMsPerMinute: 500
     fallbackValue: null
-    maxConcurrentThreads: null
-    memoryBudgetMb: null
-    rateLimitPerSecond: null
-    retryCount: null
-    timeoutMs: null
+    maxConcurrentThreads: 5
+    memoryBudgetMb: 128
+    rateLimitPerSecond: 10
+    retryCount: 0
+    timeoutMs: 1000
   permissions: [
     ]

@@ -22,7 +22,10 @@ import com.lingframe.dashboard.security.AccessTokenProperties;
 import com.lingframe.dashboard.security.CorsProperties;
 import com.lingframe.dashboard.security.ReadOnlyInterceptor;
 import com.lingframe.dashboard.security.ReadOnlyProperties;
+import com.lingframe.dashboard.service.CanaryDecisionService;
 import com.lingframe.dashboard.service.DashboardService;
+import com.lingframe.dashboard.service.LeakDetectionCacheService;
+import com.lingframe.dashboard.service.LingResourceMetricsCollector;
 import com.lingframe.dashboard.service.LogStreamService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import com.lingframe.dashboard.service.SimulateService;
@@ -45,6 +48,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
@@ -77,6 +81,23 @@ public class DashboardAutoConfiguration {
     }
 
     // ==================== Service ====================
+
+    @Bean
+    public CanaryDecisionService canaryDecisionService(MetricsCollector metricsCollector) {
+        return new CanaryDecisionService(metricsCollector);
+    }
+
+    @Bean
+    public LeakDetectionCacheService leakDetectionCacheService(EventBus eventBus) {
+        return new LeakDetectionCacheService(eventBus);
+    }
+
+    @Bean
+    public LingResourceMetricsCollector lingResourceMetricsCollector(
+            LingRepository lingRepository,
+            @Value("${lingframe.dashboard.metaspace-estimate-bytes-per-class:10240}") long metaspaceBytesPerClass) {
+        return new LingResourceMetricsCollector(lingRepository, metaspaceBytesPerClass);
+    }
 
     @Bean
     public DashboardService dashboardService(
@@ -209,8 +230,9 @@ public class DashboardAutoConfiguration {
     public GovernanceConfigRestorer governanceConfigRestorer(
             GovernanceStorage governanceStorage,
             LocalGovernanceRegistry governanceRegistry,
-            CanaryRouter canaryRouter) {
-        return new GovernanceConfigRestorer(governanceStorage, governanceRegistry, canaryRouter);
+            CanaryRouter canaryRouter,
+            ObjectMapper objectMapper) {
+        return new GovernanceConfigRestorer(governanceStorage, governanceRegistry, canaryRouter, objectMapper);
     }
 
     @Bean

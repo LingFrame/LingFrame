@@ -3,9 +3,10 @@ package com.lingframe.core.ling;
 import java.util.List;
 
 /**
- * LingServiceRegistry 专注于方法级别的服务路由表。
- * 其不再持有和依赖复杂的类加载逻辑，而是纯粹充当 {FQSID -> Method Metadata} 的关系型目录。
- * 未来取代老 ServiceRegistry (该类在旧版里混合了类加载和缓存，M3将只用作纯接口结构存储)。
+ * LingServiceRegistry 专注于方法级别的接口契约目录。
+ * 存储 FQSID → 方法签名/返回类型的映射，跨版本共享（接口契约不变）。
+ * 实现类名不在此存储：多版本下实现类名由 pipeline 从 FQSID 提取接口名
+ * + 目标实例 ClassLoader 动态解析，避免 last-write-wins 导致路由错配。
  */
 public interface LingServiceRegistry {
 
@@ -13,17 +14,12 @@ public interface LingServiceRegistry {
      * 注册方法级别元数据
      *
      * @param serviceFQSID   服务的全限定字符串短标识，如 "user:UserService"
-     * @param className      Spring Bean 对应目标类的全限定名
      * @param methodName     方法名称
      * @param parameterTypes 方法参数类型签名
      * @param returnType     方法返回类型全限定名
      */
-    void registerServiceMetadata(String serviceFQSID, String className, String methodName, String[] parameterTypes, String returnType);
+    void registerServiceMetadata(String serviceFQSID, String methodName, String[] parameterTypes, String returnType);
 
-    /**
-     * 获取服务对应的目标类名
-     */
-    String getServiceClassName(String serviceFQSID);
 
     /**
      * 提取指定服务的所有方法元数据。

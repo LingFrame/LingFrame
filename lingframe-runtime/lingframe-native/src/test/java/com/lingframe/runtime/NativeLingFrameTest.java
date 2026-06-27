@@ -239,7 +239,7 @@ class NativeLingFrameTest {
         context.setArgs(new Object[] { input });
         context.setRequiredPermission("native:test:invoke");
         context.setAccessType(AccessType.EXECUTE);
-        context.resolution().setTargetClassName(serviceRegistry.getServiceClassName("native-e2e:demo.echo"));
+
         try {
             return pipelineEngine.invoke(context);
         } catch (Throwable throwable) {

@@ -29,6 +29,10 @@ public class InvocationPipelineEngine {
             return chain.doFilter(ctx);
         } catch (LingInvocationException e) {
             throw e;
+        } catch (Error e) {
+            // Error（OOM / StackOverflow 等）代表 JVM 即将崩溃，必须透传，
+            // 不能包装成 INTERNAL_ERROR 继续执行，否则可能把数据写坏或掩盖崩溃事实。
+            throw e;
         } catch (Throwable e) {
             throw new LingInvocationException(
                     ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INTERNAL_ERROR, e);

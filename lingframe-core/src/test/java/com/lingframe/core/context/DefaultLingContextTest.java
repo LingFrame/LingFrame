@@ -11,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.Collections;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -51,7 +52,7 @@ class DefaultLingContextTest {
     @Test
     @DisplayName("invoke 注册表中无对应服务返回空")
     void shouldReturnEmptyWhenServiceNotRegistered() {
-        when(registry.getServiceClassName("ling-a:service.echo")).thenReturn(null);
+        when(registry.getProviderMethods("ling-a:service.echo")).thenReturn(null);
 
         assertFalse(context.invoke("ling-a:service.echo").isPresent());
     }
@@ -59,8 +60,7 @@ class DefaultLingContextTest {
     @Test
     @DisplayName("invoke 无提供方法返回空")
     void shouldReturnEmptyWhenNoProviderMethods() {
-        when(registry.getServiceClassName("ling-a:service.echo")).thenReturn("com.example.EchoService");
-        when(registry.getProviderMethods("ling-a:service.echo")).thenReturn(null);
+        when(registry.getProviderMethods("ling-a:service.echo")).thenReturn(Collections.emptyList());
 
         assertFalse(context.invoke("ling-a:service.echo").isPresent());
     }
@@ -68,7 +68,6 @@ class DefaultLingContextTest {
     @Test
     @DisplayName("invokeOrDefault 返回默认值当调用失败")
     void shouldReturnDefaultWhenInvokeFails() {
-        when(registry.getServiceClassName("ling-a:service.echo")).thenReturn("com.example.EchoService");
         when(registry.getProviderMethods("ling-a:service.echo")).thenReturn(null);
 
         String result = context.invokeOrDefault("ling-a:service.echo", "fallback");
@@ -78,7 +77,6 @@ class DefaultLingContextTest {
     @Test
     @DisplayName("invokeOrElse 执行 fallback 当调用失败")
     void shouldExecuteFallbackWhenInvokeFails() {
-        when(registry.getServiceClassName("ling-a:service.echo")).thenReturn("com.example.EchoService");
         when(registry.getProviderMethods("ling-a:service.echo")).thenReturn(null);
 
         String result = context.invokeOrElse("ling-a:service.echo", () -> "fallback-supplier");
@@ -108,7 +106,6 @@ class DefaultLingContextTest {
 
         verify(registry).registerServiceMetadata(
                 eq("ling-a:service.echo"),
-                eq("com.lingframe.core.context.DefaultLingContextTest$TestService"),
                 eq("echo"),
                 any(String[].class),
                 eq("java.lang.String"));

@@ -5,9 +5,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.dashboard.dto.LingResourceMetricsDTO;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service;
 
 import com.sun.management.ThreadMXBean;
 
@@ -35,7 +33,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ul>
  */
 @Slf4j
-@Service
 public class LingResourceMetricsCollector {
 
     private final LingRepository lingRepository;
@@ -54,8 +51,7 @@ public class LingResourceMetricsCollector {
     /** ClassLoader.classes 反射字段缓存，避免重复查找 */
     private volatile Field classesField;
 
-    public LingResourceMetricsCollector(LingRepository lingRepository,
-            @Value("${lingframe.dashboard.metaspace-estimate-bytes-per-class:10240}") long metaspaceBytesPerClass) {
+    public LingResourceMetricsCollector(LingRepository lingRepository, long metaspaceBytesPerClass) {
         this.lingRepository = lingRepository;
         this.metaspaceBytesPerClass = metaspaceBytesPerClass;
     }

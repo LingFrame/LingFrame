@@ -153,10 +153,14 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
                 "OUT", depth);
             recordMetrics(ctx, start, true, null);
             return result;
+        } catch (Error e) {
+            // Error（OOM / StackOverflow）跳过指标记录副作用直接透传，
+            // 避免在 JVM 即将崩溃时再触发 publishTrace 导致二次错误。
+            throw e;
         } catch (Throwable t) {
             long costMs = (System.nanoTime() - start) / 1_000_000;
-            publishTrace(traceId, lingId, 
-                "✗ " + (operation != null ? operation : serviceFQSID) + " (" + costMs + "ms) - " + t.getClass().getSimpleName(), 
+            publishTrace(traceId, lingId,
+                "✗ " + (operation != null ? operation : serviceFQSID) + " (" + costMs + "ms) - " + t.getClass().getSimpleName(),
                 "ERROR", depth);
             recordMetrics(ctx, start, false, t);
             throw t;

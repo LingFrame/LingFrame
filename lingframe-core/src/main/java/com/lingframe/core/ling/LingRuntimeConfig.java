@@ -32,6 +32,21 @@ public class LingRuntimeConfig {
     @Builder.Default
     private int dyingCheckIntervalSeconds = 5;
 
+    /**
+     * 卸载前飞行中请求排空（drain）的 await 切片粒度（毫秒）。
+     * <p>
+     * drain 已改为事件驱动等待（{@link LingInstance#awaitIdle}），
+     * exit() 引用计数归零时主动 signal 唤醒 drain 线程，无需周期性轮询。
+     * 此配置作为 awaitIdle 的单次等待超时粒度，兼作 deadline 兜底检查间隔：
+     * <ul>
+     *   <li>生产环境可调大到 100~200ms，减少 deadline 检查开销；</li>
+     *   <li>测试或低延迟场景可调小到 10ms，加快 deadline 截止判定。</li>
+     * </ul>
+     * 实际请求结束的唤醒由 exit() 的 signal 触发，与此值无关。
+     */
+    @Builder.Default
+    private int drainPollIntervalMs = 50;
+
     // ==================== 调用控制 ====================
 
     /**

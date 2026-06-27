@@ -29,6 +29,9 @@ import static org.mockito.Mockito.when;
 @DisplayName("DashboardStatusCoordinator 测试")
 class DashboardStatusCoordinatorTest {
 
+    // 测试类共享 ObjectMapper 单例，避免每个测试方法都 new 一个实例
+    private static final ObjectMapper SHARED_OBJECT_MAPPER = new ObjectMapper();
+
     @Test
     @DisplayName("激活时应初始化默认能力并写入时间线")
     void shouldInitializeDefaultCapabilitiesWhenActivating() {
@@ -47,7 +50,7 @@ class DashboardStatusCoordinatorTest {
         runtimeCoordinator.register("ling1");
 
         DashboardGovernanceSupport governanceSupport =
-                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService, new ObjectMapper());
+                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService, SHARED_OBJECT_MAPPER);
         DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
         DashboardStatusCoordinator coordinator = new DashboardStatusCoordinator(
                 lifecycleEngine, permissionService, runtimeCoordinator, governanceSupport, eventStore);

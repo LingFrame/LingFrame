@@ -5,7 +5,6 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.dashboard.dto.LeakDetectionRecordDTO;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
@@ -22,7 +21,6 @@ import java.util.stream.Collectors;
  * 未回收的记录（collected=false）置顶排序，最多保留 100 条。
  */
 @Slf4j
-@Service
 public class LeakDetectionCacheService {
 
     private static final int MAX_RECORDS = 100;

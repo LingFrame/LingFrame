@@ -37,6 +37,7 @@ docs/images/lingframe-cover.png
 /PR_DESCRIPTION.md
 /LingFrame V0.3.0.md
 /docs/development
+/docs/superpowers
 **/node_modules/
 **/dist/
 **/.vite/
@@ -48,7 +49,6 @@ docs/images/lingframe-cover.png
 dependency-reduced-pom.xml
 
 # Benchmark 产物
-benchmark-*.txt
-benchmark-*.md
-BENCHMARK*
-*profile*.txt
+lingframe-benchmark/develop
+# AtomCode local-scope configs (machine-specific)
+.atomcode/local/

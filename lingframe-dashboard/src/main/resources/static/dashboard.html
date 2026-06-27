@@ -349,7 +349,8 @@
                     {{ t('lingList.empty') }}
                 </div>
                 <div v-for="p in filteredLings" :key="p.lingId"
-                    :class="['ling-item', activeId === p.lingId ? 'active' : '']" @click="selectLing(p.lingId)">
+                    :class="['ling-item', activeId === p.lingId ? 'active' : '']" @click="selectLing(p.lingId)"
+                    :data-testid="'ling-item-' + p.lingId">
                     <!-- 灵元名称行：健康灯 + 名称 + 状态 -->
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-1.5 min-w-0">

@@ -6,21 +6,18 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DefaultLingServiceRegistry implements LingServiceRegistry {
-    // 存储服务全限定名为 Key，方法元数据为 Value
-    // `FQSID`（例如 `lingId:serviceName`）映射到方法签名列表
-    // 例如 `methodName(paramType1,paramType2)`
+    // 接口契约目录：FQSID → 方法签名列表
+    // 多版本共享：同一 FQSID 的接口契约跨版本不变，只存一份
     private final Map<String, List<String>> metadataCache = new ConcurrentHashMap<>();
 
-    // 存储服务全限定名对应的实现类全限定名（`FQSID -> 类名`）
-    private final Map<String, String> classCache = new ConcurrentHashMap<>();
-
-    // 存储方法签名到返回类型的映射（`FQSID::methodSignature -> returnType`）
+    // 方法签名到返回类型的映射（`FQSID::methodSignature -> returnType`）
     private final Map<String, String> returnTypeCache = new ConcurrentHashMap<>();
 
     @Override
-    public void registerServiceMetadata(String serviceFQSID, String className, String methodName,
+    public void registerServiceMetadata(String serviceFQSID, String methodName,
             String[] parameterTypes, String returnType) {
-        classCache.put(serviceFQSID, className);
+        // 实现类名不在此存储：由 pipeline 从 FQSID 提取接口名 + 目标实例 ClassLoader 动态解析，
+        // 避免多版本并存时 last-write-wins 导致路由错配。
         String signature = buildSignature(methodName, parameterTypes);
         metadataCache.compute(serviceFQSID, (key, existing) -> {
             List<String> methods = existing != null ? existing : new ArrayList<>();
@@ -32,11 +29,6 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         if (returnType != null) {
             returnTypeCache.put(serviceFQSID + "::" + signature, returnType);
         }
-    }
-
-    @Override
-    public String getServiceClassName(String serviceFQSID) {
-        return classCache.get(serviceFQSID);
     }
 
     @Override
@@ -61,7 +53,7 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     public List<String> getServicesByLingId(String lingId) {
         String prefix = lingId + ":";
         List<String> services = new ArrayList<>();
-        for (String fqsid : classCache.keySet()) {
+        for (String fqsid : metadataCache.keySet()) {
             if (fqsid.startsWith(prefix)) {
                 services.add(fqsid);
             }
@@ -71,10 +63,9 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
 
     @Override
     public void evict(String lingId) {
-        // 由于是 lingId，而 serviceFQSID 的格式通常是 "lingId:serviceName"
+        // 灵元整体卸载：清除该灵元所有接口契约
         String prefix = lingId + ":";
         metadataCache.keySet().removeIf(k -> k.startsWith(prefix));
-        classCache.keySet().removeIf(k -> k.startsWith(prefix));
         returnTypeCache.keySet().removeIf(k -> k.startsWith(prefix));
     }
 

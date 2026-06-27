@@ -53,7 +53,7 @@ class GovernanceConfigRestoreTest {
         CanaryRouter mockCanaryRouter = mock(CanaryRouter.class);
         when(mockRegistry.getPatch(anyString())).thenReturn(null);
 
-        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage, mockRegistry, mockCanaryRouter);
+        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage, mockRegistry, mockCanaryRouter, objectMapper);
         restorer.restore();
 
         // 验证：updatePatch 被调用
@@ -69,7 +69,7 @@ class GovernanceConfigRestoreTest {
         LocalGovernanceRegistry mockRegistry = mock(LocalGovernanceRegistry.class);
         CanaryRouter mockCanaryRouter = mock(CanaryRouter.class);
 
-        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage, mockRegistry, mockCanaryRouter);
+        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage, mockRegistry, mockCanaryRouter, objectMapper);
         restorer.restore();
 
         // 验证：canaryRouter.setCanaryConfig 被调用
@@ -80,7 +80,7 @@ class GovernanceConfigRestoreTest {
     void restoreEmptyConfig_noError() {
         LocalGovernanceRegistry mockRegistry = mock(LocalGovernanceRegistry.class);
         CanaryRouter mockCanaryRouter = mock(CanaryRouter.class);
-        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage, mockRegistry, mockCanaryRouter);
+        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage, mockRegistry, mockCanaryRouter, objectMapper);
         // 无数据时不应抛异常
         assertDoesNotThrow(restorer::restore);
         verify(mockRegistry, never()).updatePatch(anyString(), any(GovernancePolicy.class));

@@ -93,7 +93,7 @@ class ObservabilityClosedLoopIntegrationTest {
 
         assertTrue(waitForCollectorMetric(), diagnosticSnapshot());
 
-        JsonNode healthAll = waitForCondition("/lingframe/dashboard/lings/health/all", root -> {
+        JsonNode healthAll = waitForCondition("/lingframe/dashboard/metrics/lings/health/all", root -> {
             JsonNode summary = root.path("data").path("user-ling").path("summary");
             return summary.path("totalRequests").asLong(0) >= 3;
         });
@@ -114,7 +114,7 @@ class ObservabilityClosedLoopIntegrationTest {
         int rejected = triggerGovernanceEntryBurst(canaryVersion);
         assertTrue(rejected > 0, "expected at least one rate-limited request, diagnostics=" + lastGovernanceBurstDiagnostics);
 
-        JsonNode governanceAll = waitForCondition("/lingframe/dashboard/lings/governance/all", root -> {
+        JsonNode governanceAll = waitForCondition("/lingframe/dashboard/metrics/lings/governance/all", root -> {
             JsonNode summary = root.path("data").path("user-ling").path("summary");
             return totalGovernanceSignals(summary) > 0;
         });
@@ -309,8 +309,12 @@ class ObservabilityClosedLoopIntegrationTest {
                 + summary.path("recoveryCount").asLong(0);
     }
 
+    private static final String ACCESS_TOKEN = "123456";
+
     private JsonNode getJson(String path) throws Exception {
-        ResponseEntity<String> response = restTemplate.getForEntity(url(path), String.class);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Access-Token", ACCESS_TOKEN);
+        ResponseEntity<String> response = restTemplate.exchange(url(path), HttpMethod.GET, new HttpEntity<>(headers), String.class);
         assertEquals(HttpStatus.OK, response.getStatusCode(), "GET " + path + " should return 200");
         return objectMapper.readTree(response.getBody());
     }
@@ -318,13 +322,16 @@ class ObservabilityClosedLoopIntegrationTest {
     private JsonNode postJson(String path, String body) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Access-Token", ACCESS_TOKEN);
         ResponseEntity<String> response = restTemplate.postForEntity(url(path), new HttpEntity<>(body, headers), String.class);
         assertEquals(HttpStatus.OK, response.getStatusCode(), "POST " + path + " should return 200");
         return objectMapper.readTree(response.getBody());
     }
 
     private JsonNode deleteJson(String path) throws Exception {
-        ResponseEntity<String> response = restTemplate.exchange(url(path), HttpMethod.DELETE, HttpEntity.EMPTY, String.class);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Access-Token", ACCESS_TOKEN);
+        ResponseEntity<String> response = restTemplate.exchange(url(path), HttpMethod.DELETE, new HttpEntity<>(headers), String.class);
         assertEquals(HttpStatus.OK, response.getStatusCode(), "DELETE " + path + " should return 200");
         return objectMapper.readTree(response.getBody());
     }

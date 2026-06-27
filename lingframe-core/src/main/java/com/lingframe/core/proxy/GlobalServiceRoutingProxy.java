@@ -88,8 +88,7 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
             if (lingId.equals(cachedDelegateLingId) && cachedDelegate != null) {
                 return cachedDelegate;
             }
-            cachedDelegate = new SmartServiceProxy(callerLingId, lingId, interfaceName, pipelineEngine,
-                    lingServiceRegistry);
+            cachedDelegate = new SmartServiceProxy(callerLingId, lingId, interfaceName, pipelineEngine);
             cachedDelegateLingId = lingId;
             return cachedDelegate;
         }

@@ -255,6 +255,11 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
             eventBus.publish(new LingInstalledEvent(lingId, version));
             log.info("[{}] Installed successfully", lingId);
+        } catch (Error e) {
+            // Error（OOM / StackOverflow）代表 JVM 即将崩溃，跳过回滚副作用直接透传，
+            // 避免回滚路径再次 OOM 掩盖原始崩溃事实。
+            log.error("Failed to install ling (Error): {} v{}", lingId, version, e);
+            throw e;
         } catch (Throwable t) {
             log.error("Failed to install ling: {} v{}", lingId, version, t);
             rollbackNewRuntimeRegistration(lingId, isNewRuntime);
@@ -315,7 +320,8 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
                 lingId,
                 new ArrayList<>(runtime.getInstancePool().getAllInstances()));
         drainInstances(lingId, runtime.getInstancePool().getActiveInstances(),
-                runtime.getConfig().getForceCleanupDelaySeconds());
+                runtime.getConfig().getForceCleanupDelaySeconds(),
+                runtime.getConfig().getDrainPollIntervalMs());
         doFullUndeploy(lingId, runtime);
         return LingUninstallResult.triggered(lingId, null, reports);
     }
@@ -515,6 +521,11 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             instanceCoordinator.markReady(instance);
             runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
             log.info("[{}] Instance {} recovered successfully", lingId, instance.getVersion());
+        } catch (Error e) {
+            // Error（OOM / StackOverflow）跳过状态降级副作用直接透传，
+            // 避免在 JVM 即将崩溃时再触发协调器调用导致二次错误。
+            log.error("[{}] Failed to recover instance {} (Error)", lingId, instance.getVersion(), e);
+            throw e;
         } catch (Throwable t) {
             log.error("[{}] Failed to recover instance {}", lingId, instance.getVersion(), t);
             safeTransitionToError(instance);
@@ -541,7 +552,8 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         runtime.getInstancePool().moveToDying(targetInstance);
 
         drainInstances(lingId, Collections.singletonList(targetInstance),
-                runtime.getConfig().getForceCleanupDelaySeconds());
+                runtime.getConfig().getForceCleanupDelaySeconds(),
+                runtime.getConfig().getDrainPollIntervalMs());
         unloadSingleInstance(lingId, runtime, targetInstance);
         finalizeRuntimeRemovalIfEmpty(lingId, runtime, targetInstance.getVersion());
     }
@@ -652,11 +664,36 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     /**
      * 先将实例标记为 STOPPING，等待飞行中请求排空；
      * 如果达到超时时间，则继续后续卸载流程。
+     * <p>
+     * 等待机制：使用 {@link LingInstance#awaitIdle(long)} 事件驱动等待，
+     * 替代此前的 {@code Thread.sleep} 轮询。
+     * <p>
+     * 此前轮询的问题：
+     * <ul>
+     *   <li>低活跃场景：固定间隔周期性唤醒，浪费 CPU；</li>
+     *   <li>高活跃场景：请求结束后最长需等待一个轮询间隔才继续卸载，延迟抖动；</li>
+     *   <li>不响应外部取消：{@code Thread.sleep} 只能靠 InterruptedException 中断。</li>
+     * </ul>
+     * 事件驱动等待：exit() 引用计数归零时主动 signal，drain 线程在请求结束瞬间唤醒，
+     * 既消除 CPU 抖动又最小化卸载延迟。{@code pollIntervalMs} 参数保留用于
+     * awaitIdle 的单次等待超时（作为 deadline 兜底检查间隔），非法值兜底 50ms。
+     * <p>
+     * <b>多实例并发卸载场景说明</b>：本实现每轮只对首个非 idle 实例 awaitIdle，
+     * 单实例卸载（reload 切换的常见场景）可达零开销事件驱动；
+     * 多实例同时卸载时，若首个实例有长飞行请求，drain 线程会按 awaitSlice 粒度
+     * 周期性被 deadline 唤醒重扫其他实例，效率退化为粗粒度重扫。
+     * 正确性不受影响（最终仍按总 deadline 兜底），仅效率次优。
+     * 罕见场景（多版本同时卸载）可接受，无需引入每实例独立等待线程的复杂度。
      */
-    private void drainInstances(String lingId, List<LingInstance> instances, int timeoutSeconds) {
+    private void drainInstances(String lingId, List<LingInstance> instances,
+                                int timeoutSeconds, int pollIntervalMs) {
         if (instances == null || instances.isEmpty()) {
             return;
         }
+
+        // 单次 awaitIdle 的等待粒度：作为 deadline 检查间隔，超时后回到外层循环重新评估总截止时间。
+        // 不是 sleep 轮询间隔——awaitIdle 内部由 exit() 的 signal 唤醒，无需周期性唤醒。
+        int awaitSliceMs = pollIntervalMs > 0 ? pollIntervalMs : 50;
 
         log.info("[{}] Marking {} instances as STOPPING for drain", lingId, instances.size());
         for (LingInstance instance : instances) {
@@ -669,16 +706,21 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             }
         }
 
-        log.info("[{}] Draining {} instances, timeout={}s...", lingId, instances.size(), timeoutSeconds);
+        log.info("[{}] Draining {} instances, timeout={}s, awaitSlice={}ms...",
+                lingId, instances.size(), timeoutSeconds, awaitSliceMs);
 
         long deadlineMs = System.currentTimeMillis() + (long) timeoutSeconds * 1000;
         boolean allIdle = false;
 
+        // 事件驱动 drain：每轮对非 idle 实例调用 awaitIdle 阻塞等待 signal，
+        // 任一实例被唤醒后重新扫描全部实例状态，全部 idle 则退出。
         while (System.currentTimeMillis() < deadlineMs) {
             allIdle = true;
+            LingInstance pending = null;
             for (LingInstance instance : instances) {
                 if (!instance.isIdle()) {
                     allIdle = false;
+                    pending = instance;
                     log.debug("[{}] Waiting for instance {} to drain ({} active requests)...",
                             lingId, instance.getVersion(), instance.getActiveRequestCount());
                     break;
@@ -687,8 +729,16 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             if (allIdle) {
                 break;
             }
+            // 对首个非 idle 实例做事件驱动等待：exit() 归零时会 signal 唤醒此处，
+            // 唤醒后回到 while 顶部重新扫描，可能其他实例也已 idle。
+            // 剩余时间作为 awaitIdle 的单次超时，但不短于 awaitSliceMs 以保证语义粒度。
+            long remaining = deadlineMs - System.currentTimeMillis();
+            long waitMs = Math.min(awaitSliceMs, remaining);
+            if (waitMs <= 0) {
+                break;
+            }
             try {
-                Thread.sleep(50);
+                pending.awaitIdle(waitMs);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.warn("[{}] Drain interrupted, proceeding to unload", lingId);

@@ -27,6 +27,9 @@ import static org.mockito.Mockito.when;
 @DisplayName("DashboardGovernanceSupport 测试")
 class DashboardGovernanceSupportTest {
 
+    // 测试类共享 ObjectMapper 单例，避免每个测试方法都 new 一个实例
+    private static final ObjectMapper SHARED_OBJECT_MAPPER = new ObjectMapper();
+
     @Test
     @DisplayName("更新资源权限时应持久化 patch 并同步运行时权限")
     void shouldPersistPatchAndSyncRuntimePermissionsWhenUpdatingPermissions() {
@@ -34,7 +37,7 @@ class DashboardGovernanceSupportTest {
         LocalGovernanceRegistry governanceRegistry = mock(LocalGovernanceRegistry.class);
         PermissionService permissionService = mock(PermissionService.class);
         DashboardGovernanceSupport support =
-                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService, new ObjectMapper());
+                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService, SHARED_OBJECT_MAPPER);
 
         AtomicReference<GovernancePolicy> storedPatch = new AtomicReference<>();
         when(governanceRegistry.getPatch("ling1")).thenAnswer(invocation -> storedPatch.get());
@@ -69,7 +72,7 @@ class DashboardGovernanceSupportTest {
         LocalGovernanceRegistry governanceRegistry = mock(LocalGovernanceRegistry.class);
         PermissionService permissionService = mock(PermissionService.class);
         DashboardGovernanceSupport support =
-                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService, new ObjectMapper());
+                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService, SHARED_OBJECT_MAPPER);
 
         GovernancePolicy existingPatch = new GovernancePolicy();
         existingPatch.setCapabilities(Arrays.asList(

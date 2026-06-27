@@ -17,11 +17,9 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -59,12 +57,11 @@ public class ServicePlaygroundService {
         List<LingInstance> activeInstances = resolveActiveInstances(lingId);
 
         List<ServiceMetadataDTO> allDtos = fqsidList.stream().map(fqsid -> {
-            String className = lingServiceRegistry.getServiceClassName(fqsid);
             List<String> methodSignatures = lingServiceRegistry.getProviderMethods(fqsid);
 
             List<ServiceMetadataDTO.MethodMetadata> methods = methodSignatures.stream()
                     .map(sig -> parseMethodSignature(fqsid, sig))
-                    .map(method -> attachVersions(fqsid, className, method, activeInstances))
+                    .map(method -> attachVersions(fqsid, null, method, activeInstances))
                     .filter(method -> method.getVersions() != null && !method.getVersions().isEmpty())
                     .collect(Collectors.toList());
 
@@ -75,7 +72,7 @@ public class ServicePlaygroundService {
 
             return ServiceMetadataDTO.builder()
                     .fqsid(fqsid)
-                    .className(className)
+                    .className(null)
                     .methods(methods)
                     .build();
         }).filter(dto -> dto != null).collect(Collectors.toList());
@@ -91,25 +88,13 @@ public class ServicePlaygroundService {
             }
         }
 
-        // 按 className 建立接口服务索引，避免 O(n²) 嵌套查找
-        Map<String, List<ServiceMetadataDTO>> intfByClassName = new HashMap<>();
-        for (ServiceMetadataDTO intf : interfaceServices) {
-            if (intf.getClassName() != null) {
-                intfByClassName.computeIfAbsent(intf.getClassName(), k -> new ArrayList<>()).add(intf);
-            }
-        }
-
-        // 将显式服务的 FQSID 归并到同 className 接口服务的对应方法上
+        // 将显式服务的 FQSID 归并到接口服务的对应方法上（基于方法签名匹配）
         Set<String> mergedExplicitFqsids = new HashSet<>();
         for (ServiceMetadataDTO explicit : explicitServices) {
-            List<ServiceMetadataDTO> matchingIntfs = intfByClassName.get(explicit.getClassName());
-            if (matchingIntfs == null) {
-                continue;
-            }
             boolean anyMethodMerged = false;
             for (ServiceMetadataDTO.MethodMetadata expMethod : explicit.getMethods()) {
                 boolean currentMethodMerged = false;
-                for (ServiceMetadataDTO intf : matchingIntfs) {
+                for (ServiceMetadataDTO intf : interfaceServices) {
                     for (ServiceMetadataDTO.MethodMetadata intfMethod : intf.getMethods()) {
                         if (intfMethod.getSignature().equals(expMethod.getSignature())) {
                             intfMethod.setAlternateFqsid(explicit.getFqsid());
@@ -164,8 +149,10 @@ public class ServicePlaygroundService {
         sorted.sort((a, b) -> {
             boolean aDefault = a.equals(runtime.getInstancePool().getDefault());
             boolean bDefault = b.equals(runtime.getInstancePool().getDefault());
-            if (aDefault && !bDefault) return -1;
-            if (!aDefault && bDefault) return 1;
+            if (aDefault && !bDefault)
+                return -1;
+            if (!aDefault && bDefault)
+                return 1;
             return 0;
         });
         return sorted;
@@ -179,11 +166,11 @@ public class ServicePlaygroundService {
      * <p>
      * 判定方式：
      * <ul>
-     *   <li>显式注解服务：用注册的实现类名 + 实例 CL 加载判定</li>
-     *   <li>接口服务（含 sharedapi）：classCache 中的实现类名可能被多版本覆盖，
-     *       不能作为判定依据。改用"检查实例容器中是否有 Bean 实现该接口"判定。
-     *       接口由 SharedApiClassLoader 加载，所有版本都能加载到接口类，
-     *       但只有实际实现了该接口的版本，容器中才会有对应 Bean。</li>
+     * <li>显式注解服务：用注册的实现类名 + 实例 CL 加载判定</li>
+     * <li>接口服务（含 sharedapi）：classCache 中的实现类名可能被多版本覆盖，
+     * 不能作为判定依据。改用"检查实例容器中是否有 Bean 实现该接口"判定。
+     * 接口由 SharedApiClassLoader 加载，所有版本都能加载到接口类，
+     * 但只有实际实现了该接口的版本，容器中才会有对应 Bean。</li>
      * </ul>
      */
     private ServiceMetadataDTO.MethodMetadata attachVersions(String fqsid, String className,
@@ -272,7 +259,8 @@ public class ServicePlaygroundService {
      * 遍历 Bean 的类层级（含 CGLIB 代理的目标类），返回第一个匹配的 Bean 类名。
      */
     private String findBeanClassNameImplementingInterface(LingInstance instance, Class<?> iface) {
-        if (instance.getContainer() == null) return null;
+        if (instance.getContainer() == null)
+            return null;
         String ifaceName = iface.getName();
         try {
             Object container = instance.getContainer();
@@ -285,7 +273,8 @@ public class ServicePlaygroundService {
             for (String beanName : beanNames) {
                 try {
                     Object bean = instance.getContainer().getBean(beanName);
-                    if (bean == null) continue;
+                    if (bean == null)
+                        continue;
                     // 遍历类层级，处理 CGLIB 代理（@Cacheable/@Transactional 等）
                     Class<?> beanClass = bean.getClass();
                     while (beanClass != null) {
@@ -479,7 +468,6 @@ public class ServicePlaygroundService {
         }
     }
 
-
     private ServiceMetadataDTO.MethodMetadata parseMethodSignature(String fqsid, String signature) {
         int parenStart = signature.indexOf('(');
         if (parenStart < 0) {
@@ -535,14 +523,14 @@ public class ServicePlaygroundService {
      * @return 目标实现类全限定名，解析失败时返回 null
      */
     private String resolveTargetClassName(String fqsid, LingInstance targetInstance) {
-        // 显式注解服务：直接用 classCache
+        // 显式注解服务：不再从注册表获取
         if (!isInterfaceService(fqsid)) {
-            return lingServiceRegistry.getServiceClassName(fqsid);
+            return null;
         }
         // 接口服务：从目标实例容器中查找实现该接口的 Bean 类名
         ClassLoader cl = targetInstance.getClassLoader();
         if (cl == null) {
-            return lingServiceRegistry.getServiceClassName(fqsid);
+            return null;
         }
         String interfaceName = extractInterfaceName(fqsid);
         try {
@@ -555,8 +543,7 @@ public class ServicePlaygroundService {
             log.debug("Failed to resolve target class name for interface service {} in version {}",
                     fqsid, targetInstance.getVersion());
         }
-        // 兜底：用 classCache 中的值
-        return lingServiceRegistry.getServiceClassName(fqsid);
+        return null;
     }
 
     /**
@@ -668,8 +655,6 @@ public class ServicePlaygroundService {
             return false;
         }
     }
-
-
 
     private List<InvokeResultDTO.TraceEntry> buildTraces(List<EngineTrace> engineTraces) {
         if (engineTraces == null) {
