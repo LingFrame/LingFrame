@@ -1,5 +1,6 @@
 package com.lingframe.dashboard.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
@@ -46,7 +47,7 @@ class DashboardStatusCoordinatorTest {
         runtimeCoordinator.register("ling1");
 
         DashboardGovernanceSupport governanceSupport =
-                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService);
+                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService, new ObjectMapper());
         DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
         DashboardStatusCoordinator coordinator = new DashboardStatusCoordinator(
                 lifecycleEngine, permissionService, runtimeCoordinator, governanceSupport, eventStore);

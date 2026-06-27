@@ -1,5 +1,6 @@
 package com.lingframe.dashboard.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
@@ -33,7 +34,7 @@ class DashboardGovernanceSupportTest {
         LocalGovernanceRegistry governanceRegistry = mock(LocalGovernanceRegistry.class);
         PermissionService permissionService = mock(PermissionService.class);
         DashboardGovernanceSupport support =
-                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService);
+                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService, new ObjectMapper());
 
         AtomicReference<GovernancePolicy> storedPatch = new AtomicReference<>();
         when(governanceRegistry.getPatch("ling1")).thenAnswer(invocation -> storedPatch.get());
@@ -68,7 +69,7 @@ class DashboardGovernanceSupportTest {
         LocalGovernanceRegistry governanceRegistry = mock(LocalGovernanceRegistry.class);
         PermissionService permissionService = mock(PermissionService.class);
         DashboardGovernanceSupport support =
-                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService);
+                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService, new ObjectMapper());
 
         GovernancePolicy existingPatch = new GovernancePolicy();
         existingPatch.setCapabilities(Arrays.asList(

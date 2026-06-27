@@ -1,5 +1,6 @@
 package com.lingframe.dashboard.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
@@ -27,6 +28,8 @@ public class DashboardGovernanceSupport {
     private final LingRepository lingRepository;
     private final LocalGovernanceRegistry governanceRegistry;
     private final PermissionService permissionService;
+    // 复用 Spring 容器中的单例 ObjectMapper，避免每次序列化都创建新实例
+    private final ObjectMapper objectMapper;
 
     // 持久化存储（可选，由 DashboardService.setGovernanceStorage 间接注入）
     private GovernanceStorage governanceStorage;
@@ -37,10 +40,12 @@ public class DashboardGovernanceSupport {
 
     public DashboardGovernanceSupport(LingRepository lingRepository,
             LocalGovernanceRegistry governanceRegistry,
-            PermissionService permissionService) {
+            PermissionService permissionService,
+            ObjectMapper objectMapper) {
         this.lingRepository = lingRepository;
         this.governanceRegistry = governanceRegistry;
         this.permissionService = permissionService;
+        this.objectMapper = objectMapper;
     }
 
     public GovernancePolicy getEffectivePolicy(String lingId) {
@@ -173,8 +178,7 @@ public class DashboardGovernanceSupport {
             return;
         }
         try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            governanceStorage.saveInvocationConfig(lingId, mapper.writeValueAsString(policy));
+            governanceStorage.saveInvocationConfig(lingId, objectMapper.writeValueAsString(policy));
         } catch (Exception e) {
             log.warn("Failed to persist governance strategy: {}", lingId, e);
         }

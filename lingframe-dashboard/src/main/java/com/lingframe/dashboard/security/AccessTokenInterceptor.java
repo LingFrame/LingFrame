@@ -24,6 +24,7 @@ public class AccessTokenInterceptor implements HandlerInterceptor {
         }
 
         // 仅从 Header 获取 token（URL 参数方式不安全，已禁用）
+        // 注意：禁止将令牌原文写入日志，避免凭证泄漏到日志聚合系统
         String token = request.getHeader("X-Access-Token");
 
         if (properties.isValidToken(token)) {

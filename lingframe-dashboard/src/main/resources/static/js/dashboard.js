@@ -679,7 +679,8 @@ createApp({
             }
             loginError.value = '';
             localStorage.setItem('lingframe_access_token', token);
-            location.reload();
+            authenticated.value = true;
+            initAll();
         };
 
         const showLoginPrompt = () => {
@@ -777,12 +778,19 @@ createApp({
         // ==================== API 调用 ====================
         const api = {
             async get(path) {
-                const res = await fetch(API_BASE + path, { credentials: 'same-origin', headers: withAuthHeaders() });
+                const url = new URL(API_BASE + path, window.location.origin);
+                url.searchParams.append('_t', Date.now()); // Prevent caching
+                const res = await fetch(url.toString(), { 
+                    credentials: 'same-origin', 
+                    headers: withAuthHeaders(),
+                    cache: 'no-store'
+                });
                 if (res.status === 401) { showLoginPrompt(); throw new Error('Unauthorized'); }
-                if (res.status === 403) { appState.readonly = true; }
+                if (res.status === 403) { appState.readonly = true; throw new Error(t('toast.readonlyMode', '当前为只读模式')); }
+                if (!res.ok) throw new Error(await res.text());
                 const data = await res.json();
-                if (!data.success) throw new Error(data.message);
-                return data.data;
+                if (data.success === false) throw new Error(data.message);
+                return data.data !== undefined ? data.data : data;
             },
             async post(path, body = {}) {
                 const res = await fetch(API_BASE + path, {
@@ -1176,7 +1184,7 @@ createApp({
 
         const fetchPackages = async () => {
             try {
-                packages.value = await api.get('/lings/packages');
+                packages.value = await api.get('/packages');
             } catch (e) {
                 showToast(t('toast.getLingsFailed') + ': ' + e.message, 'error');
             }
@@ -1184,7 +1192,7 @@ createApp({
 
         const deployPackage = async (lingId, version) => {
             try {
-                await api.post('/lings/packages/deploy', { lingId, version });
+                await api.post('/packages/deploy', { lingId, version });
                 showToast(t('toastExtension.deploySuccess') || '灵元部署成功', 'success');
                 refreshLings();
                 fetchPackages();
@@ -2109,7 +2117,8 @@ createApp({
             // SSE 认证：先获取 ticket，再用 ticket 连接（EventSource 不支持自定义 Header）
             try {
                 const ticketData = await api.get('/stream-ticket');
-                const ticketParam = ticketData.ticket ? '?ticket=' + encodeURIComponent(ticketData.ticket) : '';
+                const t = Date.now();
+                const ticketParam = ticketData.ticket ? '?ticket=' + encodeURIComponent(ticketData.ticket) + '&_t=' + t : '?_t=' + t;
                 eventSource = new EventSource(API_BASE + '/stream' + ticketParam);
             } catch (e) {
                 // ticket 获取失败，尝试无 ticket 连接（兼容未启用 token 的场景）
@@ -2563,7 +2572,7 @@ createApp({
         // 获取性能指标
         const fetchPerformanceMetrics = async () => {
             try {
-                const data = await api.get('/lings/metrics');
+                const data = await api.get('/metrics/jvm');
                 if (data) {
                     // 保存前值（用于趋势箭头）
                     Object.keys(prevMetrics).forEach(k => {
@@ -2592,6 +2601,9 @@ createApp({
                     perfMetrics.gcTimeMs = data.gcTimeMs || 0;
                     perfMetrics.availableProcessors = data.availableProcessors || 0;
                     perfMetrics.systemLoadAverage = data.systemLoadAverage || 0;
+
+                    // 顺便更新 gcDetails，避免单独发送网络请求
+                    gcDetails.value = data.gcDetails || [];
 
                     // 更新 JVM 基础信息
                     if (data.jvmVersion) jvmInfo.version = data.jvmVersion;
@@ -2641,7 +2653,7 @@ createApp({
         // 获取灵元资源下钻指标
         const fetchLingResourceMetrics = async () => {
             try {
-                const data = await api.get('/lings/metrics/per-ling');
+                const data = await api.get('/metrics/per-ling');
                 lingResourceMetrics.value = data || [];
             } catch (e) {
                 console.warn('Failed to fetch per-ling metrics:', e.message);
@@ -2651,7 +2663,7 @@ createApp({
         // 获取泄漏检测记录
         const fetchLeakDetections = async () => {
             try {
-                const data = await api.get('/lings/metrics/leak-detections');
+                const data = await api.get('/metrics/leak-detections');
                 leakDetections.value = data || [];
             } catch (e) {
                 console.warn('Failed to fetch leak detections:', e.message);
@@ -2661,22 +2673,14 @@ createApp({
         // 获取线程池状态
         const fetchThreadPoolStats = async () => {
             try {
-                const data = await api.get('/lings/metrics/thread-pools');
+                const data = await api.get('/metrics/thread-pools');
                 threadPoolStats.value = data || [];
             } catch (e) {
                 console.warn('Failed to fetch thread pool stats:', e.message);
             }
         };
 
-        // 获取 GC 详情（从 metrics 接口的 gcDetails 字段）
-        const fetchGcDetails = async () => {
-            try {
-                const data = await api.get('/lings/metrics');
-                gcDetails.value = (data && data.gcDetails) || [];
-            } catch (e) {
-                console.warn('Failed to fetch GC details:', e.message);
-            }
-        };
+
 
         // 格式化字节为可读单位
         const formatBytes = (bytes) => {
@@ -2793,26 +2797,26 @@ createApp({
             updateEnvMode(currentEnv.value);
 
             fetchPerformanceMetrics();
-            perfTimer = setInterval(fetchPerformanceMetrics, 3000);
+            perfTimer = setInterval(() => { if (!document.hidden) fetchPerformanceMetrics(); }, 10000);
 
             fetchDashboardSummary();
-            summaryTimer = setInterval(fetchDashboardSummary, 5000);
+            summaryTimer = setInterval(() => { if (!document.hidden) fetchDashboardSummary(); }, 15000);
 
             // 灵元资源下钻、泄漏检测、线程池、GC详情：5秒轮询
             fetchLingResourceMetrics();
             fetchLeakDetections();
             fetchThreadPoolStats();
-            fetchGcDetails();
             fetchGovernanceMatrix();
             fetchCanaryDecision();
             lingDetailTimer = setInterval(() => {
-                fetchLingResourceMetrics();
-                fetchLeakDetections();
-                fetchThreadPoolStats();
-                fetchGcDetails();
-                fetchGovernanceMatrix();
-                fetchCanaryDecision();
-            }, 5000);
+                if (!document.hidden) {
+                    fetchLingResourceMetrics();
+                    fetchLeakDetections();
+                    fetchThreadPoolStats();
+                    fetchGovernanceMatrix();
+                    fetchCanaryDecision();
+                }
+            }, 15000);
 
             // 首次访问且已认证：自动触发新手引导
             if (shouldShowTour()) {
@@ -3053,11 +3057,11 @@ createApp({
             } else {
                 if (!perfTimer) {
                     fetchPerformanceMetrics();
-                    perfTimer = setInterval(fetchPerformanceMetrics, 3000);
+                    perfTimer = setInterval(() => { if (!document.hidden) fetchPerformanceMetrics(); }, 10000);
                 }
                 if (!summaryTimer) {
                     fetchDashboardSummary();
-                    summaryTimer = setInterval(fetchDashboardSummary, 5000);
+                    summaryTimer = setInterval(() => { if (!document.hidden) fetchDashboardSummary(); }, 15000);
                 }
             }
         };
@@ -3118,7 +3122,7 @@ createApp({
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
             openTimelineModal, closeTimelineModal, loadTimelineData,
             doUpdateStatus, fetchPerformanceMetrics, fetchDashboardSummary,
-            fetchLingResourceMetrics, fetchLeakDetections, fetchThreadPoolStats, fetchGcDetails, formatBytes,
+            fetchLingResourceMetrics, fetchLeakDetections, fetchThreadPoolStats, formatBytes,
             uninstallResultModal, closeUninstallResultModal, getUninstallRiskLabel, getUninstallRiskClass, getUninstallTriggerLabel,
 
             currentTheme, toggleTheme, packages, fetchPackages, deployPackage, deletePackageFile, updateStatusForLing, updateCanaryWeight, getLingCanaryWeight,

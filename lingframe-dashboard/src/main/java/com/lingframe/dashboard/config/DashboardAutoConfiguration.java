@@ -88,11 +88,13 @@ public class DashboardAutoConfiguration {
             LingInfoConverter lingInfoConverter,
             PermissionService permissionService,
             RuntimeCoordinator runtimeCoordinator,
+            ObjectMapper objectMapper,
             @Autowired(required = false) GovernanceStorage governanceStorage) {
         DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository, governanceRegistry, canaryRouter,
                 lingInfoConverter,
                 permissionService,
-                runtimeCoordinator);
+                runtimeCoordinator,
+                objectMapper);
         // 条件注入 GovernanceStorage（SQLite 启用时才有，禁用时为 null）
         if (governanceStorage != null) {
             service.setGovernanceStorage(governanceStorage);
@@ -264,6 +266,7 @@ public class DashboardAutoConfiguration {
                                     "/lingframe/dashboard/simulate/**",
                                     "/lingframe/dashboard/playground/**",
                                     "/lingframe/dashboard/metrics/**",
+                                    "/lingframe/dashboard/packages/**",
                                     "/lingframe/dashboard/stream-ticket"
                             );
                 }

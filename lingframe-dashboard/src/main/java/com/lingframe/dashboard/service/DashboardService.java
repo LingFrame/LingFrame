@@ -1,5 +1,6 @@
 package com.lingframe.dashboard.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.api.exception.LingNotFoundException;
@@ -54,6 +55,8 @@ public class DashboardService {
     private final DashboardStatusCoordinator statusCoordinator;
     private final DashboardLingOperations lingOperations;
     private final DashboardUninstallResultMapper uninstallResultMapper;
+    // 复用 Spring 容器中的单例 ObjectMapper，避免每次灰度配置序列化都创建新实例
+    private final ObjectMapper objectMapper;
 
     // 持久化存储（可选，SQLite 启用时注入）
     private GovernanceStorage governanceStorage;
@@ -75,18 +78,20 @@ public class DashboardService {
             CanaryRouter canaryRouter,
             LingInfoConverter converter,
             PermissionService permissionService,
-            RuntimeCoordinator runtimeCoordinator) {
+            RuntimeCoordinator runtimeCoordinator,
+            ObjectMapper objectMapper) {
         this(
                 lingRepository,
                 canaryRouter,
                 converter,
                 permissionService,
-                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService),
+                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService, objectMapper),
                 new DashboardLifecycleEventStore(),
                 new DashboardLingSourceResolver(lingFrameConfig),
                 lifecycleEngine,
                 runtimeCoordinator,
-                new DashboardUninstallResultMapper());
+                new DashboardUninstallResultMapper(),
+                objectMapper);
     }
 
     DashboardService(LingRepository lingRepository,
@@ -98,7 +103,8 @@ public class DashboardService {
             DashboardLingSourceResolver lingSourceResolver,
             LingLifecycleEngine lifecycleEngine,
             RuntimeCoordinator runtimeCoordinator,
-            DashboardUninstallResultMapper uninstallResultMapper) {
+            DashboardUninstallResultMapper uninstallResultMapper,
+            ObjectMapper objectMapper) {
         this.lingRepository = lingRepository;
         this.canaryRouter = canaryRouter;
         this.converter = converter;
@@ -106,6 +112,7 @@ public class DashboardService {
         this.governanceSupport = governanceSupport;
         this.lifecycleEventStore = lifecycleEventStore;
         this.uninstallResultMapper = uninstallResultMapper;
+        this.objectMapper = objectMapper;
         this.statusCoordinator = new DashboardStatusCoordinator(
                 lifecycleEngine,
                 permissionService,
@@ -203,11 +210,10 @@ public class DashboardService {
         // 持久化灰度配置到 SQLite
         if (governanceStorage != null) {
             try {
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
                 java.util.Map<String, Object> canaryData = new java.util.LinkedHashMap<>();
                 canaryData.put("percent", percent);
                 canaryData.put("canaryVersion", canaryVersion);
-                governanceStorage.saveCanaryConfig(lingId, mapper.writeValueAsString(canaryData));
+                governanceStorage.saveCanaryConfig(lingId, objectMapper.writeValueAsString(canaryData));
             } catch (Exception e) {
                 log.warn("Failed to persist canary configuration: {}", lingId, e);
             }

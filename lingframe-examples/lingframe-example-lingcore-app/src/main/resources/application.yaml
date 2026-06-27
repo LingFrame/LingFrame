@@ -64,8 +64,8 @@ lingframe:
       metrics-collect-interval-seconds: 30
     # 访问令牌（生产环境建议设置，留空则不启用）
     access-token:
-      enabled: false
-      token: ""
+      enabled: true
+      token: "123456"
 
 # SpringDoc OpenAPI 配置
 springdoc:

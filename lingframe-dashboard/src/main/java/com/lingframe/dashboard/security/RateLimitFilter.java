@@ -13,7 +13,6 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 简易 API 限流 Filter：基于 IP + 路径的滑动窗口限流
@@ -77,35 +76,38 @@ public class RateLimitFilter implements Filter {
 
     /**
      * 简易令牌桶：每秒补充令牌，桶容量有限
+     * <p>
+     * 并发模型：refill + 消费 合并为单个 synchronized 原子方法，
+     * 消除「读-补-写」窗口。此前 refill 已加锁但 tryAcquire 在锁外读取 tokens，
+     * 多线程并发时会出现：A 读到 5 → B 读到 5 → A 补到 8 写入 → B 补到 8 写入
+     * （B 应基于 A 写入后的值补，导致令牌超发）。改为整段加锁后语义清晰且无超发。
      */
     private static class TokenBucket {
         private final int capacity = MAX_REQUESTS_PER_SECOND;
-        private final AtomicLong tokens = new AtomicLong(capacity);
-        private volatile long lastRefillTime = System.currentTimeMillis();
+        // refill 与 acquire 同在 synchronized 块内读写，无需 AtomicLong，普通 long 即可
+        private long tokens = capacity;
+        private long lastRefillTime = System.currentTimeMillis();
         volatile long lastAccessTime = System.currentTimeMillis();
 
-        boolean tryAcquire() {
-            refill();
+        synchronized boolean tryAcquire() {
+            refillLocked();
             lastAccessTime = System.currentTimeMillis();
-            while (true) {
-                long current = tokens.get();
-                if (current <= 0) {
-                    return false;
-                }
-                if (tokens.compareAndSet(current, current - 1)) {
-                    return true;
-                }
+            if (tokens <= 0) {
+                return false;
             }
+            tokens--;
+            return true;
         }
 
-        private void refill() {
+        /**
+         * 在已持有 bucket 锁的前提下补充令牌。仅由 {@link #tryAcquire()} 调用。
+         */
+        private void refillLocked() {
             long now = System.currentTimeMillis();
             long elapsed = now - lastRefillTime;
             if (elapsed >= 1000) {
                 long newTokens = (elapsed / 1000) * capacity;
-                long current = tokens.get();
-                long newCount = Math.min(capacity, current + newTokens);
-                tokens.set(newCount);
+                tokens = Math.min(capacity, tokens + newTokens);
                 lastRefillTime = now;
             }
         }

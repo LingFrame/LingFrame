@@ -1,21 +1,16 @@
 package com.lingframe.dashboard.controller;
 
 import com.lingframe.core.audit.AuditManager;
-import com.lingframe.core.classloader.LingClassLoader;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
-import com.lingframe.core.metrics.JVMMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
-import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.CanaryDecisionService;
-import com.lingframe.dashboard.service.LeakDetectionCacheService;
-import com.lingframe.dashboard.service.LingResourceMetricsCollector;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +20,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
-import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -47,11 +41,7 @@ public class LingController {
     private final MetricsCollector metricsCollector;
     private final GovernanceMetricsCollector governanceMetricsCollector;
     private final RuntimeDiagnosticsService runtimeDiagnosticsService;
-    private final LeakDetectionCacheService leakDetectionCacheService;
-    private final LingResourceMetricsCollector lingResourceMetricsCollector;
-    private final ThreadPoolStatsProvider threadPoolStatsProvider;
     private final CanaryDecisionService canaryDecisionService;
-    private final EventBus eventBus;
     private final boolean installEnabled;
 
     public LingController(LingFrameConfig lingFrameConfig,
@@ -59,22 +49,14 @@ public class LingController {
             MetricsCollector metricsCollector,
             GovernanceMetricsCollector governanceMetricsCollector,
             RuntimeDiagnosticsService runtimeDiagnosticsService,
-            LeakDetectionCacheService leakDetectionCacheService,
-            LingResourceMetricsCollector lingResourceMetricsCollector,
-            ThreadPoolStatsProvider threadPoolStatsProvider,
             CanaryDecisionService canaryDecisionService,
-            EventBus eventBus,
             @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
         this.lingFrameConfig = lingFrameConfig;
         this.dashboardService = dashboardService;
         this.metricsCollector = metricsCollector;
         this.governanceMetricsCollector = governanceMetricsCollector;
         this.runtimeDiagnosticsService = runtimeDiagnosticsService;
-        this.leakDetectionCacheService = leakDetectionCacheService;
-        this.lingResourceMetricsCollector = lingResourceMetricsCollector;
-        this.threadPoolStatsProvider = threadPoolStatsProvider;
         this.canaryDecisionService = canaryDecisionService;
-        this.eventBus = eventBus;
         this.installEnabled = installEnabled;
     }
 
@@ -263,152 +245,6 @@ public class LingController {
     }
 
     /**
-     * 获取 JVM 性能指标
-     */
-    @GetMapping("/metrics")
-    public ApiResponse<Map<String, Object>> getMetrics() {
-        try {
-            Map<String, Object> metrics = new HashMap<>();
-            
-            JVMMetrics jvmMetrics = JVMMetrics.collect();
-            
-            metrics.put("cpuUsage", jvmMetrics.getCpuUsage());
-            metrics.put("processCpuLoad", jvmMetrics.getProcessCpuLoad());
-            
-            metrics.put("memoryUsedMB", jvmMetrics.getUsedMemoryMB());
-            metrics.put("memoryTotalMB", jvmMetrics.getTotalMemoryMB());
-            metrics.put("memoryUsage", jvmMetrics.getMemoryUsagePercent());
-            
-            metrics.put("heapUsedMB", jvmMetrics.getHeapUsedMB());
-            metrics.put("heapMaxMB", jvmMetrics.getHeapMaxMB());
-            metrics.put("heapUsage", jvmMetrics.getHeapUsagePercent());
-            
-            metrics.put("metaspaceUsedKB", jvmMetrics.getMetaspaceUsedKB());
-            metrics.put("metaspaceMaxKB", jvmMetrics.getMetaspaceMaxKB());
-            metrics.put("metaspaceUsage", jvmMetrics.getMetaspaceUsagePercent());
-            
-            metrics.put("loadedClassCount", jvmMetrics.getLoadedClassCount());
-            metrics.put("totalLoadedClassCount", jvmMetrics.getTotalLoadedClassCount());
-            metrics.put("unloadedClassCount", jvmMetrics.getUnloadedClassCount());
-            metrics.put("lingClassLoaderCount", LingClassLoader.getAliveCount());
-            
-            metrics.put("threadCount", jvmMetrics.getThreadCount());
-            metrics.put("daemonThreadCount", jvmMetrics.getDaemonThreadCount());
-            metrics.put("peakThreadCount", jvmMetrics.getPeakThreadCount());
-            
-            metrics.put("gcCount", jvmMetrics.getGcCount());
-            metrics.put("gcTimeMs", jvmMetrics.getGcTimeMs());
-            metrics.put("gcDetails", jvmMetrics.getGcDetails());
-            
-            metrics.put("availableProcessors", jvmMetrics.getAvailableProcessors());
-            metrics.put("systemLoadAverage", jvmMetrics.getSystemLoadAverage());
-
-            // JVM 基础信息
-            metrics.put("jvmVersion", System.getProperty("java.version", ""));
-            metrics.put("jvmVendor", System.getProperty("java.vendor", ""));
-            metrics.put("osName", System.getProperty("os.name", ""));
-            metrics.put("osArch", System.getProperty("os.arch", ""));
-            metrics.put("uptimeMs", ManagementFactory.getRuntimeMXBean().getUptime());
-            metrics.put("pid", getProcessId());
-
-            return ApiResponse.ok(metrics);
-        } catch (Exception e) {
-            log.error("Failed to get metrics", e);
-            return ApiResponse.error("获取性能指标失败: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * 获取灵元健康指标
-     */
-    @GetMapping("/{lingId}/health")
-    public ApiResponse<MetricsSnapshot> getLingHealth(@PathVariable String lingId) {
-        try {
-            MetricsSnapshot snapshot = metricsCollector.getSnapshot(lingId);
-            return ApiResponse.ok(snapshot);
-        } catch (Exception e) {
-            log.error("Failed to get health metrics for ling: {}", lingId, e);
-            return ApiResponse.error("获取健康指标失败: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * 获取所有灵元的健康指标
-     */
-    @GetMapping("/health/all")
-    public ApiResponse<Map<String, LingHealthViewDTO>> getAllLingHealth() {
-        try {
-            Map<String, LingHealthViewDTO> allMetrics = metricsCollector.getAllSnapshots().stream()
-                    .collect(Collectors.toMap(
-                            MetricsSnapshot::getLingId,
-                            snapshot -> LingHealthViewDTO.builder()
-                                    .summary(snapshot)
-                                    .versions(metricsCollector.getVersionSnapshots(snapshot.getLingId()))
-                                    .build(),
-                            (existing, replacement) -> replacement
-                    ));
-            return ApiResponse.ok(allMetrics);
-        } catch (Exception e) {
-            log.error("Failed to get all health metrics", e);
-            return ApiResponse.error("获取健康指标失败: " + e.getMessage());
-        }
-    }
-
-    @GetMapping("/metrics/runtime-diagnostics")
-    public ApiResponse<Map<String, ResourceCleanupCapabilityDTO>> getRuntimeDiagnostics() {
-        try {
-            return ApiResponse.ok(runtimeDiagnosticsService.getCleanupCapabilities());
-        } catch (Exception e) {
-            log.error("Failed to get runtime diagnostics", e);
-            return ApiResponse.error("获取运行时诊断失败: " + e.getMessage());
-        }
-    }
-
-    @GetMapping("/metrics/runtime-governance-readiness")
-    public ApiResponse<RuntimeGovernanceReadinessDTO> getRuntimeGovernanceReadiness() {
-        try {
-            return ApiResponse.ok(runtimeDiagnosticsService.getGovernanceReadiness());
-        } catch (Exception e) {
-            log.error("Failed to get runtime governance readiness", e);
-            return ApiResponse.error("获取运行时治理就绪度失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 获取泄漏检测记录，未回收的置顶。
-     */
-    @GetMapping("/metrics/leak-detections")
-    public ApiResponse<List<LeakDetectionRecordDTO>> getLeakDetections() {
-        return ApiResponse.ok(leakDetectionCacheService.getRecords());
-    }
-
-    /**
-     * 获取各灵元隔离线程池状态。
-     */
-    @GetMapping("/metrics/thread-pools")
-    public ApiResponse<List<ThreadPoolStatsDTO>> getThreadPoolStats() {
-        List<ThreadPoolStatsDTO> result = threadPoolStatsProvider.getThreadPoolStats().stream()
-                .map(s -> ThreadPoolStatsDTO.builder()
-                        .lingId(s.getLingId())
-                        .activeCount(s.getActiveCount())
-                        .poolSize(s.getPoolSize())
-                        .maxThreads(s.getMaxThreads())
-                        .queueSize(s.getQueueSize())
-                        .completedTaskCount(s.getCompletedTaskCount())
-                        .build())
-                .collect(Collectors.toList());
-        return ApiResponse.ok(result);
-    }
-
-    /**
-     * 获取各灵元资源占用指标（类数/线程数/CPU/堆增量/Metaspace估算）。
-     */
-    @GetMapping("/metrics/per-ling")
-    public ApiResponse<List<LingResourceMetricsDTO>> getPerLingMetrics() {
-        return ApiResponse.ok(lingResourceMetricsCollector.getMetrics());
-    }
-
-    /**
      * 治理规则总览矩阵：遍历所有灵元的所有版本，聚合治理配置和资源权限。
      * 用于快速发现配置漂移。
      */
@@ -460,25 +296,6 @@ public class LingController {
         }
     }
 
-    @GetMapping("/governance/all")
-    public ApiResponse<Map<String, LingGovernanceMetricsViewDTO>> getAllLingGovernanceMetrics() {
-        try {
-            Map<String, LingGovernanceMetricsViewDTO> allMetrics = governanceMetricsCollector.getAllSummaries().values().stream()
-                    .collect(Collectors.toMap(
-                            GovernanceMetricsSnapshot::getLingId,
-                            snapshot -> LingGovernanceMetricsViewDTO.builder()
-                                    .summary(snapshot)
-                                    .versions(governanceMetricsCollector.getVersionSnapshots(snapshot.getLingId()))
-                                    .build(),
-                            (existing, replacement) -> replacement
-                    ));
-            return ApiResponse.ok(allMetrics);
-        } catch (Exception e) {
-            log.error("Failed to get governance metrics", e);
-            return ApiResponse.error("获取治理指标失败: " + e.getMessage());
-        }
-    }
-    
     /**
      * 仪表盘轮询风暴优化聚合接口
      */
@@ -555,31 +372,6 @@ public class LingController {
         }
     }
 
-    /**
-     * 获取 EventBus 和 AuditManager 的内部指标。
-     * <p>
-     * 包含异步事件丢弃数、提交数、队列容量及审计丢弃数，
-     * 用于监控事件管道健康度。
-     */
-    @GetMapping("/metrics/event-pipeline")
-    public ApiResponse<Map<String, Object>> getEventPipelineMetrics() {
-        try {
-            Map<String, Object> metrics = new HashMap<>();
-            metrics.put("eventBusDroppedCount", eventBus.getDroppedAsyncEvents());
-            metrics.put("eventBusSubmittedCount", eventBus.getSubmittedAsyncEvents());
-            metrics.put("eventBusQueueSize", eventBus.getQueueSize());
-            metrics.put("eventBusQueueRemainingCapacity", eventBus.getQueueRemainingCapacity());
-            metrics.put("eventBusOverflowPolicy", eventBus.getOverflowPolicy().name());
-            metrics.put("auditDiscardCount", AuditManager.getDiscardCount());
-            metrics.put("auditOverflowPolicy", AuditManager.getOverflowPolicy().name());
-            metrics.put("auditShutdown", AuditManager.isShutdown());
-            return ApiResponse.ok(metrics);
-        } catch (Exception e) {
-            log.error("Failed to get event pipeline metrics", e);
-            return ApiResponse.error("获取事件管道指标失败: " + e.getMessage());
-        }
-    }
-
     // 内部类：请求体
     @Data
     public static class LingStatusRequest {
@@ -590,37 +382,5 @@ public class LingController {
     @Data
     public static class LingReloadRequest {
         private String version;
-    }
-
-    @GetMapping("/packages")
-    public ApiResponse<List<LingPackageDTO>> listPackages() {
-        try {
-            return ApiResponse.ok(dashboardService.scanPackages());
-        } catch (Exception e) {
-            log.error("Failed to scan packages", e);
-            return ApiResponse.error("扫描磁盘包失败: " + e.getMessage());
-        }
-    }
-
-    @PostMapping("/packages/deploy")
-    public ApiResponse<LingInfoDTO> deployPackage(@RequestBody DeployRequest request) {
-        try {
-            LingInfoDTO info = dashboardService.deployPackage(request.getLingId(), request.getVersion());
-            return ApiResponse.ok("部署成功", info);
-        } catch (Exception e) {
-            log.error("Failed to deploy package: {}:{}", request.getLingId(), request.getVersion(), e);
-            return ApiResponse.error("部署失败: " + e.getMessage());
-        }
-    }
-
-    @Data
-    public static class DeployRequest {
-        private String lingId;
-        private String version;
-    }
-
-    private static String getProcessId() {
-        String name = ManagementFactory.getRuntimeMXBean().getName();
-        return name.contains("@") ? name.substring(0, name.indexOf('@')) : name;
     }
 }
