@@ -16,6 +16,8 @@ import com.lingframe.starter.spi.SpringAwareResourceGuard;
 import com.lingframe.starter.util.JacksonCacheEvictUtil;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
+import java.io.File;
+import java.net.URL;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -76,6 +78,9 @@ public class SpringLingContainer implements LingContainer {
     private ApplicationContext mainContext; // 🔥 主容器引用
     private final List<ResourceGuard> resourceGuards; // 🔥 资源守卫列表
 
+    private File sourceFile;
+
+    // 保留原构造函数，向后兼容测试用例
     public SpringLingContainer(SpringApplicationBuilder builder,
                                ClassLoader classLoader,
                                WebInterfaceManager webInterfaceManager,
@@ -84,6 +89,19 @@ public class SpringLingContainer implements LingContainer {
                                ApplicationContext mainContext,
                                List<ResourceGuard> resourceGuards,
                                String version) {
+        this(builder, classLoader, webInterfaceManager, excludedPackages, customizers, mainContext, resourceGuards, version, null);
+    }
+
+    // 新增构造函数，支持传入部署物理资源路径
+    public SpringLingContainer(SpringApplicationBuilder builder,
+                               ClassLoader classLoader,
+                               WebInterfaceManager webInterfaceManager,
+                               List<String> excludedPackages,
+                               List<LingContextCustomizer> customizers,
+                               ApplicationContext mainContext,
+                               List<ResourceGuard> resourceGuards,
+                               String version,
+                               File sourceFile) {
         this.builder = builder;
         this.classLoader = classLoader;
         this.webInterfaceManager = webInterfaceManager;
@@ -92,6 +110,7 @@ public class SpringLingContainer implements LingContainer {
         this.mainContext = mainContext;
         this.resourceGuards = resourceGuards != null ? resourceGuards : Collections.emptyList();
         this.version = version;
+        this.sourceFile = sourceFile;
     }
 
     @Override
@@ -164,7 +183,7 @@ public class SpringLingContainer implements LingContainer {
             // 自动配置灵元独立数据源
             LingDataSourceRegistrar.register(context, lingClassLoader, lingId);
 
-            // 🔥 注入灵元私有的 HandlerAdapter，防止 DTO 等类污染宿主缓存
+            // 🔥 注入灵元私有的 HandlerAdapter，防止 DTO 等类污染灵核缓存
             context.registerBean(RequestMappingHandlerAdapter.class, () -> {
                 RequestMappingHandlerAdapter adapter = new RequestMappingHandlerAdapter();
                 // 必须设置 MessageConverters，否则无法处理 JSON
@@ -215,6 +234,21 @@ public class SpringLingContainer implements LingContainer {
                 // 防御式过滤：如果 targetClass 不是当前灵元的 ClassLoader 加载的，就跳过它，防止重复和误注册外部 Bean
                 if (targetClass.getClassLoader() != classLoader) {
                     continue;
+                }
+
+                // 物理路径比对防误扫（防开发环境下 ClassLoader 穿透引起的多版本 Bean 串用）
+                if (sourceFile != null) {
+                    URL classUrl = targetClass.getResource(targetClass.getSimpleName() + ".class");
+                    if (classUrl != null) {
+                        // 剥离 URL 协议前缀（file:/ 或 jar:file:/），统一为纯路径后再比对
+                        String classPath = extractPathFromUrl(classUrl).replace("\\", "/").toLowerCase();
+                        String sourcePath = sourceFile.getAbsolutePath().replace("\\", "/").toLowerCase();
+                        if (!classPath.contains(sourcePath)) {
+                            log.warn("[{}] Ignored scan-leaked Bean [{}] (loaded from: {}, sourceFile: {})",
+                                    lingId, beanName, classPath, sourcePath);
+                            continue;
+                        }
+                    }
                 }
 
                 // 1. 显式 @LingService 注册 (FQSID: [LingID]:[ShortID])
@@ -561,7 +595,7 @@ public class SpringLingContainer implements LingContainer {
             try {
             if (this.mainContext != null) {
                 try {
-                    // 1. 清理宿主主容器中的 ObjectMapper 缓存 (最重要的，因为网关走这里)
+                    // 1. 清理灵核主容器中的 ObjectMapper 缓存 (最重要的，因为网关走这里)
                     Map<String, ObjectMapper> hostOms = this.mainContext.getBeansOfType(ObjectMapper.class);
                     for (ObjectMapper om : hostOms.values()) {
                         JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
@@ -667,5 +701,27 @@ public class SpringLingContainer implements LingContainer {
     @Override
     public ClassLoader getClassLoader() {
         return this.classLoader;
+    }
+
+    /**
+     * 从 URL 中提取纯路径部分，剥离协议前缀（file:/、jar:file:/ 等）。
+     * <p>
+     * 示例：
+     * <ul>
+     *   <li>{@code file:/E:/Codes/app/Service.class} → {@code E:/Codes/app/Service.class}</li>
+     *   <li>{@code jar:file:/E:/Codes/app.jar!/Service.class} → {@code E:/Codes/app.jar!/Service.class}</li>
+     * </ul>
+     */
+    private static String extractPathFromUrl(URL url) {
+        String spec = url.toString();
+        // 处理 jar:file:/...!/... 形式
+        if (spec.startsWith("jar:")) {
+            spec = spec.substring(4);
+        }
+        // 处理 file:/... 形式（Windows: file:/C:/...；Linux: file:/home/...）
+        if (spec.startsWith("file:")) {
+            spec = spec.substring(5);
+        }
+        return spec;
     }
 }

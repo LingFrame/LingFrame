@@ -18,6 +18,7 @@
         <module>lingframe-example-ling-user</module>
         <module>lingframe-example-ling-user-canary</module>
         <module>lingframe-example-ling-order</module>
+        <module>lingframe-example-ling-order-canary</module>
         <module>lingframe-example-order-api</module>
         <module>lingframe-example-ling-native</module>
     </modules>

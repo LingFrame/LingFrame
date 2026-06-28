@@ -70,6 +70,46 @@ class DefaultLingServiceRegistryTest {
 
     }
 
+    // ==================== 实现类名注册与查询 ====================
+
+    @Nested
+    @DisplayName("实现类名注册与查询")
+    class ImplementationClassName {
+
+        @Test
+        @DisplayName("注册后可正确查询实现类名")
+        void registerAndGetImplClassName() {
+            registry.registerImplementationClassName("ling-1:query_user", "com.example.UserQueryService");
+            assertEquals("com.example.UserQueryService", registry.getImplementationClassName("ling-1:query_user"));
+        }
+
+        @Test
+        @DisplayName("未注册时返回 null")
+        void unregisteredReturnsNull() {
+            assertNull(registry.getImplementationClassName("ling-1:unknown"));
+        }
+
+        @Test
+        @DisplayName("重复注册同一 FQSID 覆盖实现类名")
+        void duplicateRegisterOverrides() {
+            registry.registerImplementationClassName("ling-1:query_user", "com.example.UserQueryServiceV1");
+            registry.registerImplementationClassName("ling-1:query_user", "com.example.UserQueryServiceV2");
+            assertEquals("com.example.UserQueryServiceV2", registry.getImplementationClassName("ling-1:query_user"));
+        }
+
+        @Test
+        @DisplayName("evict 清除实现类名映射")
+        void evictClearsImplClassName() {
+            registry.registerImplementationClassName("ling-1:query_user", "com.example.UserQueryService");
+            registry.registerImplementationClassName("ling-2:pay_service", "com.example.PaymentService");
+
+            registry.evict("ling-1");
+
+            assertNull(registry.getImplementationClassName("ling-1:query_user"));
+            assertEquals("com.example.PaymentService", registry.getImplementationClassName("ling-2:pay_service"));
+        }
+    }
+
     // ==================== hasMethod ====================
 
     @Nested

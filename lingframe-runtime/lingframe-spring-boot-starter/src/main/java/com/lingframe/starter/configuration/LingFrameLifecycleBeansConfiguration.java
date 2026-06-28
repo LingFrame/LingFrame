@@ -111,14 +111,15 @@ public class LingFrameLifecycleBeansConfiguration {
             ObjectProvider<GovernanceMetricsCollector> governanceMetricsCollectorProvider,
             TrafficRouter trafficRouter,
             EventBus eventBus,
-            RuntimeCoordinator runtimeCoordinator) {
+            RuntimeCoordinator runtimeCoordinator,
+            LingServiceRegistry lingServiceRegistry) {
         LingServiceInvoker invoker = invokerProvider.getIfAvailable();
         GovernanceArbitrator arbitrator = arbitratorProvider.getIfAvailable();
         MetricsCollector metricsCollector = metricsCollectorProvider.getIfAvailable();
         GovernanceMetricsCollector governanceMetricsCollector = governanceMetricsCollectorProvider.getIfAvailable();
         FilterRegistry registry = new FilterRegistry(methodCache, permissionService, invoker, arbitrator);
         registry.initialize(lingRepository, trafficRouter, eventBus, metricsCollector, runtimeCoordinator,
-                governanceMetricsCollector);
+                governanceMetricsCollector, lingServiceRegistry);
         registry.loadSpiFilters(Thread.currentThread().getContextClassLoader());
         return registry;
     }

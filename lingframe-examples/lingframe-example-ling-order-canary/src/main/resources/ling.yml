@@ -1,8 +1,8 @@
 # --- 基础元数据 (直接在根节点) ---
 id: order-ling
-version: 1.0.0
+version: 1.1.0-canary
 provider: "LingFrame"
-description: "订单灵元"
+description: "订单灵元 (金丝雀版本) - 用于灰度发布测试"
 mainClass: "com.lingframe.example.order.OrderApplication"
 
 # --- 治理配置 ---
@@ -18,6 +18,5 @@ governance:
       accessType: "WRITE"      # 使用本地缓存，与 Dashboard 对齐
 
 # --- 金丝雀配置 ---
-#properties:
-#  canary: true
-
+properties:
+  canary: true

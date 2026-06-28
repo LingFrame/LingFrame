@@ -2041,8 +2041,11 @@ createApp({
         // 判断方法是否在当前选中版本下可用
         const isMethodInSelectedVersion = (method) => {
             const selected = playgroundSelectedVersion.value;
-            if (!selected) return true; // null 表示默认走稳定版，由后端处理
-            return (method.versions || []).includes(selected);
+            // 稳定版（默认版本）回退到 versionDetails 中的 isDefault 版本号进行精准匹配过滤，防止混入仅金丝雀可用方法
+            const defaultVer = activeLing.value?.versionDetails?.find(v => v.isDefault)?.version;
+            const targetVersion = selected || defaultVer;
+            if (!targetVersion) return true; // 无法获取版本号时保留方法
+            return (method.versions || []).includes(targetVersion);
         };
 
         const isComplexParameterType = (typeName) => {

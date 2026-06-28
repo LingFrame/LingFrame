@@ -362,6 +362,12 @@
                 </plugin>
 
                 <!-- SpotBugs 静态分析 -->
+                <!--
+                    注意：多模块构建时 SpotBugs 可能报 "classes needed for analysis were missing" 警告。
+                    这是因为跨模块引用的类（如 lingframe-api 中的契约类）在 SpotBugs 运行时
+                    不一定在 auxClasspath 上。该警告不影响构建结果，仅降低部分类的分析精度。
+                    核心模块（lingframe-core）的分析不受影响，适配层缺失可接受。
+                -->
                 <plugin>
                     <groupId>com.github.spotbugs</groupId>
                     <artifactId>spotbugs-maven-plugin</artifactId>

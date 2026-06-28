@@ -23,7 +23,7 @@ public class LingPackageDTO {
     private String fileName;
     /** 包文件大小（字节） */
     private long fileSize;
-    /** 宿主入口类全限定名 */
+    /** 灵核入口类全限定名 */
     private String mainClass;
     /** 是否已被部署装载 */
     private boolean isInstalled;

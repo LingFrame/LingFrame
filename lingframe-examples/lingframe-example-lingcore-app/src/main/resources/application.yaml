@@ -42,9 +42,11 @@ lingframe:
   ling-home: lings
   ling-roots:
     - ../lingframe-example-ling-order
+    - ../lingframe-example-ling-order-canary
     - ../lingframe-example-ling-user
     - ../lingframe-example-ling-user-canary
     - lingframe-examples/lingframe-example-ling-order
+    - lingframe-examples/lingframe-example-ling-order-canary
     - lingframe-examples/lingframe-example-ling-user
     - lingframe-examples/lingframe-example-ling-user-canary
   ling-core-governance:

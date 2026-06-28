@@ -21,7 +21,7 @@ import java.util.Objects;
  * 灵元 Controller 使用的 Web 接口元数据。
  *
  * <p>该对象会强持有稳定的路由信息，但会把运行期对象引用降级为弱引用或延迟查找，
- * 以避免宿主长期持有灵元 Controller 实例和 ApplicationContext。</p>
+ * 以避免灵核长期持有灵元 Controller 实例和 ApplicationContext。</p>
  */
 @Data
 @Builder

@@ -14,18 +14,18 @@ import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
+import com.lingframe.core.ling.LingInstance;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-@RequiredArgsConstructor
 public class DefaultLingContext implements LingContext {
 
+    private final LingInstance instance;
     private final String lingId;
 
     private final LingRepository lingRepository;
@@ -33,6 +33,32 @@ public class DefaultLingContext implements LingContext {
     private final InvocationPipelineEngine pipelineEngine;
     private final PermissionService permissionService;
     private final EventBus eventBus;
+
+    // 灵核上下文构造函数：灵核本身无 LingInstance，instance=null 表示不参与实例级服务方法注册
+    public DefaultLingContext(String lingId, LingRepository lingRepository,
+            LingServiceRegistry lingServiceRegistry, InvocationPipelineEngine pipelineEngine,
+            PermissionService permissionService, EventBus eventBus) {
+        this.instance = null;
+        this.lingId = lingId;
+        this.lingRepository = lingRepository;
+        this.lingServiceRegistry = lingServiceRegistry;
+        this.pipelineEngine = pipelineEngine;
+        this.permissionService = permissionService;
+        this.eventBus = eventBus;
+    }
+
+    // 灵元部署构造函数：绑定实例以支持实例级服务方法精准注册
+    public DefaultLingContext(LingInstance instance, LingRepository lingRepository,
+            LingServiceRegistry lingServiceRegistry, InvocationPipelineEngine pipelineEngine,
+            PermissionService permissionService, EventBus eventBus) {
+        this.instance = instance;
+        this.lingId = instance != null ? instance.getLingId() : null;
+        this.lingRepository = lingRepository;
+        this.lingServiceRegistry = lingServiceRegistry;
+        this.pipelineEngine = pipelineEngine;
+        this.permissionService = permissionService;
+        this.eventBus = eventBus;
+    }
 
     @Override
     public String getLingId() {
@@ -135,6 +161,15 @@ public class DefaultLingContext implements LingContext {
         }
         String returnTypeName = method.getReturnType().getName();
         lingServiceRegistry.registerServiceMetadata(fqsid, methodName, paramNames, returnTypeName);
+
+        // 注册实现类全限定名：对显式注解服务是 Pipeline 解析的唯一类名来源，
+        // 对接口服务是冗余但幂等的注册（接口名本身可直接 Class.forName）。
+        lingServiceRegistry.registerImplementationClassName(fqsid, bean.getClass().getName());
+
+        // 实例级注册：如果绑定了具体实例，则在实例上精准记录该服务方法的归属
+        if (instance != null) {
+            instance.registerServiceMethod(fqsid, methodName, paramNames);
+        }
     }
 
     private String[] parseParamTypeNames(String signature) {

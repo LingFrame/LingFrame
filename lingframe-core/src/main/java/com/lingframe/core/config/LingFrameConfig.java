@@ -142,7 +142,7 @@ public class LingFrameConfig {
     private List<String> lingRoots = Collections.emptyList();
 
     /**
-     * 核心线程数 (用于 LingManager 的后台调度器)
+     * 核心线程数 (用于后台调度器)
      */
     @Builder.Default
     private int corePoolSize = Math.max(2, Runtime.getRuntime().availableProcessors());

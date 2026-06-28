@@ -112,7 +112,8 @@ class LingFrameLifecycleBeansConfigurationTest {
 
         FilterRegistry filterRegistry = config.filterRegistry(
                 lingRepository, methodCache, permissionService, invokerProvider, arbitratorProvider,
-                metricsCollectorProvider, governanceMetricsCollectorProvider, trafficRouter, eventBus, runtimeCoordinator
+                metricsCollectorProvider, governanceMetricsCollectorProvider, trafficRouter, eventBus, runtimeCoordinator,
+                lingServiceRegistry
         );
         assertNotNull(filterRegistry);
 

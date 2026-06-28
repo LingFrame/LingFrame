@@ -2,6 +2,7 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 
@@ -9,10 +10,16 @@ import com.lingframe.core.spi.LingInvocationFilter;
  * 解析隔离过滤器。
  * 负责切换目标 ClassLoader 并补全解析分区。
  * <p>
- * ⚠️ 路由阶段只确定“去哪一个实例”，真正的方法签名解析一定要放到这里做，
+ * ⚠️ 路由阶段只确定"去哪一个实例"，真正的方法签名解析一定要放到这里做，
  * 因为只有到了这一步，当前线程才拥有目标灵元自己的 ClassLoader 视角。
  */
 public class ContextIsolationFilter implements LingInvocationFilter {
+
+    private final LingServiceRegistry serviceRegistry;
+
+    public ContextIsolationFilter(LingServiceRegistry serviceRegistry) {
+        this.serviceRegistry = serviceRegistry;
+    }
 
     @Override
     public int getOrder() {
@@ -68,15 +75,33 @@ public class ContextIsolationFilter implements LingInvocationFilter {
         }
     }
 
+    /**
+     * 解析目标实现类名。
+     * <p>
+     * 接口服务：FQSID 服务名部分包含 '.'，本身就是接口全限定名，可直接用于 Class.forName。
+     * 显式服务：FQSID 服务名部分为短 ID（如 query_user），需从注册表查询实现类全限定名。
+     */
     private String resolveTargetClassName(InvocationContext ctx) {
         // FQSID 约定形如 lingId:serviceName[#method]，这里抽出服务类名供后续解析和取 Bean 使用
         String serviceName = ctx.getServiceNameFromFqsid();
         if (serviceName == null) {
             return null;
         }
-        if (serviceName.contains("#")) {
-            return serviceName.split("#", 2)[0];
+
+        // 剥离 '#method' 后缀（如果有）
+        String classNamePart = serviceName.contains("#")
+                ? serviceName.split("#", 2)[0]
+                : serviceName;
+
+        // 接口服务：serviceName 包含 '.'，本身就是类全限定名
+        if (classNamePart.contains(".")) {
+            return classNamePart;
         }
-        return serviceName;
+
+        // 显式服务：短 ID 不是类名，从注册表获取实现类全限定名
+        if (serviceRegistry != null) {
+            return serviceRegistry.getImplementationClassName(ctx.getServiceFQSID());
+        }
+        return null;
     }
 }

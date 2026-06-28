@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.zip.ZipException;
 
 /**
  * 共享 API ClassLoader。
@@ -124,6 +125,13 @@ public class SharedApiClassLoader extends URLClassLoader {
         // 共享 API 一旦发生同名契约冲突，强行替换比显式暴露问题更危险。
         try {
             checkClassConflicts(apiJar);
+        } catch (ZipException e) {
+            // JAR 文件损坏或为空，给出明确错误而非误导性的"冲突检测失败"
+            throw new ClassLoaderException(null, jarPath,
+                    "API JAR is corrupted or empty: " + e.getMessage(), e);
+        } catch (ClassLoaderException e) {
+            // 真正的类冲突，直接抛出
+            throw e;
         } catch (Exception e) {
             throw new ClassLoaderException(null, jarPath, "API JAR conflict detection failed", e);
         }

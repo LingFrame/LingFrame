@@ -66,7 +66,7 @@ class SpringLingContainerUnloadRegressionTest {
     }
 
     @Test
-    @DisplayName("停止清理并关闭后应释放 Spring 宿主侧引用")
+    @DisplayName("停止清理并关闭后应释放 Spring 灵核侧引用")
     void shouldReleaseSpringHostSideReferencesAfterStopCleanupAndClose() throws Exception {
         try (TestHost host = TestHost.create()) {
             CycleResult cycle = runCycle(host, "order-ling");

@@ -61,7 +61,7 @@ public class ServicePlaygroundService {
 
             List<ServiceMetadataDTO.MethodMetadata> methods = methodSignatures.stream()
                     .map(sig -> parseMethodSignature(fqsid, sig))
-                    .map(method -> attachVersions(fqsid, null, method, activeInstances))
+                    .map(method -> attachVersions(fqsid, method, activeInstances))
                     .filter(method -> method.getVersions() != null && !method.getVersions().isEmpty())
                     .collect(Collectors.toList());
 
@@ -88,17 +88,35 @@ public class ServicePlaygroundService {
             }
         }
 
-        // 将显式服务的 FQSID 归并到接口服务的对应方法上（基于方法签名匹配）
+        // 将显式服务的 FQSID 归并到接口服务的对应方法上（基于签名与类名/别名唯一性匹配）
         Set<String> mergedExplicitFqsids = new HashSet<>();
-        for (ServiceMetadataDTO explicit : explicitServices) {
-            boolean anyMethodMerged = false;
-            for (ServiceMetadataDTO.MethodMetadata expMethod : explicit.getMethods()) {
-                boolean currentMethodMerged = false;
-                for (ServiceMetadataDTO intf : interfaceServices) {
-                    for (ServiceMetadataDTO.MethodMetadata intfMethod : intf.getMethods()) {
-                        if (intfMethod.getSignature().equals(expMethod.getSignature())) {
-                            intfMethod.setAlternateFqsid(explicit.getFqsid());
-                            // 合并显式服务方法上的版本信息到接口方法上
+        for (ServiceMetadataDTO intf : interfaceServices) {
+            String intfImpl = lingServiceRegistry.getImplementationClassName(intf.getFqsid());
+            for (ServiceMetadataDTO.MethodMetadata intfMethod : intf.getMethods()) {
+                // 1. 寻找所有与当前接口方法签名匹配的显式注解服务
+                List<ServiceMetadataDTO> matchedExplicits = new ArrayList<>();
+                for (ServiceMetadataDTO explicit : explicitServices) {
+                    String explicitImpl = lingServiceRegistry.getImplementationClassName(explicit.getFqsid());
+                    // 校验实现类名：如果类名均存在且不相等，直接排除，防止不同源匹配
+                    if (explicitImpl != null && intfImpl != null && !explicitImpl.equals(intfImpl)) {
+                        continue;
+                    }
+                    for (ServiceMetadataDTO.MethodMetadata expMethod : explicit.getMethods()) {
+                        if (expMethod.getSignature().equals(intfMethod.getSignature())) {
+                            matchedExplicits.add(explicit);
+                            break;
+                        }
+                    }
+                }
+                
+                // 2. 只有当全场仅有一个显式注解服务与该接口方法匹配时（说明无多版本别名冲突），才允许安全归并
+                if (matchedExplicits.size() == 1) {
+                    ServiceMetadataDTO explicit = matchedExplicits.get(0);
+                    intfMethod.setAlternateFqsid(explicit.getFqsid());
+                    
+                    // 合并显式服务方法上的版本信息到接口方法上
+                    for (ServiceMetadataDTO.MethodMetadata expMethod : explicit.getMethods()) {
+                        if (expMethod.getSignature().equals(intfMethod.getSignature())) {
                             Set<String> mergedVersions = new LinkedHashSet<>();
                             if (intfMethod.getVersions() != null) {
                                 mergedVersions.addAll(intfMethod.getVersions());
@@ -107,18 +125,11 @@ public class ServicePlaygroundService {
                                 mergedVersions.addAll(expMethod.getVersions());
                             }
                             intfMethod.setVersions(new ArrayList<>(mergedVersions));
-                            currentMethodMerged = true;
-                            anyMethodMerged = true;
                             break;
                         }
                     }
-                    if (currentMethodMerged) {
-                        break;
-                    }
+                    mergedExplicitFqsids.add(explicit.getFqsid());
                 }
-            }
-            if (anyMethodMerged) {
-                mergedExplicitFqsids.add(explicit.getFqsid());
             }
         }
 
@@ -173,126 +184,21 @@ public class ServicePlaygroundService {
      * 但只有实际实现了该接口的版本，容器中才会有对应 Bean。</li>
      * </ul>
      */
-    private ServiceMetadataDTO.MethodMetadata attachVersions(String fqsid, String className,
+    private ServiceMetadataDTO.MethodMetadata attachVersions(String fqsid,
             ServiceMetadataDTO.MethodMetadata method, List<LingInstance> instances) {
         if (instances.isEmpty()) {
             // 无活跃实例时保留方法但版本为空，向后兼容（由调用方过滤）
             return method;
         }
-        boolean interfaceService = isInterfaceService(fqsid);
         List<String> availableVersions = new ArrayList<>();
         for (LingInstance instance : instances) {
-            ClassLoader cl = instance.getClassLoader();
-            if (cl == null) {
-                // 无法验证时保留方法，与 isMethodAvailable 行为一致（向后兼容）
-                availableVersions.add(instance.getVersion());
-                continue;
-            }
-            boolean available;
-            if (interfaceService) {
-                // 接口服务：检查实例容器中是否有 Bean 实现该接口且包含目标方法
-                available = isInterfaceMethodAvailableInInstance(fqsid, method, instance);
-            } else {
-                // 显式注解服务：用实现类名 + CL 加载判定
-                available = isMethodAvailable(className, method, cl);
-            }
-            if (available) {
+            // 实例级精准比对：实例只对自己真正成功扫描注册的方法返回 true，完全避免开发环境 ClassLoader 与 Spring 误扫污染
+            if (instance.hasServiceMethod(fqsid, method.getName(), method.getParameterTypes())) {
                 availableVersions.add(instance.getVersion());
             }
         }
         method.setVersions(availableVersions);
         return method;
-    }
-
-    /**
-     * 判定接口服务方法在指定实例中是否可用。
-     * <p>
-     * 从 fqsid 提取接口全限定名，用实例 CL 加载接口类，
-     * 然后检查实例容器中是否有 Bean 实现该接口。
-     * 接口由 SharedApiClassLoader 加载，所有版本都能加载到，
-     * 但只有实际实现了该接口的版本，容器中才会有对应 Bean。
-     */
-    private boolean isInterfaceMethodAvailableInInstance(String fqsid,
-            ServiceMetadataDTO.MethodMetadata method, LingInstance instance) {
-        ClassLoader cl = instance.getClassLoader();
-        if (cl == null) {
-            // 无法验证时保留方法，与 isMethodAvailable 行为一致（向后兼容）
-            return true;
-        }
-        String interfaceName = extractInterfaceName(fqsid);
-        try {
-            Class<?> iface = Class.forName(interfaceName, false, cl);
-            // 检查实例容器中是否有 Bean 实现该接口
-            if (!hasBeanImplementingInterface(instance, iface)) {
-                return false;
-            }
-            // 接口方法签名校验：用接口类解析方法
-            List<String> paramTypeNames = method.getParameterTypes();
-            Class<?>[] paramTypes = new Class<?>[paramTypeNames.size()];
-            for (int i = 0; i < paramTypeNames.size(); i++) {
-                String typeName = paramTypeNames.get(i).trim();
-                Class<?> primitive = ParameterParsingUtils.resolvePrimitiveType(typeName);
-                paramTypes[i] = primitive != null ? primitive : Class.forName(typeName, false, cl);
-            }
-            iface.getMethod(method.getName(), paramTypes);
-            return true;
-        } catch (Exception e) {
-            log.debug("Interface method {} not available in instance {} (version={})",
-                    method.getName(), fqsid, instance.getVersion());
-            return false;
-        }
-    }
-
-    /**
-     * 检查实例容器中是否有 Bean 实现指定接口。
-     * <p>
-     * 用接口全限定名字符串比较，绕过 ClassLoader 隔离导致的 isAssignableFrom 失败。
-     * 遍历 Bean 的类层级（含 CGLIB 代理的目标类），处理 @Cacheable/@Transactional 等 AOP 代理场景。
-     */
-    private boolean hasBeanImplementingInterface(LingInstance instance, Class<?> iface) {
-        return findBeanClassNameImplementingInterface(instance, iface) != null;
-    }
-
-    /**
-     * 查找实例容器中实现指定接口的 Bean 类全限定名。
-     * <p>
-     * 遍历 Bean 的类层级（含 CGLIB 代理的目标类），返回第一个匹配的 Bean 类名。
-     */
-    private String findBeanClassNameImplementingInterface(LingInstance instance, Class<?> iface) {
-        if (instance.getContainer() == null)
-            return null;
-        String ifaceName = iface.getName();
-        try {
-            Object container = instance.getContainer();
-            // 反射获取 Spring ApplicationContext
-            java.lang.reflect.Field ctxField = container.getClass().getDeclaredField("context");
-            ctxField.setAccessible(true);
-            Object appCtx = ctxField.get(container);
-            java.lang.reflect.Method getBeanNames = appCtx.getClass().getMethod("getBeanDefinitionNames");
-            String[] beanNames = (String[]) getBeanNames.invoke(appCtx);
-            for (String beanName : beanNames) {
-                try {
-                    Object bean = instance.getContainer().getBean(beanName);
-                    if (bean == null)
-                        continue;
-                    // 遍历类层级，处理 CGLIB 代理（@Cacheable/@Transactional 等）
-                    Class<?> beanClass = bean.getClass();
-                    while (beanClass != null) {
-                        for (Class<?> beanIface : beanClass.getInterfaces()) {
-                            if (ifaceName.equals(beanIface.getName())) {
-                                return beanClass.getName();
-                            }
-                        }
-                        beanClass = beanClass.getSuperclass();
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Failed to check beans implementing {} in instance version {}",
-                    ifaceName, instance.getVersion());
-        }
-        return null;
     }
 
     /**
@@ -511,11 +417,9 @@ public class ServicePlaygroundService {
     /**
      * 解析调用目标实现类名。
      * <p>
-     * 显式注解服务直接用 classCache 中的实现类名（注册时记录，不会被多版本覆盖，
-     * 因为显式服务的 fqsid 通常含版本相关标识或用户自定义 ID）。
+     * 显式注解服务：从注册表获取实现类全限定名（注册时记录，短 ID 不可直接 Class.forName）。
      * <p>
-     * 接口服务（含 sharedapi）的 classCache 可能被多版本覆盖，不能直接使用。
-     * 改为从目标实例容器中查找实现该接口的 Bean，返回其类全限定名。
+     * 接口服务（含 sharedapi）：从目标实例容器中查找实现该接口的 Bean，返回其类全限定名。
      * 这样稳定版调用返回稳定版实现类名，金丝雀调用返回金丝雀实现类名。
      *
      * @param fqsid          服务全限定 ID
@@ -523,9 +427,9 @@ public class ServicePlaygroundService {
      * @return 目标实现类全限定名，解析失败时返回 null
      */
     private String resolveTargetClassName(String fqsid, LingInstance targetInstance) {
-        // 显式注解服务：不再从注册表获取
+        // 显式注解服务：从注册表获取实现类名
         if (!isInterfaceService(fqsid)) {
-            return null;
+            return lingServiceRegistry.getImplementationClassName(fqsid);
         }
         // 接口服务：从目标实例容器中查找实现该接口的 Bean 类名
         ClassLoader cl = targetInstance.getClassLoader();
@@ -535,9 +439,11 @@ public class ServicePlaygroundService {
         String interfaceName = extractInterfaceName(fqsid);
         try {
             Class<?> iface = Class.forName(interfaceName, false, cl);
-            String beanClassName = findBeanClassNameImplementingInterface(targetInstance, iface);
-            if (beanClassName != null) {
-                return beanClassName;
+            if (targetInstance.getContainer() != null) {
+                Object bean = targetInstance.getContainer().getBean(iface);
+                if (bean != null) {
+                    return bean.getClass().getName();
+                }
             }
         } catch (Exception e) {
             log.debug("Failed to resolve target class name for interface service {} in version {}",
@@ -624,36 +530,6 @@ public class ServicePlaygroundService {
         }
         // 路由到稳定版
         return defaultInst != null ? defaultInst : instances.get(0);
-    }
-
-    /**
-     * 检查方法在指定 ClassLoader 视角下是否真实可用。
-     * <p>
-     * 服务注册表会累积多版本方法，但路由器只会选择默认实例（稳定版），
-     * 因此需要过滤掉金丝雀独有方法，避免演练场展示无法调用的方法。
-     */
-    private boolean isMethodAvailable(String className, ServiceMetadataDTO.MethodMetadata method,
-            ClassLoader classLoader) {
-        if (classLoader == null || className == null || className.isEmpty()) {
-            // 无法验证时保留方法，向后兼容
-            return true;
-        }
-        try {
-            Class<?> targetClass = Class.forName(className, false, classLoader);
-            List<String> paramTypeNames = method.getParameterTypes();
-            Class<?>[] paramTypes = new Class<?>[paramTypeNames.size()];
-            for (int i = 0; i < paramTypeNames.size(); i++) {
-                String typeName = paramTypeNames.get(i).trim();
-                Class<?> primitive = ParameterParsingUtils.resolvePrimitiveType(typeName);
-                paramTypes[i] = primitive != null ? primitive : Class.forName(typeName, false, classLoader);
-            }
-            targetClass.getMethod(method.getName(), paramTypes);
-            return true;
-        } catch (Exception e) {
-            log.debug("Method {} not available on class {} via default ClassLoader, filtered out",
-                    method.getName(), className);
-            return false;
-        }
     }
 
     private List<InvokeResultDTO.TraceEntry> buildTraces(List<EngineTrace> engineTraces) {

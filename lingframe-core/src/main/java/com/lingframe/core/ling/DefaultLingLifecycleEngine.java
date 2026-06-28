@@ -14,6 +14,7 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
@@ -245,7 +246,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             LingRuntime runtime = ensureRuntimeForDeployment(lingId);
 
             driveInstanceToLoading(instance);
-            startPreparedInstance(instance, createLingContext(lingId));
+            startPreparedInstance(instance, createLingContext(instance));
             registerHotSwapIfNeeded(lingId, sourceFile, lingDefinition);
             publishReadyInstance(runtime, instance, isDefault);
             // 仅首次部署时授予声明权限；reload 场景保留用户动态修改的权限，避免被重置
@@ -292,7 +293,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             pipelineEngine.recoverLingGovernance(lingId);
         }
 
-        if (targetInstance.currentStatus() == com.lingframe.core.fsm.InstanceStatus.ERROR) {
+        if (targetInstance.currentStatus() == InstanceStatus.ERROR) {
             recoverErroredInstance(lingId, targetInstance);
             return;
         }
@@ -424,9 +425,9 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         instanceCoordinator.prepare(instance);
     }
 
-    private LingContext createLingContext(String lingId) {
+    private LingContext createLingContext(LingInstance instance) {
         return new DefaultLingContext(
-                lingId,
+                instance,
                 lingRepository,
                 lingServiceRegistry,
                 pipelineEngine,
@@ -502,7 +503,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             return null;
         }
         for (LingInstance instance : runtime.getInstancePool().getAllInstances()) {
-            if (instance.currentStatus() == com.lingframe.core.fsm.InstanceStatus.ERROR) {
+            if (instance.currentStatus() == InstanceStatus.ERROR) {
                 return instance;
             }
         }
@@ -517,7 +518,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     private void recoverErroredInstance(String lingId, LingInstance instance) {
         try {
             instanceCoordinator.recovering(instance);
-            startPreparedInstance(instance, createLingContext(lingId));
+            startPreparedInstance(instance, createLingContext(instance));
             instanceCoordinator.markReady(instance);
             runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
             log.info("[{}] Instance {} recovered successfully", lingId, instance.getVersion());
@@ -535,7 +536,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     }
 
     private void safeTransitionToError(LingInstance instance) {
-        if (instance == null || instance.currentStatus() == com.lingframe.core.fsm.InstanceStatus.ERROR) {
+        if (instance == null || instance.currentStatus() == InstanceStatus.ERROR) {
             return;
         }
         try {

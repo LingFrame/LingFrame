@@ -11,10 +11,12 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -247,6 +249,45 @@ public class LingInstance {
         return activeRequests.get() == 0;
     }
 
+    // 记录此实例中实际注册的服务和方法元数据，防开发环境下类加载器穿透与 Spring 误扫
+    private final Map<String, Set<String>> serviceMethods = new ConcurrentHashMap<>();
+
+    public void registerServiceMethod(String fqsid, String methodName, String[] parameterTypes) {
+        if (fqsid != null && methodName != null) {
+            String signature = buildMethodSignature(methodName, parameterTypes);
+            serviceMethods.computeIfAbsent(fqsid, k -> ConcurrentHashMap.newKeySet()).add(signature);
+        }
+    }
+
+    public boolean hasServiceMethod(String fqsid, String methodName, List<String> parameterTypes) {
+        if (fqsid == null) {
+            return false;
+        }
+        Set<String> signatures = serviceMethods.get(fqsid);
+        if (signatures == null) {
+            return false;
+        }
+        String signature = buildMethodSignature(methodName, parameterTypes);
+        return signatures.contains(signature);
+    }
+
+    private String buildMethodSignature(String methodName, String[] parameterTypes) {
+        return buildMethodSignatureInternal(methodName,
+                parameterTypes != null ? Arrays.asList(parameterTypes) : null);
+    }
+
+    private String buildMethodSignature(String methodName, List<String> parameterTypes) {
+        return buildMethodSignatureInternal(methodName, parameterTypes);
+    }
+
+    private String buildMethodSignatureInternal(String methodName, List<String> parameterTypes) {
+        StringBuilder sb = new StringBuilder(methodName).append("(");
+        if (parameterTypes != null && !parameterTypes.isEmpty()) {
+            sb.append(String.join(",", parameterTypes));
+        }
+        return sb.append(")").toString();
+    }
+
     public List<ActiveInvocationSnapshot> snapshotActiveInvocations() {
         List<ActiveInvocationSnapshot> snapshots = new ArrayList<>(activeInvocations.values());
         snapshots.sort(Comparator.comparingLong(ActiveInvocationSnapshot::getStartTimeMillis));
@@ -257,6 +298,7 @@ public class LingInstance {
     synchronized void clearDetachedState() {
         labels.clear();
         activeInvocations.clear();
+        serviceMethods.clear();
         this.container = null;
         this.definition = null;
     }

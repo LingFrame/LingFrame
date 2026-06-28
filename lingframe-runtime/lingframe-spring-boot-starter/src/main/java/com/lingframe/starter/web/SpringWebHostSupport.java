@@ -19,7 +19,7 @@ import java.util.Collection;
 import java.util.Map;
 
 /**
- * 集中处理宿主 Spring 环境中的注册、调用与缓存清理。
+ * 集中处理灵核 Spring 环境中的注册、调用与缓存清理。
  * <p>
  * 🔥 核心设计：Servlet API 无关化 (Decoupled from javax/jakarta)
  * 允许该类在 Spring Boot 2 (javax) 和 Spring Boot 3 (jakarta) 环境下均可编译运行。
@@ -72,8 +72,8 @@ final class SpringWebHostSupport {
         Method targetMethod = requireTargetMethod(metadata, routeKey);
 
         // 🔥 架构级物理阻断：
-        // 绝不能使用宿主的 RequestMappingHandlerAdapter（包括它的 ArgumentResolvers, ReturnValueHandlers 等）
-        // 因为它们是宿主单例，会将 HandlerMethod (包含 LingClassLoader) 缓存进内部的 Map 中（如 argumentResolverCache）
+        // 绝不能使用灵核的 RequestMappingHandlerAdapter（包括它的 ArgumentResolvers, ReturnValueHandlers 等）
+        // 因为它们是灵核单例，会将 HandlerMethod (包含 LingClassLoader) 缓存进内部的 Map 中（如 argumentResolverCache）
         // 改为：从灵元自己的 ApplicationContext 中获取它自己的 RequestMappingHandlerAdapter 处理！
         ApplicationContext lingContext = metadata.getLingApplicationContext();
         if (lingContext == null) {
@@ -243,8 +243,8 @@ final class SpringWebHostSupport {
         }
     }
 
-    // 所有 clearAdapterCaches 及 getArgumentResolvers 等宿主 Adapter 反射相关方法已被删除，
-    // 因为现在使用的是灵元内部独立的 RequestMappingHandlerAdapter，不会产生宿主缓存污染。
+    // 所有 clearAdapterCaches 及 getArgumentResolvers 等灵核 Adapter 反射相关方法已被删除，
+    // 因为现在使用的是灵元内部独立的 RequestMappingHandlerAdapter，不会产生灵核缓存污染。
     private Object requireTargetBean(WebInterfaceMetadata metadata, String routeKey) {
         Object targetBean = metadata.getTargetBean();
         if (targetBean == null) {

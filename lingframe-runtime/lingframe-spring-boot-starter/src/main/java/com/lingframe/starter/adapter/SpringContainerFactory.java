@@ -57,7 +57,7 @@ public class SpringContainerFactory implements ContainerFactory {
                     // 原因：
                     // 1. 父子容器关系导致灵核 BeanFactory 持有子容器引用，造成 ClassLoader 泄漏
                     // 2. 零信任设计：灵元不应直接访问灵核 Bean，应通过 LingContext
-                    // 3. 核心 Bean (LingManager, LingContext) 已在 registerBeans() 中手动注入
+                    // 3. 核心 Bean 已在 registerBeans() 中手动注入
                     .resourceLoader(new DefaultResourceLoader(classLoader)) // 使用隔离加载器
                     .sources(sourceClass)
                     .bannerMode(Banner.Mode.OFF)
@@ -80,7 +80,8 @@ public class SpringContainerFactory implements ContainerFactory {
                     customizers, // 🔥 传入定制器
                     mainContext,
                     resourceGuards,
-                    version
+                    version,
+                    sourceFile
             );
             return container;
 

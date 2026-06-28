@@ -6,6 +6,7 @@ import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.spi.LingInvocationFilter;
@@ -61,13 +62,20 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
     }
 
     public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus) {
-        initialize(lingRepository, trafficRouter, eventBus, null, null, null);
+        initialize(lingRepository, trafficRouter, eventBus, null, null, null, null);
     }
 
     public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
             MetricsCollector metricsCollector,
             RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector) {
-        initializeInternal(lingRepository, trafficRouter, eventBus, metricsCollector, runtimeCoordinator, governanceMetricsCollector);
+        initializeInternal(lingRepository, null, trafficRouter, eventBus, metricsCollector, runtimeCoordinator, governanceMetricsCollector);
+    }
+
+    public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
+            MetricsCollector metricsCollector,
+            RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector,
+            LingServiceRegistry serviceRegistry) {
+        initializeInternal(lingRepository, serviceRegistry, trafficRouter, eventBus, metricsCollector, runtimeCoordinator, governanceMetricsCollector);
     }
 
     /**
@@ -75,10 +83,11 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
      */
     public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
             RuntimeCoordinator runtimeCoordinator) {
-        initializeInternal(lingRepository, trafficRouter, eventBus, null, runtimeCoordinator, null);
+        initializeInternal(lingRepository, null, trafficRouter, eventBus, null, runtimeCoordinator, null);
     }
 
-    private void initializeInternal(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
+    private void initializeInternal(LingRepository lingRepository, LingServiceRegistry serviceRegistry,
+            TrafficRouter trafficRouter, EventBus eventBus,
             MetricsCollector metricsCollector,
             RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector) {
         // ⚠️ 内建过滤器的顺序不是偶然结果，而是“事实 -> 决策 -> 执行”的固定协议。
@@ -90,7 +99,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
                 trafficRouter != null ? trafficRouter : new LatestVersionPolicy());
         ResilienceGovernanceFilter resilience = new ResilienceGovernanceFilter(
                 lingRepository, eventBus, runtimeCoordinator, governanceMetricsCollector);
-        ContextIsolationFilter resolution = new ContextIsolationFilter();
+        ContextIsolationFilter resolution = new ContextIsolationFilter(serviceRegistry);
         GovernanceDecisionFilter governance = new GovernanceDecisionFilter(lingRepository, governanceArbitrator);
         PermissionGovernanceFilter permission = new PermissionGovernanceFilter(permissionService);
         ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(lingRepository, governanceMetricsCollector);

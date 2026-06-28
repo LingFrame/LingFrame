@@ -201,7 +201,7 @@ class WebInterfaceManagerTest {
     }
 
     @Test
-    @DisplayName("调用 registerSync 时应向宿主映射暴露 SpringDoc 可见的真实 HandlerMethod")
+    @DisplayName("调用 registerSync 时应向灵核映射暴露 SpringDoc 可见的真实 HandlerMethod")
     void shouldExposeSpringDocCompatibleHandlerMethodThroughHostMapping() throws Exception {
         hostContext = new GenericApplicationContext();
         hostContext.refresh();
@@ -247,7 +247,7 @@ class WebInterfaceManagerTest {
     }
 
     @Test
-    @DisplayName("调用 unregisterSync 时应在旧版本卸载后刷新宿主兼容映射")
+    @DisplayName("调用 unregisterSync 时应在旧版本卸载后刷新灵核兼容映射")
     void shouldRefreshHostCompatibilityMappingAfterRegisteredVersionIsRemoved() throws Exception {
         hostContext = new GenericApplicationContext();
         hostContext.refresh();

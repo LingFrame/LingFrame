@@ -108,7 +108,7 @@ public class WebInterfaceManager implements WebRouteResolver {
         return Collections.unmodifiableMap(metadataMap);
     }
 
-    // 🔥 宿主代理方法缓存（static，只解析一次，由 AppClassLoader 加载）
+    // 🔥 灵核代理方法缓存（static，只解析一次，由 AppClassLoader 加载）
     private static final Method HOST_DISPATCH_METHOD;
     static {
         try {
@@ -127,14 +127,14 @@ public class WebInterfaceManager implements WebRouteResolver {
         String routeKey = buildRouteKey(metadata);
 
         try {
-            // 保留 targetMethod 引用用于内部调用分发，但不再暴露给宿主
+            // 保留 targetMethod 引用用于内部调用分发，但不再暴露给灵核
             Method targetMethod = requireTargetMethod(metadata, routeKey);
             metadata.minimizeHostReferences();
 
             RequestMappingInfo info = resolveRequestMappingInfo(metadata);
 
             if (!mappingInfoMap.containsKey(routeKey)) {
-                // 🔥 架构级断绝：注册宿主加载的 LingWebEntryHandler 代替灵元 Method
+                // 🔥 架构级断绝：注册灵核加载的 LingWebEntryHandler 代替灵元 Method
                 // Spring MVC 只会看到 LingWebEntryHandler.dispatch(ServletWebRequest)
                 // 其 HandlerMapping 内部缓存永远只持有 AppClassLoader 的类引用
                 LingWebEntryHandler entryHandler = new LingWebEntryHandler(this, routeKey);
@@ -230,8 +230,8 @@ public class WebInterfaceManager implements WebRouteResolver {
         }
 
         // 🔥 纯代理架构下，卸载只需移除 HandlerMapping 中的路由映射
-        // 无需清理宿主的任何 Bean、BPP 缓存或 Adapter 缓存
-        // 因为宿主从未接触过灵元的类
+        // 无需清理灵核的任何 Bean、BPP 缓存或 Adapter 缓存
+        // 因为灵核从未接触过灵元的类
         hostSupport.unregisterMappings(routesToRemove, mappingInfoMap);
         
         // ✅ 注销后立即清理 SpringDoc 缓存，防止 UI 出现过期路由

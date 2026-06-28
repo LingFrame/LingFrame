@@ -18,8 +18,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -125,5 +128,144 @@ class LingInfoConverterTest {
         // 只应返回 1 个版本（新实例），dyingQueue 中的旧实例不展示
         assertEquals(1, dto.getVersionDetails().size());
         assertEquals("1.0.0-reload-1", dto.getVersionDetails().get(0).getVersion());
+    }
+
+    // ==================== Canary 版本回退逻辑测试 ====================
+    // 验证 versionDetails 中 isCanary/isDefault 标志正确填充，
+    // 这是 JS 端 canaryVer = find(v => v.isCanary)?.version || find(v => !v.isDefault)?.version
+    // 回退逻辑的数据前提。
+
+    @Test
+    @DisplayName("canary 标志：isCanary=true 的实例应正确标记且流量权重等于 canaryPercent")
+    void shouldMarkCanaryInstanceAndSetWeight() {
+        LingRuntime runtime = mock(LingRuntime.class);
+        InstancePool pool = mock(InstancePool.class);
+        CanaryRouter router = mock(CanaryRouter.class);
+        PermissionService permSvc = mock(PermissionService.class);
+        EventBus eventBus = mock(EventBus.class);
+
+        when(runtime.getLingId()).thenReturn("ling-a");
+        when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
+        when(runtime.getInstancePool()).thenReturn(pool);
+        when(runtime.getInstalledAt()).thenReturn(123L);
+        when(router.getCanaryPercent("ling-a")).thenReturn(30);
+
+        // 默认实例
+        LingDefinition defaultDef = new LingDefinition();
+        defaultDef.setId("ling-a");
+        defaultDef.setVersion("1.0.0");
+        LingContainer defaultContainer = mock(LingContainer.class);
+        when(defaultContainer.isActive()).thenReturn(true);
+        LingInstance defaultInstance = new LingInstance(defaultContainer, defaultDef, eventBus);
+
+        // canary 实例（properties 中 canary=true）
+        LingDefinition canaryDef = new LingDefinition();
+        canaryDef.setId("ling-a");
+        canaryDef.setVersion("2.0.0");
+        Map<String, Object> canaryProps = new HashMap<>();
+        canaryProps.put("canary", true);
+        canaryDef.setProperties(canaryProps);
+        LingContainer canaryContainer = mock(LingContainer.class);
+        when(canaryContainer.isActive()).thenReturn(true);
+        LingInstance canaryInstance = new LingInstance(canaryContainer, canaryDef, eventBus);
+
+        when(pool.getActiveInstances()).thenReturn(java.util.Arrays.asList(defaultInstance, canaryInstance));
+        when(pool.getDefault()).thenReturn(defaultInstance);
+
+        LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, null);
+
+        assertEquals(2, dto.getVersionDetails().size());
+
+        LingInfoDTO.VersionInfo canaryInfo = dto.getVersionDetails().stream()
+                .filter(v -> v.getIsCanary()).findFirst().orElse(null);
+        assertNotNull(canaryInfo, "应存在 isCanary=true 的版本");
+        assertEquals("2.0.0", canaryInfo.getVersion());
+        assertEquals(30, canaryInfo.getTrafficWeight());
+
+        LingInfoDTO.VersionInfo defaultInfo = dto.getVersionDetails().stream()
+                .filter(v -> v.getIsDefault()).findFirst().orElse(null);
+        assertNotNull(defaultInfo, "应存在 isDefault=true 的版本");
+        assertEquals("1.0.0", defaultInfo.getVersion());
+        assertEquals(70, defaultInfo.getTrafficWeight());
+    }
+
+    @Test
+    @DisplayName("canary 回退：无 isCanary=true 时，非默认版本应可被 JS 回退逻辑选中")
+    void shouldAllowFallbackToNonDefaultWhenNoCanaryFlag() {
+        LingRuntime runtime = mock(LingRuntime.class);
+        InstancePool pool = mock(InstancePool.class);
+        CanaryRouter router = mock(CanaryRouter.class);
+        PermissionService permSvc = mock(PermissionService.class);
+        EventBus eventBus = mock(EventBus.class);
+
+        when(runtime.getLingId()).thenReturn("ling-a");
+        when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
+        when(runtime.getInstancePool()).thenReturn(pool);
+        when(runtime.getInstalledAt()).thenReturn(123L);
+        when(router.getCanaryPercent("ling-a")).thenReturn(0);
+
+        // 默认实例
+        LingDefinition defaultDef = new LingDefinition();
+        defaultDef.setId("ling-a");
+        defaultDef.setVersion("1.0.0");
+        LingContainer defaultContainer = mock(LingContainer.class);
+        when(defaultContainer.isActive()).thenReturn(true);
+        LingInstance defaultInstance = new LingInstance(defaultContainer, defaultDef, eventBus);
+
+        // 第二个实例，无 canary 标志（模拟旧版灵元未声明 canary 属性）
+        LingDefinition otherDef = new LingDefinition();
+        otherDef.setId("ling-a");
+        otherDef.setVersion("1.1.0");
+        LingContainer otherContainer = mock(LingContainer.class);
+        when(otherContainer.isActive()).thenReturn(true);
+        LingInstance otherInstance = new LingInstance(otherContainer, otherDef, eventBus);
+
+        when(pool.getActiveInstances()).thenReturn(java.util.Arrays.asList(defaultInstance, otherInstance));
+        when(pool.getDefault()).thenReturn(defaultInstance);
+
+        LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, null);
+
+        assertEquals(2, dto.getVersionDetails().size());
+
+        // 验证 JS 回退逻辑的前提：存在一个 isCanary=false 且 isDefault=false 的版本
+        LingInfoDTO.VersionInfo nonDefaultNonCanary = dto.getVersionDetails().stream()
+                .filter(v -> !v.getIsCanary() && !v.getIsDefault())
+                .findFirst().orElse(null);
+        assertNotNull(nonDefaultNonCanary, "JS 回退逻辑需要 !isCanary && !isDefault 的版本存在");
+        assertEquals("1.1.0", nonDefaultNonCanary.getVersion());
+    }
+
+    @Test
+    @DisplayName("canary 标志：canary 属性为数字 1 时应识别为 canary")
+    void shouldRecognizeNumericCanaryFlag() {
+        LingRuntime runtime = mock(LingRuntime.class);
+        InstancePool pool = mock(InstancePool.class);
+        CanaryRouter router = mock(CanaryRouter.class);
+        PermissionService permSvc = mock(PermissionService.class);
+        EventBus eventBus = mock(EventBus.class);
+
+        when(runtime.getLingId()).thenReturn("ling-a");
+        when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
+        when(runtime.getInstancePool()).thenReturn(pool);
+        when(runtime.getInstalledAt()).thenReturn(123L);
+        when(router.getCanaryPercent("ling-a")).thenReturn(50);
+
+        LingDefinition def = new LingDefinition();
+        def.setId("ling-a");
+        def.setVersion("2.0.0");
+        Map<String, Object> props = new HashMap<>();
+        props.put("canary", 1); // 数字 1 而非 boolean true
+        def.setProperties(props);
+        LingContainer container = mock(LingContainer.class);
+        when(container.isActive()).thenReturn(true);
+        LingInstance instance = new LingInstance(container, def, eventBus);
+
+        when(pool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
+        when(pool.getDefault()).thenReturn(instance);
+
+        LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, null);
+
+        assertEquals(1, dto.getVersionDetails().size());
+        assertTrue(dto.getVersionDetails().get(0).getIsCanary(), "canary=1 应识别为 canary");
     }
 }

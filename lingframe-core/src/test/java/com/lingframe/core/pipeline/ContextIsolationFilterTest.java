@@ -2,6 +2,7 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
@@ -15,16 +16,19 @@ import static org.mockito.Mockito.*;
 
 /**
  * ContextIsolationFilter 测试。
- * 覆盖：TCCL 切换、模拟/穿刺模式跳过、无目标实例异常、ClassLoader 异常。
+ * 覆盖：TCCL 切换、模拟/穿刺模式跳过、无目标实例异常、ClassLoader 异常、
+ * 接口服务类名解析、显式服务类名解析。
  */
 @DisplayName("ContextIsolationFilter 测试")
 class ContextIsolationFilterTest {
 
+    private LingServiceRegistry serviceRegistry;
     private ContextIsolationFilter filter;
 
     @BeforeEach
     void setUp() {
-        filter = new ContextIsolationFilter();
+        serviceRegistry = mock(LingServiceRegistry.class);
+        filter = new ContextIsolationFilter(serviceRegistry);
     }
 
     private InvocationContext createContextWithTarget(LingInstance target) {
@@ -166,6 +170,103 @@ class ContextIsolationFilterTest {
             LingInvocationException thrown = assertThrows(LingInvocationException.class,
                     () -> filter.doFilter(ctx, (c) -> "unreachable"));
             assertEquals(LingInvocationException.ErrorKind.CLASSLOADER_ERROR, thrown.getKind());
+        }
+    }
+
+    // ==================== 目标类名解析 ====================
+
+    @Nested
+    @DisplayName("目标类名解析")
+    class TargetClassNameResolution {
+
+        @Test
+        @DisplayName("接口服务：FQSID 含 '.' 直接用作类名")
+        void interfaceServiceUsesServiceNameDirectly() throws Throwable {
+            ClassLoader targetCl = mock(ClassLoader.class);
+            LingInstance instance = mockInstance(targetCl);
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setServiceFQSID("ling-1:com.example.UserService");
+            ctx.routing().setTargetInstance(instance);
+
+            filter.doFilter(ctx, (c) -> {
+                assertEquals("com.example.UserService", c.resolution().getTargetClassName());
+                return null;
+            });
+
+            // 不应查询注册表
+            verify(serviceRegistry, never()).getImplementationClassName(anyString());
+        }
+
+        @Test
+        @DisplayName("接口服务带 #method 后缀：正确剥离方法名")
+        void interfaceServiceStripsMethodSuffix() throws Throwable {
+            ClassLoader targetCl = mock(ClassLoader.class);
+            LingInstance instance = mockInstance(targetCl);
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setServiceFQSID("ling-1:com.example.UserService#queryUser");
+            ctx.routing().setTargetInstance(instance);
+
+            filter.doFilter(ctx, (c) -> {
+                assertEquals("com.example.UserService", c.resolution().getTargetClassName());
+                return null;
+            });
+        }
+
+        @Test
+        @DisplayName("显式服务：短 ID 从注册表查询实现类名")
+        void explicitServiceQueriesRegistryForClassName() throws Throwable {
+            ClassLoader targetCl = mock(ClassLoader.class);
+            LingInstance instance = mockInstance(targetCl);
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setServiceFQSID("user-ling:query_user");
+            ctx.routing().setTargetInstance(instance);
+
+            when(serviceRegistry.getImplementationClassName("user-ling:query_user"))
+                    .thenReturn("com.example.UserQueryService");
+
+            filter.doFilter(ctx, (c) -> {
+                assertEquals("com.example.UserQueryService", c.resolution().getTargetClassName());
+                return null;
+            });
+
+            verify(serviceRegistry).getImplementationClassName("user-ling:query_user");
+        }
+
+        @Test
+        @DisplayName("显式服务未注册时：目标类名为 null")
+        void explicitServiceUnregisteredReturnsNull() throws Throwable {
+            ClassLoader targetCl = mock(ClassLoader.class);
+            LingInstance instance = mockInstance(targetCl);
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setServiceFQSID("user-ling:unknown_service");
+            ctx.routing().setTargetInstance(instance);
+
+            when(serviceRegistry.getImplementationClassName("user-ling:unknown_service"))
+                    .thenReturn(null);
+
+            filter.doFilter(ctx, (c) -> {
+                assertNull(c.resolution().getTargetClassName());
+                return null;
+            });
+        }
+
+        @Test
+        @DisplayName("已预设目标类名时不再重复解析")
+        void presetTargetClassNameNotOverridden() throws Throwable {
+            ClassLoader targetCl = mock(ClassLoader.class);
+            LingInstance instance = mockInstance(targetCl);
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setServiceFQSID("user-ling:query_user");
+            ctx.routing().setTargetInstance(instance);
+            ctx.resolution().setTargetClassName("com.example.PresetClass");
+
+            filter.doFilter(ctx, (c) -> {
+                assertEquals("com.example.PresetClass", c.resolution().getTargetClassName());
+                return null;
+            });
+
+            // 已预设时不应查询注册表
+            verify(serviceRegistry, never()).getImplementationClassName(anyString());
         }
     }
 

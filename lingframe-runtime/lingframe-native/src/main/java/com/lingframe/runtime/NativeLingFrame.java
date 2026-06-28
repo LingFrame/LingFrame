@@ -114,7 +114,7 @@ public class NativeLingFrame {
         FilterRegistry filterRegistry = new FilterRegistry(invokableMethodCache, permissionService, invoker, null);
         CanaryRouter canaryRouter = new CanaryRouter(new LatestVersionPolicy());
         filterRegistry.initialize(lingRepository, canaryRouter, eventBus,
-                metricsCollector, RUNTIME_COORDINATOR, governanceMetricsCollector);
+                metricsCollector, RUNTIME_COORDINATOR, governanceMetricsCollector, lingServiceRegistry);
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(
                 filterRegistry);
 

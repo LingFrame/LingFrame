@@ -13,6 +13,11 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     // 方法签名到返回类型的映射（`FQSID::methodSignature -> returnType`）
     private final Map<String, String> returnTypeCache = new ConcurrentHashMap<>();
 
+    // 实现类名映射：FQSID → 实现类全限定名
+    // 显式注解服务（短 ID）必须通过此映射才能在 Pipeline 中被正确加载为 Class。
+    // 接口服务也会注册（冗余但幂等），不影响正确性。
+    private final Map<String, String> implClassNameCache = new ConcurrentHashMap<>();
+
     @Override
     public void registerServiceMetadata(String serviceFQSID, String methodName,
             String[] parameterTypes, String returnType) {
@@ -29,6 +34,18 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         if (returnType != null) {
             returnTypeCache.put(serviceFQSID + "::" + signature, returnType);
         }
+    }
+
+    @Override
+    public void registerImplementationClassName(String serviceFQSID, String implClassName) {
+        if (serviceFQSID != null && implClassName != null) {
+            implClassNameCache.put(serviceFQSID, implClassName);
+        }
+    }
+
+    @Override
+    public String getImplementationClassName(String serviceFQSID) {
+        return serviceFQSID != null ? implClassNameCache.get(serviceFQSID) : null;
     }
 
     @Override
@@ -63,10 +80,11 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
 
     @Override
     public void evict(String lingId) {
-        // 灵元整体卸载：清除该灵元所有接口契约
+        // 灵元整体卸载：清除该灵元所有接口契约和实现类名映射
         String prefix = lingId + ":";
         metadataCache.keySet().removeIf(k -> k.startsWith(prefix));
         returnTypeCache.keySet().removeIf(k -> k.startsWith(prefix));
+        implClassNameCache.keySet().removeIf(k -> k.startsWith(prefix));
     }
 
     private String buildSignature(String methodName, String[] parameterTypes) {
