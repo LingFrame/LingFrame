@@ -2,7 +2,7 @@ package com.lingframe.core.governance.provider;
 
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.security.AccessType;
-import com.lingframe.core.governance.GovernanceDecision;
+import com.lingframe.core.spi.GovernanceDecision;
 import com.lingframe.core.governance.LingCoreGovernanceRule;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.ling.InstancePool;

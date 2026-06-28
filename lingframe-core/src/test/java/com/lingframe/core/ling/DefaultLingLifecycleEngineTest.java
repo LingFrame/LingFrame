@@ -254,10 +254,11 @@ class DefaultLingLifecycleEngineTest {
 
         DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
 
-        // 构造器已初始化 MetricsCollector
-        assertTrue(engine.getMetricsCollector().isPresent());
+        // 微内核解耦：构造器不再自动创建 MetricsCollector，需外部注入
+        assertFalse(engine.getMetricsCollector().isPresent());
         MetricsCollector metricsCollector = mock(MetricsCollector.class);
         engine.setMetricsCollector(metricsCollector);
+        assertTrue(engine.getMetricsCollector().isPresent());
         assertSame(metricsCollector, engine.getMetricsCollector().get());
 
         runtimeCoordinator.stop();
@@ -272,10 +273,11 @@ class DefaultLingLifecycleEngineTest {
 
         DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
 
-        // 构造器已初始化 GovernanceMetricsCollector
-        assertTrue(engine.getGovernanceMetricsCollector().isPresent());
+        // 微内核解耦：构造器不再自动创建，需外部注入
+        assertFalse(engine.getGovernanceMetricsCollector().isPresent());
         GovernanceMetricsCollector gmc = mock(GovernanceMetricsCollector.class);
         engine.setGovernanceMetricsCollector(gmc);
+        assertTrue(engine.getGovernanceMetricsCollector().isPresent());
         assertSame(gmc, engine.getGovernanceMetricsCollector().get());
 
         runtimeCoordinator.stop();
@@ -290,10 +292,11 @@ class DefaultLingLifecycleEngineTest {
 
         DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
 
-        // 构造器已初始化 AlertManager
-        assertTrue(engine.getAlertManager().isPresent());
+        // 微内核解耦：构造器不再自动创建，需外部注入
+        assertFalse(engine.getAlertManager().isPresent());
         AlertManager alertManager = mock(AlertManager.class);
         engine.setAlertManager(alertManager);
+        assertTrue(engine.getAlertManager().isPresent());
         assertSame(alertManager, engine.getAlertManager().get());
 
         runtimeCoordinator.stop();

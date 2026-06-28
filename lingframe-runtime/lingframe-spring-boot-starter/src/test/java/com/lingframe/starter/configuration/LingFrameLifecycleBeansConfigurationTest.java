@@ -98,7 +98,9 @@ class LingFrameLifecycleBeansConfigurationTest {
         LingLifecycleEngine lifecycleEngine = config.lingLifecycleEngine(
                 containerFactory, permissionService, lingLoaderFactory, verifiersProvider, eventBus,
                 lingFrameConfig, lingRepository, lingServiceRegistry, pipelineEngine, resourceGuards,
-                lingResourceManager, leakDetector, runtimeCoordinator
+                lingResourceManager, leakDetector, runtimeCoordinator,
+                mock(org.springframework.beans.factory.ObjectProvider.class),
+                mock(org.springframework.beans.factory.ObjectProvider.class)
         );
         assertNotNull(lifecycleEngine);
 

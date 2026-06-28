@@ -24,10 +24,13 @@ import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.security.ApiOverrideVerifier;
+import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LingLoaderFactory;
 import com.lingframe.core.spi.LingSecurityVerifier;
+import java.util.ArrayList;
 import com.lingframe.core.spi.LingServiceInvoker;
 import com.lingframe.core.spi.ResourceGuard;
 import com.lingframe.core.spi.ServiceExporter;
@@ -81,15 +84,27 @@ public class LingFrameLifecycleBeansConfiguration {
             List<ResourceGuard> resourceGuards,
             LingResourceManager lingResourceManager,
             LeakDetector leakDetector,
-            RuntimeCoordinator runtimeCoordinator) {
+            RuntimeCoordinator runtimeCoordinator,
+            ObjectProvider<MetricsCollector> metricsCollectorProvider,
+            ObjectProvider<GovernanceMetricsCollector> governanceMetricsCollectorProvider) {
         List<LingSecurityVerifier> verifiers = verifiersProvider.getIfAvailable(Collections::emptyList);
+        // 微内核解耦：安全验证器由组装层注入默认实现，内核不再自动添加
+        List<LingSecurityVerifier> allVerifiers = new ArrayList<>(verifiers);
+        if (lingFrameConfig == null || lingFrameConfig.isApiOverrideCheckEnabled()) {
+            if (allVerifiers.stream().noneMatch(v -> v instanceof ApiOverrideVerifier)) {
+                allVerifiers.add(0, new ApiOverrideVerifier());
+            }
+        }
+        if (allVerifiers.stream().noneMatch(v -> v instanceof DangerousApiVerifier)) {
+            allVerifiers.add(new DangerousApiVerifier());
+        }
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
                 pipelineEngine, resourceGuards, lingResourceManager, leakDetector);
-        return new DefaultLingLifecycleEngine(
+        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(
                 containerFactory,
                 permissionService,
                 lingLoaderFactory,
-                verifiers,
+                allVerifiers,
                 eventBus,
                 lingFrameConfig,
                 lingRepository,
@@ -98,6 +113,16 @@ public class LingFrameLifecycleBeansConfiguration {
                 lingResourceManager,
                 unloadCoordinator,
                 runtimeCoordinator);
+        // 微内核解耦：指标/告警由组装层注入，内核不直接构造
+        MetricsCollector mc = metricsCollectorProvider.getIfAvailable();
+        GovernanceMetricsCollector gmc = governanceMetricsCollectorProvider.getIfAvailable();
+        if (mc != null) {
+            engine.setMetricsCollector(mc);
+        }
+        if (gmc != null) {
+            engine.setGovernanceMetricsCollector(gmc);
+        }
+        return engine;
     }
 
     @Bean

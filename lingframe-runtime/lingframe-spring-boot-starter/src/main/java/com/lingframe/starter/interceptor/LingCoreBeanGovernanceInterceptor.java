@@ -8,7 +8,7 @@ import com.lingframe.api.security.AccessType;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.strategy.GovernanceStrategy;
+import com.lingframe.core.governance.GovernanceStrategy;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import lombok.RequiredArgsConstructor;

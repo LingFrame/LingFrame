@@ -1,5 +1,6 @@
 package com.lingframe.core.metrics;
 
+import com.lingframe.core.spi.LingGovernanceMetricsCollector;
 import lombok.Getter;
 
 import java.util.LinkedHashMap;
@@ -9,7 +10,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-public class GovernanceMetricsCollector {
+public class GovernanceMetricsCollector implements LingGovernanceMetricsCollector {
 
     private final Map<String, GovernanceMetricBucket> summaryBuckets = new ConcurrentHashMap<>();
     private final Map<String, GovernanceMetricBucket> versionBuckets = new ConcurrentHashMap<>();

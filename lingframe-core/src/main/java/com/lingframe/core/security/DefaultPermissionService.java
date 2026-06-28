@@ -6,7 +6,6 @@ import com.lingframe.api.security.PermissionAuditRecord;
 import com.lingframe.api.security.PermissionAuditResult;
 import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
@@ -151,16 +150,8 @@ public class DefaultPermissionService implements PermissionService {
                     callerLingId, capability, action, source, ruleSource, failureReason);
         }
 
-        AuditManager.asyncRecord(
-                traceId,
-                callerLingId,
-                principal,
-                record.getResult(),
-                capability,
-                action,
-                resource,
-                failureReason,
-                record.getCostNanos());
+        // 微内核解耦：审计记录通过 EventBus 异步分发，
+        // audit 扩展包订阅 AuditLogEvent 自行持久化，security 不直接依赖 audit 包。
 
         if (eventBus != null) {
             // MonitoringEvents.* 由 EventBus 异步分发。

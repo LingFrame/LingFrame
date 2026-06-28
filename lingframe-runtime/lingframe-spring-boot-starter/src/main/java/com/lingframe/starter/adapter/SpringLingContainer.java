@@ -8,7 +8,7 @@ import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
 import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.spi.LingContainer;
-import com.lingframe.core.strategy.GovernanceStrategy;
+import com.lingframe.core.governance.GovernanceStrategy;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.core.spi.ResourceGuard;
 import com.lingframe.starter.spi.LingContextCustomizer;

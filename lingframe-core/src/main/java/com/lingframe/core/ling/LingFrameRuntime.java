@@ -1,12 +1,12 @@
 package com.lingframe.core.ling;
 
-import com.lingframe.core.alert.AlertManager;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.metrics.GovernanceMetricsCollector;
-import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.spi.CanaryConfigurable;
 import com.lingframe.core.spi.LeakDetector;
+import com.lingframe.core.spi.LingAlertManager;
+import com.lingframe.core.spi.LingGovernanceMetricsCollector;
+import com.lingframe.core.spi.LingMetricsCollector;
 
 import java.util.Optional;
 
@@ -24,15 +24,15 @@ public interface LingFrameRuntime extends LingLifecycleEngine {
         return Optional.empty();
     }
 
-    default Optional<MetricsCollector> getMetricsCollector() {
+    default Optional<LingMetricsCollector> getMetricsCollector() {
         return Optional.empty();
     }
 
-    default Optional<GovernanceMetricsCollector> getGovernanceMetricsCollector() {
+    default Optional<LingGovernanceMetricsCollector> getGovernanceMetricsCollector() {
         return Optional.empty();
     }
 
-    default Optional<AlertManager> getAlertManager() {
+    default Optional<LingAlertManager> getAlertManager() {
         return Optional.empty();
     }
 

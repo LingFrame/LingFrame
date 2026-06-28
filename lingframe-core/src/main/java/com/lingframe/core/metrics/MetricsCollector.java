@@ -2,6 +2,7 @@ package com.lingframe.core.metrics;
 
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.spi.LingMetricsCollector;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.LinkedHashMap;
@@ -11,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Slf4j
-public class MetricsCollector {
+public class MetricsCollector implements LingMetricsCollector {
     private final LingRepository lingRepository;
     private final Map<String, LingHealthMetrics> metricsMap = new ConcurrentHashMap<>();
     private final Map<String, LingHealthMetrics> versionMetricsMap = new ConcurrentHashMap<>();

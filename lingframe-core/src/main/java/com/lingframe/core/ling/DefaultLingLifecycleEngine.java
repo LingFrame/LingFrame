@@ -9,20 +9,14 @@ import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.api.event.lifecycle.LingUninstallingEvent;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.alert.AlertManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.DefaultLingContext;
-import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
-import com.lingframe.core.metrics.GovernanceMetricsCollector;
-import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.resource.DefaultLeakDetector;
-import com.lingframe.core.security.ApiOverrideVerifier;
-import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.core.spi.ContainerFactory;
@@ -30,6 +24,10 @@ import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.CanaryConfigurable;
 import com.lingframe.core.spi.LingLoaderFactory;
 import com.lingframe.core.spi.LingSecurityVerifier;
+import com.lingframe.core.spi.LingMetricsCollector;
+import com.lingframe.core.spi.LingGovernanceMetricsCollector;
+import com.lingframe.core.spi.LingAlertManager;
+import com.lingframe.core.spi.LingHotSwapWatcher;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -64,15 +62,15 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     private final LingFrameConfig lingFrameConfig;
     private final InvocationPipelineEngine pipelineEngine;
     private final LingUnloadCoordinator unloadCoordinator;
-    private HotSwapWatcher hotSwapWatcher;
+    private LingHotSwapWatcher hotSwapWatcher;
     private CanaryConfigurable canaryConfigurable;
 
     private final InstanceCoordinator instanceCoordinator;
     private final RuntimeCoordinator runtimeCoordinator;
 
-    private MetricsCollector metricsCollector;
-    private GovernanceMetricsCollector governanceMetricsCollector;
-    private AlertManager alertManager;
+    private LingMetricsCollector metricsCollector;
+    private LingGovernanceMetricsCollector governanceMetricsCollector;
+    private LingAlertManager alertManager;
     private LeakDetector leakDetector;
 
     public DefaultLingLifecycleEngine(ContainerFactory containerFactory,
@@ -104,30 +102,16 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
                                       LingResourceManager lingResourceManager,
                                       LingUnloadCoordinator unloadCoordinator,
                                       RuntimeCoordinator runtimeCoordinator,
-                                      HotSwapWatcher hotSwapWatcher) {
+                                      LingHotSwapWatcher hotSwapWatcher) {
         this.containerFactory = containerFactory;
         this.lingLoaderFactory = lingLoaderFactory;
         this.permissionService = permissionService;
         this.eventBus = eventBus;
 
+        // 微内核解耦：安全验证器由外部组装点注入，内核不关心具体类型
         this.verifiers = new ArrayList<>();
         if (verifiers != null) {
             this.verifiers.addAll(verifiers);
-        }
-
-        boolean enableApiOverrideCheck = lingFrameConfig == null || lingFrameConfig.isApiOverrideCheckEnabled();
-        if (enableApiOverrideCheck) {
-            boolean hasApiOverrideVerifier = this.verifiers.stream()
-                    .anyMatch(v -> v instanceof ApiOverrideVerifier);
-            if (!hasApiOverrideVerifier) {
-                this.verifiers.add(0, new ApiOverrideVerifier());
-            }
-        }
-
-        boolean hasBytecodeVerifier = this.verifiers.stream()
-                .anyMatch(v -> v instanceof DangerousApiVerifier);
-        if (!hasBytecodeVerifier) {
-            this.verifiers.add(new DangerousApiVerifier());
         }
 
         this.lingFrameConfig = lingFrameConfig;
@@ -145,13 +129,11 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         this.instanceCoordinator = new InstanceCoordinator(eventBus);
         this.runtimeCoordinator = Objects.requireNonNull(runtimeCoordinator, "RuntimeCoordinator is required");
 
-        this.metricsCollector = new MetricsCollector(lingRepository);
-        this.governanceMetricsCollector = new GovernanceMetricsCollector();
-        this.alertManager = new AlertManager();
+        // 微内核解耦：指标/告警由外部通过 setter 注入，内核不直接构造扩展对象
         this.leakDetector = this.unloadCoordinator.getLeakDetector();
     }
 
-    public void setHotSwapWatcher(HotSwapWatcher hotSwapWatcher) {
+    public void setHotSwapWatcher(LingHotSwapWatcher hotSwapWatcher) {
         this.hotSwapWatcher = hotSwapWatcher;
     }
 
@@ -185,17 +167,17 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     }
 
     @Override
-    public Optional<MetricsCollector> getMetricsCollector() {
+    public Optional<LingMetricsCollector> getMetricsCollector() {
         return Optional.ofNullable(metricsCollector);
     }
 
     @Override
-    public Optional<GovernanceMetricsCollector> getGovernanceMetricsCollector() {
+    public Optional<LingGovernanceMetricsCollector> getGovernanceMetricsCollector() {
         return Optional.ofNullable(governanceMetricsCollector);
     }
 
     @Override
-    public Optional<AlertManager> getAlertManager() {
+    public Optional<LingAlertManager> getAlertManager() {
         return Optional.ofNullable(alertManager);
     }
 
@@ -204,15 +186,15 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         return Optional.ofNullable(leakDetector);
     }
 
-    public void setMetricsCollector(MetricsCollector metricsCollector) {
+    public void setMetricsCollector(LingMetricsCollector metricsCollector) {
         this.metricsCollector = metricsCollector;
     }
 
-    public void setGovernanceMetricsCollector(GovernanceMetricsCollector governanceMetricsCollector) {
+    public void setGovernanceMetricsCollector(LingGovernanceMetricsCollector governanceMetricsCollector) {
         this.governanceMetricsCollector = governanceMetricsCollector;
     }
 
-    public void setAlertManager(AlertManager alertManager) {
+    public void setAlertManager(LingAlertManager alertManager) {
         this.alertManager = alertManager;
     }
 

@@ -4,7 +4,7 @@ import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
-import com.lingframe.core.governance.GovernanceDecision;
+import com.lingframe.core.spi.GovernanceDecision;
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;

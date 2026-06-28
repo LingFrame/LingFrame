@@ -1,4 +1,4 @@
-package com.lingframe.core.strategy;
+package com.lingframe.core.governance;
 
 import com.lingframe.api.security.AccessType;
 
@@ -7,7 +7,10 @@ import java.util.*;
 
 /**
  * 治理策略推导器
- * 核心逻辑：基于命名约定自动生成治理规则，实现零侵入式权限管理
+ * 核心逻辑：基于命名约定自动生成治理规则，实现零侵入式权限管理。
+ * <p>
+ * 微内核解耦：从 strategy 扩展包移至 governance 包，
+ * 因为它是治理决策的推导逻辑，不是独立扩展。
  */
 public class GovernanceStrategy {
 

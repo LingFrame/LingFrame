@@ -9,7 +9,7 @@ import com.lingframe.api.security.AuditMetadataKeys;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.pipeline.InvocationContext;
-import com.lingframe.core.strategy.GovernanceStrategy;
+import com.lingframe.core.governance.GovernanceStrategy;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.web.method.HandlerMethod;

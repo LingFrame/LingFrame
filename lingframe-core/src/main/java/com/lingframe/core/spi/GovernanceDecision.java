@@ -1,4 +1,4 @@
-package com.lingframe.core.governance;
+package com.lingframe.core.spi;
 
 import com.lingframe.api.security.AccessType;
 import lombok.Builder;
@@ -8,7 +8,10 @@ import java.time.Duration;
 
 /**
  * 治理决策结果 (Runtime Object)
- * 承载仲裁后的最终判定
+ * 承载仲裁后的最终判定。
+ * <p>
+ * 微内核解耦：从 governance 扩展包移至 spi 包，
+ * 因为 {@link GovernancePolicyProvider} 的返回类型属于内核契约。
  */
 @Data
 @Builder

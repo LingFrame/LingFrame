@@ -17,21 +17,26 @@ import com.lingframe.core.ling.DefaultLingResourceManager;
 import com.lingframe.core.ling.DefaultLingServiceRegistry;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.resource.DefaultLeakDetector;
+import com.lingframe.core.security.ApiOverrideVerifier;
+import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.spi.LeakDetector;
+import com.lingframe.core.spi.LingSecurityVerifier;
+
+import java.util.ArrayList;
+import java.util.List;
 import com.lingframe.core.ling.LingFrameRuntime;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.resource.BasicResourceGuard;
 import com.lingframe.core.ling.LingRepository;
-import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.ling.LingUnloadCoordinator;
 import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.pipeline.LatestVersionPolicy;
 import com.lingframe.core.router.CanaryRouter;
-import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.LingServiceInvoker;
 import com.lingframe.core.invoker.FastLingServiceInvoker;
@@ -126,11 +131,16 @@ public class NativeLingFrame {
                 RESOURCE_MANAGER,
                 LEAK_DETECTOR);
 
+        // 微内核解耦：安全验证器由组装层注入，内核不再自动添加默认实现
+        List<LingSecurityVerifier> defaultVerifiers = new ArrayList<>();
+        defaultVerifiers.add(new ApiOverrideVerifier());
+        defaultVerifiers.add(new DangerousApiVerifier());
+
         DefaultLingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(
                 containerFactory,
                 permissionService,
                 loaderFactory,
-                Collections.singletonList(new DangerousApiVerifier()),
+                defaultVerifiers,
                 eventBus,
                 config,
                 lingRepository,

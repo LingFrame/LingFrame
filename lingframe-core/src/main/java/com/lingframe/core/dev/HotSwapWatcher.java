@@ -10,6 +10,7 @@ import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.LeakDetector;
+import com.lingframe.core.spi.LingHotSwapWatcher;
 import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
@@ -31,7 +32,7 @@ import java.util.stream.Stream;
  * KISS：本类仅负责“监听并触发”，泄漏检测等重型任务由专门的基础设施（LeakDetector）承接。
  */
 @Slf4j
-public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
+public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent>, LingHotSwapWatcher {
 
     private final LingLifecycleEngine lifecycleEngine;
     private final LingRepository lingRepository;

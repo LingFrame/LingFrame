@@ -6,14 +6,14 @@ import com.lingframe.api.annotation.RequiresPermission;
 
 import java.lang.annotation.Annotation;
 import com.lingframe.api.config.GovernancePolicy;
-import com.lingframe.core.governance.GovernanceDecision;
+import com.lingframe.core.spi.GovernanceDecision;
 import com.lingframe.core.governance.LingCoreGovernanceRule;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.GovernancePolicyProvider;
-import com.lingframe.core.strategy.GovernanceStrategy;
+import com.lingframe.core.governance.GovernanceStrategy;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
