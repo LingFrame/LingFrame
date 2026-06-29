@@ -6,6 +6,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.spi.LingUnloadHook;
 import com.lingframe.starter.adapter.SpringLingContainer;
 import com.lingframe.starter.web.WebInterfaceManager;
 import org.junit.jupiter.api.AfterEach;
@@ -13,7 +14,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -33,12 +33,16 @@ import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -48,7 +52,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -56,6 +59,54 @@ import static org.mockito.Mockito.mock;
 class SpringLingContainerUnloadRegressionTest {
 
     private static final String APP_CLASS_NAME = "sample.springling.SampleLingApp";
+
+    /**
+     * 检测当前 JVM 是否运行在覆盖率采集模式下。
+     * 覆盖率 agent（JaCoCo / IntelliJ Coverage）会对自定义 ClassLoader 持有强引用，
+     * 导致 ClassLoader 无法被 GC 回收，使总闸断言必然失败。
+     * 此标志用于在该场景下降级 classLoaderCollected 断言。
+     */
+    private static boolean isCoverageAgentActive() {
+        RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
+        List<String> inputArgs = runtimeMXBean.getInputArguments();
+        for (String arg : inputArgs) {
+            String lower = arg.toLowerCase();
+            if (lower.contains("jacoco")
+                    || lower.contains("intellij-coverage")
+                    || lower.contains("coverage_rt")
+                    || lower.contains("idea_rt")
+                    || (lower.contains("javaagent") && lower.contains("coverage"))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final boolean COVERAGE_ACTIVE = isCoverageAgentActive();
+
+    /**
+     * 总闸断言：ClassLoader 应在卸载后被 GC 回收。
+     * ClassLoader 是灵元所有静态引用的根，只要灵核侧任何一个静态表
+     * （BPP 缓存、Property.annotationCache、Jackson TypeFactory 等）
+     * 残留灵元 Class，ClassLoader 即不可达，断言红。
+     * 覆盖率 agent 活跃时降级为警告。
+     */
+    private static void assertClassLoaderCollected(boolean collected) {
+        if (COVERAGE_ACTIVE) {
+            if (!collected) {
+                System.err.println(
+                        "[WARN] classLoaderCollected=false，但当前运行在覆盖率采集模式下，"
+                                + "覆盖率 agent 持有 ClassLoader 强引用导致无法回收，此断言已降级为警告。"
+                                + "无覆盖率模式下此断言必须为 true。");
+            }
+        } else {
+            if (!collected) {
+                System.err.println("[DIAG] COVERAGE_ACTIVE=false，但 classLoaderCollected=false。"
+                        + "JVM inputArguments: " + ManagementFactory.getRuntimeMXBean().getInputArguments());
+            }
+            assertTrue(collected, "ClassLoader 应在 Spring 容器卸载后被 GC 回收，存在灵核侧静态缓存泄漏");
+        }
+    }
 
     @AfterEach
     void resetBootShutdownHook() throws Exception {
@@ -76,6 +127,7 @@ class SpringLingContainerUnloadRegressionTest {
             assertTrue(cycle.shutdownHookClean);
             assertTrue(cycle.routeRemoved);
             assertTrue(cycle.noThreadContextClassLoaderLeak);
+            assertClassLoaderCollected(cycle.classLoaderCollected);
             assertEquals(1, cycle.startCount);
             assertEquals(1, cycle.stopCount);
         }
@@ -93,6 +145,7 @@ class SpringLingContainerUnloadRegressionTest {
                 assertTrue(cycle.shutdownHookClean);
                 assertTrue(cycle.routeRemoved);
                 assertTrue(cycle.noThreadContextClassLoaderLeak);
+                assertClassLoaderCollected(cycle.classLoaderCollected);
                 assertEquals(1, cycle.startCount);
                 assertEquals(1, cycle.stopCount);
             }
@@ -109,7 +162,8 @@ class SpringLingContainerUnloadRegressionTest {
                     artifacts.classLoaderClosed,
                     artifacts.shutdownHookClean,
                     artifacts.routeRemoved,
-                    artifacts.noThreadContextClassLoaderLeak);
+                    artifacts.noThreadContextClassLoaderLeak,
+                    artifacts.classLoaderCollected);
         } finally {
             deleteRecursively(artifacts.workspace);
         }
@@ -124,7 +178,10 @@ class SpringLingContainerUnloadRegressionTest {
 
         AtomicBoolean classLoaderClosed = new AtomicBoolean(false);
         WeakReference<ClassLoader> classLoaderRef = null;
-        SpringBasicResourceGuard guard = new SpringBasicResourceGuard();
+        // 生态卸载钩子
+        List<LingUnloadHook> ecosystemHooks = Arrays.asList(
+                new SpringEcosystemUnloadHook(),
+                new StorageCacheUnloadHook());
         ExecutorService executor;
         boolean shutdownHookCleanAfterStop;
         boolean routeRemovedAfterStop;
@@ -150,7 +207,7 @@ class SpringLingContainerUnloadRegressionTest {
                     Collections.emptyList(),
                     Collections.emptyList(),
                     host.hostContext,
-                    Collections.singletonList(guard),
+                    ecosystemHooks,
                     "v1");
 
             DefaultLingContext lingContext = createLingContext(lingId);
@@ -172,20 +229,13 @@ class SpringLingContainerUnloadRegressionTest {
             assertNull(host.manager.resolveRoute(new MockHttpServletRequest("GET", routePath)));
             assertNull(getHandlerExecutionChain(host.hostMapping, new MockHttpServletRequest("GET", routePath)));
 
-            ApplicationContext guardMainContext = (ApplicationContext) readField(guard, "mainContext");
-            ConfigurableApplicationContext guardLingContext = (ConfigurableApplicationContext) readField(guard,
-                    "lingContext");
-            assertSame(host.hostContext, guardMainContext);
-            assertNotNull(guardLingContext);
-            assertFalse(guardLingContext.isActive());
-
             shutdownHookCleanAfterStop = !containsBootShutdownHookReference(lingClassLoader);
             routeRemovedAfterStop = host.manager.resolveRoute(new MockHttpServletRequest("GET", routePath)) == null;
 
-            guard.cleanup(lingId, lingClassLoader);
-            guard.clearContexts();
-            assertNull(readField(guard, "mainContext"));
-            assertNull(readField(guard, "lingContext"));
+            // 执行所有生态 Hook 清理
+            for (LingUnloadHook hook : ecosystemHooks) {
+                hook.cleanup(lingId, lingClassLoader);
+            }
 
             appClass = null;
             builder = null;
@@ -196,6 +246,10 @@ class SpringLingContainerUnloadRegressionTest {
             lingClassLoader = null;
         }
 
+        // 总闸：等待 ClassLoader 被 GC 回收
+        awaitCollection(classLoaderRef);
+        boolean classLoaderCollected = classLoaderRef.get() == null;
+
         return new CycleArtifacts(
                 workspace,
                 SpringLingContainerUnloadRegressionSupport.startCount(),
@@ -204,7 +258,8 @@ class SpringLingContainerUnloadRegressionTest {
                 classLoaderClosed.get(),
                 shutdownHookCleanAfterStop,
                 routeRemovedAfterStop,
-                findThreadContextClassLoaderReference(classLoaderRef.get()) == null);
+                findThreadContextClassLoaderReference(classLoaderRef.get()) == null,
+                classLoaderCollected);
     }
 
     private DefaultLingContext createLingContext(String lingId) {
@@ -459,6 +514,7 @@ class SpringLingContainerUnloadRegressionTest {
         private final boolean shutdownHookClean;
         private final boolean routeRemoved;
         private final boolean noThreadContextClassLoaderLeak;
+        private final boolean classLoaderCollected;
 
         private CycleResult(int startCount,
                 int stopCount,
@@ -466,7 +522,8 @@ class SpringLingContainerUnloadRegressionTest {
                 boolean classLoaderClosed,
                 boolean shutdownHookClean,
                 boolean routeRemoved,
-                boolean noThreadContextClassLoaderLeak) {
+                boolean noThreadContextClassLoaderLeak,
+                boolean classLoaderCollected) {
             this.startCount = startCount;
             this.stopCount = stopCount;
             this.executorShutdown = executorShutdown;
@@ -474,6 +531,7 @@ class SpringLingContainerUnloadRegressionTest {
             this.shutdownHookClean = shutdownHookClean;
             this.routeRemoved = routeRemoved;
             this.noThreadContextClassLoaderLeak = noThreadContextClassLoaderLeak;
+            this.classLoaderCollected = classLoaderCollected;
         }
     }
 
@@ -486,6 +544,7 @@ class SpringLingContainerUnloadRegressionTest {
         private final boolean shutdownHookClean;
         private final boolean routeRemoved;
         private final boolean noThreadContextClassLoaderLeak;
+        private final boolean classLoaderCollected;
 
         private CycleArtifacts(Path workspace,
                 int startCount,
@@ -494,7 +553,8 @@ class SpringLingContainerUnloadRegressionTest {
                 boolean classLoaderClosed,
                 boolean shutdownHookClean,
                 boolean routeRemoved,
-                boolean noThreadContextClassLoaderLeak) {
+                boolean noThreadContextClassLoaderLeak,
+                boolean classLoaderCollected) {
             this.workspace = workspace;
             this.startCount = startCount;
             this.stopCount = stopCount;
@@ -503,6 +563,7 @@ class SpringLingContainerUnloadRegressionTest {
             this.shutdownHookClean = shutdownHookClean;
             this.routeRemoved = routeRemoved;
             this.noThreadContextClassLoaderLeak = noThreadContextClassLoaderLeak;
+            this.classLoaderCollected = classLoaderCollected;
         }
     }
 }

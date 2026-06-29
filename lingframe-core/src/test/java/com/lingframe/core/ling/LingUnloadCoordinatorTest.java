@@ -4,7 +4,7 @@ import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.core.spi.LeakRiskLevel;
-import com.lingframe.core.spi.ResourceGuard;
+import com.lingframe.core.spi.LingUnloadHook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -25,7 +25,7 @@ import static org.mockito.Mockito.*;
 class LingUnloadCoordinatorTest {
 
     private InvocationPipelineEngine pipelineEngine;
-    private ResourceGuard resourceGuard;
+    private LingUnloadHook resourceGuard;
     private LingResourceManager resourceManager;
     private LeakDetector leakDetector;
     private LingUnloadCoordinator coordinator;
@@ -33,7 +33,7 @@ class LingUnloadCoordinatorTest {
     @BeforeEach
     void setUp() {
         pipelineEngine = mock(InvocationPipelineEngine.class);
-        resourceGuard = mock(ResourceGuard.class);
+        resourceGuard = mock(LingUnloadHook.class);
         resourceManager = mock(LingResourceManager.class);
         leakDetector = mock(LeakDetector.class);
         coordinator = new LingUnloadCoordinator(
@@ -50,8 +50,8 @@ class LingUnloadCoordinatorTest {
     class VersionUnload {
 
         @Test
-        @DisplayName("调用 ResourceGuard.cleanup 清理指定 ClassLoader")
-        void callsResourceGuardCleanup() {
+        @DisplayName("调用 LingUnloadHook.cleanup 清理指定 ClassLoader")
+        void callsLingUnloadHookCleanup() {
             ClassLoader cl = mock(ClassLoader.class);
             coordinator.onVersionUnload("ling-1", "v1", cl);
 
@@ -77,10 +77,10 @@ class LingUnloadCoordinatorTest {
         }
 
         @Test
-        @DisplayName("ResourceGuard 抛异常不影响后续 Guard")
+        @DisplayName("LingUnloadHook 抛异常不影响后续 Guard")
         void guardExceptionDoesNotBlockOthers() {
-            ResourceGuard failingGuard = mock(ResourceGuard.class);
-            ResourceGuard normalGuard = mock(ResourceGuard.class);
+            LingUnloadHook failingGuard = mock(LingUnloadHook.class);
+            LingUnloadHook normalGuard = mock(LingUnloadHook.class);
             doThrow(new RuntimeException("test error")).when(failingGuard).cleanup(any(), any());
 
             LingUnloadCoordinator coord = new LingUnloadCoordinator(
@@ -212,7 +212,7 @@ class LingUnloadCoordinatorTest {
     class FailureCleanup {
 
         @Test
-        @DisplayName("安装失败时调用 ResourceGuard 清理")
+        @DisplayName("安装失败时调用 LingUnloadHook 清理")
         void failureCleanupCallsGuards() {
             ClassLoader cl = mock(ClassLoader.class);
             coordinator.onFailureCleanup(cl);

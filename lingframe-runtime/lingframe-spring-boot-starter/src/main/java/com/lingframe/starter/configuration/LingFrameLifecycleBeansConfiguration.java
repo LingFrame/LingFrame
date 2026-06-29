@@ -30,9 +30,13 @@ import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LingLoaderFactory;
 import com.lingframe.core.spi.LingSecurityVerifier;
+import com.lingframe.core.resource.JdbcDriverUnloadHook;
+import com.lingframe.core.resource.ThreadReferenceUnloadHook;
+import com.lingframe.core.resource.JvmShutdownHookUnloadHook;
 import java.util.ArrayList;
+import java.util.Arrays;
 import com.lingframe.core.spi.LingServiceInvoker;
-import com.lingframe.core.spi.ResourceGuard;
+import com.lingframe.core.spi.LingUnloadHook;
 import com.lingframe.core.spi.ServiceExporter;
 import com.lingframe.core.spi.TrafficRouter;
 import com.lingframe.starter.adapter.SpringContainerFactory;
@@ -65,7 +69,7 @@ public class LingFrameLifecycleBeansConfiguration {
     public ContainerFactory containerFactory(ApplicationContext parentContext,
             WebInterfaceManager webInterfaceManager,
             ObjectProvider<List<LingContextCustomizer>> customizersProvider,
-            List<ResourceGuard> resourceGuards) {
+            List<LingUnloadHook> resourceGuards) {
         List<LingContextCustomizer> customizers = customizersProvider.getIfAvailable(Collections::emptyList);
         return new SpringContainerFactory(parentContext, webInterfaceManager, customizers, resourceGuards);
     }
@@ -81,7 +85,7 @@ public class LingFrameLifecycleBeansConfiguration {
             LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry,
             InvocationPipelineEngine pipelineEngine,
-            List<ResourceGuard> resourceGuards,
+            List<LingUnloadHook> resourceGuards,
             LingResourceManager lingResourceManager,
             LeakDetector leakDetector,
             RuntimeCoordinator runtimeCoordinator,
@@ -98,8 +102,14 @@ public class LingFrameLifecycleBeansConfiguration {
         if (allVerifiers.stream().noneMatch(v -> v instanceof DangerousApiVerifier)) {
             allVerifiers.add(new DangerousApiVerifier());
         }
+        // 生态桶：Spring 生态清理 Hook（由 Spring Bean 注入）
+        // JVM 桶：三个独立 JVM 级 Hook，桶内并行执行
+        List<LingUnloadHook> jvmHooks = Arrays.asList(
+                new JdbcDriverUnloadHook(),
+                new ThreadReferenceUnloadHook(),
+                new JvmShutdownHookUnloadHook());
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
-                pipelineEngine, resourceGuards, lingResourceManager, leakDetector);
+                pipelineEngine, resourceGuards, jvmHooks, lingResourceManager, leakDetector);
         DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(
                 containerFactory,
                 permissionService,

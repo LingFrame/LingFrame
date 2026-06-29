@@ -64,7 +64,7 @@ class LingFrameLifecycleBeansConfigurationTest {
             @Override
             public List<LingContextCustomizer> getIfUnique() { return new ArrayList<>(); }
         };
-        List<ResourceGuard> resourceGuards = new ArrayList<>();
+        List<LingUnloadHook> resourceGuards = new ArrayList<>();
         
         ContainerFactory containerFactory = config.containerFactory(parentContext, webInterfaceManager, customizersProvider, resourceGuards);
         assertNotNull(containerFactory);

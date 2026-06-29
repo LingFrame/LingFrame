@@ -10,9 +10,9 @@ import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.governance.GovernanceStrategy;
 import com.lingframe.starter.processor.LingReferenceInjector;
-import com.lingframe.core.spi.ResourceGuard;
+import com.lingframe.core.spi.LingUnloadHook;
 import com.lingframe.starter.spi.LingContextCustomizer;
-import com.lingframe.starter.spi.SpringAwareResourceGuard;
+import com.lingframe.starter.spi.SpringAwareUnloadHook;
 import com.lingframe.starter.util.JacksonCacheEvictUtil;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
@@ -76,7 +76,7 @@ public class SpringLingContainer implements LingContainer {
     // 保存 Context 以便 stop 时使用
     private LingContext lingContext;
     private ApplicationContext mainContext; // 🔥 主容器引用
-    private final List<ResourceGuard> resourceGuards; // 🔥 资源守卫列表
+    private final List<LingUnloadHook> resourceGuards; // 🔥 资源守卫列表
 
     private File sourceFile;
 
@@ -87,7 +87,7 @@ public class SpringLingContainer implements LingContainer {
                                List<String> excludedPackages,
                                List<LingContextCustomizer> customizers,
                                ApplicationContext mainContext,
-                               List<ResourceGuard> resourceGuards,
+                               List<LingUnloadHook> resourceGuards,
                                String version) {
         this(builder, classLoader, webInterfaceManager, excludedPackages, customizers, mainContext, resourceGuards, version, null);
     }
@@ -99,7 +99,7 @@ public class SpringLingContainer implements LingContainer {
                                List<String> excludedPackages,
                                List<LingContextCustomizer> customizers,
                                ApplicationContext mainContext,
-                               List<ResourceGuard> resourceGuards,
+                               List<LingUnloadHook> resourceGuards,
                                String version,
                                File sourceFile) {
         this.builder = builder;
@@ -618,10 +618,10 @@ public class SpringLingContainer implements LingContainer {
             }
 
             // 🔥 第一阶段清理：在 Context 关闭前执行 preCleanup
-            for (ResourceGuard guard : resourceGuards) {
-                if (guard instanceof SpringAwareResourceGuard) {
+            for (LingUnloadHook guard : resourceGuards) {
+                if (guard instanceof SpringAwareUnloadHook) {
                     try {
-                        SpringAwareResourceGuard awareGuard = (SpringAwareResourceGuard) guard;
+                        SpringAwareUnloadHook awareGuard = (SpringAwareUnloadHook) guard;
                         awareGuard.setContexts(this.mainContext, this.context);
                         awareGuard.preCleanup(lingId);
                     } catch (Exception e) {
@@ -641,10 +641,10 @@ public class SpringLingContainer implements LingContainer {
 
         // 🔥 第二阶段清理会由 DefaultLingLifecycleEngine 调用 resourceGuard.cleanup()
         // 此处仅确保 context 引用已设置（防御性补充，防止未初始化的 guard 错过注入）
-        for (ResourceGuard guard : resourceGuards) {
-            if (guard instanceof SpringAwareResourceGuard) {
+        for (LingUnloadHook guard : resourceGuards) {
+            if (guard instanceof SpringAwareUnloadHook) {
                 try {
-                    ((SpringAwareResourceGuard) guard).setContexts(this.mainContext,
+                    ((SpringAwareUnloadHook) guard).setContexts(this.mainContext,
                             this.context);
                 } catch (Exception ignored) {
                 }

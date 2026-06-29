@@ -21,15 +21,20 @@ import com.lingframe.core.security.ApiOverrideVerifier;
 import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LingSecurityVerifier;
+import com.lingframe.core.spi.LingUnloadHook;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import com.lingframe.core.ling.LingFrameRuntime;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
-import com.lingframe.core.resource.BasicResourceGuard;
+import com.lingframe.core.resource.JdbcDriverUnloadHook;
+import com.lingframe.core.resource.ThreadReferenceUnloadHook;
+import com.lingframe.core.resource.JvmShutdownHookUnloadHook;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingUnloadCoordinator;
 import com.lingframe.core.loader.LingDiscoveryService;
@@ -125,9 +130,15 @@ public class NativeLingFrame {
 
         RESOURCE_MANAGER = new DefaultLingResourceManager(lingRepository, eventBus, invokableMethodCache);
         LEAK_DETECTOR = new DefaultLeakDetector(eventBus, config);
+        // JVM 卸载钩子：三个独立 Hook，桶内并行执行
+        List<LingUnloadHook> jvmHooks = Arrays.asList(
+                new JdbcDriverUnloadHook(),
+                new ThreadReferenceUnloadHook(),
+                new JvmShutdownHookUnloadHook());
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
                 pipelineEngine,
-                Collections.singletonList(new BasicResourceGuard(eventBus)),
+                Collections.emptyList(), // 生态桶：native 无生态框架
+                jvmHooks,
                 RESOURCE_MANAGER,
                 LEAK_DETECTOR);
 

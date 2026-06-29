@@ -4,7 +4,7 @@ import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
-import com.lingframe.core.spi.ResourceGuard;
+import com.lingframe.core.spi.LingUnloadHook;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.loader.AsmMainClassScanner;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -29,10 +29,10 @@ public class SpringContainerFactory implements ContainerFactory {
     private final List<String> serviceExcludedPackages;
     private final List<LingContextCustomizer> customizers; // 新增定制器列表
     private final ApplicationContext mainContext; // 🔥 主容器引用
-    private final List<ResourceGuard> resourceGuards; // 🔥 资源守卫列表
+    private final List<LingUnloadHook> resourceGuards; // 🔥 资源守卫列表
 
     public SpringContainerFactory(ApplicationContext parentContext, WebInterfaceManager webInterfaceManager,
-            List<LingContextCustomizer> customizers, List<ResourceGuard> resourceGuards) {
+            List<LingContextCustomizer> customizers, List<LingUnloadHook> resourceGuards) {
         LingFrameProperties props = parentContext.getBean(LingFrameProperties.class);
         this.devMode = props.isDevMode();
         this.serviceExcludedPackages = props.getServiceExcludedPackages();

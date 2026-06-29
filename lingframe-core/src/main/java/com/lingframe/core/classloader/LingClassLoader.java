@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>
  * <b>JDK 17+ 卸载前提条件</b>：
  * <ul>
- *   <li>JDK 17 默认强封装内部 API，灵元卸载时 {@code BasicResourceGuard} 通过反射清理
+ *   <li>JDK 17 默认强封装内部 API，灵元卸载时 {@code ThreadReferenceUnloadHook} 通过反射清理
  *       {@code ThreadLocal}/{@code ResourceBundle} 等持有灵元 ClassLoader 引用的内部缓存，
  *       需要以下 JVM 参数开放访问：
  *       <pre>
@@ -281,7 +281,7 @@ public class LingClassLoader extends URLClassLoader {
 
             log.info("[{}] ClassLoader closed successfully", lingId);
             // 💡 不再在此处调用 System.gc()
-            // 垃圾回收提示由 `BasicResourceGuard` 在所有清理完成后统一触发，
+            // 垃圾回收提示由 `ThreadReferenceUnloadHook` 在所有清理完成后统一触发，
             // 此处调用没有实际效果（引用链尚未完全切断）
         } catch (IOException e) {
             log.error("[{}] Error closing ClassLoader", lingId, e);

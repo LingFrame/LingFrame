@@ -12,15 +12,15 @@ import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.resource.DefaultLeakDetector;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LingServiceInvoker;
-import com.lingframe.core.spi.ResourceGuard;
-import com.lingframe.starter.resource.SpringBasicResourceGuard;
-import com.lingframe.starter.resource.StorageResourceGuard;
+import com.lingframe.core.spi.LingUnloadHook;
+import com.lingframe.starter.resource.SpringEcosystemUnloadHook;
+import com.lingframe.starter.resource.StorageCacheUnloadHook;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * 运行时通用 Bean 装配切片。
+ * 运行时通用 Bean 腐配切片。
  */
 @Configuration
 public class LingFrameRuntimeBeansConfiguration {
@@ -57,14 +57,17 @@ public class LingFrameRuntimeBeansConfiguration {
         return new DefaultLeakDetector(eventBus, lingFrameConfig);
     }
 
+    // =========================================================================
+    // 生态卸载钩子（Spring 生态清理，注册到生态桶）
+    // =========================================================================
+
     @Bean
-    @ConditionalOnMissingBean
-    public ResourceGuard resourceGuard(EventBus eventBus) {
-        return new SpringBasicResourceGuard(eventBus);
+    public LingUnloadHook springEcosystemUnloadHook() {
+        return new SpringEcosystemUnloadHook();
     }
 
     @Bean
-    public ResourceGuard storageResourceGuard() {
-        return new StorageResourceGuard();
+    public LingUnloadHook storageCacheUnloadHook() {
+        return new StorageCacheUnloadHook();
     }
 }

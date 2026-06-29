@@ -1,17 +1,17 @@
 package com.lingframe.starter.spi;
 
-import com.lingframe.core.spi.ResourceGuard;
+import com.lingframe.core.spi.LingUnloadHook;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 
 /**
- * 支持 Spring Context 感知与预清理的增强 ResourceGuard 契约。
+ * 支持 Spring Context 感知与预清理的增强 LingUnloadHook 契约。
  * <p>
  * 凡实现该接口的资源守卫，在 Spring 灵元卸载第一阶段（Context 活跃时期）将收到注入的上下文，并获得
  * {@link #preCleanup(String)} 预清理执行机会。
  * </p>
  */
-public interface SpringAwareResourceGuard extends ResourceGuard {
+public interface SpringAwareUnloadHook extends LingUnloadHook {
 
     /**
      * 接收并注入 Spring 上下文引用
