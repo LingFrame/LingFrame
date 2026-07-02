@@ -5,7 +5,9 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -24,6 +26,7 @@ public class LingDefinition implements Serializable {
 
     // === 运行时配置 ===
     private String mainClass; // 灵元入口类全限定名
+    private List<String> excludeAutoConfigurations = new ArrayList<>();
 
     // === 治理配置 ===
     private GovernancePolicy governance = new GovernancePolicy();
@@ -41,6 +44,10 @@ public class LingDefinition implements Serializable {
         copy.provider = this.provider;
         copy.description = this.description;
         copy.mainClass = this.mainClass;
+
+        if (this.excludeAutoConfigurations != null) {
+            copy.excludeAutoConfigurations = new ArrayList<>(this.excludeAutoConfigurations);
+        }
 
         if (this.governance != null) {
             copy.governance = this.governance.copy();

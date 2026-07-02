@@ -16,6 +16,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Collections;
 
@@ -52,6 +53,22 @@ public class SpringContainerFactory implements ContainerFactory {
 
             Class<?> sourceClass = classLoader.loadClass(mainClass);
 
+            List<String> excludes = new ArrayList<>();
+            // 显式排除 JMX 相关自动配置，防止 MBean 名称冲突
+            excludes.add("org.springframework.boot.autoconfigure.admin.SpringApplicationAdminJmxAutoConfiguration");
+            excludes.add("org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration");
+            excludes.add("org.springframework.boot.actuate.autoconfigure.endpoint.jmx.JmxEndpointAutoConfiguration");
+
+            // 合并灵元 ling.yml 声明的自定义排除自动配置类
+            if (definition != null && definition.getExcludeAutoConfigurations() != null) {
+                for (String autoConfig : definition.getExcludeAutoConfigurations()) {
+                    if (autoConfig != null && !autoConfig.trim().isEmpty() && !excludes.contains(autoConfig)) {
+                        excludes.add(autoConfig.trim());
+                    }
+                }
+            }
+            String excludeStr = String.join(",", excludes);
+
             SpringApplicationBuilder builder = new SpringApplicationBuilder()
                     // 🔥 不设置父容器，实现完全隔离
                     // 原因：
@@ -66,11 +83,8 @@ public class SpringContainerFactory implements ContainerFactory {
                     .properties("spring.main.allow-bean-definition-overriding=true") // 允许覆盖 Bean
                     .properties("spring.application.name=Ling-" + lingId) // 独立应用名
                     .properties("spring.sql.init.mode=never") // 禁用 Spring Boot 自动 SQL 初始化
-                    // 显式排除 JMX 相关自动配置，防止 MBean 名称冲突
-                    .properties("spring.autoconfigure.exclude=" +
-                            "org.springframework.boot.autoconfigure.admin.SpringApplicationAdminJmxAutoConfiguration," +
-                            "org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration," +
-                            "org.springframework.boot.actuate.autoconfigure.endpoint.jmx.JmxEndpointAutoConfiguration");
+                    // 动态设置排除的自动配置类列表
+                    .properties("spring.autoconfigure.exclude=" + excludeStr);
 
             SpringLingContainer container = new SpringLingContainer(
                     builder,
@@ -81,8 +95,7 @@ public class SpringContainerFactory implements ContainerFactory {
                     mainContext,
                     resourceGuards,
                     version,
-                    sourceFile
-            );
+                    sourceFile);
             return container;
 
         } catch (Exception e) {
