@@ -35,7 +35,7 @@ public class MacroStateGuardFilter implements LingInvocationFilter {
         String lingId = ctx.getLingIdFromFqsid();
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
-            if (ctx.isGovernOnly()) {
+            if (ctx.execution().getMode().isGovernOnly()) {
                 // GOVERN_ONLY 允许灵核入口借道治理，即便此时并不存在真实灵元 Runtime
                 return chain.doFilter(ctx);
             }
@@ -47,8 +47,8 @@ public class MacroStateGuardFilter implements LingInvocationFilter {
         switch (status) {
             case ACTIVE:
             case DEGRADED:
-                if (ctx.isSimulation() || ctx.isShouldAudit()) {
-                    ctx.addTrace(EngineTrace.builder()
+                if (ctx.execution().getMode().isSimulation() || ctx.governance().isShouldAudit()) {
+                    ctx.execution().addTrace(EngineTrace.builder()
                             .source("MacroStateGuardFilter")
                             .action("Runtime state ready [" + status + "]")
                             .type("OK")
@@ -59,8 +59,8 @@ public class MacroStateGuardFilter implements LingInvocationFilter {
             case INACTIVE:
             case REMOVED:
                 String unavailableMessage = "Ling [" + lingId + "] is " + status;
-                if (ctx.isSimulation()) {
-                    ctx.addTrace(EngineTrace.builder()
+                if (ctx.execution().getMode().isSimulation()) {
+                    ctx.execution().addTrace(EngineTrace.builder()
                             .source("MacroStateGuardFilter")
                             .action("Simulation blocked because " + unavailableMessage)
                             .type("ERROR")
@@ -71,8 +71,8 @@ public class MacroStateGuardFilter implements LingInvocationFilter {
                         LingInvocationException.ErrorKind.ROUTE_FAILURE, unavailableMessage);
             case STOPPING:
                 String stoppingMessage = "Ling [" + lingId + "] is stopping";
-                if (ctx.isSimulation()) {
-                    ctx.addTrace(EngineTrace.builder()
+                if (ctx.execution().getMode().isSimulation()) {
+                    ctx.execution().addTrace(EngineTrace.builder()
                             .source("MacroStateGuardFilter")
                             .action("Simulation blocked because " + stoppingMessage)
                             .type("WARN")
@@ -83,8 +83,8 @@ public class MacroStateGuardFilter implements LingInvocationFilter {
                         LingInvocationException.ErrorKind.STATE_REJECTED, stoppingMessage);
             case RECOVERING:
                 String recoveringMessage = "Ling [" + lingId + "] is recovering";
-                if (ctx.isSimulation()) {
-                    ctx.addTrace(EngineTrace.builder()
+                if (ctx.execution().getMode().isSimulation()) {
+                    ctx.execution().addTrace(EngineTrace.builder()
                             .source("MacroStateGuardFilter")
                             .action("Simulation blocked because " + recoveringMessage)
                             .type("WARN")

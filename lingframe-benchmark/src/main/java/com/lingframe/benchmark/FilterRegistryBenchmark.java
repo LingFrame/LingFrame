@@ -1,11 +1,13 @@
 package com.lingframe.benchmark;
 
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.pipeline.FilterRegistry;
+import com.lingframe.core.pipeline.FilterRegistryConfig;
 import com.lingframe.core.pipeline.LatestVersionPolicy;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.LingInvocationFilter;
@@ -63,12 +65,17 @@ public class FilterRegistryBenchmark {
         @Setup(Level.Trial)
         public void setup() {
             EventBus eventBus = new EventBus();
-            PermissionService permissionService = new DefaultPermissionService(eventBus);
+            PermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
             InvokableMethodCache methodCache = new InvokableMethodCache();
             LingRepository lingRepository = new DefaultLingRepository();
 
-            registry = new FilterRegistry(methodCache, permissionService);
-            registry.initialize(lingRepository, new LatestVersionPolicy(), eventBus);
+            registry = new FilterRegistry(FilterRegistryConfig.builder()
+                    .methodCache(methodCache)
+                    .permissionService(permissionService)
+                    .lingRepository(lingRepository)
+                    .trafficRouter(new LatestVersionPolicy())
+                    .eventBus(eventBus)
+                    .build());
 
             // 预热缓存：首次 getOrderedFilters 触发组装，后续全部走缓存
             registry.getOrderedFilters();
@@ -99,8 +106,8 @@ public class FilterRegistryBenchmark {
             }
 
             @Override
-            public java.lang.Object doFilter(com.lingframe.core.pipeline.InvocationContext context,
-                    com.lingframe.core.spi.LingFilterChain chain) throws Throwable {
+            public Object doFilter(com.lingframe.core.pipeline.InvocationContext context,
+	                    com.lingframe.core.spi.LingFilterChain chain) throws Throwable {
                 return chain.doFilter(context);
             }
         };
@@ -108,12 +115,17 @@ public class FilterRegistryBenchmark {
         @Setup(Level.Trial)
         public void setup() {
             EventBus eventBus = new EventBus();
-            PermissionService permissionService = new DefaultPermissionService(eventBus);
+            PermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
             InvokableMethodCache methodCache = new InvokableMethodCache();
             LingRepository lingRepository = new DefaultLingRepository();
 
-            registry = new FilterRegistry(methodCache, permissionService);
-            registry.initialize(lingRepository, new LatestVersionPolicy(), eventBus);
+            registry = new FilterRegistry(FilterRegistryConfig.builder()
+                    .methodCache(methodCache)
+                    .permissionService(permissionService)
+                    .lingRepository(lingRepository)
+                    .trafficRouter(new LatestVersionPolicy())
+                    .eventBus(eventBus)
+                    .build());
         }
     }
 

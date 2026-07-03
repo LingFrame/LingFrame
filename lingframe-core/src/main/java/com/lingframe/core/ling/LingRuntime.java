@@ -58,19 +58,19 @@ public class LingRuntime {
 
     public LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
             RuntimeCoordinator runtimeCoordinator) {
-        this(lingId, config, eventBus, null, runtimeCoordinator);
+        // 便捷构造器兜底：未提供 InstanceCoordinator 时用不发事件的空壳，保证测试/离线场景可用
+        this(lingId, config, eventBus, new InstanceCoordinator(null), runtimeCoordinator);
     }
 
     LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
                 InstanceCoordinator instanceCoordinator, RuntimeCoordinator runtimeCoordinator) {
         this.lingId = lingId;
         this.config = config != null ? config : LingRuntimeConfig.defaults();
-        this.instancePool = new InstancePool(lingId, this.config.getMaxHistorySnapshots());
-        this.instancePool.setInstanceCoordinator(instanceCoordinator);
+        this.instancePool = new InstancePool(lingId, this.config.getMaxHistorySnapshots(), instanceCoordinator);
         this.runtimeCoordinator = Objects.requireNonNull(runtimeCoordinator, "RuntimeCoordinator is required");
 
-        // 灵核创建时立即注册运行时聚合器，保证首个实例事件到来前已有宏观状态落点。
-        this.runtimeCoordinator.register(lingId);
+        // ⚠️ 职责边界：运行时聚合器注册由编排层（DefaultLingLifecycleEngine.ensureRuntimeForDeployment）单次调用，
+        // LingRuntime 自身不注册，消除原双重注册的时序耦合。
         if (eventBus != null) {
             eventBus.subscribe(lingId, RuntimeStateChangedEvent.class, this::handleStateChanged);
         }

@@ -54,7 +54,7 @@ public class LingDefinition implements Serializable {
         }
 
         if (this.properties != null) {
-            copy.properties = new HashMap<>(this.properties);
+            copy.properties = DeepCopyUtils.deepCopyMap(this.properties);
         }
 
         return copy;

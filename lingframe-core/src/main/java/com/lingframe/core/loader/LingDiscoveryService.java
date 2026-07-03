@@ -61,7 +61,7 @@ public class LingDiscoveryService {
             log.info("Starting ling discovery from {}, count: {}", roots, roots.size());
             for (String root : roots) {
                 String realPath = root;
-                if (LingFrameConfig.current().isDevMode()) {
+                if (config.isDevMode()) {
                     realPath += File.separator + "/target/classes";
                 }
                 File realFile = new File(realPath);

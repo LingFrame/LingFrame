@@ -4,6 +4,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("LatencyHistogram 测试")
@@ -70,7 +72,7 @@ class LatencyHistogramTest {
 
         long[] counts = histogram.getBucketCounts();
 
-        assertEquals(3, counts.length - (int) java.util.Arrays.stream(counts).filter(c -> c == 0).count());
+        assertEquals(3, counts.length - (int) Arrays.stream(counts).filter(c -> c == 0).count());
     }
 
     @Test

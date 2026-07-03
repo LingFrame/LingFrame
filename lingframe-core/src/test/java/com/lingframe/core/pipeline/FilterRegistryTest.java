@@ -39,8 +39,14 @@ class FilterRegistryTest {
             LingRuntime runtime = new LingRuntime("ling1", config, eventBus, runtimeCoordinator);
             repository.register(runtime);
 
-            FilterRegistry registry = new FilterRegistry(new InvokableMethodCache(), mock(PermissionService.class));
-            registry.initialize(repository, new LatestVersionPolicy(), eventBus, runtimeCoordinator);
+            FilterRegistry registry = new FilterRegistry(FilterRegistryConfig.builder()
+                    .methodCache(new InvokableMethodCache())
+                    .permissionService(mock(PermissionService.class))
+                    .lingRepository(repository)
+                    .trafficRouter(new LatestVersionPolicy())
+                    .eventBus(eventBus)
+                    .runtimeCoordinator(runtimeCoordinator)
+                    .build());
 
             ResilienceGovernanceFilter resilienceFilter = registry.getResilienceFilter();
             ThreadIsolationGovernanceFilter isolationFilter = registry.getIsolationFilter();

@@ -30,17 +30,17 @@ public class SpringContainerFactory implements ContainerFactory {
     private final List<String> serviceExcludedPackages;
     private final List<LingContextCustomizer> customizers; // 新增定制器列表
     private final ApplicationContext mainContext; // 🔥 主容器引用
-    private final List<LingUnloadHook> resourceGuards; // 🔥 资源守卫列表
+    private final List<LingUnloadHook> unloadHooks; // 🔥 卸载钩子列表
 
     public SpringContainerFactory(ApplicationContext parentContext, WebInterfaceManager webInterfaceManager,
-            List<LingContextCustomizer> customizers, List<LingUnloadHook> resourceGuards) {
+            List<LingContextCustomizer> customizers, List<LingUnloadHook> unloadHooks) {
         LingFrameProperties props = parentContext.getBean(LingFrameProperties.class);
         this.devMode = props.isDevMode();
         this.serviceExcludedPackages = props.getServiceExcludedPackages();
         this.webInterfaceManager = webInterfaceManager;
         this.customizers = customizers != null ? customizers : Collections.emptyList();
         this.mainContext = parentContext; // 🔥 保存主容器
-        this.resourceGuards = resourceGuards != null ? resourceGuards : Collections.emptyList(); // 🔥 保存资源守卫
+        this.unloadHooks = unloadHooks != null ? unloadHooks : Collections.emptyList(); // 🔥 保存卸载钩子
     }
 
     @Override
@@ -93,7 +93,7 @@ public class SpringContainerFactory implements ContainerFactory {
                     serviceExcludedPackages,
                     customizers, // 🔥 传入定制器
                     mainContext,
-                    resourceGuards,
+                    unloadHooks,
                     version,
                     sourceFile);
             return container;

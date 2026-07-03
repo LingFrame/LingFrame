@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
+import java.util.ArrayList;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -42,9 +44,9 @@ class GovernanceConfigRestoreTest {
     void restoreGovernanceConfig_success() throws Exception {
         // 准备：写入治理配置
         GovernancePolicy policy = GovernancePolicy.builder().build();
-        policy.setPermissions(new java.util.ArrayList<>());
-        policy.setCapabilities(new java.util.ArrayList<>());
-        policy.setAudits(new java.util.ArrayList<>());
+        policy.setPermissions(new ArrayList<>());
+        policy.setCapabilities(new ArrayList<>());
+        policy.setAudits(new ArrayList<>());
         String json = objectMapper.writeValueAsString(policy);
         governanceStorage.saveInvocationConfig("ling-restore", json);
 

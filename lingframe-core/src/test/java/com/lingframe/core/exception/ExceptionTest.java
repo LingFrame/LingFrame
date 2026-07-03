@@ -3,6 +3,8 @@ package com.lingframe.core.exception;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Exception 类测试")
@@ -38,7 +40,7 @@ class ExceptionTest {
     @Test
     @DisplayName("ClassLoaderException 完整构造")
     void shouldCreateClassLoaderExceptionFull() {
-        Throwable cause = new java.io.IOException("disk error");
+        Throwable cause = new IOException("disk error");
         ClassLoaderException ex = new ClassLoaderException("order-ling", "order-api.jar", "jar corrupt", cause);
         assertEquals("jar corrupt", ex.getMessage());
         assertEquals("order-ling", ex.getLingId());

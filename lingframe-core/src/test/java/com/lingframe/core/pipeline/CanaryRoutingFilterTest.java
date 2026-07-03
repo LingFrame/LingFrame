@@ -97,7 +97,7 @@ class CanaryRoutingFilterTest {
         @DisplayName("治理专用模式下缺失运行时时应直接透传")
         void shouldPassThroughInGovernOnlyModeWhenRuntimeIsMissing() throws Throwable {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
-            context.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
+            context.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
             Object expected = new Object();
             when(lingRepository.getRuntime("demo-ling")).thenReturn(null);
             when(filterChain.doFilter(context)).thenReturn(expected);

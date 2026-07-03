@@ -154,14 +154,17 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             if (runtime == null)
                 return null;
             LingRuntimeConfig config = runtime.getConfig();
+            long waitDuration = config.getCircuitBreakerWaitDurationInOpenStateMs() > 0
+                    ? config.getCircuitBreakerWaitDurationInOpenStateMs()
+                    : config.getDefaultTimeoutMs() * 10L;
             return new SlidingWindowCircuitBreaker(
                     id,
-                    50, // 失败率阈值 50%
-                    80, // 慢调用率阈值 80%
-                    config.getDefaultTimeoutMs(), // 慢调用判定阈值
-                    20, // 滑动窗口大小
-                    10, // 最小调用数
-                    config.getDefaultTimeoutMs() * 10L, // 熔断后等待时间
+                    config.getCircuitBreakerFailureRateThreshold(),
+                    config.getCircuitBreakerSlowCallRateThreshold(),
+                    config.getDefaultTimeoutMs(),
+                    config.getCircuitBreakerSlidingWindowSize(),
+                    config.getCircuitBreakerMinimumNumberOfCalls(),
+                    waitDuration,
                     eventBus);
         });
     }

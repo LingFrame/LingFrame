@@ -20,6 +20,7 @@ import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.ServiceLoader;
 
 /**
@@ -44,53 +45,37 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
     private ThreadIsolationGovernanceFilter isolationFilter;
     private volatile List<LingInvocationFilter> orderedCache;
 
-    public FilterRegistry(InvokableMethodCache methodCache, PermissionService permissionService) {
-        this(methodCache, permissionService, null, null);
-    }
+    /**
+     * 单一构造入口：一次性完成构建与初始化，phase 契约在构造器内 fail-fast 校验。
+     * <p>
+     * 杜绝原"构造器 + initialize 两阶段"导致的半初始化状态。
+     */
+    public FilterRegistry(FilterRegistryConfig config) {
+        Objects.requireNonNull(config, "FilterRegistryConfig is required");
+        this.methodCache = Objects.requireNonNull(config.getMethodCache(), "methodCache is required");
+        this.permissionService = Objects.requireNonNull(config.getPermissionService(), "permissionService is required");
+        this.serviceInvoker = config.getServiceInvoker();
+        this.governanceArbitrator = config.getGovernanceArbitrator();
 
-    public FilterRegistry(InvokableMethodCache methodCache, PermissionService permissionService,
-            LingServiceInvoker serviceInvoker) {
-        this(methodCache, permissionService, serviceInvoker, null);
-    }
-
-    public FilterRegistry(InvokableMethodCache methodCache, PermissionService permissionService,
-            LingServiceInvoker serviceInvoker, GovernanceArbitrator governanceArbitrator) {
-        this.methodCache = methodCache;
-        this.permissionService = permissionService;
-        this.serviceInvoker = serviceInvoker;
-        this.governanceArbitrator = governanceArbitrator;
-    }
-
-    public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus) {
-        initialize(lingRepository, trafficRouter, eventBus, null, null, null, null);
-    }
-
-    public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
-            MetricsCollector metricsCollector,
-            RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector) {
-        initializeInternal(lingRepository, null, trafficRouter, eventBus, metricsCollector, runtimeCoordinator, governanceMetricsCollector);
-    }
-
-    public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
-            MetricsCollector metricsCollector,
-            RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector,
-            LingServiceRegistry serviceRegistry) {
-        initializeInternal(lingRepository, serviceRegistry, trafficRouter, eventBus, metricsCollector, runtimeCoordinator, governanceMetricsCollector);
+        initializeInternal(
+                config.getLingRepository(),
+                config.getServiceRegistry(),
+                config.getTrafficRouter(),
+                config.getEventBus(),
+                config.getMetricsCollector(),
+                config.getRuntimeCoordinator(),
+                config.getGovernanceMetricsCollector());
     }
 
     /**
      * 初始化内建过滤器。
+     * <p>
+     * ⚠️ 内建过滤器的顺序不是偶然结果，而是"事实 -> 决策 -> 执行"的固定协议。
      */
-    public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
-            RuntimeCoordinator runtimeCoordinator) {
-        initializeInternal(lingRepository, null, trafficRouter, eventBus, null, runtimeCoordinator, null);
-    }
-
     private void initializeInternal(LingRepository lingRepository, LingServiceRegistry serviceRegistry,
             TrafficRouter trafficRouter, EventBus eventBus,
             MetricsCollector metricsCollector,
             RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector) {
-        // ⚠️ 内建过滤器的顺序不是偶然结果，而是“事实 -> 决策 -> 执行”的固定协议。
         builtinFilters.clear();
 
         MacroStateGuardFilter stateGuard = new MacroStateGuardFilter(lingRepository);

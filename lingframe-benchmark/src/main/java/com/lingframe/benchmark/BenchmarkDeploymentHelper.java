@@ -7,6 +7,7 @@ import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.ling.*;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.pipeline.FilterRegistry;
+import com.lingframe.core.pipeline.FilterRegistryConfig;
 import com.lingframe.core.pipeline.LatestVersionPolicy;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.security.DefaultPermissionService;
@@ -14,7 +15,7 @@ import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.LingLoaderFactory;
 import com.lingframe.core.spi.LingSecurityVerifier;
-import com.lingframe.core.spi.ResourceGuard;
+import com.lingframe.core.spi.LingUnloadHook;
 import com.lingframe.core.resource.DefaultLeakDetector;
 import com.bench.TestService;
 
@@ -65,14 +66,19 @@ public class BenchmarkDeploymentHelper {
 
         this.eventBus = new EventBus();
         this.lingRepository = new DefaultLingRepository();
-        this.leakDetector = new DefaultLeakDetector();
+        this.leakDetector = new DefaultLeakDetector(eventBus, LingFrameConfig.current());
 
-        PermissionService permissionService = new DefaultPermissionService(eventBus);
+        PermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
         InvokableMethodCache methodCache = new InvokableMethodCache();
         DefaultLingServiceRegistry serviceRegistry = new DefaultLingServiceRegistry();
 
-        this.filterRegistry = new FilterRegistry(methodCache, permissionService);
-        filterRegistry.initialize(lingRepository, new LatestVersionPolicy(), eventBus);
+        this.filterRegistry = new FilterRegistry(FilterRegistryConfig.builder()
+                .methodCache(methodCache)
+                .permissionService(permissionService)
+                .lingRepository(lingRepository)
+                .trafficRouter(new LatestVersionPolicy())
+                .eventBus(eventBus)
+                .build());
 
         this.pipelineEngine = new InvocationPipelineEngine(filterRegistry);
 
@@ -83,21 +89,22 @@ public class BenchmarkDeploymentHelper {
                 lingRepository, eventBus, methodCache);
 
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
-                pipelineEngine, Collections.<ResourceGuard>emptyList(), resourceManager, leakDetector);
+                pipelineEngine, Collections.<LingUnloadHook>emptyList(), resourceManager, leakDetector);
 
-        this.lifecycleEngine = new DefaultLingLifecycleEngine(
-                new BenchmarkContainerFactory(),
-                permissionService,
-                new BenchmarkLoaderFactory(),
-                Collections.<LingSecurityVerifier>emptyList(), // verifiers
-                eventBus,
-                LingFrameConfig.current(),
-                lingRepository,
-                serviceRegistry,
-                pipelineEngine,
-                resourceManager,
-                unloadCoordinator,
-                runtimeCoordinator);
+        this.lifecycleEngine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(new BenchmarkContainerFactory())
+                .permissionService(permissionService)
+                .lingLoaderFactory(new BenchmarkLoaderFactory())
+                .verifiers(Collections.<LingSecurityVerifier>emptyList())
+                .eventBus(eventBus)
+                .lingFrameConfig(LingFrameConfig.current())
+                .lingRepository(lingRepository)
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(pipelineEngine)
+                .lingResourceManager(resourceManager)
+                .unloadCoordinator(unloadCoordinator)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
     }
 
     /**
@@ -195,7 +202,7 @@ public class BenchmarkDeploymentHelper {
         }
 
         @Override
-        public java.lang.Object getBean(String beanName) {
+        public Object getBean(String beanName) {
             if ("com.bench.TestService".equals(beanName)) {
                 return testService;
             }

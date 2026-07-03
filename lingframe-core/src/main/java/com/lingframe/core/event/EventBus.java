@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -285,8 +286,7 @@ public class EventBus {
     }
 
     private boolean isAsyncEvent(LingEvent event) {
-        return event != null
-                && event.getClass().getName().startsWith("com.lingframe.core.event.monitor.");
+        return event instanceof AsyncLingEvent;
     }
 
     // ==================== 指标暴露 ====================
@@ -310,7 +310,7 @@ public class EventBus {
      *   <li>BLOCK：阻塞调用线程直到队列有空间</li>
      * </ul>
      */
-    private static class OverflowHandler implements java.util.concurrent.RejectedExecutionHandler {
+    private static class OverflowHandler implements RejectedExecutionHandler {
         private final OverflowPolicy policy;
         private final AtomicLong dropCounter;
 

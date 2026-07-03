@@ -14,6 +14,7 @@ import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.ling.DefaultLingLifecycleEngine;
 import com.lingframe.core.ling.InvokableMethodCache;
+import com.lingframe.core.ling.LifecycleEngineConfig;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingResourceManager;
@@ -23,6 +24,7 @@ import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.FilterRegistry;
+import com.lingframe.core.pipeline.FilterRegistryConfig;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.security.ApiOverrideVerifier;
 import com.lingframe.core.security.DangerousApiVerifier;
@@ -69,9 +71,9 @@ public class LingFrameLifecycleBeansConfiguration {
     public ContainerFactory containerFactory(ApplicationContext parentContext,
             WebInterfaceManager webInterfaceManager,
             ObjectProvider<List<LingContextCustomizer>> customizersProvider,
-            List<LingUnloadHook> resourceGuards) {
+            List<LingUnloadHook> unloadHooks) {
         List<LingContextCustomizer> customizers = customizersProvider.getIfAvailable(Collections::emptyList);
-        return new SpringContainerFactory(parentContext, webInterfaceManager, customizers, resourceGuards);
+        return new SpringContainerFactory(parentContext, webInterfaceManager, customizers, unloadHooks);
     }
 
     @Bean
@@ -85,7 +87,7 @@ public class LingFrameLifecycleBeansConfiguration {
             LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry,
             InvocationPipelineEngine pipelineEngine,
-            List<LingUnloadHook> resourceGuards,
+            List<LingUnloadHook> unloadHooks,
             LingResourceManager lingResourceManager,
             LeakDetector leakDetector,
             RuntimeCoordinator runtimeCoordinator,
@@ -109,29 +111,28 @@ public class LingFrameLifecycleBeansConfiguration {
                 new ThreadReferenceUnloadHook(),
                 new JvmShutdownHookUnloadHook());
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
-                pipelineEngine, resourceGuards, jvmHooks, lingResourceManager, leakDetector);
-        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(
-                containerFactory,
-                permissionService,
-                lingLoaderFactory,
-                allVerifiers,
-                eventBus,
-                lingFrameConfig,
-                lingRepository,
-                lingServiceRegistry,
-                pipelineEngine,
-                lingResourceManager,
-                unloadCoordinator,
-                runtimeCoordinator);
+                pipelineEngine, unloadHooks, jvmHooks, lingResourceManager, leakDetector);
+
         // 微内核解耦：指标/告警由组装层注入，内核不直接构造
         MetricsCollector mc = metricsCollectorProvider.getIfAvailable();
         GovernanceMetricsCollector gmc = governanceMetricsCollectorProvider.getIfAvailable();
-        if (mc != null) {
-            engine.setMetricsCollector(mc);
-        }
-        if (gmc != null) {
-            engine.setGovernanceMetricsCollector(gmc);
-        }
+
+        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(permissionService)
+                .lingLoaderFactory(lingLoaderFactory)
+                .verifiers(allVerifiers)
+                .eventBus(eventBus)
+                .lingFrameConfig(lingFrameConfig)
+                .lingRepository(lingRepository)
+                .lingServiceRegistry(lingServiceRegistry)
+                .pipelineEngine(pipelineEngine)
+                .lingResourceManager(lingResourceManager)
+                .unloadCoordinator(unloadCoordinator)
+                .runtimeCoordinator(runtimeCoordinator)
+                .metricsCollector(mc)
+                .governanceMetricsCollector(gmc)
+                .build());
         return engine;
     }
 
@@ -152,9 +153,19 @@ public class LingFrameLifecycleBeansConfiguration {
         GovernanceArbitrator arbitrator = arbitratorProvider.getIfAvailable();
         MetricsCollector metricsCollector = metricsCollectorProvider.getIfAvailable();
         GovernanceMetricsCollector governanceMetricsCollector = governanceMetricsCollectorProvider.getIfAvailable();
-        FilterRegistry registry = new FilterRegistry(methodCache, permissionService, invoker, arbitrator);
-        registry.initialize(lingRepository, trafficRouter, eventBus, metricsCollector, runtimeCoordinator,
-                governanceMetricsCollector, lingServiceRegistry);
+        FilterRegistry registry = new FilterRegistry(FilterRegistryConfig.builder()
+                .methodCache(methodCache)
+                .permissionService(permissionService)
+                .serviceInvoker(invoker)
+                .governanceArbitrator(arbitrator)
+                .lingRepository(lingRepository)
+                .trafficRouter(trafficRouter)
+                .eventBus(eventBus)
+                .serviceRegistry(lingServiceRegistry)
+                .metricsCollector(metricsCollector)
+                .runtimeCoordinator(runtimeCoordinator)
+                .governanceMetricsCollector(governanceMetricsCollector)
+                .build());
         registry.loadSpiFilters(Thread.currentThread().getContextClassLoader());
         return registry;
     }
@@ -221,10 +232,10 @@ public class LingFrameLifecycleBeansConfiguration {
             LingRepository lingRepository,
             EventBus eventBus,
             LeakDetector leakDetector) {
-        HotSwapWatcher watcher = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus, leakDetector);
-        if (lifecycleEngine instanceof DefaultLingLifecycleEngine) {
-            ((DefaultLingLifecycleEngine) lifecycleEngine).setHotSwapWatcher(watcher);
-        }
+        // 循环依赖解法：watcher 先以 null engine 构造，再通过 setLifecycleEngine 延迟绑定。
+        // engine 构造时不持有 watcher（dev-mode 按需激活），watcher 创建后反向绑定 engine。
+        HotSwapWatcher watcher = new HotSwapWatcher(null, lingRepository, eventBus, leakDetector);
+        watcher.setLifecycleEngine(lifecycleEngine);
         return watcher;
     }
 

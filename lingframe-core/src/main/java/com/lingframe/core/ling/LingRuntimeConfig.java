@@ -74,6 +74,41 @@ public class LingRuntimeConfig {
     @Builder.Default
     private int rateLimitPerSecond = 0;
 
+    // ==================== 熔断器 ====================
+
+    /**
+     * 熔断失败率阈值（百分比，0-100）。
+     * 滑动窗口内失败率达到此阈值时触发熔断。
+     */
+    @Builder.Default
+    private int circuitBreakerFailureRateThreshold = 50;
+
+    /**
+     * 熔断慢调用率阈值（百分比，0-100）。
+     * 滑动窗口内慢调用（超过 defaultTimeoutMs）率达到此阈值时触发熔断。
+     */
+    @Builder.Default
+    private int circuitBreakerSlowCallRateThreshold = 80;
+
+    /**
+     * 熔断滑动窗口大小（调用次数）。
+     */
+    @Builder.Default
+    private int circuitBreakerSlidingWindowSize = 20;
+
+    /**
+     * 熔断最小调用数。
+     * 滑动窗口内调用数未达到此值时不触发熔断判定，避免冷启动误熔断。
+     */
+    @Builder.Default
+    private int circuitBreakerMinimumNumberOfCalls = 10;
+
+    /**
+     * 熔断器开启后等待时间（毫秒），0 表示用 defaultTimeoutMs * 10。
+     */
+    @Builder.Default
+    private long circuitBreakerWaitDurationInOpenStateMs = 0;
+
     // ==================== 工厂方法 ====================
 
     /**

@@ -15,6 +15,8 @@ import com.lingframe.starter.web.WebGovernanceSupport;
 import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
 import com.lingframe.starter.web.WebRouteResolver;
+import java.security.Principal;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -90,7 +92,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
                 Method method = GOVERNANCE_SUPPORT.resolveGovernedMethod(isLingRequest, lingMeta, handlerMethod, lingId);
                 ctx = GOVERNANCE_SUPPORT.buildInvocationContext(
                         requestFacade, method, lingId, lingMeta, invocationGovernanceResolver);
-                ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
+                ctx.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
                 if (lingRoute != null) {
                     GOVERNANCE_SUPPORT.preResolveLingTarget(ctx, lingRoute);
                 }
@@ -135,7 +137,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             LingInvocationException e,
             InvocationContext ctx) throws IOException {
         if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED && ctx != null) {
-            response.sendError(403, "Permission Denied: " + ctx.getRequiredPermission());
+            response.sendError(403, "Permission Denied: " + ctx.governance().getRequiredPermission());
         } else if (e.getKind() == LingInvocationException.ErrorKind.STATE_REJECTED
                 || e.getKind() == LingInvocationException.ErrorKind.ROUTE_FAILURE) {
             response.sendError(503, e.getMessage());
@@ -238,7 +240,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         }
 
         @Override
-        public java.security.Principal getUserPrincipal() {
+        public Principal getUserPrincipal() {
             return request.getUserPrincipal();
         }
 

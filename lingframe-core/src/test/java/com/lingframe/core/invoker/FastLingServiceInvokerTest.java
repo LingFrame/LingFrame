@@ -1,6 +1,6 @@
 package com.lingframe.core.invoker;
 
-import com.lingframe.api.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.ActiveInvocationSnapshot;
 import com.lingframe.core.ling.LingInstance;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,12 +43,12 @@ class FastLingServiceInvokerTest {
     }
 
     @Test
-    @DisplayName("实例不可用时抛出 ServiceUnavailableException")
+    @DisplayName("实例不可用时抛出 LingInvocationException")
     void shouldThrowWhenInstanceNotReady() throws Exception {
         when(instance.beginInvocation(any(ActiveInvocationSnapshot.class))).thenReturn(-1L);
         Method method = TestService.class.getMethod("echo", String.class);
 
-        assertThrows(ServiceUnavailableException.class, () ->
+        assertThrows(LingInvocationException.class, () ->
                 invoker.invoke(instance, bean, method, new Object[]{"hello"}));
     }
 
@@ -72,7 +72,7 @@ class FastLingServiceInvokerTest {
         MethodHandle mh = MethodHandles.lookup().findVirtual(
                 TestService.class, "echo", MethodType.methodType(String.class, String.class));
 
-        assertThrows(ServiceUnavailableException.class, () ->
+        assertThrows(LingInvocationException.class, () ->
                 invoker.invokeFast(instance, mh, new Object[]{bean, "test"}));
     }
 

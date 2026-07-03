@@ -9,6 +9,7 @@ import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
@@ -329,7 +330,7 @@ public class RuntimeCoordinator {
             ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
             Collection<InstanceStatus> stateValues = (states != null)
                     ? states.values()
-                    : java.util.Collections.emptyList();
+                    : Collections.emptyList();
 
             // 调用策略评估
             RuntimeStatus suggested = policy.evaluate(current, stateValues);

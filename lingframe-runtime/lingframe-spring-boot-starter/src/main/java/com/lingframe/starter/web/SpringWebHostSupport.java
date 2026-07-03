@@ -142,7 +142,8 @@ final class SpringWebHostSupport {
     }
 
     void unregisterMappings(Collection<String> routesToRemove,
-            Map<String, RequestMappingInfo> mappingInfoMap) {
+            Map<String, RequestMappingInfo> mappingInfoMap,
+            ClassLoader targetLoader) {
         for (String routeKey : routesToRemove) {
             RequestMappingInfo info = mappingInfoMap.remove(routeKey);
             if (info == null) {
@@ -154,7 +155,7 @@ final class SpringWebHostSupport {
                 log.warn("Failed to unregister mapping: {}", routeKey, e);
             }
         }
-        clearCorsLookupCache();
+        clearCorsLookupCache(targetLoader);
     }
 
     void clearSpringDocCache() {
@@ -194,7 +195,7 @@ final class SpringWebHostSupport {
         }
     }
 
-    private void clearCorsLookupCache() {
+    private void clearCorsLookupCache(ClassLoader targetLoader) {
         if (hostMapping == null) {
             return;
         }
@@ -223,9 +224,9 @@ final class SpringWebHostSupport {
                     corsMap.keySet().removeIf(key -> {
                         if (key instanceof HandlerMethod) {
                             HandlerMethod hm = (HandlerMethod) key;
-                            // 1. 物理 ClassLoader 匹配：识别灵元加载的类
+                            // 1. 物理 ClassLoader 精准比对与匹配
                             ClassLoader cl = hm.getBeanType().getClassLoader();
-                            if (cl != null && cl.getClass().getName().contains("LingClassLoader")) {
+                            if (cl != null && (cl == targetLoader || cl.getClass().getName().contains("LingClassLoader"))) {
                                 return true;
                             }
                             // 2. 代理入口匹配

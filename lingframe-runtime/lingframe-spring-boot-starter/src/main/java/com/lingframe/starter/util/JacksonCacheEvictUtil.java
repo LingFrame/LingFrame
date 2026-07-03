@@ -29,8 +29,28 @@ public class JacksonCacheEvictUtil {
         // 3. 清理 TypeFactory 缓存 (Map<AsKey, JavaType>)
         flushTypeFactoryCache(objectMapper);
 
+        // 3.5 清理 Jackson 全局静态 TypeFactory 缓存
+        flushJacksonDefaultTypeFactory();
+
         // 4. 清理 Spring 转换服务缓存
         clearConversionServiceCache();
+    }
+
+    private static void flushJacksonDefaultTypeFactory() {
+        try {
+            Class<?> tfClass = Class.forName("com.fasterxml.jackson.databind.type.TypeFactory");
+            Method defaultInstanceMethod = tfClass.getMethod("defaultInstance");
+            Object defaultInstance = defaultInstanceMethod.invoke(null);
+            if (defaultInstance != null) {
+                Object cache = getFieldValue(defaultInstance, "_typeCache");
+                invokeClear(cache);
+                log.info("✅ Jackson defaultInstance TypeFactoryCache cleared");
+            }
+        } catch (ClassNotFoundException e) {
+            // 无 Jackson
+        } catch (Exception e) {
+            log.warn("Failed to clear Jackson defaultInstance TypeFactoryCache: {}", e.getMessage());
+        }
     }
 
     private static void flushSerializerCache(ObjectMapper objectMapper) {

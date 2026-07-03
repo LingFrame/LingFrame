@@ -47,6 +47,7 @@ public class SpringEcosystemUnloadHook implements SpringAwareUnloadHook {
     private final ObjenesisCacheCleaner objenesisCacheCleaner = new ObjenesisCacheCleaner();
     private final ElCacheCleaner elCacheCleaner = new ElCacheCleaner();
     private final SpringShutdownHookCleaner shutdownHookCleaner = new SpringShutdownHookCleaner();
+    private final BindConverterCacheCleaner bindConverterCacheCleaner = new BindConverterCacheCleaner();
 
     private static int detectSpringMajorVersion() {
         try {
@@ -127,8 +128,10 @@ public class SpringEcosystemUnloadHook implements SpringAwareUnloadHook {
         objenesisCacheCleaner.clear(lingId, classLoader);
         // 6. EL 缓存
         elCacheCleaner.clear(lingId, classLoader);
+        // 7. BindConverter 静态单例（@ConfigurationProperties 绑定器，持有灵元 PropertyEditor 的 ClassLoader）
+        bindConverterCacheCleaner.clear(lingId, classLoader);
 
-        // 7. 释放 context 引用
+        // 8. 释放 context 引用
         clearContexts();
     }
 

@@ -46,7 +46,7 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
         // 【关键】GOVERN_ONLY 代表“借道治理，不借道执行”。
         // 灵核 Web / AOP 入口只需要让 Pipeline 完成治理校验，真实业务执行仍由 Spring / Servlet 原链路继续完成。
-        if (ctx.isGovernOnly()) {
+        if (ctx.execution().getMode().isGovernOnly()) {
             log.debug("[TerminalInvoker] Governance-only mode, skipping terminal invocation for {}", ctx.getServiceFQSID());
             return null;
         }
@@ -55,9 +55,9 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
         LingInstance target = ctx.routing().getTargetInstance();
         Class<?>[] resolvedTypes = ctx.resolution().getResolvedParameterTypes();
         if (target == null || resolvedTypes == null) {
-            if (ctx.isSimulation()) {
-                String action = ctx.getAuditAction() != null ? ctx.getAuditAction() : "UNKNOWN";
-                ctx.addTrace(EngineTrace.builder()
+            if (ctx.execution().getMode().isSimulation()) {
+                String action = ctx.governance().getAuditAction() != null ? ctx.governance().getAuditAction() : "UNKNOWN";
+                ctx.execution().addTrace(EngineTrace.builder()
                         .source("TerminalInvokerFilter")
                         .action("🛡️ Simulation completed without concrete route target, action=" + action)
                         .type("OK")
@@ -78,8 +78,8 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
                 + ctx.getMethodName();
         MethodHandle handle = methodCache.computeIfAbsent(cacheKey, key -> resolveMethodHandle(ctx, serviceBean, resolvedTypes, key));
 
-        if (ctx.isSimulation()) {
-            ctx.addTrace(EngineTrace.builder()
+        if (ctx.execution().getMode().isSimulation()) {
+            ctx.execution().addTrace(EngineTrace.builder()
                     .source("TerminalInvokerFilter")
                     .action("🛡️ Simulation reached terminal target " + cacheKey)
                     .type("OK")

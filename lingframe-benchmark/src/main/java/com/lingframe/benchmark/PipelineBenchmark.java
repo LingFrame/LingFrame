@@ -7,6 +7,7 @@ import com.lingframe.core.spi.LingInvocationFilter;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -60,7 +61,7 @@ public class PipelineBenchmark {
         this.pipelineEngine = helper.getPipelineEngine();
 
         // 预创建 3 个传递型过滤器：每个都调用 chain.doFilter()，真正测量链式传递开销
-        chainFilters = new java.util.ArrayList<LingInvocationFilter>();
+        chainFilters = new ArrayList<LingInvocationFilter>();
         for (int i = 0; i < 3; i++) {
             chainFilters.add(new LingInvocationFilter() {
                 @Override
@@ -102,9 +103,9 @@ public class PipelineBenchmark {
             ctx.setServiceFQSID("bench-ling:com.bench.TestService");
             ctx.setMethodName("ping");
             ctx.setParameterTypeNames(new String[0]);
-            ctx.setArgs(new java.lang.Object[0]);
-            ctx.setAccessType(AccessType.EXECUTE);
-            ctx.setExecutionMode(InvocationExecutionMode.NORMAL);
+            ctx.setArgs(new Object[0]);
+            ctx.governance().setAccessType(AccessType.EXECUTE);
+            ctx.execution().setMode(InvocationExecutionMode.NORMAL);
             Object result = pipelineEngine.invoke(ctx);
             bh.consume(result);
         } finally {
@@ -124,9 +125,9 @@ public class PipelineBenchmark {
             ctx.setServiceFQSID("bench-ling:com.bench.TestService");
             ctx.setMethodName("ping");
             ctx.setParameterTypeNames(new String[0]);
-            ctx.setArgs(new java.lang.Object[0]);
-            ctx.setAccessType(AccessType.EXECUTE);
-            ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
+            ctx.setArgs(new Object[0]);
+            ctx.governance().setAccessType(AccessType.EXECUTE);
+            ctx.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
             Object result = pipelineEngine.invoke(ctx);
             bh.consume(result);
         } finally {
@@ -146,9 +147,9 @@ public class PipelineBenchmark {
             ctx.setServiceFQSID("bench-ling:com.bench.TestService");
             ctx.setMethodName("ping");
             ctx.setParameterTypeNames(new String[0]);
-            ctx.setArgs(new java.lang.Object[0]);
-            ctx.setAccessType(AccessType.EXECUTE);
-            ctx.setExecutionMode(InvocationExecutionMode.SIMULATION);
+            ctx.setArgs(new Object[0]);
+            ctx.governance().setAccessType(AccessType.EXECUTE);
+            ctx.execution().setMode(InvocationExecutionMode.SIMULATION);
             Object result = pipelineEngine.invoke(ctx);
             bh.consume(result);
         } finally {

@@ -6,6 +6,8 @@ import java.lang.ref.Reference;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.sql.DriverManager;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -42,7 +44,7 @@ class JvmCleanupSupport {
     static final Method THREAD_IS_VIRTUAL = probeMethod(Thread.class, "isVirtual");
 
     /** DriverManager.registeredDrivers 字段 */
-    static final Field DRIVER_MANAGER_FIELD = probeField(java.sql.DriverManager.class, "registeredDrivers");
+    static final Field DRIVER_MANAGER_FIELD = probeField(DriverManager.class, "registeredDrivers");
 
     /** Thread.threadLocals 字段 */
     static final Field THREAD_LOCALS_FIELD = probeField(Thread.class, "threadLocals");
@@ -384,7 +386,7 @@ class JvmCleanupSupport {
         while (current != null && current != Object.class) {
             Field[] fields = current.getDeclaredFields();
             for (Field f : fields) {
-                if ((f.getModifiers() & java.lang.reflect.Modifier.STATIC) != 0) {
+                if ((f.getModifiers() & Modifier.STATIC) != 0) {
                     continue;
                 }
                 try {

@@ -115,8 +115,8 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public PermissionService permissionService(EventBus eventBus) {
-        return new DefaultPermissionService(eventBus);
+    public PermissionService permissionService(EventBus eventBus, LingFrameConfig lingFrameConfig) {
+        return new DefaultPermissionService(eventBus, lingFrameConfig);
     }
 
     @Bean

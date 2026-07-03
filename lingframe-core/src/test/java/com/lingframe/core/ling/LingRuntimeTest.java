@@ -46,6 +46,8 @@ class LingRuntimeTest {
     void setUp() {
         instanceCoordinator = new InstanceCoordinator(eventBus);
         runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        // #8 职责边界：LingRuntime 不再自动注册，由调用方（编排层/测试）显式注册
+        runtimeCoordinator.register(LING_ID);
         runtime = new LingRuntime(LING_ID, LingRuntimeConfig.defaults(), eventBus,
                 instanceCoordinator, runtimeCoordinator);
     }
@@ -67,8 +69,9 @@ class LingRuntimeTest {
         @Test
         @DisplayName("空配置构造时应自动回退默认配置")
         void shouldHandleNullConfig() {
-            LingRuntime nullConfigRuntime = new LingRuntime("null-id", null, eventBus,
-                    new RuntimeCoordinator(eventBus));
+            RuntimeCoordinator rc = new RuntimeCoordinator(eventBus);
+            rc.register("null-id");
+            LingRuntime nullConfigRuntime = new LingRuntime("null-id", null, eventBus, rc);
             assertNotNull(nullConfigRuntime.getConfig());
             assertEquals(RuntimeStatus.INACTIVE, nullConfigRuntime.currentStatus());
         }

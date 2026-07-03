@@ -20,7 +20,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -133,7 +135,7 @@ public class LingController {
 
             // 魔法头探测（ZIP 格式 50 4B 03 04）
             byte[] magicBytes = new byte[4];
-            try (java.io.InputStream is = file.getInputStream()) {
+            try (InputStream is = file.getInputStream()) {
                 if (is.read(magicBytes) != 4 || 
                     magicBytes[0] != 0x50 || magicBytes[1] != 0x4B || 
                     magicBytes[2] != 0x03 || magicBytes[3] != 0x04) {
@@ -328,7 +330,7 @@ public class LingController {
             if (allEvents != null && !allEvents.isEmpty()) {
                 int from = Math.max(0, allEvents.size() - 10);
                 recentEvents = new ArrayList<>(allEvents.subList(from, allEvents.size()));
-                java.util.Collections.reverse(recentEvents);
+                Collections.reverse(recentEvents);
             }
 
             return ApiResponse.ok(DashboardSummaryDTO.builder()

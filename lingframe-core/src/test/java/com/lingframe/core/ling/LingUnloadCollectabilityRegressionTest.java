@@ -8,6 +8,7 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.pipeline.FilterRegistry;
+import com.lingframe.core.pipeline.FilterRegistryConfig;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.pipeline.LatestVersionPolicy;
@@ -39,6 +40,7 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -60,30 +62,6 @@ class LingUnloadCollectabilityRegressionTest {
     private static final String VERSION = "1.0.0";
     private static final String SERVICE_CLASS_NAME = "sample.ling.GreetingService";
     private static final String REQUIRED_PERMISSION = "test:invoke";
-
-    /**
-     * 检测当前 JVM 是否运行在覆盖率采集模式下。
-     * 覆盖率 agent（JaCoCo / IntelliJ Coverage）会对自定义 ClassLoader 持有强引用，
-     * 导致 ClassLoader 无法被 GC 回收，使零泄漏断言必然失败。
-     * 此标志用于在该场景下降级 classLoaderCollected 断言。
-     */
-    private static boolean isCoverageAgentActive() {
-        RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
-        List<String> inputArgs = runtimeMXBean.getInputArguments();
-        for (String arg : inputArgs) {
-            String lower = arg.toLowerCase();
-            if (lower.contains("jacoco")
-                    || lower.contains("intellij-coverage")
-                    || lower.contains("coverage_rt")
-                    || lower.contains("idea_rt")
-                    || (lower.contains("javaagent") && lower.contains("coverage"))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static final boolean COVERAGE_ACTIVE = isCoverageAgentActive();
 
     @Test
     @DisplayName("应通过 DefaultLingLifecycleEngine 完成真实安装 调用 卸载与回收验证")
@@ -172,8 +150,14 @@ class LingUnloadCollectabilityRegressionTest {
         LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
         when(serviceRegistry.getServicesByLingId(LING_ID)).thenReturn(Collections.emptyList());
 
-        FilterRegistry registry = new FilterRegistry(new InvokableMethodCache(), permissionService);
-        registry.initialize(repository, new LatestVersionPolicy(), eventBus, runtimeCoordinator);
+        FilterRegistry registry = new FilterRegistry(FilterRegistryConfig.builder()
+                .methodCache(new InvokableMethodCache())
+                .permissionService(permissionService)
+                .lingRepository(repository)
+                .trafficRouter(new LatestVersionPolicy())
+                .eventBus(eventBus)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(registry);
         LingUnloadCoordinator unloadCoordinator =
                 new LingUnloadCoordinator(pipelineEngine, Collections.emptyList(), null, null);
@@ -209,19 +193,20 @@ class LingUnloadCollectabilityRegressionTest {
                 .build();
         List<LingSecurityVerifier> verifiers = Collections.singletonList(new DangerousApiVerifier(false));
 
-        DefaultLingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(
-                containerFactory,
-                permissionService,
-                loaderFactory,
-                verifiers,
-                eventBus,
-                config,
-                repository,
-                serviceRegistry,
-                pipelineEngine,
-                null,
-                unloadCoordinator,
-                runtimeCoordinator);
+        DefaultLingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(permissionService)
+                .lingLoaderFactory(loaderFactory)
+                .verifiers(verifiers)
+                .eventBus(eventBus)
+                .lingFrameConfig(config)
+                .lingRepository(repository)
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(pipelineEngine)
+                .lingResourceManager(null)
+                .unloadCoordinator(unloadCoordinator)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
 
         return new TestRuntime(workspace, classesDir, repository, permissionService, serviceRegistry, registry,
                 pipelineEngine, lifecycleEngine, runtimeCoordinator, loaderHolder, classLoaderClosed);
@@ -295,8 +280,8 @@ class LingUnloadCollectabilityRegressionTest {
         context.setMethodName("echo");
         context.setParameterTypeNames(new String[] { "java.lang.String" });
         context.setArgs(new Object[] { input });
-        context.setRequiredPermission(REQUIRED_PERMISSION);
-        context.setAccessType(AccessType.EXECUTE);
+        context.governance().setRequiredPermission(REQUIRED_PERMISSION);
+        context.governance().setAccessType(AccessType.EXECUTE);
         try {
             return pipelineEngine.invoke(context);
         } finally {
@@ -327,26 +312,14 @@ class LingUnloadCollectabilityRegressionTest {
 
     /**
      * 断言 ClassLoader 已被 GC 回收。
-     * 当覆盖率 agent（JaCoCo / IntelliJ Coverage）活跃时，
-     * agent 会对自定义 ClassLoader 持有强引用导致无法回收，
-     * 此时降级为日志警告而非测试失败。
      */
     private static void assertClassLoaderCollected(boolean collected) {
-        if (COVERAGE_ACTIVE) {
-            if (!collected) {
-                System.err.println(
-                        "[WARN] classLoaderCollected=false，但当前运行在覆盖率采集模式下，"
-                        + "覆盖率 agent 持有 ClassLoader 强引用导致无法回收，此断言已降级为警告。"
-                        + "无覆盖率模式下此断言必须为 true。");
-            }
-        } else {
-            if (!collected) {
-                // 诊断：打印 JVM 启动参数，帮助定位 ClassLoader 泄漏原因
-                System.err.println("[DIAG] COVERAGE_ACTIVE=false，但 classLoaderCollected=false。"
-                        + "JVM inputArguments: " + ManagementFactory.getRuntimeMXBean().getInputArguments());
-            }
-            assertTrue(collected, "ClassLoader 应在 undeploy 后被 GC 回收，存在泄漏");
+        if (!collected) {
+            // 诊断：打印 JVM 启动参数，帮助定位 ClassLoader 泄漏原因
+            System.err.println("[DIAG] classLoaderCollected=false。"
+                    + "JVM inputArguments: " + ManagementFactory.getRuntimeMXBean().getInputArguments());
         }
+        assertTrue(collected, "ClassLoader 应在 undeploy 后被 GC 回收，存在泄漏");
     }
 
     private void compileServiceClass(Path sourceDir, Path classesDir) throws IOException {
@@ -504,7 +477,7 @@ class LingUnloadCollectabilityRegressionTest {
             if (!Files.exists(path)) {
                 return;
             }
-            try (java.util.stream.Stream<Path> stream = Files.walk(path)) {
+            try (Stream<Path> stream = Files.walk(path)) {
                 stream.sorted((left, right) -> right.getNameCount() - left.getNameCount())
                         .forEach(current -> {
                             try {

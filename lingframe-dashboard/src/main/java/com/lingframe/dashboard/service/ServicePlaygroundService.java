@@ -353,7 +353,7 @@ public class ServicePlaygroundService {
                         .result(result)
                         .durationMs(duration)
                         .routedVersion(routedVersion)
-                        .traces(buildTraces(ctx.getTraces()))
+                        .traces(buildTraces(ctx.execution().getTraces()))
                         .build();
             } finally {
                 ctx.recycle();

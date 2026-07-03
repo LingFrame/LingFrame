@@ -309,15 +309,16 @@
                                 -->
                                 <destFile>${java.io.tmpdir}/jacoco/${project.artifactId}.exec</destFile>
                                 <!--
-                                    排除运行时动态编译的测试灵元类。
+                                    按 ClassLoader 排除运行时动态加载的测试灵元类，不依赖灵元类包名。
                                     JaCoCo InjectedClassRuntime 对每个加载了被插桩类的 ClassLoader
                                     维持 ConcurrentHashMap<ClassLoader, Accessor> 强引用，
                                     导致自定义 ClassLoader 无法被 GC 回收，
                                     进而使 LingUnloadCollectabilityRegressionTest 的零泄漏断言失败。
+                                    此前用 <excludes> 按包名排除，因灵元包名 (sample.springling) 与
+                                    配置 (sample/ling/**) 不一致且 ** 非文档支持语法而失效；
+                                    改用 exclClassLoaders 按 ClassLoader 类型排除，解除包名耦合。
                                 -->
-                                <excludes>
-                                    <exclude>sample/ling/**</exclude>
-                                </excludes>
+                                <exclClassLoaders>*CloseAwareClassLoader*</exclClassLoaders>
                             </configuration>
                         </execution>
                         <execution>

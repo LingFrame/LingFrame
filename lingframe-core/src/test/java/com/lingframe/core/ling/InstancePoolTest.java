@@ -43,9 +43,8 @@ class InstancePoolTest {
 
     @BeforeEach
     void setUp() {
-        pool = new InstancePool(LING_ID, MAX_DYING);
         instanceCoordinator = new InstanceCoordinator(null);
-        pool.setInstanceCoordinator(instanceCoordinator);
+        pool = new InstancePool(LING_ID, MAX_DYING, instanceCoordinator);
     }
 
     @Nested

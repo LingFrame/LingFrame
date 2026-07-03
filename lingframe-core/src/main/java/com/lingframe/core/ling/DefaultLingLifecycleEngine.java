@@ -16,7 +16,6 @@ import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.resource.DefaultLeakDetector;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.core.spi.ContainerFactory;
@@ -73,72 +72,36 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     private LingAlertManager alertManager;
     private LeakDetector leakDetector;
 
-    public DefaultLingLifecycleEngine(ContainerFactory containerFactory,
-                                      PermissionService permissionService,
-                                      LingLoaderFactory lingLoaderFactory,
-                                      List<LingSecurityVerifier> verifiers,
-                                      EventBus eventBus,
-                                      LingFrameConfig lingFrameConfig,
-                                      LingRepository lingRepository,
-                                      LingServiceRegistry lingServiceRegistry,
-                                      InvocationPipelineEngine pipelineEngine,
-                                      LingResourceManager lingResourceManager,
-                                      LingUnloadCoordinator unloadCoordinator,
-                                      RuntimeCoordinator runtimeCoordinator) {
-        this(containerFactory, permissionService, lingLoaderFactory, verifiers, eventBus, lingFrameConfig,
-                lingRepository, lingServiceRegistry, pipelineEngine, lingResourceManager,
-                unloadCoordinator, runtimeCoordinator, null);
-    }
-
-    public DefaultLingLifecycleEngine(ContainerFactory containerFactory,
-                                      PermissionService permissionService,
-                                      LingLoaderFactory lingLoaderFactory,
-                                      List<LingSecurityVerifier> verifiers,
-                                      EventBus eventBus,
-                                      LingFrameConfig lingFrameConfig,
-                                      LingRepository lingRepository,
-                                      LingServiceRegistry lingServiceRegistry,
-                                      InvocationPipelineEngine pipelineEngine,
-                                      LingResourceManager lingResourceManager,
-                                      LingUnloadCoordinator unloadCoordinator,
-                                      RuntimeCoordinator runtimeCoordinator,
-                                      LingHotSwapWatcher hotSwapWatcher) {
-        this.containerFactory = containerFactory;
-        this.lingLoaderFactory = lingLoaderFactory;
-        this.permissionService = permissionService;
-        this.eventBus = eventBus;
+    public DefaultLingLifecycleEngine(LifecycleEngineConfig config) {
+        Objects.requireNonNull(config, "LifecycleEngineConfig is required");
+        this.containerFactory = Objects.requireNonNull(config.getContainerFactory(), "containerFactory is required");
+        this.permissionService = Objects.requireNonNull(config.getPermissionService(), "permissionService is required");
+        this.lingLoaderFactory = Objects.requireNonNull(config.getLingLoaderFactory(), "lingLoaderFactory is required");
+        this.eventBus = Objects.requireNonNull(config.getEventBus(), "eventBus is required");
+        this.lingFrameConfig = Objects.requireNonNull(config.getLingFrameConfig(), "lingFrameConfig is required");
+        this.lingRepository = Objects.requireNonNull(config.getLingRepository(), "lingRepository is required");
+        this.lingServiceRegistry = Objects.requireNonNull(config.getLingServiceRegistry(), "lingServiceRegistry is required");
+        this.pipelineEngine = Objects.requireNonNull(config.getPipelineEngine(), "pipelineEngine is required");
+        this.runtimeCoordinator = Objects.requireNonNull(config.getRuntimeCoordinator(), "runtimeCoordinator is required");
 
         // 微内核解耦：安全验证器由外部组装点注入，内核不关心具体类型
-        this.verifiers = new ArrayList<>();
-        if (verifiers != null) {
-            this.verifiers.addAll(verifiers);
-        }
+        List<LingSecurityVerifier> verifiers = config.getVerifiers();
+        this.verifiers = verifiers != null ? new ArrayList<>(verifiers) : new ArrayList<>();
 
-        this.lingFrameConfig = lingFrameConfig;
-        this.lingRepository = lingRepository;
-        this.lingServiceRegistry = lingServiceRegistry;
-        this.pipelineEngine = pipelineEngine;
-        this.unloadCoordinator = unloadCoordinator != null
-                ? unloadCoordinator
-                : new LingUnloadCoordinator(
-                        pipelineEngine,
-                        new ArrayList<>(),
-                        lingResourceManager,
-                        new DefaultLeakDetector(eventBus, lingFrameConfig));
-        this.hotSwapWatcher = hotSwapWatcher;
+        // unloadCoordinator 必传：内核不再兜底创建，装配层负责构造完整协调器
+        this.unloadCoordinator = Objects.requireNonNull(config.getUnloadCoordinator(),
+                "unloadCoordinator is required (assemble a complete LingUnloadCoordinator at the wiring layer)");
+
+        this.hotSwapWatcher = config.getHotSwapWatcher();
+        this.canaryConfigurable = config.getCanaryConfigurable();
+        this.metricsCollector = config.getMetricsCollector();
+        this.governanceMetricsCollector = config.getGovernanceMetricsCollector();
+        this.alertManager = config.getAlertManager();
         this.instanceCoordinator = new InstanceCoordinator(eventBus);
-        this.runtimeCoordinator = Objects.requireNonNull(runtimeCoordinator, "RuntimeCoordinator is required");
 
-        // 微内核解耦：指标/告警由外部通过 setter 注入，内核不直接构造扩展对象
-        this.leakDetector = this.unloadCoordinator.getLeakDetector();
-    }
-
-    public void setHotSwapWatcher(LingHotSwapWatcher hotSwapWatcher) {
-        this.hotSwapWatcher = hotSwapWatcher;
-    }
-
-    public void setCanaryConfigurable(CanaryConfigurable canaryConfigurable) {
-        this.canaryConfigurable = canaryConfigurable;
+        // leakDetector：优先用 Builder 显式注入的，否则从 unloadCoordinator 派生
+        LeakDetector explicitLeakDetector = config.getLeakDetector();
+        this.leakDetector = explicitLeakDetector != null ? explicitLeakDetector : this.unloadCoordinator.getLeakDetector();
     }
 
     @Override
@@ -184,18 +147,6 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     @Override
     public Optional<LeakDetector> getLeakDetector() {
         return Optional.ofNullable(leakDetector);
-    }
-
-    public void setMetricsCollector(LingMetricsCollector metricsCollector) {
-        this.metricsCollector = metricsCollector;
-    }
-
-    public void setGovernanceMetricsCollector(LingGovernanceMetricsCollector governanceMetricsCollector) {
-        this.governanceMetricsCollector = governanceMetricsCollector;
-    }
-
-    public void setAlertManager(LingAlertManager alertManager) {
-        this.alertManager = alertManager;
     }
 
     @Override

@@ -17,7 +17,6 @@ import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.dashboard.dto.SimulateResultDTO;
 import com.lingframe.dashboard.dto.StressResultDTO;
 import com.lingframe.api.exception.LingNotFoundException;
-import com.lingframe.api.exception.ServiceUnavailableException;
 import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.model.EngineTrace;
 import com.lingframe.api.context.LingCallContext;
@@ -50,7 +49,7 @@ public class SimulateService {
         }
 
         if (!runtime.isAvailable()) {
-            throw new ServiceUnavailableException(lingId, "Ling not active");
+            throw new LingInvocationException(lingId, LingInvocationException.ErrorKind.STATE_REJECTED, "Ling not active");
         }
 
         String traceId = LingCallContext.startTrace();
@@ -62,12 +61,12 @@ public class SimulateService {
         ctx.setResourceType(mapResourceType(resourceType));
         ctx.setResourceId("simulate:" + resourceType);
         ctx.setOperation("simulate_" + resourceType);
-        ctx.setAccessType(mapAccessType(resourceType));
-        ctx.setRequiredPermission(mapPermission(resourceType));
-        ctx.setShouldAudit(true);
-        ctx.setAuditAction("SIMULATE:" + resourceType.toUpperCase());
+        ctx.governance().setAccessType(mapAccessType(resourceType));
+        ctx.governance().setRequiredPermission(mapPermission(resourceType));
+        ctx.governance().setShouldAudit(true);
+        ctx.governance().setAuditAction("SIMULATE:" + resourceType.toUpperCase());
         // 【核心下沉】直接要求微内核以“无副作用”模式跑完整治理链，而不是 dashboard 自己偷跑一套逻辑
-        ctx.setExecutionMode(InvocationExecutionMode.SIMULATION);
+        ctx.execution().setMode(InvocationExecutionMode.SIMULATION);
         ctx.setRuntime(runtime);
 
         boolean allowed;
@@ -82,7 +81,7 @@ public class SimulateService {
             if (isDevModeBypass(lingId, mapPermission(resourceType), mapAccessType(resourceType))) {
                 devBypass = true;
                 message += " (⚠️ Dev Mode Bypass)";
-                ctx.addTrace(EngineTrace.builder()
+                ctx.execution().addTrace(EngineTrace.builder()
                         .source("SimulateService")
                         .action("Dev mode bypass permissions check")
                         .type("WARN")
@@ -93,7 +92,7 @@ public class SimulateService {
         } catch (LingInvocationException e) {
             allowed = false;
             message = "Pipeline Rejected: " + e.getMessage();
-            ctx.addTrace(EngineTrace.builder().source("Pipeline").action("Pipeline rejected invocation: " + e.getKind())
+            ctx.execution().addTrace(EngineTrace.builder().source("Pipeline").action("Pipeline rejected invocation: " + e.getKind())
                     .type("FAIL")
                     .depth(1).build());
         } catch (SecurityException e) {
@@ -110,11 +109,11 @@ public class SimulateService {
                 .resourceType(resourceType)
                 .allowed(allowed)
                 .message(message)
-                .ruleSource(ctx.getRuleSource())
+                .ruleSource(ctx.governance().getRuleSource())
                 .devModeBypass(devBypass)
                 .timestamp(System.currentTimeMillis())
                 // 暴露 Core 在干跑期间攒下的宝贵探针数据
-                .traces(ctx.getTraces() != null ? new ArrayList<>(ctx.getTraces()) : null)
+                .traces(ctx.execution().getTraces() != null ? new ArrayList<>(ctx.execution().getTraces()) : null)
                 .build();
     }
 
@@ -133,7 +132,7 @@ public class SimulateService {
         }
 
         if (!sourceRuntime.isAvailable()) {
-            throw new ServiceUnavailableException(lingId, "Source ling not active");
+            throw new LingInvocationException(lingId, LingInvocationException.ErrorKind.STATE_REJECTED, "Source ling not active");
         }
 
         LingRuntime targetRuntime = lingRepository.getRuntime(targetLingId);
@@ -163,10 +162,10 @@ public class SimulateService {
             ctx.setResourceType("IPC");
             ctx.setResourceId("ipc:" + lingId + "->" + targetLingId);
             ctx.setOperation("ipc_call");
-            ctx.setAccessType(AccessType.EXECUTE);
-            ctx.setRequiredPermission("ipc:" + targetLingId);
-            ctx.setShouldAudit(true);
-            ctx.setAuditAction("IPC_CALL");
+            ctx.governance().setAccessType(AccessType.EXECUTE);
+            ctx.governance().setRequiredPermission("ipc:" + targetLingId);
+            ctx.governance().setShouldAudit(true);
+            ctx.governance().setAuditAction("IPC_CALL");
 
             try {
                 // 第 1 阶段：路由预热与基础可用性检查
@@ -174,11 +173,11 @@ public class SimulateService {
 
                 LingInstance routed = targetRuntime.getInstancePool().getDefault();
                 if (routed == null) {
-                    throw new ServiceUnavailableException(targetLingId, "No active instances");
+                    throw new LingInvocationException(targetLingId, LingInvocationException.ErrorKind.STATE_REJECTED, "No active instances");
                 }
                 targetRuntime.recordRequest(false);
 
-                ctx.setExecutionMode(InvocationExecutionMode.SIMULATION);
+                ctx.execution().setMode(InvocationExecutionMode.SIMULATION);
                 ctx.setRuntime(targetRuntime);
 
                 // 🔥 通过真实 Pipeline 统一入口执行模拟，避免控制台和内核维护两套语义
@@ -190,7 +189,7 @@ public class SimulateService {
                 // 检查是否被开发模式豁免
                 if (isDevModeBypass(lingId, "ipc:" + targetLingId, AccessType.EXECUTE)) {
                     message += " (⚠️ Dev Mode Bypass)";
-                    ctx.addTrace(EngineTrace.builder()
+                    ctx.execution().addTrace(EngineTrace.builder()
                             .source("SimulateService")
                             .action("Dev mode IPC bypass")
                             .type("WARN")
@@ -214,7 +213,7 @@ public class SimulateService {
                 .resourceType("IPC")
                 .allowed(allowed)
                 .message(message)
-                .traces(ctx != null && ctx.getTraces() != null ? new java.util.ArrayList<>(ctx.getTraces()) : null)
+                .traces(ctx != null && ctx.execution().getTraces() != null ? new ArrayList<>(ctx.execution().getTraces()) : null)
                 .timestamp(System.currentTimeMillis())
                 .build();
     }
@@ -230,12 +229,12 @@ public class SimulateService {
         }
 
         if (!runtime.isAvailable()) {
-            throw new ServiceUnavailableException(lingId, "Ling not active");
+            throw new LingInvocationException(lingId, LingInvocationException.ErrorKind.STATE_REJECTED, "Ling not active");
         }
 
         List<LingInstance> instances = runtime.getInstancePool().getActiveInstances();
         if (instances.isEmpty()) {
-            throw new ServiceUnavailableException(lingId, "No active instances");
+            throw new LingInvocationException(lingId, LingInvocationException.ErrorKind.STATE_REJECTED, "No active instances");
         }
 
         InvocationContext ctx = InvocationContext.obtain();
@@ -289,7 +288,7 @@ public class SimulateService {
         }
 
         if (!runtime.isAvailable()) {
-            throw new ServiceUnavailableException(lingId, "Ling not active");
+            throw new LingInvocationException(lingId, LingInvocationException.ErrorKind.STATE_REJECTED, "Ling not active");
         }
 
         String traceId = LingCallContext.startTrace();
@@ -309,12 +308,12 @@ public class SimulateService {
             ctx.setServiceFQSID(lingId + ":" + className);
             ctx.setMethodName(methodName);
             ctx.setOperation(methodName);
-            ctx.setAccessType(targetAccess);
-            ctx.setShouldAudit(true);
-            ctx.setAuditAction("SIMULATE:METHOD");
+            ctx.governance().setAccessType(targetAccess);
+            ctx.governance().setShouldAudit(true);
+            ctx.governance().setAuditAction("SIMULATE:METHOD");
 
             // ⚠️ 模拟方法调用也必须走同一条 Pipeline，否则权限决策、超时和审计来源都会失真
-            ctx.setExecutionMode(InvocationExecutionMode.SIMULATION);
+            ctx.execution().setMode(InvocationExecutionMode.SIMULATION);
             ctx.setRuntime(runtime);
 
             // 🔥 通过真实 Pipeline 统一入口执行模拟推演
@@ -324,9 +323,9 @@ public class SimulateService {
             message = "Method " + methodName + " simulated successfully: " + result;
 
             // 检查开发模式
-            String capability = ctx.getRequiredPermission();
+            String capability = ctx.governance().getRequiredPermission();
             if (capability != null && !capability.trim().isEmpty()) {
-                if (isDevModeBypass(lingId, capability, ctx.getAccessType())) {
+                if (isDevModeBypass(lingId, capability, ctx.governance().getAccessType())) {
                     devBypass = true;
                     message += " (⚠️ Dev Mode Bypass)";
                 }
@@ -346,10 +345,10 @@ public class SimulateService {
                 .resourceType("METHOD")
                 .allowed(allowed)
                 .message(message)
-                .ruleSource(ctx != null ? ctx.getRuleSource() : null)
+                .ruleSource(ctx != null ? ctx.governance().getRuleSource() : null)
                 .devModeBypass(devBypass)
                 .timestamp(System.currentTimeMillis())
-                .traces(ctx != null && ctx.getTraces() != null ? new java.util.ArrayList<>(ctx.getTraces()) : null)
+                .traces(ctx != null && ctx.execution().getTraces() != null ? new ArrayList<>(ctx.execution().getTraces()) : null)
                 .build();
     }
 

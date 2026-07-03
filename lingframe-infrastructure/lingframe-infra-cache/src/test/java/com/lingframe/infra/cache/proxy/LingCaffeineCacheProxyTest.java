@@ -11,6 +11,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -142,7 +144,7 @@ class LingCaffeineCacheProxyTest {
         void shouldDenamespaceReturnedKeysForGetAllPresent() {
             Cache<String, String> target = mockStringCache();
             PermissionService permissionService = mock(PermissionService.class);
-            Map<Object, String> namespacedResult = new java.util.LinkedHashMap<>();
+            Map<Object, String> namespacedResult = new LinkedHashMap<>();
             namespacedResult.put(new CacheNamespaceSupport.NamespacedKey("ling-a", "users", "user:1"), "tom");
             when(permissionService.isAllowed("ling-a", "cache:local", AccessType.READ)).thenReturn(true);
             when(target.getAllPresent(org.mockito.ArgumentMatchers.any())).thenReturn((Map) namespacedResult);
@@ -150,7 +152,7 @@ class LingCaffeineCacheProxyTest {
             LingCallContext.setLingId("ling-a");
             LingCaffeineCacheProxy<String, String> proxy = new LingCaffeineCacheProxy<>(target, "users", permissionService);
 
-            Map<String, String> result = proxy.getAllPresent(java.util.Collections.singletonList("user:1"));
+            Map<String, String> result = proxy.getAllPresent(Collections.singletonList("user:1"));
 
             assertEquals(1, result.size());
             assertEquals("tom", result.get("user:1"));
@@ -173,20 +175,20 @@ class LingCaffeineCacheProxyTest {
             LingCaffeineCacheProxy<String, String> proxy = new LingCaffeineCacheProxy<>(target, "users", permissionService);
 
             // 1. getAll
-            java.util.Map<Object, Object> loaded = new java.util.LinkedHashMap<>();
+            Map<Object, Object> loaded = new LinkedHashMap<>();
             loaded.put(new CacheNamespaceSupport.NamespacedKey("ling-a", "users", "k1"), "v1");
             org.mockito.Mockito.doReturn(loaded).when(target).getAll(
                     org.mockito.ArgumentMatchers.any(),
                     org.mockito.ArgumentMatchers.any()
             );
-            java.util.Map<String, String> getAllResult = proxy.getAll(
-                    java.util.Collections.singletonList("k1"),
-                    keys -> java.util.Collections.singletonMap("k1", "v1")
+            Map<String, String> getAllResult = proxy.getAll(
+                    Collections.singletonList("k1"),
+                    keys -> Collections.singletonMap("k1", "v1")
             );
             assertEquals("v1", getAllResult.get("k1"));
 
             // 2. putAll
-            proxy.putAll(java.util.Collections.singletonMap("k1", "v1"));
+            proxy.putAll(Collections.singletonMap("k1", "v1"));
             verify(target).putAll(org.mockito.ArgumentMatchers.any());
 
             // 3. invalidate
@@ -194,7 +196,7 @@ class LingCaffeineCacheProxyTest {
             verify(target).invalidate(org.mockito.ArgumentMatchers.any());
 
             // 4. invalidateAll(Iterable)
-            proxy.invalidateAll(java.util.Collections.singletonList("k1"));
+            proxy.invalidateAll(Collections.singletonList("k1"));
             verify(target).invalidateAll(org.mockito.ArgumentMatchers.any());
 
             // 5. invalidateAll()

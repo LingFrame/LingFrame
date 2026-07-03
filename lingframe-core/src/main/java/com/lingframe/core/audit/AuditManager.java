@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -128,7 +129,7 @@ public class AuditManager {
     /**
      * 审计队列溢出处理器
      */
-    private static class AuditOverflowHandler implements java.util.concurrent.RejectedExecutionHandler {
+    private static class AuditOverflowHandler implements RejectedExecutionHandler {
         @Override
         public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
             if (overflowPolicy == OverflowPolicy.BLOCK) {

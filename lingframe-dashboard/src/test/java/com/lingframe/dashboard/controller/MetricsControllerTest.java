@@ -136,14 +136,14 @@ class MetricsControllerTest {
                 mock(EventBus.class));
 
         ResourceCleanupCapabilityDTO dto = ResourceCleanupCapabilityDTO.builder()
-                .runtime("BasicResourceGuard")
+                .runtime("BasicUnloadHook")
                 .jdkVersion(17)
                 .threadTargetAccessible(false)
                 .driverManagerAccessible(false)
                 .summary("jdk=17,target=false")
                 .build();
         Map<String, ResourceCleanupCapabilityDTO> diagnostics = new LinkedHashMap<>();
-        diagnostics.put("BasicResourceGuard", dto);
+        diagnostics.put("BasicUnloadHook", dto);
         when(runtimeDiagnosticsService.getCleanupCapabilities()).thenReturn(diagnostics);
 
         ApiResponse<Map<String, ResourceCleanupCapabilityDTO>> response = controller.getRuntimeDiagnostics();
@@ -151,7 +151,7 @@ class MetricsControllerTest {
         assertTrue(response.isSuccess());
         assertNotNull(response.getData());
         assertEquals(1, response.getData().size());
-        assertEquals(17, response.getData().get("BasicResourceGuard").getJdkVersion());
+        assertEquals(17, response.getData().get("BasicUnloadHook").getJdkVersion());
     }
 
     @Test
@@ -172,7 +172,7 @@ class MetricsControllerTest {
                 .summary("Runtime governance is active, but some diagnostics indicate capability limits.")
                 .sharedApiBoundaryFrozen(true)
                 .diagnosticsCount(2)
-                .warnings(Collections.singletonList("BasicResourceGuard: DriverManager cleanup is unavailable on this JVM"))
+                .warnings(Collections.singletonList("BasicUnloadHook: DriverManager cleanup is unavailable on this JVM"))
                 .build();
         when(runtimeDiagnosticsService.getGovernanceReadiness()).thenReturn(dto);
 

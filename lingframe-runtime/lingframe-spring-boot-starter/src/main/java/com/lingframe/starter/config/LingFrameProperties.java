@@ -195,6 +195,34 @@ public class LingFrameProperties {
          */
         private int rateLimitPerSecond = 0;
 
+        // --- 熔断器 ---
+
+        /**
+         * 熔断失败率阈值（百分比，0-100）
+         */
+        private int circuitBreakerFailureRateThreshold = 50;
+
+        /**
+         * 熔断慢调用率阈值（百分比，0-100）
+         */
+        private int circuitBreakerSlowCallRateThreshold = 80;
+
+        /**
+         * 熔断滑动窗口大小（调用次数）
+         */
+        private int circuitBreakerSlidingWindowSize = 20;
+
+        /**
+         * 熔断最小调用数
+         */
+        private int circuitBreakerMinimumNumberOfCalls = 10;
+
+        /**
+         * 熔断器开启后等待时间，0 表示用 defaultTimeout * 10
+         */
+        @DurationUnit(ChronoUnit.MILLIS)
+        private Duration circuitBreakerWaitDurationInOpenState = Duration.ZERO;
+
         // --- 灵元线程池预算 ---
 
         /**

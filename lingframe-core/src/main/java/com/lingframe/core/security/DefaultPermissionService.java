@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -26,10 +27,13 @@ public class DefaultPermissionService implements PermissionService {
     private static final String LING_CORE_ID = "lingcore-app";
 
     private final EventBus eventBus;
+    private final LingFrameConfig config;
     private final Map<String, Map<String, AccessType>> permissions = new ConcurrentHashMap<>();
 
-    public DefaultPermissionService(EventBus eventBus) {
+    public DefaultPermissionService(EventBus eventBus, LingFrameConfig config) {
         this.eventBus = eventBus;
+        this.config = Objects.requireNonNull(config,
+                "LingFrameConfig is required for DefaultPermissionService");
     }
 
     @Override
@@ -41,7 +45,7 @@ public class DefaultPermissionService implements PermissionService {
             return false;
         }
 
-        if (LING_CORE_ID.equals(lingId) && !LingFrameConfig.current().isLingCoreCheckPermissions()) {
+        if (LING_CORE_ID.equals(lingId) && !config.isLingCoreCheckPermissions()) {
             log.debug("[Auth] LINGCORE application bypassed");
             return true;
         }
@@ -54,7 +58,7 @@ public class DefaultPermissionService implements PermissionService {
         boolean allowed = checkInternal(lingId, capability, accessType);
         log.debug("[Auth] Permission table check result: {}", allowed);
 
-        if (!allowed && LingFrameConfig.current().isDevMode()) {
+        if (!allowed && config.isDevMode()) {
             log.warn("==========================================================================");
             log.warn("[DEV WARNING] ling [{}] unauthorized access [{}] ({}). Please declare in ling.yml: {}",
                     lingId, capability, accessType, capability);
@@ -180,7 +184,7 @@ public class DefaultPermissionService implements PermissionService {
 
     @Override
     public boolean isLingCoreGovernanceEnabled() {
-        return LingFrameConfig.current().isLingCoreGovernanceEnabled();
+        return config.isLingCoreGovernanceEnabled();
     }
 
     private String normalize(String value) {
@@ -255,6 +259,6 @@ public class DefaultPermissionService implements PermissionService {
 
     private String resolveRuleSource() {
         InvocationContext ctx = InvocationContext.current();
-        return ctx == null ? null : normalize(ctx.getRuleSource());
+        return ctx == null ? null : normalize(ctx.governance().getRuleSource());
     }
 }

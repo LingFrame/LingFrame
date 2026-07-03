@@ -35,7 +35,7 @@ class DefaultPermissionServiceTest {
     @BeforeEach
     void setUp() {
         eventBus = new EventBus();
-        permissionService = new DefaultPermissionService(eventBus);
+        permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
     }
 
     @AfterEach
@@ -173,7 +173,7 @@ class DefaultPermissionServiceTest {
         ctx.setServiceFQSID("test-ling:test-service");
         ctx.setOperation("createOrder");
         ctx.setResourceId("POST /orders");
-        ctx.setRuleSource("AnnotationPolicy");
+        ctx.governance().setRuleSource("AnnotationPolicy");
         ctx.attach();
         return ctx;
     }

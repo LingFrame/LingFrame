@@ -5,12 +5,14 @@ import com.lingframe.api.context.LingContext;
 import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.ling.Ling;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.DefaultLingServiceRegistry;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.pipeline.FilterRegistry;
+import com.lingframe.core.pipeline.FilterRegistryConfig;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.pipeline.LatestVersionPolicy;
 import com.lingframe.core.security.DefaultPermissionService;
@@ -18,9 +20,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.lang.reflect.Method;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -33,9 +39,14 @@ class NativeLingContainerTest {
         EventBus eventBus = new EventBus();
         DefaultLingRepository repository = new DefaultLingRepository();
         DefaultLingServiceRegistry registry = new DefaultLingServiceRegistry();
-        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus);
-        FilterRegistry filterRegistry = new FilterRegistry(new InvokableMethodCache(), permissionService);
-        filterRegistry.initialize(repository, new LatestVersionPolicy(), eventBus);
+        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
+        FilterRegistry filterRegistry = new FilterRegistry(FilterRegistryConfig.builder()
+                .methodCache(new InvokableMethodCache())
+                .permissionService(permissionService)
+                .lingRepository(repository)
+                .trafficRouter(new LatestVersionPolicy())
+                .eventBus(eventBus)
+                .build());
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(filterRegistry);
         LingContext context = new DefaultLingContext("native-ling", repository, registry, pipelineEngine, permissionService, eventBus);
 
@@ -253,9 +264,14 @@ class NativeLingContainerTest {
         EventBus eventBus = new EventBus();
         DefaultLingRepository repository = new DefaultLingRepository();
         DefaultLingServiceRegistry registry = new DefaultLingServiceRegistry();
-        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus);
-        FilterRegistry filterRegistry = new FilterRegistry(new InvokableMethodCache(), permissionService);
-        filterRegistry.initialize(repository, new LatestVersionPolicy(), eventBus);
+        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
+        FilterRegistry filterRegistry = new FilterRegistry(FilterRegistryConfig.builder()
+                .methodCache(new InvokableMethodCache())
+                .permissionService(permissionService)
+                .lingRepository(repository)
+                .trafficRouter(new LatestVersionPolicy())
+                .eventBus(eventBus)
+                .build());
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(filterRegistry);
         DefaultLingContext context = new DefaultLingContext("native-ling", repository, registry, pipelineEngine, permissionService, eventBus);
 
@@ -267,11 +283,11 @@ class NativeLingContainerTest {
         );
         container.start(context);
         
-        java.lang.reflect.Method registerMethod = NativeLingContainer.class.getDeclaredMethod(
-                "registerService", DefaultLingContext.class, Class.class, java.lang.reflect.Method.class, LingService.class
+        Method registerMethod = NativeLingContainer.class.getDeclaredMethod(
+                "registerService", DefaultLingContext.class, Class.class, Method.class, LingService.class
         );
         registerMethod.setAccessible(true);
-        java.lang.reflect.Method badMethod = NonInstantiableServiceBean.class.getDeclaredMethod("test");
+        Method badMethod = NonInstantiableServiceBean.class.getDeclaredMethod("test");
         LingService anno = badMethod.getAnnotation(LingService.class);
 
         assertDoesNotThrow(() -> registerMethod.invoke(container, context, NonInstantiableServiceBean.class, badMethod, anno));
@@ -283,18 +299,18 @@ class NativeLingContainerTest {
     void shouldScanClassesFromJarFile() throws Exception {
         File tempJar = File.createTempFile("test-ling-", ".jar");
         tempJar.deleteOnExit();
-        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(new java.io.FileOutputStream(tempJar))) {
-            java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry("com/lingframe/runtime/adapter/NativeLingContainerTest$TestNativeLing.class");
+        try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(tempJar))) {
+            ZipEntry entry = new ZipEntry("com/lingframe/runtime/adapter/NativeLingContainerTest$TestNativeLing.class");
             zos.putNextEntry(entry);
             zos.write(new byte[0]);
             zos.closeEntry();
 
-            java.util.zip.ZipEntry entryFilter = new java.util.zip.ZipEntry("com/lingframe/runtime/adapter/package-info.class");
+            ZipEntry entryFilter = new ZipEntry("com/lingframe/runtime/adapter/package-info.class");
             zos.putNextEntry(entryFilter);
             zos.write(new byte[0]);
             zos.closeEntry();
 
-            java.util.zip.ZipEntry entryBad = new java.util.zip.ZipEntry("com/lingframe/runtime/adapter/NonExistClass.class");
+            ZipEntry entryBad = new ZipEntry("com/lingframe/runtime/adapter/NonExistClass.class");
             zos.putNextEntry(entryBad);
             zos.write(new byte[0]);
             zos.closeEntry();
@@ -310,9 +326,14 @@ class NativeLingContainerTest {
         EventBus eventBus = new EventBus();
         DefaultLingRepository repository = new DefaultLingRepository();
         DefaultLingServiceRegistry registry = new DefaultLingServiceRegistry();
-        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus);
-        FilterRegistry filterRegistry = new FilterRegistry(new InvokableMethodCache(), permissionService);
-        filterRegistry.initialize(repository, new LatestVersionPolicy(), eventBus);
+        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
+        FilterRegistry filterRegistry = new FilterRegistry(FilterRegistryConfig.builder()
+                .methodCache(new InvokableMethodCache())
+                .permissionService(permissionService)
+                .lingRepository(repository)
+                .trafficRouter(new LatestVersionPolicy())
+                .eventBus(eventBus)
+                .build());
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(filterRegistry);
         DefaultLingContext context = new DefaultLingContext("native-ling", repository, registry, pipelineEngine, permissionService, eventBus);
 

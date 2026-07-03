@@ -16,7 +16,6 @@ import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.spi.*;
-import com.lingframe.starter.adapter.SpringContainerFactory;
 import com.lingframe.starter.event.ServiceExporterListener;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.starter.spi.LingContextCustomizer;
@@ -29,8 +28,8 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.ApplicationContext;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
+import Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -58,15 +57,15 @@ class LingFrameLifecycleBeansConfigurationTest {
             @Override
             public List<LingContextCustomizer> getIfAvailable() { return new ArrayList<>(); }
             @Override
-            public List<LingContextCustomizer> getIfAvailable(java.util.function.Supplier<List<LingContextCustomizer>> defaultSupplier) {
+            public List<LingContextCustomizer> getIfAvailable(Supplier<List<LingContextCustomizer>> defaultSupplier) {
                 return defaultSupplier.get();
             }
             @Override
             public List<LingContextCustomizer> getIfUnique() { return new ArrayList<>(); }
         };
-        List<LingUnloadHook> resourceGuards = new ArrayList<>();
+        List<LingUnloadHook> unloadHooks = new ArrayList<>();
         
-        ContainerFactory containerFactory = config.containerFactory(parentContext, webInterfaceManager, customizersProvider, resourceGuards);
+        ContainerFactory containerFactory = config.containerFactory(parentContext, webInterfaceManager, customizersProvider, unloadHooks);
         assertNotNull(containerFactory);
 
         // 2. lingLifecycleEngine
@@ -80,7 +79,7 @@ class LingFrameLifecycleBeansConfigurationTest {
             @Override
             public List<LingSecurityVerifier> getIfAvailable() { return new ArrayList<>(); }
             @Override
-            public List<LingSecurityVerifier> getIfAvailable(java.util.function.Supplier<List<LingSecurityVerifier>> defaultSupplier) {
+            public List<LingSecurityVerifier> getIfAvailable(Supplier<List<LingSecurityVerifier>> defaultSupplier) {
                 return defaultSupplier.get();
             }
             @Override
@@ -97,7 +96,7 @@ class LingFrameLifecycleBeansConfigurationTest {
 
         LingLifecycleEngine lifecycleEngine = config.lingLifecycleEngine(
                 containerFactory, permissionService, lingLoaderFactory, verifiersProvider, eventBus,
-                lingFrameConfig, lingRepository, lingServiceRegistry, pipelineEngine, resourceGuards,
+                lingFrameConfig, lingRepository, lingServiceRegistry, pipelineEngine, unloadHooks,
                 lingResourceManager, leakDetector, runtimeCoordinator,
                 mock(org.springframework.beans.factory.ObjectProvider.class),
                 mock(org.springframework.beans.factory.ObjectProvider.class)
@@ -140,7 +139,7 @@ class LingFrameLifecycleBeansConfigurationTest {
             @Override
             public List<ServiceExporter> getIfAvailable() { return new ArrayList<>(); }
             @Override
-            public List<ServiceExporter> getIfAvailable(java.util.function.Supplier<List<ServiceExporter>> defaultSupplier) {
+            public List<ServiceExporter> getIfAvailable(Supplier<List<ServiceExporter>> defaultSupplier) {
                 return defaultSupplier.get();
             }
             @Override
@@ -183,10 +182,9 @@ class LingFrameLifecycleBeansConfigurationTest {
         // 11. hotSwapWatcher
         HotSwapWatcher watcher = config.hotSwapWatcher(lifecycleEngine, lingRepository, eventBus, leakDetector);
         assertNotNull(watcher);
-        // 测试 DefaultLingLifecycleEngine 分支
-        DefaultLingLifecycleEngine mockEngine = mock(DefaultLingLifecycleEngine.class);
-        HotSwapWatcher watcher2 = config.hotSwapWatcher(mockEngine, lingRepository, eventBus, leakDetector);
-        verify(mockEngine).setHotSwapWatcher(watcher2);
+        // watcher 通过 setLifecycleEngine 延迟绑定 engine（setHotSwapWatcher 已删）
+        HotSwapWatcher watcher2 = config.hotSwapWatcher(lifecycleEngine, lingRepository, eventBus, leakDetector);
+        assertNotNull(watcher2);
 
         // 12. lingCoreContext
         LingContext coreContext = config.lingCoreContext(lingRepository, lingServiceRegistry, pipelineEngine, permissionService, eventBus);

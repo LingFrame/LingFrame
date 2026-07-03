@@ -1,7 +1,7 @@
 package com.lingframe.runtime;
 
 import com.lingframe.api.context.LingContext;
-import com.lingframe.api.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.classloader.DefaultLingLoaderFactory;
 import com.lingframe.core.classloader.SharedApiClassLoader;
@@ -16,6 +16,7 @@ import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.DefaultLingResourceManager;
 import com.lingframe.core.ling.DefaultLingServiceRegistry;
 import com.lingframe.core.ling.InvokableMethodCache;
+import com.lingframe.core.ling.LifecycleEngineConfig;
 import com.lingframe.core.resource.DefaultLeakDetector;
 import com.lingframe.core.security.ApiOverrideVerifier;
 import com.lingframe.core.security.DangerousApiVerifier;
@@ -39,6 +40,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingUnloadCoordinator;
 import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.pipeline.FilterRegistry;
+import com.lingframe.core.pipeline.FilterRegistryConfig;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.pipeline.LatestVersionPolicy;
 import com.lingframe.core.router.CanaryRouter;
@@ -102,7 +104,7 @@ public class NativeLingFrame {
         RUNTIME_COORDINATOR.start();
 
         // 准备核心组件
-        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus);
+        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, config);
         DefaultLingLoaderFactory loaderFactory = new DefaultLingLoaderFactory();
         SHARED_API_MANAGER = new SharedApiManager(Thread.currentThread().getContextClassLoader(), config);
         SHARED_API_MANAGER.preloadFromConfig();
@@ -121,10 +123,19 @@ public class NativeLingFrame {
         MetricsCollector metricsCollector = new MetricsCollector(lingRepository);
         GovernanceMetricsCollector governanceMetricsCollector = new GovernanceMetricsCollector();
 
-        FilterRegistry filterRegistry = new FilterRegistry(invokableMethodCache, permissionService, invoker, null);
         CanaryRouter canaryRouter = new CanaryRouter(new LatestVersionPolicy());
-        filterRegistry.initialize(lingRepository, canaryRouter, eventBus,
-                metricsCollector, RUNTIME_COORDINATOR, governanceMetricsCollector, lingServiceRegistry);
+        FilterRegistry filterRegistry = new FilterRegistry(FilterRegistryConfig.builder()
+                .methodCache(invokableMethodCache)
+                .permissionService(permissionService)
+                .serviceInvoker(invoker)
+                .lingRepository(lingRepository)
+                .trafficRouter(canaryRouter)
+                .eventBus(eventBus)
+                .serviceRegistry(lingServiceRegistry)
+                .metricsCollector(metricsCollector)
+                .runtimeCoordinator(RUNTIME_COORDINATOR)
+                .governanceMetricsCollector(governanceMetricsCollector)
+                .build());
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(
                 filterRegistry);
 
@@ -147,27 +158,34 @@ public class NativeLingFrame {
         defaultVerifiers.add(new ApiOverrideVerifier());
         defaultVerifiers.add(new DangerousApiVerifier());
 
-        DefaultLingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(
-                containerFactory,
-                permissionService,
-                loaderFactory,
-                defaultVerifiers,
-                eventBus,
-                config,
-                lingRepository,
-                lingServiceRegistry,
-                pipelineEngine,
-                RESOURCE_MANAGER,
-                unloadCoordinator,
-                RUNTIME_COORDINATOR);
-
-        lifecycleEngine.setCanaryConfigurable(canaryRouter);
-        lifecycleEngine.setMetricsCollector(metricsCollector);
-        lifecycleEngine.setGovernanceMetricsCollector(governanceMetricsCollector);
-
+        // 热重载 watcher：先于 engine 构造（传 null engine），engine 通过 Builder 注入后延迟绑定
+        HotSwapWatcher watcher = null;
         if (config != null && config.isDevMode()) {
-            HOT_SWAP_WATCHER = new HotSwapWatcher(lifecycleEngine, lingRepository, eventBus, LEAK_DETECTOR);
-            lifecycleEngine.setHotSwapWatcher(HOT_SWAP_WATCHER);
+            watcher = new HotSwapWatcher(null, lingRepository, eventBus, LEAK_DETECTOR);
+        }
+
+        DefaultLingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(permissionService)
+                .lingLoaderFactory(loaderFactory)
+                .verifiers(defaultVerifiers)
+                .eventBus(eventBus)
+                .lingFrameConfig(config)
+                .lingRepository(lingRepository)
+                .lingServiceRegistry(lingServiceRegistry)
+                .pipelineEngine(pipelineEngine)
+                .lingResourceManager(RESOURCE_MANAGER)
+                .unloadCoordinator(unloadCoordinator)
+                .runtimeCoordinator(RUNTIME_COORDINATOR)
+                .canaryConfigurable(canaryRouter)
+                .metricsCollector(metricsCollector)
+                .governanceMetricsCollector(governanceMetricsCollector)
+                .hotSwapWatcher(watcher)
+                .build());
+
+        if (watcher != null) {
+            watcher.setLifecycleEngine(lifecycleEngine);
+            HOT_SWAP_WATCHER = watcher;
         }
 
         // 注册一个特殊的 "lingcore-app" 上下文
@@ -292,7 +310,7 @@ public class NativeLingFrame {
      */
     public static LingContext getHostContext() {
         if (!started.get()) {
-            throw new ServiceUnavailableException("lingcore-app", "LingFrame not started");
+            throw new LingInvocationException("lingcore-app", LingInvocationException.ErrorKind.STATE_REJECTED, "LingFrame not started");
         }
         return HOST_CONTEXT;
     }

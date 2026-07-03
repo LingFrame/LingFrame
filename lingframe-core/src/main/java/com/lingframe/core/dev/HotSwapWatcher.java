@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -34,7 +35,7 @@ import java.util.stream.Stream;
 @Slf4j
 public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent>, LingHotSwapWatcher {
 
-    private final LingLifecycleEngine lifecycleEngine;
+    private volatile LingLifecycleEngine lifecycleEngine;
     private final LingRepository lingRepository;
     private final EventBus eventBus;
     private final LeakDetector leakDetector;
@@ -57,11 +58,24 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent>, 
             LingRepository lingRepository,
             EventBus eventBus,
             LeakDetector leakDetector) {
-        this.lifecycleEngine = lifecycleEngine;
         this.lingRepository = lingRepository;
         this.eventBus = eventBus;
         this.leakDetector = leakDetector;
+        this.lifecycleEngine = lifecycleEngine;
         this.eventBus.subscribe("lingframe-hotswap", LingUninstalledEvent.class, this);
+    }
+
+    /**
+     * 延迟绑定生命周期引擎。
+     * <p>
+     * 用于解决 native 装配场景下 watcher 与 lifecycleEngine 的循环依赖：
+     * watcher 必须在 Builder 构造 engine 前创建（作为 hotSwapWatcher 参数传入），
+     * 但 watcher 又需要 engine 引用。此时先传 null 构造，engine 创建后调用此方法绑定。
+     *
+     * @param engine 生命周期引擎，不可为 null
+     */
+    public void setLifecycleEngine(LingLifecycleEngine engine) {
+        this.lifecycleEngine = Objects.requireNonNull(engine, "lifecycleEngine is required");
     }
 
     @Override

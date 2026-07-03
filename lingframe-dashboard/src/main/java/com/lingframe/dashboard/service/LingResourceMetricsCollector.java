@@ -14,6 +14,7 @@ import javax.annotation.PreDestroy;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -216,8 +217,8 @@ public class LingResourceMetricsCollector {
             if (classes instanceof List) {
                 return ((List<?>) classes).size();
             }
-            if (classes instanceof java.util.Collection) {
-                return ((java.util.Collection<?>) classes).size();
+            if (classes instanceof Collection) {
+                return ((Collection<?>) classes).size();
             }
         } catch (SecurityException e) {
             log.debug("SecurityManager denied access to ClassLoader.classes for {}", cl, e);

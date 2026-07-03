@@ -27,9 +27,13 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -37,7 +41,7 @@ public class DashboardService {
 
     @Data
     public static class LifecycleEvent {
-        private final String id = java.util.UUID.randomUUID().toString();
+        private final String id = UUID.randomUUID().toString();
         private final String lingId;
         private final String version;
         private final String type;
@@ -210,7 +214,7 @@ public class DashboardService {
         // 持久化灰度配置到 SQLite
         if (governanceStorage != null) {
             try {
-                java.util.Map<String, Object> canaryData = new java.util.LinkedHashMap<>();
+                Map<String, Object> canaryData = new LinkedHashMap<>();
                 canaryData.put("percent", percent);
                 canaryData.put("canaryVersion", canaryVersion);
                 governanceStorage.saveCanaryConfig(lingId, objectMapper.writeValueAsString(canaryData));
@@ -301,7 +305,7 @@ public class DashboardService {
             return Collections.emptyList();
         }
 
-        List<LingPackageDTO> packageList = new java.util.ArrayList<>();
+        List<LingPackageDTO> packageList = new ArrayList<>();
         for (File file : files) {
             try {
                 com.lingframe.api.config.LingDefinition definition = com.lingframe.core.loader.LingManifestLoader.parseDefinition(file);
@@ -318,7 +322,7 @@ public class DashboardService {
                     isInstalled = runtime.getInstancePool().getInstance(version) != null;
                 }
 
-                List<String> declaredPerms = new java.util.ArrayList<>();
+                List<String> declaredPerms = new ArrayList<>();
                 if (definition.getGovernance() != null) {
                     if (definition.getGovernance().getCapabilities() != null) {
                         for (com.lingframe.api.config.GovernancePolicy.CapabilityRule rule : definition.getGovernance().getCapabilities()) {

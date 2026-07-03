@@ -74,10 +74,10 @@ class DefaultLeakDetectorTest {
     }
 
     @Test
-    @DisplayName("无参构造器不报错")
-    void shouldCreateWithDefaultConstructor() {
+    @DisplayName("带参构造器不报错")
+    void shouldCreateWithConfigConstructor() {
         assertDoesNotThrow(() -> {
-            DefaultLeakDetector d = new DefaultLeakDetector();
+            DefaultLeakDetector d = new DefaultLeakDetector(null, LingFrameConfig.builder().build());
             d.shutdown();
         });
     }
@@ -123,10 +123,10 @@ class DefaultLeakDetectorTest {
     }
 
     @Test
-    @DisplayName("null config 使用默认配置")
-    void shouldUseDefaultConfigWhenNull() {
+    @DisplayName("非 null config 正常工作")
+    void shouldWorkWithExplicitConfig() {
         assertDoesNotThrow(() -> {
-            DefaultLeakDetector d = new DefaultLeakDetector(eventBus, null);
+            DefaultLeakDetector d = new DefaultLeakDetector(eventBus, LingFrameConfig.builder().build());
             d.detectLeak("ling-a", "1.0", new ClassLoader() {});
             d.shutdown();
         });

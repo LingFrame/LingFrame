@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
@@ -49,11 +50,14 @@ public class InstancePool {
 
     // 实例状态的唯一正式写入口。
     // 实例池自己不直接改实例状态，只在成员调整时委托给协调器。
-    private volatile InstanceCoordinator instanceCoordinator = new InstanceCoordinator(null);
+    // ⚠️ 生产就绪约束：构造期强制注入，杜绝"忘记注入导致静默无事件"的僵尸版本风险。
+    private final InstanceCoordinator instanceCoordinator;
 
-    public InstancePool(String lingId, int maxDyingInstances) {
+    public InstancePool(String lingId, int maxDyingInstances, InstanceCoordinator instanceCoordinator) {
         this.lingId = lingId;
         this.maxDyingInstances = maxDyingInstances;
+        this.instanceCoordinator = Objects.requireNonNull(instanceCoordinator,
+                "InstanceCoordinator is required for InstancePool (prevents silent no-event zombie versions)");
     }
 
     // ==================== 查询方法 ====================
@@ -411,13 +415,21 @@ public class InstancePool {
     }
 
     /**
-     * 池统计信息
+     * 池统计信息。
+     * <p>
+     * 统一使用 record-style 访问器（{@code activeCount()} 而非 {@code getActiveCount()}），
+     * 不混用 Lombok @Value getter，消除重复访问器导致的风格歧义。
      */
-    @Value
     public static class PoolStats {
-        int activeCount;
-        int dyingCount;
-        boolean hasDefault;
+        private final int activeCount;
+        private final int dyingCount;
+        private final boolean hasDefault;
+
+        public PoolStats(int activeCount, int dyingCount, boolean hasDefault) {
+            this.activeCount = activeCount;
+            this.dyingCount = dyingCount;
+            this.hasDefault = hasDefault;
+        }
 
         public int activeCount() {
             return activeCount;
@@ -437,14 +449,5 @@ public class InstancePool {
             return String.format("PoolStats{active=%d, dying=%d, hasDefault=%s}",
                     activeCount, dyingCount, hasDefault);
         }
-    }
-
-    /**
-     * 绑定实例状态协同器（可选），用于统一状态转换与事件联动。
-     * <p>
-     * 如果未注入，则退化为一个不发事件的本地协调器，便于测试或离线使用。
-     */
-    void setInstanceCoordinator(InstanceCoordinator instanceCoordinator) {
-        this.instanceCoordinator = instanceCoordinator != null ? instanceCoordinator : new InstanceCoordinator(null);
     }
 }

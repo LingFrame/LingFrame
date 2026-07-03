@@ -17,6 +17,7 @@ import com.lingframe.dashboard.dto.LingInfoDTO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -52,7 +53,7 @@ class LingInfoConverterTest {
                 .thenReturn(PermissionInfo.permanent("ling-a", Capabilities.CACHE_LOCAL, AccessType.READ, "test"));
 
         GovernancePolicy policy = new GovernancePolicy();
-        policy.setCapabilities(java.util.Arrays.asList(
+        policy.setCapabilities(Arrays.asList(
                 GovernancePolicy.CapabilityRule.builder()
                         .capability("storage:sql:table:users")
                         .accessType(AccessType.READ.name())
@@ -169,7 +170,7 @@ class LingInfoConverterTest {
         when(canaryContainer.isActive()).thenReturn(true);
         LingInstance canaryInstance = new LingInstance(canaryContainer, canaryDef, eventBus);
 
-        when(pool.getActiveInstances()).thenReturn(java.util.Arrays.asList(defaultInstance, canaryInstance));
+        when(pool.getActiveInstances()).thenReturn(Arrays.asList(defaultInstance, canaryInstance));
         when(pool.getDefault()).thenReturn(defaultInstance);
 
         LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, null);
@@ -220,7 +221,7 @@ class LingInfoConverterTest {
         when(otherContainer.isActive()).thenReturn(true);
         LingInstance otherInstance = new LingInstance(otherContainer, otherDef, eventBus);
 
-        when(pool.getActiveInstances()).thenReturn(java.util.Arrays.asList(defaultInstance, otherInstance));
+        when(pool.getActiveInstances()).thenReturn(Arrays.asList(defaultInstance, otherInstance));
         when(pool.getDefault()).thenReturn(defaultInstance);
 
         LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, null);

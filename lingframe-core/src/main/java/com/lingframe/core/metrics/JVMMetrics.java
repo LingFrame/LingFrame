@@ -11,6 +11,7 @@ import java.lang.management.MemoryPoolMXBean;
 import java.lang.management.MemoryUsage;
 import java.lang.management.OperatingSystemMXBean;
 import java.lang.management.ThreadMXBean;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -207,7 +208,7 @@ public class JVMMetrics {
     private static void collectGCMetrics(JVMMetrics metrics) {
         long count = 0;
         long time = 0;
-        List<GcDetail> details = new java.util.ArrayList<>();
+        List<GcDetail> details = new ArrayList<>();
 
         for (GarbageCollectorMXBean gc : ManagementFactory.getGarbageCollectorMXBeans()) {
             long gcCount = gc.getCollectionCount() >= 0 ? gc.getCollectionCount() : 0;

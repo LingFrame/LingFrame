@@ -1,6 +1,6 @@
 package com.lingframe.core.proxy;
 
-import com.lingframe.api.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.*;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -45,24 +46,24 @@ class GlobalServiceRoutingProxyTest {
     class OfflineException {
 
         @Test
-        @DisplayName("目标灵元不在线时抛出 ServiceUnavailableException")
+        @DisplayName("目标灵元不在线时抛出 LingInvocationException")
         void offlineTargetThrows() {
             when(lingRepository.getRuntime("ling-1")).thenReturn(null);
             GlobalServiceRoutingProxy proxy = createProxy("ling-1");
 
             Method method = getServiceMethod();
-            assertThrows(ServiceUnavailableException.class,
+            assertThrows(LingInvocationException.class,
                     () -> proxy.invoke(new Object(), method, null));
         }
 
         @Test
-        @DisplayName("无目标灵元且仓库为空时抛出 ServiceUnavailableException")
+        @DisplayName("无目标灵元且仓库为空时抛出 LingInvocationException")
         void noTargetAndEmptyRepoThrows() {
-            when(lingRepository.getAllRuntimes()).thenReturn(java.util.Collections.emptyList());
+            when(lingRepository.getAllRuntimes()).thenReturn(Collections.emptyList());
             GlobalServiceRoutingProxy proxy = createProxy(null);
 
             Method method = getServiceMethod();
-            assertThrows(ServiceUnavailableException.class,
+            assertThrows(LingInvocationException.class,
                     () -> proxy.invoke(new Object(), method, null));
         }
     }
@@ -93,7 +94,7 @@ class GlobalServiceRoutingProxyTest {
                         getClass().getClassLoader(),
                         new Class[]{Runnable.class},
                         (p, m, a) -> null), dummyMethod, null);
-            } catch (ServiceUnavailableException e) {
+            } catch (LingInvocationException e) {
                 // SmartServiceProxy 内部可能因缺少完整上下文而抛异常
                 // 但关键是 lingRepository.getRuntime 被调用了
             }

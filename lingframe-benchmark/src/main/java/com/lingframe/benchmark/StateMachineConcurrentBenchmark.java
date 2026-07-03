@@ -5,6 +5,8 @@ import com.lingframe.core.fsm.TransitionResult;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -45,15 +47,15 @@ public class StateMachineConcurrentBenchmark {
     private static final Map<TestStatus, Set<TestStatus>> TRANSITIONS;
 
     static {
-        TRANSITIONS = new java.util.EnumMap<TestStatus, Set<TestStatus>>(TestStatus.class);
+        TRANSITIONS = new EnumMap<TestStatus, Set<TestStatus>>(TestStatus.class);
         // 构建完美的无分支单向环形流转跃迁表
-        TRANSITIONS.put(TestStatus.CREATED, java.util.EnumSet.of(TestStatus.LOADING));
-        TRANSITIONS.put(TestStatus.LOADING, java.util.EnumSet.of(TestStatus.STARTING));
-        TRANSITIONS.put(TestStatus.STARTING, java.util.EnumSet.of(TestStatus.READY));
-        TRANSITIONS.put(TestStatus.READY, java.util.EnumSet.of(TestStatus.STOPPING));
-        TRANSITIONS.put(TestStatus.STOPPING, java.util.EnumSet.of(TestStatus.ERROR));
-        TRANSITIONS.put(TestStatus.ERROR, java.util.EnumSet.of(TestStatus.RECOVERING));
-        TRANSITIONS.put(TestStatus.RECOVERING, java.util.EnumSet.of(TestStatus.CREATED));
+        TRANSITIONS.put(TestStatus.CREATED, EnumSet.of(TestStatus.LOADING));
+        TRANSITIONS.put(TestStatus.LOADING, EnumSet.of(TestStatus.STARTING));
+        TRANSITIONS.put(TestStatus.STARTING, EnumSet.of(TestStatus.READY));
+        TRANSITIONS.put(TestStatus.READY, EnumSet.of(TestStatus.STOPPING));
+        TRANSITIONS.put(TestStatus.STOPPING, EnumSet.of(TestStatus.ERROR));
+        TRANSITIONS.put(TestStatus.ERROR, EnumSet.of(TestStatus.RECOVERING));
+        TRANSITIONS.put(TestStatus.RECOVERING, EnumSet.of(TestStatus.CREATED));
     }
 
     private StateMachine<TestStatus> sharedStateMachine;

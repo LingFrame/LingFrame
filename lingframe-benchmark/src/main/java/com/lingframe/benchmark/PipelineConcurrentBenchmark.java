@@ -132,9 +132,9 @@ public class PipelineConcurrentBenchmark {
             ctx.setServiceFQSID("bench-ling:com.bench.TestService");
             ctx.setMethodName("ping");
             ctx.setParameterTypeNames(new String[0]);
-            ctx.setArgs(new java.lang.Object[0]);
-            ctx.setAccessType(AccessType.EXECUTE);
-            ctx.setExecutionMode(InvocationExecutionMode.NORMAL);
+            ctx.setArgs(new Object[0]);
+            ctx.governance().setAccessType(AccessType.EXECUTE);
+            ctx.execution().setMode(InvocationExecutionMode.NORMAL);
             bh.consume(pipelineEngine.invoke(ctx));
         } finally {
             ctx.recycle();
@@ -147,9 +147,9 @@ public class PipelineConcurrentBenchmark {
             ctx.setServiceFQSID("bench-ling:com.bench.TestService");
             ctx.setMethodName("ping");
             ctx.setParameterTypeNames(new String[0]);
-            ctx.setArgs(new java.lang.Object[0]);
-            ctx.setAccessType(AccessType.EXECUTE);
-            ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
+            ctx.setArgs(new Object[0]);
+            ctx.governance().setAccessType(AccessType.EXECUTE);
+            ctx.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
             bh.consume(pipelineEngine.invoke(ctx));
         } finally {
             ctx.recycle();
@@ -162,9 +162,9 @@ public class PipelineConcurrentBenchmark {
             ctx.setServiceFQSID("bench-ling:com.bench.TestService");
             ctx.setMethodName("ping");
             ctx.setParameterTypeNames(new String[0]);
-            ctx.setArgs(new java.lang.Object[0]);
-            ctx.setAccessType(AccessType.EXECUTE);
-            ctx.setExecutionMode(InvocationExecutionMode.SIMULATION);
+            ctx.setArgs(new Object[0]);
+            ctx.governance().setAccessType(AccessType.EXECUTE);
+            ctx.execution().setMode(InvocationExecutionMode.SIMULATION);
             bh.consume(pipelineEngine.invoke(ctx));
         } finally {
             ctx.recycle();

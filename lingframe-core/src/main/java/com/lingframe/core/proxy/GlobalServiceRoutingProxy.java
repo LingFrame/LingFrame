@@ -1,6 +1,6 @@
 package com.lingframe.core.proxy;
 
-import com.lingframe.api.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
@@ -71,7 +71,7 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
 
         LingRuntime runtime = (finalId != null) ? lingRepository.getRuntime(finalId) : null;
         if (runtime == null) {
-            throw new ServiceUnavailableException(interfaceName, "Service is currently offline");
+            throw new LingInvocationException(interfaceName, LingInvocationException.ErrorKind.STATE_REJECTED, "Service is currently offline");
         }
 
         // 复用或创建 `SmartServiceProxy`

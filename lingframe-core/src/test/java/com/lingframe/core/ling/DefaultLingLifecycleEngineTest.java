@@ -95,21 +95,22 @@ class DefaultLingLifecycleEngineTest {
         when(unloadCoordinator.checkBeforeVersionUnload("ling1", "1.0.0", targetClassLoader)).thenReturn(report);
 
         DefaultLingRepository repository = new DefaultLingRepository();
-        DefaultLingLifecycleEngine engineWithRepository = new DefaultLingLifecycleEngine(
-                containerFactory,
-                permissionService,
-                loaderFactory,
-                Collections.emptyList(),
-                eventBus,
-                LingFrameConfig.builder()
+        DefaultLingLifecycleEngine engineWithRepository = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(permissionService)
+                .lingLoaderFactory(loaderFactory)
+                .verifiers(Collections.emptyList())
+                .eventBus(eventBus)
+                .lingFrameConfig(LingFrameConfig.builder()
                         .runtimeConfig(LingRuntimeConfig.builder().forceCleanupDelaySeconds(0).build())
-                        .build(),
-                repository,
-                serviceRegistry,
-                null,
-                null,
-                unloadCoordinator,
-                runtimeCoordinator);
+                        .build())
+                .lingRepository(repository)
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(mock(InvocationPipelineEngine.class))
+                .lingResourceManager(null)
+                .unloadCoordinator(unloadCoordinator)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
 
         LingContainer container = mock(LingContainer.class);
         when(container.isActive()).thenReturn(true);
@@ -163,19 +164,20 @@ class DefaultLingLifecycleEngineTest {
         InvocationPipelineEngine pipelineEngine = mock(InvocationPipelineEngine.class);
 
         DefaultLingRepository repository = new DefaultLingRepository();
-        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(
-                containerFactory,
-                permissionService,
-                loaderFactory,
-                Collections.emptyList(),
-                eventBus,
-                LingFrameConfig.builder().build(),
-                repository,
-                serviceRegistry,
-                pipelineEngine,
-                null,
-                mock(LingUnloadCoordinator.class),
-                runtimeCoordinator);
+        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(permissionService)
+                .lingLoaderFactory(loaderFactory)
+                .verifiers(Collections.emptyList())
+                .eventBus(eventBus)
+                .lingFrameConfig(LingFrameConfig.builder().build())
+                .lingRepository(repository)
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(pipelineEngine)
+                .lingResourceManager(null)
+                .unloadCoordinator(mock(LingUnloadCoordinator.class))
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
 
         LingContainer container = mock(LingContainer.class);
         when(container.isActive()).thenReturn(true);
@@ -223,19 +225,20 @@ class DefaultLingLifecycleEngineTest {
         InvocationPipelineEngine pipelineEngine = mock(InvocationPipelineEngine.class);
 
         DefaultLingRepository repository = new DefaultLingRepository();
-        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(
-                containerFactory,
-                permissionService,
-                loaderFactory,
-                Collections.emptyList(),
-                eventBus,
-                LingFrameConfig.builder().build(),
-                repository,
-                serviceRegistry,
-                pipelineEngine,
-                null,
-                mock(LingUnloadCoordinator.class),
-                runtimeCoordinator);
+        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(permissionService)
+                .lingLoaderFactory(loaderFactory)
+                .verifiers(Collections.emptyList())
+                .eventBus(eventBus)
+                .lingFrameConfig(LingFrameConfig.builder().build())
+                .lingRepository(repository)
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(pipelineEngine)
+                .lingResourceManager(null)
+                .unloadCoordinator(mock(LingUnloadCoordinator.class))
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
 
         assertSame(repository, engine.getRepository());
         assertSame(serviceRegistry, engine.getServiceRegistry());
@@ -246,18 +249,15 @@ class DefaultLingLifecycleEngineTest {
     }
 
     @Test
-    @DisplayName("setMetricsCollector 和 getter 正常工作")
+    @DisplayName("Builder 注入 MetricsCollector 后 getter 正常返回")
     void shouldSetAndGetMetricsCollector() {
         EventBus eventBus = new EventBus();
         RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
         runtimeCoordinator.start();
 
-        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
-
-        // 微内核解耦：构造器不再自动创建 MetricsCollector，需外部注入
-        assertFalse(engine.getMetricsCollector().isPresent());
         MetricsCollector metricsCollector = mock(MetricsCollector.class);
-        engine.setMetricsCollector(metricsCollector);
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator, metricsCollector, null, null);
+
         assertTrue(engine.getMetricsCollector().isPresent());
         assertSame(metricsCollector, engine.getMetricsCollector().get());
 
@@ -265,18 +265,15 @@ class DefaultLingLifecycleEngineTest {
     }
 
     @Test
-    @DisplayName("setGovernanceMetricsCollector 和 getter 正常工作")
+    @DisplayName("Builder 注入 GovernanceMetricsCollector 后 getter 正常返回")
     void shouldSetAndGetGovernanceMetricsCollector() {
         EventBus eventBus = new EventBus();
         RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
         runtimeCoordinator.start();
 
-        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
-
-        // 微内核解耦：构造器不再自动创建，需外部注入
-        assertFalse(engine.getGovernanceMetricsCollector().isPresent());
         GovernanceMetricsCollector gmc = mock(GovernanceMetricsCollector.class);
-        engine.setGovernanceMetricsCollector(gmc);
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator, null, gmc, null);
+
         assertTrue(engine.getGovernanceMetricsCollector().isPresent());
         assertSame(gmc, engine.getGovernanceMetricsCollector().get());
 
@@ -284,18 +281,15 @@ class DefaultLingLifecycleEngineTest {
     }
 
     @Test
-    @DisplayName("setAlertManager 和 getter 正常工作")
+    @DisplayName("Builder 注入 AlertManager 后 getter 正常返回")
     void shouldSetAndGetAlertManager() {
         EventBus eventBus = new EventBus();
         RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
         runtimeCoordinator.start();
 
-        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
-
-        // 微内核解耦：构造器不再自动创建，需外部注入
-        assertFalse(engine.getAlertManager().isPresent());
         AlertManager alertManager = mock(AlertManager.class);
-        engine.setAlertManager(alertManager);
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator, null, null, alertManager);
+
         assertTrue(engine.getAlertManager().isPresent());
         assertSame(alertManager, engine.getAlertManager().get());
 
@@ -316,42 +310,64 @@ class DefaultLingLifecycleEngineTest {
     }
 
     @Test
-    @DisplayName("setHotSwapWatcher 和 getCanaryConfigurable 正常工作")
-    void shouldSetHotSwapWatcherAndCanaryConfigurable() {
+    @DisplayName("Builder 注入可选项后 getter 正常返回")
+    void shouldExposeBuilderInjectedOptionals() {
         EventBus eventBus = new EventBus();
         RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
         runtimeCoordinator.start();
 
-        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
-
         HotSwapWatcher watcher = mock(HotSwapWatcher.class);
-        engine.setHotSwapWatcher(watcher);
-
         CanaryConfigurable canary = mock(CanaryConfigurable.class);
-        engine.setCanaryConfigurable(canary);
-        assertTrue(engine.getCanaryConfigurable().isPresent());
 
+        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(mock(ContainerFactory.class))
+                .permissionService(mock(PermissionService.class))
+                .lingLoaderFactory(mock(LingLoaderFactory.class))
+                .verifiers(Collections.emptyList())
+                .eventBus(eventBus)
+                .lingFrameConfig(LingFrameConfig.builder().build())
+                .lingRepository(new DefaultLingRepository())
+                .lingServiceRegistry(mock(LingServiceRegistry.class))
+                .pipelineEngine(mock(InvocationPipelineEngine.class))
+                .lingResourceManager(null)
+                .unloadCoordinator(mock(LingUnloadCoordinator.class))
+                .runtimeCoordinator(runtimeCoordinator)
+                .hotSwapWatcher(watcher)
+                .canaryConfigurable(canary)
+                .build());
+
+        assertTrue(engine.getCanaryConfigurable().isPresent());
         runtimeCoordinator.stop();
     }
 
     private DefaultLingLifecycleEngine createMinimalEngine(EventBus eventBus, RuntimeCoordinator runtimeCoordinator) {
+        return createMinimalEngine(eventBus, runtimeCoordinator, null, null, null);
+    }
+
+    private DefaultLingLifecycleEngine createMinimalEngine(EventBus eventBus, RuntimeCoordinator runtimeCoordinator,
+            MetricsCollector metricsCollector, GovernanceMetricsCollector governanceMetricsCollector,
+            AlertManager alertManager) {
         ContainerFactory containerFactory = mock(ContainerFactory.class);
         PermissionService permissionService = mock(PermissionService.class);
         LingLoaderFactory loaderFactory = mock(LingLoaderFactory.class);
         LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
 
-        return new DefaultLingLifecycleEngine(
-                containerFactory,
-                permissionService,
-                loaderFactory,
-                Collections.emptyList(),
-                eventBus,
-                LingFrameConfig.builder().build(),
-                new DefaultLingRepository(),
-                serviceRegistry,
-                null,
-                null,
-                mock(LingUnloadCoordinator.class),
-                runtimeCoordinator);
+        return new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(permissionService)
+                .lingLoaderFactory(loaderFactory)
+                .verifiers(Collections.emptyList())
+                .eventBus(eventBus)
+                .lingFrameConfig(LingFrameConfig.builder().build())
+                .lingRepository(new DefaultLingRepository())
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(mock(InvocationPipelineEngine.class))
+                .lingResourceManager(null)
+                .unloadCoordinator(mock(LingUnloadCoordinator.class))
+                .runtimeCoordinator(runtimeCoordinator)
+                .metricsCollector(metricsCollector)
+                .governanceMetricsCollector(governanceMetricsCollector)
+                .alertManager(alertManager)
+                .build());
     }
 }

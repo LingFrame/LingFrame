@@ -7,6 +7,8 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.loader.LingManifestLoader;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,17 +29,17 @@ public class DashboardLingSourceResolver {
      */
     public List<File> listHomeFiles() {
         if (lingFrameConfig == null || lingFrameConfig.getLingHome() == null) {
-            return java.util.Collections.emptyList();
+            return Collections.emptyList();
         }
         File home = new File(lingFrameConfig.getLingHome());
         if (!home.exists() || !home.isDirectory()) {
-            return java.util.Collections.emptyList();
+            return Collections.emptyList();
         }
         File[] files = home.listFiles();
         if (files == null) {
-            return java.util.Collections.emptyList();
+            return Collections.emptyList();
         }
-        List<File> list = new java.util.ArrayList<File>();
+        List<File> list = new ArrayList<File>();
         for (File file : files) {
             if (file.isFile() && file.getName().endsWith(".jar")) {
                 list.add(file);

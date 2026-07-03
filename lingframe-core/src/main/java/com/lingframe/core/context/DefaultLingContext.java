@@ -2,7 +2,6 @@ package com.lingframe.core.context;
 
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.event.LingEvent;
-import com.lingframe.api.exception.InvocationException;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.exception.PermissionDeniedException;
@@ -114,7 +113,7 @@ public class DefaultLingContext implements LingContext {
 
         // targetClassName 由 ContextIsolationFilter 从 FQSID 提取接口名填充，
         // 不再从注册表预填，避免多版本下实现类名错配
-        ctx.setExecutionMode(InvocationExecutionMode.NORMAL);
+        ctx.execution().setMode(InvocationExecutionMode.NORMAL);
 
         try {
             Object result = pipelineEngine.invoke(ctx);
@@ -123,7 +122,7 @@ public class DefaultLingContext implements LingContext {
             throw e; // 权限异常直接抛出
         } catch (Exception e) {
             log.error("Service invocation failed for [{}]: {}", serviceId, e.getMessage(), e);
-            throw new InvocationException("Service invoke failed: " + e.getMessage(), e);
+            throw new LingInvocationException(serviceId, LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
         } finally {
             // 这里至少要彻底清空，防止跨调用残留；若后续统一收口对象池策略，可再整体切到 recycle()
             ctx.reset();

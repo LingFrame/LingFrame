@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 
+import java.lang.reflect.Field;
+import java.sql.DriverManager;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -38,6 +40,10 @@ public class LingFrameConfig {
      * 获取全局配置实例 (静态方法，随处可调)
      * <p>
      * 线程安全说明：如果未初始化，返回线程安全的默认配置单例
+     * <p>
+     * ⚠️ 兜底后门语义：主路径应通过构造器依赖注入获取 {@link LingFrameConfig}。
+     * 此方法仅保留给无法依赖注入的场景（如 SPI 扩展点、dashboard 控制面对运行时单例的读写）。
+     * 新增生产代码不应调用此方法，应改用构造器注入。
      */
     public static LingFrameConfig current() {
         LingFrameConfig config = INSTANCE;
@@ -52,12 +58,19 @@ public class LingFrameConfig {
      * 初始化全局实例 (由 Starter 启动时调用一次)
      * <p>
      * 线程安全：使用 synchronized 防止并发初始化竞态
+     * <p>
+     * ⚠️ 生产就绪约束：二次调用抛 {@link IllegalStateException}，不再静默拒绝。
+     * 历史上这里 return 静默吞掉灵元 Spring 上下文误触发的 init()，但"静默失败"是生产事故温床。
+     * 灵元误触发应通过类加载隔离在源头阻止，而非在配置层静默兜底。
+     *
+     * @throws IllegalStateException 如果已初始化（说明装配链路有 bug，需立即暴露）
      */
     public static synchronized void init(LingFrameConfig config) {
         if (INSTANCE != null) {
-            // 防止灵元加载 Spring 上下文时覆盖灵核的全局配置
-            // 例如：LINGCORE 已开启 DevMode，灵元启动默认配置为 false，若覆盖则导致 DevMode 失效
-            return;
+            throw new IllegalStateException(
+                    "LingFrameConfig already initialized; static init() must be called exactly once by the Starter. "
+                            + "If this is thrown during ling loading, the ling's Spring context is incorrectly "
+                            + "triggering core config init — fix the classloading isolation instead of catching this.");
         }
         INSTANCE = config;
         checkJdkCompatibility();
@@ -72,7 +85,7 @@ public class LingFrameConfig {
             List<String> missing = new ArrayList<>();
             // getDeclaredField 不会因强封装失败，必须尝试 setAccessible 才能检测到访问限制
             try {
-                java.lang.reflect.Field targetField = Thread.class.getDeclaredField("target");
+                Field targetField = Thread.class.getDeclaredField("target");
                 targetField.setAccessible(true);
             } catch (NoSuchFieldException e) {
                 // 字段不存在（极端情况），不视为访问限制
@@ -81,7 +94,7 @@ public class LingFrameConfig {
                 missing.add("--add-opens java.base/java.lang=ALL-UNNAMED");
             }
             try {
-                java.lang.reflect.Field driversField = java.sql.DriverManager.class.getDeclaredField("drivers");
+                Field driversField = DriverManager.class.getDeclaredField("drivers");
                 driversField.setAccessible(true);
             } catch (NoSuchFieldException e) {
                 // 字段不存在
@@ -110,11 +123,22 @@ public class LingFrameConfig {
     }
 
     /**
-     * 清理全局配置
-     * 场景：灵元测试 teardown
+     * 清理全局配置实例。
+     * <p>
+     * ⚠️ 仅用于测试 teardown，生产环境禁止调用。
+     * 测试应优先使用依赖注入的局部 {@link LingFrameConfig} 实例，避免依赖全局静态状态。
      */
     public static synchronized void clear() {
         INSTANCE = null;
+    }
+
+    /**
+     * 判断全局配置是否已通过 {@link #init} 初始化。
+     * <p>
+     * 供 Starter 启动时断言、测试前置条件检查使用。
+     */
+    public static boolean isInitialized() {
+        return INSTANCE != null;
     }
 
     /**

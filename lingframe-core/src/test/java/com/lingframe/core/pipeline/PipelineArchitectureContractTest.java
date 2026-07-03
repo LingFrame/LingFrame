@@ -23,8 +23,13 @@ class PipelineArchitectureContractTest {
     void shouldAssembleBuiltinFiltersInStablePhaseOrder() {
         EventBus eventBus = new EventBus();
         RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
-        FilterRegistry registry = new FilterRegistry(new InvokableMethodCache(), mock(PermissionService.class));
-        registry.initialize(new DefaultLingRepository(), null, eventBus, runtimeCoordinator);
+        FilterRegistry registry = new FilterRegistry(FilterRegistryConfig.builder()
+                .methodCache(new InvokableMethodCache())
+                .permissionService(mock(PermissionService.class))
+                .lingRepository(new DefaultLingRepository())
+                .eventBus(eventBus)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
 
         List<Class<?>> filterTypes = registry.getOrderedFilters().stream()
                 .map(Object::getClass)

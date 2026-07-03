@@ -28,6 +28,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 
 import javax.servlet.FilterChain;
 import java.lang.reflect.Method;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -409,7 +410,7 @@ class LingWebGovernanceFilterTest {
             when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
 
             Answer<Void> throwTimeout = inv -> {
-                throw new java.util.concurrent.TimeoutException("Read timed out");
+                throw new TimeoutException("Read timed out");
             };
             doAnswer(throwTimeout).when(filterChain).doFilter(any(), any());
 

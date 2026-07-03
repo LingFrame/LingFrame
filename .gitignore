@@ -52,3 +52,7 @@ dependency-reduced-pom.xml
 lingframe-benchmark/develop
 # AtomCode local-scope configs (machine-specific)
 .atomcode/local/
+/.arts
+/.atomcode
+/.project-meta
+*log*

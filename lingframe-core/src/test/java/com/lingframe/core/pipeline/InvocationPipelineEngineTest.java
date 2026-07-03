@@ -8,6 +8,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -36,7 +38,7 @@ class InvocationPipelineEngineTest {
         @Test
         @DisplayName("invoke 执行过滤器链并返回结果")
         void invokeExecutesChain() throws Throwable {
-            when(registry.getOrderedFilters()).thenReturn(java.util.Collections.singletonList(
+            when(registry.getOrderedFilters()).thenReturn(Collections.singletonList(
                     (LingInvocationFilter) (ctx, chain) -> "result"
             ));
 
@@ -50,7 +52,7 @@ class InvocationPipelineEngineTest {
         @Test
         @DisplayName("invoke 正确挂载和恢复 InvocationContext")
         void invokeAttachesAndDetachesContext() throws Throwable {
-            when(registry.getOrderedFilters()).thenReturn(java.util.Collections.singletonList(
+            when(registry.getOrderedFilters()).thenReturn(Collections.singletonList(
                     (LingInvocationFilter) (ctx, chain) -> {
                         // 执行期间 current 应该可用
                         assertNotNull(InvocationContext.current());
@@ -80,7 +82,7 @@ class InvocationPipelineEngineTest {
             LingInvocationException expected = new LingInvocationException(
                     "ling-1:Service", LingInvocationException.ErrorKind.SECURITY_REJECTED);
 
-            when(registry.getOrderedFilters()).thenReturn(java.util.Collections.singletonList(
+            when(registry.getOrderedFilters()).thenReturn(Collections.singletonList(
                     (LingInvocationFilter) (ctx, chain) -> { throw expected; }
             ));
 
@@ -97,7 +99,7 @@ class InvocationPipelineEngineTest {
         void otherExceptionWrappedAsInternalError() throws Throwable {
             RuntimeException cause = new RuntimeException("unexpected");
 
-            when(registry.getOrderedFilters()).thenReturn(java.util.Collections.singletonList(
+            when(registry.getOrderedFilters()).thenReturn(Collections.singletonList(
                     (LingInvocationFilter) (ctx, chain) -> { throw cause; }
             ));
 

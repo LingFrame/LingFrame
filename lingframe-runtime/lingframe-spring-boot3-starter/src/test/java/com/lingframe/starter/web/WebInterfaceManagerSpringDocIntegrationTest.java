@@ -23,6 +23,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 
 import java.lang.reflect.Method;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -163,7 +164,7 @@ class WebInterfaceManagerSpringDocIntegrationTest {
             Method method = RequestMappingInfo.class.getMethod("getPatternValues");
             return (Set<String>) method.invoke(mappingInfo);
         } catch (Exception ex) {
-            return java.util.Collections.emptySet();
+            return Collections.emptySet();
         }
     }
 
@@ -221,7 +222,7 @@ class WebInterfaceManagerSpringDocIntegrationTest {
     @RestController
     static class DemoLingController {
         public List<String> listUsers() {
-            return java.util.Collections.singletonList("alice");
+            return Collections.singletonList("alice");
         }
     }
 }

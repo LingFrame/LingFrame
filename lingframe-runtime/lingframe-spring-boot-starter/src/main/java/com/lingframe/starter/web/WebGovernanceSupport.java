@@ -87,13 +87,13 @@ public final class WebGovernanceSupport {
         ctx.resolution().setResolvedMethod(method);
         ctx.resolution().setResolvedParameterTypes(method.getParameterTypes());
         ctx.resolution().setTargetClassLoader(method.getDeclaringClass().getClassLoader());
-        ctx.setRequiredPermission(permission);
-        ctx.setAccessType(resolveAccessType(request.getMethod()));
-        ctx.setAuditAction(auditAction);
-        ctx.setShouldAudit(shouldAudit);
+        ctx.governance().setRequiredPermission(permission);
+        ctx.governance().setAccessType(resolveAccessType(request.getMethod()));
+        ctx.governance().setAuditAction(auditAction);
+        ctx.governance().setShouldAudit(shouldAudit);
         ctx.setMetadata(resolveMetadata(request));
         ctx.setLabels(new HashMap<String, String>());
-        ctx.setRuleSource(null);
+        ctx.governance().setRuleSource(null);
         if (invocationGovernanceResolver != null) {
             invocationGovernanceResolver.applyTo(ctx, lingId);
         }

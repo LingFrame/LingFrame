@@ -104,7 +104,7 @@ class ContextIsolationFilterTest {
         void simulationModeSkipsWithoutTarget() throws Throwable {
             InvocationContext ctx = InvocationContext.obtain();
             ctx.setServiceFQSID("ling-1:Service");
-            ctx.setExecutionMode(InvocationExecutionMode.SIMULATION);
+            ctx.execution().setMode(InvocationExecutionMode.SIMULATION);
             // 无目标实例
 
             Object result = filter.doFilter(ctx, (c) -> "sim-result");
@@ -116,7 +116,7 @@ class ContextIsolationFilterTest {
         void governOnlyModeSkipsWithoutTarget() throws Throwable {
             InvocationContext ctx = InvocationContext.obtain();
             ctx.setServiceFQSID("ling-1:Service");
-            ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
+            ctx.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
             // 无目标实例
 
             Object result = filter.doFilter(ctx, (c) -> "govern-result");

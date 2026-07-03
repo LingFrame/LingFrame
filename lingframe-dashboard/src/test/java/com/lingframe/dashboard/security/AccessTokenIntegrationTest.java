@@ -7,6 +7,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -85,7 +86,7 @@ class AccessTokenIntegrationTest {
 
     @Test
     void secondaryToken_passes() throws Exception {
-        properties.setSecondaryTokens(java.util.Arrays.asList("backup-token"));
+        properties.setSecondaryTokens(Arrays.asList("backup-token"));
         HttpServletRequest request = mock(HttpServletRequest.class);
         HttpServletResponse response = mock(HttpServletResponse.class);
         when(request.getHeader("X-Access-Token")).thenReturn("backup-token");

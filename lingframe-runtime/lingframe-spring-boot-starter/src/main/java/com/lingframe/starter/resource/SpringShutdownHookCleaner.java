@@ -135,6 +135,22 @@ final class SpringShutdownHookCleaner {
                 continue;
             }
             if (!Collection.class.isAssignableFrom(field.getType()) && !Map.class.isAssignableFrom(field.getType())) {
+                String typeName = field.getType().getName();
+                if (typeName.contains("SpringApplicationShutdownHook") || typeName.contains("Handlers")) {
+                    try {
+                        field.setAccessible(true);
+                        Object innerHolder = field.get(holder);
+                        if (innerHolder != null) {
+                            removed += removeShutdownHookTargetReferences(lingId,
+                                    holderName + "." + field.getName(),
+                                    innerHolder.getClass(),
+                                    innerHolder,
+                                    false,
+                                    lingClassLoader);
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
                 continue;
             }
             try {

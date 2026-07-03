@@ -30,13 +30,13 @@ public class EntryInvocationGovernanceResolver {
 
         GovernancePolicy.InvocationPolicy invocation = effectivePolicy.getInvocation();
         if (invocation.getTimeoutMs() != null) {
-            context.setTimeout(invocation.getTimeoutMs());
+            context.governance().setTimeoutMs(invocation.getTimeoutMs());
         }
         if (invocation.getRateLimitPerSecond() != null) {
-            context.setRateLimitPerSecond(invocation.getRateLimitPerSecond());
+            context.governance().setRateLimitPerSecond(invocation.getRateLimitPerSecond());
         }
         if (invocation.getMaxConcurrentThreads() != null) {
-            context.setMaxConcurrentThreads(invocation.getMaxConcurrentThreads());
+            context.governance().setMaxConcurrentThreads(invocation.getMaxConcurrentThreads());
         }
     }
 

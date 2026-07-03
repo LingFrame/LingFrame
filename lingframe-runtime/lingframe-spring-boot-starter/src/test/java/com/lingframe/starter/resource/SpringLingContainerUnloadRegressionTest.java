@@ -1,22 +1,40 @@
 package com.lingframe.starter.resource;
 
+import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.context.DefaultLingContext;
+import com.lingframe.core.classloader.LingClassLoader;
+import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.fsm.RuntimeCoordinator;
+import com.lingframe.core.ling.DefaultLingLifecycleEngine;
+import com.lingframe.core.ling.DefaultLingRepository;
+import com.lingframe.core.ling.InvokableMethodCache;
+import com.lingframe.core.ling.LifecycleEngineConfig;
+import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.ling.LingServiceRegistry;
+import com.lingframe.core.ling.LingUnloadCoordinator;
+import com.lingframe.core.pipeline.FilterRegistry;
+import com.lingframe.core.pipeline.FilterRegistryConfig;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.pipeline.LatestVersionPolicy;
+import com.lingframe.core.resource.DefaultLeakDetector;
+import com.lingframe.core.resource.JdbcDriverUnloadHook;
+import com.lingframe.core.resource.JvmShutdownHookUnloadHook;
+import com.lingframe.core.resource.ThreadReferenceUnloadHook;
+import com.lingframe.core.security.DangerousApiVerifier;
+import com.lingframe.core.spi.ContainerFactory;
+import com.lingframe.core.spi.LeakDetector;
+import com.lingframe.core.spi.LingLoaderFactory;
+import com.lingframe.core.spi.LingSecurityVerifier;
 import com.lingframe.core.spi.LingUnloadHook;
-import com.lingframe.starter.adapter.SpringLingContainer;
+import com.lingframe.api.event.LingEventListener;
+import com.lingframe.core.event.monitor.MonitoringEvents;
+import com.lingframe.starter.adapter.SpringContainerFactory;
+import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.web.WebInterfaceManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.WebApplicationType;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.support.GenericApplicationContext;
-import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -24,6 +42,7 @@ import org.springframework.util.ReflectionUtils;
 import org.springframework.web.servlet.HandlerExecutionChain;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+import org.springframework.context.support.GenericApplicationContext;
 
 import javax.tools.JavaCompiler;
 import javax.tools.StandardJavaFileManager;
@@ -34,243 +53,298 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.management.ManagementFactory;
-import java.lang.management.RuntimeMXBean;
 import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.stream.Stream;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Deque;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
+import java.util.Map;
+import java.util.Vector;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+/**
+ * Spring 灵元容器卸载回归测试。
+ * <p>
+ * 完全走生产标准路径：通过 {@link DefaultLingLifecycleEngine#deploy} 安装灵元，
+ * 通过 {@link DefaultLingLifecycleEngine#undeploy} 卸载灵元，
+ * 装配链路对齐 {@code LingFrameLifecycleBeansConfiguration}（生态桶 2 hook + JVM 桶 3 hook = 5 hook），
+ * 泄漏判定对齐 {@code DefaultLeakDetector} + {@code LingUnloadCollectabilityRegressionTest}。
+ * <p>
+ * 不再手动 new SpringLingContainer + stop + cleanup，避免绕过 InstancePool / onVersionUnload / detectLeak。
+ */
 @DisplayName("SpringLingContainer 卸载回归测试")
 class SpringLingContainerUnloadRegressionTest {
 
     private static final String APP_CLASS_NAME = "sample.springling.SampleLingApp";
 
-    /**
-     * 检测当前 JVM 是否运行在覆盖率采集模式下。
-     * 覆盖率 agent（JaCoCo / IntelliJ Coverage）会对自定义 ClassLoader 持有强引用，
-     * 导致 ClassLoader 无法被 GC 回收，使总闸断言必然失败。
-     * 此标志用于在该场景下降级 classLoaderCollected 断言。
-     */
-    private static boolean isCoverageAgentActive() {
-        RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
-        List<String> inputArgs = runtimeMXBean.getInputArguments();
-        for (String arg : inputArgs) {
-            String lower = arg.toLowerCase();
-            if (lower.contains("jacoco")
-                    || lower.contains("intellij-coverage")
-                    || lower.contains("coverage_rt")
-                    || lower.contains("idea_rt")
-                    || (lower.contains("javaagent") && lower.contains("coverage"))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static final boolean COVERAGE_ACTIVE = isCoverageAgentActive();
-
-    /**
-     * 总闸断言：ClassLoader 应在卸载后被 GC 回收。
-     * ClassLoader 是灵元所有静态引用的根，只要灵核侧任何一个静态表
-     * （BPP 缓存、Property.annotationCache、Jackson TypeFactory 等）
-     * 残留灵元 Class，ClassLoader 即不可达，断言红。
-     * 覆盖率 agent 活跃时降级为警告。
-     */
-    private static void assertClassLoaderCollected(boolean collected) {
-        if (COVERAGE_ACTIVE) {
-            if (!collected) {
-                System.err.println(
-                        "[WARN] classLoaderCollected=false，但当前运行在覆盖率采集模式下，"
-                                + "覆盖率 agent 持有 ClassLoader 强引用导致无法回收，此断言已降级为警告。"
-                                + "无覆盖率模式下此断言必须为 true。");
-            }
-        } else {
-            if (!collected) {
-                System.err.println("[DIAG] COVERAGE_ACTIVE=false，但 classLoaderCollected=false。"
-                        + "JVM inputArguments: " + ManagementFactory.getRuntimeMXBean().getInputArguments());
-            }
-            assertTrue(collected, "ClassLoader 应在 Spring 容器卸载后被 GC 回收，存在灵核侧静态缓存泄漏");
-        }
-    }
+    private DefaultLingLifecycleEngine lifecycleEngine;
+    private EventBus eventBus;
+    private RuntimeCoordinator runtimeCoordinator;
+    private LeakDetector leakDetector;
+    private AtomicReference<LingClassLoader> loaderHolder;
 
     @AfterEach
-    void resetBootShutdownHook() throws Exception {
-        SpringLingContainerUnloadRegressionSupport.reset();
-        Method resetMethod = bootShutdownHook().getClass().getDeclaredMethod("reset");
-        resetMethod.setAccessible(true);
-        resetMethod.invoke(bootShutdownHook());
+    void tearDown() throws Exception {
+        if (runtimeCoordinator != null) {
+            runtimeCoordinator.stop();
+        }
+        if (leakDetector != null) {
+            leakDetector.shutdown();
+        }
+        if (eventBus != null) {
+            eventBus.shutdown();
+        }
+        // 重置 Spring Boot 静态 shutdownHook，防止跨测试残留
+        try {
+            Object bootShutdownHook = bootShutdownHook();
+            Method resetMethod = bootShutdownHook.getClass().getDeclaredMethod("reset");
+            resetMethod.setAccessible(true);
+            resetMethod.invoke(bootShutdownHook);
+        } catch (Throwable ignored) {
+        }
     }
 
     @Test
-    @DisplayName("停止清理并关闭后应释放 Spring 灵核侧引用")
-    void shouldReleaseSpringHostSideReferencesAfterStopCleanupAndClose() throws Exception {
+    @DisplayName("通过生产卸载链路应释放 Spring 灵核侧引用并回收 ClassLoader")
+    void shouldReleaseSpringHostSideReferencesThroughProductionUndeployPath() throws Exception {
         try (TestHost host = TestHost.create()) {
             CycleResult cycle = runCycle(host, "order-ling");
 
-            assertTrue(cycle.executorShutdown);
-            assertTrue(cycle.classLoaderClosed);
-            assertTrue(cycle.shutdownHookClean);
-            assertTrue(cycle.routeRemoved);
-            assertTrue(cycle.noThreadContextClassLoaderLeak);
-            assertClassLoaderCollected(cycle.classLoaderCollected);
-            assertEquals(1, cycle.startCount);
-            assertEquals(1, cycle.stopCount);
+            assertTrue(cycle.classLoaderClosed, "ClassLoader 应被关闭");
+            assertFalse(cycle.runtimeStillRegistered, "运行时应从 Repository 注销");
+            assertTrue(cycle.routeRemoved, "Web 路由应被注销");
+            assertTrue(cycle.noThreadContextClassLoaderLeak, "线程 contextClassLoader 不应残留");
+            assertClassLoaderCollected(cycle.classLoaderCollected, cycle.leakedClassLoader);
         }
     }
 
     @Test
-    @DisplayName("重复 Spring 容器启停后仍应可被回收")
-    void shouldRemainCollectibleAcrossRepeatedSpringContainerCycles() throws Exception {
+    @DisplayName("重复生产卸载链路后仍应可被回收")
+    void shouldRemainCollectibleAcrossRepeatedProductionUndeployCycles() throws Exception {
         try (TestHost host = TestHost.create()) {
             for (int i = 0; i < 3; i++) {
                 CycleResult cycle = runCycle(host, "order-ling-" + i);
 
-                assertTrue(cycle.executorShutdown);
                 assertTrue(cycle.classLoaderClosed);
-                assertTrue(cycle.shutdownHookClean);
+                assertFalse(cycle.runtimeStillRegistered);
                 assertTrue(cycle.routeRemoved);
                 assertTrue(cycle.noThreadContextClassLoaderLeak);
-                assertClassLoaderCollected(cycle.classLoaderCollected);
-                assertEquals(1, cycle.startCount);
-                assertEquals(1, cycle.stopCount);
+                assertClassLoaderCollected(cycle.classLoaderCollected, cycle.leakedClassLoader);
             }
         }
     }
 
+    /**
+     * 装配生产标准链路（对齐 LingFrameLifecycleBeansConfiguration）并执行一次 deploy→undeploy 周期。
+     */
     private CycleResult runCycle(TestHost host, String lingId) throws Exception {
-        CycleArtifacts artifacts = performCycle(host, lingId);
-        try {
-            return new CycleResult(
-                    artifacts.startCount,
-                    artifacts.stopCount,
-                    artifacts.executorShutdown,
-                    artifacts.classLoaderClosed,
-                    artifacts.shutdownHookClean,
-                    artifacts.routeRemoved,
-                    artifacts.noThreadContextClassLoaderLeak,
-                    artifacts.classLoaderCollected);
-        } finally {
-            deleteRecursively(artifacts.workspace);
-        }
-    }
-
-    private CycleArtifacts performCycle(TestHost host, String lingId) throws Exception {
-        SpringLingContainerUnloadRegressionSupport.reset();
         Path workspace = Files.createTempDirectory("spring-ling-unload");
         Path sourceDir = workspace.resolve("src");
         Path classesDir = workspace.resolve("classes");
         compileLingApp(sourceDir, classesDir);
 
-        AtomicBoolean classLoaderClosed = new AtomicBoolean(false);
-        WeakReference<ClassLoader> classLoaderRef = null;
-        // 生态卸载钩子
+        try {
+            return runCycleInternal(host, lingId, classesDir);
+        } finally {
+            deleteRecursively(workspace);
+        }
+    }
+
+    private CycleResult runCycleInternal(TestHost host, String lingId, Path classesDir) throws Exception {
+        // ==================== 装配生产标准链路（对齐 LingFrameLifecycleBeansConfiguration） ====================
+        eventBus = new EventBus();
+        runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        DefaultLingRepository repository = new DefaultLingRepository();
+        PermissionService permissionService = mock(PermissionService.class);
+        when(permissionService.isAllowed(isNull(), eq("test:invoke"), isNull())).thenReturn(true);
+
+        LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
+        when(serviceRegistry.getServicesByLingId(lingId)).thenReturn(Collections.emptyList());
+
+        FilterRegistry registry = new FilterRegistry(FilterRegistryConfig.builder()
+                .methodCache(new InvokableMethodCache())
+                .permissionService(permissionService)
+                .lingRepository(repository)
+                .trafficRouter(new LatestVersionPolicy())
+                .eventBus(eventBus)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
+        InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(registry);
+
+        // 生态桶：Spring 生态清理 Hook（对齐 LingFrameRuntimeBeansConfiguration 注册的 2 个 @Bean）
         List<LingUnloadHook> ecosystemHooks = Arrays.asList(
                 new SpringEcosystemUnloadHook(),
                 new StorageCacheUnloadHook());
-        ExecutorService executor;
-        boolean shutdownHookCleanAfterStop;
-        boolean routeRemovedAfterStop;
+        // JVM 桶：三个独立 JVM 级 Hook（对齐 LingFrameLifecycleBeansConfiguration L109-112 硬编码）
+        List<LingUnloadHook> jvmHooks = Arrays.asList(
+                new JdbcDriverUnloadHook(),
+                new ThreadReferenceUnloadHook(),
+                new JvmShutdownHookUnloadHook());
 
-        CloseAwareClassLoader lingClassLoader = new CloseAwareClassLoader(
-                new URL[] { classesDir.toUri().toURL() },
-                getClass().getClassLoader(),
-                classLoaderClosed);
-        try {
-            classLoaderRef = new WeakReference<>(lingClassLoader);
+        LingFrameConfig lingFrameConfig = LingFrameConfig.builder()
+                .apiOverrideCheckEnabled(false)
+                .devMode(true)
+                .leakDetectionDevStartDelayMillis(100)
+                .leakDetectionAggressiveGcRounds(20)
+                .leakDetectionAggressiveGcIntervalMillis(200)
+                .leakDetectionFinalConfirmationDelayMillis(2000)
+                .runtimeConfig(LingRuntimeConfig.builder()
+                        .bulkheadMaxConcurrent(1)
+                        .defaultTimeoutMs(1000)
+                        .rateLimitPerSecond(5)
+                        .forceCleanupDelaySeconds(0)
+                        .build())
+                .build();
 
-            Class<?> appClass = lingClassLoader.loadClass(APP_CLASS_NAME);
-            SpringApplicationBuilder builder = new SpringApplicationBuilder()
-                    .resourceLoader(new DefaultResourceLoader(lingClassLoader))
-                    .sources(appClass)
-                    .web(WebApplicationType.NONE)
-                    .registerShutdownHook(false);
+        // 泄漏检测器：生产 DefaultLeakDetector，devMode=true 走主动 GC 轮询
+        leakDetector = new DefaultLeakDetector(eventBus, lingFrameConfig);
 
-            SpringLingContainer container = new SpringLingContainer(
-                    builder,
-                    lingClassLoader,
-                    host.manager,
-                    Collections.emptyList(),
-                    Collections.emptyList(),
-                    host.hostContext,
-                    ecosystemHooks,
-                    "v1");
-
-            DefaultLingContext lingContext = createLingContext(lingId);
-            String routePath = "/" + lingId + "/demo/ping";
-
-            container.start(lingContext);
-            assertTrue(container.isActive());
-            assertNotNull(host.manager.resolveRoute(new MockHttpServletRequest("GET", routePath)));
-            assertEquals("pong", performWebRequest(host, routePath));
-            assertFalse(containsBootShutdownHookReference(lingClassLoader), findBootShutdownHookReference(lingClassLoader));
-
-            executor = SpringLingContainerUnloadRegressionSupport.awaitExecutor();
-            assertNotNull(executor);
-
-            container.stop();
-
-            assertFalse(container.isActive());
-            assertTrue(executor.isShutdown());
-            assertNull(host.manager.resolveRoute(new MockHttpServletRequest("GET", routePath)));
-            assertNull(getHandlerExecutionChain(host.hostMapping, new MockHttpServletRequest("GET", routePath)));
-
-            shutdownHookCleanAfterStop = !containsBootShutdownHookReference(lingClassLoader);
-            routeRemovedAfterStop = host.manager.resolveRoute(new MockHttpServletRequest("GET", routePath)) == null;
-
-            // 执行所有生态 Hook 清理
-            for (LingUnloadHook hook : ecosystemHooks) {
-                hook.cleanup(lingId, lingClassLoader);
+        // 订阅 LeakDetectionEvent，用 DefaultLeakDetector 的判定结果做断言（不再自造 WeakReference.get() 轮询）
+        CountDownLatch leakLatch = new CountDownLatch(1);
+        AtomicReference<MonitoringEvents.LeakDetectionEvent> leakEvent = new AtomicReference<>();
+        eventBus.subscribeGlobal(MonitoringEvents.LeakDetectionEvent.class, e -> {
+            if (lingId.equals(e.getLingId())) {
+                leakEvent.set(e);
+                leakLatch.countDown();
             }
+        });
 
-            appClass = null;
-            builder = null;
-            container = null;
-            lingContext = null;
-            lingClassLoader.close();
-        } finally {
-            lingClassLoader = null;
-        }
+        LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
+                pipelineEngine, ecosystemHooks, jvmHooks, null, leakDetector);
 
-        // 总闸：等待 ClassLoader 被 GC 回收
-        awaitCollection(classLoaderRef);
-        boolean classLoaderCollected = classLoaderRef.get() == null;
+        // LingFrameProperties bean：SpringContainerFactory 构造时需要
+        // GenericApplicationContext 不支持二次 refresh，registerBean 在 refresh 后直接可用
+        // devMode=true 让 SpringContainerFactory.create 异常透传（非 devMode 下异常被吞返回 null）
+        LingFrameProperties props = new LingFrameProperties();
+        props.setDevMode(true);
+        host.hostContext.getBeanFactory().registerSingleton(
+                "lingFrameProperties", props);
 
-        return new CycleArtifacts(
-                workspace,
-                SpringLingContainerUnloadRegressionSupport.startCount(),
-                SpringLingContainerUnloadRegressionSupport.stopCount(),
-                executor.isShutdown(),
-                classLoaderClosed.get(),
-                shutdownHookCleanAfterStop,
-                routeRemovedAfterStop,
-                findThreadContextClassLoaderReference(classLoaderRef.get()) == null,
-                classLoaderCollected);
+        // ContainerFactory：真实 SpringContainerFactory（对齐 LingFrameLifecycleBeansConfiguration L76）
+        ContainerFactory containerFactory = new SpringContainerFactory(
+                host.hostContext, host.manager, Collections.emptyList(), ecosystemHooks);
+
+        // LingLoaderFactory：造 LingClassLoader（生产用 LingClassLoader，非 URLClassLoader）
+        AtomicBoolean classLoaderClosed = new AtomicBoolean(false);
+        loaderHolder = new AtomicReference<>();
+        LingLoaderFactory loaderFactory = (id, sourceFile, parent) -> {
+            classLoaderClosed.set(false);
+            URL[] urls;
+            try {
+                urls = new URL[] { classesDir.toUri().toURL() };
+            } catch (java.net.MalformedURLException e) {
+                throw new IllegalStateException("Failed to resolve classesDir URL", e);
+            }
+            CloseAwareLingClassLoader cl = new CloseAwareLingClassLoader(
+                    id,
+                    urls,
+                    parent,
+                    classLoaderClosed);
+            loaderHolder.set(cl);
+            return cl;
+        };
+
+        List<LingSecurityVerifier> verifiers = Collections.singletonList(new DangerousApiVerifier(false));
+
+        lifecycleEngine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(permissionService)
+                .lingLoaderFactory(loaderFactory)
+                .verifiers(verifiers)
+                .eventBus(eventBus)
+                .lingFrameConfig(lingFrameConfig)
+                .lingRepository(repository)
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(pipelineEngine)
+                .lingResourceManager(null)
+                .unloadCoordinator(unloadCoordinator)
+                .runtimeCoordinator(runtimeCoordinator)
+                .leakDetector(leakDetector)
+                .build());
+
+        // ==================== 生产路径：deploy ====================
+        LingDefinition definition = new LingDefinition();
+        definition.setId(lingId);
+        definition.setVersion("1.0.0");
+        definition.setMainClass(APP_CLASS_NAME);
+
+        lifecycleEngine.deploy(definition, classesDir.toFile(), true, Collections.emptyMap());
+
+        CloseAwareLingClassLoader lingClassLoader = (CloseAwareLingClassLoader) loaderHolder.get();
+        assertNotNull(lingClassLoader, "ClassLoader 应在 deploy 后被创建");
+        WeakReference<ClassLoader> classLoaderRef = new WeakReference<>(lingClassLoader);
+
+        // ==================== Web 请求模拟（B 场景核心：验证 Spring 灵元 Controller 注册与路由） ====================
+        String routePath = "/" + lingId + "/demo/ping";
+        assertNotNull(host.manager.resolveRoute(new MockHttpServletRequest("GET", routePath)),
+                "Web 路由应在 deploy 后注册");
+        assertEquals("pong", performWebRequest(host, routePath), "Web 请求应成功响应");
+
+        // ==================== 生产路径：undeploy（真路径，走 InstancePool.removeInstance + onVersionUnload + detectLeak） ====================
+        lifecycleEngine.undeploy(lingId);
+
+        boolean runtimeStillRegistered = repository.hasRuntime(lingId);
+        boolean classLoaderClosedFlag = classLoaderClosed.get();
+        boolean routeRemoved = host.manager.resolveRoute(new MockHttpServletRequest("GET", routePath)) == null;
+        assertNull(getHandlerExecutionChain(host.hostMapping, new MockHttpServletRequest("GET", routePath)),
+                "宿主 HandlerMapping 不应再路由到灵元 Controller");
+
+        // ==================== 释放测试侧强引用，等待 DefaultLeakDetector 判定 ====================
+        lingClassLoader = null;
+        loaderHolder.set(null);
+        lifecycleEngine = null;
+
+        // 等待 DefaultLeakDetector 异步发 LeakDetectionEvent（devMode 走 aggressive GC 轮询 + 最终确认窗口）
+        // 总超时 = devStartDelay + aggressiveGcRounds*interval + finalConfirmationDelay，留足余量
+        boolean received = leakLatch.await(30, TimeUnit.SECONDS);
+        assertTrue(received, "应在超时前收到 LeakDetectionEvent");
+
+        MonitoringEvents.LeakDetectionEvent event = leakEvent.get();
+        assertNotNull(event, "LeakDetectionEvent 不应为 null");
+        boolean classLoaderCollected = event.isCollected();
+        boolean noThreadContextClassLoaderLeak = findThreadContextClassLoaderReference(classLoaderRef.get()) == null;
+
+        // 验证生产链路的副作用
+        verify(serviceRegistry).evict(lingId);
+        verify(permissionService).removeLing(lingId);
+
+        return new CycleResult(
+                classLoaderClosedFlag,
+                runtimeStillRegistered,
+                routeRemoved,
+                noThreadContextClassLoaderLeak,
+                classLoaderCollected,
+                classLoaderRef.get());
     }
 
-    private DefaultLingContext createLingContext(String lingId) {
-        LingRepository repository = mock(LingRepository.class);
-        LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
-        InvocationPipelineEngine pipelineEngine = mock(InvocationPipelineEngine.class);
-        PermissionService permissionService = mock(PermissionService.class);
-        EventBus eventBus = new EventBus();
-        return new DefaultLingContext(lingId, repository, serviceRegistry, pipelineEngine, permissionService, eventBus);
-    }
-
+    /**
+     * 编译带 Spring Controller 的灵元源码。
+     * 不再依赖 SpringLingContainerUnloadRegressionSupport（生产路径由 Ling.onStart/onStop + SpringEcosystemUnloadHook 管生命周期）。
+     */
     private void compileLingApp(Path sourceDir, Path classesDir) throws IOException {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
@@ -286,7 +360,6 @@ class SpringLingContainerUnloadRegressionTest {
                 + "package sample.springling;\n"
                 + "import com.lingframe.api.context.LingContext;\n"
                 + "import com.lingframe.api.ling.Ling;\n"
-                + "import com.lingframe.starter.resource.SpringLingContainerUnloadRegressionSupport;\n"
                 + "import org.springframework.boot.autoconfigure.SpringBootApplication;\n"
                 + "import org.springframework.context.annotation.Bean;\n"
                 + "import org.springframework.web.bind.annotation.GetMapping;\n"
@@ -295,23 +368,22 @@ class SpringLingContainerUnloadRegressionTest {
                 + "import java.util.concurrent.Executors;\n"
                 + "@SpringBootApplication\n"
                 + "public class SampleLingApp implements Ling {\n"
+                + "    public static void main(String[] args) {\n"
+                + "        org.springframework.boot.SpringApplication.run(SampleLingApp.class, args);\n"
+                + "    }\n"
                 + "    @Override\n"
                 + "    public void onStart(LingContext context) {\n"
-                + "        SpringLingContainerUnloadRegressionSupport.recordStart(context.getLingId());\n"
                 + "    }\n"
                 + "    @Override\n"
                 + "    public void onStop(LingContext context) {\n"
-                + "        SpringLingContainerUnloadRegressionSupport.recordStop(context != null ? context.getLingId() : null);\n"
                 + "    }\n"
                 + "    @Bean\n"
                 + "    public ExecutorService lingExecutor() {\n"
-                + "        ExecutorService executor = Executors.newSingleThreadExecutor(r -> {\n"
+                + "        return Executors.newSingleThreadExecutor(r -> {\n"
                 + "            Thread thread = new Thread(r, \"sample-ling-executor\");\n"
                 + "            thread.setDaemon(true);\n"
                 + "            return thread;\n"
                 + "        });\n"
-                + "        SpringLingContainerUnloadRegressionSupport.recordExecutor(executor);\n"
-                + "        return executor;\n"
                 + "    }\n"
                 + "    @RestController\n"
                 + "    static class DemoController {\n"
@@ -323,13 +395,14 @@ class SpringLingContainerUnloadRegressionTest {
                 + "}\n";
         Files.write(sourceFile, source.getBytes(StandardCharsets.UTF_8));
 
-        try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
+        try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(null, null,
+                StandardCharsets.UTF_8)) {
             fileManager.setLocation(StandardLocation.CLASS_OUTPUT, Collections.singletonList(classesDir.toFile()));
             boolean success = compiler.getTask(
                     null,
                     fileManager,
                     null,
-                    java.util.Arrays.asList("-classpath", System.getProperty("java.class.path")),
+                    Arrays.asList("-classpath", System.getProperty("java.class.path")),
                     null,
                     fileManager.getJavaFileObjects(sourceFile.toFile()))
                     .call();
@@ -339,12 +412,133 @@ class SpringLingContainerUnloadRegressionTest {
         }
     }
 
-    private void awaitCollection(WeakReference<ClassLoader> reference) throws InterruptedException {
-        for (int i = 0; i < 100 && reference.get() != null; i++) {
-            System.gc();
-            System.runFinalization();
-            TimeUnit.MILLISECONDS.sleep(100);
+    /**
+     * 总闸断言：ClassLoader 应在卸载后被 GC 回收。
+     */
+    private static void assertClassLoaderCollected(boolean collected, ClassLoader leakedLoader) {
+        if (!collected) {
+            System.err.println("[DIAG] classLoaderCollected=false。"
+                    + "JVM inputArguments: " + ManagementFactory.getRuntimeMXBean().getInputArguments());
+            diagnoseClassLoaderLeak(leakedLoader);
         }
+        assertTrue(collected, "ClassLoader 应在生产卸载链路后被 GC 回收，存在静态缓存泄漏");
+    }
+
+    /**
+     * 诊断：扫描灵核侧静态字段，找出谁持有泄漏的 ClassLoader。
+     */
+    @SuppressWarnings("unchecked")
+    private static void diagnoseClassLoaderLeak(ClassLoader leakedLoader) {
+        if (leakedLoader == null) {
+            System.err.println("[DIAG] leakedLoader is null, cannot diagnose");
+            return;
+        }
+        IdentityHashMap<Object, String> visited = new IdentityHashMap<>();
+        Deque<Object[]> stack = new ArrayDeque<>();
+        for (Class<?> cls : findAllLoadedLingFrameClasses()) {
+            for (Field f : cls.getDeclaredFields()) {
+                if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                    continue;
+                }
+                try {
+                    f.setAccessible(true);
+                    Object val = f.get(null);
+                    if (val != null) {
+                        stack.push(new Object[] { val, cls.getName() + "." + f.getName() });
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        int found = 0;
+        while (!stack.isEmpty() && found < 20) {
+            Object[] entry = stack.pop();
+            Object node = entry[0];
+            String path = (String) entry[1];
+            if (visited.containsKey(node)) {
+                continue;
+            }
+            visited.put(node, path);
+            if (node == leakedLoader) {
+                System.err.println("[DIAG-LEAK] 持有链: " + path);
+                found++;
+                continue;
+            }
+            if (node.getClass().getName().startsWith("com.lingframe") || node instanceof Collection
+                    || node instanceof Map || node.getClass().isArray()) {
+                Class<?> c = node.getClass();
+                while (c != null && c != Object.class) {
+                    for (Field f : c.getDeclaredFields()) {
+                        if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                            continue;
+                        }
+                        try {
+                            f.setAccessible(true);
+                            Object val = f.get(node);
+                            if (val != null && !visited.containsKey(val)) {
+                                stack.push(new Object[] { val, path + "." + f.getName() });
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                    c = c.getSuperclass();
+                }
+                if (node instanceof Collection) {
+                    int i = 0;
+                    for (Object el : (Collection<?>) node) {
+                        if (el != null && !visited.containsKey(el)) {
+                            stack.push(new Object[] { el, path + "[" + (i++) + "]" });
+                        }
+                    }
+                } else if (node instanceof Map) {
+                    for (Object e : ((Map<?, ?>) node).entrySet()) {
+                        Map.Entry<?, ?> en = (Map.Entry<?, ?>) e;
+                        Object k = en.getKey(), v = en.getValue();
+                        if (k != null && !visited.containsKey(k)) {
+                            stack.push(new Object[] { k, path + "{key}" });
+                        }
+                        if (v != null && !visited.containsKey(v)) {
+                            stack.push(new Object[] { v, path + "{val}" });
+                        }
+                    }
+                } else if (node.getClass().isArray() && !node.getClass().getComponentType().isPrimitive()) {
+                    int len = java.lang.reflect.Array.getLength(node);
+                    for (int i = 0; i < len; i++) {
+                        Object el = java.lang.reflect.Array.get(node, i);
+                        if (el != null && !visited.containsKey(el)) {
+                            stack.push(new Object[] { el, path + "[" + i + "]" });
+                        }
+                    }
+                }
+            }
+        }
+        if (found == 0) {
+            System.err.println("[DIAG] 未在灵核静态字段中找到直接持有链，可能泄漏源在实例字段或线程局部");
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Class<?>> findAllLoadedLingFrameClasses() {
+        List<Class<?>> result = new ArrayList<>();
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        ClassLoader cur = cl;
+        while (cur != null) {
+            try {
+                Field classesField = ClassLoader.class.getDeclaredField("classes");
+                classesField.setAccessible(true);
+                Vector<Class<?>> classes = (Vector<Class<?>>) classesField.get(cur);
+                if (classes != null) {
+                    for (Class<?> c : classes) {
+                        if (c.getName().startsWith("com.lingframe")) {
+                            result.add(c);
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+            cur = cur.getParent();
+        }
+        return result;
     }
 
     private Object bootShutdownHook() throws Exception {
@@ -353,32 +547,10 @@ class SpringLingContainerUnloadRegressionTest {
         return field.get(null);
     }
 
-    @SuppressWarnings("unchecked")
-    private Set<ConfigurableApplicationContext> readContextSet(String fieldName) throws Exception {
-        Field field = bootShutdownHook().getClass().getDeclaredField(fieldName);
-        field.setAccessible(true);
-        return (Set<ConfigurableApplicationContext>) field.get(bootShutdownHook());
-    }
-
-    private boolean containsBootShutdownHookReference(ClassLoader targetClassLoader) throws Exception {
-        return findBootShutdownHookReference(targetClassLoader) != null;
-    }
-
-    private String findBootShutdownHookReference(ClassLoader targetClassLoader) throws Exception {
-        for (ConfigurableApplicationContext context : readContextSet("contexts")) {
-            if (context.getClassLoader() == targetClassLoader) {
-                return "shutdownHook.contexts -> context.classLoader";
-            }
-        }
-        for (ConfigurableApplicationContext context : readContextSet("closedContexts")) {
-            if (context.getClassLoader() == targetClassLoader) {
-                return "shutdownHook.closedContexts -> context.classLoader";
-            }
-        }
-        return null;
-    }
-
     private String findThreadContextClassLoaderReference(ClassLoader targetClassLoader) {
+        if (targetClassLoader == null) {
+            return null;
+        }
         for (Thread thread : Thread.getAllStackTraces().keySet()) {
             if (thread != null && thread.getContextClassLoader() == targetClassLoader) {
                 return "thread.contextClassLoader:" + thread.getName();
@@ -420,25 +592,11 @@ class SpringLingContainerUnloadRegressionTest {
         }
     }
 
-    private Object readField(Object target, String fieldName) throws Exception {
-        Class<?> current = target.getClass();
-        while (current != null && current != Object.class) {
-            try {
-                Field field = current.getDeclaredField(fieldName);
-                field.setAccessible(true);
-                return field.get(target);
-            } catch (NoSuchFieldException ex) {
-                current = current.getSuperclass();
-            }
-        }
-        throw new NoSuchFieldException(fieldName);
-    }
-
     private void deleteRecursively(Path path) throws IOException {
         if (!Files.exists(path)) {
             return;
         }
-        try (java.util.stream.Stream<Path> stream = Files.walk(path)) {
+        try (Stream<Path> stream = Files.walk(path)) {
             stream.sorted((left, right) -> right.getNameCount() - left.getNameCount())
                     .forEach(current -> {
                         try {
@@ -449,6 +607,8 @@ class SpringLingContainerUnloadRegressionTest {
                     });
         }
     }
+
+    // ==================== 内部支撑类 ====================
 
     private static final class TestHost implements AutoCloseable {
         private final GenericApplicationContext hostContext;
@@ -479,7 +639,7 @@ class SpringLingContainerUnloadRegressionTest {
             hostMapping.setApplicationContext(hostContext);
             hostMapping.afterPropertiesSet();
 
-        WebInterfaceManager manager = new WebInterfaceManager(null, null, null);
+            WebInterfaceManager manager = new WebInterfaceManager(null, null, null);
             manager.init(hostMapping, hostAdapter, hostContext);
             return new TestHost(hostContext, hostMapping, hostAdapter, manager);
         }
@@ -491,11 +651,14 @@ class SpringLingContainerUnloadRegressionTest {
         }
     }
 
-    private static final class CloseAwareClassLoader extends URLClassLoader {
+    /**
+     * 跟踪 close 状态的 LingClassLoader（生产用 LingClassLoader，非 URLClassLoader）。
+     */
+    private static final class CloseAwareLingClassLoader extends LingClassLoader {
         private final AtomicBoolean closed;
 
-        private CloseAwareClassLoader(URL[] urls, ClassLoader parent, AtomicBoolean closed) {
-            super(urls, parent);
+        private CloseAwareLingClassLoader(String lingId, URL[] urls, ClassLoader parent, AtomicBoolean closed) {
+            super(lingId, urls, parent);
             this.closed = closed;
         }
 
@@ -507,63 +670,21 @@ class SpringLingContainerUnloadRegressionTest {
     }
 
     private static final class CycleResult {
-        private final int startCount;
-        private final int stopCount;
-        private final boolean executorShutdown;
-        private final boolean classLoaderClosed;
-        private final boolean shutdownHookClean;
-        private final boolean routeRemoved;
-        private final boolean noThreadContextClassLoaderLeak;
-        private final boolean classLoaderCollected;
+        final boolean classLoaderClosed;
+        final boolean runtimeStillRegistered;
+        final boolean routeRemoved;
+        final boolean noThreadContextClassLoaderLeak;
+        final boolean classLoaderCollected;
+        final ClassLoader leakedClassLoader;
 
-        private CycleResult(int startCount,
-                int stopCount,
-                boolean executorShutdown,
-                boolean classLoaderClosed,
-                boolean shutdownHookClean,
-                boolean routeRemoved,
-                boolean noThreadContextClassLoaderLeak,
-                boolean classLoaderCollected) {
-            this.startCount = startCount;
-            this.stopCount = stopCount;
-            this.executorShutdown = executorShutdown;
+        private CycleResult(boolean classLoaderClosed, boolean runtimeStillRegistered, boolean routeRemoved,
+                boolean noThreadContextClassLoaderLeak, boolean classLoaderCollected, ClassLoader leakedClassLoader) {
             this.classLoaderClosed = classLoaderClosed;
-            this.shutdownHookClean = shutdownHookClean;
+            this.runtimeStillRegistered = runtimeStillRegistered;
             this.routeRemoved = routeRemoved;
             this.noThreadContextClassLoaderLeak = noThreadContextClassLoaderLeak;
             this.classLoaderCollected = classLoaderCollected;
-        }
-    }
-
-    private static final class CycleArtifacts {
-        private final Path workspace;
-        private final int startCount;
-        private final int stopCount;
-        private final boolean executorShutdown;
-        private final boolean classLoaderClosed;
-        private final boolean shutdownHookClean;
-        private final boolean routeRemoved;
-        private final boolean noThreadContextClassLoaderLeak;
-        private final boolean classLoaderCollected;
-
-        private CycleArtifacts(Path workspace,
-                int startCount,
-                int stopCount,
-                boolean executorShutdown,
-                boolean classLoaderClosed,
-                boolean shutdownHookClean,
-                boolean routeRemoved,
-                boolean noThreadContextClassLoaderLeak,
-                boolean classLoaderCollected) {
-            this.workspace = workspace;
-            this.startCount = startCount;
-            this.stopCount = stopCount;
-            this.executorShutdown = executorShutdown;
-            this.classLoaderClosed = classLoaderClosed;
-            this.shutdownHookClean = shutdownHookClean;
-            this.routeRemoved = routeRemoved;
-            this.noThreadContextClassLoaderLeak = noThreadContextClassLoaderLeak;
-            this.classLoaderCollected = classLoaderCollected;
+            this.leakedClassLoader = leakedClassLoader;
         }
     }
 }

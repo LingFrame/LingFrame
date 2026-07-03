@@ -9,6 +9,7 @@ import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
@@ -95,7 +96,7 @@ public class LingCaffeineCacheProxy<K, V> implements Cache<K, V> {
     @Override
     public void putAll(Map<? extends K, ? extends V> map) {
         checkPermission("putAll", AccessType.WRITE);
-        Map<Object, Object> namespacedMap = new java.util.LinkedHashMap<>();
+        Map<Object, Object> namespacedMap = new LinkedHashMap<>();
         for (Map.Entry<? extends K, ? extends V> entry : map.entrySet()) {
             namespacedMap.put(CacheNamespaceSupport.namespaceKey(cacheName, entry.getKey()), entry.getValue());
         }

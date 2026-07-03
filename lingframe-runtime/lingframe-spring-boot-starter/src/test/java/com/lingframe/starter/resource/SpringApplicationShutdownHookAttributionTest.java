@@ -19,9 +19,11 @@ import org.springframework.core.io.DefaultResourceLoader;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,10 +84,10 @@ class SpringApplicationShutdownHookAttributionTest {
                 builder,
                 getClass().getClassLoader(),
                 null,
-                java.util.Collections.emptyList(),
-                java.util.Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
                 mock(ApplicationContext.class),
-                java.util.Collections.emptyList(),
+                Collections.emptyList(),
                 "v1");
 
         LingContext lingContext = mock(LingContext.class);
@@ -116,10 +118,10 @@ class SpringApplicationShutdownHookAttributionTest {
                     builder,
                     lingClassLoader,
                     null,
-                    java.util.Collections.emptyList(),
-                    java.util.Collections.emptyList(),
+                    Collections.emptyList(),
+                    Collections.emptyList(),
                     mock(ApplicationContext.class),
-                    java.util.Collections.emptyList(),
+                    Collections.emptyList(),
                     "v1");
 
             LingContext lingContext = mock(LingContext.class);
@@ -257,7 +259,7 @@ class SpringApplicationShutdownHookAttributionTest {
         Class<?> type = candidate.getClass();
         while (type != null && type != Object.class) {
             for (Field field : type.getDeclaredFields()) {
-                if ((field.getModifiers() & java.lang.reflect.Modifier.STATIC) != 0) {
+                if ((field.getModifiers() & Modifier.STATIC) != 0) {
                     continue;
                 }
                 field.setAccessible(true);

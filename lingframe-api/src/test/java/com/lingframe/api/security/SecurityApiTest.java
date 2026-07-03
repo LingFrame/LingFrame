@@ -4,6 +4,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -126,7 +128,7 @@ class SecurityApiTest {
         @Test
         @DisplayName("withExpiry 创建有过期时间的权限")
         void shouldCreateExpiringPermission() {
-            java.time.Instant past = java.time.Instant.now().minusSeconds(60);
+            Instant past = Instant.now().minusSeconds(60);
             PermissionInfo info = PermissionInfo.withExpiry("order-ling", "cache:redis", AccessType.READ, past, "runtime-grant");
             assertTrue(info.isExpired());
         }
@@ -143,7 +145,7 @@ class SecurityApiTest {
         @Test
         @DisplayName("过期权限不满足任何需求")
         void shouldNotSatisfyWhenExpired() {
-            java.time.Instant past = java.time.Instant.now().minusSeconds(60);
+            Instant past = Instant.now().minusSeconds(60);
             PermissionInfo info = PermissionInfo.withExpiry("order-ling", "storage:sql", AccessType.WRITE, past, "runtime");
             assertFalse(info.satisfies(AccessType.READ));
         }

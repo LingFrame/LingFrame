@@ -2,7 +2,7 @@ package com.lingframe.core.invoker;
 
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.LingServiceInvoker;
-import com.lingframe.api.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.LingInvocationException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.invoke.MethodHandle;
@@ -18,7 +18,8 @@ public class FastLingServiceInvoker implements LingServiceInvoker {
     public Object invoke(LingInstance instance, Object bean, Method method, Object[] args) throws Exception {
         long invocationId = instance.beginInvocation(ActiveInvocationSupport.capture(instance, method.getName()));
         if (invocationId < 0) {
-            throw new ServiceUnavailableException(instance.getLingId(),
+            throw new LingInvocationException(instance.getLingId(),
+                    LingInvocationException.ErrorKind.STATE_REJECTED,
                     "Ling instance is not ready or already destroyed");
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
@@ -39,7 +40,8 @@ public class FastLingServiceInvoker implements LingServiceInvoker {
     public Object invokeFast(LingInstance instance, MethodHandle methodHandle, Object[] args) throws Throwable {
         long invocationId = instance.beginInvocation(ActiveInvocationSupport.capture(instance, "method-handle"));
         if (invocationId < 0) {
-            throw new ServiceUnavailableException(instance.getLingId(),
+            throw new LingInvocationException(instance.getLingId(),
+                    LingInvocationException.ErrorKind.STATE_REJECTED,
                     "Ling instance is not ready or already destroyed");
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();

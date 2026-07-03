@@ -5,6 +5,7 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.LingMetricsCollector;
 import lombok.extern.slf4j.Slf4j;
 
+import Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -142,7 +143,7 @@ public class MetricsCollector implements LingMetricsCollector {
         return separator >= 0 ? key.substring(0, separator) : key;
     }
 
-    private MetricsSnapshot aggregateSnapshots(String lingId, java.util.Collection<MetricsSnapshot> snapshots) {
+    private MetricsSnapshot aggregateSnapshots(String lingId, Collection<MetricsSnapshot> snapshots) {
         MetricsSnapshot aggregated = MetricsSnapshot.empty(lingId);
         if (snapshots == null || snapshots.isEmpty()) {
             return aggregated;
@@ -199,7 +200,7 @@ public class MetricsCollector implements LingMetricsCollector {
         return aggregated;
     }
 
-    private MetricsSnapshot.HealthStatus determineOverallHealth(java.util.Collection<MetricsSnapshot> snapshots) {
+    private MetricsSnapshot.HealthStatus determineOverallHealth(Collection<MetricsSnapshot> snapshots) {
         boolean hasWarning = false;
         for (MetricsSnapshot snapshot : snapshots) {
             if (snapshot == null || snapshot.getHealthStatus() == null) {

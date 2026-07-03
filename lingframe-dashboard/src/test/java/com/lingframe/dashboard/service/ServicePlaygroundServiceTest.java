@@ -361,7 +361,7 @@ class ServicePlaygroundServiceTest {
                 assertNull(ctx.resolution().getTargetClassName());
                 assertEquals("hello", ctx.getMethodName());
                 assertEquals("dashboard", ctx.getCallerLingId());
-                ctx.addTrace(trace);
+                ctx.execution().addTrace(trace);
                 return "hello-result";
             }).when(pipelineEngine).invoke(any(InvocationContext.class));
 

@@ -4,6 +4,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -122,39 +124,12 @@ class ExceptionHierarchyContractTest {
         @Test
         @DisplayName("错误码全局唯一")
         void errorCodesAreUnique() {
-            long distinctCount = java.util.Arrays.stream(LingInvocationException.ErrorKind.values())
+            long distinctCount = Arrays.stream(LingInvocationException.ErrorKind.values())
                     .map(LingInvocationException.ErrorKind::getCode)
                     .distinct()
                     .count();
             assertEquals(LingInvocationException.ErrorKind.values().length, distinctCount,
                     "所有 ErrorKind 的错误码应唯一");
-        }
-    }
-
-    @Nested
-    @DisplayName("CallNotPermittedException 契约")
-    class CallNotPermittedExceptionContract {
-
-        @Test
-        @DisplayName("resourceId 和 reason 正确传递")
-        void resourceIdAndReasonPreserved() {
-            CallNotPermittedException ex = new CallNotPermittedException("res-1", "circuit-open");
-            assertEquals("res-1", ex.getResourceId());
-            assertEquals("circuit-open", ex.getReason());
-        }
-
-        @Test
-        @DisplayName("继承 LingException")
-        void extendsLingException() {
-            assertTrue(LingException.class.isAssignableFrom(CallNotPermittedException.class));
-        }
-
-        @Test
-        @DisplayName("消息包含 resourceId 和 reason")
-        void messageContainsResourceIdAndReason() {
-            CallNotPermittedException ex = new CallNotPermittedException("res-1", "rate-limited");
-            assertTrue(ex.getMessage().contains("res-1"));
-            assertTrue(ex.getMessage().contains("rate-limited"));
         }
     }
 
@@ -169,9 +144,7 @@ class ExceptionHierarchyContractTest {
                     new LingException("base"),
                     new LingRuntimeException("ling-1", "runtime"),
                     new LingInvocationException("ling-1:svc", LingInvocationException.ErrorKind.INVOKE_ERROR),
-                    new CallNotPermittedException("res-1", "circuit"),
                     new ServiceNotFoundException("svc-1"),
-                    new ServiceUnavailableException("svc-1", "not ready"),
                     new PermissionDeniedException("perm-1"),
                     new LingNotFoundException("ling-1")
             };

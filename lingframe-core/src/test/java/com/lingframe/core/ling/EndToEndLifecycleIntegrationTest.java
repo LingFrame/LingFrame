@@ -8,6 +8,7 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.pipeline.FilterRegistry;
+import com.lingframe.core.pipeline.FilterRegistryConfig;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
@@ -34,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -115,9 +117,9 @@ class EndToEndLifecycleIntegrationTest {
                 ctx.setMethodName("echo");
                 ctx.setParameterTypeNames(new String[]{"java.lang.String"});
                 ctx.setArgs(new Object[]{"test"});
-                ctx.setRequiredPermission(REQUIRED_PERMISSION);
-                ctx.setAccessType(AccessType.EXECUTE);
-                ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
+                ctx.governance().setRequiredPermission(REQUIRED_PERMISSION);
+                ctx.governance().setAccessType(AccessType.EXECUTE);
+                ctx.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
 
                 runtime.pipelineEngine.invoke(ctx);
                 // GOVERN_ONLY 不执行终端调用，不抛异常即通过
@@ -140,9 +142,9 @@ class EndToEndLifecycleIntegrationTest {
                 ctx.setMethodName("echo");
                 ctx.setParameterTypeNames(new String[]{"java.lang.String"});
                 ctx.setArgs(new Object[]{"test"});
-                ctx.setRequiredPermission(REQUIRED_PERMISSION);
-                ctx.setAccessType(AccessType.EXECUTE);
-                ctx.setExecutionMode(InvocationExecutionMode.SIMULATION);
+                ctx.governance().setRequiredPermission(REQUIRED_PERMISSION);
+                ctx.governance().setAccessType(AccessType.EXECUTE);
+                ctx.execution().setMode(InvocationExecutionMode.SIMULATION);
 
                 runtime.pipelineEngine.invoke(ctx);
                 assertTrue(runtime.repository.hasRuntime(LING_ID));
@@ -182,9 +184,9 @@ class EndToEndLifecycleIntegrationTest {
                             ctx.setMethodName("echo");
                             ctx.setParameterTypeNames(new String[]{"java.lang.String"});
                             ctx.setArgs(new Object[]{"msg-" + idx});
-                            ctx.setRequiredPermission(REQUIRED_PERMISSION);
-                            ctx.setAccessType(AccessType.EXECUTE);
-                            ctx.setExecutionMode(InvocationExecutionMode.NORMAL);
+                            ctx.governance().setRequiredPermission(REQUIRED_PERMISSION);
+                            ctx.governance().setAccessType(AccessType.EXECUTE);
+                            ctx.execution().setMode(InvocationExecutionMode.NORMAL);
 
                             Object result = runtime.pipelineEngine.invoke(ctx);
                             if (("echo:msg-" + idx).equals(result)) {
@@ -254,8 +256,8 @@ class EndToEndLifecycleIntegrationTest {
         ctx.setMethodName("echo");
         ctx.setParameterTypeNames(new String[]{"java.lang.String"});
         ctx.setArgs(new Object[]{input});
-        ctx.setRequiredPermission(REQUIRED_PERMISSION);
-        ctx.setAccessType(AccessType.EXECUTE);
+        ctx.governance().setRequiredPermission(REQUIRED_PERMISSION);
+        ctx.governance().setAccessType(AccessType.EXECUTE);
         try {
             Object result = runtime.pipelineEngine.invoke(ctx);
             assertNotNull(result, "invokeEcho should return non-null result");
@@ -282,8 +284,14 @@ class EndToEndLifecycleIntegrationTest {
         LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
         when(serviceRegistry.getServicesByLingId(LING_ID)).thenReturn(Collections.emptyList());
 
-        FilterRegistry registry = new FilterRegistry(new com.lingframe.core.ling.InvokableMethodCache(), permissionService);
-        registry.initialize(repository, new LatestVersionPolicy(), eventBus, runtimeCoordinator);
+        FilterRegistry registry = new FilterRegistry(FilterRegistryConfig.builder()
+                .methodCache(new com.lingframe.core.ling.InvokableMethodCache())
+                .permissionService(permissionService)
+                .lingRepository(repository)
+                .trafficRouter(new LatestVersionPolicy())
+                .eventBus(eventBus)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(registry);
         LingUnloadCoordinator unloadCoordinator =
                 new LingUnloadCoordinator(pipelineEngine, Collections.emptyList(), null, null);
@@ -319,19 +327,20 @@ class EndToEndLifecycleIntegrationTest {
                 .build();
         List<LingSecurityVerifier> verifiers = Collections.singletonList(new DangerousApiVerifier(false));
 
-        DefaultLingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(
-                containerFactory,
-                permissionService,
-                loaderFactory,
-                verifiers,
-                eventBus,
-                config,
-                repository,
-                serviceRegistry,
-                pipelineEngine,
-                null,
-                unloadCoordinator,
-                runtimeCoordinator);
+        DefaultLingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(permissionService)
+                .lingLoaderFactory(loaderFactory)
+                .verifiers(verifiers)
+                .eventBus(eventBus)
+                .lingFrameConfig(config)
+                .lingRepository(repository)
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(pipelineEngine)
+                .lingResourceManager(null)
+                .unloadCoordinator(unloadCoordinator)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
 
         return new TestRuntime(workspace, classesDir, repository, permissionService, serviceRegistry,
                 registry, pipelineEngine, lifecycleEngine, runtimeCoordinator, loaderHolder, classLoaderClosed);
@@ -411,7 +420,7 @@ class EndToEndLifecycleIntegrationTest {
                 return;
             }
             Files.walk(path)
-                    .sorted(java.util.Comparator.reverseOrder())
+                    .sorted(Comparator.reverseOrder())
                     .forEach(p -> {
                         try {
                             Files.delete(p);

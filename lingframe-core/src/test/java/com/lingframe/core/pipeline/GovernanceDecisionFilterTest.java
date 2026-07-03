@@ -54,11 +54,11 @@ class GovernanceDecisionFilterTest {
             LingFilterChain chain = current -> null;
             filter.doFilter(context, chain);
 
-            assertEquals("demo:ping", context.getRequiredPermission());
-            assertEquals(AccessType.EXECUTE, context.getAccessType());
-            assertEquals(true, context.isShouldAudit());
-            assertEquals("PING_CALL", context.getAuditAction());
-            assertEquals("TestPolicy", context.getRuleSource());
+            assertEquals("demo:ping", context.governance().getRequiredPermission());
+            assertEquals(AccessType.EXECUTE, context.governance().getAccessType());
+            assertEquals(true, context.governance().isShouldAudit());
+            assertEquals("PING_CALL", context.governance().getAuditAction());
+            assertEquals("TestPolicy", context.governance().getRuleSource());
             assertEquals(Integer.valueOf(1234), context.governance().getTimeoutMs());
             assertEquals(Integer.valueOf(8), context.governance().getRateLimitPerSecond());
             assertEquals(Integer.valueOf(3), context.governance().getMaxConcurrentThreads());
@@ -85,11 +85,11 @@ class GovernanceDecisionFilterTest {
             LingFilterChain chain = current -> null;
             filter.doFilter(context, chain);
 
-            assertEquals("demo:ping", context.getRequiredPermission());
-            assertEquals(AccessType.EXECUTE, context.getAccessType());
-            assertEquals(true, context.isShouldAudit());
-            assertEquals("PING_CALL", context.getAuditAction());
-            assertEquals("TestPolicy", context.getRuleSource());
+            assertEquals("demo:ping", context.governance().getRequiredPermission());
+            assertEquals(AccessType.EXECUTE, context.governance().getAccessType());
+            assertEquals(true, context.governance().isShouldAudit());
+            assertEquals("PING_CALL", context.governance().getAuditAction());
+            assertEquals("TestPolicy", context.governance().getRuleSource());
             assertEquals(Integer.valueOf(100), context.governance().getTimeoutMs());
             assertEquals(Integer.valueOf(8), context.governance().getRateLimitPerSecond());
             assertEquals(Integer.valueOf(3), context.governance().getMaxConcurrentThreads());
@@ -158,14 +158,14 @@ class GovernanceDecisionFilterTest {
             InvocationContext context = InvocationContext.obtain();
             context.setServiceFQSID("ling1:http");
             context.setTargetLingId("ling1");
-            context.setRequiredPermission("web:read");
-            context.setAccessType(AccessType.READ);
+            context.governance().setRequiredPermission("web:read");
+            context.governance().setAccessType(AccessType.READ);
 
             try {
                 Object result = filter.doFilter(context, current -> "ok");
                 assertEquals("ok", result);
-                assertEquals("web:read", context.getRequiredPermission());
-                assertEquals(AccessType.READ, context.getAccessType());
+                assertEquals("web:read", context.governance().getRequiredPermission());
+                assertEquals(AccessType.READ, context.governance().getAccessType());
             } finally {
                 context.recycle();
             }

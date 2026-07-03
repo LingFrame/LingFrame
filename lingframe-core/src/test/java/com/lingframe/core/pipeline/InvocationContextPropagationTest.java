@@ -77,7 +77,7 @@ class InvocationContextPropagationTest {
             parent.governance().setTimeoutMs(99);
             parent.governance().setRateLimitPerSecond(7);
             parent.governance().setMaxConcurrentThreads(3);
-            parent.setExecutionMode(InvocationExecutionMode.SIMULATION);
+            parent.execution().setMode(InvocationExecutionMode.SIMULATION);
             InvocationContext previous = parent.attach();
 
             LingCallContext.setLingId("ling-a");
@@ -97,7 +97,7 @@ class InvocationContextPropagationTest {
                             + "|" + child.governance().getTimeoutMs()
                             + "|" + child.governance().getRateLimitPerSecond()
                             + "|" + child.governance().getMaxConcurrentThreads()
-                            + "|" + child.getExecutionMode()
+                            + "|" + child.execution().getMode()
                             + "|" + LingCallContext.getLingId()
                             + "|" + LingCallContext.getTraceId()
                             + "|" + LingCallContext.getLabels().get("env");
@@ -124,7 +124,7 @@ class InvocationContextPropagationTest {
                 InvocationContext child = InvocationContext.current();
                 assertNotNull(child);
                 assertNull(child.getTraceId());
-                assertEquals(InvocationExecutionMode.NORMAL, child.getExecutionMode());
+                assertEquals(InvocationExecutionMode.NORMAL, child.execution().getMode());
                 return true;
             });
 

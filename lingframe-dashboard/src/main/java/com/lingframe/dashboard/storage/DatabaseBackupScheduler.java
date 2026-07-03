@@ -16,6 +16,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -87,7 +88,7 @@ public class DatabaseBackupScheduler {
                             return 0;
                         }
                     })
-                    .collect(java.util.stream.Collectors.toList());
+                    .collect(Collectors.toList());
 
             for (int i = retention; i < backups.size(); i++) {
                 Files.deleteIfExists(backups.get(i));

@@ -60,8 +60,8 @@ public class EndToEndBenchmark {
                 ctx.setMethodName("ping");
                 ctx.setParameterTypeNames(new String[0]);
                 ctx.setArgs(new Object[0]);
-                ctx.setAccessType(AccessType.EXECUTE);
-                ctx.setExecutionMode(InvocationExecutionMode.NORMAL);
+                ctx.governance().setAccessType(AccessType.EXECUTE);
+                ctx.execution().setMode(InvocationExecutionMode.NORMAL);
                 Object result = pipelineEngine.invoke(ctx);
                 bh.consume(result);
             } finally {
@@ -84,8 +84,8 @@ public class EndToEndBenchmark {
                 ctx.setMethodName("ping");
                 ctx.setParameterTypeNames(new String[0]);
                 ctx.setArgs(new Object[0]);
-                ctx.setAccessType(AccessType.EXECUTE);
-                ctx.setExecutionMode(InvocationExecutionMode.NORMAL);
+                ctx.governance().setAccessType(AccessType.EXECUTE);
+                ctx.execution().setMode(InvocationExecutionMode.NORMAL);
                 Object result = pipelineEngine.invoke(ctx);
                 bh.consume(result);
             } finally {
@@ -108,8 +108,8 @@ public class EndToEndBenchmark {
                 ctx.setMethodName("ping");
                 ctx.setParameterTypeNames(new String[0]);
                 ctx.setArgs(new Object[0]);
-                ctx.setAccessType(AccessType.EXECUTE);
-                ctx.setExecutionMode(InvocationExecutionMode.NORMAL);
+                ctx.governance().setAccessType(AccessType.EXECUTE);
+                ctx.execution().setMode(InvocationExecutionMode.NORMAL);
                 Object result = pipelineEngine.invoke(ctx);
                 bh.consume(result);
             } finally {

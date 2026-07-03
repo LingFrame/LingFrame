@@ -22,8 +22,15 @@ import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -443,15 +450,15 @@ class WebInterfaceManagerTest {
     void testRegisterUnregisterSyncExceptions() throws Exception {
         manager = new WebInterfaceManager(null, null, null);
         
-        java.lang.reflect.Field field = WebInterfaceManager.class.getDeclaredField("registryExecutor");
+        Field field = WebInterfaceManager.class.getDeclaredField("registryExecutor");
         field.setAccessible(true);
-        java.util.concurrent.ExecutorService mockExecutor = mock(java.util.concurrent.ExecutorService.class);
+        ExecutorService mockExecutor = mock(ExecutorService.class);
         field.set(manager, mockExecutor);
 
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder().build();
 
         // 1. 模拟 submit 抛出 InterruptedException
-        java.util.concurrent.Future<?> mockFutureInterrupted = mock(java.util.concurrent.Future.class);
+        Future<?> mockFutureInterrupted = mock(Future.class);
         when(mockFutureInterrupted.get()).thenThrow(new InterruptedException("Interrupted"));
         when(mockExecutor.submit(any(Runnable.class))).thenAnswer(inv -> mockFutureInterrupted);
 
@@ -459,8 +466,8 @@ class WebInterfaceManagerTest {
         assertThrows(LingException.class, () -> manager.unregisterSync("ling-a", null));
 
         // 2. 模拟 submit 抛出 ExecutionException
-        java.util.concurrent.Future<?> mockFutureExecution = mock(java.util.concurrent.Future.class);
-        when(mockFutureExecution.get()).thenThrow(new java.util.concurrent.ExecutionException("error", new RuntimeException("root cause")));
+        Future<?> mockFutureExecution = mock(Future.class);
+        when(mockFutureExecution.get()).thenThrow(new ExecutionException("error", new RuntimeException("root cause")));
         when(mockExecutor.submit(any(Runnable.class))).thenAnswer(inv -> mockFutureExecution);
 
         assertThrows(LingException.class, () -> manager.registerSync(metadata));
@@ -560,12 +567,12 @@ class WebInterfaceManagerTest {
                 .urlPattern("/timeout")
                 .build();
 
-        java.lang.reflect.Field mapField = WebInterfaceManager.class.getDeclaredField("metadataMap");
+        Field mapField = WebInterfaceManager.class.getDeclaredField("metadataMap");
         mapField.setAccessible(true);
         @SuppressWarnings("unchecked")
-        java.util.Map<String, java.util.List<WebInterfaceMetadata>> metadataMap = (java.util.Map<String, java.util.List<WebInterfaceMetadata>>) mapField.get(manager);
-        metadataMap.put("GET#/fail", java.util.Collections.singletonList(metaFail));
-        metadataMap.put("GET#/timeout", java.util.Collections.singletonList(metaTimeout));
+        Map<String, List<WebInterfaceMetadata>> metadataMap = (Map<String, List<WebInterfaceMetadata>>) mapField.get(manager);
+        metadataMap.put("GET#/fail", Collections.singletonList(metaFail));
+        metadataMap.put("GET#/timeout", Collections.singletonList(metaTimeout));
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/test");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -585,7 +592,7 @@ class WebInterfaceManagerTest {
             throw new RuntimeException("Biz Error");
         }
         public String timeout() throws Exception {
-            throw new java.util.concurrent.TimeoutException("Read timed out");
+            throw new TimeoutException("Read timed out");
         }
     }
 }

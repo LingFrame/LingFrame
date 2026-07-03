@@ -15,7 +15,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -81,7 +83,7 @@ class SpringLingContainerControllerRegistrationTest {
         Set<String> routes = captured.stream()
                 .map(metadata -> metadata.getHttpMethod() + " " + metadata.getUrlPattern())
                 .collect(Collectors.toSet());
-        assertEquals(new java.util.HashSet<>(java.util.Arrays.asList(
+        assertEquals(new HashSet<>(Arrays.asList(
                 "GET /ling-a/api/v1",
                 "POST /ling-a/api/v1",
                 "GET /ling-a/api/v2",

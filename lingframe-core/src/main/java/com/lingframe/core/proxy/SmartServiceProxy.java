@@ -84,8 +84,8 @@ public class SmartServiceProxy implements InvocationHandler {
             String serviceFQSID = targetLingId + ":" + serviceInterfaceName;
             ctx.setServiceFQSID(serviceFQSID);
 
-            ctx.setAccessType(AccessType.EXECUTE);
-            ctx.setAuditAction(resourceId);
+            ctx.governance().setAccessType(AccessType.EXECUTE);
+            ctx.governance().setAuditAction(resourceId);
             ctx.setMetadata(null);
 
             // 委托全局的 PipelineEngine 执行

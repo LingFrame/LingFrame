@@ -78,7 +78,7 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         InvocationContext ctx = buildInvocationContext(method, args, callerLingId);
         // 【关键】开启穿刺模式：这里只借道 Pipeline 做治理，不借道 Pipeline 做终端执行。
         // 真正的业务方法仍由当前 AOP 调用链自己 invocation.proceed()。
-        ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
+        ctx.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
 
         try {
             // 借道 Pipeline 执行全套治理（并发统计、状态检查、权限校验、审计等）
@@ -90,7 +90,7 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
             // 治理拒绝：卸载/停机/限流期间降级为 info 避免压测日志风暴，权限错误保持 warn
             if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
                 log.warn("[Governance] Security rejected for Bean: {} -> {}", ctx.getResourceId(), e.getMessage());
-                throw new PermissionDeniedException(callerLingId, ctx.getRequiredPermission(), ctx.getAccessType());
+                throw new PermissionDeniedException(callerLingId, ctx.governance().getRequiredPermission(), ctx.governance().getAccessType());
             }
             log.info("[Governance] Bean request blocked: {} -> {}", ctx.getResourceId(), e.getMessage());
             throw e;
@@ -144,14 +144,14 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         ctx.setOperation(method.getName());
         ctx.setMethodName(method.getName());
         ctx.setParameterTypeNames(resolveParameterTypeNames(method));
-        ctx.setRequiredPermission(permission);
-        ctx.setAccessType(accessType);
-        ctx.setAuditAction(auditAction);
-        ctx.setShouldAudit(shouldAudit);
+        ctx.governance().setRequiredPermission(permission);
+        ctx.governance().setAccessType(accessType);
+        ctx.governance().setAuditAction(auditAction);
+        ctx.governance().setShouldAudit(shouldAudit);
         ctx.setArgs(args);
         ctx.setMetadata(new HashMap<>());
         ctx.setLabels(new HashMap<>());
-        ctx.setRuleSource(null); // 这里尚未进入规则仲裁阶段，因此显式置空
+        ctx.governance().setRuleSource(null); // 这里尚未进入规则仲裁阶段，因此显式置空
         if (invocationGovernanceResolver != null) {
             invocationGovernanceResolver.applyTo(ctx, LING_CORE_ID);
         }

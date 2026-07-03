@@ -102,7 +102,7 @@ class ThreadIsolationGovernanceFilterTest {
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
             InvocationContext context = InvocationContext.obtain();
             context.setServiceFQSID("ling1:TestService");
-            context.addTrace(EngineTrace.builder()
+            context.execution().addTrace(EngineTrace.builder()
                     .source("parent")
                     .action("existing")
                     .type("INFO")
@@ -112,7 +112,7 @@ class ThreadIsolationGovernanceFilterTest {
             AtomicReference<InvocationContext> seen = new AtomicReference<>();
             LingFilterChain chain = current -> {
                 seen.set(current);
-                current.addTrace(EngineTrace.builder()
+                current.execution().addTrace(EngineTrace.builder()
                         .source("child")
                         .action("isolated")
                         .type("INFO")
@@ -124,8 +124,8 @@ class ThreadIsolationGovernanceFilterTest {
             try {
                 assertEquals("ok", filter.doFilter(context, chain));
                 assertNotSame(context, seen.get());
-                assertEquals(2, context.getTraces().size());
-                assertEquals("child", context.getTraces().get(1).getSource());
+                assertEquals(2, context.execution().getTraces().size());
+                assertEquals("child", context.execution().getTraces().get(1).getSource());
             } finally {
                 filter.evict("ling1");
                 context.recycle();

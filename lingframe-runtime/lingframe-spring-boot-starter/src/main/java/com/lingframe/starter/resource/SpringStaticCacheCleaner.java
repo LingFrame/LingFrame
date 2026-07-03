@@ -7,6 +7,7 @@ import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.core.io.support.SpringFactoriesLoader;
 import org.springframework.util.ReflectionUtils;
 
+import java.beans.Introspector;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Method;
@@ -18,7 +19,8 @@ import java.util.ResourceBundle;
  * <p>
  * 这些缓存 key 是灵元加载的 Class，会阻止灵元 ClassLoader GC。
  * 包括：CachedIntrospectionResults / ReflectionUtils / AnnotationUtils /
- * SpringFactoriesLoader / ResolvableType / Property.annotationCache / ResourceBundle /
+ * SpringFactoriesLoader / ResolvableType / Property.annotationCache /
+ * ResourceBundle /
  * Micrometer TimedAnnotations。
  * <p>
  * 专用判断器 {@link #isPropertyRelatedToClassLoader} 和
@@ -56,6 +58,14 @@ final class SpringStaticCacheCleaner {
         } catch (Exception e) {
             log.debug("[{}] ResourceBundle cache cleanup failed: {}", lingId, e.getMessage());
         }
+
+        // 7. java.beans.Introspector
+        try {
+            Introspector.flushCaches();
+            log.debug("[{}] Flushed Introspector caches", lingId);
+        } catch (Exception e) {
+            log.debug("[{}] Introspector cache flush failed: {}", lingId, e.getMessage());
+        }
     }
 
     /** preCleanup / cleanup 阶段：清理 Property.annotationCache */
@@ -73,10 +83,11 @@ final class SpringStaticCacheCleaner {
             }
             Map<?, ?> cache = (Map<?, ?>) cacheObj;
             int before = cache.size();
-            cache.entrySet().removeIf(entry -> SpringCleanupSupport.isRelatedToClassLoader(entry.getKey(), lingClassLoader)
-                    || SpringCleanupSupport.isRelatedToClassLoader(entry.getValue(), lingClassLoader)
-                    || isPropertyRelatedToClassLoader(entry.getKey(), lingClassLoader)
-                    || isPropertyRelatedToClassLoader(entry.getValue(), lingClassLoader));
+            cache.entrySet()
+                    .removeIf(entry -> SpringCleanupSupport.isRelatedToClassLoader(entry.getKey(), lingClassLoader)
+                            || SpringCleanupSupport.isRelatedToClassLoader(entry.getValue(), lingClassLoader)
+                            || isPropertyRelatedToClassLoader(entry.getKey(), lingClassLoader)
+                            || isPropertyRelatedToClassLoader(entry.getValue(), lingClassLoader));
             int removed = before - cache.size();
             log.debug("[{}] Property.annotationCache ({}): removed {} entries", lingId, phase, removed);
         } catch (ClassNotFoundException e) {
@@ -162,7 +173,8 @@ final class SpringStaticCacheCleaner {
                     if (cache == null || cache.isEmpty())
                         continue;
                     int before = cache.size();
-                    cache.entrySet().removeIf(entry -> SpringCleanupSupport.isRelatedToClassLoader(entry.getKey(), lingClassLoader));
+                    cache.entrySet().removeIf(
+                            entry -> SpringCleanupSupport.isRelatedToClassLoader(entry.getKey(), lingClassLoader));
                     totalRemoved += (before - cache.size());
                 } catch (Exception ignored) {
                 }
@@ -181,7 +193,8 @@ final class SpringStaticCacheCleaner {
                         if (cache == null)
                             continue;
                         int before = cache.size();
-                        cache.entrySet().removeIf(entry -> SpringCleanupSupport.isRelatedToClassLoader(entry.getKey(), lingClassLoader));
+                        cache.entrySet().removeIf(
+                                entry -> SpringCleanupSupport.isRelatedToClassLoader(entry.getKey(), lingClassLoader));
                         totalRemoved += (before - cache.size());
                     } catch (Exception ignored) {
                     }
@@ -216,7 +229,8 @@ final class SpringStaticCacheCleaner {
 
     private void clearMicrometerCaches(String lingId, ClassLoader lingClassLoader) {
         try {
-            Class<?> timedAnnotationsClass = Class.forName("org.springframework.boot.actuate.metrics.annotation.TimedAnnotations");
+            Class<?> timedAnnotationsClass = Class
+                    .forName("org.springframework.boot.actuate.metrics.annotation.TimedAnnotations");
             Field cacheField = SpringCleanupSupport.findFieldInHierarchy(timedAnnotationsClass, "cache");
             if (cacheField != null) {
                 cacheField.setAccessible(true);
@@ -228,8 +242,9 @@ final class SpringStaticCacheCleaner {
                         if (key instanceof Class) {
                             return ((Class<?>) key).getClassLoader() == lingClassLoader;
                         }
-                        if (key instanceof java.lang.reflect.Method) {
-                            return ((java.lang.reflect.Method) key).getDeclaringClass().getClassLoader() == lingClassLoader;
+                        if (key instanceof Method) {
+                            return ((Method) key).getDeclaringClass()
+                                    .getClassLoader() == lingClassLoader;
                         }
                         return false;
                     });

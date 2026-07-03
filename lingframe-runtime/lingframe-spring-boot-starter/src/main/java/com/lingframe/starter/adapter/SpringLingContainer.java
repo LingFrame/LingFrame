@@ -76,7 +76,7 @@ public class SpringLingContainer implements LingContainer {
     // 保存 Context 以便 stop 时使用
     private LingContext lingContext;
     private ApplicationContext mainContext; // 🔥 主容器引用
-    private final List<LingUnloadHook> resourceGuards; // 🔥 资源守卫列表
+    private final List<LingUnloadHook> unloadHooks; // 🔥 卸载钩子列表
 
     private File sourceFile;
 
@@ -87,9 +87,9 @@ public class SpringLingContainer implements LingContainer {
                                List<String> excludedPackages,
                                List<LingContextCustomizer> customizers,
                                ApplicationContext mainContext,
-                               List<LingUnloadHook> resourceGuards,
+                               List<LingUnloadHook> unloadHooks,
                                String version) {
-        this(builder, classLoader, webInterfaceManager, excludedPackages, customizers, mainContext, resourceGuards, version, null);
+        this(builder, classLoader, webInterfaceManager, excludedPackages, customizers, mainContext, unloadHooks, version, null);
     }
 
     // 新增构造函数，支持传入部署物理资源路径
@@ -99,7 +99,7 @@ public class SpringLingContainer implements LingContainer {
                                List<String> excludedPackages,
                                List<LingContextCustomizer> customizers,
                                ApplicationContext mainContext,
-                               List<LingUnloadHook> resourceGuards,
+                               List<LingUnloadHook> unloadHooks,
                                String version,
                                File sourceFile) {
         this.builder = builder;
@@ -108,7 +108,7 @@ public class SpringLingContainer implements LingContainer {
         this.excludedPackages = excludedPackages != null ? excludedPackages : Collections.emptyList();
         this.customizers = customizers != null ? customizers : Collections.emptyList();
         this.mainContext = mainContext;
-        this.resourceGuards = resourceGuards != null ? resourceGuards : Collections.emptyList();
+        this.unloadHooks = unloadHooks != null ? unloadHooks : Collections.emptyList();
         this.version = version;
         this.sourceFile = sourceFile;
     }
@@ -575,11 +575,12 @@ public class SpringLingContainer implements LingContainer {
 
     @Override
     public void stop() {
-        if (context != null && context.isActive()) {
+        ConfigurableApplicationContext closedContext = this.context;
+        if (closedContext != null && closedContext.isActive()) {
             String lingId = (lingContext != null) ? lingContext.getLingId() : "unknown";
 
             try {
-                Ling ling = this.context.getBean(Ling.class);
+                Ling ling = closedContext.getBean(Ling.class);
                 log.info("Triggering onStop for ling: {}", lingId);
                 ling.onStop(lingContext);
             } catch (Exception e) {
@@ -602,11 +603,9 @@ public class SpringLingContainer implements LingContainer {
                     }
                     
                     // 2. 清理灵元内部容器中的 ObjectMapper 缓存 (防止内部引用不释放)
-                    if (this.context != null) {
-                        Map<String, ObjectMapper> lingOms = this.context.getBeansOfType(ObjectMapper.class);
-                        for (ObjectMapper om : lingOms.values()) {
-                            JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
-                        }
+                    Map<String, ObjectMapper> lingOms = closedContext.getBeansOfType(ObjectMapper.class);
+                    for (ObjectMapper om : lingOms.values()) {
+                        JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
                     }
                     log.info("[{}] Jackson caches evicted successfully", lingId);
                 } catch (Exception e) {
@@ -618,20 +617,20 @@ public class SpringLingContainer implements LingContainer {
             }
 
             // 🔥 第一阶段清理：在 Context 关闭前执行 preCleanup
-            for (LingUnloadHook guard : resourceGuards) {
-                if (guard instanceof SpringAwareUnloadHook) {
+            for (LingUnloadHook hook : unloadHooks) {
+                if (hook instanceof SpringAwareUnloadHook) {
                     try {
-                        SpringAwareUnloadHook awareGuard = (SpringAwareUnloadHook) guard;
-                        awareGuard.setContexts(this.mainContext, this.context);
-                        awareGuard.preCleanup(lingId);
+                        SpringAwareUnloadHook awareHook = (SpringAwareUnloadHook) hook;
+                        awareHook.setContexts(this.mainContext, closedContext);
+                        awareHook.preCleanup(lingId);
                     } catch (Exception e) {
-                        log.debug("Failed to invoke preCleanup on resource guard: {}", guard.getClass().getName(), e);
+                        log.debug("Failed to invoke preCleanup on unload hook: {}", hook.getClass().getName(), e);
                     }
                 }
             }
             // 5. 关闭上下文 (核心隔离点)
             try {
-                context.close();
+                closedContext.close();
                 log.info("[{}] Spring ApplicationContext closed successfully", lingId);
             } catch (Exception e) {
                 // 🔥 关键修复：隔离上下文关闭异常，防止阻断整机卸载
@@ -639,13 +638,13 @@ public class SpringLingContainer implements LingContainer {
             }
         }
 
-        // 🔥 第二阶段清理会由 DefaultLingLifecycleEngine 调用 resourceGuard.cleanup()
-        // 此处仅确保 context 引用已设置（防御性补充，防止未初始化的 guard 错过注入）
-        for (LingUnloadHook guard : resourceGuards) {
-            if (guard instanceof SpringAwareUnloadHook) {
+        // 🔥 第二阶段清理会由 DefaultLingLifecycleEngine 调用 unloadHook.cleanup()
+        // 此处仅确保 context 引用已设置（防御性补充，防止未初始化的 hook 错过注入）
+        for (LingUnloadHook hook : unloadHooks) {
+            if (hook instanceof SpringAwareUnloadHook) {
                 try {
-                    ((SpringAwareUnloadHook) guard).setContexts(this.mainContext,
-                            this.context);
+                    ((SpringAwareUnloadHook) hook).setContexts(this.mainContext,
+                            closedContext);
                 } catch (Exception ignored) {
                 }
             }

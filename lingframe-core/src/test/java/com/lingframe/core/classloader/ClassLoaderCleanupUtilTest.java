@@ -3,6 +3,7 @@ package com.lingframe.core.classloader;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.net.URL;
 import java.net.URLClassLoader;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,7 +26,7 @@ class ClassLoaderCleanupUtilTest {
     @Test
     @DisplayName("cleanupUrlClassPath 对普通 URLClassLoader 不报错")
     void shouldCleanupNormalUrlClassLoader() {
-        URLClassLoader cl = new URLClassLoader(new java.net.URL[0], ClassLoader.getSystemClassLoader());
+        URLClassLoader cl = new URLClassLoader(new URL[0], ClassLoader.getSystemClassLoader());
         assertDoesNotThrow(() -> cl.close());
     }
 }

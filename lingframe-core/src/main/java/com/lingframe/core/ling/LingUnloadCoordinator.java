@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -239,7 +240,7 @@ public class LingUnloadCoordinator {
         try {
             parallelExecutor.invokeAll(
                     hooks.stream()
-                            .map(hook -> (java.util.concurrent.Callable<Void>) () -> {
+                            .map(hook -> (Callable<Void>) () -> {
                                 try {
                                     invokeHook(hook, lingId, version, classLoader, phase);
                                 } catch (Exception e) {
@@ -247,7 +248,7 @@ public class LingUnloadCoordinator {
                                 }
                                 return null;
                             })
-                            .collect(java.util.stream.Collectors.toList()),
+                            .collect(Collectors.toList()),
                     HOOK_TIMEOUT_SECONDS,
                     TimeUnit.SECONDS
             );

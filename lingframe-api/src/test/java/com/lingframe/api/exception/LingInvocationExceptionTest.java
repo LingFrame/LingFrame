@@ -4,6 +4,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -27,7 +29,7 @@ class LingInvocationExceptionTest {
         @Test
         @DisplayName("错误码唯一不重复")
         void shouldHaveUniqueErrorCodes() {
-            long distinctCount = java.util.Arrays.stream(LingInvocationException.ErrorKind.values())
+            long distinctCount = Arrays.stream(LingInvocationException.ErrorKind.values())
                     .map(LingInvocationException.ErrorKind::getCode)
                     .distinct()
                     .count();

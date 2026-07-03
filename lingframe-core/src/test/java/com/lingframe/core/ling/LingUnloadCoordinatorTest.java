@@ -25,7 +25,7 @@ import static org.mockito.Mockito.*;
 class LingUnloadCoordinatorTest {
 
     private InvocationPipelineEngine pipelineEngine;
-    private LingUnloadHook resourceGuard;
+    private LingUnloadHook unloadHook;
     private LingResourceManager resourceManager;
     private LeakDetector leakDetector;
     private LingUnloadCoordinator coordinator;
@@ -33,12 +33,12 @@ class LingUnloadCoordinatorTest {
     @BeforeEach
     void setUp() {
         pipelineEngine = mock(InvocationPipelineEngine.class);
-        resourceGuard = mock(LingUnloadHook.class);
+        unloadHook = mock(LingUnloadHook.class);
         resourceManager = mock(LingResourceManager.class);
         leakDetector = mock(LeakDetector.class);
         coordinator = new LingUnloadCoordinator(
                 pipelineEngine,
-                Collections.singletonList(resourceGuard),
+                Collections.singletonList(unloadHook),
                 resourceManager,
                 leakDetector);
     }
@@ -55,7 +55,7 @@ class LingUnloadCoordinatorTest {
             ClassLoader cl = mock(ClassLoader.class);
             coordinator.onVersionUnload("ling-1", "v1", cl);
 
-            verify(resourceGuard).cleanup("ling-1", cl);
+            verify(unloadHook).cleanup("ling-1", cl);
         }
 
         @Test
@@ -72,28 +72,28 @@ class LingUnloadCoordinatorTest {
         void nullClassLoaderSkipsCleanup() {
             coordinator.onVersionUnload("ling-1", "v1", null);
 
-            verifyNoInteractions(resourceGuard);
+            verifyNoInteractions(unloadHook);
             verifyNoInteractions(resourceManager);
         }
 
         @Test
-        @DisplayName("LingUnloadHook 抛异常不影响后续 Guard")
-        void guardExceptionDoesNotBlockOthers() {
-            LingUnloadHook failingGuard = mock(LingUnloadHook.class);
-            LingUnloadHook normalGuard = mock(LingUnloadHook.class);
-            doThrow(new RuntimeException("test error")).when(failingGuard).cleanup(any(), any());
+        @DisplayName("LingUnloadHook 抛异常不影响后续 Hook")
+        void hookExceptionDoesNotBlockOthers() {
+            LingUnloadHook failingHook = mock(LingUnloadHook.class);
+            LingUnloadHook normalHook = mock(LingUnloadHook.class);
+            doThrow(new RuntimeException("test error")).when(failingHook).cleanup(any(), any());
 
             LingUnloadCoordinator coord = new LingUnloadCoordinator(
                     pipelineEngine,
-                    Arrays.asList(failingGuard, normalGuard),
+                    Arrays.asList(failingHook, normalHook),
                     resourceManager,
                     leakDetector);
 
             ClassLoader cl = mock(ClassLoader.class);
             coord.onVersionUnload("ling-1", "v1", cl);
 
-            verify(failingGuard).cleanup("ling-1", cl);
-            verify(normalGuard).cleanup("ling-1", cl);
+            verify(failingHook).cleanup("ling-1", cl);
+            verify(normalHook).cleanup("ling-1", cl);
         }
     }
 
@@ -213,18 +213,18 @@ class LingUnloadCoordinatorTest {
 
         @Test
         @DisplayName("安装失败时调用 LingUnloadHook 清理")
-        void failureCleanupCallsGuards() {
+        void failureCleanupCallsHooks() {
             ClassLoader cl = mock(ClassLoader.class);
             coordinator.onFailureCleanup(cl);
 
-            verify(resourceGuard).cleanup("fault-cleanup", cl);
+            verify(unloadHook).cleanup("fault-cleanup", cl);
         }
 
         @Test
         @DisplayName("null ClassLoader 不执行清理")
         void nullClassLoaderSkipsCleanup() {
             coordinator.onFailureCleanup(null);
-            verifyNoInteractions(resourceGuard);
+            verifyNoInteractions(unloadHook);
         }
     }
 

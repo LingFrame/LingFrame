@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -121,7 +122,7 @@ class LingResourceMetricsCollectorTest {
         when(inst2.getClassLoader()).thenReturn(cl2);
 
         InstancePool pool = mock(InstancePool.class);
-        when(pool.getActiveInstances()).thenReturn(java.util.Arrays.asList(inst1, inst2));
+        when(pool.getActiveInstances()).thenReturn(Arrays.asList(inst1, inst2));
 
         LingRuntime runtime = mock(LingRuntime.class);
         when(runtime.getInstancePool()).thenReturn(pool);

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.util.jar.JarEntry;
@@ -49,7 +50,7 @@ class ClassLoaderUtilAndFactoryTest {
         @DisplayName("清理已关闭的 URLClassLoader 不抛异常")
         void cleanupClosedUrlClassLoader(@TempDir Path temp) throws IOException {
             File jar = createEmptyJar(temp);
-            URLClassLoader ucl = new URLClassLoader(new java.net.URL[]{jar.toURI().toURL()}, null);
+            URLClassLoader ucl = new URLClassLoader(new URL[]{jar.toURI().toURL()}, null);
             ucl.close();
 
             assertDoesNotThrow(() -> ClassLoaderCleanupUtil.cleanupUrlClassPath(ucl, "test-closed"));
@@ -59,7 +60,7 @@ class ClassLoaderUtilAndFactoryTest {
         @DisplayName("清理活跃的 URLClassLoader 不抛异常")
         void cleanupActiveUrlClassLoader(@TempDir Path temp) throws IOException {
             File jar = createEmptyJar(temp);
-            URLClassLoader ucl = new URLClassLoader(new java.net.URL[]{jar.toURI().toURL()}, null);
+            URLClassLoader ucl = new URLClassLoader(new URL[]{jar.toURI().toURL()}, null);
 
             assertDoesNotThrow(() -> ClassLoaderCleanupUtil.cleanupUrlClassPath(ucl, "test-active"));
             ucl.close();

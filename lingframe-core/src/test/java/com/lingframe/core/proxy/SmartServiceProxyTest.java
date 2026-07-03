@@ -95,7 +95,7 @@ class SmartServiceProxyTest {
                 assertEquals("sayHello", ctx.getMethodName());
                 assertEquals("target-ling", ctx.getTargetLingId());
                 assertEquals("caller-ling", ctx.getCallerLingId());
-                assertEquals(AccessType.EXECUTE, ctx.getAccessType());
+                assertEquals(AccessType.EXECUTE, ctx.governance().getAccessType());
                 assertNotNull(ctx.getParameterTypeNames());
                 assertArrayEquals(new Object[] { "World" }, ctx.getArgs());
 

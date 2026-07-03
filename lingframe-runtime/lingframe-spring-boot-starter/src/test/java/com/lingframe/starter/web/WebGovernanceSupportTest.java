@@ -125,10 +125,10 @@ class WebGovernanceSupportTest {
         assertEquals("ling-id:http", ctx.getServiceFQSID());
         assertEquals("HTTP", ctx.getResourceType());
         assertEquals("POST /api/test", ctx.getResourceId());
-        assertEquals("test:perm", ctx.getRequiredPermission()); // 注解优先于 meta
-        assertEquals(AccessType.WRITE, ctx.getAccessType());    // POST 映射为 WRITE
-        assertEquals("test:audit", ctx.getAuditAction());        // 注解优先于 meta
-        assertTrue(ctx.isShouldAudit());
+        assertEquals("test:perm", ctx.governance().getRequiredPermission()); // 注解优先于 meta
+        assertEquals(AccessType.WRITE, ctx.governance().getAccessType());    // POST 映射为 WRITE
+        assertEquals("test:audit", ctx.governance().getAuditAction());        // 注解优先于 meta
+        assertTrue(ctx.governance().isShouldAudit());
         assertEquals("admin", ctx.getMetadata().get(AuditMetadataKeys.PRINCIPAL));
 
         verify(resolver).applyTo(ctx, "ling-id");
@@ -143,15 +143,15 @@ class WebGovernanceSupportTest {
         InvocationContext ctxGet = support.buildInvocationContext(getRequest, methodNoAudit, "ling-id", null, null);
 
         assertNotNull(ctxGet.getTraceId()); // 自动生成 traceId
-        assertEquals(AccessType.READ, ctxGet.getAccessType()); // GET 映射为 READ
-        assertFalse(ctxGet.isShouldAudit());                  // GET 默认不审计
+        assertEquals(AccessType.READ, ctxGet.governance().getAccessType()); // GET 映射为 READ
+        assertFalse(ctxGet.governance().isShouldAudit());                  // GET 默认不审计
         assertEquals("guest", ctxGet.getMetadata().get(AuditMetadataKeys.PRINCIPAL));
 
         // 场景 3：无注解的方法，从 meta 解析或默认行为
         Method defaultMethod = TestController.class.getMethod("methodWithoutAnnotation");
         InvocationContext ctxDefault = support.buildInvocationContext(getRequest, defaultMethod, "ling-id", meta, null);
-        assertEquals("meta:perm", ctxDefault.getRequiredPermission());
-        assertEquals("meta:audit", ctxDefault.getAuditAction());
+        assertEquals("meta:perm", ctxDefault.governance().getRequiredPermission());
+        assertEquals("meta:audit", ctxDefault.governance().getAuditAction());
     }
 
     @Test

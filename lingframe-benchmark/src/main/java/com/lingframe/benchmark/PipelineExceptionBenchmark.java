@@ -117,8 +117,8 @@ public class PipelineExceptionBenchmark {
             ctx.setMethodName("ping");
             ctx.setParameterTypeNames(new String[0]);
             ctx.setArgs(new Object[0]);
-            ctx.setAccessType(AccessType.EXECUTE);
-            ctx.setExecutionMode(InvocationExecutionMode.NORMAL);
+            ctx.governance().setAccessType(AccessType.EXECUTE);
+            ctx.execution().setMode(InvocationExecutionMode.NORMAL);
             pipelineEngine.invoke(ctx);
         } catch (Throwable e) {
             bh.consume(e);

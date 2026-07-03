@@ -1,6 +1,6 @@
 package com.lingframe.core.invoker;
 
-import com.lingframe.api.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.ActiveInvocationSnapshot;
 import com.lingframe.core.ling.LingInstance;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,11 +41,11 @@ class DefaultLingServiceInvokerTest {
     }
 
     @Test
-    @DisplayName("实例不可用时抛出 ServiceUnavailableException")
+    @DisplayName("实例不可用时抛出 LingInvocationException")
     void shouldThrowWhenInstanceNotReady() {
         when(instance.beginInvocation(any(ActiveInvocationSnapshot.class))).thenReturn(-1L);
 
-        assertThrows(ServiceUnavailableException.class, () ->
+        assertThrows(LingInvocationException.class, () ->
                 invoker.invoke(instance, bean, method, new Object[]{"hello"}));
     }
 

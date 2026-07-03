@@ -96,6 +96,8 @@ public class WebInterfaceManager implements WebRouteResolver {
     public void unregisterSync(String lingId, ClassLoader targetLoader) {
         try {
             registryExecutor.submit(() -> unregisterInternal(lingId, targetLoader)).get();
+            // 🔥 终极冲刷：提交并等待空任务以彻底覆盖并刷洗后台线程执行栈中可能残留的任务闭包强引用
+            registryExecutor.submit(() -> {}).get();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new LingException("Interrupted while unregistering web mapping", e);
@@ -232,7 +234,7 @@ public class WebInterfaceManager implements WebRouteResolver {
         // 🔥 纯代理架构下，卸载只需移除 HandlerMapping 中的路由映射
         // 无需清理灵核的任何 Bean、BPP 缓存或 Adapter 缓存
         // 因为灵核从未接触过灵元的类
-        hostSupport.unregisterMappings(routesToRemove, mappingInfoMap);
+        hostSupport.unregisterMappings(routesToRemove, mappingInfoMap, targetLoader);
         
         // ✅ 注销后立即清理 SpringDoc 缓存，防止 UI 出现过期路由
         hostSupport.clearSpringDocCache();

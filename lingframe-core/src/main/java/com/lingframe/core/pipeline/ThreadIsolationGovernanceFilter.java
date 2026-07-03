@@ -57,7 +57,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
         if (fqsid == null || !fqsid.contains(":")) {
             return chain.doFilter(ctx);
         }
-        if (ctx.isGovernOnly()) {
+        if (ctx.execution().getMode().isGovernOnly()) {
             return chain.doFilter(ctx);
         }
 
@@ -144,15 +144,15 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
     }
 
     private int traceCount(InvocationContext ctx) {
-        return ctx.getTraces() == null ? 0 : ctx.getTraces().size();
+        return ctx.execution().getTraces() == null ? 0 : ctx.execution().getTraces().size();
     }
 
     private void mergeNewTraces(InvocationContext parent, InvocationContext child, int inheritedTraceCount) {
-        if (parent == null || child == null || child.getTraces() == null) {
+        if (parent == null || child == null || child.execution().getTraces() == null) {
             return;
         }
-        for (int i = inheritedTraceCount; i < child.getTraces().size(); i++) {
-            parent.addTrace(child.getTraces().get(i));
+        for (int i = inheritedTraceCount; i < child.execution().getTraces().size(); i++) {
+            parent.execution().addTrace(child.execution().getTraces().get(i));
         }
     }
 

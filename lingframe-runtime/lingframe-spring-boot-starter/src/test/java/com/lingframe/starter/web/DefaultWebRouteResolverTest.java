@@ -18,8 +18,10 @@ import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -53,13 +55,13 @@ class DefaultWebRouteResolverTest {
     @DisplayName("治理与分发阶段应共享同一个已解析路由")
     void shouldShareResolvedRouteBetweenGovernanceAndDispatch() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
-        Map<String, java.util.Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
         Method targetMethod = DemoController.class.getMethod("detail");
         WebInterfaceMetadata v1Meta = metadata("ling-a", "v1", targetMethod);
         WebInterfaceMetadata v2Meta = metadata("ling-a", "v2", targetMethod);
         String routeKey = "GET#/ling-a/demo/detail";
         metadataMap.put(routeKey, Arrays.asList(v1Meta, v2Meta));
-        routePatternsByMethod.put("GET", java.util.Collections.singleton("/ling-a/demo/detail"));
+        routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/detail"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
@@ -95,7 +97,7 @@ class DefaultWebRouteResolverTest {
     @DisplayName("应根据请求路径匹配模板路由")
     void shouldResolveTemplatedRouteFromRequest() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
-        Map<String, java.util.Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
         Method targetMethod = DemoController.class.getMethod("detail");
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
                 .lingId("ling-a")
@@ -107,13 +109,13 @@ class DefaultWebRouteResolverTest {
                 .httpMethod("GET")
                 .requiredPermission("demo:read")
                 .build();
-        metadataMap.put("GET#/ling-a/demo/{id}", java.util.Collections.singletonList(metadata));
-        routePatternsByMethod.put("GET", java.util.Collections.singleton("/ling-a/demo/{id}"));
+        metadataMap.put("GET#/ling-a/demo/{id}", Collections.singletonList(metadata));
+        routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/{id}"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
         when(lingRepository.getRuntime("ling-a")).thenReturn(runtime);
-        when(runtime.getReadyInstances()).thenReturn(java.util.Collections.singletonList(v1Instance));
+        when(runtime.getReadyInstances()).thenReturn(Collections.singletonList(v1Instance));
         when(v1Instance.getVersion()).thenReturn("v1");
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/42");
@@ -134,13 +136,13 @@ class DefaultWebRouteResolverTest {
     @DisplayName("流量路由前应优先使用请求强制指定的版本")
     void shouldPreferForcedRequestVersionBeforeRouting() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
-        Map<String, java.util.Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
         Method targetMethod = DemoController.class.getMethod("detail");
         WebInterfaceMetadata v1Meta = metadata("ling-a", "v1", targetMethod);
         WebInterfaceMetadata v2Meta = metadata("ling-a", "v2", targetMethod);
         String routeKey = "GET#/ling-a/demo/detail";
         metadataMap.put(routeKey, Arrays.asList(v1Meta, v2Meta));
-        routePatternsByMethod.put("GET", java.util.Collections.singleton("/ling-a/demo/detail"));
+        routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/detail"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
@@ -163,18 +165,18 @@ class DefaultWebRouteResolverTest {
     @DisplayName("路由器返回 null 时应回退到就绪元数据")
     void shouldFallbackToReadyMetadataWhenRouterReturnsNull() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
-        Map<String, java.util.Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
         Method targetMethod = DemoController.class.getMethod("detail");
         WebInterfaceMetadata v1Meta = metadata("ling-a", "v1", targetMethod);
         WebInterfaceMetadata v2Meta = metadata("ling-a", "v2", targetMethod);
         String routeKey = "GET#/ling-a/demo/detail";
         metadataMap.put(routeKey, Arrays.asList(v1Meta, v2Meta));
-        routePatternsByMethod.put("GET", java.util.Collections.singleton("/ling-a/demo/detail"));
+        routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/detail"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
         when(lingRepository.getRuntime("ling-a")).thenReturn(runtime);
-        when(runtime.getReadyInstances()).thenReturn(java.util.Collections.singletonList(v2Instance));
+        when(runtime.getReadyInstances()).thenReturn(Collections.singletonList(v2Instance));
         when(v2Instance.getVersion()).thenReturn("v2");
         when(trafficRouter.route(anyList(), any(InvocationContext.class))).thenReturn(null);
 
@@ -191,7 +193,7 @@ class DefaultWebRouteResolverTest {
     @DisplayName("请求携带 context path 时应匹配模板路由")
     void shouldResolveTemplatedRouteWithContextPath() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
-        Map<String, java.util.Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
         Method targetMethod = DemoController.class.getMethod("detail");
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
                 .lingId("ling-a")
@@ -203,13 +205,13 @@ class DefaultWebRouteResolverTest {
                 .httpMethod("GET")
                 .requiredPermission("demo:read")
                 .build();
-        metadataMap.put("GET#/ling-a/demo/{id}", java.util.Collections.singletonList(metadata));
-        routePatternsByMethod.put("GET", java.util.Collections.singleton("/ling-a/demo/{id}"));
+        metadataMap.put("GET#/ling-a/demo/{id}", Collections.singletonList(metadata));
+        routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/{id}"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
         when(lingRepository.getRuntime("ling-a")).thenReturn(runtime);
-        when(runtime.getReadyInstances()).thenReturn(java.util.Collections.singletonList(v1Instance));
+        when(runtime.getReadyInstances()).thenReturn(Collections.singletonList(v1Instance));
         when(v1Instance.getVersion()).thenReturn("v1");
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/app/ling-a/demo/42");
@@ -230,7 +232,7 @@ class DefaultWebRouteResolverTest {
     @DisplayName("请求携带 context 与 servlet path 时应匹配模板路由")
     void shouldResolveTemplatedRouteWithContextAndServletPath() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
-        Map<String, java.util.Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
         Method targetMethod = DemoController.class.getMethod("detail");
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
                 .lingId("ling-a")
@@ -242,13 +244,13 @@ class DefaultWebRouteResolverTest {
                 .httpMethod("GET")
                 .requiredPermission("demo:read")
                 .build();
-        metadataMap.put("GET#/ling-a/demo/{id}", java.util.Collections.singletonList(metadata));
-        routePatternsByMethod.put("GET", java.util.Collections.singleton("/ling-a/demo/{id}"));
+        metadataMap.put("GET#/ling-a/demo/{id}", Collections.singletonList(metadata));
+        routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/{id}"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
         when(lingRepository.getRuntime("ling-a")).thenReturn(runtime);
-        when(runtime.getReadyInstances()).thenReturn(java.util.Collections.singletonList(v1Instance));
+        when(runtime.getReadyInstances()).thenReturn(Collections.singletonList(v1Instance));
         when(v1Instance.getVersion()).thenReturn("v1");
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/app/gateway/ling-a/demo/42");
@@ -270,7 +272,7 @@ class DefaultWebRouteResolverTest {
     @DisplayName("请求携带 forwarded prefix 时应匹配模板路由")
     void shouldResolveTemplatedRouteWithForwardedPrefix() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
-        Map<String, java.util.Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
         Method targetMethod = DemoController.class.getMethod("detail");
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
                 .lingId("ling-a")
@@ -282,13 +284,13 @@ class DefaultWebRouteResolverTest {
                 .httpMethod("GET")
                 .requiredPermission("demo:read")
                 .build();
-        metadataMap.put("GET#/ling-a/demo/{id}", java.util.Collections.singletonList(metadata));
-        routePatternsByMethod.put("GET", java.util.Collections.singleton("/ling-a/demo/{id}"));
+        metadataMap.put("GET#/ling-a/demo/{id}", Collections.singletonList(metadata));
+        routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/{id}"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
         when(lingRepository.getRuntime("ling-a")).thenReturn(runtime);
-        when(runtime.getReadyInstances()).thenReturn(java.util.Collections.singletonList(v1Instance));
+        when(runtime.getReadyInstances()).thenReturn(Collections.singletonList(v1Instance));
         when(v1Instance.getVersion()).thenReturn("v1");
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/proxy/ling-a/demo/42");
@@ -306,7 +308,7 @@ class DefaultWebRouteResolverTest {
     @DisplayName("不持有强 Bean 引用时应匹配 SpringDoc bean-name 处理器")
     void shouldResolveSpringDocHandlerWithoutStrongReferences() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
-        Map<String, java.util.Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
         Method targetMethod = DemoController.class.getMethod("detail");
         String routeKey = "GET#/ling-a/demo/detail";
         String springDocBeanName = "ling-a:v1:" + DemoController.class.getName();
@@ -321,8 +323,8 @@ class DefaultWebRouteResolverTest {
                 .httpMethod("GET")
                 .requiredPermission("demo:read")
                 .build();
-        metadataMap.put(routeKey, java.util.Collections.singletonList(metadata));
-        routePatternsByMethod.put("GET", java.util.Collections.singleton("/ling-a/demo/detail"));
+        metadataMap.put(routeKey, Collections.singletonList(metadata));
+        routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/detail"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
@@ -347,7 +349,7 @@ class DefaultWebRouteResolverTest {
     @DisplayName("应根据参数类型匹配 SpringDoc 重载处理器")
     void shouldResolveSpringDocOverloadedHandlerByParameterTypes() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
-        Map<String, java.util.Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
         Method stringMethod = DemoController.class.getMethod("overloaded", String.class);
         Method integerMethod = DemoController.class.getMethod("overloaded", Integer.class);
         String routeKey = "GET#/ling-a/demo/overloaded";
@@ -378,7 +380,7 @@ class DefaultWebRouteResolverTest {
                 .requiredPermission("demo:read")
                 .build();
         metadataMap.put(routeKey, Arrays.asList(stringMetadata, integerMetadata));
-        routePatternsByMethod.put("GET", java.util.Collections.singleton("/ling-a/demo/overloaded"));
+        routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/overloaded"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
@@ -403,7 +405,7 @@ class DefaultWebRouteResolverTest {
     @DisplayName("应匹配带 params 与 headers 条件的路由")
     void shouldResolveRouteWithParamsAndHeadersConditions() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
-        Map<String, java.util.Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
         Method fullMethod = DemoController.class.getMethod("full");
         Method liteMethod = DemoController.class.getMethod("lite");
 
@@ -419,14 +421,14 @@ class DefaultWebRouteResolverTest {
                 new String[0],
                 new String[0],
                 new String[0]);
-        metadataMap.put(fullMeta.buildRouteKey(), java.util.Collections.singletonList(fullMeta));
-        metadataMap.put(liteMeta.buildRouteKey(), java.util.Collections.singletonList(liteMeta));
-        routePatternsByMethod.put("GET", java.util.Collections.singleton("/ling-a/demo/detail"));
+        metadataMap.put(fullMeta.buildRouteKey(), Collections.singletonList(fullMeta));
+        metadataMap.put(liteMeta.buildRouteKey(), Collections.singletonList(liteMeta));
+        routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/detail"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
         when(lingRepository.getRuntime("ling-a")).thenReturn(runtime);
-        when(runtime.getReadyInstances()).thenReturn(java.util.Collections.singletonList(v1Instance));
+        when(runtime.getReadyInstances()).thenReturn(Collections.singletonList(v1Instance));
         when(v1Instance.getVersion()).thenReturn("v1");
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
@@ -449,7 +451,7 @@ class DefaultWebRouteResolverTest {
     @DisplayName("应匹配带 consumes 与 produces 条件的路由")
     void shouldResolveRouteWithConsumesAndProducesConditions() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
-        Map<String, java.util.Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
         Method jsonMethod = DemoController.class.getMethod("createJson");
         Method textMethod = DemoController.class.getMethod("createText");
 
@@ -465,14 +467,14 @@ class DefaultWebRouteResolverTest {
                 new String[0],
                 new String[] {"text/plain"},
                 new String[] {"text/plain"});
-        metadataMap.put(jsonMeta.buildRouteKey(), java.util.Collections.singletonList(jsonMeta));
-        metadataMap.put(textMeta.buildRouteKey(), java.util.Collections.singletonList(textMeta));
-        routePatternsByMethod.put("POST", java.util.Collections.singleton("/ling-a/demo/detail"));
+        metadataMap.put(jsonMeta.buildRouteKey(), Collections.singletonList(jsonMeta));
+        metadataMap.put(textMeta.buildRouteKey(), Collections.singletonList(textMeta));
+        routePatternsByMethod.put("POST", Collections.singleton("/ling-a/demo/detail"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
         when(lingRepository.getRuntime("ling-a")).thenReturn(runtime);
-        when(runtime.getReadyInstances()).thenReturn(java.util.Collections.singletonList(v1Instance));
+        when(runtime.getReadyInstances()).thenReturn(Collections.singletonList(v1Instance));
         when(v1Instance.getVersion()).thenReturn("v1");
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/ling-a/demo/detail");
@@ -496,7 +498,7 @@ class DefaultWebRouteResolverTest {
     @DisplayName("源元数据被清理后请求解析结果仍应保持稳定")
     void shouldKeepRequestResolutionStableAfterSourceMetadataCleared() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
-        Map<String, java.util.Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
         DemoController controller = new DemoController();
         Method targetMethod = DemoController.class.getMethod("detail");
         WebInterfaceMetadata sourceMetadata = WebInterfaceMetadata.builder()
@@ -515,13 +517,13 @@ class DefaultWebRouteResolverTest {
                 .build();
         sourceMetadata.minimizeHostReferences();
         String routeKey = "GET#/ling-a/demo/detail";
-        metadataMap.put(routeKey, java.util.Collections.singletonList(sourceMetadata));
-        routePatternsByMethod.put("GET", java.util.Collections.singleton("/ling-a/demo/detail"));
+        metadataMap.put(routeKey, Collections.singletonList(sourceMetadata));
+        routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/detail"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
                 metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
         when(lingRepository.getRuntime("ling-a")).thenReturn(runtime);
-        when(runtime.getReadyInstances()).thenReturn(java.util.Collections.singletonList(v1Instance));
+        when(runtime.getReadyInstances()).thenReturn(Collections.singletonList(v1Instance));
         when(v1Instance.getVersion()).thenReturn("v1");
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");

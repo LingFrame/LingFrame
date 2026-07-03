@@ -31,7 +31,7 @@ class PermissionGovernanceFilterTest {
         PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService);
 
         InvocationContext ctx = createContext();
-        ctx.setRequiredPermission("perm:write");
+        ctx.governance().setRequiredPermission("perm:write");
 
         LingFilterChain chain = current -> null;
         LingInvocationException ex = assertThrows(LingInvocationException.class, () -> filter.doFilter(ctx, chain));
@@ -52,7 +52,7 @@ class PermissionGovernanceFilterTest {
         PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService);
 
         InvocationContext ctx = createContext();
-        ctx.setRequiredPermission(null);
+        ctx.governance().setRequiredPermission(null);
 
         Object result = filter.doFilter(ctx, current -> "ok");
         assertEquals("ok", result);
@@ -71,7 +71,7 @@ class PermissionGovernanceFilterTest {
         PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService);
 
         InvocationContext ctx = createContext();
-        ctx.setRequiredPermission("perm:write");
+        ctx.governance().setRequiredPermission("perm:write");
 
         Object result = filter.doFilter(ctx, current -> "ok");
         assertEquals("ok", result);
@@ -92,7 +92,7 @@ class PermissionGovernanceFilterTest {
         PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService);
 
         InvocationContext ctx = createContext();
-        ctx.setRequiredPermission("perm:write");
+        ctx.governance().setRequiredPermission("perm:write");
 
         LingFilterChain chain = current -> {
             throw new IllegalStateException("boom");
@@ -113,10 +113,10 @@ class PermissionGovernanceFilterTest {
         InvocationContext ctx = InvocationContext.obtain();
         ctx.setServiceFQSID("ling1:svc");
         ctx.setCallerLingId("ling1");
-        ctx.setAccessType(AccessType.EXECUTE);
-        ctx.setShouldAudit(true);
+        ctx.governance().setAccessType(AccessType.EXECUTE);
+        ctx.governance().setShouldAudit(true);
         ctx.setResourceId("res");
-        ctx.setAuditAction("act");
+        ctx.governance().setAuditAction("act");
         HashMap<String, Object> metadata = new HashMap<>();
         metadata.put(AuditMetadataKeys.PRINCIPAL, "alice");
         ctx.setMetadata(metadata);

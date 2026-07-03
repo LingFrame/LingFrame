@@ -5,7 +5,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
@@ -53,20 +52,7 @@ class ApiExceptionTest {
         assertEquals("param", iae4.getParamName());
         assertSame(cause, iae4.getCause());
 
-        // 4. CallNotPermittedException
-        CallNotPermittedException cnpe1 = new CallNotPermittedException("res-x", "reason-x");
-        assertEquals("res-x", cnpe1.getResourceId());
-        assertEquals("reason-x", cnpe1.getReason());
-        assertNotNull(cnpe1.getMessage());
-
-        // 5. InvocationException
-        InvocationException ie1 = new InvocationException("msg");
-        assertEquals("msg", ie1.getMessage());
-        InvocationException ie2 = new InvocationException("msg", cause);
-        assertEquals("msg", ie2.getMessage());
-        assertSame(cause, ie2.getCause());
-
-        // 6. LingInvocationException
+        // 4. LingInvocationException
         LingInvocationException lie1 = new LingInvocationException("ling-x:service-x", LingInvocationException.ErrorKind.INVOKE_ERROR);
         assertEquals("ling-x:service-x", lie1.getFqsid());
         assertEquals(LingInvocationException.ErrorKind.INVOKE_ERROR, lie1.getKind());
@@ -81,15 +67,15 @@ class ApiExceptionTest {
         assertEquals("ling-x:service-x", lie3.getFqsid());
         assertSame(cause, lie3.getCause());
 
-        // 7. LingNotFoundException
+        // 5. LingNotFoundException
         LingNotFoundException lnfe1 = new LingNotFoundException("ling-x");
         assertEquals("ling-x", lnfe1.getLingId());
-        
+
         LingNotFoundException lnfe2 = new LingNotFoundException("ling-x", "custom msg");
         assertEquals("ling-x", lnfe2.getLingId());
         assertEquals("custom msg", lnfe2.getMessage());
 
-        // 8. PermissionDeniedException
+        // 6. PermissionDeniedException
         PermissionDeniedException pde1 = new PermissionDeniedException("msg");
         assertEquals("msg", pde1.getMessage());
 
@@ -106,7 +92,7 @@ class ApiExceptionTest {
         assertEquals("capability-x", pde4.getCapability());
         assertEquals(AccessType.WRITE, pde4.getAccessType());
 
-        // 9. ServiceNotFoundException
+        // 7. ServiceNotFoundException
         ServiceNotFoundException snfe1 = new ServiceNotFoundException("service-x");
         assertEquals("service-x", snfe1.getServiceName());
         assertNull(snfe1.getLingId());
@@ -114,10 +100,5 @@ class ApiExceptionTest {
         ServiceNotFoundException snfe2 = new ServiceNotFoundException("service-x", "ling-x");
         assertEquals("service-x", snfe2.getServiceName());
         assertEquals("ling-x", snfe2.getLingId());
-
-        // 10. ServiceUnavailableException
-        ServiceUnavailableException sue1 = new ServiceUnavailableException("service-x", "reason-x");
-        assertEquals("service-x", sue1.getServiceName());
-        assertEquals("reason-x", sue1.getReason());
     }
 }

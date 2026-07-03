@@ -7,7 +7,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 /**
  * 支持 Spring Context 感知与预清理的增强 LingUnloadHook 契约。
  * <p>
- * 凡实现该接口的资源守卫，在 Spring 灵元卸载第一阶段（Context 活跃时期）将收到注入的上下文，并获得
+ * 凡实现该接口的卸载钩子，在 Spring 灵元卸载第一阶段（Context 活跃时期）将收到注入的上下文，并获得
  * {@link #preCleanup(String)} 预清理执行机会。
  * </p>
  */
@@ -30,7 +30,7 @@ public interface SpringAwareUnloadHook extends LingUnloadHook {
     void preCleanup(String lingId);
 
     /**
-     * 清空上下文引用，防止单例 Guard 持有已卸载灵元的 Context/ClassLoader 导致内存泄漏。
+     * 清空上下文引用，防止单例卸载钩子持有已卸载灵元的 Context/ClassLoader 导致内存泄漏。
      * 应在每次 cleanup 完成后由容器调用。
      */
     void clearContexts();

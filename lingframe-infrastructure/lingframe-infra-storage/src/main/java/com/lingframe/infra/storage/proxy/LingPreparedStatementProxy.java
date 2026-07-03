@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.net.URL;
 import java.sql.*;
 import java.util.Calendar;
+import java.util.List;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -30,7 +31,7 @@ public class LingPreparedStatementProxy implements PreparedStatement {
 
     // 预解析的结果
     private final AccessType preParsedAccessType;
-    private final java.util.List<String> preParsedCapabilities;
+    private final List<String> preParsedCapabilities;
 
     // SQL解析结果缓存 (LRU缓存)
 

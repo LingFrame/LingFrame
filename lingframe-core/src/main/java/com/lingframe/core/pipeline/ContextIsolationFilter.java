@@ -30,7 +30,7 @@ public class ContextIsolationFilter implements LingInvocationFilter {
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
         LingInstance target = ctx.routing().getTargetInstance();
         if (target == null) {
-            if (ctx.isSimulation() || ctx.isGovernOnly()) {
+            if (ctx.execution().getMode().isSimulation() || ctx.execution().getMode().isGovernOnly()) {
                 // 模拟/穿刺模式可能只借道治理，不要求一定存在真实目标实例
                 return chain.doFilter(ctx);
             }

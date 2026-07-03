@@ -9,9 +9,25 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.io.InputStream;
+import java.io.Reader;
+import java.math.BigDecimal;
+import java.net.URL;
+import java.sql.Array;
+import java.sql.Blob;
+import java.sql.Clob;
+import java.sql.Date;
+import java.sql.NClob;
 import java.sql.PreparedStatement;
+import java.sql.Ref;
 import java.sql.ResultSet;
+import java.sql.RowId;
 import java.sql.SQLException;
+import java.sql.SQLType;
+import java.sql.SQLXML;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.util.Calendar;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -199,7 +215,7 @@ class LingPreparedStatementProxyTest {
             proxy.setLong(1, 100L);
             verify(target).setLong(1, 100L);
 
-            java.sql.SQLType sqlType = mock(java.sql.SQLType.class);
+            SQLType sqlType = mock(SQLType.class);
             proxy.setObject(1, "obj", sqlType, 2);
             verify(target).setObject(1, "obj", sqlType, 2);
 
@@ -328,26 +344,26 @@ class LingPreparedStatementProxyTest {
             proxy.setDouble(1, 1.0);
             verify(target).setDouble(1, 1.0);
 
-            java.math.BigDecimal bd = new java.math.BigDecimal("1.0");
+            BigDecimal bd = new BigDecimal("1.0");
             proxy.setBigDecimal(1, bd);
             verify(target).setBigDecimal(1, bd);
 
             proxy.setBytes(1, new byte[0]);
             verify(target).setBytes(1, new byte[0]);
 
-            java.sql.Date date = new java.sql.Date(0L);
+            Date date = new Date(0L);
             proxy.setDate(1, date);
             verify(target).setDate(1, date);
 
-            java.sql.Time time = new java.sql.Time(0L);
+            Time time = new Time(0L);
             proxy.setTime(1, time);
             verify(target).setTime(1, time);
 
-            java.sql.Timestamp ts = new java.sql.Timestamp(0L);
+            Timestamp ts = new Timestamp(0L);
             proxy.setTimestamp(1, ts);
             verify(target).setTimestamp(1, ts);
 
-            java.io.InputStream is = mock(java.io.InputStream.class);
+            InputStream is = mock(InputStream.class);
             proxy.setAsciiStream(1, is, 1);
             verify(target).setAsciiStream(1, is, 1);
 
@@ -366,30 +382,30 @@ class LingPreparedStatementProxyTest {
             proxy.setObject(1, "obj");
             verify(target).setObject(1, "obj");
 
-            java.io.Reader reader = mock(java.io.Reader.class);
+            Reader reader = mock(Reader.class);
             proxy.setCharacterStream(1, reader, 1);
             verify(target).setCharacterStream(1, reader, 1);
 
-            java.sql.Ref ref = mock(java.sql.Ref.class);
+            Ref ref = mock(Ref.class);
             proxy.setRef(1, ref);
             verify(target).setRef(1, ref);
 
-            java.sql.Blob blob = mock(java.sql.Blob.class);
+            Blob blob = mock(Blob.class);
             proxy.setBlob(1, blob);
             verify(target).setBlob(1, blob);
 
-            java.sql.Clob clob = mock(java.sql.Clob.class);
+            Clob clob = mock(Clob.class);
             proxy.setClob(1, clob);
             verify(target).setClob(1, clob);
 
-            java.sql.Array array = mock(java.sql.Array.class);
+            Array array = mock(Array.class);
             proxy.setArray(1, array);
             verify(target).setArray(1, array);
 
             proxy.getMetaData();
             verify(target).getMetaData();
 
-            java.util.Calendar cal = java.util.Calendar.getInstance();
+            Calendar cal = Calendar.getInstance();
             proxy.setDate(1, date, cal);
             verify(target).setDate(1, date, cal);
 
@@ -402,14 +418,14 @@ class LingPreparedStatementProxyTest {
             proxy.setNull(1, 1, "name");
             verify(target).setNull(1, 1, "name");
 
-            java.net.URL url = new java.net.URL("http://localhost");
+            URL url = new URL("http://localhost");
             proxy.setURL(1, url);
             verify(target).setURL(1, url);
 
             proxy.getParameterMetaData();
             verify(target).getParameterMetaData();
 
-            java.sql.RowId rowId = mock(java.sql.RowId.class);
+            RowId rowId = mock(RowId.class);
             proxy.setRowId(1, rowId);
             verify(target).setRowId(1, rowId);
 
@@ -419,7 +435,7 @@ class LingPreparedStatementProxyTest {
             proxy.setNCharacterStream(1, reader, 1L);
             verify(target).setNCharacterStream(1, reader, 1L);
 
-            java.sql.NClob nclob = mock(java.sql.NClob.class);
+            NClob nclob = mock(NClob.class);
             proxy.setNClob(1, nclob);
             verify(target).setNClob(1, nclob);
 
@@ -432,7 +448,7 @@ class LingPreparedStatementProxyTest {
             proxy.setNClob(1, reader, 1L);
             verify(target).setNClob(1, reader, 1L);
 
-            java.sql.SQLXML xml = mock(java.sql.SQLXML.class);
+            SQLXML xml = mock(SQLXML.class);
             proxy.setSQLXML(1, xml);
             verify(target).setSQLXML(1, xml);
 

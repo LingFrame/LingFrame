@@ -29,7 +29,7 @@ public class PermissionGovernanceFilter implements LingInvocationFilter {
     @Override
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
         String callerLingId = ctx.getCallerLingId();
-        String capability = ctx.getRequiredPermission();
+        String capability = ctx.governance().getRequiredPermission();
         long startNanos = System.nanoTime();
 
         if (capability == null || capability.isEmpty()) {
@@ -45,10 +45,10 @@ public class PermissionGovernanceFilter implements LingInvocationFilter {
             }
         }
 
-        boolean allowed = permissionService.isAllowed(callerLingId, capability, ctx.getAccessType());
+        boolean allowed = permissionService.isAllowed(callerLingId, capability, ctx.governance().getAccessType());
         if (!allowed) {
             log.warn("[Security] Permission denied: caller={}, capability={}, type={}",
-                    callerLingId, capability, ctx.getAccessType());
+                    callerLingId, capability, ctx.governance().getAccessType());
             auditIfNeeded(ctx, PermissionAuditResult.DENIED, "Permission denied", startNanos);
             throw new LingInvocationException(ctx.getServiceFQSID(),
                     LingInvocationException.ErrorKind.SECURITY_REJECTED);
@@ -68,15 +68,15 @@ public class PermissionGovernanceFilter implements LingInvocationFilter {
             PermissionAuditResult result,
             String failureReason,
             long startNanos) {
-        if (!ctx.isShouldAudit()) {
+        if (!ctx.governance().isShouldAudit()) {
             return;
         }
 
         permissionService.audit(PermissionAuditRecord.builder()
                 .callerLingId(ctx.getCallerLingId())
                 .principal(resolvePrincipal(ctx))
-                .capability(ctx.getRequiredPermission())
-                .action(ctx.getAuditAction())
+                .capability(ctx.governance().getRequiredPermission())
+                .action(ctx.governance().getAuditAction())
                 .resource(ctx.getResourceId())
                 .result(result)
                 .failureReason(failureReason)

@@ -8,6 +8,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.stream.Stream;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -56,7 +57,7 @@ public class ApiOverrideVerifier implements LingSecurityVerifier {
     }
 
     private boolean hasApiClassesInDir(Path dir) throws IOException {
-        try (java.util.stream.Stream<Path> stream = Files.walk(dir)) {
+        try (Stream<Path> stream = Files.walk(dir)) {
             return stream
                     .filter(p -> p.toString().endsWith(".class"))
                     .map(this::normalizePath)

@@ -50,7 +50,7 @@ class SpringWebHostSupportTest {
 
             assertTrue(mappingInfoMap.containsKey(routeKey));
 
-            support.unregisterMappings(Collections.singleton(routeKey), mappingInfoMap);
+            support.unregisterMappings(Collections.singleton(routeKey), mappingInfoMap, null);
 
             assertFalse(mappingInfoMap.containsKey(routeKey));
             verify(hostMapping).unregisterMapping(mappingInfo);

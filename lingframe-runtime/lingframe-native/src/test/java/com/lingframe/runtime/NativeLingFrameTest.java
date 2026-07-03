@@ -1,7 +1,7 @@
 package com.lingframe.runtime;
 
 import com.lingframe.api.config.LingDefinition;
-import com.lingframe.api.exception.ServiceUnavailableException;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.ling.DefaultLingLifecycleEngine;
 import com.lingframe.core.ling.LingInstance;
@@ -28,6 +28,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
@@ -105,7 +106,7 @@ class NativeLingFrameTest {
 
         // 关闭
         NativeLingFrame.shutdown();
-        assertThrows(ServiceUnavailableException.class, NativeLingFrame::getHostContext);
+        assertThrows(LingInvocationException.class, NativeLingFrame::getHostContext);
 
         // 重新启动
         LingFrameConfig config2 = LingFrameConfig.builder()
@@ -204,7 +205,7 @@ class NativeLingFrameTest {
 
         try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
             fileManager.setLocation(StandardLocation.CLASS_OUTPUT, Collections.singletonList(classesDir.toFile()));
-            Iterable<String> options = java.util.Arrays.asList("-classpath", System.getProperty("java.class.path"));
+            Iterable<String> options = Arrays.asList("-classpath", System.getProperty("java.class.path"));
             boolean success = compiler.getTask(
                     null,
                     fileManager,
@@ -237,8 +238,8 @@ class NativeLingFrameTest {
         context.setMethodName("echo");
         context.setParameterTypeNames(new String[] { "java.lang.String" });
         context.setArgs(new Object[] { input });
-        context.setRequiredPermission("native:test:invoke");
-        context.setAccessType(AccessType.EXECUTE);
+        context.governance().setRequiredPermission("native:test:invoke");
+        context.governance().setAccessType(AccessType.EXECUTE);
 
         try {
             return pipelineEngine.invoke(context);

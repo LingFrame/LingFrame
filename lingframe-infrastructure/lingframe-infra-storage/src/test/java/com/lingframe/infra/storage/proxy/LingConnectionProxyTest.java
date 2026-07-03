@@ -8,7 +8,13 @@ import org.junit.jupiter.api.Test;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.sql.Savepoint;
 import java.sql.Statement;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -111,7 +117,7 @@ class LingConnectionProxyTest {
             proxy.clearWarnings();
             verify(target).clearWarnings();
 
-            java.util.Map<String, Class<?>> typeMap = new java.util.HashMap<>();
+            Map<String, Class<?>> typeMap = new HashMap<>();
             when(target.getTypeMap()).thenReturn(typeMap);
             assertSame(typeMap, proxy.getTypeMap());
 
@@ -124,7 +130,7 @@ class LingConnectionProxyTest {
             when(target.getHoldability()).thenReturn(1);
             assertEquals(1, proxy.getHoldability());
 
-            java.sql.Savepoint sp = mock(java.sql.Savepoint.class);
+            Savepoint sp = mock(Savepoint.class);
             when(target.setSavepoint()).thenReturn(sp);
             assertSame(sp, proxy.setSavepoint());
 
@@ -155,7 +161,7 @@ class LingConnectionProxyTest {
             proxy.setClientInfo("k", "v");
             verify(target).setClientInfo("k", "v");
 
-            java.util.Properties props = new java.util.Properties();
+            Properties props = new Properties();
             proxy.setClientInfo(props);
             verify(target).setClientInfo(props);
 
@@ -177,7 +183,7 @@ class LingConnectionProxyTest {
             when(target.getSchema()).thenReturn("schema");
             assertEquals("schema", proxy.getSchema());
 
-            java.util.concurrent.Executor executor = mock(java.util.concurrent.Executor.class);
+            Executor executor = mock(Executor.class);
             proxy.abort(executor);
             verify(target).abort(executor);
 
@@ -191,9 +197,9 @@ class LingConnectionProxyTest {
             assertEquals("nativesql", proxy.nativeSQL("sql"));
 
             // 禁用逻辑方法 (prepareCall)
-            assertThrows(java.sql.SQLFeatureNotSupportedException.class, () -> proxy.prepareCall("sql"));
-            assertThrows(java.sql.SQLFeatureNotSupportedException.class, () -> proxy.prepareCall("sql", 1, 1));
-            assertThrows(java.sql.SQLFeatureNotSupportedException.class, () -> proxy.prepareCall("sql", 1, 1, 1));
+            assertThrows(SQLFeatureNotSupportedException.class, () -> proxy.prepareCall("sql"));
+            assertThrows(SQLFeatureNotSupportedException.class, () -> proxy.prepareCall("sql", 1, 1));
+            assertThrows(SQLFeatureNotSupportedException.class, () -> proxy.prepareCall("sql", 1, 1, 1));
 
             // unwrap / isWrapperFor
             assertSame(proxy, proxy.unwrap(LingConnectionProxy.class));

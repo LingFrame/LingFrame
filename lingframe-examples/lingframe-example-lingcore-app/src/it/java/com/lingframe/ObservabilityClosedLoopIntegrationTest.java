@@ -30,6 +30,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.List;
@@ -177,7 +178,7 @@ class ObservabilityClosedLoopIntegrationTest {
         CountDownLatch ready = new CountDownLatch(concurrency);
         CountDownLatch start = new CountDownLatch(1);
         try {
-            List<Future<Void>> futures = new java.util.ArrayList<>();
+            List<Future<Void>> futures = new ArrayList<>();
             for (int i = 0; i < concurrency; i++) {
                 futures.add(executor.submit(() -> {
                     ready.countDown();
@@ -206,7 +207,7 @@ class ObservabilityClosedLoopIntegrationTest {
         CountDownLatch start = new CountDownLatch(1);
         Map<String, Integer> kinds = new ConcurrentHashMap<>();
         try {
-            List<Future<Boolean>> futures = new java.util.ArrayList<>();
+            List<Future<Boolean>> futures = new ArrayList<>();
             for (int i = 0; i < concurrency; i++) {
                 futures.add(executor.submit(() -> {
                     ready.countDown();
@@ -262,7 +263,7 @@ class ObservabilityClosedLoopIntegrationTest {
                 "user-ling",
                 resolution.getMetadata(),
                 invocationGovernanceResolver);
-        ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
+        ctx.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
         WEB_GOVERNANCE_SUPPORT.preResolveLingTarget(ctx, resolution);
         return ctx;
     }

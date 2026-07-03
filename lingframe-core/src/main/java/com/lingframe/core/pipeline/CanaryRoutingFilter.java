@@ -47,7 +47,7 @@ public class CanaryRoutingFilter implements LingInvocationFilter {
         String lingId = extractLingId(fqsid);
         LingRuntime runtime = resolveRuntime(ctx, lingId);
         if (runtime == null) {
-            if (ctx.isGovernOnly()) {
+            if (ctx.execution().getMode().isGovernOnly()) {
                 // GOVERN_ONLY 允许灵核入口只借道治理，不强依赖真实的灵元路由结果
                 return chain.doFilter(ctx);
             }
@@ -68,11 +68,11 @@ public class CanaryRoutingFilter implements LingInvocationFilter {
         ctx.setTargetLingId(target.getLingId());
         ctx.setTargetVersion(target.getVersion());
 
-        if (ctx.isSimulation() || ctx.isShouldAudit()) {
+        if (ctx.execution().getMode().isSimulation() || ctx.governance().isShouldAudit()) {
             // 模拟和强审计场景下保留选路轨迹，方便解释“为什么命中了这个版本”
             boolean canary = target != runtime.getInstancePool().getDefault();
             String routeType = canary ? "CANARY" : "STABLE";
-            ctx.addTrace(EngineTrace.builder()
+            ctx.execution().addTrace(EngineTrace.builder()
                     .source("CanaryRoutingFilter")
                     .action("Route selected version " + target.getVersion() + " [" + routeType + "]")
                     .type(routeType)

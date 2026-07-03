@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -43,12 +44,9 @@ public class DefaultLeakDetector implements LeakDetector {
     private final int finalConfirmationDelayMillis;
     private final int queuePollMillis;
 
-    public DefaultLeakDetector() {
-        this(null, LingFrameConfig.current());
-    }
-
     public DefaultLeakDetector(EventBus eventBus, LingFrameConfig config) {
-        LingFrameConfig effectiveConfig = config == null ? LingFrameConfig.current() : config;
+        LingFrameConfig effectiveConfig = Objects.requireNonNull(config,
+                "LingFrameConfig is required for DefaultLeakDetector");
         this.eventBus = eventBus;
         this.devMode = effectiveConfig.isDevMode();
         this.maxConcurrentAggressiveChecks = Math.max(1, effectiveConfig.getLeakDetectionMaxConcurrentAggressiveChecks());

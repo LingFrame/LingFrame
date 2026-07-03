@@ -4,10 +4,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,7 +41,7 @@ class AnnotationContractTest {
         void methodTarget() {
             Target target = LingService.class.getAnnotation(Target.class);
             assertNotNull(target);
-            assertTrue(java.util.Arrays.asList(target.value()).contains(java.lang.annotation.ElementType.METHOD));
+            assertTrue(Arrays.asList(target.value()).contains(ElementType.METHOD));
         }
 
         @Test
@@ -80,7 +83,7 @@ class AnnotationContractTest {
         void fieldTarget() {
             Target target = LingReference.class.getAnnotation(Target.class);
             assertNotNull(target);
-            assertTrue(java.util.Arrays.asList(target.value()).contains(java.lang.annotation.ElementType.FIELD));
+            assertTrue(Arrays.asList(target.value()).contains(ElementType.FIELD));
         }
 
         @Test
@@ -126,9 +129,9 @@ class AnnotationContractTest {
         void methodAndTypeTarget() {
             Target target = RequiresPermission.class.getAnnotation(Target.class);
             assertNotNull(target);
-            java.util.List<java.lang.annotation.ElementType> targets = java.util.Arrays.asList(target.value());
-            assertTrue(targets.contains(java.lang.annotation.ElementType.METHOD));
-            assertTrue(targets.contains(java.lang.annotation.ElementType.TYPE));
+            List<ElementType> targets = Arrays.asList(target.value());
+            assertTrue(targets.contains(ElementType.METHOD));
+            assertTrue(targets.contains(ElementType.TYPE));
         }
 
         @Test
@@ -162,7 +165,7 @@ class AnnotationContractTest {
         void methodTarget() {
             Target target = Auditable.class.getAnnotation(Target.class);
             assertNotNull(target);
-            assertTrue(java.util.Arrays.asList(target.value()).contains(java.lang.annotation.ElementType.METHOD));
+            assertTrue(Arrays.asList(target.value()).contains(ElementType.METHOD));
         }
 
         @Test

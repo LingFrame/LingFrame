@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import UUID;
 
 @Data
 @Builder
@@ -53,7 +54,7 @@ public class AlertEvent {
     
     public static AlertEvent info(AlertType type, String lingId, String message) {
         return AlertEvent.builder()
-                .alertId(java.util.UUID.randomUUID().toString())
+                .alertId(UUID.randomUUID().toString())
                 .level(AlertLevel.INFO)
                 .type(type)
                 .lingId(lingId)
@@ -64,7 +65,7 @@ public class AlertEvent {
     
     public static AlertEvent warning(AlertType type, String lingId, String message) {
         return AlertEvent.builder()
-                .alertId(java.util.UUID.randomUUID().toString())
+                .alertId(UUID.randomUUID().toString())
                 .level(AlertLevel.WARNING)
                 .type(type)
                 .lingId(lingId)
@@ -75,7 +76,7 @@ public class AlertEvent {
     
     public static AlertEvent error(AlertType type, String lingId, String message) {
         return AlertEvent.builder()
-                .alertId(java.util.UUID.randomUUID().toString())
+                .alertId(UUID.randomUUID().toString())
                 .level(AlertLevel.ERROR)
                 .type(type)
                 .lingId(lingId)
@@ -86,7 +87,7 @@ public class AlertEvent {
     
     public static AlertEvent critical(AlertType type, String lingId, String message) {
         return AlertEvent.builder()
-                .alertId(java.util.UUID.randomUUID().toString())
+                .alertId(UUID.randomUUID().toString())
                 .level(AlertLevel.CRITICAL)
                 .type(type)
                 .lingId(lingId)

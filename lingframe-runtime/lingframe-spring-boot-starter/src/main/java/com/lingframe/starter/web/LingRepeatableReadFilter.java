@@ -7,6 +7,7 @@ import org.springframework.util.StreamUtils;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -122,7 +123,7 @@ public class LingRepeatableReadFilter {
             if ("getInputStream".equals(name)) {
                 return getInputStream();
             } else if ("getReader".equals(name)) {
-                return new BufferedReader(new InputStreamReader((java.io.InputStream) getInputStream(), getCharacterEncoding()));
+                return new BufferedReader(new InputStreamReader((InputStream) getInputStream(), getCharacterEncoding()));
             }
             // 默认调用原始对象
             return method.invoke(originalRequest, args);
@@ -138,7 +139,7 @@ public class LingRepeatableReadFilter {
                 Method getIn = ReflectionUtils.findMethod(originalRequest.getClass(), "getInputStream");
                 Object originalIn = ReflectionUtils.invokeMethod(getIn, originalRequest);
                 if (originalIn != null) {
-                    java.io.InputStream is = (java.io.InputStream) originalIn;
+                    InputStream is = (InputStream) originalIn;
                     body = StreamUtils.copyToByteArray(is);
                 } else {
                     body = new byte[0];
