@@ -5,7 +5,7 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.LingMetricsCollector;
 import lombok.extern.slf4j.Slf4j;
 
-import Collection;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

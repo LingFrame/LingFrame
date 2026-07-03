@@ -27,9 +27,6 @@ public class GovernancePolicy implements Serializable {
     @Builder.Default
     private List<AuditRule> audits = new ArrayList<>();
 
-    @Builder.Default
-    private CollaborationMode collaborationMode = CollaborationMode.PASSIVE;
-
     /**
      * 调用治理配置。
      * 与 capabilities / permissions / audits 分区，避免把调用控制语义继续塞进资源权限列表。
@@ -61,8 +58,6 @@ public class GovernancePolicy implements Serializable {
         if (this.invocation != null) {
             copy.invocation = this.invocation.copy();
         }
-
-        copy.collaborationMode = this.collaborationMode;
 
         return copy;
     }

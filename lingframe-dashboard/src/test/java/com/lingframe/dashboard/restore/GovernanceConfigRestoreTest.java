@@ -98,6 +98,5 @@ class GovernanceConfigRestoreTest {
         assertNotNull(policy.getCapabilities());
         assertNotNull(policy.getAudits());
         assertNotNull(policy.getInvocation());
-        assertNotNull(policy.getCollaborationMode());
     }
 }

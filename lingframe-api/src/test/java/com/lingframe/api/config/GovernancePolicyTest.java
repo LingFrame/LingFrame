@@ -22,7 +22,6 @@ class GovernancePolicyTest {
         @DisplayName("copy 产生独立副本，修改原对象不影响副本")
         void shouldDeepCopy() {
             GovernancePolicy original = GovernancePolicy.builder()
-                    .collaborationMode(CollaborationMode.FULL_ACTIVE)
                     .permissions(new ArrayList<>(Arrays.asList(
                             GovernancePolicy.PermissionRule.builder()
                                     .methodPattern("com.example.*")
@@ -52,14 +51,12 @@ class GovernancePolicyTest {
             original.getCapabilities().clear();
             original.getAudits().clear();
             original.getInvocation().setTimeoutMs(9999);
-            original.setCollaborationMode(CollaborationMode.PASSIVE);
 
             // 副本不受影响
             assertEquals(1, copy.getPermissions().size());
             assertEquals(1, copy.getCapabilities().size());
             assertEquals(1, copy.getAudits().size());
             assertEquals(5000, copy.getInvocation().getTimeoutMs());
-            assertEquals(CollaborationMode.FULL_ACTIVE, copy.getCollaborationMode());
         }
 
         @Test
@@ -82,10 +79,12 @@ class GovernancePolicyTest {
         @DisplayName("null 补丁不修改原策略")
         void shouldIgnoreNullPatch() {
             GovernancePolicy policy = GovernancePolicy.builder()
-                    .collaborationMode(CollaborationMode.FULL_ACTIVE)
+                    .invocation(GovernancePolicy.InvocationPolicy.builder()
+                            .timeoutMs(1000)
+                            .build())
                     .build();
             policy.applyPatch(null);
-            assertEquals(CollaborationMode.FULL_ACTIVE, policy.getCollaborationMode());
+            assertEquals(1000, policy.getInvocation().getTimeoutMs());
         }
 
         @Test

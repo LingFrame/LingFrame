@@ -1,7 +1,6 @@
 package com.lingframe.dashboard.storage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lingframe.api.config.CollaborationMode;
 import com.lingframe.api.config.GovernancePolicy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -144,9 +143,6 @@ public class GovernanceStorage {
             }
             if (policy.getInvocation() == null) {
                 policy.setInvocation(new GovernancePolicy.InvocationPolicy());
-            }
-            if (policy.getCollaborationMode() == null) {
-                policy.setCollaborationMode(CollaborationMode.PASSIVE);
             }
             return policy;
         } catch (Exception e) {
