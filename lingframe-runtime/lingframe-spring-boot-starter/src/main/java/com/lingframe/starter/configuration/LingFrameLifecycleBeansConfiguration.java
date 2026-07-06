@@ -35,6 +35,9 @@ import com.lingframe.core.spi.LingSecurityVerifier;
 import com.lingframe.core.resource.JdbcDriverUnloadHook;
 import com.lingframe.core.resource.ThreadReferenceUnloadHook;
 import com.lingframe.core.resource.JvmShutdownHookUnloadHook;
+import com.lingframe.core.resource.RmiTargetUnloadHook;
+import com.lingframe.core.resource.LoggingFrameworkUnloadHook;
+import com.lingframe.core.resource.DebuggerCaptureUnloadHook;
 import java.util.ArrayList;
 import java.util.Arrays;
 import com.lingframe.core.spi.LingServiceInvoker;
@@ -105,11 +108,15 @@ public class LingFrameLifecycleBeansConfiguration {
             allVerifiers.add(new DangerousApiVerifier());
         }
         // 生态桶：Spring 生态清理 Hook（由 Spring Bean 注入）
-        // JVM 桶：三个独立 JVM 级 Hook，桶内并行执行
+        // JVM 桶：JVM 级 Hook，桶内并行执行
+        // 涵盖：JDBC Driver、线程引用/H2/Timer/线程池、ShutdownHook、RMI Target、日志框架、IDE 调试器缓存
         List<LingUnloadHook> jvmHooks = Arrays.asList(
                 new JdbcDriverUnloadHook(),
                 new ThreadReferenceUnloadHook(),
-                new JvmShutdownHookUnloadHook());
+                new JvmShutdownHookUnloadHook(),
+                new RmiTargetUnloadHook(),
+                new LoggingFrameworkUnloadHook(),
+                new DebuggerCaptureUnloadHook());
         LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
                 pipelineEngine, unloadHooks, jvmHooks, lingResourceManager, leakDetector);
 

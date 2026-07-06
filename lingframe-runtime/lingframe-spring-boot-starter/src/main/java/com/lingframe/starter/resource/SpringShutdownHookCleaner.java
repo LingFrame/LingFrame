@@ -61,7 +61,24 @@ final class SpringShutdownHookCleaner {
     private void clearSpringBootShutdownHookReferences(String lingId, ClassLoader lingClassLoader) {
         try {
             Class<?> hookClass = Class.forName("org.springframework.boot.SpringApplicationShutdownHook");
-            int removed = removeShutdownHookTargetReferences(lingId, "SpringApplicationShutdownHook(static)",
+            int removed = 0;
+
+            // 获取 SpringApplication.shutdownHook 静态字段中的单例实例
+            // SpringApplicationShutdownHook 的 contexts/closedContexts 是实例字段，
+            // 必须通过 SpringApplication.shutdownHook 静态字段拿到单例后才能清理
+            Object shutdownHookInstance = getSpringApplicationShutdownHookInstance();
+            if (shutdownHookInstance != null) {
+                removed += removeShutdownHookTargetReferences(
+                        lingId,
+                        "SpringApplicationShutdownHook.instance",
+                        hookClass,
+                        shutdownHookInstance,
+                        false,
+                        lingClassLoader);
+            }
+
+            // 保留静态字段扫描（兼容未来版本可能的变化）
+            removed += removeShutdownHookTargetReferences(lingId, "SpringApplicationShutdownHook(static)",
                     hookClass, null, true, lingClassLoader);
             for (Field field : hookClass.getDeclaredFields()) {
                 if (!Modifier.isStatic(field.getModifiers())) {
@@ -92,6 +109,24 @@ final class SpringShutdownHookCleaner {
             // 当前运行环境没有 Spring Boot shutdown hook 实现。
         } catch (Exception e) {
             log.debug("[{}] Spring Boot shutdown hook cleanup failed: {}", lingId, e.getMessage());
+        }
+    }
+
+    /**
+     * 通过反射获取 {@code SpringApplication.shutdownHook} 静态字段中的
+     * {@code SpringApplicationShutdownHook} 单例实例。
+     *
+     * @return 单例实例，若不存在或无法访问则返回 {@code null}
+     */
+    private Object getSpringApplicationShutdownHookInstance() {
+        try {
+            Class<?> springAppClass = Class.forName("org.springframework.boot.SpringApplication");
+            Field shutdownHookField = springAppClass.getDeclaredField("shutdownHook");
+            shutdownHookField.setAccessible(true);
+            return shutdownHookField.get(null);
+        } catch (Exception e) {
+            log.trace("Failed to access SpringApplication.shutdownHook: {}", e.getMessage());
+            return null;
         }
     }
 
@@ -126,6 +161,21 @@ final class SpringShutdownHookCleaner {
             Object holder,
             boolean staticOnly,
             ClassLoader lingClassLoader) {
+        return removeShutdownHookTargetReferences(lingId, holderName, holderClass, holder,
+                staticOnly, lingClassLoader, new IdentityHashMap<>());
+    }
+
+    private int removeShutdownHookTargetReferences(String lingId,
+            String holderName,
+            Class<?> holderClass,
+            Object holder,
+            boolean staticOnly,
+            ClassLoader lingClassLoader,
+            IdentityHashMap<Object, Boolean> visited) {
+        // 防止循环引用导致 StackOverflow（如 Handlers 内部类反向引用父 SpringApplicationShutdownHook）
+        if (holder != null && visited.put(holder, Boolean.TRUE) != null) {
+            return 0;
+        }
         int removed = 0;
         for (Field field : holderClass.getDeclaredFields()) {
             if (staticOnly != Modifier.isStatic(field.getModifiers())) {
@@ -146,7 +196,8 @@ final class SpringShutdownHookCleaner {
                                     innerHolder.getClass(),
                                     innerHolder,
                                     false,
-                                    lingClassLoader);
+                                    lingClassLoader,
+                                    visited);
                         }
                     } catch (Exception ignored) {
                     }

@@ -4,6 +4,7 @@ import com.lingframe.core.exception.ClassLoaderException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.net.URLConnection;
@@ -279,6 +280,9 @@ public class LingClassLoader extends URLClassLoader {
             // `super.close()` 已关闭文件句柄，但某些 JVM 实现可能在 `URLClassPath` 中残留引用
             cleanupInternalCaches();
 
+            // 🔥 自毁清理：强行清空 ClassLoader 内部 classes 向量，以切断所有第三方静态 Class 缓存对该 ClassLoader 的死锁性强引用
+            clearClassesField();
+
             log.info("[{}] ClassLoader closed successfully", lingId);
             // 💡 不再在此处调用 System.gc()
             // 垃圾回收提示由 `ThreadReferenceUnloadHook` 在所有清理完成后统一触发，
@@ -286,6 +290,21 @@ public class LingClassLoader extends URLClassLoader {
         } catch (IOException e) {
             log.error("[{}] Error closing ClassLoader", lingId, e);
             throw e;
+        }
+    }
+
+    private void clearClassesField() {
+        try {
+            Field classesField = ClassLoader.class.getDeclaredField("classes");
+            classesField.setAccessible(true);
+            Vector<?> classes = (Vector<?>) classesField.get(this);
+            if (classes != null) {
+                synchronized (classes) {
+                    classes.clear();
+                }
+            }
+        } catch (Throwable t) {
+            log.warn("[{}] Failed to clear ClassLoader.classes vector: {}", lingId, t.getMessage());
         }
     }
 

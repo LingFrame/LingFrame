@@ -11,8 +11,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * 统一编排卸载后置动作。
@@ -23,7 +25,7 @@ import java.util.concurrent.TimeUnit;
  *   <li>JVM 阶段（jvmHooks）：清理 JDBC 驱动、线程引用、ShutdownHook 等 JVM 级残留，永远执行</li>
  * </ol>
  * <p>
- * 并行执行使用常驻小线程池（4 线程），在 {@link #shutdown()} 时关闭。
+ * 并行执行使用小线程池（4 线程，核心线程空闲超时回收），在 {@link #shutdown()} 时关闭。
  */
 @Slf4j
 public class LingUnloadCoordinator {
@@ -57,11 +59,20 @@ public class LingUnloadCoordinator {
         this.jvmHooks = jvmHooks != null ? jvmHooks : Collections.emptyList();
         this.lingResourceManager = lingResourceManager;
         this.leakDetector = leakDetector;
-        this.parallelExecutor = Executors.newFixedThreadPool(PARALLELISM, r -> {
-            Thread t = new Thread(r, "ling-unload-worker");
-            t.setDaemon(true);
-            return t;
-        });
+        // 自定义 ThreadPoolExecutor：开启核心线程超时回收，
+        // 避免 ling-unload-worker 线程常驻导致 lambda 捕获的 ClassLoader 引用残留在栈槽中
+        // （DEV 模式主动 GC 会扫描栈槽残留，导致 LingClassLoader 无法回收）
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                PARALLELISM, PARALLELISM,
+                1L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<Runnable>(),
+                r -> {
+                    Thread t = new Thread(r, "ling-unload-worker");
+                    t.setDaemon(true);
+                    return t;
+                });
+        executor.allowCoreThreadTimeOut(true);
+        this.parallelExecutor = executor;
     }
 
     /**
@@ -236,15 +247,17 @@ public class LingUnloadCoordinator {
             return;
         }
 
-        List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+        List<Throwable> errors = Collections.synchronizedList(new ArrayList<>());
         try {
             parallelExecutor.invokeAll(
                     hooks.stream()
                             .map(hook -> (Callable<Void>) () -> {
                                 try {
                                     invokeHook(hook, lingId, version, classLoader, phase);
-                                } catch (Exception e) {
-                                    errors.add(e);
+                                } catch (Throwable t) {
+                                    // 捕获 Throwable 而非 Exception，防止 Error（如 NoClassDefFoundError、
+                                    // StackOverflowError）被 invokeAll 静默吞进 Future，导致日志突然消失
+                                    errors.add(t);
                                 }
                                 return null;
                             })
@@ -266,10 +279,16 @@ public class LingUnloadCoordinator {
                            ClassLoader classLoader, String phase) {
         try {
             hook.cleanup(lingId, classLoader);
-        } catch (Exception e) {
+        } catch (Throwable t) {
+            // 捕获 Throwable 而非 Exception：卸载期反射操作可能抛出 NoClassDefFoundError 等 Error，
+            // 若不捕获会穿透 Callable 进入 Future，invokeAll 不会重新抛出，导致错误被静默吞掉
             String suffix = version == null ? "" : " for version " + version;
             log.error("[{}] {} cleanup failed{} with hook: {}", lingId, phase, suffix,
-                    hook.getClass().getName(), e);
+                    hook.getClass().getName(), t);
+            if (t instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            // 不重新抛出：单个 Hook 失败不应阻塞同桶其他 Hook
         }
     }
 

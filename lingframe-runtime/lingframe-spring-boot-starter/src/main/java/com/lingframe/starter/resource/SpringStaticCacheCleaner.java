@@ -66,6 +66,9 @@ final class SpringStaticCacheCleaner {
         } catch (Exception e) {
             log.debug("[{}] Introspector cache flush failed: {}", lingId, e.getMessage());
         }
+
+        // 8. BeanAnnotationHelper（scopedProxyCache + beanNameCache，key 都是 Method）
+        clearBeanAnnotationHelper(lingId, lingClassLoader);
     }
 
     /** preCleanup / cleanup 阶段：清理 Property.annotationCache */
@@ -317,6 +320,50 @@ final class SpringStaticCacheCleaner {
         } catch (Exception ignored) {
         }
         return false;
+    }
+
+    // ======================== BeanAnnotationHelper ========================
+
+    /**
+     * 清理 BeanAnnotationHelper 的 scopedProxyCache 和 beanNameCache。
+     * <p>
+     * 两个缓存 key 都是 {@link Method}，Method 持有 declaringClass → ClassLoader，
+     * 会阻止灵元 CL GC。灵元中带 {@code @Bean} 方法的配置类一旦被扫描就会进入这两个缓存。
+     */
+    private void clearBeanAnnotationHelper(String lingId, ClassLoader lingClassLoader) {
+        try {
+            Class<?> clazz = Class.forName("org.springframework.context.annotation.BeanAnnotationHelper");
+            int removed = 0;
+            for (String fieldName : new String[]{ "scopedProxyCache", "beanNameCache" }) {
+                try {
+                    Field f = SpringCleanupSupport.findFieldInHierarchy(clazz, fieldName);
+                    if (f == null)
+                        continue;
+                    f.setAccessible(true);
+                    Object cacheObj = f.get(null);
+                    if (!(cacheObj instanceof Map<?, ?>))
+                        continue;
+                    Map<?, ?> cache = (Map<?, ?>) cacheObj;
+                    int before = cache.size();
+                    cache.entrySet().removeIf(
+                            entry -> SpringCleanupSupport.isRelatedToClassLoader(entry.getKey(), lingClassLoader));
+                    int delta = before - cache.size();
+                    if (delta > 0) {
+                        log.debug("[{}] BeanAnnotationHelper.{}: removed {} entries", lingId, fieldName, delta);
+                    }
+                    removed += delta;
+                } catch (Exception ignored) {
+                    // 版本差异，字段不存在或结构不同
+                }
+            }
+            if (removed > 0) {
+                log.debug("[{}] BeanAnnotationHelper: removed {} entries total", lingId, removed);
+            }
+        } catch (ClassNotFoundException e) {
+            // Spring 版本不同，类可能不存在
+        } catch (Exception e) {
+            log.debug("[{}] BeanAnnotationHelper cleanup failed: {}", lingId, e.getMessage());
+        }
     }
 
     // ======================== Property 专用判断器 ========================

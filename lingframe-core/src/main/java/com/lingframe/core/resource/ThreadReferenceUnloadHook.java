@@ -1,23 +1,34 @@
 package com.lingframe.core.resource;
 
 import com.lingframe.core.spi.LingUnloadHook;
+import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Field;
 import java.lang.ref.Reference;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 线程引用卸载钩子。
  * <p>
- * 清理目标 ClassLoader 关联的线程引用、MySQL 清理线程、ThreadLocal 条目。
+ * 清理目标 ClassLoader 关联的线程引用、MySQL 清理线程、H2 OnExitDatabaseCloser、
+ * Timer 线程、遗留线程池、ThreadLocal 条目。
  * 这是最重的清理动作，涵盖：
  * <ul>
  *   <li>可疑线程诊断</li>
  *   <li>MySQL AbandonedConnectionCleanupThread 关闭</li>
+ *   <li>H2 OnExitDatabaseCloser shutdown hook 移除</li>
+ *   <li>java.util.Timer 线程中断</li>
+ *   <li>遗留线程池（非 Bean）shutdownNow</li>
  *   <li>线程 contextClassLoader / ACC / target 引用清理</li>
  *   <li>ThreadLocal 条目清理</li>
  * </ul>
@@ -35,17 +46,74 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
                 classLoader.getClass().getSimpleName(),
                 Integer.toHexString(System.identityHashCode(classLoader)));
 
+        // 每个步骤独立 try-catch：单步失败不得中断后续清理，否则会出现"日志突然消失"的现象
+        // （历史上 invokeHook 只捕获 Exception，Error 会被 invokeAll 静默吞进 Future）
+
         // 诊断：打印可疑线程
-        diagnoseSuspectThreads(lingId, classLoader);
+        try {
+            diagnoseSuspectThreads(lingId, classLoader);
+        } catch (Throwable t) {
+            log.warn("[{}] diagnoseSuspectThreads failed", lingId, t);
+        }
+
+        // 0. 精确清理框架跟踪的线程（NamedThreadFactory 创建的线程）
+        try {
+            NamedThreadFactory.cleanupThreads(lingId, classLoader);
+        } catch (Throwable t) {
+            log.warn("[{}] NamedThreadFactory.cleanupThreads failed", lingId, t);
+        }
 
         // 1. MySQL 清理线程
-        cleanupMySqlThread(lingId, classLoader);
+        try {
+            cleanupMySqlThread(lingId, classLoader);
+        } catch (Throwable t) {
+            log.warn("[{}] cleanupMySqlThread failed", lingId, t);
+        }
 
-        // 2. 线程引用清理
-        clearThreadReferences(lingId, classLoader);
+        // 2. H2 OnExitDatabaseCloser 清理
+        try {
+            cleanupH2OnExitCloser(lingId, classLoader);
+        } catch (Throwable t) {
+            log.warn("[{}] cleanupH2OnExitCloser failed", lingId, t);
+        }
 
-        // 3. ThreadLocal 清理
-        clearThreadLocals(lingId, classLoader);
+        // 3. Timer 线程清理
+        try {
+            stopTimerThreads(lingId, classLoader);
+        } catch (Throwable t) {
+            log.warn("[{}] stopTimerThreads failed", lingId, t);
+        }
+
+        // 4. 遗留线程池清理
+        try {
+            shutdownOrphanThreadPools(lingId, classLoader);
+        } catch (Throwable t) {
+            log.warn("[{}] shutdownOrphanThreadPools failed", lingId, t);
+        }
+
+        // 5. 线程引用清理
+        try {
+            clearThreadReferences(lingId, classLoader);
+        } catch (Throwable t) {
+            log.warn("[{}] clearThreadReferences failed", lingId, t);
+        }
+
+        // 6. ThreadLocal 清理
+        try {
+            clearThreadLocals(lingId, classLoader);
+        } catch (Throwable t) {
+            log.warn("[{}] clearThreadLocals failed", lingId, t);
+        }
+
+        // 7. 清理跟踪的 Shutdown Hook（TrackedShutdownHooks）
+        try {
+            int removedHooks = TrackedShutdownHooks.cleanupFor(classLoader);
+            if (removedHooks > 0) {
+                log.info("[{}] Removed {} tracked shutdown hook(s)", lingId, removedHooks);
+            }
+        } catch (Throwable t) {
+            log.warn("[{}] TrackedShutdownHooks.cleanupFor failed", lingId, t);
+        }
 
         log.info("[{}] Thread reference cleanup completed", lingId);
     }
@@ -272,6 +340,239 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
         }
 
         log.warn("[{}] Could not shut down MySQL executor", lingId);
+    }
+
+    // =========================================================================
+    // H2 OnExitDatabaseCloser 清理
+    // =========================================================================
+
+    /**
+     * 清理 H2 的 OnExitDatabaseCloser shutdown hook。
+     * <p>
+     * H2 在打开数据库时通过 Runtime.addShutdownHook() 注册 OnExitDatabaseCloser，
+     * 但 DataSource.close() 不会触发 Database.close()（Database 实例共享），
+     * 导致 shutdown hook 残留并持有灵元 ClassLoader 引用。
+     * <p>
+     * 清理策略：
+     * 1. 扫描 ApplicationShutdownHooks.hooks，移除关联目标 CL 的 OnExitDatabaseCloser
+     * 2. 反射调用 stopClosing() 方法（H2 2.x）
+     * 3. 兜底：扫描活动线程，清理 OnExitDatabaseCloser 的 contextClassLoader
+     */
+    private void cleanupH2OnExitCloser(String lingId, ClassLoader classLoader) {
+        log.info("[{}] Looking for H2 OnExitDatabaseCloser...", lingId);
+        int removed = 0;
+
+        // 策略 1：从 ApplicationShutdownHooks 中移除
+        try {
+            Class<?> hooksClass = Class.forName("java.lang.ApplicationShutdownHooks");
+            Field hooksField = hooksClass.getDeclaredField("hooks");
+            hooksField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            Map<Thread, Thread> hooks = (Map<Thread, Thread>) hooksField.get(null);
+            if (hooks != null) {
+                List<Thread> toRemove = new ArrayList<>();
+                for (Thread hook : hooks.keySet()) {
+                    if (hook == null) continue;
+                    if (!isH2OnExitCloser(hook)) continue;
+                    // 匹配规则：contextClassLoader 或类加载器关联目标 CL
+                    if (hook.getContextClassLoader() == classLoader
+                            || isLoadedBy(hook.getClass().getClassLoader(), classLoader)) {
+                        toRemove.add(hook);
+                    }
+                }
+                for (Thread hook : toRemove) {
+                    try {
+                        // 先调用 stopClosing() 让 H2 内部状态一致
+                        invokeStopClosing(hook);
+                        Runtime.getRuntime().removeShutdownHook(hook);
+                        log.info("[{}] Removed H2 OnExitDatabaseCloser: {}", lingId, hook.getName());
+                        removed++;
+                    } catch (IllegalStateException e) {
+                        // JVM 正在退出
+                        log.debug("[{}] Cannot remove H2 hook during JVM shutdown", lingId);
+                    } catch (Exception e) {
+                        log.debug("[{}] Failed to remove H2 hook: {}", lingId, e.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("[{}] H2 shutdown hook scan failed: {}", lingId, e.getMessage());
+        }
+
+        // 策略 2：扫描活动线程，清理 OnExitDatabaseCloser 的 contextClassLoader
+        for (Thread t : JvmCleanupSupport.getActiveThreads()) {
+            if (t == null) continue;
+            if (!isH2OnExitCloser(t)) continue;
+            try {
+                if (t.getContextClassLoader() == classLoader) {
+                    t.setContextClassLoader(ClassLoader.getSystemClassLoader());
+                    invokeStopClosing(t);
+                    log.info("[{}] Cleared contextClassLoader on H2 OnExitDatabaseCloser: {}", lingId, t.getName());
+                    removed++;
+                }
+            } catch (Exception e) {
+                log.debug("[{}] Failed to clean H2 thread: {}", lingId, e.getMessage());
+            }
+        }
+
+        if (removed == 0) {
+            log.info("[{}] No H2 OnExitDatabaseCloser found", lingId);
+        } else {
+            log.info("[{}] H2 OnExitDatabaseCloser cleanup complete, removed: {}", lingId, removed);
+        }
+    }
+
+    /** 判断线程是否为 H2 OnExitDatabaseCloser */
+    private boolean isH2OnExitCloser(Thread t) {
+        String className = t.getClass().getName();
+        return className.equals("org.h2.engine.OnExitDatabaseCloser")
+                || className.contains("OnExitDatabaseCloser");
+    }
+
+    /** 反射调用 H2 OnExitDatabaseCloser.stopClosing() */
+    private void invokeStopClosing(Thread hook) {
+        try {
+            Method stopMethod = hook.getClass().getDeclaredMethod("stopClosing");
+            stopMethod.setAccessible(true);
+            stopMethod.invoke(hook);
+        } catch (NoSuchMethodException e) {
+            // H2 版本不同，方法可能不存在
+        } catch (Exception e) {
+            log.debug("Failed to invoke stopClosing: {}", e.getMessage());
+        }
+    }
+
+    // =========================================================================
+    // Timer 线程清理
+    // =========================================================================
+
+    /**
+     * 中断由目标 ClassLoader 创建的 java.util.Timer 线程。
+     * <p>
+     * Timer 线程（TimerThread）是非守护线程，会阻止 JVM 退出并持有 ClassLoader 引用。
+     * 灵元代码若通过 new Timer() 创建定时任务，卸载时必须中断。
+     */
+    private void stopTimerThreads(String lingId, ClassLoader classLoader) {
+        int count = 0;
+        for (Thread t : JvmCleanupSupport.getActiveThreads()) {
+            if (t == null) continue;
+            if (JvmCleanupSupport.isVirtualThread(t)) continue;
+
+            String typeName = t.getClass().getName();
+            if (!typeName.equals("java.util.TimerThread")) continue;
+
+            // 匹配：线程类由目标 CL 加载，或 contextClassLoader 关联目标 CL
+            if (t.getClass().getClassLoader() == classLoader
+                    || t.getContextClassLoader() == classLoader) {
+                log.info("[{}] Interrupting Timer thread: {} (state={})",
+                        lingId, t.getName(), t.getState());
+                t.interrupt();
+                try {
+                    t.join(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                count++;
+            }
+        }
+        if (count > 0) {
+            log.info("[{}] Stopped {} Timer thread(s)", lingId, count);
+        }
+    }
+
+    // =========================================================================
+    // 遗留线程池清理
+    // =========================================================================
+
+    /**
+     * 扫描所有活动线程，通过反射追溯到 ThreadPoolExecutor 并 shutdownNow()。
+     * <p>
+     * 覆盖灵元代码自建的非 Bean 线程池（如 Executors.newFixedThreadPool()）。
+     * ExecutorCleaner 只能清理 BeanFactory 中的 ExecutorService Bean，
+     * 此方法作为兜底，扫描线程的 target 字段找到 Worker → ThreadPoolExecutor。
+     */
+    private void shutdownOrphanThreadPools(String lingId, ClassLoader classLoader) {
+        Set<ThreadPoolExecutor> pools = Collections.newSetFromMap(
+                new IdentityHashMap<>());
+
+        for (Thread t : JvmCleanupSupport.getActiveThreads()) {
+            if (t == null) continue;
+            if (JvmCleanupSupport.isVirtualThread(t)) continue;
+
+            // 仅处理关联目标 CL 的线程
+            if (t.getContextClassLoader() != classLoader
+                    && t.getClass().getClassLoader() != classLoader) {
+                continue;
+            }
+
+            // 通过反射追溯 target → Worker → outer ThreadPoolExecutor
+            ThreadPoolExecutor pool = extractThreadPoolExecutor(t);
+            if (pool != null) {
+                pools.add(pool);
+            }
+        }
+
+        for (ThreadPoolExecutor pool : pools) {
+            try {
+                log.info("[{}] Shutting down orphan ThreadPoolExecutor: {}", lingId, pool);
+                List<Runnable> drained = pool.shutdownNow();
+                if (!drained.isEmpty()) {
+                    log.info("[{}] Drained {} pending task(s)", lingId, drained.size());
+                }
+                pool.awaitTermination(3, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.debug("[{}] Failed to shutdown ThreadPoolExecutor: {}", lingId, e.getMessage());
+            }
+        }
+        if (!pools.isEmpty()) {
+            log.info("[{}] Shutdown {} orphan ThreadPoolExecutor(s)", lingId, pools.size());
+        }
+    }
+
+    /** 通过反射从线程的 target 字段追溯到 ThreadPoolExecutor */
+    private ThreadPoolExecutor extractThreadPoolExecutor(Thread t) {
+        try {
+            Field targetField = Thread.class.getDeclaredField("target");
+            targetField.setAccessible(true);
+            Object target = targetField.get(t);
+            if (target == null) return null;
+
+            // ThreadPoolExecutor$Worker 持有 this$0 = ThreadPoolExecutor
+            Class<?> targetClass = target.getClass();
+            if (!targetClass.getName().contains("Worker")) return null;
+
+            // 反射获取 this$0
+            Field outerField = null;
+            Class<?> clazz = targetClass;
+            while (clazz != null && outerField == null) {
+                for (Field f : clazz.getDeclaredFields()) {
+                    if (f.getName().equals("this$0")) {
+                        outerField = f;
+                        break;
+                    }
+                }
+                clazz = clazz.getSuperclass();
+            }
+            if (outerField == null) return null;
+
+            outerField.setAccessible(true);
+            Object outer = outerField.get(target);
+            if (outer instanceof ThreadPoolExecutor) {
+                return (ThreadPoolExecutor) outer;
+            }
+        } catch (Exception e) {
+            log.debug("Failed to extract ThreadPoolExecutor from thread {}: {}", t.getName(), e.getMessage());
+        }
+        return null;
+    }
+
+    /** 判断 ClassLoader cl 是否由 target 加载（或就是 target） */
+    private boolean isLoadedBy(ClassLoader cl, ClassLoader target) {
+        while (cl != null) {
+            if (cl == target) return true;
+            cl = cl.getParent();
+        }
+        return false;
     }
 
     // =========================================================================

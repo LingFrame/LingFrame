@@ -31,7 +31,7 @@ class EcosystemUnloadHookTest {
         @Test
         @DisplayName("clearContexts 不报错")
         void shouldClearContexts() {
-            assertDoesNotThrow(() -> hook.clearContexts());
+            assertDoesNotThrow(hook::clearContexts);
         }
 
         @Test

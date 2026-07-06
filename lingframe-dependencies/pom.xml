@@ -318,7 +318,7 @@
                                     配置 (sample/ling/**) 不一致且 ** 非文档支持语法而失效；
                                     改用 exclClassLoaders 按 ClassLoader 类型排除，解除包名耦合。
                                 -->
-                                <exclClassLoaders>*CloseAwareClassLoader*</exclClassLoaders>
+                                <exclClassLoaders>*CloseAwareClassLoader*:*LingClassLoader*</exclClassLoaders>
                             </configuration>
                         </execution>
                         <execution>

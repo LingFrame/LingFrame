@@ -5,6 +5,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LeakRiskReport;
+import com.lingframe.core.spi.LingUnloadHook;
 import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
@@ -44,7 +45,23 @@ public class DefaultLeakDetector implements LeakDetector {
     private final int finalConfirmationDelayMillis;
     private final int queuePollMillis;
 
+    /**
+     * GC 前清理钩子列表。
+     * <p>
+     * IDE 调试模式下，debugger-agent 会持续拦截 Throwable 创建并记录到 CaptureStorage，
+     * 卸载清理后至 GC 窗口期间新捕获的异常 backtrace 仍会强引用灵元 CL 加载的 Class，
+     * 阻止 ClassLoader 被 GC 回收。在每轮 GC 前重新执行这些钩子，清除新捕获的条目，
+     * 确保 GC 时引用链已断开。
+     * <p>
+     * 通过 {@link WeakReference#get()} 获取 ClassLoader，避免闭包长期持有强引用。
+     */
+    private final List<LingUnloadHook> preGcCleaners;
+
     public DefaultLeakDetector(EventBus eventBus, LingFrameConfig config) {
+        this(eventBus, config, Collections.emptyList());
+    }
+
+    public DefaultLeakDetector(EventBus eventBus, LingFrameConfig config, List<LingUnloadHook> preGcCleaners) {
         LingFrameConfig effectiveConfig = Objects.requireNonNull(config,
                 "LingFrameConfig is required for DefaultLeakDetector");
         this.eventBus = eventBus;
@@ -60,6 +77,9 @@ public class DefaultLeakDetector implements LeakDetector {
                 Math.max(1, this.maxConcurrentAggressiveChecks),
                 NamedThreadFactory.daemon("lingframe-leak-detector"));
         this.scheduler.setRemoveOnCancelPolicy(true);
+        this.preGcCleaners = preGcCleaners != null
+                ? Collections.unmodifiableList(new ArrayList<>(preGcCleaners))
+                : Collections.emptyList();
 
         if (!devMode) {
             startQueueListener();
@@ -143,6 +163,8 @@ public class DefaultLeakDetector implements LeakDetector {
             scheduler.schedule(() -> {
                 try {
                     for (int round = 1; round <= aggressiveGcRounds; round++) {
+                        // GC 前清理 debugger-agent 新捕获的异常缓存，防止 backtrace 引用阻止 GC
+                        runPreGcCleaners(lingId, reference);
                         System.gc();
                         if (!sleepQuietly(aggressiveGcIntervalMillis)) {
                             return;
@@ -202,6 +224,8 @@ public class DefaultLeakDetector implements LeakDetector {
                                            String pendingFailureMessage) {
         scheduler.schedule(() -> {
             if (triggerGc) {
+                // 最终确认 GC 前再次清理，防止确认窗口期间新捕获的异常引用阻止 GC
+                runPreGcCleaners(lingId, reference);
                 System.gc();
             }
             if (reference.get() == null) {
@@ -291,6 +315,37 @@ public class DefaultLeakDetector implements LeakDetector {
     @Override
     public void shutdown() {
         scheduler.shutdownNow();
+    }
+
+    /**
+     * 在每轮 GC 前执行清理钩子，清除卸载后至 GC 窗口期间新累积的引用。
+     * <p>
+     * 通过 {@link WeakReference#get()} 获取 ClassLoader：若已回收则跳过清理，
+     * 否则短暂持有强引用执行清理。清理完成后显式置 null 释放强引用，
+     * 防止 JIT 内联后局部变量跨 System.gc() 存活导致 GC 失效。
+     * 单个钩子抛出的异常被捕获并忽略，避免阻塞 GC 流程。
+     */
+    private void runPreGcCleaners(String lingId, WeakReference<ClassLoader> reference) {
+        if (preGcCleaners.isEmpty()) {
+            return;
+        }
+        ClassLoader classLoader = reference.get();
+        if (classLoader == null) {
+            return;
+        }
+        try {
+            for (LingUnloadHook cleaner : preGcCleaners) {
+                try {
+                    cleaner.cleanup(lingId, classLoader);
+                } catch (Throwable t) {
+                    log.debug("[{}] Pre-GC cleaner {} failed: {}", lingId, cleaner.getClass().getSimpleName(), t.getMessage());
+                }
+            }
+        } finally {
+            // 显式释放强引用：JIT 内联本方法时，局部变量可能跨 System.gc() 存活，
+            // 导致 ClassLoader 在 GC 窗口期间被线程栈持有而无法回收。
+            classLoader = null;
+        }
     }
 
     private boolean tryAcquireAggressiveSlot() {

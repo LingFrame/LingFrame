@@ -42,12 +42,16 @@ final class SpringCleanupSupport {
         return null;
     }
 
-    /** 判断对象是否关联目标 ClassLoader（Class / 实例 ClassLoader / MethodClassKey） */
+    /** 判断对象是否关联目标 ClassLoader（Class / Method / 实例 ClassLoader / MethodClassKey） */
     static boolean isRelatedToClassLoader(Object obj, ClassLoader targetCL) {
         if (obj == null || targetCL == null)
             return false;
         if (obj instanceof Class<?>)
             return ((Class<?>) obj).getClassLoader() == targetCL;
+        // Method / Constructor 持有 declaringClass → ClassLoader，是 Spring 静态缓存常见 key 形态
+        // （如 BeanAnnotationHelper.scopedProxyCache、AnnotationUtils.findAnnotationCache）
+        if (obj instanceof Method)
+            return ((Method) obj).getDeclaringClass().getClassLoader() == targetCL;
         if (obj.getClass().getClassLoader() == targetCL)
             return true;
         return checkMethodClassKey(obj, targetCL);

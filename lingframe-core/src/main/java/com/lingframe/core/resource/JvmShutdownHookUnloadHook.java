@@ -20,6 +20,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * </ul>
  * 第二条规则覆盖灵元自定义 Hook 名的场景——只要 Hook 类由灵元 ClassLoader 加载，
  * 无论线程名叫什么，都会被清理。
+ * <p>
+ * 移除 Hook 时同时清理 Thread 的 contextClassLoader，防止 Thread 对象残留导致
+ * ClassLoader 泄漏（如 H2 OnExitDatabaseCloser）。
  */
 @Slf4j
 public class JvmShutdownHookUnloadHook implements LingUnloadHook {
@@ -65,11 +68,18 @@ public class JvmShutdownHookUnloadHook implements LingUnloadHook {
             });
             for (Thread hook : toRemove) {
                 try {
+                    // 先清理 contextClassLoader，防止 Thread 对象残留导致 ClassLoader 泄漏
+                    // 关键：removeShutdownHook 只从 hooks Map 中移除，Thread 对象可能被其他地方引用
+                    // （如 H2 OnExitDatabaseCloser 被其内部静态字段缓存）
+                    if (hook.getContextClassLoader() == classLoader) {
+                        hook.setContextClassLoader(ClassLoader.getSystemClassLoader());
+                    }
                     Runtime.getRuntime().removeShutdownHook(hook);
                     log.info("[{}] Removed shutdown hook: {} (class={})",
                             lingId, hook.getName(), hook.getClass().getName());
                 } catch (IllegalStateException e) {
-                    // JVM 正在退出，无法移除
+                    // JVM 正在退出，无法移除，但仍需清理 contextClassLoader
+                    clearContextClassLoader(hook, classLoader);
                     log.debug("[{}] Cannot remove shutdown hook during JVM shutdown: {}",
                             lingId, hook.getName());
                 } catch (Exception e) {
@@ -80,6 +90,17 @@ public class JvmShutdownHookUnloadHook implements LingUnloadHook {
         } catch (Exception e) {
             log.debug("[{}] Shutdown hook cleanup failed: {}", lingId, e.getMessage());
             return 0;
+        }
+    }
+
+    /** 安全清理 Thread 的 contextClassLoader */
+    private void clearContextClassLoader(Thread hook, ClassLoader classLoader) {
+        try {
+            if (hook.getContextClassLoader() == classLoader) {
+                hook.setContextClassLoader(ClassLoader.getSystemClassLoader());
+            }
+        } catch (Exception e) {
+            log.debug("Failed to clear contextClassLoader on {}: {}", hook.getName(), e.getMessage());
         }
     }
 }
