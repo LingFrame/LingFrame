@@ -1,4 +1,4 @@
-package com.lingframe.infra.cache.configuration;
+package com.lingframe.infra.cache.spring;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.lingframe.api.security.PermissionService;

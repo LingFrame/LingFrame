@@ -1,7 +1,6 @@
-package com.lingframe.infra.cache.configuration;
+package com.lingframe.infra.cache.spring;
 
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.infra.cache.proxy.LingCacheManagerProxy;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

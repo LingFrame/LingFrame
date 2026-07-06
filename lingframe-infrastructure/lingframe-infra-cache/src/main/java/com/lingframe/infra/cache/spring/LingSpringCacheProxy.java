@@ -1,9 +1,10 @@
-package com.lingframe.infra.cache.proxy;
+package com.lingframe.infra.cache.spring;
 
 import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.infra.cache.proxy.CacheNamespaceSupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;

@@ -1,9 +1,10 @@
-package com.lingframe.infra.cache.proxy;
+package com.lingframe.infra.cache.spring;
 
 import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.infra.cache.proxy.CacheNamespaceSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

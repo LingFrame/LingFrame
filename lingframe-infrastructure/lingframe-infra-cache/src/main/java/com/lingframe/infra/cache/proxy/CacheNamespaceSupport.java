@@ -15,12 +15,12 @@ import java.util.Objects;
  * 目标不是改变调用方看到的 key 语义，而是在底层缓存中为不同灵元附加隔离边界，
  * 避免共享本地缓存时出现跨灵元读写串扰。
  */
-final class CacheNamespaceSupport {
+public final class CacheNamespaceSupport {
 
     private CacheNamespaceSupport() {
     }
 
-    static Object namespaceKey(String cacheName, Object rawKey) {
+    public static Object namespaceKey(String cacheName, Object rawKey) {
         String lingId = LingCallContext.getLingId();
         if (lingId == null || rawKey == null || rawKey instanceof NamespacedKey) {
             return rawKey;
@@ -28,7 +28,7 @@ final class CacheNamespaceSupport {
         return new NamespacedKey(lingId, cacheName, rawKey);
     }
 
-    static List<Object> namespaceKeys(String cacheName, Iterable<?> rawKeys) {
+    public static List<Object> namespaceKeys(String cacheName, Iterable<?> rawKeys) {
         List<Object> namespacedKeys = new ArrayList<>();
         if (rawKeys == null) {
             return namespacedKeys;
@@ -40,7 +40,7 @@ final class CacheNamespaceSupport {
     }
 
     @SuppressWarnings("unchecked")
-    static <K, V> Map<K, V> denamespaceMapKeys(Map<?, V> source) {
+    public static <K, V> Map<K, V> denamespaceMapKeys(Map<?, V> source) {
         Map<K, V> result = new LinkedHashMap<>();
         if (source == null) {
             return result;
@@ -52,32 +52,32 @@ final class CacheNamespaceSupport {
         return result;
     }
 
-    static Object denamespaceKey(Object namespacedKey) {
+    public static Object denamespaceKey(Object namespacedKey) {
         return namespacedKey instanceof NamespacedKey
                 ? ((NamespacedKey) namespacedKey).getRawKey()
                 : namespacedKey;
     }
 
-    static final class NamespacedKey implements Serializable {
+    public static final class NamespacedKey implements Serializable {
         private final String lingId;
         private final String cacheName;
         private final Object rawKey;
 
-        NamespacedKey(String lingId, String cacheName, Object rawKey) {
+        public NamespacedKey(String lingId, String cacheName, Object rawKey) {
             this.lingId = lingId;
             this.cacheName = cacheName;
             this.rawKey = rawKey;
         }
 
-        String getLingId() {
+        public String getLingId() {
             return lingId;
         }
 
-        String getCacheName() {
+        public String getCacheName() {
             return cacheName;
         }
 
-        Object getRawKey() {
+        public Object getRawKey() {
             return rawKey;
         }
 

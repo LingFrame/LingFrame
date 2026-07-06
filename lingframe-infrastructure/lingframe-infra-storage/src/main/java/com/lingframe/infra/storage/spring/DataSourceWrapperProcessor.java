@@ -1,4 +1,4 @@
-package com.lingframe.infra.storage.configuration;
+package com.lingframe.infra.storage.spring;
 
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.infra.storage.proxy.LingDataSourceProxy;

@@ -1,4 +1,4 @@
-package com.lingframe.infra.cache.proxy;
+package com.lingframe.infra.cache.spring;
 
 import com.lingframe.api.security.PermissionService;
 import org.junit.jupiter.api.DisplayName;

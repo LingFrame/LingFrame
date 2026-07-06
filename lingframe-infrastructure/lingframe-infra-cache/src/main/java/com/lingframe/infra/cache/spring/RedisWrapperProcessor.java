@@ -1,4 +1,4 @@
-package com.lingframe.infra.cache.configuration;
+package com.lingframe.infra.cache.spring;
 
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.infra.cache.interceptor.RedisPermissionInterceptor;

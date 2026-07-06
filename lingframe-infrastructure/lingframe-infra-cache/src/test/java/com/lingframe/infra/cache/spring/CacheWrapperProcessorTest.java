@@ -1,9 +1,8 @@
-package com.lingframe.infra.cache.configuration;
+package com.lingframe.infra.cache.spring;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.infra.cache.proxy.LingCaffeineCacheProxy;
-import com.lingframe.infra.cache.proxy.LingCacheManagerProxy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
