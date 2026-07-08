@@ -87,7 +87,7 @@ public class DashboardGovernanceSupport {
         AccessType cacheAccess = determineAccessType(dto.isCacheRead(), dto.isCacheWrite());
         ruleMap.put(Capabilities.STORAGE_SQL, capabilityRule(Capabilities.STORAGE_SQL, sqlAccess));
         ruleMap.put(Capabilities.CACHE_LOCAL, capabilityRule(Capabilities.CACHE_LOCAL, cacheAccess));
-        ruleMap.put(Capabilities.Ling_ENABLE, capabilityRule(Capabilities.Ling_ENABLE, AccessType.EXECUTE));
+        ruleMap.put(Capabilities.LING_ENABLE, capabilityRule(Capabilities.LING_ENABLE, AccessType.EXECUTE));
 
         if (dto.getIpcServices() != null) {
             List<String> toRemove = new ArrayList<>();

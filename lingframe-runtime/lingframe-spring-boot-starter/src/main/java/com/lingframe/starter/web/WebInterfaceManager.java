@@ -24,6 +24,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -96,8 +97,6 @@ public class WebInterfaceManager implements WebRouteResolver {
     public void unregisterSync(String lingId, ClassLoader targetLoader) {
         try {
             registryExecutor.submit(() -> unregisterInternal(lingId, targetLoader)).get();
-            // 🔥 终极冲刷：提交并等待空任务以彻底覆盖并刷洗后台线程执行栈中可能残留的任务闭包强引用
-            registryExecutor.submit(() -> {}).get();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new LingException("Interrupted while unregistering web mapping", e);
@@ -191,40 +190,37 @@ public class WebInterfaceManager implements WebRouteResolver {
                 lingId, targetLoader != null ? targetLoader.hashCode() : "ALL");
 
         List<String> routesToRemove = new ArrayList<>();
-        Map<String, List<WebInterfaceMetadata>> remainingMap = new HashMap<>();
         List<WebInterfaceMetadata> removedMetas = new ArrayList<>();
 
-        metadataMap.forEach((routeKey, metas) -> {
-            if (metas == null || metas.isEmpty()) {
-                return;
-            }
-            List<WebInterfaceMetadata> remaining = new ArrayList<>();
-            for (WebInterfaceMetadata meta : metas) {
-                ClassLoader metaLoader = meta.getClassLoader();
-                boolean loaderMatches = targetLoader == null
-                        || metaLoader == targetLoader
-                        || metaLoader == null;
-
-                if (meta.getLingId().equals(lingId) && loaderMatches) {
-                    removedMetas.add(meta);
-                } else {
-                    remaining.add(meta);
+        // 原子地逐 routeKey 更新：compute 保证读-改-写对单个 key 原子，
+        // dispatch 线程要么看到旧 list 要么看到新 list，不会读到中间态。
+        // 取 keySet 快照避免 compute 期间结构性修改触发 ConcurrentModificationException。
+        for (String routeKey : new ArrayList<>(metadataMap.keySet())) {
+            metadataMap.compute(routeKey, (key, metas) -> {
+                if (metas == null || metas.isEmpty()) {
+                    return metas;
                 }
-            }
+                List<WebInterfaceMetadata> remaining = new ArrayList<>();
+                for (WebInterfaceMetadata meta : metas) {
+                    ClassLoader metaLoader = meta.getClassLoader();
+                    boolean loaderMatches = targetLoader == null
+                            || metaLoader == targetLoader
+                            || metaLoader == null;
 
-            if (remaining.isEmpty()) {
-                routesToRemove.add(routeKey);
-            } else {
-                remainingMap.put(routeKey, remaining);
-            }
-        });
+                    if (meta.getLingId().equals(lingId) && loaderMatches) {
+                        removedMetas.add(meta);
+                    } else {
+                        remaining.add(meta);
+                    }
+                }
+                if (remaining.isEmpty()) {
+                    routesToRemove.add(routeKey);
+                    return null;
+                }
+                return remaining;
+            });
+        }
 
-        for (Map.Entry<String, List<WebInterfaceMetadata>> entry : remainingMap.entrySet()) {
-            metadataMap.put(entry.getKey(), entry.getValue());
-        }
-        for (String routeKey : routesToRemove) {
-            metadataMap.remove(routeKey);
-        }
         rebuildRoutePatternIndex();
 
         for (WebInterfaceMetadata meta : removedMetas) {
@@ -441,7 +437,8 @@ public class WebInterfaceManager implements WebRouteResolver {
     }
 
     private void rebuildRoutePatternIndex() {
-        routePatternsByMethod.clear();
+        // 先在本地构建目标状态：每个 method 对应其完整的 urlPattern 集合
+        Map<String, Set<String>> desired = new HashMap<>();
         metadataMap.values().forEach(metas -> {
             if (metas == null) {
                 return;
@@ -450,11 +447,22 @@ public class WebInterfaceManager implements WebRouteResolver {
                 if (meta == null || meta.getHttpMethod() == null || meta.getUrlPattern() == null) {
                     continue;
                 }
-                routePatternsByMethod
-                        .computeIfAbsent(meta.getHttpMethod(), key -> ConcurrentHashMap.newKeySet())
+                desired.computeIfAbsent(meta.getHttpMethod(), k -> new HashSet<>())
                         .add(meta.getUrlPattern());
             }
         });
+
+        // 原子地逐 method 更新：先构建完整 Set 再 put，保证 dispatch 线程
+        // 要么读到旧 Set 要么读到新完整 Set，永远不会读到空 Set 导致误判 404。
+        // 这是对原 clear()+逐个 add 方案的关键修复：消除 clear 窗口期全路由 404 的竞态。
+        for (Map.Entry<String, Set<String>> entry : desired.entrySet()) {
+            Set<String> patterns = ConcurrentHashMap.newKeySet();
+            patterns.addAll(entry.getValue());
+            routePatternsByMethod.put(entry.getKey(), patterns);
+        }
+        // 清理不再有路由的 method。此时 desired 中的方法已全部 put 完毕，
+        // retainAll 只会移除已无路由的 method，不影响仍有效的 method。
+        routePatternsByMethod.keySet().retainAll(desired.keySet());
     }
 
     private Method requireTargetMethod(WebInterfaceMetadata metadata, String routeKey) {

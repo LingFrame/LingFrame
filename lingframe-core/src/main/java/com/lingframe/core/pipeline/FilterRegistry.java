@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.ServiceLoader;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 过滤器注册表。
@@ -35,7 +36,8 @@ import java.util.ServiceLoader;
 public class FilterRegistry implements ThreadPoolStatsProvider {
 
     private final List<LingInvocationFilter> builtinFilters = new ArrayList<>();
-    private final List<LingInvocationFilter> spiFilters = new ArrayList<>();
+    // spiFilters 可能被灵元加载/卸载线程并发 add/remove，用 CopyOnWriteArrayList 保证遍历安全
+    private final List<LingInvocationFilter> spiFilters = new CopyOnWriteArrayList<>();
     private final InvokableMethodCache methodCache;
     private final PermissionService permissionService;
     private final LingServiceInvoker serviceInvoker;
@@ -224,7 +226,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         }
     }
 
-    private void invalidateCache() {
+    private synchronized void invalidateCache() {
         this.orderedCache = null;
     }
 

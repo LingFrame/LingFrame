@@ -69,6 +69,37 @@ final class SpringStaticCacheCleaner {
 
         // 8. BeanAnnotationHelper（scopedProxyCache + beanNameCache，key 都是 Method）
         clearBeanAnnotationHelper(lingId, lingClassLoader);
+
+        // 9. ClassUtils.cache（ConcurrentHashMap<ClassLoader, Map<Class,Class>>，key 是 ClassLoader）
+        clearStaticMapByClassLoaderKey(lingId, lingClassLoader,
+                "org.springframework.util.ClassUtils", "cache");
+
+        // 10. GenericTypeResolver（map 字段，key 是灵元加载的 Class）
+        try {
+            int removed = SpringCleanupSupport.removeStaticMapEntries(
+                    Class.forName("org.springframework.core.GenericTypeResolver"), lingClassLoader);
+            if (removed > 0) {
+                log.debug("[{}] GenericTypeResolver: removed {} entries", lingId, removed);
+            }
+        } catch (ClassNotFoundException ignored) {
+            // 版本差异，类不存在
+        } catch (Exception e) {
+            log.debug("[{}] GenericTypeResolver cleanup failed: {}", lingId, e.getMessage());
+        }
+
+        // 11. Jackson2ObjectMapperBuilder.cache（key/value 关联灵元 ClassLoader）
+        try {
+            int removed = SpringCleanupSupport.removeStaticMapEntries(
+                    Class.forName("org.springframework.http.converter.json.Jackson2ObjectMapperBuilder"),
+                    lingClassLoader);
+            if (removed > 0) {
+                log.debug("[{}] Jackson2ObjectMapperBuilder: removed {} entries", lingId, removed);
+            }
+        } catch (ClassNotFoundException ignored) {
+            // 版本差异，类不存在
+        } catch (Exception e) {
+            log.debug("[{}] Jackson2ObjectMapperBuilder cleanup failed: {}", lingId, e.getMessage());
+        }
     }
 
     /** preCleanup / cleanup 阶段：清理 Property.annotationCache */
@@ -128,6 +159,39 @@ final class SpringStaticCacheCleaner {
             }
         } catch (Exception e) {
             log.debug("[{}] SpringFactoriesLoader cleanup failed: {}", lingId, e.getMessage());
+        }
+    }
+
+    // ======================== ClassUtils.cache 专用清理 ========================
+
+    /**
+     * 清理以 ClassLoader 为 key 的静态 Map 字段（如 ClassUtils.cache）。
+     * <p>
+     * 与 {@link SpringCleanupSupport#removeStaticMapEntries} 不同，本方法按
+     * ClassLoader 精确匹配 key，避免误删非灵元条目。
+     */
+    private void clearStaticMapByClassLoaderKey(String lingId, ClassLoader lingClassLoader,
+            String className, String fieldName) {
+        try {
+            Class<?> clazz = Class.forName(className);
+            Field f = SpringCleanupSupport.findFieldInHierarchy(clazz, fieldName);
+            if (f == null) {
+                return;
+            }
+            f.setAccessible(true);
+            Object cacheObj = f.get(null);
+            if (!(cacheObj instanceof Map<?, ?>)) {
+                return;
+            }
+            Map<?, ?> map = (Map<?, ?>) cacheObj;
+            int removed = SpringCleanupSupport.removeByClassLoaderKey(map, lingClassLoader);
+            if (removed > 0) {
+                log.debug("[{}] {}.{}: removed {} entries", lingId, className, fieldName, removed);
+            }
+        } catch (ClassNotFoundException ignored) {
+            // 版本差异，类不存在
+        } catch (Exception e) {
+            log.debug("[{}] {}.{} cleanup failed: {}", lingId, className, fieldName, e.getMessage());
         }
     }
 

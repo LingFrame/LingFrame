@@ -98,7 +98,7 @@ public class DashboardStatusCoordinator {
             patch.setCapabilities(Arrays.asList(
                     capabilityRule(Capabilities.STORAGE_SQL, AccessType.WRITE),
                     capabilityRule(Capabilities.CACHE_LOCAL, AccessType.WRITE),
-                    capabilityRule(Capabilities.Ling_ENABLE, AccessType.EXECUTE)));
+                    capabilityRule(Capabilities.LING_ENABLE, AccessType.EXECUTE)));
             governanceSupport.persistPolicyPatch(lingId, patch);
         }
     }
@@ -114,8 +114,8 @@ public class DashboardStatusCoordinator {
 
         log.info("[Dashboard] State transitioned to INACTIVE for ling: {}", lingId);
         lifecycleEventStore.addEvent(lingId, version, "STOPPING", "灵元停用", "灵元 " + lingId + " 已停用，不再接受新请求");
-        permissionService.revoke(lingId, Capabilities.Ling_ENABLE);
-        log.info("[Dashboard] Revoked Ling_ENABLE permission from {}, ling deactivated", lingId);
+        permissionService.revoke(lingId, Capabilities.LING_ENABLE);
+        log.info("[Dashboard] Revoked LING_ENABLE permission from {}, ling deactivated", lingId);
     }
 
     private void recoverLing(String lingId, String version) {

@@ -49,9 +49,9 @@ public class LingSpringCacheProxy implements Cache {
 
     @Override
     public Object getNativeCache() {
-        // 暴露原生缓存句柄可能绕开治理代理，先保持保守策略。
-        checkPermission("getNativeCache", AccessType.WRITE);
-        return target.getNativeCache();
+        // 暴露原生缓存句柄会绕过权限和命名空间隔离，拒绝暴露
+        throw new UnsupportedOperationException(
+                "getNativeCache() is not supported through governance proxy to prevent bypass");
     }
 
     @Override
@@ -88,6 +88,13 @@ public class LingSpringCacheProxy implements Cache {
     @Override
     public void clear() {
         checkPermission("clear", AccessType.WRITE);
+        // Spring Cache 无 key 枚举 API，无法按 lingId 精确清理；
+        // 灵元调用 clear 会清空所有灵元缓存，拒绝
+        String callerLingId = LingCallContext.getLingId();
+        if (callerLingId != null) {
+            throw new UnsupportedOperationException(
+                    "clear() is not supported for ling; use evict(key) per entry");
+        }
         target.clear();
     }
 
@@ -106,6 +113,12 @@ public class LingSpringCacheProxy implements Cache {
     @Override
     public boolean invalidate() {
         checkPermission("invalidate", AccessType.WRITE);
+        // 与 clear() 同理，灵元调用会清空所有灵元缓存，拒绝
+        String callerLingId = LingCallContext.getLingId();
+        if (callerLingId != null) {
+            throw new UnsupportedOperationException(
+                    "invalidate() is not supported for ling; use evictIfPresent(key) per entry");
+        }
         return target.invalidate();
     }
 

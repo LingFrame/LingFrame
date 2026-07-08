@@ -59,6 +59,8 @@ public class LingRuntime {
     public LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
             RuntimeCoordinator runtimeCoordinator) {
         // 便捷构造器兜底：未提供 InstanceCoordinator 时用不发事件的空壳，保证测试/离线场景可用
+        // ⚠️ 生产代码应使用完整构造器（包级私有）注入 InstanceCoordinator，避免事件链断裂。
+        // 此构造器仅为测试/离线场景保留，生产装配路径请走 DefaultLingLifecycleEngine.ensureRuntimeForDeployment。
         this(lingId, config, eventBus, new InstanceCoordinator(null), runtimeCoordinator);
     }
 

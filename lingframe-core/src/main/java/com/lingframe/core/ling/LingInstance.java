@@ -161,18 +161,19 @@ public class LingInstance {
             return -1L;
         }
 
-        long invocationId = -1L;
-        if (snapshot != null) {
-            invocationId = activeInvocationSequence.incrementAndGet();
-            activeInvocations.put(invocationId, snapshot);
+        // 无快照不入队，也不递增计数器，直接返回失败
+        // 否则调用方收到 -1 不会调 completeInvocation，导致 activeRequests 永不归零
+        if (snapshot == null) {
+            return -1L;
         }
+
+        long invocationId = activeInvocationSequence.incrementAndGet();
+        activeInvocations.put(invocationId, snapshot);
 
         activeRequests.incrementAndGet();
         if (isDying()) {
             activeRequests.decrementAndGet();
-            if (invocationId > 0) {
-                activeInvocations.remove(invocationId);
-            }
+            activeInvocations.remove(invocationId);
             return -1L;
         }
         return invocationId;

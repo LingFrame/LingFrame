@@ -45,13 +45,28 @@ public class DefaultPermissionService implements PermissionService {
             return false;
         }
 
+        // 灵元 API 契约包，明确放行（与调用方身份无关）
+        if (capability.startsWith(GLOBAL_WHITELIST_PREFIX)) {
+            log.debug("[Auth] Whitelist bypassed");
+            return true;
+        }
+
+        // 显式灵核身份 + 未开启灵核权限检查
         if (LING_CORE_ID.equals(lingId) && !config.isLingCoreCheckPermissions()) {
             log.debug("[Auth] LINGCORE application bypassed");
             return true;
         }
 
-        if (lingId == null || capability.startsWith(GLOBAL_WHITELIST_PREFIX)) {
-            log.debug("[Auth] Whitelist bypassed");
+        // lingId==null：未知调用方（无 LingCallContext），区分灵核治理开关
+        // 避免无身份请求直接 fail-open 绕过权限边界，与 SQL proxy 行为对齐
+        if (lingId == null) {
+            if (config.isLingCoreGovernanceEnabled()) {
+                log.warn("[Auth] Access rejected: no LingContext but LINGCORE governance is enabled. capability={}",
+                        capability);
+                return false;
+            }
+            // 灵核治理关闭：视为灵核内部调用，默认放行
+            log.debug("[Auth] No LingContext (LINGCORE governance disabled), allowed. capability={}", capability);
             return true;
         }
 

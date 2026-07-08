@@ -301,14 +301,13 @@ public class LingStatementProxy implements Statement {
         if (iface.isAssignableFrom(getClass())) {
             return (T) this;
         }
-        return target.unwrap(iface);
+        // 拒绝暴露原生 Statement 实现，防止绕过 SQL 治理代理
+        throw new SQLException("Cannot unwrap to " + iface.getName()
+                + ": LingStatementProxy only exposes the Statement interface");
     }
 
     @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
-        if (iface.isAssignableFrom(getClass())) {
-            return true;
-        }
-        return target.isWrapperFor(iface);
+        return iface.isAssignableFrom(getClass());
     }
 }

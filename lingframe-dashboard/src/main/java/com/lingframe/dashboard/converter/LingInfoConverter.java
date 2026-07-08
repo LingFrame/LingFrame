@@ -110,7 +110,7 @@ public class LingInfoConverter {
                     redisCapabilities.add(capability);
                 } else if (!Objects.equals(capability, Capabilities.STORAGE_SQL)
                         && !Objects.equals(capability, Capabilities.CACHE_LOCAL)
-                        && !Objects.equals(capability, Capabilities.Ling_ENABLE)) {
+                        && !Objects.equals(capability, Capabilities.LING_ENABLE)) {
                     extraCapabilities.add(capability);
                 }
             }

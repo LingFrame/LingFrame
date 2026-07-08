@@ -238,7 +238,18 @@ public class EventBus {
     }
 
     public void shutdown() {
-        asyncDispatcher.shutdownNow();
+        // 优雅关闭：先停止接受新任务，给正在执行的异步监听器 5 秒正常完成；
+        // 超时后再强制中断，避免灵元卸载时监听器处于不一致状态。
+        asyncDispatcher.shutdown();
+        try {
+            if (!asyncDispatcher.awaitTermination(5, TimeUnit.SECONDS)) {
+                log.warn("EventBus async dispatcher did not terminate within 5 seconds, forcing shutdown");
+                asyncDispatcher.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            asyncDispatcher.shutdownNow();
+        }
     }
 
     @SuppressWarnings("unchecked")

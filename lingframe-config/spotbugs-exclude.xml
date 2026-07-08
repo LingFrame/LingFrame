@@ -1,9 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <FindBugsFilter>
-    <!-- Lombok 生成的方法 -->
+    <!-- try-with-resources 模式产生的常见误报（Java 语言层面，与 Lombok 无关，全局抑制） -->
     <Match>
-        <Package name="~.*"/>
-        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE,RCN_REDUNDANT_NULLCHECK,UWF_UNWRITTEN_FIELD,URF_UNREAD_FIELD,DMI_RANDOM_USED_ONLY_ONCE"/>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE,RCN_REDUNDANT_NULLCHECK"/>
+    </Match>
+
+    <!-- Lombok 注解处理器生成的字段读写告警（仅限本项目代码，第三方库不抑制） -->
+    <Match>
+        <Package name="~com\.lingframe\..*"/>
+        <Bug pattern="UWF_UNWRITTEN_FIELD,URF_UNREAD_FIELD"/>
+    </Match>
+
+    <!-- 灵元 TraceId 生成有意使用 ThreadLocalRandom，单次调用是设计选择 -->
+    <Match>
+        <Class name="com.lingframe.api.context.LingCallContext"/>
+        <Bug pattern="DMI_RANDOM_USED_ONLY_ONCE"/>
     </Match>
 
     <!-- 测试代码放宽 -->

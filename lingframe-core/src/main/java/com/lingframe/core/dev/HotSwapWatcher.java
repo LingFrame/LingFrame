@@ -51,8 +51,8 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent>, 
     private final ScheduledExecutorService debounceExecutor = Executors.newSingleThreadScheduledExecutor(
             NamedThreadFactory.daemon("lingframe-hotswap-debounce"));
 
-    // ✅ 改为 volatile，防止并发问题
-    private volatile ScheduledFuture<?> debounceTask;
+    // 按 lingId 维护 debounce 任务，避免不同灵元的重载互相取消
+    private final Map<String, ScheduledFuture<?>> debounceTasks = new ConcurrentHashMap<>();
 
     public HotSwapWatcher(LingLifecycleEngine lifecycleEngine,
             LingRepository lingRepository,
@@ -88,19 +88,25 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent>, 
         unregister(lingId);
     }
 
-    private synchronized void scheduleReload(String lingId) {
-        if (debounceTask != null && !debounceTask.isDone()) {
-            debounceTask.cancel(false);
-        }
-
-        debounceTask = debounceExecutor.schedule(() -> {
-            try {
-                doReload(lingId);
-            } finally {
-                // ✅ 任务完成后清除引用，防止 lambda 被 ScheduledFuture 持有
-                debounceTask = null;
+    private void scheduleReload(String lingId) {
+        // compute 保证对单个 lingId 的 cancel+schedule 原子性，无需 synchronized
+        debounceTasks.compute(lingId, (k, existing) -> {
+            if (existing != null && !existing.isDone()) {
+                existing.cancel(false);
             }
-        }, 1000, TimeUnit.MILLISECONDS);
+            // holder 模式：让 lambda 内部能引用自己的 future，实现条件删除
+            final ScheduledFuture<?>[] holder = new ScheduledFuture<?>[1];
+            holder[0] = debounceExecutor.schedule(() -> {
+                try {
+                    doReload(lingId);
+                } finally {
+                    // 条件删除：仅当 map 中仍是自己的 future 时才移除，
+                    // 避免误删 doReload 期间新调度的任务
+                    debounceTasks.remove(lingId, holder[0]);
+                }
+            }, 1000, TimeUnit.MILLISECONDS);
+            return holder[0];
+        });
     }
 
     /**
@@ -249,6 +255,7 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent>, 
                 try {
                     entry.getKey().cancel();
                 } catch (Exception ignored) {
+                    log.trace("WatchKey cancel failed for ling {}: {}", lingId, ignored.getMessage());
                 }
                 it.remove();
             }
@@ -329,6 +336,9 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent>, 
         try {
             if (watchService != null)
                 watchService.close();
+            // 取消所有待执行的 debounce 任务
+            debounceTasks.values().forEach(task -> task.cancel(false));
+            debounceTasks.clear();
             debounceExecutor.shutdownNow();
             if (eventBus != null)
                 eventBus.unsubscribeAll("lingframe-hotswap");

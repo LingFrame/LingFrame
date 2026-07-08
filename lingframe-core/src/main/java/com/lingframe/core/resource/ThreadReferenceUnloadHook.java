@@ -690,8 +690,6 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
                 return 0;
 
             Field valueField = null;
-            Method expungeMethod = null;
-
             int logged = 0;
             List<String> samples = new ArrayList<>();
 
@@ -704,35 +702,19 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
                     valueField.setAccessible(true);
                 }
 
-                Reference<?> ref = (Reference<?>) entry;
-                Object key = ref.get();
-                Object val = valueField.get(entry);
-
-                if (JvmCleanupSupport.isClassLoaderRelated(key, cl) || JvmCleanupSupport.isClassLoaderRelated(val, cl)
-                        || JvmCleanupSupport.deepReferencesClassLoader(key, cl, 3)
-                        || JvmCleanupSupport.deepReferencesClassLoader(val, cl, 3)) {
-                    valueField.set(entry, null);
-                    ref.clear();
+                String sample = clearSingleEntry(entry, valueField, cl);
+                if (sample != null) {
                     cleaned++;
                     if (logged < 3) {
-                        samples.add(describeThreadLocalEntry(key, val));
+                        samples.add(sample);
                         logged++;
                     }
                 }
             }
 
-            // 触发 expungeStaleEntries
+            // 清理后触发 expungeStaleEntries 回收被置 null 的槽位
             if (cleaned > 0) {
-                if (expungeMethod == null) {
-                    try {
-                        expungeMethod = map.getClass().getDeclaredMethod("expungeStaleEntries");
-                        expungeMethod.setAccessible(true);
-                    } catch (NoSuchMethodException ignored) {
-                    }
-                }
-                if (expungeMethod != null) {
-                    expungeMethod.invoke(map);
-                }
+                expungeStaleEntries(map);
             }
             if (!samples.isEmpty()) {
                 log.debug("[{}] ThreadLocal hits on thread {}: {}", lingId, t.getName(), samples);
@@ -741,6 +723,44 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
             log.trace("Failed to clear ThreadLocal on thread {}: {}", t.getName(), e.getMessage());
         }
         return cleaned;
+    }
+
+    /**
+     * 检查单个 ThreadLocal entry 是否与目标 ClassLoader 关联，若是则清理并返回描述样本。
+     *
+     * @return 清理成功时返回 entry 描述（用于日志），未清理或异常时返回 null
+     */
+    private String clearSingleEntry(Object entry, Field valueField, ClassLoader cl) {
+        try {
+            Reference<?> ref = (Reference<?>) entry;
+            Object key = ref.get();
+            Object val = valueField.get(entry);
+
+            if (JvmCleanupSupport.isClassLoaderRelated(key, cl) || JvmCleanupSupport.isClassLoaderRelated(val, cl)
+                    || JvmCleanupSupport.deepReferencesClassLoader(key, cl, 3)
+                    || JvmCleanupSupport.deepReferencesClassLoader(val, cl, 3)) {
+                valueField.set(entry, null);
+                ref.clear();
+                return describeThreadLocalEntry(key, val);
+            }
+        } catch (Exception e) {
+            log.trace("Failed to inspect/clear a single ThreadLocal entry: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * 触发 ThreadLocalMap 的 expungeStaleEntries，回收被清理的陈旧槽位。
+     * 该方法是 JDK 内部方法，不同 JVM 实现可能不存在，失败时静默跳过。
+     */
+    private void expungeStaleEntries(Object map) {
+        try {
+            Method expungeMethod = map.getClass().getDeclaredMethod("expungeStaleEntries");
+            expungeMethod.setAccessible(true);
+            expungeMethod.invoke(map);
+        } catch (Exception ignored) {
+            // expungeStaleEntries 是 JDK 内部方法，部分 JVM 可能不存在
+        }
     }
 
     private String describeThreadLocalEntry(Object key, Object val) {

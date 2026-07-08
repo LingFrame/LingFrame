@@ -19,7 +19,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class LingPreparedStatementProxy implements PreparedStatement {
 
-    private final Connection targetConnection; // 辅助信息，如果有需要可保留
     private final PreparedStatement target;
     private final PermissionService permissionService;
 
@@ -36,7 +35,6 @@ public class LingPreparedStatementProxy implements PreparedStatement {
     // SQL解析结果缓存 (LRU缓存)
 
     public LingPreparedStatementProxy(PreparedStatement target, PermissionService permissionService, String sql) {
-        this.targetConnection = null;
         this.target = target;
         this.permissionService = permissionService;
 
@@ -168,15 +166,14 @@ public class LingPreparedStatementProxy implements PreparedStatement {
         if (iface.isAssignableFrom(getClass())) {
             return (T) this;
         }
-        return target.unwrap(iface);
+        // 拒绝暴露原生 PreparedStatement 实现，防止绕过 SQL 治理代理
+        throw new SQLException("Cannot unwrap to " + iface.getName()
+                + ": LingPreparedStatementProxy only exposes the PreparedStatement interface");
     }
 
     @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
-        if (iface.isAssignableFrom(getClass())) {
-            return true;
-        }
-        return target.isWrapperFor(iface);
+        return iface.isAssignableFrom(getClass());
     }
 
     @Override
@@ -242,7 +239,7 @@ public class LingPreparedStatementProxy implements PreparedStatement {
 
     @Override
     public int[] executeBatch() throws SQLException {
-        checkPermission();
+        // 权限已在 addBatch() 时检查，此处无需重复检查，与 LingStatementProxy 策略一致
         return target.executeBatch();
     }
 

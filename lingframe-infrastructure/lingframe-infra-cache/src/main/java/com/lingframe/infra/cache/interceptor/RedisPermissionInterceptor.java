@@ -7,6 +7,7 @@ import com.lingframe.api.security.PermissionService;
 import lombok.extern.slf4j.Slf4j;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
+import org.springframework.aop.framework.ProxyFactory;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -75,7 +76,32 @@ public class RedisPermissionInterceptor implements MethodInterceptor {
         }
 
         // 执行原方法
-        return invocation.proceed();
+        Object result = invocation.proceed();
+
+        // 对 opsForXxx() 返回的子对象再套代理，防止通过子对象绕过权限拦截
+        if (methodName.startsWith("opsFor") && result != null) {
+            return wrapSubOperations(result);
+        }
+        return result;
+    }
+
+    /**
+     * 对 RedisTemplate.opsForXxx() 返回的子对象再套代理，
+     * 防止通过子对象直接操作 Redis 绕过权限拦截。
+     * <p>
+     * fail-closed：代理创建失败时拒绝暴露裸子对象，与 P0 治理原则一致。
+     */
+    private Object wrapSubOperations(Object subOperations) {
+        try {
+            ProxyFactory subProxy = new ProxyFactory(subOperations);
+            subProxy.setProxyTargetClass(true);
+            subProxy.addAdvice(this);
+            return subProxy.getProxy();
+        } catch (Exception e) {
+            log.error("Failed to create governance proxy for Redis sub-operations, blocking access", e);
+            throw new PermissionDeniedException(
+                    "Cannot create governance proxy for Redis sub-operations: " + e.getMessage());
+        }
     }
 
     /**

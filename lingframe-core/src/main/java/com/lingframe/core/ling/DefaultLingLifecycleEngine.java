@@ -253,7 +253,15 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         List<LeakRiskReport> reports = unloadCoordinator.checkBeforeLingUnload(
                 lingId,
                 new ArrayList<>(runtime.getInstancePool().getAllInstances()));
-        drainInstances(lingId, runtime.getInstancePool().getActiveInstances(),
+
+        // 先将所有活跃实例移入 dying 队列，移出 activePool。
+        // 这样 STOPPING 实例不再影响 hasAvailableInstance，且剩余版本（如有）仍可服务。
+        List<LingInstance> activeInstances = new ArrayList<>(runtime.getInstancePool().getActiveInstances());
+        for (LingInstance instance : activeInstances) {
+            runtime.getInstancePool().moveToDying(instance);
+        }
+
+        drainInstances(lingId, activeInstances,
                 runtime.getConfig().getForceCleanupDelaySeconds(),
                 runtime.getConfig().getDrainPollIntervalMs());
         doFullUndeploy(lingId, runtime);
@@ -649,18 +657,9 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         // 事件驱动 drain：每轮对非 idle 实例调用 awaitIdle 阻塞等待 signal，
         // 任一实例被唤醒后重新扫描全部实例状态，全部 idle 则退出。
         while (System.currentTimeMillis() < deadlineMs) {
-            allIdle = true;
-            LingInstance pending = null;
-            for (LingInstance instance : instances) {
-                if (!instance.isIdle()) {
-                    allIdle = false;
-                    pending = instance;
-                    log.debug("[{}] Waiting for instance {} to drain ({} active requests)...",
-                            lingId, instance.getVersion(), instance.getActiveRequestCount());
-                    break;
-                }
-            }
-            if (allIdle) {
+            LingInstance pending = findPendingInstance(lingId, instances);
+            if (pending == null) {
+                allIdle = true;
                 break;
             }
             // 对首个非 idle 实例做事件驱动等待：exit() 归零时会 signal 唤醒此处，
@@ -683,15 +682,36 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         if (allIdle) {
             log.info("[{}] All instances drained successfully", lingId);
         } else {
-            long nowMillis = System.currentTimeMillis();
-            for (LingInstance instance : instances) {
-                if (!instance.isIdle()) {
-                    log.warn("[{}] Force proceeding: instance {} still has {} active requests",
-                            lingId, instance.getVersion(), instance.getActiveRequestCount());
-                    for (String summary : describeActiveInvocations(instance, nowMillis)) {
-                        log.warn("[{}] In-flight invocation on instance {}: {}",
-                                lingId, instance.getVersion(), summary);
-                    }
+            forceProceedWithWarnings(lingId, instances);
+        }
+    }
+
+    /**
+     * 扫描实例列表，返回首个非 idle 的实例；全部 idle 则返回 null。
+     */
+    private LingInstance findPendingInstance(String lingId, List<LingInstance> instances) {
+        for (LingInstance instance : instances) {
+            if (!instance.isIdle()) {
+                log.debug("[{}] Waiting for instance {} to drain ({} active requests)...",
+                        lingId, instance.getVersion(), instance.getActiveRequestCount());
+                return instance;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 超时后仍有活跃实例时，记录告警和飞行中的调用信息，然后强制推进卸载。
+     */
+    private void forceProceedWithWarnings(String lingId, List<LingInstance> instances) {
+        long nowMillis = System.currentTimeMillis();
+        for (LingInstance instance : instances) {
+            if (!instance.isIdle()) {
+                log.warn("[{}] Force proceeding: instance {} still has {} active requests",
+                        lingId, instance.getVersion(), instance.getActiveRequestCount());
+                for (String summary : describeActiveInvocations(instance, nowMillis)) {
+                    log.warn("[{}] In-flight invocation on instance {}: {}",
+                            lingId, instance.getVersion(), summary);
                 }
             }
         }

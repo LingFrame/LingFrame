@@ -41,18 +41,14 @@ public class LingDataSourceProxy implements DataSource {
         if (iface.isAssignableFrom(getClass())) {
             return (T) this;
         }
-        if (iface.isAssignableFrom(LingDataSourceProxy.class)) {
-            return (T) this;
-        }
-        return target.unwrap(iface);
+        // 拒绝暴露原生数据源实现（如 HikariDataSource），防止绕过治理代理
+        throw new SQLException("Cannot unwrap to " + iface.getName()
+                + ": LingDataSourceProxy only exposes the DataSource interface");
     }
 
     @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
-        if (iface.isAssignableFrom(getClass())) {
-            return true;
-        }
-        return target.isWrapperFor(iface);
+        return iface.isAssignableFrom(getClass());
     }
 
     @Override

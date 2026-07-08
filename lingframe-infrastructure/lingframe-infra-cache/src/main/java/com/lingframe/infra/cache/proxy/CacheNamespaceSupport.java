@@ -22,7 +22,17 @@ public final class CacheNamespaceSupport {
 
     public static Object namespaceKey(String cacheName, Object rawKey) {
         String lingId = LingCallContext.getLingId();
-        if (lingId == null || rawKey == null || rawKey instanceof NamespacedKey) {
+        if (lingId == null || rawKey == null) {
+            return rawKey;
+        }
+        // 防御：若传入的 key 已是 NamespacedKey，校验 lingId 一致性，防止跨灵元伪造
+        if (rawKey instanceof NamespacedKey) {
+            NamespacedKey nk = (NamespacedKey) rawKey;
+            if (!lingId.equals(nk.getLingId())) {
+                throw new SecurityException(
+                        "Cross-ling namespace key detected: current=" + lingId
+                                + ", key.lingId=" + nk.getLingId());
+            }
             return rawKey;
         }
         return new NamespacedKey(lingId, cacheName, rawKey);
@@ -58,26 +68,46 @@ public final class CacheNamespaceSupport {
                 : namespacedKey;
     }
 
-    public static final class NamespacedKey implements Serializable {
+    /** 判断 key 是否为 NamespacedKey */
+    public static boolean isNamespacedKey(Object key) {
+        return key instanceof NamespacedKey;
+    }
+
+    /** 提取 NamespacedKey 的 lingId，非 NamespacedKey 返回 null */
+    public static String extractLingId(Object key) {
+        return key instanceof NamespacedKey ? ((NamespacedKey) key).getLingId() : null;
+    }
+
+    /** 提取 NamespacedKey 的 cacheName，非 NamespacedKey 返回 null */
+    public static String extractCacheName(Object key) {
+        return key instanceof NamespacedKey ? ((NamespacedKey) key).getCacheName() : null;
+    }
+
+    /**
+     * 命名空间 key：包级私有，防止灵元外部构造伪造跨灵元 key。
+     * <p>
+     * 配合 {@link #namespaceKey} 入口的 lingId 一致性校验形成双重防御。
+     */
+    static final class NamespacedKey implements Serializable {
         private final String lingId;
         private final String cacheName;
         private final Object rawKey;
 
-        public NamespacedKey(String lingId, String cacheName, Object rawKey) {
+        NamespacedKey(String lingId, String cacheName, Object rawKey) {
             this.lingId = lingId;
             this.cacheName = cacheName;
             this.rawKey = rawKey;
         }
 
-        public String getLingId() {
+        String getLingId() {
             return lingId;
         }
 
-        public String getCacheName() {
+        String getCacheName() {
             return cacheName;
         }
 
-        public Object getRawKey() {
+        Object getRawKey() {
             return rawKey;
         }
 

@@ -14,6 +14,11 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -76,23 +81,45 @@ public class LocalGovernanceRegistry {
     }
 
     private void save() {
-        File file = new File(storePath);
-        if (!file.getParentFile().exists()) {
-            file.getParentFile().mkdirs();
+        Path target = Paths.get(storePath);
+        Path parent = target.getParent();
+        if (parent != null) {
+            try {
+                Files.createDirectories(parent);
+            } catch (IOException e) {
+                log.error("Failed to create parent directory for governance patches: {}", parent, e);
+                return;
+            }
         }
+        Path tmp = Paths.get(storePath + ".tmp");
 
-        // 显式指定 UTF-8 编码，避免依赖平台默认编码
+        // 原子写入：先写临时文件，再原子 move 覆盖目标文件
+        // 避免 write 期间其他线程读到半截 YAML 导致解析失败
         try (OutputStreamWriter writer = new OutputStreamWriter(
-                new FileOutputStream(file), StandardCharsets.UTF_8)) {
+                new FileOutputStream(tmp.toFile()), StandardCharsets.UTF_8)) {
             DumperOptions options = new DumperOptions();
             options.setIndent(2);
             options.setPrettyFlow(true);
             options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
 
             Yaml yaml = YamlCompatUtils.createSafeYaml(options);
-            yaml.dump(patchMap, writer);
+            yaml.dump(new HashMap<>(patchMap), writer);
         } catch (IOException e) {
             log.error("Failed to save governance patches", e);
+            return;
+        }
+
+        try {
+            Files.move(tmp, target,
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            log.error("Failed to atomically move governance patch file", e);
+            // 清理残留临时文件，避免磁盘泄漏
+            try {
+                Files.deleteIfExists(tmp);
+            } catch (IOException deleteEx) {
+                log.warn("Failed to delete temporary governance patch file: {}", tmp, deleteEx);
+            }
         }
     }
 }

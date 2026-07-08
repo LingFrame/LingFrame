@@ -230,6 +230,8 @@ public class LingOpenApiCustomizer implements LingOpenApiCustomizerAdapter {
                 }
             }
         } catch (Throwable ignored) {
+            log.trace("Swagger @Tag annotation processing failed for {}: {}",
+                    targetMethod.getDeclaringClass().getSimpleName(), ignored.getMessage());
         }
 
         String summary = metadata.getOpSummary() != null && !metadata.getOpSummary().isEmpty()

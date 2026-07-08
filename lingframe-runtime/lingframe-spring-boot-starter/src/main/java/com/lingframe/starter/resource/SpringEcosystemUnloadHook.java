@@ -33,9 +33,6 @@ public class SpringEcosystemUnloadHook implements SpringAwareUnloadHook {
      */
     private static final int SPRING_MAJOR_VERSION = detectSpringMajorVersion();
 
-    protected ApplicationContext mainContext;
-    protected ConfigurableApplicationContext lingContext;
-
     // 包内 Cleaner：每个职责一个，构造期初始化
     private final ExecutorCleaner executorCleaner = new ExecutorCleaner();
     private final DataSourceCleaner dataSourceCleaner = new DataSourceCleaner();
@@ -68,19 +65,13 @@ public class SpringEcosystemUnloadHook implements SpringAwareUnloadHook {
     public SpringEcosystemUnloadHook() {
     }
 
-    @Override
-    public void setContexts(ApplicationContext mainContext,
-            ConfigurableApplicationContext lingContext) {
-        this.mainContext = mainContext;
-        this.lingContext = lingContext;
-    }
-
     // =========================================================================
     // 第一阶段：Context 活跃期预清理
     // =========================================================================
 
     @Override
-    public void preCleanup(String lingId) {
+    public void preCleanup(String lingId, ApplicationContext mainContext,
+                           ConfigurableApplicationContext lingContext) {
         if (lingContext == null || !lingContext.isActive())
             return;
 
@@ -91,24 +82,25 @@ public class SpringEcosystemUnloadHook implements SpringAwareUnloadHook {
                 Integer.toHexString(System.identityHashCode(lingClassLoader)),
                 SPRING_MAJOR_VERSION);
 
-        try {
-            // 1. 关闭遗留的 ExecutorService
-            executorCleaner.shutdown(lingId, lingContext.getBeanFactory());
-            // 2. 清理 ApplicationListener（必须在Context关闭前清理）
-            applicationListenerCleaner.clear(lingId, mainContext, lingContext);
-            // 3. 清理 lifecycleMetadataCache（BPP 缓存 + CacheOperationSource attributeCache）
-            lifecycleMetadataCleaner.clear(lingId, lingContext.getBeanFactory(), lingClassLoader);
-            // 4. 清理 Environment PropertySources + EventMulticaster retrieverCache
-            environmentCleaner.clean(lingId, lingContext);
-            // 5. 关闭 DataSource
-            dataSourceCleaner.close(lingId, lingContext.getBeanFactory());
-            // 6. Spring 静态缓存（Property.annotationCache）
-            staticCacheCleaner.clearPropertyAnnotationCache(lingId, lingClassLoader, "pre");
-            // 7. Jackson 序列化缓存
-            jacksonCacheCleaner.clear(lingId, mainContext, lingClassLoader, "pre");
-        } catch (Exception e) {
-            log.debug("[{}] Spring pre-cleanup failed: {}", lingId, e.getMessage());
-        }
+        // 每步独立 try-catch：单步失败不跳过后续步骤（与 cleanup 阶段的 safeCleanup 策略一致）
+        safeCleanup(lingId, "preCleanup.executor",
+                () -> executorCleaner.shutdown(lingId, lingContext.getBeanFactory()));
+        safeCleanup(lingId, "preCleanup.applicationListener",
+                () -> applicationListenerCleaner.clear(lingId, mainContext, lingContext));
+        safeCleanup(lingId, "preCleanup.lifecycleMetadata",
+                () -> lifecycleMetadataCleaner.clear(lingId, lingContext.getBeanFactory(), lingClassLoader));
+        safeCleanup(lingId, "preCleanup.environment",
+                () -> environmentCleaner.clean(lingId, lingContext));
+        safeCleanup(lingId, "preCleanup.dataSource",
+                () -> dataSourceCleaner.close(lingId, lingContext.getBeanFactory()));
+        safeCleanup(lingId, "preCleanup.propertyAnnotationCache",
+                () -> staticCacheCleaner.clearPropertyAnnotationCache(lingId, lingClassLoader, "pre"));
+        safeCleanup(lingId, "preCleanup.jackson",
+                () -> jacksonCacheCleaner.clear(lingId, mainContext, lingClassLoader, "pre"));
+        // 移除 Context 自身注册的 ShutdownHook（必须在 Context 关闭前完成，
+        // 否则 close() 后 JVM 退出时 ShutdownHook 仍会触发已关闭 Context 的二次 close）
+        safeCleanup(lingId, "preCleanup.shutdownHook",
+                () -> shutdownHookCleaner.clearApplicationContextShutdownHook(lingId, lingContext));
     }
 
     // =========================================================================
@@ -126,9 +118,9 @@ public class SpringEcosystemUnloadHook implements SpringAwareUnloadHook {
         // 2. SpringFactoriesLoader
         safeCleanup(lingId, "SpringStaticCache.clearSpringFactoriesCache",
                 () -> staticCacheCleaner.clearSpringFactoriesCache(lingId, classLoader));
-        // 3. Spring ShutdownHook 残留引用
+        // 3. Spring ShutdownHook 残留引用（仅 ClassLoader 级清理，Context 级清理已在 preCleanup 完成）
         safeCleanup(lingId, "SpringShutdownHookCleaner",
-                () -> shutdownHookCleaner.clear(lingId, classLoader, lingContext));
+                () -> shutdownHookCleaner.clear(lingId, classLoader));
         // 4. CGLIB 缓存
         safeCleanup(lingId, "CglibCacheCleaner",
                 () -> cglibCacheCleaner.clear(lingId, classLoader));
@@ -144,9 +136,6 @@ public class SpringEcosystemUnloadHook implements SpringAwareUnloadHook {
         // 8. JDK Proxy 缓存（WeakCache 中 CacheValue 持有代理 Class → ClassLoader 强引用链）
         safeCleanup(lingId, "JdkProxyCacheCleaner",
                 () -> jdkProxyCacheCleaner.clear(lingId, classLoader));
-
-        // 9. 释放 context 引用
-        clearContexts();
     }
 
     /**
@@ -164,11 +153,5 @@ public class SpringEcosystemUnloadHook implements SpringAwareUnloadHook {
             log.warn("[{}] {} cleanup failed with {}: {}, continuing with next step",
                     lingId, stepName, t.getClass().getSimpleName(), t.getMessage());
         }
-    }
-
-    @Override
-    public void clearContexts() {
-        this.mainContext = null;
-        this.lingContext = null;
     }
 }

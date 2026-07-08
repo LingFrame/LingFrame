@@ -1,7 +1,11 @@
 package com.lingframe.infra.storage.proxy;
 
+import com.lingframe.api.context.LingCallContext;
+import com.lingframe.api.exception.PermissionDeniedException;
+import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.sql.*;
 import java.util.Map;
@@ -11,13 +15,39 @@ import java.util.concurrent.Executor;
 /**
  * 数据库连接代理
  * 职责：劫持 createStatement / prepareStatement 等方法，
- * 驱动后续的 SQL 拦截与细粒度权限校验。
+ * 驱动后续的 SQL 拦截与细粒度权限校验；
+ * 并对事务边界方法（commit/rollback/setAutoCommit）施加治理。
  */
+@Slf4j
 @RequiredArgsConstructor
 public class LingConnectionProxy implements Connection {
 
+    private static final String TRANSACTION_CAPABILITY = "storage:sql:transaction";
+
     private final Connection target;
     private final PermissionService permissionService;
+
+    /**
+     * 事务操作的治理检查。
+     * 与 SQL 执行检查对齐：无 LingContext 时按灵核治理开关决定放行/拒绝。
+     */
+    private void checkTransactionPermission(String operation) throws SQLException {
+        String callerLingId = LingCallContext.getLingId();
+        if (callerLingId == null) {
+            if (permissionService.isLingCoreGovernanceEnabled()) {
+                log.error("Security Alert: transaction [{}] without LingContext (LINGCORE governance ENABLED)",
+                        operation);
+                throw new SQLException("Access Denied: LINGCORE governance is enabled but no context provided for transaction: "
+                        + operation);
+            }
+            return;
+        }
+        boolean allowed = permissionService.isAllowed(callerLingId, TRANSACTION_CAPABILITY, AccessType.WRITE);
+        permissionService.audit(callerLingId, TRANSACTION_CAPABILITY, "transaction:" + operation, allowed);
+        if (!allowed) {
+            throw new SQLException(new PermissionDeniedException(callerLingId, TRANSACTION_CAPABILITY));
+        }
+    }
 
     @Override
     public Statement createStatement() throws SQLException {
@@ -43,41 +73,37 @@ public class LingConnectionProxy implements Connection {
     @Override
     @SuppressWarnings("unchecked")
     public <T> T unwrap(Class<T> iface) throws SQLException {
-        // 如果请求的是 Connection 接口，返回代理本身
+        // 如果请求的是 Connection 接口或代理本身，返回代理本身
         if (iface.isAssignableFrom(getClass())) {
             return (T) this;
         }
-        // 如果请求的是 LingConnectionProxy 本身
-        if (iface.isAssignableFrom(LingConnectionProxy.class)) {
-            return (T) this;
-        }
-        // 其他情况委托给 target（可能是特定数据库驱动的接口）
-        // 注意：这里可能暴露原始对象，但某些 ORM 框架需要此功能
-        return target.unwrap(iface);
+        // 拒绝暴露原生 Connection 实现，防止绕过事务治理代理
+        throw new SQLException("Cannot unwrap to " + iface.getName()
+                + ": LingConnectionProxy only exposes the Connection interface");
     }
 
     @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
         // 代理本身实现了 Connection 接口
-        if (iface.isAssignableFrom(getClass())) {
-            return true;
-        }
-        return target.isWrapperFor(iface);
+        return iface.isAssignableFrom(getClass());
     }
 
     // ...
     @Override
     public void commit() throws SQLException {
+        checkTransactionPermission("commit");
         target.commit();
     }
 
     @Override
     public void rollback() throws SQLException {
+        checkTransactionPermission("rollback");
         target.rollback();
     }
 
     @Override
     public void setAutoCommit(boolean autoCommit) throws SQLException {
+        checkTransactionPermission("setAutoCommit");
         target.setAutoCommit(autoCommit);
     }
 
@@ -181,6 +207,7 @@ public class LingConnectionProxy implements Connection {
 
     @Override
     public void rollback(Savepoint savepoint) throws SQLException {
+        checkTransactionPermission("rollback(savepoint)");
         target.rollback(savepoint);
     }
 

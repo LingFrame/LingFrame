@@ -118,7 +118,16 @@ public class LingCaffeineCacheProxy<K, V> implements Cache<K, V> {
     @Override
     public void invalidateAll() {
         checkPermission("invalidateAll", AccessType.WRITE);
-        target.invalidateAll();
+        String callerLingId = LingCallContext.getLingId();
+        if (callerLingId == null) {
+            // 灵核：全清
+            target.invalidateAll();
+            return;
+        }
+        // 灵元：仅清当前灵元的 namespaced key，避免清空其他灵元缓存
+        target.asMap().keySet().removeIf(key ->
+                CacheNamespaceSupport.isNamespacedKey(key)
+                        && callerLingId.equals(CacheNamespaceSupport.extractLingId(key)));
     }
 
     @Override
@@ -135,9 +144,9 @@ public class LingCaffeineCacheProxy<K, V> implements Cache<K, V> {
 
     @Override
     public ConcurrentMap<K, V> asMap() {
-        // asMap 暴露的是可变视图，保持保守策略，要求 WRITE。
-        checkPermission("asMap", AccessType.WRITE);
-        return target.asMap();
+        // asMap 暴露原生可变视图会绕过权限和命名空间隔离，拒绝暴露
+        throw new UnsupportedOperationException(
+                "asMap() is not supported through governance proxy to prevent bypass");
     }
 
     @Override
@@ -148,8 +157,8 @@ public class LingCaffeineCacheProxy<K, V> implements Cache<K, V> {
 
     @Override
     public Policy<K, V> policy() {
-        // policy 可能暴露底层策略句柄，先保持保守治理。
-        checkPermission("policy", AccessType.WRITE);
-        return target.policy();
+        // policy 暴露底层策略句柄可修改 eviction 策略，拒绝暴露
+        throw new UnsupportedOperationException(
+                "policy() is not supported through governance proxy to prevent bypass");
     }
 }

@@ -189,7 +189,10 @@ public class InstancePool {
 
         // 成员变更必须串行化，防止并发 moveToDying/removeInstance 导致 dyingQueue 不一致
         synchronized (membershipLock) {
-            activePool.remove(instance);
+            // 去重：如果已不在 activePool，说明已被其他线程移走，不重复入队
+            if (!activePool.remove(instance)) {
+                return;
+            }
             dyingQueue.add(instance);
 
             // 若该实例曾是主实例，原子选举新的主实例（避免中间 null 窗口）

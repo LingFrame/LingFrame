@@ -272,6 +272,13 @@ public class LingUnloadCoordinator {
 
         if (!errors.isEmpty()) {
             log.warn("[{}] {} cleanup phase completed with {} error(s)", lingId, phase, errors.size());
+            // Error 代表 JVM 级致命问题（OOM / StackOverflow / LinkageError），
+            // 不应被静默吞掉：找出第一个 Error 向上抛出，让调用方感知严重故障。
+            for (Throwable t : errors) {
+                if (t instanceof Error) {
+                    throw (Error) t;
+                }
+            }
         }
     }
 
@@ -279,16 +286,20 @@ public class LingUnloadCoordinator {
                            ClassLoader classLoader, String phase) {
         try {
             hook.cleanup(lingId, classLoader);
+        } catch (Error e) {
+            // JVM 致命错误不吞：记录后向上抛出，由 runHooksInParallel 统一收集并重抛
+            String suffix = version == null ? "" : " for version " + version;
+            log.error("[{}] {} cleanup threw Error{} with hook: {}, aborting",
+                    lingId, phase, suffix, hook.getClass().getName(), e);
+            throw e;
         } catch (Throwable t) {
-            // 捕获 Throwable 而非 Exception：卸载期反射操作可能抛出 NoClassDefFoundError 等 Error，
-            // 若不捕获会穿透 Callable 进入 Future，invokeAll 不会重新抛出，导致错误被静默吞掉
+            // 普通异常隔离：单个 Hook 失败不阻塞同桶其他 Hook
             String suffix = version == null ? "" : " for version " + version;
             log.error("[{}] {} cleanup failed{} with hook: {}", lingId, phase, suffix,
                     hook.getClass().getName(), t);
             if (t instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            // 不重新抛出：单个 Hook 失败不应阻塞同桶其他 Hook
         }
     }
 

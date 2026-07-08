@@ -66,7 +66,7 @@ public final class Capabilities {
      * 允许灵元被启用和执行。所有活跃灵元都应该拥有此权限。
      * </p>
      */
-    public static final String Ling_ENABLE = "Ling_ENABLE";
+    public static final String LING_ENABLE = "LING_ENABLE";
 
     private Capabilities() {
         // 防止实例化

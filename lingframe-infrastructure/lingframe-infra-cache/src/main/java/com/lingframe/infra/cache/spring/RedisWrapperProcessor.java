@@ -6,6 +6,7 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -30,20 +31,18 @@ public class RedisWrapperProcessor implements BeanPostProcessor, ApplicationCont
         if (bean instanceof RedisTemplate) {
             log.info(">>>>>> [LingFrame] Wrapping RedisTemplate: {}", beanName);
 
-            // 延迟获取 PermissionService，确保 ApplicationContext 已经准备好
-            if (applicationContext != null) {
-                try {
-                    PermissionService permissionService = applicationContext.getBean(PermissionService.class);
-                    // 使用 ProxyFactory 创建动态代理
-                    ProxyFactory proxyFactory = new ProxyFactory(bean);
-                    proxyFactory.setProxyTargetClass(true); // 强制使用 CGLIB (保持 RedisTemplate 类型)
-                    proxyFactory.addAdvice(new RedisPermissionInterceptor(permissionService));
-
-                    return proxyFactory.getProxy();
-                } catch (Exception e) {
-                    log.error("Failed to wrap RedisTemplate: {}", e.getMessage(), e);
-                }
+            // fail-closed：PermissionService 不可用视为装配错误，让异常向上抛而非裸奔
+            if (applicationContext == null) {
+                throw new BeanCreationException(
+                        "ApplicationContext not injected, cannot wrap RedisTemplate: " + beanName);
             }
+            PermissionService permissionService = applicationContext.getBean(PermissionService.class);
+            // 使用 ProxyFactory 创建动态代理
+            ProxyFactory proxyFactory = new ProxyFactory(bean);
+            proxyFactory.setProxyTargetClass(true); // 强制使用 CGLIB (保持 RedisTemplate 类型)
+            proxyFactory.addAdvice(new RedisPermissionInterceptor(permissionService));
+
+            return proxyFactory.getProxy();
         }
 
         return bean;

@@ -95,28 +95,9 @@ public class SmartServiceProxy implements InvocationHandler {
                 throw new IllegalStateException("PipelineEngine is not initialized for proxy.");
             }
 
-        } catch (ProxyExecutionException e) {
-            // 解包并抛出原始异常，对调用者透明
-            throw e.getCause();
         } finally {
             // 彻底重置 ThreadLocal 池化上下文，归还到对象栈中
             ctx.recycle();
-        }
-    }
-
-    /**
-     * 内部异常包装器 (用于穿透 Lambda，Kernel 捕获后会透传回来)
-     */
-    private static class ProxyExecutionException extends RuntimeException {
-        public ProxyExecutionException(Throwable cause) {
-            super(cause);
-        }
-
-        @Override
-        public synchronized Throwable fillInStackTrace() {
-            // 优化：禁用异常栈收集。这个异常仅仅是作为穿透 Callable/Lambda 的载体，
-            // 收集当前代理层的栈没有业务意义，禁用以获得极致性能。
-            return this;
         }
     }
 

@@ -26,8 +26,8 @@
         <!-- 工具库 - 通用版本 -->
         <mysql.version>8.0.33</mysql.version>
         <mybatis-flex.version>1.8.7</mybatis-flex.version>
-        <jsqlparser.version>1.4</jsqlparser.version>
-        <guava.version>31.1-jre</guava.version>
+        <jsqlparser.version>4.6</jsqlparser.version>
+        <guava.version>32.1.3-jre</guava.version>
         <hikaricp.version>5.0.1</hikaricp.version>
         <lombok.version>1.18.42</lombok.version>
         <asm.version>9.6</asm.version>

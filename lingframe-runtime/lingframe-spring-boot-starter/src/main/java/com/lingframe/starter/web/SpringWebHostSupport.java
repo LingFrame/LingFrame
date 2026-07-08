@@ -192,6 +192,8 @@ final class SpringWebHostSupport {
                 }
             }
         } catch (Exception ignored) {
+            log.trace("SpringDoc cache map clear failed for {}.{}: {}",
+                    target.getClass().getSimpleName(), fieldName, ignored.getMessage());
         }
     }
 

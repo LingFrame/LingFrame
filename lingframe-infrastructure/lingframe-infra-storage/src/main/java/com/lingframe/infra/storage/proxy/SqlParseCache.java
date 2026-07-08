@@ -59,6 +59,13 @@ public final class SqlParseCache {
         CACHE.remove(normalizeLingId(lingId));
     }
 
+    /**
+     * 清除全部灵元的 SQL 解析缓存，仅供测试 cleanup 使用。
+     */
+    public static void clearAll() {
+        CACHE.clear();
+    }
+
     static int size(String lingId) {
         ConcurrentHashMap<String, SqlParseResult> lingCache = CACHE.get(normalizeLingId(lingId));
         return lingCache == null ? 0 : lingCache.size();

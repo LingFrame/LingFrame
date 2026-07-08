@@ -351,15 +351,9 @@ public class SpringLingContainer implements LingContainer {
 
     private void registerControllerMappings(String lingId, String beanName, Object bean, Method method,
                                             RequestMapping classMapping, RequestMapping mapping) {
-        String permission;
-        RequiresPermission permAnn = AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class);
-        if (permAnn != null) {
-            permission = permAnn.value();
-        } else {
-            permission = GovernanceStrategy.inferPermission(method);
-        }
-
+        String permission = resolvePermission(method);
         Auditable auditAnn = AnnotatedElementUtils.findMergedAnnotation(method, Auditable.class);
+        SwaggerOp swaggerOp = extractSwaggerOperation(method);
         Set<String> fullPaths = resolveFullPaths(lingId, classMapping, mapping);
         RequestMethod[] httpMethods = resolveHttpMethods(classMapping, mapping);
         String[] params = resolveParams(classMapping, mapping);
@@ -370,74 +364,13 @@ public class SpringLingContainer implements LingContainer {
         for (String fullPath : fullPaths) {
             for (RequestMethod requestMethod : httpMethods) {
                 String httpMethod = requestMethod.name();
-                boolean shouldAudit = false;
-                String auditAction = method.getName();
-                if (auditAnn != null) {
-                    shouldAudit = true;
-                    auditAction = auditAnn.action();
-                } else if (isWriteMethod(httpMethod)) {
-                    shouldAudit = true;
-                    auditAction = httpMethod + " " + fullPath;
-                }
+                AuditInfo auditInfo = resolveAuditInfo(auditAnn, httpMethod, fullPath, method.getName());
+                RequestMappingInfo requestMappingInfo = buildRequestMappingInfo(
+                        fullPath, requestMethod, params, headers, consumes, produces);
 
-                RequestMappingInfo.Builder mappingBuilder = RequestMappingInfo
-                        .paths(fullPath)
-                        .methods(requestMethod);
-                if (params.length > 0) {
-                    mappingBuilder.params(params);
-                }
-                if (headers.length > 0) {
-                    mappingBuilder.headers(headers);
-                }
-                if (consumes.length > 0) {
-                    mappingBuilder.consumes(consumes);
-                }
-                if (produces.length > 0) {
-                    mappingBuilder.produces(produces);
-                }
-                RequestMappingInfo requestMappingInfo = mappingBuilder.build();
-                
-                String opSummary = null;
-                String opDescription = null;
-                String[] opTags = null;
-                try {
-                    // 使用字符串类名动态搜索，避免对 swagger-annotations 的强编译依赖
-                    AnnotationAttributes opAttr = AnnotatedElementUtils.findMergedAnnotationAttributes(
-                            method, "io.swagger.v3.oas.annotations.Operation", false, false);
-                    if (opAttr != null) {
-                        opSummary = opAttr.getString("summary");
-                        opDescription = opAttr.getString("description");
-                        opTags = opAttr.getStringArray("tags");
-                    }
-                } catch (Throwable ignored) {
-                    // 即使类路径无 Swagger 也不影响基本路由注册
-                }
-
-                WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
-                        .lingId(lingId)
-                        .version(version)
-                        .targetBeanName(beanName)
-                        .targetBean(bean)
-                        .targetClassName(resolveControllerClass(bean, method).getName())
-                        .targetMethodName(method.getName())
-                        .targetMethodParameterTypeNames(resolveParameterTypeNames(method))
-                        .targetMethod(method)
-                        .classLoader(this.classLoader)
-                        .lingApplicationContext(this.context)
-                        .urlPattern(fullPath)
-                        .httpMethod(httpMethod)
-                        .params(copyStringArray(params))
-                        .headers(copyStringArray(headers))
-                        .consumes(copyStringArray(consumes))
-                        .produces(copyStringArray(produces))
-                        .requiredPermission(permission)
-                        .shouldAudit(shouldAudit)
-                        .auditAction(auditAction)
-                        .opSummary(opSummary)
-                        .opDescription(opDescription)
-                        .opTags(opTags != null ? Arrays.copyOf(opTags, opTags.length) : null)
-                        .requestMappingInfo(requestMappingInfo)
-                        .build();
+                WebInterfaceMetadata metadata = buildWebInterfaceMetadata(
+                        lingId, beanName, bean, method, fullPath, httpMethod,
+                        params, headers, consumes, produces, permission, auditInfo, swaggerOp, requestMappingInfo);
                 metadata.minimizeHostReferences();
 
                 log.info("🌍 [LingFrame Web] Found Controller: {} [{}]", httpMethod, fullPath);
@@ -446,6 +379,129 @@ public class SpringLingContainer implements LingContainer {
                 }
             }
         }
+    }
+
+    /**
+     * 解析方法所需的权限标识：优先从 @RequiresPermission 注解获取，回退到 GovernanceStrategy 推断。
+     */
+    private String resolvePermission(Method method) {
+        RequiresPermission permAnn = AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class);
+        if (permAnn != null) {
+            return permAnn.value();
+        }
+        return GovernanceStrategy.inferPermission(method);
+    }
+
+    /**
+     * 解析审计信息：有 @Auditable 注解则强制审计，写操作自动审计，其余不审计。
+     */
+    private AuditInfo resolveAuditInfo(Auditable auditAnn, String httpMethod, String fullPath, String methodName) {
+        if (auditAnn != null) {
+            return new AuditInfo(true, auditAnn.action());
+        }
+        if (isWriteMethod(httpMethod)) {
+            return new AuditInfo(true, httpMethod + " " + fullPath);
+        }
+        return new AuditInfo(false, methodName);
+    }
+
+    /**
+     * 提取 Swagger @Operation 注解信息（summary/description/tags）。
+     * 使用字符串类名动态搜索，避免对 swagger-annotations 的强编译依赖。
+     *
+     * @return SwaggerOp 持有者，字段可能为 null
+     */
+    private SwaggerOp extractSwaggerOperation(Method method) {
+        SwaggerOp op = new SwaggerOp();
+        try {
+            AnnotationAttributes opAttr = AnnotatedElementUtils.findMergedAnnotationAttributes(
+                    method, "io.swagger.v3.oas.annotations.Operation", false, false);
+            if (opAttr != null) {
+                op.summary = opAttr.getString("summary");
+                op.description = opAttr.getString("description");
+                op.tags = opAttr.getStringArray("tags");
+            }
+        } catch (Throwable ignored) {
+            // 即使类路径无 Swagger 也不影响基本路由注册
+        }
+        return op;
+    }
+
+    /**
+     * 构建 Spring RequestMappingInfo，包含路径、方法、参数、请求头、consumes/produces 约束。
+     */
+    private RequestMappingInfo buildRequestMappingInfo(String fullPath, RequestMethod requestMethod,
+                                                       String[] params, String[] headers,
+                                                       String[] consumes, String[] produces) {
+        RequestMappingInfo.Builder mappingBuilder = RequestMappingInfo
+                .paths(fullPath)
+                .methods(requestMethod);
+        if (params.length > 0) {
+            mappingBuilder.params(params);
+        }
+        if (headers.length > 0) {
+            mappingBuilder.headers(headers);
+        }
+        if (consumes.length > 0) {
+            mappingBuilder.consumes(consumes);
+        }
+        if (produces.length > 0) {
+            mappingBuilder.produces(produces);
+        }
+        return mappingBuilder.build();
+    }
+
+    /**
+     * 构建 WebInterfaceMetadata，聚合路由、权限、审计、Swagger 等全部元信息。
+     */
+    private WebInterfaceMetadata buildWebInterfaceMetadata(
+            String lingId, String beanName, Object bean, Method method,
+            String fullPath, String httpMethod,
+            String[] params, String[] headers, String[] consumes, String[] produces,
+            String permission, AuditInfo auditInfo, SwaggerOp swaggerOp,
+            RequestMappingInfo requestMappingInfo) {
+        return WebInterfaceMetadata.builder()
+                .lingId(lingId)
+                .version(version)
+                .targetBeanName(beanName)
+                .targetBean(bean)
+                .targetClassName(resolveControllerClass(bean, method).getName())
+                .targetMethodName(method.getName())
+                .targetMethodParameterTypeNames(resolveParameterTypeNames(method))
+                .targetMethod(method)
+                .classLoader(this.classLoader)
+                .lingApplicationContext(this.context)
+                .urlPattern(fullPath)
+                .httpMethod(httpMethod)
+                .params(copyStringArray(params))
+                .headers(copyStringArray(headers))
+                .consumes(copyStringArray(consumes))
+                .produces(copyStringArray(produces))
+                .requiredPermission(permission)
+                .shouldAudit(auditInfo.shouldAudit)
+                .auditAction(auditInfo.auditAction)
+                .opSummary(swaggerOp.summary)
+                .opDescription(swaggerOp.description)
+                .opTags(swaggerOp.tags != null ? Arrays.copyOf(swaggerOp.tags, swaggerOp.tags.length) : null)
+                .requestMappingInfo(requestMappingInfo)
+                .build();
+    }
+
+    /** 审计信息持有者（shouldAudit + auditAction） */
+    private static final class AuditInfo {
+        final boolean shouldAudit;
+        final String auditAction;
+        AuditInfo(boolean shouldAudit, String auditAction) {
+            this.shouldAudit = shouldAudit;
+            this.auditAction = auditAction;
+        }
+    }
+
+    /** Swagger @Operation 信息持有者 */
+    private static final class SwaggerOp {
+        String summary;
+        String description;
+        String[] tags;
     }
 
     private Set<String> resolveFullPaths(String lingId, RequestMapping classMapping, RequestMapping methodMapping) {
@@ -576,8 +632,9 @@ public class SpringLingContainer implements LingContainer {
     @Override
     public void stop() {
         ConfigurableApplicationContext closedContext = this.context;
+        // lingId 提升到方法作用域：后续引用清理日志需要用到，但此时 lingContext 可能已被置 null
+        String lingId = (lingContext != null) ? lingContext.getLingId() : "unknown";
         if (closedContext != null && closedContext.isActive()) {
-            String lingId = (lingContext != null) ? lingContext.getLingId() : "unknown";
 
             try {
                 Ling ling = closedContext.getBean(Ling.class);
@@ -617,12 +674,12 @@ public class SpringLingContainer implements LingContainer {
             }
 
             // 🔥 第一阶段清理：在 Context 关闭前执行 preCleanup
+            // 上下文以参数传入，Hook 不再持有可变单例字段，消除并发卸载竞态
             for (LingUnloadHook hook : unloadHooks) {
                 if (hook instanceof SpringAwareUnloadHook) {
                     try {
                         SpringAwareUnloadHook awareHook = (SpringAwareUnloadHook) hook;
-                        awareHook.setContexts(this.mainContext, closedContext);
-                        awareHook.preCleanup(lingId);
+                        awareHook.preCleanup(lingId, this.mainContext, closedContext);
                     } catch (Exception e) {
                         log.debug("Failed to invoke preCleanup on unload hook: {}", hook.getClass().getName(), e);
                     }
@@ -639,16 +696,7 @@ public class SpringLingContainer implements LingContainer {
         }
 
         // 🔥 第二阶段清理会由 DefaultLingLifecycleEngine 调用 unloadHook.cleanup()
-        // 此处仅确保 context 引用已设置（防御性补充，防止未初始化的 hook 错过注入）
-        for (LingUnloadHook hook : unloadHooks) {
-            if (hook instanceof SpringAwareUnloadHook) {
-                try {
-                    ((SpringAwareUnloadHook) hook).setContexts(this.mainContext,
-                            closedContext);
-                } catch (Exception ignored) {
-                }
-            }
-        }
+        // cleanup 签名不变（仅 lingId + classLoader），无需在此预置 context 引用
 
         // 彻底断开所有强引用，辅助 GC 回收 ClassLoader
         this.builder = null; 
@@ -660,7 +708,7 @@ public class SpringLingContainer implements LingContainer {
         this.excludedPackages = null;
         this.customizers = null;
         this.version = null;
-        log.debug("[{}] Container references cleared", (lingContext != null) ? lingContext.getLingId() : "unknown");
+        log.debug("[{}] Container references cleared", lingId);
     }
 
     @Override

@@ -23,13 +23,21 @@ import java.util.Map;
 @Slf4j
 final class SpringShutdownHookCleaner {
 
-    void clear(String lingId, ClassLoader lingClassLoader, ConfigurableApplicationContext lingContext) {
-        clearApplicationContextShutdownHook(lingId, lingContext);
+    /**
+     * 清理 Spring Boot ShutdownHook 的静态引用和 JVM ShutdownHook 注册表。
+     * 仅依赖 ClassLoader，不依赖 Context，可在 Context 关闭后执行。
+     */
+    void clear(String lingId, ClassLoader lingClassLoader) {
         clearSpringBootShutdownHookReferences(lingId, lingClassLoader);
         clearApplicationShutdownHooksRegistry(lingId, lingClassLoader);
     }
 
-    private void clearApplicationContextShutdownHook(String lingId, ConfigurableApplicationContext lingContext) {
+    /**
+     * 移除灵元 Context 自身注册的 ShutdownHook 线程。
+     * 必须在 Context 关闭前执行（preCleanup 阶段），因为需要通过反射读取
+     * Context 的 shutdownHook 字段并从 Runtime 移除。
+     */
+    void clearApplicationContextShutdownHook(String lingId, ConfigurableApplicationContext lingContext) {
         if (lingContext == null) {
             return;
         }
@@ -179,9 +187,6 @@ final class SpringShutdownHookCleaner {
         int removed = 0;
         for (Field field : holderClass.getDeclaredFields()) {
             if (staticOnly != Modifier.isStatic(field.getModifiers())) {
-                continue;
-            }
-            if (!staticOnly && Modifier.isStatic(field.getModifiers())) {
                 continue;
             }
             if (!Collection.class.isAssignableFrom(field.getType()) && !Map.class.isAssignableFrom(field.getType())) {
