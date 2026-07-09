@@ -14,7 +14,7 @@ import org.springframework.cache.Cache;
 import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
@@ -55,11 +55,11 @@ class LingSpringCacheProxyTest {
             verify(permissionService).audit("ling-a", "cache:local", "get", true);
             org.mockito.ArgumentCaptor<Object> keyCaptor = org.mockito.ArgumentCaptor.forClass(Object.class);
             verify(target).get(keyCaptor.capture());
-            CacheNamespaceSupport.NamespacedKey namespacedKey =
-                    assertInstanceOf(CacheNamespaceSupport.NamespacedKey.class, keyCaptor.getValue());
-            assertEquals("ling-a", namespacedKey.getLingId());
-            assertEquals("users", namespacedKey.getCacheName());
-            assertEquals("user:1", namespacedKey.getRawKey());
+            Object capturedKey = keyCaptor.getValue();
+            assertTrue(CacheNamespaceSupport.isNamespacedKey(capturedKey));
+            assertEquals("ling-a", CacheNamespaceSupport.extractLingId(capturedKey));
+            assertEquals("users", CacheNamespaceSupport.extractCacheName(capturedKey));
+            assertEquals("user:1", CacheNamespaceSupport.denamespaceKey(capturedKey));
         }
 
         @Test
@@ -81,21 +81,16 @@ class LingSpringCacheProxyTest {
         }
 
         @Test
-        @DisplayName("getNativeCache 应保持保守策略并按 WRITE 鉴权")
-        void shouldUseWriteAccessForNativeCacheHandle() {
+        @DisplayName("getNativeCache 应拒绝暴露原生句柄")
+        void shouldRejectNativeCacheExposure() {
             Cache target = mock(Cache.class);
             PermissionService permissionService = mock(PermissionService.class);
-            Object nativeCache = new Object();
-            when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(true);
-            when(target.getNativeCache()).thenReturn(nativeCache);
 
             LingCallContext.setLingId("ling-a");
             when(target.getName()).thenReturn("users");
             LingSpringCacheProxy proxy = new LingSpringCacheProxy(target, permissionService);
 
-            assertSame(nativeCache, proxy.getNativeCache());
-            verify(permissionService).isAllowed("ling-a", "cache:local", AccessType.WRITE);
-            verify(permissionService).audit("ling-a", "cache:local", "getNativeCache", true);
+            assertThrows(UnsupportedOperationException.class, () -> proxy.getNativeCache());
         }
 
         @Test
@@ -153,11 +148,104 @@ class LingSpringCacheProxyTest {
 
             org.mockito.ArgumentCaptor<Object> keyCaptor = org.mockito.ArgumentCaptor.forClass(Object.class);
             verify(target).put(keyCaptor.capture(), eq("tom"));
-            CacheNamespaceSupport.NamespacedKey namespacedKey =
-                    assertInstanceOf(CacheNamespaceSupport.NamespacedKey.class, keyCaptor.getValue());
-            assertEquals("ling-a", namespacedKey.getLingId());
-            assertEquals("users", namespacedKey.getCacheName());
-            assertEquals("user:1", namespacedKey.getRawKey());
+            Object capturedKey = keyCaptor.getValue();
+            assertTrue(CacheNamespaceSupport.isNamespacedKey(capturedKey));
+            assertEquals("ling-a", CacheNamespaceSupport.extractLingId(capturedKey));
+            assertEquals("users", CacheNamespaceSupport.extractCacheName(capturedKey));
+            assertEquals("user:1", CacheNamespaceSupport.denamespaceKey(capturedKey));
+        }
+    }
+
+    @Nested
+    @DisplayName("批量清理治理")
+    class BulkClearGovernanceTests {
+
+        @Test
+        @DisplayName("灵元调用 clear() 应被拒绝——会清空所有灵元缓存")
+        void shouldRejectClearForLing() {
+            Cache target = mock(Cache.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(true);
+            when(target.getName()).thenReturn("users");
+
+            LingCallContext.setLingId("ling-a");
+            LingSpringCacheProxy proxy = new LingSpringCacheProxy(target, permissionService);
+
+            assertThrows(UnsupportedOperationException.class, proxy::clear);
+            verify(target, never()).clear();
+        }
+
+        @Test
+        @DisplayName("灵元调用 invalidate() 应被拒绝——会清空所有灵元缓存")
+        void shouldRejectInvalidateForLing() {
+            Cache target = mock(Cache.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(true);
+            when(target.getName()).thenReturn("users");
+
+            LingCallContext.setLingId("ling-a");
+            LingSpringCacheProxy proxy = new LingSpringCacheProxy(target, permissionService);
+
+            assertThrows(UnsupportedOperationException.class, proxy::invalidate);
+            verify(target, never()).invalidate();
+        }
+
+        @Test
+        @DisplayName("灵核（无上下文）调用 clear() 应放行")
+        void shouldAllowClearForLingCore() {
+            Cache target = mock(Cache.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(target.getName()).thenReturn("users");
+
+            LingSpringCacheProxy proxy = new LingSpringCacheProxy(target, permissionService);
+
+            proxy.clear();
+            verify(target).clear();
+        }
+
+        @Test
+        @DisplayName("灵核（无上下文）调用 invalidate() 应放行")
+        void shouldAllowInvalidateForLingCore() {
+            Cache target = mock(Cache.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(target.getName()).thenReturn("users");
+            when(target.invalidate()).thenReturn(true);
+
+            LingSpringCacheProxy proxy = new LingSpringCacheProxy(target, permissionService);
+
+            assertTrue(proxy.invalidate());
+            verify(target).invalidate();
+        }
+
+        @Test
+        @DisplayName("灵元调用 evict(key) 应放行——精确 key 清理不跨灵元影响")
+        void shouldAllowEvictForLing() {
+            Cache target = mock(Cache.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(true);
+            when(target.getName()).thenReturn("users");
+
+            LingCallContext.setLingId("ling-a");
+            LingSpringCacheProxy proxy = new LingSpringCacheProxy(target, permissionService);
+
+            proxy.evict("user:1");
+            verify(target).evict(org.mockito.ArgumentMatchers.any());
+        }
+
+        @Test
+        @DisplayName("灵元调用 evictIfPresent(key) 应放行——精确 key 判断不跨灵元影响")
+        void shouldAllowEvictIfPresentForLing() {
+            Cache target = mock(Cache.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(true);
+            when(target.getName()).thenReturn("users");
+            when(target.evictIfPresent(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+
+            LingCallContext.setLingId("ling-a");
+            LingSpringCacheProxy proxy = new LingSpringCacheProxy(target, permissionService);
+
+            assertTrue(proxy.evictIfPresent("user:1"));
+            verify(target).evictIfPresent(org.mockito.ArgumentMatchers.any());
         }
     }
 }

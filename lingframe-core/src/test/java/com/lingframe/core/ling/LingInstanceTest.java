@@ -282,6 +282,42 @@ class LingInstanceTest {
             assertEquals(0, instance.getActiveRequestCount());
             assertTrue(instance.snapshotActiveInvocations().isEmpty());
         }
+
+        @Test
+        @DisplayName("snapshot 为 null 时应提前返回 -1，不递增活跃计数器")
+        void beginInvocationWithNullSnapshotShouldReturnFailWithoutIncrementing() {
+            prepareReady(instance);
+
+            long invocationId = instance.beginInvocation(null);
+
+            assertEquals(-1L, invocationId);
+            // 计数器不应被递增——否则调用方收到 -1 不会调 completeInvocation，导致永不归零
+            assertEquals(0, instance.getActiveRequestCount());
+            assertTrue(instance.snapshotActiveInvocations().isEmpty());
+        }
+
+        @Test
+        @DisplayName("snapshot 为 null 后正常调用应仍能正确登记")
+        void beginInvocationShouldWorkAfterNullSnapshotWasRejected() {
+            prepareReady(instance);
+
+            // 先传 null 被拒绝
+            assertEquals(-1L, instance.beginInvocation(null));
+            assertEquals(0, instance.getActiveRequestCount());
+
+            // 再传正常快照应成功
+            ActiveInvocationSnapshot snapshot = new ActiveInvocationSnapshot(
+                    "trace-1", "test-ling:demo.Service", "execute",
+                    "caller-a", "POST /demo", instance.getVersion(),
+                    100L, 11L, "worker-1");
+            long invocationId = instance.beginInvocation(snapshot);
+
+            assertTrue(invocationId > 0);
+            assertEquals(1, instance.getActiveRequestCount());
+
+            instance.completeInvocation(invocationId);
+            assertEquals(0, instance.getActiveRequestCount());
+        }
     }
 
     @Nested

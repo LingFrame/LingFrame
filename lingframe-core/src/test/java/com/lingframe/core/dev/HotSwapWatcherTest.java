@@ -9,11 +9,15 @@ import com.lingframe.core.spi.LeakDetector;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -219,5 +223,109 @@ class HotSwapWatcherTest {
         watcher.register("test-ling", classesDir, mock(LingDefinition.class));
         watcher.shutdown();
         assertDoesNotThrow(() -> watcher.shutdown());
+    }
+
+    @Nested
+    @DisplayName("debounce 竞态修复测试（P1.2）")
+    class DebounceRaceConditionTests {
+
+        /**
+         * 准备一个空 classes 目录并注册灵元。
+         * 空目录下 hasCompilationErrors 返回 true，doReload 会提前 return，
+         * 避免触发 lifecycleEngine.undeploy/deploy，让测试聚焦于 debounce 调度本身。
+         */
+        private void prepareEmptyLing(String lingId) {
+            File classesDir = new File(tempDir, lingId);
+            classesDir.mkdirs();
+            LingDefinition def = mock(LingDefinition.class);
+            when(def.getId()).thenReturn(lingId);
+            when(def.getVersion()).thenReturn("1.0.0");
+            watcher.register(lingId, classesDir, def);
+        }
+
+        @Test
+        @DisplayName("对同一 lingId 多次 scheduleReload 应取消旧任务，只保留最新任务")
+        void shouldCancelPreviousDebounceTaskForSameLingId() throws Exception {
+            prepareEmptyLing("test-ling");
+
+            // 连续 3 次调度同一 lingId，compute 保证 cancel+schedule 原子性
+            invokeScheduleReload("test-ling");
+            invokeScheduleReload("test-ling");
+            invokeScheduleReload("test-ling");
+
+            Map<String, ?> debounceTasks = getDebounceTasks();
+            assertEquals(1, debounceTasks.size(),
+                    "同一 lingId 多次调度应只保留一个 debounce 任务");
+            assertNotNull(debounceTasks.get("test-ling"));
+        }
+
+        @Test
+        @DisplayName("不同 lingId 的 debounce 任务应互不影响")
+        void shouldKeepIndependentDebounceTasksForDifferentLingIds() throws Exception {
+            prepareEmptyLing("ling-a");
+            prepareEmptyLing("ling-b");
+
+            invokeScheduleReload("ling-a");
+            invokeScheduleReload("ling-b");
+
+            Map<String, ?> debounceTasks = getDebounceTasks();
+            assertEquals(2, debounceTasks.size(),
+                    "不同 lingId 应有独立的 debounce 任务");
+            assertNotNull(debounceTasks.get("ling-a"));
+            assertNotNull(debounceTasks.get("ling-b"));
+        }
+
+        @Test
+        @DisplayName("debounce 任务执行完后应从 debounceTasks 中移除（holder 条件删除）")
+        void shouldRemoveDebounceTaskAfterExecution() throws Exception {
+            prepareEmptyLing("test-ling");
+
+            invokeScheduleReload("test-ling");
+            Map<String, ?> debounceTasks = getDebounceTasks();
+            assertEquals(1, debounceTasks.size(), "调度后应有一个待执行任务");
+
+            // 等待 debounce 延迟（1000ms）+ 余量，让 task 执行完毕
+            Thread.sleep(1500);
+
+            assertTrue(debounceTasks.isEmpty(),
+                    "debounce 任务执行完后应通过 holder 条件删除从 map 中移除");
+        }
+
+        @Test
+        @DisplayName("doReload 执行期间的新调度不应被旧任务的 finally 误删")
+        void shouldNotDeleteNewTaskByStaleFinallyBlock() throws Exception {
+            prepareEmptyLing("test-ling");
+
+            // 第一次调度
+            invokeScheduleReload("test-ling");
+            Map<String, ?> debounceTasks = getDebounceTasks();
+            Object firstTask = debounceTasks.get("test-ling");
+            assertNotNull(firstTask);
+
+            // 等待任务执行（doReload 因空目录提前 return，finally 执行 remove(lingId, firstTask)）
+            Thread.sleep(1500);
+
+            // 旧任务执行完后，map 应为空
+            assertTrue(debounceTasks.isEmpty(),
+                    "旧任务执行完后 map 应被条件删除清空");
+
+            // 此时再次调度新任务，应能正常入 map
+            invokeScheduleReload("test-ling");
+            assertEquals(1, debounceTasks.size(), "新任务应能正常调度");
+            assertNotNull(debounceTasks.get("test-ling"));
+        }
+
+        private void invokeScheduleReload(String lingId) throws Exception {
+            Method method = HotSwapWatcher.class.getDeclaredMethod("scheduleReload", String.class);
+            method.setAccessible(true);
+            method.invoke(watcher, lingId);
+        }
+
+        @SuppressWarnings("unchecked")
+        private Map<String, ?> getDebounceTasks() throws Exception {
+            Field field = HotSwapWatcher.class.getDeclaredField("debounceTasks");
+            field.setAccessible(true);
+            return (Map<String, ?>) field.get(watcher);
+        }
     }
 }

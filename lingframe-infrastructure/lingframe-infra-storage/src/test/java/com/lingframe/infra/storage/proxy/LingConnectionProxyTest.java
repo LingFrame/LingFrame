@@ -1,6 +1,9 @@
 package com.lingframe.infra.storage.proxy;
 
+import com.lingframe.api.context.LingCallContext;
+import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -18,6 +21,7 @@ import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,6 +29,11 @@ import static org.mockito.Mockito.when;
 class LingConnectionProxyTest {
 
     private static final String SQL = "select * from users";
+
+    @AfterEach
+    void tearDown() {
+        LingCallContext.clear();
+    }
 
     @Nested
     @DisplayName("代理链穿透")
@@ -204,8 +213,8 @@ class LingConnectionProxyTest {
             // unwrap / isWrapperFor
             assertSame(proxy, proxy.unwrap(LingConnectionProxy.class));
             assertSame(proxy, proxy.unwrap(Connection.class));
-            when(target.unwrap(String.class)).thenReturn("target");
-            assertEquals("target", proxy.unwrap(String.class));
+            // unwrap 到非代理接口时拒绝暴露原生实现，防止绕过治理
+            assertThrows(SQLException.class, () -> proxy.unwrap(String.class));
 
             assertTrue(proxy.isWrapperFor(Connection.class));
             when(target.isWrapperFor(String.class)).thenReturn(false);
@@ -234,6 +243,172 @@ class LingConnectionProxyTest {
 
             when(target.prepareStatement("sql", new String[0])).thenReturn(ps);
             assertInstanceOf(LingPreparedStatementProxy.class, proxy.prepareStatement("sql", new String[0]));
+        }
+    }
+
+    @Nested
+    @DisplayName("事务权限治理")
+    class TransactionPermissionTests {
+
+        @Test
+        @DisplayName("灵核治理开启时，无 LingContext 的事务操作应被拒绝")
+        void shouldRejectTransactionWithoutContextWhenGovernanceEnabled() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isLingCoreGovernanceEnabled()).thenReturn(true);
+
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+
+            assertThrows(SQLException.class, proxy::commit);
+            assertThrows(SQLException.class, proxy::rollback);
+            assertThrows(SQLException.class, () -> proxy.setAutoCommit(true));
+
+            // 确保目标方法未被调用
+            verify(target, never()).commit();
+            verify(target, never()).rollback();
+            verify(target, never()).setAutoCommit(true);
+        }
+
+        @Test
+        @DisplayName("灵核治理关闭时，无 LingContext 的事务操作应放行")
+        void shouldAllowTransactionWithoutContextWhenGovernanceDisabled() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isLingCoreGovernanceEnabled()).thenReturn(false);
+
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+
+            proxy.commit();
+            proxy.rollback();
+            proxy.setAutoCommit(true);
+
+            verify(target).commit();
+            verify(target).rollback();
+            verify(target).setAutoCommit(true);
+        }
+
+        @Test
+        @DisplayName("rollback(Savepoint) 也应受事务权限治理")
+        void shouldRejectRollbackWithSavepointWhenGovernanceEnabled() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isLingCoreGovernanceEnabled()).thenReturn(true);
+
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+            Savepoint sp = mock(Savepoint.class);
+
+            assertThrows(SQLException.class, () -> proxy.rollback(sp));
+            verify(target, never()).rollback(sp);
+        }
+    }
+
+    @Nested
+    @DisplayName("灵元级事务权限治理")
+    class LingLevelTransactionPermissionTests {
+
+        @Test
+        @DisplayName("灵元被授予事务权限时，commit/rollback/setAutoCommit 应放行")
+        void shouldAllowTransactionWhenLingHasPermission() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "storage:sql:transaction", AccessType.WRITE))
+                    .thenReturn(true);
+
+            LingCallContext.setLingId("ling-a");
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+
+            proxy.commit();
+            proxy.rollback();
+            proxy.setAutoCommit(true);
+
+            verify(target).commit();
+            verify(target).rollback();
+            verify(target).setAutoCommit(true);
+            // 审计应记录三次，每次 allowed=true
+            verify(permissionService).audit("ling-a", "storage:sql:transaction", "transaction:commit", true);
+            verify(permissionService).audit("ling-a", "storage:sql:transaction", "transaction:rollback", true);
+            verify(permissionService).audit("ling-a", "storage:sql:transaction", "transaction:setAutoCommit", true);
+        }
+
+        @Test
+        @DisplayName("灵元未被授予事务权限时，commit 应被拒绝且不转发到 target")
+        void shouldRejectCommitWhenLingLacksPermission() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "storage:sql:transaction", AccessType.WRITE))
+                    .thenReturn(false);
+
+            LingCallContext.setLingId("ling-a");
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+
+            assertThrows(SQLException.class, proxy::commit);
+            verify(target, never()).commit();
+            // 审计应记录 allowed=false
+            verify(permissionService).audit("ling-a", "storage:sql:transaction", "transaction:commit", false);
+        }
+
+        @Test
+        @DisplayName("灵元未被授予事务权限时，rollback 应被拒绝且不转发到 target")
+        void shouldRejectRollbackWhenLingLacksPermission() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "storage:sql:transaction", AccessType.WRITE))
+                    .thenReturn(false);
+
+            LingCallContext.setLingId("ling-a");
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+
+            assertThrows(SQLException.class, proxy::rollback);
+            verify(target, never()).rollback();
+            verify(permissionService).audit("ling-a", "storage:sql:transaction", "transaction:rollback", false);
+        }
+
+        @Test
+        @DisplayName("灵元未被授予事务权限时，setAutoCommit 应被拒绝且不转发到 target")
+        void shouldRejectSetAutoCommitWhenLingLacksPermission() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "storage:sql:transaction", AccessType.WRITE))
+                    .thenReturn(false);
+
+            LingCallContext.setLingId("ling-a");
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+
+            assertThrows(SQLException.class, () -> proxy.setAutoCommit(true));
+            verify(target, never()).setAutoCommit(true);
+            verify(permissionService).audit("ling-a", "storage:sql:transaction", "transaction:setAutoCommit", false);
+        }
+
+        @Test
+        @DisplayName("灵元未被授予事务权限时，rollback(Savepoint) 应被拒绝")
+        void shouldRejectRollbackWithSavepointWhenLingLacksPermission() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "storage:sql:transaction", AccessType.WRITE))
+                    .thenReturn(false);
+
+            LingCallContext.setLingId("ling-a");
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+            Savepoint sp = mock(Savepoint.class);
+
+            assertThrows(SQLException.class, () -> proxy.rollback(sp));
+            verify(target, never()).rollback(sp);
+        }
+
+        @Test
+        @DisplayName("灵元有事务权限时，rollback(Savepoint) 应放行")
+        void shouldAllowRollbackWithSavepointWhenLingHasPermission() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "storage:sql:transaction", AccessType.WRITE))
+                    .thenReturn(true);
+
+            LingCallContext.setLingId("ling-a");
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+            Savepoint sp = mock(Savepoint.class);
+
+            proxy.rollback(sp);
+            verify(target).rollback(sp);
         }
     }
 }

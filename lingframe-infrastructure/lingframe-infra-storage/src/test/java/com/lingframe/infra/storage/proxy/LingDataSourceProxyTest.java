@@ -83,8 +83,8 @@ class LingDataSourceProxyTest {
             // unwrap / isWrapperFor
             assertSame(proxy, proxy.unwrap(LingDataSourceProxy.class));
             assertSame(proxy, proxy.unwrap(DataSource.class));
-            when(target.unwrap(String.class)).thenReturn("target");
-            assertEquals("target", proxy.unwrap(String.class));
+            // unwrap 到非代理接口时拒绝暴露原生实现，防止绕过治理
+            assertThrows(SQLException.class, () -> proxy.unwrap(String.class));
 
             assertTrue(proxy.isWrapperFor(DataSource.class));
             when(target.isWrapperFor(String.class)).thenReturn(false);

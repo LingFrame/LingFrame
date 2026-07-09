@@ -179,6 +179,20 @@ class InstancePoolTest {
             assertFalse(pool.canAddInstance());
             assertEquals(MAX_DYING, pool.getDyingCount());
         }
+
+        @Test
+        @DisplayName("对同一实例重复 moveToDying 应被去重，dyingCount 不叠加")
+        void duplicateMoveToDyingShouldBeDeduplicated() {
+            LingInstance instance = createMockInstance("1.0.0");
+            pool.addInstance(instance, true);
+
+            pool.moveToDying(instance);
+            // 第二次调用同一实例——已被移出 activePool，应直接 return
+            pool.moveToDying(instance);
+
+            assertEquals(1, pool.getDyingCount());
+            assertEquals(0, pool.getActiveInstances().size());
+        }
     }
 
     @Nested
@@ -381,6 +395,40 @@ class InstancePoolTest {
             assertTrue(completed);
             assertEquals(0, pool.getActiveInstances().size());
             assertEquals(5, pool.getDyingCount());
+        }
+
+        @Test
+        @DisplayName("多线程并发 moveToDying 同一实例应只入队一次")
+        void concurrentMoveToDyingSameInstanceShouldNotDuplicate() throws InterruptedException {
+            LingInstance instance = createMockInstance("1.0.0");
+            pool.addInstance(instance, true);
+
+            int threadCount = 10;
+            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+            CountDownLatch startLatch = new CountDownLatch(1);
+            CountDownLatch doneLatch = new CountDownLatch(threadCount);
+
+            for (int i = 0; i < threadCount; i++) {
+                executor.submit(() -> {
+                    try {
+                        startLatch.await();
+                        pool.moveToDying(instance);
+                    } catch (Exception ignored) {
+                    } finally {
+                        doneLatch.countDown();
+                    }
+                });
+            }
+
+            startLatch.countDown();
+            boolean completed = doneLatch.await(10, TimeUnit.SECONDS);
+            executor.shutdown();
+
+            assertTrue(completed);
+            // 无论多少线程竞争，dyingCount 必须为 1——不重复入队
+            assertEquals(1, pool.getDyingCount(),
+                    "多线程并发 moveToDying 同一实例应只入队一次");
+            assertEquals(0, pool.getActiveInstances().size());
         }
     }
 

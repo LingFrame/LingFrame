@@ -168,7 +168,7 @@ class DashboardServiceTest {
             verify(permissionService).removeLing("ling1");
             verify(permissionService).grant("ling1", Capabilities.STORAGE_SQL, AccessType.READ);
             verify(permissionService).grant("ling1", Capabilities.CACHE_LOCAL, AccessType.WRITE);
-            verify(permissionService).grant("ling1", Capabilities.Ling_ENABLE, AccessType.EXECUTE);
+            verify(permissionService).grant("ling1", Capabilities.LING_ENABLE, AccessType.EXECUTE);
             verify(permissionService).grant("ling1", "ipc:lingA", AccessType.EXECUTE);
             verify(permissionService).grant("ling1", "ipc:lingB", AccessType.EXECUTE);
         }

@@ -6,12 +6,14 @@ import com.lingframe.infra.cache.proxy.LingCaffeineCacheProxy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.ApplicationContext;
 import org.springframework.data.redis.core.RedisTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -45,14 +47,16 @@ class CacheWrapperProcessorTest {
         assertSame(nonCache, processor.postProcessAfterInitialization(nonCache, "otherBean"));
         assertSame(nonCache, processor.postProcessBeforeInitialization(nonCache, "otherBean"));
 
-        // 3. 异常回退（不设置 Context 导致其为 null，或 Context 查找 Bean 异常）
+        // 3. fail-closed：未注入 Context 或 PermissionService 不可用时抛异常，不裸奔
         CaffeineWrapperProcessor badProcessor1 = new CaffeineWrapperProcessor();
-        assertSame(cache, badProcessor1.postProcessAfterInitialization(cache, "myCache"));
+        assertThrows(BeanCreationException.class,
+                () -> badProcessor1.postProcessAfterInitialization(cache, "myCache"));
 
         CaffeineWrapperProcessor badProcessor2 = new CaffeineWrapperProcessor();
         badProcessor2.setApplicationContext(applicationContext);
         when(applicationContext.getBean(PermissionService.class)).thenThrow(new RuntimeException("mock error"));
-        assertSame(cache, badProcessor2.postProcessAfterInitialization(cache, "myCache"));
+        assertThrows(RuntimeException.class,
+                () -> badProcessor2.postProcessAfterInitialization(cache, "myCache"));
     }
 
     @Test
@@ -74,14 +78,16 @@ class CacheWrapperProcessorTest {
         assertSame(nonRedis, processor.postProcessAfterInitialization(nonRedis, "otherBean"));
         assertSame(nonRedis, processor.postProcessBeforeInitialization(nonRedis, "otherBean"));
 
-        // 3. 异常回退（不设置 Context 或发生查找异常）
+        // 3. fail-closed：未注入 Context 或 PermissionService 不可用时抛异常，不裸奔
         RedisWrapperProcessor badProcessor1 = new RedisWrapperProcessor();
-        assertSame(template, badProcessor1.postProcessAfterInitialization(template, "myRedisTemplate"));
+        assertThrows(BeanCreationException.class,
+                () -> badProcessor1.postProcessAfterInitialization(template, "myRedisTemplate"));
 
         RedisWrapperProcessor badProcessor2 = new RedisWrapperProcessor();
         badProcessor2.setApplicationContext(applicationContext);
         when(applicationContext.getBean(PermissionService.class)).thenThrow(new RuntimeException("mock error"));
-        assertSame(template, badProcessor2.postProcessAfterInitialization(template, "myRedisTemplate"));
+        assertThrows(RuntimeException.class,
+                () -> badProcessor2.postProcessAfterInitialization(template, "myRedisTemplate"));
     }
 
     @Test
@@ -101,10 +107,15 @@ class CacheWrapperProcessorTest {
         assertSame(nonManager, processor.postProcessAfterInitialization(nonManager, "otherBean"));
         assertSame(nonManager, processor.postProcessBeforeInitialization(nonManager, "otherBean"));
 
-        // 3. 异常回退（发生异常）
-        SpringCacheWrapperProcessor badProcessor = new SpringCacheWrapperProcessor();
-        badProcessor.setApplicationContext(applicationContext);
+        // 3. fail-closed：未注入 Context 或 PermissionService 不可用时抛异常，不裸奔
+        SpringCacheWrapperProcessor badProcessor1 = new SpringCacheWrapperProcessor();
+        assertThrows(BeanCreationException.class,
+                () -> badProcessor1.postProcessAfterInitialization(manager, "myCacheManager"));
+
+        SpringCacheWrapperProcessor badProcessor2 = new SpringCacheWrapperProcessor();
+        badProcessor2.setApplicationContext(applicationContext);
         when(applicationContext.getBean(PermissionService.class)).thenThrow(new RuntimeException("mock error"));
-        assertSame(manager, badProcessor.postProcessAfterInitialization(manager, "myCacheManager"));
+        assertThrows(RuntimeException.class,
+                () -> badProcessor2.postProcessAfterInitialization(manager, "myCacheManager"));
     }
 }

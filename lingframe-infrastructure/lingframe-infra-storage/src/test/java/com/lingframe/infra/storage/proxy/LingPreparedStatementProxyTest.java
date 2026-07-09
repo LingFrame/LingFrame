@@ -225,8 +225,8 @@ class LingPreparedStatementProxyTest {
             // unwrap / isWrapperFor
             assertSame(proxy, proxy.unwrap(LingPreparedStatementProxy.class));
             assertSame(proxy, proxy.unwrap(PreparedStatement.class));
-            when(target.unwrap(String.class)).thenReturn("target");
-            assertEquals("target", proxy.unwrap(String.class));
+            // unwrap 到非代理接口时拒绝暴露原生实现，防止绕过治理
+            assertThrows(SQLException.class, () -> proxy.unwrap(String.class));
 
             assertTrue(proxy.isWrapperFor(PreparedStatement.class));
             when(target.isWrapperFor(String.class)).thenReturn(false);

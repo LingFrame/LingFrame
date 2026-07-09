@@ -17,6 +17,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -101,7 +103,7 @@ class DefaultPermissionServiceTest {
         @Test
         @DisplayName("should publish dev-mode bypass alert")
         void shouldPublishDevModeBypassAlert() {
-            AtomicReference<MonitoringEvents.AlertNotifyEvent> captured = new AtomicReference<>();
+            EventCapture<MonitoringEvents.AlertNotifyEvent> captured = new EventCapture<>();
             eventBus.subscribe("test-listener", MonitoringEvents.AlertNotifyEvent.class, captured::set);
             InvocationContext ctx = attachContext("trace-dev");
 
@@ -114,7 +116,7 @@ class DefaultPermissionServiceTest {
                 ctx.recycle();
             }
 
-            MonitoringEvents.AlertNotifyEvent event = awaitEvent(captured, Duration.ofSeconds(2));
+            MonitoringEvents.AlertNotifyEvent event = captured.await(Duration.ofSeconds(2));
             assertNotNull(event);
             assertEquals("trace-dev", event.getTraceId());
             assertEquals("WARNING", event.getLevel());
@@ -132,7 +134,7 @@ class DefaultPermissionServiceTest {
         @Test
         @DisplayName("应发布结构化的三态审计事件")
         void publishesStructuredAuditEvent() {
-            AtomicReference<MonitoringEvents.AuditLogEvent> captured = new AtomicReference<>();
+            EventCapture<MonitoringEvents.AuditLogEvent> captured = new EventCapture<>();
             eventBus.subscribe("test-listener", MonitoringEvents.AuditLogEvent.class, captured::set);
             InvocationContext ctx = attachContext("trace-audit");
 
@@ -152,7 +154,7 @@ class DefaultPermissionServiceTest {
                 ctx.recycle();
             }
 
-            MonitoringEvents.AuditLogEvent event = awaitEvent(captured, Duration.ofSeconds(2));
+            MonitoringEvents.AuditLogEvent event = captured.await(Duration.ofSeconds(2));
             assertNotNull(event);
             assertEquals("trace-audit", event.getTraceId());
             assertEquals("ling-a", event.getLingId());
@@ -178,18 +180,25 @@ class DefaultPermissionServiceTest {
         return ctx;
     }
 
-    private <T> T awaitEvent(AtomicReference<T> captured, Duration timeout) {
-        long deadlineNanos = System.nanoTime() + timeout.toNanos();
-        T event = captured.get();
-        while (event == null && System.nanoTime() < deadlineNanos) {
+    /**
+     * 事件捕获器：基于 CountDownLatch 替代轮询等待，事件到达即唤醒，无需周期性 sleep。
+     */
+    static final class EventCapture<T> {
+        private final AtomicReference<T> ref = new AtomicReference<>();
+        private final CountDownLatch latch = new CountDownLatch(1);
+
+        void set(T event) {
+            ref.set(event);
+            latch.countDown();
+        }
+
+        T await(Duration timeout) {
             try {
-                Thread.sleep(10);
+                latch.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                break;
             }
-            event = captured.get();
+            return ref.get();
         }
-        return event;
     }
 }

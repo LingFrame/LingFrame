@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -157,6 +158,70 @@ class LingCaffeineCacheProxyTest {
             assertEquals(1, result.size());
             assertEquals("tom", result.get("user:1"));
         }
+
+        @Test
+        @DisplayName("灵元 invalidateAll() 应仅清理本灵元的 namespaced key，不影响其他灵元")
+        void shouldOnlyInvalidateOwnLingKeysOnInvalidateAll() {
+            Cache<String, String> target = mockStringCache();
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(true);
+
+            // 模拟底层缓存中混合了 ling-a 和 ling-b 的 key
+            ConcurrentHashMap<Object, Object> backingMap = new ConcurrentHashMap<>();
+            backingMap.put(new CacheNamespaceSupport.NamespacedKey("ling-a", "users", "k1"), "v1");
+            backingMap.put(new CacheNamespaceSupport.NamespacedKey("ling-a", "users", "k2"), "v2");
+            backingMap.put(new CacheNamespaceSupport.NamespacedKey("ling-b", "users", "k3"), "v3");
+            backingMap.put(new CacheNamespaceSupport.NamespacedKey("ling-b", "users", "k4"), "v4");
+            // 用 doReturn 绕过泛型检查：target.asMap() 返回 ConcurrentMap<K,V>，但此处需放入 NamespacedKey
+            org.mockito.Mockito.doReturn(backingMap).when(target).asMap();
+
+            LingCallContext.setLingId("ling-a");
+            LingCaffeineCacheProxy<String, String> proxy =
+                    new LingCaffeineCacheProxy<>(target, "users", permissionService);
+
+            proxy.invalidateAll();
+
+            // ling-a 的 key 应被清理
+            assertEquals(0, backingMap.entrySet().stream()
+                    .filter(e -> "ling-a".equals(CacheNamespaceSupport.extractLingId(e.getKey())))
+                    .count());
+            // ling-b 的 key 应保留
+            assertEquals(2, backingMap.entrySet().stream()
+                    .filter(e -> "ling-b".equals(CacheNamespaceSupport.extractLingId(e.getKey())))
+                    .count());
+        }
+
+        @Test
+        @DisplayName("灵核（无上下文）invalidateAll() 应全清缓存")
+        void shouldInvalidateAllWhenNoContext() {
+            Cache<String, String> target = mockStringCache();
+            PermissionService permissionService = mock(PermissionService.class);
+
+            LingCaffeineCacheProxy<String, String> proxy =
+                    new LingCaffeineCacheProxy<>(target, "users", permissionService);
+
+            proxy.invalidateAll();
+            // 灵核直接调用 target.invalidateAll()
+            verify(target).invalidateAll();
+            // 不应走 asMap 路径
+            verify(target, never()).asMap();
+        }
+
+        @Test
+        @DisplayName("灵元未被授予 WRITE 权限时，invalidateAll() 应被拒绝")
+        void shouldRejectInvalidateAllWhenWritePermissionDenied() {
+            Cache<String, String> target = mockStringCache();
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(false);
+
+            LingCallContext.setLingId("ling-a");
+            LingCaffeineCacheProxy<String, String> proxy =
+                    new LingCaffeineCacheProxy<>(target, "users", permissionService);
+
+            assertThrows(PermissionDeniedException.class, proxy::invalidateAll);
+            verify(target, never()).invalidateAll();
+            verify(target, never()).asMap();
+        }
     }
 
     @Nested
@@ -199,9 +264,10 @@ class LingCaffeineCacheProxyTest {
             proxy.invalidateAll(Collections.singletonList("k1"));
             verify(target).invalidateAll(org.mockito.ArgumentMatchers.any());
 
-            // 5. invalidateAll()
+            // 5. invalidateAll() —— 灵元场景按 lingId 前缀清理
+            when(target.asMap()).thenReturn(new java.util.concurrent.ConcurrentHashMap<>());
             proxy.invalidateAll();
-            verify(target).invalidateAll();
+            verify(target).asMap();
 
             // 6. estimatedSize
             when(target.estimatedSize()).thenReturn(100L);
@@ -211,13 +277,11 @@ class LingCaffeineCacheProxyTest {
             proxy.cleanUp();
             verify(target).cleanUp();
 
-            // 8. asMap
-            proxy.asMap();
-            verify(target).asMap();
+            // 8. asMap —— 拒绝暴露原生视图
+            assertThrows(UnsupportedOperationException.class, () -> proxy.asMap());
 
-            // 9. policy
-            proxy.policy();
-            verify(target).policy();
+            // 9. policy —— 拒绝暴露策略句柄
+            assertThrows(UnsupportedOperationException.class, () -> proxy.policy());
         }
     }
 }

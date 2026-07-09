@@ -60,7 +60,7 @@ class DashboardStatusCoordinatorTest {
         verify(permissionService).removeLing("ling1");
         verify(permissionService).grant("ling1", Capabilities.STORAGE_SQL, AccessType.WRITE);
         verify(permissionService).grant("ling1", Capabilities.CACHE_LOCAL, AccessType.WRITE);
-        verify(permissionService).grant("ling1", Capabilities.Ling_ENABLE, AccessType.EXECUTE);
+        verify(permissionService).grant("ling1", Capabilities.LING_ENABLE, AccessType.EXECUTE);
         List<DashboardService.LifecycleEvent> events = eventStore.getEvents("ling1");
         assertEquals(1, events.size());
         assertEquals("ACTIVE", events.get(0).getType());

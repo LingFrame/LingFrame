@@ -34,7 +34,8 @@ class LingCallContextTest {
     @Test
     @DisplayName("测试 Labels 标签存取")
     void testLabels() {
-        assertNull(LingCallContext.getLabels());
+        // 未设置时返回空 Map（非 null），避免调用方 NPE
+        assertTrue(LingCallContext.getLabels().isEmpty());
         Map<String, String> labels = new HashMap<>();
         labels.put("env", "prod");
         LingCallContext.setLabels(labels);

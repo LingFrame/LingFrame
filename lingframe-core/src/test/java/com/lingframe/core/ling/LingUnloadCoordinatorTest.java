@@ -95,6 +95,53 @@ class LingUnloadCoordinatorTest {
             verify(failingHook).cleanup("ling-1", cl);
             verify(normalHook).cleanup("ling-1", cl);
         }
+
+        @Test
+        @DisplayName("Hook 抛 Error 时应被重抛而非被吞掉")
+        void hookErrorShouldBeRethrownNotSwallowed() {
+            LingUnloadHook errorHook = mock(LingUnloadHook.class);
+            doThrow(new StackOverflowError("simulated JVM error"))
+                    .when(errorHook).cleanup(any(), any());
+
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    pipelineEngine,
+                    Collections.singletonList(errorHook),
+                    resourceManager,
+                    leakDetector);
+
+            ClassLoader cl = mock(ClassLoader.class);
+            // Error 代表 JVM 致命问题，必须向上传播
+            assertThrows(StackOverflowError.class,
+                    () -> coord.onVersionUnload("ling-1", "v1", cl));
+        }
+
+        @Test
+        @DisplayName("Error 与 Exception 混合时 Error 被重抛、Exception 被隔离")
+        void errorShouldBeRethrownWhileExceptionIsIsolated() {
+            LingUnloadHook exceptionHook = mock(LingUnloadHook.class);
+            LingUnloadHook errorHook = mock(LingUnloadHook.class);
+            LingUnloadHook normalHook = mock(LingUnloadHook.class);
+            doThrow(new RuntimeException("isolated exception"))
+                    .when(exceptionHook).cleanup(any(), any());
+            doThrow(new OutOfMemoryError("simulated OOM"))
+                    .when(errorHook).cleanup(any(), any());
+
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    pipelineEngine,
+                    Arrays.asList(exceptionHook, errorHook, normalHook),
+                    resourceManager,
+                    leakDetector);
+
+            ClassLoader cl = mock(ClassLoader.class);
+            // Error 必须被重抛
+            assertThrows(OutOfMemoryError.class,
+                    () -> coord.onVersionUnload("ling-1", "v1", cl));
+
+            // Exception 被隔离，不阻塞后续 Hook
+            verify(exceptionHook).cleanup("ling-1", cl);
+            verify(errorHook).cleanup("ling-1", cl);
+            verify(normalHook).cleanup("ling-1", cl);
+        }
     }
 
     // ==================== 整 Ling 卸载 ====================
