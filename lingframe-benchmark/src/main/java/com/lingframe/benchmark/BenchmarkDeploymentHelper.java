@@ -13,6 +13,12 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
+import com.lingframe.core.resource.DebuggerCaptureUnloadHook;
+import com.lingframe.core.resource.JdbcDriverUnloadHook;
+import com.lingframe.core.resource.JvmShutdownHookUnloadHook;
+import com.lingframe.core.resource.LoggingFrameworkUnloadHook;
+import com.lingframe.core.resource.RmiTargetUnloadHook;
+import com.lingframe.core.resource.ThreadReferenceUnloadHook;
 import com.lingframe.core.spi.LingLoaderFactory;
 import com.lingframe.core.spi.LingSecurityVerifier;
 import com.lingframe.core.spi.LingUnloadHook;
@@ -22,7 +28,9 @@ import com.bench.TestService;
 import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 /**
  * Benchmark 部署辅助工具
@@ -52,7 +60,26 @@ public class BenchmarkDeploymentHelper {
     private final DefaultLeakDetector leakDetector;
     private final RuntimeCoordinator runtimeCoordinator;
 
+    /**
+     * 默认构造：卸载时不装配任何资源清理钩子（剥离资源清理噪声，专注状态机纯 CPU 开销）。
+     */
     public BenchmarkDeploymentHelper() {
+        this(false);
+    }
+
+    /**
+     * 可选装配真实 JVM 资源清理钩子的构造。
+     * <p>
+     * 当 {@code enableRealHooks=true} 时，按生产装配顺序
+     * （{@code LingFrameLifecycleBeansConfiguration.jvmHooks}）注入 6 个 JVM 桶钩子，
+     * 使卸载路径包含反射扫描与资源清理的真实开销。
+     * <p>
+     * 注意：Spring 生态桶钩子（SpringEcosystemUnloadHook/BindConverterCacheCleaner 等）
+     * 为包级可见，benchmark 模块无法直接构造，故生态桶始终为空。
+     *
+     * @param enableRealHooks 是否装配生产级 JVM 资源清理钩子
+     */
+    public BenchmarkDeploymentHelper(boolean enableRealHooks) {
         // 定制全局 LingFrameConfig 模板，提供极大的限流额度与并发限制，避免压测拦截与瓶颈
         LingRuntimeConfig customRuntimeConfig = LingRuntimeConfig.builder()
                 .rateLimitPerSecond(1000000000) // 10亿，相当于不限流
@@ -88,8 +115,25 @@ public class BenchmarkDeploymentHelper {
         DefaultLingResourceManager resourceManager = new DefaultLingResourceManager(
                 lingRepository, eventBus, methodCache);
 
-        LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
-                pipelineEngine, Collections.<LingUnloadHook>emptyList(), resourceManager, leakDetector);
+        LingUnloadCoordinator unloadCoordinator;
+        if (enableRealHooks) {
+            // 与生产 LingFrameLifecycleBeansConfiguration.jvmHooks 完全一致的装配顺序
+            List<LingUnloadHook> jvmHooks = Arrays.asList(
+                    new JdbcDriverUnloadHook(),
+                    new ThreadReferenceUnloadHook(),
+                    new JvmShutdownHookUnloadHook(),
+                    new RmiTargetUnloadHook(),
+                    new LoggingFrameworkUnloadHook(),
+                    new DebuggerCaptureUnloadHook());
+            // 双桶构造：生态桶留空（Spring 生态钩子包级不可见），JVM 桶装配真实钩子
+            unloadCoordinator = new LingUnloadCoordinator(
+                    pipelineEngine, Collections.<LingUnloadHook>emptyList(), jvmHooks,
+                    resourceManager, leakDetector);
+        } else {
+            // 原有行为：全部桶为空，剥离资源清理噪声
+            unloadCoordinator = new LingUnloadCoordinator(
+                    pipelineEngine, Collections.<LingUnloadHook>emptyList(), resourceManager, leakDetector);
+        }
 
         this.lifecycleEngine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
                 .containerFactory(new BenchmarkContainerFactory())
