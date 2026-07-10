@@ -16,9 +16,12 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingUninstallResult;
 import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
+import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.LingPackageDTO;
+import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.storage.GovernanceStorage;
+import com.lingframe.api.exception.LingNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -94,8 +97,8 @@ class DashboardServiceSupplement2Test {
         @DisplayName("updatePermissions 应委托给 governanceSupport")
         void shouldDelegateUpdatePermissions() {
             DashboardService service = newService();
-            com.lingframe.dashboard.dto.ResourcePermissionDTO dto =
-                    mock(com.lingframe.dashboard.dto.ResourcePermissionDTO.class);
+            ResourcePermissionDTO dto =
+                    mock(ResourcePermissionDTO.class);
             // 设置 stub 避免 UnnecessaryStubbingException
             when(dto.isDbRead()).thenReturn(true);
 
@@ -115,8 +118,8 @@ class DashboardServiceSupplement2Test {
         @DisplayName("updateInvocationGovernance 应委托并返回结果")
         void shouldDelegateUpdateInvocationGovernance() {
             DashboardService service = newService();
-            com.lingframe.dashboard.dto.InvocationGovernanceDTO inputDto =
-                    mock(com.lingframe.dashboard.dto.InvocationGovernanceDTO.class);
+            InvocationGovernanceDTO inputDto =
+                    mock(InvocationGovernanceDTO.class);
 
             // governanceSupport.updateInvocationGovernance 会返回 DTO，这里验证不抛异常即可
             assertDoesNotThrow(() -> service.updateInvocationGovernance("ling1", inputDto));
@@ -249,7 +252,7 @@ class DashboardServiceSupplement2Test {
             DashboardService service = newService();
             when(lingRepository.getRuntime("ling1")).thenReturn(null);
 
-            assertThrows(com.lingframe.api.exception.LingNotFoundException.class,
+            assertThrows(LingNotFoundException.class,
                     () -> service.setCanaryConfig("ling1", 50, "v2"));
         }
 
@@ -309,7 +312,7 @@ class DashboardServiceSupplement2Test {
             DashboardService service = newService();
             when(lingRepository.getRuntime("ling1")).thenReturn(null);
 
-            assertThrows(com.lingframe.api.exception.LingNotFoundException.class,
+            assertThrows(LingNotFoundException.class,
                     () -> service.getTrafficStats("ling1"));
         }
 
@@ -319,7 +322,7 @@ class DashboardServiceSupplement2Test {
             DashboardService service = newService();
             when(lingRepository.getRuntime("ling1")).thenReturn(null);
 
-            assertThrows(com.lingframe.api.exception.LingNotFoundException.class,
+            assertThrows(LingNotFoundException.class,
                     () -> service.resetTrafficStats("ling1"));
         }
 

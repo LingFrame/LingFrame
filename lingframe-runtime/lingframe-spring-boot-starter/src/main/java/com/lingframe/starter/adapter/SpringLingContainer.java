@@ -2,11 +2,13 @@ package com.lingframe.starter.adapter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.annotation.Auditable;
-import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
 import com.lingframe.core.context.DefaultLingContext;
+import com.lingframe.core.ling.BusinessInterfaceFilter;
+import com.lingframe.core.ling.LingServiceRegistrar;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.governance.GovernanceStrategy;
 import com.lingframe.starter.processor.LingReferenceInjector;
@@ -222,6 +224,19 @@ public class SpringLingContainer implements LingContainer {
         DefaultLingContext coreCtx = (DefaultLingContext) lingContext;
         String lingId = lingContext.getLingId();
 
+        // 🔥 统一注册器：收敛「显式 @LingService + 隐式接口」双轨注册逻辑到 core，
+        // 删除原散在 SpringLingContainer 的 isBusinessInterface 黑名单。
+        // 生态环境排除前缀由 Registrar 静态参考值提供，用户排除项透传 BusinessInterfaceFilter。
+        LingServiceRegistry registry = coreCtx.getLingServiceRegistry();
+        BusinessInterfaceFilter interfaceFilter = BusinessInterfaceFilter.builder()
+                .ecosystemExcluded(LingServiceRegistrar.defaultEcosystemExcluded())
+                .userExcluded(excludedPackages)
+                .build();
+        LingServiceRegistrar registrar = new LingServiceRegistrar(
+                registry, interfaceFilter,
+                com.lingframe.core.config.LingFrameConfig.current().isImplicitRegistration(),
+                coreCtx);
+
         // 获取容器中所有 Bean 的名称
         String[] beanNames = context.getBeanDefinitionNames();
 
@@ -251,66 +266,12 @@ public class SpringLingContainer implements LingContainer {
                     }
                 }
 
-                // 1. 显式 @LingService 注册 (FQSID: [LingID]:[ShortID])
-                ReflectionUtils.doWithMethods(targetClass, method -> {
-                    LingService lingService = AnnotatedElementUtils.findMergedAnnotation(method, LingService.class);
-                    if (lingService != null) {
-                        String shortId = lingService.id();
-                        String fqsid = lingId + ":" + shortId;
-                        coreCtx.registerProtocolService(fqsid, bean, method);
-                    }
-                });
-
-                // 2. 隐式接口注册 (FQSID: [InterfaceName]:[MethodName])
-                // 支持 @LingReference 跨灵元调用
-                for (Class<?> iface : targetClass.getInterfaces()) {
-                    if (isBusinessInterface(iface)) {
-                        for (Method ifaceMethod : iface.getMethods()) {
-                            try {
-                                Method implMethod = targetClass.getMethod(
-                                        ifaceMethod.getName(), ifaceMethod.getParameterTypes());
-                                String canonicalFqsid = lingId + ":" + iface.getName();
-                                coreCtx.registerProtocolService(canonicalFqsid, bean, implMethod);
-                            } catch (NoSuchMethodException ignored) {
-                            }
-                        }
-                    }
-                }
+                // 🔥 委派给统一注册器：显式 @LingService + 隐式接口一并处理
+                registrar.register(lingId, bean, targetClass);
             } catch (Exception e) {
                 log.warn("Error scanning bean {} for LingServices", beanName, e);
             }
         }
-    }
-
-    /**
-     * 判断是否为业务接口（排除 Java/Spring/常见框架接口 + 用户配置排除项）
-     */
-    private boolean isBusinessInterface(Class<?> iface) {
-        String name = iface.getName();
-
-        // 内置排除规则
-        if (name.startsWith("java.") ||
-                name.startsWith("javax.") ||
-                name.startsWith("jakarta.") ||
-                name.startsWith("org.springframework.") ||
-                name.startsWith("org.slf4j.") ||
-                name.startsWith("io.micrometer.") ||
-                name.startsWith("com.zaxxer.") ||
-                name.startsWith("lombok.") ||
-                name.startsWith("com.lingframe.api.context.") ||
-                name.startsWith("com.lingframe.api.ling.") ||
-                name.startsWith("com.lingframe.starter.")) {
-            return false;
-        }
-
-        // 用户配置的排除规则
-        for (String prefix : excludedPackages) {
-            if (name.startsWith(prefix)) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /**
@@ -752,12 +713,6 @@ public class SpringLingContainer implements LingContainer {
 
     /**
      * 从 URL 中提取纯路径部分，剥离协议前缀（file:/、jar:file:/ 等）。
-     * <p>
-     * 示例：
-     * <ul>
-     *   <li>{@code file:/E:/Codes/app/Service.class} → {@code E:/Codes/app/Service.class}</li>
-     *   <li>{@code jar:file:/E:/Codes/app.jar!/Service.class} → {@code E:/Codes/app.jar!/Service.class}</li>
-     * </ul>
      */
     private static String extractPathFromUrl(URL url) {
         String spec = url.toString();

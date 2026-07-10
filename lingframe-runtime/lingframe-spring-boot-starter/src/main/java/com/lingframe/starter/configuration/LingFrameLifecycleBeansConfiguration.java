@@ -261,8 +261,10 @@ public class LingFrameLifecycleBeansConfiguration {
     }
 
     @Bean
-    public static LingReferenceInjector lingReferenceInjector() {
-        return new LingReferenceInjector("lingcore-app");
+    public LingReferenceInjector lingReferenceInjector(LingContext lingContext) {
+        // 传入灵核级 LingContext，确保 BPP 在 BeforeInitialization 阶段就能拿到 ctx 做注入；
+        // AfterInitialization 阶段兜底扫应对灵核级 BPP 时序问题。
+        return new LingReferenceInjector("lingcore-app", lingContext);
     }
 
     @Bean

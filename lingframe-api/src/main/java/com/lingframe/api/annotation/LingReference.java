@@ -7,11 +7,19 @@ import java.lang.annotation.*;
  * 用于注入跨灵元提供的服务接口。
  * 示例：
  * <pre>
- * 
+ *
  * {@code @LingReference}
- * 
  * {@code private UserService userService;}
+ *
+ * {@code @LingReference(lingId = "user-ling")}
+ * {@code private UserService userService;}
+ *
+ * {@code @LingReference(serviceId = "lingcore:authService")}
+ * {@code private AuthService auth;}
  * </pre>
+ * <p>
+ * 边界：本注解仅声明契约（路由锚点），不承载治理参数。
+ * 超时、降级、重试等治理配置统一由灵核 YAML 与流水线负责。
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
@@ -25,14 +33,17 @@ public @interface LingReference {
     String lingId() default "";
 
     /**
-     * 超时时间 (毫秒)
+     * 指定服务协议短 ID 或 FQSID（可选）
+     * <p>
+     * 适用场景：同一灵元对同一接口提供了多个实现（多版本/多实例），仅靠接口类型无法唯一定位时，
+     * 用此属性显式锚定具体服务。
+     * <ul>
+     *   <li>填短 ID（如 "sendSms"）：解析为 FQSID = [lingId]:[serviceId]，lingId 留空时退化为 [当前灵元]:[serviceId]</li>
+     *   <li>填完整 FQSID（如 "user-ling:sendSms"）：lingId 属性将被忽略</li>
+     *   <li>留空（默认）：仅按字段类型解析，由全局路由自动匹配</li>
+     * </ul>
+     *
+     * @return 服务 ID 或 FQSID，默认空表示仅按类型路由
      */
-    long timeout() default 3000;
-
-    /**
-     * 本地兜底逻辑类
-     * 当跨灵元调用发生熔断、超时、找不到服务等情况时，将请求路由至该实现类。
-     * 必须是当前应用环境（Spring 上下文）中的 Bean，或者具有无参构造函数的类。
-     */
-    Class<?> fallback() default void.class;
+    String serviceId() default "";
 }

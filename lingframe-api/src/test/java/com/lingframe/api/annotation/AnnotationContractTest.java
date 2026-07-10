@@ -37,19 +37,21 @@ class AnnotationContractTest {
         }
 
         @Test
-        @DisplayName("目标为 METHOD")
-        void methodTarget() {
+        @DisplayName("目标为 METHOD 和 TYPE")
+        void methodAndTypeTarget() {
             Target target = LingService.class.getAnnotation(Target.class);
             assertNotNull(target);
-            assertTrue(Arrays.asList(target.value()).contains(ElementType.METHOD));
+            List<ElementType> targets = Arrays.asList(target.value());
+            assertTrue(targets.contains(ElementType.METHOD));
+            assertTrue(targets.contains(ElementType.TYPE));
         }
 
         @Test
-        @DisplayName("默认 timeout 为 3000ms")
-        void defaultTimeout() throws NoSuchMethodException {
-            Method dummy = LingServiceContract.class.getDeclaredMethod("dummyLingService");
+        @DisplayName("默认 id 为空字符串（由灵核推导短 ID）")
+        void defaultId() throws NoSuchMethodException {
+            Method dummy = LingServiceContract.class.getDeclaredMethod("dummyDefaultId");
             LingService anno = dummy.getAnnotation(LingService.class);
-            assertEquals(3000, anno.timeout());
+            assertEquals("", anno.id());
         }
 
         @Test
@@ -60,9 +62,30 @@ class AnnotationContractTest {
             assertEquals("", anno.desc());
         }
 
+        @Test
+        @DisplayName("显式 id 可标注在 METHOD 上")
+        void explicitIdOnMethod() throws NoSuchMethodException {
+            Method dummy = LingServiceContract.class.getDeclaredMethod("dummyLingService");
+            LingService anno = dummy.getAnnotation(LingService.class);
+            assertEquals("test-svc", anno.id());
+        }
+
+        @Test
+        @DisplayName("可标注在 TYPE 上")
+        void canAnnotateOnType() {
+            // 仅验证 @Target 已包含 TYPE；编译期已强制，这里反射断言目标包含 TYPE
+            Target target = LingService.class.getAnnotation(Target.class);
+            assertTrue(Arrays.asList(target.value()).contains(ElementType.TYPE));
+        }
+
         @LingService(id = "test-svc")
         @SuppressWarnings("unused")
         private void dummyLingService() {
+        }
+
+        @LingService
+        @SuppressWarnings("unused")
+        private void dummyDefaultId() {
         }
     }
 
@@ -94,22 +117,33 @@ class AnnotationContractTest {
         }
 
         @Test
-        @DisplayName("默认 timeout 为 3000ms")
-        void defaultTimeout() throws NoSuchFieldException {
+        @DisplayName("默认 serviceId 为空字符串（仅按类型路由）")
+        void defaultServiceId() throws NoSuchFieldException {
             LingReference anno = LingReferenceContract.class.getDeclaredField("dummyRef").getAnnotation(LingReference.class);
-            assertEquals(3000, anno.timeout());
+            assertEquals("", anno.serviceId());
         }
 
         @Test
-        @DisplayName("默认 fallback 为 void.class")
-        void defaultFallback() throws NoSuchFieldException {
-            LingReference anno = LingReferenceContract.class.getDeclaredField("dummyRef").getAnnotation(LingReference.class);
-            assertEquals(void.class, anno.fallback());
+        @DisplayName("显式 serviceId 可锚定短 ID 或 FQSID")
+        void explicitServiceId() throws NoSuchFieldException {
+            LingReference anno = LingReferenceContract.class.getDeclaredField("anchoredRef").getAnnotation(LingReference.class);
+            assertEquals("lingcore:authService", anno.serviceId());
+        }
+
+        @Test
+        @DisplayName("显式 lingId 可限定灵元")
+        void explicitLingId() throws NoSuchFieldException {
+            LingReference anno = LingReferenceContract.class.getDeclaredField("anchoredRef").getAnnotation(LingReference.class);
+            assertEquals("user-ling", anno.lingId());
         }
 
         @LingReference
         @SuppressWarnings("unused")
         private Object dummyRef;
+
+        @LingReference(lingId = "user-ling", serviceId = "lingcore:authService")
+        @SuppressWarnings("unused")
+        private Object anchoredRef;
     }
 
     @Nested

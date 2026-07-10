@@ -68,6 +68,22 @@ public interface LingServiceRegistry {
     List<String> getServicesByLingId(String lingId);
 
     /**
+     * 按契约 ID 反向索引灵元。
+     * <p>
+     * 契约 ID 可以是：
+     * <ul>
+     *   <li>完整 FQSID（如 {@code user-ling:com.example.UserService}）——精确等价匹配</li>
+     *   <li>裸契约名（如 {@code com.example.UserService}）——匹配所有 lingId 下注册该契约的灵元</li>
+     *   <li>短 ID（如 {@code sendSms}）——匹配所有 lingId 下注册该短 ID 的灵元</li>
+     * </ul>
+     * 路由层用此方法把「按接口类型」的查询从 O(n) 遍历降为 O(1) 反向索引命中。
+     *
+     * @param contractId 契约 ID（FQSID / 裸契约名 / 短 ID）
+     * @return 注册了该契约的所有灵元 ID；未命中返回空列表
+     */
+    List<String> getLingIdsByContractId(String contractId);
+
+    /**
      * 解除某个服务所有的方法绑定（在下线时调用）。
      */
     void evict(String lingId);

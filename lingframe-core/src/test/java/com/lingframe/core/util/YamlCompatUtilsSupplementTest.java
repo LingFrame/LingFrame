@@ -1,5 +1,6 @@
 package com.lingframe.core.util;
 
+import com.lingframe.api.config.LingDefinition;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.DumperOptions;
@@ -44,10 +45,10 @@ class YamlCompatUtilsSupplementTest {
     @DisplayName("createLoaderYaml 应能加载 com.lingframe 包下类型（TagInspector 放行）")
     void shouldLoadLingframeTaggedType() {
         Yaml yaml = YamlCompatUtils.createLoaderYaml();
-        // com.lingframe.api.config.LingDefinition 在 com.lingframe 命名空间下
+        // LingDefinition 在 com.lingframe 命名空间下
         String input = "id: t\nversion: 1.0.0\n";
-        com.lingframe.api.config.LingDefinition def =
-                yaml.loadAs(input, com.lingframe.api.config.LingDefinition.class);
+        LingDefinition def =
+                yaml.loadAs(input, LingDefinition.class);
         assertNotNull(def);
         assertEquals("t", def.getId());
     }

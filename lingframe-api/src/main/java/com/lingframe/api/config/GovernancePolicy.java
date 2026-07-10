@@ -28,6 +28,16 @@ public class GovernancePolicy implements Serializable {
     private List<AuditRule> audits = new ArrayList<>();
 
     /**
+     * 跨灵元服务引用的治理规则。
+     * <p>
+     * 与 permissions/audits 平级，用于「被调方方法名」维度的治理配置——
+     * 即原本散落在 {@code @LingReference.timeout}/{@code fallback} 注解上的语义。
+     * 治理入参从注解收敛到 YAML，实现注解只声明契约。
+     */
+    @Builder.Default
+    private List<ReferenceRule> references = new ArrayList<>();
+
+    /**
      * 调用治理配置。
      * 与 capabilities / permissions / audits 分区，避免把调用控制语义继续塞进资源权限列表。
      */
@@ -52,6 +62,12 @@ public class GovernancePolicy implements Serializable {
         if (this.audits != null) {
             copy.audits = this.audits.stream()
                     .map(AuditRule::copy)
+                    .collect(Collectors.toCollection(ArrayList::new));
+        }
+
+        if (this.references != null) {
+            copy.references = this.references.stream()
+                    .map(ReferenceRule::copy)
                     .collect(Collectors.toCollection(ArrayList::new));
         }
 
@@ -90,6 +106,12 @@ public class GovernancePolicy implements Serializable {
         if (patch.audits != null && !patch.audits.isEmpty()) {
             this.audits = patch.audits.stream()
                     .map(AuditRule::copy)
+                    .collect(Collectors.toCollection(ArrayList::new));
+        }
+
+        if (patch.references != null && !patch.references.isEmpty()) {
+            this.references = patch.references.stream()
+                    .map(ReferenceRule::copy)
                     .collect(Collectors.toCollection(ArrayList::new));
         }
 
@@ -163,6 +185,41 @@ public class GovernancePolicy implements Serializable {
             copy.methodPattern = this.methodPattern;
             copy.action = this.action;
             copy.enabled = this.enabled;
+            return copy;
+        }
+    }
+
+    /**
+     * 跨灵元服务引用的治理规则。
+     * <p>
+     * 把原本散在 {@code @LingReference.timeout}/{@code fallback} 注解上的治理入参
+     * 收敛到 YAML 配置。注解只声明契约（路由锚点），治理入参归 YAML。
+     * <ul>
+     *   <li>{@code referencePattern}：被调方方法名匹配键，支持精确方法名或 {@code prefix*} 模糊匹配。
+     *       命中时由 {@code StandardGovernancePolicyProvider} 在 P2 阶段覆到 GovernanceDecision</li>
+     *   <li>{@code timeoutMs}：调用超时（毫秒），null 表示不动</li>
+     *   <li>{@code fallbackValue}：框架级异常时的静默降级值（字符串），null 表示不动</li>
+     *   <li>{@code retryCount}：重试次数，null 表示不动</li>
+     * </ul>
+     * 命中时由 {@code StandardGovernancePolicyProvider} 在 P2 阶段覆到 GovernanceDecision。
+     */
+    @Getter
+    @Setter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ReferenceRule implements Serializable {
+        private String referencePattern;
+        private Integer timeoutMs;
+        private String fallbackValue;
+        private Integer retryCount;
+
+        public ReferenceRule copy() {
+            ReferenceRule copy = new ReferenceRule();
+            copy.referencePattern = this.referencePattern;
+            copy.timeoutMs = this.timeoutMs;
+            copy.fallbackValue = this.fallbackValue;
+            copy.retryCount = this.retryCount;
             return copy;
         }
     }

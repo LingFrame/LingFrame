@@ -4,6 +4,9 @@ import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
 import com.lingframe.core.context.DefaultLingContext;
+import com.lingframe.core.ling.BusinessInterfaceFilter;
+import com.lingframe.core.ling.LingServiceRegistrar;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.exception.LingInstallException;
@@ -12,7 +15,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -104,7 +106,7 @@ public class NativeLingContainer implements LingContainer {
         active = false;
     }
 
-    // ==================== 服务扫描与注册逻辑 ====================
+    // ==================== 服务扫描与注册逻辑（委派给统一注册器） ====================
 
     private void scanAndRegisterServices(LingContext context) {
         if (!(context instanceof DefaultLingContext)) {
@@ -112,42 +114,86 @@ public class NativeLingContainer implements LingContainer {
             return;
         }
         DefaultLingContext coreCtx = (DefaultLingContext) context;
+        LingServiceRegistry registry = coreCtx.getLingServiceRegistry();
+        // native 路径无生态环境前缀，仅持 core 默认排除 + 用户排除项（暂无配置透传入口，用空集）
+        BusinessInterfaceFilter interfaceFilter = BusinessInterfaceFilter.coreDefaults();
+        // TODO(隐式注册开关时序): LingFrameConfig.current() 是静态全局调用。
+        // native 路径下灵元加载前 LingFrameConfig 应已由 Spring Boot starter 装配完成，
+        // current() 返回全局单例。若未来 native 路径脱离 Spring 独立启动，
+        // 需在此前显式初始化 LingFrameConfig，否则会读默认值 true（通常也是期望值）。
+        boolean implicitRegistration = com.lingframe.core.config.LingFrameConfig.current().isImplicitRegistration();
+        LingServiceRegistrar registrar = new LingServiceRegistrar(
+                registry, interfaceFilter, implicitRegistration, coreCtx);
 
-        log.info("[{}] Scanning for @LingService...", lingId);
+        log.info("[{}] Registering services via registrar...", lingId);
         Set<Class<?>> classes = scanClasses();
 
+        // 🔥 委派给统一注册器：显式 @LingService + 隐式接口一并处理。
+        // 健壮性：仅对「持 @LingService 方法 或 实现业务接口」的类走 singletons 实例化，
+        // 避免误试实例化测试用内部类（如 MinimalLingContext 无空构造会炸）。
+        // 主类 lingInstance 始终注册——它是灵元入口，即便无 @LingService 也可能有隐式接口。
+        registrar.register(lingId, lingInstance, lingInstance.getClass());
+
         for (Class<?> clazz : classes) {
-            // 只扫描普通类
-            if (clazz.isInterface() || Modifier.isAbstract(clazz.getModifiers()))
+            // 只扫普通类
+            if (clazz.isInterface() || Modifier.isAbstract(clazz.getModifiers())) {
                 continue;
-
-            // 检查方法上的注解
-            for (Method method : clazz.getMethods()) {
-                LingService annotation = method.getAnnotation(LingService.class);
-                if (annotation != null) {
-                    registerService(coreCtx, clazz, method, annotation);
-                }
             }
-        }
-    }
-
-    private void registerService(DefaultLingContext ctx, Class<?> clazz, Method method, LingService annotation) {
-        try {
-            // 获取或创建单例
+            // 跳过主类（上面已注册）
+            if (clazz == lingInstance.getClass()) {
+                continue;
+            }
+            // 跳过无 @LingService 方法且不实现业务接口的纯辅助类——不注册也不实例化
+            if (!hasLingServiceMethod(clazz) && !implementsBusinessInterface(clazz, interfaceFilter)) {
+                continue;
+            }
             Object instance = singletons.computeIfAbsent(clazz, k -> {
                 try {
                     return k.getDeclaredConstructor().newInstance();
                 } catch (Exception e) {
-                    throw new LingRuntimeException(lingId, "Failed to create bean for " + k.getName(), e);
+                    // 健壮性：实例化失败（私有构造/抛异常等）记日志跳过，不拖垮整个灵元启动。
+                    // 等价契约：原 registerService 对无法实例化的类记日志不崩，此处同。
+                    log.warn("[{}] Failed to create bean for {} (skipping registration): {}",
+                            lingId, k.getName(), e.getMessage());
+                    return null;
                 }
             });
-
-            String fqsid = lingId + ":" + annotation.id();
-            ctx.registerProtocolService(fqsid, instance, method);
-            log.debug("[{}] Registered native service: {}", lingId, fqsid);
-        } catch (Exception e) {
-            log.error("[{}] Failed to register service: {}", lingId, method.getName(), e);
+            if (instance == null) {
+                continue; // 实例化失败，跳过该类
+            }
+            registrar.register(lingId, instance, clazz);
         }
+    }
+
+    /** 判定类是否持 @LingService 方法（TYPE 级或 METHOD 级） */
+    private boolean hasLingServiceMethod(Class<?> clazz) {
+        if (clazz.getAnnotation(LingService.class) != null) {
+            return true;
+        }
+        for (java.lang.reflect.Method m : clazz.getMethods()) {
+            if (m.getAnnotation(LingService.class) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判定类是否实现至少一个业务接口（经 BusinessInterfaceFilter 过滤后）。
+     * 递归遍历父类链，与 LingServiceRegistrar.collectBusinessInterfaces 的递归收集语义一致，
+     * 避免辅助类通过父类继承的业务接口被预筛误跳过导致漏注册。
+     */
+    private boolean implementsBusinessInterface(Class<?> clazz, BusinessInterfaceFilter filter) {
+        Class<?> current = clazz;
+        while (current != null && current != Object.class) {
+            for (Class<?> iface : current.getInterfaces()) {
+                if (filter.isBusinessInterface(iface)) {
+                    return true;
+                }
+            }
+            current = current.getSuperclass();
+        }
+        return false;
     }
 
     // ==================== 类扫描实现 (File/Jar) ====================
@@ -252,3 +298,4 @@ public class NativeLingContainer implements LingContainer {
         return classLoader;
     }
 }
+

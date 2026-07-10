@@ -3,6 +3,7 @@ package com.lingframe.dashboard.service;
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
@@ -69,7 +70,7 @@ class DashboardLingOperationsTest {
                 lifecycleEngine, lingRepository, canaryRouter, eventStore, sourceResolver);
 
         LingRuntime runtime = mock(LingRuntime.class);
-        com.lingframe.core.ling.InstancePool instancePool = mock(com.lingframe.core.ling.InstancePool.class);
+        InstancePool instancePool = mock(InstancePool.class);
         LingInstance target = mock(LingInstance.class);
         LingInstance reloaded = mock(LingInstance.class);
 
@@ -108,7 +109,7 @@ class DashboardLingOperationsTest {
                 lifecycleEngine, lingRepository, canaryRouter, eventStore, sourceResolver);
 
         LingRuntime runtime = mock(LingRuntime.class);
-        com.lingframe.core.ling.InstancePool instancePool = mock(com.lingframe.core.ling.InstancePool.class);
+        InstancePool instancePool = mock(InstancePool.class);
         LingInstance target = mock(LingInstance.class);
         when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
         when(runtime.getInstancePool()).thenReturn(instancePool);

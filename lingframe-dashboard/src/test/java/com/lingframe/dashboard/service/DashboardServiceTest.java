@@ -7,8 +7,11 @@ import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.fsm.RuntimeCoordinator;
+import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingLifecycleEngine;
+import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingUninstallResult;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.router.CanaryRouter;
@@ -32,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -235,18 +239,18 @@ class DashboardServiceTest {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
                     governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator, SHARED_OBJECT_MAPPER);
 
-            com.lingframe.core.ling.LingRuntime runtime = org.mockito.Mockito.mock(com.lingframe.core.ling.LingRuntime.class);
-            com.lingframe.core.ling.InstancePool instancePool = org.mockito.Mockito.mock(com.lingframe.core.ling.InstancePool.class);
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool instancePool = mock(InstancePool.class);
             when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
-            when(runtime.currentStatus()).thenReturn(com.lingframe.core.fsm.RuntimeStatus.DEGRADED);
+            when(runtime.currentStatus()).thenReturn(RuntimeStatus.DEGRADED);
             when(runtime.getInstancePool()).thenReturn(instancePool);
             when(instancePool.getDefault()).thenReturn(null);
             when(lingInfoConverter.toDTO(eq(runtime), eq(canaryRouter), eq(permissionService), any())).thenReturn(null);
 
-            service.updateStatus("ling1", com.lingframe.core.fsm.RuntimeStatus.RECOVERING, "1.0.0");
+            service.updateStatus("ling1", RuntimeStatus.RECOVERING, "1.0.0");
 
             verify(lifecycleEngine).recover("ling1", "1.0.0");
-            verify(runtimeCoordinator, never()).transition(eq("ling1"), eq(com.lingframe.core.fsm.RuntimeStatus.RECOVERING));
+            verify(runtimeCoordinator, never()).transition(eq("ling1"), eq(RuntimeStatus.RECOVERING));
         }
     }
 

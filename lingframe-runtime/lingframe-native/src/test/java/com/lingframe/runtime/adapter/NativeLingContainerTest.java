@@ -8,8 +8,11 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.DefaultLingServiceRegistry;
+import com.lingframe.core.ling.BusinessInterfaceFilter;
+import com.lingframe.core.ling.LingServiceRegistrar;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.FilterRegistryConfig;
@@ -155,7 +158,7 @@ class NativeLingContainerTest {
     @Test
     @DisplayName("主类没有实现 Ling 接口应抛出 LingInstallException 且其 cause 为 InvalidArgumentException")
     void shouldThrowWhenMainClassDoesNotImplementLing() {
-        com.lingframe.core.exception.LingInstallException ex = assertThrows(com.lingframe.core.exception.LingInstallException.class, () -> {
+        LingInstallException ex = assertThrows(LingInstallException.class, () -> {
             new NativeLingContainer(
                     "native-ling",
                     String.class,
@@ -179,7 +182,7 @@ class NativeLingContainerTest {
     @Test
     @DisplayName("主类实例化失败应抛出 LingInstallException")
     void shouldThrowWhenConstructorThrows() {
-        assertThrows(com.lingframe.core.exception.LingInstallException.class, () -> {
+        assertThrows(LingInstallException.class, () -> {
             new NativeLingContainer(
                     "native-ling",
                     BadConstructorLing.class,
@@ -208,7 +211,7 @@ class NativeLingContainerTest {
                 new File(".")
         );
         LingContext context = new MinimalLingContext("native-ling");
-        assertThrows(com.lingframe.core.exception.LingInstallException.class, () -> container.start(context));
+        assertThrows(LingInstallException.class, () -> container.start(context));
         assertFalse(container.isActive());
     }
 
@@ -250,6 +253,12 @@ class NativeLingContainerTest {
         assertDoesNotThrow(container::stop);
     }
 
+    /**
+     * 服务方法所在类无法实例化时的测试承载体。
+     * 原生路径不再 newInstance 任意类，但 LingServiceRegistrar.register 仍应健壮——
+     * 传一个无法实例化的 Bean Class（仅用于反射注解扫描，不应真 newInstance）时，
+     * Registrar 应记日志不崩。本类模拟「构造抛异常」的病态 Bean。
+     */
     public static class NonInstantiableServiceBean {
         private NonInstantiableServiceBean() {
             throw new RuntimeException("Can't instantiate");
@@ -259,7 +268,7 @@ class NativeLingContainerTest {
     }
 
     @Test
-    @DisplayName("服务方法所在类无法实例化时 registerService 应记录日志而不崩溃")
+    @DisplayName("服务方法所在类无法实例化时 Registrar.register 应记录日志而不崩溃")
     void shouldHandleBeanInstantiationFailureInServiceRegistration() throws Exception {
         EventBus eventBus = new EventBus();
         DefaultLingRepository repository = new DefaultLingRepository();
@@ -275,23 +284,15 @@ class NativeLingContainerTest {
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(filterRegistry);
         DefaultLingContext context = new DefaultLingContext("native-ling", repository, registry, pipelineEngine, permissionService, eventBus);
 
-        NativeLingContainer container = new NativeLingContainer(
-                "native-ling",
-                TestNativeLing.class,
-                TestNativeLing.class.getClassLoader(),
-                new File("E:\\Codes\\灵珑\\LingFrame\\lingframe-runtime\\lingframe-native\\target\\test-classes")
-        );
-        container.start(context);
-        
-        Method registerMethod = NativeLingContainer.class.getDeclaredMethod(
-                "registerService", DefaultLingContext.class, Class.class, Method.class, LingService.class
-        );
-        registerMethod.setAccessible(true);
+        // 等价契约验证：直接对无法实例化的 Bean Class 调统注册器，
+        // Registrar 只做反射注解扫描不 newInstance，应记日志不崩。
+        // 不走 container.start——那会触发多类扫描的 newInstance 路径，与「不崩」契约验证无关。
+        LingServiceRegistrar registrar = new LingServiceRegistrar(
+                registry, BusinessInterfaceFilter.coreDefaults(), true);
         Method badMethod = NonInstantiableServiceBean.class.getDeclaredMethod("test");
-        LingService anno = badMethod.getAnnotation(LingService.class);
-
-        assertDoesNotThrow(() -> registerMethod.invoke(container, context, NonInstantiableServiceBean.class, badMethod, anno));
-        container.stop();
+        // 用一个 mock Bean 实例（Object 充数触发反射路径，Registrar 不 newInstance）
+        Object dummyBean = new Object();
+        assertDoesNotThrow(() -> registrar.register("native-ling", dummyBean, NonInstantiableServiceBean.class));
     }
 
     @Test

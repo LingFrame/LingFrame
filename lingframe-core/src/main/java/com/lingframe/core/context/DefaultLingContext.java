@@ -64,6 +64,15 @@ public class DefaultLingContext implements LingContext {
         return lingId;
     }
 
+    /**
+     * 暴露 LingServiceRegistry 供适配层构造统注册器。
+     * 边界：core 内部不通过此 getter 自用——适配层（Spring/Native）需要拿注册器
+     * 委派给 LingServiceRegistrar，避免注册逻辑重复散在适配层。
+     */
+    public LingServiceRegistry getLingServiceRegistry() {
+        return lingServiceRegistry;
+    }
+
     @Override
     public Optional<String> getProperty(String key) {
         // 实际应从 Core 的配置中心获取受控配置
@@ -207,5 +216,74 @@ public class DefaultLingContext implements LingContext {
     public void publishEvent(LingEvent event) {
         log.info("Event published from {}: {}", lingId, event);
         eventBus.publish(event);
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // 边界：以下是 LingContext 新加 default 方法的真实覆写。
+    // 灵元上下文（instance != null）下 expose 走 registerProtocolService，
+    // 灵核上下文（instance == null）下 expose 暂走 lingServiceRegistry 直注。
+    // ════════════════════════════════════════════════════════════════════
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> Optional<T> getService(Class<T> serviceClass, String lingIdAnchor, String serviceIdAnchor) {
+        // 锚点为空时退化为默认 getService(Class)
+        if ((lingIdAnchor == null || lingIdAnchor.isEmpty())
+                && (serviceIdAnchor == null || serviceIdAnchor.isEmpty())) {
+            return getService(serviceClass);
+        }
+        try {
+            // serviceId 含 ':' 视为完整 FQSID，lingIdAnchor 忽略；
+            // 否则按 [lingIdAnchor 或当前灵元]:[serviceIdAnchor 或接口名] 拼 FQSID
+            String fqsid;
+            String routingInterfaceName; // 透给 GlobalServiceRoutingProxy 的 interfaceName
+            if (serviceIdAnchor != null && serviceIdAnchor.indexOf(':') > 0) {
+                fqsid = serviceIdAnchor;
+                // FQSID 分支：透 FQSID 的 contract 部分作 interfaceName，
+                // 这样 SmartServiceProxy 下游拼 serviceFQSID = targetLingId + ":" + contractPart
+                // 与 Registrar 注册的 FQSID（如 lingcore:authService）匹配。
+                // 用 serviceClass.getName() 会拼成 lingcore:com.example.AuthService，不匹配。
+                routingInterfaceName = serviceIdAnchor.substring(serviceIdAnchor.indexOf(':') + 1);
+            } else {
+                String ling = (lingIdAnchor != null && !lingIdAnchor.isEmpty()) ? lingIdAnchor : this.lingId;
+                // 非 FQSID 分支：serviceIdAnchor 是短 ID 或空，透接口 FQCN 让隐式接口注册命中
+                String svc = (serviceIdAnchor != null && !serviceIdAnchor.isEmpty())
+                        ? serviceIdAnchor : serviceClass.getName();
+                fqsid = ling + ":" + svc;
+                // routingInterfaceName 必须与注册时的 FQSID 后半部保持一致：
+                // - serviceIdAnchor 非空（短 ID 锚点）：透短 ID 本身，下游 SmartServiceProxy 拼 targetLingId:svc
+                //   与 Registrar 注册的 lingId:svc 命中
+                // - serviceIdAnchor 空（隐式按类型路由）：透接口 FQCN，与隐式接口注册键 lingId:interfaceFQCN 命中
+                routingInterfaceName = svc;
+            }
+            T service = (T) Proxy.newProxyInstance(
+                    serviceClass.getClassLoader(),
+                    new Class[] { serviceClass },
+                    new GlobalServiceRoutingProxy(this.lingId, routingInterfaceName,
+                            extractLingId(fqsid), lingRepository, pipelineEngine, lingServiceRegistry));
+            return Optional.ofNullable(service);
+        } catch (Exception e) {
+            log.warn("Service get with anchor failed.", e);
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public void expose(String serviceId, Object handler) {
+        if (serviceId == null || serviceId.isEmpty() || handler == null) {
+            return;
+        }
+        String fqsid = this.lingId + ":" + serviceId;
+        // 边界：expose() 是程序化 API，handler 由调用方主动传入，调用方对暴露的方法集负责。
+        // 与 LingServiceRegistrar 的「框架自动扫描 Bean」不同——后者需要 BusinessInterfaceFilter
+        // 过滤框架接口；前者信任调用方，仅跳过 Object 基础方法。
+        for (Method method : handler.getClass().getMethods()) {
+            if (method.getDeclaringClass() == Object.class) {
+                continue;
+            }
+            registerProtocolService(fqsid, handler, method);
+        }
+        log.info("[Context] 程序化暴露服务: ling=[{}], serviceId=[{}], handler=[{}]",
+                lingId, serviceId, handler.getClass().getName());
     }
 }

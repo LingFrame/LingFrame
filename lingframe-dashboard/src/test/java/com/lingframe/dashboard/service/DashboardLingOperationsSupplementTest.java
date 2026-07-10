@@ -6,6 +6,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
@@ -165,7 +166,7 @@ class DashboardLingOperationsSupplementTest {
         @DisplayName("version 指定但实例不存在时应抛 LingInstallException")
         void shouldThrowWhenVersionInstanceNotFound() {
             LingRuntime runtime = mock(LingRuntime.class);
-            com.lingframe.core.ling.InstancePool pool = mock(com.lingframe.core.ling.InstancePool.class);
+            InstancePool pool = mock(InstancePool.class);
             when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
             when(runtime.getInstancePool()).thenReturn(pool);
             when(pool.getInstance("1.0.0")).thenReturn(null);
@@ -178,7 +179,7 @@ class DashboardLingOperationsSupplementTest {
         @DisplayName("无指定 version 且无可用实例时应抛 LingInstallException")
         void shouldThrowWhenNoStableInstance() {
             LingRuntime runtime = mock(LingRuntime.class);
-            com.lingframe.core.ling.InstancePool pool = mock(com.lingframe.core.ling.InstancePool.class);
+            InstancePool pool = mock(InstancePool.class);
             when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
             when(runtime.getInstancePool()).thenReturn(pool);
             when(pool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());

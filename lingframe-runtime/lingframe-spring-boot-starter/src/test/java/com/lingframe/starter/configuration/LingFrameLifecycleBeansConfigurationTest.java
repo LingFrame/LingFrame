@@ -17,6 +17,7 @@ import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.spi.*;
 import com.lingframe.starter.event.ServiceExporterListener;
+import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -44,9 +45,9 @@ class LingFrameLifecycleBeansConfigurationTest {
 
         // 1. containerFactory
         ApplicationContext parentContext = mock(ApplicationContext.class);
-        com.lingframe.starter.config.LingFrameProperties properties = new com.lingframe.starter.config.LingFrameProperties();
+        LingFrameProperties properties = new LingFrameProperties();
         properties.setDevMode(true);
-        when(parentContext.getBean(com.lingframe.starter.config.LingFrameProperties.class)).thenReturn(properties);
+        when(parentContext.getBean(LingFrameProperties.class)).thenReturn(properties);
 
         WebInterfaceManager webInterfaceManager = mock(WebInterfaceManager.class);
         ObjectProvider<List<LingContextCustomizer>> customizersProvider = new ObjectProvider<List<LingContextCustomizer>>() {
@@ -190,8 +191,8 @@ class LingFrameLifecycleBeansConfigurationTest {
         LingContext coreContext = config.lingCoreContext(lingRepository, lingServiceRegistry, pipelineEngine, permissionService, eventBus);
         assertNotNull(coreContext);
 
-        // 13. lingReferenceInjector
-        LingReferenceInjector referenceInjector = config.lingReferenceInjector();
+        // 13. lingReferenceInjector（需传入灵核级 LingContext）
+        LingReferenceInjector referenceInjector = config.lingReferenceInjector(coreContext);
         assertNotNull(referenceInjector);
 
         // 14. webInterfaceManager

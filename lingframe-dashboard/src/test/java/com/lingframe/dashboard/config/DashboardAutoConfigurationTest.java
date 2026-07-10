@@ -13,6 +13,7 @@ import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
+import com.lingframe.dashboard.storage.GovernanceStorage;
 import com.lingframe.dashboard.security.AccessTokenInterceptor;
 import com.lingframe.dashboard.security.ReadOnlyInterceptor;
 import com.lingframe.dashboard.service.CanaryDecisionService;
@@ -133,7 +134,7 @@ class DashboardAutoConfigurationTest {
                 mock(LingFrameConfig.class), mock(LingLifecycleEngine.class), mock(LingRepository.class),
                 mock(LocalGovernanceRegistry.class), mock(CanaryRouter.class), mock(LingInfoConverter.class),
                 mock(PermissionService.class), mock(RuntimeCoordinator.class), mock(ObjectMapper.class),
-                mock(com.lingframe.dashboard.storage.GovernanceStorage.class));
+                mock(GovernanceStorage.class));
         assertNotNull(s);
     }
 

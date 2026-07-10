@@ -1,7 +1,6 @@
 package com.lingframe.core.governance.provider;
 
 import com.lingframe.api.annotation.Auditable;
-import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.annotation.RequiresPermission;
 
 import java.lang.annotation.Annotation;
@@ -136,14 +135,8 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
             overridden = true;
         }
 
-        LingService lingServiceAnn = method.getAnnotation(LingService.class);
-        if (lingServiceAnn == null) {
-            lingServiceAnn = findInterfaceAnnotation(method, LingService.class);
-        }
-        if (lingServiceAnn != null && lingServiceAnn.timeout() > 0) {
-            builder.timeout(Duration.ofMillis(lingServiceAnn.timeout()));
-            overridden = true;
-        }
+        // 注解只声明契约：@LingService 不再承载治理入参（timeout 已删）。
+        // 超时/降级/重试等治理入参收敛到 YAML references 分区，由 applyPolicyOverlay 处理。
 
         return overridden;
     }
@@ -188,6 +181,30 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
                     builder.auditEnabled(rule.isEnabled());
                     builder.auditAction(rule.getAction());
                     accessControlOverride = true;
+                    break;
+                }
+            }
+        }
+
+        // 跨灵元服务引用治理规则：原散在 @LingReference.timeout/fallback 的入参收敛到此。
+        // 优先级语义：references（被调方方法名维度）先覆，invocation（被调方策略级）后覆——
+        // 后者优先级更高，被调方策略应能覆盖调用方侧声明。两者都命中同一方法且设同字段时，
+        // invocation 段会覆盖 references 段的值。
+        if (policy.getReferences() != null) {
+            for (GovernancePolicy.ReferenceRule rule : policy.getReferences()) {
+                if (isMatch(rule.getReferencePattern(), methodName)) {
+                    if (rule.getTimeoutMs() != null) {
+                        builder.timeout(Duration.ofMillis(rule.getTimeoutMs()));
+                        invocationOverride = true;
+                    }
+                    if (rule.getRetryCount() != null) {
+                        builder.retryCount(rule.getRetryCount());
+                        invocationOverride = true;
+                    }
+                    if (rule.getFallbackValue() != null) {
+                        builder.fallbackValue(rule.getFallbackValue());
+                        invocationOverride = true;
+                    }
                     break;
                 }
             }

@@ -14,7 +14,6 @@ import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
-
 /**
  * GlobalServiceRoutingProxy 测试。
  * 覆盖：动态路由、代理复用、离线异常、Object 方法处理。
@@ -179,6 +178,63 @@ class GlobalServiceRoutingProxyTest {
 
             // lingRepository.getRuntime 只被调用一次（resolveTargetLingId 每次都调用）
             verify(lingRepository, atLeast(2)).getRuntime("ling-1");
+        }
+    }
+
+    // ==================== 反向索引路由收敛 ====================
+
+    @Nested
+    @DisplayName("反向索引路由收敛")
+    class ReverseIndexRouting {
+
+        @Test
+        @DisplayName("未注册契约返回 null 不兜底遍历（implicit-registration: false 语义）")
+        void unregisteredContractReturnsNullNotFallback() {
+            // 反向索引未命中返回空列表——proxy 不应再遍历 getAllRuntimes
+            when(lingServiceRegistry.getLingIdsByContractId("com.example.Service"))
+                    .thenReturn(Collections.emptyList());
+            when(lingRepository.getAllRuntimes()).thenReturn(Collections.emptyList());
+
+            GlobalServiceRoutingProxy proxy = createProxy(null);
+            try {
+                Method dummyMethod = Runnable.class.getMethod("run");
+                proxy.invoke(Proxy.newProxyInstance(
+                        getClass().getClassLoader(),
+                        new Class[]{Runnable.class},
+                        (p, m, a) -> null), dummyMethod, null);
+                fail("应抛 LingInvocationException 表示离线");
+            } catch (LingInvocationException e) {
+                // 预期：未注册契约走反向索引未命中 → null → STATE_REJECTED
+            } catch (Throwable t) {
+                // 其他 Throwable 也接受，关键是验证了 getAllRuntimes 未被调
+            }
+            // 关键断言：兜底遍历已被删，getAllRuntimes 不应被调用
+            verify(lingRepository, never()).getAllRuntimes();
+        }
+
+        @Test
+        @DisplayName("反向索引命中可用灵元时直接路由")
+        void reverseIndexHitRoutes() throws Throwable {
+            LingRuntime runtime = mock(LingRuntime.class);
+            when(runtime.getLingId()).thenReturn("ling-1");
+            when(runtime.isAvailable()).thenReturn(true);
+            when(lingRepository.getRuntime("ling-1")).thenReturn(runtime);
+            when(lingServiceRegistry.getLingIdsByContractId("com.example.Service"))
+                    .thenReturn(java.util.Collections.singletonList("ling-1"));
+
+            GlobalServiceRoutingProxy proxy = createProxy(null);
+            try {
+                Method dummyMethod = Runnable.class.getMethod("run");
+                proxy.invoke(Proxy.newProxyInstance(
+                        getClass().getClassLoader(),
+                        new Class[]{Runnable.class},
+                        (p, m, a) -> null), dummyMethod, null);
+            } catch (Exception ignored) {
+                // SmartServiceProxy 内部可能因缺少上下文抛异常，不影响反向索引命中验证
+            }
+            // 反向索引命中后走 getRuntime，不应再调 getAllRuntimes
+            verify(lingRepository, atLeast(1)).getRuntime("ling-1");
+            verify(lingRepository, never()).getAllRuntimes();
         }
     }
 

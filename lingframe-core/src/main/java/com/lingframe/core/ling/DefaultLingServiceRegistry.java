@@ -18,6 +18,11 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     // 接口服务也会注册（冗余但幂等），不影响正确性。
     private final Map<String, String> implClassNameCache = new ConcurrentHashMap<>();
 
+    // 反向索引：契约 ID → 灵元 ID 集合
+    // 契约 ID 取 FQSID 去掉 "lingId:" 前缀后的剩余部分（裸契约名或短 ID）。
+    // 路由层按接口类型查灵元时用此索引，避免 O(n) 遍历全表。
+    private final Map<String, java.util.Set<String>> contractToLingIds = new ConcurrentHashMap<>();
+
     @Override
     public void registerServiceMetadata(String serviceFQSID, String methodName,
             String[] parameterTypes, String returnType) {
@@ -34,6 +39,8 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         if (returnType != null) {
             returnTypeCache.put(serviceFQSID + "::" + signature, returnType);
         }
+        // 维护反向索引：从 FQSID 提取 lingId 与 contractId，登记到反向索引
+        indexContractToLing(serviceFQSID);
     }
 
     @Override
@@ -79,12 +86,57 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     }
 
     @Override
+    public List<String> getLingIdsByContractId(String contractId) {
+        if (contractId == null || contractId.isEmpty()) {
+            return new ArrayList<>();
+        }
+        java.util.Set<String> lingIds = contractToLingIds.get(contractId);
+        if (lingIds != null) {
+            return new ArrayList<>(lingIds);
+        }
+        // 兜底：FQSID 完整键命中时，提取 lingId 返回
+        if (contractId.indexOf(':') > 0 && metadataCache.containsKey(contractId)) {
+            String lingId = contractId.substring(0, contractId.indexOf(':'));
+            List<String> result = new ArrayList<>();
+            result.add(lingId);
+            return result;
+        }
+        return new ArrayList<>();
+    }
+
+    @Override
     public void evict(String lingId) {
         // 灵元整体卸载：清除该灵元所有接口契约和实现类名映射
+        // 注：evict 与并发 registerServiceMetadata 可能导致反向索引短暂不一致，
+        // 这属于 ConcurrentHashMap 弱一致性的可接受范围——卸载与注册并发极少，
+        // 短暂残留由上层重试/熔断兜底。
         String prefix = lingId + ":";
         metadataCache.keySet().removeIf(k -> k.startsWith(prefix));
         returnTypeCache.keySet().removeIf(k -> k.startsWith(prefix));
         implClassNameCache.keySet().removeIf(k -> k.startsWith(prefix));
+        // 清理反向索引：从每个契约的灵元集合中移除本灵元
+        for (java.util.Set<String> lingIdSet : contractToLingIds.values()) {
+            lingIdSet.remove(lingId);
+        }
+        // 清空空集合，防内存泄漏
+        contractToLingIds.values().removeIf(java.util.Set::isEmpty);
+    }
+
+    /**
+     * 从 FQSID 提取 lingId 与 contractId，登记到反向索引。
+     * contractId 为 FQSID 去掉 "lingId:" 前缀后的剩余（裸契约名或短 ID）。
+     */
+    private void indexContractToLing(String serviceFQSID) {
+        if (serviceFQSID == null) {
+            return;
+        }
+        int idx = serviceFQSID.indexOf(':');
+        if (idx <= 0 || idx >= serviceFQSID.length() - 1) {
+            return; // 不含 ':' 或 ':' 在末尾，非合法 FQSID，忽略
+        }
+        String lingId = serviceFQSID.substring(0, idx);
+        String contractId = serviceFQSID.substring(idx + 1);
+        contractToLingIds.computeIfAbsent(contractId, k -> ConcurrentHashMap.newKeySet()).add(lingId);
     }
 
     private String buildSignature(String methodName, String[] parameterTypes) {

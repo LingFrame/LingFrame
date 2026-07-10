@@ -4,6 +4,8 @@ import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.LingReference;
 import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingCallContext;
+import com.lingframe.api.exception.LingInvocationException;
+import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.starter.config.LingFrameProperties;
@@ -153,18 +155,18 @@ class LingCoreBeanGovernanceProcessorTest {
         proxy.createSomething();
 
         // 场景 5：模拟 pipelineEngine 抛出安全拒绝异常
-        doThrow(new com.lingframe.api.exception.LingInvocationException(
-            "reject", com.lingframe.api.exception.LingInvocationException.ErrorKind.SECURITY_REJECTED, "denied"
+        doThrow(new LingInvocationException(
+            "reject", LingInvocationException.ErrorKind.SECURITY_REJECTED, "denied"
         )).when(pipelineEngine).invoke(any());
         
-        assertThrows(com.lingframe.api.exception.PermissionDeniedException.class, proxy::doSomething);
+        assertThrows(PermissionDeniedException.class, proxy::doSomething);
 
         // 场景 6：模拟 pipelineEngine 抛出其他治理异常
-        doThrow(new com.lingframe.api.exception.LingInvocationException(
-            "limit", com.lingframe.api.exception.LingInvocationException.ErrorKind.RATE_LIMITED, "limited"
+        doThrow(new LingInvocationException(
+            "limit", LingInvocationException.ErrorKind.RATE_LIMITED, "limited"
         )).when(pipelineEngine).invoke(any());
 
-        assertThrows(com.lingframe.api.exception.LingInvocationException.class, proxy::doSomething);
+        assertThrows(LingInvocationException.class, proxy::doSomething);
     }
 
 }

@@ -1,9 +1,8 @@
 package com.lingframe.core.proxy;
 
 import com.lingframe.api.exception.LingInvocationException;
-import com.lingframe.core.ling.LingInstance;
-import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 
@@ -11,6 +10,8 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 全局服务路由代理。
@@ -100,31 +101,40 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
             return targetLingId;
         }
 
-        // 遍历所有灵元，寻找接口实现
-        for (LingRuntime runtime : lingRepository.getAllRuntimes()) {
-            if (!runtime.isAvailable())
-                continue;
-            try {
-                LingInstance instance = runtime.getInstancePool().getDefault();
-                if (instance != null && instance.getContainer() != null) {
-                    ClassLoader cl = instance.getClassLoader();
-                    if (cl == null) {
-                        continue;
-                    }
-                    try {
-                        Class<?> clazz = cl.loadClass(interfaceName);
-                        if (instance.getContainer().getBean(clazz) != null) {
-                            return runtime.getLingId();
-                        }
-                    } catch (ClassNotFoundException ignored) {
-                        // 该灵元不包含此接口，继续搜索
-                    }
-                }
-            } catch (Exception e) {
-                log.trace("Error checking bean for ling {}: {}", runtime.getLingId(), e.getMessage());
+        // 路由收敛：删原 O(n) 遍历全仓 + 反射 loadClass + getBean 的兜底逻辑，
+        // 改走 LingServiceRegistry 反向索引 O(1) 命中。
+        // 语义变化：未注册的契约不再兜底查到，返回 null 由上层抛 STATE_REJECTED。
+        // 这是有意行为——implicit-registration: false 时未标 @LingService 但 implements 的灵元
+        // 不应被路由命中，避免误回退。
+        if (lingServiceRegistry == null) {
+            return null;
+        }
+        List<String> lingIds = lingServiceRegistry.getLingIdsByContractId(interfaceName);
+        if (lingIds == null || lingIds.isEmpty()) {
+            // 兜底：interfaceName 可能是完整 FQSID（含 ':'），反向索引键只存 contractId 部分
+            int idx = interfaceName.indexOf(':');
+            if (idx > 0 && idx < interfaceName.length() - 1) {
+                String contractId = interfaceName.substring(idx + 1);
+                lingIds = lingServiceRegistry.getLingIdsByContractId(contractId);
             }
         }
-
+        if (lingIds == null || lingIds.isEmpty()) {
+            return null;
+        }
+        // 多灵元命中时记调试日志，便于路由排查——删 O(n) 遍历后丢过这个线索。
+        if (lingIds.size() > 1) {
+            log.debug("Multiple lings matched for contract [{}]: {}, routing to first available",
+                    interfaceName, lingIds);
+        }
+        // 多灵元命中时取第一个可用灵元；排序保证稳定（按字典序）。
+        // 负载均衡策略暂不抽象——当前单实例/少实例阶段字典序足够；
+        // 真正需要轮询/加权/最少连接时再引入 RoutingStrategy 接口，避免过早抽象。
+        for (String lingId : lingIds.stream().sorted().collect(Collectors.toList())) {
+            LingRuntime runtime = lingRepository.getRuntime(lingId);
+            if (runtime != null && runtime.isAvailable()) {
+                return lingId;
+            }
+        }
         return null;
     }
 }

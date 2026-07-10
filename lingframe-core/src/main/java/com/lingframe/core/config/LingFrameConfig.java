@@ -276,6 +276,17 @@ public class LingFrameConfig {
     @Builder.Default
     private boolean apiOverrideCheckEnabled = true;
 
+    /**
+     * 灵元服务隐式接口注册开关（默认 true）。
+     * <p>
+     * 为 true 时：灵元 Bean 实现的业务接口会自动注册为 FQSID=[lingId]:[interfaceName]，
+     * 实现「implements UserService 即暴露」的零侵入契约。
+     * 为 false 时：仅显式 @LingService 标注的方法/类型会注册，
+     * 适用于想强制显式声明、或避免误扫到框架接口的团队。
+     */
+    @Builder.Default
+    private boolean implicitRegistration = true;
+
     // ================= 运行时模板 (Runtime Template) =================
 
     /**
