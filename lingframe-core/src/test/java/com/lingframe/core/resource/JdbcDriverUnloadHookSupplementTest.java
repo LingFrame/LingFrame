@@ -4,9 +4,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.sql.Driver;
 import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.util.Enumeration;
 import java.util.List;
 
@@ -29,10 +30,10 @@ class JdbcDriverUnloadHookSupplementTest {
      * 等于该 URLClassLoader，从而被卸载钩子的 ClassLoader 匹配规则命中。
      */
     private ClassLoader createIsolatedClassLoader() throws Exception {
-        java.net.URL testClassesUrl = JdbcDriverUnloadHookSupplementTest.class
+        URL testClassesUrl = JdbcDriverUnloadHookSupplementTest.class
                 .getProtectionDomain().getCodeSource().getLocation();
-        return new java.net.URLClassLoader(
-                new java.net.URL[]{testClassesUrl}, null);
+        return new URLClassLoader(
+                new URL[] { testClassesUrl }, ClassLoader.getSystemClassLoader().getParent());
     }
 
     @Test

@@ -4,6 +4,8 @@ import com.lingframe.api.context.LingContext;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.classloader.SharedApiManager;
+import com.lingframe.core.classloader.LingClassLoader;
+import com.lingframe.starter.classloader.EcosystemParentPackages;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.deploy.DefaultLingDeployService;
@@ -214,6 +216,10 @@ public class LingFrameLifecycleBeansConfiguration {
             if (!BOOTSTRAP_DONE.compareAndSet(false, true)) {
                 return;
             }
+            // 生态环境委派注入：core 不替宿主决策「该共享什么」，由适配层注入。
+            // starter 经宿主生态环境（Spring/Jackson/Logback/Log4j2）必须走父委派，
+            // 避免灵元自带这些生态的副本与灵核实例并存造成 ClassCastException。
+            LingClassLoader.addParentDelegatePackages(EcosystemParentPackages.ecosystemDefaults());
             sharedApiManager.preloadFromConfig();
             sharedApiManager.freezeSharedBoundary();
             discoveryService.scanAndLoad();

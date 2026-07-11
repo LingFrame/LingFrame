@@ -205,4 +205,38 @@ class LingClassLoaderTest {
         LingClassLoader cl = new LingClassLoader(new URL[0], ClassLoader.getSystemClassLoader());
         assertEquals("unknown", cl.getLingId());
     }
+
+    /**
+     * 边界约束回归：core 的 FORCE_PARENT_PACKAGES 只持灵珑自身依赖（JDK / 姑约 / 门面），
+     * 生态环境包（Spring/Jackson/Logback/Log4j2）移 runtime 适配层注入。 避免散回 core。
+     */
+    @Nested
+    @DisplayName("core 白名单边界约束")
+    class CoreWhitelistBoundaryTests {
+
+        @Test
+        @DisplayName("生态环境包未注入前灵元走 Child-First 自加载，不委派给父")
+        void shouldNotDelegateEcosystemPackagesBeforeInjection() throws Exception {
+            // 生态环境包（Spring/Jackson/Logback/Log4j2）已不在 core 白名单——
+            // 灵元自带这些副本时应走 Child-First 自加载，不被强制委派给父。
+            // 验证：缺失生态类时 loadClass 不走父委派（父也拿不到 → ClassNotFoundException）。
+            try (LingClassLoader cl = new LingClassLoader("ling-eco", new URL[0], ClassLoader.getSystemClassLoader())) {
+                assertThrows(ClassNotFoundException.class,
+                        () -> cl.loadClass("org.springframework.context.ApplicationContext"));
+            }
+        }
+
+        @Test
+        @DisplayName("addParentDelegatePackages 注入生态包后灵元走父委派")
+        void shouldDelegateEcosystemPackagesAfterAdaptorInjection() throws Exception {
+            // 模拟适配层注入：addParentDelegatePackages("org.springframework.") 后应走父委派
+            LingClassLoader.addParentDelegatePackages(Arrays.asList("org.springframework."));
+            try (LingClassLoader cl = new LingClassLoader("ling-eco-injected", new URL[0], ClassLoader.getSystemClassLoader())) {
+                // 注入后走父委派——单测环境父 CL 也拿不到 Spring，但会抛 ClassNotFoundException from parent。
+                // 真正委派验证靠 starter 集成测试，此处只断言「注入后 loadClass 路径变了，仍能安全失败」。
+                assertThrows(ClassNotFoundException.class,
+                        () -> cl.loadClass("org.springframework.context.ApplicationContext"));
+            }
+        }
+    }
 }

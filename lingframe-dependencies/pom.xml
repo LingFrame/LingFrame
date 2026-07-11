@@ -15,7 +15,14 @@
         <!-- 使用 Maven CI Friendly 变量 -->
         <revision>0.3.0</revision>
 
-        <!-- Java -->
+        <!-- Java Defaults (Spring Boot 2 / Java 8) -->
+        <java.version>1.8</java.version>
+        <spring-boot.version>2.7.18</spring-boot.version>
+        <snakeyaml.version>1.33</snakeyaml.version>
+        <slf4j.version>1.7.36</slf4j.version>
+        <caffeine.version>2.9.3</caffeine.version>
+
+        <!-- Java Compiler -->
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -71,6 +78,16 @@
 
                 <junit-jupiter.version>5.9.3</junit-jupiter.version>
                 <mockito.version>5.3.1</mockito.version>
+            </properties>
+        </profile>
+        <!-- JDK 9+ JVM arguments profile to allow reflective access in tests -->
+        <profile>
+            <id>jdk9-plus-surefire</id>
+            <activation>
+                <jdk>[9,)</jdk>
+            </activation>
+            <properties>
+                <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.ref=ALL-UNNAMED --add-opens java.base/java.net=ALL-UNNAMED --add-opens java.base/java.security=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.util.concurrent=ALL-UNNAMED --add-opens java.base/jdk.internal.loader=ALL-UNNAMED --add-opens java.sql/java.sql=ALL-UNNAMED --add-opens java.rmi/sun.rmi.transport=ALL-UNNAMED</argLine>
             </properties>
         </profile>
     </profiles>

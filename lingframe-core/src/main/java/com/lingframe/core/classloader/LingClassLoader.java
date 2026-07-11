@@ -45,17 +45,16 @@ import java.util.concurrent.atomic.AtomicLong;
 @Slf4j
 public class LingClassLoader extends URLClassLoader {
 
-    // 必须强制走父加载器的包（契约包 + JDK + 共享 API）
+    // 必须强制走父加载器的包（JDK 基础 + 灵珑自身依赖 + 契约包）
+    // 边界约束：core 只持「灵珑自身必须委派」的包——JDK 基础、灵珑 API 契约、
+    // 灵珑自身用的门面（slf4j/lombok/snakeyaml）。生态环境包（Spring/Jackson/Logback/Log4j2）
+    // 不钶在此，由 runtime 适配层经 addParentDelegatePackages 注入，避免 core 替宿主决策。
     private static final List<String> FORCE_PARENT_PACKAGES = Arrays.asList(
             "java.", "javax.", "jakarta.", "jdk.", "sun.", "com.sun.", "org.w3c.", "org.xml.",
             "com.lingframe.api.", // API 契约必须共享
-            "lombok.", // Lombok 相关类
-            "org.slf4j.", // 日志门面通常共享
-            "org.apache.logging.log4j.", // Log4j2
-            "ch.qos.logback.", // Logback
-            "org.springframework.", // Spring框架相关类
-            "com.fasterxml.jackson.", // Jackson JSON处理
-            "org.yaml.snakeyaml." // SnakeYAML
+            "lombok.", // 灵珑自身用 Lombok @Slf4j 等注解，门面共享
+            "org.slf4j.", // 灵珑自身日志门面，门面共享
+            "org.yaml.snakeyaml." // 灵珑自身用 snakeyaml 解析 ling.yml，门面共享
     );
 
     // 共享 API 包前缀（可动态添加，最终委派给 SharedApiClassLoader）
