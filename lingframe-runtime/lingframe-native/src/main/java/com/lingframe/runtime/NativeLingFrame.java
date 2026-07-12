@@ -11,6 +11,7 @@ import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
+import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.ling.DefaultLingLifecycleEngine;
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.DefaultLingResourceManager;
@@ -80,6 +81,7 @@ public class NativeLingFrame {
     private static LeakDetector LEAK_DETECTOR;
     private static EventBus EVENT_BUS;
     private static LingRepository LING_REPOSITORY;
+    private static LocalGovernanceRegistry GOVERNANCE_REGISTRY;
 
     /**
      * 使用默认配置启动灵珑。
@@ -105,6 +107,7 @@ public class NativeLingFrame {
         EVENT_BUS = eventBus;
         RUNTIME_COORDINATOR = new RuntimeCoordinator(eventBus);
         RUNTIME_COORDINATOR.start();
+        GOVERNANCE_REGISTRY = new LocalGovernanceRegistry(eventBus);
 
         // 准备核心组件
         DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, config);
@@ -138,6 +141,8 @@ public class NativeLingFrame {
                 .metricsCollector(metricsCollector)
                 .runtimeCoordinator(RUNTIME_COORDINATOR)
                 .governanceMetricsCollector(governanceMetricsCollector)
+                .lingFrameInfo(config)
+                .governanceRegistry(GOVERNANCE_REGISTRY)
                 .build());
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(
                 filterRegistry);
@@ -295,6 +300,7 @@ public class NativeLingFrame {
         GLOBAL_LIFECYCLE_ENGINE = null;
         HOST_CONTEXT = null;
         LING_REPOSITORY = null;
+        GOVERNANCE_REGISTRY = null;
         started.set(false);
 
         log.info("LingFrame shutdown complete.");

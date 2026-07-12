@@ -39,6 +39,7 @@ class PipelineArchitectureContractTest {
                 TrafficMetricsFilter.class,
                 MacroStateGuardFilter.class,
                 CanaryRoutingFilter.class,
+                InvocationPolicyPrefillFilter.class,
                 ResilienceGovernanceFilter.class,
                 ContextIsolationFilter.class,
                 GovernanceDecisionFilter.class,

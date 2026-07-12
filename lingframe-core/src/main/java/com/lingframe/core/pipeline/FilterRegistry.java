@@ -1,9 +1,11 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
+import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
@@ -66,7 +68,9 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
                 config.getEventBus(),
                 config.getMetricsCollector(),
                 config.getRuntimeCoordinator(),
-                config.getGovernanceMetricsCollector());
+                config.getGovernanceMetricsCollector(),
+                config.getLingFrameInfo(),
+                config.getGovernanceRegistry());
     }
 
     /**
@@ -77,18 +81,22 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
     private void initializeInternal(LingRepository lingRepository, LingServiceRegistry serviceRegistry,
             TrafficRouter trafficRouter, EventBus eventBus,
             MetricsCollector metricsCollector,
-            RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector) {
+            RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector,
+            LingFrameInfo lingFrameInfo, LocalGovernanceRegistry governanceRegistry) {
         builtinFilters.clear();
 
         MacroStateGuardFilter stateGuard = new MacroStateGuardFilter(lingRepository);
         CanaryRoutingFilter routing = new CanaryRoutingFilter(
                 lingRepository,
                 trafficRouter != null ? trafficRouter : new LatestVersionPolicy());
+        // 预填充 filter：在 RESILIENCE 之前把灵元级 effective policy 预填到 ctx.governance()，
+        // 守护"ctx 为唯一通行证"原则，让弹性组件通过 ctx 读取治理意图
+        InvocationPolicyPrefillFilter policyPrefill = new InvocationPolicyPrefillFilter(lingRepository, governanceRegistry);
         ResilienceGovernanceFilter resilience = new ResilienceGovernanceFilter(
                 lingRepository, eventBus, runtimeCoordinator, governanceMetricsCollector);
         ContextIsolationFilter resolution = new ContextIsolationFilter(serviceRegistry);
         GovernanceDecisionFilter governance = new GovernanceDecisionFilter(lingRepository, governanceArbitrator);
-        PermissionGovernanceFilter permission = new PermissionGovernanceFilter(permissionService);
+        PermissionGovernanceFilter permission = new PermissionGovernanceFilter(permissionService, lingFrameInfo);
         ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(lingRepository, governanceMetricsCollector);
         TerminalInvokerFilter terminal = new TerminalInvokerFilter(methodCache, serviceInvoker);
 
@@ -98,6 +106,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         builtinFilters.add(new TrafficMetricsFilter(lingRepository, metricsCollector, eventBus));
         builtinFilters.add(stateGuard);
         builtinFilters.add(routing);
+        builtinFilters.add(policyPrefill);
         builtinFilters.add(resilience);
         builtinFilters.add(resolution);
         builtinFilters.add(governance);
@@ -173,6 +182,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         assertOrder(orders, TrafficMetricsFilter.class, FilterPhase.METRICS);
         assertOrder(orders, MacroStateGuardFilter.class, FilterPhase.STATE_GUARD);
         assertOrder(orders, CanaryRoutingFilter.class, FilterPhase.ROUTING);
+        assertOrder(orders, InvocationPolicyPrefillFilter.class, FilterPhase.POLICY_PREFILL);
         assertOrder(orders, ResilienceGovernanceFilter.class, FilterPhase.RESILIENCE);
         assertOrder(orders, ContextIsolationFilter.class, FilterPhase.RESOLUTION);
         assertOrder(orders, GovernanceDecisionFilter.class, FilterPhase.GOVERNANCE);
@@ -182,7 +192,8 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
 
         assertBefore(orders, TrafficMetricsFilter.class, MacroStateGuardFilter.class);
         assertBefore(orders, MacroStateGuardFilter.class, CanaryRoutingFilter.class);
-        assertBefore(orders, CanaryRoutingFilter.class, ResilienceGovernanceFilter.class);
+        assertBefore(orders, CanaryRoutingFilter.class, InvocationPolicyPrefillFilter.class);
+        assertBefore(orders, InvocationPolicyPrefillFilter.class, ResilienceGovernanceFilter.class);
         assertBefore(orders, ResilienceGovernanceFilter.class, ContextIsolationFilter.class);
         assertBefore(orders, ContextIsolationFilter.class, GovernanceDecisionFilter.class);
         assertBefore(orders, GovernanceDecisionFilter.class, PermissionGovernanceFilter.class);
@@ -194,6 +205,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         return filter instanceof TrafficMetricsFilter
                 || filter instanceof MacroStateGuardFilter
                 || filter instanceof CanaryRoutingFilter
+                || filter instanceof InvocationPolicyPrefillFilter
                 || filter instanceof ResilienceGovernanceFilter
                 || filter instanceof ContextIsolationFilter
                 || filter instanceof GovernanceDecisionFilter
@@ -249,6 +261,18 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         return resilienceFilter.recover(lingId);
     }
 
+    /**
+     * 暴露弹性治理过滤器引用。
+     * <p>
+     * 供 {@link #evictLingResources(String)} / {@link #recoverLingGovernance(String)} 等内部治理操作
+     * 调用 {@link ResilienceGovernanceFilter#evict(String)} / {@link ResilienceGovernanceFilter#recover(String)}
+     * 实现灵元卸载/受控恢复时的弹性组件清理。暴露引用仅限 evict/recover 等动态治理操作，
+     * 不暴露注册表、线程池等内核状态。
+     * <p>
+     * 注意：治理下发（{@code GovernanceAdminService.updateInvocationConfig}）不再需要调用 evict——
+     * 治理策略唯一真源是 patch registry，{@link InvocationPolicyPrefillFilter} 会在每次请求时
+     * 读取最新 effective policy 预填到 ctx，弹性组件通过 ctx 读取，无需驱逐缓存。
+     */
     ResilienceGovernanceFilter getResilienceFilter() {
         return resilienceFilter;
     }

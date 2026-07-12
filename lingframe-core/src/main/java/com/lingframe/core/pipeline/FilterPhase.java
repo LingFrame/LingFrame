@@ -32,6 +32,17 @@ public final class FilterPhase {
     public static final int ROUTING = 200;
 
     /**
+     * 治理意图预填充阶段。
+     * <p>
+     * 在弹性治理之前把灵元级 effective policy（静态策略 + 动态补丁合并）的 invocation 字段
+     * 预填到 ctx.governance()，让弹性组件通过 ctx 读取治理意图，
+     * 守护"ctx 为 pipeline 唯一通行证"原则。
+     * <p>
+     * 必须在 ROUTING 之后（lingId 已确定）、RESILIENCE 之前（弹性组件读 ctx）。
+     */
+    public static final int POLICY_PREFILL = 240;
+
+    /**
      * 弹性治理阶段。
      */
     public static final int RESILIENCE = 300;

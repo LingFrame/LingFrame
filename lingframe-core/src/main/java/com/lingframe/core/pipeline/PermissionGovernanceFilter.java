@@ -5,6 +5,7 @@ import com.lingframe.api.security.AuditMetadataKeys;
 import com.lingframe.api.security.PermissionAuditRecord;
 import com.lingframe.api.security.PermissionAuditResult;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 import lombok.RequiredArgsConstructor;
@@ -14,12 +15,21 @@ import java.util.Map;
 
 /**
  * 权限检查与审计过滤器。
+ * <p>
+ * prod 模式下执行零信任红线：未显式声明 requiredPermission 的调用一律拒绝，
+ * 防止启发式推导（{@link com.lingframe.core.governance.GovernanceStrategy}）因方法命名不规范产生越权风险。
+ * dev 模式下维持原有「未声明即放行」兜底，便于开发期快速验证。
  */
 @Slf4j
 @RequiredArgsConstructor
 public class PermissionGovernanceFilter implements LingInvocationFilter {
 
     private final PermissionService permissionService;
+    /**
+     * 灵核全局配置只读门面，用于判断 dev/prod 模式。
+     * 可为 null（native/test 未注入时），此时按 prod 模式 Deny-by-Default 处理。
+     */
+    private final LingFrameInfo lingFrameInfo;
 
     @Override
     public int getOrder() {
@@ -33,7 +43,17 @@ public class PermissionGovernanceFilter implements LingInvocationFilter {
         long startNanos = System.nanoTime();
 
         if (capability == null || capability.isEmpty()) {
-            log.debug("[Security] No required permission declared, allowing: caller={}, service={}",
+            // prod 模式零信任红线：未显式声明权限的一律拒绝，防止启发式推导越权。
+            // dev 模式维持「未声明即放行」兜底，便于开发期快速验证。
+            boolean devMode = lingFrameInfo != null && lingFrameInfo.isDevMode();
+            if (!devMode) {
+                log.warn("[Security] Deny-by-Default: no required permission declared in prod mode, caller={}, service={}",
+                        callerLingId, ctx.getServiceFQSID());
+                auditIfNeeded(ctx, PermissionAuditResult.DENIED, "Deny-by-Default (no permission declared)", startNanos);
+                throw new LingInvocationException(ctx.getServiceFQSID(),
+                        LingInvocationException.ErrorKind.SECURITY_REJECTED);
+            }
+            log.debug("[Security] No required permission declared, allowing (dev mode): caller={}, service={}",
                     callerLingId, ctx.getServiceFQSID());
             try {
                 Object result = chain.doFilter(ctx);

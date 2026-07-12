@@ -1,9 +1,11 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
+import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
@@ -57,4 +59,18 @@ public class FilterRegistryConfig {
     private final RuntimeCoordinator runtimeCoordinator = null;
     @Builder.Default
     private final GovernanceMetricsCollector governanceMetricsCollector = null;
+
+    /**
+     * 治理补丁注册表，供 {@link InvocationPolicyPrefillFilter} 读取动态补丁。
+     * 可为 null（native/test 场景未注入时，预填充 filter 只读静态策略，不读 patch）。
+     */
+    @Builder.Default
+    private final LocalGovernanceRegistry governanceRegistry = null;
+
+    /**
+     * 灵核全局配置只读门面，供 {@link PermissionGovernanceFilter} 判断 dev/prod 模式。
+     * 可为 null（native/test 场景未注入时，过滤器按 prod 模式 Deny-by-Default 处理）。
+     */
+    @Builder.Default
+    private final LingFrameInfo lingFrameInfo = null;
 }

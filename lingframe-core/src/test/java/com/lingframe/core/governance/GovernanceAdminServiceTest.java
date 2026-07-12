@@ -9,15 +9,12 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.ling.InstancePool;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.ArgumentCaptor;
 
-import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -185,7 +183,6 @@ class GovernanceAdminServiceTest {
         when(runtime.getInstancePool().getDefault()).thenReturn(instance);
         when(instance.getDefinition()).thenReturn(definition);
         when(definition.getGovernance()).thenReturn(staticPolicy);
-        when(runtime.getConfig()).thenReturn(LingRuntimeConfig.defaults());
 
         LocalGovernanceRegistry registry = new LocalGovernanceRegistry(null,
                 tempDir.resolve("patch.yml").toString());
@@ -196,10 +193,24 @@ class GovernanceAdminServiceTest {
     @Nested
     class UpdateInvocationConfigSemantics {
 
-        @DisplayName("下发后同时更新 GovernancePolicy.InvocationPolicy 与 LingRuntimeConfig")
+        @DisplayName("下发后只写 patch 真源，不同步 LingRuntimeConfig，不驱逐缓存")
         @Test
-        void updateInvocationConfig_writesBoth(@TempDir Path tempDir) {
-            GovernanceAdminService svc = newServiceWithStaticPolicy(tempDir, new GovernancePolicy());
+        void updateInvocationConfig_writesPatchOnly(@TempDir Path tempDir) {
+            // 治本后：治理策略唯一真源是 patch registry，预填充 filter 在 RESILIENCE 之前把
+            // effective policy 预填到 ctx.governance()，弹性组件通过 ctx 读取，无需同步底座也无需驱逐缓存
+            LingRepository repository = mock(LingRepository.class);
+            LingRuntime runtime = mock(LingRuntime.class);
+            LingInstance instance = mock(LingInstance.class);
+            LingDefinition definition = mock(LingDefinition.class);
+            when(repository.getRuntime(any())).thenReturn(runtime);
+            when(runtime.getInstancePool()).thenReturn(mock(InstancePool.class));
+            when(runtime.getInstancePool().getDefault()).thenReturn(instance);
+            when(instance.getDefinition()).thenReturn(definition);
+            when(definition.getGovernance()).thenReturn(new GovernancePolicy());
+            LocalGovernanceRegistry registry = new LocalGovernanceRegistry(null,
+                    tempDir.resolve("patch.yml").toString());
+            GovernanceAdminService svc = new GovernanceAdminService(
+                    repository, registry, mock(PermissionService.class));
 
             InvocationConfigDTO config = InvocationConfigDTO.builder()
                     .timeoutMs(5000)
@@ -209,15 +220,15 @@ class GovernanceAdminServiceTest {
 
             svc.updateInvocationConfig("order-ling", config);
 
-            // 验证 GovernancePolicy.InvocationPolicy 已写入
+            // 验证 GovernancePolicy.InvocationPolicy 已写入（治理策略唯一真源）
             GovernancePolicy effective = svc.getEffectivePolicy("order-ling");
             assertNotNull(effective.getInvocation());
             assertEquals(5000, effective.getInvocation().getTimeoutMs());
             assertEquals(100, effective.getInvocation().getRateLimitPerSecond());
             assertEquals(20, effective.getInvocation().getMaxConcurrentThreads());
 
-            // 验证 LingRuntimeConfig 已同步（通过 runtime.getConfig）
-            // runtime 是 mock，getConfig 返回 defaults，所以这里只验证不抛异常即说明双写链路通
+            // 治本后不再同步 LingRuntimeConfig 底座（双写已消除）
+            verify(runtime, never()).updateConfig(any());
         }
 
         @DisplayName("null 字段表示不动，不覆盖现有值")
@@ -274,48 +285,6 @@ class GovernanceAdminServiceTest {
 
             assertThrows(IllegalArgumentException.class,
                     () -> svc.updateInvocationConfig("order-ling", null));
-        }
-
-        @DisplayName("下发后保留原有熔断参数（toBuilder 不丢字段）")
-        @Test
-        void updateInvocationConfig_preservesCircuitBreakerFields(@TempDir Path tempDir) {
-            // 构造带自定义熔断参数的 RuntimeConfig，验证 toBuilder 重建后不丢字段
-            LingRuntimeConfig customConfig = LingRuntimeConfig.builder()
-                    .circuitBreakerFailureRateThreshold(75)
-                    .circuitBreakerSlidingWindowSize(100)
-                    .circuitBreakerMinimumNumberOfCalls(20)
-                    .circuitBreakerSlowCallRateThreshold(90)
-                    .circuitBreakerWaitDurationInOpenStateMs(5000)
-                    .build();
-            LingRepository repository = mock(LingRepository.class);
-            LingRuntime runtime = mock(LingRuntime.class);
-            LingInstance instance = mock(LingInstance.class);
-            LingDefinition definition = mock(LingDefinition.class);
-            when(repository.getRuntime(any())).thenReturn(runtime);
-            when(runtime.getInstancePool()).thenReturn(mock(InstancePool.class));
-            when(runtime.getInstancePool().getDefault()).thenReturn(instance);
-            when(instance.getDefinition()).thenReturn(definition);
-            when(definition.getGovernance()).thenReturn(new GovernancePolicy());
-            when(runtime.getConfig()).thenReturn(customConfig);
-            LocalGovernanceRegistry registry = new LocalGovernanceRegistry(null,
-                    tempDir.resolve("patch.yml").toString());
-            GovernanceAdminService svc = new GovernanceAdminService(repository, registry, mock(PermissionService.class));
-
-            svc.updateInvocationConfig("cb-ling", InvocationConfigDTO.builder()
-                    .timeoutMs(5000)
-                    .build());
-
-            ArgumentCaptor<LingRuntimeConfig> captor = ArgumentCaptor.forClass(LingRuntimeConfig.class);
-            verify(runtime).updateConfig(captor.capture());
-            LingRuntimeConfig updated = captor.getValue();
-            // 新设的 timeout 已生效
-            assertEquals(5000, updated.getDefaultTimeoutMs());
-            // 熔断字段必须保留，不得被 builder 重建清回默认
-            assertEquals(75, updated.getCircuitBreakerFailureRateThreshold());
-            assertEquals(100, updated.getCircuitBreakerSlidingWindowSize());
-            assertEquals(20, updated.getCircuitBreakerMinimumNumberOfCalls());
-            assertEquals(90, updated.getCircuitBreakerSlowCallRateThreshold());
-            assertEquals(5000L, updated.getCircuitBreakerWaitDurationInOpenStateMs());
         }
     }
 

@@ -6,6 +6,7 @@ import com.lingframe.api.security.AuditMetadataKeys;
 import com.lingframe.api.security.PermissionAuditRecord;
 import com.lingframe.api.security.PermissionAuditResult;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.spi.LingFilterChain;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,7 +29,7 @@ class PermissionGovernanceFilterTest {
     void rejectsWhenPermissionDenied() throws Throwable {
         PermissionService permissionService = mock(PermissionService.class);
         when(permissionService.isAllowed("ling1", "perm:write", AccessType.EXECUTE)).thenReturn(false);
-        PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService);
+        PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService, mockLingFrameInfo(false));
 
         InvocationContext ctx = createContext();
         ctx.governance().setRequiredPermission("perm:write");
@@ -46,10 +47,10 @@ class PermissionGovernanceFilterTest {
     }
 
     @Test
-    @DisplayName("无权限声明时应放行并记录允许审计")
-    void allowsWhenNoCapabilityDeclared() throws Throwable {
+    @DisplayName("dev 模式下无权限声明时应放行并记录允许审计")
+    void allowsWhenNoCapabilityDeclaredInDevMode() throws Throwable {
         PermissionService permissionService = mock(PermissionService.class);
-        PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService);
+        PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService, mockLingFrameInfo(true));
 
         InvocationContext ctx = createContext();
         ctx.governance().setRequiredPermission(null);
@@ -64,11 +65,33 @@ class PermissionGovernanceFilterTest {
     }
 
     @Test
+    @DisplayName("prod 模式下无权限声明时应拒绝（Deny-by-Default 零信任红线）")
+    void deniesWhenNoCapabilityDeclaredInProdMode() throws Throwable {
+        // prod 模式 = mockLingFrameInfo(false)
+        PermissionService permissionService = mock(PermissionService.class);
+        PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService, mockLingFrameInfo(false));
+
+        InvocationContext ctx = createContext();
+        ctx.governance().setRequiredPermission(null);
+
+        LingFilterChain chain = current -> null;
+        LingInvocationException ex = assertThrows(LingInvocationException.class,
+                () -> filter.doFilter(ctx, chain));
+        assertEquals(LingInvocationException.ErrorKind.SECURITY_REJECTED, ex.getKind());
+
+        PermissionAuditRecord record = captureAudit(permissionService);
+        assertEquals(PermissionAuditResult.DENIED, record.getResult());
+        assertTrue(record.getFailureReason().contains("Deny-by-Default"));
+
+        ctx.recycle();
+    }
+
+    @Test
     @DisplayName("调用成功时应记录允许审计")
     void recordsAllowedAuditOnSuccess() throws Throwable {
         PermissionService permissionService = mock(PermissionService.class);
         when(permissionService.isAllowed("ling1", "perm:write", AccessType.EXECUTE)).thenReturn(true);
-        PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService);
+        PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService, mockLingFrameInfo(false));
 
         InvocationContext ctx = createContext();
         ctx.governance().setRequiredPermission("perm:write");
@@ -89,7 +112,7 @@ class PermissionGovernanceFilterTest {
     void recordsFailedAuditWhenInvocationThrows() throws Throwable {
         PermissionService permissionService = mock(PermissionService.class);
         when(permissionService.isAllowed("ling1", "perm:write", AccessType.EXECUTE)).thenReturn(true);
-        PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService);
+        PermissionGovernanceFilter filter = new PermissionGovernanceFilter(permissionService, mockLingFrameInfo(false));
 
         InvocationContext ctx = createContext();
         ctx.governance().setRequiredPermission("perm:write");
@@ -107,6 +130,13 @@ class PermissionGovernanceFilterTest {
         assertTrue(record.getCostNanos() > 0L);
 
         ctx.recycle();
+    }
+
+    /** 构造 mock LingFrameInfo，指定 dev/prod 模式 */
+    private LingFrameInfo mockLingFrameInfo(boolean devMode) {
+        LingFrameInfo info = mock(LingFrameInfo.class);
+        when(info.isDevMode()).thenReturn(devMode);
+        return info;
     }
 
     private InvocationContext createContext() {

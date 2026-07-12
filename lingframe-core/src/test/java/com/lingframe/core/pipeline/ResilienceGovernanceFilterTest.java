@@ -160,6 +160,44 @@ class ResilienceGovernanceFilterTest {
         }
 
         @Test
+        @DisplayName("治理 timeout 变化后应重建熔断器（新 breaker 为 CLOSED）")
+        void doFilter_WhenGovernedTimeoutChanges_ShouldRebuildBreaker() throws Throwable {
+            setupMocks(100, 1000);
+            RuntimeException businessEx = new RuntimeException("Business error");
+            when(filterChain.doFilter(context)).thenThrow(businessEx);
+
+            // 第一次：governedTimeout=1000，触发 10 次错误让 breaker OPEN
+            context.governance().setTimeoutMs(1000);
+            for (int i = 0; i < 10; i++) {
+                assertThrows(RuntimeException.class, () -> filter.doFilter(context, filterChain));
+            }
+            // breaker 已 OPEN，第 11 次请求被 CIRCUIT_OPEN 拒绝
+            LingInvocationException cbEx = assertThrows(LingInvocationException.class,
+                    () -> filter.doFilter(context, filterChain));
+            assertEquals(LingInvocationException.ErrorKind.CIRCUIT_OPEN, cbEx.getKind());
+
+            // 第二次：governedTimeout 变为 5000，breaker 应重建（新 breaker 为 CLOSED）
+            context.governance().setTimeoutMs(5000);
+            // 重建后 breaker 是 CLOSED，tryAcquirePermission 返回 true，请求进入 chain（抛 businessEx）
+            RuntimeException ex = assertThrows(RuntimeException.class, () -> filter.doFilter(context, filterChain));
+            assertEquals("Business error", ex.getMessage());
+        }
+
+        @Test
+        @DisplayName("ctx.governance().getTimeoutMs() 为 null 时回退 config 默认值构建熔断器")
+        void doFilter_WhenGovernedTimeoutNull_ShouldFallBackToConfig() throws Throwable {
+            setupMocks(100, 1000);
+            // 不设置 ctx.governance().setTimeoutMs（为 null），getBreaker 应回退 config.getDefaultTimeoutMs()
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            Object result = filter.doFilter(context, filterChain);
+
+            assertEquals(expected, result);
+            assertTrue(filter.hasBreaker("demo-ling"));
+        }
+
+        @Test
         @DisplayName("卸载驱逐后应同步清理熔断与限流状态")
         void doFilter_WhenEvicted_ShouldReleaseBreakerAndLimiterState() throws Throwable {
             setupMocks(10, 1000);

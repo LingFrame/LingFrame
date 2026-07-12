@@ -8,6 +8,7 @@ import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
 import com.lingframe.core.metrics.JVMMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
+import com.lingframe.core.metrics.UnifiedMetrics;
 import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
@@ -194,6 +195,22 @@ public class MetricsController {
         } catch (Exception e) {
             log.error("Failed to get event pipeline metrics", e);
             return ApiResponse.error("获取事件管道指标失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取灵核进程级整体健康快照（JVM + 系统 + 所有灵元指标聚合）。
+     * <p>
+     * 一次给出「灵核 + 所有灵元 + JVM」的整体运行时画像，
+     * 供外部监控一次性拉取进程级健康视图，无需分别调多个专项端点再聚合。
+     */
+    @GetMapping("/unified")
+    public ApiResponse<UnifiedMetrics> getUnifiedMetrics() {
+        try {
+            return ApiResponse.ok(UnifiedMetrics.create(metricsCollector));
+        } catch (Exception e) {
+            log.error("Failed to get unified metrics", e);
+            return ApiResponse.error("获取整体健康快照失败: " + e.getMessage());
         }
     }
 

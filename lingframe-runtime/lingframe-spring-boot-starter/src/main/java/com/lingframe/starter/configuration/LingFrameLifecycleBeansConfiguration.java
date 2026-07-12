@@ -14,6 +14,7 @@ import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
+import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.ling.DefaultLingLifecycleEngine;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LifecycleEngineConfig;
@@ -157,7 +158,9 @@ public class LingFrameLifecycleBeansConfiguration {
             TrafficRouter trafficRouter,
             EventBus eventBus,
             RuntimeCoordinator runtimeCoordinator,
-            LingServiceRegistry lingServiceRegistry) {
+            LingServiceRegistry lingServiceRegistry,
+            LingFrameConfig lingFrameConfig,
+            LocalGovernanceRegistry governanceRegistry) {
         LingServiceInvoker invoker = invokerProvider.getIfAvailable();
         GovernanceArbitrator arbitrator = arbitratorProvider.getIfAvailable();
         MetricsCollector metricsCollector = metricsCollectorProvider.getIfAvailable();
@@ -174,6 +177,8 @@ public class LingFrameLifecycleBeansConfiguration {
                 .metricsCollector(metricsCollector)
                 .runtimeCoordinator(runtimeCoordinator)
                 .governanceMetricsCollector(governanceMetricsCollector)
+                .lingFrameInfo(lingFrameConfig)
+                .governanceRegistry(governanceRegistry)
                 .build());
         registry.loadSpiFilters(Thread.currentThread().getContextClassLoader());
         return registry;

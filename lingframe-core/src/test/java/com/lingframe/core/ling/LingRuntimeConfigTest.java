@@ -39,42 +39,6 @@ public class LingRuntimeConfigTest {
     }
 
     @Nested
-    @DisplayName("预设配置")
-    class PresetConfigTests {
-
-        @Test
-        @DisplayName("highConcurrency() 应有更高的并发限制")
-        void highConcurrencyShouldHaveHigherLimits() {
-            LingRuntimeConfig config = LingRuntimeConfig.highConcurrency();
-
-            assertEquals(50, config.getBulkheadMaxConcurrent());
-            assertEquals(5000, config.getDefaultTimeoutMs());
-            assertTrue(config.getBulkheadMaxConcurrent() > LingRuntimeConfig.defaults().getBulkheadMaxConcurrent());
-        }
-
-        @Test
-        @DisplayName("lowLatency() 应有更短的超时")
-        void lowLatencyShouldHaveShorterTimeout() {
-            LingRuntimeConfig config = LingRuntimeConfig.lowLatency();
-
-            assertEquals(1000, config.getDefaultTimeoutMs());
-            assertEquals(500, config.getBulkheadAcquireTimeoutMs());
-            assertTrue(config.getDefaultTimeoutMs() < LingRuntimeConfig.defaults().getDefaultTimeoutMs());
-        }
-
-        @Test
-        @DisplayName("development() 应更宽松")
-        void developmentShouldBeMoreLenient() {
-            LingRuntimeConfig config = LingRuntimeConfig.development();
-
-            assertEquals(10, config.getMaxHistorySnapshots());
-            assertEquals(30000, config.getDefaultTimeoutMs());
-            assertEquals(100, config.getBulkheadMaxConcurrent());
-            assertEquals(5, config.getForceCleanupDelaySeconds());
-        }
-    }
-
-    @Nested
     @DisplayName("自定义配置")
     class CustomConfigTests {
 

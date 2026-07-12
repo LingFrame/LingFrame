@@ -9,6 +9,7 @@ import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
+import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.ling.*;
 import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
@@ -115,7 +116,7 @@ class LingFrameLifecycleBeansConfigurationTest {
         FilterRegistry filterRegistry = config.filterRegistry(
                 lingRepository, methodCache, permissionService, invokerProvider, arbitratorProvider,
                 metricsCollectorProvider, governanceMetricsCollectorProvider, trafficRouter, eventBus, runtimeCoordinator,
-                lingServiceRegistry
+                lingServiceRegistry, lingFrameConfig, mock(LocalGovernanceRegistry.class)
         );
         assertNotNull(filterRegistry);
 

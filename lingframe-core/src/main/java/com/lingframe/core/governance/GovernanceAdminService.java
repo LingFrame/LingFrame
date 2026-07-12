@@ -6,8 +6,6 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.ling.LingRuntimeConfig;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
@@ -27,12 +25,26 @@ import java.util.Map;
  * @see GovernancePolicy#merge(GovernancePolicy, GovernancePolicy)
  */
 @Slf4j
-@RequiredArgsConstructor
 public class GovernanceAdminService {
 
     private final LingRepository lingRepository;
     private final LocalGovernanceRegistry patchRegistry;
     private final PermissionService permissionService;
+
+    /**
+     * 唯一构造器。
+     *
+     * @param lingRepository 灵元仓库，可为 null
+     * @param patchRegistry 治理补丁注册表，可为 null
+     * @param permissionService 权限服务，不可为 null
+     */
+    public GovernanceAdminService(LingRepository lingRepository,
+                                   LocalGovernanceRegistry patchRegistry,
+                                   PermissionService permissionService) {
+        this.lingRepository = lingRepository;
+        this.patchRegistry = patchRegistry;
+        this.permissionService = permissionService;
+    }
 
     /**
      * 查询灵元当前生效策略。
@@ -141,13 +153,11 @@ public class GovernanceAdminService {
     /**
      * 统一下发调用治理配置。
      * <p>
-     * 封装散在灵核 / Dashboard 的双写摩擦——
-     * 调用方只描述「我要设什么」（{@link InvocationConfigDTO}），治理内核决定写到哪：
-     * <ol>
-     *   <li>更新 {@link GovernancePolicy.InvocationPolicy}（治理策略真源）</li>
-     *   <li>同步 {@link LingRuntimeConfig}（{@code ResilienceGovernanceFilter} 实际消费的配置）</li>
-     * </ol>
-     * 灵核不再手工拼两份配置，也不再自己拿 {@code LingRuntime} 改 {@code LingRuntimeConfig}。
+     * 治理策略唯一真源是 {@link GovernancePolicy.InvocationPolicy}（静态 ling.yml 声明 + 动态 patch 合并）。
+     * 本方法只写 patch 一处，由 {@link com.lingframe.core.pipeline.InvocationPolicyPrefillFilter}
+     * 在 RESILIENCE 阶段之前把灵元级 effective policy 预填到 {@code ctx.governance()}，
+     * 弹性治理组件（{@link com.lingframe.core.pipeline.ResilienceGovernanceFilter}）通过 ctx 读取治理意图，
+     * 无需同步 {@code LingRuntimeConfig} 底座，也无需驱逐缓存。
      * <p>
      * 字段语义与 {@link GovernancePolicy.InvocationPolicy} 一一对应，
      * null 字段表示「不动」。
@@ -179,8 +189,10 @@ public class GovernanceAdminService {
             return;
         }
 
-        // 1. 写入补丁层（治理策略动态修改的正式真源），而非静态 definition。
-        //    静态策略来自 ling.yml 声明，运行时下发应进入 patch，由 getEffectivePolicy 经 merge 计算生效。
+        // 写入补丁层（治理策略动态修改的唯一真源），而非静态 definition。
+        // 静态策略来自 ling.yml 声明，运行时下发应进入 patch，由 getEffectivePolicy 经 merge 计算生效。
+        // 预填充 filter 会在每次请求时读取最新 effective policy 预填到 ctx.governance()，
+        // 弹性组件通过 ctx 读取，无需同步 LingRuntimeConfig 底座，也无需驱逐缓存。
         GovernancePolicy patch = getPatchForUpdate(lingId);
         GovernancePolicy.InvocationPolicy invocation = patch.getInvocation();
         if (invocation == null) {
@@ -195,20 +207,6 @@ public class GovernanceAdminService {
         if (config.getCpuBudgetMsPerMinute() != null) invocation.setCpuBudgetMsPerMinute(config.getCpuBudgetMsPerMinute());
         if (config.getMemoryBudgetMb() != null) invocation.setMemoryBudgetMb(config.getMemoryBudgetMb());
         persistPolicyPatch(lingId, patch);
-
-        // 2. 同步 LingRuntimeConfig：ResilienceGovernanceFilter 实际消费的运行时配置。
-        //    用 toBuilder 保留所有原有字段（含熔断参数），只覆盖 invocation 相关项，避免字段丢失。
-        GovernancePolicy effective = getEffectivePolicy(lingId);
-        GovernancePolicy.InvocationPolicy effectiveInvocation =
-                effective != null && effective.getInvocation() != null ? effective.getInvocation() : invocation;
-        LingRuntimeConfig old = runtime.getConfig();
-        LingRuntimeConfig newConfig = old.toBuilder()
-                .defaultTimeoutMs(effectiveInvocation.getTimeoutMs() != null ? effectiveInvocation.getTimeoutMs() : old.getDefaultTimeoutMs())
-                .bulkheadMaxConcurrent(effectiveInvocation.getMaxConcurrentThreads() != null ? effectiveInvocation.getMaxConcurrentThreads() : old.getBulkheadMaxConcurrent())
-                .bulkheadAcquireTimeoutMs(effectiveInvocation.getTimeoutMs() != null ? effectiveInvocation.getTimeoutMs() : old.getBulkheadAcquireTimeoutMs())
-                .rateLimitPerSecond(effectiveInvocation.getRateLimitPerSecond() != null ? effectiveInvocation.getRateLimitPerSecond() : old.getRateLimitPerSecond())
-                .build();
-        runtime.updateConfig(newConfig);
 
         log.info("[Governance] Invocation config updated for ling {}", lingId);
     }

@@ -118,40 +118,6 @@ public class LingRuntimeConfig {
         return LingRuntimeConfig.builder().build();
     }
 
-    /**
-     * 高并发场景配置
-     */
-    public static LingRuntimeConfig highConcurrency() {
-        return LingRuntimeConfig.builder()
-                .bulkheadMaxConcurrent(50)
-                .defaultTimeoutMs(5000)
-                .bulkheadAcquireTimeoutMs(5000)
-                .build();
-    }
-
-    /**
-     * 低延迟场景配置
-     */
-    public static LingRuntimeConfig lowLatency() {
-        return LingRuntimeConfig.builder()
-                .defaultTimeoutMs(1000)
-                .bulkheadAcquireTimeoutMs(500)
-                .bulkheadMaxConcurrent(20)
-                .build();
-    }
-
-    /**
-     * 开发模式配置（更宽松）
-     */
-    public static LingRuntimeConfig development() {
-        return LingRuntimeConfig.builder()
-                .maxHistorySnapshots(10)
-                .defaultTimeoutMs(30000) // 30秒，方便调试
-                .bulkheadMaxConcurrent(100)
-                .forceCleanupDelaySeconds(5) // 快速清理
-                .build();
-    }
-
     @Override
     public String toString() {
         return String.format(
