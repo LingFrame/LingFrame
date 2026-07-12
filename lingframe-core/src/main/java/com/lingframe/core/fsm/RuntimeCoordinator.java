@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
@@ -179,6 +180,24 @@ public class RuntimeCoordinator {
      */
     public StateMachine<RuntimeStatus> getMachine(String lingId) {
         return machines.get(lingId);
+    }
+
+    /**
+     * 查询灵元运行时状态转换历史。
+     * <p>
+     * 替代外围模块直接 {@link #getMachine(String)} 再取 StateMachine 的越界路径，
+     * 让 dashboard 等展示层只拿到转换记录列表，不触碰状态机内部对象。
+     *
+     * @param lingId 灵元 ID
+     * @return 转换记录列表（时序快照）；灵元未注册或无记录时返回空列表
+     */
+    public List<TransitionRecord<RuntimeStatus>> getTransitionHistory(String lingId) {
+        StateMachine<RuntimeStatus> machine = machines.get(lingId);
+        if (machine == null) {
+            return Collections.emptyList();
+        }
+        List<TransitionRecord<RuntimeStatus>> history = machine.history();
+        return history == null ? Collections.emptyList() : history;
     }
 
     /* ==================== 事件监听入口 ==================== */

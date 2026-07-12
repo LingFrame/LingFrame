@@ -8,7 +8,7 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -38,29 +38,27 @@ class DashboardStatusCoordinatorTest {
         LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
         PermissionService permissionService = mock(PermissionService.class);
         RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(new EventBus());
-        LingRepository lingRepository = mock(LingRepository.class);
-        LocalGovernanceRegistry governanceRegistry = mock(LocalGovernanceRegistry.class);
+        GovernanceAdminService governanceAdmin = mock(GovernanceAdminService.class);
 
         AtomicReference<GovernancePolicy> storedPatch = new AtomicReference<GovernancePolicy>();
-        when(governanceRegistry.getPatch("ling1")).thenAnswer(invocation -> storedPatch.get());
+        when(governanceAdmin.getPatchForUpdate("ling1")).thenAnswer(invocation ->
+                storedPatch.get() == null ? new GovernancePolicy() : storedPatch.get().copy());
         doAnswer(invocation -> {
             storedPatch.set(((GovernancePolicy) invocation.getArgument(1)).copy());
             return null;
-        }).when(governanceRegistry).updatePatch(eq("ling1"), any(GovernancePolicy.class));
+        }).when(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
         runtimeCoordinator.register("ling1");
 
         DashboardGovernanceSupport governanceSupport =
-                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService, SHARED_OBJECT_MAPPER);
+                new DashboardGovernanceSupport(governanceAdmin, permissionService, SHARED_OBJECT_MAPPER);
         DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
         DashboardStatusCoordinator coordinator = new DashboardStatusCoordinator(
                 lifecycleEngine, permissionService, runtimeCoordinator, governanceSupport, eventStore);
 
         coordinator.updateStatus("ling1", RuntimeStatus.INACTIVE, RuntimeStatus.ACTIVE, "1.0.0");
 
-        verify(permissionService).removeLing("ling1");
-        verify(permissionService).grant("ling1", Capabilities.STORAGE_SQL, AccessType.WRITE);
-        verify(permissionService).grant("ling1", Capabilities.CACHE_LOCAL, AccessType.WRITE);
-        verify(permissionService).grant("ling1", Capabilities.LING_ENABLE, AccessType.EXECUTE);
+        // 默认能力初始化由 governanceSupport 委托 GovernanceAdminService 持久化，权限同步在其内部完成
+        verify(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
         List<DashboardService.LifecycleEvent> events = eventStore.getEvents("ling1");
         assertEquals(1, events.size());
         assertEquals("ACTIVE", events.get(0).getType());

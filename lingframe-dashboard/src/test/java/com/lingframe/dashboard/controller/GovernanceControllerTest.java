@@ -5,7 +5,7 @@ import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.service.DashboardService;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.GovernanceAdminService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -29,15 +29,15 @@ import static org.mockito.Mockito.when;
 @DisplayName("治理控制器测试")
 class GovernanceControllerTest {
 
-    private LocalGovernanceRegistry registry;
+    private GovernanceAdminService governanceAdmin;
     private DashboardService dashboardService;
     private GovernanceController controller;
 
     @BeforeEach
     void setUp() {
-        registry = mock(LocalGovernanceRegistry.class);
+        governanceAdmin = mock(GovernanceAdminService.class);
         dashboardService = mock(DashboardService.class);
-        controller = new GovernanceController(registry, dashboardService);
+        controller = new GovernanceController(governanceAdmin, dashboardService);
     }
 
     @Nested
@@ -48,7 +48,7 @@ class GovernanceControllerTest {
         void shouldReturnAllRules() {
             Map<String, GovernancePolicy> rules = new HashMap<>();
             rules.put("ling1", new GovernancePolicy());
-            when(registry.getAllPatches()).thenReturn(rules);
+            when(governanceAdmin.getAllPatches()).thenReturn(rules);
 
             ApiResponse<Map<String, GovernancePolicy>> response = controller.getRules();
 
@@ -59,7 +59,7 @@ class GovernanceControllerTest {
         @Test
         @DisplayName("registry 抛异常时返回 error")
         void shouldReturnErrorOnException() {
-            when(registry.getAllPatches()).thenThrow(new RuntimeException("db error"));
+            when(governanceAdmin.getAllPatches()).thenThrow(new RuntimeException("db error"));
 
             ApiResponse<Map<String, GovernancePolicy>> response = controller.getRules();
 
@@ -75,7 +75,7 @@ class GovernanceControllerTest {
         @DisplayName("正常返回指定灵元的策略")
         void shouldReturnPatch() {
             GovernancePolicy policy = new GovernancePolicy();
-            when(registry.getPatch("ling1")).thenReturn(policy);
+            when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(policy);
 
             ApiResponse<GovernancePolicy> response = controller.getPatch("ling1");
 
@@ -86,7 +86,7 @@ class GovernanceControllerTest {
         @Test
         @DisplayName("registry 抛异常时返回 error")
         void shouldReturnErrorOnException() {
-            when(registry.getPatch("ling1")).thenThrow(new RuntimeException("not found"));
+            when(governanceAdmin.getPatchForUpdate("ling1")).thenThrow(new RuntimeException("not found"));
 
             ApiResponse<GovernancePolicy> response = controller.getPatch("ling1");
 
@@ -103,7 +103,7 @@ class GovernanceControllerTest {
         void shouldUpdateAndReturnPatch() {
             GovernancePolicy policy = new GovernancePolicy();
             GovernancePolicy updated = new GovernancePolicy();
-            when(registry.getPatch("ling1")).thenReturn(updated);
+            when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(updated);
 
             ApiResponse<GovernancePolicy> response = controller.updatePatch("ling1", policy);
 

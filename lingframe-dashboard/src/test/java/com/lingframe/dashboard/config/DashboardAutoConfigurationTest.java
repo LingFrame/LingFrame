@@ -2,9 +2,10 @@ package com.lingframe.dashboard.config;
 
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
@@ -116,7 +117,8 @@ class DashboardAutoConfigurationTest {
     void shouldCreateSimulateService() {
         assertNotNull(config.simulateService(
                 mock(LingRepository.class), mock(EventBus.class), mock(CanaryRouter.class),
-                mock(PermissionService.class), mock(InvocationPipelineEngine.class)));
+                mock(PermissionService.class), mock(InvocationPipelineEngine.class),
+                mock(LingFrameInfo.class)));
     }
 
     @Test
@@ -132,7 +134,7 @@ class DashboardAutoConfigurationTest {
     void shouldCreateDashboardServiceWithGovernanceStorage() {
         DashboardService s = config.dashboardService(
                 mock(LingFrameConfig.class), mock(LingLifecycleEngine.class), mock(LingRepository.class),
-                mock(LocalGovernanceRegistry.class), mock(CanaryRouter.class), mock(LingInfoConverter.class),
+                mock(GovernanceAdminService.class), mock(CanaryRouter.class), mock(LingInfoConverter.class),
                 mock(PermissionService.class), mock(RuntimeCoordinator.class), mock(ObjectMapper.class),
                 mock(GovernanceStorage.class));
         assertNotNull(s);
@@ -143,7 +145,7 @@ class DashboardAutoConfigurationTest {
     void shouldCreateDashboardServiceWithoutGovernanceStorage() {
         DashboardService s = config.dashboardService(
                 mock(LingFrameConfig.class), mock(LingLifecycleEngine.class), mock(LingRepository.class),
-                mock(LocalGovernanceRegistry.class), mock(CanaryRouter.class), mock(LingInfoConverter.class),
+                mock(GovernanceAdminService.class), mock(CanaryRouter.class), mock(LingInfoConverter.class),
                 mock(PermissionService.class), mock(RuntimeCoordinator.class), mock(ObjectMapper.class),
                 null);
         assertNotNull(s);

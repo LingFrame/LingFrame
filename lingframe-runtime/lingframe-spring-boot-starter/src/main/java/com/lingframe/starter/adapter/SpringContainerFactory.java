@@ -96,6 +96,13 @@ public class SpringContainerFactory implements ContainerFactory {
                     unloadHooks,
                     version,
                     sourceFile);
+            // 注入灵核只读配置门面，替代静态穿透 LingFrameConfig.current()
+            try {
+                container.setLingFrameInfo(mainContext.getBean(com.lingframe.core.config.LingFrameInfo.class));
+            } catch (Exception e) {
+                // 灵核未装 LingFrameInfo bean 时兜底默认值，保持向后兼容
+                log.debug("[{}] LingFrameInfo bean not available, fallback to default implicit registration", lingId);
+            }
             return container;
 
         } catch (Exception e) {

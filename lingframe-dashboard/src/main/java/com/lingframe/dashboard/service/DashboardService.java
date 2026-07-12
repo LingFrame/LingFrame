@@ -8,8 +8,8 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
-import com.lingframe.core.fsm.StateMachine;
 import com.lingframe.core.fsm.TransitionRecord;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
@@ -78,7 +78,7 @@ public class DashboardService {
     public DashboardService(LingFrameConfig lingFrameConfig,
             LingLifecycleEngine lifecycleEngine,
             LingRepository lingRepository,
-            com.lingframe.core.governance.LocalGovernanceRegistry governanceRegistry,
+            GovernanceAdminService governanceAdmin,
             CanaryRouter canaryRouter,
             LingInfoConverter converter,
             PermissionService permissionService,
@@ -89,7 +89,7 @@ public class DashboardService {
                 canaryRouter,
                 converter,
                 permissionService,
-                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService, objectMapper),
+                new DashboardGovernanceSupport(governanceAdmin, permissionService, objectMapper),
                 new DashboardLifecycleEventStore(),
                 new DashboardLingSourceResolver(lingFrameConfig),
                 lifecycleEngine,
@@ -277,12 +277,7 @@ public class DashboardService {
             return Collections.emptyList();
         }
 
-        StateMachine<RuntimeStatus> fsm = statusCoordinator.getRuntimeMachine(lingId);
-        if (fsm == null) {
-            return Collections.emptyList();
-        }
-
-        return fsm.history().stream()
+        return statusCoordinator.getTransitionHistory(lingId).stream()
                 .map(this::toTransitionHistoryDTO)
                 .collect(Collectors.toList());
     }

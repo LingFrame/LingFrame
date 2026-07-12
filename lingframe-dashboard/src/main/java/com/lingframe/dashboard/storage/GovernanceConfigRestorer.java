@@ -2,7 +2,7 @@ package com.lingframe.dashboard.storage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.router.CanaryRouter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -10,23 +10,26 @@ import javax.annotation.PostConstruct;
 import java.util.Map;
 
 /**
- * 启动时从 SQLite 恢复治理配置到 LocalGovernanceRegistry 和 CanaryRouter
+ * 启动时从 SQLite 恢复治理配置到治理注册表和 CanaryRouter。
+ * <p>
+ * 内部委托 {@link GovernanceAdminService} 持久化 patch，
+ * 不再直接持有 {@code LocalGovernanceRegistry}。
  */
 @Slf4j
 public class GovernanceConfigRestorer {
 
     private final GovernanceStorage governanceStorage;
-    private final LocalGovernanceRegistry governanceRegistry;
+    private final GovernanceAdminService governanceAdmin;
     private final CanaryRouter canaryRouter;
     // 复用 Spring 容器中的单例 ObjectMapper，避免每次恢复都创建新实例
     private final ObjectMapper objectMapper;
 
     public GovernanceConfigRestorer(GovernanceStorage governanceStorage,
-                                    LocalGovernanceRegistry governanceRegistry,
+                                    GovernanceAdminService governanceAdmin,
                                     CanaryRouter canaryRouter,
                                     ObjectMapper objectMapper) {
         this.governanceStorage = governanceStorage;
-        this.governanceRegistry = governanceRegistry;
+        this.governanceAdmin = governanceAdmin;
         this.canaryRouter = canaryRouter;
         this.objectMapper = objectMapper;
     }
@@ -79,7 +82,7 @@ public class GovernanceConfigRestorer {
                 }
 
                 if (mergedPatch != null) {
-                    governanceRegistry.updatePatch(lingId, mergedPatch);
+                    governanceAdmin.persistPolicyPatch(lingId, mergedPatch);
                     hasPatch = true;
                 }
 

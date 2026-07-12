@@ -25,7 +25,7 @@ import java.util.List;
 @Data
 @Builder
 @ToString
-public class LingFrameConfig {
+public class LingFrameConfig implements LingFrameInfo {
 
     // ================= 全局环境 (Environment) =================
 
@@ -295,5 +295,14 @@ public class LingFrameConfig {
      */
     @Builder.Default
     private LingRuntimeConfig runtimeConfig = LingRuntimeConfig.defaults();
+
+    /**
+     * 灵元运行时默认超时（毫秒），实现 {@link LingFrameInfo}。
+     */
+    @Override
+    public int getDefaultTimeout() {
+        LingRuntimeConfig rc = runtimeConfig;
+        return rc != null ? rc.getDefaultTimeoutMs() : 3000;
+    }
 
 }

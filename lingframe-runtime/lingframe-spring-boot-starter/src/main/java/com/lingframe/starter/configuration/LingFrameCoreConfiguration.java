@@ -9,6 +9,7 @@ import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.GovernancePermissionSynchronizer;
 import com.lingframe.core.governance.LingCoreGovernanceRule;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.governance.provider.StandardGovernancePolicyProvider;
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.DefaultLingServiceRegistry;
@@ -76,6 +77,14 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
+    public GovernanceAdminService governanceAdminService(
+            LingRepository lingRepository,
+            LocalGovernanceRegistry governanceRegistry,
+            PermissionService permissionService) {
+        return new GovernanceAdminService(lingRepository, governanceRegistry, permissionService);
+    }
+
+    @Bean
     @ConditionalOnMissingBean(LingLoaderFactory.class)
     public LingLoaderFactory defaultLingLoaderFactory() {
         return new DefaultLingLoaderFactory();
@@ -108,9 +117,8 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     public EntryInvocationGovernanceResolver entryInvocationGovernanceResolver(
-            LingRepository lingRepository,
-            LocalGovernanceRegistry governanceRegistry) {
-        return new EntryInvocationGovernanceResolver(lingRepository, governanceRegistry);
+            GovernanceAdminService governanceAdmin) {
+        return new EntryInvocationGovernanceResolver(governanceAdmin);
     }
 
     @Bean

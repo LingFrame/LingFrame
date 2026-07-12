@@ -1,6 +1,7 @@
 package com.lingframe.dashboard.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.api.security.PermissionService;
@@ -8,9 +9,8 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
-import com.lingframe.core.fsm.StateMachine;
 import com.lingframe.core.fsm.TransitionRecord;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingRepository;
@@ -72,7 +72,7 @@ class DashboardServiceSupplementTest {
     @Mock
     LingRepository lingRepository;
     @Mock
-    LocalGovernanceRegistry governanceRegistry;
+    GovernanceAdminService governanceAdmin;
     @Mock
     CanaryRouter canaryRouter;
     @Mock
@@ -84,7 +84,7 @@ class DashboardServiceSupplementTest {
 
     private DashboardService newService() {
         return new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                governanceRegistry, canaryRouter, lingInfoConverter, permissionService,
+                governanceAdmin, canaryRouter, lingInfoConverter, permissionService,
                 runtimeCoordinator, SHARED_OBJECT_MAPPER);
     }
 
@@ -103,8 +103,8 @@ class DashboardServiceSupplementTest {
             when(lingRepository.getAllRuntimes()).thenReturn(Arrays.asList(runtime, null));
             lenient().when(runtime.getLingId()).thenReturn("ling1");
             // getEffectivePolicy 内部会再次调用 getRuntime，mock 默认返回 null → 静态策略为 null
-            when(lingRepository.getRuntime("ling1")).thenReturn(null);
-            when(governanceRegistry.getPatch("ling1")).thenReturn(null);
+            lenient().when(lingRepository.getRuntime("ling1")).thenReturn(null);
+            lenient().when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(new GovernancePolicy());
             when(lingInfoConverter.toDTO(eq(runtime), eq(canaryRouter), eq(permissionService), any()))
                     .thenReturn(dto);
 
@@ -123,9 +123,10 @@ class DashboardServiceSupplementTest {
             LingInfoDTO dto = new LingInfoDTO();
             when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
             // getStaticPolicy 会链式访问 getInstancePool().getDefault()，需 mock 避免 NPE
-            when(runtime.getInstancePool()).thenReturn(pool);
-            when(pool.getDefault()).thenReturn(null);
-            when(governanceRegistry.getPatch("ling1")).thenReturn(null);
+            lenient().when(runtime.getInstancePool()).thenReturn(pool);
+            lenient().when(pool.getDefault()).thenReturn(null);
+            lenient().when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(new GovernancePolicy());
+            lenient().when(governanceAdmin.getEffectivePolicy("ling1")).thenReturn(null);
             when(lingInfoConverter.toDTO(eq(runtime), eq(canaryRouter), eq(permissionService), any()))
                     .thenReturn(dto);
 
@@ -159,8 +160,9 @@ class DashboardServiceSupplementTest {
         @DisplayName("getInvocationGovernance 在无策略时应返回字段全 null 的 DTO")
         void getInvocationGovernanceShouldReturnDtoWithNullsWhenNoPolicy() {
             DashboardService service = newService();
-            when(lingRepository.getRuntime("ling1")).thenReturn(null);
-            when(governanceRegistry.getPatch("ling1")).thenReturn(null);
+            lenient().when(lingRepository.getRuntime("ling1")).thenReturn(null);
+            lenient().when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(new GovernancePolicy());
+            lenient().when(governanceAdmin.getEffectivePolicy("ling1")).thenReturn(null);
 
             InvocationGovernanceDTO result = service.getInvocationGovernance("ling1");
 
@@ -332,11 +334,11 @@ class DashboardServiceSupplementTest {
         }
 
         @Test
-        @DisplayName("getTransitionHistory 在状态机为 null 时应返回空列表")
+        @DisplayName("getTransitionHistory 在无历史记录时应返回空列表")
         void shouldReturnEmptyWhenMachineNull() {
             DashboardService service = newService();
             when(runtimeCoordinator.getStatus("ling1")).thenReturn(RuntimeStatus.ACTIVE);
-            when(runtimeCoordinator.getMachine("ling1")).thenReturn(null);
+            lenient().when(runtimeCoordinator.getTransitionHistory("ling1")).thenReturn(Collections.emptyList());
 
             List<TransitionHistoryDTO> result = service.getTransitionHistory("ling1");
 
@@ -348,13 +350,10 @@ class DashboardServiceSupplementTest {
         void shouldReturnDtoListWhenHistoryExists() {
             DashboardService service = newService();
             when(runtimeCoordinator.getStatus("ling1")).thenReturn(RuntimeStatus.ACTIVE);
-            @SuppressWarnings("unchecked")
-            StateMachine<RuntimeStatus> fsm = mock(StateMachine.class);
-            when(runtimeCoordinator.getMachine("ling1")).thenReturn(fsm);
             List<TransitionRecord<RuntimeStatus>> history = Arrays.asList(
                     new TransitionRecord<RuntimeStatus>("ctx1", RuntimeStatus.INACTIVE, RuntimeStatus.ACTIVE, 100L),
                     new TransitionRecord<RuntimeStatus>("ctx2", RuntimeStatus.ACTIVE, RuntimeStatus.DEGRADED, 200L));
-            when(fsm.history()).thenReturn(history);
+            when(runtimeCoordinator.getTransitionHistory("ling1")).thenReturn(history);
 
             List<TransitionHistoryDTO> result = service.getTransitionHistory("ling1");
 

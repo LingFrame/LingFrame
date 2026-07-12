@@ -7,7 +7,7 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingLifecycleEngine;
@@ -71,7 +71,7 @@ class DashboardServiceSupplement2Test {
     @Mock
     LingRepository lingRepository;
     @Mock
-    LocalGovernanceRegistry governanceRegistry;
+    GovernanceAdminService governanceAdmin;
     @Mock
     CanaryRouter canaryRouter;
     @Mock
@@ -83,7 +83,7 @@ class DashboardServiceSupplement2Test {
 
     private DashboardService newService() {
         return new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                governanceRegistry, canaryRouter, lingInfoConverter, permissionService,
+                governanceAdmin, canaryRouter, lingInfoConverter, permissionService,
                 runtimeCoordinator, SHARED_OBJECT_MAPPER);
     }
 
@@ -101,6 +101,8 @@ class DashboardServiceSupplement2Test {
                     mock(ResourcePermissionDTO.class);
             // 设置 stub 避免 UnnecessaryStubbingException
             when(dto.isDbRead()).thenReturn(true);
+            // getPatchForUpdate 委托 governanceAdmin，真实运行时永不返回 null，stub 对齐真实契约
+            when(governanceAdmin.getPatchForUpdate(anyString())).thenReturn(new GovernancePolicy());
 
             assertDoesNotThrow(() -> service.updatePermissions("ling1", dto));
         }
@@ -120,6 +122,8 @@ class DashboardServiceSupplement2Test {
             DashboardService service = newService();
             InvocationGovernanceDTO inputDto =
                     mock(InvocationGovernanceDTO.class);
+            // getPatchForUpdate 委托 governanceAdmin，真实运行时永不返回 null，stub 对齐真实契约
+            when(governanceAdmin.getPatchForUpdate(anyString())).thenReturn(new GovernancePolicy());
 
             // governanceSupport.updateInvocationGovernance 会返回 DTO，这里验证不抛异常即可
             assertDoesNotThrow(() -> service.updateInvocationGovernance("ling1", inputDto));
@@ -142,10 +146,10 @@ class DashboardServiceSupplement2Test {
             InstancePool pool = mock(InstancePool.class);
             // REMOVED 走 lifecycleEngine.undeploy（mock 无副作用），避免触发 transition 的 NPE
             when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
-            when(runtime.getInstancePool()).thenReturn(pool);
-            when(pool.getDefault()).thenReturn(null);
+            lenient().when(runtime.getInstancePool()).thenReturn(pool);
+            lenient().when(pool.getDefault()).thenReturn(null);
             when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
-            when(governanceRegistry.getPatch("ling1")).thenReturn(null);
+            lenient().when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(new GovernancePolicy());
             // updateStatus 成功后调用 getLingInfo，需要 converter 返回 DTO
             LingInfoDTO expectedDto = mock(LingInfoDTO.class);
             when(lingInfoConverter.toDTO(eq(runtime), any(), any(), any())).thenReturn(expectedDto);

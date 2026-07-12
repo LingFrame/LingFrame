@@ -2,7 +2,7 @@ package com.lingframe.dashboard.storage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.router.CanaryRouter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
 /**
  * GovernanceConfigRestorer 单元测试
  * <p>
- * 通过 mock GovernanceStorage / LocalGovernanceRegistry / CanaryRouter 隔离下游依赖，
+ * 通过 mock GovernanceStorage / GovernanceAdminService / CanaryRouter 隔离下游依赖，
  * 使用真实 ObjectMapper 以验证 canary JSON 的真实解析路径。
  * 覆盖：空配置早退 / canary 成功与异常 / invocation 成功与异常 / 合并多 patch /
  * 多 lingId / 外层异常兜底 / 边界值（percent=0、canaryVersion=null）等所有分支。
@@ -37,7 +37,7 @@ import static org.mockito.Mockito.when;
 class GovernanceConfigRestorerTest {
 
     private GovernanceStorage governanceStorage;
-    private LocalGovernanceRegistry governanceRegistry;
+    private GovernanceAdminService governanceRegistry;
     private CanaryRouter canaryRouter;
     private ObjectMapper objectMapper;
     private GovernanceConfigRestorer restorer;
@@ -45,7 +45,7 @@ class GovernanceConfigRestorerTest {
     @BeforeEach
     void setUp() {
         governanceStorage = mock(GovernanceStorage.class);
-        governanceRegistry = mock(LocalGovernanceRegistry.class);
+        governanceRegistry = mock(GovernanceAdminService.class);
         canaryRouter = mock(CanaryRouter.class);
         // 使用真实 ObjectMapper，让 canary JSON 解析走真实路径
         objectMapper = new ObjectMapper();
@@ -84,7 +84,7 @@ class GovernanceConfigRestorerTest {
 
             verify(canaryRouter, never())
                     .setCanaryConfig(anyString(), anyInt(), nullable(String.class));
-            verify(governanceRegistry, never()).updatePatch(anyString(), any(GovernancePolicy.class));
+            verify(governanceRegistry, never()).persistPolicyPatch(anyString(), any(GovernancePolicy.class));
         }
     }
 
@@ -106,7 +106,7 @@ class GovernanceConfigRestorerTest {
 
             verify(canaryRouter).setCanaryConfig("ling-1", 50, "v2");
             verify(governanceRegistry, never())
-                    .updatePatch(anyString(), any(GovernancePolicy.class));
+                    .persistPolicyPatch(anyString(), any(GovernancePolicy.class));
         }
 
         @Test
@@ -122,7 +122,7 @@ class GovernanceConfigRestorerTest {
             verify(canaryRouter, never())
                     .setCanaryConfig(anyString(), anyInt(), nullable(String.class));
             verify(governanceRegistry, never())
-                    .updatePatch(anyString(), any(GovernancePolicy.class));
+                    .persistPolicyPatch(anyString(), any(GovernancePolicy.class));
         }
 
         @Test
@@ -184,7 +184,7 @@ class GovernanceConfigRestorerTest {
 
             restorer.restore();
 
-            verify(governanceRegistry).updatePatch(eq("ling-6"), any(GovernancePolicy.class));
+            verify(governanceRegistry).persistPolicyPatch(eq("ling-6"), any(GovernancePolicy.class));
             verify(canaryRouter, never())
                     .setCanaryConfig(anyString(), anyInt(), nullable(String.class));
         }
@@ -202,7 +202,7 @@ class GovernanceConfigRestorerTest {
             assertDoesNotThrow(() -> restorer.restore());
 
             verify(governanceRegistry, never())
-                    .updatePatch(anyString(), any(GovernancePolicy.class));
+                    .persistPolicyPatch(anyString(), any(GovernancePolicy.class));
         }
 
         @Test
@@ -223,7 +223,7 @@ class GovernanceConfigRestorerTest {
 
             // safeDeserialize 被调用两次，updatePatch 仅一次（合并后）
             verify(governanceStorage, times(2)).safeDeserialize(anyString());
-            verify(governanceRegistry).updatePatch(eq("ling-merge"), any(GovernancePolicy.class));
+            verify(governanceRegistry).persistPolicyPatch(eq("ling-merge"), any(GovernancePolicy.class));
         }
     }
 
@@ -247,7 +247,7 @@ class GovernanceConfigRestorerTest {
             restorer.restore();
 
             verify(canaryRouter).setCanaryConfig("ling-both", 50, "v2");
-            verify(governanceRegistry).updatePatch(eq("ling-both"), any(GovernancePolicy.class));
+            verify(governanceRegistry).persistPolicyPatch(eq("ling-both"), any(GovernancePolicy.class));
         }
 
         @Test
@@ -262,7 +262,7 @@ class GovernanceConfigRestorerTest {
 
             verify(canaryRouter).setCanaryConfig("ling-canary-only", 100, "v9");
             verify(governanceRegistry, never())
-                    .updatePatch(anyString(), any(GovernancePolicy.class));
+                    .persistPolicyPatch(anyString(), any(GovernancePolicy.class));
         }
 
         @Test
@@ -277,7 +277,7 @@ class GovernanceConfigRestorerTest {
 
             restorer.restore();
 
-            verify(governanceRegistry).updatePatch(eq("ling-inv-only"), any(GovernancePolicy.class));
+            verify(governanceRegistry).persistPolicyPatch(eq("ling-inv-only"), any(GovernancePolicy.class));
             verify(canaryRouter, never())
                     .setCanaryConfig(anyString(), anyInt(), nullable(String.class));
         }
@@ -299,7 +299,7 @@ class GovernanceConfigRestorerTest {
             verify(canaryRouter, never())
                     .setCanaryConfig(anyString(), anyInt(), nullable(String.class));
             verify(governanceRegistry, never())
-                    .updatePatch(anyString(), any(GovernancePolicy.class));
+                    .persistPolicyPatch(anyString(), any(GovernancePolicy.class));
         }
 
         @Test
@@ -318,7 +318,7 @@ class GovernanceConfigRestorerTest {
             restorer.restore();
 
             verify(canaryRouter).setCanaryConfig("ling-a", 20, "va");
-            verify(governanceRegistry).updatePatch(eq("ling-b"), any(GovernancePolicy.class));
+            verify(governanceRegistry).persistPolicyPatch(eq("ling-b"), any(GovernancePolicy.class));
         }
     }
 
@@ -340,7 +340,7 @@ class GovernanceConfigRestorerTest {
             verify(canaryRouter, never())
                     .setCanaryConfig(anyString(), anyInt(), nullable(String.class));
             verify(governanceRegistry, never())
-                    .updatePatch(anyString(), any(GovernancePolicy.class));
+                    .persistPolicyPatch(anyString(), any(GovernancePolicy.class));
         }
     }
 }

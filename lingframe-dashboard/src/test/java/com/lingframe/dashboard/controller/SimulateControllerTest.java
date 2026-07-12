@@ -35,7 +35,7 @@ class SimulateControllerTest {
     @BeforeEach
     void setUp() {
         simulateService = mock(SimulateService.class);
-        controller = new SimulateController(simulateService);
+        controller = new SimulateController(simulateService, LingFrameConfig.current());
     }
 
     @Nested

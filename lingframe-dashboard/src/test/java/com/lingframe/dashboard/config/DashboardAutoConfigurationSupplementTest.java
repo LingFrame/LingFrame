@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
@@ -138,7 +138,7 @@ class DashboardAutoConfigurationSupplementTest {
             GovernanceStorage governanceStorage = config.governanceStorage(jdbcTemplate, new ObjectMapper());
 
             GovernanceConfigRestorer restorer = config.governanceConfigRestorer(
-                    governanceStorage, mock(LocalGovernanceRegistry.class),
+                    governanceStorage, mock(GovernanceAdminService.class),
                     mock(CanaryRouter.class), new ObjectMapper());
 
             assertNotNull(restorer);

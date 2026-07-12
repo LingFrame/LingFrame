@@ -4,11 +4,11 @@ import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.pipeline.InvocationContext;
-import com.lingframe.core.pipeline.InvocationExecutionMode;
+import com.lingframe.core.pipeline.InvocationContextBuilder;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
@@ -35,6 +35,7 @@ public class SimulateService {
     private final CanaryRouter canaryRouter;
     private final PermissionService permissionService;
     private final InvocationPipelineEngine pipelineEngine;
+    private final LingFrameInfo lingFrameInfo;
 
     /**
      * 模拟资源访问权限校验
@@ -54,20 +55,15 @@ public class SimulateService {
 
         String traceId = LingCallContext.startTrace();
 
-        InvocationContext ctx = InvocationContext.obtain();
-        ctx.setTraceId(traceId);
-        ctx.setTargetLingId(lingId);
-        ctx.setCallerLingId(lingId); // 模拟自身调用
-        ctx.setResourceType(mapResourceType(resourceType));
-        ctx.setResourceId("simulate:" + resourceType);
-        ctx.setOperation("simulate_" + resourceType);
-        ctx.governance().setAccessType(mapAccessType(resourceType));
-        ctx.governance().setRequiredPermission(mapPermission(resourceType));
-        ctx.governance().setShouldAudit(true);
-        ctx.governance().setAuditAction("SIMULATE:" + resourceType.toUpperCase());
-        // 【核心下沉】直接要求微内核以“无副作用”模式跑完整治理链，而不是 dashboard 自己偷跑一套逻辑
-        ctx.execution().setMode(InvocationExecutionMode.SIMULATION);
-        ctx.setRuntime(runtime);
+        InvocationContext ctx = InvocationContextBuilder.forSimulation(lingId)
+                .traceId(traceId)
+                .resourceType(mapResourceType(resourceType))
+                .resourceId("simulate:" + resourceType)
+                .operation("simulate_" + resourceType)
+                .accessType(mapAccessType(resourceType))
+                .requiredPermission(mapPermission(resourceType))
+                .auditAction("SIMULATE:" + resourceType.toUpperCase())
+                .build(lingRepository);
 
         boolean allowed;
         String message;
@@ -155,17 +151,16 @@ public class SimulateService {
             publishTrace(traceId, lingId, "  ↳ Kernel authorization check...", "IN", 2);
             publishTrace(traceId, lingId, "    ✗ IPC access policy denied", "FAIL", 3);
         } else {
-            ctx = InvocationContext.obtain();
-            ctx.setTraceId(traceId);
-            ctx.setTargetLingId(targetLingId);
-            ctx.setCallerLingId(lingId);
-            ctx.setResourceType("IPC");
-            ctx.setResourceId("ipc:" + lingId + "->" + targetLingId);
-            ctx.setOperation("ipc_call");
-            ctx.governance().setAccessType(AccessType.EXECUTE);
-            ctx.governance().setRequiredPermission("ipc:" + targetLingId);
-            ctx.governance().setShouldAudit(true);
-            ctx.governance().setAuditAction("IPC_CALL");
+            ctx = InvocationContextBuilder.forSimulation(targetLingId)
+                    .callerLingId(lingId)
+                    .traceId(traceId)
+                    .resourceType("IPC")
+                    .resourceId("ipc:" + lingId + "->" + targetLingId)
+                    .operation("ipc_call")
+                    .accessType(AccessType.EXECUTE)
+                    .requiredPermission("ipc:" + targetLingId)
+                    .auditAction("IPC_CALL")
+                    .build(lingRepository);
 
             try {
                 // 第 1 阶段：路由预热与基础可用性检查
@@ -176,9 +171,6 @@ public class SimulateService {
                     throw new LingInvocationException(targetLingId, LingInvocationException.ErrorKind.STATE_REJECTED, "No active instances");
                 }
                 targetRuntime.recordRequest(false);
-
-                ctx.execution().setMode(InvocationExecutionMode.SIMULATION);
-                ctx.setRuntime(targetRuntime);
 
                 // 🔥 通过真实 Pipeline 统一入口执行模拟，避免控制台和内核维护两套语义
                 pipelineEngine.invoke(ctx);
@@ -299,22 +291,16 @@ public class SimulateService {
         boolean devBypass = false;
 
         try {
-            ctx = InvocationContext.obtain();
-            ctx.setTraceId(traceId);
-            ctx.setTargetLingId(lingId);
-            ctx.setCallerLingId(lingId); // 模拟自身调用
-            ctx.setResourceType("METHOD");
-            ctx.setResourceId(className + "#" + methodName);
+            ctx = InvocationContextBuilder.forSimulation(lingId)
+                    .traceId(traceId)
+                    .resourceType("METHOD")
+                    .resourceId(className + "#" + methodName)
+                    .operation(methodName)
+                    .accessType(targetAccess)
+                    .auditAction("SIMULATE:METHOD")
+                    .build(lingRepository);
             ctx.setServiceFQSID(lingId + ":" + className);
             ctx.setMethodName(methodName);
-            ctx.setOperation(methodName);
-            ctx.governance().setAccessType(targetAccess);
-            ctx.governance().setShouldAudit(true);
-            ctx.governance().setAuditAction("SIMULATE:METHOD");
-
-            // ⚠️ 模拟方法调用也必须走同一条 Pipeline，否则权限决策、超时和审计来源都会失真
-            ctx.execution().setMode(InvocationExecutionMode.SIMULATION);
-            ctx.setRuntime(runtime);
 
             // 🔥 通过真实 Pipeline 统一入口执行模拟推演
             Object result = pipelineEngine.invoke(ctx);
@@ -405,7 +391,7 @@ public class SimulateService {
 
     private boolean isDevModeBypass(String lingId, String capability, AccessType accessType) {
         // 如果我们不在开发模式，就不存在豁免
-        if (!LingFrameConfig.current().isDevMode()) {
+        if (lingFrameInfo == null || !lingFrameInfo.isDevMode()) {
             return false;
         }
         // 检查实际权限配置

@@ -6,12 +6,13 @@ import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
-import com.lingframe.core.fsm.StateMachine;
+import com.lingframe.core.fsm.TransitionRecord;
 import com.lingframe.core.fsm.TransitionResult;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Dashboard 状态切换编排器，集中处理状态迁移、副作用和时间线记录。
@@ -154,9 +155,15 @@ public class DashboardStatusCoordinator {
     }
 
     /**
-     * 获取指定灵元的运行时状态机（用于查询转换历史）
+     * 获取指定灵元的状态转换历史。
+     * <p>
+     * 委托 {@link RuntimeCoordinator#getTransitionHistory(String)}，
+     * 不再暴露 {@code StateMachine} 内部对象给上层。
+     *
+     * @param lingId 灵元 ID
+     * @return 转换记录列表（时序快照）；灵元未注册或无记录时返回空列表
      */
-    StateMachine<RuntimeStatus> getRuntimeMachine(String lingId) {
-        return runtimeCoordinator.getMachine(lingId);
+    List<TransitionRecord<RuntimeStatus>> getTransitionHistory(String lingId) {
+        return runtimeCoordinator.getTransitionHistory(lingId);
     }
 }

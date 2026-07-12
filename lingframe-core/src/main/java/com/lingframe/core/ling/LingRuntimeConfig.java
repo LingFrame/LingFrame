@@ -7,7 +7,7 @@ import lombok.Getter;
  * 灵元运行时配置
  */
 @Getter
-@Builder
+@Builder(toBuilder = true)
 public class LingRuntimeConfig {
 
     // ==================== 实例管理 ====================

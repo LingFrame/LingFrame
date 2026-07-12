@@ -2,9 +2,10 @@ package com.lingframe.dashboard.config;
 
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.GovernanceAdminService;
 
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
@@ -107,14 +108,14 @@ public class DashboardAutoConfiguration {
             LingFrameConfig lingFrameConfig,
             LingLifecycleEngine lifecycleEngine,
             LingRepository lingRepository,
-            LocalGovernanceRegistry governanceRegistry,
+            GovernanceAdminService governanceAdmin,
             CanaryRouter canaryRouter,
             LingInfoConverter lingInfoConverter,
             PermissionService permissionService,
             RuntimeCoordinator runtimeCoordinator,
             ObjectMapper objectMapper,
             @Autowired(required = false) GovernanceStorage governanceStorage) {
-        DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository, governanceRegistry, canaryRouter,
+        DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository, governanceAdmin, canaryRouter,
                 lingInfoConverter,
                 permissionService,
                 runtimeCoordinator,
@@ -132,8 +133,9 @@ public class DashboardAutoConfiguration {
             EventBus eventBus,
             CanaryRouter canaryRouter,
             PermissionService permissionService,
-            InvocationPipelineEngine pipelineEngine) {
-        return new SimulateService(lingRepository, eventBus, canaryRouter, permissionService, pipelineEngine);
+            InvocationPipelineEngine pipelineEngine,
+            LingFrameInfo lingFrameInfo) {
+        return new SimulateService(lingRepository, eventBus, canaryRouter, permissionService, pipelineEngine, lingFrameInfo);
     }
 
     @Bean
@@ -232,10 +234,10 @@ public class DashboardAutoConfiguration {
     @ConditionalOnBean(GovernanceStorage.class)
     public GovernanceConfigRestorer governanceConfigRestorer(
             GovernanceStorage governanceStorage,
-            LocalGovernanceRegistry governanceRegistry,
+            GovernanceAdminService governanceAdmin,
             CanaryRouter canaryRouter,
             ObjectMapper objectMapper) {
-        return new GovernanceConfigRestorer(governanceStorage, governanceRegistry, canaryRouter, objectMapper);
+        return new GovernanceConfigRestorer(governanceStorage, governanceAdmin, canaryRouter, objectMapper);
     }
 
     @Bean

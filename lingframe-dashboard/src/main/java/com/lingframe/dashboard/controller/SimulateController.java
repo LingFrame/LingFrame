@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 public class SimulateController {
 
     private final SimulateService simulateService;
+    private final LingFrameConfig lingFrameConfig;
 
     @PostMapping("/lings/{lingId}/resource")
     public ApiResponse<SimulateResultDTO> simulateResource(
@@ -51,7 +52,7 @@ public class SimulateController {
     public ApiResponse<Boolean> updateDevMode(@RequestBody ModeRequest request) {
         try {
             boolean isDev = "dev".equalsIgnoreCase(request.getTestEnv());
-            LingFrameConfig.current().setDevMode(isDev);
+            lingFrameConfig.setDevMode(isDev);
             log.info("Security Mode switched to: {} (DevMode={})", isDev ? "DEV" : "PROD", isDev);
             return ApiResponse.ok(isDev);
         } catch (Exception e) {

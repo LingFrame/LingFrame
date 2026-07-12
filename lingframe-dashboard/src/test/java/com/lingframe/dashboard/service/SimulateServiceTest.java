@@ -11,6 +11,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.dashboard.dto.SimulateResultDTO;
@@ -51,6 +52,7 @@ class SimulateServiceTest {
     private CanaryRouter canaryRouter;
     private PermissionService permissionService;
     private InvocationPipelineEngine pipelineEngine;
+    private LingFrameInfo lingFrameInfo;
     private SimulateService service;
 
     @BeforeEach
@@ -60,8 +62,9 @@ class SimulateServiceTest {
         canaryRouter = mock(CanaryRouter.class);
         permissionService = mock(PermissionService.class);
         pipelineEngine = mock(InvocationPipelineEngine.class);
+        lingFrameInfo = mock(LingFrameInfo.class);
         service = new SimulateService(lingRepository, eventBus, canaryRouter,
-                permissionService, pipelineEngine);
+                permissionService, pipelineEngine, lingFrameInfo);
     }
 
     // ==================== simulateResource ====================

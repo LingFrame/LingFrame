@@ -6,7 +6,7 @@ import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
-import com.lingframe.core.fsm.StateMachine;
+import com.lingframe.core.fsm.TransitionRecord;
 import com.lingframe.core.fsm.TransitionResult;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -286,15 +287,15 @@ class DashboardStatusCoordinatorSupplementTest {
     }
 
     @Test
-    @DisplayName("getRuntimeMachine 应委托给 runtimeCoordinator.getMachine")
-    void getRuntimeMachineShouldDelegate() {
-        StateMachine<RuntimeStatus> machine = mock(StateMachine.class);
-        when(runtimeCoordinator.getMachine("ling1")).thenReturn(machine);
+    @DisplayName("getTransitionHistory 应委托给 runtimeCoordinator.getTransitionHistory")
+    void getTransitionHistoryShouldDelegate() {
+        List<TransitionRecord<RuntimeStatus>> records = Collections.emptyList();
+        when(runtimeCoordinator.getTransitionHistory("ling1")).thenReturn(records);
 
-        StateMachine<RuntimeStatus> result = coordinator.getRuntimeMachine("ling1");
+        List<TransitionRecord<RuntimeStatus>> result = coordinator.getTransitionHistory("ling1");
 
-        assertSame(machine, result);
-        verify(runtimeCoordinator).getMachine("ling1");
+        assertSame(records, result);
+        verify(runtimeCoordinator).getTransitionHistory("ling1");
     }
 
     // ==================== 工具方法 ====================

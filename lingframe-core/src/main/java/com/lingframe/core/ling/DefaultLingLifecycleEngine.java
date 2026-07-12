@@ -125,6 +125,11 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     }
 
     @Override
+    public PermissionService getPermissionService() {
+        return permissionService;
+    }
+
+    @Override
     public Optional<CanaryConfigurable> getCanaryConfigurable() {
         return Optional.ofNullable(canaryConfigurable);
     }

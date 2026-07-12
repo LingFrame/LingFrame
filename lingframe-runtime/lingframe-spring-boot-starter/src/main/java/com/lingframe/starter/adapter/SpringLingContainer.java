@@ -10,6 +10,7 @@ import com.lingframe.core.ling.BusinessInterfaceFilter;
 import com.lingframe.core.ling.LingServiceRegistrar;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.spi.LingContainer;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.governance.GovernanceStrategy;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.core.spi.LingUnloadHook;
@@ -81,6 +82,21 @@ public class SpringLingContainer implements LingContainer {
     private final List<LingUnloadHook> unloadHooks; // 🔥 卸载钩子列表
 
     private File sourceFile;
+
+    /**
+     * 灵核只读配置门面（可选注入）。
+     * <p>
+     * 替代静态穿透 {@code LingFrameConfig.current()} 读隐式注册开关；
+     * 装配链未注入时兜底默认 true（与 {@code LingFrameConfig} builder 默认值一致）。
+     */
+    private LingFrameInfo lingFrameInfo;
+
+    /**
+     * 注入灵核只读配置门面，替代静态穿透。
+     */
+    public void setLingFrameInfo(LingFrameInfo lingFrameInfo) {
+        this.lingFrameInfo = lingFrameInfo;
+    }
 
     // 保留原构造函数，向后兼容测试用例
     public SpringLingContainer(SpringApplicationBuilder builder,
@@ -234,7 +250,7 @@ public class SpringLingContainer implements LingContainer {
                 .build();
         LingServiceRegistrar registrar = new LingServiceRegistrar(
                 registry, interfaceFilter,
-                com.lingframe.core.config.LingFrameConfig.current().isImplicitRegistration(),
+                lingFrameInfo == null ? true : lingFrameInfo.isImplicitRegistration(),
                 coreCtx);
 
         // 获取容器中所有 Bean 的名称
