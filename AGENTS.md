@@ -64,7 +64,7 @@ cd lingframe-examples/lingframe-example-lingcore-app && mvn spring-boot:run
 - **运行时层**（`LingRuntime`）：灵元整体对外呈现的宏观状态
 - 两层之间通过事件与快照联动，不互相直接改状态
 
-### 七个关键角色
+### 五个关键角色
 
 | 角色 | 作用 | 核心约束 |
 | --- | --- | --- |
@@ -73,6 +73,11 @@ cd lingframe-examples/lingframe-example-lingcore-app && mvn spring-boot:run
 | `InstancePool` | 管理活跃成员、默认实例、濒死队列 | 只管成员关系，不管完整生命周期 |
 | `LingRuntime` | 灵元运行时聚合体 | 对外只暴露只读视图 |
 | `RuntimeCoordinator` | 运行时状态唯一写入口 | 只有它能推进 `RuntimeStatus` |
+
+### 两个编排角色
+
+| 角色 | 作用 | 不能做什么 |
+| --- | --- | --- |
 | `DefaultLingLifecycleEngine` | 部署、切换、卸载顺序编排 | 不能绕过 coordinator 直改状态 |
 | `LingUnloadCoordinator` | 卸载清理、资源回收、泄漏检测 | 不能替代生命周期编排 |
 

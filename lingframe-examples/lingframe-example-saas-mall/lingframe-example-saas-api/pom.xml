@@ -1,0 +1,30 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.lingframe</groupId>
+        <artifactId>lingframe-example-saas-mall</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>lingframe-example-saas-api</artifactId>
+    <packaging>jar</packaging>
+
+    <name>LingFrame :: Example :: SaaS Mall API</name>
+    <description>SaaS商城消费者驱动共享契约层</description>
+
+    <dependencies>
+        <!-- 基础依赖，以便在契约中使用常用数据类型或声明 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>${springdoc.artifactId}</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

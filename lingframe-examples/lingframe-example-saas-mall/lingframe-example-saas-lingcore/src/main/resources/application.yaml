@@ -1,0 +1,57 @@
+server:
+  port: 8083
+
+spring:
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      data-locations: classpath:data.sql
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:lingmall_saas;DB_CLOSE_DELAY=-1;MODE=MySQL
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  cache:
+    type: simple
+
+mybatis-plus:
+  configuration:
+    map-underline-to-camel-case: true
+  global-config:
+    db-config:
+      table-underline: true
+
+jwt:
+  secret: d29uZGVyZnVsLWxpbmctdGVzdC1tYWxsLXNlY3JldC1kZW1vLWtleS1mb3Itand0LXNpZ25pbmctcHJvZHVjdGlvbg==
+  expiration: 86400
+
+lingframe:
+  enabled: true
+  dev-mode: true
+  ling-home: lings
+  preload-api-jars:
+    - ${lingframe.preload-api-jars}
+  ling-roots:
+    - ${lingframe.ling-roots}
+  ling-core-governance:
+    enabled: false
+    govern-internal-calls: true
+    check-permissions: true
+  dashboard:
+    enabled: true
+    install-enabled: true
+
+# SpringDoc OpenAPI 配置
+springdoc:
+  cache:
+    disabled: true
+  packages-to-scan: com.lingframe
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

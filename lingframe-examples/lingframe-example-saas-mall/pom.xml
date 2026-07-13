@@ -1,0 +1,23 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.lingframe</groupId>
+        <artifactId>lingframe-examples</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>lingframe-example-saas-mall</artifactId>
+    <packaging>pom</packaging>
+
+    <name>LingFrame :: Example :: SaaS Mall Parent</name>
+    <description>SaaS商城灵核与多业务灵元拆解总工程</description>
+
+    <modules>
+        <module>lingframe-example-saas-api</module>
+        <module>lingframe-example-saas-lingcore</module>
+        <module>lingframe-example-saas-ling-oauth</module>
+        <module>lingframe-example-saas-ling-seckill</module>
+        <module>lingframe-example-saas-ling-refund</module>
+    </modules>
+</project>
