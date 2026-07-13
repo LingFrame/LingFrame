@@ -127,7 +127,7 @@ class AnnotationContractTest {
         @DisplayName("显式 serviceId 可锚定短 ID 或 FQSID")
         void explicitServiceId() throws NoSuchFieldException {
             LingReference anno = LingReferenceContract.class.getDeclaredField("anchoredRef").getAnnotation(LingReference.class);
-            assertEquals("lingcore:authService", anno.serviceId());
+            assertEquals("lingcore-app:authService", anno.serviceId());
         }
 
         @Test
@@ -141,7 +141,7 @@ class AnnotationContractTest {
         @SuppressWarnings("unused")
         private Object dummyRef;
 
-        @LingReference(lingId = "user-ling", serviceId = "lingcore:authService")
+        @LingReference(lingId = "user-ling", serviceId = "lingcore-app:authService")
         @SuppressWarnings("unused")
         private Object anchoredRef;
     }

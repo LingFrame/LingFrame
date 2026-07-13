@@ -18,11 +18,11 @@ import java.util.logging.Logger;
  * <p>
  * 主动清理 logback、log4j2、java.util.logging 中关联目标 ClassLoader 的引用。
  * <p>
- * <b>核心安全约束</b>：日志框架门面与实现通常委派给父加载器，灵元共享宿主实例——
+ * <b>核心安全约束</b>：日志框架门面与实现通常委派给父加载器，灵元共享灵核实例——
  * 但委派来源分两层：
  * <ul>
  *   <li>{@code LingClassLoader.FORCE_PARENT_PACKAGES}（core）：仅 slf4j 门面，属灵珑自身依赖</li>
- *   <li>适配层 {@code addParentDelegatePackages}（runtime）：logback/log4j2 等实现，属宿主生态环境</li>
+ *   <li>适配层 {@code addParentDelegatePackages}（runtime）：logback/log4j2 等实现，属灵核生态环境</li>
  * </ul>
  * 因此<b>必须严格判定日志框架实例的 ClassLoader</b>，
  * 只清理灵元 CL 自己加载的日志框架实例，绝不能 shutdown/reset 全局实例，
@@ -62,7 +62,7 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
      * 清理 logback LoggerContext。
      * <p>
      * <b>安全判定</b>：只当 LoggerContext 实例由灵元 CL 加载时才 shutdown/reset。
-     * 若由父 CL 加载（通常情况），说明灵元共享宿主 logback，必须跳过，
+     * 若由父 CL 加载（通常情况），说明灵元共享灵核 logback，必须跳过，
      * 否则会关闭整个 JVM 的日志输出。
      */
     @SuppressWarnings("unchecked")
@@ -75,10 +75,10 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
             if (factory == null) return;
 
             // 关键安全判定：LoggerContext 是否由灵元 CL 加载
-            // 若由父 CL 加载，灵元共享宿主 logback 实例，绝不能 shutdown，否则全 JVM 日志失效
+            // 若由父 CL 加载，灵元共享灵核 logback 实例，绝不能 shutdown，否则全 JVM 日志失效
             ClassLoader factoryCL = factory.getClass().getClassLoader();
             if (factoryCL != classLoader) {
-                log.debug("[{}] logback LoggerContext loaded by non-ling CL ({}), skip to protect host logging",
+                log.debug("[{}] logback LoggerContext loaded by non-ling CL ({}), skip to protect lingcore logging",
                         lingId, factoryCL);
                 return;
             }
@@ -117,7 +117,7 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
      * 清理 log4j2 LogManager。
      * <p>
      * <b>安全判定</b>：只当 LogManager 类由灵元 CL 加载时才 shutdown。
-     * 若由父 CL 加载，必须跳过，否则会关闭宿主 log4j2。
+     * 若由父 CL 加载，必须跳过，否则会关闭灵核 log4j2。
      */
     private void cleanupLog4j2(String lingId, ClassLoader classLoader) {
         try {
@@ -125,7 +125,7 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
 
             // 关键安全判定：LogManager 是否由灵元 CL 加载
             if (logManagerClass.getClassLoader() != classLoader) {
-                log.debug("[{}] log4j2 LogManager loaded by non-ling CL ({}), skip to protect host logging",
+                log.debug("[{}] log4j2 LogManager loaded by non-ling CL ({}), skip to protect lingcore logging",
                         lingId, logManagerClass.getClassLoader());
                 return;
             }
@@ -164,7 +164,7 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
      * <p>
      * <b>安全判定</b>：JUL 的 LogManager 永远由 bootstrap CL 加载（getClassLoader()=null），
      * 不可能由灵元 CL 加载。{@code LogManager.reset()} 会重置全 JVM 的所有 JUL Logger，
-     * 包括宿主的，因此<b>禁止对全局 LogManager 调用 reset()</b>。
+     * 包括灵核的，因此<b>禁止对全局 LogManager 调用 reset()</b>。
      * <p>
      * 这里仅清理灵元 CL 加载的 Logger（通过反射扫描 logger 名空间），
      * 若无灵元加载的 Logger 则跳过。
@@ -173,7 +173,7 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
         try {
             LogManager logManager = LogManager.getLogManager();
 
-            // JUL LogManager 永远由 bootstrap CL 加载，不能 reset()，否则会关闭宿主所有 JUL 日志
+            // JUL LogManager 永远由 bootstrap CL 加载，不能 reset()，否则会关闭灵核所有 JUL 日志
             // 这里只清理灵元 CL 加载的 Logger（通过反射枚举 logger 名空间）
             int cleared = 0;
             try {
@@ -224,7 +224,7 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
      * 清理 slf4j LoggerFactory 的静态缓存。
      * <p>
      * <b>安全判定</b>：只当 LoggerFactory 类由灵元 CL 加载时才清理静态字段。
-     * 若由父 CL 加载，必须跳过，否则会破坏宿主的 slf4j 绑定。
+     * 若由父 CL 加载，必须跳过，否则会破坏灵核的 slf4j 绑定。
      */
     private void cleanupSlf4j(String lingId, ClassLoader classLoader) {
         try {
@@ -232,7 +232,7 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
 
             // 关键安全判定：LoggerFactory 是否由灵元 CL 加载
             if (loggerFactoryClass.getClassLoader() != classLoader) {
-                log.debug("[{}] slf4j LoggerFactory loaded by non-ling CL ({}), skip to protect host binding",
+                log.debug("[{}] slf4j LoggerFactory loaded by non-ling CL ({}), skip to protect lingcore binding",
                         lingId, loggerFactoryClass.getClassLoader());
                 return;
             }

@@ -183,9 +183,9 @@ class SpringLingContainerUnloadRegressionTest {
                 assertEquals("pong", pingResponse.getContentAsString(),
                         "ping 接口应返回 pong");
 
-                // 验证宿主 HandlerMapping 也能路由到灵元 Controller
+                // 验证灵核 HandlerMapping 也能路由到灵元 Controller
                 HandlerExecutionChain chain = getHandlerExecutionChain(hostMapping, routeRequest);
-                assertNotNull(chain, "宿主 HandlerMapping 应能路由到灵元 Controller");
+                assertNotNull(chain, "灵核 HandlerMapping 应能路由到灵元 Controller");
 
                 // 清理 request attributes：resolveRoute / dispatch 会将 WebInterfaceMetadata
                 // 存入 request attributes，其 classLoader 字段强引用灵元 CL。
@@ -205,7 +205,7 @@ class SpringLingContainerUnloadRegressionTest {
             assertNull(webInterfaceManager.resolveRoute(afterRequest),
                     "Web 路由应在 undeploy 后注销");
             assertNull(getHandlerExecutionChain(hostMapping, afterRequest),
-                    "宿主 HandlerMapping 不应再路由到灵元 Controller");
+                    "灵核 HandlerMapping 不应再路由到灵元 Controller");
 
             // 等待 LeakDetectionEvent
             boolean received = leakLatch.await(30, TimeUnit.SECONDS);

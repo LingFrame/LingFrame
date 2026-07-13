@@ -14,7 +14,7 @@ import java.lang.annotation.*;
  * {@code @LingReference(lingId = "user-ling")}
  * {@code private UserService userService;}
  *
- * {@code @LingReference(serviceId = "lingcore:authService")}
+ * {@code @LingReference(serviceId = "lingcore-app:authService")}
  * {@code private AuthService auth;}
  * </pre>
  * <p>

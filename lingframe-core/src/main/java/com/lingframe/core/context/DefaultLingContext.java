@@ -241,8 +241,8 @@ public class DefaultLingContext implements LingContext {
                 fqsid = serviceIdAnchor;
                 // FQSID 分支：透 FQSID 的 contract 部分作 interfaceName，
                 // 这样 SmartServiceProxy 下游拼 serviceFQSID = targetLingId + ":" + contractPart
-                // 与 Registrar 注册的 FQSID（如 lingcore:authService）匹配。
-                // 用 serviceClass.getName() 会拼成 lingcore:com.example.AuthService，不匹配。
+                // 与 Registrar 注册的 FQSID（如 lingcore-app:authService）匹配。
+                // 用 serviceClass.getName() 会拼成 lingcore-app:com.example.AuthService，不匹配。
                 routingInterfaceName = serviceIdAnchor.substring(serviceIdAnchor.indexOf(':') + 1);
             } else {
                 String ling = (lingIdAnchor != null && !lingIdAnchor.isEmpty()) ? lingIdAnchor : this.lingId;

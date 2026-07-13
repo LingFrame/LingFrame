@@ -100,7 +100,7 @@ public interface LingContext {
      * <ul>
      *   <li>仅按类型：{@code getService(UserService.class, null, null)}</li>
      *   <li>限定灵元：{@code getService(UserService.class, "user-ling", null)}</li>
-     *   <li>限定完整 FQSID：{@code getService(AuthService.class, null, "lingcore:authService")}</li>
+     *   <li>限定完整 FQSID：{@code getService(AuthService.class, null, "lingcore-app:authService")}</li>
      * </ul>
      *
      * @param serviceClass 服务接口类

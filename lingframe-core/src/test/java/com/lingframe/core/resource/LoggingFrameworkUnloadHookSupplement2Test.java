@@ -74,13 +74,13 @@ class LoggingFrameworkUnloadHookSupplement2Test {
     // ==================== cleanupJul（实际清理路径） ====================
 
     @Test
-    @DisplayName("cleanup 自定义 CL 应安全遍历 JUL loggers 字段而不破坏宿主日志")
+    @DisplayName("cleanup 自定义 CL 应安全遍历 JUL loggers 字段而不破坏灵核日志")
     void shouldSafelyTraverseJulLoggers() {
         ClassLoader customCL = new ClassLoader() {
         };
         // JUL LogManager 由 bootstrap CL 加载，loggers 遍历不会匹配自定义 CL
         assertDoesNotThrow(() -> hook.cleanup("ling-jul", customCL));
-        // 宿主 JUL 仍可用
+        // 灵核 JUL 仍可用
         Logger logger = Logger.getLogger("lingframe.test.cleanup");
         assertNotNull(logger);
         logger.info("JUL still works after cleanup");
@@ -109,7 +109,7 @@ class LoggingFrameworkUnloadHookSupplement2Test {
 
         hook.cleanup("ling-jul", customCL);
 
-        // 宿主 Logger 应保留
+        // 灵核 Logger 应保留
         Logger postLogger = Logger.getLogger("lingframe.pre-cleanup");
         assertSame(preLogger, postLogger);
         // handlers 应保留
@@ -129,7 +129,7 @@ class LoggingFrameworkUnloadHookSupplement2Test {
     }
 
     @Test
-    @DisplayName("cleanup 后 LogManager.reset() 应正常工作（宿主 JUL 未被破坏）")
+    @DisplayName("cleanup 后 LogManager.reset() 应正常工作（灵核 JUL 未被破坏）")
     void julResetShouldWorkAfterCleanup() {
         ClassLoader customCL = new ClassLoader() {
         };

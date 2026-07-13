@@ -78,7 +78,7 @@ public class LingFrameWebSupportConfiguration {
 
             if (mapping != null && adapter != null) {
                 webInterfaceManager.init(mapping, adapter, (ConfigurableApplicationContext) context);
-                log.info("[LingFrame Web] WebInterfaceManager initialized with host Spring MVC components");
+                log.info("[LingFrame Web] WebInterfaceManager initialized with lingcore Spring MVC components");
             } else {
                 log.warn("[LingFrame Web] Standard Spring MVC components not found, skipping WebInterfaceManager initialization");
             }

@@ -17,7 +17,7 @@ import java.util.Vector;
  * 增强类的 static MethodProxy 字段持有 MethodProxy → CreateInfo →
  * BeanFactoryAwareGeneratorStrategy → beanFactory → 灵元CL 的强引用链，
  * 与 CL → classes → 增强类 形成循环引用。BeanFactoryAwareGeneratorStrategy 是
- * 宿主CL 对象（spring-core），其 beanFactory 字段强引用灵元CL，构成外部强引用。
+ * 灵核CL 对象（spring-core），其 beanFactory 字段强引用灵元CL，构成外部强引用。
  * 清空 MethodProxy 静态字段可断开此引用链。
  */
 @Slf4j

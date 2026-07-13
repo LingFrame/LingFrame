@@ -174,7 +174,7 @@ final class SpringWebHostSupport {
                     clearInternalCacheMap(cacheBean, "openApiCache");
                 }
             }
-            log.info("SpringDoc caches invalidated in host context");
+            log.info("SpringDoc caches invalidated in lingcore context");
         } catch (Exception e) {
             log.debug("Found no SpringDoc cache to clear or clear failed: {}", e.getMessage());
         }

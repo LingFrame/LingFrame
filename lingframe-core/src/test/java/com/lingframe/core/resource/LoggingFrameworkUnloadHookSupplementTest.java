@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
  * <p>
  * 该钩子清理 logback/log4j2/jul/slf4j 中关联灵元 ClassLoader 的引用。
  * 由于日志框架通常由父 CL 加载，安全判定会跳过 shutdown，
- * 测试主要验证不破坏宿主日志输出。
+ * 测试主要验证不破坏灵核日志输出。
  */
 @DisplayName("LoggingFrameworkUnloadHook 补充测试")
 class LoggingFrameworkUnloadHookSupplementTest {

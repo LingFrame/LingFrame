@@ -48,7 +48,7 @@ public class LingClassLoader extends URLClassLoader {
     // 必须强制走父加载器的包（JDK 基础 + 灵珑自身依赖 + 契约包）
     // 边界约束：core 只持「灵珑自身必须委派」的包——JDK 基础、灵珑 API 契约、
     // 灵珑自身用的门面（slf4j/lombok/snakeyaml）。生态环境包（Spring/Jackson/Logback/Log4j2）
-    // 不钶在此，由 runtime 适配层经 addParentDelegatePackages 注入，避免 core 替宿主决策。
+    // 不应在此，由 runtime 适配层经 addParentDelegatePackages 注入，避免 core 替灵核决策。
     private static final List<String> FORCE_PARENT_PACKAGES = Arrays.asList(
             "java.", "javax.", "jakarta.", "jdk.", "sun.", "com.sun.", "org.w3c.", "org.xml.",
             "com.lingframe.api.", // API 契约必须共享

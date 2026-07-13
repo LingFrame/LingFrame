@@ -73,10 +73,10 @@ public final class ClassLoaderLeakDiagnoser {
             }
         } catch (Exception ignored) {}
 
-        // 1. 扫描宿主 Spring 容器的单例 Bean 实例
+        // 1. 扫描灵核 Spring 容器的单例 Bean 实例
         diagnoseApplicationContext(hostContext, leakedLoader, leakedClassNames);
 
-        // 1.2 扫描宿主 TestHost 实例字段 (极重要，因为 HandlerMapping/Adapter 是 new 出来的非 Bean 实例)
+        // 1.2 扫描灵核 TestHost 实例字段 (极重要，因为 HandlerMapping/Adapter 是 new 出来的非 Bean 实例)
         if (testHost != null) {
             writeLog("[DIAG-HOST] 开始扫描 TestHost 实例字段...");
             checkObjectForLeak(testHost, "TestHost", leakedLoader, leakedClassNames, Collections.newSetFromMap(new IdentityHashMap<>()), 0);

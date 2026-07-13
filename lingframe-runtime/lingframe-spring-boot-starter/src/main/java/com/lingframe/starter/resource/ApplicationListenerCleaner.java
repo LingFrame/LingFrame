@@ -14,7 +14,7 @@ import java.util.Set;
 /**
  * ApplicationListener清理器：清理灵元注册的监听器，防止引用泄漏。
  * <p>
- * Spring Boot在启动灵元ApplicationContext时，会自动注册监听器到宿主容器的事件系统中，
+ * Spring Boot在启动灵元ApplicationContext时，会自动注册监听器到灵核容器的事件系统中，
  * 例如 ParentContextCloserApplicationListener、ConditionEvaluationReportLoggingListener等。
  * 这些监听器持有灵元ApplicationContext引用，必须在卸载时清理。
  */
@@ -25,7 +25,7 @@ class ApplicationListenerCleaner {
      * 清理灵元注册的所有ApplicationListener。
      *
      * @param lingId 灵元ID
-     * @param mainContext 宿主ApplicationContext
+     * @param mainContext 灵核ApplicationContext
      * @param lingContext 灵元ApplicationContext
      */
     void clear(String lingId, ApplicationContext mainContext, ConfigurableApplicationContext lingContext) {
@@ -35,7 +35,7 @@ class ApplicationListenerCleaner {
         }
 
         try {
-            // 获取宿主容器的事件广播器
+            // 获取灵核容器的事件广播器
             ApplicationEventMulticaster multicaster = mainContext.getBean(
                     ApplicationEventMulticaster.class);
 
@@ -84,7 +84,7 @@ class ApplicationListenerCleaner {
                 }
             }
 
-            log.info("[{}] Cleaned {} ApplicationListeners from host context",
+            log.info("[{}] Cleaned {} ApplicationListeners from lingcore context",
                     lingId, listenersToRemove.size());
 
         } catch (NoSuchFieldException e) {
