@@ -62,16 +62,12 @@ public class RepositoryReadWriteMixedBenchmark {
         public void setup(RepositoryReadWriteMixedBenchmark parent) {
             long tid = Thread.currentThread().getId();
             volatileKey = "volatile-ling-" + tid;
-            // 创建轻量级 LingRuntime，仅用于 Repository 读写竞争测试。
-            // 注意：LingRuntime 构造器不再注册到 RuntimeCoordinator；
-            // 运行时聚合器注册由编排层 DefaultLingLifecycleEngine.ensureRuntimeForDeployment 单次调用。
-            // 本测试走 Repository.register/deregister 直接操作，不经过编排层，故无需 coordinator 注册。
-            volatileRuntime = new LingRuntime(
-                    volatileKey,
-                    LingRuntimeConfig.defaults(),
-                    parent.helper.getEventBus(),
-                    parent.helper.getRuntimeCoordinator()
-            );
+            // 走完整部署路径创建真实 LingRuntime，再从仓储取出用于 register/deregister 循环。
+            // 不能绕过 DefaultLingLifecycleEngine 直接 new LingRuntime——InstanceCoordinator
+            // 是包级私有写入口，只有 core 内部能创建。完整部署保证状态机一致性。
+            parent.helper.deployLing(volatileKey, "1.0.0");
+            volatileRuntime = parent.helper.getLingRepository().getRuntime(volatileKey);
+            parent.helper.getLingRepository().deregister(volatileKey);
         }
     }
 

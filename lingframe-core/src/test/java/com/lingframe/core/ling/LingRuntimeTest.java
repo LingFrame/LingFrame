@@ -71,7 +71,7 @@ class LingRuntimeTest {
         void shouldHandleNullConfig() {
             RuntimeCoordinator rc = new RuntimeCoordinator(eventBus);
             rc.register("null-id");
-            LingRuntime nullConfigRuntime = new LingRuntime("null-id", null, eventBus, rc);
+            LingRuntime nullConfigRuntime = new LingRuntime("null-id", null, eventBus, new InstanceCoordinator(eventBus), rc);
             assertNotNull(nullConfigRuntime.getConfig());
             assertEquals(RuntimeStatus.INACTIVE, nullConfigRuntime.currentStatus());
         }

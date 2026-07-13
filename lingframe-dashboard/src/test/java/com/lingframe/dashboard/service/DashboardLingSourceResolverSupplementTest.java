@@ -4,10 +4,9 @@ import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.fsm.RuntimeCoordinator;
+import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.spi.LingContainer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -18,6 +17,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * DashboardLingSourceResolver 补充测试
@@ -235,10 +238,9 @@ class DashboardLingSourceResolverSupplementTest {
         @Test
         @DisplayName("无活跃实例且无默认实例时应返回 null")
         void shouldReturnNullWhenNoActiveAndNoDefault() {
-            EventBus eventBus = new EventBus();
-            RuntimeCoordinator coordinator = new RuntimeCoordinator(eventBus);
-            LingRuntime runtime = new LingRuntime("ling1",
-                    LingRuntimeConfig.defaults(), eventBus, coordinator);
+            LingRuntime runtime = mockRuntimeWithPool();
+            when(runtime.getInstancePool().getActiveInstances()).thenReturn(Collections.emptyList());
+            when(runtime.getInstancePool().getDefault()).thenReturn(null);
             DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(
                     LingFrameConfig.builder().build());
 
@@ -250,14 +252,10 @@ class DashboardLingSourceResolverSupplementTest {
         @Test
         @DisplayName("存在非灰度实例时应优先返回非灰度实例")
         void shouldReturnNonCanaryInstanceFirst() {
-            EventBus eventBus = new EventBus();
-            RuntimeCoordinator coordinator = new RuntimeCoordinator(eventBus);
-            LingRuntime runtime = new LingRuntime("ling1",
-                    LingRuntimeConfig.defaults(), eventBus, coordinator);
             LingInstance stable = instance("ling1", "1.0.0", false);
             LingInstance canary = instance("ling1", "1.1.0", true);
-            runtime.getInstancePool().addInstance(stable, true);
-            runtime.getInstancePool().addInstance(canary, false);
+            LingRuntime runtime = mockRuntimeWithPool();
+            when(runtime.getInstancePool().getActiveInstances()).thenReturn(Arrays.asList(stable, canary));
 
             DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(
                     LingFrameConfig.builder().build());
@@ -270,12 +268,10 @@ class DashboardLingSourceResolverSupplementTest {
         @Test
         @DisplayName("仅有灰度实例时应回退到默认实例")
         void shouldFallbackToDefaultWhenOnlyCanary() {
-            EventBus eventBus = new EventBus();
-            RuntimeCoordinator coordinator = new RuntimeCoordinator(eventBus);
-            LingRuntime runtime = new LingRuntime("ling1",
-                    LingRuntimeConfig.defaults(), eventBus, coordinator);
             LingInstance canary = instance("ling1", "1.1.0", true);
-            runtime.getInstancePool().addInstance(canary, true);
+            LingRuntime runtime = mockRuntimeWithPool();
+            when(runtime.getInstancePool().getActiveInstances()).thenReturn(Arrays.asList(canary));
+            when(runtime.getInstancePool().getDefault()).thenReturn(canary);
 
             DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(
                     LingFrameConfig.builder().build());
@@ -348,6 +344,17 @@ class DashboardLingSourceResolverSupplementTest {
             definition.setProperties(props);
         }
         return new LingInstance(new StubLingContainer(), definition, new EventBus());
+    }
+
+    /**
+     * 构造 mock LingRuntime + mock InstancePool，
+     * 供 selectStableInstance / buildReloadVersion 等只读查询测试使用。
+     */
+    private LingRuntime mockRuntimeWithPool() {
+        LingRuntime runtime = mock(LingRuntime.class);
+        InstancePool pool = mock(InstancePool.class);
+        when(runtime.getInstancePool()).thenReturn(pool);
+        return runtime;
     }
 
     private static final class StubLingContainer implements LingContainer {

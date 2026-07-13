@@ -6,6 +6,7 @@ import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.spi.GovernanceDecision;
 import com.lingframe.core.ling.DefaultLingRepository;
+import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.GovernancePolicyProvider;
@@ -13,6 +14,9 @@ import com.lingframe.core.spi.LingFilterChain;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
 import java.time.Duration;
@@ -41,7 +45,7 @@ class GovernanceDecisionFilterTest {
         @DisplayName("应将治理决策写入上下文治理状态")
         void shouldApplyDecisionToGovernanceState() throws Throwable {
             GovernanceDecisionFilter filter = new GovernanceDecisionFilter(repository, buildArbitrator(1234));
-            repository.register(new LingRuntime("ling1", null, null, new RuntimeCoordinator(null)));
+                        repository.register(mockLingRuntime("ling1"));
 
             InvocationContext context = InvocationContext.obtain();
             context.setServiceFQSID("ling1:" + TestService.class.getName());
@@ -72,7 +76,7 @@ class GovernanceDecisionFilterTest {
         @DisplayName("缺失已解析参数类型时应根据参数名反查方法")
         void shouldResolveMethodFromParameterNamesWhenResolutionTypesAreMissing() throws Throwable {
             GovernanceDecisionFilter filter = new GovernanceDecisionFilter(repository, buildArbitrator(100));
-            repository.register(new LingRuntime("ling1", null, null, new RuntimeCoordinator(null)));
+                        repository.register(mockLingRuntime("ling1"));
 
             InvocationContext context = InvocationContext.obtain();
             context.setServiceFQSID("ling1:" + TestService.class.getName());
@@ -130,7 +134,7 @@ class GovernanceDecisionFilterTest {
         void shouldFailWhenArbitratorReturnsNoDecisionWithoutEntryGovernanceFacts() {
             GovernanceDecisionFilter filter = new GovernanceDecisionFilter(repository,
                     new GovernanceArbitrator(Collections.singletonList(emptyProvider())));
-            repository.register(new LingRuntime("ling1", null, null, new RuntimeCoordinator(null)));
+                        repository.register(mockLingRuntime("ling1"));
 
             InvocationContext context = InvocationContext.obtain();
             context.setServiceFQSID("ling1:" + TestService.class.getName());
@@ -210,5 +214,17 @@ class GovernanceDecisionFilterTest {
                 return GovernanceDecision.empty();
             }
         };
+    }
+
+    /**
+     * 构造 mock LingRuntime，仅用于塞进 LingRepository 供 Filter 透传，
+     * 不参与真实状态机协作。
+     */
+    private static LingRuntime mockLingRuntime(String lingId) {
+        LingRuntime runtime = mock(LingRuntime.class);
+        InstancePool pool = mock(InstancePool.class);
+        when(runtime.getInstancePool()).thenReturn(pool);
+        when(runtime.getLingId()).thenReturn(lingId);
+        return runtime;
     }
 }

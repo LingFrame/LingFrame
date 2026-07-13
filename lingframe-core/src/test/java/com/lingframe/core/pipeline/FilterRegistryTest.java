@@ -4,6 +4,7 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.ling.DefaultLingRepository;
+import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
@@ -12,6 +13,9 @@ import com.lingframe.core.spi.LingInvocationFilter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -49,7 +53,7 @@ class FilterRegistryTest {
                     .defaultTimeoutMs(1000)
                     .rateLimitPerSecond(5)
                     .build();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, runtimeCoordinator);
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             FilterRegistry registry = new FilterRegistry(FilterRegistryConfig.builder()
@@ -110,7 +114,7 @@ class FilterRegistryTest {
                     .defaultTimeoutMs(1000)
                     .rateLimitPerSecond(5)
                     .build();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, runtimeCoordinator);
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
             return new FilterRegistry(FilterRegistryConfig.builder()
                     .methodCache(new InvokableMethodCache())
@@ -209,5 +213,14 @@ class FilterRegistryTest {
             assertNotSame(withDynamic, afterRemove, "removeDynamicFilter 后应返回新缓存实例");
             assertEquals(withDynamic.size() - 1, afterRemove.size(), "移除的过滤器不应在新缓存中");
         }
+    }
+
+    private static LingRuntime mockRuntime(String lingId, LingRuntimeConfig config) {
+        LingRuntime runtime = mock(LingRuntime.class);
+        InstancePool pool = mock(InstancePool.class);
+        when(runtime.getInstancePool()).thenReturn(pool);
+        when(runtime.getLingId()).thenReturn(lingId);
+        when(runtime.getConfig()).thenReturn(config);
+        return runtime;
     }
 }

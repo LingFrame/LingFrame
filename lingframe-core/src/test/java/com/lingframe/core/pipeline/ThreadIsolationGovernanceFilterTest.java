@@ -2,8 +2,8 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.ling.DefaultLingRepository;
+import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
@@ -13,6 +13,9 @@ import com.lingframe.core.spi.LingFilterChain;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -46,7 +49,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(2000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
@@ -96,7 +99,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(1000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
@@ -141,7 +144,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(2000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
@@ -236,7 +239,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(1000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
@@ -273,7 +276,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(1000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
@@ -307,7 +310,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(1000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
@@ -339,7 +342,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(1000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
             GovernanceMetricsCollector collector = new GovernanceMetricsCollector();
 
@@ -369,5 +372,14 @@ class ThreadIsolationGovernanceFilterTest {
                 context.recycle();
             }
         }
+    }
+
+    private static LingRuntime mockRuntime(String lingId, LingRuntimeConfig config) {
+        LingRuntime runtime = mock(LingRuntime.class);
+        InstancePool pool = mock(InstancePool.class);
+        when(runtime.getInstancePool()).thenReturn(pool);
+        when(runtime.getLingId()).thenReturn(lingId);
+        when(runtime.getConfig()).thenReturn(config);
+        return runtime;
     }
 }

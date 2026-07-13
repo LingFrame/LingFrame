@@ -22,7 +22,7 @@ class LingRuntimeStateEventTest {
         @DisplayName("停止事件应触发实例池清空")
         void shouldShutdownPoolOnStoppingState() {
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus,
+            LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus, new InstanceCoordinator(eventBus),
                     new RuntimeCoordinator(eventBus));
 
             eventBus.publish(new RuntimeStateChangedEvent("ling-a",
@@ -40,7 +40,7 @@ class LingRuntimeStateEventTest {
         @DisplayName("其他灵元的状态事件不应影响当前实例池")
         void shouldIgnoreOtherLingState() {
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus,
+            LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus, new InstanceCoordinator(eventBus),
                     new RuntimeCoordinator(eventBus));
 
             eventBus.publish(new RuntimeStateChangedEvent("ling-b",

@@ -131,6 +131,7 @@ class DefaultLingLifecycleEngineTest {
                 "ling1",
                 LingRuntimeConfig.builder().forceCleanupDelaySeconds(0).build(),
                 eventBus,
+                coordinator,
                 runtimeCoordinator);
         runtime.getInstancePool().addInstance(instance, true);
         repository.register(runtime);
@@ -194,7 +195,7 @@ class DefaultLingLifecycleEngineTest {
         coordinator.start(instance);
         coordinator.error(instance);
 
-        LingRuntime runtime = new LingRuntime("ling1", LingRuntimeConfig.defaults(), eventBus, runtimeCoordinator);
+        LingRuntime runtime = new LingRuntime("ling1", LingRuntimeConfig.defaults(), eventBus, coordinator, runtimeCoordinator);
         runtime.getInstancePool().addInstance(instance, true);
         repository.register(runtime);
 
