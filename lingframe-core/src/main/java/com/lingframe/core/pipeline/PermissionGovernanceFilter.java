@@ -6,6 +6,7 @@ import com.lingframe.api.security.PermissionAuditRecord;
 import com.lingframe.api.security.PermissionAuditResult;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameInfo;
+import com.lingframe.core.governance.GovernanceStrategy;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,7 @@ import java.util.Map;
  * 权限检查与审计过滤器。
  * <p>
  * prod 模式下执行零信任红线：未显式声明 requiredPermission 的调用一律拒绝，
- * 防止启发式推导（{@link com.lingframe.core.governance.GovernanceStrategy}）因方法命名不规范产生越权风险。
+ * 防止启发式推导（{@link GovernanceStrategy}）因方法命名不规范产生越权风险。
  * dev 模式下维持原有「未声明即放行」兜底，便于开发期快速验证。
  */
 @Slf4j

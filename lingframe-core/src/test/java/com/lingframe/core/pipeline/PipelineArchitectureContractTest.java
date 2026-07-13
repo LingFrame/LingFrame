@@ -36,6 +36,7 @@ class PipelineArchitectureContractTest {
                 .collect(Collectors.toList());
 
         assertEquals(Arrays.asList(
+                ContractProviderRoutingFilter.class,
                 TrafficMetricsFilter.class,
                 MacroStateGuardFilter.class,
                 CanaryRoutingFilter.class,

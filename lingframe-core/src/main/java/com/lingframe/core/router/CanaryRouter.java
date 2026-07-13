@@ -2,6 +2,7 @@ package com.lingframe.core.router;
 
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.spi.CanaryConfigurable;
 import com.lingframe.core.spi.TrafficRouter;
@@ -154,8 +155,10 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
     private LingInstance findStableInstance(List<LingInstance> candidates, InvocationContext context,
             LingInstance excludedInstance) {
         // 1. 退化到池标记的 Default 实例（如果存在且未被排除，具有最高优先级防止劫持）
-        if (context != null && context.getRuntime() != null) {
-            LingInstance defaultInst = context.getRuntime().getInstancePool().getDefault();
+        // 路由升维：仅灵元（LingRuntime）有 InstancePool；灵核走后续降级策略
+        if (context != null && context.getRuntime() instanceof LingRuntime) {
+            LingRuntime runtime = (LingRuntime) context.getRuntime();
+            LingInstance defaultInst = runtime.getInstancePool().getDefault();
             if (defaultInst != null && defaultInst != excludedInstance && candidates.contains(defaultInst)) {
                 return defaultInst;
             }

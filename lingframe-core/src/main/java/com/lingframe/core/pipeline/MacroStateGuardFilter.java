@@ -3,10 +3,10 @@ package com.lingframe.core.pipeline;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.ling.LingRepository;
-import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
+import com.lingframe.core.spi.RoutableTarget;
 
 /**
  * 宏观运行时状态守卫过滤器。
@@ -32,8 +32,8 @@ public class MacroStateGuardFilter implements LingInvocationFilter {
             return chain.doFilter(ctx);
         }
 
-        String lingId = ctx.getLingIdFromFqsid();
-        LingRuntime runtime = lingRepository.getRuntime(lingId);
+        String lingId = ctx.getEffectiveLingId();
+        RoutableTarget runtime = lingRepository.getRoutableTarget(lingId);
         if (runtime == null) {
             if (ctx.execution().getMode().isGovernOnly()) {
                 // GOVERN_ONLY 允许灵核入口借道治理，即便此时并不存在真实灵元 Runtime

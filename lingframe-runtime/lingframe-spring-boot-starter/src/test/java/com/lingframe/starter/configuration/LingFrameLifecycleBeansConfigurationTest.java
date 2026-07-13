@@ -1,5 +1,6 @@
 package com.lingframe.starter.configuration;
 
+import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.classloader.SharedApiManager;
@@ -16,6 +17,7 @@ import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.router.ProviderWeightRouter;
 import com.lingframe.core.spi.*;
 import com.lingframe.starter.event.ServiceExporterListener;
 import com.lingframe.starter.config.LingFrameProperties;
@@ -116,12 +118,14 @@ class LingFrameLifecycleBeansConfigurationTest {
         FilterRegistry filterRegistry = config.filterRegistry(
                 lingRepository, methodCache, permissionService, invokerProvider, arbitratorProvider,
                 metricsCollectorProvider, governanceMetricsCollectorProvider, trafficRouter, eventBus, runtimeCoordinator,
-                lingServiceRegistry, lingFrameConfig, mock(LocalGovernanceRegistry.class)
+                lingServiceRegistry, lingFrameConfig, mock(LocalGovernanceRegistry.class),
+                new ProviderWeightRouter()
         );
         assertNotNull(filterRegistry);
 
         // 4. invocationPipelineEngine
-        InvocationPipelineEngine invocationPipelineEngine = config.invocationPipelineEngine(filterRegistry);
+        InvocationPipelineEngine invocationPipelineEngine = config.invocationPipelineEngine(
+                filterRegistry, new com.lingframe.core.metrics.ProviderMetricsCollector());
         assertNotNull(invocationPipelineEngine);
 
         // 5. lingDiscoveryService
@@ -188,8 +192,13 @@ class LingFrameLifecycleBeansConfigurationTest {
         HotSwapWatcher watcher2 = config.hotSwapWatcher(lifecycleEngine, lingRepository, eventBus, leakDetector);
         assertNotNull(watcher2);
 
-        // 12. lingCoreContext
-        LingContext coreContext = config.lingCoreContext(lingRepository, lingServiceRegistry, pipelineEngine, permissionService, eventBus);
+        // 12. lingCoreContext（需传入灵核 LingInstance，由 LingCoreRuntimeBootstrap 装配）
+        LingContainer coreContainer = mock(LingContainer.class);
+        LingDefinition coreDef = new LingDefinition();
+        coreDef.setId("lingcore-app");
+        coreDef.setVersion("permanent");
+        LingInstance lingCoreInstance = new LingInstance(coreContainer, coreDef, eventBus);
+        LingContext coreContext = config.lingCoreContext(lingCoreInstance, lingRepository, lingServiceRegistry, pipelineEngine, permissionService, eventBus);
         assertNotNull(coreContext);
 
         // 13. lingReferenceInjector（需传入灵核级 LingContext）

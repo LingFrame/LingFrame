@@ -21,7 +21,8 @@
         <module>lingframe-example-ling-order-canary</module>
         <module>lingframe-example-order-api</module>
         <module>lingframe-example-ling-native</module>
-        <module>lingframe-example-ling-test</module>
+        <module>lingframe-example-ling-mall</module>
+        <module>lingframe-example-saas-mall</module>
     </modules>
 
     <dependencyManagement>

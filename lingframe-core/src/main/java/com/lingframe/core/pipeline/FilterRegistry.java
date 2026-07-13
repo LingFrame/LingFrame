@@ -11,6 +11,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
+import com.lingframe.core.router.ProviderWeightRouter;
 import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.LingServiceInvoker;
 import com.lingframe.core.spi.ThreadPoolStatsProvider;
@@ -70,7 +71,8 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
                 config.getRuntimeCoordinator(),
                 config.getGovernanceMetricsCollector(),
                 config.getLingFrameInfo(),
-                config.getGovernanceRegistry());
+                config.getGovernanceRegistry(),
+                config.getProviderWeightRouter());
     }
 
     /**
@@ -82,8 +84,14 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
             TrafficRouter trafficRouter, EventBus eventBus,
             MetricsCollector metricsCollector,
             RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector,
-            LingFrameInfo lingFrameInfo, LocalGovernanceRegistry governanceRegistry) {
+            LingFrameInfo lingFrameInfo, LocalGovernanceRegistry governanceRegistry,
+            ProviderWeightRouter providerWeightRouter) {
         builtinFilters.clear();
+
+        // L0 provider 级路由：未注入 weightRouter 时创建默认实例（默认权重 CORE=100/LING=0，无 Dashboard 覆盖）
+        ProviderWeightRouter weightRouter = providerWeightRouter != null ? providerWeightRouter : new ProviderWeightRouter();
+        ContractProviderRoutingFilter providerRouting = new ContractProviderRoutingFilter(
+                serviceRegistry, lingRepository, weightRouter);
 
         MacroStateGuardFilter stateGuard = new MacroStateGuardFilter(lingRepository);
         CanaryRoutingFilter routing = new CanaryRoutingFilter(
@@ -103,6 +111,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         this.resilienceFilter = resilience;
         this.isolationFilter = threadIsolation;
 
+        builtinFilters.add(providerRouting);
         builtinFilters.add(new TrafficMetricsFilter(lingRepository, metricsCollector, eventBus));
         builtinFilters.add(stateGuard);
         builtinFilters.add(routing);
@@ -179,6 +188,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
             }
         }
 
+        assertOrder(orders, ContractProviderRoutingFilter.class, FilterPhase.PROVIDER_ROUTING);
         assertOrder(orders, TrafficMetricsFilter.class, FilterPhase.METRICS);
         assertOrder(orders, MacroStateGuardFilter.class, FilterPhase.STATE_GUARD);
         assertOrder(orders, CanaryRoutingFilter.class, FilterPhase.ROUTING);
@@ -190,6 +200,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         assertOrder(orders, ThreadIsolationGovernanceFilter.class, FilterPhase.EXECUTION_ISOLATION);
         assertOrder(orders, TerminalInvokerFilter.class, FilterPhase.TERMINAL);
 
+        assertBefore(orders, ContractProviderRoutingFilter.class, TrafficMetricsFilter.class);
         assertBefore(orders, TrafficMetricsFilter.class, MacroStateGuardFilter.class);
         assertBefore(orders, MacroStateGuardFilter.class, CanaryRoutingFilter.class);
         assertBefore(orders, CanaryRoutingFilter.class, InvocationPolicyPrefillFilter.class);
@@ -202,7 +213,8 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
     }
 
     private boolean isBuiltin(LingInvocationFilter filter) {
-        return filter instanceof TrafficMetricsFilter
+        return filter instanceof ContractProviderRoutingFilter
+                || filter instanceof TrafficMetricsFilter
                 || filter instanceof MacroStateGuardFilter
                 || filter instanceof CanaryRoutingFilter
                 || filter instanceof InvocationPolicyPrefillFilter

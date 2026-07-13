@@ -75,7 +75,7 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
     }
 
     private LingRuntime resolveRuntime(InvocationContext ctx) {
-        LingRuntime runtime = ctx.getRuntime();
+        LingRuntime runtime = ctx.getLingRuntime();
         if (runtime != null) {
             return runtime;
         }

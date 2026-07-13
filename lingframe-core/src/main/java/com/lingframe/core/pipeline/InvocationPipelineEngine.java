@@ -1,6 +1,8 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
+import com.lingframe.core.ling.ProviderKind;
+import com.lingframe.core.metrics.ProviderMetricsCollector;
 import com.lingframe.core.spi.LingFilterChain;
 
 /**
@@ -9,14 +11,21 @@ import com.lingframe.core.spi.LingFilterChain;
  */
 public class InvocationPipelineEngine {
     private final FilterRegistry registry;
+    /** Provider 维度指标收集器（可选，null 时不埋点） */
+    private final ProviderMetricsCollector providerMetricsCollector;
 
     public InvocationPipelineEngine(FilterRegistry registry) {
+        this(registry, null);
+    }
+
+    public InvocationPipelineEngine(FilterRegistry registry, ProviderMetricsCollector providerMetricsCollector) {
         this.registry = registry;
+        this.providerMetricsCollector = providerMetricsCollector;
     }
 
     /**
      * 执行灵元服务调用
-     * 
+     *
      * @param ctx 调用上下文，包含 FQSID、参数、追踪 ID 等信息
      * @return 调用结果（从 TerminalInvokerFilter 返回）
      * @throws LingInvocationException 当链路任何环节发生异常或治理拒绝时抛出
@@ -24,9 +33,13 @@ public class InvocationPipelineEngine {
     public Object invoke(InvocationContext ctx) {
         // 将上下文挂载为当前线程活跃上下文，使 Pipeline 内部（含 wrap() 跨线程传播）可通过 current() 发现
         InvocationContext prev = ctx.attach();
+        long startTime = providerMetricsCollector != null ? System.currentTimeMillis() : 0L;
+        boolean success = false;
         try {
             LingFilterChain chain = new DefaultFilterChain(registry.getOrderedFilters());
-            return chain.doFilter(ctx);
+            Object result = chain.doFilter(ctx);
+            success = true;
+            return result;
         } catch (LingInvocationException e) {
             throw e;
         } catch (Error e) {
@@ -37,8 +50,41 @@ public class InvocationPipelineEngine {
             throw new LingInvocationException(
                     ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
         } finally {
+            if (providerMetricsCollector != null) {
+                recordProviderMetrics(ctx, success, System.currentTimeMillis() - startTime);
+            }
             InvocationContext.detach(prev);
         }
+    }
+
+    /**
+     * 记录 provider 维度调用指标。
+     * <p>
+     * provider 类型埋点：从 ctx.routing().getProviderKind() 读取 L0 路由阶段写入的 provider 类型，
+     * 按 contractId × lingId × kind 三维统计调用量和延迟。
+     * 旧格式 FQSID 不经过 ContractProviderRoutingFilter 时 providerKind 为 null，静默跳过。
+     */
+    private void recordProviderMetrics(InvocationContext ctx, boolean success, long durationMs) {
+        ProviderKind kind = ctx.routing().getProviderKind();
+        if (kind == null) {
+            return; // 旧格式 FQSID 或未走 provider 路由，不埋点
+        }
+        String lingId = ctx.getTargetLingId();
+        String contractId = extractContractId(ctx.getServiceFQSID());
+        providerMetricsCollector.recordInvocation(contractId, lingId, kind, success, durationMs);
+    }
+
+    /**
+     * 从 FQSID 提取 contractId。
+     * 新格式 {@code __provider__:contractId} → 取前缀后部分；
+     * 旧格式 {@code lingId:serviceName} → 取冒号后部分。
+     */
+    private String extractContractId(String fqsid) {
+        if (fqsid == null) {
+            return null;
+        }
+        int idx = fqsid.indexOf(':');
+        return idx > 0 && idx < fqsid.length() - 1 ? fqsid.substring(idx + 1) : fqsid;
     }
 
     /**

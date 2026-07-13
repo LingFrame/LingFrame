@@ -84,6 +84,61 @@ public interface LingServiceRegistry {
     List<String> getLingIdsByContractId(String contractId);
 
     /**
+     * 按契约 ID 查询所有提供方（含权重）。
+     * <p>
+     * 路由升维后的主入口，替代 {@link #getLingIdsByContractId}。
+     * 返回的描述符列表包含每个提供方的 lingId、类型和权重，
+     * 供 {@code ProviderWeightRouter} 做 L0 provider 级选路。
+     *
+     * @param contractId 契约 ID
+     * @return 提供方描述符列表；未命中返回空列表
+     */
+    List<ProviderDescriptor> getProvidersByContractId(String contractId);
+
+    /**
+     * 列出所有已注册 provider 的契约 ID。
+     * <p>
+     * Dashboard 契约路由页面用此方法渲染「有多 provider 的契约」列表。
+     *
+     * @return 契约 ID 集合（不可变快照）；无任何注册时返回空集
+     */
+    java.util.Set<String> getAllContractIds();
+
+    /**
+     * 注册契约提供方。
+     * <p>
+     * 灵元和灵核在注册服务契约时同步调用，声明「本 lingId 以什么类型和权重提供该契约」。
+     * 幂等：同一 (contractId, lingId) 重复注册只保留首次的 kind，weight 以最后一次为准。
+     *
+     * @param contractId 契约 ID
+     * @param lingId 提供方灵元/灵核 ID
+     * @param kind 提供方类型
+     * @param weight 初始权重 0-100
+     */
+    void registerProvider(String contractId, String lingId, ProviderKind kind, int weight);
+
+    /**
+     * 驱逐指定 lingId 的所有提供方注册条目。
+     * <p>
+     * 灵元卸载时调用，移除该 lingId 在所有契约上的提供方登记。
+     *
+     * @param lingId 灵元/灵核 ID
+     */
+    void evictProvider(String lingId);
+
+    /**
+     * 更新提供方权重（Dashboard 下发）。
+     * <p>
+     * 运行期权重覆盖，用于 provider 级流量切分。
+     * 不存在该 (contractId, lingId) 条目时静默忽略。
+     *
+     * @param contractId 契约 ID
+     * @param lingId 灵元/灵核 ID
+     * @param weight 新权重 0-100
+     */
+    void updateProviderWeight(String contractId, String lingId, int weight);
+
+    /**
      * 解除某个服务所有的方法绑定（在下线时调用）。
      */
     void evict(String lingId);

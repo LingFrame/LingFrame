@@ -22,6 +22,7 @@ import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.CanaryConfigurable;
 import com.lingframe.core.spi.LingLoaderFactory;
+import com.lingframe.core.spi.RoutableTarget;
 import com.lingframe.core.spi.LingSecurityVerifier;
 import com.lingframe.core.spi.LingMetricsCollector;
 import com.lingframe.core.spi.LingGovernanceMetricsCollector;
@@ -248,6 +249,17 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
     @Override
     public LingUninstallResult undeployWithReport(String lingId) {
+        // 灵核判断改为类型判断：灵核不是 LingRuntime（是 LingCoreRoutableTarget），
+        // getRuntime 返回 null，因此「不是 LingRuntime」即「不可卸载」。
+        // 灵核不进 RuntimeCoordinator.machines，shutdown/transition 在 fsm == null 时直接拒绝。
+        // 类型判断让能力成为类型的派生属性。
+        if (lingRepository.getRuntime(lingId) == null) {
+            // 区分两种情况：灵核（RoutableTarget 存在但不是 LingRuntime）和 真正不存在的 lingId
+            if (lingRepository.getRoutableTarget(lingId) != null) {
+                log.warn("[{}] Undeploy rejected: target is not LingRuntime (ling core)", lingId);
+            }
+            return LingUninstallResult.notTriggered(lingId, null, Collections.emptyList());
+        }
         log.info("Uninstalling ling: {}", lingId);
 
         LingRuntime runtime = findRuntimeOrWarn(lingId);
@@ -280,6 +292,13 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
     @Override
     public LingUninstallResult undeployWithReport(String lingId, String version) {
+        // 灵核判断改为类型判断（同无版本重载）
+        if (lingRepository.getRuntime(lingId) == null) {
+            if (lingRepository.getRoutableTarget(lingId) != null) {
+                log.warn("[{}] Undeploy rejected: target is not LingRuntime (ling core)", lingId);
+            }
+            return LingUninstallResult.notTriggered(lingId, version, Collections.emptyList());
+        }
         log.info("Uninstalling ling: {} version: {}", lingId, version);
 
         LingRuntime runtime = findRuntimeOrWarn(lingId);
@@ -365,6 +384,53 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             lingRepository.register(runtime);
         }
         return runtime;
+    }
+
+    /**
+     * 装配灵核实例(lingcore-app)。
+     * <p>
+     * 灵核作为特殊的"永久 baseline",不支持热加载/热卸载,不持有 RuntimeCoordinator 状态机,
+     * 只通过 {@link LingCoreRoutableTarget} 实现 {@link RoutableTarget} 窄接口,
+     * 让 Pipeline 路由阶段能在 LingRepository 找到 lingcore-app 的路由目标。
+     * <p>
+     * 灵核装配路径与灵元 deploy 路径的差异：
+     * <ul>
+     *   <li>不创建：RuntimeCoordinator 注册 / LingRuntime / InstancePool.addInstance / transition(ACTIVE)</li>
+     *   <li>对称保留：LingDefinition + LingInstance 创建 + instanceCoordinator.prepare/start/markReady 三步</li>
+     *   <li>新增：创建 LingCoreRoutableTarget 并注册到 LingRepository</li>
+     * </ul>
+     * 灵核不进 RuntimeCoordinator，治理参数走默认值。
+     *
+     * @param lingId    固定 {@code LingCoreConstants.LINGCORE_LING_ID}
+     * @param container 灵核 LingContainer 适配器
+     * @param version   固定 {@code LingCoreConstants.LINGCORE_VERSION}
+     * @return 创建好的 LingInstance
+     */
+    public LingInstance bootstrapLingCoreInstance(String lingId, LingContainer container, String version) {
+        log.info("Bootstrapping ling core instance: lingId={}, version={}", lingId, version);
+
+        // 1. 构造 LingDefinition + LingInstance(与灵元 deploy 路径对称)
+        LingDefinition def = new LingDefinition();
+        def.setId(lingId);
+        def.setVersion(version);
+        def.setProvider("lingframe-core");
+        def.setDescription("Ling core application as shared API producer");
+        LingInstance instance = new LingInstance(container, def, eventBus);
+
+        // 2. 状态机推进：CREATED → LOADING → STARTING → READY
+        //    灵核实例没有真实的加载/启动过程(ApplicationContext 由 Spring Boot 管理),这里快速穿越中间状态
+        //    保留 InstanceCoordinator 三步：灵核 LingInstance 与灵元走相同生命周期推进
+        instanceCoordinator.prepare(instance);
+        instanceCoordinator.start(instance);
+        instanceCoordinator.markReady(instance);
+
+        // 3. 路由升维：创建 LingCoreRoutableTarget 注册到 LingRepository（替代原 LingRuntime 注册）
+        //    灵核不进 RuntimeCoordinator，currentStatus() 永远返回 ACTIVE
+        LingCoreRoutableTarget target = new LingCoreRoutableTarget(lingId, instance);
+        lingRepository.registerRoutableTarget(target);
+
+        log.info("[{}] Ling core instance bootstrapped, routable target registered", lingId);
+        return instance;
     }
 
     private void driveInstanceToLoading(LingInstance instance) {

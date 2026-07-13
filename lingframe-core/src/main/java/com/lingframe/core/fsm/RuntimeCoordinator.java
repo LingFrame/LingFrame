@@ -3,8 +3,8 @@ package com.lingframe.core.fsm;
 import com.lingframe.api.event.LingEventListener;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.InstanceDestroyedEvent;
-import com.lingframe.core.event.InstanceStateChangedEvent;
 import com.lingframe.core.event.RuntimeStateChangedEvent;
+import com.lingframe.core.event.InstanceStateChangedEvent;
 import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
@@ -149,6 +149,11 @@ public class RuntimeCoordinator {
      * 注册一个 Ling，创建对应的运行时状态机。
      * 幂等操作：重复注册返回已有状态机。
      * 这是运行时 FSM 的唯一创建入口。
+     * <p>
+     * 灵核不注册到 RuntimeCoordinator——
+     * 由 {@code LingCoreRoutableTarget} 直接暴露 {@code currentStatus()=ACTIVE}，
+     * 不进状态机。{@code shutdown}/{@code transition} 调到灵核时
+     * {@code fsm == null} 直接拒绝。
      *
      * @param lingId Ling 标识
      * @return 该 Ling 的运行时状态机
@@ -259,6 +264,8 @@ public class RuntimeCoordinator {
      * 当所有实例都 DEAD 后，由 {@link #reevaluate} 自动跃迁到 REMOVED。
      */
     public void shutdown(String lingId) {
+        // 灵核不在 machines map，fsm == null 直接拒绝。
+        // 「灵核不可卸载」语义由「灵核不进状态机」承担——能力是类型的派生属性。
         StateMachine<RuntimeStatus> fsm = machines.get(lingId);
         if (fsm == null) {
             log.warn("Cannot shutdown unknown ling [{}]", lingId);
@@ -285,6 +292,8 @@ public class RuntimeCoordinator {
      * @return 转换结果
      */
     public TransitionResult<RuntimeStatus> transition(String lingId, RuntimeStatus target) {
+        // 迁移合法性委托给 RuntimeStatus.TRANSITIONS 现有转换表，由 StateMachine.transition 内部判定。
+        // 灵核不进 machines map，fsm == null 直接返回 illegal。
         StateMachine<RuntimeStatus> fsm = machines.get(lingId);
         if (fsm == null) {
             log.warn("Cannot transition unknown ling [{}]", lingId);

@@ -12,10 +12,12 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
+import com.lingframe.core.metrics.ProviderMetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.LabelMatchRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.core.router.CanaryRouter;
+import com.lingframe.core.router.ProviderWeightRouter;
 import com.lingframe.dashboard.metrics.LingMetricsMeterBridge;
 import com.lingframe.dashboard.scheduler.MetricsCollectorScheduler;
 import com.lingframe.dashboard.security.AccessTokenInterceptor;
@@ -24,10 +26,12 @@ import com.lingframe.dashboard.security.CorsProperties;
 import com.lingframe.dashboard.security.ReadOnlyInterceptor;
 import com.lingframe.dashboard.security.ReadOnlyProperties;
 import com.lingframe.dashboard.service.CanaryDecisionService;
+import com.lingframe.dashboard.service.ContractRoutingService;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
 import com.lingframe.dashboard.service.LingResourceMetricsCollector;
 import com.lingframe.dashboard.service.LogStreamService;
+import com.lingframe.dashboard.service.MigrationProgressService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import com.lingframe.dashboard.service.SimulateService;
 import com.lingframe.dashboard.service.ServicePlaygroundService;
@@ -156,6 +160,31 @@ public class DashboardAutoConfiguration {
     @Bean
     public RuntimeDiagnosticsService runtimeDiagnosticsService(EventBus eventBus) {
         return new RuntimeDiagnosticsService(eventBus);
+    }
+
+    @Bean
+    public ContractRoutingService contractRoutingService(
+            LingServiceRegistry lingServiceRegistry,
+            @Autowired(required = false) ProviderWeightRouter providerWeightRouter) {
+        // ProviderWeightRouter 由 LingFrameLifecycleBeansConfiguration 装配；
+        // dashboard 独立运行（无 starter 依赖）时 fallback 到新建实例，保证不空指针
+        ProviderWeightRouter router = providerWeightRouter != null ? providerWeightRouter : new ProviderWeightRouter();
+        return new ContractRoutingService(lingServiceRegistry, router);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ProviderMetricsCollector providerMetricsCollector() {
+        // ProviderMetricsCollector 由 InvocationPipelineEngine 在每次调用后写入；
+        // dashboard 独立运行时由这里提供默认实例，starter 不会重复装配（@ConditionalOnMissingBean）
+        return new ProviderMetricsCollector();
+    }
+
+    @Bean
+    public MigrationProgressService migrationProgressService(
+            ProviderMetricsCollector providerMetricsCollector,
+            LingServiceRegistry lingServiceRegistry) {
+        return new MigrationProgressService(providerMetricsCollector, lingServiceRegistry);
     }
 
     @Bean
@@ -294,6 +323,8 @@ public class DashboardAutoConfiguration {
                                     "/lingframe/dashboard/playground/**",
                                     "/lingframe/dashboard/metrics/**",
                                     "/lingframe/dashboard/packages/**",
+                                    "/lingframe/dashboard/contract-routing/**",
+                                    "/lingframe/dashboard/migration/**",
                                     "/lingframe/dashboard/stream-ticket"
                             );
                 }

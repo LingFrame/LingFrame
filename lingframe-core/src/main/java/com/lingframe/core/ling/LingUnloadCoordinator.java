@@ -93,6 +93,12 @@ public class LingUnloadCoordinator {
 
     /**
      * 版本级卸载后的清理动作。
+     * <p>
+     * 灵核的守卫已收口到
+     * {@link DefaultLingLifecycleEngine#undeployWithReport} 入口
+     * (灵核不是 LingRuntime，getRoutableTarget 返回非 null 的 LingCoreRoutableTarget)，
+     * 本方法不做重复判断——这是 claude 方案"收口到唯一入口"的检验标准:
+     * 如果删掉这里仍安全,说明收口成功。
      */
     public void onVersionUnload(String lingId, String version, ClassLoader classLoader) {
         cleanupWithHooks(lingId, version, classLoader);
@@ -108,6 +114,10 @@ public class LingUnloadCoordinator {
 
     /**
      * 整 Ling 卸载后的清理动作。
+     * <p>
+     * 灵核的守卫已收口到
+     * {@link DefaultLingLifecycleEngine#undeployWithReport} 入口,
+     * 本方法不做重复判断。
      */
     public void onLingUnload(String lingId) {
         if (pipelineEngine != null) {

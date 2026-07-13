@@ -7,6 +7,7 @@ import com.lingframe.core.metrics.LingHealthMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.spi.RoutableTarget;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import com.lingframe.starter.web.WebInterfaceManager;
@@ -101,7 +102,7 @@ class LingWebGovernanceFilterTest {
         AtomicReference<Method> observedResolvedMethod = new AtomicReference<>();
         AtomicReference<Object> observedTargetInstance = new AtomicReference<>();
         AtomicReference<String> observedTargetVersion = new AtomicReference<>();
-        AtomicReference<LingRuntime> observedRuntime = new AtomicReference<>();
+        AtomicReference<RoutableTarget> observedRuntime = new AtomicReference<>();
         AtomicReference<Object> observedPrincipal = new AtomicReference<>();
         AtomicBoolean observedPreResolved = new AtomicBoolean(false);
 

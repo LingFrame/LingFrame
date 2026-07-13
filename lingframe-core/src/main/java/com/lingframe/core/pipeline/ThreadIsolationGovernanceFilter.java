@@ -61,7 +61,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
             return chain.doFilter(ctx);
         }
 
-        String lingId = ctx.getLingIdFromFqsid();
+        String lingId = ctx.getEffectiveLingId();
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             return chain.doFilter(ctx);

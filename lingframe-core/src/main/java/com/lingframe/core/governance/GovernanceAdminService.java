@@ -6,6 +6,8 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.pipeline.InvocationPolicyPrefillFilter;
+import com.lingframe.core.pipeline.ResilienceGovernanceFilter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
@@ -154,9 +156,9 @@ public class GovernanceAdminService {
      * 统一下发调用治理配置。
      * <p>
      * 治理策略唯一真源是 {@link GovernancePolicy.InvocationPolicy}（静态 ling.yml 声明 + 动态 patch 合并）。
-     * 本方法只写 patch 一处，由 {@link com.lingframe.core.pipeline.InvocationPolicyPrefillFilter}
+     * 本方法只写 patch 一处，由 {@link InvocationPolicyPrefillFilter}
      * 在 RESILIENCE 阶段之前把灵元级 effective policy 预填到 {@code ctx.governance()}，
-     * 弹性治理组件（{@link com.lingframe.core.pipeline.ResilienceGovernanceFilter}）通过 ctx 读取治理意图，
+     * 弹性治理组件（{@link ResilienceGovernanceFilter}）通过 ctx 读取治理意图，
      * 无需同步 {@code LingRuntimeConfig} 底座，也无需驱逐缓存。
      * <p>
      * 字段语义与 {@link GovernancePolicy.InvocationPolicy} 一一对应，

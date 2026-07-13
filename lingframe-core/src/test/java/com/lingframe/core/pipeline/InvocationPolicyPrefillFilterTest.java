@@ -195,4 +195,24 @@ class InvocationPolicyPrefillFilterTest {
         InvocationPolicyPrefillFilter filter = new InvocationPolicyPrefillFilter(lingRepository, null);
         assertEquals(FilterPhase.POLICY_PREFILL, filter.getOrder());
     }
+
+    @Test
+    @DisplayName("新格式 __provider__: FQSID 应优先读 targetLingId 查治理策略")
+    void prefillsFromTargetLingIdWhenProviderFqsid() throws Throwable {
+        // 覆盖 setUp 的旧格式 FQSID，模拟 ContractProviderRoutingFilter 已解析出真实 lingId
+        context.setServiceFQSID("__provider__:com.example.DemoService");
+        context.setTargetLingId("demo-ling");
+
+        when(lingDefinition.getGovernance()).thenReturn(new GovernancePolicy());
+        LocalGovernanceRegistry registry = mock(LocalGovernanceRegistry.class);
+        GovernancePolicy patch = new GovernancePolicy();
+        patch.setInvocation(GovernancePolicy.InvocationPolicy.builder().timeoutMs(5000).build());
+        when(registry.getPatch("demo-ling")).thenReturn(patch);
+
+        InvocationPolicyPrefillFilter filter = new InvocationPolicyPrefillFilter(lingRepository, registry);
+        filter.doFilter(context, filterChain);
+
+        // 关键断言：用 targetLingId（"demo-ling"）能查到策略并预填充
+        assertEquals(5000, context.governance().getTimeoutMs());
+    }
 }

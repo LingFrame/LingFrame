@@ -4,6 +4,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.RuntimeStateChangedEvent;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.spi.RoutableTarget;
 import lombok.Getter;
 import lombok.ToString;
 
@@ -24,9 +25,12 @@ import java.util.stream.Collectors;
  * 生命周期编排、实例切换、运行时联动分别由
  * {@link DefaultLingLifecycleEngine}、{@link InstancePool}、
  * {@link RuntimeCoordinator} 完成。
+ * <p>
+ * 路由升维：实现 {@link RoutableTarget} 窄接口，使 Pipeline 不再直接依赖本具体类，
+ * 灵核和灵元都能通过 {@code RoutableTarget} 类型统一表达。
  */
 @ToString
-public class LingRuntime {
+public class LingRuntime implements RoutableTarget {
 
     @Getter
     private final String lingId;
@@ -136,9 +140,27 @@ public class LingRuntime {
     /**
      * 获取所有 READY 状态实例（用于路由选择）
      */
+    @Override
     public List<LingInstance> getReadyInstances() {
         return instancePool.getActiveInstances().stream()
                 .filter(LingInstance::isReady)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 判断给定实例是否为 canary（灰度）实例。
+     * <p>
+     * 路由升维：审计逻辑下沉到接口实现。
+     * 灵元的 canary 判定：与 InstancePool 的默认（stable）实例不同的即为 canary。
+     * 避免 Pipeline 直接调 {@code getInstancePool().getDefault()}——这是 LingRuntime 独有方法，
+     * 灵核 {@code LingCoreRoutableTarget} 没有 InstancePool，无法走同一路径。
+     */
+    @Override
+    public boolean isCanaryTarget(LingInstance target) {
+        if (target == null) {
+            return false;
+        }
+        LingInstance defaultInstance = instancePool.getDefault();
+        return target != defaultInstance;
     }
 }

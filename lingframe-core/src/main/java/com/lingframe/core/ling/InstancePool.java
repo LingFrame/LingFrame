@@ -1,6 +1,7 @@
 package com.lingframe.core.ling;
 
 import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.core.fsm.RuntimeCoordinator;
 import lombok.NonNull;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +25,7 @@ import java.util.function.Consumer;
  * 它不是生命周期编排器，也不是状态机真源。
  * 当实例需要进入 STOPPING / DEAD 时，仍必须委托给
  * {@link InstanceCoordinator}，从而保证实例事件与
- * {@link com.lingframe.core.fsm.RuntimeCoordinator} 的聚合快照保持一致。
+ * {@link RuntimeCoordinator} 的聚合快照保持一致。
  */
 @Slf4j
 public class InstancePool {

@@ -126,7 +126,7 @@ class TrafficMetricsFilterTest {
         void startEndRequestPaired() throws Throwable {
             LingRuntime runtime = mock(LingRuntime.class);
             LingRepository repo = mock(LingRepository.class);
-            when(repo.getRuntime("ling-1")).thenReturn(runtime);
+            when(repo.getRoutableTarget("ling-1")).thenReturn(runtime);
 
             TrafficMetricsFilter filter = new TrafficMetricsFilter(repo);
             InvocationContext ctx = InvocationContext.obtain();
@@ -143,7 +143,7 @@ class TrafficMetricsFilterTest {
         void endRequestOnException() throws Throwable {
             LingRuntime runtime = mock(LingRuntime.class);
             LingRepository repo = mock(LingRepository.class);
-            when(repo.getRuntime("ling-1")).thenReturn(runtime);
+            when(repo.getRoutableTarget("ling-1")).thenReturn(runtime);
 
             TrafficMetricsFilter filter = new TrafficMetricsFilter(repo);
             InvocationContext ctx = InvocationContext.obtain();

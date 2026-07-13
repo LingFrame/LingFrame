@@ -90,7 +90,7 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             return chain.doFilter(ctx);
         }
 
-        String lingId = ctx.getLingIdFromFqsid();
+        String lingId = ctx.getEffectiveLingId();
 
         // 1. 限流检查
         RateLimiter limiter = getLimiter(lingId, ctx);

@@ -29,6 +29,7 @@ import com.lingframe.infra.storage.spring.DataSourceWrapperProcessor;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import com.lingframe.starter.processor.LingCoreBeanGovernanceProcessor;
+import com.lingframe.starter.processor.LingCoreServiceRegistrarProcessor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -53,6 +54,7 @@ import java.util.List;
         CaffeineWrapperProcessor.class,
         RedisWrapperProcessor.class,
         LingCoreBeanGovernanceProcessor.class,
+        LingCoreServiceRegistrarProcessor.class,
         LingFrameRuntimeBeansConfiguration.class,
         LingFrameLifecycleBeansConfiguration.class,
         LingFrameWebSupportConfiguration.class

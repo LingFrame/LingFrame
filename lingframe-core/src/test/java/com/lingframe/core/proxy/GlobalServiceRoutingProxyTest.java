@@ -2,6 +2,7 @@ package com.lingframe.core.proxy;
 
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.*;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -10,13 +11,14 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.Collections;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 /**
  * GlobalServiceRoutingProxy 测试。
- * 覆盖：动态路由、代理复用、离线异常、Object 方法处理。
+ * 覆盖：动态路由、代理复用、离线异常、Object 方法处理、
+ * 默认路由 __provider__ 占位符。
  */
 @DisplayName("GlobalServiceRoutingProxy 测试")
 class GlobalServiceRoutingProxyTest {
@@ -54,17 +56,10 @@ class GlobalServiceRoutingProxyTest {
             assertThrows(LingInvocationException.class,
                     () -> proxy.invoke(new Object(), method, null));
         }
-
-        @Test
-        @DisplayName("无目标灵元且仓库为空时抛出 LingInvocationException")
-        void noTargetAndEmptyRepoThrows() {
-            when(lingRepository.getAllRuntimes()).thenReturn(Collections.emptyList());
-            GlobalServiceRoutingProxy proxy = createProxy(null);
-
-            Method method = getServiceMethod();
-            assertThrows(LingInvocationException.class,
-                    () -> proxy.invoke(new Object(), method, null));
-        }
+        // 路由升维后，无 targetLingId 不再走「反向索引兜底 + 空仓抛异常」路径，
+        // 而是返回 __provider__ 占位符交由 pipeline 内 ContractProviderRoutingFilter 决策。
+        // 原有的 noTargetAndEmptyRepoThrows 测试用例已迁移至「默认路由 __provider__ 占位符」
+        // Nested 类，由 pipeline 行为覆盖。
     }
 
     // ==================== 动态路由 ====================
@@ -181,59 +176,69 @@ class GlobalServiceRoutingProxyTest {
         }
     }
 
-    // ==================== 反向索引路由收敛 ====================
+    // ==================== 默认路由 __provider__ 占位符 ====================
 
     @Nested
-    @DisplayName("反向索引路由收敛")
-    class ReverseIndexRouting {
+    @DisplayName("默认路由 __provider__ 占位符")
+    class ProviderRouting {
 
         @Test
-        @DisplayName("未注册契约返回 null 不兜底遍历（implicit-registration: false 语义）")
-        void unregisteredContractReturnsNullNotFallback() {
-            // 反向索引未命中返回空列表——proxy 不应再遍历 getAllRuntimes
-            when(lingServiceRegistry.getLingIdsByContractId("com.example.Service"))
-                    .thenReturn(Collections.emptyList());
-            when(lingRepository.getAllRuntimes()).thenReturn(Collections.emptyList());
-
+        @DisplayName("无 targetLingId 时跳过 lingRepository 预校验，委托 pipeline 解析")
+        void noTargetSkipsRuntimePreValidation() throws Throwable {
+            when(pipelineEngine.invoke(any())).thenReturn(null);
             GlobalServiceRoutingProxy proxy = createProxy(null);
-            try {
-                Method dummyMethod = Runnable.class.getMethod("run");
-                proxy.invoke(Proxy.newProxyInstance(
-                        getClass().getClassLoader(),
-                        new Class[]{Runnable.class},
-                        (p, m, a) -> null), dummyMethod, null);
-                fail("应抛 LingInvocationException 表示离线");
-            } catch (LingInvocationException e) {
-                // 预期：未注册契约走反向索引未命中 → null → STATE_REJECTED
-            } catch (Throwable t) {
-                // 其他 Throwable 也接受，关键是验证了 getAllRuntimes 未被调
-            }
-            // 关键断言：兜底遍历已被删，getAllRuntimes 不应被调用
-            verify(lingRepository, never()).getAllRuntimes();
+
+            Method dummyMethod = Runnable.class.getMethod("run");
+            proxy.invoke(Proxy.newProxyInstance(
+                    getClass().getClassLoader(),
+                    new Class[]{Runnable.class},
+                    (p, m, a) -> null), dummyMethod, null);
+
+            // __provider__ 路径不预校验 runtime——交由 ContractProviderRoutingFilter 决策
+            verify(lingRepository, never()).getRuntime(anyString());
+            // 反向索引已被删除——不再调 lingServiceRegistry
+            verify(lingServiceRegistry, never()).getLingIdsByContractId(anyString());
+            // 委托最终落到 pipelineEngine
+            verify(pipelineEngine, atLeast(1)).invoke(any());
         }
 
         @Test
-        @DisplayName("反向索引命中可用灵元时直接路由")
-        void reverseIndexHitRoutes() throws Throwable {
-            LingRuntime runtime = mock(LingRuntime.class);
-            when(runtime.getLingId()).thenReturn("ling-1");
-            when(runtime.isAvailable()).thenReturn(true);
-            when(lingRepository.getRuntime("ling-1")).thenReturn(runtime);
-            when(lingServiceRegistry.getLingIdsByContractId("com.example.Service"))
-                    .thenReturn(java.util.Collections.singletonList("ling-1"));
+        @DisplayName("无 targetLingId 时构造 __provider__:contractId FQSID")
+        void noTargetConstructsProviderFQSID() throws Throwable {
+            // 用 Answer 在 ctx.recycle() 之前捕获 FQSID——recycle 会清空 ThreadLocal 字段
+            AtomicReference<String> capturedFqsid = new AtomicReference<>();
+            when(pipelineEngine.invoke(any())).thenAnswer(invocation -> {
+                InvocationContext ctx = invocation.getArgument(0);
+                capturedFqsid.set(ctx.getServiceFQSID());
+                return null;
+            });
 
             GlobalServiceRoutingProxy proxy = createProxy(null);
+            Method dummyMethod = Runnable.class.getMethod("run");
+            proxy.invoke(Proxy.newProxyInstance(
+                    getClass().getClassLoader(),
+                    new Class[]{Runnable.class},
+                    (p, m, a) -> null), dummyMethod, null);
+
+            assertEquals("__provider__:com.example.Service", capturedFqsid.get());
+        }
+
+        @Test
+        @DisplayName("无 targetLingId 时不触发兜底遍历 getAllRuntimes")
+        void noTargetNeverTriggersGetAllRuntimes() throws Throwable {
+            when(pipelineEngine.invoke(any())).thenReturn(null);
+            GlobalServiceRoutingProxy proxy = createProxy(null);
+
+            Method dummyMethod = Runnable.class.getMethod("run");
             try {
-                Method dummyMethod = Runnable.class.getMethod("run");
                 proxy.invoke(Proxy.newProxyInstance(
                         getClass().getClassLoader(),
                         new Class[]{Runnable.class},
                         (p, m, a) -> null), dummyMethod, null);
             } catch (Exception ignored) {
-                // SmartServiceProxy 内部可能因缺少上下文抛异常，不影响反向索引命中验证
+                // SmartServiceProxy 内部可能因缺少上下文抛异常，不影响验证
             }
-            // 反向索引命中后走 getRuntime，不应再调 getAllRuntimes
-            verify(lingRepository, atLeast(1)).getRuntime("ling-1");
+            // 老的兜底遍历已被彻底删除
             verify(lingRepository, never()).getAllRuntimes();
         }
     }

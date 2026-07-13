@@ -328,6 +328,16 @@
                     <i class="fa-solid fa-gauge-high w-4"></i>
                     <span class="text-base">{{ t('sidebar.governance') }}</span>
                 </div>
+                <div :class="['sidebar-item', activeNav === 'contract-routing' ? 'active' : '']"
+                    @click="activeNav = 'contract-routing'">
+                    <i class="fa-solid fa-shuffle w-4"></i>
+                    <span class="text-base">{{ t('sidebar.contractRouting') }}</span>
+                </div>
+                <div :class="['sidebar-item', activeNav === 'migration' ? 'active' : '']"
+                    @click="activeNav = 'migration'">
+                    <i class="fa-solid fa-truck-arrow-right w-4"></i>
+                    <span class="text-base">{{ t('sidebar.migration') }}</span>
+                </div>
                 <div :class="['sidebar-item', activeNav === 'verification' ? 'active' : '']"
                     @click="activeNav = 'verification'" class="tour-nav-verification">
                     <i class="fa-solid fa-flask-vial w-4"></i>
@@ -2219,6 +2229,267 @@
                             </div>
 
                         </div><!-- end Tab 4 运行时就绪 -->
+                    </div>
+
+                    <!-- ==================== 契约路由策略视图 ==================== -->
+                    <div v-if="activeNav === 'contract-routing'" class="content-grid grid grid-cols-12 gap-6">
+                        <!-- 左列：契约列表 -->
+                        <div class="col-span-12 lg:col-span-4 space-y-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="flex items-center justify-between w-full">
+                                        <div class="flex items-center gap-2">
+                                            <i class="fa-solid fa-shuffle text-blue-400"></i>
+                                            <h3 class="font-bold text-base t-text">{{ t('contractRouting.contractList') }}</h3>
+                                            <span class="text-xs t-text-muted">{{ t('contractRouting.contractCount', {n: contractsList.length}) }}</span>
+                                        </div>
+                                        <button @click="fetchContracts" :disabled="loading.contractRouting"
+                                            class="text-xs t-text-sub hover:t-text disabled:opacity-40">
+                                            <i class="fa-solid fa-rotate-right" :class="loading.contractRouting ? 'fa-spin' : ''"></i>
+                                            {{ t('contractRouting.refresh') }}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-3">
+                                    <div v-if="loading.contractRouting && !contractsList.length" class="text-center py-6">
+                                        <span class="spinner" style="width:20px;height:20px;border-width:2px;"></span>
+                                    </div>
+                                    <div v-else-if="!contractsList.length" class="text-center py-6">
+                                        <i class="fa-solid fa-folder-open text-2xl t-text-muted mb-2"></i>
+                                        <p class="text-sm t-text-muted">{{ t('contractRouting.empty') }}</p>
+                                    </div>
+                                    <div v-else class="space-y-1">
+                                        <div v-for="cid in contractsList" :key="cid"
+                                            @click="selectContract(cid)"
+                                            :class="['cursor-pointer rounded-lg px-3 py-2 transition-all border',
+                                                selectedContractId === cid ? 'bg-blue-500/10 border-blue-500' : 't-bg-faint t-border hover:t-bg-hover']">
+                                            <div class="text-sm font-mono t-text truncate">{{ cid }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 右列：契约详情 -->
+                        <div class="col-span-12 lg:col-span-8 space-y-6">
+                            <!-- 空状态 -->
+                            <div v-if="!selectedContractId" class="card">
+                                <div class="p-12 text-center">
+                                    <i class="fa-solid fa-hand-pointer text-3xl t-text-muted mb-3"></i>
+                                    <p class="text-sm t-text-muted">{{ t('contractRouting.selectContract') }}</p>
+                                </div>
+                            </div>
+
+                            <template v-else>
+                                <!-- 流量分布 card -->
+                                <div class="card">
+                                    <div class="card-header">
+                                        <div class="flex items-center justify-between w-full">
+                                            <div class="flex items-center gap-2">
+                                                <i class="fa-solid fa-chart-pie text-purple-400"></i>
+                                                <h3 class="font-bold text-base t-text">{{ t('contractRouting.flowDistribution') }}</h3>
+                                            </div>
+                                            <button @click="rollbackContract"
+                                                class="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1.5">
+                                                <i class="fa-solid fa-rotate-left"></i>{{ t('contractRouting.rollback') }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="p-5">
+                                        <div v-if="loading.contractRouting" class="text-center py-4">
+                                            <span class="spinner" style="width:20px;height:20px;border-width:2px;"></span>
+                                        </div>
+                                        <div v-else-if="routingDetail">
+                                            <div class="text-xs t-text-muted mb-3 font-mono break-all">{{ routingDetail.contractId }}</div>
+                                            <div class="space-y-3">
+                                                <!-- 灵核权重 -->
+                                                <div>
+                                                    <div class="flex justify-between text-sm mb-1">
+                                                        <span class="t-text-sub">{{ t('contractRouting.coreWeight') }}</span>
+                                                        <span class="font-mono font-bold text-green-400">{{ routingDetail.coreEffectiveWeight }}</span>
+                                                    </div>
+                                                    <div class="h-2 t-bg-faint rounded-full overflow-hidden">
+                                                        <div class="h-full bg-green-500 transition-all"
+                                                            :style="{width: routingDetail.coreEffectiveWeight + '%'}"></div>
+                                                    </div>
+                                                </div>
+                                                <!-- 灵元权重 -->
+                                                <div>
+                                                    <div class="flex justify-between text-sm mb-1">
+                                                        <span class="t-text-sub">{{ t('contractRouting.lingWeight') }}</span>
+                                                        <span class="font-mono font-bold text-blue-400">{{ routingDetail.lingEffectiveWeight }}</span>
+                                                    </div>
+                                                    <div class="h-2 t-bg-faint rounded-full overflow-hidden">
+                                                        <div class="h-full bg-blue-500 transition-all"
+                                                            :style="{width: routingDetail.lingEffectiveWeight + '%'}"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Provider 列表 -->
+                                <div class="card">
+                                    <div class="card-header">
+                                        <div class="flex items-center gap-2">
+                                            <i class="fa-solid fa-list text-cyan-400"></i>
+                                            <h3 class="font-bold text-base t-text">{{ t('contractRouting.providers') }}</h3>
+                                        </div>
+                                    </div>
+                                    <div class="p-5">
+                                        <div v-if="loading.contractRouting && !routingDetail" class="text-center py-4">
+                                            <span class="spinner" style="width:20px;height:20px;border-width:2px;"></span>
+                                        </div>
+                                        <div v-else-if="routingDetail && routingDetail.providers">
+                                            <div class="text-xs t-text-muted mb-3">{{ t('contractRouting.weightHint') }}</div>
+                                            <div class="overflow-x-auto">
+                                                <table class="w-full text-xs">
+                                                    <thead>
+                                                        <tr class="t-border-b t-text-muted">
+                                                            <th class="text-left p-2">{{ t('contractRouting.lingId') }}</th>
+                                                            <th class="text-left p-2">{{ t('contractRouting.kind') }}</th>
+                                                            <th class="text-right p-2">{{ t('contractRouting.registeredWeight') }}</th>
+                                                            <th class="text-right p-2">{{ t('contractRouting.overrideWeight') }}</th>
+                                                            <th class="text-right p-2">{{ t('contractRouting.effectiveWeight') }}</th>
+                                                            <th class="text-center p-2">{{ t('contractRouting.save') }}</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr v-for="p in routingDetail.providers" :key="p.lingId" class="t-border-b">
+                                                            <td class="p-2 font-mono t-text">
+                                                                <span v-if="p.kind === 'CORE'" class="text-green-400">{{ t('contractRouting.kindCore') }}</span>
+                                                                <span v-else>{{ p.lingId }}</span>
+                                                            </td>
+                                                            <td class="p-2">
+                                                                <span :class="p.kind === 'CORE' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'"
+                                                                    class="px-2 py-0.5 rounded text-[10px] font-bold">
+                                                                    {{ p.kind === 'CORE' ? t('contractRouting.kindCore') : t('contractRouting.kindLing') }}
+                                                                </span>
+                                                            </td>
+                                                            <td class="p-2 text-right font-mono t-text-sub">{{ p.registeredWeight }}</td>
+                                                            <td class="p-2 text-right">
+                                                                <input type="number" min="0" max="100"
+                                                                    v-model.number="weightEditForm[p.lingId]"
+                                                                    :placeholder="t('contractRouting.overridePlaceholder')"
+                                                                    class="w-20 text-right t-bg-card border t-border rounded px-2 py-1 text-xs t-text focus:outline-none focus:border-blue-500">
+                                                            </td>
+                                                            <td class="p-2 text-right font-mono font-bold t-text">{{ p.effectiveWeight }}</td>
+                                                            <td class="p-2 text-center">
+                                                                <button @click="saveProviderWeight(p.lingId)"
+                                                                    :disabled="savingWeight[p.lingId]"
+                                                                    class="px-2 py-1 text-[11px] rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40">
+                                                                    <span v-if="savingWeight[p.lingId]" class="spinner" style="width:10px;height:10px;border-width:1px;display:inline-block;"></span>
+                                                                    {{ t('contractRouting.save') }}
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- ==================== 迁移进度看板视图 ==================== -->
+                    <div v-if="activeNav === 'migration'" class="space-y-6">
+                        <!-- 顶部 4 个统计 card -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="card !p-4">
+                                <div class="text-xs t-text-muted">{{ t('migration.totalContracts') }}</div>
+                                <div class="text-2xl font-bold t-text mt-1">{{ migrationList.length }}</div>
+                            </div>
+                            <div class="card !p-4">
+                                <div class="text-xs t-text-muted">{{ t('migration.staleContracts') }}</div>
+                                <div class="text-2xl font-bold mt-1" :class="staleCount > 0 ? 'text-red-400' : 't-text'">{{ staleCount }}</div>
+                                <div class="text-[10px] t-text-muted mt-0.5">{{ t('migration.staleContractsHint') }}</div>
+                            </div>
+                            <div class="card !p-4">
+                                <div class="text-xs t-text-muted">{{ t('migration.coreTotal') }}</div>
+                                <div class="text-2xl font-bold text-green-400 mt-1">{{ totalCoreInv.toLocaleString() }}</div>
+                            </div>
+                            <div class="card !p-4">
+                                <div class="text-xs t-text-muted">{{ t('migration.lingTotal') }}</div>
+                                <div class="text-2xl font-bold text-blue-400 mt-1">{{ totalLingInv.toLocaleString() }}</div>
+                            </div>
+                        </div>
+
+                        <!-- 主表格 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="flex items-center justify-between w-full">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-truck-arrow-right text-purple-400"></i>
+                                        <h3 class="font-bold text-base t-text">{{ t('migration.title') }}</h3>
+                                    </div>
+                                    <button @click="fetchMigrationProgress" :disabled="loading.migration"
+                                        class="text-xs t-text-sub hover:t-text disabled:opacity-40">
+                                        <i class="fa-solid fa-rotate-right" :class="loading.migration ? 'fa-spin' : ''"></i>
+                                        {{ t('migration.refresh') }}
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="p-5">
+                                <div v-if="loading.migration && !migrationList.length" class="text-center py-6">
+                                    <span class="spinner" style="width:20px;height:20px;border-width:2px;"></span>
+                                </div>
+                                <div v-else-if="!migrationList.length" class="text-center py-6">
+                                    <i class="fa-solid fa-folder-open text-2xl t-text-muted mb-2"></i>
+                                    <p class="text-sm t-text-muted">{{ t('migration.empty') }}</p>
+                                </div>
+                                <div v-else class="overflow-x-auto">
+                                    <table class="w-full text-xs">
+                                        <thead>
+                                            <tr class="t-border-b t-text-muted">
+                                                <th class="text-left p-2">{{ t('migration.contractId') }}</th>
+                                                <th class="text-right p-2">{{ t('migration.coreInvocations') }}</th>
+                                                <th class="text-right p-2">{{ t('migration.lingInvocations') }}</th>
+                                                <th class="text-left p-2 min-w-[120px]">{{ t('migration.coreRatio') }}</th>
+                                                <th class="text-right p-2">{{ t('migration.coreAvgDuration') }}</th>
+                                                <th class="text-right p-2">{{ t('migration.lingAvgDuration') }}</th>
+                                                <th class="text-right p-2">{{ t('migration.coreFailures') }}</th>
+                                                <th class="text-right p-2">{{ t('migration.lingFailures') }}</th>
+                                                <th class="text-center p-2">{{ t('migration.providers') }}</th>
+                                                <th class="text-center p-2">{{ t('migration.status') }}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="m in migrationList" :key="m.contractId"
+                                                :class="['t-border-b', m.coreStale ? 'bg-red-500/5' : '']">
+                                                <td class="p-2 font-mono t-text break-all">{{ m.contractId }}</td>
+                                                <td class="p-2 text-right font-mono text-green-400">{{ (m.coreInvocations || 0).toLocaleString() }}</td>
+                                                <td class="p-2 text-right font-mono text-blue-400">{{ (m.lingInvocations || 0).toLocaleString() }}</td>
+                                                <td class="p-2">
+                                                    <div class="flex items-center gap-2">
+                                                        <div class="flex-1 h-1.5 t-bg-faint rounded-full overflow-hidden min-w-[60px]">
+                                                            <div class="h-full bg-green-500" :style="{width: (m.coreTrafficRatio * 100) + '%'}"></div>
+                                                        </div>
+                                                        <span class="font-mono text-[10px] t-text-sub whitespace-nowrap">{{ formatRatio(m.coreTrafficRatio) }}</span>
+                                                    </div>
+                                                </td>
+                                                <td class="p-2 text-right font-mono t-text-sub">{{ m.coreAvgDurationMs ? m.coreAvgDurationMs.toFixed(2) : '-' }}</td>
+                                                <td class="p-2 text-right font-mono t-text-sub">{{ m.lingAvgDurationMs ? m.lingAvgDurationMs.toFixed(2) : '-' }}</td>
+                                                <td class="p-2 text-right font-mono" :class="m.coreFailures > 0 ? 'text-red-400' : 't-text-sub'">{{ m.coreFailures || 0 }}</td>
+                                                <td class="p-2 text-right font-mono" :class="m.lingFailures > 0 ? 'text-red-400' : 't-text-sub'">{{ m.lingFailures || 0 }}</td>
+                                                <td class="p-2 text-center t-text-sub">{{ m.providerCount }}</td>
+                                                <td class="p-2 text-center">
+                                                    <span v-if="m.coreStale" :title="t('migration.staleHint')"
+                                                        class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400">
+                                                        {{ t('migration.statusStale') }}
+                                                    </span>
+                                                    <span v-else class="px-2 py-0.5 rounded text-[10px] font-bold t-bg-faint t-text-sub">
+                                                        {{ t('migration.statusMigrating') }}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- ==================== 服务验证视图 ==================== -->

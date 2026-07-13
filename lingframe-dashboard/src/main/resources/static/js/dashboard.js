@@ -44,7 +44,9 @@ createApp({
             permissions: false,
             invocation: false,
             stats: false,
-            simulate: false
+            simulate: false,
+            contractRouting: false,
+            migration: false
         });
 
         const modal = reactive({
@@ -246,6 +248,155 @@ createApp({
                 matrixSortKey.value = key;
                 matrixSortAsc.value = true;
             }
+        };
+
+        // ==================== 契约路由策略 ====================
+        const contractsList = ref([]);
+        const selectedContractId = ref(null);
+        const routingDetail = ref(null);
+        // 路由详情请求 seq：防止快速切换契约时旧请求覆盖新数据
+        let routingDetailSeq = 0;
+        // 各 provider 的覆盖权重编辑表单：{ [lingId]: number|null }
+        const weightEditForm = reactive({});
+        const savingWeight = reactive({}); // { [lingId]: boolean }
+
+        const fetchContracts = async () => {
+            loading.contractRouting = true;
+            try {
+                const data = await api.get('/contract-routing/contracts');
+                contractsList.value = Array.isArray(data) ? data : [];
+                // 若当前选中的契约已不在列表中，清空选中态
+                if (selectedContractId.value && !contractsList.value.includes(selectedContractId.value)) {
+                    selectedContractId.value = null;
+                    routingDetail.value = null;
+                }
+            } catch (e) {
+                showToast(t('toast.fetchContractsFailed') + ': ' + e.message, 'error');
+                contractsList.value = [];
+            } finally {
+                loading.contractRouting = false;
+            }
+        };
+
+        const fetchRoutingDetail = async (contractId) => {
+            if (!contractId) {
+                routingDetail.value = null;
+                return;
+            }
+            // 自增 seq：仅最新请求能回写状态，旧请求返回时 seq 已过期，静默丢弃
+            const seq = ++routingDetailSeq;
+            loading.contractRouting = true;
+            try {
+                const data = await api.get('/contract-routing/' + encodeURIComponent(contractId));
+                if (seq !== routingDetailSeq) return; // 已被后续请求取代
+                routingDetail.value = data;
+                // 同步权重编辑表单：overrideWeight 为 null 时表单项也置 null（占位提示「未覆盖」）
+                Object.keys(weightEditForm).forEach(k => delete weightEditForm[k]);
+                (data?.providers || []).forEach(p => {
+                    // 用 _value 而非 v-model 以避免 null 输入框出现 "null" 文本
+                    weightEditForm[p.lingId] = p.overrideWeight === null || p.overrideWeight === undefined ? null : p.overrideWeight;
+                });
+            } catch (e) {
+                if (seq !== routingDetailSeq) return;
+                showToast(t('toast.fetchRoutingFailed') + ': ' + e.message, 'error');
+                routingDetail.value = null;
+            } finally {
+                if (seq === routingDetailSeq) {
+                    loading.contractRouting = false;
+                }
+            }
+        };
+
+        const selectContract = async (id) => {
+            selectedContractId.value = id;
+            await fetchRoutingDetail(id);
+        };
+
+        const saveProviderWeight = async (lingId) => {
+            if (!selectedContractId.value) return;
+            const raw = weightEditForm[lingId];
+            // null / 空字符串都视为「未覆盖」语义——但后端要求 weight 必填，这里把 null 转为 0
+            // 真正想撤销覆盖应使用「回滚灵核 100%」按钮清空全部 override
+            const weight = raw === null || raw === '' || raw === undefined ? 0 : Number(raw);
+            if (!Number.isInteger(weight) || weight < 0 || weight > 100) {
+                showToast(t('contractRouting.weightHint'), 'error');
+                return;
+            }
+            savingWeight[lingId] = true;
+            try {
+                const data = await api.post(
+                    '/contract-routing/' + encodeURIComponent(selectedContractId.value) + '/weight',
+                    { lingId, weight }
+                );
+                routingDetail.value = data;
+                // 保存成功后回写表单为生效的 overrideWeight，避免输入框残留旧值
+                const updated = (data?.providers || []).find(p => p.lingId === lingId);
+                weightEditForm[lingId] = updated ? updated.overrideWeight : weight;
+                showToast(t('toast.weightSaved'), 'success');
+            } catch (e) {
+                showToast(t('toast.weightSaveFailed') + ': ' + e.message, 'error');
+            } finally {
+                savingWeight[lingId] = false;
+            }
+        };
+
+        const rollbackContract = () => {
+            if (!selectedContractId.value) return;
+            // 复用既有 modal 二次确认机制，与卸载确认风格一致
+            modal.show = true;
+            modal.loading = false;
+            modal.isDanger = false;
+            modal.showVersionSelect = false;
+            modal.versions = [];
+            modal.title = t('contractRouting.rollbackConfirmTitle');
+            modal.message = t('contractRouting.rollbackConfirmMessage', { contractId: selectedContractId.value });
+            modal.actionText = t('contractRouting.rollbackAction');
+            modal.onConfirm = async () => {
+                modal.loading = true;
+                try {
+                    const data = await api.post(
+                        '/contract-routing/' + encodeURIComponent(selectedContractId.value) + '/rollback',
+                        {}
+                    );
+                    routingDetail.value = data;
+                    // 同步表单：回滚后所有 overrideWeight 应为 null
+                    (data?.providers || []).forEach(p => {
+                        weightEditForm[p.lingId] = p.overrideWeight === null || p.overrideWeight === undefined ? null : p.overrideWeight;
+                    });
+                    showToast(t('toast.rollbackDone'), 'success');
+                } catch (e) {
+                    showToast(t('toast.rollbackFailed') + ': ' + e.message, 'error');
+                } finally {
+                    modal.loading = false;
+                    modal.show = false;
+                }
+            };
+        };
+
+        // ==================== 迁移进度看板 ====================
+        const migrationList = ref([]);
+        const fetchMigrationProgress = async () => {
+            loading.migration = true;
+            try {
+                const data = await api.get('/migration/progress');
+                migrationList.value = Array.isArray(data) ? data : [];
+            } catch (e) {
+                showToast(t('toast.fetchMigrationFailed') + ': ' + e.message, 'error');
+                migrationList.value = [];
+            } finally {
+                loading.migration = false;
+            }
+        };
+
+        // 聚合统计
+        const staleCount = computed(() => migrationList.value.filter(m => m.coreStale).length);
+        const totalCoreInv = computed(() => migrationList.value.reduce((s, m) => s + (m.coreInvocations || 0), 0));
+        const totalLingInv = computed(() => migrationList.value.reduce((s, m) => s + (m.lingInvocations || 0), 0));
+
+        // 格式化百分比：0-1 之间的小数 → "12.34%"
+        const formatRatio = (r) => {
+            if (r === null || r === undefined || isNaN(r)) return '0.00%';
+            return (r * 100).toFixed(2) + '%';
         };
 
         // 性能历史数据（折线图用，普通对象避免响应式开销）
@@ -2877,6 +3028,12 @@ createApp({
                 nextTick(() => drawMonitorCharts());
             } else if (val === 'lings') {
                 fetchPackages();
+            } else if (val === 'contract-routing') {
+                // 进入契约路由页时拉取契约列表，详情按需懒加载
+                fetchContracts();
+            } else if (val === 'migration') {
+                // 进入迁移看板页时拉取全量进度
+                fetchMigrationProgress();
             }
         });
 
@@ -3097,6 +3254,9 @@ createApp({
             governanceTabs, activeGovernanceTab, switchGovernanceTab, jumpToGovernanceConfig,
             GOVERNANCE_PRESETS, selectedPreset, applyPreset,
             governanceMatrix, matrixSortKey, matrixSortAsc, fetchGovernanceMatrix, sortedMatrix, sortMatrix,
+            contractsList, selectedContractId, routingDetail, weightEditForm, savingWeight,
+            fetchContracts, fetchRoutingDetail, selectContract, saveProviderWeight, rollbackContract,
+            migrationList, fetchMigrationProgress, staleCount, totalCoreInv, totalLingInv, formatRatio,
             canaryDecision, fetchCanaryDecision,
             executeCanaryRollback, executeCanaryFullRelease, refreshCanaryDecision,
             lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,

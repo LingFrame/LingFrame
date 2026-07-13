@@ -49,7 +49,7 @@ public class InvocationPolicyPrefillFilter implements LingInvocationFilter {
 
     @Override
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
-        String lingId = ctx.getLingIdFromFqsid();
+        String lingId = ctx.getEffectiveLingId();
         GovernancePolicy.InvocationPolicy effective = resolveEffectiveInvocationPolicy(lingId);
         if (effective != null) {
             InvocationGovernanceState state = ctx.governance();

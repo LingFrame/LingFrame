@@ -10,8 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * 全局服务路由代理。
@@ -27,15 +25,31 @@ import java.util.stream.Collectors;
  * - 通过 `LingRepository` 统一查询运行时，推进中心化路由。
  * - 复用 `SmartServiceProxy` 实例，避免每次调用都重复创建代理对象。
  * </p>
+ * <p>
+ * 默认路由路径：
+ * - 无显式 targetLingId 时使用 {@link #PROVIDER_PLACEHOLDER_LING_ID} 占位符，
+ *   使 SmartServiceProxy 自然构造 FQSID = "__provider__:contractId"，
+ *   由 {@code ContractProviderRoutingFilter} 在 L0 阶段解析为具体 Provider。
+ * - 显式 targetLingId 时仍走老格式 "lingId:contractId"，向后兼容精确 pinning 场景。
+ * </p>
  */
 @Slf4j
 public class GlobalServiceRoutingProxy implements InvocationHandler {
 
-    private final String callerLingId; // 通常为 "lingcore-app"
+    /**
+     * 默认路由路径使用此占位符作为 targetLingId。
+     * SmartServiceProxy 拼接 FQSID 后变为 "__provider__:contractId"，
+     * 由 ContractProviderRoutingFilter 在 L0 阶段执行 provider 级权重选择。
+     */
+    private static final String PROVIDER_PLACEHOLDER_LING_ID = "__provider__";
+
+    private final String callerLingId; // 通常为 LingCoreConstants.LINGCORE_LING_ID
     private final String interfaceName; // 仅保存接口全限定名，不持有 Class 对象
     private final String targetLingId; // 用户显式指定的灵元 ID（可选）
     private final LingRepository lingRepository;
     private final InvocationPipelineEngine pipelineEngine;
+    // 此字段不再用于反向索引——默认路由改走 __provider__ 占位符。
+    // 保留字段与 6 参构造器仅为向后兼容既有调用点，新代码应使用 5 参构造器。
     private final LingServiceRegistry lingServiceRegistry;
 
     // 复用 SmartServiceProxy，避免每次调用都创建新实例
@@ -67,21 +81,26 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
             return method.invoke(this, args);
         }
 
-        // 实时解析目标灵元 ID
+        // 解析目标：显式 targetLingId → 老格式精确 pinning；null → __provider__ 占位符走 L0 路由
         String finalId = resolveTargetLingId();
 
-        LingRuntime runtime = (finalId != null) ? lingRepository.getRuntime(finalId) : null;
-        if (runtime == null) {
-            throw new LingInvocationException(interfaceName, LingInvocationException.ErrorKind.STATE_REJECTED, "Service is currently offline");
+        // 显式 pinning 路径：保持老语义，预先校验灵元在线状态，离线即抛 STATE_REJECTED
+        // __provider__ 占位符路径：跳过预校验——具体 provider 选择与可用性判定交由
+        // ContractProviderRoutingFilter 在 pipeline 内统一决策，避免代理层过早查 runtime
+        if (!PROVIDER_PLACEHOLDER_LING_ID.equals(finalId)) {
+            LingRuntime runtime = lingRepository.getRuntime(finalId);
+            if (runtime == null) {
+                throw new LingInvocationException(interfaceName, LingInvocationException.ErrorKind.STATE_REJECTED, "Service is currently offline");
+            }
         }
 
-        // 复用或创建 `SmartServiceProxy`
-        SmartServiceProxy delegate = getOrCreateDelegate(runtime.getLingId());
+        // 复用或创建 `SmartServiceProxy`（占位符路径下 finalId 即 "__provider__"）
+        SmartServiceProxy delegate = getOrCreateDelegate(finalId);
         return delegate.invoke(proxy, method, args);
     }
 
     private SmartServiceProxy getOrCreateDelegate(String lingId) {
-        // 快速路径：如果目标灵元 ID 未变化，直接复用已有代理
+        // 快速路径：占位符或具体 lingId 均按字符串相等判断缓存命中
         if (lingId.equals(cachedDelegateLingId) && cachedDelegate != null) {
             return cachedDelegate;
         }
@@ -95,46 +114,22 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
         }
     }
 
+    /**
+     * 此方法仅做两路分流：
+     * <ol>
+     *   <li>显式 targetLingId（@LingReference(lingId="...") 锚定）→ 直接返回，走老格式 FQSID</li>
+     *   <li>未显式指定 → 返回 {@link #PROVIDER_PLACEHOLDER_LING_ID}，激活 L0 provider 路由</li>
+     * </ol>
+     * 删除原 O(n) 反向索引 + 字典序取第一个可用灵元的兜底逻辑——多 provider 选择交由
+     * {@code ContractProviderRoutingFilter} + {@code ProviderWeightRouter} 在 pipeline 内统一决策，
+     * 避免代理层过早选 lingId 与 Dashboard 权重配置脱节。
+     */
     private String resolveTargetLingId() {
-        // 如果注解已显式指定灵元 ID，直接使用
+        // 显式指定灵元 ID：精确 pinning 路径，向后兼容
         if (targetLingId != null && !targetLingId.isEmpty()) {
             return targetLingId;
         }
-
-        // 路由收敛：删原 O(n) 遍历全仓 + 反射 loadClass + getBean 的兜底逻辑，
-        // 改走 LingServiceRegistry 反向索引 O(1) 命中。
-        // 语义变化：未注册的契约不再兜底查到，返回 null 由上层抛 STATE_REJECTED。
-        // 这是有意行为——implicit-registration: false 时未标 @LingService 但 implements 的灵元
-        // 不应被路由命中，避免误回退。
-        if (lingServiceRegistry == null) {
-            return null;
-        }
-        List<String> lingIds = lingServiceRegistry.getLingIdsByContractId(interfaceName);
-        if (lingIds == null || lingIds.isEmpty()) {
-            // 兜底：interfaceName 可能是完整 FQSID（含 ':'），反向索引键只存 contractId 部分
-            int idx = interfaceName.indexOf(':');
-            if (idx > 0 && idx < interfaceName.length() - 1) {
-                String contractId = interfaceName.substring(idx + 1);
-                lingIds = lingServiceRegistry.getLingIdsByContractId(contractId);
-            }
-        }
-        if (lingIds == null || lingIds.isEmpty()) {
-            return null;
-        }
-        // 多灵元命中时记调试日志，便于路由排查——删 O(n) 遍历后丢过这个线索。
-        if (lingIds.size() > 1) {
-            log.debug("Multiple lings matched for contract [{}]: {}, routing to first available",
-                    interfaceName, lingIds);
-        }
-        // 多灵元命中时取第一个可用灵元；排序保证稳定（按字典序）。
-        // 负载均衡策略暂不抽象——当前单实例/少实例阶段字典序足够；
-        // 真正需要轮询/加权/最少连接时再引入 RoutingStrategy 接口，避免过早抽象。
-        for (String lingId : lingIds.stream().sorted().collect(Collectors.toList())) {
-            LingRuntime runtime = lingRepository.getRuntime(lingId);
-            if (runtime != null && runtime.isAvailable()) {
-                return lingId;
-            }
-        }
-        return null;
+        // 默认路由路径：占位符交给 pipeline 内的 L0 路由过滤器解析
+        return PROVIDER_PLACEHOLDER_LING_ID;
     }
 }

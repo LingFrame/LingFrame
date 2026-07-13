@@ -11,6 +11,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
+import com.lingframe.core.router.ProviderWeightRouter;
 import com.lingframe.core.spi.LingServiceInvoker;
 import com.lingframe.core.spi.TrafficRouter;
 import lombok.Builder;
@@ -73,4 +74,11 @@ public class FilterRegistryConfig {
      */
     @Builder.Default
     private final LingFrameInfo lingFrameInfo = null;
+
+    /**
+     * L0 provider 级权重路由器，供 {@link ContractProviderRoutingFilter} 按权重选择 provider。
+     * 可为 null（native/test 场景未注入时，Registry 内部创建默认实例，使用默认权重 CORE=100/LING=0）。
+     */
+    @Builder.Default
+    private final ProviderWeightRouter providerWeightRouter = null;
 }

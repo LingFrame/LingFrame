@@ -88,6 +88,30 @@ class ResilienceGovernanceFilterTest {
             assertEquals(expected, result);
             verify(filterChain).doFilter(context);
         }
+
+        @Test
+        @DisplayName("新格式 __provider__: FQSID 应优先读 targetLingId 查限流器/熔断器")
+        void doFilter_WhenProviderFqsid_ShouldReadTargetLingIdForLimiter() throws Throwable {
+            // 模拟 ContractProviderRoutingFilter 已设置 targetLingId
+            context.setServiceFQSID("__provider__:com.example.DemoService");
+            context.setTargetLingId("demo-ling");
+
+            LingRuntimeConfig config = LingRuntimeConfig.builder()
+                    .bulkheadMaxConcurrent(100)
+                    .defaultTimeoutMs(1000)
+                    .build();
+            when(lingRuntime.getConfig()).thenReturn(config);
+            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            Object result = filter.doFilter(context, filterChain);
+
+            assertEquals(expected, result);
+            // 关键断言：熔断器创建在 "demo-ling" 名下，说明用了 targetLingId 而非占位符
+            assertTrue(filter.hasBreaker("demo-ling"));
+        }
     }
 
     @Nested

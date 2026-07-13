@@ -382,4 +382,36 @@ class ThreadIsolationGovernanceFilterTest {
         when(runtime.getConfig()).thenReturn(config);
         return runtime;
     }
+
+    @Nested
+    @DisplayName("新格式 __provider__: FQSID 读路径")
+    class ProviderFqsidTests {
+
+        @Test
+        @DisplayName("新格式 FQSID 应优先读 targetLingId 查 runtime，线程隔离正常生效")
+        void shouldReadTargetLingIdWhenProviderFqsid() throws Throwable {
+            LingRepository repository = new DefaultLingRepository();
+            LingRuntimeConfig config = LingRuntimeConfig.builder()
+                    .bulkheadMaxConcurrent(1)
+                    .defaultTimeoutMs(2000)
+                    .build();
+            LingRuntime runtime = mockRuntime("ling1", config);
+            repository.register(runtime);
+
+            ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
+            InvocationContext context = InvocationContext.obtain();
+            // 模拟 ContractProviderRoutingFilter 已设置 targetLingId
+            context.setServiceFQSID("__provider__:TestService");
+            context.setTargetLingId("ling1");
+
+            try {
+                assertEquals("ok", filter.doFilter(context, current -> "ok"));
+                // 关键断言：线程隔离池创建在 "ling1" 名下，说明用了 targetLingId 而非占位符
+                assertTrue(filter.hasExecutor("ling1"));
+            } finally {
+                filter.evict("ling1");
+                context.recycle();
+            }
+        }
+    }
 }

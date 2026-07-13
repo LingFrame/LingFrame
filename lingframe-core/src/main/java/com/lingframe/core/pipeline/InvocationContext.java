@@ -2,6 +2,7 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.spi.RoutableTarget;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -68,8 +69,12 @@ public class InvocationContext {
     /**
      * 运行时对象必须走弱引用。
      * 否则对象池里的 InvocationContext 会把 Runtime 与其背后的灵元 ClassLoader 长期挂住。
+     * <p>
+     * 路由升维：字段类型从 {@code LingRuntime} 升级为 {@link RoutableTarget}，
+     * 使灵核（{@code LingCoreRoutableTarget}）和灵元（{@code LingRuntime}）都能存入。
+     * 旧调用方通过 {@code instanceof LingRuntime} 转型获取灵元独有方法。
      */
-    private WeakReference<LingRuntime> runtimeRef;
+    private WeakReference<RoutableTarget> runtimeRef;
 
     // ════════════════════════════════════════════
     // 第二部分：链路身份与治理入参
@@ -209,12 +214,33 @@ public class InvocationContext {
     }
 
     /**
-     * 从 FQSID 中提取 lingId，结果缓存避免重复 split。
+     * 从 FQSID 中提取 lingId 部分。
+     * <p>
+     * 旧格式（{@code lingId:serviceName}）返回真实 lingId。
+     * 新格式（{@code __provider__:contractId}）返回占位符 {@code __provider__}——
+     * 调用方如需「当前调用的真实目标 lingId」，应优先使用 {@link #getEffectiveLingId()}。
      *
-     * @return lingId，如果 FQSID 为 null 则返回 null
+     * @return FQSID 中的 lingId 部分；如果 FQSID 为 null 则返回 null
      */
     public String getLingIdFromFqsid() {
         return cachedLingId;
+    }
+
+    /**
+     * 获取当前调用的有效目标 lingId。
+     * <p>
+     * 读路径优先级：
+     * <ol>
+     *   <li>{@link #getTargetLingId()}——ContractProviderRoutingFilter 在 L0 阶段已解析出真实 lingId</li>
+     *   <li>{@link #getLingIdFromFqsid()}——fallback 兼容旧格式 FQSID（{@code lingId:serviceName}）</li>
+     * </ol>
+     * 新格式 FQSID（{@code __provider__:contractId}）下 {@link #getLingIdFromFqsid()}
+     * 返回占位符，必须优先读 {@link #getTargetLingId()}。
+     *
+     * @return 真实目标 lingId；如果都为 null 则返回 null
+     */
+    public String getEffectiveLingId() {
+        return targetLingId != null ? targetLingId : cachedLingId;
     }
 
     /**
@@ -228,13 +254,35 @@ public class InvocationContext {
 
     /**
      * 运行时对象使用弱引用，避免上下文池把 Runtime 长时间挂住。
+     * <p>
+     * 路由升维：参数类型从 {@code LingRuntime} 升级为 {@link RoutableTarget}。
+     * 灵元调用方传 {@code LingRuntime}（实现 RoutableTarget），灵核调用方传 {@code LingCoreRoutableTarget}。
      */
-    public void setRuntime(LingRuntime runtime) {
+    public void setRuntime(RoutableTarget runtime) {
         this.runtimeRef = runtime == null ? null : new WeakReference<>(runtime);
     }
 
-    public LingRuntime getRuntime() {
+    /**
+     * 获取运行时目标。
+     * <p>
+     * 路由升维：返回类型从 {@code LingRuntime} 升级为 {@link RoutableTarget}。
+     * 调用方如需灵元独有方法（如 {@code getConfig}），用 {@code instanceof LingRuntime} 转型。
+     */
+    public RoutableTarget getRuntime() {
         return runtimeRef == null ? null : runtimeRef.get();
+    }
+
+    /**
+     * 获取灵元运行时（LingRuntime）。
+     * <p>
+     * 路由升维：灵核（{@code LingCoreRoutableTarget}）不是 LingRuntime，返回 null。
+     * 治理类 Filter 调用此方法：灵核走 null 分支跳过治理。
+     *
+     * @return 灵元运行时；如果目标为灵核或未设置，返回 null
+     */
+    public LingRuntime getLingRuntime() {
+        RoutableTarget target = getRuntime();
+        return target instanceof LingRuntime ? (LingRuntime) target : null;
     }
 
     /**

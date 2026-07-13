@@ -6,6 +6,7 @@ import com.lingframe.core.metrics.LingHealthMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
+import com.lingframe.core.spi.RoutableTarget;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.api.context.LingCallContext;
@@ -115,7 +116,7 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
         }
 
         // 缓存运行时引用，减少重复查找压力 (复用逻辑遵循铁律 2.0，已在 reset 中处理清理)
-        LingRuntime runtime = ctx.getRuntime();
+        RoutableTarget runtime = ctx.getRuntime();
         if (runtime == null && repository != null) {
             String lingId = ctx.getTargetLingId();
             if (lingId == null && ctx.getServiceFQSID() != null) {
@@ -127,13 +128,15 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
                 }
             }
             if (lingId != null) {
-                runtime = repository.getRuntime(lingId);
+                runtime = repository.getRoutableTarget(lingId);
                 ctx.setRuntime(runtime);
             }
         }
 
-        if (runtime != null) {
-            runtime.startRequest();
+        // 请求计数仅对灵元（LingRuntime）生效；灵核无状态机，跳过
+        LingRuntime lingRuntime = runtime instanceof LingRuntime ? (LingRuntime) runtime : null;
+        if (lingRuntime != null) {
+            lingRuntime.startRequest();
         }
 
         String lingId = ctx.getTargetLingId();
@@ -166,8 +169,8 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
             throw t;
         } finally {
             LingCallContext.decreaseDepth();
-            if (runtime != null) {
-                runtime.endRequest();
+            if (lingRuntime != null) {
+                lingRuntime.endRequest();
             }
         }
     }
@@ -235,7 +238,8 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
         if (ctx.getTargetVersion() != null && !ctx.getTargetVersion().isEmpty()) {
             return ctx.getTargetVersion();
         }
-        LingRuntime runtime = ctx.getRuntime();
+        // 版本号仅灵元（LingRuntime）有 InstancePool；灵核无版本概念
+        LingRuntime runtime = ctx.getLingRuntime();
         return runtime != null ? runtime.getInstancePool().getVersion() : null;
     }
     

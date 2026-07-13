@@ -23,6 +23,11 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     // 路由层按接口类型查灵元时用此索引，避免 O(n) 遍历全表。
     private final Map<String, java.util.Set<String>> contractToLingIds = new ConcurrentHashMap<>();
 
+    // 路由升维：契约 ID → 提供方描述符列表（含权重）
+    // L0 provider 级路由的主索引，与 contractToLingIds 并行维护。
+    // contractToLingIds 保留供旧调用方（dashboard 等）兼容使用，本索引供 ProviderWeightRouter 使用。
+    private final Map<String, List<ProviderDescriptor>> providerIndex = new ConcurrentHashMap<>();
+
     @Override
     public void registerServiceMetadata(String serviceFQSID, String methodName,
             String[] parameterTypes, String returnType) {
@@ -90,9 +95,16 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         if (contractId == null || contractId.isEmpty()) {
             return new ArrayList<>();
         }
-        java.util.Set<String> lingIds = contractToLingIds.get(contractId);
-        if (lingIds != null) {
-            return new ArrayList<>(lingIds);
+        // 路由升维：优先从 providerIndex 提取，保持与 getProvidersByContractId 一致
+        List<ProviderDescriptor> providers = providerIndex.get(contractId);
+        if (providers != null && !providers.isEmpty()) {
+            List<String> lingIds = new ArrayList<>();
+            for (ProviderDescriptor desc : providers) {
+                if (!lingIds.contains(desc.getLingId())) {
+                    lingIds.add(desc.getLingId());
+                }
+            }
+            return lingIds;
         }
         // 兜底：FQSID 完整键命中时，提取 lingId 返回
         if (contractId.indexOf(':') > 0 && metadataCache.containsKey(contractId)) {
@@ -102,6 +114,80 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
             return result;
         }
         return new ArrayList<>();
+    }
+
+    @Override
+    public List<ProviderDescriptor> getProvidersByContractId(String contractId) {
+        if (contractId == null || contractId.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<ProviderDescriptor> providers = providerIndex.get(contractId);
+        return providers != null ? new ArrayList<>(providers) : new ArrayList<>();
+    }
+
+    @Override
+    public java.util.Set<String> getAllContractIds() {
+        // 返回不可变快照，避免外部修改影响内部索引
+        return java.util.Collections.unmodifiableSet(new java.util.HashSet<>(providerIndex.keySet()));
+    }
+
+    @Override
+    public void registerProvider(String contractId, String lingId, ProviderKind kind, int weight) {
+        if (contractId == null || contractId.isEmpty() || lingId == null || kind == null) {
+            return;
+        }
+        ProviderDescriptor descriptor = new ProviderDescriptor(contractId, lingId, kind, weight);
+        // 幂等：同一 (contractId, lingId) 已存在则更新 weight，不存在则追加
+        providerIndex.compute(contractId, (key, existing) -> {
+            List<ProviderDescriptor> list = existing != null ? existing : new ArrayList<>();
+            // 查找是否已有同一 lingId 的条目
+            for (int i = 0; i < list.size(); i++) {
+                if (list.get(i).getLingId().equals(lingId)) {
+                    // 已存在：kind 保持首次注册值不变，weight 以最新为准
+                    list.set(i, new ProviderDescriptor(contractId, lingId, list.get(i).getKind(), weight));
+                    return list;
+                }
+            }
+            // 新条目
+            list.add(descriptor);
+            return list;
+        });
+    }
+
+    @Override
+    public void evictProvider(String lingId) {
+        if (lingId == null) {
+            return;
+        }
+        // 遍历所有契约，移除指定 lingId 的提供方条目
+        // 使用 compute 原子操作避免与并发 registerProvider 产生的 ConcurrentModificationException
+        // （ArrayList.removeIf 在其他线程 compute 修改同一 list 时会抛 CME）
+        for (String contractId : providerIndex.keySet()) {
+            providerIndex.compute(contractId, (key, list) -> {
+                if (list == null) {
+                    return null;
+                }
+                list.removeIf(desc -> lingId.equals(desc.getLingId()));
+                // 空列表返回 null 让 ConcurrentHashMap 回收 entry，防内存泄漏
+                return list.isEmpty() ? null : list;
+            });
+        }
+    }
+
+    @Override
+    public void updateProviderWeight(String contractId, String lingId, int weight) {
+        if (contractId == null || lingId == null) {
+            return;
+        }
+        providerIndex.computeIfPresent(contractId, (key, list) -> {
+            for (int i = 0; i < list.size(); i++) {
+                if (list.get(i).getLingId().equals(lingId)) {
+                    list.set(i, list.get(i).withWeight(weight));
+                    break;
+                }
+            }
+            return list;
+        });
     }
 
     @Override
@@ -120,11 +206,17 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         }
         // 清空空集合，防内存泄漏
         contractToLingIds.values().removeIf(java.util.Set::isEmpty);
+        // 路由升维：同步清理 providerIndex
+        evictProvider(lingId);
     }
 
     /**
      * 从 FQSID 提取 lingId 与 contractId，登记到反向索引。
      * contractId 为 FQSID 去掉 "lingId:" 前缀后的剩余（裸契约名或短 ID）。
+     * <p>
+     * 路由升维：同时维护 providerIndex（默认 kind=LING, weight=0），
+     * 使直接调 registerServiceMetadata 的调用方（dashboard 等）也能被 ProviderWeightRouter 查到。
+     * 灵核侧通过 LingServiceRegistrar 显式调 registerProvider(CORE, 100) 覆盖默认值。
      */
     private void indexContractToLing(String serviceFQSID) {
         if (serviceFQSID == null) {
@@ -137,6 +229,8 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         String lingId = serviceFQSID.substring(0, idx);
         String contractId = serviceFQSID.substring(idx + 1);
         contractToLingIds.computeIfAbsent(contractId, k -> ConcurrentHashMap.newKeySet()).add(lingId);
+        // 路由升维：同步登记 providerIndex，默认灵元 weight=0
+        registerProvider(contractId, lingId, ProviderKind.LING, 0);
     }
 
     private String buildSignature(String methodName, String[] parameterTypes) {

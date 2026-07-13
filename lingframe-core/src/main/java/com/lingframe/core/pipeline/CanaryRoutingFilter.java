@@ -7,6 +7,7 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
+import com.lingframe.core.spi.RoutableTarget;
 import com.lingframe.core.spi.TrafficRouter;
 
 import java.util.List;
@@ -45,7 +46,7 @@ public class CanaryRoutingFilter implements LingInvocationFilter {
         }
 
         String lingId = extractLingId(fqsid);
-        LingRuntime runtime = resolveRuntime(ctx, lingId);
+        RoutableTarget runtime = resolveRuntime(ctx, lingId);
         if (runtime == null) {
             if (ctx.execution().getMode().isGovernOnly()) {
                 // GOVERN_ONLY 允许灵核入口只借道治理，不强依赖真实的灵元路由结果
@@ -70,7 +71,7 @@ public class CanaryRoutingFilter implements LingInvocationFilter {
 
         if (ctx.execution().getMode().isSimulation() || ctx.governance().isShouldAudit()) {
             // 模拟和强审计场景下保留选路轨迹，方便解释“为什么命中了这个版本”
-            boolean canary = target != runtime.getInstancePool().getDefault();
+            boolean canary = runtime.isCanaryTarget(target);
             String routeType = canary ? "CANARY" : "STABLE";
             ctx.execution().addTrace(EngineTrace.builder()
                     .source("CanaryRoutingFilter")
@@ -83,12 +84,12 @@ public class CanaryRoutingFilter implements LingInvocationFilter {
         return chain.doFilter(ctx);
     }
 
-    private LingRuntime resolveRuntime(InvocationContext ctx, String lingId) {
-        LingRuntime runtime = ctx.getRuntime();
+    private RoutableTarget resolveRuntime(InvocationContext ctx, String lingId) {
+        RoutableTarget runtime = ctx.getRuntime();
         if (runtime != null) {
             return runtime;
         }
-        LingRuntime resolved = lingRepository.getRuntime(lingId);
+        RoutableTarget resolved = lingRepository.getRoutableTarget(lingId);
         if (resolved != null) {
             ctx.setRuntime(resolved);
         }

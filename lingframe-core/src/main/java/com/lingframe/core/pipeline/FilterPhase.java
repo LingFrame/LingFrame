@@ -17,6 +17,17 @@ package com.lingframe.core.pipeline;
 public final class FilterPhase {
 
     /**
+     * L0 provider 级路由阶段。
+     * <p>
+     * 在所有正向阶段之前执行，从 FQSID 中提取契约 ID，
+     * 按 provider 权重选择目标 lingId 并设置 ctx.runtime，
+     * 让后续过滤器直接使用已解析的 runtime。
+     * <p>
+     * 旧格式 FQSID（{@code lingId:serviceName}）不触发此阶段，走兼容路径直接放行。
+     */
+    public static final int PROVIDER_ROUTING = -100;
+
+    /**
      * 指标与入口打点阶段。
      */
     public static final int METRICS = 0;

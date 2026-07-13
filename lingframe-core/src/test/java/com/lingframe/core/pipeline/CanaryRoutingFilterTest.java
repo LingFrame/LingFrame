@@ -99,7 +99,7 @@ class CanaryRoutingFilterTest {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
             context.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
             Object expected = new Object();
-            when(lingRepository.getRuntime("demo-ling")).thenReturn(null);
+            when(lingRepository.getRoutableTarget("demo-ling")).thenReturn(null);
             when(filterChain.doFilter(context)).thenReturn(expected);
 
             Object result = filter.doFilter(context, filterChain);
@@ -117,7 +117,7 @@ class CanaryRoutingFilterTest {
         @DisplayName("运行时缺失时应抛出路由失败")
         void shouldThrowRouteFailureWhenRuntimeIsMissing() {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
-            when(lingRepository.getRuntime("demo-ling")).thenReturn(null);
+            when(lingRepository.getRoutableTarget("demo-ling")).thenReturn(null);
 
             LingInvocationException exception = assertThrows(LingInvocationException.class,
                     () -> filter.doFilter(context, filterChain));
@@ -130,7 +130,7 @@ class CanaryRoutingFilterTest {
         @DisplayName("没有就绪实例时应抛出路由失败")
         void shouldThrowRouteFailureWhenNoReadyInstancesExist() {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
-            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+            when(lingRepository.getRoutableTarget("demo-ling")).thenReturn(lingRuntime);
             when(lingRuntime.getReadyInstances()).thenReturn(Collections.emptyList());
 
             LingInvocationException exception = assertThrows(LingInvocationException.class,
@@ -143,7 +143,7 @@ class CanaryRoutingFilterTest {
         @DisplayName("路由器返回空结果时应抛出路由失败")
         void shouldThrowRouteFailureWhenRouterReturnsNull() {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
-            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+            when(lingRepository.getRoutableTarget("demo-ling")).thenReturn(lingRuntime);
             when(lingRuntime.getReadyInstances()).thenReturn(Collections.singletonList(targetInstance));
             when(trafficRouter.route(any(), eq(context))).thenReturn(null);
 
@@ -162,7 +162,7 @@ class CanaryRoutingFilterTest {
         @DisplayName("路由成功时应写回路由状态")
         void shouldWriteRoutingStateWhenRouteSucceeds() throws Throwable {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
-            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+            when(lingRepository.getRoutableTarget("demo-ling")).thenReturn(lingRuntime);
             when(lingRuntime.getReadyInstances()).thenReturn(Arrays.asList(targetInstance));
             when(trafficRouter.route(any(), eq(context))).thenReturn(targetInstance);
             when(targetInstance.getLingId()).thenReturn("demo-ling");
