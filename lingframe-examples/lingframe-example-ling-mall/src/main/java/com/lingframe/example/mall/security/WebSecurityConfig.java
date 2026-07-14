@@ -42,6 +42,18 @@ public class WebSecurityConfig {
             .antMatchers("/api/auth/**").permitAll()
             .antMatchers("/h2-console/**").permitAll()
             .antMatchers(
+                "/dashboard.html",
+                "/lingframe/dashboard/**",
+                "/css/**",
+                "/js/**",
+                "/fonts/**",
+                "/i18n/**",
+                "/images/**",
+                "/vendor/**",
+                "/webfonts/**",
+                "/favicon.ico"
+            ).permitAll()
+            .antMatchers(
                 "/v3/api-docs/**",
                 "/swagger-ui/**",
                 "/swagger-ui.html",

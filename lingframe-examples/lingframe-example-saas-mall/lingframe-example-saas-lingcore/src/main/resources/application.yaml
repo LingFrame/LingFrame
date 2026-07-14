@@ -2,6 +2,9 @@ server:
   port: 8083
 
 spring:
+  mvc:
+    path match:
+      matching-strategy: ant_path_matcher
   sql:
     init:
       mode: always
@@ -35,9 +38,11 @@ lingframe:
   dev-mode: true
   ling-home: lings
   preload-api-jars:
-    - ${lingframe.preload-api-jars}
+    - ../lingframe-example-saas-api
   ling-roots:
-    - ${lingframe.ling-roots}
+    - ../lingframe-example-saas-ling-oauth
+    - ../lingframe-example-saas-ling-seckill
+    - ../lingframe-example-saas-ling-refund
   ling-core-governance:
     enabled: false
     govern-internal-calls: true
@@ -45,6 +50,17 @@ lingframe:
   dashboard:
     enabled: true
     install-enabled: true
+    # SQLite 持久化存储
+    storage:
+      enabled: true
+      path: ${user.home}/.lingframe/mall-dashboard.db
+      metrics-retention-days: 7
+      audit-retention-days: 30
+      metrics-collect-interval-seconds: 30
+    # 访问令牌（生产环境建议设置，留空则不启用）
+    access-token:
+      enabled: true
+      token: "123456"
 
 # SpringDoc OpenAPI 配置
 springdoc:

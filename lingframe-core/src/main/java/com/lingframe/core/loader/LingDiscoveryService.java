@@ -3,6 +3,7 @@ package com.lingframe.core.loader;
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.ling.LingLifecycleEngine;
+import com.lingframe.core.util.PathUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -64,7 +65,7 @@ public class LingDiscoveryService {
                 if (config.isDevMode()) {
                     realPath += File.separator + "/target/classes";
                 }
-                File realFile = new File(realPath);
+                File realFile = PathUtils.resolvePath(realPath, new File(config.getLingHome()));
                 installSingle(loadedLingIds, realFile);
             }
         }

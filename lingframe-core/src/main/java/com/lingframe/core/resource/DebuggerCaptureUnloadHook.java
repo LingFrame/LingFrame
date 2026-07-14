@@ -71,7 +71,7 @@ public class DebuggerCaptureUnloadHook implements LingUnloadHook {
             // 需要两种方式获取底层 Map：直接 instanceof 或反射访问内部 map 字段。
             Map<?, ?> map = resolveBackingMap(storage, lingId);
             if (map == null) {
-                log.warn("[{}] CaptureStorage.STORAGE_THROWABLES 无法解析底层 Map: {}", lingId,
+                log.warn("[{}] CaptureStorage.STORAGE_THROWABLES cannot resolve underlying Map: {}", lingId,
                         storage == null ? "null" : storage.getClass().getName());
                 return;
             }
@@ -115,7 +115,7 @@ public class DebuggerCaptureUnloadHook implements LingUnloadHook {
             }
         } catch (NoSuchFieldException e) {
             // debugger-agent 版本差异，字段结构已变化
-            log.debug("[{}] CaptureStorage.STORAGE_THROWABLES 字段不存在（debugger-agent 版本差异）", lingId);
+            log.debug("[{}] CaptureStorage.STORAGE_THROWABLES field does not exist (debugger-agent version difference)", lingId);
         } catch (Throwable t) {
             // 调试器内部结构不可访问——不影响生产卸载链路，但需记录便于排查
             log.warn("[{}] CaptureStorage cleanup failed: {}", lingId, t.getMessage(), t);

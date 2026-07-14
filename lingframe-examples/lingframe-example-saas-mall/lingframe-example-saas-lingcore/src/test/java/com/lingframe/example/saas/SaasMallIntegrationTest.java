@@ -42,28 +42,6 @@ import java.util.Collections;
 @Slf4j
 public class SaasMallIntegrationTest {
 
-    static {
-        try {
-            File current = new File(".").getCanonicalFile();
-            while (current != null && !new File(current, "lingframe-examples").exists()) {
-                current = current.getParentFile();
-            }
-            if (current != null) {
-                String projectRoot = current.getAbsolutePath().replace("\\", "/");
-                String oauthPath = projectRoot + "/lingframe-examples/lingframe-example-saas-mall/lingframe-example-saas-ling-oauth";
-                String seckillPath = projectRoot + "/lingframe-examples/lingframe-example-saas-mall/lingframe-example-saas-ling-seckill";
-                String refundPath = projectRoot + "/lingframe-examples/lingframe-example-saas-mall/lingframe-example-saas-ling-refund";
-
-                System.setProperty("lingframe.ling-roots", oauthPath + "," + seckillPath + "," + refundPath);
-                System.setProperty("lingframe.preload-api-jars", projectRoot + "/lingframe-examples/lingframe-example-saas-mall/lingframe-example-saas-api");
-                System.out.println("🔥 Dynamic SaaS Ling Roots set: " + System.getProperty("lingframe.ling-roots"));
-                System.out.println("🔥 Dynamic SaaS API Preload set: " + System.getProperty("lingframe.preload-api-jars"));
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
     @Autowired
     private SaasAuthController authController;
 

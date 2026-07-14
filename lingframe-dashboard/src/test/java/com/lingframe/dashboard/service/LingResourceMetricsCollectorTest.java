@@ -8,12 +8,12 @@ import com.lingframe.dashboard.dto.LingResourceMetricsDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Assumptions;
 
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.lang.reflect.Field;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
@@ -44,6 +44,13 @@ class LingResourceMetricsCollectorTest {
     @Test
     @DisplayName("有灵元时应采集到类数和估算Metaspace")
     void shouldCollectClassCountAndMetaspace() throws Exception {
+        // 探测当前 JDK 是否支持 ClassLoader.classes 字段，不支持则跳过此断言测试
+        try {
+            ClassLoader.class.getDeclaredField("classes");
+        } catch (NoSuchFieldException e) {
+            Assumptions.assumeTrue(false, "ClassLoader does not have 'classes' field, skipping this test: " + e.getMessage());
+        }
+
         // 构造一个真实 URLClassLoader 模拟灵元 ClassLoader
         URLClassLoader lingCl = new URLClassLoader(new URL[0], getClass().getClassLoader()) {
             @Override
@@ -141,6 +148,9 @@ class LingResourceMetricsCollectorTest {
     }
 
     /** 占位类，用于测试类加载 */
-    public static class DummyClassA { }
-    public static class DummyClassB { }
+    public static class DummyClassA {
+    }
+
+    public static class DummyClassB {
+    }
 }

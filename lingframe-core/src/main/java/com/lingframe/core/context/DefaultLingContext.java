@@ -283,7 +283,7 @@ public class DefaultLingContext implements LingContext {
             }
             registerProtocolService(fqsid, handler, method);
         }
-        log.info("[Context] 程序化暴露服务: ling=[{}], serviceId=[{}], handler=[{}]",
+        log.info("[Context] Programmatic service exposure: ling=[{}], serviceId=[{}], handler=[{}]",
                 lingId, serviceId, handler.getClass().getName());
     }
 }

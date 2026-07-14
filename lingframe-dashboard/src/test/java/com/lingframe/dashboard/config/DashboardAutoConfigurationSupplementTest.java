@@ -21,6 +21,7 @@ import com.lingframe.dashboard.security.ReadOnlyInterceptor;
 import com.lingframe.dashboard.security.ReadOnlyProperties;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.storage.AuditStorage;
+import com.lingframe.dashboard.storage.DashboardDataSource;
 import com.lingframe.dashboard.storage.GovernanceConfigRestorer;
 import com.lingframe.dashboard.storage.GovernanceStorage;
 import com.lingframe.dashboard.storage.MetricsStorage;
@@ -89,9 +90,9 @@ class DashboardAutoConfigurationSupplementTest {
         @DisplayName("storageInitializer 应返回初始化器实例")
         void shouldCreateStorageInitializer(@TempDir Path tempDir) {
             StorageProperties props = createStorageProperties(tempDir);
-            JdbcTemplate jdbcTemplate = config.dashboardJdbcTemplate(props);
+            DashboardDataSource dashboardDataSource = config.dashboardDataSource(props);
 
-            StorageInitializer initializer = config.storageInitializer(jdbcTemplate, props);
+            StorageInitializer initializer = config.storageInitializer(dashboardDataSource, props);
 
             assertNotNull(initializer);
             initializer.init();
@@ -101,9 +102,9 @@ class DashboardAutoConfigurationSupplementTest {
         @DisplayName("metricsStorage 应返回 MetricsStorage 实例")
         void shouldCreateMetricsStorage(@TempDir Path tempDir) {
             StorageProperties props = createStorageProperties(tempDir);
-            JdbcTemplate jdbcTemplate = config.dashboardJdbcTemplate(props);
+            DashboardDataSource dashboardDataSource = config.dashboardDataSource(props);
 
-            MetricsStorage storage = config.metricsStorage(jdbcTemplate);
+            MetricsStorage storage = config.metricsStorage(dashboardDataSource);
 
             assertNotNull(storage);
         }
@@ -112,9 +113,9 @@ class DashboardAutoConfigurationSupplementTest {
         @DisplayName("governanceStorage 应返回 GovernanceStorage 实例")
         void shouldCreateGovernanceStorage(@TempDir Path tempDir) {
             StorageProperties props = createStorageProperties(tempDir);
-            JdbcTemplate jdbcTemplate = config.dashboardJdbcTemplate(props);
+            DashboardDataSource dashboardDataSource = config.dashboardDataSource(props);
 
-            GovernanceStorage storage = config.governanceStorage(jdbcTemplate, new ObjectMapper());
+            GovernanceStorage storage = config.governanceStorage(dashboardDataSource, new ObjectMapper());
 
             assertNotNull(storage);
         }
@@ -123,9 +124,9 @@ class DashboardAutoConfigurationSupplementTest {
         @DisplayName("auditStorage 应返回 AuditStorage 实例")
         void shouldCreateAuditStorage(@TempDir Path tempDir) {
             StorageProperties props = createStorageProperties(tempDir);
-            JdbcTemplate jdbcTemplate = config.dashboardJdbcTemplate(props);
+            DashboardDataSource dashboardDataSource = config.dashboardDataSource(props);
 
-            AuditStorage storage = config.auditStorage(jdbcTemplate);
+            AuditStorage storage = config.auditStorage(dashboardDataSource);
 
             assertNotNull(storage);
         }
@@ -134,8 +135,8 @@ class DashboardAutoConfigurationSupplementTest {
         @DisplayName("governanceConfigRestorer 应返回恢复器实例")
         void shouldCreateGovernanceConfigRestorer(@TempDir Path tempDir) {
             StorageProperties props = createStorageProperties(tempDir);
-            JdbcTemplate jdbcTemplate = config.dashboardJdbcTemplate(props);
-            GovernanceStorage governanceStorage = config.governanceStorage(jdbcTemplate, new ObjectMapper());
+            DashboardDataSource dashboardDataSource = config.dashboardDataSource(props);
+            GovernanceStorage governanceStorage = config.governanceStorage(dashboardDataSource, new ObjectMapper());
 
             GovernanceConfigRestorer restorer = config.governanceConfigRestorer(
                     governanceStorage, mock(GovernanceAdminService.class),
@@ -148,8 +149,8 @@ class DashboardAutoConfigurationSupplementTest {
         @DisplayName("metricsCollectorScheduler 应返回调度器实例并启动")
         void shouldCreateMetricsCollectorScheduler(@TempDir Path tempDir) {
             StorageProperties props = createStorageProperties(tempDir);
-            JdbcTemplate jdbcTemplate = config.dashboardJdbcTemplate(props);
-            MetricsStorage metricsStorage = config.metricsStorage(jdbcTemplate);
+            DashboardDataSource dashboardDataSource = config.dashboardDataSource(props);
+            MetricsStorage metricsStorage = config.metricsStorage(dashboardDataSource);
 
             MetricsCollectorScheduler scheduler = config.metricsCollectorScheduler(metricsStorage, props);
 

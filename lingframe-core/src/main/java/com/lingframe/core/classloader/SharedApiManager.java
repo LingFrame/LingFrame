@@ -1,6 +1,7 @@
 package com.lingframe.core.classloader;
 
 import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.util.PathUtils;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -277,41 +278,10 @@ public class SharedApiManager {
     }
 
     /**
-     * 解析路径（支持绝对路径、相对当前工作目录、相对 lingHome 路径）。
+     * 解析路径（支持绝对路径、相对当前工作目录、相对 lingHome 路径，支持祖先链向上检索）。
      * 始终返回规范化后的绝对路径。
      */
     private File resolvePath(String path, File lingHomeDir) {
-        if (path == null || path.trim().isEmpty()) {
-            return null;
-        }
-
-        File file = new File(path);
-
-        // 1. 如果已经是绝对路径，直接使用
-        if (file.isAbsolute()) {
-            return getTypeSafeFile(file);
-        }
-
-        // 2. 优先尝试相对当前工作目录，开发模式下最常见
-        if (file.exists()) {
-            return getTypeSafeFile(file);
-        }
-
-        // 3. 再尝试相对 lingHome
-        File lingFile = new File(lingHomeDir, path);
-        if (lingFile.exists()) {
-            return getTypeSafeFile(lingFile);
-        }
-
-        // 4. 即便不存在，也返回标准化后的目标路径，方便上层统一输出错误信息
-        return getTypeSafeFile(lingFile);
-    }
-
-    private File getTypeSafeFile(File file) {
-        try {
-            return file.getCanonicalFile();
-        } catch (Exception e) {
-            return file.getAbsoluteFile();
-        }
+        return PathUtils.resolvePath(path, lingHomeDir);
     }
 }

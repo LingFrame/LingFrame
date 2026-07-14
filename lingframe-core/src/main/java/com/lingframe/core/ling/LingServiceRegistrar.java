@@ -163,9 +163,9 @@ public class LingServiceRegistrar {
             if (allBusinessInterfaces.isEmpty()) {
                 // 防御：TYPE 级 @LingService 但灵元未实现任何业务接口——
                 // 内层循环会全空跑，零服务被静默注册。记 warn 让用户可见，
-                // 避免误标 TYPE 注解的灵元得到看不见的 no-op。
-                log.warn("[Registrar] 灵元 [{}] 标 TYPE 级 @LingService 但未实现任何业务接口，"
-                                + "shortId=[{}], 无方法被注册。请确认是否漏标 implements，或改用 METHOD 级注解。",
+                // 避免误标 TYPE 注解 of 灵元得到看不见的 no-op。
+                log.warn("[Registrar] Ling [{}] annotated with TYPE level @LingService but does not implement any business interface, "
+                                + "shortId=[{}], no method registered. Please verify if implements is missing, or use METHOD level annotation instead.",
                         lingId, typeShortId);
             }
             for (Class<?> iface : allBusinessInterfaces) {
@@ -174,14 +174,14 @@ public class LingServiceRegistrar {
                         Method implMethod = beanClass.getMethod(
                                 ifaceMethod.getName(), ifaceMethod.getParameterTypes());
                         registerViaContext(typeFqsid, bean, implMethod);
-                        log.info("[Registrar] 显式类型注册: ling=[{}], fqsid=[{}], method=[{}]",
+                        log.info("[Registrar] Explicit type registration: ling=[{}], fqsid=[{}], method=[{}]",
                                 lingId, typeFqsid, implMethod.getName());
                     } catch (NoSuchMethodException ignored) {
                         // 接口方法在 Bean 上未实现（抽象/桥接方法等），记 debug 利于排查
-                        log.debug("[Registrar] 灵元 [{}] TYPE 级显式注册跳过未实现方法: iface=[{}], method=[{}]",
+                        log.debug("[Registrar] Ling [{}] TYPE level explicit registration skipped unimplemented method: iface=[{}], method=[{}]",
                                 lingId, iface.getName(), ifaceMethod.getName());
                     } catch (Exception e) {
-                        log.warn("[Registrar] 灵元 [{}] 类型级显式注册异常: iface=[{}], method=[{}], err=[{}]",
+                        log.warn("[Registrar] Ling [{}] type level explicit registration exception: iface=[{}], method=[{}], err=[{}]",
                                 lingId, iface.getName(), ifaceMethod.getName(), e.getMessage());
                     }
                 }
@@ -198,11 +198,11 @@ public class LingServiceRegistrar {
                 String shortId = resolveShortId(anno, method, beanClass);
                 String fqsid = lingId + ":" + shortId;
                 registerViaContext(fqsid, bean, method);
-                log.info("[Registrar] 显式别名注册: ling=[{}], fqsid=[{}], method=[{}]",
+                log.info("[Registrar] Explicit alias registration: ling=[{}], fqsid=[{}], method=[{}]",
                         lingId, fqsid, method.getName());
             } catch (Exception e) {
                 // 反射异常记日志不崩——单个病态方法不应拖垮整个注册
-                log.warn("[Registrar] 灵元 [{}] 显式服务注册扫描异常: method=[{}], err=[{}]",
+                log.warn("[Registrar] Ling [{}] explicit service registration scan exception: method=[{}], err=[{}]",
                         lingId, method.getName(), e.getMessage());
             }
         }
@@ -222,15 +222,15 @@ public class LingServiceRegistrar {
                             ifaceMethod.getName(), ifaceMethod.getParameterTypes());
                     String fqsid = lingId + ":" + iface.getName();
                     registerViaContext(fqsid, bean, implMethod);
-                    log.info("[Registrar] 隐式注册: ling=[{}], fqsid=[{}], method=[{}]",
+                    log.info("[Registrar] Implicit registration: ling=[{}], fqsid=[{}], method=[{}]",
                             lingId, fqsid, implMethod.getName());
                 } catch (NoSuchMethodException ignored) {
                     // 接口方法在 Bean 上未实现（抽象/桥接方法等），记 debug 利于排查
-                    log.debug("[Registrar] 灵元 [{}] 隐式注册跳过未实现方法: iface=[{}], method=[{}]",
+                    log.debug("[Registrar] Ling [{}] implicit registration skipped unimplemented method: iface=[{}], method=[{}]",
                             lingId, iface.getName(), ifaceMethod.getName());
                 } catch (Exception e) {
                     // 其他反射异常记日志不崩
-                    log.warn("[Registrar] 灵元 [{}] 隐式接口注册扫描异常: iface=[{}], method=[{}], err=[{}]",
+                    log.warn("[Registrar] Ling [{}] implicit interface registration scan exception: iface=[{}], method=[{}], err=[{}]",
                             lingId, iface.getName(), ifaceMethod.getName(), e.getMessage());
                 }
             }
@@ -288,8 +288,8 @@ public class LingServiceRegistrar {
         }
         String simpleName = beanClass.getSimpleName();
         if (simpleName == null || simpleName.isEmpty()) {
-            log.warn("[Registrar] 匿名类标 TYPE 级 @LingService 但未填 id()，兜底短 ID 为 anonymous——"
-                    + "多个匿名类会碰撞相同 FQSID 导致覆盖，建议显式填 id()。beanClass=[{}]",
+            log.warn("[Registrar] Anonymous class annotated with TYPE level @LingService but missing id(), fallback short ID to 'anonymous'. "
+                    + "Multiple anonymous classes will collide with the same FQSID causing override. It's recommended to set id() explicitly. beanClass=[{}]",
                     beanClass.getName());
             return "anonymous";
         }

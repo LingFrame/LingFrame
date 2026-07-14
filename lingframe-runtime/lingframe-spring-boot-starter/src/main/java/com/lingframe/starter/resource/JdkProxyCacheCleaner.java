@@ -38,14 +38,14 @@ final class JdkProxyCacheCleaner {
             cacheField.setAccessible(true);
             Object cache = cacheField.get(null);
             if (cache == null) {
-                log.trace("[{}] Proxy.proxyClassCache 为 null", lingId);
+                log.trace("[{}] Proxy.proxyClassCache is null", lingId);
                 return;
             }
 
             // WeakCache 内部结构：map (ConcurrentMap) -> subMap -> Factory
             Field mapField = SpringCleanupSupport.findFieldInHierarchy(cache.getClass(), "map");
             if (mapField == null) {
-                log.trace("[{}] WeakCache.map 字段不存在", lingId);
+                log.trace("[{}] WeakCache.map field does not exist", lingId);
                 return;
             }
             mapField.setAccessible(true);
@@ -62,7 +62,7 @@ final class JdkProxyCacheCleaner {
                     if (referent == lingClassLoader) {
                         cmap.remove(key);
                         removed++;
-                        log.debug("[{}] 已清除 Proxy.WeakCache 中 ClassLoader 条目", lingId);
+                        log.debug("[{}] Cleared ClassLoader entry in Proxy.WeakCache", lingId);
                     }
                 }
             }
@@ -77,12 +77,12 @@ final class JdkProxyCacheCleaner {
             }
 
             if (removed > 0) {
-                log.info("[{}] 清除了 {} 个 Proxy.WeakCache 条目", lingId, removed);
+                log.info("[{}] Cleared {} Proxy.WeakCache entries", lingId, removed);
             }
         } catch (NoSuchFieldException e) {
-            log.trace("[{}] Proxy.proxyClassCache 字段不存在（JDK 版本差异）", lingId);
+            log.trace("[{}] Proxy.proxyClassCache field does not exist (JDK version difference)", lingId);
         } catch (Exception e) {
-            log.debug("[{}] Proxy.WeakCache 清理失败: {}", lingId, e.getMessage());
+            log.debug("[{}] Failed to clear Proxy.WeakCache: {}", lingId, e.getMessage());
         }
     }
 }

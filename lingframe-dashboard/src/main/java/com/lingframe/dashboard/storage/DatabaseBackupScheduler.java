@@ -25,14 +25,25 @@ import java.util.stream.Stream;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
-@ConditionalOnBean(name = "dashboardJdbcTemplate")
+@ConditionalOnBean(name = "dashboardDataSource")
 public class DatabaseBackupScheduler {
 
     private static final DateTimeFormatter BACKUP_FMT = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
 
     private final StorageProperties storageProperties;
     private final JdbcTemplate jdbcTemplate;
+
+    // 生产中供 Spring 自动装配
+    public DatabaseBackupScheduler(StorageProperties storageProperties, DashboardDataSource dashboardDataSource) {
+        this.storageProperties = storageProperties;
+        this.jdbcTemplate = new JdbcTemplate(dashboardDataSource.getDataSource());
+    }
+
+    // 仅供单元测试直接构造使用
+    DatabaseBackupScheduler(StorageProperties storageProperties, JdbcTemplate jdbcTemplate) {
+        this.storageProperties = storageProperties;
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
     /**
      * 定时备份：按配置的小时间隔执行

@@ -118,11 +118,11 @@ lingframe-example-saas-mall
 lingframe:
   enabled: true
   ling-roots:
-    - <绝对路径>/lingframe-example-saas-ling-oauth
-    - <绝对路径>/lingframe-example-saas-ling-seckill
-    - <绝对路径>/lingframe-example-saas-ling-refund
+    - ../lingframe-example-saas-ling-oauth
+    - ../lingframe-example-saas-ling-seckill
+    - ../lingframe-example-saas-ling-refund
   preload-api-jars:
-    - <绝对路径>/lingframe-example-saas-api
+    - ../lingframe-example-saas-api
 ```
 
 运行 [`SaasMallApplication`](lingframe-example-saas-lingcore/src/main/java/com/lingframe/example/saas/SaasMallApplication.java)，端口 8083。

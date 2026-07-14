@@ -19,6 +19,11 @@
             <artifactId>lingframe-spring-boot-starter</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-dashboard</artifactId>
+        </dependency>
+
         <!-- 本项目公共契约层 -->
         <dependency>
             <groupId>com.lingframe</groupId>

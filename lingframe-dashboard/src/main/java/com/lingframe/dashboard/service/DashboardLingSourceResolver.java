@@ -5,6 +5,7 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.loader.LingManifestLoader;
+import com.lingframe.core.util.PathUtils;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -138,7 +139,14 @@ public class DashboardLingSourceResolver {
             return null;
         }
         for (String root : roots) {
-            File candidate = new File(root + File.separator + "/target/classes");
+            File rootDir = PathUtils.resolvePath(
+                    root,
+                    lingFrameConfig.getLingHome() != null ? new File(lingFrameConfig.getLingHome()) : null
+            );
+            if (rootDir == null) {
+                continue;
+            }
+            File candidate = new File(rootDir, "target/classes");
             if (!candidate.exists()) {
                 continue;
             }

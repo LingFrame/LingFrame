@@ -36,6 +36,7 @@ import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import com.lingframe.dashboard.service.SimulateService;
 import com.lingframe.dashboard.service.ServicePlaygroundService;
 import com.lingframe.dashboard.storage.AuditStorage;
+import com.lingframe.dashboard.storage.DashboardDataSource;
 import com.lingframe.dashboard.storage.GovernanceConfigRestorer;
 import com.lingframe.dashboard.storage.GovernanceStorage;
 import com.lingframe.dashboard.storage.MetricsStorage;
@@ -43,6 +44,7 @@ import com.lingframe.dashboard.storage.StorageInitializer;
 import com.lingframe.dashboard.storage.StorageProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -51,6 +53,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Primary;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -69,6 +72,7 @@ import java.util.Properties;
 @ConditionalOnWebApplication
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 @EnableConfigurationProperties({StorageProperties.class, AccessTokenProperties.class, ReadOnlyProperties.class, CorsProperties.class})
+@ComponentScan(basePackages = {"com.lingframe.dashboard.controller", "com.lingframe.dashboard.security", "com.lingframe.dashboard.storage"})
 public class DashboardAutoConfiguration {
 
     public DashboardAutoConfiguration() {
@@ -211,9 +215,9 @@ public class DashboardAutoConfiguration {
 
     // ==================== SQLite 持久化（条件注册） ====================
 
-    @Bean("dashboardJdbcTemplate")
+    @Bean("dashboardDataSource")
     @ConditionalOnProperty(prefix = "lingframe.dashboard.storage", name = "enabled", havingValue = "true", matchIfMissing = true)
-    public JdbcTemplate dashboardJdbcTemplate(StorageProperties storageProperties) {
+    public DashboardDataSource dashboardDataSource(StorageProperties storageProperties) {
         // 确保数据库文件所在目录存在，否则 SQLite 无法创建数据库文件
         File dbFile = new File(storageProperties.getPath());
         File parentDir = dbFile.getParentFile();
@@ -225,38 +229,44 @@ public class DashboardAutoConfiguration {
             }
         }
 
-        org.springframework.jdbc.datasource.DriverManagerDataSource ds = new org.springframework.jdbc.datasource.DriverManagerDataSource();
+        DriverManagerDataSource ds = new DriverManagerDataSource();
         ds.setDriverClassName("org.sqlite.JDBC");
         ds.setUrl("jdbc:sqlite:" + storageProperties.getPath());
         Properties props = new Properties();
         props.setProperty("journal_mode", "WAL");
         props.setProperty("busy_timeout", "5000");
         ds.setConnectionProperties(props);
-        return new JdbcTemplate(ds);
+        return new DashboardDataSource(ds);
+    }
+
+    // 辅助方法，保留给既有单元测试或外部辅助调用，不再标记为 @Bean
+    public JdbcTemplate dashboardJdbcTemplate(StorageProperties storageProperties) {
+        DashboardDataSource dds = dashboardDataSource(storageProperties);
+        return new JdbcTemplate(dds.getDataSource());
     }
 
     @Bean
-    @ConditionalOnBean(name = "dashboardJdbcTemplate")
-    public StorageInitializer storageInitializer(JdbcTemplate dashboardJdbcTemplate, StorageProperties storageProperties) {
-        return new StorageInitializer(dashboardJdbcTemplate, storageProperties);
+    @ConditionalOnBean(name = "dashboardDataSource")
+    public StorageInitializer storageInitializer(DashboardDataSource dashboardDataSource, StorageProperties storageProperties) {
+        return new StorageInitializer(new JdbcTemplate(dashboardDataSource.getDataSource()), storageProperties);
     }
 
     @Bean
-    @ConditionalOnBean(name = "dashboardJdbcTemplate")
-    public MetricsStorage metricsStorage(JdbcTemplate dashboardJdbcTemplate) {
-        return new MetricsStorage(dashboardJdbcTemplate);
+    @ConditionalOnBean(name = "dashboardDataSource")
+    public MetricsStorage metricsStorage(DashboardDataSource dashboardDataSource) {
+        return new MetricsStorage(new JdbcTemplate(dashboardDataSource.getDataSource()));
     }
 
     @Bean
-    @ConditionalOnBean(name = "dashboardJdbcTemplate")
-    public GovernanceStorage governanceStorage(JdbcTemplate dashboardJdbcTemplate, ObjectMapper objectMapper) {
-        return new GovernanceStorage(dashboardJdbcTemplate, objectMapper);
+    @ConditionalOnBean(name = "dashboardDataSource")
+    public GovernanceStorage governanceStorage(DashboardDataSource dashboardDataSource, ObjectMapper objectMapper) {
+        return new GovernanceStorage(new JdbcTemplate(dashboardDataSource.getDataSource()), objectMapper);
     }
 
     @Bean
-    @ConditionalOnBean(name = "dashboardJdbcTemplate")
-    public AuditStorage auditStorage(JdbcTemplate dashboardJdbcTemplate) {
-        return new AuditStorage(dashboardJdbcTemplate);
+    @ConditionalOnBean(name = "dashboardDataSource")
+    public AuditStorage auditStorage(DashboardDataSource dashboardDataSource) {
+        return new AuditStorage(new JdbcTemplate(dashboardDataSource.getDataSource()));
     }
 
     @Bean
