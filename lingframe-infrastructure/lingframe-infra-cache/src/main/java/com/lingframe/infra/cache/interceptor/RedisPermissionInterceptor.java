@@ -10,6 +10,9 @@ import org.aopalliance.intercept.MethodInvocation;
 import org.springframework.aop.framework.ProxyFactory;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.lang.reflect.Method;
 import java.util.Iterator;
@@ -105,9 +108,41 @@ public class RedisPermissionInterceptor implements MethodInterceptor {
     }
 
     /**
-     * 推导操作类型
+     * 精确匹配的原子读改写操作集合，按 WRITE 治理。
+     * 这些方法语义上既读又写，且写语义更强，因此归到 WRITE。
+     */
+    private static final Set<String> WRITE_EXACT_METHODS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            "getAndSet", "getAndDelete", "getAndIncrement", "getAndDecrement",
+            "getAndAppend", "increment", "decrement", "append", "delete",
+            "setIfPresent", "setIfAbsent")));
+
+    /**
+     * 精确匹配的纯读操作集合，按 READ 治理。
+     */
+    private static final Set<String> READ_EXACT_METHODS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            "get", "getAll", "getAsString", "exists", "hasKey", "size")));
+
+    /**
+     * 推导操作类型。
+     * <p>
+     * 优先级：精确匹配 WRITE 原子读改写 > 精确匹配 READ 纯读 > 前缀匹配。
+     * 关键点：{@code getAnd*} 开头的方法即使没命中精确集合，也不能按 READ 处理
+     * （否则 getAndSet / getAndDelete 等会被误判为 READ）。
      */
     private AccessType inferAccessType(String methodName) {
+        // 1. 精确匹配原子读改写操作优先 WRITE
+        if (WRITE_EXACT_METHODS.contains(methodName)) {
+            return AccessType.WRITE;
+        }
+        // 2. 精确匹配纯读操作
+        if (READ_EXACT_METHODS.contains(methodName)) {
+            return AccessType.READ;
+        }
+        // 3. getAnd* 开头的方法不视为 READ（已落到精确集合或不识别为 EXECUTE）
+        if (methodName.startsWith("getAnd")) {
+            return AccessType.EXECUTE;
+        }
+        // 4. 前缀匹配兜底
         if (methodName.startsWith("get") || methodName.startsWith("has") || methodName.startsWith("keys")) {
             return AccessType.READ;
         }
@@ -124,6 +159,9 @@ public class RedisPermissionInterceptor implements MethodInterceptor {
 
     private ResolvedCapability resolveCapability(String callerLingId, AccessType accessType, List<String> capabilities) {
         if (capabilities != null && !capabilities.isEmpty()) {
+            String auditCapability = capabilities.size() == 1
+                    ? capabilities.get(0)
+                    : String.join(", ", capabilities);
             boolean allAllowed = true;
             for (String capability : capabilities) {
                 if (!permissionService.isAllowed(callerLingId, capability, accessType)) {
@@ -132,11 +170,13 @@ public class RedisPermissionInterceptor implements MethodInterceptor {
                 }
             }
             if (allAllowed) {
-                return new ResolvedCapability(
-                        capabilities.size() == 1 ? capabilities.get(0) : String.join(", ", capabilities),
-                        true);
+                return new ResolvedCapability(auditCapability, true);
             }
+            // 细粒度规则已命中且判定失败：不回退通用 cache:redis 权限，直接拒绝。
+            // 否则"细粒度显式拒绝"会被"通用允许"覆盖，造成越权。
+            return new ResolvedCapability(auditCapability, false);
         }
+        // 无细粒度规则（如无 key 参数可推断 pattern）：才回退到通用 cache:redis 权限
         return new ResolvedCapability("cache:redis",
                 permissionService.isAllowed(callerLingId, "cache:redis", accessType));
     }

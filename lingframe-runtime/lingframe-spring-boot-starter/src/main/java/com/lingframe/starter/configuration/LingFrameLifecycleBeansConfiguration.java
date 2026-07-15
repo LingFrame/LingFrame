@@ -113,7 +113,8 @@ public class LingFrameLifecycleBeansConfiguration {
             }
         }
         if (allVerifiers.stream().noneMatch(v -> v instanceof DangerousApiVerifier)) {
-            allVerifiers.add(new DangerousApiVerifier());
+            allVerifiers.add(new DangerousApiVerifier(true,
+                    lingFrameConfig != null ? lingFrameConfig.getTrustedLingIds() : Collections.emptyList()));
         }
         // 生态桶：Spring 生态清理 Hook（由 Spring Bean 注入）
         // JVM 桶：JVM 级 Hook，桶内并行执行

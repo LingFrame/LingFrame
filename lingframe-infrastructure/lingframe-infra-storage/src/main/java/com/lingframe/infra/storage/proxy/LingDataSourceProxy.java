@@ -30,8 +30,9 @@ public class LingDataSourceProxy implements DataSource {
 
     @Override
     public Connection getConnection(String username, String password) throws SQLException {
-        Connection connection = target.getConnection(username, password);
-        return new LingConnectionProxy(connection, permissionService);
+        // 禁止灵元用任意凭据连接，强制使用灵核配置的连接池凭据
+        throw new SQLException("getConnection(username, password) is forbidden on governed DataSource, "
+                + "use getConnection() with configured credentials");
     }
 
     // --- 下面是必须实现的委托方法 ---

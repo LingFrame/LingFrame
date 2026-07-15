@@ -47,63 +47,13 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
             Component.class,
             Repository.class));
 
-    // 不需要拦截的 Bean 名称前缀
+    // 不需要拦截的 Bean 名称前缀：仅保留明确属于 Spring 容器与灵核框架内部的长前缀。
+    // 删除 "config"、"properties"、"server"、"filter" 等宽泛短前缀，避免误伤用户业务 Bean
+    // （如 configService、serverManager 等业务命名）。框架内部 Bean 排除主要依赖业务注解检查
+    // （@Service/@Component/@Repository），Spring 基础设施 Bean 不带这些注解自然被过滤。
     private static final Set<String> EXCLUDED_BEAN_PREFIXES = new HashSet<>(Arrays.asList(
             "org.springframework",
-            "lingframe",
-            "spring",
-            "server",
-            "tomcat",
-            "servlet",
-            "filter",
-            "listener",
-            "handlerMapping",
-            "handlerAdapter",
-            "viewResolver",
-            "multipartResolver",
-            "localeResolver",
-            "themeResolver",
-            "exceptionResolver",
-            "messageSource",
-            "applicationContext",
-            "beanFactory",
-            "environment",
-            "conversionService",
-            "validator",
-            "dataSource",
-            "entityManagerFactory",
-            "transactionManager",
-            "cacheManager",
-            "taskExecutor",
-            "threadPool",
-            "async",
-            "scheduled",
-            "webMvcConfigurer",
-            "webFluxConfigurer",
-            "securityFilterChain",
-            "authenticationManager",
-            "userDetailsService",
-            "passwordEncoder",
-            "jackson",
-            "objectMapper",
-            "messageConverter",
-            "restTemplate",
-            "webClient",
-            "feign",
-            "ribbon",
-            "eureka",
-            "consul",
-            "nacos",
-            "config",
-            "properties",
-            "yml",
-            "logging",
-            "actuator",
-            "management",
-            "metrics",
-            "health",
-            "info",
-            "prometheus"));
+            "lingframe"));
 
     @Override
     public void setApplicationContext(@NonNull ApplicationContext applicationContext) throws BeansException {

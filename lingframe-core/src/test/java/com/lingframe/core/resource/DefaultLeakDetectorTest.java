@@ -2,6 +2,7 @@ package com.lingframe.core.resource;
 
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.runtime.FixedRuntimeMode;
 import com.lingframe.core.spi.LeakRiskReport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,7 @@ class DefaultLeakDetectorTest {
         eventBus = mock(EventBus.class);
         config = mock(LingFrameConfig.class);
         when(config.isDevMode()).thenReturn(true);
+        when(config.getRuntimeMode()).thenReturn(new FixedRuntimeMode(true, false));
         when(config.getLeakDetectionMaxConcurrentAggressiveChecks()).thenReturn(2);
         when(config.getLeakDetectionDevStartDelayMillis()).thenReturn(0);
         when(config.getLeakDetectionAggressiveGcRounds()).thenReturn(1);
@@ -87,6 +89,7 @@ class DefaultLeakDetectorTest {
     void shouldDetectLeakInProdMode() {
         LingFrameConfig prodConfig = mock(LingFrameConfig.class);
         when(prodConfig.isDevMode()).thenReturn(false);
+        when(prodConfig.getRuntimeMode()).thenReturn(new FixedRuntimeMode(false, false));
         when(prodConfig.getLeakDetectionMaxConcurrentAggressiveChecks()).thenReturn(2);
         when(prodConfig.getLeakDetectionDevStartDelayMillis()).thenReturn(0);
         when(prodConfig.getLeakDetectionAggressiveGcRounds()).thenReturn(1);
@@ -146,6 +149,7 @@ class DefaultLeakDetectorTest {
     void shouldCheckBeforeInProdMode() {
         LingFrameConfig prodConfig = mock(LingFrameConfig.class);
         when(prodConfig.isDevMode()).thenReturn(false);
+        when(prodConfig.getRuntimeMode()).thenReturn(new FixedRuntimeMode(false, false));
         when(prodConfig.getLeakDetectionMaxConcurrentAggressiveChecks()).thenReturn(2);
         when(prodConfig.getLeakDetectionDevStartDelayMillis()).thenReturn(0);
         when(prodConfig.getLeakDetectionAggressiveGcRounds()).thenReturn(1);

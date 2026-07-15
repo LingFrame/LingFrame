@@ -9,6 +9,7 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Handler;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
@@ -33,7 +34,8 @@ import java.util.logging.Logger;
  *   <li>logback: LoggerContext.shutdown()，清理 LoggerRepository</li>
  *   <li>log4j2: LogManager.shutdown()，清理 LoggerContext</li>
  *   <li>java.util.logging: LogManager 永远由 bootstrap CL 加载，仅清理灵元注册的 Logger</li>
- *   <li>slf4j: 清理 LoggerFactory 的静态缓存</li>
+ *   <li>slf4j: 反射清理 ILoggerFactory 内部 Map 中灵元 CL 加载的 logger 条目，
+ *       不清空 LoggerFactory 静态字段（避免并发 getLogger() NPE）</li>
  * </ul>
  */
 @Slf4j
@@ -183,20 +185,37 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
                 Map<String, Logger> loggers =
                         (Map<String, Logger>) loggersField.get(logManager);
                 if (loggers != null) {
-                    // 复制 key 集合，避免遍历时修改
-                    List<String> names = new ArrayList<>(loggers.keySet());
-                    for (String name : names) {
-                        Logger logger = loggers.get(name);
-                        if (logger == null) continue;
-                        // 只清理由灵元 CL 加载的 Logger
-                        if (logger.getClass().getClassLoader() == classLoader) {
-                            loggers.remove(name);
-                            // 重置 logger 的 handlers，断开对灵元 CL 的引用
-                            logger.setUseParentHandlers(false);
-                            for (Handler h : logger.getHandlers()) {
-                                logger.removeHandler(h);
+                    // 与 slf4j 路径对齐：仅 ConcurrentHashMap 实例可安全并发 remove，
+                    // 非 CHM（如 HashMap）在并发 getLogger 时 remove 会破坏内部结构，跳过 remove 仅清理 handlers
+                    if (!(loggers instanceof ConcurrentHashMap)) {
+                        log.warn("[{}] JUL LogManager.loggers is non-concurrent Map ({}), skip remove to avoid structural corruption",
+                                lingId, loggers.getClass().getName());
+                        for (String name : new ArrayList<>(loggers.keySet())) {
+                            Logger logger = loggers.get(name);
+                            if (logger != null && logger.getClass().getClassLoader() == classLoader) {
+                                logger.setUseParentHandlers(false);
+                                for (Handler h : logger.getHandlers()) {
+                                    logger.removeHandler(h);
+                                }
+                                cleared++;
                             }
-                            cleared++;
+                        }
+                    } else {
+                        // CHM 可安全并发 remove：复制 key 集合后逐条清理
+                        List<String> names = new ArrayList<>(loggers.keySet());
+                        for (String name : names) {
+                            Logger logger = loggers.get(name);
+                            if (logger == null) continue;
+                            // 只清理由灵元 CL 加载的 Logger
+                            if (logger.getClass().getClassLoader() == classLoader) {
+                                loggers.remove(name);
+                                // 重置 logger 的 handlers，断开对灵元 CL 的引用
+                                logger.setUseParentHandlers(false);
+                                for (Handler h : logger.getHandlers()) {
+                                    logger.removeHandler(h);
+                                }
+                                cleared++;
+                            }
                         }
                     }
                 }
@@ -223,41 +242,102 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
     /**
      * 清理 slf4j LoggerFactory 的静态缓存。
      * <p>
-     * <b>安全判定</b>：只当 LoggerFactory 类由灵元 CL 加载时才清理静态字段。
+     * <b>安全判定</b>：只当 ILoggerFactory 实例由灵元 CL 加载时才清理其内部 Map。
      * 若由父 CL 加载，必须跳过，否则会破坏灵核的 slf4j 绑定。
+     * <p>
+     * <b>关键约束</b>：
+     * <ul>
+     *   <li>禁止 {@code f.set(null, null)} 清空 LoggerFactory 的静态字段——
+     *       会在并发 logger.getLogger() 调用窗口期触发 NPE（getLogger 内部未做 null 防护）</li>
+     *   <li>禁止 {@code LoggerContext.reset()}——会清空全 JVM 的 logger，导致灵核日志失效</li>
+     *   <li>仅反射清理 ILoggerFactory 内部 Map 中关联灵元 CL 的 logger 条目</li>
+     * </ul>
      */
     private void cleanupSlf4j(String lingId, ClassLoader classLoader) {
         try {
             Class<?> loggerFactoryClass = Class.forName("org.slf4j.LoggerFactory");
-
-            // 关键安全判定：LoggerFactory 是否由灵元 CL 加载
-            if (loggerFactoryClass.getClassLoader() != classLoader) {
-                log.debug("[{}] slf4j LoggerFactory loaded by non-ling CL ({}), skip to protect lingcore binding",
-                        lingId, loggerFactoryClass.getClassLoader());
+            Method getFactoryMethod = loggerFactoryClass.getMethod("getILoggerFactory");
+            Object factory = getFactoryMethod.invoke(null);
+            if (factory == null) {
                 return;
             }
 
-            // 尝试清理静态字段
-            for (Field f : loggerFactoryClass.getDeclaredFields()) {
-                if (Modifier.isStatic(f.getModifiers())) {
-                    try {
-                        f.setAccessible(true);
-                        Object value = f.get(null);
-                        // 仅清理关联目标 CL 的字段
-                        if (value != null && isLoadedBy(value.getClass().getClassLoader(), classLoader)) {
-                            f.set(null, null);
-                            log.info("[{}] Cleared slf4j LoggerFactory field: {}", lingId, f.getName());
-                        }
-                    } catch (Exception e) {
-                        // 忽略单个字段清理失败
-                    }
-                }
+            // 关键安全判定：ILoggerFactory 是否由灵元 CL 加载
+            // 若由父 CL 加载（通常情况），灵元共享灵核 slf4j 绑定，绝不能清理其内部状态
+            ClassLoader factoryCL = factory.getClass().getClassLoader();
+            if (factoryCL != classLoader) {
+                log.debug("[{}] slf4j ILoggerFactory loaded by non-ling CL ({}), skip to protect lingcore binding",
+                        lingId, factoryCL);
+                return;
+            }
+
+            // 反射清理 ILoggerFactory 内部 Map 中灵元 CL 加载的 logger 条目
+            // 仅清理条目，不 reset() 也不清空静态字段，避免并发 getLogger() NPE
+            int cleared = clearLoggerFactoryMapEntries(lingId, factory, classLoader);
+            if (cleared > 0) {
+                log.info("[{}] Cleared {} slf4j logger entry/entries loaded by ling CL", lingId, cleared);
+            } else {
+                log.debug("[{}] No slf4j logger entry loaded by ling CL", lingId);
             }
         } catch (ClassNotFoundException e) {
             log.debug("[{}] slf4j not available, skip", lingId);
         } catch (Exception e) {
             log.debug("[{}] slf4j cleanup failed: {}", lingId, e.getMessage());
         }
+    }
+
+    /**
+     * 反射清理 ILoggerFactory 内部 Map 中灵元 CL 加载的 logger 条目。
+     * <p>
+     * 通用处理：枚举 ILoggerFactory 中类型为 Map 的字段，移除 value 由灵元 CL 加载的条目。
+     * 适用于 Logback LoggerContext.loggerMap、log4j2 LoggerRegistry 等。
+     * 不调用任何 reset()/shutdown()——这些方法会清空全局 logger。
+     * <p>
+     * <b>线程安全约束</b>：仅在 Map 实例为 {@link ConcurrentHashMap} 时执行 remove。
+     * 若目标框架内部使用 HashMap（如部分 log4j2 LoggerRegistry 实现），
+     * 并发 getLogger() 与此处 remove 可能导致 HashMap 结构损坏或死循环，
+     * 因此遇到非线程安全 Map 类型时跳过清理并告警，避免并发损坏。
+     */
+    @SuppressWarnings("unchecked")
+    private int clearLoggerFactoryMapEntries(String lingId, Object factory, ClassLoader classLoader) {
+        int cleared = 0;
+        for (Field f : factory.getClass().getDeclaredFields()) {
+            if (Modifier.isStatic(f.getModifiers())) {
+                continue;
+            }
+            if (!Map.class.isAssignableFrom(f.getType())) {
+                continue;
+            }
+            try {
+                f.setAccessible(true);
+                Object mapObj = f.get(factory);
+                if (!(mapObj instanceof Map)) {
+                    continue;
+                }
+                // 仅对线程安全的 ConcurrentHashMap 执行 remove，避免并发 getLogger() 损坏非线程安全 Map
+                if (!(mapObj instanceof ConcurrentHashMap)) {
+                    log.warn("[{}] Non-thread-safe Map type {} on field {}, skip clearing to avoid concurrent corruption",
+                            lingId, mapObj.getClass().getName(), f.getName());
+                    continue;
+                }
+                Map<Object, Object> map = (Map<Object, Object>) mapObj;
+                List<Object> keysToRemove = new ArrayList<>();
+                for (Map.Entry<Object, Object> entry : map.entrySet()) {
+                    Object val = entry.getValue();
+                    if (val != null && isLoadedBy(val.getClass().getClassLoader(), classLoader)) {
+                        keysToRemove.add(entry.getKey());
+                    }
+                }
+                for (Object key : keysToRemove) {
+                    map.remove(key);
+                    cleared++;
+                }
+            } catch (Exception e) {
+                // 忽略单个字段反射失败
+                log.trace("[{}] Failed to clear slf4j factory field {}: {}", lingId, f.getName(), e.getMessage());
+            }
+        }
+        return cleared;
     }
 
     /** 判断 ClassLoader cl 是否由 target 加载（或就是 target） */

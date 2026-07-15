@@ -54,7 +54,6 @@ import com.lingframe.core.invoker.FastLingServiceInvoker;
 import com.lingframe.runtime.adapter.NativeContainerFactory;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.Collections;
 import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -168,7 +167,8 @@ public class NativeLingFrame {
         // 微内核解耦：安全验证器由组装层注入，内核不再自动添加默认实现
         List<LingSecurityVerifier> defaultVerifiers = new ArrayList<>();
         defaultVerifiers.add(new ApiOverrideVerifier());
-        defaultVerifiers.add(new DangerousApiVerifier());
+        defaultVerifiers.add(new DangerousApiVerifier(true,
+                config != null ? config.getTrustedLingIds() : Collections.emptyList()));
 
         // 热重载 watcher：先于 engine 构造（传 null engine），engine 通过 Builder 注入后延迟绑定
         HotSwapWatcher watcher = null;

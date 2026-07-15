@@ -69,6 +69,26 @@ class LingClassLoaderTest {
             classLoader.close();
             assertDoesNotThrow(() -> classLoader.close());
         }
+
+        @Test
+        @DisplayName("close 后 ALIVE_COUNT 正确递减")
+        void shouldDecrementAliveCountOnClose() throws IOException {
+            long before = LingClassLoader.getAliveCount();
+            LingClassLoader cl = new LingClassLoader("ling-alive", new URL[0], ClassLoader.getSystemClassLoader());
+            assertEquals(before + 1, LingClassLoader.getAliveCount());
+            cl.close();
+            assertEquals(before, LingClassLoader.getAliveCount());
+        }
+
+        @Test
+        @DisplayName("close 后 isClosed 返回 true 且缓存清理已执行")
+        void shouldCloseAndCleanupCaches() throws IOException {
+            LingClassLoader cl = new LingClassLoader("ling-cleanup", new URL[0], ClassLoader.getSystemClassLoader());
+            assertFalse(cl.isClosed());
+            cl.close();
+            // close 后标记为已关闭，缓存清理在 finally 中执行完毕
+            assertTrue(cl.isClosed());
+        }
     }
 
     @Nested

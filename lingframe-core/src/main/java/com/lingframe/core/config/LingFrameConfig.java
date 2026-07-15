@@ -1,8 +1,10 @@
 package com.lingframe.core.config;
 
 import com.lingframe.core.ling.LingRuntimeConfig;
+import com.lingframe.core.runtime.FixedRuntimeMode;
+import com.lingframe.core.runtime.RuntimeMode;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 
@@ -22,7 +24,7 @@ import java.util.List;
  * 3. 跨 ClassLoader 配置
  */
 @Slf4j
-@Data
+@Getter
 @Builder
 @ToString
 public class LingFrameConfig implements LingFrameInfo {
@@ -30,6 +32,9 @@ public class LingFrameConfig implements LingFrameInfo {
     // ================= 全局环境 (Environment) =================
 
     private static volatile LingFrameConfig INSTANCE;
+
+    /** 默认生产模式实例（runtimeMode 未设置时回退使用，避免每次创建新实例） */
+    private static final RuntimeMode DEFAULT_PROD_MODE = FixedRuntimeMode.fixed(false);
 
     // 默认配置（懒加载单例，线程安全 - Lazy Holder 模式）
     private static final class DefaultConfigHolder {
@@ -94,7 +99,8 @@ public class LingFrameConfig implements LingFrameInfo {
                 missing.add("--add-opens java.base/java.lang=ALL-UNNAMED");
             }
             try {
-                Field driversField = DriverManager.class.getDeclaredField("drivers");
+                // DriverManager 内部字段名为 registeredDrivers，历史上误写为 drivers 导致检测失效
+                Field driversField = DriverManager.class.getDeclaredField("registeredDrivers");
                 driversField.setAccessible(true);
             } catch (NoSuchFieldException e) {
                 // 字段不存在
@@ -142,34 +148,48 @@ public class LingFrameConfig implements LingFrameInfo {
     }
 
     /**
-     * 是否开启开发模式 (影响热重载、日志等级、各类检查的宽松度)
+     * 运行时模式（dev/prod 判断的唯一真源）。
+     * <p>
+     * 默认为 null，{@link #getRuntimeMode()} 在 null 时回退为
+     * {@link FixedRuntimeMode#fixed(false)}（生产模式）。
+     * <p>
+     * 装配方式：
+     * <ul>
+     *   <li>Spring 环境：由 Starter 注入 {@link com.lingframe.core.runtime.SwitchableRuntimeMode}
+     *       （密码认证 + 失败锁定，支持运行时切换）</li>
+     *   <li>非 Spring 环境或测试：可调用 builder 的 {@code devMode(boolean)} 便捷方法，
+     *       内部转换为 {@link FixedRuntimeMode#fixed(boolean)}（不可切换）</li>
+     * </ul>
+     * <p>
+     * 设计要点：{@link LingFrameConfig} 不可变（final 字段引用不可变），但
+     * {@link RuntimeMode} 内部 volatile 可变，因此所有持有 {@link LingFrameConfig}
+     * 的消费方调用 {@link #isDevMode()} 都能实时感知运行时切换。
      */
-    @Builder.Default
-    private boolean devMode = false;
+    private final RuntimeMode runtimeMode;
 
     /**
      * 启动时是否自动扫描并加载 home 目录下的灵元。
      */
     @Builder.Default
-    private boolean autoScan = true;
+    private final boolean autoScan = true;
 
     /**
      * 灵元存放根目录
      */
     @Builder.Default
-    private String lingHome = "Lings";
+    private final String lingHome = "Lings";
 
     /**
      * 灵元额外目录
      */
     @Builder.Default
-    private List<String> lingRoots = Collections.emptyList();
+    private final List<String> lingRoots = Collections.emptyList();
 
     /**
      * 核心线程数 (用于后台调度器)
      */
     @Builder.Default
-    private int corePoolSize = Math.max(2, Runtime.getRuntime().availableProcessors());
+    private final int corePoolSize = Math.max(2, Runtime.getRuntime().availableProcessors());
 
     // ================= 灵元线程池预算 =================
 
@@ -180,7 +200,7 @@ public class LingFrameConfig implements LingFrameInfo {
      * 卸载时归还。防止灵元线程数不可控膨胀。
      */
     @Builder.Default
-    private int globalMaxLingThreads = Runtime.getRuntime().availableProcessors() * 4;
+    private final int globalMaxLingThreads = Runtime.getRuntime().availableProcessors() * 4;
 
     /**
      * 单个灵元线程池硬上限
@@ -188,7 +208,7 @@ public class LingFrameConfig implements LingFrameInfo {
      * 即使灵元 ling.yml 中配置了更高的值，也不会超过此上限。
      */
     @Builder.Default
-    private int maxThreadsPerLing = 8;
+    private final int maxThreadsPerLing = 8;
 
     /**
      * 单个灵元默认线程数
@@ -196,7 +216,7 @@ public class LingFrameConfig implements LingFrameInfo {
      * 当灵元未在 ling.yml 中指定线程数时，使用此默认值。
      */
     @Builder.Default
-    private int defaultThreadsPerLing = 2;
+    private final int defaultThreadsPerLing = 2;
 
     // ================= 灵核治理配置 =================
 
@@ -208,7 +228,7 @@ public class LingFrameConfig implements LingFrameInfo {
      * 当为 false 时，禁用治理，灵核 Bean 不受限制
      */
     @Builder.Default
-    private boolean lingCoreGovernanceEnabled = false;
+    private final boolean lingCoreGovernanceEnabled = false;
 
     /**
      * 是否对灵核内部调用进行治理，默认值为 false
@@ -218,7 +238,7 @@ public class LingFrameConfig implements LingFrameInfo {
      * 当为 false 时，只有灵元调用灵核 Bean 时才会被治理
      */
     @Builder.Default
-    private boolean lingCoreGovernanceInternalCalls = false;
+    private final boolean lingCoreGovernanceInternalCalls = false;
 
     /**
      * 是否对灵核应用进行权限检查，默认值为 false
@@ -228,28 +248,39 @@ public class LingFrameConfig implements LingFrameInfo {
      * 当为 false 时，灵核应用自动拥有所有权限
      */
     @Builder.Default
-    private boolean lingCoreCheckPermissions = false;
+    private final boolean lingCoreCheckPermissions = false;
+
+    /**
+     * 可信灵元 ID 白名单
+     * <p>
+     * 白名单中的灵元在严格模式下也使用非严格模式进行 API 安全扫描，
+     * 允许其使用反射、Native、进程操控等危险 API。
+     * <p>
+     * 替代历史上基于 "-agent" 后缀的隐式判定——后缀判定可被恶意灵元绕过。
+     */
+    @Builder.Default
+    private final List<String> trustedLingIds = Collections.emptyList();
 
     @Builder.Default
-    private int leakDetectionMaxConcurrentAggressiveChecks = 2;
+    private final int leakDetectionMaxConcurrentAggressiveChecks = 2;
 
     @Builder.Default
-    private int leakDetectionDevStartDelayMillis = 2000;
+    private final int leakDetectionDevStartDelayMillis = 2000;
 
     @Builder.Default
-    private int leakDetectionAggressiveGcRounds = 5;
+    private final int leakDetectionAggressiveGcRounds = 5;
 
     @Builder.Default
-    private int leakDetectionAggressiveGcIntervalMillis = 500;
+    private final int leakDetectionAggressiveGcIntervalMillis = 500;
 
     @Builder.Default
-    private int leakDetectionPassiveWindowMillis = 60000;
+    private final int leakDetectionPassiveWindowMillis = 60000;
 
     @Builder.Default
-    private int leakDetectionFinalConfirmationDelayMillis = 1000;
+    private final int leakDetectionFinalConfirmationDelayMillis = 1000;
 
     @Builder.Default
-    private int leakDetectionQueuePollMillis = 5000;
+    private final int leakDetectionQueuePollMillis = 5000;
 
     // ================= 共享 API 配置 =================
 
@@ -265,7 +296,7 @@ public class LingFrameConfig implements LingFrameInfo {
      * - Maven 灵元: lingframe-examples/lingframe-example-order-api (开发模式)
      */
     @Builder.Default
-    private List<String> preloadApiJars = new ArrayList<>();
+    private final List<String> preloadApiJars = new ArrayList<>();
 
     /**
      * 是否启用 API 包覆盖检测。
@@ -274,7 +305,7 @@ public class LingFrameConfig implements LingFrameInfo {
      * 当为 false 时，允许灵元包内包含同名 API（不建议）
      */
     @Builder.Default
-    private boolean apiOverrideCheckEnabled = true;
+    private final boolean apiOverrideCheckEnabled = true;
 
     /**
      * 灵元服务隐式接口注册开关（默认 true）。
@@ -285,7 +316,7 @@ public class LingFrameConfig implements LingFrameInfo {
      * 适用于想强制显式声明、或避免误扫到框架接口的团队。
      */
     @Builder.Default
-    private boolean implicitRegistration = true;
+    private final boolean implicitRegistration = true;
 
     // ================= 运行时模板 (Runtime Template) =================
 
@@ -294,7 +325,29 @@ public class LingFrameConfig implements LingFrameInfo {
      * (当创建新灵元实例时，会应用此配置)
      */
     @Builder.Default
-    private LingRuntimeConfig runtimeConfig = LingRuntimeConfig.defaults();
+    private final LingRuntimeConfig runtimeConfig = LingRuntimeConfig.defaults();
+
+    /**
+     * 是否开启开发模式，实现 {@link LingFrameInfo}。
+     * <p>
+     * 委托给 {@link #getRuntimeMode()}，dev/prod 判断的唯一真源。
+     */
+    @Override
+    public boolean isDevMode() {
+        return getRuntimeMode().isDev();
+    }
+
+    /**
+     * 获取运行时模式实例（dev/prod 判断的唯一真源）。
+     * <p>
+     * 若 {@link #runtimeMode} 已设置（非 null）则返回它；否则返回
+     * {@link FixedRuntimeMode#fixed(false)}（默认生产模式），保证调用方拿到非 null 的 {@link RuntimeMode}。
+     *
+     * @return 非 null 的 RuntimeMode 实例
+     */
+    public RuntimeMode getRuntimeMode() {
+        return runtimeMode != null ? runtimeMode : DEFAULT_PROD_MODE;
+    }
 
     /**
      * 灵元运行时默认超时（毫秒），实现 {@link LingFrameInfo}。
@@ -303,6 +356,33 @@ public class LingFrameConfig implements LingFrameInfo {
     public int getDefaultTimeout() {
         LingRuntimeConfig rc = runtimeConfig;
         return rc != null ? rc.getDefaultTimeoutMs() : 3000;
+    }
+
+    /**
+     * 自定义 Builder：保留 {@code devMode(boolean)} 便捷方法。
+     * <p>
+     * 历史上 {@code LingFrameConfig} 通过 {@code devMode} 字段表达 dev/prod，
+     * 现已统一为 {@link #runtimeMode} 唯一真源。此方法将 boolean 入参内部转换为
+     * {@link FixedRuntimeMode#fixed(boolean)}（不可切换），保持旧测试代码与
+     * 非 Spring 环境构造器的调用兼容。
+     * <p>
+     * 若同时调用 {@code devMode(boolean)} 和 {@code runtimeMode(RuntimeMode)}，
+     * 后调用的会覆盖先调用的——请按需选择唯一入口。
+     * <p>
+     * Lombok 检测到手写方法后不会重新生成，其余字段仍由 Lombok 自动补全。
+     */
+    public static class LingFrameConfigBuilder {
+
+        /**
+         * 便捷设置 dev/prod 模式（不可切换）。
+         *
+         * @param devMode true=开发模式，false=生产模式
+         * @return this builder
+         */
+        public LingFrameConfigBuilder devMode(boolean devMode) {
+            this.runtimeMode = FixedRuntimeMode.fixed(devMode);
+            return this;
+        }
     }
 
 }

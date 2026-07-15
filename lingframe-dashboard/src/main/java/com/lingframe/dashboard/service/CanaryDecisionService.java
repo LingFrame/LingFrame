@@ -2,11 +2,14 @@ package com.lingframe.dashboard.service;
 
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
+import com.lingframe.core.util.VersionUtils;
 import com.lingframe.dashboard.dto.CanaryDecisionDTO;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -54,24 +57,24 @@ public class CanaryDecisionService {
 
     /**
      * 根据灵元的稳定版与金丝雀版健康指标生成决策建议。
+     * <p>
+     * 版本角色判定：按版本号语义比较——版本号最高者视为金丝雀版（较新版本），
+     * 次高者视为稳定版。这样不依赖 Map 迭代顺序，避免 HashMap 在不同 JVM 下
+     * 因桶分布差异给出不一致的 stable/canary 判定。
      *
      * @param lingId 灵元 ID
      * @return 决策 DTO；若找不到对应版本快照则 sufficientData=false
      */
     public CanaryDecisionDTO decide(String lingId) {
-        MetricsSnapshot stable = null;
-        MetricsSnapshot canary = null;
-        for (MetricsSnapshot snapshot : metricsCollector.getVersionSnapshots(lingId).values()) {
-            // 通过版本快照定位稳定版与金丝雀版；MetricsSnapshot 不直接携带角色标记，
-            // 这里借助 qps>0 与 totalRequests 作为活跃版本判据，由调用方保证版本语义。
-            // 实际角色判定依赖 DashboardService 的 VersionInfo，此处简化处理：
-            // 取第一个快照为稳定版，第二个为金丝雀版（与金丝雀场景一致）。
-            if (stable == null) {
-                stable = snapshot;
-            } else if (canary == null) {
-                canary = snapshot;
-            }
+        // 收集所有版本快照并按版本号降序排序：版本最高 = canary，次高 = stable
+        List<MetricsSnapshot> snapshots = new ArrayList<>(
+                metricsCollector.getVersionSnapshots(lingId).values());
+        if (snapshots.size() >= 2) {
+            // 按版本号降序排序：版本最高 = canary，次高 = stable
+            snapshots.sort((a, b) -> VersionUtils.compareDescending(a.getVersion(), b.getVersion()));
         }
+        MetricsSnapshot stable = snapshots.size() >= 2 ? snapshots.get(1) : null;
+        MetricsSnapshot canary = snapshots.isEmpty() ? null : snapshots.get(0);
 
         // 数据不足：缺少任一版本快照，或样本过小
         if (stable == null || canary == null

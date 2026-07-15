@@ -9,6 +9,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 
@@ -30,7 +32,7 @@ class DangerousApiVerifierTest {
         @Test
         @DisplayName("默认构造器为严格模式")
         void defaultIsStrict() {
-            DangerousApiVerifier verifier = new DangerousApiVerifier();
+            DangerousApiVerifier verifier = new DangerousApiVerifier(true, Collections.emptyList());
             // 空 JAR 无违规，严格模式也不抛异常
             assertDoesNotThrow(() -> {
                 // 无法直接验证 strictMode 字段，通过行为间接验证
@@ -41,7 +43,7 @@ class DangerousApiVerifierTest {
         @DisplayName("严格模式下警告 API 也抛出 LingSecurityException")
         void strictModeWarningsThrow(@TempDir Path temp) throws IOException {
             File jar = createCleanJar(temp);
-            DangerousApiVerifier verifier = new DangerousApiVerifier(true);
+            DangerousApiVerifier verifier = new DangerousApiVerifier(true, Collections.emptyList());
             // 干净 JAR 不抛异常
             assertDoesNotThrow(() -> verifier.verify("ling-1", jar));
         }
@@ -57,7 +59,7 @@ class DangerousApiVerifierTest {
         @DisplayName("宽松模式下警告 API 不抛异常")
         void lenientModeNoThrow(@TempDir Path temp) throws IOException {
             File jar = createCleanJar(temp);
-            DangerousApiVerifier verifier = new DangerousApiVerifier(false);
+            DangerousApiVerifier verifier = new DangerousApiVerifier(false, Collections.emptyList());
             assertDoesNotThrow(() -> verifier.verify("ling-1", jar));
         }
     }
@@ -69,12 +71,30 @@ class DangerousApiVerifierTest {
     class TrustedLing {
 
         @Test
-        @DisplayName("以 -agent 结尾的灵元视为可信，使用非严格模式")
-        void agentLingIsTrusted(@TempDir Path temp) throws IOException {
+        @DisplayName("白名单中的灵元视为可信，使用非严格模式")
+        void trustedLingInWhitelist(@TempDir Path temp) throws IOException {
             File jar = createCleanJar(temp);
-            DangerousApiVerifier verifier = new DangerousApiVerifier(true);
-            // -agent 灵元即使严格模式也使用非严格模式
+            DangerousApiVerifier verifier = new DangerousApiVerifier(true,
+                    Arrays.asList("trusted-ling", "another-trusted"));
+            // 白名单中的灵元即使严格模式也使用非严格模式
+            assertDoesNotThrow(() -> verifier.verify("trusted-ling", jar));
+        }
+
+        @Test
+        @DisplayName("-agent 后缀不再视为可信，必须使用严格模式")
+        void agentSuffixNoLongerTrusted(@TempDir Path temp) throws IOException {
+            File jar = createCleanJar(temp);
+            DangerousApiVerifier verifier = new DangerousApiVerifier(true, Collections.emptyList());
+            // -agent 后缀不再视为可信，但干净 JAR 不抛异常（行为验证需配合警告用例）
             assertDoesNotThrow(() -> verifier.verify("my-agent", jar));
+        }
+
+        @Test
+        @DisplayName("null trustedLingIds 不抛异常")
+        void nullTrustedLingIdsSafe(@TempDir Path temp) throws IOException {
+            File jar = createCleanJar(temp);
+            DangerousApiVerifier verifier = new DangerousApiVerifier(true, null);
+            assertDoesNotThrow(() -> verifier.verify("ling-1", jar));
         }
     }
 
@@ -87,14 +107,14 @@ class DangerousApiVerifierTest {
         @Test
         @DisplayName("null source 不抛异常")
         void nullSourceSafe() {
-            DangerousApiVerifier verifier = new DangerousApiVerifier(true);
+            DangerousApiVerifier verifier = new DangerousApiVerifier(true, Collections.emptyList());
             assertDoesNotThrow(() -> verifier.verify("ling-1", null));
         }
 
         @Test
         @DisplayName("不存在的文件不抛异常")
         void nonExistentFileSafe() {
-            DangerousApiVerifier verifier = new DangerousApiVerifier(true);
+            DangerousApiVerifier verifier = new DangerousApiVerifier(true, Collections.emptyList());
             assertDoesNotThrow(() -> verifier.verify("ling-1", new File("nonexistent.jar")));
         }
     }

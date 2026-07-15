@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -41,83 +42,121 @@ class LingStatementProxyTest {
     class PermissionTests {
 
         @Test
-        @DisplayName("SELECT 且拥有读取权限时应放行并写入解析缓存")
+        @DisplayName("启用表级治理时 generic + 表级均通过应放行并写入解析缓存")
         void shouldAllowSelectWhenReadPermissionGranted() throws SQLException {
             Statement target = mock(Statement.class);
             ResultSet resultSet = mock(ResultSet.class);
             PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "storage:sql", AccessType.READ)).thenReturn(true);
+            when(permissionService.hasCapabilityPrefix("ling-a", "storage:sql:table:")).thenReturn(true);
             when(permissionService.isAllowed("ling-a", "storage:sql:table:users", AccessType.READ)).thenReturn(true);
             when(target.executeQuery(SELECT_SQL)).thenReturn(resultSet);
 
             LingCallContext.setLingId("ling-a");
-            LingStatementProxy proxy = new LingStatementProxy(target, permissionService);
+            LingStatementProxy proxy = new LingStatementProxy(target, permissionService, null);
 
-            assertSame(resultSet, proxy.executeQuery(SELECT_SQL));
+            // executeQuery 现在返回 LingResultSetProxy 包装，验证类型与 target 调用
+            ResultSet result = proxy.executeQuery(SELECT_SQL);
+            assertInstanceOf(LingResultSetProxy.class, result);
+            verify(permissionService).isAllowed("ling-a", "storage:sql", AccessType.READ);
+            verify(permissionService).hasCapabilityPrefix("ling-a", "storage:sql:table:");
             verify(permissionService).isAllowed("ling-a", "storage:sql:table:users", AccessType.READ);
-            verify(permissionService).audit("ling-a", "storage:sql:table:users", SELECT_SQL, true);
-            assertEquals(AccessType.READ, SqlParseCache.get("ling-a", SELECT_SQL));
+            // SELECT 表为读表，audit capability 带 :read 后缀
+            verify(permissionService).audit("ling-a", "storage:sql:table:users:read", SELECT_SQL, true);
+            assertEquals(AccessType.READ, SqlParseCache.get("ling-a", SELECT_SQL).getAccessType());
         }
 
         @Test
-        @DisplayName("DELETE 且缺少写权限时应拒绝执行")
+        @DisplayName("DELETE 且缺少 generic 写权限时应拒绝执行")
         void shouldRejectDeleteWhenWritePermissionDenied() throws SQLException {
             Statement target = mock(Statement.class);
             PermissionService permissionService = mock(PermissionService.class);
             when(permissionService.isAllowed("ling-a", "storage:sql", AccessType.WRITE)).thenReturn(false);
 
             LingCallContext.setLingId("ling-a");
-            LingStatementProxy proxy = new LingStatementProxy(target, permissionService);
+            LingStatementProxy proxy = new LingStatementProxy(target, permissionService, null);
 
             SQLException ex = assertThrows(SQLException.class, () -> proxy.executeUpdate(DELETE_SQL));
             assertInstanceOf(PermissionDeniedException.class, ex.getCause());
             verify(permissionService).isAllowed("ling-a", "storage:sql", AccessType.WRITE);
             verify(permissionService).audit("ling-a", "storage:sql", DELETE_SQL, false);
             verify(target, never()).executeUpdate(DELETE_SQL);
-            assertEquals(AccessType.WRITE, SqlParseCache.get("ling-a", DELETE_SQL));
+            assertEquals(AccessType.WRITE, SqlParseCache.get("ling-a", DELETE_SQL).getAccessType());
         }
 
         @Test
-        @DisplayName("表级 capability 未命中时应回退到通用 SQL 权限")
-        void shouldFallbackToGenericCapabilityWhenTableCapabilityDenied() throws SQLException {
+        @DisplayName("未启用表级治理时只看 generic 总开关")
+        void shouldOnlyCheckGenericWhenTableLevelNotEnabled() throws SQLException {
             Statement target = mock(Statement.class);
             ResultSet resultSet = mock(ResultSet.class);
             PermissionService permissionService = mock(PermissionService.class);
-            when(permissionService.isAllowed("ling-a", "storage:sql:table:public.users", AccessType.READ))
-                    .thenReturn(false);
-            when(permissionService.isAllowed("ling-a", "storage:sql:table:users", AccessType.READ))
-                    .thenReturn(false);
             when(permissionService.isAllowed("ling-a", "storage:sql", AccessType.READ)).thenReturn(true);
+            // hasCapabilityPrefix 默认 false → 未启用表级治理，跳过表级检查
             when(target.executeQuery(SCHEMA_SELECT_SQL)).thenReturn(resultSet);
 
             LingCallContext.setLingId("ling-a");
-            LingStatementProxy proxy = new LingStatementProxy(target, permissionService);
+            LingStatementProxy proxy = new LingStatementProxy(target, permissionService, null);
 
-            assertSame(resultSet, proxy.executeQuery(SCHEMA_SELECT_SQL));
-            verify(permissionService).isAllowed("ling-a", "storage:sql:table:public.users", AccessType.READ);
-            verify(permissionService).isAllowed("ling-a", "storage:sql:table:users", AccessType.READ);
+            // executeQuery 返回 LingResultSetProxy 包装
+            assertInstanceOf(LingResultSetProxy.class, proxy.executeQuery(SCHEMA_SELECT_SQL));
             verify(permissionService).isAllowed("ling-a", "storage:sql", AccessType.READ);
+            verify(permissionService).hasCapabilityPrefix("ling-a", "storage:sql:table:");
             verify(permissionService).audit("ling-a", "storage:sql", SCHEMA_SELECT_SQL, true);
         }
 
         @Test
-        @DisplayName("多表语句应要求所有表级 capability 均被允许")
+        @DisplayName("启用表级治理时多表语句需所有表级 capability 均通过（AND 语义）")
         void shouldRequireAllTableCapabilitiesForMultiTableSql() throws SQLException {
             Statement target = mock(Statement.class);
             PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "storage:sql", AccessType.READ)).thenReturn(true);
+            when(permissionService.hasCapabilityPrefix("ling-a", "storage:sql:table:")).thenReturn(true);
             when(permissionService.isAllowed("ling-a", "storage:sql:table:users", AccessType.READ)).thenReturn(true);
             when(permissionService.isAllowed("ling-a", "storage:sql:table:orders", AccessType.READ)).thenReturn(false);
-            when(permissionService.isAllowed("ling-a", "storage:sql", AccessType.READ)).thenReturn(false);
 
             LingCallContext.setLingId("ling-a");
-            LingStatementProxy proxy = new LingStatementProxy(target, permissionService);
+            LingStatementProxy proxy = new LingStatementProxy(target, permissionService, null);
 
             SQLException ex = assertThrows(SQLException.class, () -> proxy.executeQuery(JOIN_SELECT_SQL));
             assertInstanceOf(PermissionDeniedException.class, ex.getCause());
+            verify(permissionService).isAllowed("ling-a", "storage:sql", AccessType.READ);
+            verify(permissionService).hasCapabilityPrefix("ling-a", "storage:sql:table:");
             verify(permissionService).isAllowed("ling-a", "storage:sql:table:users", AccessType.READ);
             verify(permissionService).isAllowed("ling-a", "storage:sql:table:orders", AccessType.READ);
-            verify(permissionService).isAllowed("ling-a", "storage:sql", AccessType.READ);
-            verify(permissionService).audit("ling-a", "storage:sql", JOIN_SELECT_SQL, false);
+            // JOIN SELECT 的表为读表，拒绝时审计 capability 为实际校验的权限键（无 :read 后缀）
+            verify(permissionService).audit("ling-a", "storage:sql:table:orders", JOIN_SELECT_SQL, false);
             verify(target, never()).executeQuery(JOIN_SELECT_SQL);
+        }
+
+        @Test
+        @DisplayName("SQL 解析失败时应 fail-closed 拒绝执行")
+        void shouldRejectWhenSqlParseFailed() throws SQLException {
+            Statement target = mock(Statement.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "storage:sql", AccessType.EXECUTE)).thenReturn(true);
+
+            LingCallContext.setLingId("ling-a");
+            LingStatementProxy proxy = new LingStatementProxy(target, permissionService, null);
+
+            SQLException ex = assertThrows(SQLException.class, () -> proxy.executeQuery(MALFORMED_SQL));
+            assertInstanceOf(PermissionDeniedException.class, ex.getCause());
+            verify(target, never()).executeQuery(MALFORMED_SQL);
+        }
+
+        @Test
+        @DisplayName("启用表级治理但 SQL 无表时应拒绝")
+        void shouldRejectWhenTableLevelEnabledButNoTableInSql() throws SQLException {
+            Statement target = mock(Statement.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "storage:sql", AccessType.READ)).thenReturn(true);
+            when(permissionService.hasCapabilityPrefix("ling-a", "storage:sql:table:")).thenReturn(true);
+
+            LingCallContext.setLingId("ling-a");
+            LingStatementProxy proxy = new LingStatementProxy(target, permissionService, null);
+
+            SQLException ex = assertThrows(SQLException.class, () -> proxy.executeQuery("select 1"));
+            assertInstanceOf(PermissionDeniedException.class, ex.getCause());
+            verify(target, never()).executeQuery("select 1");
         }
 
         @Test
@@ -127,7 +166,7 @@ class LingStatementProxyTest {
             PermissionService permissionService = mock(PermissionService.class);
             when(permissionService.isLingCoreGovernanceEnabled()).thenReturn(true);
 
-            LingStatementProxy proxy = new LingStatementProxy(target, permissionService);
+            LingStatementProxy proxy = new LingStatementProxy(target, permissionService, null);
 
             SQLException ex = assertThrows(SQLException.class, () -> proxy.executeQuery(SELECT_SQL));
             assertEquals("Access Denied: LINGCORE governance is enabled but no context provided.", ex.getMessage());
@@ -144,9 +183,10 @@ class LingStatementProxyTest {
             when(permissionService.isLingCoreGovernanceEnabled()).thenReturn(false);
             when(target.executeQuery(SELECT_SQL)).thenReturn(resultSet);
 
-            LingStatementProxy proxy = new LingStatementProxy(target, permissionService);
+            LingStatementProxy proxy = new LingStatementProxy(target, permissionService, null);
 
-            assertSame(resultSet, proxy.executeQuery(SELECT_SQL));
+            // executeQuery 返回 LingResultSetProxy 包装
+            assertInstanceOf(LingResultSetProxy.class, proxy.executeQuery(SELECT_SQL));
             verify(permissionService).isLingCoreGovernanceEnabled();
             verify(target).executeQuery(SELECT_SQL);
         }
@@ -157,21 +197,23 @@ class LingStatementProxyTest {
     class CachePathTests {
 
         @Test
-        @DisplayName("缓存命中时应直接复用已有访问类型")
+        @DisplayName("缓存命中时应复用已有访问类型（合法 SQL）")
         void shouldReuseCachedAccessTypeWhenPresent() throws SQLException {
             Statement target = mock(Statement.class);
             ResultSet resultSet = mock(ResultSet.class);
             PermissionService permissionService = mock(PermissionService.class);
-            SqlParseCache.put("ling-a", MALFORMED_SQL, AccessType.READ);
+            SqlParseCache.put("ling-a", SELECT_SQL,
+                    new SqlPermissionSupport.SqlPermissionPlan(AccessType.READ, Collections.emptyList()));
             when(permissionService.isAllowed("ling-a", "storage:sql", AccessType.READ)).thenReturn(true);
-            when(target.executeQuery(MALFORMED_SQL)).thenReturn(resultSet);
+            when(target.executeQuery(SELECT_SQL)).thenReturn(resultSet);
 
             LingCallContext.setLingId("ling-a");
-            LingStatementProxy proxy = new LingStatementProxy(target, permissionService);
+            LingStatementProxy proxy = new LingStatementProxy(target, permissionService, null);
 
-            assertSame(resultSet, proxy.executeQuery(MALFORMED_SQL));
+            // executeQuery 返回 LingResultSetProxy 包装
+            assertInstanceOf(LingResultSetProxy.class, proxy.executeQuery(SELECT_SQL));
             verify(permissionService).isAllowed("ling-a", "storage:sql", AccessType.READ);
-            verify(permissionService).audit("ling-a", "storage:sql", MALFORMED_SQL, true);
+            verify(permissionService).audit("ling-a", "storage:sql", SELECT_SQL, true);
         }
     }
 
@@ -184,7 +226,9 @@ class LingStatementProxyTest {
         void testAllForwardingMethods() throws Exception {
             Statement target = mock(Statement.class);
             PermissionService permissionService = mock(PermissionService.class);
-            LingStatementProxy proxy = new LingStatementProxy(target, permissionService);
+            // 传入 lingConnection 以验证 getConnection() 返回代理而非原生 Connection
+            LingConnectionProxy lingConnection = mock(LingConnectionProxy.class);
+            LingStatementProxy proxy = new LingStatementProxy(target, permissionService, lingConnection);
 
             proxy.close();
             verify(target).close();
@@ -259,8 +303,9 @@ class LingStatementProxyTest {
             proxy.executeBatch();
             verify(target).executeBatch();
 
-            proxy.getConnection();
-            verify(target).getConnection();
+            // getConnection() 返回 lingConnection 代理，不调用 target.getConnection()
+            assertSame(lingConnection, proxy.getConnection());
+            verify(target, never()).getConnection();
 
             proxy.getMoreResults(1);
             verify(target).getMoreResults(1);
@@ -301,7 +346,7 @@ class LingStatementProxyTest {
             PermissionService permissionService = mock(PermissionService.class);
             when(permissionService.isLingCoreGovernanceEnabled()).thenReturn(false);
 
-            LingStatementProxy proxy = new LingStatementProxy(target, permissionService);
+            LingStatementProxy proxy = new LingStatementProxy(target, permissionService, null);
 
             proxy.addBatch("insert into users values(1)");
             verify(target).addBatch("insert into users values(1)");

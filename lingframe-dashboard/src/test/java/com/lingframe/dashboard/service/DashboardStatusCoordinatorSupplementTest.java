@@ -126,7 +126,15 @@ class DashboardStatusCoordinatorSupplementTest {
     @Test
     @DisplayName("从 INACTIVE 激活但 recover 抛异常时应抛 IllegalStateException 且不记录事件")
     void shouldThrowWhenRecoverFailsFromInactive() {
-        when(governanceSupport.getEffectivePolicy("ling1")).thenReturn(null);
+        // 提供 capabilities 满足激活前置校验，聚焦于 recover 异常路径
+        GovernancePolicy policy = GovernancePolicy.builder()
+                .capabilities(Arrays.asList(
+                        GovernancePolicy.CapabilityRule.builder()
+                                .capability(Capabilities.LING_ENABLE)
+                                .accessType(AccessType.EXECUTE.name())
+                                .build()))
+                .build();
+        when(governanceSupport.getEffectivePolicy("ling1")).thenReturn(policy);
         doThrow(new RuntimeException("boom")).when(lifecycleEngine).recover("ling1", "1.0.0");
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
@@ -165,6 +173,15 @@ class DashboardStatusCoordinatorSupplementTest {
     @Test
     @DisplayName("从 DEGRADED 激活但 transition 失败时应抛 IllegalStateException")
     void shouldThrowWhenTransitionFailsFromNonInactive() {
+        // 提供 capabilities 满足激活前置校验，聚焦于 transition 失败路径
+        GovernancePolicy policy = GovernancePolicy.builder()
+                .capabilities(Arrays.asList(
+                        GovernancePolicy.CapabilityRule.builder()
+                                .capability(Capabilities.LING_ENABLE)
+                                .accessType(AccessType.EXECUTE.name())
+                                .build()))
+                .build();
+        when(governanceSupport.getEffectivePolicy("ling1")).thenReturn(policy);
         when(runtimeCoordinator.transition("ling1", RuntimeStatus.ACTIVE))
                 .thenReturn(transitionFailure());
 
@@ -179,28 +196,35 @@ class DashboardStatusCoordinatorSupplementTest {
     }
 
     @Test
-    @DisplayName("激活时 effectivePolicy 为 null 应注入默认 capabilities 并调用 persistPolicyPatch")
-    void shouldInjectDefaultCapabilitiesWhenEffectivePolicyIsNull() {
+    @DisplayName("激活时 effectivePolicy 为 null 应拒绝激活（不再自动注入默认 capabilities）")
+    void shouldRejectActivationWhenEffectivePolicyIsNull() {
         when(governanceSupport.getEffectivePolicy("ling1")).thenReturn(null);
-        GovernancePolicy patchForUpdate = new GovernancePolicy();
-        when(governanceSupport.getPatchForUpdate("ling1")).thenReturn(patchForUpdate);
 
-        coordinator.updateStatus("ling1", RuntimeStatus.INACTIVE, RuntimeStatus.ACTIVE, "1.0.0");
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> coordinator.updateStatus("ling1", RuntimeStatus.INACTIVE, RuntimeStatus.ACTIVE, "1.0.0"));
 
-        verify(lifecycleEngine).recover("ling1", "1.0.0");
-        ArgumentCaptor<GovernancePolicy> captor = forClass(GovernancePolicy.class);
-        verify(governanceSupport).persistPolicyPatch(eq("ling1"), captor.capture());
-        GovernancePolicy persisted = captor.getValue();
-        assertNotNull(persisted.getCapabilities());
-        // 默认应注入 STORAGE_SQL / CACHE_LOCAL / LING_ENABLE 三个能力
-        assertEquals(3, persisted.getCapabilities().size());
-        List<String> capabilityNames = new ArrayList<>();
-        for (GovernancePolicy.CapabilityRule rule : persisted.getCapabilities()) {
-            capabilityNames.add(rule.getCapability());
-        }
-        assertTrue(capabilityNames.contains(Capabilities.STORAGE_SQL));
-        assertTrue(capabilityNames.contains(Capabilities.CACHE_LOCAL));
-        assertTrue(capabilityNames.contains(Capabilities.LING_ENABLE));
+        assertTrue(ex.getMessage().contains("Cannot activate"));
+        assertTrue(ex.getMessage().contains("no capabilities configured"));
+        // 激活被拒绝时不应触发恢复编排或权限补丁持久化
+        verify(lifecycleEngine, never()).recover(any(), any());
+        verify(governanceSupport, never()).persistPolicyPatch(any(), any());
+        assertTrue(eventStore.getEvents("ling1").isEmpty());
+    }
+
+    @Test
+    @DisplayName("激活时 capabilities 为空集合应拒绝激活")
+    void shouldRejectActivationWhenCapabilitiesIsEmpty() {
+        GovernancePolicy policy = GovernancePolicy.builder()
+                .capabilities(Collections.emptyList())
+                .build();
+        when(governanceSupport.getEffectivePolicy("ling1")).thenReturn(policy);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> coordinator.updateStatus("ling1", RuntimeStatus.INACTIVE, RuntimeStatus.ACTIVE, "1.0.0"));
+
+        assertTrue(ex.getMessage().contains("no capabilities configured"));
+        verify(lifecycleEngine, never()).recover(any(), any());
+        assertTrue(eventStore.getEvents("ling1").isEmpty());
     }
 
     // ==================== deactivateLing ====================

@@ -15,8 +15,12 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 简易 API 限流 Filter：基于 IP + 路径的滑动窗口限流
- * 使用 Guava RateLimiter 不额外引入依赖，用令牌桶算法自行实现
+ * 简易 API 限流 Filter：基于 IP + 路径的令牌桶限流
+ * 自行实现令牌桶算法，不依赖 Guava RateLimiter
+ *
+ * <p>安全策略：默认不信任 X-Forwarded-For / X-Real-IP 头，
+ * 仅当直连来自 {@link RateLimitProperties#getTrustedProxyIps()} 中的受信代理时才解析。
+ * 这避免攻击者伪造代理头绕过限流。
  */
 @Slf4j
 @Component
@@ -24,13 +28,14 @@ import java.util.concurrent.ConcurrentHashMap;
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class RateLimitFilter implements Filter {
 
-    private static final int MAX_REQUESTS_PER_SECOND = 30;
+    private final RateLimitProperties properties;
 
-    /** IP 不活跃超过此时间（毫秒）后清理 */
-    private static final long IP_IDLE_THRESHOLD_MS = 600_000; // 10 分钟
-
-    // IP 维度的令牌桶
+    /** IP 维度的令牌桶 */
     private final Map<String, TokenBucket> perIpBuckets = new ConcurrentHashMap<>();
+
+    public RateLimitFilter(RateLimitProperties properties) {
+        this.properties = properties;
+    }
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
@@ -45,7 +50,7 @@ public class RateLimitFilter implements Filter {
         }
 
         String clientIp = getClientIp(httpRequest);
-        TokenBucket bucket = perIpBuckets.computeIfAbsent(clientIp, k -> new TokenBucket());
+        TokenBucket bucket = perIpBuckets.computeIfAbsent(clientIp, k -> new TokenBucket(properties.getMaxRequestsPerSecond()));
 
         if (!bucket.tryAcquire()) {
             log.warn("Request rate limited: ip={}, path={}", clientIp, path);
@@ -59,19 +64,24 @@ public class RateLimitFilter implements Filter {
         chain.doFilter(request, response);
     }
 
+    /**
+     * 提取客户端真实 IP。
+     *
+     * <p>第一性原理：反向代理头（X-Forwarded-For / X-Real-IP）不可信，除非显式配置受信代理。
+     * 默认用 TCP 直连 IP（{@code request.getRemoteAddr()}），
+     * 仅当直连来自受信代理 IP 时才解析 X-Forwarded-For 取原始客户端 IP。
+     */
     private String getClientIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip == null || ip.isEmpty()) {
-            ip = request.getHeader("X-Real-IP");
+        String remote = request.getRemoteAddr();
+        // 仅当直连来自受信代理时，才解析 X-Forwarded-For
+        if (properties.isTrustedProxy(remote)) {
+            String xff = request.getHeader("X-Forwarded-For");
+            if (xff != null && !xff.isEmpty()) {
+                // X-Forwarded-For 可能包含多个 IP，取第一个（最原始的客户端 IP）
+                return xff.split(",")[0].trim();
+            }
         }
-        if (ip == null || ip.isEmpty()) {
-            ip = request.getRemoteAddr();
-        }
-        // X-Forwarded-For 可能包含多个 IP，取第一个
-        if (ip.contains(",")) {
-            ip = ip.split(",")[0].trim();
-        }
-        return ip;
+        return remote;
     }
 
     /**
@@ -83,11 +93,16 @@ public class RateLimitFilter implements Filter {
      * （B 应基于 A 写入后的值补，导致令牌超发）。改为整段加锁后语义清晰且无超发。
      */
     private static class TokenBucket {
-        private final int capacity = MAX_REQUESTS_PER_SECOND;
+        private final int capacity;
         // refill 与 acquire 同在 synchronized 块内读写，无需 AtomicLong，普通 long 即可
-        private long tokens = capacity;
+        private long tokens;
         private long lastRefillTime = System.currentTimeMillis();
         volatile long lastAccessTime = System.currentTimeMillis();
+
+        TokenBucket(int capacity) {
+            this.capacity = capacity;
+            this.tokens = capacity;
+        }
 
         synchronized boolean tryAcquire() {
             refillLocked();
@@ -120,6 +135,6 @@ public class RateLimitFilter implements Filter {
     public void cleanupIdleBuckets() {
         long now = System.currentTimeMillis();
         perIpBuckets.entrySet().removeIf(e ->
-                now - e.getValue().lastAccessTime > IP_IDLE_THRESHOLD_MS);
+                now - e.getValue().lastAccessTime > properties.getIpIdleThresholdMs());
     }
 }

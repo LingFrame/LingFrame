@@ -31,7 +31,11 @@ class CanaryDecisionServiceTest {
     private Map<String, MetricsSnapshot> mapOf(MetricsSnapshot... snapshots) {
         Map<String, MetricsSnapshot> map = new HashMap<>();
         for (int i = 0; i < snapshots.length; i++) {
-            map.put("v" + i, snapshots[i]);
+            // 🔥 使用语义化版本号，使 P1-34 版本语义排序能正确区分 stable/canary
+            // 版本号递增：第一个=1.0.0(stable)，第二个=2.0.0(canary)
+            String version = (i + 1) + ".0.0";
+            snapshots[i].setVersion(version);
+            map.put(version, snapshots[i]);
         }
         return map;
     }

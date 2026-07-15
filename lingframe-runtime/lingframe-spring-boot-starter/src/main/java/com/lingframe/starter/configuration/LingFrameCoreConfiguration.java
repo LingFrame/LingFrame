@@ -18,6 +18,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.router.LabelMatchRouter;
+import com.lingframe.core.runtime.SwitchableRuntimeMode;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import com.lingframe.core.spi.LingLoaderFactory;
@@ -152,8 +153,22 @@ public class LingFrameCoreConfiguration {
         return new LabelMatchRouter();
     }
 
+    /**
+     * 可切换运行时模式（dev/prod），密码认证 + 失败锁定。
+     * <p>
+     * 由 {@link LingFrameProperties#getModeSwitchPassword()} 提供密码，
+     * 未配置时切换功能关闭（fail-closed）。
+     */
     @Bean
-    public LingFrameConfig lingFrameConfig(LingFrameProperties properties) {
+    public SwitchableRuntimeMode switchableRuntimeMode(LingFrameProperties properties) {
+        return new SwitchableRuntimeMode(properties.isDevMode(), properties.getModeSwitchPassword());
+    }
+
+    // destroyMethod = "clear"：Spring 上下文销毁时清理静态 INSTANCE，
+    // 避免同 JVM 内后续上下文创建时 init() 抛 IllegalStateException（测试场景级联失败）
+    @Bean(destroyMethod = "clear")
+    public LingFrameConfig lingFrameConfig(LingFrameProperties properties,
+                                           SwitchableRuntimeMode switchableRuntimeMode) {
         LingFrameProperties.RuntimeConfig runtimeProperties = properties.getRuntime();
         LingRuntimeConfig runtimeConfig = LingRuntimeConfig.builder()
                 .maxHistorySnapshots(runtimeProperties.getMaxHistorySnapshots())
@@ -170,7 +185,7 @@ public class LingFrameCoreConfiguration {
         }
 
         LingFrameConfig lingFrameConfig = LingFrameConfig.builder()
-                .devMode(properties.isDevMode())
+                .runtimeMode(switchableRuntimeMode)
                 .autoScan(properties.isAutoScan())
                 .lingHome(properties.getLingHome())
                 .lingRoots(properties.getLingRoots())
@@ -181,6 +196,7 @@ public class LingFrameCoreConfiguration {
                 .lingCoreCheckPermissions(properties.getLingCoreGovernance().isCheckPermissions())
                 .preloadApiJars(properties.getPreloadApiJars())
                 .apiOverrideCheckEnabled(properties.isApiOverrideCheckEnabled())
+                .trustedLingIds(properties.getTrustedLingIds())
                 .build();
 
         LingFrameConfig.init(lingFrameConfig);

@@ -574,7 +574,7 @@ class LogStreamServiceHandleEventTest {
         }
     }
 
-    // ==================== sendHeartbeat / removeEmitter / withCoreClassLoader ====================
+    // ==================== sendHeartbeat / releaseEmitter / withCoreClassLoader ====================
 
     @Nested
     @DisplayName("心跳与连接管理")
@@ -591,21 +591,29 @@ class LogStreamServiceHandleEventTest {
         }
 
         @Test
-        @DisplayName("removeEmitter 应从列表移除指定 emitter")
-        void removeEmitterShouldRemoveFromList() throws Exception {
-            // 先创建一个真实 emitter 并加入列表
-            SseEmitter emitter = new SseEmitter(0L);
-            java.lang.reflect.Field f = LogStreamService.class.getDeclaredField("emitters");
-            f.setAccessible(true);
-            @SuppressWarnings("unchecked")
-            java.util.List<SseEmitter> emitters = (java.util.List<SseEmitter>) f.get(spy);
-            emitters.add(emitter);
+        @DisplayName("releaseEmitter 应从列表移除指定 emitter 并归还许可")
+        void releaseEmitterShouldRemoveFromListAndReleasePermit() throws Exception {
+            // 通过 createEmitter 创建真实 emitter（获取许可 + 加入列表）
+            SseEmitter emitter = spy.createEmitter();
 
-            Method m = LogStreamService.class.getDeclaredMethod("removeEmitter", SseEmitter.class);
+            java.lang.reflect.Field ef = LogStreamService.class.getDeclaredField("emitters");
+            ef.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            java.util.List<SseEmitter> emitters = (java.util.List<SseEmitter>) ef.get(spy);
+            assertEquals(1, emitters.size());
+
+            // 记录许可数
+            java.lang.reflect.Field sf = LogStreamService.class.getDeclaredField("connectionSemaphore");
+            sf.setAccessible(true);
+            java.util.concurrent.Semaphore semaphore = (java.util.concurrent.Semaphore) sf.get(spy);
+            int permitsBefore = semaphore.availablePermits();
+
+            Method m = LogStreamService.class.getDeclaredMethod("releaseEmitter", SseEmitter.class);
             m.setAccessible(true);
             m.invoke(spy, emitter);
 
             assertTrue(emitters.isEmpty());
+            assertEquals(permitsBefore + 1, semaphore.availablePermits(), "许可应归还");
         }
 
         @Test

@@ -91,7 +91,10 @@ final class LifecycleMetadataCleaner {
         try {
             for (String beanName : beanFactory.getBeanDefinitionNames()) {
                 try {
-                    Object bean = beanFactory.getBean(beanName);
+                    // 🔥 改用 getSingleton 而非 getBean：卸载阶段只清理已实例化的单例，
+                    // 绝不触发懒加载初始化，否则会让原本未启动的 Bean 在卸载时被强行创建，
+                    // 既浪费资源又会引入新的 ClassLoader 引用。
+                    Object bean = beanFactory.getSingleton(beanName);
                     if (bean == null) continue;
 
                     Object targetToClear = null;

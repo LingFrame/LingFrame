@@ -21,7 +21,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * 标准治理策略提供者
@@ -43,9 +43,27 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
     public StandardGovernancePolicyProvider(LocalGovernanceRegistry localRegistry,
             List<LingCoreGovernanceRule> rawRules) {
         this.localRegistry = localRegistry;
-        this.lingCoreRules = rawRules.stream()
-                .map(r -> new CompiledRule(compilePattern(r.getPattern()), r))
-                .collect(Collectors.toList());
+        List<CompiledRule> compiled = new ArrayList<>();
+        if (rawRules != null) {
+            for (LingCoreGovernanceRule r : rawRules) {
+                // 🔥 防御式构造：单条规则的 pattern 问题不应中断整个 Provider 初始化
+                // null/empty pattern → warn 后跳过
+                // PatternSyntaxException → error 后跳过
+                // 这样坏规则只影响自身，不会让所有灵核规则全部失效
+                try {
+                    Pattern pattern = compilePattern(r.getPattern());
+                    if (pattern == null) {
+                        // null/empty 已在 compilePattern 内 warn
+                        continue;
+                    }
+                    compiled.add(new CompiledRule(pattern, r));
+                } catch (PatternSyntaxException e) {
+                    log.error("Invalid governance rule pattern [{}], skipping this rule: {}",
+                            r.getPattern(), e.getMessage());
+                }
+            }
+        }
+        this.lingCoreRules = compiled;
     }
 
     @Override
@@ -274,10 +292,52 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
         sources.add(0, source);
     }
 
+    /**
+     * 将 Ant 风格模式编译为正则 Pattern。
+     * <p>
+     * <b>适用范围</b>：仅适用于方法名匹配（如 {@code lingId.methodName}），
+     * 其中 {@code *} 会被编译为 {@code .*}，可匹配含 {@code .} 的任意字符，
+     * 因此<b>不适用于路径匹配</b>（路径分隔符不应被 {@code *} 跨越）。
+     *
+     * @param antPattern Ant 风格模式，{@code *} 匹配任意字符（含 .），{@code ?} 匹配单字符
+     * @return 编译后的 Pattern；null/empty 模式返回 null
+     */
     private Pattern compilePattern(String antPattern) {
-        // 简单将 AntPath 转为 Regex (* -> .*)，生产级建议引入 Spring AntPathMatcher 逻辑
-        String regex = "^" + antPattern.replace(".", "\\.").replace("*", ".*") + "$";
-        return Pattern.compile(regex);
+        // 🔥 null/empty 防御：原实现直接 antPattern.replace 会抛 NPE，导致整个 Provider 构造失败
+        if (antPattern == null || antPattern.isEmpty()) {
+            log.warn("Skipping governance rule with null/empty pattern");
+            return null;
+        }
+        // Ant 风格转 Regex：
+        // - * → .* （匹配任意字符，含 .）
+        // - ? → . （匹配单字符）
+        // - 其他正则元字符（. + ( ) [ ] { } | ^ $ \ 等）用 Pattern.quote 转义，
+        //   避免被误判为正则语法（原实现只转义了 .，遇到 user.svc+backup 这种会出错）
+        StringBuilder regex = new StringBuilder("^");
+        StringBuilder literal = new StringBuilder();
+        for (int i = 0; i < antPattern.length(); i++) {
+            char c = antPattern.charAt(i);
+            if (c == '*') {
+                if (literal.length() > 0) {
+                    regex.append(Pattern.quote(literal.toString()));
+                    literal.setLength(0);
+                }
+                regex.append(".*");
+            } else if (c == '?') {
+                if (literal.length() > 0) {
+                    regex.append(Pattern.quote(literal.toString()));
+                    literal.setLength(0);
+                }
+                regex.append(".");
+            } else {
+                literal.append(c);
+            }
+        }
+        if (literal.length() > 0) {
+            regex.append(Pattern.quote(literal.toString()));
+        }
+        regex.append("$");
+        return Pattern.compile(regex.toString());
     }
 
     private boolean isMatch(String pattern, String methodName) {

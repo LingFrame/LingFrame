@@ -66,9 +66,14 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
             // 2. 明确稳定版实例(必须排除已锁定的金丝雀，防止“先灰后稳”导致的角色反转)
             LingInstance targetStable = findStableInstance(candidates, context, targetCanary);
 
-            // 3. 执行权重分发
+            // 3. 无金丝雀实例时全部走稳定版，避免误把非 canary 实例当作灰度目标
+            if (targetCanary == null) {
+                return targetStable;
+            }
+
+            // 4. 执行权重分发
             boolean routeToCanary = config.percent > 0 && ThreadLocalRandom.current().nextInt(100) < config.percent;
-            if (routeToCanary && targetCanary != null) {
+            if (routeToCanary) {
                 return targetCanary;
             }
             // 否则返回稳定版(此时保证稳定版绝不是金丝雀版本)
@@ -142,13 +147,9 @@ public class CanaryRouter implements TrafficRouter, CanaryConfigurable {
             }
         }
 
-        // 3. 否则返回第一个“非稳定版”实例
-        for (LingInstance inst : candidates) {
-            if (inst != stableInstance) {
-                return inst;
-            }
-        }
-
+        // 3. 无明确金丝雀标记时返回 null，由调用方全部走稳定版。
+        // 历史实现退化为"第一个非稳定版实例"，会导致非 canary 实例被误当作灰度目标，
+        // 造成角色反转（稳定版流量被错误导向未标记实例）。
         return null;
     }
 

@@ -33,6 +33,14 @@ public class LingFrameProperties {
     private boolean devMode = false;
 
     /**
+     * 运行时模式切换密码。
+     * <p>
+     * 配置后允许通过 Dashboard 在运行时切换 dev/prod 模式，切换需密码二次认证。
+     * 未配置（null/空）时运行时切换关闭（fail-closed），模式由 devMode 配置基线决定。
+     */
+    private String modeSwitchPassword = null;
+
+    /**
      * 启动时是否自动扫描并加载 home 目录下的灵元。
      */
     private boolean autoScan = true;
@@ -90,6 +98,14 @@ public class LingFrameProperties {
      * 灵核治理配置
      */
     private LingCoreGovernance lingCoreGovernance = new LingCoreGovernance();
+
+    /**
+     * 可信灵元 ID 白名单，豁免危险 API 严格模式校验。
+     * <p>
+     * 白名单中的灵元在严格模式下也使用非严格模式进行 API 安全扫描，
+     * 允许其使用反射、Native、进程操控等危险 API。
+     */
+    private List<String> trustedLingIds = new ArrayList<>();
 
     /**
      * 审计相关配置。

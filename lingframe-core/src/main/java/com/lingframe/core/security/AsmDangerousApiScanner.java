@@ -23,18 +23,65 @@ public class AsmDangerousApiScanner {
     private static final Map<String, String> PREFIX_CATEGORY;
 
     static {
-        Set<String> forbidden = new HashSet<>();
-        // JVM 终止
-        forbidden.add("java/lang/System.exit(I)V");
-        forbidden.add("java/lang/Runtime.exit(I)V");
-        forbidden.add("java/lang/Runtime.halt(I)V");
-        FORBIDDEN_METHODS = Collections.unmodifiableSet(forbidden);
+        // FORBIDDEN_METHODS：绝对禁止（按 owner.name 匹配，覆盖所有重载）
+        FORBIDDEN_METHODS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+                // JVM 终止
+                "java/lang/System.exit",
+                "java/lang/Runtime.exit",
+                "java/lang/Runtime.halt",
+                // 线程暴力停止/挂起（已废弃，导致状态不一致）
+                "java/lang/Thread.stop",
+                "java/lang/Thread.suspend",
+                "java/lang/Thread.resume",
+                "java/lang/Thread.stop0",
+                "java/lang/Thread.suspend0",
+                "java/lang/Thread.resume0",
+                // 本地库加载（绕过安全管理）
+                "java/lang/Runtime.load",
+                "java/lang/Runtime.loadLibrary",
+                "java/lang/System.load",
+                "java/lang/System.loadLibrary"
+        )));
 
-        Set<String> warn = new HashSet<>();
-        // 进程执行
-        warn.add("java/lang/Runtime.exec");
-        warn.add("java/lang/ProcessBuilder.start");
-        WARN_METHODS = Collections.unmodifiableSet(warn);
+        // WARN_METHODS：高危警告（严格模式下抛异常）
+        WARN_METHODS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+                // 进程执行
+                "java/lang/Runtime.exec",
+                "java/lang/ProcessBuilder.start",
+                "java/lang/ProcessBuilder.<init>",
+                // 反射类加载
+                "java/lang/Class.forName",
+                "java/lang/ClassLoader.loadClass",
+                "java/lang/ClassLoader.defineClass",
+                "java/lang/ClassLoader.defineClass0",
+                "java/lang/ClassLoader.defineClass1",
+                "java/lang/ClassLoader.defineClass2",
+                "java/lang/reflect/Method.invoke",
+                "java/lang/Class.getDeclaredMethod",
+                "java/lang/Class.getMethod",
+                // 安全管理器篡改
+                "java/lang/System.setSecurityManager",
+                "java/lang/SecurityManager.checkPackageAccess",
+                // JNDI 注入
+                "javax/naming/InitialContext.lookup",
+                "javax/naming/Context.lookup",
+                // 脚本执行
+                "javax/script/ScriptEngine.eval",
+                // 网络连接
+                "java/net/URL.openConnection",
+                "java/net/Socket.<init>",
+                "java/net/ServerSocket.<init>",
+                // 文件写入
+                "java/io/FileOutputStream.<init>",
+                "java/io/FileWriter.<init>",
+                "java/io/RandomAccessFile.<init>",
+                // 反射字段篡改
+                "java/lang/reflect/Field.set",
+                "java/lang/reflect/Field.setAccessible",
+                "java/lang/reflect/AccessibleObject.setAccessible",
+                // 方法句柄
+                "java/lang/invoke/MethodHandles.lookup"
+        )));
 
         // 前缀匹配的警告规则（反射、Unsafe、文件/网络 I/O）
         Set<String> warnPrefixes = new LinkedHashSet<>();
@@ -158,15 +205,16 @@ public class AsmDangerousApiScanner {
                         String fullMethod = owner + "." + methodName + desc;
                         String methodPrefix = owner + "." + methodName;
 
-                        // 检查禁止的方法
-                        if (FORBIDDEN_METHODS.contains(fullMethod)) {
+                        // 检查禁止的方法（按 owner.name 精确匹配，覆盖所有重载）
+                        if (FORBIDDEN_METHODS.contains(methodPrefix)) {
                             errors.add(new Violation(
                                     currentClass,
                                     fullMethod,
                                     ViolationType.CRITICAL,
-                                    "Forbidden API: This call would terminate the JVM"));
+                                    "Forbidden API: this call is categorically prohibited"));
                         }
 
+                        boolean warned = false;
                         // 检查警告的方法（前缀匹配）
                         for (String warn : WARN_METHODS) {
                             if (methodPrefix.startsWith(warn)) {
@@ -174,20 +222,24 @@ public class AsmDangerousApiScanner {
                                         currentClass,
                                         fullMethod,
                                         ViolationType.WARNING,
-                                        "Potentially dangerous API: Process execution"));
+                                        "Potentially dangerous API"));
+                                warned = true;
                                 break;
                             }
                         }
 
                         // 检查扩展警告规则（前缀匹配：反射、Unsafe、文件/网络 I/O）
-                        for (String prefix : WARN_PREFIXES) {
-                            if (fullMethod.startsWith(prefix) || methodPrefix.startsWith(prefix)) {
-                                warnings.add(new Violation(
-                                        currentClass,
-                                        fullMethod,
-                                        ViolationType.WARNING,
-                                        "Potentially dangerous API: " + categorize(prefix)));
-                                break;
+                        // 若 WARN_METHODS 已匹配，跳过避免重复告警
+                        if (!warned) {
+                            for (String prefix : WARN_PREFIXES) {
+                                if (fullMethod.startsWith(prefix) || methodPrefix.startsWith(prefix)) {
+                                    warnings.add(new Violation(
+                                            currentClass,
+                                            fullMethod,
+                                            ViolationType.WARNING,
+                                            "Potentially dangerous API: " + categorize(prefix)));
+                                    break;
+                                }
                             }
                         }
                     }

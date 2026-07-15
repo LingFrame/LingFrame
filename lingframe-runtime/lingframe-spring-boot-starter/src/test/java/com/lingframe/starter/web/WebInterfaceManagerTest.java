@@ -27,9 +27,7 @@ import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -446,10 +444,11 @@ class WebInterfaceManagerTest {
     }
 
     @Test
-    @DisplayName("测试同步注册与注销时的线程中断或执行异常")
-    void testRegisterUnregisterSyncExceptions() throws Exception {
+    @DisplayName("同步注册与注销不再依赖 executor，executor 异常不影响同步路径")
+    void testSyncMethodsImmuneToExecutorFailures() throws Exception {
         manager = new WebInterfaceManager(null, null, null);
-        
+
+        // 替换为 mock executor，验证同步路径完全不调用它
         Field field = WebInterfaceManager.class.getDeclaredField("registryExecutor");
         field.setAccessible(true);
         ExecutorService mockExecutor = mock(ExecutorService.class);
@@ -457,21 +456,15 @@ class WebInterfaceManagerTest {
 
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder().build();
 
-        // 1. 模拟 submit 抛出 InterruptedException
-        Future<?> mockFutureInterrupted = mock(Future.class);
-        when(mockFutureInterrupted.get()).thenThrow(new InterruptedException("Interrupted"));
-        when(mockExecutor.submit(any(Runnable.class))).thenAnswer(inv -> mockFutureInterrupted);
+        // 🔥 P1-29 修复后：registerSync/unregisterSync 直接走 synchronized(registryLock)，
+        // 不再调用 executor.submit().get()，executor 异常不会影响同步路径。
+        // hostSupport 未初始化时 registerInternal/unregisterInternal 安全跳过，不抛异常。
+        manager.registerSync(metadata);
+        manager.unregisterSync("ling-a", null);
 
-        assertThrows(LingException.class, () -> manager.registerSync(metadata));
-        assertThrows(LingException.class, () -> manager.unregisterSync("ling-a", null));
-
-        // 2. 模拟 submit 抛出 ExecutionException
-        Future<?> mockFutureExecution = mock(Future.class);
-        when(mockFutureExecution.get()).thenThrow(new ExecutionException("error", new RuntimeException("root cause")));
-        when(mockExecutor.submit(any(Runnable.class))).thenAnswer(inv -> mockFutureExecution);
-
-        assertThrows(LingException.class, () -> manager.registerSync(metadata));
-        assertThrows(LingException.class, () -> manager.unregisterSync("ling-a", null));
+        // 验证同步路径从未向 executor 提交任务
+        verify(mockExecutor, never()).submit(any(Runnable.class));
+        verify(mockExecutor, never()).execute(any(Runnable.class));
     }
 
     @Test

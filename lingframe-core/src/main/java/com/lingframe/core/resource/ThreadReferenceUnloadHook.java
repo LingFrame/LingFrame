@@ -520,6 +520,10 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
                     log.info("[{}] Drained {} pending task(s)", lingId, drained.size());
                 }
                 pool.awaitTermination(3, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                // 恢复中断标志，避免上层丢失中断信号
+                Thread.currentThread().interrupt();
+                log.debug("[{}] Interrupted while awaiting ThreadPoolExecutor termination", lingId);
             } catch (Exception e) {
                 log.debug("[{}] Failed to shutdown ThreadPoolExecutor: {}", lingId, e.getMessage());
             }
@@ -654,7 +658,9 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
         }
 
         int cleaned = 0;
+        int leaked = 0;
         int scannedThreads = 0;
+        Thread currentThread = Thread.currentThread();
         for (Thread t : JvmCleanupSupport.getActiveThreads()) {
             if (t == null)
                 continue;
@@ -664,103 +670,157 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
                 continue;
 
             scannedThreads++;
-            cleaned += clearThreadLocalMap(lingId, t, JvmCleanupSupport.THREAD_LOCALS_FIELD, classLoader);
-            cleaned += clearThreadLocalMap(lingId, t, JvmCleanupSupport.INHERITABLE_THREAD_LOCALS_FIELD, classLoader);
+            boolean isCurrent = (t == currentThread);
+            int[] r1 = scanThreadLocalMap(lingId, t, JvmCleanupSupport.THREAD_LOCALS_FIELD, classLoader, isCurrent);
+            int[] r2 = scanThreadLocalMap(lingId, t, JvmCleanupSupport.INHERITABLE_THREAD_LOCALS_FIELD, classLoader, isCurrent);
+            cleaned += r1[0] + r2[0];
+            leaked += r1[1] + r2[1];
         }
 
-        if (cleaned > 0) {
-            log.info("[{}] Cleared {} ThreadLocal entries", lingId, cleaned);
+        if (cleaned > 0 || leaked > 0) {
+            log.info("[{}] ThreadLocal cleanup: removed={}, leaked={}", lingId, cleaned, leaked);
         } else {
             log.debug("[{}] ThreadLocal scan finished, no entries removed (threads={})", lingId, scannedThreads);
         }
     }
 
-    private int clearThreadLocalMap(String lingId, Thread t, Field mapField, ClassLoader cl) {
+    /**
+     * 扫描单个 ThreadLocalMap，检测并处理关联目标 CL 的条目。
+     * <p>
+     * 处理策略：
+     * <ul>
+     *   <li>当前线程(卸载线程): 调用 {@link ThreadLocal#remove()} 公开 API 安全清理</li>
+     *   <li>跨线程: 仅记录泄漏警告，不强制侵入清理</li>
+     * </ul>
+     * <p>
+     * <b>禁止</b>反射修改 Entry 内部数据(valueField.set(entry, null) 和 ref.clear())——
+     * 并发 get() 会在窗口期返回 null 致 NPE。
+     *
+     * @return int[2] 数组：[0]=已清理数，[1]=泄漏记录数
+     */
+    private int[] scanThreadLocalMap(String lingId, Thread t, Field mapField, ClassLoader cl, boolean isCurrent) {
         if (mapField == null || JvmCleanupSupport.TLM_TABLE_FIELD == null)
-            return 0;
+            return new int[]{0, 0};
 
         int cleaned = 0;
+        int leaked = 0;
         try {
             Object map = mapField.get(t);
             if (map == null)
-                return 0;
+                return new int[]{0, 0};
 
             Object[] table = (Object[]) JvmCleanupSupport.TLM_TABLE_FIELD.get(map);
             if (table == null)
-                return 0;
+                return new int[]{0, 0};
 
-            Field valueField = null;
-            int logged = 0;
             List<String> samples = new ArrayList<>();
+            int logged = 0;
 
             for (Object entry : table) {
                 if (entry == null)
                     continue;
 
-                if (valueField == null) {
-                    valueField = entry.getClass().getDeclaredField("value");
-                    valueField.setAccessible(true);
-                }
+                String sample = inspectThreadLocalEntry(entry, cl);
+                if (sample == null)
+                    continue;
 
-                String sample = clearSingleEntry(entry, valueField, cl);
-                if (sample != null) {
-                    cleaned++;
+                // 检测到关联灵元 CL 的 ThreadLocal 条目
+                if (isCurrent) {
+                    // 当前线程: 通过 ThreadLocal.remove() 公开 API 安全清理
+                    if (removeEntryViaThreadLocalApi(entry)) {
+                        cleaned++;
+                        if (logged < 3) {
+                            samples.add(sample + " (cleaned)");
+                            logged++;
+                        }
+                    } else {
+                        // key 不是 ThreadLocal 实例(如 InheritableThreadLocal 跨线程传递的)，
+                        // 仍记为泄漏
+                        leaked++;
+                        if (logged < 3) {
+                            samples.add(sample + " (leaked: non-ThreadLocal key)");
+                            logged++;
+                        }
+                    }
+                } else {
+                    // 跨线程: 仅记录泄漏警告，不强制侵入清理
+                    // 设计决策：跨线程 ThreadLocal 反射清理不安全（可能破坏目标线程 ThreadLocalMap 结构），
+                    // 反射修改 Entry 内部数据（valueField.set(entry,null) + ref.clear()）会导致并发 get()
+                    // 返回 null 触发 NPE，且可能破坏目标线程 ThreadLocalMap 的槽位/size 一致性。
+                    // 框架仅告警不清理；灵元应在卸载前自行 remove 自身注册的 ThreadLocal。
+                    leaked++;
                     if (logged < 3) {
-                        samples.add(sample);
+                        samples.add(sample + " (leaked: cross-thread)");
                         logged++;
                     }
                 }
             }
 
-            // 清理后触发 expungeStaleEntries 回收被置 null 的槽位
-            if (cleaned > 0) {
-                expungeStaleEntries(map);
-            }
             if (!samples.isEmpty()) {
-                log.debug("[{}] ThreadLocal hits on thread {}: {}", lingId, t.getName(), samples);
+                if (isCurrent) {
+                    log.debug("[{}] ThreadLocal hits on current thread {}: {}", lingId, t.getName(), samples);
+                } else {
+                    log.warn("[{}] ThreadLocal leak on thread {}: {}", lingId, t.getName(), samples);
+                }
             }
         } catch (Exception e) {
-            log.trace("Failed to clear ThreadLocal on thread {}: {}", t.getName(), e.getMessage());
+            log.trace("Failed to scan ThreadLocal on thread {}: {}", t.getName(), e.getMessage());
         }
-        return cleaned;
+        return new int[]{cleaned, leaked};
     }
 
     /**
-     * 检查单个 ThreadLocal entry 是否与目标 ClassLoader 关联，若是则清理并返回描述样本。
+     * 检查单个 ThreadLocal entry 是否与目标 ClassLoader 关联。
+     * <p>
+     * 仅做检测，不做任何修改。保留泄漏检测能力。
+     * <p>
+     * 使用 {@link JvmCleanupSupport#TLM_ENTRY_VALUE_FIELD} 启动期缓存的反射字段，
+     * 避免热路径逐条目 getDeclaredField("value")+setAccessible 的冗余反射开销。
+     * Entry 类型固定为 {@code java.lang.ThreadLocal$ThreadLocalMap$Entry}。
      *
-     * @return 清理成功时返回 entry 描述（用于日志），未清理或异常时返回 null
+     * @return 关联时返回 entry 描述(用于日志)，不关联或异常时返回 null
      */
-    private String clearSingleEntry(Object entry, Field valueField, ClassLoader cl) {
+    private String inspectThreadLocalEntry(Object entry, ClassLoader cl) {
+        if (JvmCleanupSupport.TLM_ENTRY_VALUE_FIELD == null) {
+            return null;
+        }
         try {
             Reference<?> ref = (Reference<?>) entry;
             Object key = ref.get();
-            Object val = valueField.get(entry);
+            // 取 value 字段用于检测和描述（使用启动期缓存的反射字段）
+            Object val = JvmCleanupSupport.TLM_ENTRY_VALUE_FIELD.get(entry);
 
             if (JvmCleanupSupport.isClassLoaderRelated(key, cl) || JvmCleanupSupport.isClassLoaderRelated(val, cl)
                     || JvmCleanupSupport.deepReferencesClassLoader(key, cl, 3)
                     || JvmCleanupSupport.deepReferencesClassLoader(val, cl, 3)) {
-                valueField.set(entry, null);
-                ref.clear();
                 return describeThreadLocalEntry(key, val);
             }
         } catch (Exception e) {
-            log.trace("Failed to inspect/clear a single ThreadLocal entry: {}", e.getMessage());
+            log.trace("Failed to inspect a single ThreadLocal entry: {}", e.getMessage());
         }
         return null;
     }
 
     /**
-     * 触发 ThreadLocalMap 的 expungeStaleEntries，回收被清理的陈旧槽位。
-     * 该方法是 JDK 内部方法，不同 JVM 实现可能不存在，失败时静默跳过。
+     * 通过 {@link ThreadLocal#remove()} 公开 API 安全移除当前线程的 ThreadLocal 条目。
+     * <p>
+     * <b>禁止</b>反射修改 Entry 内部数据(valueField.set(entry, null) 和 ref.clear())——
+     * 并发 get() 会在窗口期返回 null 致 NPE。remove() 是 JDK 公开 API，内部自带同步和 expunge 逻辑。
+     *
+     * @return 成功移除返回 true，key 不是 ThreadLocal 或调用失败返回 false
      */
-    private void expungeStaleEntries(Object map) {
+    private boolean removeEntryViaThreadLocalApi(Object entry) {
         try {
-            Method expungeMethod = map.getClass().getDeclaredMethod("expungeStaleEntries");
-            expungeMethod.setAccessible(true);
-            expungeMethod.invoke(map);
-        } catch (Exception ignored) {
-            // expungeStaleEntries 是 JDK 内部方法，部分 JVM 可能不存在
+            Reference<?> ref = (Reference<?>) entry;
+            Object key = ref.get();
+            if (key instanceof ThreadLocal) {
+                ((ThreadLocal<?>) key).remove();
+                return true;
+            }
+        } catch (Exception e) {
+            log.trace("Failed to remove ThreadLocal entry via remove(): {}", e.getMessage());
         }
+        return false;
     }
 
     private String describeThreadLocalEntry(Object key, Object val) {

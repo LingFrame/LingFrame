@@ -5,21 +5,33 @@ import com.lingframe.core.spi.LingSecurityVerifier;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * 危险 API 安全验证器
+ * <p>
+ * 可信灵元判定基于显式白名单 {@code trustedLingIds}（构造时传入），
+ * 不再使用 "-agent" 后缀判定——后缀判定可被恶意灵元绕过。
  */
 @Slf4j
 public class DangerousApiVerifier implements LingSecurityVerifier {
 
     private final boolean strictMode;
+    private final Set<String> trustedLingIds;
 
-    public DangerousApiVerifier() {
-        this(true); // 默认严格模式
-    }
-
-    public DangerousApiVerifier(boolean strictMode) {
+    /**
+     * @param strictMode      是否严格模式
+     * @param trustedLingIds  可信灵元 ID 白名单（来自 LingFrameConfig.trustedLingIds），
+     *                        白名单中的灵元即使严格模式也使用非严格模式
+     */
+    public DangerousApiVerifier(boolean strictMode, Collection<String> trustedLingIds) {
         this.strictMode = strictMode;
+        this.trustedLingIds = trustedLingIds == null
+                ? Collections.emptySet()
+                : Collections.unmodifiableSet(new HashSet<>(trustedLingIds));
     }
 
     @Override
@@ -52,7 +64,12 @@ public class DangerousApiVerifier implements LingSecurityVerifier {
         }
     }
 
+    /**
+     * 判断灵元是否在显式白名单中。
+     * <p>
+     * 不再使用 "-agent" 后缀判定——后缀判定可被恶意灵元绕过（如命名为 evil-agent）。
+     */
     private boolean isTrustedLing(String lingId) {
-        return lingId != null && lingId.endsWith("-agent");
+        return lingId != null && trustedLingIds.contains(lingId);
     }
 }

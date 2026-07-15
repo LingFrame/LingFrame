@@ -5,6 +5,7 @@ import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -52,36 +53,46 @@ public final class GovernancePermissionSynchronizer {
             return 0;
         }
 
-        permissionService.removeLing(normalizedLingId);
+        // 先在内存构建完整权限映射，再通过 replacePermissions 原子替换。
+        // 历史实现先 removeLing 再逐条 grant，两者之间存在权限真空窗口，
+        // 期间该灵元的所有请求都会被拒绝。
+        Map<String, AccessType> newPermissions = new HashMap<>();
 
-        if (policy == null || policy.getCapabilities() == null || policy.getCapabilities().isEmpty()) {
+        if (policy != null && policy.getCapabilities() != null && !policy.getCapabilities().isEmpty()) {
+            for (GovernancePolicy.CapabilityRule rule : policy.getCapabilities()) {
+                String capability = normalize(rule == null ? null : rule.getCapability());
+                String accessTypeName = normalize(rule == null ? null : rule.getAccessType());
+
+                if (capability == null || accessTypeName == null) {
+                    log.warn("[Governance] Skip malformed capability rule for ling {}", normalizedLingId);
+                    continue;
+                }
+
+                try {
+                    AccessType accessType = AccessType.valueOf(accessTypeName.toUpperCase(Locale.ROOT));
+                    newPermissions.put(capability, accessType);
+                } catch (IllegalArgumentException ex) {
+                    log.warn("[Governance] Skip invalid access type for ling {}: capability={}, accessType={}",
+                            normalizedLingId, capability, accessTypeName);
+                }
+            }
+        }
+
+        // 原子替换：避免权限真空窗口
+        permissionService.replacePermissions(normalizedLingId, newPermissions);
+
+        if (newPermissions.isEmpty()) {
             log.info("[Governance] Cleared runtime permissions for ling {} from persisted policy", normalizedLingId);
             return 0;
         }
 
-        int syncedPermissionCount = 0;
-        for (GovernancePolicy.CapabilityRule rule : policy.getCapabilities()) {
-            String capability = normalize(rule == null ? null : rule.getCapability());
-            String accessTypeName = normalize(rule == null ? null : rule.getAccessType());
-
-            if (capability == null || accessTypeName == null) {
-                log.warn("[Governance] Skip malformed capability rule for ling {}", normalizedLingId);
-                continue;
-            }
-
-            try {
-                AccessType accessType = AccessType.valueOf(accessTypeName.toUpperCase(Locale.ROOT));
-                permissionService.grant(normalizedLingId, capability, accessType);
-                syncedPermissionCount++;
-            } catch (IllegalArgumentException ex) {
-                log.warn("[Governance] Skip invalid access type for ling {}: capability={}, accessType={}",
-                        normalizedLingId, capability, accessTypeName);
-            }
-        }
-
+        // 返回实际生效的权限数（newPermissions.size()），而非规则计数。
+        // 当存在重复 capability 时，newPermissions.put 会覆盖旧值，
+        // 实际生效权限数 = newPermissions.size() <= 遍历的规则数。
+        int effectiveCount = newPermissions.size();
         log.info("[Governance] Restored {} runtime permission(s) for ling {}",
-                syncedPermissionCount, normalizedLingId);
-        return syncedPermissionCount;
+                effectiveCount, normalizedLingId);
+        return effectiveCount;
     }
 
     private static String normalize(String value) {

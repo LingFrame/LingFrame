@@ -103,6 +103,15 @@
                             <input type="text" v-model="modal.confirmInput" :placeholder="modal.expectedConfirmInput"
                                 class="w-full t-bg-card border t-border rounded-lg px-3 py-2 text-sm t-text focus:outline-none focus:border-red-500 transition-colors font-mono">
                         </div>
+                        <!-- 模式切换密码输入框 -->
+                        <div v-if="modal.showPasswordInput" class="mt-3">
+                            <label class="text-sm text-amber-400 block mb-1">
+                                {{ t('modal.envSwitchPasswordLabel') }}
+                            </label>
+                            <input type="password" v-model="modal.passwordInput"
+                                class="w-full t-bg-card border t-border rounded-lg px-3 py-2 text-sm t-text focus:outline-none focus:border-amber-500 transition-colors"
+                                @keyup.enter="confirmModalAction">
+                        </div>
                     </div>
                 </div>
                 <div class="flex gap-3 justify-end">

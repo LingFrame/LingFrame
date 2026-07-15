@@ -205,7 +205,11 @@
     "selectVersion": "选择要卸载的版本：",
     "allVersions": "全量卸载 (所有版本)",
     "confirmDeleteFile": "确认要彻底从磁盘中删除灵元 {lingId} (版本 {version}) 的 JAR 文件吗？此操作无法恢复！",
-    "dangerConfirmLabel": "请输入灵元 ID 以确认操作："
+    "dangerConfirmLabel": "请输入灵元 ID 以确认操作：",
+    "envSwitchTitle": "切换运行环境",
+    "envSwitchConfirm": "确认切换到 {mode}？此操作需要密码认证。",
+    "envSwitchAction": "确认切换",
+    "envSwitchPasswordLabel": "模式切换密码"
   },
   "toast": {
     "getLingsFailed": "获取灵元列表失败",
@@ -232,6 +236,7 @@
     "sourceLingNotActive": "源灵元未激活",
     "envSwitched": "环境已切换: {mode}",
     "envSwitchFailed": "环境切换失败",
+    "envSwitchPasswordRequired": "请输入模式切换密码",
     "prodMode": "生产模式 (拒绝无权限访问)",
     "devMode": "开发模式 (仅警告无权限访问)",
     "alsoEnabled": "（同时开启 {perm}）",

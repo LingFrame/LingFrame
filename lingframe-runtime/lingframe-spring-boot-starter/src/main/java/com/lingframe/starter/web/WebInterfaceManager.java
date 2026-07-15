@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -44,6 +43,12 @@ public class WebInterfaceManager implements WebRouteResolver {
     private final Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
     private final Map<String, RequestMappingInfo> mappingInfoMap = new ConcurrentHashMap<>();
+
+    // 🔥 注册/注销串行化锁：替代原 executor.submit().get() 模式
+    // 旧模式下 submit(...).get() 会阻塞调用线程并占用 executor 单线程槽位，
+    // 一旦调用线程持有 Spring 启动锁而 executor 线程又需要该锁，就会形成死锁。
+    // 改为同步代码块后，注册/注销在调用线程内串行执行，不再借助 executor 等待。
+    private final Object registryLock = new Object();
 
     private final ExecutorService registryExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "LingFrame-WebInterfaceManager");
@@ -76,32 +81,33 @@ public class WebInterfaceManager implements WebRouteResolver {
     }
 
     public void register(WebInterfaceMetadata metadata) {
-        registryExecutor.execute(() -> registerInternal(metadata, false));
+        registryExecutor.execute(() -> {
+            synchronized (registryLock) {
+                registerInternal(metadata, false);
+            }
+        });
     }
 
     public void registerSync(WebInterfaceMetadata metadata) {
-        try {
-            registryExecutor.submit(() -> registerInternal(metadata, true)).get();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new LingException("Interrupted while registering web mapping", e);
-        } catch (ExecutionException e) {
-            throw new LingException("Failed to register web mapping", e.getCause());
+        // 🔥 同步注册：直接在调用线程内执行，避免 executor.submit().get() 死锁
+        // registryLock 串行化所有注册/注销操作，保证与异步路径互斥
+        synchronized (registryLock) {
+            registerInternal(metadata, true);
         }
     }
 
     public void unregister(String lingId, ClassLoader targetLoader) {
-        registryExecutor.execute(() -> unregisterInternal(lingId, targetLoader));
+        registryExecutor.execute(() -> {
+            synchronized (registryLock) {
+                unregisterInternal(lingId, targetLoader);
+            }
+        });
     }
 
     public void unregisterSync(String lingId, ClassLoader targetLoader) {
-        try {
-            registryExecutor.submit(() -> unregisterInternal(lingId, targetLoader)).get();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new LingException("Interrupted while unregistering web mapping", e);
-        } catch (ExecutionException e) {
-            throw new LingException("Failed to unregister web mapping", e.getCause());
+        // 🔥 同步注销：直接在调用线程内执行，避免 executor.submit().get() 死锁
+        synchronized (registryLock) {
+            unregisterInternal(lingId, targetLoader);
         }
     }
 

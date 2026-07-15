@@ -11,7 +11,10 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.reflect.Field;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,10 +29,10 @@ import static org.mockito.Mockito.when;
 /**
  * 限流 Filter 单元测试
  * <p>
- * 覆盖：路径过滤(非 dashboard / ui 子路径放行) / IP 提取(X-Forwarded-For 多 IP 取首、X-Real-IP、RemoteAddr 回退) /
+ * 覆盖：路径过滤(非 dashboard / ui 子路径放行) / IP 提取(默认不信任代理头、受信代理场景解析 X-Forwarded-For) /
  * 令牌桶耗尽 429 / 不同 IP 独立桶 / cleanupIdleBuckets 不活跃清理。
  * <p>
- * 令牌桶容量为 30（{@link RateLimitFilter} 内部常量），耗尽后第 31 次请求返回 429。
+ * 令牌桶容量为 30（{@link RateLimitProperties} 默认值），耗尽后第 31 次请求返回 429。
  */
 class RateLimitFilterTest {
 
@@ -38,7 +41,7 @@ class RateLimitFilterTest {
 
     @BeforeEach
     void setUp() {
-        filter = new RateLimitFilter();
+        filter = new RateLimitFilter(new RateLimitProperties());
         chain = mock(FilterChain.class);
     }
 
@@ -50,6 +53,14 @@ class RateLimitFilterTest {
         lenient().when(req.getHeader("X-Real-IP")).thenReturn(realIp);
         lenient().when(req.getRemoteAddr()).thenReturn(remoteAddr);
         return req;
+    }
+
+    /** 构造受信代理 filter（trustedProxyIps 包含指定 IP） */
+    private RateLimitFilter filterWithTrustedProxies(String... proxyIps) {
+        RateLimitProperties props = new RateLimitProperties();
+        Set<String> set = new HashSet<>(Arrays.asList(proxyIps));
+        props.setTrustedProxyIps(set);
+        return new RateLimitFilter(props);
     }
 
     private HttpServletResponse responseWithBody(StringWriter sw) {
@@ -64,9 +75,14 @@ class RateLimitFilterTest {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> buckets() throws Exception {
+        return buckets(filter);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> buckets(RateLimitFilter target) throws Exception {
         Field f = RateLimitFilter.class.getDeclaredField("perIpBuckets");
         f.setAccessible(true);
-        return (Map<String, Object>) f.get(filter);
+        return (Map<String, Object>) f.get(target);
     }
 
     @Nested
@@ -109,36 +125,70 @@ class RateLimitFilterTest {
     class ClientIpExtractionTests {
 
         @Test
-        @DisplayName("X-Forwarded-For 单个 IP 应作为桶 key")
-        void shouldUseXForwardedFor() throws Exception {
+        @DisplayName("默认不信任代理时 X-Forwarded-For 应被忽略，用 RemoteAddr 作为桶 key")
+        void shouldIgnoreXForwardedForWhenNoTrustedProxy() throws Exception {
             HttpServletRequest req = request("/lingframe/dashboard/api/x", "9.9.9.9", null, "1.1.1.1");
             filter.doFilter(req, responseWithBody(new StringWriter()), chain);
-            assertTrue(buckets().containsKey("9.9.9.9"));
+            assertTrue(buckets().containsKey("1.1.1.1"), "默认不信任代理应使用 RemoteAddr");
+            assertFalse(buckets().containsKey("9.9.9.9"), "不应使用伪造的 X-Forwarded-For");
         }
 
         @Test
-        @DisplayName("X-Forwarded-For 含多个 IP 时应取第一个（逗号分隔）")
-        void shouldTakeFirstIpFromCommaSeparatedXForwardedFor() throws Exception {
-            HttpServletRequest req = request("/lingframe/dashboard/api/x", "9.9.9.9, 8.8.8.8, 7.7.7.7", null, "1.1.1.1");
-            filter.doFilter(req, responseWithBody(new StringWriter()), chain);
-            assertTrue(buckets().containsKey("9.9.9.9"), "应取第一个 IP 并 trim");
-            assertFalse(buckets().containsKey("8.8.8.8"), "不应记录后续 IP");
-        }
-
-        @Test
-        @DisplayName("X-Forwarded-For 为空时回退到 X-Real-IP")
-        void shouldFallbackToXRealIp() throws Exception {
+        @DisplayName("默认不信任代理时 X-Real-IP 也应被忽略")
+        void shouldIgnoreXRealIpWhenNoTrustedProxy() throws Exception {
             HttpServletRequest req = request("/lingframe/dashboard/api/x", null, "7.7.7.7", "1.1.1.1");
             filter.doFilter(req, responseWithBody(new StringWriter()), chain);
-            assertTrue(buckets().containsKey("7.7.7.7"));
+            assertTrue(buckets().containsKey("1.1.1.1"), "应使用 RemoteAddr 而非 X-Real-IP");
+            assertFalse(buckets().containsKey("7.7.7.7"));
         }
 
         @Test
-        @DisplayName("无代理头时回退到 RemoteAddr")
-        void shouldFallbackToRemoteAddr() throws Exception {
+        @DisplayName("无代理头时用 RemoteAddr 作为桶 key")
+        void shouldUseRemoteAddrWhenNoProxyHeader() throws Exception {
             HttpServletRequest req = request("/lingframe/dashboard/api/x", null, null, "1.1.1.1");
             filter.doFilter(req, responseWithBody(new StringWriter()), chain);
             assertTrue(buckets().containsKey("1.1.1.1"));
+        }
+
+        @Test
+        @DisplayName("受信代理场景下应解析 X-Forwarded-For 取原始客户端 IP")
+        void shouldParseXForwardedForFromTrustedProxy() throws Exception {
+            // 直连 IP 10.0.0.1 是受信代理，应解析 X-Forwarded-For
+            RateLimitFilter trustedFilter = filterWithTrustedProxies("10.0.0.1");
+            HttpServletRequest req = request("/lingframe/dashboard/api/x", "9.9.9.9", null, "10.0.0.1");
+            trustedFilter.doFilter(req, responseWithBody(new StringWriter()), chain);
+            assertTrue(buckets(trustedFilter).containsKey("9.9.9.9"), "受信代理场景应取 X-Forwarded-For 第一个 IP");
+            assertFalse(buckets(trustedFilter).containsKey("10.0.0.1"), "不应使用代理 IP 作为桶 key");
+        }
+
+        @Test
+        @DisplayName("受信代理场景下 X-Forwarded-For 含多个 IP 时应取第一个")
+        void shouldTakeFirstIpFromXForwardedForViaTrustedProxy() throws Exception {
+            RateLimitFilter trustedFilter = filterWithTrustedProxies("10.0.0.1");
+            HttpServletRequest req = request("/lingframe/dashboard/api/x", "9.9.9.9, 8.8.8.8, 7.7.7.7", null, "10.0.0.1");
+            trustedFilter.doFilter(req, responseWithBody(new StringWriter()), chain);
+            assertTrue(buckets(trustedFilter).containsKey("9.9.9.9"), "应取第一个 IP 并 trim");
+            assertFalse(buckets(trustedFilter).containsKey("8.8.8.8"), "不应记录后续 IP");
+        }
+
+        @Test
+        @DisplayName("受信代理但无 X-Forwarded-For 头时应回退到 RemoteAddr")
+        void shouldFallbackToRemoteAddrWhenTrustedProxyButNoXff() throws Exception {
+            RateLimitFilter trustedFilter = filterWithTrustedProxies("10.0.0.1");
+            HttpServletRequest req = request("/lingframe/dashboard/api/x", null, null, "10.0.0.1");
+            trustedFilter.doFilter(req, responseWithBody(new StringWriter()), chain);
+            assertTrue(buckets(trustedFilter).containsKey("10.0.0.1"), "无 X-Forwarded-For 时应用代理 IP");
+        }
+
+        @Test
+        @DisplayName("非受信代理直连时 X-Forwarded-For 应被忽略")
+        void shouldIgnoreXForwardedForFromUntrustedProxy() throws Exception {
+            // 10.0.0.2 不在受信代理列表中
+            RateLimitFilter trustedFilter = filterWithTrustedProxies("10.0.0.1");
+            HttpServletRequest req = request("/lingframe/dashboard/api/x", "9.9.9.9", null, "10.0.0.2");
+            trustedFilter.doFilter(req, responseWithBody(new StringWriter()), chain);
+            assertTrue(buckets(trustedFilter).containsKey("10.0.0.2"), "非受信代理应用 RemoteAddr");
+            assertFalse(buckets(trustedFilter).containsKey("9.9.9.9"));
         }
     }
 

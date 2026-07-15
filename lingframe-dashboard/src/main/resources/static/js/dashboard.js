@@ -64,7 +64,17 @@ createApp({
             onConfirm: null,
             isDanger: false,
             confirmInput: '',
-            expectedConfirmInput: ''
+            expectedConfirmInput: '',
+            showPasswordInput: false,
+            passwordInput: ''
+        });
+
+        // modal 关闭时清理密码输入状态，防止残留
+        watch(() => modal.show, (show) => {
+            if (!show) {
+                modal.showPasswordInput = false;
+                modal.passwordInput = '';
+            }
         });
 
         const uninstallResultModal = reactive({
@@ -3051,18 +3061,37 @@ createApp({
         });
 
         const updateEnvMode = async (env) => {
-            try {
-                await api.post('/simulate/config/mode', { testEnv: env });
-
-                const isProd = env === 'prod';
-                const color = isProd ? 'success' : 'info';
-                // toast 文案使用 i18n key
-                const modeText = isProd ? t('toast.prodMode') : t('toast.devMode');
-
-                showToast(t('toast.envSwitched', { mode: modeText }), color);
-            } catch (e) {
-                showToast(t('toast.envSwitchFailed') + ': ' + e.message, 'error');
-            }
+            // 弹出密码认证弹窗，切换运行时模式需二次认证
+            modal.show = true;
+            modal.loading = false;
+            modal.isDanger = false;
+            modal.showVersionSelect = false;
+            modal.showPasswordInput = true;
+            modal.passwordInput = '';
+            modal.title = t('modal.envSwitchTitle');
+            const modeLabel = env === 'prod' ? t('toast.prodMode') : t('toast.devMode');
+            modal.message = t('modal.envSwitchConfirm', { mode: modeLabel });
+            modal.actionText = t('modal.envSwitchAction');
+            modal.onConfirm = async () => {
+                if (!modal.passwordInput) {
+                    showToast(t('toast.envSwitchPasswordRequired'), 'error');
+                    return;
+                }
+                modal.loading = true;
+                try {
+                    await api.post('/simulate/config/mode', { testEnv: env, password: modal.passwordInput });
+                    const isProd = env === 'prod';
+                    const color = isProd ? 'success' : 'info';
+                    const modeText = isProd ? t('toast.prodMode') : t('toast.devMode');
+                    showToast(t('toast.envSwitched', { mode: modeText }), color);
+                    modal.show = false;
+                } catch (e) {
+                    showToast(t('toast.envSwitchFailed') + ': ' + e.message, 'error');
+                } finally {
+                    modal.loading = false;
+                    modal.passwordInput = '';
+                }
+            };
         };
 
         // 格式化运行时间

@@ -27,6 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -134,8 +136,10 @@ class GovernanceAdminServiceTest {
             GovernancePolicy patch = policyWith("storage:sql", AccessType.WRITE);
             svc.persistPolicyPatch("sync-test", patch);
 
-            // 权限同步器应收到 grant 调用
-            verify(permissionService, atLeast(1)).grant("sync-test", "storage:sql", AccessType.WRITE);
+            // 权限同步器应通过 replacePermissions 原子替换权限，而非逐条 grant
+            verify(permissionService, atLeast(1)).replacePermissions(eq("sync-test"), argThat(map ->
+                    map != null && map.size() == 1
+                            && AccessType.WRITE.equals(map.get("storage:sql"))));
         }
 
         @DisplayName("lingId 为空时跳过持久化，不抛异常")
@@ -149,7 +153,7 @@ class GovernanceAdminServiceTest {
             assertNull(svc.getEffectivePolicy(""));
         }
 
-        @DisplayName("补丁能力规则为空时，仅清除权限不 grant")
+        @DisplayName("补丁能力规则为空时，原子替换为空权限集而非 removeLing 造成真空")
         @Test
         void persistPolicyPatch_clearsPermissions_whenEmptyCapabilities(@TempDir Path tempDir) {
             PermissionService permissionService = mock(PermissionService.class);
@@ -159,8 +163,9 @@ class GovernanceAdminServiceTest {
 
             svc.persistPolicyPatch("clear-test", new GovernancePolicy());
 
-            // removeLing 应被调（syncPolicy 内部先 remove 再 grant）
-            verify(permissionService, atLeast(1)).removeLing("clear-test");
+            // replacePermissions 应被调，传入空 map 等价于清空（原子替换，非 removeLing 造成权限真空）
+            verify(permissionService, atLeast(1)).replacePermissions(eq("clear-test"), argThat(map ->
+                    map != null && map.isEmpty()));
         }
     }
 

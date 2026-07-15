@@ -37,12 +37,13 @@ class DefaultPermissionServiceTest {
     @BeforeEach
     void setUp() {
         eventBus = new EventBus();
-        permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
+        // 配置已 immutable，直接通过 builder 构建局部实例，不依赖全局单例
+        permissionService = new DefaultPermissionService(eventBus,
+                LingFrameConfig.builder().devMode(false).build());
     }
 
     @AfterEach
     void tearDown() {
-        LingFrameConfig.current().setDevMode(false);
         LingCallContext.clear();
         InvocationContext.detach(null);
         eventBus.shutdown();
@@ -96,8 +97,9 @@ class DefaultPermissionServiceTest {
         @Test
         @DisplayName("开发模式下即使没有权限也应允许访问")
         void shouldAllowAllInDevMode() {
-            LingFrameConfig.current().setDevMode(true);
-            assertTrue(permissionService.isAllowed("test-ling", "test-capability", AccessType.WRITE));
+            DefaultPermissionService devModeService = new DefaultPermissionService(eventBus,
+                    LingFrameConfig.builder().devMode(true).build());
+            assertTrue(devModeService.isAllowed("test-ling", "test-capability", AccessType.WRITE));
         }
 
         @Test
@@ -107,10 +109,11 @@ class DefaultPermissionServiceTest {
             eventBus.subscribe("test-listener", MonitoringEvents.AlertNotifyEvent.class, captured::set);
             InvocationContext ctx = attachContext("trace-dev");
 
-            try {
-                LingFrameConfig.current().setDevMode(true);
+            DefaultPermissionService devModeService = new DefaultPermissionService(eventBus,
+                    LingFrameConfig.builder().devMode(true).build());
 
-                assertTrue(permissionService.isAllowed("test-ling", "test-capability", AccessType.WRITE));
+            try {
+                assertTrue(devModeService.isAllowed("test-ling", "test-capability", AccessType.WRITE));
             } finally {
                 InvocationContext.detach(null);
                 ctx.recycle();

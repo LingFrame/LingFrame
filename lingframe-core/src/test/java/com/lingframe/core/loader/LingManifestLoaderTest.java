@@ -1,6 +1,7 @@
 package com.lingframe.core.loader;
 
 import com.lingframe.api.config.LingDefinition;
+import com.lingframe.api.exception.LingRuntimeException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -81,26 +82,28 @@ class LingManifestLoaderTest {
     }
 
     @Test
-    @DisplayName("无效 YAML 内容的目录返回 null")
-    void shouldReturnNullForInvalidYamlInDirectory() throws IOException {
+    @DisplayName("无效 YAML 内容的目录应抛 LingRuntimeException")
+    void shouldThrowForInvalidYamlInDirectory() throws IOException {
         File lingDir = new File(tempDir, "bad-ling");
         lingDir.mkdirs();
         Files.write(new File(lingDir, "ling.yml").toPath(), "{{invalid yaml".getBytes());
 
-        LingDefinition def = LingManifestLoader.parseDefinition(lingDir);
-
-        assertNull(def);
+        // 🔥 ling.yml 存在但解析失败时必须抛异常，避免坏灵元被静默跳过
+        LingRuntimeException ex = assertThrows(LingRuntimeException.class,
+                () -> LingManifestLoader.parseDefinition(lingDir));
+        assertTrue(ex.getMessage().contains("Invalid ling.yml"));
     }
 
     @Test
-    @DisplayName("损坏的 Jar 文件返回 null")
-    void shouldReturnNullForCorruptJar() throws IOException {
+    @DisplayName("损坏的 Jar 文件应抛 LingRuntimeException")
+    void shouldThrowForCorruptJar() throws IOException {
         File badJar = new File(tempDir, "corrupt.jar");
         Files.write(badJar.toPath(), "not a jar file".getBytes());
 
-        LingDefinition def = LingManifestLoader.parseDefinition(badJar);
-
-        assertNull(def);
+        // 🔥 jar 文件本身损坏（无法打开）时抛异常，让用户感知错误而非静默跳过
+        LingRuntimeException ex = assertThrows(LingRuntimeException.class,
+                () -> LingManifestLoader.parseDefinition(badJar));
+        assertTrue(ex.getMessage().contains("Failed to open jar file"));
     }
 
     @Test

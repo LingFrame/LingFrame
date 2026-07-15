@@ -34,9 +34,7 @@ public class LingConnectionProxy implements Connection {
     private void checkTransactionPermission(String operation) throws SQLException {
         String callerLingId = LingCallContext.getLingId();
         if (callerLingId == null) {
-            if (permissionService.isLingCoreGovernanceEnabled()) {
-                log.error("Security Alert: transaction [{}] without LingContext (LINGCORE governance ENABLED)",
-                        operation);
+            if (!SqlPermissionSupport.checkLingCoreGovernance(permissionService, "transaction:" + operation)) {
                 throw new SQLException("Access Denied: LINGCORE governance is enabled but no context provided for transaction: "
                         + operation);
             }
@@ -51,13 +49,14 @@ public class LingConnectionProxy implements Connection {
 
     @Override
     public Statement createStatement() throws SQLException {
-        return new LingStatementProxy(target.createStatement(), permissionService);
+        // 传入 this 作为 lingConnection，确保 Statement.getConnection() 返回代理而非原生 Connection
+        return new LingStatementProxy(target.createStatement(), permissionService, this);
     }
 
     @Override
     public PreparedStatement prepareStatement(String sql) throws SQLException {
         // PreparedStatement 在创建时就确定了 SQL，可以在这里提前拦截
-        return new LingPreparedStatementProxy(target.prepareStatement(sql), permissionService, sql);
+        return new LingPreparedStatementProxy(target.prepareStatement(sql), permissionService, sql, this);
     }
 
     @Override
@@ -114,7 +113,8 @@ public class LingConnectionProxy implements Connection {
 
     @Override
     public DatabaseMetaData getMetaData() throws SQLException {
-        return target.getMetaData();
+        // 包装 DatabaseMetaData，防止灵元通过元数据枚举方法返回的可更新 ResultSet 绕过治理
+        return new LingDatabaseMetaDataProxy(target.getMetaData(), permissionService);
     }
 
     @Override
@@ -129,7 +129,9 @@ public class LingConnectionProxy implements Connection {
 
     @Override
     public void setCatalog(String catalog) throws SQLException {
-        target.setCatalog(catalog);
+        // 禁止灵元切换 catalog：会绕过表级 capability，要求灵核在 DataSource 层面配置隔离
+        throw new SQLException("setCatalog is forbidden on governed connection, "
+                + "configure catalog at DataSource level instead");
     }
 
     @Override
@@ -159,14 +161,14 @@ public class LingConnectionProxy implements Connection {
 
     @Override
     public Statement createStatement(int resultSetType, int resultSetConcurrency) throws SQLException {
-        return new LingStatementProxy(target.createStatement(resultSetType, resultSetConcurrency), permissionService);
+        return new LingStatementProxy(target.createStatement(resultSetType, resultSetConcurrency), permissionService, this);
     }
 
     @Override
     public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency)
             throws SQLException {
         return new LingPreparedStatementProxy(target.prepareStatement(sql, resultSetType, resultSetConcurrency),
-                permissionService, sql);
+                permissionService, sql, this);
     }
 
     @Override
@@ -197,11 +199,15 @@ public class LingConnectionProxy implements Connection {
 
     @Override
     public Savepoint setSavepoint() throws SQLException {
+        // savepoint 是事务生命周期的一部分，创建 savepoint 应受事务治理约束，
+        // 与 commit/rollback/setAutoCommit 保持一致的鉴权口径
+        checkTransactionPermission("setSavepoint");
         return target.setSavepoint();
     }
 
     @Override
     public Savepoint setSavepoint(String name) throws SQLException {
+        checkTransactionPermission("setSavepoint(name)");
         return target.setSavepoint(name);
     }
 
@@ -213,6 +219,8 @@ public class LingConnectionProxy implements Connection {
 
     @Override
     public void releaseSavepoint(Savepoint savepoint) throws SQLException {
+        // releaseSavepoint 是事务生命周期的一部分，释放 savepoint 应受事务治理约束
+        checkTransactionPermission("releaseSavepoint");
         target.releaseSavepoint(savepoint);
     }
 
@@ -220,7 +228,7 @@ public class LingConnectionProxy implements Connection {
     public Statement createStatement(int resultSetType, int resultSetConcurrency, int resultSetHoldability)
             throws SQLException {
         return new LingStatementProxy(target.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability),
-                permissionService);
+                permissionService, this);
     }
 
     @Override
@@ -228,7 +236,7 @@ public class LingConnectionProxy implements Connection {
             int resultSetHoldability) throws SQLException {
         return new LingPreparedStatementProxy(
                 target.prepareStatement(sql, resultSetType, resultSetConcurrency, resultSetHoldability),
-                permissionService, sql);
+                permissionService, sql, this);
     }
 
     @Override
@@ -241,17 +249,17 @@ public class LingConnectionProxy implements Connection {
 
     @Override
     public PreparedStatement prepareStatement(String sql, int autoGeneratedKeys) throws SQLException {
-        return new LingPreparedStatementProxy(target.prepareStatement(sql, autoGeneratedKeys), permissionService, sql);
+        return new LingPreparedStatementProxy(target.prepareStatement(sql, autoGeneratedKeys), permissionService, sql, this);
     }
 
     @Override
     public PreparedStatement prepareStatement(String sql, int[] columnIndexes) throws SQLException {
-        return new LingPreparedStatementProxy(target.prepareStatement(sql, columnIndexes), permissionService, sql);
+        return new LingPreparedStatementProxy(target.prepareStatement(sql, columnIndexes), permissionService, sql, this);
     }
 
     @Override
     public PreparedStatement prepareStatement(String sql, String[] columnNames) throws SQLException {
-        return new LingPreparedStatementProxy(target.prepareStatement(sql, columnNames), permissionService, sql);
+        return new LingPreparedStatementProxy(target.prepareStatement(sql, columnNames), permissionService, sql, this);
     }
 
     @Override
@@ -311,7 +319,9 @@ public class LingConnectionProxy implements Connection {
 
     @Override
     public void setSchema(String schema) throws SQLException {
-        target.setSchema(schema);
+        // 禁止灵元切换 schema：会绕过表级 capability，要求灵核在 DataSource 层面配置隔离
+        throw new SQLException("setSchema is forbidden on governed connection, "
+                + "configure schema at DataSource level instead");
     }
 
     @Override

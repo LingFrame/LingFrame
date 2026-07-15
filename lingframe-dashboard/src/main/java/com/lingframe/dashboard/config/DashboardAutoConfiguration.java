@@ -23,6 +23,7 @@ import com.lingframe.dashboard.scheduler.MetricsCollectorScheduler;
 import com.lingframe.dashboard.security.AccessTokenInterceptor;
 import com.lingframe.dashboard.security.AccessTokenProperties;
 import com.lingframe.dashboard.security.CorsProperties;
+import com.lingframe.dashboard.security.RateLimitProperties;
 import com.lingframe.dashboard.security.ReadOnlyInterceptor;
 import com.lingframe.dashboard.security.ReadOnlyProperties;
 import com.lingframe.dashboard.service.CanaryDecisionService;
@@ -71,7 +72,7 @@ import java.util.Properties;
 @AutoConfiguration
 @ConditionalOnWebApplication
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
-@EnableConfigurationProperties({StorageProperties.class, AccessTokenProperties.class, ReadOnlyProperties.class, CorsProperties.class})
+@EnableConfigurationProperties({StorageProperties.class, AccessTokenProperties.class, ReadOnlyProperties.class, CorsProperties.class, RateLimitProperties.class})
 @ComponentScan(basePackages = {"com.lingframe.dashboard.controller", "com.lingframe.dashboard.security", "com.lingframe.dashboard.storage"})
 public class DashboardAutoConfiguration {
 

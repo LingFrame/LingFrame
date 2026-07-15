@@ -198,8 +198,33 @@ public class DefaultPermissionService implements PermissionService {
     }
 
     @Override
+    public void replacePermissions(String lingId, Map<String, AccessType> newPermissions) {
+        // 使用 compute 原子替换，避免「先 removeLing 再逐条 grant」造成的权限真空窗口。
+        // compute 返回 null 时自动移除 entry，等价于清空。
+        permissions.compute(lingId, (k, existing) ->
+                (newPermissions == null || newPermissions.isEmpty())
+                        ? null
+                        : new ConcurrentHashMap<>(newPermissions));
+        log.info("[PermissionService] Atomically replaced permissions for lingId={}, capabilityCount={}",
+                lingId, newPermissions == null ? 0 : newPermissions.size());
+    }
+
+    @Override
     public boolean isLingCoreGovernanceEnabled() {
         return config.isLingCoreGovernanceEnabled();
+    }
+
+    @Override
+    public boolean hasCapabilityPrefix(String lingId, String capabilityPrefix) {
+        if (lingId == null || capabilityPrefix == null) {
+            return false;
+        }
+        Map<String, AccessType> lingPerms = permissions.get(lingId);
+        if (lingPerms == null) {
+            return false;
+        }
+        return lingPerms.keySet().stream()
+                .anyMatch(cap -> cap != null && cap.startsWith(capabilityPrefix));
     }
 
     private String normalize(String value) {

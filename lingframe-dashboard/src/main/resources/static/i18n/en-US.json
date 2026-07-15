@@ -205,7 +205,11 @@
         "selectVersion": "Select version to unload:",
         "allVersions": "Unload all versions",
         "confirmDeleteFile": "Are you sure you want to completely delete the JAR file of ling {lingId} (version {version}) from disk? This action cannot be undone!",
-        "dangerConfirmLabel": "Please enter the Ling ID to confirm:"
+        "dangerConfirmLabel": "Please enter the Ling ID to confirm:",
+        "envSwitchTitle": "Switch Environment",
+        "envSwitchConfirm": "Confirm switch to {mode}? Password authentication required.",
+        "envSwitchAction": "Confirm Switch",
+        "envSwitchPasswordLabel": "Mode Switch Password"
     },
     "toast": {
         "getLingsFailed": "Failed to get ling list",
@@ -232,6 +236,7 @@
         "sourceLingNotActive": "Source ling not active",
         "envSwitched": "Environment switched: {mode}",
         "envSwitchFailed": "Environment switch failed",
+        "envSwitchPasswordRequired": "Please enter the mode switch password",
         "prodMode": "Production Mode (deny unauthorized access)",
         "devMode": "Dev Mode (warn only for unauthorized access)",
         "alsoEnabled": " (also enabled {perm})",

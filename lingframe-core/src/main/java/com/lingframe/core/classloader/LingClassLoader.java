@@ -271,22 +271,23 @@ public class LingClassLoader extends URLClassLoader {
         ALIVE_COUNT.decrementAndGet();
         log.info("[{}] Closing ClassLoader...", lingId);
 
+        // super.close() 可能抛异常，但缓存清理必须执行，用 try-finally 保证
         try {
             // 调用父类的 close() 释放 JAR 文件句柄
             super.close();
-
-            // 🔥 清理 URLClassPath 内部缓存（loaders、path 等）
-            // `super.close()` 已关闭文件句柄，但某些 JVM 实现可能在 `URLClassPath` 中残留引用
-            cleanupInternalCaches();
-
             log.info("[{}] ClassLoader closed successfully", lingId);
-            // 💡 不再在此处调用 System.gc()
-            // 垃圾回收提示由 `ThreadReferenceUnloadHook` 在所有清理完成后统一触发，
-            // 此处调用没有实际效果（引用链尚未完全切断）
         } catch (IOException e) {
             log.error("[{}] Error closing ClassLoader", lingId, e);
             throw e;
+        } finally {
+            // 🔥 清理 URLClassPath 内部缓存（loaders、path 等）
+            // `super.close()` 已关闭文件句柄，但某些 JVM 实现可能在 `URLClassPath` 中残留引用。
+            // 无论 super.close() 是否异常，都需清理，避免缓存残留导致泄漏。
+            cleanupInternalCaches();
         }
+        // 💡 不再在此处调用 System.gc()
+        // 垃圾回收提示由 `ThreadReferenceUnloadHook` 在所有清理完成后统一触发，
+        // 此处调用没有实际效果（引用链尚未完全切断）
     }
 
     /**

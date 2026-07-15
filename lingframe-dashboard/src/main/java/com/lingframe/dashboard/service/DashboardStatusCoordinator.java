@@ -1,7 +1,6 @@
 package com.lingframe.dashboard.service;
 
 import com.lingframe.api.config.GovernancePolicy;
-import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.fsm.RuntimeCoordinator;
@@ -11,7 +10,6 @@ import com.lingframe.core.fsm.TransitionResult;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -66,8 +64,24 @@ public class DashboardStatusCoordinator {
      * <p>
      * 仅当灵元当前处于 INACTIVE（无可用实例）时才走 recover 路径；
      * 若已有可用实例，则直接 transition(ACTIVE) 即可。
+     * <p>
+     * 安全约束：激活前必须确认灵元已显式配置 capabilities。
+     * 不再自动授予 WRITE 权限，避免无配置灵元上线后默认获得 SQL/Cache 写权限放大攻击面。
+     * 未配置 capabilities 的灵元应在 Dashboard 显式配置治理策略后再激活。
      */
     private void activateLing(String lingId, String version, RuntimeStatus currentStatus) {
+        // 激活前 fail-fast：未配置 capabilities 直接拒绝激活，提示用户先配置治理策略
+        GovernancePolicy effectivePolicy = governanceSupport.getEffectivePolicy(lingId);
+        if (effectivePolicy == null
+                || effectivePolicy.getCapabilities() == null
+                || effectivePolicy.getCapabilities().isEmpty()) {
+            String errorMessage = String.format(
+                    "Cannot activate %s: no capabilities configured. Please configure governance policy first.",
+                    lingId);
+            log.warn("[Dashboard] {}", errorMessage);
+            throw new IllegalStateException(errorMessage);
+        }
+
         if (currentStatus == RuntimeStatus.INACTIVE) {
             // INACTIVE 说明无可用实例，需要通过 recover 编排恢复
             try {
@@ -90,18 +104,6 @@ public class DashboardStatusCoordinator {
 
         log.info("[Dashboard] Ling {} activated from {}", lingId, currentStatus);
         lifecycleEventStore.addEvent(lingId, version, "ACTIVE", "灵元激活", "灵元 " + lingId + " 已激活并开始处理请求");
-
-        GovernancePolicy effectivePolicy = governanceSupport.getEffectivePolicy(lingId);
-        if (effectivePolicy == null
-                || effectivePolicy.getCapabilities() == null
-                || effectivePolicy.getCapabilities().isEmpty()) {
-            GovernancePolicy patch = governanceSupport.getPatchForUpdate(lingId);
-            patch.setCapabilities(Arrays.asList(
-                    capabilityRule(Capabilities.STORAGE_SQL, AccessType.WRITE),
-                    capabilityRule(Capabilities.CACHE_LOCAL, AccessType.WRITE),
-                    capabilityRule(Capabilities.LING_ENABLE, AccessType.EXECUTE)));
-            governanceSupport.persistPolicyPatch(lingId, patch);
-        }
     }
 
     private void deactivateLing(String lingId, String version, RuntimeStatus currentStatus) {
@@ -138,13 +140,6 @@ public class DashboardStatusCoordinator {
                 version == null
                         ? "灵元 " + lingId + " 已恢复到可服务状态"
                         : "灵元 " + lingId + " 版本 " + version + " 已恢复到可服务状态");
-    }
-
-    private GovernancePolicy.CapabilityRule capabilityRule(String capability, AccessType accessType) {
-        return GovernancePolicy.CapabilityRule.builder()
-                .capability(capability)
-                .accessType(accessType.name())
-                .build();
     }
 
     /**

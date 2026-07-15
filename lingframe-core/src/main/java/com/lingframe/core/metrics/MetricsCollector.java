@@ -158,7 +158,8 @@ public class MetricsCollector implements LingMetricsCollector {
         long maxLatencyMs = 0L;
         long windowDurationMs = Long.MAX_VALUE;
         double totalLatency = 0.0;
-        double qps = 0.0;
+        // 注意：QPS 不直接相加（各快照可能基于不同窗口时长计算，直接求和语义错误），
+        // 改为在最后基于总请求数和聚合窗口时间重新计算。
 
         for (MetricsSnapshot snapshot : snapshots) {
             if (snapshot == null) {
@@ -172,9 +173,10 @@ public class MetricsCollector implements LingMetricsCollector {
             activeRequests += snapshot.getActiveRequests();
             maxLatencyMs = Math.max(maxLatencyMs, snapshot.getMaxLatencyMs());
             totalLatency += snapshot.getAvgLatencyMs() * snapshot.getTotalRequests();
-            qps += snapshot.getQps();
             if (snapshot.getWindowDurationMs() > 0) {
-                windowDurationMs = Math.min(windowDurationMs, snapshot.getWindowDurationMs());
+                // 取最大窗口作为 QPS 分母：窗口越大 QPS 越小，更保守准确，
+                // 避免取最小窗口高估聚合 QPS（总请求横跨各版本窗口，最小窗口无法覆盖全部请求时长）
+                windowDurationMs = Math.max(windowDurationMs, snapshot.getWindowDurationMs());
             }
         }
 
@@ -182,6 +184,11 @@ public class MetricsCollector implements LingMetricsCollector {
         double successRate = totalRequests > 0 ? (successRequests * 100.0 / totalRequests) : 100.0;
         double errorRate = totalRequests > 0 ? (failedRequests * 100.0 / totalRequests) : 0.0;
         double timeoutRate = totalRequests > 0 ? (timeoutRequests * 100.0 / totalRequests) : 0.0;
+        long effectiveWindowMs = windowDurationMs == Long.MAX_VALUE ? 0L : windowDurationMs;
+        // 基于总请求数和聚合窗口时间重新计算 QPS，避免直接相加不同窗口时长的 QPS
+        double qps = (effectiveWindowMs > 0 && totalRequests > 0)
+                ? totalRequests * 1000.0 / effectiveWindowMs
+                : 0.0;
 
         aggregated.setTimestamp(timestamp > 0 ? timestamp : System.currentTimeMillis());
         aggregated.setTotalRequests(totalRequests);
@@ -195,7 +202,7 @@ public class MetricsCollector implements LingMetricsCollector {
         aggregated.setMaxLatencyMs(maxLatencyMs);
         aggregated.setQps(qps);
         aggregated.setActiveRequests(activeRequests);
-        aggregated.setWindowDurationMs(windowDurationMs == Long.MAX_VALUE ? 0L : windowDurationMs);
+        aggregated.setWindowDurationMs(effectiveWindowMs);
         aggregated.setHealthStatus(determineOverallHealth(snapshots));
         return aggregated;
     }

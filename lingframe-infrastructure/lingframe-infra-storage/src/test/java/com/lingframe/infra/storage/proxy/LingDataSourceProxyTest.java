@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.io.PrintWriter;
 import java.util.logging.Logger;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -38,17 +39,15 @@ class LingDataSourceProxyTest {
         }
 
         @Test
-        @DisplayName("带用户名密码的 getConnection 应返回 LingConnectionProxy")
-        void shouldReturnConnectionProxyForCredentialPath() throws SQLException {
+        @DisplayName("带用户名密码的 getConnection 应被禁止——强制使用灵核配置的凭据")
+        void shouldRejectGetConnectionWithCredentials() throws SQLException {
             DataSource target = mock(DataSource.class);
-            Connection connection = mock(Connection.class);
             PermissionService permissionService = mock(PermissionService.class);
-            when(target.getConnection("user", "pwd")).thenReturn(connection);
 
             LingDataSourceProxy proxy = new LingDataSourceProxy(target, permissionService);
 
-            assertInstanceOf(LingConnectionProxy.class, proxy.getConnection("user", "pwd"));
-            verify(target).getConnection("user", "pwd");
+            assertThrows(SQLException.class, () -> proxy.getConnection("user", "pwd"));
+            verify(target, never()).getConnection("user", "pwd");
         }
     }
 

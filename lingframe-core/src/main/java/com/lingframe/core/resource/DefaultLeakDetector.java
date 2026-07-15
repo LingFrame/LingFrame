@@ -2,6 +2,7 @@ package com.lingframe.core.resource;
 
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.runtime.RuntimeMode;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LeakRiskReport;
@@ -35,7 +36,7 @@ public class DefaultLeakDetector implements LeakDetector {
     private final ReferenceQueue<ClassLoader> referenceQueue = new ReferenceQueue<>();
     private final AtomicInteger aggressiveChecksInFlight = new AtomicInteger();
 
-    private final boolean devMode;
+    private final RuntimeMode runtimeMode;
     private final EventBus eventBus;
     private final int maxConcurrentAggressiveChecks;
     private final int devStartDelayMillis;
@@ -65,7 +66,8 @@ public class DefaultLeakDetector implements LeakDetector {
         LingFrameConfig effectiveConfig = Objects.requireNonNull(config,
                 "LingFrameConfig is required for DefaultLeakDetector");
         this.eventBus = eventBus;
-        this.devMode = effectiveConfig.isDevMode();
+        // 持有 RuntimeMode 引用而非拍平为 boolean：运行时切换 dev/prod 后能实时感知
+        this.runtimeMode = effectiveConfig.getRuntimeMode();
         this.maxConcurrentAggressiveChecks = Math.max(1, effectiveConfig.getLeakDetectionMaxConcurrentAggressiveChecks());
         this.devStartDelayMillis = Math.max(0, effectiveConfig.getLeakDetectionDevStartDelayMillis());
         this.aggressiveGcRounds = Math.max(0, effectiveConfig.getLeakDetectionAggressiveGcRounds());
@@ -81,7 +83,7 @@ public class DefaultLeakDetector implements LeakDetector {
                 ? Collections.unmodifiableList(new ArrayList<>(preGcCleaners))
                 : Collections.emptyList();
 
-        if (!devMode) {
+        if (!runtimeMode.isDev()) {
             startQueueListener();
         }
     }
@@ -93,7 +95,7 @@ public class DefaultLeakDetector implements LeakDetector {
         }
 
         long triggerTimeMillis = System.currentTimeMillis();
-        if (devMode) {
+        if (runtimeMode.isDev()) {
             detectLeakAggressive(lingId, version, classLoader, triggerTimeMillis);
         } else {
             detectLeakPassive(lingId, version, classLoader, triggerTimeMillis);

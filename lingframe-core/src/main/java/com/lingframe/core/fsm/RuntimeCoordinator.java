@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
@@ -109,11 +110,11 @@ public class RuntimeCoordinator {
     }
 
     /**
-     * @param eventBus 事件总线，为 null 时不发布事件
+     * @param eventBus 事件总线，不允许为 null
      * @param policy   聚合评估策略
      */
     public RuntimeCoordinator(EventBus eventBus, RuntimeEvaluationPolicy policy) {
-        this.eventBus = eventBus;
+        this.eventBus = Objects.requireNonNull(eventBus, "EventBus must not be null");
         this.policy = policy;
 
         // 构造时创建监听器引用，便于 start/stop 对称注册注销
@@ -222,6 +223,12 @@ public class RuntimeCoordinator {
         register(lingId);
 
         ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
+
+        // 灵元可能已被 purge（并发场景），此时忽略事件避免 NPE
+        if (states == null) {
+            log.debug("Ling [{}] already purged, ignore instance state change", lingId);
+            return;
+        }
 
         if (to == InstanceStatus.DEAD) {
             // 终态实例移出快照

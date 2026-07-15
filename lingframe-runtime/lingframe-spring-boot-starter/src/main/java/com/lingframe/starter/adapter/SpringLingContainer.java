@@ -47,6 +47,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Spring 容器适配器。
@@ -69,19 +70,32 @@ public class SpringLingContainer implements LingContainer {
     };
 
     // 🔥 非 final：stop() 时必须清空，否则 builder 持有 ResourceLoader → ClassLoader 引用链
-    private SpringApplicationBuilder builder;
-    private ConfigurableApplicationContext context;
-    private ClassLoader classLoader; // 非 final，以便在 stop() 中清除
-    private String version;
-    private WebInterfaceManager webInterfaceManager;
-    private List<String> excludedPackages;
-    private List<LingContextCustomizer> customizers; // 新增定制器
+    // 跨线程读写的字段必须 volatile：start() 由部署线程写入，stop()/isActive() 可能由其他线程读取，
+    // 没有 volatile 时读线程可能长期看到旧值，导致 stop() 后 isActive() 仍返回 true 等竞态。
+    private volatile SpringApplicationBuilder builder;
+    private volatile ConfigurableApplicationContext context;
+    private volatile ClassLoader classLoader; // 非 final，以便在 stop() 中清除
+    private volatile String version;
+    private volatile WebInterfaceManager webInterfaceManager;
+    private volatile List<String> excludedPackages;
+    private volatile List<LingContextCustomizer> customizers; // 新增定制器
     // 保存 Context 以便 stop 时使用
-    private LingContext lingContext;
-    private ApplicationContext mainContext; // 🔥 主容器引用
+    private volatile LingContext lingContext;
+    private volatile ApplicationContext mainContext; // 🔥 主容器引用
     private final List<LingUnloadHook> unloadHooks; // 🔥 卸载钩子列表
 
-    private File sourceFile;
+    private volatile File sourceFile;
+
+    /**
+     * 容器是否已停止的幂等标志。
+     * <p>
+     * 使用 {@link AtomicBoolean} 配合 {@code compareAndSet(false, true)} 实现原子占位，
+     * 消除 volatile boolean 的非原子 check-then-act 竞态（并发 stop() 双重清理风险）。
+     * <p>
+     * stop() 第一次调用时 CAS 成功，再次调用直接返回；
+     * isActive() 基于 {@link #get()} 判定，避免在 context 已置 null 后仍尝试访问它。
+     */
+    private final AtomicBoolean stopped = new AtomicBoolean(false);
 
     /**
      * 灵核只读配置门面（可选注入）。
@@ -608,89 +622,103 @@ public class SpringLingContainer implements LingContainer {
 
     @Override
     public void stop() {
+        // 🔥 幂等：CAS 原子占位，避免并发/重复 stop() 引发二次清理
+        if (!stopped.compareAndSet(false, true)) {
+            return;
+        }
+
         ConfigurableApplicationContext closedContext = this.context;
         // lingId 提升到方法作用域：后续引用清理日志需要用到，但此时 lingContext 可能已被置 null
         String lingId = (lingContext != null) ? lingContext.getLingId() : "unknown";
-        if (closedContext != null && closedContext.isActive()) {
+        try {
+            if (closedContext != null && closedContext.isActive()) {
 
-            try {
-                Ling ling = closedContext.getBean(Ling.class);
-                log.info("Triggering onStop for ling: {}", lingId);
-                ling.onStop(lingContext);
-            } catch (Exception e) {
-                // 忽略，可能没有入口类
-            }
-
-            // 注销 Web 接口元数据
-            if (webInterfaceManager != null) {
-                webInterfaceManager.unregisterSync(lingId, this.classLoader);
-            }
-
-            // ✅ 从主容器获取 ObjectMapper，而不是靠 @Autowired
-            try {
-            if (this.mainContext != null) {
                 try {
-                    // 1. 清理灵核主容器中的 ObjectMapper 缓存 (最重要的，因为网关走这里)
-                    Map<String, ObjectMapper> hostOms = this.mainContext.getBeansOfType(ObjectMapper.class);
-                    for (ObjectMapper om : hostOms.values()) {
-                        JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
-                    }
-                    
-                    // 2. 清理灵元内部容器中的 ObjectMapper 缓存 (防止内部引用不释放)
-                    Map<String, ObjectMapper> lingOms = closedContext.getBeansOfType(ObjectMapper.class);
-                    for (ObjectMapper om : lingOms.values()) {
-                        JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
-                    }
-                    log.info("[{}] Jackson caches evicted successfully", lingId);
+                    Ling ling = closedContext.getBean(Ling.class);
+                    log.info("Triggering onStop for ling: {}", lingId);
+                    ling.onStop(lingContext);
                 } catch (Exception e) {
-                    log.warn("[{}] Failed to evict Jackson caches", lingId, e);
+                    // 忽略，可能没有入口类
                 }
-            }
-            } catch (Exception e) {
-                log.warn("Failed to clear Jackson cache", e);
-            }
 
-            // 🔥 第一阶段清理：在 Context 关闭前执行 preCleanup
-            // 上下文以参数传入，Hook 不再持有可变单例字段，消除并发卸载竞态
-            for (LingUnloadHook hook : unloadHooks) {
-                if (hook instanceof SpringAwareUnloadHook) {
+                // 注销 Web 接口元数据
+                if (webInterfaceManager != null) {
+                    webInterfaceManager.unregisterSync(lingId, this.classLoader);
+                }
+
+                // ✅ 从主容器获取 ObjectMapper，而不是靠 @Autowired
+                try {
+                if (this.mainContext != null) {
                     try {
-                        SpringAwareUnloadHook awareHook = (SpringAwareUnloadHook) hook;
-                        awareHook.preCleanup(lingId, this.mainContext, closedContext);
+                        // 1. 清理灵核主容器中的 ObjectMapper 缓存 (最重要的，因为网关走这里)
+                        Map<String, ObjectMapper> hostOms = this.mainContext.getBeansOfType(ObjectMapper.class);
+                        for (ObjectMapper om : hostOms.values()) {
+                            JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
+                        }
+                        
+                        // 2. 清理灵元内部容器中的 ObjectMapper 缓存 (防止内部引用不释放)
+                        Map<String, ObjectMapper> lingOms = closedContext.getBeansOfType(ObjectMapper.class);
+                        for (ObjectMapper om : lingOms.values()) {
+                            JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
+                        }
+                        log.info("[{}] Jackson caches evicted successfully", lingId);
                     } catch (Exception e) {
-                        log.debug("Failed to invoke preCleanup on unload hook: {}", hook.getClass().getName(), e);
+                        log.warn("[{}] Failed to evict Jackson caches", lingId, e);
                     }
                 }
+                } catch (Exception e) {
+                    log.warn("Failed to clear Jackson cache", e);
+                }
+
+                // 🔥 第一阶段清理：在 Context 关闭前执行 preCleanup
+                // 上下文以参数传入，Hook 不再持有可变单例字段，消除并发卸载竞态
+                for (LingUnloadHook hook : unloadHooks) {
+                    if (hook instanceof SpringAwareUnloadHook) {
+                        try {
+                            SpringAwareUnloadHook awareHook = (SpringAwareUnloadHook) hook;
+                            awareHook.preCleanup(lingId, this.mainContext, closedContext);
+                        } catch (Exception e) {
+                            log.debug("Failed to invoke preCleanup on unload hook: {}", hook.getClass().getName(), e);
+                        }
+                    }
+                }
+                // 5. 关闭上下文 (核心隔离点)
+                try {
+                    closedContext.close();
+                    log.info("[{}] Spring ApplicationContext closed successfully", lingId);
+                } catch (Exception e) {
+                    // 🔥 关键修复：隔离上下文关闭异常，防止阻断整机卸载
+                    log.error("[{}] Error during Spring ApplicationContext close, forcing reference cleanup", lingId, e);
+                }
             }
-            // 5. 关闭上下文 (核心隔离点)
-            try {
-                closedContext.close();
-                log.info("[{}] Spring ApplicationContext closed successfully", lingId);
-            } catch (Exception e) {
-                // 🔥 关键修复：隔离上下文关闭异常，防止阻断整机卸载
-                log.error("[{}] Error during Spring ApplicationContext close, forcing reference cleanup", lingId, e);
-            }
+        } finally {
+            // 🔥 第二阶段清理会由 DefaultLingLifecycleEngine 调用 unloadHook.cleanup()
+            // cleanup 签名不变（仅 lingId + classLoader），无需在此预置 context 引用
+
+            // 彻底断开所有强引用，辅助 GC 回收 ClassLoader
+            // 必须在 finally 中执行，确保即使清理过程抛异常也能断开引用
+            this.builder = null; 
+            this.context = null; 
+            this.mainContext = null; 
+            this.classLoader = null;
+            this.lingContext = null;
+            this.webInterfaceManager = null;
+            this.excludedPackages = null;
+            this.customizers = null;
+            this.version = null;
+            this.sourceFile = null;
+            log.debug("[{}] Container references cleared", lingId);
         }
-
-        // 🔥 第二阶段清理会由 DefaultLingLifecycleEngine 调用 unloadHook.cleanup()
-        // cleanup 签名不变（仅 lingId + classLoader），无需在此预置 context 引用
-
-        // 彻底断开所有强引用，辅助 GC 回收 ClassLoader
-        this.builder = null; 
-        this.context = null; 
-        this.mainContext = null; 
-        this.classLoader = null;
-        this.lingContext = null;
-        this.webInterfaceManager = null;
-        this.excludedPackages = null;
-        this.customizers = null;
-        this.version = null;
-        log.debug("[{}] Container references cleared", lingId);
     }
 
     @Override
     public boolean isActive() {
-        return context != null && context.isActive();
+        // 🔥 基于 stopped 标志判定，避免在 context 已置 null 后仍尝试访问它
+        if (stopped.get()) {
+            return false;
+        }
+        ConfigurableApplicationContext ctx = this.context;
+        return ctx != null && ctx.isActive();
     }
 
     @Override

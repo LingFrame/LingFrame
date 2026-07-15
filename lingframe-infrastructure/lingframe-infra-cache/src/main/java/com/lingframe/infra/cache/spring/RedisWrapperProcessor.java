@@ -4,16 +4,12 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.infra.cache.interceptor.RedisPermissionInterceptor;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.aop.Advisor;
+import org.springframework.aop.framework.Advised;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.BeanCreationException;
-import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
-import org.springframework.core.Ordered;
-import org.springframework.core.annotation.Order;
 import org.springframework.data.redis.core.RedisTemplate;
 
 @Slf4j
@@ -21,22 +17,27 @@ import org.springframework.data.redis.core.RedisTemplate;
 @ConditionalOnClass(RedisTemplate.class)
 // ✅ 核心强制：框架开启即生效
 @ConditionalOnProperty(prefix = "lingframe", name = "enabled", havingValue = "true", matchIfMissing = true)
-public class RedisWrapperProcessor implements BeanPostProcessor, ApplicationContextAware {
+public class RedisWrapperProcessor extends AbstractGovernanceWrapperProcessor<RedisTemplate> {
 
-    private ApplicationContext applicationContext;
+    @Override
+    protected String getBeanTypeDescription() {
+        return "RedisTemplate bean";
+    }
 
     @Override
     public Object postProcessAfterInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
         // 如果 Bean 是 RedisTemplate，就把它包一层
         if (bean instanceof RedisTemplate) {
-            log.info(">>>>>> [LingFrame] Wrapping RedisTemplate: {}", beanName);
-
-            // fail-closed：PermissionService 不可用视为装配错误，让异常向上抛而非裸奔
-            if (applicationContext == null) {
-                throw new BeanCreationException(
-                        "ApplicationContext not injected, cannot wrap RedisTemplate: " + beanName);
+            // 防重包装：已添加 RedisPermissionInterceptor 的代理不再重复包装，避免鉴权叠加
+            if (isAlreadyWrapped(bean)) {
+                return bean;
             }
-            PermissionService permissionService = applicationContext.getBean(PermissionService.class);
+            PermissionService permissionService = resolvePermissionService(beanName);
+            if (permissionService == null) {
+                // 治理未启用（PermissionService bean 未注册）：跳过包装
+                return bean;
+            }
+            log.info("[LingFrame] Wrapping RedisTemplate: {}", beanName);
             // 使用 ProxyFactory 创建动态代理
             ProxyFactory proxyFactory = new ProxyFactory(bean);
             proxyFactory.setProxyTargetClass(true); // 强制使用 CGLIB (保持 RedisTemplate 类型)
@@ -48,13 +49,18 @@ public class RedisWrapperProcessor implements BeanPostProcessor, ApplicationCont
         return bean;
     }
 
-    @Override
-    public Object postProcessBeforeInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
-        return bean;
-    }
-
-    @Override
-    public void setApplicationContext(@NonNull ApplicationContext applicationContext) throws BeansException {
-        this.applicationContext = applicationContext;
+    /**
+     * 判断 bean 是否已经被本处理器包装过（即代理链中包含 {@link RedisPermissionInterceptor}）。
+     */
+    private boolean isAlreadyWrapped(Object bean) {
+        if (!(bean instanceof Advised)) {
+            return false;
+        }
+        for (Advisor advisor : ((Advised) bean).getAdvisors()) {
+            if (advisor.getAdvice() instanceof RedisPermissionInterceptor) {
+                return true;
+            }
+        }
+        return false;
     }
 }

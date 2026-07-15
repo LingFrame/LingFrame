@@ -14,15 +14,16 @@ import com.lingframe.core.ling.LingRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,20 +34,23 @@ class DashboardStatusCoordinatorTest {
     private static final ObjectMapper SHARED_OBJECT_MAPPER = new ObjectMapper();
 
     @Test
-    @DisplayName("激活时应初始化默认能力并写入时间线")
-    void shouldInitializeDefaultCapabilitiesWhenActivating() {
+    @DisplayName("激活成功时应写入时间线（灵元已显式配置 capabilities）")
+    void shouldWriteTimelineWhenActivatingWithCapabilitiesConfigured() {
         LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
         PermissionService permissionService = mock(PermissionService.class);
         RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(new EventBus());
         GovernanceAdminService governanceAdmin = mock(GovernanceAdminService.class);
 
-        AtomicReference<GovernancePolicy> storedPatch = new AtomicReference<GovernancePolicy>();
-        when(governanceAdmin.getPatchForUpdate("ling1")).thenAnswer(invocation ->
-                storedPatch.get() == null ? new GovernancePolicy() : storedPatch.get().copy());
-        doAnswer(invocation -> {
-            storedPatch.set(((GovernancePolicy) invocation.getArgument(1)).copy());
-            return null;
-        }).when(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
+        // 提供非空 capabilities，满足激活前置校验（不再自动注入默认能力）
+        GovernancePolicy effectivePolicy = GovernancePolicy.builder()
+                .capabilities(Arrays.asList(
+                        GovernancePolicy.CapabilityRule.builder()
+                                .capability(Capabilities.LING_ENABLE)
+                                .accessType(AccessType.EXECUTE.name())
+                                .build()))
+                .build();
+        when(governanceAdmin.getEffectivePolicy("ling1")).thenReturn(effectivePolicy);
+
         runtimeCoordinator.register("ling1");
 
         DashboardGovernanceSupport governanceSupport =
@@ -57,11 +61,40 @@ class DashboardStatusCoordinatorTest {
 
         coordinator.updateStatus("ling1", RuntimeStatus.INACTIVE, RuntimeStatus.ACTIVE, "1.0.0");
 
-        // 默认能力初始化由 governanceSupport 委托 GovernanceAdminService 持久化，权限同步在其内部完成
-        verify(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
+        // 不再自动持久化补丁，时间线应包含一条 ACTIVE 事件
+        verify(governanceAdmin, never())
+                .persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
         List<DashboardService.LifecycleEvent> events = eventStore.getEvents("ling1");
         assertEquals(1, events.size());
         assertEquals("ACTIVE", events.get(0).getType());
+    }
+
+    @Test
+    @DisplayName("未配置 capabilities 时激活应失败且不写入时间线")
+    void shouldFailActivationWhenNoCapabilitiesConfigured() {
+        LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(new EventBus());
+        GovernanceAdminService governanceAdmin = mock(GovernanceAdminService.class);
+
+        // 未配置 capabilities
+        when(governanceAdmin.getEffectivePolicy("ling1")).thenReturn(null);
+        runtimeCoordinator.register("ling1");
+
+        DashboardGovernanceSupport governanceSupport =
+                new DashboardGovernanceSupport(governanceAdmin, permissionService, SHARED_OBJECT_MAPPER);
+        DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
+        DashboardStatusCoordinator coordinator = new DashboardStatusCoordinator(
+                lifecycleEngine, permissionService, runtimeCoordinator, governanceSupport, eventStore);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> coordinator.updateStatus("ling1", RuntimeStatus.INACTIVE, RuntimeStatus.ACTIVE, "1.0.0"));
+
+        assertTrue(ex.getMessage().contains("Cannot activate"));
+        assertTrue(ex.getMessage().contains("no capabilities configured"));
+        // 激活失败不应触发任何生命周期编排或时间线写入
+        verify(lifecycleEngine, never()).recover(any(), any());
+        assertTrue(eventStore.getEvents("ling1").isEmpty());
     }
 
     @Test

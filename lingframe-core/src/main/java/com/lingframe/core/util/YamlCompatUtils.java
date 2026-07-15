@@ -57,12 +57,22 @@ public class YamlCompatUtils {
                     new Class<?>[] { tagInspectorClass },
                     (proxy, method, args) -> {
                         if ("isGlobalTagAllowed".equals(method.getName())) {
-                            // `args[0]` 是 `org.yaml.snakeyaml.nodes.Tag`
-                            Object tag = args[0];
-                            String className = (String) tag.getClass()
-                                    .getMethod("getClassName").invoke(tag);
-                            return className != null
-                                    && className.startsWith("com.lingframe.");
+                            // 🔥 单个脏标签不应中断整体加载：
+                            // 反射读取 tag.getClassName() 时可能因标签格式异常或权限问题抛异常，
+                            // 这里 try-catch 兜底，遇到无法解析的标签一律按"不允许"处理，
+                            // 让 SnakeYAML 走默认拒绝路径而非把异常传播到外层导致整个 Yaml 实例不可用
+                            try {
+                                // `args[0]` 是 `org.yaml.snakeyaml.nodes.Tag`
+                                Object tag = args[0];
+                                String className = (String) tag.getClass()
+                                        .getMethod("getClassName").invoke(tag);
+                                return className != null
+                                        && className.startsWith("com.lingframe.");
+                            } catch (Exception | LinkageError t) {
+                                // 收窄为 Exception | LinkageError，避免吞掉 OOM / StackOverflowError 等致命错误
+                                log.debug("TagInspector skipped a malformed tag: {}", t.getMessage());
+                                return false;
+                            }
                         }
                         return false;
                     });

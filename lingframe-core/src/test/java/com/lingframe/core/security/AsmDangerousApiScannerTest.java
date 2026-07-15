@@ -7,6 +7,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -197,5 +200,271 @@ class AsmDangerousApiScannerTest {
         assertTrue(str.contains("CRITICAL"));
         assertTrue(str.contains("System.exit"));
         assertTrue(str.contains("Evil"));
+    }
+
+    // ==================== 危险 API 覆盖度（P2-5）====================
+
+    /**
+     * 生成一个调用指定方法的类字节码。
+     * scanner 只读取指令不执行代码，因此无需构造合法操作数栈。
+     */
+    private static byte[] generateClassWithCall(String owner, String methodName, String desc, int opcode) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, "Evil", null, "java/lang/Object", null);
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "doEvil", "()V", null, null);
+        mv.visitCode();
+        mv.visitMethodInsn(opcode, owner, methodName, desc, opcode == Opcodes.INVOKEINTERFACE);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(1, 1);
+        mv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
+    private static ScanResult scanClassBytes(Path tempDir, byte[] classBytes) throws IOException {
+        Files.write(tempDir.resolve("Evil.class"), classBytes);
+        return AsmDangerousApiScanner.scan(tempDir.toFile());
+    }
+
+    @Nested
+    @DisplayName("禁止 API 检测（FORBIDDEN）")
+    class ForbiddenApiDetection {
+
+        @Test
+        @DisplayName("System.exit 触发 CRITICAL")
+        void systemExitIsForbidden(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/System", "exit", "(I)V", Opcodes.INVOKESTATIC);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasCriticalViolations());
+        }
+
+        @Test
+        @DisplayName("Runtime.exit 触发 CRITICAL")
+        void runtimeExitIsForbidden(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/Runtime", "exit", "(I)V", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasCriticalViolations());
+        }
+
+        @Test
+        @DisplayName("Runtime.halt 触发 CRITICAL")
+        void runtimeHaltIsForbidden(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/Runtime", "halt", "(I)V", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasCriticalViolations());
+        }
+
+        @Test
+        @DisplayName("Thread.stop 触发 CRITICAL（覆盖无参重载）")
+        void threadStopIsForbidden(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/Thread", "stop", "()V", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasCriticalViolations());
+        }
+
+        @Test
+        @DisplayName("Thread.stop(Throwable) 触发 CRITICAL（覆盖有参重载）")
+        void threadStopWithArgIsForbidden(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/Thread", "stop", "(Ljava/lang/Throwable;)V", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasCriticalViolations());
+        }
+
+        @Test
+        @DisplayName("Thread.suspend 触发 CRITICAL")
+        void threadSuspendIsForbidden(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/Thread", "suspend", "()V", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasCriticalViolations());
+        }
+
+        @Test
+        @DisplayName("Thread.resume 触发 CRITICAL")
+        void threadResumeIsForbidden(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/Thread", "resume", "()V", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasCriticalViolations());
+        }
+
+        @Test
+        @DisplayName("Runtime.load 触发 CRITICAL")
+        void runtimeLoadIsForbidden(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/Runtime", "load", "(Ljava/lang/String;)V", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasCriticalViolations());
+        }
+
+        @Test
+        @DisplayName("Runtime.loadLibrary 触发 CRITICAL")
+        void runtimeLoadLibraryIsForbidden(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/Runtime", "loadLibrary", "(Ljava/lang/String;)V", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasCriticalViolations());
+        }
+
+        @Test
+        @DisplayName("System.load 触发 CRITICAL")
+        void systemLoadIsForbidden(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/System", "load", "(Ljava/lang/String;)V", Opcodes.INVOKESTATIC);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasCriticalViolations());
+        }
+
+        @Test
+        @DisplayName("System.loadLibrary 触发 CRITICAL")
+        void systemLoadLibraryIsForbidden(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/System", "loadLibrary", "(Ljava/lang/String;)V", Opcodes.INVOKESTATIC);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasCriticalViolations());
+        }
+
+        @Test
+        @DisplayName("Thread.stop0 触发 CRITICAL")
+        void threadStop0IsForbidden(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/Thread", "stop0", "()V", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasCriticalViolations());
+        }
+    }
+
+    @Nested
+    @DisplayName("警告 API 检测（WARN）")
+    class WarnApiDetection {
+
+        @Test
+        @DisplayName("Runtime.exec 触发 WARNING 而非 CRITICAL")
+        void runtimeExecIsWarning(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/Runtime", "exec",
+                    "(Ljava/lang/String;)Ljava/lang/Process;", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+            assertFalse(result.hasCriticalViolations());
+        }
+
+        @Test
+        @DisplayName("ProcessBuilder.start 触发 WARNING")
+        void processBuilderStartIsWarning(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/ProcessBuilder", "start",
+                    "()Ljava/lang/Process;", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+        }
+
+        @Test
+        @DisplayName("ProcessBuilder 构造器触发 WARNING")
+        void processBuilderInitIsWarning(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/ProcessBuilder", "<init>",
+                    "([Ljava/lang/String;)V", Opcodes.INVOKESPECIAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+        }
+
+        @Test
+        @DisplayName("Class.forName 触发 WARNING")
+        void classForNameIsWarning(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/Class", "forName",
+                    "(Ljava/lang/String;)Ljava/lang/Class;", Opcodes.INVOKESTATIC);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+        }
+
+        @Test
+        @DisplayName("ClassLoader.defineClass 触发 WARNING")
+        void classLoaderDefineClassIsWarning(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/ClassLoader", "defineClass",
+                    "([BII)Ljava/lang/Class;", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+        }
+
+        @Test
+        @DisplayName("ClassLoader.loadClass 触发 WARNING")
+        void classLoaderLoadClassIsWarning(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/ClassLoader", "loadClass",
+                    "(Ljava/lang/String;)Ljava/lang/Class;", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+        }
+
+        @Test
+        @DisplayName("InitialContext.lookup 触发 WARNING（JNDI 注入）")
+        void jndiLookupIsWarning(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("javax/naming/InitialContext", "lookup",
+                    "(Ljava/lang/String;)Ljava/lang/Object;", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+        }
+
+        @Test
+        @DisplayName("ScriptEngine.eval 触发 WARNING（脚本执行）")
+        void scriptEngineEvalIsWarning(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("javax/script/ScriptEngine", "eval",
+                    "(Ljava/lang/String;)Ljava/lang/Object;", Opcodes.INVOKEINTERFACE);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+        }
+
+        @Test
+        @DisplayName("MethodHandles.lookup 触发 WARNING")
+        void methodHandlesLookupIsWarning(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/invoke/MethodHandles", "lookup",
+                    "()Ljava/lang/invoke/MethodHandles$Lookup;", Opcodes.INVOKESTATIC);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+        }
+
+        @Test
+        @DisplayName("System.setSecurityManager 触发 WARNING")
+        void setSecurityManagerIsWarning(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/lang/System", "setSecurityManager",
+                    "(Ljava/lang/SecurityManager;)V", Opcodes.INVOKESTATIC);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+        }
+
+        @Test
+        @DisplayName("FileOutputStream 构造器触发 WARNING")
+        void fileOutputStreamInitIsWarning(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/io/FileOutputStream", "<init>",
+                    "(Ljava/lang/String;)V", Opcodes.INVOKESPECIAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+        }
+
+        @Test
+        @DisplayName("Socket 构造器触发 WARNING")
+        void socketInitIsWarning(@TempDir Path temp) throws IOException {
+            byte[] bytes = generateClassWithCall("java/net/Socket", "<init>",
+                    "(Ljava/lang/String;I)V", Opcodes.INVOKESPECIAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+        }
+    }
+
+    @Nested
+    @DisplayName("告警去重")
+    class NoDuplicateWarnings {
+
+        @Test
+        @DisplayName("同一 API 不产生重复告警（WARN_METHODS 与 WARN_PREFIXES 去重）")
+        void noDuplicateWarningForOverlappingRules(@TempDir Path temp) throws IOException {
+            // Class.forName 同时在 WARN_METHODS 和 WARN_PREFIXES 中，应只产生一条告警
+            byte[] bytes = generateClassWithCall("java/lang/Class", "forName",
+                    "(Ljava/lang/String;)Ljava/lang/Class;", Opcodes.INVOKESTATIC);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+            assertEquals(1, result.getWarnings().size(), "同一 API 不应产生重复告警");
+        }
+
+        @Test
+        @DisplayName("reflect/Method.invoke 不产生重复告警")
+        void noDuplicateForMethodInvoke(@TempDir Path temp) throws IOException {
+            // Method.invoke 同时在 WARN_METHODS 和 WARN_PREFIXES 中
+            byte[] bytes = generateClassWithCall("java/lang/reflect/Method", "invoke",
+                    "(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;", Opcodes.INVOKEVIRTUAL);
+            ScanResult result = scanClassBytes(temp, bytes);
+            assertTrue(result.hasWarnings());
+            assertEquals(1, result.getWarnings().size(), "同一 API 不应产生重复告警");
+        }
     }
 }

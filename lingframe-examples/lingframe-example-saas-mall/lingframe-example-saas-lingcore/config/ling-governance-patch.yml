@@ -1,0 +1,73 @@
+saas-refund-ling: !!com.lingframe.api.config.GovernancePolicy
+  audits: [
+    ]
+  capabilities:
+  - accessType: EXECUTE
+    capability: LING_ENABLE
+  - accessType: READ
+    capability: cache:local
+  - accessType: READ
+    capability: storage:sql
+  invocation:
+    cpuBudgetMsPerMinute: null
+    fallbackValue: null
+    maxConcurrentThreads: null
+    memoryBudgetMb: null
+    rateLimitPerSecond: null
+    retryCount: null
+    timeoutMs: null
+  permissions: [
+    ]
+  references: [
+    ]
+lingcore-app: !!com.lingframe.api.config.GovernancePolicy
+  audits: [
+    ]
+  capabilities: [
+    ]
+  invocation:
+    cpuBudgetMsPerMinute: null
+    fallbackValue: null
+    maxConcurrentThreads: 1
+    memoryBudgetMb: null
+    rateLimitPerSecond: 1
+    retryCount: null
+    timeoutMs: 2000
+  permissions: [
+    ]
+  references: [
+    ]
+saas-oauth-ling: !!com.lingframe.api.config.GovernancePolicy
+  audits: [
+    ]
+  capabilities: [
+    ]
+  invocation:
+    cpuBudgetMsPerMinute: null
+    fallbackValue: null
+    maxConcurrentThreads: 1
+    memoryBudgetMb: null
+    rateLimitPerSecond: 1
+    retryCount: null
+    timeoutMs: 2000
+  permissions: [
+    ]
+  references: [
+    ]
+saas-seckill-ling: !!com.lingframe.api.config.GovernancePolicy
+  audits: [
+    ]
+  capabilities: [
+    ]
+  invocation:
+    cpuBudgetMsPerMinute: null
+    fallbackValue: null
+    maxConcurrentThreads: 8
+    memoryBudgetMb: null
+    rateLimitPerSecond: 5
+    retryCount: null
+    timeoutMs: 1000
+  permissions: [
+    ]
+  references: [
+    ]

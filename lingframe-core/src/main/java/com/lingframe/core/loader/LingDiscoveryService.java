@@ -66,7 +66,12 @@ public class LingDiscoveryService {
                     realPath += File.separator + "/target/classes";
                 }
                 File realFile = PathUtils.resolvePath(realPath, new File(config.getLingHome()));
-                installSingle(loadedLingIds, realFile);
+                try {
+                    // 🔥 单个 root 失败不中断整体扫描：坏灵元只打日志，不抛出
+                    installSingle(loadedLingIds, realFile);
+                } catch (Exception e) {
+                    log.error("⚠️ Failed to load ling from root: {}", realFile.getAbsolutePath(), e);
+                }
             }
         }
 
@@ -123,8 +128,10 @@ public class LingDiscoveryService {
             log.warn("Ling root does not exist: {}", root.getAbsolutePath());
             return false;
         }
-        if (!root.isDirectory()) {
-            log.warn("Ling root is not a directory: {}", root.getAbsolutePath());
+        // 🔥 允许 jar 文件作为灵元根：打包成 jar 的灵元同样需要被自动发现
+        // 原实现只接受目录，导致 jar 形态的灵元在 scanAndLoad 时被静默跳过
+        if (!root.isDirectory() && !root.getName().endsWith(".jar")) {
+            log.warn("Ling root is neither a directory nor a jar: {}", root.getAbsolutePath());
             return false;
         }
         if (!root.canRead()) {

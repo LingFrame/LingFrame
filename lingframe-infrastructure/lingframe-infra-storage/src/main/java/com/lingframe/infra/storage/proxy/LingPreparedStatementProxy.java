@@ -4,7 +4,6 @@ import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
@@ -13,10 +12,11 @@ import java.math.BigDecimal;
 import java.net.URL;
 import java.sql.*;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
-@RequiredArgsConstructor
 public class LingPreparedStatementProxy implements PreparedStatement {
 
     private final PreparedStatement target;
@@ -31,12 +31,23 @@ public class LingPreparedStatementProxy implements PreparedStatement {
     // 预解析的结果
     private final AccessType preParsedAccessType;
     private final List<String> preParsedCapabilities;
+    private final boolean preParsedParseable;
+    // 预编译语句 SQL 涉及的可更新表集合，供 executeQuery 返回的 ResultSet 表级写治理
+    private final Set<String> updatableTables;
+
+    /**
+     * 产生此 PreparedStatement 的 Connection 代理引用。
+     * getConnection() 直接返回它，避免暴露原生 Connection 导致 SQL 治理被绕过。
+     */
+    private final LingConnectionProxy lingConnection;
 
     // SQL解析结果缓存 (LRU缓存)
 
-    public LingPreparedStatementProxy(PreparedStatement target, PermissionService permissionService, String sql) {
+    public LingPreparedStatementProxy(PreparedStatement target, PermissionService permissionService, String sql,
+            LingConnectionProxy lingConnection) {
         this.target = target;
         this.permissionService = permissionService;
+        this.lingConnection = lingConnection;
 
         // 生成审计短摘要，防止 OOM
         this.sqlAuditSummary = sql != null && sql.length() > 100
@@ -44,9 +55,12 @@ public class LingPreparedStatementProxy implements PreparedStatement {
                 : sql;
 
         // 在构造时预解析SQL类型，完成后即扔掉对长 SQL 的强引用
-        SqlPermissionSupport.SqlPermissionPlan plan = parseSqlPermissionPlanWithCache(sql);
+        SqlPermissionSupport.SqlPermissionPlan plan = SqlParseCache.getOrAnalyze(LingCallContext.getLingId(), sql);
         this.preParsedAccessType = plan.getAccessType();
         this.preParsedCapabilities = plan.getCapabilities();
+        this.preParsedParseable = plan.isParseable();
+        // 预编译语句的 SQL 在 prepareStatement 时已确定，提取表名供 executeQuery 返回的 ResultSet 表级写治理
+        this.updatableTables = SqlPermissionSupport.extractNormalizedTables(sql);
     }
 
     // --- 核心鉴权逻辑 ---
@@ -56,16 +70,11 @@ public class LingPreparedStatementProxy implements PreparedStatement {
         String callerLingId = LingCallContext.getLingId();
         if (callerLingId == null) {
             // 检查是否启用了灵核治理
-            if (permissionService.isLingCoreGovernanceEnabled()) {
+            if (!SqlPermissionSupport.checkLingCoreGovernance(permissionService, sqlAuditSummary)) {
                 // 灵核治理开启：拒绝无上下文的操作
-                log.error(
-                        "Security Alert: SQL execution without LingContext (LINGCORE governance ENABLED). SQL Summary: {}",
-                        sqlAuditSummary);
                 throw new SQLException("Access Denied: LINGCORE governance is enabled but no context provided.");
             }
             // 灵核治理关闭：默认放行 (LINGCORE Privilege)
-            log.debug("SQL execution without LingContext (LINGCORE governance disabled). ALLOWED. SQL Summary: {}",
-                    sqlAuditSummary);
             return;
         }
 
@@ -73,7 +82,7 @@ public class LingPreparedStatementProxy implements PreparedStatement {
         SqlPermissionSupport.ResolvedCapability resolvedCapability = SqlPermissionSupport.resolveCapability(
                 permissionService,
                 callerLingId,
-                new SqlPermissionSupport.SqlPermissionPlan(preParsedAccessType, preParsedCapabilities));
+                new SqlPermissionSupport.SqlPermissionPlan(preParsedAccessType, preParsedCapabilities, preParsedParseable));
 
         // 3. 上报审计 (异步)
         permissionService.audit(callerLingId,
@@ -87,35 +96,13 @@ public class LingPreparedStatementProxy implements PreparedStatement {
         }
     }
 
-    /**
-     * 带缓存的 SQL 解析。
-     *
-     * @param sql SQL语句
-     * @return 权限计划
-     */
-    private SqlPermissionSupport.SqlPermissionPlan parseSqlPermissionPlanWithCache(String sql) {
-        // 检查缓存
-        String cacheLingId = LingCallContext.getLingId();
-        AccessType cachedAccessType = SqlParseCache.get(cacheLingId, sql);
-        if (cachedAccessType != null) {
-            return new SqlPermissionSupport.SqlPermissionPlan(
-                    cachedAccessType,
-                    SqlPermissionSupport.analyze(sql).getCapabilities());
-        }
-
-        // 缓存未命中或已过期，重新解析
-        SqlPermissionSupport.SqlPermissionPlan plan = SqlPermissionSupport.analyze(sql);
-
-        // 更新缓存
-        SqlParseCache.put(cacheLingId, sql, plan.getAccessType());
-
-        return plan;
-    }
-
     @Override
     public ResultSet executeQuery() throws SQLException {
         checkPermission();
-        return target.executeQuery();
+        // 包装返回的 ResultSet，防止灵元通过可更新 ResultSet 绕过 SQL 治理
+        // 预编译语句的 SQL 在 prepareStatement 时已确定，复用构造时提取的 updatableTables 做表级写治理；
+        // 传 this 避免 getStatement() 泄露原生 Statement
+        return new LingResultSetProxy(target.executeQuery(), permissionService, this, updatableTables);
     }
 
     @Override
@@ -184,7 +171,9 @@ public class LingPreparedStatementProxy implements PreparedStatement {
 
     @Override
     public ResultSet getResultSet() throws SQLException {
-        return target.getResultSet();
+        // 包装返回的 ResultSet，防止灵元通过可更新 ResultSet 绕过 SQL 治理
+        // 传空集保持粗粒度；传 this 避免 getStatement() 泄露原生 Statement
+        return new LingResultSetProxy(target.getResultSet(), permissionService, this, Collections.emptySet());
     }
 
     @Override
@@ -229,7 +218,9 @@ public class LingPreparedStatementProxy implements PreparedStatement {
 
     @Override
     public void addBatch(String sql) throws SQLException {
-        target.addBatch(sql);
+        // PreparedStatement 禁止 addBatch(String sql)：预编译语句的 SQL 在 prepareStatement 时已校验，
+        // 此处传入新 SQL 会绕过权限治理。应使用 addBatch() 配合 setXxx()。
+        throw new SQLException("PreparedStatement does not support addBatch(String sql). Use addBatch() with setXxx().");
     }
 
     @Override
@@ -245,7 +236,8 @@ public class LingPreparedStatementProxy implements PreparedStatement {
 
     @Override
     public Connection getConnection() throws SQLException {
-        return target.getConnection();
+        // 返回 Connection 代理，避免暴露原生 Connection 导致 SQL 治理被绕过
+        return lingConnection;
     }
 
     @Override
@@ -255,43 +247,43 @@ public class LingPreparedStatementProxy implements PreparedStatement {
 
     @Override
     public ResultSet getGeneratedKeys() throws SQLException {
-        return target.getGeneratedKeys();
+        // 包装返回的 ResultSet，防止灵元通过可更新 ResultSet 绕过 SQL 治理
+        // 传空集保持粗粒度；传 this 避免 getStatement() 泄露原生 Statement
+        return new LingResultSetProxy(target.getGeneratedKeys(), permissionService, this, Collections.emptySet());
     }
 
     @Override
     public int executeUpdate(String sql, int autoGeneratedKeys) throws SQLException {
-        checkPermission();
-        return target.executeUpdate(sql, autoGeneratedKeys);
+        // PreparedStatement 禁止 executeUpdate(String sql, ...)：预编译语句的 SQL 在 prepareStatement 时已校验，
+        // 此处传入新 SQL 会绕过权限治理。应使用 executeUpdate() 配合 setXxx()。
+        throw new SQLException("PreparedStatement does not support executeUpdate(String sql, int). Use executeUpdate() with setXxx().");
     }
 
     @Override
     public int executeUpdate(String sql, int[] columnIndexes) throws SQLException {
-        checkPermission();
-        return target.executeUpdate(sql, columnIndexes);
+        throw new SQLException("PreparedStatement does not support executeUpdate(String sql, int[]). Use executeUpdate() with setXxx().");
     }
 
     @Override
     public int executeUpdate(String sql, String[] columnNames) throws SQLException {
-        checkPermission();
-        return target.executeUpdate(sql, columnNames);
+        throw new SQLException("PreparedStatement does not support executeUpdate(String sql, String[]). Use executeUpdate() with setXxx().");
     }
 
     @Override
     public boolean execute(String sql, int autoGeneratedKeys) throws SQLException {
-        checkPermission();
-        return target.execute(sql, autoGeneratedKeys);
+        // PreparedStatement 禁止 execute(String sql, ...)：预编译语句的 SQL 在 prepareStatement 时已校验，
+        // 此处传入新 SQL 会绕过权限治理。应使用 execute() 配合 setXxx()。
+        throw new SQLException("PreparedStatement does not support execute(String sql, int). Use execute() with setXxx().");
     }
 
     @Override
     public boolean execute(String sql, int[] columnIndexes) throws SQLException {
-        checkPermission();
-        return target.execute(sql, columnIndexes);
+        throw new SQLException("PreparedStatement does not support execute(String sql, int[]). Use execute() with setXxx().");
     }
 
     @Override
     public boolean execute(String sql, String[] columnNames) throws SQLException {
-        checkPermission();
-        return target.execute(sql, columnNames);
+        throw new SQLException("PreparedStatement does not support execute(String sql, String[]). Use execute() with setXxx().");
     }
 
     @Override
@@ -326,20 +318,23 @@ public class LingPreparedStatementProxy implements PreparedStatement {
 
     @Override
     public int executeUpdate(String sql) throws SQLException {
-        checkPermission();
-        return target.executeUpdate(sql);
+        // PreparedStatement 禁止 executeUpdate(String sql)：预编译语句的 SQL 在 prepareStatement 时已校验，
+        // 此处传入新 SQL 会绕过权限治理。应使用 executeUpdate() 配合 setXxx()。
+        throw new SQLException("PreparedStatement does not support executeUpdate(String sql). Use executeUpdate() with setXxx().");
     }
 
     @Override
     public boolean execute(String sql) throws SQLException {
-        checkPermission();
-        return target.execute(sql);
+        // PreparedStatement 禁止 execute(String sql)：预编译语句的 SQL 在 prepareStatement 时已校验，
+        // 此处传入新 SQL 会绕过权限治理。应使用 execute() 配合 setXxx()。
+        throw new SQLException("PreparedStatement does not support execute(String sql). Use execute() with setXxx().");
     }
 
     @Override
     public ResultSet executeQuery(String sql) throws SQLException {
-        checkPermission();
-        return target.executeQuery(sql);
+        // PreparedStatement 禁止 executeQuery(String sql)：预编译语句的 SQL 在 prepareStatement 时已校验，
+        // 此处传入新 SQL 会绕过权限治理。应使用 executeQuery() 配合 setXxx()。
+        throw new SQLException("PreparedStatement does not support executeQuery(String sql). Use executeQuery() with setXxx().");
     }
 
     @Override

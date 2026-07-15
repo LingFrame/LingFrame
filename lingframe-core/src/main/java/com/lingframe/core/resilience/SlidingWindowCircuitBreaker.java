@@ -33,7 +33,8 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
     // 统计 (环形缓冲区)
     private final boolean[] failureWindow;
     private final boolean[] slowWindow;
-    private final AtomicInteger currentIndex = new AtomicInteger(0);
+    // 使用 AtomicLong 避免长期运行后索引溢出导致 AIOOBE（AtomicInteger 在 ~21 亿次调用后会回绕为负数）
+    private final AtomicLong currentIndex = new AtomicLong(0);
     private final AtomicInteger totalCallsInWindow = new AtomicInteger(0);
     private final AtomicInteger failureCount = new AtomicInteger(0);
     private final AtomicInteger slowCount = new AtomicInteger(0);
@@ -56,6 +57,27 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
     public SlidingWindowCircuitBreaker(String name, int failureRateThreshold, int slowCallRateThreshold,
                                        long slowCallDurationThresholdMs, int slidingWindowSize, int minimumNumberOfCalls,
                                        long waitDurationInOpenStateMs, EventBus eventBus) {
+        // 构造器参数校验：防止非法配置导致运行时异常
+        if (slidingWindowSize <= 0) {
+            throw new IllegalArgumentException("slidingWindowSize must be > 0, got: " + slidingWindowSize);
+        }
+        if (minimumNumberOfCalls <= 0 || minimumNumberOfCalls > slidingWindowSize) {
+            throw new IllegalArgumentException(
+                    "minimumNumberOfCalls must be in (0, slidingWindowSize], got: " + minimumNumberOfCalls);
+        }
+        if (failureRateThreshold < 0 || failureRateThreshold > 100) {
+            throw new IllegalArgumentException(
+                    "failureRateThreshold must be in [0, 100], got: " + failureRateThreshold);
+        }
+        if (slowCallRateThreshold < 0 || slowCallRateThreshold > 100) {
+            throw new IllegalArgumentException(
+                    "slowCallRateThreshold must be in [0, 100], got: " + slowCallRateThreshold);
+        }
+        if (slowCallDurationThresholdMs < 0) {
+            throw new IllegalArgumentException(
+                    "slowCallDurationThresholdMs must be >= 0, got: " + slowCallDurationThresholdMs);
+        }
+
         this.name = name;
         this.failureRateThreshold = failureRateThreshold;
         this.slowCallRateThreshold = slowCallRateThreshold;
@@ -141,7 +163,8 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
         }
 
         // 关闭状态下更新滑动窗口
-        int idx = currentIndex.getAndIncrement() % slidingWindowSize;
+        // 使用 floorMod 防御性计算索引，即使序号异常为负也不会越界
+        int idx = (int) Math.floorMod(currentIndex.getAndIncrement(), slidingWindowSize);
 
         // 移除旧值
         if (failureWindow[idx])

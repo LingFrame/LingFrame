@@ -20,6 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -38,6 +39,11 @@ import java.util.Collections;
  * {@code LingReferenceInjector}（BPP）已把灵元代理织入控制器字段，直接调用即可；
  * 若灵元未装，调用会立即 NPE/快速失败，这正是灵珑期望的语义。
  */
+// 测试场景下 dashboard SQLite 路径指向系统临时目录，避免：
+// 1. 污染用户家目录（${user.home}/.lingframe/）
+// 2. 全量 mvn test 时跨模块 surefire fork 进程对同一文件的句柄竞争（Windows "拒绝访问"）
+// 测试逻辑不依赖 dashboard 持久化，但 Spring Boot 启动需 storage bean 可写
+@TestPropertySource(properties = "lingframe.dashboard.storage.path=${java.io.tmpdir}/lingframe-mall-test-dashboard.db")
 @SpringBootTest(classes = SaasMallApplication.class)
 @Slf4j
 public class SaasMallIntegrationTest {

@@ -16,7 +16,6 @@ user-ling: !!com.lingframe.api.config.GovernancePolicy
     capability: ipc:order-ling
   - accessType: READ
     capability: storage:sql
-  collaborationMode: PASSIVE
   invocation:
     cpuBudgetMsPerMinute: null
     fallbackValue: null
@@ -43,7 +42,6 @@ order-ling: !!com.lingframe.api.config.GovernancePolicy
     capability: ipc:order-ling
   - accessType: WRITE
     capability: storage:sql
-  collaborationMode: PASSIVE
   invocation:
     cpuBudgetMsPerMinute: 500
     fallbackValue: null

@@ -24,21 +24,44 @@ public class LingRepeatableReadFilter {
 
     private static final String ATTRIBUTE_NAME = LingRepeatableReadFilter.class.getName() + ".FILTERED";
 
+    // 启动期一次性探测 servlet API 版本,运行时只读常量,避免热路径反射和数组越界
+    private static final String SERVLET_PACKAGE;
+    private static final Class<?> SERVLET_REQUEST_CLASS;
+
+    static {
+        Class<?> reqClass;
+        String pkg;
+        try {
+            reqClass = Class.forName("jakarta.servlet.ServletRequest");
+            pkg = "jakarta.servlet";
+        } catch (ClassNotFoundException e) {
+            try {
+                reqClass = Class.forName("javax.servlet.ServletRequest");
+                pkg = "javax.servlet";
+            } catch (ClassNotFoundException ex) {
+                log.warn("No Servlet API found on classpath, LingRepeatableReadFilter disabled");
+                reqClass = null;
+                pkg = "javax.servlet"; // 兜底默认值（reqClass=null 时 createProxy 直接返回 null）
+            }
+        }
+        SERVLET_REQUEST_CLASS = reqClass;
+        SERVLET_PACKAGE = pkg;
+    }
+
     /**
      * 创建一个符合当前环境的 Filter 代理对象。
      */
     public static Object createProxy() {
+        if (SERVLET_REQUEST_CLASS == null) {
+            return null;
+        }
         ClassLoader cl = LingRepeatableReadFilter.class.getClassLoader();
-        Class<?> filterClass = null;
+        Class<?> filterClass;
         try {
-            filterClass = Class.forName("jakarta.servlet.Filter", false, cl);
+            filterClass = Class.forName(SERVLET_PACKAGE + ".Filter", false, cl);
         } catch (ClassNotFoundException e) {
-            try {
-                filterClass = Class.forName("javax.servlet.Filter", false, cl);
-            } catch (ClassNotFoundException ex) {
-                log.warn("No Servlet Filter class found on classpath");
-                return null;
-            }
+            log.warn("No Servlet Filter class found on classpath");
+            return null;
         }
 
         return Proxy.newProxyInstance(cl, new Class[]{filterClass}, new FilterInvocationHandler());
@@ -67,11 +90,11 @@ public class LingRepeatableReadFilter {
             // 获取 getAttribute / setAttribute 方法
             Method getAttrMethod = ReflectionUtils.findMethod(request.getClass(), "getAttribute", String.class);
             Method setAttrMethod = ReflectionUtils.findMethod(request.getClass(), "setAttribute", String.class, Object.class);
-            
-            String pkgName = request.getClass().getInterfaces()[0].getName().contains("jakarta") ? "jakarta.servlet" : "javax.servlet";
-            Method doFilterMethod = ReflectionUtils.findMethod(chain.getClass(), "doFilter", 
-                    Class.forName(pkgName + ".ServletRequest"),
-                    Class.forName(pkgName + ".ServletResponse"));
+
+            // 直接使用启动期探测的 SERVLET_PACKAGE 常量，避免热路径反射和 getInterfaces()[0] 数组越界
+            Method doFilterMethod = ReflectionUtils.findMethod(chain.getClass(), "doFilter",
+                    Class.forName(SERVLET_PACKAGE + ".ServletRequest"),
+                    Class.forName(SERVLET_PACKAGE + ".ServletResponse"));
 
             if (getAttrMethod != null && ReflectionUtils.invokeMethod(getAttrMethod, request, ATTRIBUTE_NAME) != null) {
                 if (doFilterMethod != null) ReflectionUtils.invokeMethod(doFilterMethod, chain, request, response);
@@ -131,7 +154,11 @@ public class LingRepeatableReadFilter {
 
         private String getCharacterEncoding() {
             Method m = ReflectionUtils.findMethod(originalRequest.getClass(), "getCharacterEncoding");
-            return (String) ReflectionUtils.invokeMethod(m, originalRequest);
+            String encoding = (String) ReflectionUtils.invokeMethod(m, originalRequest);
+            // Servlet 规范：getCharacterEncoding() 返回 null 表示请求未指定字符编码，
+            // 此时容器应使用默认编码 ISO-8859-1（RFC 7230）。
+            // 回退避免 new InputStreamReader(InputStream, null) 抛 NullPointerException
+            return encoding != null ? encoding : "ISO-8859-1";
         }
 
         private Object getInputStream() throws IOException {
@@ -146,13 +173,13 @@ public class LingRepeatableReadFilter {
                 }
                 bodyLoaded = true;
             }
-            String basePackage = originalRequest.getClass().getInterfaces()[0].getName().contains("jakarta") ? "jakarta.servlet" : "javax.servlet";
-            return createInputStream(originalRequest.getClass().getClassLoader(), body, basePackage);
+            // 直接复用启动期探测的 SERVLET_PACKAGE 常量，避免热路径反射和数组越界
+            return createInputStream(originalRequest.getClass().getClassLoader(), body);
         }
     }
 
-    private static Object createInputStream(ClassLoader cl, byte[] body, String basePackage) {
-        String adapterClassName = basePackage.contains("jakarta") 
+    private static Object createInputStream(ClassLoader cl, byte[] body) {
+        String adapterClassName = SERVLET_PACKAGE.equals("jakarta.servlet")
                 ? "com.lingframe.starter.web.adapter.JakartaRepeatableReadInputStream"
                 : "com.lingframe.starter.web.adapter.JavaxRepeatableReadInputStream";
         try {

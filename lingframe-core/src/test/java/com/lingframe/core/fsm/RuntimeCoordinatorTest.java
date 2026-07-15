@@ -20,6 +20,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -333,6 +334,84 @@ class RuntimeCoordinatorTest {
 
             // 仍为 INACTIVE（stop 后事件不再被处理）
             assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
+        }
+    }
+
+    // ==================== NPE 防御（P2-1/P2-2）====================
+
+    @Nested
+    @DisplayName("NPE 防御")
+    class NullSafetyDefense {
+
+        @Test
+        @DisplayName("eventBus 为 null 时构造 fail-fast 抛 NullPointerException")
+        void constructWithNullEventBusThrowsNpe() {
+            // 契约：eventBus 不允许为 null，构造时直接拒绝（fail-fast）
+            assertThrows(NullPointerException.class, () -> new RuntimeCoordinator((EventBus) null));
+        }
+
+        @Test
+        @DisplayName("purge 后收到迟到的实例事件不抛异常")
+        void lateEventAfterPurgeNoException() {
+            coordinator.register("ling-late");
+            coordinator.transition("ling-late", RuntimeStatus.ACTIVE);
+            coordinator.transition("ling-late", RuntimeStatus.STOPPING);
+            coordinator.transition("ling-late", RuntimeStatus.REMOVED);
+            coordinator.purge("ling-late");
+
+            // purge 后发布迟到的实例事件，不应抛异常
+            assertDoesNotThrow(() -> eventBus.publish(new InstanceStateChangedEvent("ling-late", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY)));
+        }
+
+        @Test
+        @DisplayName("并发 purge 与事件处理不抛 NPE")
+        void concurrentPurgeAndEventNoNpe() throws Exception {
+            // 验证：purge 与事件处理的竞态下不会 NPE
+            coordinator.register("ling-race");
+            coordinator.transition("ling-race", RuntimeStatus.ACTIVE);
+            coordinator.transition("ling-race", RuntimeStatus.STOPPING);
+            coordinator.transition("ling-race", RuntimeStatus.REMOVED);
+
+            int iterations = 200;
+            ExecutorService executor = Executors.newFixedThreadPool(2);
+            CountDownLatch start = new CountDownLatch(1);
+            AtomicInteger npeCount = new AtomicInteger(0);
+
+            // 线程1：反复发布事件
+            executor.submit(() -> {
+                try {
+                    start.await();
+                    for (int i = 0; i < iterations; i++) {
+                        try {
+                            eventBus.publish(new InstanceStateChangedEvent("ling-race", "v1",
+                                    InstanceStatus.STARTING, InstanceStatus.READY));
+                        } catch (NullPointerException e) {
+                            npeCount.incrementAndGet();
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+
+            // 线程2：反复 purge（状态为 REMOVED 时才真正移除）
+            executor.submit(() -> {
+                try {
+                    start.await();
+                    for (int i = 0; i < iterations; i++) {
+                        coordinator.purge("ling-race");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+
+            start.countDown();
+            executor.shutdown();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+
+            assertEquals(0, npeCount.get(), "并发 purge 与事件处理不应抛 NPE");
         }
     }
 

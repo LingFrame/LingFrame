@@ -31,7 +31,21 @@ public class LingSpringCacheProxy implements Cache {
 
     private void checkPermission(String operation, AccessType accessType) {
         String callerLingId = LingCallContext.getLingId();
-        if (callerLingId == null) return;
+        if (callerLingId == null) {
+            // 与 SQL proxy 行为对齐：灵核治理开启时拒绝无上下文操作（fail-closed），
+            // 关闭时默认放行（LINGCORE Privilege）。
+            if (permissionService.isLingCoreGovernanceEnabled()) {
+                log.error(
+                        "Security Alert: cache operation without LingContext (LINGCORE governance ENABLED). Operation: {}",
+                        operation);
+                throw new PermissionDeniedException(
+                        "Access Denied: LINGCORE governance is enabled but no context provided for cache operation: "
+                                + operation);
+            }
+            log.debug("Cache operation without LingContext (LINGCORE governance disabled). ALLOWED. Operation: {}",
+                    operation);
+            return;
+        }
 
         boolean allowed = permissionService.isAllowed(callerLingId, "cache:local", accessType);
         permissionService.audit(callerLingId, "cache:local", operation, allowed);
@@ -43,15 +57,22 @@ public class LingSpringCacheProxy implements Cache {
 
     @Override
     public String getName() {
-        checkPermission("getName", AccessType.READ);
+        // 元数据方法豁免鉴权：Spring 内部（如 CacheManager.getCacheNames、日志、抽象层）会频繁调用 getName()，
+        // 若走鉴权会在无上下文或治理开启时被破坏。直接委托 target，与 Caffeine 代理行为对齐。
         return target.getName();
     }
 
     @Override
     public Object getNativeCache() {
-        // 暴露原生缓存句柄会绕过权限和命名空间隔离，拒绝暴露
-        throw new UnsupportedOperationException(
-                "getNativeCache() is not supported through governance proxy to prevent bypass");
+        // 灵核（无上下文）放行：Spring 内部探测（CacheManager 类型检查、Actuator 指标等）无 LingContext。
+        // 灵元拒绝：暴露原生句柄会绕过权限与命名空间隔离，与 asMap()/policy() 拒绝暴露原生可变视图一致。
+        String callerLingId = LingCallContext.getLingId();
+        if (callerLingId == null) {
+            return target.getNativeCache();
+        }
+        // 灵元拒绝时同样审计，与 clear()/invalidate() 行为对齐
+        permissionService.audit(callerLingId, "cache:nativeCache", "getNativeCache", false);
+        throw new PermissionDeniedException(callerLingId, "cache:nativeCache");
     }
 
     @Override
@@ -87,15 +108,18 @@ public class LingSpringCacheProxy implements Cache {
 
     @Override
     public void clear() {
-        checkPermission("clear", AccessType.WRITE);
-        // Spring Cache 无 key 枚举 API，无法按 lingId 精确清理；
-        // 灵元调用 clear 会清空所有灵元缓存，拒绝
+        // clear 会清空整个缓存（跨灵元共享），先决定行为再审计，避免"审计允许但实际拒绝"的不一致。
+        // 灵核（无 lingId）特权放行——即使治理开启也允许，因为灵核负责全局运维；
+        // 灵元一律拒绝（会清空其他灵元缓存），审计记录 allowed=false，capability 统一为 "cache:clear"。
         String callerLingId = LingCallContext.getLingId();
-        if (callerLingId != null) {
-            throw new UnsupportedOperationException(
-                    "clear() is not supported for ling; use evict(key) per entry");
+        if (callerLingId == null) {
+            // 灵核特权：放行但记录审计（避免特权路径绕过审计），不再走 checkPermission（避免治理开启时被 fail-closed 拦截）
+            permissionService.audit("LINGCORE", "cache:clear", "clear", true);
+            target.clear();
+            return;
         }
-        target.clear();
+        permissionService.audit(callerLingId, "cache:clear", "clear", false);
+        throw new PermissionDeniedException(callerLingId, "cache:clear");
     }
 
     @Override
@@ -112,14 +136,16 @@ public class LingSpringCacheProxy implements Cache {
 
     @Override
     public boolean invalidate() {
-        checkPermission("invalidate", AccessType.WRITE);
-        // 与 clear() 同理，灵元调用会清空所有灵元缓存，拒绝
+        // 与 clear() 同理：invalidate 会清空整个缓存，先决定行为再审计。
+        // 灵核（无 lingId）特权放行——即使治理开启也允许；灵元一律拒绝，capability 统一为 "cache:invalidate"。
         String callerLingId = LingCallContext.getLingId();
-        if (callerLingId != null) {
-            throw new UnsupportedOperationException(
-                    "invalidate() is not supported for ling; use evictIfPresent(key) per entry");
+        if (callerLingId == null) {
+            // 灵核特权：放行但记录审计（避免特权路径绕过审计），不再走 checkPermission（避免治理开启时被 fail-closed 拦截）
+            permissionService.audit("LINGCORE", "cache:invalidate", "invalidate", true);
+            return target.invalidate();
         }
-        return target.invalidate();
+        permissionService.audit(callerLingId, "cache:invalidate", "invalidate", false);
+        throw new PermissionDeniedException(callerLingId, "cache:invalidate");
     }
 
 }

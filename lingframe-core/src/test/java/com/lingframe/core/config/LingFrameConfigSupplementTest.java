@@ -153,7 +153,7 @@ class LingFrameConfigSupplementTest {
                 .build();
         String str = config.toString();
         assertNotNull(str);
-        assertTrue(str.contains("devMode"));
+        assertTrue(str.contains("runtimeMode"));
         assertTrue(str.contains("home-test"));
     }
 }

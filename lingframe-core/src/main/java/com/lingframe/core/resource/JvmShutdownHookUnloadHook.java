@@ -4,9 +4,9 @@ import com.lingframe.core.spi.LingUnloadHook;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * JVM ShutdownHook 卸载钩子。
@@ -48,24 +48,28 @@ public class JvmShutdownHookUnloadHook implements LingUnloadHook {
             if (hooks == null || hooks.isEmpty()) {
                 return 0;
             }
-            List<Thread> toRemove = new CopyOnWriteArrayList<>();
-            hooks.forEach((hook, value) -> {
-                if (hook == null) {
-                    return;
+            // 关键同步：ApplicationShutdownHooks 内部用 synchronized(hooksClass) 保护 hooks Map，
+            // 这里必须以相同锁同步快照，否则并发 addShutdownHook/removeShutdownHook 会触发 CME
+            List<Thread> toRemove = new ArrayList<>();
+            synchronized (hooksClass) {
+                for (Thread hook : hooks.keySet()) {
+                    if (hook == null) {
+                        continue;
+                    }
+                    // 规则 1：Hook 线程的 contextClassLoader 属于目标灵元
+                    ClassLoader tccl = hook.getContextClassLoader();
+                    if (tccl == classLoader) {
+                        toRemove.add(hook);
+                        continue;
+                    }
+                    // 规则 2：Hook 的 Runnable 类由目标灵元 ClassLoader 加载
+                    // 覆盖灵元自定义 Hook 名的场景（如 "my-cleanup-hook"）
+                    ClassLoader hookClassCL = hook.getClass().getClassLoader();
+                    if (hookClassCL == classLoader) {
+                        toRemove.add(hook);
+                    }
                 }
-                // 规则 1：Hook 线程的 contextClassLoader 属于目标灵元
-                ClassLoader tccl = hook.getContextClassLoader();
-                if (tccl == classLoader) {
-                    toRemove.add(hook);
-                    return;
-                }
-                // 规则 2：Hook 的 Runnable 类由目标灵元 ClassLoader 加载
-                // 覆盖灵元自定义 Hook 名的场景（如 "my-cleanup-hook"）
-                ClassLoader hookClassCL = hook.getClass().getClassLoader();
-                if (hookClassCL == classLoader) {
-                    toRemove.add(hook);
-                }
-            });
+            }
             for (Thread hook : toRemove) {
                 try {
                     // 先清理 contextClassLoader，防止 Thread 对象残留导致 ClassLoader 泄漏
@@ -74,6 +78,7 @@ public class JvmShutdownHookUnloadHook implements LingUnloadHook {
                     if (hook.getContextClassLoader() == classLoader) {
                         hook.setContextClassLoader(ClassLoader.getSystemClassLoader());
                     }
+                    // 用公开 API 移除，避免反射直接改 hooks Map 引发状态不一致
                     Runtime.getRuntime().removeShutdownHook(hook);
                     log.info("[{}] Removed shutdown hook: {} (class={})",
                             lingId, hook.getName(), hook.getClass().getName());

@@ -1,3 +1,32 @@
+-- 0. 幂等清理：H2 内存库配合 DB_CLOSE_DELAY=-1 时，同 JVM 内多测试上下文共享同一数据库实例，
+--    若不清理，data.sql 重复执行会触发主键冲突。schema.sql 已用 CREATE TABLE IF NOT EXISTS 保证幂等，
+--    此处对称地清空所有表数据后再插入，使 data.sql 可重复执行。
+--    schema 无外键约束，DELETE 顺序无依赖，按子表到主表的逻辑顺序清理仅为可读性。
+DELETE FROM t_notification_read;
+DELETE FROM t_notification;
+DELETE FROM t_logistics;
+DELETE FROM t_order_refund;
+DELETE FROM t_order_item;
+DELETE FROM t_order;
+DELETE FROM t_seckill_active;
+DELETE FROM t_coupon_user;
+DELETE FROM t_coupon;
+DELETE FROM t_inventory_history;
+DELETE FROM t_inventory;
+DELETE FROM t_sku;
+DELETE FROM t_spu;
+DELETE FROM t_member;
+DELETE FROM t_member_level;
+DELETE FROM t_social_user;
+DELETE FROM t_role_menu;
+DELETE FROM t_menu;
+DELETE FROM t_user_role;
+DELETE FROM t_role;
+DELETE FROM t_user;
+DELETE FROM t_post;
+DELETE FROM t_dept;
+DELETE FROM t_audit_log;
+
 -- 1. 插入部门数据
 INSERT INTO t_dept (id, name, parent_id, sort, status) VALUES (1, '总经办', 0, 1, 1);
 INSERT INTO t_dept (id, name, parent_id, sort, status) VALUES (2, '研发部', 1, 2, 1);

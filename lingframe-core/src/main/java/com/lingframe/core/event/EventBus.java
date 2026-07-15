@@ -49,6 +49,19 @@ public class EventBus {
 
     private static final int DEFAULT_ASYNC_THREADS = 2;
     private static final int DEFAULT_ASYNC_QUEUE_CAPACITY = 1024;
+    /** dispatcher 线程名前缀，仅用于 NamedThreadFactory 命名（线程 dump 诊断），不作为线程身份判定依据 */
+    private static final String DISPATCHER_THREAD_PREFIX = "ling-eventbus-async";
+
+    /**
+     * dispatcher 线程身份标记。
+     * <p>
+     * 在 dispatcher 线程执行异步任务期间 set(true)，任务结束后 remove。
+     * 用于 {@link OverflowHandler#isDispatcherThread()} 精确判定当前线程是否为
+     * dispatcher 线程池中的工作线程，避免线程名前缀匹配的脆弱性
+     * （外部线程池若复用同名前缀会误判；且线程名可被业务代码修改）。
+     */
+    private static final ThreadLocal<Boolean> DISPATCHER_THREAD =
+            ThreadLocal.withInitial(() -> Boolean.FALSE);
 
     /**
      * 监听器包装器。
@@ -112,7 +125,7 @@ public class EventBus {
                 30L,
                 TimeUnit.SECONDS,
                 queue,
-                NamedThreadFactory.daemon("ling-eventbus-async", EventBus.class.getClassLoader()),
+                NamedThreadFactory.daemon(DISPATCHER_THREAD_PREFIX, EventBus.class.getClassLoader()),
                 new OverflowHandler(overflowPolicy, droppedAsyncEvents));
         this.asyncDispatcher.allowCoreThreadTimeOut(true);
     }
@@ -137,21 +150,23 @@ public class EventBus {
 
     /**
      * 取消灵元级监听器
+     * <p>
+     * 用 {@code compute} 原子操作完成「移除监听器 + 空列表清理 entry」，
+     * 避免 removeIf + isEmpty + remove 三步非原子在竞态下丢监听器或重复 remove。
      */
     public <E extends LingEvent> void unsubscribe(String lingId, Class<E> eventType,
                                                   LingEventListener<E> listener) {
         if (lingId == null || eventType == null || listener == null) {
             return;
         }
-        List<ListenerWrapper> list = listeners.get(eventType);
-        if (list == null) {
-            return;
-        }
-        list.removeIf(w -> lingId.equals(w.lingId()) && w.listener() == listener);
-        // 列表为空时清理 key，避免内存泄漏
-        if (list.isEmpty()) {
-            listeners.remove(eventType, list);
-        }
+        listeners.compute(eventType, (k, list) -> {
+            if (list == null) {
+                return null;
+            }
+            list.removeIf(w -> lingId.equals(w.lingId()) && w.listener() == listener);
+            // 列表为空时移除 entry，避免内存泄漏；非空则保留
+            return list.isEmpty() ? null : list;
+        });
     }
 
     /**
@@ -194,20 +209,23 @@ public class EventBus {
 
     /**
      * 取消全局监听器
+     * <p>
+     * 用 {@code compute} 原子操作完成「移除监听器 + 空列表清理 entry」，
+     * 避免 removeIf + isEmpty + remove 三步非原子在竞态下丢监听器或重复 remove。
      */
     public <E extends LingEvent> void unsubscribeGlobal(Class<E> eventType,
                                                         LingEventListener<E> listener) {
         if (eventType == null || listener == null) {
             return;
         }
-        List<ListenerWrapper> list = listeners.get(eventType);
-        if (list == null) {
-            return;
-        }
-        list.removeIf(w -> w.isGlobal() && w.listener() == listener);
-        if (list.isEmpty()) {
-            listeners.remove(eventType, list);
-        }
+        listeners.compute(eventType, (k, list) -> {
+            if (list == null) {
+                return null;
+            }
+            list.removeIf(w -> w.isGlobal() && w.listener() == listener);
+            // 列表为空时移除 entry，避免内存泄漏；非空则保留
+            return list.isEmpty() ? null : list;
+        });
     }
 
     /* ==================== 事件分发 ==================== */
@@ -275,6 +293,10 @@ public class EventBus {
             try {
                 submittedAsyncEvents.incrementAndGet();
                 Runnable task = () -> {
+                    // 标记当前线程为 dispatcher 线程，供 OverflowHandler 死锁防御判定。
+                    // 若 listener 内部再次 publish 异步事件触发 rejectedExecution，
+                    // 当前线程（dispatcher）会被识别为 dispatcher 线程并降级为 DROP，避免自我阻塞死锁。
+                    DISPATCHER_THREAD.set(Boolean.TRUE);
                     try {
                         LingEventListener<E> castListener = (LingEventListener<E>) wrapper.listener();
                         castListener.onEvent(event);
@@ -284,6 +306,9 @@ public class EventBus {
                                 wrapper.listener().getClass().getName(),
                                 wrapper.isGlobal() ? "GLOBAL" : wrapper.lingId(),
                                 e.getMessage(), e);
+                    } finally {
+                        // 线程池线程会被复用，必须清理标记避免下一次非 dispatcher 任务被误判
+                        DISPATCHER_THREAD.remove();
                     }
                 };
                 // 统一走 execute()，溢出策略由 OverflowHandler 处理
@@ -320,6 +345,10 @@ public class EventBus {
      *   <li>DISCARD：丢弃任务并计数</li>
      *   <li>BLOCK：阻塞调用线程直到队列有空间</li>
      * </ul>
+     * <p>
+     * 死锁防御：BLOCK 策略下若当前线程是 dispatcher 线程，则降级为 DROP。
+     * 否则所有 dispatcher 线程都会阻塞在 {@code queue.put()} 上等待消费，
+     * 但消费线程正是这些被阻塞的 dispatcher，形成死锁。
      */
     private static class OverflowHandler implements RejectedExecutionHandler {
         private final OverflowPolicy policy;
@@ -332,7 +361,7 @@ public class EventBus {
 
         @Override
         public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-            if (policy == OverflowPolicy.BLOCK) {
+            if (policy == OverflowPolicy.BLOCK && !isDispatcherThread()) {
                 try {
                     // 阻塞调用线程直到队列有空间
                     executor.getQueue().put(r);
@@ -342,10 +371,29 @@ public class EventBus {
                     log.warn("Interrupted while blocking on async event task");
                 }
             } else {
+                // DISCARD 策略，或 BLOCK 策略下的 dispatcher 线程（避免死锁降级为 DROP）
                 dropCounter.incrementAndGet();
-                log.warn("Dropping async event task because EventBus async queue is full (queueSize={}, activeThreads={})",
-                        executor.getQueue().size(), executor.getActiveCount());
+                if (policy == OverflowPolicy.BLOCK) {
+                    log.warn("BLOCK policy downgraded to DROP on dispatcher thread to avoid deadlock (queueSize={}, activeThreads={})",
+                            executor.getQueue().size(), executor.getActiveCount());
+                } else {
+                    log.warn("Dropping async event task because EventBus async queue is full (queueSize={}, activeThreads={})",
+                            executor.getQueue().size(), executor.getActiveCount());
+                }
             }
+        }
+
+        /**
+         * 判断当前线程是否为 EventBus 的 dispatcher 线程。
+         * <p>
+         * 通过 {@link #DISPATCHER_THREAD} ThreadLocal 标记识别，避免在 BLOCK 策略下
+         * dispatcher 线程自我阻塞导致死锁。
+         * <p>
+         * 相比线程名前缀匹配，ThreadLocal 标记更精确：不受外部线程池复用同名前缀影响，
+         * 也不受业务代码修改线程名的影响。标记在 dispatcher 线程执行异步任务期间被 set(true)。
+         */
+        private static boolean isDispatcherThread() {
+            return Boolean.TRUE.equals(DISPATCHER_THREAD.get());
         }
     }
 }

@@ -2,12 +2,13 @@ package com.lingframe.infra.storage.proxy;
 
 import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.PermissionDeniedException;
-import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.sql.*;
+import java.util.Collections;
+import java.util.Set;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -15,6 +16,11 @@ public class LingStatementProxy implements Statement {
 
     private final Statement target;
     private final PermissionService permissionService;
+    /**
+     * 产生此 Statement 的 Connection 代理引用。
+     * getConnection() 直接返回它，避免暴露原生 Connection 导致 SQL 治理被绕过。
+     */
+    private final LingConnectionProxy lingConnection;
 
     // SQL解析结果缓存 (LRU缓存)
 
@@ -24,18 +30,15 @@ public class LingStatementProxy implements Statement {
         // 无上下文：灵核操作
         if (callerLingId == null) {
             // 检查是否启用了灵核治理
-            if (permissionService.isLingCoreGovernanceEnabled()) {
+            if (!SqlPermissionSupport.checkLingCoreGovernance(permissionService, sql)) {
                 // 灵核治理开启：拒绝无上下文的操作
-                log.error("Security Alert: SQL execution without LingContext (LINGCORE governance ENABLED). SQL: {}",
-                        sql);
                 throw new SQLException("Access Denied: LINGCORE governance is enabled but no context provided.");
             }
             // 灵核治理关闭：默认放行 (LINGCORE Privilege)
-            log.debug("SQL execution without LingContext (LINGCORE governance disabled). ALLOWED. SQL: {}", sql);
             return;
         }
 
-        SqlPermissionSupport.SqlPermissionPlan plan = parseSqlPermissionPlanWithCache(sql);
+        SqlPermissionSupport.SqlPermissionPlan plan = SqlParseCache.getOrAnalyze(LingCallContext.getLingId(), sql);
         SqlPermissionSupport.ResolvedCapability resolvedCapability = SqlPermissionSupport.resolveCapability(
                 permissionService,
                 callerLingId,
@@ -43,39 +46,28 @@ public class LingStatementProxy implements Statement {
         permissionService.audit(callerLingId, resolvedCapability.getCapability(), sql, resolvedCapability.isAllowed());
 
         if (!resolvedCapability.isAllowed()) {
-            throw new SQLException(new PermissionDeniedException("Access Denied: " + sql));
+            throw new SQLException(new PermissionDeniedException("Access Denied: " + sqlAuditSummary(sql)));
         }
     }
 
     /**
-     * 带缓存的 SQL 解析。
-     *
-     * @param sql SQL语句
-     * @return 权限计划
+     * 生成审计/异常用的脱敏 SQL 摘要：截断前 100 字符，避免完整 SQL 进入异常栈。
      */
-    private SqlPermissionSupport.SqlPermissionPlan parseSqlPermissionPlanWithCache(String sql) {
-        // 检查缓存
-        String cacheLingId = LingCallContext.getLingId();
-        AccessType cachedAccessType = SqlParseCache.get(cacheLingId, sql);
-        if (cachedAccessType != null) {
-            return new SqlPermissionSupport.SqlPermissionPlan(
-                    cachedAccessType,
-                    SqlPermissionSupport.analyze(sql).getCapabilities());
+    private static String sqlAuditSummary(String sql) {
+        if (sql == null) {
+            return null;
         }
-
-        // 缓存未命中或已过期，重新解析
-        SqlPermissionSupport.SqlPermissionPlan plan = SqlPermissionSupport.analyze(sql);
-
-        // 更新缓存
-        SqlParseCache.put(cacheLingId, sql, plan.getAccessType());
-
-        return plan;
+        return sql.length() > 100 ? sql.substring(0, 100) + "..." : sql;
     }
 
     @Override
     public ResultSet executeQuery(String sql) throws SQLException {
         checkPermission(sql);
-        return target.executeQuery(sql);
+        // 提取 SQL 涉及的表集合，传给 ResultSet 用于表级写治理（A10）
+        Set<String> updatableTables = SqlPermissionSupport.extractNormalizedTables(sql);
+        // 包装返回的 ResultSet，防止灵元通过可更新 ResultSet 绕过 SQL 治理
+        // 传入 this 作为 proxyStatement，避免 getStatement() 泄露原生 Statement（S2）
+        return new LingResultSetProxy(target.executeQuery(sql), permissionService, this, updatableTables);
     }
 
     @Override
@@ -157,7 +149,9 @@ public class LingStatementProxy implements Statement {
 
     @Override
     public ResultSet getResultSet() throws SQLException {
-        return target.getResultSet();
+        // 包装返回的 ResultSet，防止灵元通过可更新 ResultSet 绕过 SQL 治理
+        // getResultSet 无对应 SQL 文本，传空集保持粗粒度；传 this 避免 getStatement() 泄露原生 Statement
+        return new LingResultSetProxy(target.getResultSet(), permissionService, this, Collections.emptySet());
     }
 
     @Override
@@ -221,7 +215,8 @@ public class LingStatementProxy implements Statement {
 
     @Override
     public Connection getConnection() throws SQLException {
-        return target.getConnection();
+        // 返回 Connection 代理，避免暴露原生 Connection 导致 SQL 治理被绕过
+        return lingConnection;
     }
 
     @Override
@@ -231,7 +226,9 @@ public class LingStatementProxy implements Statement {
 
     @Override
     public ResultSet getGeneratedKeys() throws SQLException {
-        return target.getGeneratedKeys();
+        // 包装返回的 ResultSet，防止灵元通过可更新 ResultSet 绕过 SQL 治理
+        // getGeneratedKeys 无对应 SQL 文本，传空集保持粗粒度；传 this 避免 getStatement() 泄露原生 Statement
+        return new LingResultSetProxy(target.getGeneratedKeys(), permissionService, this, Collections.emptySet());
     }
 
     @Override

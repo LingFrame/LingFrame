@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(MockitoExtension.class)
@@ -127,11 +128,16 @@ class LocalGovernanceRegistryTest {
             LocalGovernanceRegistry r = new LocalGovernanceRegistry(eventBus, storePath.toString());
 
             GovernancePolicy policy = new GovernancePolicy();
-            // updatePatch 内部 save() 会写 tmp 成功，但 move 失败 → 进入 catch 清理 tmp
-            r.updatePatch("Ling-x", policy);
+            // updatePatch 内部 save() 会写 tmp 成功，但 move 失败 → 抛 IllegalStateException 并清理 tmp
+            assertThrows(IllegalStateException.class,
+                    () -> r.updatePatch("Ling-x", policy),
+                    "move 失败应抛 IllegalStateException 让调用方感知失败");
 
-            Path tmpFile = tempDir.resolve("governance-as-dir.tmp");
-            assertFalse(Files.exists(tmpFile),
+            // 验证残留 tmp 文件（唯一命名：storePath + ".tmp.<threadId>.<nanoTime>"）已被 deleteIfExists 清理
+            File[] tmpFiles = tempDir.toFile().listFiles(
+                    (dir, name) -> name.startsWith("governance-as-dir.tmp"));
+            assertNotNull(tmpFiles);
+            assertEquals(0, tmpFiles.length,
                     "move 失败后残留 tmp 文件应被 deleteIfExists 清理");
         }
 

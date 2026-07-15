@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
@@ -99,7 +100,9 @@ class LingConnectionProxyTest {
             when(target.getAutoCommit()).thenReturn(true);
             assertTrue(proxy.getAutoCommit());
 
-            proxy.getMetaData();
+            // getMetaData 现在返回 LingDatabaseMetaDataProxy 包装
+            when(target.getMetaData()).thenReturn(mock(DatabaseMetaData.class));
+            assertInstanceOf(LingDatabaseMetaDataProxy.class, proxy.getMetaData());
             verify(target).getMetaData();
 
             proxy.setReadOnly(true);
@@ -108,9 +111,7 @@ class LingConnectionProxyTest {
             when(target.isReadOnly()).thenReturn(true);
             assertTrue(proxy.isReadOnly());
 
-            proxy.setCatalog("cat");
-            verify(target).setCatalog("cat");
-
+            // setCatalog/setSchema 已禁止灵元切换，独立测试覆盖拒绝行为
             when(target.getCatalog()).thenReturn("cat");
             assertEquals("cat", proxy.getCatalog());
 
@@ -186,9 +187,7 @@ class LingConnectionProxyTest {
             proxy.createStruct("type", new Object[0]);
             verify(target).createStruct("type", new Object[0]);
 
-            proxy.setSchema("schema");
-            verify(target).setSchema("schema");
-
+            // setSchema 已禁止灵元切换，独立测试覆盖拒绝行为
             when(target.getSchema()).thenReturn("schema");
             assertEquals("schema", proxy.getSchema());
 
@@ -409,6 +408,57 @@ class LingConnectionProxyTest {
 
             proxy.rollback(sp);
             verify(target).rollback(sp);
+        }
+    }
+
+    @Nested
+    @DisplayName("数据库切换治理")
+    class CatalogSchemaGuardTests {
+
+        @Test
+        @DisplayName("setCatalog 应被禁止——会绕过表级 capability")
+        void shouldRejectSetCatalog() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+
+            assertThrows(SQLException.class, () -> proxy.setCatalog("other_db"));
+            verify(target, never()).setCatalog("other_db");
+        }
+
+        @Test
+        @DisplayName("setSchema 应被禁止——会绕过表级 capability")
+        void shouldRejectSetSchema() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+
+            assertThrows(SQLException.class, () -> proxy.setSchema("other_schema"));
+            verify(target, never()).setSchema("other_schema");
+        }
+
+        @Test
+        @DisplayName("getCatalog 应正常转发——读操作不切换数据库")
+        void shouldForwardGetCatalog() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(target.getCatalog()).thenReturn("current_db");
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+
+            assertEquals("current_db", proxy.getCatalog());
+            verify(target).getCatalog();
+        }
+
+        @Test
+        @DisplayName("getSchema 应正常转发——读操作不切换数据库")
+        void shouldForwardGetSchema() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(target.getSchema()).thenReturn("current_schema");
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+
+            assertEquals("current_schema", proxy.getSchema());
+            verify(target).getSchema();
         }
     }
 }

@@ -55,6 +55,15 @@ class JvmCleanupSupport {
     /** ThreadLocalMap.table 字段 */
     static final Field TLM_TABLE_FIELD = probeThreadLocalMapTableField();
 
+    /**
+     * ThreadLocalMap$Entry.value 字段（热路径反射缓存）。
+     * <p>
+     * Entry 类型固定为 {@code java.lang.ThreadLocal$ThreadLocalMap$Entry}，
+     * 启动时一次性探测并 setAccessible，避免 {@code inspectThreadLocalEntry}
+     * 热路径中逐条目 getDeclaredField("value")+setAccessible 的冗余反射开销。
+     */
+    static final Field TLM_ENTRY_VALUE_FIELD = probeThreadLocalEntryValueField();
+
     // =========================================================================
     // 能力快照
     // =========================================================================
@@ -212,6 +221,24 @@ class JvmCleanupSupport {
         }
     }
 
+    /**
+     * 探测 ThreadLocalMap$Entry.value 字段。
+     * Entry 类型在所有 JDK 版本中固定为 {@code java.lang.ThreadLocal$ThreadLocalMap$Entry}，
+     * 故可启动时一次性获取并全局复用。
+     */
+    private static Field probeThreadLocalEntryValueField() {
+        try {
+            Class<?> entryClass = Class.forName("java.lang.ThreadLocal$ThreadLocalMap$Entry");
+            Field valueField = entryClass.getDeclaredField("value");
+            valueField.setAccessible(true);
+            return valueField;
+        } catch (Exception e) {
+            log.debug("ThreadLocalMap$Entry.value not accessible (JDK {}). " +
+                    "Consider: --add-opens java.base/java.lang=ALL-UNNAMED", JDK_VERSION);
+            return null;
+        }
+    }
+
     // =========================================================================
     // 线程工具
     // =========================================================================
@@ -251,9 +278,27 @@ class JvmCleanupSupport {
     // ClassLoader 关联性判断
     // =========================================================================
 
+    /**
+     * 最大递归深度，防止极端图结构引发栈溢出
+     */
+    private static final int MAX_DEPTH = 64;
+
     static boolean isClassLoaderRelated(Object obj, ClassLoader cl) {
-        if (obj == null)
+        if (obj == null || cl == null)
             return false;
+        IdentityHashMap<Object, Boolean> visited = new IdentityHashMap<>();
+        return isClassLoaderRelated(obj, cl, MAX_DEPTH, visited);
+    }
+
+    private static boolean isClassLoaderRelated(Object obj, ClassLoader cl, int depth,
+                                                 IdentityHashMap<Object, Boolean> visited) {
+        if (obj == null || cl == null || depth <= 0) {
+            return false;
+        }
+        // 防循环引用：同一对象不重复访问
+        if (visited.put(obj, Boolean.TRUE) != null) {
+            return false;
+        }
 
         // 核心：直接 ClassLoader 检查
         if (obj.getClass().getClassLoader() == cl)
@@ -264,7 +309,7 @@ class JvmCleanupSupport {
             return true;
         if (obj instanceof Reference) {
             Object referent = ((Reference<?>) obj).get();
-            if (referent != null && isClassLoaderRelated(referent, cl)) {
+            if (referent != null && isClassLoaderRelated(referent, cl, depth - 1, visited)) {
                 return true;
             }
         }
@@ -273,7 +318,7 @@ class JvmCleanupSupport {
         if (obj instanceof Iterable) {
             try {
                 for (Object item : (Iterable<?>) obj) {
-                    if (isClassLoaderRelated(item, cl))
+                    if (isClassLoaderRelated(item, cl, depth - 1, visited))
                         return true;
                 }
             } catch (Exception e) {
@@ -283,8 +328,8 @@ class JvmCleanupSupport {
         if (obj instanceof Map) {
             try {
                 for (Map.Entry<?, ?> entry : ((Map<?, ?>) obj).entrySet()) {
-                    if (isClassLoaderRelated(entry.getKey(), cl)
-                            || isClassLoaderRelated(entry.getValue(), cl))
+                    if (isClassLoaderRelated(entry.getKey(), cl, depth - 1, visited)
+                            || isClassLoaderRelated(entry.getValue(), cl, depth - 1, visited))
                         return true;
                 }
             } catch (Exception e) {
@@ -295,7 +340,7 @@ class JvmCleanupSupport {
             try {
                 int len = Array.getLength(obj);
                 for (int i = 0; i < len; i++) {
-                    if (isClassLoaderRelated(Array.get(obj, i), cl))
+                    if (isClassLoaderRelated(Array.get(obj, i), cl, depth - 1, visited))
                         return true;
                 }
             } catch (Exception e) {

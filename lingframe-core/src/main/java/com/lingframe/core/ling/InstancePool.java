@@ -2,6 +2,7 @@ package com.lingframe.core.ling;
 
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.fsm.RuntimeCoordinator;
+import com.lingframe.core.util.VersionUtils;
 import lombok.NonNull;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -46,8 +47,9 @@ public class InstancePool {
     // 使用私有锁对象，避免外部持有 LingInstance 引用导致的锁逃逸和潜在死锁
     private final Object membershipLock = new Object();
 
-    // 关停标记，避免关停期间并发写入
-    private volatile boolean isShuttingDown = false;
+    // 关停标记，避免关停期间并发写入。
+    // 由 membershipLock 保护可见性：shutdown 在锁内设置，addInstance 在锁内读取，无需 volatile
+    private boolean isShuttingDown = false;
 
     // 实例状态的唯一正式写入口。
     // 实例池自己不直接改实例状态，只在成员调整时委托给协调器。
@@ -147,12 +149,15 @@ public class InstancePool {
             throw new InvalidArgumentException("instance", "Instance cannot be null");
         }
 
-        if (isShuttingDown) {
-            log.warn("[{}] Cannot add instance {} because pool is shutting down", lingId, instance.getVersion());
-            return null;
-        }
-
         synchronized (membershipLock) {
+            // 关停检查必须在锁内，否则与 shutdown 之间存在竞态：
+            // 线程 A 读到 isShuttingDown=false 后阻塞，线程 B 执行 shutdown 设标志并快照，
+            // A 唤醒后仍会把实例加入 activePool，导致 shutdown 快照遗漏该实例（残留）。
+            if (isShuttingDown) {
+                log.warn("[{}] Cannot add instance {} because pool is shutting down", lingId, instance.getVersion());
+                return null;
+            }
+
             activePool.add(instance);
             log.debug("[{}] Added instance {} to active pool, pool size: {}",
                     lingId, instance.getVersion(), activePool.size());
@@ -308,14 +313,17 @@ public class InstancePool {
      * @return 进入死亡队列的实例列表
      */
     public List<LingInstance> shutdown() {
-        // 标记关停，避免新实例并发加入
-        isShuttingDown = true;
+        // 锁内：设置关停标志、清空默认实例、快照活跃池。
+        // 与 addInstance 共享 membershipLock，保证快照期间不会有新实例加入（消除残留竞态）。
+        List<LingInstance> toBeDying;
+        synchronized (membershipLock) {
+            isShuttingDown = true;
+            defaultInstance.set(null);
+            toBeDying = new ArrayList<>(activePool);
+        }
 
-        // 清空默认实例
-        defaultInstance.set(null);
-
-        // 将所有活跃实例移入死亡队列
-        List<LingInstance> toBeDying = new ArrayList<>(activePool);
+        // 锁外：执行耗时的 stop/moveToDying，避免长时间持有 membershipLock 阻塞其他读操作。
+        // moveToDying 内部会再次获取 membershipLock 完成成员迁移。
         for (LingInstance instance : toBeDying) {
             moveToDying(instance);
         }
@@ -364,58 +372,8 @@ public class InstancePool {
                 .min(Comparator
                         .comparing((LingInstance inst) -> !inst.isReady())   // READY 在前（!isReady=false=0 排序在前）
                         .thenComparing(LingInstance::getVersion,
-                                InstancePool::compareVersionDescending))      // 语义版本降序
+                                VersionUtils::compareDescending))             // 语义版本降序
                 .orElse(null);
-    }
-
-    /**
-     * 语义版本号降序比较：返回值约定同 {@link Comparator#compare(Object, Object)}，
-     * 即 v1 &gt; v2 时返回负数（v1 排前），实现「新版本优先」。
-     * <p>
-     * 按 {@code .} 分段，每段尝试解析为数字：
-     * <ul>
-     *   <li>纯数字段按数值比较（1.10 &gt; 1.9，避免字典序陷阱）；</li>
-     *   <li>非数字段（如 alpha/beta/RC1）回退字典序，保证有确定顺序；</li>
-     *   <li>段数不一致时，缺失段视为 0（1.2 等价于 1.2.0）。</li>
-     * </ul>
-     * 非法或 null 输入兜底为相等，避免拖垮选举。
-     */
-    private static int compareVersionDescending(String v1, String v2) {
-        if (v1 == null || v2 == null) {
-            return 0;
-        }
-        String[] p1 = v1.split("\\.");
-        String[] p2 = v2.split("\\.");
-        int len = Math.max(p1.length, p2.length);
-        for (int i = 0; i < len; i++) {
-            String s1 = i < p1.length ? p1[i] : "";
-            String s2 = i < p2.length ? p2[i] : "";
-            int n1 = tryParseInt(s1);
-            int n2 = tryParseInt(s2);
-            int cmp;
-            if (n1 != Integer.MIN_VALUE && n2 != Integer.MIN_VALUE) {
-                // 两段都是数字：按数值比较
-                cmp = Integer.compare(n1, n2);
-            } else {
-                // 至少一段非数字：回退字典序（空串排前）
-                cmp = s1.compareTo(s2);
-            }
-            if (cmp != 0) {
-                return -cmp;   // 取负实现降序
-            }
-        }
-        return 0;
-    }
-
-    private static int tryParseInt(String s) {
-        if (s == null || s.isEmpty()) {
-            return 0;
-        }
-        try {
-            return Integer.parseInt(s);
-        } catch (NumberFormatException e) {
-            return Integer.MIN_VALUE;   // 哨兵值表示非数字
-        }
     }
 
     /**

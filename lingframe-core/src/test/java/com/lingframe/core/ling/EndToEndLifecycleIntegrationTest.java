@@ -325,7 +325,7 @@ class EndToEndLifecycleIntegrationTest {
                         .forceCleanupDelaySeconds(0)
                         .build())
                 .build();
-        List<LingSecurityVerifier> verifiers = Collections.singletonList(new DangerousApiVerifier(false));
+        List<LingSecurityVerifier> verifiers = Collections.singletonList(new DangerousApiVerifier(false, Collections.emptyList()));
 
         DefaultLingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
                 .containerFactory(containerFactory)

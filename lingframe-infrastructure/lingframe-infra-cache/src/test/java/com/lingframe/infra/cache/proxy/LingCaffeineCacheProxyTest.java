@@ -1,6 +1,7 @@
 package com.lingframe.infra.cache.proxy;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.PermissionDeniedException;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -21,6 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -50,7 +54,7 @@ class LingCaffeineCacheProxyTest {
             Cache<String, String> target = mockStringCache();
             PermissionService permissionService = mock(PermissionService.class);
             when(permissionService.isAllowed("ling-a", "cache:local", AccessType.READ)).thenReturn(true);
-            when(target.getIfPresent(org.mockito.ArgumentMatchers.any())).thenReturn("tom");
+            when(target.getIfPresent(any())).thenReturn("tom");
 
             LingCallContext.setLingId("ling-a");
             LingCaffeineCacheProxy<String, String> proxy = new LingCaffeineCacheProxy<>(target, "users", permissionService);
@@ -58,7 +62,7 @@ class LingCaffeineCacheProxyTest {
             assertEquals("tom", proxy.getIfPresent("user:1"));
             verify(permissionService).isAllowed("ling-a", "cache:local", AccessType.READ);
             verify(permissionService).audit("ling-a", "cache:local", "getIfPresent", true);
-            org.mockito.ArgumentCaptor<Object> keyCaptor = org.mockito.ArgumentCaptor.forClass(Object.class);
+            ArgumentCaptor<Object> keyCaptor = ArgumentCaptor.forClass(Object.class);
             verify(target).getIfPresent(keyCaptor.capture());
             CacheNamespaceSupport.NamespacedKey namespacedKey =
                     assertInstanceOf(CacheNamespaceSupport.NamespacedKey.class, keyCaptor.getValue());
@@ -74,7 +78,7 @@ class LingCaffeineCacheProxyTest {
             PermissionService permissionService = mock(PermissionService.class);
             Function<String, String> loader = key -> "tom";
             when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(true);
-            when(target.get(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn("tom");
+            when(target.get(any(), any())).thenReturn("tom");
 
             LingCallContext.setLingId("ling-a");
             LingCaffeineCacheProxy<String, String> proxy = new LingCaffeineCacheProxy<>(target, "users", permissionService);
@@ -123,16 +127,30 @@ class LingCaffeineCacheProxyTest {
     class NoContextTests {
 
         @Test
-        @DisplayName("无上下文时应直接透传到底层缓存")
+        @DisplayName("无上下文且灵核治理关闭时应直接透传到底层缓存")
         void shouldBypassPermissionCheckWhenNoContext() {
             Cache<String, String> target = mockStringCache();
             PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isLingCoreGovernanceEnabled()).thenReturn(false);
             when(target.getIfPresent("user:1")).thenReturn("tom");
 
             LingCaffeineCacheProxy<String, String> proxy = new LingCaffeineCacheProxy<>(target, permissionService);
 
             assertEquals("tom", proxy.getIfPresent("user:1"));
-            verifyNoInteractions(permissionService);
+            verify(permissionService).isLingCoreGovernanceEnabled();
+        }
+
+        @Test
+        @DisplayName("无上下文且灵核治理开启时应拒绝访问（fail-closed）")
+        void shouldRejectWhenNoContextAndLingCoreGovernanceEnabled() {
+            Cache<String, String> target = mockStringCache();
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isLingCoreGovernanceEnabled()).thenReturn(true);
+
+            LingCaffeineCacheProxy<String, String> proxy = new LingCaffeineCacheProxy<>(target, permissionService);
+
+            assertThrows(PermissionDeniedException.class, () -> proxy.getIfPresent("user:1"));
+            verify(target, never()).getIfPresent(any());
         }
     }
 
@@ -148,7 +166,7 @@ class LingCaffeineCacheProxyTest {
             Map<Object, String> namespacedResult = new LinkedHashMap<>();
             namespacedResult.put(new CacheNamespaceSupport.NamespacedKey("ling-a", "users", "user:1"), "tom");
             when(permissionService.isAllowed("ling-a", "cache:local", AccessType.READ)).thenReturn(true);
-            when(target.getAllPresent(org.mockito.ArgumentMatchers.any())).thenReturn((Map) namespacedResult);
+            when(target.getAllPresent(any())).thenReturn((Map) namespacedResult);
 
             LingCallContext.setLingId("ling-a");
             LingCaffeineCacheProxy<String, String> proxy = new LingCaffeineCacheProxy<>(target, "users", permissionService);
@@ -173,7 +191,7 @@ class LingCaffeineCacheProxyTest {
             backingMap.put(new CacheNamespaceSupport.NamespacedKey("ling-b", "users", "k3"), "v3");
             backingMap.put(new CacheNamespaceSupport.NamespacedKey("ling-b", "users", "k4"), "v4");
             // 用 doReturn 绕过泛型检查：target.asMap() 返回 ConcurrentMap<K,V>，但此处需放入 NamespacedKey
-            org.mockito.Mockito.doReturn(backingMap).when(target).asMap();
+            doReturn(backingMap).when(target).asMap();
 
             LingCallContext.setLingId("ling-a");
             LingCaffeineCacheProxy<String, String> proxy =
@@ -222,6 +240,30 @@ class LingCaffeineCacheProxyTest {
             verify(target, never()).invalidateAll();
             verify(target, never()).asMap();
         }
+
+        @Test
+        @DisplayName("getAll 应将 mappingFunction 返回的原始 key 重新命名空间化，保证 Caffeine 内部命中")
+        void shouldNamespaceKeysForGetAllMappingFunction() {
+            // 用真实 Caffeine Cache 验证 mappingFunction 回调的 key 命名空间化
+            Cache<String, String> target = Caffeine.newBuilder().build();
+            PermissionService permissionService = mock(PermissionService.class);
+            when(permissionService.isAllowed("ling-a", "cache:local", AccessType.WRITE)).thenReturn(true);
+
+            LingCallContext.setLingId("ling-a");
+            LingCaffeineCacheProxy<String, String> proxy =
+                    new LingCaffeineCacheProxy<>(target, "users", permissionService);
+
+            Map<String, String> result = proxy.getAll(
+                    Collections.singletonList("user:1"),
+                    keys -> Collections.singletonMap("user:1", "tom"));
+
+            // 返回给调用方的 Map 应该用原始 key
+            assertEquals(1, result.size());
+            assertEquals("tom", result.get("user:1"));
+            // 底层缓存中应该用 NamespacedKey 存储，证明 mappingFunction 返回的 key 被重新命名空间化
+            Object namespacedKey = new CacheNamespaceSupport.NamespacedKey("ling-a", "users", "user:1");
+            assertEquals("tom", target.getIfPresent(namespacedKey));
+        }
     }
 
     @Nested
@@ -242,9 +284,9 @@ class LingCaffeineCacheProxyTest {
             // 1. getAll
             Map<Object, Object> loaded = new LinkedHashMap<>();
             loaded.put(new CacheNamespaceSupport.NamespacedKey("ling-a", "users", "k1"), "v1");
-            org.mockito.Mockito.doReturn(loaded).when(target).getAll(
-                    org.mockito.ArgumentMatchers.any(),
-                    org.mockito.ArgumentMatchers.any()
+            doReturn(loaded).when(target).getAll(
+                    any(),
+                    any()
             );
             Map<String, String> getAllResult = proxy.getAll(
                     Collections.singletonList("k1"),
@@ -254,18 +296,18 @@ class LingCaffeineCacheProxyTest {
 
             // 2. putAll
             proxy.putAll(Collections.singletonMap("k1", "v1"));
-            verify(target).putAll(org.mockito.ArgumentMatchers.any());
+            verify(target).putAll(any());
 
             // 3. invalidate
             proxy.invalidate("k1");
-            verify(target).invalidate(org.mockito.ArgumentMatchers.any());
+            verify(target).invalidate(any());
 
             // 4. invalidateAll(Iterable)
             proxy.invalidateAll(Collections.singletonList("k1"));
-            verify(target).invalidateAll(org.mockito.ArgumentMatchers.any());
+            verify(target).invalidateAll(any());
 
             // 5. invalidateAll() —— 灵元场景按 lingId 前缀清理
-            when(target.asMap()).thenReturn(new java.util.concurrent.ConcurrentHashMap<>());
+            when(target.asMap()).thenReturn(new ConcurrentHashMap<>());
             proxy.invalidateAll();
             verify(target).asMap();
 

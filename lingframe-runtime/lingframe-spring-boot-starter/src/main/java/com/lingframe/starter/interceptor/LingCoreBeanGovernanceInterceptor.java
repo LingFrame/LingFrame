@@ -44,7 +44,7 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
                 method.getDeclaringClass().getSimpleName(), method.getName());
 
         // 如果是 Object 的基础方法，直接放行
-        if (isObjectMethod(method.getName())) {
+        if (isObjectMethod(method.getName(), method.getParameterTypes())) {
             log.debug("[Governance Interceptor] Skipping Object method: {}", method.getName());
             return invocation.proceed();
         }
@@ -176,10 +176,22 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
     }
 
     /**
-     * 判断是否为 Object 的基础方法
+     * 判断是否为 Object 的基础方法。
+     *
+     * <p>精确匹配方法签名（名称 + 参数类型），避免用户业务方法名为 toString 等被误跳过。
+     * Object 的方法签名固定：
+     * <ul>
+     *   <li>toString() / hashCode() / getClass() —— 无参</li>
+     *   <li>equals(Object) —— 单参 Object</li>
+     * </ul>
      */
-    private boolean isObjectMethod(String name) {
-        return "toString".equals(name) || "hashCode".equals(name) ||
-                "equals".equals(name) || "getClass".equals(name);
+    private boolean isObjectMethod(String name, Class<?>[] paramTypes) {
+        if (paramTypes.length == 0) {
+            return "toString".equals(name) || "hashCode".equals(name) || "getClass".equals(name);
+        }
+        if (paramTypes.length == 1 && paramTypes[0] == Object.class) {
+            return "equals".equals(name);
+        }
+        return false;
     }
 }

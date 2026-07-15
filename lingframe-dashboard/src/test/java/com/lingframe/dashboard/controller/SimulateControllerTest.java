@@ -2,7 +2,7 @@ package com.lingframe.dashboard.controller;
 
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.exception.LingNotFoundException;
-import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.runtime.SwitchableRuntimeMode;
 import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.SimulateResultDTO;
 import com.lingframe.dashboard.dto.StressResultDTO;
@@ -23,8 +23,9 @@ import static org.mockito.Mockito.when;
 
 /**
  * 模拟控制器测试
- * 覆盖 simulateResource / simulateIpc / updateDevMode / stressTest 四个端点
+ * 覆盖 simulateResource / simulateIpc / stressTest / updateMode 四个端点
  * 含 stressTest 的三路异常分支（LingNotFound / LingInvocation / 其他）
+ * 含 updateMode 的密码认证与 fail-closed 场景（方向 B 重构）
  */
 @DisplayName("模拟控制器测试")
 class SimulateControllerTest {
@@ -35,7 +36,8 @@ class SimulateControllerTest {
     @BeforeEach
     void setUp() {
         simulateService = mock(SimulateService.class);
-        controller = new SimulateController(simulateService, LingFrameConfig.current());
+        // fail-closed 模式（未配置密码），测试不涉及模式切换
+        controller = new SimulateController(simulateService, new SwitchableRuntimeMode(false, null));
     }
 
     @Nested
@@ -107,78 +109,6 @@ class SimulateControllerTest {
     }
 
     @Nested
-    @DisplayName("updateDevMode")
-    class UpdateDevModeTests {
-
-        @Test
-        @DisplayName("testEnv=dev 应切换到 DEV 模式并返回 true")
-        void shouldSwitchToDevMode() {
-            boolean original = LingFrameConfig.current().isDevMode();
-            try {
-                SimulateController.ModeRequest request = new SimulateController.ModeRequest();
-                request.setTestEnv("dev");
-                ApiResponse<Boolean> response = controller.updateDevMode(request);
-
-                assertTrue(response.isSuccess());
-                assertTrue(response.getData());
-                assertTrue(LingFrameConfig.current().isDevMode());
-            } finally {
-                LingFrameConfig.current().setDevMode(original);
-            }
-        }
-
-        @Test
-        @DisplayName("testEnv=prod 应切换到 PROD 模式并返回 false")
-        void shouldSwitchToProdMode() {
-            boolean original = LingFrameConfig.current().isDevMode();
-            try {
-                LingFrameConfig.current().setDevMode(true);
-                SimulateController.ModeRequest request = new SimulateController.ModeRequest();
-                request.setTestEnv("prod");
-                ApiResponse<Boolean> response = controller.updateDevMode(request);
-
-                assertTrue(response.isSuccess());
-                assertFalse(response.getData());
-                assertFalse(LingFrameConfig.current().isDevMode());
-            } finally {
-                LingFrameConfig.current().setDevMode(original);
-            }
-        }
-
-        @Test
-        @DisplayName("testEnv 大小写不敏感，DEV 等同 dev")
-        void shouldBeCaseInsensitive() {
-            boolean original = LingFrameConfig.current().isDevMode();
-            try {
-                SimulateController.ModeRequest request = new SimulateController.ModeRequest();
-                request.setTestEnv("DEV");
-                ApiResponse<Boolean> response = controller.updateDevMode(request);
-
-                assertTrue(response.isSuccess());
-                assertTrue(response.getData());
-            } finally {
-                LingFrameConfig.current().setDevMode(original);
-            }
-        }
-
-        @Test
-        @DisplayName("testEnv 为 null 时应返回 false（PROD 模式）")
-        void shouldReturnFalseForNullEnv() {
-            boolean original = LingFrameConfig.current().isDevMode();
-            try {
-                SimulateController.ModeRequest request = new SimulateController.ModeRequest();
-                request.setTestEnv(null);
-                ApiResponse<Boolean> response = controller.updateDevMode(request);
-
-                assertTrue(response.isSuccess());
-                assertFalse(response.getData());
-            } finally {
-                LingFrameConfig.current().setDevMode(original);
-            }
-        }
-    }
-
-    @Nested
     @DisplayName("stressTest")
     class StressTestTests {
 
@@ -229,6 +159,115 @@ class SimulateControllerTest {
 
             assertFalse(response.isSuccess());
             assertTrue(response.getMessage().contains("压测失败"));
+        }
+    }
+
+    @Nested
+    @DisplayName("updateMode")
+    class UpdateModeTests {
+
+        private static final String PASSWORD = "test-password";
+
+        private SwitchableRuntimeMode runtimeMode;
+        private SimulateController modeController;
+
+        @BeforeEach
+        void setUpMode() {
+            // 每个测试用例使用全新的 RuntimeMode，避免失败计数累积触发锁定
+            runtimeMode = new SwitchableRuntimeMode(false, PASSWORD);
+            modeController = new SimulateController(simulateService, runtimeMode);
+        }
+
+        @Test
+        @DisplayName("密码正确时切换到 dev 模式成功")
+        void shouldSwitchToDevWithCorrectPassword() {
+            SimulateController.ModeRequest request = new SimulateController.ModeRequest();
+            request.setTestEnv("dev");
+            request.setPassword(PASSWORD);
+
+            ApiResponse<Boolean> response = modeController.updateMode(request);
+
+            assertTrue(response.isSuccess());
+            assertTrue(response.getData());
+            assertTrue(runtimeMode.isDev());
+        }
+
+        @Test
+        @DisplayName("密码正确时切换到 prod 模式成功")
+        void shouldSwitchToProdWithCorrectPassword() {
+            // 先切到 dev，再切回 prod
+            SimulateController.ModeRequest devReq = new SimulateController.ModeRequest();
+            devReq.setTestEnv("dev");
+            devReq.setPassword(PASSWORD);
+            modeController.updateMode(devReq);
+
+            SimulateController.ModeRequest prodReq = new SimulateController.ModeRequest();
+            prodReq.setTestEnv("prod");
+            prodReq.setPassword(PASSWORD);
+
+            ApiResponse<Boolean> response = modeController.updateMode(prodReq);
+
+            assertTrue(response.isSuccess());
+            assertFalse(response.getData());
+            assertFalse(runtimeMode.isDev());
+        }
+
+        @Test
+        @DisplayName("密码错误时返回 error")
+        void shouldReturnErrorOnWrongPassword() {
+            SimulateController.ModeRequest request = new SimulateController.ModeRequest();
+            request.setTestEnv("dev");
+            request.setPassword("wrong-password");
+
+            ApiResponse<Boolean> response = modeController.updateMode(request);
+
+            assertFalse(response.isSuccess());
+            assertTrue(response.getMessage().contains("密码错误"));
+        }
+
+        @Test
+        @DisplayName("未配置密码时 fail-closed 返回 error")
+        void shouldFailClosedWhenPasswordNotConfigured() {
+            // 未配置密码的 RuntimeMode：切换功能关闭
+            SwitchableRuntimeMode closedMode = new SwitchableRuntimeMode(false, null);
+            SimulateController closedController = new SimulateController(simulateService, closedMode);
+
+            SimulateController.ModeRequest request = new SimulateController.ModeRequest();
+            request.setTestEnv("dev");
+            request.setPassword(PASSWORD);
+
+            ApiResponse<Boolean> response = closedController.updateMode(request);
+
+            assertFalse(response.isSuccess());
+            assertTrue(response.getMessage().contains("未启用"));
+        }
+
+        @Test
+        @DisplayName("testEnv 大小写不敏感：DEV → dev")
+        void shouldBeCaseInsensitiveForDev() {
+            SimulateController.ModeRequest request = new SimulateController.ModeRequest();
+            request.setTestEnv("DEV");
+            request.setPassword(PASSWORD);
+
+            ApiResponse<Boolean> response = modeController.updateMode(request);
+
+            assertTrue(response.isSuccess());
+            assertTrue(response.getData());
+            assertTrue(runtimeMode.isDev());
+        }
+
+        @Test
+        @DisplayName("testEnv 大小写不敏感：PROD → prod")
+        void shouldBeCaseInsensitiveForProd() {
+            SimulateController.ModeRequest request = new SimulateController.ModeRequest();
+            request.setTestEnv("PROD");
+            request.setPassword(PASSWORD);
+
+            ApiResponse<Boolean> response = modeController.updateMode(request);
+
+            assertTrue(response.isSuccess());
+            assertFalse(response.getData());
+            assertFalse(runtimeMode.isDev());
         }
     }
 }
