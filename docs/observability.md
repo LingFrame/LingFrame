@@ -122,7 +122,7 @@ POST /lingframe/dashboard/lings/{lingId}/stats/reset
 
 `lingframe-dashboard` has an optional built-in Micrometer bridge.
 
-When the host application provides a `MeterRegistry`, the following gauges will automatically be registered:
+When the LingCore application provides a `MeterRegistry`, the following gauges will automatically be registered:
 
 - `lingframe.ling.health.qps`
 - `lingframe.ling.health.error_rate`
@@ -137,8 +137,8 @@ When the host application provides a `MeterRegistry`, the following gauges will 
 
 Clarifications:
 
-- LingFrame has prepared the metric bridging but does not force the host to adopt a specific monitoring backend.
-- If the host imports `micrometer-registry-prometheus` and exposes the actuator endpoint, these metrics can be scraped by Prometheus.
+- LingFrame has prepared the metric bridging but does not force LingCore to adopt a specific monitoring backend.
+- If LingCore imports `micrometer-registry-prometheus` and exposes the actuator endpoint, these metrics can be scraped by Prometheus.
 
 ### 7. EventBus Mechanism
 
@@ -162,13 +162,13 @@ eventBus.subscribeGlobal(MyEvent.class, event -> {
 
 ---
 
-## Integrating the Host with Prometheus
+## Integrating LingCore with Prometheus
 
 Minimum requirements for integration:
 
-1. Host imports `spring-boot-starter-actuator`
-2. Host imports `micrometer-registry-prometheus`
-3. Host exposes `/actuator/prometheus`
+1. LingCore imports `spring-boot-starter-actuator`
+2. LingCore imports `micrometer-registry-prometheus`
+3. LingCore exposes `/actuator/prometheus`
 
 Example configuration:
 

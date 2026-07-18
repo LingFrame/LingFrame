@@ -41,17 +41,18 @@ public class ServicePlaygroundController {
     }
 
     /**
-     * 真实调用灵元服务方法
+     * 调用灵元服务方法（默认真实执行；simulation=true 时仅跑治理链）。
      */
     @PostMapping("/lings/{lingId}/invoke")
     public ApiResponse<InvokeResultDTO> invokeService(
             @PathVariable String lingId,
             @RequestBody InvokeRequest request) {
         try {
+            boolean simulation = Boolean.TRUE.equals(request.getSimulation());
             InvokeResultDTO result = playgroundService.invokeService(
                     lingId, request.getFqsid(), request.getMethodName(),
                     request.getParameterTypes(), request.getArgs(), request.getVersion(),
-                    request.getRoutingMode());
+                    request.getRoutingMode(), simulation);
             return ApiResponse.ok(result);
         } catch (Exception e) {
             log.error("Service invocation failed: {}/{}", lingId, request.getFqsid(), e);
@@ -78,5 +79,13 @@ public class ServicePlaygroundController {
          * 路由模式：SPECIFIED（默认，按 version 指定）/ PROPORTIONAL（按流量比例随机路由）。
          */
         private String routingMode;
+        /**
+         * 是否模拟调用。
+         * <ul>
+         *   <li>false / null（默认）：NORMAL 真实执行，可产生业务副作用——日常验接口路径</li>
+         *   <li>true：SIMULATION，只跑治理链，不执行真实业务</li>
+         * </ul>
+         */
+        private Boolean simulation;
     }
 }

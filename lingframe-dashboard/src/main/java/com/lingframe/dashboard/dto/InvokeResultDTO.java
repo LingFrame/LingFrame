@@ -33,6 +33,17 @@ public class InvokeResultDTO {
     /** 实际路由到的版本（按比例路由模式下返回） */
     private String routedVersion;
 
+    /**
+     * 执行模式：NORMAL（真实业务副作用）/ SIMULATION（仅治理链，无业务副作用）。
+     */
+    private String executionMode;
+
+    /**
+     * 是否预期产生真实业务副作用。
+     * NORMAL=true，SIMULATION=false，便于前端醒目标注。
+     */
+    private boolean sideEffects;
+
     /** 治理追踪 */
     private List<TraceEntry> traces;
 

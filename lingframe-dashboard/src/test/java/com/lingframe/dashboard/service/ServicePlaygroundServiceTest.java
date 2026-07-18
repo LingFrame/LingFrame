@@ -375,6 +375,8 @@ class ServicePlaygroundServiceTest {
 
             assertTrue(result.isSuccess());
             assertEquals("hello-result", result.getResult());
+            assertEquals("NORMAL", result.getExecutionMode());
+            assertTrue(result.isSideEffects());
             assertEquals(1, result.getTraces().size());
             assertEquals("filter-1", result.getTraces().get(0).getSource());
             assertEquals("action-1", result.getTraces().get(0).getAction());
@@ -382,6 +384,46 @@ class ServicePlaygroundServiceTest {
 
             // 检查当前线程 ThreadLocal 中没有挂着脏数据，或者由于执行了 recycle，InvocationContext.current() 应为
             // null
+            assertNull(InvocationContext.current());
+        }
+
+        @Test
+        @DisplayName("simulation=true 时应使用 SIMULATION 模式且标记无副作用")
+        void shouldUseSimulationModeWhenRequested() {
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
+                    pipelineEngine, objectMapper, canaryRouter);
+            LingRuntime runtime = mock(LingRuntime.class);
+            when(runtime.isAvailable()).thenReturn(true);
+            when(repository.getRuntime("test-ling")).thenReturn(runtime);
+
+            InstancePool instancePool = mock(InstancePool.class);
+            LingInstance instance = mock(LingInstance.class);
+            when(runtime.getInstancePool()).thenReturn(instancePool);
+            when(instancePool.getDefault()).thenReturn(instance);
+            when(instance.isReady()).thenReturn(true);
+            when(instance.getClassLoader()).thenReturn(this.getClass().getClassLoader());
+            when(instance.getVersion()).thenReturn("1.0");
+
+            doAnswer(invocation -> {
+                InvocationContext ctx = invocation.getArgument(0);
+                assertEquals(com.lingframe.core.pipeline.InvocationExecutionMode.SIMULATION,
+                        ctx.execution().getMode());
+                return null;
+            }).when(pipelineEngine).invoke(any(InvocationContext.class));
+
+            InvokeResultDTO result = playgroundService.invokeService(
+                    "test-ling",
+                    "test-ling:Service",
+                    "hello",
+                    new String[] { "java.lang.String" },
+                    new Object[] { "world" },
+                    null,
+                    "SPECIFIED",
+                    true);
+
+            assertTrue(result.isSuccess());
+            assertEquals("SIMULATION", result.getExecutionMode());
+            assertFalse(result.isSideEffects());
             assertNull(InvocationContext.current());
         }
 

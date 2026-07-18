@@ -317,7 +317,7 @@ class ServicePlaygroundServiceSupplementTest {
 
         @Test
         @DisplayName("SPECIFIED 模式成功调用时应返回正数耗时和 null 路由版本")
-        void shouldReturnSuccessWithDurationAndNullRoutedVersion() {
+        void shouldReturnSuccessWithDurationAndTargetRoutedVersion() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
                     pipelineEngine, objectMapper, canaryRouter);
             LingRuntime runtime = mock(LingRuntime.class);
@@ -350,8 +350,10 @@ class ServicePlaygroundServiceSupplementTest {
 
             assertTrue(result.isSuccess());
             assertEquals("hello-result", result.getResult());
-            // SPECIFIED 模式不返回路由版本
-            assertNull(result.getRoutedVersion());
+            // SPECIFIED 也回填实际命中版本，便于前端展示与审计（不限于 PROPORTIONAL）
+            assertEquals("1.0", result.getRoutedVersion());
+            assertEquals("NORMAL", result.getExecutionMode());
+            assertTrue(result.isSideEffects());
             assertTrue(result.getDurationMs() > 0);
         }
     }

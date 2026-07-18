@@ -103,7 +103,7 @@ class DefaultPermissionServiceTest {
         }
 
         @Test
-        @DisplayName("should publish dev-mode bypass alert")
+        @DisplayName("开发模式旁路应发布 DEV_PERMISSION_BYPASS 告警")
         void shouldPublishDevModeBypassAlert() {
             EventCapture<MonitoringEvents.AlertNotifyEvent> captured = new EventCapture<>();
             eventBus.subscribe("test-listener", MonitoringEvents.AlertNotifyEvent.class, captured::set);

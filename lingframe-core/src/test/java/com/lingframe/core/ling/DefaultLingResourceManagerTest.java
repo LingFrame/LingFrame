@@ -38,7 +38,7 @@ class DefaultLingResourceManagerTest {
             DefaultLingResourceManager manager = new DefaultLingResourceManager(repository, null, null);
             manager.allocateThreadPool("ling-a", 1);
 
-            manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0"));
+            manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0", "1.0.0"));
 
             Map<String, ExecutorService> pools = getThreadPools(manager);
             assertTrue(pools.containsKey("ling-a"));
@@ -60,7 +60,7 @@ class DefaultLingResourceManagerTest {
             DefaultLingResourceManager manager = new DefaultLingResourceManager(repository, null, null);
             manager.allocateThreadPool("ling-a", 1);
 
-            manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0"));
+            manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0", "1.0.0"));
 
             Map<String, ExecutorService> pools = getThreadPools(manager);
             assertFalse(pools.containsKey("ling-a"));
@@ -137,7 +137,7 @@ class DefaultLingResourceManagerTest {
     void shouldReclaimWhenNullRepository() {
         DefaultLingResourceManager manager = new DefaultLingResourceManager(null, null, null);
         manager.allocateThreadPool("ling-a", 1);
-        manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0"));
+        manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0", "1.0.0"));
         // null repository → shouldReclaimThreadPool 返回 true → 线程池被回收
         assertDoesNotThrow(() -> manager.shutdown());
     }
@@ -150,7 +150,7 @@ class DefaultLingResourceManagerTest {
 
         DefaultLingResourceManager manager = new DefaultLingResourceManager(repository, null, null);
         manager.allocateThreadPool("ling-a", 1);
-        manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0"));
+        manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0", "1.0.0"));
         assertDoesNotThrow(() -> manager.shutdown());
     }
 
@@ -161,7 +161,7 @@ class DefaultLingResourceManagerTest {
         when(methodCache.evictByPrefix(anyString())).thenReturn(3);
 
         DefaultLingResourceManager manager = new DefaultLingResourceManager(null, null, methodCache);
-        manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0"));
+        manager.onEvent(new InstanceDestroyedEvent("ling-a", "1.0.0", "1.0.0"));
 
         verify(methodCache).evictByPrefix("ling-a:1.0.0@");
         manager.shutdown();

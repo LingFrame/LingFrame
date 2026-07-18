@@ -117,7 +117,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
                 governanceMetricsCollector.recordBulkheadRejected(lingId, ctx.getTargetVersion());
                 recordThreadBudgetSnapshot(lingId, ctx, executorHolder);
             }
-            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.RATE_LIMITED, e);
+            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.BULKHEAD_FULL, e);
         }
 
         try {

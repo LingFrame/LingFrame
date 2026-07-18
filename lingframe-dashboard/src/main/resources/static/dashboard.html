@@ -240,6 +240,15 @@
                             class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
                             <i class="fa-solid fa-code-branch mr-0.5"></i>{{ playgroundResult.routedVersion }}
                         </span>
+                        <span v-if="playgroundResult.executionMode"
+                            class="text-[10px] font-bold px-1.5 py-0.5 rounded border"
+                            :class="playgroundResult.sideEffects
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                : 'bg-sky-500/20 text-sky-300 border-sky-500/30'">
+                            {{ playgroundResult.executionMode }}
+                            ·
+                            {{ playgroundResult.sideEffects ? t('playground.sideEffectsBadge') : t('playground.simulationBadge') }}
+                        </span>
                         <span class="text-[10px] font-mono t-text-muted">{{ playgroundResult.durationMs }} ms</span>
                         <button @click="closePlaygroundResultModal" class="t-text-sub hover:t-text">
                             <i class="fa-solid fa-xmark"></i>
@@ -2571,6 +2580,19 @@
                                     <i class="fa-solid fa-terminal text-indigo-400"></i>
                                     <h3 class="font-bold text-base t-text">{{ t('playground.title') }}</h3>
                                     <div class="flex items-center gap-2">
+                                        <!-- 真实 / 模拟：默认真实，验证接口不额外费劲 -->
+                                        <div class="flex items-center gap-1 text-[10px]">
+                                            <button @click="playgroundSimulation = false"
+                                                :class="!playgroundSimulation ? 'bg-amber-600/30 text-amber-300 border-amber-500/50' : 't-bg-page t-text-sub t-border'"
+                                                class="px-1.5 py-0.5 rounded border font-bold">
+                                                {{ t('playground.modeReal') }}
+                                            </button>
+                                            <button @click="playgroundSimulation = true"
+                                                :class="playgroundSimulation ? 'bg-sky-600/30 text-sky-300 border-sky-500/50' : 't-bg-page t-text-sub t-border'"
+                                                class="px-1.5 py-0.5 rounded border font-bold">
+                                                {{ t('playground.modeSimulation') }}
+                                            </button>
+                                        </div>
                                         <!-- C2 路由模式切换 -->
                                         <div v-if="playgroundVersionGroups.length > 1"
                                             class="flex items-center gap-1 text-[10px]">
@@ -2660,6 +2682,15 @@
                                         </div>
                                     </div>
 
+                                    <!-- 执行模式提示：真实=有副作用；模拟=仅治理 -->
+                                    <div v-if="!playgroundSimulation"
+                                        class="mb-2 text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1">
+                                        <i class="fa-solid fa-triangle-exclamation mr-1"></i>{{ t('playground.realHint') }}
+                                    </div>
+                                    <div v-else
+                                        class="mb-2 text-[10px] text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded px-2 py-1">
+                                        <i class="fa-solid fa-circle-info mr-1"></i>{{ t('playground.simulationHint') }}
+                                    </div>
                                     <!-- C2 按比例路由提示 -->
                                     <div v-if="playgroundRoutingMode === 'PROPORTIONAL' && playgroundVersionGroups.length > 1"
                                         class="mb-2 text-[10px] text-purple-400 bg-purple-500/10 border border-purple-500/30 rounded px-2 py-1">

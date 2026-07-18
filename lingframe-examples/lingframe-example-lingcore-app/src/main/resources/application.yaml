@@ -59,10 +59,11 @@ lingframe:
       metrics-retention-days: 7
       audit-retention-days: 30
       metrics-collect-interval-seconds: 30
-    # 访问令牌（生产环境建议设置，留空则不启用）
+    # 访问令牌：示例本地允许弱口令；生产请设强 token 且 allow-weak: false
     access-token:
       enabled: true
       token: "123456"
+      allow-weak: true
 
 # SpringDoc OpenAPI 配置
 springdoc:

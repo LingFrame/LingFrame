@@ -73,6 +73,8 @@ public class DefaultPermissionService implements PermissionService {
         boolean allowed = checkInternal(lingId, capability, accessType);
         log.debug("[Auth] Permission table check result: {}", allowed);
 
+        // 开发模式：未声明权限仍放行，便于本地联调；同时告警 + 事件，提醒补 ling.yml
+        // 生产（非 dev）绝不放行——安全与 DX 分层，不混为一谈
         if (!allowed && config.isDevMode()) {
             log.warn("==========================================================================");
             log.warn("[DEV WARNING] ling [{}] unauthorized access [{}] ({}). Please declare in ling.yml: {}",
@@ -241,6 +243,9 @@ public class DefaultPermissionService implements PermissionService {
         return value.substring(0, maxLength) + "...";
     }
 
+    /**
+     * 开发模式权限旁路告警：不阻断访问，但要让监控/Dashboard 能看见。
+     */
     private void publishDevModeBypassAlert(String lingId, String capability, AccessType accessType) {
         if (eventBus == null) {
             return;
@@ -254,7 +259,6 @@ public class DefaultPermissionService implements PermissionService {
                 lingId,
                 capability,
                 accessType);
-        // Dev 模式告警同样通过异步监控事件投递，适合监控与 Dashboard 消费。
         eventBus.publish(new MonitoringEvents.AlertNotifyEvent(
                 traceId,
                 "WARNING",

@@ -113,8 +113,11 @@ public class LingFrameLifecycleBeansConfiguration {
             }
         }
         if (allVerifiers.stream().noneMatch(v -> v instanceof DangerousApiVerifier)) {
-            allVerifiers.add(new DangerousApiVerifier(true,
-                    lingFrameConfig != null ? lingFrameConfig.getTrustedLingIds() : Collections.emptyList()));
+            // strictMode 与 trustedLibPrefixes 均可配置，开发环境可关严格模式或豁免依赖库前缀
+            boolean strictMode = lingFrameConfig != null && lingFrameConfig.isStrictSecurityMode();
+            allVerifiers.add(new DangerousApiVerifier(strictMode,
+                    lingFrameConfig != null ? lingFrameConfig.getTrustedLingIds() : Collections.emptyList(),
+                    lingFrameConfig != null ? lingFrameConfig.getTrustedLibPrefixes() : Collections.emptyList()));
         }
         // 生态桶：Spring 生态清理 Hook（由 Spring Bean 注入）
         // JVM 桶：JVM 级 Hook，桶内并行执行

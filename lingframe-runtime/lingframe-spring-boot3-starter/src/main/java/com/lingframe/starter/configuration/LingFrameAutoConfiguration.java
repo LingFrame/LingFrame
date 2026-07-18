@@ -5,6 +5,7 @@ import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.filter.LingWebGovernanceFilter;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
+import com.lingframe.starter.web.LingGatewayHandlerMapping;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebRouteResolver;
 import com.lingframe.starter.web.LingOpenApiCustomizerAdapter;
@@ -59,6 +60,16 @@ public class LingFrameAutoConfiguration {
         registration.setOrder(1); // 高优先级
         registration.setName("lingWebGovernanceFilter");
         return registration;
+    }
+
+    /**
+     * 与 SB2 对等：动态网关 HandlerMapping，避免双栈路由行为分裂。
+     */
+    @Bean
+    public LingGatewayHandlerMapping lingGatewayHandlerMapping(
+            WebRouteResolver webRouteResolver,
+            WebInterfaceManager webInterfaceManager) {
+        return new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager);
     }
 
     @Bean

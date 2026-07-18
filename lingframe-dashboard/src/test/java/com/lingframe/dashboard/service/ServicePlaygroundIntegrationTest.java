@@ -57,7 +57,7 @@ class ServicePlaygroundIntegrationTest {
         LingServiceRegistry registry = new DefaultLingServiceRegistry();
         DefaultLingRepository repository = new DefaultLingRepository();
         EventBus eventBus = new EventBus();
-        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
+        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.builder().build());
 
         FilterRegistry filterRegistry = new FilterRegistry(FilterRegistryConfig.builder()
                 .methodCache(new InvokableMethodCache())
@@ -99,7 +99,7 @@ class ServicePlaygroundIntegrationTest {
         LingServiceRegistry registry = new DefaultLingServiceRegistry();
         DefaultLingRepository repository = new DefaultLingRepository();
         EventBus eventBus = new EventBus();
-        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
+        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.builder().build());
 
         FilterRegistry filterRegistry = new FilterRegistry(FilterRegistryConfig.builder()
                 .methodCache(new InvokableMethodCache())

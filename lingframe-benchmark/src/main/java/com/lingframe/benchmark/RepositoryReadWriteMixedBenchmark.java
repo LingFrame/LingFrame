@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
  * </ul>
  * <p>
  * 读线程只访问预部署的稳定灵元（stable-ling-*），
- * 写线程在独立命名空间（volatile-ling-{threadId}）循环 register/deregister，
+ * 写线程在独立命名空间（volatile-ling-{threadId}）循环 register/unregister，
  * 模拟灵元热部署/热卸载对并发读的干扰。
  * <p>
  * 底层是 ConcurrentHashMap 的 put/remove vs get 竞争，
@@ -48,26 +48,26 @@ public class RepositoryReadWriteMixedBenchmark {
      * 写线程的线程局部状态。
      * <p>
      * 每个写线程持有一个预构建的 LingRuntime 对象，
-     * 在 benchmark 方法中交替执行 register/deregister，
+     * 在 benchmark 方法中交替执行 register/unregister，
      * 避免在热路径中创建对象。
      */
     @State(Scope.Thread)
     public static class WriterState {
         LingRuntime volatileRuntime;
         String volatileKey;
-        /** 当前是否已注册到仓储，用于交替执行 register/deregister */
+        /** 当前是否已注册到仓储，用于交替执行 register/unregister */
         boolean registered;
 
         @Setup(Level.Trial)
         public void setup(RepositoryReadWriteMixedBenchmark parent) {
             long tid = Thread.currentThread().getId();
             volatileKey = "volatile-ling-" + tid;
-            // 走完整部署路径创建真实 LingRuntime，再从仓储取出用于 register/deregister 循环。
+            // 走完整部署路径创建真实 LingRuntime，再从仓储取出用于 register/unregister 循环。
             // 不能绕过 DefaultLingLifecycleEngine 直接 new LingRuntime——InstanceCoordinator
             // 是包级私有写入口，只有 core 内部能创建。完整部署保证状态机一致性。
             parent.helper.deployLing(volatileKey, "1.0.0");
             volatileRuntime = parent.helper.getLingRepository().getRuntime(volatileKey);
-            parent.helper.getLingRepository().deregister(volatileKey);
+            parent.helper.getLingRepository().unregister(volatileKey);
         }
     }
 
@@ -112,14 +112,14 @@ public class RepositoryReadWriteMixedBenchmark {
 
     /**
      * readHeavy 组 — 写线程。
-     * 1 个线程交替执行 register/deregister，模拟灵元热部署干扰。
+     * 1 个线程交替执行 register/unregister，模拟灵元热部署干扰。
      */
     @Benchmark
     @Group("readHeavy")
     @GroupThreads(1)
     public void readHeavy_writer(WriterState ws) {
         if (ws.registered) {
-            repository.deregister(ws.volatileKey);
+            repository.unregister(ws.volatileKey);
             ws.registered = false;
         } else {
             repository.register(ws.volatileRuntime);
@@ -142,14 +142,14 @@ public class RepositoryReadWriteMixedBenchmark {
 
     /**
      * balanced 组 — 写线程。
-     * 4 个线程各自交替 register/deregister 不同 key。
+     * 4 个线程各自交替 register/unregister 不同 key。
      */
     @Benchmark
     @Group("balanced")
     @GroupThreads(4)
     public void balanced_writer(WriterState ws) {
         if (ws.registered) {
-            repository.deregister(ws.volatileKey);
+            repository.unregister(ws.volatileKey);
             ws.registered = false;
         } else {
             repository.register(ws.volatileRuntime);

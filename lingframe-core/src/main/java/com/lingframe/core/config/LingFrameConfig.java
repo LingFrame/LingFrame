@@ -79,6 +79,27 @@ public class LingFrameConfig implements LingFrameInfo {
         }
         INSTANCE = config;
         checkJdkCompatibility();
+        checkProductionGovernancePosture(config);
+    }
+
+    /**
+     * 生产姿态告警：非 dev 且灵核治理关闭时高噪声提示。
+     * <p>
+     * 不默认改配置值（避免破坏现有装配），只暴露风险，由运维显式打开治理。
+     */
+    private static void checkProductionGovernancePosture(LingFrameConfig config) {
+        if (config == null || config.isDevMode()) {
+            return;
+        }
+        if (!config.isLingCoreGovernanceEnabled()) {
+            log.warn("[LingFrame] Production posture: lingCoreGovernanceEnabled=false. "
+                    + "LingCore bean/web governance is off. Set lingframe.ling-core-governance.enabled=true "
+                    + "(or equivalent) when hardening for production.");
+        }
+        if (!config.isLingCoreCheckPermissions()) {
+            log.warn("[LingFrame] Production posture: lingCoreCheckPermissions=false. "
+                    + "LingCore identity bypasses permission table. Enable when hardening for production.");
+        }
     }
 
     /**
@@ -260,6 +281,36 @@ public class LingFrameConfig implements LingFrameInfo {
      */
     @Builder.Default
     private final List<String> trustedLingIds = Collections.emptyList();
+
+    /**
+     * 危险 API 严格模式开关（默认 true，保持现有安全基线）。
+     * <p>
+     * 由 {@code lingframe.security.strict-mode} 配置注入。
+     * 开发环境可设为 false 跳过 WARN 级 API 拦截，便于联调。
+     */
+    @Builder.Default
+    private final boolean strictSecurityMode = true;
+
+    /**
+     * 危险 API 严格模式开关。
+     * <p>
+     * 显式 getter：避免仅依赖 Lombok 生成时，跨模块增量编译出现 NoSuchMethodError。
+     */
+    public boolean isStrictSecurityMode() {
+        return strictSecurityMode;
+    }
+
+    /**
+     * 依赖库包前缀豁免列表（按 ASM 内部路径匹配，斜杠分隔）。
+     * <p>
+     * 由 {@code lingframe.security.trusted-lib-prefixes} 配置注入，
+     * 内部已归一化为斜杠形式。匹配这些前缀的类会被扫描器跳过。
+     * <p>
+     * 用于解决 Jackson/Hibernate/jjwt 等依赖库内部反射调用触发 WARN 的问题，
+     * 让胖包/shade 包也能通过严格模式校验。
+     */
+    @Builder.Default
+    private final List<String> trustedLibPrefixes = Collections.emptyList();
 
     @Builder.Default
     private final int leakDetectionMaxConcurrentAggressiveChecks = 2;

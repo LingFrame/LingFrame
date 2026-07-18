@@ -90,7 +90,8 @@ class ServicePlaygroundControllerTest {
         void shouldInvokeService() {
             InvokeResultDTO result = new InvokeResultDTO();
             when(playgroundService.invokeService(
-                    anyString(), anyString(), anyString(), any(String[].class), any(Object[].class), any(), any()))
+                    anyString(), anyString(), anyString(), any(String[].class), any(Object[].class),
+                    any(), any(), any(Boolean.class)))
                     .thenReturn(result);
 
             ServicePlaygroundController.InvokeRequest request = new ServicePlaygroundController.InvokeRequest();
@@ -100,6 +101,7 @@ class ServicePlaygroundControllerTest {
             request.setArgs(new Object[]{"hello"});
             request.setVersion("1.0.0");
             request.setRoutingMode("SPECIFIED");
+            request.setSimulation(false);
 
             ApiResponse<InvokeResultDTO> response = controller.invokeService("ling1", request);
 
@@ -113,7 +115,7 @@ class ServicePlaygroundControllerTest {
             InvokeResultDTO result = new InvokeResultDTO();
             when(playgroundService.invokeService(
                     nullable(String.class), nullable(String.class), nullable(String.class),
-                    any(), any(), nullable(String.class), nullable(String.class)))
+                    any(), any(), nullable(String.class), nullable(String.class), any(Boolean.class)))
                     .thenReturn(result);
 
             ServicePlaygroundController.InvokeRequest request = new ServicePlaygroundController.InvokeRequest();
@@ -130,7 +132,7 @@ class ServicePlaygroundControllerTest {
         void shouldReturnErrorOnException() {
             when(playgroundService.invokeService(
                     nullable(String.class), nullable(String.class), nullable(String.class),
-                    any(), any(), nullable(String.class), nullable(String.class)))
+                    any(), any(), nullable(String.class), nullable(String.class), any(Boolean.class)))
                     .thenThrow(new RuntimeException("invoke failed"));
 
             ServicePlaygroundController.InvokeRequest request = new ServicePlaygroundController.InvokeRequest();

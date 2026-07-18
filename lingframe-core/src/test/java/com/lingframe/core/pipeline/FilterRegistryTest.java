@@ -189,8 +189,9 @@ class FilterRegistryTest {
             List<LingInvocationFilter> first = registry.getOrderedFilters();
             int originalSize = first.size();
 
+            // SPI/动态过滤器不得占用内置保留 order（含 TERMINAL=MAX_VALUE）
             LingInvocationFilter dynamicFilter = mock(LingInvocationFilter.class);
-            when(dynamicFilter.getOrder()).thenReturn(Integer.MAX_VALUE);
+            when(dynamicFilter.getOrder()).thenReturn(650);
             registry.addDynamicFilter(dynamicFilter);
 
             List<LingInvocationFilter> second = registry.getOrderedFilters();
@@ -203,7 +204,7 @@ class FilterRegistryTest {
         void shouldInvalidateCacheAfterRemoveDynamicFilter() {
             FilterRegistry registry = createRegistry();
             LingInvocationFilter dynamicFilter = mock(LingInvocationFilter.class);
-            when(dynamicFilter.getOrder()).thenReturn(Integer.MAX_VALUE);
+            when(dynamicFilter.getOrder()).thenReturn(650);
             registry.addDynamicFilter(dynamicFilter);
 
             List<LingInvocationFilter> withDynamic = registry.getOrderedFilters();
@@ -212,6 +213,19 @@ class FilterRegistryTest {
             List<LingInvocationFilter> afterRemove = registry.getOrderedFilters();
             assertNotSame(withDynamic, afterRemove, "removeDynamicFilter 后应返回新缓存实例");
             assertEquals(withDynamic.size() - 1, afterRemove.size(), "移除的过滤器不应在新缓存中");
+        }
+
+        @Test
+        @DisplayName("动态过滤器占用内置保留 order 时应启动失败")
+        void shouldRejectDynamicFilterOnReservedOrder() {
+            FilterRegistry registry = createRegistry();
+            LingInvocationFilter dynamicFilter = mock(LingInvocationFilter.class);
+            when(dynamicFilter.getOrder()).thenReturn(Integer.MAX_VALUE); // TERMINAL 保留位
+            registry.addDynamicFilter(dynamicFilter);
+
+            IllegalStateException ex = assertThrows(IllegalStateException.class, registry::getOrderedFilters);
+            assertTrue(ex.getMessage().contains("reserved pipeline order"),
+                    "应提示占用保留 order，实际: " + ex.getMessage());
         }
     }
 

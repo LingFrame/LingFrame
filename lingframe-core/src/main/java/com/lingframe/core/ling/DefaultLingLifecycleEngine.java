@@ -280,7 +280,8 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
         drainInstances(lingId, activeInstances,
                 runtime.getConfig().getForceCleanupDelaySeconds(),
-                runtime.getConfig().getDrainPollIntervalMs());
+                runtime.getConfig().getDrainPollIntervalMs(),
+                runtime.getConfig().isForceDrainOnTimeout());
         doFullUndeploy(lingId, runtime);
         return LingUninstallResult.triggered(lingId, null, reports);
     }
@@ -490,7 +491,9 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
     private void rollbackNewRuntimeRegistration(String lingId, boolean isNewRuntime) {
         if (isNewRuntime) {
-            lingRepository.deregister(lingId);
+            // 部署失败必须同时收口 RuntimeCoordinator，避免 ghost INACTIVE 状态机残留
+            runtimeCoordinator.unregister(lingId);
+            lingRepository.unregister(lingId);
         }
     }
 
@@ -566,7 +569,8 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
         drainInstances(lingId, Collections.singletonList(targetInstance),
                 runtime.getConfig().getForceCleanupDelaySeconds(),
-                runtime.getConfig().getDrainPollIntervalMs());
+                runtime.getConfig().getDrainPollIntervalMs(),
+                runtime.getConfig().isForceDrainOnTimeout());
         unloadSingleInstance(lingId, runtime, targetInstance);
         finalizeRuntimeRemovalIfEmpty(lingId, runtime, targetInstance.getVersion());
     }
@@ -601,8 +605,10 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         unloadAllInstances(lingId, runtime);
         clearServiceRegistry(lingId);
         finalizeLingRemoval(lingId);
-        runtimeCoordinator.purge(lingId);
-        lingRepository.deregister(lingId);
+        // 全量卸载必须确定性注销 coordinator：不得依赖“恰好已是 REMOVED”才能 purge
+        // （实例清空后 reevaluate 常落到 INACTIVE，旧 purge 会空操作留下 ghost）
+        runtimeCoordinator.unregister(lingId);
+        lingRepository.unregister(lingId);
         eventBus.publish(new LingUninstalledEvent(lingId));
     }
 
@@ -614,6 +620,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
     private void enterRuntimeStopping(String lingId, LingRuntime runtime) {
         RuntimeStatus current = runtime.currentStatus();
+        // 排空前尽量进入 STOPPING 意图态；INACTIVE/REMOVED 由最终 unregister 统一收口
         if (current != RuntimeStatus.STOPPING
                 && current != RuntimeStatus.INACTIVE
                 && current != RuntimeStatus.REMOVED) {
@@ -699,7 +706,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
      * 罕见场景（多版本同时卸载）可接受，无需引入每实例独立等待线程的复杂度。
      */
     private void drainInstances(String lingId, List<LingInstance> instances,
-                                int timeoutSeconds, int pollIntervalMs) {
+                                int timeoutSeconds, int pollIntervalMs, boolean forceDrainOnTimeout) {
         if (instances == null || instances.isEmpty()) {
             return;
         }
@@ -719,8 +726,8 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             }
         }
 
-        log.info("[{}] Draining {} instances, timeout={}s, awaitSlice={}ms...",
-                lingId, instances.size(), timeoutSeconds, awaitSliceMs);
+        log.info("[{}] Draining {} instances, timeout={}s, awaitSlice={}ms, forceOnTimeout={}",
+                lingId, instances.size(), timeoutSeconds, awaitSliceMs, forceDrainOnTimeout);
 
         long deadlineMs = System.currentTimeMillis() + (long) timeoutSeconds * 1000;
         boolean allIdle = false;
@@ -745,16 +752,50 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
                 pending.awaitIdle(waitMs);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                log.warn("[{}] Drain interrupted, proceeding to unload", lingId);
+                log.warn("[{}] Drain interrupted", lingId);
                 break;
             }
         }
 
         if (allIdle) {
             log.info("[{}] All instances drained successfully", lingId);
-        } else {
-            forceProceedWithWarnings(lingId, instances);
+            return;
         }
+
+        if (forceDrainOnTimeout) {
+            int forceCount = forceProceedWithWarnings(lingId, instances);
+            if (forceCount > 0 && governanceMetricsCollector != null) {
+                for (LingInstance instance : instances) {
+                    if (!instance.isIdle()) {
+                        governanceMetricsCollector.recordForceDrain(lingId, instance.getVersion());
+                    }
+                }
+            }
+            return;
+        }
+
+        // wait-only：不允许静默打断在途请求，卸载失败由编排层感知
+        int pendingCount = 0;
+        long nowMillis = System.currentTimeMillis();
+        for (LingInstance instance : instances) {
+            if (!instance.isIdle()) {
+                pendingCount++;
+                if (governanceMetricsCollector != null) {
+                    governanceMetricsCollector.recordDrainTimeoutAbort(lingId, instance.getVersion());
+                }
+                log.error("[DRAIN_TIMEOUT] [{}] instanceId={} version={} still has {} active request(s); "
+                                + "forceDrainOnTimeout=false, unload aborted",
+                        lingId, instance.getInstanceId(), instance.getVersion(),
+                        instance.getActiveRequestCount());
+                for (String summary : describeActiveInvocations(instance, nowMillis)) {
+                    log.error("[DRAIN_TIMEOUT] [{}] in-flight on instanceId={}: {}",
+                            lingId, instance.getInstanceId(), summary);
+                }
+            }
+        }
+        throw new IllegalStateException(String.format(
+                "Drain timeout for ling [%s]: %d instance(s) still busy and forceDrainOnTimeout=false",
+                lingId, pendingCount));
     }
 
     /**
@@ -772,20 +813,34 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     }
 
     /**
-     * 超时后仍有活跃实例时，记录告警和飞行中的调用信息，然后强制推进卸载。
+     * 超时后仍有活跃实例时，记录强制排空（FORCE_DRAIN）并继续卸载。
+     * <p>
+     * 语义：这不是静默“成功 drain”，而是可观测的强制推进。
+     * 后续 tearDown 可能中断仍在飞行的请求；调用方应通过 ERROR 日志与 in-flight 摘要定位。
+     *
+     * @return 仍有飞行请求、被强制推进的实例数
      */
-    private void forceProceedWithWarnings(String lingId, List<LingInstance> instances) {
+    private int forceProceedWithWarnings(String lingId, List<LingInstance> instances) {
         long nowMillis = System.currentTimeMillis();
+        int forceCount = 0;
         for (LingInstance instance : instances) {
             if (!instance.isIdle()) {
-                log.warn("[{}] Force proceeding: instance {} still has {} active requests",
-                        lingId, instance.getVersion(), instance.getActiveRequestCount());
+                forceCount++;
+                log.error("[FORCE_DRAIN] [{}] instanceId={} version={} still has {} active request(s); "
+                                + "unload will proceed and may interrupt in-flight work",
+                        lingId, instance.getInstanceId(), instance.getVersion(),
+                        instance.getActiveRequestCount());
                 for (String summary : describeActiveInvocations(instance, nowMillis)) {
-                    log.warn("[{}] In-flight invocation on instance {}: {}",
-                            lingId, instance.getVersion(), summary);
+                    log.error("[FORCE_DRAIN] [{}] in-flight on instanceId={}: {}",
+                            lingId, instance.getInstanceId(), summary);
                 }
             }
         }
+        if (forceCount > 0) {
+            log.error("[FORCE_DRAIN] [{}] force-proceeding unload for {} instance(s) after drain timeout",
+                    lingId, forceCount);
+        }
+        return forceCount;
     }
 
     static List<String> describeActiveInvocations(LingInstance instance, long nowMillis) {

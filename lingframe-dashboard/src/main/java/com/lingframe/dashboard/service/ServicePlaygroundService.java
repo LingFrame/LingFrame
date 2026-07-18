@@ -7,6 +7,7 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.dto.InvokeResultDTO;
@@ -233,28 +234,51 @@ public class ServicePlaygroundService {
     }
 
     /**
-     * 真实调用灵元服务方法
+     * 调用灵元服务方法（默认真实执行）。
      *
-     * @param version 目标版本号。为空时走默认实例（稳定版），绕过金丝雀路由；
+     * @param version 目标版本号。为空时走默认实例（稳定版）；
      *                指定时走对应版本实例，用于金丝雀接口验证。
      */
     public InvokeResultDTO invokeService(String lingId, String fqsid, String methodName,
             String[] parameterTypes, Object[] args, String version) {
-        return invokeService(lingId, fqsid, methodName, parameterTypes, args, version, "SPECIFIED");
+        return invokeService(lingId, fqsid, methodName, parameterTypes, args, version, "SPECIFIED", false);
     }
 
     /**
-     * 真实调用灵元服务方法。
+     * 调用灵元服务方法（默认真实执行）。
      *
      * @param version     目标版本号（仅 routingMode=SPECIFIED 时生效）
      * @param routingMode 路由模式：SPECIFIED（指定版本，默认）/ PROPORTIONAL（按流量比例随机路由）
      */
     public InvokeResultDTO invokeService(String lingId, String fqsid, String methodName,
             String[] parameterTypes, Object[] args, String version, String routingMode) {
+        return invokeService(lingId, fqsid, methodName, parameterTypes, args, version, routingMode, false);
+    }
+
+    /**
+     * 调用灵元服务方法。
+     * <p>
+     * 设计取舍（控制面 DX）：
+     * <ul>
+     *   <li>默认 {@code simulation=false} → NORMAL 真调用，方便验接口</li>
+     *   <li>{@code simulation=true} → SIMULATION，只验治理链，无业务副作用</li>
+     *   <li>安全靠 Dashboard access-token + 审计日志 + 前端醒目标注，而不是默认假跑</li>
+     * </ul>
+     *
+     * @param version     目标版本号（仅 routingMode=SPECIFIED 时生效）
+     * @param routingMode 路由模式：SPECIFIED / PROPORTIONAL
+     * @param simulation  true=仅模拟治理链；false=真实业务执行
+     */
+    public InvokeResultDTO invokeService(String lingId, String fqsid, String methodName,
+            String[] parameterTypes, Object[] args, String version, String routingMode,
+            boolean simulation) {
         long start = System.currentTimeMillis();
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
         boolean classLoaderChanged = false;
         boolean proportional = "PROPORTIONAL".equalsIgnoreCase(routingMode);
+        String executionMode = simulation
+                ? InvocationExecutionMode.SIMULATION.name()
+                : InvocationExecutionMode.NORMAL.name();
         try {
             LingRuntime runtime = lingRepository.getRuntime(lingId);
             if (runtime == null) {
@@ -262,6 +286,8 @@ public class ServicePlaygroundService {
                         .success(false)
                         .error("Ling not found: " + lingId)
                         .durationMs(System.currentTimeMillis() - start)
+                        .executionMode(executionMode)
+                        .sideEffects(!simulation)
                         .build();
             }
             if (!runtime.isAvailable()) {
@@ -269,6 +295,8 @@ public class ServicePlaygroundService {
                         .success(false)
                         .error("Ling not available: " + lingId)
                         .durationMs(System.currentTimeMillis() - start)
+                        .executionMode(executionMode)
+                        .sideEffects(!simulation)
                         .build();
             }
 
@@ -282,6 +310,9 @@ public class ServicePlaygroundService {
                 }
             } else {
                 targetInstance = resolveTargetInstance(runtime, version);
+                if (targetInstance != null) {
+                    routedVersion = targetInstance.getVersion();
+                }
             }
             if (targetInstance == null) {
                 return InvokeResultDTO.builder()
@@ -290,6 +321,8 @@ public class ServicePlaygroundService {
                                 ? "Target version not available: " + version
                                 : "No available instance")
                         .durationMs(System.currentTimeMillis() - start)
+                        .executionMode(executionMode)
+                        .sideEffects(!simulation)
                         .build();
             }
 
@@ -310,6 +343,8 @@ public class ServicePlaygroundService {
                         .success(false)
                         .error("Parameter conversion failed: " + e.getMessage())
                         .durationMs(System.currentTimeMillis() - start)
+                        .executionMode(executionMode)
+                        .sideEffects(!simulation)
                         .build();
             }
 
@@ -321,8 +356,11 @@ public class ServicePlaygroundService {
                 ctx.setMethodName(methodName);
                 ctx.setParameterTypeNames(parameterTypes);
                 ctx.setArgs(convertedArgs);
-                // 不设 SIMULATION → 走真实管线 + 真实业务执行
                 ctx.setRuntime(runtime);
+                // 显式设置执行模式：默认 NORMAL（真调用）；simulation 时为 SIMULATION
+                ctx.execution().setMode(simulation
+                        ? InvocationExecutionMode.SIMULATION
+                        : InvocationExecutionMode.NORMAL);
 
                 // 显式补全真实的目标实现类名，防止治理过滤器反射解析类名失败。
                 // 接口服务的 classCache 可能被多版本覆盖，需按目标实例解析正确的实现类名；
@@ -332,18 +370,26 @@ public class ServicePlaygroundService {
                     ctx.resolution().setTargetClassName(targetClassName);
                 }
 
-                // 预设目标实例，绕过金丝雀路由。
-                // 演练场需要可稳定复现的调用环境，不应受金丝雀流量比例波动影响。
-                // 指定版本时走对应实例（用于金丝雀验证），否则走默认实例（稳定版）。
+                // 预设目标实例：演练场需要可稳定复现的调用环境。
+                // SPECIFIED：指定版本或稳定默认；PROPORTIONAL：按比例解析后再钉死该次选择结果。
                 if (!targetInstance.isReady()) {
                     return InvokeResultDTO.builder()
                             .success(false)
                             .error("Target instance not ready: " + targetInstance.getVersion()
                                     + " (status=" + targetInstance.currentStatus() + ")")
                             .durationMs(System.currentTimeMillis() - start)
+                            .executionMode(executionMode)
+                            .sideEffects(!simulation)
                             .build();
                 }
                 ctx.routing().setTargetInstance(targetInstance);
+
+                // 控制面审计：谁、何时、打了哪个服务（不记录 token / 完整 args，避免敏感参数进日志）
+                log.info("[Playground] caller=dashboard lingId={} fqsid={} method={} mode={} routingMode={} "
+                                + "targetVersion={} sideEffects={}",
+                        lingId, fqsid, methodName, executionMode,
+                        proportional ? "PROPORTIONAL" : "SPECIFIED",
+                        targetInstance.getVersion(), !simulation);
 
                 Object result = pipelineEngine.invoke(ctx);
                 long duration = System.currentTimeMillis() - start;
@@ -353,6 +399,8 @@ public class ServicePlaygroundService {
                         .result(result)
                         .durationMs(duration)
                         .routedVersion(routedVersion)
+                        .executionMode(executionMode)
+                        .sideEffects(!simulation)
                         .traces(buildTraces(ctx.execution().getTraces()))
                         .build();
             } finally {
@@ -360,12 +408,15 @@ public class ServicePlaygroundService {
             }
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
-            log.warn("Service invocation failed: {}/{} - {}", fqsid, methodName, e.getMessage());
+            log.warn("Service invocation failed: {}/{} mode={} - {}",
+                    fqsid, methodName, executionMode, e.getMessage());
 
             return InvokeResultDTO.builder()
                     .success(false)
                     .error(e.getMessage())
                     .durationMs(duration)
+                    .executionMode(executionMode)
+                    .sideEffects(!simulation)
                     .build();
         } finally {
             if (classLoaderChanged) {

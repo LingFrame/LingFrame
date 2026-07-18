@@ -191,6 +191,19 @@ class LingClassLoaderTest {
         }
 
         @Test
+        @DisplayName("强制父委派包在父缺失时确定性失败，禁止子定义")
+        void forcedParentMissMustNotFallbackToChild() throws Exception {
+            // com.lingframe.api.* 强制父委派：父找不到时必须带 Forced parent-delegate 语义失败，
+            // 不得回落到子 ClassLoader findClass（即便子 JAR 能伪造 API 类型）。
+            try (LingClassLoader cl = new LingClassLoader("ling-forced", new URL[0], ClassLoader.getSystemClassLoader())) {
+                ClassNotFoundException ex = assertThrows(ClassNotFoundException.class,
+                        () -> cl.loadClass("com.lingframe.api.__forced_parent_miss__.NonExistent"));
+                assertTrue(ex.getMessage() != null && ex.getMessage().contains("Forced parent-delegate"),
+                        "must fail with forced parent-delegate semantics, got: " + ex.getMessage());
+            }
+        }
+
+        @Test
         @DisplayName("共享 API 包委派给父加载器")
         void shouldDelegateSharedApiPackages() throws Exception {
             // org.yaml.snakeyaml 已在 FORCE_PARENT_PACKAGES 中，这里额外验证 sharedApiPackages 机制

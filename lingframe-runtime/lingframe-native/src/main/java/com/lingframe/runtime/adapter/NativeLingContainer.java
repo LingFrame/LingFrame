@@ -3,6 +3,7 @@ package com.lingframe.runtime.adapter;
 import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.ling.BusinessInterfaceFilter;
 import com.lingframe.core.ling.LingServiceRegistrar;
@@ -40,14 +41,26 @@ public class NativeLingContainer implements LingContainer {
     private LingContext savedContext;
     private volatile boolean active = false;
 
+    /**
+     * 灵核只读配置门面（可选）。替代 {@code LingFrameConfig.current()} 静态穿透。
+     * 未注入时隐式注册开关兜底 true（与 builder 默认一致）。
+     */
+    private LingFrameInfo lingFrameInfo;
+
     // 简易 Bean 容器：Class -> Instance
     private final Map<Class<?>, Object> singletons = new ConcurrentHashMap<>();
 
     public NativeLingContainer(String lingId, Class<?> mainClass,
             ClassLoader classLoader, File sourceFile) {
+        this(lingId, mainClass, classLoader, sourceFile, null);
+    }
+
+    public NativeLingContainer(String lingId, Class<?> mainClass,
+            ClassLoader classLoader, File sourceFile, LingFrameInfo lingFrameInfo) {
         this.lingId = lingId;
         this.classLoader = classLoader;
         this.sourceFile = sourceFile;
+        this.lingFrameInfo = lingFrameInfo;
         try {
             // 强校验：Native 模式下，主类必须实现 Ling 接口
             if (!Ling.class.isAssignableFrom(mainClass)) {
@@ -60,6 +73,13 @@ public class NativeLingContainer implements LingContainer {
         } catch (Exception e) {
             throw new LingInstallException(lingId, "Failed to create native ling instance", e);
         }
+    }
+
+    /**
+     * 注入灵核只读配置（装配后可选调用）。
+     */
+    public void setLingFrameInfo(LingFrameInfo lingFrameInfo) {
+        this.lingFrameInfo = lingFrameInfo;
     }
 
     @Override
@@ -117,11 +137,8 @@ public class NativeLingContainer implements LingContainer {
         LingServiceRegistry registry = coreCtx.getLingServiceRegistry();
         // native 路径无生态环境前缀，仅持 core 默认排除 + 用户排除项（暂无配置透传入口，用空集）
         BusinessInterfaceFilter interfaceFilter = BusinessInterfaceFilter.coreDefaults();
-        // TODO(隐式注册开关时序): LingFrameConfig.current() 是静态全局调用。
-        // native 路径下灵元加载前 LingFrameConfig 应已由 Spring Boot starter 装配完成，
-        // current() 返回全局单例。若未来 native 路径脱离 Spring 独立启动，
-        // 需在此前显式初始化 LingFrameConfig，否则会读默认值 true（通常也是期望值）。
-        boolean implicitRegistration = com.lingframe.core.config.LingFrameConfig.current().isImplicitRegistration();
+        // 注入式读取隐式注册开关，禁止热路径静态穿透 LingFrameConfig.current()
+        boolean implicitRegistration = lingFrameInfo == null || lingFrameInfo.isImplicitRegistration();
         LingServiceRegistrar registrar = new LingServiceRegistrar(
                 registry, interfaceFilter, implicitRegistration, coreCtx);
 

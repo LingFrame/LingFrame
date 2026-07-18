@@ -47,6 +47,18 @@ public class LingRuntimeConfig {
     @Builder.Default
     private int drainPollIntervalMs = 50;
 
+    /**
+     * drain 超时后是否强制推进卸载（默认 true，保持既有行为）。
+     * <p>
+     * <ul>
+     *   <li>{@code true}：超时后打 {@code [FORCE_DRAIN]} 日志并继续 tearDown（可能打断在途请求）</li>
+     *   <li>{@code false}：超时后仍有飞行请求则<strong>拒绝卸载</strong>，抛异常，避免静默打断业务</li>
+     * </ul>
+     * 硬化生产可按业务容忍度设为 false，并配合更长的 {@link #forceCleanupDelaySeconds}。
+     */
+    @Builder.Default
+    private boolean forceDrainOnTimeout = true;
+
     // ==================== 调用控制 ====================
 
     /**

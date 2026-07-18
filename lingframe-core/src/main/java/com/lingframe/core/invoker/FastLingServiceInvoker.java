@@ -24,6 +24,13 @@ public class FastLingServiceInvoker implements LingServiceInvoker {
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
         ClassLoader targetClassLoader = instance.getClassLoader();
+        if (targetClassLoader == null) {
+            instance.completeInvocation(invocationId);
+            throw new LingInvocationException(instance.getLingId(),
+                    LingInvocationException.ErrorKind.STATE_REJECTED,
+                    "Ling instance classloader is unavailable (likely unloaded or force-drained): "
+                            + instance.getInstanceId());
+        }
 
         try {
             Thread.currentThread().setContextClassLoader(targetClassLoader);
@@ -46,6 +53,13 @@ public class FastLingServiceInvoker implements LingServiceInvoker {
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
         ClassLoader targetClassLoader = instance.getClassLoader();
+        if (targetClassLoader == null) {
+            instance.completeInvocation(invocationId);
+            throw new LingInvocationException(instance.getLingId(),
+                    LingInvocationException.ErrorKind.STATE_REJECTED,
+                    "Ling instance classloader is unavailable (likely unloaded or force-drained): "
+                            + instance.getInstanceId());
+        }
 
         try {
             Thread.currentThread().setContextClassLoader(targetClassLoader);

@@ -1998,7 +1998,9 @@ createApp({
                     parameterTypes: paramTypes,
                     args: args,
                     version: version || null,
-                    routingMode: playgroundRoutingMode.value
+                    routingMode: playgroundRoutingMode.value,
+                    // 默认 false=真实调用（验接口友好）；true=仅模拟治理链
+                    simulation: playgroundSimulation.value === true
                 });
                 playgroundResult.value = result;
                 playgroundResultModal.show = true;
@@ -2144,6 +2146,8 @@ createApp({
 
         // ---- C2 按比例路由模式 ----
         const playgroundRoutingMode = ref('SPECIFIED');
+        // 默认真实调用：日常验证接口；模拟模式需显式切换
+        const playgroundSimulation = ref(false);
 
         loadPlaygroundCases();
 
@@ -3306,7 +3310,7 @@ createApp({
             playgroundSelectedVersion, playgroundVersionGroups, selectPlaygroundVersion, isMethodInSelectedVersion,
             playgroundLastCall, playgroundCases, playgroundCasePanelOpen, playgroundCasesGrouped,
             saveCurrentAsCase, replayCase, deleteCase, renameCase, promptRenameCase, exportCases, importCases,
-            playgroundRoutingMode,
+            playgroundRoutingMode, playgroundSimulation,
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
             formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue, formatUptime, formatPlaygroundResult,
             getStatusClass, getLingShortName, getLingTagClass, getLingHealthDotClass, getLingUptime, getLingServiceCount, getLogColor, getTrend,

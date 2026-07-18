@@ -18,13 +18,16 @@ import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.core.spi.TrafficRouter;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -172,10 +175,45 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
             List<LingInvocationFilter> all = new ArrayList<>(builtinFilters.size() + spiFilters.size());
             all.addAll(builtinFilters);
             all.addAll(spiFilters);
-            all.sort(Comparator.comparingInt(LingInvocationFilter::getOrder));
+            all.sort(Comparator.comparingInt(LingInvocationFilter::getOrder)
+                    .thenComparing(f -> f.getClass().getName()));
             validatePhaseContracts(all);
+            validateSpiPlacement(all);
             orderedCache = Collections.unmodifiableList(all);
             return orderedCache;
+        }
+    }
+
+    /**
+     * 内置过滤器占用的 order 为保留位；SPI/动态过滤器不得占用，
+     * 也不得成为 TERMINAL，防止插队绕过权限/隔离。
+     */
+    private static final Set<Integer> RESERVED_BUILTIN_ORDERS = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList(
+                    FilterPhase.PROVIDER_ROUTING,
+                    FilterPhase.METRICS,
+                    FilterPhase.STATE_GUARD,
+                    FilterPhase.ROUTING,
+                    FilterPhase.POLICY_PREFILL,
+                    FilterPhase.RESILIENCE,
+                    FilterPhase.RESOLUTION,
+                    FilterPhase.GOVERNANCE,
+                    FilterPhase.GOVERNANCE + 50,
+                    FilterPhase.EXECUTION_ISOLATION,
+                    FilterPhase.TERMINAL)));
+
+    private void validateSpiPlacement(List<LingInvocationFilter> filters) {
+        for (LingInvocationFilter filter : filters) {
+            if (isBuiltin(filter)) {
+                continue;
+            }
+            int order = filter.getOrder();
+            if (RESERVED_BUILTIN_ORDERS.contains(order)) {
+                throw new IllegalStateException(
+                        "SPI/dynamic filter " + filter.getClass().getName()
+                                + " uses reserved pipeline order " + order
+                                + "; choose a non-reserved order between core phases");
+            }
         }
     }
 

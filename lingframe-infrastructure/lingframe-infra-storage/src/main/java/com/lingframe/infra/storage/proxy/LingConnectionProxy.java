@@ -331,7 +331,9 @@ public class LingConnectionProxy implements Connection {
 
     @Override
     public void abort(Executor executor) throws SQLException {
-        target.abort(executor);
+        // 与 setSchema/setCatalog 一致：连接级破坏性操作禁止经治理代理下发，避免灵元可用性攻击
+        throw new SQLException("abort is forbidden on governed connection, "
+                + "ling must not terminate shared pool connections");
     }
 
     @Override

@@ -191,7 +191,7 @@ class LingUnloadCollectabilityRegressionTest {
                         .forceCleanupDelaySeconds(0)
                         .build())
                 .build();
-        List<LingSecurityVerifier> verifiers = Collections.singletonList(new DangerousApiVerifier(false, Collections.emptyList()));
+        List<LingSecurityVerifier> verifiers = Collections.singletonList(new DangerousApiVerifier(false, Collections.emptyList(), null));
 
         DefaultLingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
                 .containerFactory(containerFactory)

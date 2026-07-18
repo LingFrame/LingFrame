@@ -28,7 +28,7 @@
 
 ### Q4: "灵元"是什么？
 
-**A:** 灵元（Ling）是灵珑中的核心概念，指在宿主应用（灵核）进程内被独立加载和管理的业务单元。可以理解为"受治理的插件"。
+**A:** 灵元（Ling）是灵珑中的核心概念，指在灵核进程内被独立加载和管理的业务单元。不要把它降格成「插件」——灵元是受治理、可规范卸载的运行单元。
 
 ### Q5: 灵珑适合什么场景？
 
@@ -288,7 +288,7 @@ lingframe:
 
 ### Q27: Prometheus/Grafana 集成什么时候支持？
 
-**A:** 当前已经支持 Micrometer 指标桥接。若宿主应用提供 `MeterRegistry`，LingFrame 会自动注册灵元健康指标与治理信号指标；若宿主再引入 `micrometer-registry-prometheus` 并暴露 `/actuator/prometheus`，即可直接被 Prometheus 抓取。示例可参考 `lingframe-example-lingcore-app`。
+**A:** 当前已经支持 Micrometer 指标桥接。若灵核应用提供 `MeterRegistry`，LingFrame 会自动注册灵元健康指标与治理信号指标；若灵核再引入 `micrometer-registry-prometheus` 并暴露 `/actuator/prometheus`，即可直接被 Prometheus 抓取。示例可参考 `lingframe-example-lingcore-app`。
 
 ### Q28: 消息代理（Kafka/RabbitMQ）什么时候支持？
 

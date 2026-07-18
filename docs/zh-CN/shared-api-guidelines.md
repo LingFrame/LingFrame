@@ -132,6 +132,25 @@ public class OrderDTO implements Serializable {
 
 ---
 
+## 安全边界（不是 JVM 沙箱）
+
+`Shared API` 与加载期扫描提升的是**契约隔离**与**安装时风险提示**，**不是**完整的 JVM 安全沙箱。
+
+| 层 | 能做什么 | 不能做什么 |
+| --- | --- | --- |
+| Child-First `LingClassLoader` + 强制父委派 | 对 JDK / `com.lingframe.api.*` 等优先/独占父类型 | 运行时挡住一切反射/本地调用逃逸 |
+| `DangerousApiVerifier`（ASM） | 在**安装/加载**时对已知危险字节码失败或告警 | 灵元已加载后拦截每一次运行时调用 |
+| `strictSecurityMode` | 扫描期把更多 WARN 提升为硬失败 | 替代 SecurityManager / 模块级拒绝列表 |
+| 权限 + 基础设施代理 | 流量走代理时治理 DB/Cache/IPC | 拦不住未代理的 `DriverManager`/裸 Socket |
+
+运维建议：
+
+- 即使开启扫描，也要把不可信第三方灵元当作**高风险**。
+- 生产硬化优先 `strictSecurityMode=true`；可信灵元 ID / 库前缀应少用且可审计。
+- 已加载代码仍可能通过反射、进程、网络逃逸；必要时叠加权限、代理与进程级隔离。
+
+---
+
 ## `preload-api-jars` 常见配置示例
 
 ```yaml

@@ -91,27 +91,18 @@
     </dependencies>
 
     <profiles>
+        <!--
+            仅打开 IT / E2E 开关，不绑定 Boot 运行时线。
+            运行时线由 spring-boot2（默认）或 spring-boot3 选择。
+            注意：只激活 integration-check 会停用 activeByDefault 的 spring-boot2，
+            因此本地/CI 应始终写成 -Pspring-boot2,integration-check 或 -Pspring-boot3,integration-check。
+        -->
         <profile>
             <id>integration-check</id>
-            <!-- 这里只打开集成验证开关，不负责选择 Spring Boot 运行时线。 -->
-            <!--
-                注意：显式激活此 profile 会导致 activeByDefault 的 spring-boot2 profile 被 Maven 停用，
-                因此需要在此处也声明 boot2 专属依赖，以免运行时适配器（如 JavaxRepeatableReadInputStream）缺失。
-            -->
             <properties>
                 <lingframe.runE2E>true</lingframe.runE2E>
                 <skipITs>false</skipITs>
             </properties>
-            <dependencies>
-                <dependency>
-                    <groupId>com.lingframe</groupId>
-                    <artifactId>lingframe-spring-boot2-starter</artifactId>
-                </dependency>
-                <dependency>
-                    <groupId>org.springdoc</groupId>
-                    <artifactId>${springdoc.artifactId}</artifactId>
-                </dependency>
-            </dependencies>
         </profile>
 
         <profile>
@@ -142,11 +133,10 @@
                     <groupId>com.lingframe</groupId>
                     <artifactId>lingframe-spring-boot3-starter</artifactId>
                 </dependency>
-                <!-- SpringDoc for Boot 3 -->
+                <!-- SpringDoc for Boot 3：与 dependencies 父 POM SB3 profile 对齐 -->
                 <dependency>
                     <groupId>org.springdoc</groupId>
-                    <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-                    <version>2.2.0</version>
+                    <artifactId>${springdoc.artifactId}</artifactId>
                 </dependency>
             </dependencies>
         </profile>

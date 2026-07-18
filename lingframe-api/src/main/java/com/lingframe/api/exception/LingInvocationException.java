@@ -51,6 +51,8 @@ public class LingInvocationException extends LingRuntimeException {
         CIRCUIT_OPEN("LING-2001"),
         /** 触发限流保护 */
         RATE_LIMITED("LING-2002"),
+        /** 舱壁（线程隔离池）已满，拒绝新执行（与限流语义分离） */
+        BULKHEAD_FULL("LING-2003"),
         /** 安全校验未通过（权限不足、审计失败等） */
         SECURITY_REJECTED("LING-3001"),
         /** 类加载器/隔离层异常 */

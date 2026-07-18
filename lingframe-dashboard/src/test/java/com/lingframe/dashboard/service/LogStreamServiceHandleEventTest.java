@@ -362,7 +362,7 @@ class LogStreamServiceHandleEventTest {
         @DisplayName("目标状态含 ERROR 应映射为 ERROR 级别")
         void shouldMapErrorStatusToErrorLevel() throws Exception {
             InstanceStateChangedEvent event = new InstanceStateChangedEvent(
-                    "ling1", "1.0.0", InstanceStatus.READY, InstanceStatus.ERROR);
+                    "ling1", "1.0.0", "1.0.0", InstanceStatus.READY, InstanceStatus.ERROR);
 
             LogStreamDTO dto = capture(() -> {
                 try {
@@ -387,7 +387,7 @@ class LogStreamServiceHandleEventTest {
             // 代码检查 toStatus.name().contains("STOPPED")，
             // STOPPING 不包含 STOPPED，所以不匹配 WARNING，保持 INFO
             InstanceStateChangedEvent event = new InstanceStateChangedEvent(
-                    "ling1", "1.0.0", InstanceStatus.READY, InstanceStatus.STOPPING);
+                    "ling1", "1.0.0", "1.0.0", InstanceStatus.READY, InstanceStatus.STOPPING);
 
             LogStreamDTO dto = capture(() -> {
                 try {
@@ -404,7 +404,7 @@ class LogStreamServiceHandleEventTest {
         @DisplayName("目标状态为 READY 应映射为 INFO 级别")
         void shouldMapReadyStatusToInfoLevel() throws Exception {
             InstanceStateChangedEvent event = new InstanceStateChangedEvent(
-                    "ling1", "1.0.0", InstanceStatus.CREATED, InstanceStatus.READY);
+                    "ling1", "1.0.0", "1.0.0", InstanceStatus.CREATED, InstanceStatus.READY);
 
             LogStreamDTO dto = capture(() -> {
                 try {
@@ -473,7 +473,7 @@ class LogStreamServiceHandleEventTest {
         @Test
         @DisplayName("应格式化实例销毁事件")
         void shouldFormatInstanceDestroyedEvent() throws Exception {
-            InstanceDestroyedEvent event = new InstanceDestroyedEvent("ling1", "1.0.0");
+            InstanceDestroyedEvent event = new InstanceDestroyedEvent("ling1", "1.0.0", "1.0.0");
 
             LogStreamDTO dto = capture(() -> {
                 try {

@@ -242,6 +242,20 @@
 - 配套测试、日志和可观测性说明
 - 不把不可维护的补丁扩散成项目通用模式
 
+### 6.7 治理流水线与 SPI 过滤器规则
+
+治理流水线（Pipeline）是由 `FilterRegistry` 在启动时严格校验和保护的核心防线：
+- **内置保留位**：`[100, 1000]` 范围内的特定 order 被内置基础、路由、权限、隔离过滤器占用。
+- **沙箱约束**：外部通过 SPI 或动态注册注入的 `LingInvocationFilter`，其 `order` 必须避开这些内置保留位（推荐使用 `order < 100` 的前置处理，或在特定保留区间之间的空隙）。
+- **Fail-Fast**：一旦 SPI 过滤器非法占用内置位，内核将在启动期立刻抛出异常并失败，拒绝以“失真的治理链”处理线上流量。
+
+### 6.8 非 Bean 数据源（DataSource）代理边界
+
+- 灵珑的 SQL 治理依赖对 `DataSource` 的代理。
+- 如果是由 Spring 容器管理的 Bean，`LingFrameBeanPostProcessor` 会自动进行拦截与包装。
+- **红线**：如果业务代码或三方件直接通过 `DriverManager`、静态代码块、或自行 `new HikariDataSource()` 创建了不归 Spring 容器管辖的数据源，它们将脱离治理网络。
+- **要求**：开发者必须显式调用 `LingConnectionProxyFactory.wrap(...)` 手动包装此类野生数据源，否则其数据库访问将绕过所有隔离和鉴权规则。
+
 ---
 
 ## 7. 开发规范

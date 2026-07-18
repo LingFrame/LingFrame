@@ -21,6 +21,7 @@ public class LingRuntimeConfigTest {
             assertEquals(5, config.getMaxHistorySnapshots());
             assertEquals(30, config.getForceCleanupDelaySeconds());
             assertEquals(5, config.getDyingCheckIntervalSeconds());
+            assertTrue(config.isForceDrainOnTimeout());
             assertEquals(3000, config.getDefaultTimeoutMs());
             assertEquals(10, config.getBulkheadMaxConcurrent());
             assertEquals(3000, config.getBulkheadAcquireTimeoutMs());
@@ -35,6 +36,7 @@ public class LingRuntimeConfigTest {
             assertEquals(fromDefaults.getMaxHistorySnapshots(), fromBuilder.getMaxHistorySnapshots());
             assertEquals(fromDefaults.getDefaultTimeoutMs(), fromBuilder.getDefaultTimeoutMs());
             assertEquals(fromDefaults.getBulkheadMaxConcurrent(), fromBuilder.getBulkheadMaxConcurrent());
+            assertEquals(fromDefaults.isForceDrainOnTimeout(), fromBuilder.isForceDrainOnTimeout());
         }
     }
 
@@ -52,6 +54,7 @@ public class LingRuntimeConfigTest {
                     .forceCleanupDelaySeconds(60)
                     .dyingCheckIntervalSeconds(10)
                     .bulkheadAcquireTimeoutMs(5000)
+                    .forceDrainOnTimeout(false)
                     .build();
 
             assertEquals(20, config.getMaxHistorySnapshots());
@@ -60,6 +63,7 @@ public class LingRuntimeConfigTest {
             assertEquals(60, config.getForceCleanupDelaySeconds());
             assertEquals(10, config.getDyingCheckIntervalSeconds());
             assertEquals(5000, config.getBulkheadAcquireTimeoutMs());
+            assertFalse(config.isForceDrainOnTimeout());
         }
 
         @Test

@@ -101,6 +101,25 @@ That is part of the architecture boundary.
 
 ---
 
+## Security Boundary (Not A JVM Sandbox)
+
+`Shared API` and load-time scanners improve **contract isolation** and **deploy-time risk signaling**. They are **not** a full JVM security sandbox.
+
+| Layer | What it does | What it does not do |
+| --- | --- | --- |
+| Child-first `LingClassLoader` + forced parent packages | Prefer / exclusive parent types for JDK & `com.lingframe.api.*` | Block every reflective escape or native call at runtime |
+| `DangerousApiVerifier` (ASM) | Fail or warn on known dangerous bytecode at **install/load** | Intercept every runtime call after the ling is loaded |
+| `strictSecurityMode` | Makes more WARN-level findings hard-fail at scan time | Replace a SecurityManager / module deny-list |
+| Permission + infra proxies | Govern storage/cache/IPC when traffic goes through proxies | Catch unproxied `DriverManager` / raw sockets created off the path |
+
+Operational guidance:
+
+- Treat untrusted third-party lings as **high risk** even with scanners enabled.
+- Prefer `strictSecurityMode=true` in production hardening; use trusted ling IDs / lib prefixes sparingly and auditably.
+- Runtime escapes (reflection, process, network) remain possible for code already loaded; mitigate with permissions, proxies, and process-level isolation when needed.
+
+---
+
 ## DTO Design Rules
 
 Good DTOs are boring on purpose.

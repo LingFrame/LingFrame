@@ -106,6 +106,17 @@ public class DashboardStatusCoordinator {
         lifecycleEventStore.addEvent(lingId, version, "ACTIVE", "灵元激活", "灵元 " + lingId + " 已激活并开始处理请求");
     }
 
+    /**
+     * 软停（soft stop）：仅将 Runtime 置为 INACTIVE 并收回 LING_ENABLE，
+     * <strong>不</strong>卸载实例、不回收 ClassLoader。
+     * <p>
+     * 与硬停（{@link RuntimeStatus#REMOVED} / {@link LingLifecycleEngine#undeploy}）区分：
+     * <ul>
+     *   <li>软停：停流量 / 停权，实例仍在进程内，可再激活</li>
+     *   <li>硬停：卸载实例并走完整清理，从控制面移除</li>
+     * </ul>
+     * 运维勿将 INACTIVE 理解为“已干净卸载”。
+     */
     private void deactivateLing(String lingId, String version, RuntimeStatus currentStatus) {
         TransitionResult<RuntimeStatus> inactiveResult = runtimeCoordinator.transition(lingId, RuntimeStatus.INACTIVE);
         if (!inactiveResult.isSuccess()) {
@@ -115,10 +126,11 @@ public class DashboardStatusCoordinator {
             throw new IllegalStateException(errorMessage);
         }
 
-        log.info("[Dashboard] State transitioned to INACTIVE for ling: {}", lingId);
-        lifecycleEventStore.addEvent(lingId, version, "STOPPING", "灵元停用", "灵元 " + lingId + " 已停用，不再接受新请求");
+        log.info("[Dashboard] Soft-stop: runtime INACTIVE for ling {} (instances not unloaded)", lingId);
+        lifecycleEventStore.addEvent(lingId, version, "INACTIVE", "灵元软停",
+                "灵元 " + lingId + " 已软停：不再接受新请求；实例仍驻留进程，未执行卸载清理。硬停请选择卸载/REMOVED。");
         permissionService.revoke(lingId, Capabilities.LING_ENABLE);
-        log.info("[Dashboard] Revoked LING_ENABLE permission from {}, ling deactivated", lingId);
+        log.info("[Dashboard] Revoked LING_ENABLE from {} after soft-stop", lingId);
     }
 
     private void recoverLing(String lingId, String version) {

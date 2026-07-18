@@ -42,7 +42,7 @@ class NativeLingContainerTest {
         EventBus eventBus = new EventBus();
         DefaultLingRepository repository = new DefaultLingRepository();
         DefaultLingServiceRegistry registry = new DefaultLingServiceRegistry();
-        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
+        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.builder().build());
         FilterRegistry filterRegistry = new FilterRegistry(FilterRegistryConfig.builder()
                 .methodCache(new InvokableMethodCache())
                 .permissionService(permissionService)
@@ -273,7 +273,7 @@ class NativeLingContainerTest {
         EventBus eventBus = new EventBus();
         DefaultLingRepository repository = new DefaultLingRepository();
         DefaultLingServiceRegistry registry = new DefaultLingServiceRegistry();
-        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
+        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.builder().build());
         FilterRegistry filterRegistry = new FilterRegistry(FilterRegistryConfig.builder()
                 .methodCache(new InvokableMethodCache())
                 .permissionService(permissionService)
@@ -327,7 +327,7 @@ class NativeLingContainerTest {
         EventBus eventBus = new EventBus();
         DefaultLingRepository repository = new DefaultLingRepository();
         DefaultLingServiceRegistry registry = new DefaultLingServiceRegistry();
-        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.current());
+        DefaultPermissionService permissionService = new DefaultPermissionService(eventBus, LingFrameConfig.builder().build());
         FilterRegistry filterRegistry = new FilterRegistry(FilterRegistryConfig.builder()
                 .methodCache(new InvokableMethodCache())
                 .permissionService(permissionService)

@@ -42,7 +42,17 @@ public class AccessTokenProperties {
     private List<String> secondaryTokens = new ArrayList<>();
 
     /**
+     * 是否允许弱口令启动。
+     * <p>
+     * 默认 true：本地示例可用 {@code 123456}。
+     * 生产请显式设置 {@code lingframe.dashboard.access-token.allow-weak=false}，
+     * 弱口令将导致启动失败（fail-closed）。
+     */
+    private boolean allowWeak = true;
+
+    /**
      * 启动期校验：启用鉴权时 token 不能为空，否则启动失败（fail-closed）。
+     * 当 {@code allowWeak=false} 时，弱口令同样 fail-closed。
      */
     @PostConstruct
     void validate() {
@@ -50,7 +60,38 @@ public class AccessTokenProperties {
             Assert.hasText(token,
                     "lingframe.dashboard.access-token.token must be set when access-token.enabled=true (production). "
                             + "To disable authentication in development, set lingframe.dashboard.access-token.enabled=false explicitly.");
+            if (isWeakToken(token)) {
+                if (!allowWeak) {
+                    throw new IllegalArgumentException(
+                            "lingframe.dashboard.access-token.token is too weak (e.g. demo default '123456'). "
+                                    + "Set a strong unique token, or set allow-weak=true only for local demos.");
+                }
+                // allowWeak=true：示例/本地可用，强制留下可观测警告
+                log.warn("Dashboard access-token looks weak (e.g. demo default). "
+                        + "Use a strong unique token before exposing the control plane. "
+                        + "Set lingframe.dashboard.access-token.allow-weak=false to fail-closed on weak tokens.");
+            }
         }
+    }
+
+    /**
+     * 识别明显弱口令 / 示例默认值，仅用于启动告警。
+     */
+    static boolean isWeakToken(String value) {
+        if (value == null) {
+            return true;
+        }
+        String t = value.trim();
+        if (t.length() < 8) {
+            return true;
+        }
+        String lower = t.toLowerCase();
+        return "123456".equals(lower)
+                || "password".equals(lower)
+                || "admin".equals(lower)
+                || "token".equals(lower)
+                || "changeme".equals(lower)
+                || "lingframe".equals(lower);
     }
 
     /**

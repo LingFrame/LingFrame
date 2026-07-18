@@ -13,7 +13,7 @@
     <properties>
         <!-- LingFrame 版本 -->
         <!-- 使用 Maven CI Friendly 变量 -->
-        <revision>0.3.0</revision>
+        <revision>0.4.0</revision>
 
         <!-- Java Defaults (Spring Boot 2 / Java 8) -->
         <java.version>1.8</java.version>

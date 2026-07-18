@@ -12,6 +12,7 @@ import com.lingframe.starter.web.WebGovernanceSupport;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -55,6 +56,11 @@ import static org.junit.jupiter.api.Assertions.fail;
 @EnabledIfSystemProperty(named = "lingframe.runE2E", matches = "true")
 @DisplayName("观测闭环集成回归")
 class ObservabilityClosedLoopIntegrationTest {
+
+    @BeforeAll
+    static void setupClass() {
+        System.setProperty("sun.net.http.allowRestrictedHeaders", "true");
+    }
 
     @LocalServerPort
     private int port;
@@ -324,16 +330,18 @@ class ObservabilityClosedLoopIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("X-Access-Token", ACCESS_TOKEN);
+        headers.set("Origin", "http://localhost:" + port);
         ResponseEntity<String> response = restTemplate.postForEntity(url(path), new HttpEntity<>(body, headers), String.class);
-        assertEquals(HttpStatus.OK, response.getStatusCode(), "POST " + path + " should return 200");
+        assertEquals(HttpStatus.OK, response.getStatusCode(), "POST " + path + " should return 200, body was: " + response.getBody());
         return objectMapper.readTree(response.getBody());
     }
 
     private JsonNode deleteJson(String path) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.set("X-Access-Token", ACCESS_TOKEN);
+        headers.set("Origin", "http://localhost:" + port);
         ResponseEntity<String> response = restTemplate.exchange(url(path), HttpMethod.DELETE, new HttpEntity<>(headers), String.class);
-        assertEquals(HttpStatus.OK, response.getStatusCode(), "DELETE " + path + " should return 200");
+        assertEquals(HttpStatus.OK, response.getStatusCode(), "DELETE " + path + " should return 200, body was: " + response.getBody());
         return objectMapper.readTree(response.getBody());
     }
 

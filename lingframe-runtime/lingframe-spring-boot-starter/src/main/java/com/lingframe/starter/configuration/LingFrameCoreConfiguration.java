@@ -173,6 +173,7 @@ public class LingFrameCoreConfiguration {
         LingRuntimeConfig runtimeConfig = LingRuntimeConfig.builder()
                 .maxHistorySnapshots(runtimeProperties.getMaxHistorySnapshots())
                 .forceCleanupDelaySeconds((int) runtimeProperties.getForceCleanupDelay().getSeconds())
+                .forceDrainOnTimeout(runtimeProperties.isForceDrainOnTimeout())
                 .dyingCheckIntervalSeconds((int) runtimeProperties.getDyingCheckInterval().getSeconds())
                 .defaultTimeoutMs((int) runtimeProperties.getDefaultTimeout().toMillis())
                 .bulkheadMaxConcurrent(runtimeProperties.getBulkheadMaxConcurrent())
@@ -197,6 +198,8 @@ public class LingFrameCoreConfiguration {
                 .preloadApiJars(properties.getPreloadApiJars())
                 .apiOverrideCheckEnabled(properties.isApiOverrideCheckEnabled())
                 .trustedLingIds(properties.getTrustedLingIds())
+                .strictSecurityMode(properties.getSecurity().isStrictMode())
+                .trustedLibPrefixes(properties.getSecurity().getTrustedLibPrefixes())
                 .build();
 
         LingFrameConfig.init(lingFrameConfig);

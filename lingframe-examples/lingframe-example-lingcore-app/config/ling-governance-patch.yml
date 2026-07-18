@@ -26,6 +26,8 @@ user-ling: !!com.lingframe.api.config.GovernancePolicy
     timeoutMs: 3000
   permissions: [
     ]
+  references: [
+    ]
 order-ling: !!com.lingframe.api.config.GovernancePolicy
   audits: [
     ]
@@ -51,4 +53,6 @@ order-ling: !!com.lingframe.api.config.GovernancePolicy
     retryCount: 0
     timeoutMs: 1000
   permissions: [
+    ]
+  references: [
     ]

@@ -1,4 +1,4 @@
-﻿# 路线图
+# 路线图
 
 本文档描述 LingFrame 的演进路线。
 
@@ -59,9 +59,12 @@
 - ✅ 超时控制与降级兜底（整合于 SmartServiceProxy）
 - ✅ 重试机制（基于 GovernanceKernel 的 retryCount）
 - ✅ 复杂路由分发（基于 LabelMatchRouter 的标签与权重路由）
-- ✅ 统一调用治理主链（`InvocationPipelineEngine` + `FilterRegistry`）
+- ✅ 统一调用**治理**主链（`InvocationPipelineEngine` + `FilterRegistry`）
 - ✅ 三种执行模式：`NORMAL` / `SIMULATION` / `GOVERN_ONLY`
-- ✅ Web 请求、灵核 Bean、Dashboard 模拟共用同一条治理内核
+- ✅ 多入口共用**治理内核**（终端执行不必同一条路径）：
+  - 灵元 IPC / 服务调用 → `NORMAL` 全链（含 Terminal）
+  - Spring Web / 灵核 Bean AOP → `GOVERN_ONLY` 后由灵核侧 Web/AOP 框架路径继续业务执行
+  - Dashboard 模拟 → `SIMULATION`
 - ✅ 双层运行时状态模型（`InstanceStatus` / `RuntimeStatus`）
 - ✅ 状态写入权收束到 `InstanceCoordinator` / `RuntimeCoordinator`
 - ✅ 生命周期编排收束到 `DefaultLingLifecycleEngine`
@@ -117,3 +120,33 @@
 - ⏳ 搜索代理（Elasticsearch）
 - ⏳ 更多基础设施代理
 - ⏳ 完整示例和教程
+
+---
+
+## V0.4.0：设计债收敛 ✅ 已完成（候选内核）
+
+**目标**：一次性收敛历史遗留设计债务，形成**面向生产的候选内核**。
+
+**诚实表述**：本里程碑表示 0.4 双层状态机 / Pipeline / 卸载等**债务清单**在 SB2 主路径上大体收口；**不等于**双栈已对等认证、生态完备，或“无需再硬化即可对外宣称生产认证”。
+
+**详细实施依据**：[0.4-implementation-plan.md](../development/v0.4/0.4-implementation-plan.md)
+
+### 装配树重构
+- ✅ `LingFrameConfig` 去全局静态单例，`init()` 二次调用从静默拒绝改为抛异常（fail-fast）
+- ✅ `DefaultLingLifecycleEngine` 13 参构造器收敛为 `LifecycleEngineConfig` Builder，删除 setter
+- ✅ `FilterRegistry` 3 构造器 + 4 `initialize()` 重载收敛为 `FilterRegistryConfig` Builder，删除 `initialize()`
+
+### 状态机职责收敛
+- ✅ `InstancePool` 强制构造器注入 `InstanceCoordinator`，杜绝静默无事件僵尸版本
+- ✅ `RuntimeCoordinator.register()` 收敛到编排层单次调用，消除 `LingRuntime` 双重注册时序耦合
+
+### 治理正确性
+- ✅ 熔断参数可配置化（`LingRuntimeConfig` + `application.yml`），消除硬编码魔法数字
+- ✅ `GovernancePolicy.copy()` 反射测试断言守护，防止新增字段遗漏
+- ✅ `LingDefinition.properties` 原生递归深拷贝（`DeepCopyUtils`，零第三方依赖）
+- ✅ 异常体系收敛（`InvocationException`/`ServiceUnavailableException`/`CallNotPermittedException` 已删除，统一到 `LingInvocationException`）
+
+### 可观测性与代码质量
+- ✅ `AsyncLingEvent` 标记接口替换包名前缀判断，消除异步分发静默失效风险
+- ✅ `InvocationContext` 委派方法已删除，统一分区访问（`ctx.governance().xxx()` / `ctx.execution().xxx()`）
+- ✅ `PoolStats` 删 `@Value`，统一 record-style 访问器

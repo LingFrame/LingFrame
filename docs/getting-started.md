@@ -238,4 +238,5 @@ If you continue and complete the Dashboard/governance/unload validations above, 
 
 The next thing most worth verifying is not just "can we load another ling," but whether this runtime chain can stay orderly under reload/unload/cleanup scenarios.
 
-Next, if you want to judge how to adapt this, read [Practical Entry](practical-entry.md). If you want to dive straight into writing lings, jump to [Ling Development Guide](ling-development.md).
+Next, if you want to judge how to adapt this, read [Practical Entry](practical-entry.md). If you want to dive straight into writing lings, jump to [Ling Development Guide](ling-development.md).  
+Before production, read the [Production Hardening Checklist](production-hardening.md).

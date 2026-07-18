@@ -212,7 +212,7 @@ grep "CircuitBreaker\|OPEN" logs/lingframe.log
 
 **Symptoms:**
 ```
-CallNotPermittedException: Call rejected by governance
+LingInvocationException: Call rejected by governance
 ```
 
 **Possible Causes:**

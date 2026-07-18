@@ -104,7 +104,7 @@ class ConcurrentLingUnloadIntegrationTest {
         // 注册灵元并驱动到 ACTIVE
         for (int i = 0; i < LING_COUNT; i++) {
             runtimeCoordinator.register("ling-" + i);
-            eventBus.publish(new InstanceStateChangedEvent("ling-" + i, "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-" + i, "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
         }
 

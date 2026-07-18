@@ -80,7 +80,7 @@ class ThreadIsolationGovernanceFilterTest {
 
                 LingInvocationException exception = assertThrows(LingInvocationException.class,
                         () -> filter.doFilter(secondContext, blockingChain));
-                assertEquals(LingInvocationException.ErrorKind.RATE_LIMITED, exception.getKind());
+                assertEquals(LingInvocationException.ErrorKind.BULKHEAD_FULL, exception.getKind());
             } finally {
                 release.countDown();
                 caller.shutdownNow();
@@ -218,7 +218,7 @@ class ThreadIsolationGovernanceFilterTest {
 
                 LingInvocationException exception = assertThrows(LingInvocationException.class,
                         () -> filter.doFilter(fourthContext, secondChain));
-                assertEquals(LingInvocationException.ErrorKind.RATE_LIMITED, exception.getKind());
+                assertEquals(LingInvocationException.ErrorKind.BULKHEAD_FULL, exception.getKind());
             } finally {
                 secondRelease.countDown();
                 caller.shutdownNow();

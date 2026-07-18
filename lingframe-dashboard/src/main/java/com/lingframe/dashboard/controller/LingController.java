@@ -109,6 +109,24 @@ public class LingController {
     }
 
     /**
+     * 软停：Runtime → INACTIVE，停新流量/收权，实例仍驻留进程。
+     * 与卸载（REMOVED / uninstall）明确区分。
+     */
+    @PostMapping("/{lingId}/soft-stop")
+    public ApiResponse<LingInfoDTO> softStop(
+            @PathVariable String lingId,
+            @RequestBody(required = false) SoftStopRequest request) {
+        try {
+            String version = request == null ? null : request.getVersion();
+            LingInfoDTO info = dashboardService.updateStatus(lingId, RuntimeStatus.INACTIVE, version);
+            return ApiResponse.ok("已软停（实例未卸载）", info);
+        } catch (Exception e) {
+            log.error("Failed to soft-stop ling: {}", lingId, e);
+            return ApiResponse.error("软停失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 安装或更新灵元
      * 通过上传灵元 JAR 包进行静态解析并执行冷启动部署。
      */
@@ -378,6 +396,12 @@ public class LingController {
     @Data
     public static class LingStatusRequest {
         private RuntimeStatus status;
+        private String version;
+    }
+
+    @Data
+    public static class SoftStopRequest {
+        /** 可选版本号（当前软停作用于灵元运行时层，version 仅透传时间线） */
         private String version;
     }
 

@@ -105,7 +105,7 @@ class JdbcDriverUnloadHookSupplementTest {
                         "Driver 应已被反注册");
             } finally {
                 // 兜底清理：确保不污染后续测试
-                // 注意：若 hook.cleanup 已通过反射移除 driver，再次 deregister 会因 driver 不在列表中
+                // 注意：若 hook.cleanup 已通过反射移除 driver，再次 DriverManager.deregisterDriver 会因 driver 不在列表中
                 // 触发权限检查抛 SecurityException（非 SQLException），故需捕获 Exception
                 try {
                     DriverManager.deregisterDriver(driver);

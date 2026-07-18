@@ -187,13 +187,14 @@ class LingConnectionProxyTest {
             proxy.createStruct("type", new Object[0]);
             verify(target).createStruct("type", new Object[0]);
 
-            // setSchema 已禁止灵元切换，独立测试覆盖拒绝行为
+            // setSchema / abort 已禁止灵元破坏连接，独立测试覆盖拒绝行为
             when(target.getSchema()).thenReturn("schema");
             assertEquals("schema", proxy.getSchema());
 
             Executor executor = mock(Executor.class);
-            proxy.abort(executor);
-            verify(target).abort(executor);
+            // abort 不得下发到原生连接（可用性攻击面）
+            assertThrows(SQLException.class, () -> proxy.abort(executor));
+            verify(target, never()).abort(org.mockito.ArgumentMatchers.any());
 
             proxy.setNetworkTimeout(executor, 100);
             verify(target).setNetworkTimeout(executor, 100);
@@ -242,6 +243,23 @@ class LingConnectionProxyTest {
 
             when(target.prepareStatement("sql", new String[0])).thenReturn(ps);
             assertInstanceOf(LingPreparedStatementProxy.class, proxy.prepareStatement("sql", new String[0]));
+        }
+    }
+
+    @Nested
+    @DisplayName("连接级破坏性操作")
+    class DestructiveOpsTests {
+
+        @Test
+        @DisplayName("abort 必须被禁止，不得下发到原生连接")
+        void abortMustBeForbidden() throws SQLException {
+            Connection target = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            LingConnectionProxy proxy = new LingConnectionProxy(target, permissionService);
+
+            SQLException ex = assertThrows(SQLException.class, () -> proxy.abort(mock(Executor.class)));
+            assertTrue(ex.getMessage().contains("abort is forbidden"));
+            verify(target, never()).abort(org.mockito.ArgumentMatchers.any());
         }
     }
 

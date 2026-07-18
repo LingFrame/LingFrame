@@ -148,29 +148,32 @@ final class InstanceCoordinator {
         if (eventBus == null) {
             return;
         }
-        log.debug("Instance [{}] v{} state changed: {} -> {}",
-                identity.lingId, identity.version, from, to);
-        eventBus.publish(new InstanceStateChangedEvent(identity.lingId, identity.version, from, to));
+        log.debug("Instance [{}] id={} v{} state changed: {} -> {}",
+                identity.lingId, identity.instanceId, identity.version, from, to);
+        eventBus.publish(new InstanceStateChangedEvent(
+                identity.lingId, identity.instanceId, identity.version, from, to));
     }
 
     private void publishDestroyed(InstanceIdentity identity) {
         if (eventBus == null) {
             return;
         }
-        log.info("Instance [{}] v{} destroyed", identity.lingId, identity.version);
-        eventBus.publish(new InstanceDestroyedEvent(identity.lingId, identity.version));
+        log.info("Instance [{}] id={} v{} destroyed", identity.lingId, identity.instanceId, identity.version);
+        eventBus.publish(new InstanceDestroyedEvent(identity.lingId, identity.instanceId, identity.version));
     }
 
     private InstanceIdentity snapshotIdentity(LingInstance instance) {
-        return new InstanceIdentity(instance.getLingId(), instance.getVersion());
+        return new InstanceIdentity(instance.getLingId(), instance.getInstanceId(), instance.getVersion());
     }
 
     private static final class InstanceIdentity {
         private final String lingId;
+        private final String instanceId;
         private final String version;
 
-        private InstanceIdentity(String lingId, String version) {
+        private InstanceIdentity(String lingId, String instanceId, String version) {
             this.lingId = lingId;
+            this.instanceId = instanceId;
             this.version = version;
         }
     }

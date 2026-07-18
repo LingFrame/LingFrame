@@ -13,7 +13,7 @@ If you want one sentence for the center of gravity of this document, use this:
 
 ## Design Principles
 
-- **One governance spine**: governance should run through a single pipeline instead of being reimplemented per entry point.
+- **One governance spine**: governance should run through a single pipeline instead of being reimplemented per entry point. Business **terminal execution** may still stay on the LingCore application / Web-framework path under `GOVERN_ONLY` (Web / AOP).
 - **Explicit state ownership**: instance lifecycle state and macro runtime state must not be written by the same object graph.
 - **Mode-aware execution**: the kernel must support real execution, simulation, and governance-only entry borrowing without maintaining multiple rule systems.
 - **Event-first explainability**: the dashboard and future control surfaces should consume real kernel events, not shadow models.
@@ -45,15 +45,19 @@ If you want one sentence for the center of gravity of this document, use this:
 
 | Filter | Responsibility |
 | :-- | :-- |
+| `ContractProviderRoutingFilter` | L0 provider routing from contract-style FQSID (before metrics) |
 | `TrafficMetricsFilter` | record request facts and early metrics/traces |
 | `MacroStateGuardFilter` | reject requests when runtime macro state makes them unsafe |
 | `CanaryRoutingFilter` | choose the target instance, including canary routing |
+| `InvocationPolicyPrefillFilter` | prefill effective policy intents into `ctx.governance()` before resilience |
 | `ResilienceGovernanceFilter` | apply resilience decisions such as circuit breaking and rate limiting |
 | `ContextIsolationFilter` | resolve target class, method, and classloader isolation context |
 | `GovernanceDecisionFilter` | materialize governance decisions such as timeout and rule source |
 | `PermissionGovernanceFilter` | enforce final permission checks |
 | `ThreadIsolationGovernanceFilter` | apply execution isolation and thread handoff |
 | `TerminalInvokerFilter` | perform terminal invocation, simulation result generation, or skip terminal execution based on mode |
+
+SPI/dynamic filters must not use reserved builtin orders; choose a non-reserved order between core phases.
 
 The important shift in the current implementation is not just that these filters exist. It is that they now form the formal runtime path used by more than one entry surface.
 
@@ -189,6 +193,9 @@ The same kernel is now reused by multiple entry paths.
 | Spring Boot 2 / 3 Web requests | `LingWebGovernanceFilter` | uses `GOVERN_ONLY` to borrow governance while keeping the framework's own terminal dispatch |
 | LingCore bean methods | `LingCoreBeanGovernanceInterceptor` | uses `GOVERN_ONLY` around AOP-intercepted bean execution |
 | Dashboard simulations | `SimulateService` | uses `SIMULATION` to run the real governance chain without real side effects |
+| Dashboard Service Playground | `ServicePlaygroundService` | default `NORMAL` real invoke for API verification; optional `SIMULATION` via request flag |
+
+**Important distinction**: entries share one **governance** pipeline, not always one **business terminal** path. Web and AOP keep LingCore-side framework dispatch after `GOVERN_ONLY`.
 
 This is what makes the current implementation meaningfully different from the earlier "feature collection" state.
 

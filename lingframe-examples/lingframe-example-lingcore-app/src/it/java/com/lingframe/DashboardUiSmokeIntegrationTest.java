@@ -2,6 +2,7 @@ package com.lingframe;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -38,6 +39,11 @@ import static org.junit.jupiter.api.Assertions.fail;
 @DisplayName("Dashboard 后端 API 集成与冒烟回归")
 class DashboardUiSmokeIntegrationTest {
 
+    @BeforeAll
+    static void setupClass() {
+        System.setProperty("sun.net.http.allowRestrictedHeaders", "true");
+    }
+
     @LocalServerPort
     private int port;
 
@@ -55,8 +61,8 @@ class DashboardUiSmokeIntegrationTest {
         // 1. 验证静态 HTML 资源可访问（证明 Dashboard Web 资源映射正常）
         ResponseEntity<String> htmlResponse = restTemplate.getForEntity(url("/dashboard.html"), String.class);
         assertEquals(HttpStatus.OK, htmlResponse.getStatusCode(), "dashboard.html should be accessible");
-        assertTrue(htmlResponse.getBody() != null && htmlResponse.getBody().contains("<div id=\"app\">"),
-                "dashboard.html should contain app div mountpoint");
+        assertTrue(htmlResponse.getBody() != null && htmlResponse.getBody().contains("id=\"app\""),
+                "dashboard.html should contain app div mountpoint, body was: " + htmlResponse.getBody());
 
         // 2. 轮询等待 user-ling 灵元加载并初始化为 ACTIVE
         JsonNode lingsData = waitForCondition("/lingframe/dashboard/lings", root -> {
@@ -123,8 +129,9 @@ class DashboardUiSmokeIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("X-Access-Token", ACCESS_TOKEN);
+        headers.set("Origin", "http://localhost:" + port);
         ResponseEntity<String> response = restTemplate.postForEntity(url(path), new HttpEntity<>(body, headers), String.class);
-        assertEquals(HttpStatus.OK, response.getStatusCode(), "POST " + path + " should return 200");
+        assertEquals(HttpStatus.OK, response.getStatusCode(), "POST " + path + " should return 200, body: " + response.getBody());
         return objectMapper.readTree(response.getBody());
     }
 

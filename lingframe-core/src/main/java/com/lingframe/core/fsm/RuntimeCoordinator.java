@@ -27,7 +27,15 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@code RuntimeCoordinator} 订阅实例事件并维护运行时快照</li>
  *   <li>它再基于快照聚合出宏观 {@link RuntimeStatus}</li>
  * </ul>
- * 因此两层状态机不是“对象互相持有并直接改状态”，
+ * 这种事件联动机制中存在**写优先级锁死设计**（解决 P2-1）：
+ * 如果运维主动将状态转换为 {@link RuntimeStatus#STOPPING}（下线意图），
+ * 任何来自实例健康状态好转的重新评估（如实例从 ERROR 恢复为 READY）、或者定时的 DEGRADED 健康检查，
+ * 甚至外部强制 {@code transition(DEGRADED/ACTIVE)}，都会因为 FSM 规则物理拒绝而被压制。
+ * STOPPING 只允许单向进入 REMOVED。这保证了控制面的下线意图具有绝对最高优先级。
+ * <p>
+ * 换句话说：
+ * 实例层只负责“陈述事实”，运行时状态机基于事实聚合，并由 {@link RuntimeStatus#TRANSITIONS}
+ * 的合法性矩阵保证最终决议不会被底层的临时抖动所颠覆。
  * 而是“实例层产出事实，运行时层订阅事实并收敛宏观状态”。
  * <p>
  * 通过 {@link EventBus#subscribeGlobal} 以全局监听器身份订阅实例事件，
@@ -71,13 +79,13 @@ public class RuntimeCoordinator {
     private final ConcurrentMap<String, StateMachine<RuntimeStatus>> machines = new ConcurrentHashMap<>();
 
     /**
-     * `lingId -> { instanceKey -> InstanceStatus }`
+     * `lingId -> { instanceId -> InstanceStatus }`
      * <p>
      * 维护每个 Ling 下所有活跃实例的状态快照。
-     * `instanceKey` 使用实例版本号 `version`，同一灵元的不同版本各占一个条目。
+     * 快照键必须是 {@link InstanceStateChangedEvent#getInstanceId()}（进程内实例唯一身份），
+     * 不得使用 version：同版本双实例（reload / allowSameVersion）会互相覆盖或 DEAD 抹掉存活实例。
      * 实例进入 DEAD 后从快照中移除。
      * 这是 runtime 聚合时看到的“事实视图”，而不是直接去扫描对象图。
-     * 这样可以把“实例状态写入”和“运行时状态聚合”解耦成事件边界。
      */
     private final ConcurrentMap<String, ConcurrentMap<String, InstanceStatus>> snapshots = new ConcurrentHashMap<>();
 
@@ -178,20 +186,9 @@ public class RuntimeCoordinator {
     }
 
     /**
-     * 获取指定 Ling 的运行时状态机（用于查询转换历史等）。
-     * 未注册返回 null。
-     *
-     * @param lingId Ling 标识
-     * @return 运行时状态机，可能为 null
-     */
-    public StateMachine<RuntimeStatus> getMachine(String lingId) {
-        return machines.get(lingId);
-    }
-
-    /**
      * 查询灵元运行时状态转换历史。
      * <p>
-     * 替代外围模块直接 {@link #getMachine(String)} 再取 StateMachine 的越界路径，
+     * 替代外围模块直接获取 StateMachine 的越界路径，
      * 让 dashboard 等展示层只拿到转换记录列表，不触碰状态机内部对象。
      *
      * @param lingId 灵元 ID
@@ -216,7 +213,7 @@ public class RuntimeCoordinator {
      */
     public void onInstanceStateChanged(InstanceStateChangedEvent event) {
         String lingId = event.getLingId();
-        String version = event.getVersion();
+        String instanceId = event.getInstanceId();
         InstanceStatus to = event.getToStatus();
 
         // 防御性注册（正常流程应在部署时显式调用 register）
@@ -231,12 +228,14 @@ public class RuntimeCoordinator {
         }
 
         if (to == InstanceStatus.DEAD) {
-            // 终态实例移出快照
-            states.remove(version);
-            log.debug("Instance [{}/{}] removed from snapshot (DEAD)", lingId, version);
+            // 终态实例移出快照（按 instanceId，不影响同 version 的其他实例）
+            states.remove(instanceId);
+            log.debug("Instance [{}/{}] removed from snapshot (DEAD, version={})",
+                    lingId, instanceId, event.getVersion());
         } else {
-            states.put(version, to);
-            log.debug("Instance [{}/{}] snapshot updated to {}", lingId, version, to);
+            states.put(instanceId, to);
+            log.debug("Instance [{}/{}] snapshot updated to {} (version={})",
+                    lingId, instanceId, to, event.getVersion());
         }
 
         // 触发聚合评估：实例层只汇报事实，运行时层自己决定宏观状态。
@@ -251,11 +250,11 @@ public class RuntimeCoordinator {
      */
     public void onInstanceDestroyed(InstanceDestroyedEvent event) {
         String lingId = event.getLingId();
-        String version = event.getVersion();
+        String instanceId = event.getInstanceId();
 
         ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
         if (states != null) {
-            states.remove(version);
+            states.remove(instanceId);
         }
 
         reevaluate(lingId);
@@ -291,8 +290,9 @@ public class RuntimeCoordinator {
     /**
      * 主动触发运行时状态转换（Dashboard/运维调用）。
      * <p>
-     * 此方法是外部触发状态转换的唯一入口，确保所有状态变更都通过 RuntimeCoordinator，
-     * 从而保证事件正确发布。
+     * 这是改变宏观状态的外部唯一入口。根据 {@link RuntimeStatus#TRANSITIONS} 定义，
+     * 当状态已进入 {@code STOPPING} 时，即使调用本方法试图切回 {@code ACTIVE} 或 {@code DEGRADED}，
+     * 也会被状态机直接拒绝并返回非法，从而锁死下线意图，防止优先级反转。
      *
      * @param lingId Ling 标识
      * @param target 目标状态
@@ -318,14 +318,76 @@ public class RuntimeCoordinator {
     }
 
     /**
-     * 清理已移除 Ling 的内存数据（可选，由大管家定期调用）
+     * 清理已移除 Ling 的内存数据。
+     * 仅当当前状态为 {@link RuntimeStatus#REMOVED} 时生效；
+     * 全量卸载路径必须先确定性进入 REMOVED，再调用本方法。
+     *
+     * @return 是否完成清理
      */
-    public void purge(String lingId) {
+    public boolean purge(String lingId) {
         StateMachine<RuntimeStatus> fsm = machines.get(lingId);
         if (fsm != null && fsm.current() == RuntimeStatus.REMOVED) {
             machines.remove(lingId);
             snapshots.remove(lingId);
             log.info("Ling [{}] purged from RuntimeCoordinator", lingId);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 编排层在「新 runtime 部署失败」或「全量卸载收口」时调用的确定性注销。
+     * <p>
+     * 不依赖实例快照是否为空：仓库侧已放弃该 ling 时，coordinator 不得残留 ghost 状态机。
+     * 语义：
+     * <ol>
+     *   <li>若尚未 REMOVED：优先走 STOPPING → REMOVED（合法表内路径）</li>
+     *   <li>清空快照并从 machines 移除</li>
+     * </ol>
+     * 幂等：对未注册 ling 直接返回 false。
+     *
+     * @param lingId 灵元 ID
+     * @return 是否移除了已注册条目
+     */
+    public boolean unregister(String lingId) {
+        StateMachine<RuntimeStatus> fsm = machines.get(lingId);
+        if (fsm == null) {
+            snapshots.remove(lingId);
+            return false;
+        }
+
+        RuntimeStatus current = fsm.current();
+        // 确定性收口到 REMOVED：合法表路径优先
+        // INACTIVE 可直达 REMOVED；ACTIVE/DEGRADED/RECOVERING 先 STOPPING 再 REMOVED
+        if (current == RuntimeStatus.INACTIVE) {
+            forceTransition(lingId, fsm, RuntimeStatus.REMOVED);
+        } else if (current == RuntimeStatus.ACTIVE
+                || current == RuntimeStatus.DEGRADED
+                || current == RuntimeStatus.RECOVERING) {
+            forceTransition(lingId, fsm, RuntimeStatus.STOPPING);
+            if (fsm.current() == RuntimeStatus.STOPPING) {
+                forceTransition(lingId, fsm, RuntimeStatus.REMOVED);
+            }
+        } else if (current == RuntimeStatus.STOPPING) {
+            forceTransition(lingId, fsm, RuntimeStatus.REMOVED);
+        }
+
+        RuntimeStatus finalStatus = fsm.current();
+        machines.remove(lingId);
+        snapshots.remove(lingId);
+        log.info("Ling [{}] unregistered from RuntimeCoordinator (final={})", lingId, finalStatus);
+        return true;
+    }
+
+    private void forceTransition(String lingId, StateMachine<RuntimeStatus> fsm, RuntimeStatus target) {
+        TransitionResult<RuntimeStatus> result = fsm.transition(target);
+        if (result.isSuccess() && result.from() != result.target()) {
+            log.info("Ling [{}] runtime unregister transition: {} -> {}",
+                    lingId, result.from(), result.target());
+            publishChanged(lingId, result);
+        } else if (result.isIllegal()) {
+            log.warn("Ling [{}] illegal transition {} -> {} during unregister",
+                    lingId, result.from(), target);
         }
     }
 

@@ -4,18 +4,11 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.InstanceDestroyedEvent;
 import com.lingframe.core.event.InstanceStateChangedEvent;
 import com.lingframe.core.event.RuntimeStateChangedEvent;
-import com.lingframe.api.event.LingEventListener;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.Collections;
-import java.util.EnumMap;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -71,12 +64,7 @@ class RuntimeCoordinatorTest {
             assertNull(coordinator.getStatus("unknown"));
         }
 
-        @Test
-        @DisplayName("未注册灵元 getMachine 返回 null")
-        void getMachineUnknown() {
-            assertNull(coordinator.getMachine("unknown"));
         }
-    }
 
     // ==================== 事件联动聚合 ====================
 
@@ -91,7 +79,7 @@ class RuntimeCoordinatorTest {
             assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
 
             // 发布实例 READY 事件
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
 
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
@@ -102,11 +90,11 @@ class RuntimeCoordinatorTest {
         void multipleReadyStillActive() {
             coordinator.register("ling-1");
 
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
 
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v2",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v2", "v2",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
         }
@@ -117,12 +105,12 @@ class RuntimeCoordinatorTest {
             coordinator.register("ling-1");
 
             // 先 READY → ACTIVE
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
 
             // 然后 ERROR → DEGRADED
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.READY, InstanceStatus.ERROR));
             assertEquals(RuntimeStatus.DEGRADED, coordinator.getStatus("ling-1"));
         }
@@ -133,12 +121,12 @@ class RuntimeCoordinatorTest {
             coordinator.register("ling-1");
 
             // READY → ACTIVE
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
 
             // DEAD → INACTIVE（无实例了）
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STOPPING, InstanceStatus.DEAD));
             assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
         }
@@ -148,12 +136,12 @@ class RuntimeCoordinatorTest {
         void instanceDestroyedCleansSnapshot() {
             coordinator.register("ling-1");
 
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
 
             // 销毁事件移出版本快照
-            eventBus.publish(new InstanceDestroyedEvent("ling-1", "v1"));
+            eventBus.publish(new InstanceDestroyedEvent("ling-1", "v1", "v1"));
             assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
         }
 
@@ -161,11 +149,57 @@ class RuntimeCoordinatorTest {
         @DisplayName("未注册灵元收到事件时防御性注册")
         void defensiveRegisterOnEvent() {
             // 不显式 register，直接发事件
-            eventBus.publish(new InstanceStateChangedEvent("ling-auto", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-auto", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
 
             // 应该自动注册并进入 ACTIVE
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-auto"));
+        }
+
+        @Test
+        @DisplayName("同 version 不同 instanceId 的双实例互不覆盖快照")
+        void sameVersionDifferentInstanceIdsDoNotCollide() {
+            coordinator.register("ling-1");
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "id-a", "1.0.0",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "id-b", "1.0.0",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            // 旧实例 DEAD 不得抹掉新实例
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "id-a", "1.0.0",
+                    InstanceStatus.STOPPING, InstanceStatus.DEAD));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "id-b", "1.0.0",
+                    InstanceStatus.STOPPING, InstanceStatus.DEAD));
+            assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
+        }
+    }
+
+    @Nested
+    @DisplayName("unregister 确定性收口")
+    class UnregisterTests {
+
+        @Test
+        @DisplayName("unregister 从 INACTIVE 确定性清除 registration")
+        void unregisterFromInactiveClearsRegistration() {
+            coordinator.register("ling-x");
+            assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-x"));
+            assertTrue(coordinator.unregister("ling-x"));
+            assertNull(coordinator.getStatus("ling-x"));
+            assertFalse(coordinator.unregister("ling-x"));
+        }
+
+        @Test
+        @DisplayName("unregister 从 ACTIVE 经 STOPPING/REMOVED 后清除")
+        void unregisterFromActiveClearsRegistration() {
+            coordinator.register("ling-y");
+            eventBus.publish(new InstanceStateChangedEvent("ling-y", "id-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-y"));
+            assertTrue(coordinator.unregister("ling-y"));
+            assertNull(coordinator.getStatus("ling-y"));
         }
     }
 
@@ -180,7 +214,7 @@ class RuntimeCoordinatorTest {
         void shutdownDrivesStopping() {
             coordinator.register("ling-1");
             // 先进入 ACTIVE
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
 
@@ -194,15 +228,32 @@ class RuntimeCoordinatorTest {
             coordinator.register("ling-1");
 
             // READY → ACTIVE
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             // shutdown → STOPPING
             coordinator.shutdown("ling-1");
             assertEquals(RuntimeStatus.STOPPING, coordinator.getStatus("ling-1"));
 
             // 实例恢复 READY，但 STOPPING 压制，不应回到 ACTIVE
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.ERROR, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.STOPPING, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("STOPPING 下强制 transition ACTIVE/DEGRADED 被拒绝")
+        void stoppingTransitionRejected() {
+            coordinator.register("ling-1");
+            coordinator.transition("ling-1", RuntimeStatus.ACTIVE);
+            coordinator.transition("ling-1", RuntimeStatus.STOPPING);
+            assertEquals(RuntimeStatus.STOPPING, coordinator.getStatus("ling-1"));
+
+            TransitionResult<RuntimeStatus> resActive = coordinator.transition("ling-1", RuntimeStatus.ACTIVE);
+            assertTrue(resActive.isIllegal());
+            
+            TransitionResult<RuntimeStatus> resDegraded = coordinator.transition("ling-1", RuntimeStatus.DEGRADED);
+            assertTrue(resDegraded.isIllegal());
+
             assertEquals(RuntimeStatus.STOPPING, coordinator.getStatus("ling-1"));
         }
 
@@ -211,12 +262,12 @@ class RuntimeCoordinatorTest {
         void stoppingAllDeadToRemoved() {
             coordinator.register("ling-1");
 
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             coordinator.shutdown("ling-1");
 
             // 所有实例 DEAD
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STOPPING, InstanceStatus.DEAD));
             assertEquals(RuntimeStatus.REMOVED, coordinator.getStatus("ling-1"));
         }
@@ -277,7 +328,6 @@ class RuntimeCoordinatorTest {
 
             coordinator.purge("ling-1");
             assertNull(coordinator.getStatus("ling-1"));
-            assertNull(coordinator.getMachine("ling-1"));
         }
 
         @Test
@@ -329,7 +379,7 @@ class RuntimeCoordinatorTest {
             coordinator.stop();
 
             // 发布事件，不应触发状态变更
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
 
             // 仍为 INACTIVE（stop 后事件不再被处理）
@@ -360,7 +410,7 @@ class RuntimeCoordinatorTest {
             coordinator.purge("ling-late");
 
             // purge 后发布迟到的实例事件，不应抛异常
-            assertDoesNotThrow(() -> eventBus.publish(new InstanceStateChangedEvent("ling-late", "v1",
+            assertDoesNotThrow(() -> eventBus.publish(new InstanceStateChangedEvent("ling-late", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY)));
         }
 
@@ -384,7 +434,7 @@ class RuntimeCoordinatorTest {
                     start.await();
                     for (int i = 0; i < iterations; i++) {
                         try {
-                            eventBus.publish(new InstanceStateChangedEvent("ling-race", "v1",
+                            eventBus.publish(new InstanceStateChangedEvent("ling-race", "v1", "v1",
                                     InstanceStatus.STARTING, InstanceStatus.READY));
                         } catch (NullPointerException e) {
                             npeCount.incrementAndGet();
@@ -471,7 +521,7 @@ class RuntimeCoordinatorTest {
                     try {
                         startLatch.await();
                         // 所有线程都发 READY 事件
-                        eventBus.publish(new InstanceStateChangedEvent("ling-conv", "v1",
+                        eventBus.publish(new InstanceStateChangedEvent("ling-conv", "v1", "v1",
                                 InstanceStatus.STARTING, InstanceStatus.READY));
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
@@ -509,7 +559,7 @@ class RuntimeCoordinatorTest {
             custom.register("ling-custom");
 
             // 即使实例是 ERROR，策略也返回 ACTIVE
-            eventBus.publish(new InstanceStateChangedEvent("ling-custom", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-custom", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.ERROR));
 
             assertEquals(RuntimeStatus.ACTIVE, custom.getStatus("ling-custom"));
@@ -529,7 +579,7 @@ class RuntimeCoordinatorTest {
             coordinator.register("ling-1");
 
             // 先进入 ACTIVE
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
 
@@ -538,7 +588,7 @@ class RuntimeCoordinatorTest {
             assertEquals(RuntimeStatus.STOPPING, coordinator.getStatus("ling-1"));
 
             // 实例 READY 事件触发 reevaluate，但 STOPPING 压制不应回到 ACTIVE
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.ERROR, InstanceStatus.READY));
             assertEquals(RuntimeStatus.STOPPING, coordinator.getStatus("ling-1"));
         }
@@ -549,12 +599,12 @@ class RuntimeCoordinatorTest {
             coordinator.register("ling-1");
 
             // READY → ACTIVE
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
 
             // ERROR → DEGRADED
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.READY, InstanceStatus.ERROR));
             assertEquals(RuntimeStatus.DEGRADED, coordinator.getStatus("ling-1"));
 
@@ -565,7 +615,7 @@ class RuntimeCoordinatorTest {
 
             // 后续 ERROR 事件触发 reevaluate 可能再次降级——这是预期行为
             // 但关键点是：运维的 transition 在那一刻确实生效了
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.READY, InstanceStatus.ERROR));
             assertEquals(RuntimeStatus.DEGRADED, coordinator.getStatus("ling-1"));
         }
@@ -581,7 +631,7 @@ class RuntimeCoordinatorTest {
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
 
             // 实例 READY 事件触发 reevaluate，聚合结果也是 ACTIVE，不冲突
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
         }
@@ -591,12 +641,12 @@ class RuntimeCoordinatorTest {
         void transitionActiveThenAllDeadReevaluateInactive() {
             coordinator.register("ling-1");
 
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
 
             // 所有实例 DEAD → reevaluate 推回 INACTIVE
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STOPPING, InstanceStatus.DEAD));
             assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
         }
@@ -607,10 +657,10 @@ class RuntimeCoordinatorTest {
             coordinator.register("ling-1");
 
             // READY → ACTIVE
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             // ERROR → DEGRADED
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.READY, InstanceStatus.ERROR));
             assertEquals(RuntimeStatus.DEGRADED, coordinator.getStatus("ling-1"));
 
@@ -619,7 +669,7 @@ class RuntimeCoordinatorTest {
             assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-1"));
 
             // 实例恢复 READY → reevaluate 推到 ACTIVE
-            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1",
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.ERROR, InstanceStatus.READY));
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
         }

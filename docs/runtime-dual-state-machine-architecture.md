@@ -44,7 +44,7 @@ After the dual-layer split, semantics can be cleanly separated:
 | `LingRuntime` | Runtime Aggregate | Holds configs, stats, and the instance pool; exposes a read-only runtime view | No |
 | `RuntimeCoordinator` | Runtime Layer | Holds the `RuntimeStatus` FSM, aggregates instance snapshots, publishes runtime events | Yes |
 | `DefaultLingLifecycleEngine` | Orchestration Layer | Translates deploy/unload intents into phased actions, drives deployment/unload sequence | No, orchestrates but ignores direct state modification |
-| `LingUnloadCoordinator` | Unload Cleanup | Reclaims pipeline resources, cleans invocation guards, and runs leak detection | No |
+| `LingUnloadCoordinator` | Unload Cleanup | Reclaims pipeline resources, invokes unload hooks, and runs leak detection | No |
 
 ## What Each State Machine Owns
 

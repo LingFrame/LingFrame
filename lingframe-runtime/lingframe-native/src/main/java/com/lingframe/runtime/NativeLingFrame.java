@@ -84,9 +84,12 @@ public class NativeLingFrame {
 
     /**
      * 使用默认配置启动灵珑。
+     * <p>
+     * 不再依赖 {@link LingFrameConfig#current()} 静态穿透；
+     * 无参启动使用 builder 默认配置并走 {@link #start(LingFrameConfig)} 唯一装配入口。
      */
     public static LingFrameRuntime start() {
-        return start(LingFrameConfig.current());
+        return start(LingFrameConfig.builder().build());
     }
 
     /**
@@ -115,8 +118,8 @@ public class NativeLingFrame {
         SHARED_API_MANAGER.preloadFromConfig();
         SHARED_API_MANAGER.freezeSharedBoundary();
 
-        // 创建 Native 专用的容器工厂
-        NativeContainerFactory containerFactory = new NativeContainerFactory();
+        // 创建 Native 专用的容器工厂（注入配置门面，避免容器热路径 static current()）
+        NativeContainerFactory containerFactory = new NativeContainerFactory(config);
 
         LingRepository lingRepository = new DefaultLingRepository();
         LING_REPOSITORY = lingRepository;
@@ -167,8 +170,11 @@ public class NativeLingFrame {
         // 微内核解耦：安全验证器由组装层注入，内核不再自动添加默认实现
         List<LingSecurityVerifier> defaultVerifiers = new ArrayList<>();
         defaultVerifiers.add(new ApiOverrideVerifier());
-        defaultVerifiers.add(new DangerousApiVerifier(true,
-                config != null ? config.getTrustedLingIds() : Collections.emptyList()));
+        // strictMode 与 trustedLibPrefixes 均可配置，开发环境可关严格模式或豁免依赖库前缀
+        defaultVerifiers.add(new DangerousApiVerifier(
+                config != null && config.isStrictSecurityMode(),
+                config != null ? config.getTrustedLingIds() : Collections.emptyList(),
+                config != null ? config.getTrustedLibPrefixes() : Collections.emptyList()));
 
         // 热重载 watcher：先于 engine 构造（传 null engine），engine 通过 Builder 注入后延迟绑定
         HotSwapWatcher watcher = null;

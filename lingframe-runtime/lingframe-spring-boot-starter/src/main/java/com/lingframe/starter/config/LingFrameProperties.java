@@ -108,6 +108,14 @@ public class LingFrameProperties {
     private List<String> trustedLingIds = new ArrayList<>();
 
     /**
+     * 危险 API 扫描配置。
+     * <p>
+     * 用于在严格模式过严（依赖库触发 WARN）时，按包前缀豁免已知安全的依赖库，
+     * 或在开发环境整体关闭严格模式。
+     */
+    private Security security = new Security();
+
+    /**
      * 审计相关配置。
      */
     private Audit audit = new Audit();
@@ -193,6 +201,12 @@ public class LingFrameProperties {
 
         @DurationUnit(ChronoUnit.SECONDS)
         private Duration forceCleanupDelay = Duration.ofSeconds(30);
+
+        /**
+         * drain 超时后是否强制推进卸载（默认 true）。
+         * false：超时仍有飞行请求时卸载失败，不打断业务。
+         */
+        private boolean forceDrainOnTimeout = true;
 
         @DurationUnit(ChronoUnit.SECONDS)
         private Duration dyingCheckInterval = Duration.ofSeconds(5);
@@ -291,6 +305,49 @@ public class LingFrameProperties {
          * 注意：开启后可能会影响灵元的正常运行，建议仅在必要时开启
          */
         private boolean checkPermissions = false;
+    }
+
+    /**
+     * 危险 API 扫描配置。
+     * <p>
+     * 严格模式默认开启（保持历史行为）。当依赖库（如 Jackson/Hibernate/jjwt）内部
+     * 触发 WARN 级 API 调用导致部署被拦截时，可通过 trusted-lib-prefixes 按包前缀豁免，
+     * 或在开发环境直接 strict-mode=false 关闭严格校验。
+     */
+    @Data
+    public static class Security {
+        /**
+         * 是否启用严格模式（默认 true，保持现有安全基线）。
+         * <p>
+         * true: WARN 级 API 调用也抛 LingSecurityException，部署被拦截。
+         * false: WARN 级 API 调用仅记日志，不拦截部署（开发环境推荐）。
+         */
+        private boolean strictMode = true;
+
+        /**
+         * 依赖库包前缀豁免列表（不区分灵元，全局生效）。
+         * <p>
+         * 匹配这些前缀的类（按 ASM 内部路径，斜杠分隔）会被扫描器跳过，
+         * 不再检查其字节码中的危险 API 调用。
+         * <p>
+         * 配置格式同时支持两种写法（内部归一化为斜杠形式）：
+         * <ul>
+         *   <li>ASM 内部路径：{@code com/fasterxml/jackson/}</li>
+         *   <li>Java 包名：{@code com.fasterxml.jackson.}（末尾点号或省略均可）</li>
+         * </ul>
+         * <p>
+         * 示例 application.yaml：
+         * <pre>
+         * lingframe:
+         *   security:
+         *     strict-mode: true
+         *     trusted-lib-prefixes:
+         *       - com.fasterxml.jackson.
+         *       - org.springframework.
+         *       - io.jsonwebtoken.
+         * </pre>
+         */
+        private List<String> trustedLibPrefixes = new ArrayList<>();
     }
 
 }

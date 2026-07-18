@@ -245,7 +245,7 @@ class DashboardStatusCoordinatorSupplementTest {
     }
 
     @Test
-    @DisplayName("停用成功应撤销 LING_ENABLE 权限并记录 STOPPING 事件")
+    @DisplayName("软停成功应撤销 LING_ENABLE 并记录 INACTIVE 事件（不卸载实例）")
     void shouldRevokeEnableWhenDeactivated() {
         when(runtimeCoordinator.transition("ling1", RuntimeStatus.INACTIVE))
                 .thenReturn(transitionSuccess());
@@ -254,10 +254,14 @@ class DashboardStatusCoordinatorSupplementTest {
 
         verify(runtimeCoordinator).transition("ling1", RuntimeStatus.INACTIVE);
         verify(permissionService).revoke("ling1", Capabilities.LING_ENABLE);
+        // 软停不调用 undeploy
+        verify(lifecycleEngine, never()).undeploy("ling1");
         List<DashboardService.LifecycleEvent> events = eventStore.getEvents("ling1");
         assertEquals(1, events.size());
-        assertEquals("STOPPING", events.get(0).getType());
+        assertEquals("INACTIVE", events.get(0).getType());
         assertEquals("1.0.0", events.get(0).getVersion());
+        assertTrue(events.get(0).getTitle().contains("软停")
+                || events.get(0).getDescription().contains("软停"));
     }
 
     // ==================== recoverLing version 分支 ====================

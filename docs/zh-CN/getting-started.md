@@ -240,4 +240,5 @@ lingframe:
 下一步最值得继续验证的，不只是“还能不能再加载一个灵元”，  
 而是这条运行时链路在 reload / unload / cleanup 场景下能否继续保持有序。
 
-接下来如果你想先判断怎么落地，读 [实用入口](practical-entry.md)；如果你想直接开始写灵元，去 [业务灵元开发指南](ling-development.md)。
+接下来如果你想先判断怎么落地，读 [实用入口](practical-entry.md)；如果你想直接开始写灵元，去 [业务灵元开发指南](ling-development.md)。  
+上生产前请先看 [生产硬化配置清单](production-hardening.md)。

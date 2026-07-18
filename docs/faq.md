@@ -28,7 +28,7 @@ This document collects common questions and answers about LingFrame.
 
 ### Q4: What is a "Ling"?
 
-**A:** A Ling (from the Chinese "灵元") is a core concept in LingFrame. It refers to a business unit that is independently loaded and managed within the host application (LingCore) process. You can think of it as a "governed plugin."
+**A:** A Ling (from the Chinese "灵元") is a core concept in LingFrame. It refers to a business unit that is independently loaded and managed within the LingCore process. Do not reduce it to a generic "plugin" — a Ling is a governed, cleanly unloadable runtime unit.
 
 ### Q5: What scenarios is LingFrame suited for?
 
@@ -288,7 +288,7 @@ lingframe:
 
 ### Q27: When will Prometheus/Grafana integrations be supported?
 
-**A:** We already support Micrometer metric bridging today. If the host application supplies a `MeterRegistry`, LingFrame will automatically register Ling health and governance signal metrics. If the host then introduces `micrometer-registry-prometheus` and exposes `/actuator/prometheus`, those metrics can be scraped directly by Prometheus. See the `lingframe-example-lingcore-app` for a demonstration.
+**A:** We already support Micrometer metric bridging today. If the LingCore application supplies a `MeterRegistry`, LingFrame will automatically register Ling health and governance signal metrics. If LingCore then introduces `micrometer-registry-prometheus` and exposes `/actuator/prometheus`, those metrics can be scraped directly by Prometheus. See the `lingframe-example-lingcore-app` for a demonstration.
 
 ### Q28: When will Messaging Proxies (Kafka/RabbitMQ) be supported?
 

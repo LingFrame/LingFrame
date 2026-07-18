@@ -191,18 +191,29 @@ public class LingClassLoader extends URLClassLoader {
             if (c != null)
                 return c;
 
-            // 白名单强制委派给父加载器 (防止 ClassCastException)
+            // 强制父委派包：独占委派，父未找到则确定性失败，禁止子加载器定义同名类型
+            // （避免 com.lingframe.api.* / java.* 等被灵元 JAR 伪造导致类型分裂）
             if (shouldDelegateToParent(name)) {
                 try {
-                    c = getParent().loadClass(name);
-                    if (c != null) {
-                        if (resolve)
-                            resolveClass(c);
-                        return c;
+                    ClassLoader parent = getParent();
+                    if (parent != null) {
+                        c = parent.loadClass(name);
+                    } else {
+                        // parent==null 表示仅 bootstrap 链路：必须从 bootstrap 解析
+                        c = Class.forName(name, false, null);
                     }
-                } catch (ClassNotFoundException ignored) {
-                    // 父加载器没找到，继续尝试自己加载
+                } catch (ClassNotFoundException e) {
+                    throw new ClassNotFoundException(
+                            "Forced parent-delegate class not found in parent loader: " + name, e);
                 }
+                if (c == null) {
+                    throw new ClassNotFoundException(
+                            "Forced parent-delegate class resolved to null: " + name);
+                }
+                if (resolve) {
+                    resolveClass(c);
+                }
+                return c;
             }
 
             // 子优先：优先从当前类加载器加载

@@ -88,14 +88,14 @@ class DefaultLingRepositoryTest {
 
     @Nested
     @DisplayName("注销")
-    class Deregister {
+    class Unregister {
 
         @Test
         @DisplayName("注销后不可查询")
-        void deregisterRemoves() {
+        void unregisterRemoves() {
             LingRuntime runtime = mockRuntime("ling-1");
             repository.register(runtime);
-            repository.deregister("ling-1");
+            repository.unregister("ling-1");
 
             assertNull(repository.getRuntime("ling-1"));
             assertFalse(repository.hasRuntime("ling-1"));
@@ -103,17 +103,17 @@ class DefaultLingRepositoryTest {
 
         @Test
         @DisplayName("注销不存在的 lingId 返回 null")
-        void deregisterUnknownReturnsNull() {
-            assertNull(repository.deregister("unknown"));
+        void unregisterUnknownReturnsNull() {
+            assertNull(repository.unregister("unknown"));
         }
 
         @Test
         @DisplayName("注销返回被移除的 runtime")
-        void deregisterReturnsRemoved() {
+        void unregisterReturnsRemoved() {
             LingRuntime runtime = mockRuntime("ling-1");
             repository.register(runtime);
 
-            LingRuntime removed = repository.deregister("ling-1");
+            LingRuntime removed = repository.unregister("ling-1");
             assertSame(runtime, removed);
         }
     }
@@ -212,7 +212,7 @@ class DefaultLingRepositoryTest {
                             } else {
                                 // 写：注销再注册
                                 String lingId = "ling-" + (i % 100);
-                                repository.deregister(lingId);
+                                repository.unregister(lingId);
                                 repository.register(mockRuntime(lingId));
                             }
                         }

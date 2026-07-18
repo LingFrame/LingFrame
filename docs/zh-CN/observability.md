@@ -122,7 +122,7 @@ POST /lingframe/dashboard/lings/{lingId}/stats/reset
 
 `lingframe-dashboard` 已内置可选的 Micrometer 桥接。
 
-当宿主应用提供 `MeterRegistry` 时，会自动注册以下 gauge：
+当灵核应用提供 `MeterRegistry` 时，会自动注册以下 gauge：
 
 - `lingframe.ling.health.qps`
 - `lingframe.ling.health.error_rate`
@@ -137,8 +137,8 @@ POST /lingframe/dashboard/lings/{lingId}/stats/reset
 
 说明：
 
-- 灵珑已完成指标桥接，但不强制宿主采用某一种监控后端
-- 如果宿主同时引入 `micrometer-registry-prometheus` 并暴露 actuator 端点，即可被 Prometheus 抓取
+- 灵珑已完成指标桥接，但不强制灵核采用某一种监控后端
+- 如果灵核同时引入 `micrometer-registry-prometheus` 并暴露 actuator 端点，即可被 Prometheus 抓取
 
 ### 7. EventBus 事件机制
 
@@ -162,13 +162,13 @@ eventBus.subscribeGlobal(MyEvent.class, event -> {
 
 ---
 
-## 宿主接入 Prometheus
+## 灵核接入 Prometheus
 
 最小接入条件：
 
-1. 宿主引入 `spring-boot-starter-actuator`
-2. 宿主引入 `micrometer-registry-prometheus`
-3. 宿主暴露 `/actuator/prometheus`
+1. 灵核引入 `spring-boot-starter-actuator`
+2. 灵核引入 `micrometer-registry-prometheus`
+3. 灵核暴露 `/actuator/prometheus`
 
 示例配置：
 

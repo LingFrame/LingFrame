@@ -27,22 +27,25 @@ class EventClassesTest {
     @DisplayName("InstanceStateChangedEvent 构造和 getter")
     void shouldCreateInstanceStateChangedEvent() {
         InstanceStateChangedEvent event = new InstanceStateChangedEvent(
-                "ling-b", "1.0.0", InstanceStatus.CREATED, InstanceStatus.READY);
+                "ling-b", "inst-b", "1.0.0", InstanceStatus.CREATED, InstanceStatus.READY);
 
         assertEquals("ling-b", event.getLingId());
+        assertEquals("inst-b", event.getInstanceId());
         assertEquals("1.0.0", event.getVersion());
         assertEquals(InstanceStatus.CREATED, event.getFromStatus());
         assertEquals(InstanceStatus.READY, event.getToStatus());
         assertTrue(event.getTimestamp() > 0);
         assertTrue(event.toString().contains("ling-b"));
+        assertTrue(event.toString().contains("inst-b"));
     }
 
     @Test
     @DisplayName("InstanceDestroyedEvent 构造和 getter")
     void shouldCreateInstanceDestroyedEvent() {
-        InstanceDestroyedEvent event = new InstanceDestroyedEvent("ling-c", "2.0.0");
+        InstanceDestroyedEvent event = new InstanceDestroyedEvent("ling-c", "inst-c", "2.0.0");
 
         assertEquals("ling-c", event.getLingId());
+        assertEquals("inst-c", event.getInstanceId());
         assertEquals("2.0.0", event.getVersion());
         assertTrue(event.getTimestamp() > 0);
     }

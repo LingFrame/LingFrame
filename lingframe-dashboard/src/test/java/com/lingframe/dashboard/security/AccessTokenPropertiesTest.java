@@ -4,7 +4,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * AccessTokenProperties.validate() 启动期校验测试
@@ -45,6 +47,43 @@ class AccessTokenPropertiesTest {
         AccessTokenProperties p = new AccessTokenProperties();
         p.setEnabled(true);
         p.setToken("secret-token");
+
+        assertDoesNotThrow(p::validate);
+    }
+
+    @Test
+    @DisplayName("弱口令默认 allow-weak=true 时仍允许启动，仅告警不阻断")
+    void weakTokenDoesNotFailStartupWhenAllowWeak() {
+        AccessTokenProperties p = new AccessTokenProperties();
+        p.setEnabled(true);
+        p.setToken("123456");
+        p.setAllowWeak(true);
+
+        assertDoesNotThrow(p::validate);
+        assertTrue(AccessTokenProperties.isWeakToken("123456"));
+        assertTrue(AccessTokenProperties.isWeakToken("admin"));
+        assertFalse(AccessTokenProperties.isWeakToken("a-strong-unique-token-9f3"));
+    }
+
+    @Test
+    @DisplayName("allow-weak=false 时弱口令 fail-closed 拒绝启动")
+    void weakTokenFailsWhenAllowWeakFalse() {
+        AccessTokenProperties p = new AccessTokenProperties();
+        p.setEnabled(true);
+        p.setToken("123456");
+        p.setAllowWeak(false);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, p::validate);
+        assertTrue(ex.getMessage().contains("too weak"));
+    }
+
+    @Test
+    @DisplayName("allow-weak=false 且强 token 时正常启动")
+    void strongTokenPassesWhenAllowWeakFalse() {
+        AccessTokenProperties p = new AccessTokenProperties();
+        p.setEnabled(true);
+        p.setToken("a-strong-unique-token-9f3");
+        p.setAllowWeak(false);
 
         assertDoesNotThrow(p::validate);
     }

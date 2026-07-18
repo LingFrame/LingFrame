@@ -43,6 +43,13 @@ public final class SwitchableRuntimeMode implements RuntimeMode {
     /** 盐值长度（字节） */
     private static final int SALT_LENGTH = 16;
 
+    /**
+     * 复用 SecureRandom，避免 SpotBugs DMI_RANDOM_USED_ONLY_ONCE
+     * （每次 new SecureRandom 仅 nextBytes 一次）。
+     * SecureRandom 线程安全，可作为静态实例共享。
+     */
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     /** 运行时 devMode 覆盖值：null 表示未覆盖（使用配置基线），非 null 表示运行时切换后的值 */
     private volatile Boolean override = null;
 
@@ -185,7 +192,7 @@ public final class SwitchableRuntimeMode implements RuntimeMode {
 
     private static byte[] generateSalt() {
         byte[] salt = new byte[SALT_LENGTH];
-        new SecureRandom().nextBytes(salt);
+        SECURE_RANDOM.nextBytes(salt);
         return salt;
     }
 }

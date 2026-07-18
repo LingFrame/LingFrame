@@ -37,6 +37,11 @@ import java.util.concurrent.locks.ReentrantLock;
 @Slf4j
 public class LingInstance {
 
+    /**
+     * 进程内实例序号，保证同 version 并发部署时 instanceId 仍全局唯一。
+     */
+    private static final AtomicLong INSTANCE_SEQ = new AtomicLong();
+
     // 注意：非 final，destroy() 时需置 null 断开 ClassLoader 引用链
     @Getter
     private volatile LingContainer container;
@@ -45,6 +50,13 @@ public class LingInstance {
     // 注意：非 final，destroy() 时需置 null
     @Getter
     private volatile LingDefinition definition;
+
+    /**
+     * 实例唯一身份。构造时固定，destroy 后仍可读，供快照键与事件关联使用。
+     * 格式：{lingId}@{version}#{seqHex}，不依赖对象 identityHashCode。
+     */
+    @Getter
+    private final String instanceId;
 
     // 实例固有标签（例如 {"env":"canary","tenant":"T1"}）
     private final Map<String, String> labels = new ConcurrentHashMap<>();
@@ -74,6 +86,8 @@ public class LingInstance {
         this.definition = Objects.requireNonNull(definition, "definition cannot be null");
 
         String lingId = definition.getId();
+        String version = definition.getVersion();
+        this.instanceId = lingId + "@" + version + "#" + Long.toHexString(INSTANCE_SEQ.incrementAndGet());
         this.stateMachine = InstanceStatus.newMachine(lingId);
 
         definition.validate();

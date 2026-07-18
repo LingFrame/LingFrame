@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * {@link JdbcCleanupHelper} 补充测试。
  * <p>
- * 该类的 deregisterAll() 静态方法负责注销所有已注册的 JDBC 驱动，
+ * 该类的 unregisterAll() 静态方法负责注销所有已注册的 JDBC 驱动，
  * 用于在灵元卸载时清理 DriverManager 中残留的子容器驱动引用。
  * 由于该方法是全局副作用操作，用例在执行前后会保存并恢复原驱动集合，避免污染其他测试。
  */
@@ -66,8 +66,8 @@ class JdbcCleanupHelperSupplementTest {
     }
 
     @Test
-    @DisplayName("deregisterAll 应注销所有已注册的 JDBC 驱动并返回注销数量")
-    void shouldDeregisterAllRegisteredDrivers() throws SQLException {
+    @DisplayName("unregisterAll 应注销所有已注册的 JDBC 驱动并返回注销数量")
+    void shouldUnregisterAllRegisteredDrivers() throws SQLException {
         // 保存现有驱动，测试结束后恢复，避免污染全局状态
         List<Driver> snapshot = snapshotDrivers();
         FakeDriver driver1 = new FakeDriver();
@@ -78,7 +78,7 @@ class JdbcCleanupHelperSupplementTest {
             assertTrue(isDriverRegistered(driver1));
             assertTrue(isDriverRegistered(driver2));
 
-            int removed = JdbcCleanupHelper.deregisterAll();
+            int removed = JdbcCleanupHelper.unregisterAll();
 
             // 至少注销了本测试注册的两个驱动
             assertTrue(removed >= 2);
@@ -90,14 +90,14 @@ class JdbcCleanupHelperSupplementTest {
     }
 
     @Test
-    @DisplayName("deregisterAll 在没有驱动时也应安全执行并返回 0")
+    @DisplayName("unregisterAll 在没有驱动时也应安全执行并返回 0")
     void shouldReturnZeroWhenNoDriversLeft() throws SQLException {
         // 保存并清空所有驱动，确保第二次调用返回 0
         List<Driver> snapshot = snapshotDrivers();
         try {
-            JdbcCleanupHelper.deregisterAll();
+            JdbcCleanupHelper.unregisterAll();
             // 此时驱动集合已空，再次调用应返回 0
-            int removed = JdbcCleanupHelper.deregisterAll();
+            int removed = JdbcCleanupHelper.unregisterAll();
             assertEquals(0, removed);
         } finally {
             restoreDrivers(snapshot);
@@ -105,13 +105,13 @@ class JdbcCleanupHelperSupplementTest {
     }
 
     @Test
-    @DisplayName("deregisterAll 应能持续遍历并清空 getDrivers 返回的全部驱动")
+    @DisplayName("unregisterAll 应能持续遍历并清空 getDrivers 返回的全部驱动")
     void shouldClearAllDriversReturnedByGetDrivers() throws SQLException {
         List<Driver> snapshot = snapshotDrivers();
         FakeDriver driver = new FakeDriver();
         DriverManager.registerDriver(driver);
         try {
-            JdbcCleanupHelper.deregisterAll();
+            JdbcCleanupHelper.unregisterAll();
             // 清理后 getDrivers 应不再返回任何驱动
             assertEquals(0, countRegisteredDrivers());
         } finally {

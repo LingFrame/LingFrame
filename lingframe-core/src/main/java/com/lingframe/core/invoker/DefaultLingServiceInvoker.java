@@ -23,6 +23,14 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
         ClassLoader targetClassLoader = instance.getClassLoader();
+        // force-drain / tearDown 后 CL 可能已关闭或清空：给出确定性错误，避免难诊断 NPE
+        if (targetClassLoader == null) {
+            instance.completeInvocation(invocationId);
+            throw new LingInvocationException(instance.getLingId(),
+                    LingInvocationException.ErrorKind.STATE_REJECTED,
+                    "Ling instance classloader is unavailable (likely unloaded or force-drained): "
+                            + instance.getInstanceId());
+        }
 
         try {
             // 切换线程上下文类加载器（TCCL）

@@ -44,7 +44,7 @@
 | `LingRuntime` | 运行时聚合层 | 持有配置、统计和实例池，对外暴露运行时只读视图 | 否 |
 | `RuntimeCoordinator` | 运行时层 | 持有 `RuntimeStatus` FSM，聚合实例快照并发布运行时事件 | 是 |
 | `DefaultLingLifecycleEngine` | 编排层 | 把部署/卸载意图翻译成阶段化动作，并驱动部署/卸载顺序 | 否，编排而不直接改状态 |
-| `LingUnloadCoordinator` | 卸载清理层 | 回收管道资源、调用守卫清理并执行泄漏检测 | 否 |
+| `LingUnloadCoordinator` | 卸载清理层 | 回收管道资源、调用卸载钩子清理并执行泄漏检测 | 否 |
 
 ## 两层状态机分别管什么
 

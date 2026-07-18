@@ -35,6 +35,16 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
         mutate(lingId, version, GovernanceMetricBucket::incrementBulkheadRejectedRequests);
     }
 
+    @Override
+    public void recordForceDrain(String lingId, String version) {
+        mutate(lingId, version, GovernanceMetricBucket::incrementForceDrainCount);
+    }
+
+    @Override
+    public void recordDrainTimeoutAbort(String lingId, String version) {
+        mutate(lingId, version, GovernanceMetricBucket::incrementDrainTimeoutAbortCount);
+    }
+
     public void recordRecovered(String lingId, String version) {
         mutate(lingId, version, GovernanceMetricBucket::incrementRecoveryCount);
     }
@@ -111,6 +121,8 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
             snapshot.setCircuitOpenRejections(snapshot.getCircuitOpenRejections() + versionSnapshot.getCircuitOpenRejections());
             snapshot.setCircuitOpenedCount(snapshot.getCircuitOpenedCount() + versionSnapshot.getCircuitOpenedCount());
             snapshot.setBulkheadRejectedRequests(snapshot.getBulkheadRejectedRequests() + versionSnapshot.getBulkheadRejectedRequests());
+            snapshot.setForceDrainCount(snapshot.getForceDrainCount() + versionSnapshot.getForceDrainCount());
+            snapshot.setDrainTimeoutAbortCount(snapshot.getDrainTimeoutAbortCount() + versionSnapshot.getDrainTimeoutAbortCount());
             snapshot.setRecoveryCount(snapshot.getRecoveryCount() + versionSnapshot.getRecoveryCount());
             snapshot.setActiveIsolatedThreads(snapshot.getActiveIsolatedThreads() + versionSnapshot.getActiveIsolatedThreads());
             snapshot.setMaxConcurrentThreadsBudget(snapshot.getMaxConcurrentThreadsBudget() + versionSnapshot.getMaxConcurrentThreadsBudget());
@@ -155,6 +167,8 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
         private final LongAdder circuitOpenRejections = new LongAdder();
         private final LongAdder circuitOpenedCount = new LongAdder();
         private final LongAdder bulkheadRejectedRequests = new LongAdder();
+        private final LongAdder forceDrainCount = new LongAdder();
+        private final LongAdder drainTimeoutAbortCount = new LongAdder();
         private final LongAdder recoveryCount = new LongAdder();
         private final LongAdder threadBudgetExceededCount = new LongAdder();
         private final LongAdder cpuBudgetExceededCount = new LongAdder();
@@ -202,6 +216,16 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
         private void incrementBulkheadRejectedRequests() {
             bulkheadRejectedRequests.increment();
             threadBudgetExceededCount.increment();
+            touch();
+        }
+
+        private void incrementForceDrainCount() {
+            forceDrainCount.increment();
+            touch();
+        }
+
+        private void incrementDrainTimeoutAbortCount() {
+            drainTimeoutAbortCount.increment();
             touch();
         }
 
@@ -257,6 +281,8 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
             snapshot.setCircuitOpenRejections(circuitOpenRejections.sum());
             snapshot.setCircuitOpenedCount(circuitOpenedCount.sum());
             snapshot.setBulkheadRejectedRequests(bulkheadRejectedRequests.sum());
+            snapshot.setForceDrainCount(forceDrainCount.sum());
+            snapshot.setDrainTimeoutAbortCount(drainTimeoutAbortCount.sum());
             snapshot.setRecoveryCount(recoveryCount.sum());
             snapshot.setActiveIsolatedThreads(activeIsolatedThreads);
             snapshot.setMaxConcurrentThreadsBudget(maxConcurrentThreadsBudget);

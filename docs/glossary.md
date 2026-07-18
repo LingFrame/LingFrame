@@ -12,7 +12,7 @@ The overall project name: an order-keeping architecture and JVM runtime governan
 
 ## LingCore
 
-The host application process running the governance kernel.
+The LingCore process: the application side that runs the governance kernel.
 
 ## Ling
 

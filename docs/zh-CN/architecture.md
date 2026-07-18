@@ -12,7 +12,7 @@
 
 ## 设计原则
 
-- **治理主链唯一**：治理能力尽量走同一条 Pipeline，而不是每个入口各自实现一套
+- **治理主链唯一**：治理能力尽量走同一条 Pipeline，而不是每个入口各自实现一套。业务**终端执行**在 `GOVERN_ONLY` 下仍可留在灵核侧 Web/AOP 框架路径
 - **状态写入权明确**：实例生命周期状态与宏观运行时状态不能混写在同一组对象里
 - **执行模式显式化**：真实执行、模拟执行、仅治理借道都要通过统一模式表达
 - **解释性先走事件**：Dashboard 与后续控制面应消费真实内核事件，而不是维护影子模型
@@ -43,15 +43,19 @@
 
 | Filter | 职责 |
 | :-- | :-- |
+| `ContractProviderRoutingFilter` | L0 provider 路由（契约式 FQSID，在指标阶段之前） |
 | `TrafficMetricsFilter` | 记录请求事实与早期指标、追踪信息 |
 | `MacroStateGuardFilter` | 当宏观运行时状态不安全时提前拒绝请求 |
 | `CanaryRoutingFilter` | 选择目标实例并处理灰度路由 |
+| `InvocationPolicyPrefillFilter` | 在弹性治理前把有效策略意图预填入 `ctx.governance()` |
 | `ResilienceGovernanceFilter` | 执行熔断、限流等韧性治理决策 |
 | `ContextIsolationFilter` | 解析目标类、方法与 ClassLoader 隔离上下文 |
 | `GovernanceDecisionFilter` | 收束超时、规则来源等治理决策 |
 | `PermissionGovernanceFilter` | 执行最终权限校验 |
 | `ThreadIsolationGovernanceFilter` | 执行线程隔离与切换 |
 | `TerminalInvokerFilter` | 执行真实终端调用、生成模拟结果，或在特定模式下跳过终端执行 |
+
+SPI/动态过滤器不得占用内置保留 order，须选择核心阶段之间的非保留序号。
 
 当前实现的关键，不只是“这些 Filter 存在”，
 而是它们已经组成了对多个入口都可复用的正式运行时主链。
@@ -191,6 +195,9 @@
 | Spring Boot 2 / 3 Web 请求 | `LingWebGovernanceFilter` | 通过 `GOVERN_ONLY` 借道治理，终端分发仍由 Web 框架完成 |
 | 灵核 Bean 方法 | `LingCoreBeanGovernanceInterceptor` | 在 AOP 拦截中通过 `GOVERN_ONLY` 复用治理能力 |
 | Dashboard 模拟 | `SimulateService` | 通过 `SIMULATION` 跑真实治理链路但不产生真实副作用 |
+| Dashboard 服务演练场 | `ServicePlaygroundService` | 默认 `NORMAL` 真调用便于验接口；请求可显式 `SIMULATION` |
+
+**重要区分**：多入口共享的是**治理** Pipeline，不一定共享业务**终端**路径。Web / AOP 在 `GOVERN_ONLY` 后仍由灵核侧框架路径执行业务。
 
 这也是当前实现与更早零散能力拼装状态的本质差别。
 

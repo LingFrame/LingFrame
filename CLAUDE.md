@@ -8,14 +8,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 灵珑（LingFrame）是一个面向长期运行系统的 JVM 运行时治理框架。核心能力：单进程内灵元隔离、热加载/规范热卸载、运行时治理（权限、审计、限流、熔断、灰度）、Dashboard 控制面。
 
-**开发手册权威源**：[DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md)。如有冲突，以该手册为准。
+当前版本：`0.4.0`（`lingframe-dependencies` 的 `revision`）。默认构建矩阵为 **Spring Boot 2.7 / JDK 8**；**Spring Boot 3.5 / JDK 17** 通过 `-Pspring-boot3` 切换。
+
+### 规范权威链
+
+| 来源 | 角色 |
+| --- | --- |
+| [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md) | **开发规范唯一真源**；与旧文档/实现冲突时，以本手册 + 当前代码事实为准 |
+| [AI_ASSISTANT_GUIDE.zh-CN.md](AI_ASSISTANT_GUIDE.zh-CN.md) | AI 额外执行规则（不重复手册全文） |
+| [MANIFESTO.md](MANIFESTO.md) / [WHY.md](WHY.md) | 风格与价值观冲突时的上位依据 |
+| [docs/development/](docs/development/) | 内部开发区：`proposal` / `assessment` / `archive` **不得**当作现行规范；须与手册和代码交叉确认 |
+
+本文件是 Claude 工作摘要，不是规范本身。不要在公开文档或提交说明中引用未公开的内部规划材料。
 
 ---
 
 ## 构建与测试命令
 
 ```bash
-# 完整构建
+# 完整构建（默认 spring-boot2 / JDK 8）
 mvn clean install
 
 # 跳过测试构建
@@ -27,17 +38,39 @@ mvn clean install -pl lingframe-core -am
 # 运行所有测试
 mvn test
 
-# 运行指定测试类
-mvn test -Dtest=LingManagerTest
-
 # 运行指定模块测试
 mvn test -pl lingframe-core
 
-# 启动示例灵核应用
+# 运行指定测试类 / 方法（示例类名真实存在）
+mvn test -pl lingframe-core -Dtest=RuntimeCoordinatorTest
+mvn test -pl lingframe-core -Dtest=RuntimeCoordinatorTest#registerInitialInactive
+
+# 与 CI 对齐：SB2 + 集成检查 profile（checkstyle / spotbugs 挂在 verify，不只在 test）
+mvn -B clean verify -Pintegration-check
+
+# Spring Boot 3 / JDK 17 矩阵
+mvn -B clean verify -Pspring-boot3
+
+# 质量门控（也可单独执行）
+mvn checkstyle:check
+mvn spotbugs:check
+mvn -B jacoco:check -pl lingframe-core,lingframe-dashboard,lingframe-runtime/lingframe-spring-boot-starter
+
+# 示例灵核（最短路径）
+mvn -pl lingframe-examples/lingframe-example-lingcore-app -am package -DskipTests
 cd lingframe-examples/lingframe-example-lingcore-app && mvn spring-boot:run
+# 默认 http://localhost:8888 ，Dashboard: /dashboard.html
+
+# 可选集成回归（见 QUICK_START.zh-CN.md）
+mvn -pl lingframe-examples/lingframe-example-lingcore-app -am "-Pspring-boot2,integration-check" verify "-Dit.test=ObservabilityClosedLoopIntegrationTest"
+
+# JMH 基准（非默认模块）
+mvn -pl lingframe-benchmark package -Pbenchmark -DskipTests
 ```
 
-开发配置：在 `application.yml` 中设置 `lingframe.dev-mode: true` 启用热重载监听。
+- 根模块：`lingframe-dependencies`、`lingframe-bom`、`lingframe-api`、`lingframe-core`、`lingframe-runtime`、`lingframe-infrastructure`、`lingframe-examples`、`lingframe-dashboard`；`lingframe-benchmark` 仅 `-Pbenchmark`。
+- 质量插件已挂：`checkstyle`、`spotbugs`、`jacoco`；日常以 `verify` 为准。
+- 开发配置：`application.yml` 中 `lingframe.dev-mode: true` 启用热重载监听；`ling-home` 指向灵元目录。
 
 ---
 
@@ -46,13 +79,22 @@ cd lingframe-examples/lingframe-example-lingcore-app && mvn spring-boot:run
 | 模块 | 职责 | 不允许 |
 | --- | --- | --- |
 | `lingframe-api` | 契约层：接口、注解、异常、安全抽象 | 放业务实现、重依赖 |
-| `lingframe-core` | 治理内核：流水线、路由、状态机、生命周期、事件总线 | 依赖任何生态环境 |
-| `lingframe-runtime` | Spring Boot 适配：Web 治理过滤器、Bean 拦截、Starter 装配 | 反向污染 `lingframe-core` 边界 |
-| `lingframe-infrastructure` | 基础设施代理：DB/Cache 权限控制 | 让灵元直接穿透底层设施 |
-| `lingframe-dashboard` | 治理控制面：生命周期操作、灰度、模拟、SSE 事件流 | 越权写入核心内部状态 |
-| `lingframe-examples` | 示例灵核应用与灵元 | 生产代码 |
+| `lingframe-core` | 治理内核：流水线、路由、状态机、生命周期、事件总线 | 依赖任何生态环境（不以 Spring 为设计前提） |
+| `lingframe-runtime` | 运行时适配：`spring-boot-starter` + SB2/SB3 starter + `native`；Web 治理过滤器、Bean 拦截 | 反向污染 `lingframe-core` |
+| `lingframe-infrastructure` | 基础设施代理：`infra-storage` / `infra-cache` 等 | 让灵元直接穿透底层设施 |
+| `lingframe-dashboard` | 治理控制面：生命周期、灰度、模拟、SSE | 越权写入核心内部状态 |
+| `lingframe-examples` | 示例灵核应用与灵元 | 生产代码 / 架构事实来源 |
 
 灵元只能依赖 `lingframe-api`，**禁止**依赖 `lingframe-core`。
+
+定位入口（不全列类树）：
+
+- `com.lingframe.core.ling` — 实例 / 运行时 / 生命周期
+- `com.lingframe.core.fsm` — 状态机
+- `com.lingframe.core.pipeline` — 治理流水线
+- `com.lingframe.core.classloader` / `security` — 隔离与校验
+- `com.lingframe.core.spi` — 扩展点
+- `com.lingframe.api.*` — 对外契约
 
 ---
 
@@ -60,9 +102,19 @@ cd lingframe-examples/lingframe-example-lingcore-app && mvn spring-boot:run
 
 ### 运行时双层状态机
 
-- **实例层**（`LingInstance`）：单个灵元版本实例的真实生命周期阶段
-- **运行时层**（`LingRuntime`）：灵元整体对外呈现的宏观状态
-- 两层之间通过事件与快照联动，不互相直接改状态
+- **实例层**（`LingInstance` / `InstanceStatus`）：单个灵元版本实例的真实生命周期阶段
+- **运行时层**（`LingRuntime` / `RuntimeStatus`）：灵元整体对外呈现的宏观状态
+- 两层通过**事件与快照**联动，**不互相直接改状态**
+
+### 写权限真源（改前必须答出）
+
+| 概念 | 唯一真源 | 唯一写入口 | 其他角色 |
+| --- | --- | --- | --- |
+| 实例状态 | `LingInstance` 内部状态机 | `InstanceCoordinator` | 其他对象只能读或响应事件 |
+| 运行时状态 | `RuntimeCoordinator` 内部 FSM / 快照 | `RuntimeCoordinator` | `LingRuntime` 只读 |
+| 实例成员关系 | `InstancePool` | 受编排驱动变更 | 不管完整生命周期 |
+| 生命周期阶段顺序 | `DefaultLingLifecycleEngine` | 编排逻辑本身 | 不能跳过 coordinator 直改状态 |
+| 卸载清理 | `LingUnloadCoordinator` | 清理协调器 | 不能替代生命周期编排 |
 
 ### 七个关键角色
 
@@ -70,7 +122,7 @@ cd lingframe-examples/lingframe-example-lingcore-app && mvn spring-boot:run
 | --- | --- | --- |
 | `LingInstance` | 单个灵元实例承载体 | 对外不暴露状态机写权限 |
 | `InstanceCoordinator` | 实例状态唯一写入口 | 只有它能推进实例状态 |
-| `InstancePool` | 管理活跃成员、默认实例、濒死队列 | 只管成员关系，不管完整生命周期 |
+| `InstancePool` | 管理活跃成员、默认实例、濒死队列 | 只管成员关系，不做生命周期总控 |
 | `LingRuntime` | 灵元运行时聚合体 | 对外只暴露只读视图 |
 | `RuntimeCoordinator` | 运行时状态唯一写入口 | 只有它能推进 `RuntimeStatus` |
 | `DefaultLingLifecycleEngine` | 部署、切换、卸载顺序编排 | 不能绕过 coordinator 直改状态 |
@@ -78,19 +130,29 @@ cd lingframe-examples/lingframe-example-lingcore-app && mvn spring-boot:run
 
 ### 调用流水线
 
-`InvocationPipelineEngine` 是唯一治理执行路径，过滤器按序执行：
+`InvocationPipelineEngine` 是治理主链；内置过滤器按序执行（以 `PipelineArchitectureContractTest` / `FilterRegistry` 为准）：
 
-`TrafficMetricsFilter` → `MacroStateGuardFilter` → `CanaryRoutingFilter` → `ResilienceGovernanceFilter` → `ContextIsolationFilter` → `GovernanceDecisionFilter` → `PermissionGovernanceFilter` → `ThreadIsolationGovernanceFilter` → `TerminalInvokerFilter`
+`ContractProviderRoutingFilter` → `TrafficMetricsFilter` → `MacroStateGuardFilter` → `CanaryRoutingFilter` → `InvocationPolicyPrefillFilter` → `ResilienceGovernanceFilter` → `ContextIsolationFilter` → `GovernanceDecisionFilter` → `PermissionGovernanceFilter` → `ThreadIsolationGovernanceFilter` → `TerminalInvokerFilter`
 
 三种执行模式：`NORMAL`（真实执行）、`SIMULATION`（模拟）、`GOVERN_ONLY`（仅治理）。
 
-各入口对应模式：灵元服务调用用 `NORMAL`，灵核 Bean 方法拦截用 `GOVERN_ONLY`，Dashboard 模拟用 `SIMULATION`。
+入口说明：
+- 灵元 IPC / 服务调用：`NORMAL` 全链 + `TerminalInvokerFilter`
+- Web / 灵核 Bean 拦截：`GOVERN_ONLY` 跑治理链后由灵核侧 Web/AOP 框架路径继续业务执行（非 pipeline terminal）
+- Dashboard 模拟：`SIMULATION`
 
-### 类加载隔离
+SPI/动态过滤器不得占用内置 order 保留位。
 
-- `LingClassLoader`：Child-First 策略
-- 白名单强制委派父加载器：`java.*`、`com.lingframe.api.*`、`org.slf4j.*`
-- `Shared API` 是进程级公共契约：新包可热加载，已加载契约不支持热更新或热卸载，变更必须重启进程
+`InvocationContext` 已分区（routing / resolution / governance / execution），**禁止扩大字符串魔法键**承载核心语义。
+
+### 类加载与 Shared API
+
+- `LingClassLoader`：Child-First；白名单强制委派父加载器（含 `java.*`、`com.lingframe.api.*`、`org.slf4j.*` 等）
+- Spring 等生态包的父委派由 **runtime** 注入，core 不绑定灵核应用栈
+- `Shared API` 是进程级公共契约（接口 / DTO / 必要注解），不是共享业务实现
+- **全新 Shared API JAR 可热加载**；**已进入共享边界的 JAR 不允许热更新或热卸载**；替换/破坏性变更必须**重启进程**
+- `SharedApiManager` 启动边界：预加载 → 注册包前缀 → **冻结** → 再加载灵元
+- 类加载权威：`LingInstance.getClassLoader()`，不要把 TCCL 当隔离真源
 
 ---
 
@@ -101,47 +163,65 @@ cd lingframe-examples/lingframe-example-lingcore-app && mvn spring-boot:run
 | 正确 | 禁止 |
 | --- | --- |
 | 灵珑 / LingFrame | 插件平台、Ling 插件系统 |
-| 灵核 | 宿主、Host |
-| 灵元 | 插件、Plugin |
+| 灵核 / LingCore | 宿主、Host |
+| 灵元 / Ling | 插件、Plugin |
 
-- 中文语境优先写「灵珑」；补充英文名时写「灵珑（LingFrame）」
-- 英文语境用 `LingFrame`
+- 中文语境优先写「灵珑」；补充英文名时写「灵珑（LingFrame）」，不要写成「LingFrame（灵珑）」
+- 英文语境用 `LingFrame`；英文单元名用 `LingCore` / `Ling`
 
 ### 注释与日志
 
 - 代码注释：**中文**
 - 日志输出：**英文**
-- 测试展示名（`@DisplayName`）：**中文**
+- 测试展示名（`@DisplayName`）：**中文**；优先 `@Nested + @DisplayName`
 
 ### 架构硬约束
 
 - 禁止绕过 `InstanceCoordinator` / `RuntimeCoordinator` 直接改状态
 - 禁止把写权限散回聚合对象、池对象、业务对象
-- 禁止扩大字符串魔法键
+- 禁止让 `LingRuntime` 再持有第二份 runtime FSM
+- 禁止扩大字符串魔法键 / 隐式状态
 - 禁止为兼容保留已确认错误的旧边界
 - 禁止删除高价值设计注释、踩坑说明、风险提示
+- 反射 / JVM 深水区补丁仅在必要时使用，必须封装并配套风险说明、测试与可观测性
+- 治理语义（timeout、permission、audit、unload、routing fallback、状态含义等）必须可证明：有归属、有失败路径、有日志/事件/测试
 
 ---
 
 ## 修改前检查清单
 
 1. 识别本次改动属于哪一层：实例层、运行时层、成员层、编排层、卸载层、适配层或文档层
-2. 确认谁有写权限、谁只读、谁编排（答不出则不应开始改代码）
+2. 确认谁有写权限、谁只读、谁编排（**答不出则不应开始改代码**）
 3. 确认改动是否影响测试、日志、文档和术语
 
-交付最低要求：代码守住边界 + 测试覆盖关键语义 + 文档同步 + 术语统一。
+交付最低要求：代码守住边界 + 测试覆盖关键语义 + 文档同步 + 术语统一 + 没有新增隐式状态和魔法键扩散。
+
+涉及架构边界、状态机、生命周期顺序、Shared API 规则、测试/AI 规则的改动，必须同步更新测试和文档。
 
 ---
 
 ## 测试规范
 
+- 默认 JUnit 5；需要 mock 时用 Mockito
 - 测试展示名统一中文，优先使用 `@Nested + @DisplayName`
-- 关键语义必须有测试，不只是流程测试
+- 关键语义必须有测试，不只是流程 / happy path
 - 测试类命名：`{ClassName}Test.java`
+
+涉及以下内容时优先补测试：状态机迁移、生命周期编排顺序、多版本切换、濒死队列/排空/回收、timeout、permission/audit、routing、pipeline 顺序、classloader 边界、Shared API 冻结语义、并发安全、卸载后资源清理。
+
+| 变更类型 | 至少需要的测试 |
+| --- | --- |
+| 状态机 | 合法迁移 + 非法迁移 |
+| 生命周期编排 | 顺序 + 失败/中断 |
+| Filter 顺序 | Pipeline 契约 |
+| 卸载与回收 | 资源回收 + 长时间运行退化风险 |
+| 权限/超时/审计 | 成功 / 拒绝 / 回退 / 审计 |
 
 ---
 
-## 灵元配置示例（ling.yml）
+## 配置示例
+
+灵元 `ling.yml`：
 
 ```yaml
 id: user-ling
@@ -153,7 +233,7 @@ governance:
       permissionId: "READ"
 ```
 
-## 灵核全局配置示例（application.yml）
+灵核 `application.yml`：
 
 ```yaml
 lingframe:
