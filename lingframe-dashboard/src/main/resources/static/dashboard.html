@@ -1667,6 +1667,8 @@
                                     <div class="card-header">
                                         <div class="flex items-center gap-3">
                                             <h3 class="font-bold text-base t-text">{{ t('traffic.title') }}</h3>
+                                            <span class="text-[10px] t-text-muted hidden sm:inline">{{
+                                                t('traffic.routingOnlyHint') }}</span>
                                             <span v-if="!activeLing"
                                                 class="text-xs t-bg-faint t-text-sub px-2 py-0.5 rounded">{{
                                                 t('traffic.notSelected') }}</span>

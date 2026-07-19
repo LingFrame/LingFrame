@@ -1,0 +1,33 @@
+# 生产 profile 片段示例（复制为 application-prod.yaml 并轮换 token）
+# 激活：--spring.profiles.active=prod
+# 切勿把本文件中的占位 token 原样上线。
+
+lingframe:
+  enabled: true
+  dev-mode: false
+
+  ling-core-governance:
+    enabled: true
+    check-permissions: true
+    # govern-internal-calls: false
+
+  security:
+    strict-mode: true
+
+  runtime:
+    force-cleanup-delay: 60s
+    # 默认 true：drain 超时后强制 tearDown（可能打断在途请求）
+    # 长事务不可打断时改为 false（超时则卸载失败）
+    force-drain-on-timeout: true
+
+  dashboard:
+    enabled: true
+    install-enabled: false
+    access-token:
+      enabled: true
+      token: "<rotate-me-strong-token>"
+      allow-weak: false
+
+# 提醒：
+# - 切流/停流 → 路由权重 / 灰度，不要用 RuntimeStatus
+# - 灵元访问 DB → 只走注入的 DataSource Bean，禁止 DriverManager 私自建连

@@ -1,8 +1,6 @@
 package com.lingframe.dashboard.controller;
 
-import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.config.LingFrameConfig;
-import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
@@ -23,7 +21,6 @@ import java.io.File;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -105,24 +102,6 @@ public class LingController {
         } catch (Exception e) {
             log.error("Failed to update status: {}", lingId, e);
             return ApiResponse.error("状态更新失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 软停：Runtime → INACTIVE，停新流量/收权，实例仍驻留进程。
-     * 与卸载（REMOVED / uninstall）明确区分。
-     */
-    @PostMapping("/{lingId}/soft-stop")
-    public ApiResponse<LingInfoDTO> softStop(
-            @PathVariable String lingId,
-            @RequestBody(required = false) SoftStopRequest request) {
-        try {
-            String version = request == null ? null : request.getVersion();
-            LingInfoDTO info = dashboardService.updateStatus(lingId, RuntimeStatus.INACTIVE, version);
-            return ApiResponse.ok("已软停（实例未卸载）", info);
-        } catch (Exception e) {
-            log.error("Failed to soft-stop ling: {}", lingId, e);
-            return ApiResponse.error("软停失败: " + e.getMessage());
         }
     }
 
@@ -396,12 +375,6 @@ public class LingController {
     @Data
     public static class LingStatusRequest {
         private RuntimeStatus status;
-        private String version;
-    }
-
-    @Data
-    public static class SoftStopRequest {
-        /** 可选版本号（当前软停作用于灵元运行时层，version 仅透传时间线） */
         private String version;
     }
 

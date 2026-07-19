@@ -107,30 +107,24 @@ public class DashboardStatusCoordinator {
     }
 
     /**
-     * 软停（soft stop）：仅将 Runtime 置为 INACTIVE 并收回 LING_ENABLE，
-     * <strong>不</strong>卸载实例、不回收 ClassLoader。
+     * 控制面收回 {@link Capabilities#LING_ENABLE}，并尽力 transition 到 INACTIVE。
      * <p>
-     * 与硬停（{@link RuntimeStatus#REMOVED} / {@link LingLifecycleEngine#undeploy}）区分：
-     * <ul>
-     *   <li>软停：停流量 / 停权，实例仍在进程内，可再激活</li>
-     *   <li>硬停：卸载实例并走完整清理，从控制面移除</li>
-     * </ul>
-     * 运维勿将 INACTIVE 理解为“已干净卸载”。
+     * 流量切分只走二维路由/权重，不占用 RuntimeStatus。
+     * INACTIVE 表示「无可用实例」的聚合事实；若实例仍 READY，reevaluate 可回到 ACTIVE。
+     * 彻底下线请走卸载（REMOVED）。
      */
     private void deactivateLing(String lingId, String version, RuntimeStatus currentStatus) {
+        permissionService.revoke(lingId, Capabilities.LING_ENABLE);
+        log.info("[Dashboard] Revoked LING_ENABLE from {}", lingId);
+
         TransitionResult<RuntimeStatus> inactiveResult = runtimeCoordinator.transition(lingId, RuntimeStatus.INACTIVE);
         if (!inactiveResult.isSuccess()) {
-            String errorMessage = String.format("Cannot transition %s to INACTIVE from %s: %s",
+            log.info("[Dashboard] transition INACTIVE for {} from {} result={} (permission already revoked)",
                     lingId, currentStatus, inactiveResult.code());
-            log.warn("[Dashboard] {}", errorMessage);
-            throw new IllegalStateException(errorMessage);
         }
 
-        log.info("[Dashboard] Soft-stop: runtime INACTIVE for ling {} (instances not unloaded)", lingId);
-        lifecycleEventStore.addEvent(lingId, version, "INACTIVE", "灵元软停",
-                "灵元 " + lingId + " 已软停：不再接受新请求；实例仍驻留进程，未执行卸载清理。硬停请选择卸载/REMOVED。");
-        permissionService.revoke(lingId, Capabilities.LING_ENABLE);
-        log.info("[Dashboard] Revoked LING_ENABLE from {} after soft-stop", lingId);
+        lifecycleEventStore.addEvent(lingId, version, "INACTIVE", "收回启用权限",
+                "灵元 " + lingId + " 已收回 LING_ENABLE。切流请改路由权重；彻底下线请卸载。");
     }
 
     private void recoverLing(String lingId, String version) {

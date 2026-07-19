@@ -584,9 +584,7 @@ createApp({
                 console.warn('Failed to fetch canary decision:', e.message);
             }
         };
-        const canActivate = computed(() => activeLing.value?.status === 'INACTIVE');
-        const canDeactivate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
-        const canRecover = computed(() => activeLing.value?.status === 'DEGRADED');
+        // 生命周期启停不通过 RuntimeStatus 按钮操作；流量见治理中心「流量控制」
         const activeLingHealth = computed(() => activeId.value ? lingHealthMetrics[activeId.value]?.summary || null : null);
         const activeLingVersionHealth = computed(() => {
             if (!activeId.value || !activeLing.value?.versionDetails) {
@@ -1023,43 +1021,8 @@ createApp({
             syncInvocationForm();
         };
 
-        const doUpdateStatus = async (newStatus) => {
-            if (!activeId.value) return;
-            loading.status = true;
-            try {
-                const body = { status: newStatus };
-                const updated = await api.post(`/lings/${activeId.value}/status`, body);
-                const idx = lings.value.findIndex(p => p.lingId === activeId.value);
-                if (idx !== -1 && updated) {
-                    lings.value[idx] = updated;
-                }
-                showToast(t('toast.statusUpdated', { status: newStatus }), 'success');
-            } catch (e) {
-                showToast(t('toast.statusUpdateFailed') + ': ' + e.message, 'error');
-            } finally {
-                loading.status = false;
-            }
-        };
-
-        const updateStatus = (newStatus) => {
-            if (!activeLing.value) return;
-
-            const currentStatus = activeLing.value.status;
-            if (newStatus === 'ACTIVE' && currentStatus !== 'INACTIVE') {
-                showToast(t('toast.cannotActivateFrom') + ': ' + currentStatus, 'error');
-                return;
-            }
-            if (newStatus === 'INACTIVE' && currentStatus !== 'ACTIVE' && currentStatus !== 'DEGRADED') {
-                showToast(t('toast.cannotDeactivateFrom') + ': ' + currentStatus, 'error');
-                return;
-            }
-            if (newStatus === 'RECOVERING' && currentStatus !== 'DEGRADED') {
-                showToast(t('toast.cannotRecoverFrom') + ': ' + currentStatus, 'error');
-                return;
-            }
-
-            doUpdateStatus(newStatus);
-        };
+        // 流量切分 / 停流只走路由权重（灰度滑块 / 契约权重），不要用 RuntimeStatus 冒充停流。
+        // 生命周期对外入口：部署 deployPackage、卸载 requestUnload*、恢复可走 recover API（若需要）。
 
         const requestUnload = () => {
             if (!activeLing.value) return;
@@ -1385,58 +1348,6 @@ createApp({
                 }
             };
             modal.show = true;
-        };
-
-        const updateStatusForLing = async (lingId, newStatus, version = null) => {
-            const ling = lings.value.find(p => p.lingId === lingId);
-            if (!ling) return;
-
-            let currentStatus = ling.status;
-            if (version) {
-                const verInfo = ling.versionDetails?.find(v => v.version === version);
-                if (verInfo) currentStatus = verInfo.status;
-            }
-
-            if (!version) {
-                if (newStatus === 'ACTIVE' && currentStatus !== 'INACTIVE') {
-                    showToast(t('toast.cannotActivateFrom') + ': ' + currentStatus, 'error');
-                    return;
-                }
-                if (newStatus === 'INACTIVE' && currentStatus !== 'ACTIVE' && currentStatus !== 'DEGRADED') {
-                    showToast(t('toast.cannotDeactivateFrom') + ': ' + currentStatus, 'error');
-                    return;
-                }
-                if (newStatus === 'RECOVERING' && currentStatus !== 'DEGRADED') {
-                    showToast(t('toast.cannotRecoverFrom') + ': ' + currentStatus, 'error');
-                    return;
-                }
-            } else {
-                if (newStatus === 'ACTIVE' && !['DEAD', 'ERROR', 'CREATED'].includes(currentStatus)) {
-                    showToast(t('toast.cannotActivateFrom') + ': ' + currentStatus, 'error');
-                    return;
-                }
-                if (newStatus === 'INACTIVE' && !['READY', 'STARTING', 'LOADING', 'RECOVERING'].includes(currentStatus)) {
-                    showToast(t('toast.cannotDeactivateFrom') + ': ' + currentStatus, 'error');
-                    return;
-                }
-            }
-
-            loading.status = true;
-            try {
-                const body = { status: newStatus };
-                if (version) body.version = version;
-                
-                const updated = await api.post(`/lings/${lingId}/status`, body);
-                const idx = lings.value.findIndex(p => p.lingId === lingId);
-                if (idx !== -1 && updated) {
-                    lings.value[idx] = updated;
-                }
-                showToast(t('toast.statusUpdated', { status: newStatus }), 'success');
-            } catch (e) {
-                showToast(t('toast.statusUpdateFailed') + ': ' + e.message, 'error');
-            } finally {
-                loading.status = false;
-            }
         };
 
         const getLingCanaryWeight = (ling) => {
@@ -3296,9 +3207,9 @@ createApp({
             recentEvents,
             invocationForm,
 
-            activeLing, activeLingHealth, activeLingVersionHealth, activeLingGovernance, activeLingVersionGovernance, canCanary, canOperate, canActivate, canDeactivate, canRecover, displayLogs, availableVersions,
+            activeLing, activeLingHealth, activeLingVersionHealth, activeLingGovernance, activeLingVersionGovernance, canCanary, canOperate, displayLogs, availableVersions,
 
-            refreshLings, selectLing, updateStatus, requestUnload,
+            refreshLings, selectLing, requestUnload,
             confirmModalAction, updateCanaryConfig, updateCanaryConfigLocally, resetCanary, togglePerm, toggleIpc,
             saveInvocationGovernance,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
@@ -3317,11 +3228,11 @@ createApp({
             getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass, getLingHealthStatusClass, getLingHealthRoleLabel, getVersionGovernance, hasGovernanceSignals,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
             openTimelineModal, closeTimelineModal, loadTimelineData,
-            doUpdateStatus, fetchPerformanceMetrics, fetchDashboardSummary,
+            fetchPerformanceMetrics, fetchDashboardSummary,
             fetchLingResourceMetrics, fetchLeakDetections, fetchThreadPoolStats, formatBytes,
             uninstallResultModal, closeUninstallResultModal, getUninstallRiskLabel, getUninstallRiskClass, getUninstallTriggerLabel,
 
-            currentTheme, toggleTheme, packages, fetchPackages, deployPackage, deletePackageFile, updateStatusForLing, updateCanaryWeight, getLingCanaryWeight,
+            currentTheme, toggleTheme, packages, fetchPackages, deployPackage, deletePackageFile, updateCanaryWeight, getLingCanaryWeight,
             consoleExpanded, hasNewTraceAlert, globalLogContainer, onboardingSteps, packageSearch, filteredPackages,
             startTour, goToChecklistStep
         };

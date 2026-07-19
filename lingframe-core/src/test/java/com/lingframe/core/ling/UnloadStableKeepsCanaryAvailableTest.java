@@ -49,6 +49,9 @@ class UnloadStableKeepsCanaryAvailableTest {
     @Test
     @DisplayName("卸载稳定版后_金丝雀仍可访问且运行时保持ACTIVE")
     void canaryRemainsAvailableAfterStableUnloaded() {
+        // 与生产一致：先 register 再发实例事件
+        runtimeCoordinator.register("ling-a");
+
         LingRuntime runtime = new LingRuntime(
                 "ling-a",
                 LingRuntimeConfig.builder().forceCleanupDelaySeconds(0).build(),
@@ -97,6 +100,8 @@ class UnloadStableKeepsCanaryAvailableTest {
     void singleCanaryInstanceRemainsAvailable() {
         // 验证金丝雀被选举为默认后，即使 canary 标记仍在，
         // 它作为唯一可用实例时灵元仍可访问（路由层不会因标记而拒服务）。
+        runtimeCoordinator.register("ling-a");
+
         LingRuntime runtime = new LingRuntime(
                 "ling-a",
                 LingRuntimeConfig.defaults(),

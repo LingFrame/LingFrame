@@ -147,13 +147,21 @@ class RuntimeCoordinatorTest {
 
         @Test
         @DisplayName("未注册灵元收到事件时防御性注册")
-        void defensiveRegisterOnEvent() {
-            // 不显式 register，直接发事件
+        void unregisteredEventDoesNotCreateGhostMachine() {
+            // 不显式 register，直接发事件：不得防御性创建 FSM（避免 unregister 后迟到事件复活）
             eventBus.publish(new InstanceStateChangedEvent("ling-auto", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
 
-            // 应该自动注册并进入 ACTIVE
-            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-auto"));
+            assertNull(coordinator.getStatus("ling-auto"));
+        }
+
+        @Test
+        @DisplayName("灵核 lingcore-app 事件不得注册进 RuntimeCoordinator")
+        void lingCoreEventsNeverRegister() {
+            eventBus.publish(new InstanceStateChangedEvent("lingcore-app", "id-1", "permanent",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertNull(coordinator.getStatus("lingcore-app"));
+            assertThrows(IllegalArgumentException.class, () -> coordinator.register("lingcore-app"));
         }
 
         @Test
@@ -401,7 +409,7 @@ class RuntimeCoordinatorTest {
         }
 
         @Test
-        @DisplayName("purge 后收到迟到的实例事件不抛异常")
+        @DisplayName("purge 后收到迟到的实例事件不抛异常且不复活 FSM")
         void lateEventAfterPurgeNoException() {
             coordinator.register("ling-late");
             coordinator.transition("ling-late", RuntimeStatus.ACTIVE);
@@ -409,9 +417,24 @@ class RuntimeCoordinatorTest {
             coordinator.transition("ling-late", RuntimeStatus.REMOVED);
             coordinator.purge("ling-late");
 
-            // purge 后发布迟到的实例事件，不应抛异常
             assertDoesNotThrow(() -> eventBus.publish(new InstanceStateChangedEvent("ling-late", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY)));
+            assertNull(coordinator.getStatus("ling-late"));
+        }
+
+        @Test
+        @DisplayName("unregister 后迟到事件不得复活 ghost FSM")
+        void lateEventAfterUnregisterDoesNotResurrect() {
+            coordinator.register("ling-gone");
+            eventBus.publish(new InstanceStateChangedEvent("ling-gone", "id-1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-gone"));
+            assertTrue(coordinator.unregister("ling-gone"));
+            assertNull(coordinator.getStatus("ling-gone"));
+
+            eventBus.publish(new InstanceStateChangedEvent("ling-gone", "id-1", "v1",
+                    InstanceStatus.READY, InstanceStatus.DEAD));
+            assertNull(coordinator.getStatus("ling-gone"));
         }
 
         @Test
@@ -621,16 +644,30 @@ class RuntimeCoordinatorTest {
         }
 
         @Test
-        @DisplayName("INACTIVE 下 transition(ACTIVE) 后实例 READY 事件不冲突")
-        void inactiveTransitionActiveThenInstanceReadyNoConflict() {
+        @DisplayName("有 READY 实例时 transition(INACTIVE) 可被 reevaluate 拉回 ACTIVE（事实优先，不发明停流状态）")
+        void inactiveWithReadyInstancesCanReevaluateToActive() {
+            coordinator.register("ling-1");
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+
+            // 控制面 transition(INACTIVE) 成功；实例仍 READY 时后续事件可再聚合为 ACTIVE
+            TransitionResult<RuntimeStatus> toInactive = coordinator.transition("ling-1", RuntimeStatus.INACTIVE);
+            assertTrue(toInactive.isSuccess());
+            eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
+                    InstanceStatus.READY, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("INACTIVE 下 transition(ACTIVE) 后实例 READY 事件保持 ACTIVE")
+        void inactiveTransitionActiveThenInstanceReadyStaysActive() {
             coordinator.register("ling-1");
             assertEquals(RuntimeStatus.INACTIVE, coordinator.getStatus("ling-1"));
 
-            // 运维直接 transition(ACTIVE)（无可用实例）
             coordinator.transition("ling-1", RuntimeStatus.ACTIVE);
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
 
-            // 实例 READY 事件触发 reevaluate，聚合结果也是 ACTIVE，不冲突
             eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));

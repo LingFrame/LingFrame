@@ -1,5 +1,6 @@
 package com.lingframe.core.fsm;
 
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.event.LingEventListener;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.InstanceDestroyedEvent;
@@ -168,6 +169,11 @@ public class RuntimeCoordinator {
      * @return 该 Ling 的运行时状态机
      */
     public StateMachine<RuntimeStatus> register(String lingId) {
+        if (isLingCoreId(lingId)) {
+            throw new IllegalArgumentException(
+                    "Ling core id [lingcore-app] must not register into RuntimeCoordinator; "
+                            + "use LingCoreRoutableTarget only");
+        }
         snapshots.putIfAbsent(lingId, new ConcurrentHashMap<>());
         // `register` 是运行时状态机的唯一创建入口，保证 `LingRuntime` 与协调器
         // 读取的都是同一份宏观状态真源。
@@ -209,21 +215,24 @@ public class RuntimeCoordinator {
      * 处理实例状态变更事件。
      * <p>
      * 由实例状态协调器发布，本方法更新实例快照后触发聚合评估。
-     * 若该 Ling 尚未注册，自动防御性注册。
+     * 未 {@link #register} 的 ling 事件会被忽略（避免 unregister 后迟到事件复活 FSM）。
+     * 编排层须在实例事件出现前调用 {@link #register}（见 DefaultLingLifecycleEngine.ensureRuntimeForDeployment）。
      */
     public void onInstanceStateChanged(InstanceStateChangedEvent event) {
         String lingId = event.getLingId();
         String instanceId = event.getInstanceId();
         InstanceStatus to = event.getToStatus();
 
-        // 防御性注册（正常流程应在部署时显式调用 register）
-        register(lingId);
+        // 灵核实例（lingcore-app）不得进 RuntimeCoordinator：只走 LingCoreRoutableTarget
+        if (isLingCoreId(lingId)) {
+            log.debug("Ignore instance state event for ling core id [{}]", lingId);
+            return;
+        }
 
+        // 已注册灵元：更新快照。未注册：不防御性创建 FSM（避免 unregister 后迟到事件造 ghost）
         ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
-
-        // 灵元可能已被 purge（并发场景），此时忽略事件避免 NPE
         if (states == null) {
-            log.debug("Ling [{}] already purged, ignore instance state change", lingId);
+            log.debug("Ling [{}] not registered or already unregistered, ignore instance state change", lingId);
             return;
         }
 
@@ -252,12 +261,21 @@ public class RuntimeCoordinator {
         String lingId = event.getLingId();
         String instanceId = event.getInstanceId();
 
-        ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
-        if (states != null) {
-            states.remove(instanceId);
+        if (isLingCoreId(lingId)) {
+            return;
         }
 
+        ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
+        if (states == null) {
+            // 未注册 / 已 unregister：忽略，禁止通过销毁事件复活 FSM
+            return;
+        }
+        states.remove(instanceId);
         reevaluate(lingId);
+    }
+
+    private static boolean isLingCoreId(String lingId) {
+        return LingCoreConstants.LINGCORE_LING_ID.equals(lingId);
     }
 
     /* ==================== 主动运维操作 ==================== */
@@ -409,9 +427,7 @@ public class RuntimeCoordinator {
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             RuntimeStatus current = fsm.current();
 
-            // `STOPPING` 是运维意图态。
-            // 一旦进入 STOPPING，runtime 不允许再被“实例变好了”拉回 ACTIVE / DEGRADED / RECOVERING，
-            // 只允许在实例全部消失后继续前进到 REMOVED。
+            // `STOPPING` 是硬下线运维意图态：只允许推进到 REMOVED，不可被实例事实拉回 ACTIVE。
             if (current == RuntimeStatus.STOPPING) {
                 tryFinishShutdown(lingId, fsm);
                 return;
@@ -424,6 +440,8 @@ public class RuntimeCoordinator {
 
             // 收集实例状态快照，而不是直接操作 LingInstance：
             // 这样双层状态机是“事件联动”，不是“对象互写”。
+            // INACTIVE 是事实态（无可用实例），不是「停流」：有 READY 就应可聚合回 ACTIVE。
+            // 流量控制走路由/权重/权限，不占用 RuntimeStatus。
             ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
             Collection<InstanceStatus> stateValues = (states != null)
                     ? states.values()

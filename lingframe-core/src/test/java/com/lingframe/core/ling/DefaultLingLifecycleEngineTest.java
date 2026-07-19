@@ -189,6 +189,9 @@ class DefaultLingLifecycleEngineTest {
         definition.setVersion("1.0.0");
         definition.setMainClass("demo.Main");
 
+        // 先 register，再推进实例状态：与生产 ensureRuntimeForDeployment 顺序一致
+        runtimeCoordinator.register("ling1");
+
         LingInstance instance = new LingInstance(container, definition, eventBus);
         InstanceCoordinator coordinator = new InstanceCoordinator(eventBus);
         coordinator.prepare(instance);

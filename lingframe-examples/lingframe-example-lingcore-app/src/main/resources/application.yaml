@@ -59,7 +59,9 @@ lingframe:
       metrics-retention-days: 7
       audit-retention-days: 30
       metrics-collect-interval-seconds: 30
-    # 访问令牌：示例本地允许弱口令；生产请设强 token 且 allow-weak: false
+    # 访问令牌：示例本地允许弱口令。
+    # 生产请复制 application-prod.yaml.example 为 application-prod.yaml，
+    # 使用强 token 且 allow-weak: false（见 docs/production-hardening.md）。
     access-token:
       enabled: true
       token: "123456"

@@ -14,29 +14,23 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
-
-import org.mockito.ArgumentCaptor;
 
 /**
  * {@link DashboardStatusCoordinator} 的补充测试。
@@ -230,38 +224,37 @@ class DashboardStatusCoordinatorSupplementTest {
     // ==================== deactivateLing ====================
 
     @Test
-    @DisplayName("停用时 transition 失败应抛 IllegalStateException 且不撤销权限")
-    void shouldThrowWhenDeactivateTransitionFails() {
+    @DisplayName("transition INACTIVE 失败时仍应撤销 LING_ENABLE（收权优先；切流走路由）")
+    void shouldRevokeEvenWhenDeactivateTransitionFails() {
         when(runtimeCoordinator.transition("ling1", RuntimeStatus.INACTIVE))
                 .thenReturn(transitionFailure());
 
-        IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> coordinator.updateStatus("ling1", RuntimeStatus.ACTIVE, RuntimeStatus.INACTIVE, "1.0.0"));
+        // 不抛异常：核心是 revoke；不把 Runtime 当切流开关
+        coordinator.updateStatus("ling1", RuntimeStatus.ACTIVE, RuntimeStatus.INACTIVE, "1.0.0");
 
-        assertTrue(ex.getMessage().contains("Cannot transition"));
-        assertTrue(ex.getMessage().contains("INACTIVE"));
-        assertTrue(eventStore.getEvents("ling1").isEmpty());
-        verify(permissionService, never()).revoke(any(), any());
+        verify(permissionService).revoke("ling1", Capabilities.LING_ENABLE);
+        verify(lifecycleEngine, never()).undeploy("ling1");
+        List<DashboardService.LifecycleEvent> events = eventStore.getEvents("ling1");
+        assertEquals(1, events.size());
     }
 
     @Test
-    @DisplayName("软停成功应撤销 LING_ENABLE 并记录 INACTIVE 事件（不卸载实例）")
+    @DisplayName("收回 LING_ENABLE 成功并记录事件（不卸载）")
     void shouldRevokeEnableWhenDeactivated() {
         when(runtimeCoordinator.transition("ling1", RuntimeStatus.INACTIVE))
                 .thenReturn(transitionSuccess());
 
         coordinator.updateStatus("ling1", RuntimeStatus.ACTIVE, RuntimeStatus.INACTIVE, "1.0.0");
 
-        verify(runtimeCoordinator).transition("ling1", RuntimeStatus.INACTIVE);
         verify(permissionService).revoke("ling1", Capabilities.LING_ENABLE);
-        // 软停不调用 undeploy
+        verify(runtimeCoordinator).transition("ling1", RuntimeStatus.INACTIVE);
         verify(lifecycleEngine, never()).undeploy("ling1");
         List<DashboardService.LifecycleEvent> events = eventStore.getEvents("ling1");
         assertEquals(1, events.size());
         assertEquals("INACTIVE", events.get(0).getType());
         assertEquals("1.0.0", events.get(0).getVersion());
-        assertTrue(events.get(0).getTitle().contains("软停")
-                || events.get(0).getDescription().contains("软停"));
+        assertTrue(events.get(0).getTitle().contains("启用权限")
+                || events.get(0).getDescription().contains("LING_ENABLE"));
     }
 
     // ==================== recoverLing version 分支 ====================
