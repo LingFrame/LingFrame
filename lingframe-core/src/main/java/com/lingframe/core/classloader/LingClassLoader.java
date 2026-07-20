@@ -4,7 +4,6 @@ import com.lingframe.core.exception.ClassLoaderException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.net.URLConnection;
@@ -21,7 +20,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * 3. 资源加载 Child-First（防止误读到灵核配置）
  * 4. 安全关闭（防止关闭后继续被误用）
  * <p>
- * ⚠️ 这里的共享 API 包前缀和额外父委派包，不是"普通运行时配置"，而是类加载边界本身。
+ * ⚠️ 这里的共享 API ClassLoader 绑定和额外父委派包，不是"普通运行时配置"，而是类加载边界本身。
  * 一旦灵元开始装载实现类，就必须冻结这条边界；否则同名类可能在不同时间走出不同的委派路径，
  * 最终演变成最难排查的 ClassCastException / LinkageError。
  * <p>
@@ -57,8 +56,9 @@ public class LingClassLoader extends URLClassLoader {
             "org.yaml.snakeyaml." // 灵珑自身用 snakeyaml 解析 ling.yml，门面共享
     );
 
-    // 共享 API 包前缀（可动态添加，最终委派给 SharedApiClassLoader）
-    private static final List<String> sharedApiPackages = new CopyOnWriteArrayList<>();
+    // 共享 API ClassLoader 引用：启动期由 SharedApiManager 绑定，按完整类名精确判定是否为公共契约
+    // ⚠️ 不再用包前缀 startsWith，避免同包的灵元内部类被误判为公共契约
+    private static volatile SharedApiClassLoader sharedApiClassLoader;
 
     // 可配置的额外委派包列表
     private static final List<String> additionalParentPackages = new CopyOnWriteArrayList<>();
@@ -129,24 +129,29 @@ public class LingClassLoader extends URLClassLoader {
     }
 
     /**
-     * 添加共享 API 包前缀（这些包的类将委派给 SharedApiClassLoader 加载）
+     * 绑定共享 API ClassLoader。
+     * 绑定后，LingClassLoader 通过 isSharedClass 按完整类名精确判定是否为公共契约，
+     * 不再使用包前缀推断，避免同包的灵元内部类被误判为公共契约。
      *
-     * @param packages 共享 API 包名前缀列表
+     * @param sharedApiClassLoader 共享 API ClassLoader 实例
      */
-    public static void addSharedApiPackages(Collection<String> packages) {
-        if (packages != null) {
-            ensureSharedBoundaryMutable("add shared API packages");
-            sharedApiPackages.addAll(packages);
-            log.info("📦 [SharedApi] Added shared API packages {}", packages);
+    public static void bindSharedApiClassLoader(SharedApiClassLoader sharedApiClassLoader) {
+        ensureSharedBoundaryMutable("bind SharedApiClassLoader");
+        SharedApiClassLoader old = LingClassLoader.sharedApiClassLoader;
+        LingClassLoader.sharedApiClassLoader = sharedApiClassLoader;
+        // 仅在引用真正变化时打日志，避免 addApi 重复调用时刷屏
+        if (sharedApiClassLoader != null && sharedApiClassLoader != old) {
+            log.info("📦 [SharedApi] Bound SharedApiClassLoader, shared classes: {}",
+                    sharedApiClassLoader.getSharedClassCount());
         }
     }
 
     /**
-     * 清空共享 API 包列表
+     * 解绑共享 API ClassLoader。仅用于关闭阶段或测试重置。
      */
-    public static void clearSharedApiPackages() {
-        ensureSharedBoundaryMutable("clear shared API packages");
-        sharedApiPackages.clear();
+    public static void unbindSharedApiClassLoader() {
+        ensureSharedBoundaryMutable("unbind SharedApiClassLoader");
+        sharedApiClassLoader = null;
     }
 
     /**
@@ -164,12 +169,12 @@ public class LingClassLoader extends URLClassLoader {
      */
     public static void resetSharedApiBoundary() {
         SHARED_API_BOUNDARY_FROZEN.set(false);
-        sharedApiPackages.clear();
+        sharedApiClassLoader = null;
         additionalParentPackages.clear();
     }
 
     private static void ensureSharedBoundaryMutable(String action) {
-        // ⚠️ 如果允许在运行期继续改委派包前缀，同一个 ClassLoader 里的“已加载类”和“未加载类”
+        // ⚠️ 如果允许在运行期继续改委派规则，同一个 ClassLoader 里的“已加载类”和“未加载类”
         // 可能从此走不同的解析路径，最后不是功能错，而是类型系统整体失真。
         if (SHARED_API_BOUNDARY_FROZEN.get()) {
             throw new IllegalStateException("Shared API boundary already frozen, cannot " + action);
@@ -333,11 +338,11 @@ public class LingClassLoader extends URLClassLoader {
             }
         }
 
-        // 检查共享 API 包（委派给 SharedApiClassLoader）
-        for (String pkg : sharedApiPackages) {
-            if (name.startsWith(pkg)) {
-                return true;
-            }
+        // 检查共享 API（按完整类名精确判定：只有 SharedApiClassLoader 实际登记的类才是公共契约）
+        // ⚠️ 不再用包前缀 startsWith，避免同包的灵元内部类（如 OrderDTO）被误判为公共契约
+        SharedApiClassLoader sac = sharedApiClassLoader;
+        if (sac != null && sac.isSharedClass(name)) {
+            return true;
         }
 
         // 检查动态添加的白名单

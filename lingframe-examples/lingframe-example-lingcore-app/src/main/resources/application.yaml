@@ -64,8 +64,9 @@ lingframe:
     # 使用强 token 且 allow-weak: false（见 docs/production-hardening.md）。
     access-token:
       enabled: true
-      token: "123456"
+      token: "lingframe"
       allow-weak: true
+  mode-switch-password: "lingframe"
 
 # SpringDoc OpenAPI 配置
 springdoc:

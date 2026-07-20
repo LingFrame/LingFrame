@@ -90,13 +90,6 @@ class SharedApiClassLoaderTest {
     }
 
     @Test
-    @DisplayName("getSharedPackagePrefixes 返回空集")
-    void shouldReturnEmptyPackagePrefixes() {
-        SharedApiClassLoader cl = SharedApiClassLoader.getInstance(ClassLoader.getSystemClassLoader());
-        assertTrue(cl.getSharedPackagePrefixes().isEmpty());
-    }
-
-    @Test
     @DisplayName("toString 包含关键信息")
     void shouldReturnToString() {
         SharedApiClassLoader cl = SharedApiClassLoader.getInstance(ClassLoader.getSystemClassLoader());

@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -248,20 +247,6 @@ public class SharedApiClassLoader extends URLClassLoader {
 
     public int getSharedClassCount() {
         return classSourceMap.size();
-    }
-
-    /**
-     * 提取所有共享类的包前缀，供 LingClassLoader 建立强制委派白名单。
-     */
-    public Set<String> getSharedPackagePrefixes() {
-        Set<String> packages = new HashSet<>();
-        for (String className : classSourceMap.keySet()) {
-            int lastDot = className.lastIndexOf('.');
-            if (lastDot > 0) {
-                packages.add(className.substring(0, lastDot + 1));
-            }
-        }
-        return packages;
     }
 
     /**

@@ -67,7 +67,7 @@ class NativeLingFrameTest {
             NativeLingFrame.start(config);
 
             assertThrows(IllegalStateException.class,
-                    () -> LingClassLoader.addSharedApiPackages(Collections.singletonList("demo.shared.")));
+                    () -> LingClassLoader.bindSharedApiClassLoader(null));
         } finally {
             NativeLingFrame.shutdown();
         }
@@ -86,7 +86,7 @@ class NativeLingFrameTest {
         NativeLingFrame.start(config);
         NativeLingFrame.shutdown();
 
-        assertDoesNotThrow(() -> LingClassLoader.addSharedApiPackages(Collections.singletonList("demo.shared.")));
+        assertDoesNotThrow(() -> LingClassLoader.bindSharedApiClassLoader(null));
     }
 
     @Test

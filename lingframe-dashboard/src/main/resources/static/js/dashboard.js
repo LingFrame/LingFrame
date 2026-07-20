@@ -838,8 +838,11 @@ createApp({
             }
             loginError.value = '';
             localStorage.setItem('lingframe_access_token', token);
-            authenticated.value = true;
-            initAll();
+            // reload 触发 onMounted 重新探测认证状态：token 正确则继续初始化，
+            // token 错误则 api.get('/lings') 返回 401 → showLoginPrompt() 立即重新弹出 auth-overlay。
+            // ⚠️ 不要改为 initAll() 之类的局部初始化——onMounted 中的定时器/SSE/轮询没有清理逻辑，
+            //    局部重初始化会导致重复 setInterval；reload 让页面从零开始最简单也最安全。
+            location.reload();
         };
 
         const showLoginPrompt = () => {
@@ -2873,7 +2876,11 @@ createApp({
             fetchPackages();
             connectSSE();
 
-            updateEnvMode(currentEnv.value);
+            // ⚠️ 不要在 onMounted 中调用 updateEnvMode(currentEnv.value)：
+            //    updateEnvMode 是「切换模式」语义，会弹密码确认框。页面刚加载时 currentEnv 默认 'dev'，
+            //    调用它等于让用户输密码「切换到本来就是的 dev 模式」——逻辑错误。
+            //    正确的触发时机只有 watch(currentEnv)：用户主动点切换按钮时才弹密码框。
+            //    若日后需要从后端同步当前模式，应新增 GET /simulate/config/mode，而不是复用切换接口。
 
             fetchPerformanceMetrics();
             perfTimer = setInterval(() => { if (!document.hidden) fetchPerformanceMetrics(); }, 10000);

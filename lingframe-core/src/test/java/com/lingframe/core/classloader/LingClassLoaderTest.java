@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.net.URL;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Enumeration;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -20,6 +19,7 @@ class LingClassLoaderTest {
     @AfterEach
     void tearDown() {
         LingClassLoader.resetSharedApiBoundary();
+        SharedApiClassLoader.resetInstance();
     }
 
     @Nested
@@ -96,39 +96,41 @@ class LingClassLoaderTest {
     class SharedBoundaryTests {
 
         @Test
-        @DisplayName("冻结共享边界后不应再允许追加共享包前缀")
-        void shouldRejectSharedBoundaryMutationAfterFreeze() {
+        @DisplayName("冻结共享边界后不应再允许绑定 SharedApiClassLoader")
+        void shouldRejectBindAfterFreeze() {
             LingClassLoader.freezeSharedApiBoundary();
 
             assertThrows(IllegalStateException.class,
-                    () -> LingClassLoader.addSharedApiPackages(Collections.singletonList("demo.shared.")));
+                    () -> LingClassLoader.bindSharedApiClassLoader(null));
         }
 
         @Test
-        @DisplayName("addSharedApiPackages 正常添加")
-        void shouldAddSharedApiPackages() {
-            LingClassLoader.addSharedApiPackages(Arrays.asList("com.shared.api.", "com.shared.dto."));
+        @DisplayName("bindSharedApiClassLoader 正常绑定")
+        void shouldBindSharedApiClassLoader() {
+            SharedApiClassLoader sac = SharedApiClassLoader.getInstance(ClassLoader.getSystemClassLoader());
+            LingClassLoader.bindSharedApiClassLoader(sac);
             // 不抛异常即成功
         }
 
         @Test
-        @DisplayName("addSharedApiPackages null 不报错")
-        void shouldHandleNullSharedApiPackages() {
-            assertDoesNotThrow(() -> LingClassLoader.addSharedApiPackages(null));
+        @DisplayName("bindSharedApiClassLoader null 不报错")
+        void shouldHandleNullSharedApiClassLoader() {
+            assertDoesNotThrow(() -> LingClassLoader.bindSharedApiClassLoader(null));
         }
 
         @Test
-        @DisplayName("clearSharedApiPackages 清空包列表")
-        void shouldClearSharedApiPackages() {
-            LingClassLoader.addSharedApiPackages(Arrays.asList("com.shared.api."));
-            LingClassLoader.clearSharedApiPackages();
+        @DisplayName("unbindSharedApiClassLoader 正常解绑")
+        void shouldUnbindSharedApiClassLoader() {
+            SharedApiClassLoader sac = SharedApiClassLoader.getInstance(ClassLoader.getSystemClassLoader());
+            LingClassLoader.bindSharedApiClassLoader(sac);
+            LingClassLoader.unbindSharedApiClassLoader();
         }
 
         @Test
-        @DisplayName("冻结后 clearSharedApiPackages 抛异常")
-        void shouldRejectClearAfterFreeze() {
+        @DisplayName("冻结后 unbindSharedApiClassLoader 抛异常")
+        void shouldRejectUnbindAfterFreeze() {
             LingClassLoader.freezeSharedApiBoundary();
-            assertThrows(IllegalStateException.class, () -> LingClassLoader.clearSharedApiPackages());
+            assertThrows(IllegalStateException.class, () -> LingClassLoader.unbindSharedApiClassLoader());
         }
 
         @Test
@@ -171,8 +173,8 @@ class LingClassLoaderTest {
         void shouldResetBoundary() {
             LingClassLoader.freezeSharedApiBoundary();
             LingClassLoader.resetSharedApiBoundary();
-            // 重置后可以再次添加
-            assertDoesNotThrow(() -> LingClassLoader.addSharedApiPackages(Arrays.asList("com.test.")));
+            // 重置后可以再次绑定
+            assertDoesNotThrow(() -> LingClassLoader.bindSharedApiClassLoader(null));
         }
     }
 
@@ -204,14 +206,19 @@ class LingClassLoaderTest {
         }
 
         @Test
-        @DisplayName("共享 API 包委派给父加载器")
-        void shouldDelegateSharedApiPackages() throws Exception {
-            // org.yaml.snakeyaml 已在 FORCE_PARENT_PACKAGES 中，这里额外验证 sharedApiPackages 机制
-            LingClassLoader.addSharedApiPackages(Arrays.asList("org.yaml.snakeyaml."));
+        @DisplayName("绑定 SharedApiClassLoader 后非共享类不走强制父委派")
+        void shouldNotDelegateNonSharedClassAfterBinding() throws Exception {
+            // 核心回归：绑定 SharedApiClassLoader 后，不在 classSourceMap 里的类
+            // 不应被误判为公共契约而走强制父委派（这是包前缀 startsWith 方案的缺陷）
+            SharedApiClassLoader sac = SharedApiClassLoader.getInstance(ClassLoader.getSystemClassLoader());
+            LingClassLoader.bindSharedApiClassLoader(sac);
             try (LingClassLoader cl = new LingClassLoader("ling-shared", new URL[0], ClassLoader.getSystemClassLoader())) {
-                // org.yaml.snakeyaml.Yaml 应由父加载器加载
-                Class<?> clazz = cl.loadClass("org.yaml.snakeyaml.Yaml");
-                assertNotNull(clazz);
+                // com.example.non.shared.Foo 不在 classSourceMap 里，应走 Child-First 自加载
+                // 子加载器也找不到，最终抛普通 ClassNotFoundException，不含 "Forced parent-delegate" 语义
+                ClassNotFoundException ex = assertThrows(ClassNotFoundException.class,
+                        () -> cl.loadClass("com.example.non.shared.Foo"));
+                assertFalse(ex.getMessage() != null && ex.getMessage().contains("Forced parent-delegate"),
+                        "non-shared class must not go through forced parent delegation, got: " + ex.getMessage());
             }
         }
     }

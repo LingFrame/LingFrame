@@ -4,23 +4,16 @@ import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
-import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingUninstallResult;
 import com.lingframe.core.loader.LingManifestLoader;
-import com.lingframe.starter.configuration.LingFrameCoreConfiguration;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Import;
-
 import java.io.File;
 import java.lang.ref.WeakReference;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+import java.net.URL;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -80,7 +73,8 @@ public class CleanSpringBootUnloadTest {
                     eventBus.getClass().getSimpleName());
 
             // 3. 部署灵元
-            File lingFile = new File("E:\\Codes\\灵珑\\LingFrame\\lings\\lingframe-example-ling-test-0.3.0.jar");
+            // 不硬编码绝对路径和版本号：在 lings/ 目录下按通配符查找 lingframe-example-ling-test-*.jar
+            File lingFile = findLingTestJar();
             LingDefinition definition = LingManifestLoader.parseDefinition(lingFile);
             if (definition == null) {
                 throw new InvalidArgumentException("file", "Not a valid ling package: " + lingFile.getName());
@@ -152,12 +146,36 @@ public class CleanSpringBootUnloadTest {
         } finally {
             // 确保测试线程的 ContextClassLoader 恢复
             Thread.currentThread().setContextClassLoader(originalContextCL);
-            
+
             // 清理系统属性
             System.clearProperty("spring.main.allow-bean-definition-overriding");
             System.clearProperty("lingframe.dev-mode");
             System.clearProperty("lingframe.enabled");
             System.clearProperty("lingframe.auto-scan");
+        }
+    }
+
+    /**
+     * 从 classpath 加载 lingframe-example-ling-test.jar。
+     * <p>
+     * 不硬编码绝对路径和版本号：jar 文件放在 {@code src/test/resources/} 下，
+     * 由 Maven 在 test-compile 阶段复制到 {@code target/test-classes/}，运行时通过 classpath 定位。
+     *
+     * @return classpath 资源对应的文件对象
+     * @throws IllegalStateException 资源未找到或 URL 转 File 失败时抛出，错误信息含操作指引
+     */
+    private static File findLingTestJar() {
+        URL url = CleanSpringBootUnloadTest.class.getClassLoader()
+                .getResource("lingframe-example-ling-test.jar");
+        if (url == null) {
+            throw new IllegalStateException(
+                    "classpath 下未找到 lingframe-example-ling-test.jar，请将 jar 放到 src/test/resources/ 下");
+        }
+        try {
+            return new File(url.toURI());
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "无法将 classpath 资源 lingframe-example-ling-test.jar 转为 File: " + url, e);
         }
     }
 

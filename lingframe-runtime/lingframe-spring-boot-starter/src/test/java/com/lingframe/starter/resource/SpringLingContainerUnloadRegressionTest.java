@@ -2,20 +2,12 @@ package com.lingframe.starter.resource;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.exception.InvalidArgumentException;
-import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.classloader.LingClassLoader;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.ling.LingLifecycleEngine;
-import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.ling.LingUninstallResult;
 import com.lingframe.core.loader.LingManifestLoader;
-import com.lingframe.core.pipeline.LatestVersionPolicy;
-import com.lingframe.core.router.CanaryRouter;
-import com.lingframe.core.spi.LingLoaderFactory;
-import com.lingframe.core.spi.TrafficRouter;
-import com.lingframe.starter.configuration.LingFrameCoreConfiguration;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebRouteResolution;
 
@@ -24,25 +16,17 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.servlet.HandlerExecutionChain;
-import org.springframework.web.servlet.config.annotation.EnableWebMvc;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -57,9 +41,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.any;
 
 /**
  * Spring 灵元容器卸载回归测试。
@@ -99,7 +80,9 @@ class SpringLingContainerUnloadRegressionTest {
     @Test
     @DisplayName("通过开发部署-卸载链路应回收 ClassLoader")
     void shouldReleaseClassLoaderThroughDevelopmentDeployUndeployPath() throws Exception {
-        File file = new File("E:\\Codes\\灵珑\\LingFrame\\lings\\lingframe-example-ling-test-0.3.0.jar");
+        // 不再硬编码绝对路径和版本号：在 lings/ 目录下按通配符查找 lingframe-example-ling-test-*.jar
+        // 测试运行前请将构建好的 jar 放到项目根目录的 lings/ 下
+        File file = findLingTestJar();
         try {
             // 订阅 LeakDetectionEvent
             CountDownLatch leakLatch = new CountDownLatch(1);
@@ -286,6 +269,30 @@ class SpringLingContainerUnloadRegressionTest {
                             throw new RuntimeException(e);
                         }
                     });
+        }
+    }
+
+    /**
+     * 从 classpath 加载 lingframe-example-ling-test.jar。
+     * <p>
+     * 不硬编码绝对路径和版本号：jar 文件放在 {@code src/test/resources/} 下，
+     * 由 Maven 在 test-compile 阶段复制到 {@code target/test-classes/}，运行时通过 classpath 定位。
+     *
+     * @return classpath 资源对应的文件对象
+     * @throws IllegalStateException 资源未找到或 URL 转 File 失败时抛出，错误信息含操作指引
+     */
+    private static File findLingTestJar() {
+        URL url = SpringLingContainerUnloadRegressionTest.class.getClassLoader()
+                .getResource("lingframe-example-ling-test.jar");
+        if (url == null) {
+            throw new IllegalStateException(
+                    "classpath 下未找到 lingframe-example-ling-test.jar，请将 jar 放到 src/test/resources/ 下");
+        }
+        try {
+            return new File(url.toURI());
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "无法将 classpath 资源 lingframe-example-ling-test.jar 转为 File: " + url, e);
         }
     }
 }

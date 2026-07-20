@@ -60,8 +60,9 @@ lingframe:
     # 访问令牌：示例本地允许弱口令；生产请设强 token 且 allow-weak: false
     access-token:
       enabled: true
-      token: "123456"
+      token: "lingframe"
       allow-weak: true
+  mode-switch-password: "lingframe"
 
 # SpringDoc OpenAPI 配置
 springdoc:
