@@ -216,7 +216,7 @@ class LingWebGovernanceFilterTest {
                 webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, null,
                 invocationGovernanceResolver);
 
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/host/api");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/lingcore/api");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         when(webRouteResolver.resolveRoute(any())).thenReturn(null);
@@ -237,7 +237,7 @@ class LingWebGovernanceFilterTest {
                 webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, null,
                 invocationGovernanceResolver);
 
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/host/api");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/lingcore/api");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         when(webRouteResolver.resolveRoute(any())).thenReturn(null);

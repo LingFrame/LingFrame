@@ -24,7 +24,7 @@ public interface LingFrameRuntime extends LingLifecycleEngine {
     /**
      * 治理内核的权限服务契约。
      * <p>
-     * 替代外围灵核绕 {@code NativeLingFrame.getHostContext().getPermissionService()} 间接拿权限服务的路径，
+     * 替代外围灵核绕 {@code NativeLingFrame.getLingCoreContext().getPermissionService()} 间接拿权限服务的路径，
      * 让就绪运行时门面直接暴露治理必备契约。
      * <p>
      * 与 {@code getCanaryConfigurable()} 等 Optional 契约不同——

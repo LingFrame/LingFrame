@@ -45,9 +45,9 @@ import com.lingframe.core.metrics.LingHealthMetrics;
 class WebInterfaceManagerTest {
 
     @Mock
-    private RequestMappingHandlerMapping hostMapping;
+    private RequestMappingHandlerMapping coreMapping;
 
-    private GenericApplicationContext hostContext;
+    private GenericApplicationContext coreContext;
     private WebInterfaceManager manager;
 
     @AfterEach
@@ -55,19 +55,19 @@ class WebInterfaceManagerTest {
         if (manager != null) {
             manager.shutdown();
         }
-        if (hostContext != null) {
-            hostContext.close();
+        if (coreContext != null) {
+            coreContext.close();
         }
     }
 
     @Test
     @DisplayName("调用 unregisterSync 时应移除路由索引")
     void shouldUnregisterSynchronously() throws Exception {
-        hostContext = new GenericApplicationContext();
-        hostContext.refresh();
+        coreContext = new GenericApplicationContext();
+        coreContext.refresh();
 
         manager = new WebInterfaceManager(null, null, null);
-        manager.init(hostMapping, null, hostContext);
+        manager.init(coreMapping, null, coreContext);
 
         DemoController controller = new DemoController();
         Method targetMethod = DemoController.class.getMethod("detail");
@@ -89,22 +89,22 @@ class WebInterfaceManagerTest {
         manager.registerSync(metadata);
 
         assertNotNull(manager.resolveRoute((new MockHttpServletRequest("GET", "/ling-a/demo/detail"))));
-        verify(hostMapping).registerMapping(any(RequestMappingInfo.class), any(), any(Method.class));
+        verify(coreMapping).registerMapping(any(RequestMappingInfo.class), any(), any(Method.class));
 
         manager.unregisterSync("ling-a", DemoController.class.getClassLoader());
 
         assertNull(manager.resolveRoute((new MockHttpServletRequest("GET", "/ling-a/demo/detail"))));
-        verify(hostMapping).unregisterMapping(any(RequestMappingInfo.class));
+        verify(coreMapping).unregisterMapping(any(RequestMappingInfo.class));
     }
 
     @Test
     @DisplayName("调用 registerSync 时应按 params 条件区分同一路径路由")
     void shouldKeepSamePathRoutesDistinctByParamsCondition() throws Exception {
-        hostContext = new GenericApplicationContext();
-        hostContext.refresh();
+        coreContext = new GenericApplicationContext();
+        coreContext.refresh();
 
         manager = new WebInterfaceManager(null, null, null);
-        manager.init(hostMapping, null, hostContext);
+        manager.init(coreMapping, null, coreContext);
 
         DemoController controller = new DemoController();
         WebInterfaceMetadata full = conditionedMetadata(controller, DemoController.class.getMethod("full"),
@@ -121,18 +121,18 @@ class WebInterfaceManagerTest {
 
         assertNotNull(resolution);
         assertEquals("full", resolution.getMetadata().getTargetMethodName());
-        verify(hostMapping, times(2)).registerMapping(any(RequestMappingInfo.class), any(), any(Method.class));
+        verify(coreMapping, times(2)).registerMapping(any(RequestMappingInfo.class), any(), any(Method.class));
     }
 
     @Test
     @DisplayName("调用 unregisterSync 后缓存路由仍应可继续分发")
     void shouldDispatchCachedRouteAfterUnregisterSync() throws Exception {
-        hostContext = new GenericApplicationContext();
-        hostContext.refresh();
+        coreContext = new GenericApplicationContext();
+        coreContext.refresh();
 
-        RequestMappingHandlerAdapter hostAdapter = createHostAdapter(hostContext);
+        RequestMappingHandlerAdapter coreAdapter = createCoreAdapter(coreContext);
         manager = new WebInterfaceManager(null, null, null);
-        manager.init(hostMapping, hostAdapter, hostContext);
+        manager.init(coreMapping, coreAdapter, coreContext);
 
         DemoController controller = new DemoController();
         Method targetMethod = DemoController.class.getMethod("echo", String.class);
@@ -146,7 +146,7 @@ class WebInterfaceManagerTest {
                 .targetMethodParameterTypeNames(new String[] {String.class.getName()})
                 .targetMethod(targetMethod)
                 .classLoader(DemoController.class.getClassLoader())
-                .lingApplicationContext(hostContext)
+                .lingApplicationContext(coreContext)
                 .urlPattern("/ling-a/demo/echo")
                 .httpMethod("GET")
                 .requiredPermission("demo:read")
@@ -171,17 +171,17 @@ class WebInterfaceManagerTest {
         assertThrows(LingException.class, () ->
                 manager.dispatch(resolution.getRouteKey(), createServletWebRequest(request, response)));
 
-        verify(hostMapping).unregisterMapping(any(RequestMappingInfo.class));
+        verify(coreMapping).unregisterMapping(any(RequestMappingInfo.class));
     }
 
     @Test
     @DisplayName("调用 registerSync 时应能够处理继承的 Controller 方法")
     void shouldHandleInheritedMethodRegistration() throws Exception {
-        hostContext = new GenericApplicationContext();
-        hostContext.refresh();
+        coreContext = new GenericApplicationContext();
+        coreContext.refresh();
 
         manager = new WebInterfaceManager(null, null, null);
-        manager.init(hostMapping, null, hostContext);
+        manager.init(coreMapping, null, coreContext);
 
         FirstInheritedController firstController = new FirstInheritedController();
         SecondInheritedController secondController = new SecondInheritedController();
@@ -202,18 +202,18 @@ class WebInterfaceManagerTest {
 
         assertNotNull(manager.resolveRoute((new MockHttpServletRequest("GET", "/ling-a/demo/first"))));
         assertNotNull(manager.resolveRoute((new MockHttpServletRequest("GET", "/ling-a/demo/second"))));
-        verify(hostMapping, times(2)).registerMapping(any(RequestMappingInfo.class), any(), any(Method.class));
+        verify(coreMapping, times(2)).registerMapping(any(RequestMappingInfo.class), any(), any(Method.class));
     }
 
     @Test
     @DisplayName("调用 registerSync 时应向灵核映射暴露 SpringDoc 可见的真实 HandlerMethod")
-    void shouldExposeSpringDocCompatibleHandlerMethodThroughHostMapping() throws Exception {
-        hostContext = new GenericApplicationContext();
-        hostContext.refresh();
+    void shouldExposeSpringDocCompatibleHandlerMethodThroughCoreMapping() throws Exception {
+        coreContext = new GenericApplicationContext();
+        coreContext.refresh();
 
-        RequestMappingHandlerMapping realHostMapping = createHostMapping(hostContext);
+        RequestMappingHandlerMapping realCoreMapping = createCoreMapping(coreContext);
         manager = new WebInterfaceManager(null, null, null);
-        manager.init(realHostMapping, null, hostContext);
+        manager.init(realCoreMapping, null, coreContext);
 
         DemoController controller = new DemoController();
         Method targetMethod = DemoController.class.getMethod("detail");
@@ -235,7 +235,7 @@ class WebInterfaceManagerTest {
         manager.registerSync(metadata);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
-        HandlerExecutionChain chain = getHandlerExecutionChain(realHostMapping, request);
+        HandlerExecutionChain chain = getHandlerExecutionChain(realCoreMapping, request);
 
         assertNotNull(chain);
         assertTrue(chain.getHandler() instanceof HandlerMethod);
@@ -253,13 +253,13 @@ class WebInterfaceManagerTest {
 
     @Test
     @DisplayName("调用 unregisterSync 时应在旧版本卸载后刷新灵核兼容映射")
-    void shouldRefreshHostCompatibilityMappingAfterRegisteredVersionIsRemoved() throws Exception {
-        hostContext = new GenericApplicationContext();
-        hostContext.refresh();
+    void shouldRefreshCoreCompatibilityMappingAfterRegisteredVersionIsRemoved() throws Exception {
+        coreContext = new GenericApplicationContext();
+        coreContext.refresh();
 
-        RequestMappingHandlerMapping realHostMapping = createHostMapping(hostContext);
+        RequestMappingHandlerMapping realCoreMapping = createCoreMapping(coreContext);
         manager = new WebInterfaceManager(null, null, null);
-        manager.init(realHostMapping, null, hostContext);
+        manager.init(realCoreMapping, null, coreContext);
 
         ClassLoader v1Loader = new ClassLoader() {
         };
@@ -303,14 +303,14 @@ class WebInterfaceManagerTest {
         manager.registerSync(v2);
 
         MockHttpServletRequest beforeRequest = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
-        HandlerMethod beforeHandler = (HandlerMethod) getHandlerExecutionChain(realHostMapping, beforeRequest).getHandler();
+        HandlerMethod beforeHandler = (HandlerMethod) getHandlerExecutionChain(realCoreMapping, beforeRequest).getHandler();
         assertTrue(beforeHandler.getBean() instanceof WebInterfaceManager.LingWebEntryHandler);
         assertEquals(WebInterfaceManager.LingWebEntryHandler.class, beforeHandler.getBeanType());
 
         manager.unregisterSync("ling-a", v1Loader);
 
         MockHttpServletRequest afterRequest = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
-        HandlerExecutionChain afterChain = getHandlerExecutionChain(realHostMapping, afterRequest);
+        HandlerExecutionChain afterChain = getHandlerExecutionChain(realCoreMapping, afterRequest);
         assertNotNull(afterChain);
         assertTrue(afterChain.getHandler() instanceof HandlerMethod);
         HandlerMethod afterHandler = (HandlerMethod) afterChain.getHandler();
@@ -322,7 +322,7 @@ class WebInterfaceManagerTest {
         assertEquals("v2", resolution.getMetadata().getVersion());
     }
 
-    private RequestMappingHandlerAdapter createHostAdapter(GenericApplicationContext applicationContext) throws Exception {
+    private RequestMappingHandlerAdapter createCoreAdapter(GenericApplicationContext applicationContext) throws Exception {
         RequestMappingHandlerAdapter adapter = new RequestMappingHandlerAdapter();
         adapter.setApplicationContext(applicationContext);
         adapter.setMessageConverters(Collections.singletonList(new StringHttpMessageConverter()));
@@ -330,7 +330,7 @@ class WebInterfaceManagerTest {
         return adapter;
     }
 
-    private RequestMappingHandlerMapping createHostMapping(GenericApplicationContext applicationContext) throws Exception {
+    private RequestMappingHandlerMapping createCoreMapping(GenericApplicationContext applicationContext) throws Exception {
         RequestMappingHandlerMapping mapping = new RequestMappingHandlerMapping();
         mapping.setApplicationContext(applicationContext);
         mapping.afterPropertiesSet();
@@ -458,7 +458,7 @@ class WebInterfaceManagerTest {
 
         // 🔥 P1-29 修复后：registerSync/unregisterSync 直接走 synchronized(registryLock)，
         // 不再调用 executor.submit().get()，executor 异常不会影响同步路径。
-        // hostSupport 未初始化时 registerInternal/unregisterInternal 安全跳过，不抛异常。
+        // coreWebSupport 未初始化时 registerInternal/unregisterInternal 安全跳过，不抛异常。
         manager.registerSync(metadata);
         manager.unregisterSync("ling-a", null);
 
@@ -470,11 +470,11 @@ class WebInterfaceManagerTest {
     @Test
     @DisplayName("同一路径注册同版本但不同签名的方法时应抛出冲突异常")
     void testConflictRegistration() throws Exception {
-        hostContext = new GenericApplicationContext();
-        hostContext.refresh();
+        coreContext = new GenericApplicationContext();
+        coreContext.refresh();
 
         manager = new WebInterfaceManager(null, null, null);
-        manager.init(hostMapping, null, hostContext);
+        manager.init(coreMapping, null, coreContext);
 
         DemoController controller = new DemoController();
         Method detailMethod = DemoController.class.getMethod("detail");
@@ -513,9 +513,9 @@ class WebInterfaceManagerTest {
     @Test
     @DisplayName("测试分发已解析路由时的异常处理及 Metrics 超时分支")
     void testDispatchResolvedExceptionsAndMetrics() throws Exception {
-        hostContext = new GenericApplicationContext();
-        hostContext.refresh();
-        RequestMappingHandlerAdapter hostAdapter = createHostAdapter(hostContext);
+        coreContext = new GenericApplicationContext();
+        coreContext.refresh();
+        RequestMappingHandlerAdapter coreAdapter = createCoreAdapter(coreContext);
 
         org.springframework.beans.factory.ObjectProvider<MetricsCollector> metricsProvider = mock(org.springframework.beans.factory.ObjectProvider.class);
         MetricsCollector collector = mock(MetricsCollector.class);
@@ -526,7 +526,7 @@ class WebInterfaceManagerTest {
         when(collector.getOrCreate(anyString(), any())).thenReturn(health);
 
         manager = new WebInterfaceManager(null, null, metricsProvider);
-        manager.init(hostMapping, hostAdapter, hostContext);
+        manager.init(coreMapping, coreAdapter, coreContext);
 
         // 1. meta 为 null 的异常分支
         assertThrows(LingException.class, () -> manager.dispatch(null));
@@ -536,7 +536,7 @@ class WebInterfaceManagerTest {
         Method timeoutMethod = ExceptionController.class.getMethod("timeout");
 
         org.springframework.context.ApplicationContext mockLingContext = mock(org.springframework.context.ApplicationContext.class);
-        when(mockLingContext.getBean(RequestMappingHandlerAdapter.class)).thenReturn(hostAdapter);
+        when(mockLingContext.getBean(RequestMappingHandlerAdapter.class)).thenReturn(coreAdapter);
 
         WebInterfaceMetadata metaFail = WebInterfaceMetadata.builder()
                 .lingId("ling-a")

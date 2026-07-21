@@ -30,7 +30,7 @@ class LingOpenApiCustomizerTest {
     }
 
     @Test
-    @DisplayName("分组 api-doc 请求应按 SpringDoc 分组配置注入灵元路径")
+    @DisplayName("分组 api-doc 请求应按 SpringDoc 分组配置注入灵元路径，tag 只信 metadata")
     void shouldInjectLingPathsForGroupedApiDocRequest() throws Exception {
         Method targetMethod = DemoController.class.getMethod("listUsers");
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
@@ -46,6 +46,8 @@ class LingOpenApiCustomizerTest {
                 .urlPattern("/user-ling/user/listUsers")
                 .httpMethod("GET")
                 .opSummary("list users")
+                .opTags(new String[]{"Users", "Ling"})
+                .opTagDescription("Users module from class @Tag")
                 .build();
 
         WebInterfaceManager manager = new WebInterfaceManager(null, null, null) {
@@ -72,6 +74,10 @@ class LingOpenApiCustomizerTest {
         assertNotNull(openApi.getPaths().get("/user-ling/user/listUsers"));
         assertEquals("list users",
                 openApi.getPaths().get("/user-ling/user/listUsers").getGet().getSummary());
+        assertEquals(Arrays.asList("Users", "Ling"),
+                openApi.getPaths().get("/user-ling/user/listUsers").getGet().getTags());
+        assertTrue(openApi.getTags().stream().anyMatch(t ->
+                "Users".equals(t.getName()) && "Users module from class @Tag".equals(t.getDescription())));
     }
 
     @Test

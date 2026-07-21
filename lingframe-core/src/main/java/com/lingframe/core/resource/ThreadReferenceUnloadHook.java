@@ -127,7 +127,38 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
             log.warn("[{}] TrackedShutdownHooks.cleanupFor failed", lingId, t);
         }
 
+        // 8. 末尾再扫一遍 TCCL：HttpClient/池线程可能在中段清理后被重新置回灵元 CL
+        try {
+            clearLingContextClassLoadersAgain(lingId, classLoader);
+        } catch (Throwable t) {
+            log.warn("[{}] clearLingContextClassLoadersAgain failed", lingId, t);
+        }
+
         log.info("[{}] Thread reference cleanup completed", lingId);
+    }
+
+    /**
+     * 清理末尾保险：将所有仍指向目标灵元 CL 的线程 TCCL 置空。
+     */
+    private void clearLingContextClassLoadersAgain(String lingId, ClassLoader classLoader) {
+        int cleared = 0;
+        for (Thread t : JvmCleanupSupport.getActiveThreads()) {
+            if (t == null) {
+                continue;
+            }
+            try {
+                if (t.getContextClassLoader() == classLoader) {
+                    t.setContextClassLoader(null);
+                    cleared++;
+                    log.info("[{}] Final clear contextClassLoader on thread: {}", lingId, t.getName());
+                }
+            } catch (Exception e) {
+                log.trace("[{}] Final TCCL clear failed on {}: {}", lingId, t.getName(), e.getMessage());
+            }
+        }
+        if (cleared > 0) {
+            log.info("[{}] Final TCCL sweep cleared {} thread(s)", lingId, cleared);
+        }
     }
 
     // =========================================================================
@@ -506,8 +537,12 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
     private void stopHttpClientSelectorThreads(String lingId, ClassLoader classLoader) {
         int count = 0;
         for (Thread t : JvmCleanupSupport.getActiveThreads()) {
-            if (t == null) continue;
-            if (JvmCleanupSupport.isVirtualThread(t)) continue;
+            if (t == null) {
+                continue;
+            }
+            if (JvmCleanupSupport.isVirtualThread(t)) {
+                continue;
+            }
 
             String name = t.getName();
             // HttpClient 守护线程名形如 "HttpClient-2-SelectorManager"
@@ -520,6 +555,16 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
                 continue;
             }
 
+            // 先断 TCCL：Selector 常卡在 select()，interrupt 不一定及时退出，
+            // 若等 join 后再清 CL，GC 窗口内仍会强引用灵元 ClassLoader。
+            try {
+                t.setContextClassLoader(null);
+                log.info("[{}] Cleared contextCL on HttpClient SelectorManager: {} (state={})",
+                        lingId, name, t.getState());
+            } catch (SecurityException ignored) {
+                log.debug("[{}] Cannot clear contextCL on thread {}", lingId, name);
+            }
+
             log.info("[{}] Interrupting HttpClient SelectorManager thread: {} (state={})",
                     lingId, name, t.getState());
             t.interrupt();
@@ -528,17 +573,14 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-
             if (t.isAlive()) {
-                // 中断后仍存活：HttpClient 内部 selector 可能处于长阻塞，
-                // 显式置空 contextClassLoader 断开强引用，允许灵元 CL 被 GC
+                // 二次保险：中断后仍存活时再清一次（部分 JDK 路径可能在 interrupt 中重设 TCCL）
                 try {
-                    t.setContextClassLoader(null);
-                    log.info("[{}] HttpClient SelectorManager {} still alive after interrupt, cleared contextCL",
-                            lingId, name);
+                    if (t.getContextClassLoader() == classLoader) {
+                        t.setContextClassLoader(null);
+                    }
                 } catch (SecurityException ignored) {
-                    // 受 SecurityManager 限制无法置空，记录但仍计入处理数
-                    log.debug("[{}] Cannot clear contextCL on thread {}", lingId, name);
+                    // ignore
                 }
             }
             count++;

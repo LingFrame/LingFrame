@@ -72,7 +72,7 @@ public class NativeLingFrame {
 
     private static final AtomicBoolean started = new AtomicBoolean(false);
     private static LingFrameRuntime GLOBAL_LIFECYCLE_ENGINE;
-    private static LingContext HOST_CONTEXT;
+    private static LingContext LING_CORE_CONTEXT;
     private static HotSwapWatcher HOT_SWAP_WATCHER;
     private static DefaultLingResourceManager RESOURCE_MANAGER;
     private static RuntimeCoordinator RUNTIME_COORDINATOR;
@@ -207,7 +207,7 @@ public class NativeLingFrame {
         }
 
         // 注册一个特殊的 "lingcore-app" 上下文
-        HOST_CONTEXT = new DefaultLingContext("lingcore-app", lingRepository, lingServiceRegistry, pipelineEngine,
+        LING_CORE_CONTEXT = new DefaultLingContext("lingcore-app", lingRepository, lingServiceRegistry, pipelineEngine,
                 permissionService, eventBus);
 
         // 自动扫描灵元
@@ -304,7 +304,7 @@ public class NativeLingFrame {
         }
 
         GLOBAL_LIFECYCLE_ENGINE = null;
-        HOST_CONTEXT = null;
+        LING_CORE_CONTEXT = null;
         LING_REPOSITORY = null;
         GOVERNANCE_REGISTRY = null;
         started.set(false);
@@ -312,9 +312,9 @@ public class NativeLingFrame {
         log.info("LingFrame shutdown complete.");
     }
 
-    private static LingServiceInvoker resolveInvoker(ClassLoader hostClassLoader) {
+    private static LingServiceInvoker resolveInvoker(ClassLoader coreClassLoader) {
         try {
-            ServiceLoader<LingServiceInvoker> loader = ServiceLoader.load(LingServiceInvoker.class, hostClassLoader);
+            ServiceLoader<LingServiceInvoker> loader = ServiceLoader.load(LingServiceInvoker.class, coreClassLoader);
             for (LingServiceInvoker invoker : loader) {
                 return invoker;
             }
@@ -327,10 +327,10 @@ public class NativeLingFrame {
     /**
      * 获取灵核上下文，用于 invoke 调用。
      */
-    public static LingContext getHostContext() {
+    public static LingContext getLingCoreContext() {
         if (!started.get()) {
             throw new LingInvocationException("lingcore-app", LingInvocationException.ErrorKind.STATE_REJECTED, "LingFrame not started");
         }
-        return HOST_CONTEXT;
+        return LING_CORE_CONTEXT;
     }
 }

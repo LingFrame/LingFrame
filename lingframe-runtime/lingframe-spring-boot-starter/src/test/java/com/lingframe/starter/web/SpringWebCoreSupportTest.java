@@ -27,19 +27,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-@DisplayName("SpringWebHostSupport 测试")
-class SpringWebHostSupportTest {
+@DisplayName("SpringWebCoreSupport 测试")
+class SpringWebCoreSupportTest {
 
     @Test
     @DisplayName("应通过共享承载支持注册并清理兼容性产物")
     void shouldRegisterAndCleanupCompatibilityArtifacts() throws Exception {
-        GenericApplicationContext hostContext = new GenericApplicationContext();
-        hostContext.refresh();
+        GenericApplicationContext coreContext = new GenericApplicationContext();
+        coreContext.refresh();
         try {
-            RequestMappingHandlerMapping hostMapping = mock(RequestMappingHandlerMapping.class);
-            RequestMappingHandlerAdapter hostAdapter = createHostAdapter(hostContext);
-            SpringWebHostSupport support = new SpringWebHostSupport();
-            support.init(hostMapping, hostAdapter, hostContext);
+            RequestMappingHandlerMapping coreMapping = mock(RequestMappingHandlerMapping.class);
+            RequestMappingHandlerAdapter coreAdapter = createCoreAdapter(coreContext);
+            SpringWebCoreSupport support = new SpringWebCoreSupport();
+            support.init(coreMapping, coreAdapter, coreContext);
 
             String routeKey = "GET#/ling-a/demo/detail";
             RequestMappingInfo mappingInfo = RequestMappingInfo.paths("/ling-a/demo/detail")
@@ -53,28 +53,28 @@ class SpringWebHostSupportTest {
             support.unregisterMappings(Collections.singleton(routeKey), mappingInfoMap, null);
 
             assertFalse(mappingInfoMap.containsKey(routeKey));
-            verify(hostMapping).unregisterMapping(mappingInfo);
+            verify(coreMapping).unregisterMapping(mappingInfo);
         } finally {
-            hostContext.close();
+            coreContext.close();
         }
     }
 
     @Test
     @DisplayName("应通过共享承载适配桥调用目标控制器")
-    void shouldInvokeTargetThroughHostAdapter() throws Exception {
-        GenericApplicationContext hostContext = new GenericApplicationContext();
-        hostContext.refresh();
+    void shouldInvokeTargetThroughCoreAdapter() throws Exception {
+        GenericApplicationContext coreContext = new GenericApplicationContext();
+        coreContext.refresh();
         try {
-            RequestMappingHandlerMapping hostMapping = mock(RequestMappingHandlerMapping.class);
-            RequestMappingHandlerAdapter hostAdapter = createHostAdapter(hostContext);
-            SpringWebHostSupport support = new SpringWebHostSupport();
-            support.init(hostMapping, hostAdapter, hostContext);
+            RequestMappingHandlerMapping coreMapping = mock(RequestMappingHandlerMapping.class);
+            RequestMappingHandlerAdapter coreAdapter = createCoreAdapter(coreContext);
+            SpringWebCoreSupport support = new SpringWebCoreSupport();
+            support.init(coreMapping, coreAdapter, coreContext);
 
             DemoController controller = new DemoController();
             Method targetMethod = DemoController.class.getMethod("echo", String.class);
             GenericApplicationContext lingContext = new GenericApplicationContext();
             lingContext.refresh();
-            lingContext.getBeanFactory().registerSingleton("requestMappingHandlerAdapter", hostAdapter);
+            lingContext.getBeanFactory().registerSingleton("requestMappingHandlerAdapter", coreAdapter);
 
             WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
                     .lingId("ling-a")
@@ -109,11 +109,11 @@ class SpringWebHostSupportTest {
                 assertEquals("alice", ReflectionUtils.invokeMethod(getContentMethod, response));
             }
         } finally {
-            hostContext.close();
+            coreContext.close();
         }
     }
 
-    private RequestMappingHandlerAdapter createHostAdapter(GenericApplicationContext applicationContext) throws Exception {
+    private RequestMappingHandlerAdapter createCoreAdapter(GenericApplicationContext applicationContext) throws Exception {
         RequestMappingHandlerAdapter adapter = new RequestMappingHandlerAdapter();
         adapter.setApplicationContext(applicationContext);
         adapter.setMessageConverters(Collections.singletonList(new StringHttpMessageConverter()));

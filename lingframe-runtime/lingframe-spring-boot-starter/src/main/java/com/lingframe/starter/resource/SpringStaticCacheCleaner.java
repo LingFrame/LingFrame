@@ -29,6 +29,18 @@ import java.util.ResourceBundle;
 @Slf4j
 final class SpringStaticCacheCleaner {
 
+    /**
+     * 注册扫描后有界清理：注解/反射 + MethodClassKey 相关 ConcurrentReferenceHashMap。
+     * 由 {@link LingScanCachePurger} 在 Web 元数据提取完成后调用，缩短扫描污染窗口；
+     * 不替代 unload 全量 {@link #clearStablePublicCaches}。
+     */
+    void purgeAnnotationCachesAfterScan(String lingId, ClassLoader lingClassLoader) {
+        clearReflectionUtilsSelective(lingId, lingClassLoader);
+        clearAnnotationUtilsSelective(lingId, lingClassLoader);
+        clearMethodIntrospectorCaches(lingId, lingClassLoader);
+        clearAopUtilsCaches(lingId, lingClassLoader);
+    }
+
     /** cleanup 阶段：清理所有稳定公开缓存 */
     void clearStablePublicCaches(String lingId, ClassLoader lingClassLoader) {
         // 1. CachedIntrospectionResults — 所有版本都有的公开 API
@@ -99,6 +111,127 @@ final class SpringStaticCacheCleaner {
             // 版本差异，类不存在
         } catch (Exception e) {
             log.debug("[{}] Jackson2ObjectMapperBuilder cleanup failed: {}", lingId, e.getMessage());
+        }
+
+        // 12. MethodIntrospector / AopUtils：MethodClassKey + ConcurrentReferenceHashMap（SB3 dispatch 残留主因）
+        clearMethodIntrospectorCaches(lingId, lingClassLoader);
+        clearAopUtilsCaches(lingId, lingClassLoader);
+
+        // 13. 其它常见 MethodClassKey / 元数据 ConcurrentReferenceHashMap 持有点
+        clearKnownMethodClassKeyHosts(lingId, lingClassLoader);
+    }
+
+    /**
+     * MethodIntrospector：部分版本无静态 cache（仅工具方法）；仍尝试清静态 Map。
+     */
+    private void clearMethodIntrospectorCaches(String lingId, ClassLoader lingClassLoader) {
+        clearStaticMapsOnClass(lingId, lingClassLoader, "org.springframework.core.MethodIntrospector");
+    }
+
+    private void clearAopUtilsCaches(String lingId, ClassLoader lingClassLoader) {
+        clearStaticMapsOnClass(lingId, lingClassLoader, "org.springframework.aop.support.AopUtils");
+    }
+
+    /**
+     * 清理已知 MethodClassKey / ConcurrentReferenceHashMap 持有点。
+     * <p>
+     * heap 主因：{@code BridgeMethodResolver.cache}（key=MethodClassKey，CRHM Soft 边）
+     * 钉住灵元 Class → ClassLoader。另含事务/缓存注解源的 fallback cache。
+     */
+    private void clearKnownMethodClassKeyHosts(String lingId, ClassLoader lingClassLoader) {
+        // BridgeMethodResolver：dispatch 后最关键；选择性 remove 后 SoftEntryReference 仍可能拖住，
+        // 对含灵元条目的 cache 做 clear + Soft 链 release（可按需重建，体量小）
+        clearBridgeMethodResolverCache(lingId, lingClassLoader);
+        String[] hosts = {
+                "org.springframework.core.annotation.AnnotatedElementUtils",
+                "org.springframework.transaction.interceptor.AbstractFallbackTransactionAttributeSource",
+                "org.springframework.cache.interceptor.AbstractFallbackCacheOperationSource",
+                "org.springframework.cache.jcache.interceptor.AbstractFallbackJCacheOperationSource",
+                "org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory",
+                "org.springframework.context.event.ApplicationListenerMethodAdapter",
+                "org.springframework.web.method.HandlerMethod",
+                "org.springframework.util.ReflectionUtils",
+        };
+        for (String className : hosts) {
+            clearStaticMapsOnClass(lingId, lingClassLoader, className);
+        }
+    }
+
+    /**
+     * BridgeMethodResolver.cache = ConcurrentReferenceHashMap&lt;MethodClassKey, Method&gt;。
+     * Soft 引用整个 Entry；System.gc 不保证清 Soft。有灵元关联时：
+     * 1) 选择性 remove 2) deep Soft release 3) 仍有残留则 clear 整表。
+     */
+    private void clearBridgeMethodResolverCache(String lingId, ClassLoader lingClassLoader) {
+        try {
+            Class<?> clazz = Class.forName("org.springframework.core.BridgeMethodResolver");
+            Field cacheField = SpringCleanupSupport.findFieldInHierarchy(clazz, "cache");
+            if (cacheField == null) {
+                return;
+            }
+            cacheField.setAccessible(true);
+            Object cacheObj = cacheField.get(null);
+            if (!(cacheObj instanceof Map<?, ?>)) {
+                return;
+            }
+            @SuppressWarnings("unchecked")
+            Map<Object, Object> cache = (Map<Object, Object>) cacheObj;
+            int before = cache.size();
+            int removed = SpringCleanupSupport.clearMapRelatedToClassLoader(cache, lingClassLoader);
+            // Soft 边在 live 堆上常拖住 MethodClassKey；有关联条目时直接 clear（bridge 可重建）
+            boolean anyRelatedLeft = false;
+            try {
+                for (Map.Entry<?, ?> e : cache.entrySet()) {
+                    if (SpringCleanupSupport.isRelatedToClassLoader(e.getKey(), lingClassLoader)
+                            || SpringCleanupSupport.isRelatedToClassLoader(e.getValue(), lingClassLoader)) {
+                        anyRelatedLeft = true;
+                        break;
+                    }
+                }
+            } catch (Exception ignored) {
+                anyRelatedLeft = !cache.isEmpty() && removed > 0;
+            }
+            if (anyRelatedLeft || removed > 0) {
+                // 再深清一次 Soft 链
+                SpringCleanupSupport.deepClearConcurrentReferenceHashMap(cache, lingClassLoader);
+                try {
+                    // 仍可能残留：整表 clear + purge（进程内 bridge 缓存可按需重建）
+                    if (!cache.isEmpty() && removed > 0) {
+                        cache.clear();
+                        try {
+                            Method purge = cache.getClass().getMethod("purgeUnreferencedEntries");
+                            purge.invoke(cache);
+                        } catch (Exception ignored) {
+                            // ignore
+                        }
+                        log.info("[{}] BridgeMethodResolver.cache cleared (had {} entries, removed related={})",
+                                lingId, before, removed);
+                    } else if (removed > 0) {
+                        log.info("[{}] BridgeMethodResolver.cache: removed {} related entries (size {} -> {})",
+                                lingId, removed, before, cache.size());
+                    }
+                } catch (Exception e) {
+                    log.debug("[{}] BridgeMethodResolver.cache clear failed: {}", lingId, e.getMessage());
+                }
+            }
+        } catch (ClassNotFoundException ignored) {
+            // ignore
+        } catch (Exception e) {
+            log.debug("[{}] BridgeMethodResolver cleanup failed: {}", lingId, e.getMessage());
+        }
+    }
+
+    private void clearStaticMapsOnClass(String lingId, ClassLoader lingClassLoader, String className) {
+        try {
+            int removed = SpringCleanupSupport.removeStaticMapEntries(
+                    Class.forName(className), lingClassLoader);
+            if (removed > 0) {
+                log.info("[{}] {}: removed {} static map entries", lingId, className, removed);
+            }
+        } catch (ClassNotFoundException ignored) {
+            // version / optional module
+        } catch (Exception e) {
+            log.debug("[{}] {} cleanup failed: {}", lingId, className, e.getMessage());
         }
     }
 
@@ -348,10 +481,16 @@ final class SpringStaticCacheCleaner {
             Map<?, ?> cache = (Map<?, ?>) cacheField.get(null);
             if (cache == null || cache.isEmpty())
                 return;
+            // 使用 clearMapRelatedToClassLoader：CRHM purge + MethodClassKey/Soft 深度关联
+            int removed = SpringCleanupSupport.clearMapRelatedToClassLoader(cache, lingClassLoader);
+            // 再补一层 ResolvableType 自身 resolve/type 字段判断
             int before = cache.size();
-            cache.entrySet().removeIf(entry -> isResolvableTypeRelated(entry.getKey(), lingClassLoader)
-                    || isResolvableTypeRelated(entry.getValue(), lingClassLoader));
-            int removed = before - cache.size();
+            try {
+                cache.entrySet().removeIf(entry -> isResolvableTypeRelated(entry.getKey(), lingClassLoader)
+                        || isResolvableTypeRelated(entry.getValue(), lingClassLoader));
+            } catch (Exception ignored) {
+            }
+            removed += Math.max(0, before - cache.size());
             if (removed > 0) {
                 log.debug("[{}] ResolvableType cache: removed {} entries", lingId, removed);
             }

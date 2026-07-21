@@ -20,6 +20,10 @@ import java.util.HashMap;
 
 /**
  * 供 Boot 2 / Boot 3 Servlet Filter 共享的治理辅助工具。
+ *
+ * <p>灵元 HTTP 路径上，权限/审计以 {@link WebInterfaceMetadata} 注册时预提取字段为运行时真源，
+ * 禁止再对灵元 {@link Method} 调用 {@link AnnotatedElementUtils}，避免反复写入灵核 Spring 静态注解缓存。
+ * 灵核自身 HTTP 路径（{@code meta == null}）上 Method 属灵核 ClassLoader，仍可读注解。</p>
  */
 public final class WebGovernanceSupport {
 
@@ -107,38 +111,57 @@ public final class WebGovernanceSupport {
         return request.getMethod() + " " + request.getRequestURI();
     }
 
+    /**
+     * 解析权限标识。
+     * <ul>
+     *   <li>灵元路径（meta 非空）：只信注册时写入的 {@code requiredPermission}；缺失时按方法名推断，不读注解。</li>
+     *   <li>灵核路径（meta 为空）：Method 属灵核 CL，可读 {@link RequiresPermission}。</li>
+     * </ul>
+     */
     private String resolvePermission(Method method, WebInterfaceMetadata meta) {
+        if (meta != null) {
+            if (meta.getRequiredPermission() != null && !meta.getRequiredPermission().isEmpty()) {
+                return meta.getRequiredPermission();
+            }
+            return GovernanceStrategy.inferPermission(method);
+        }
         RequiresPermission permAnn = AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class);
         if (permAnn != null) {
             return permAnn.value();
         }
-        if (meta != null && meta.getRequiredPermission() != null) {
-            return meta.getRequiredPermission();
-        }
         return GovernanceStrategy.inferPermission(method);
     }
 
+    /**
+     * 解析是否审计。灵元路径只信 metadata；灵核路径可读注解。
+     */
     private boolean resolveShouldAudit(WebRequestFacade request, Method method, WebInterfaceMetadata meta) {
+        if (meta != null) {
+            return meta.isShouldAudit();
+        }
         Auditable auditAnn = AnnotatedElementUtils.findMergedAnnotation(method, Auditable.class);
         if (auditAnn != null) {
             return true;
         }
-        if (meta != null) {
-            return meta.isShouldAudit();
-        }
         return !"GET".equals(request.getMethod());
     }
 
+    /**
+     * 解析审计动作。灵元路径只信 metadata；灵核路径可读注解。
+     */
     private String resolveAuditAction(WebRequestFacade request, Method method, WebInterfaceMetadata meta) {
-        String auditAction = request.getMethod() + " " + request.getRequestURI();
+        String requestAction = request.getMethod() + " " + request.getRequestURI();
+        if (meta != null) {
+            if (meta.getAuditAction() != null && !meta.getAuditAction().isEmpty()) {
+                return meta.getAuditAction();
+            }
+            return requestAction;
+        }
         Auditable auditAnn = AnnotatedElementUtils.findMergedAnnotation(method, Auditable.class);
         if (auditAnn != null) {
             return auditAnn.action();
         }
-        if (meta != null && meta.getAuditAction() != null) {
-            return meta.getAuditAction();
-        }
-        return auditAction;
+        return requestAction;
     }
 
     private HashMap<String, Object> resolveMetadata(WebRequestFacade request) {

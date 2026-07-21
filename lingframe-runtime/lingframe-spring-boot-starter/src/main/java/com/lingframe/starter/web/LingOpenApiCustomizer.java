@@ -13,7 +13,6 @@ import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 import io.swagger.v3.oas.models.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.env.Environment;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.context.request.RequestAttributes;
@@ -213,26 +212,9 @@ public class LingOpenApiCustomizer implements LingOpenApiCustomizerAdapter {
         PathItem pathItem = paths.getOrDefault(templatePath, new PathItem());
         Operation operation = new Operation();
 
-        String tagName = metadata.getLingId();
-        String tagDescription = "";
-
-        try {
-            Class<?> controllerClass = targetMethod.getDeclaringClass();
-            io.swagger.v3.oas.annotations.tags.Tag tagAnn =
-                    AnnotatedElementUtils.findMergedAnnotation(
-                            controllerClass, io.swagger.v3.oas.annotations.tags.Tag.class);
-            if (tagAnn != null) {
-                if (!tagAnn.name().isEmpty()) {
-                    tagName = tagAnn.name();
-                }
-                if (!tagAnn.description().isEmpty()) {
-                    tagDescription = tagAnn.description();
-                }
-            }
-        } catch (Throwable ignored) {
-            log.trace("Swagger @Tag annotation processing failed for {}: {}",
-                    targetMethod.getDeclaringClass().getSimpleName(), ignored.getMessage());
-        }
+        // Tag / summary / description 只信注册时预提取字段（含类级 @Tag），禁止对灵元 Class live 读注解
+        String tagName = resolvePrimaryTagName(metadata);
+        String tagDescription = metadata.getOpTagDescription() != null ? metadata.getOpTagDescription() : "";
 
         String summary = metadata.getOpSummary() != null && !metadata.getOpSummary().isEmpty()
                 ? metadata.getOpSummary()
@@ -241,7 +223,7 @@ public class LingOpenApiCustomizer implements LingOpenApiCustomizerAdapter {
                 ? metadata.getOpDescription()
                 : "";
 
-        if (summary.equals(metadata.getTargetMethodName()) && metadata.getVersion() != null) {
+        if (summary != null && summary.equals(metadata.getTargetMethodName()) && metadata.getVersion() != null) {
             summary += " [" + metadata.getVersion() + "]";
         }
 
@@ -300,6 +282,17 @@ public class LingOpenApiCustomizer implements LingOpenApiCustomizerAdapter {
         if (openApi.getTags().stream().noneMatch(t -> t.getName().equals(finalTagName))) {
             openApi.addTagsItem(new Tag().name(finalTagName).description(finalTagDesc));
         }
+    }
+
+    /**
+     * 解析 OpenAPI 主 tag：优先 opTags[0]，否则 lingId。不触碰灵元 Class 注解。
+     */
+    private String resolvePrimaryTagName(WebInterfaceMetadata metadata) {
+        if (metadata.getOpTags() != null && metadata.getOpTags().length > 0
+                && metadata.getOpTags()[0] != null && !metadata.getOpTags()[0].isEmpty()) {
+            return metadata.getOpTags()[0];
+        }
+        return metadata.getLingId() != null ? metadata.getLingId() : "ling";
     }
 
     private String toTemplatePath(String originalPath) {

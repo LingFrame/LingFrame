@@ -58,7 +58,7 @@ public class WebInterfaceManager implements WebRouteResolver {
     });
 
     private final DefaultWebRouteResolver routeResolver;
-    private final SpringWebHostSupport hostSupport = new SpringWebHostSupport();
+    private final SpringWebCoreSupport coreWebSupport = new SpringWebCoreSupport();
     private final ObjectProvider<MetricsCollector> metricsCollectorProvider;
 
     public static final String REQUEST_METADATA_KEY = "ling.web.metadata";
@@ -75,8 +75,8 @@ public class WebInterfaceManager implements WebRouteResolver {
 
     public void init(RequestMappingHandlerMapping mapping,
             RequestMappingHandlerAdapter adapter,
-            ConfigurableApplicationContext hostContext) {
-        this.hostSupport.init(mapping, adapter, hostContext);
+            ConfigurableApplicationContext coreContext) {
+        this.coreWebSupport.init(mapping, adapter, coreContext);
         log.info("LingFrame WebInterfaceManager initialized with native registration");
     }
 
@@ -116,17 +116,17 @@ public class WebInterfaceManager implements WebRouteResolver {
     }
 
     // 🔥 灵核代理方法缓存（static，只解析一次，由 AppClassLoader 加载）
-    private static final Method HOST_DISPATCH_METHOD;
+    private static final Method CORE_DISPATCH_METHOD;
     static {
         try {
-            HOST_DISPATCH_METHOD = LingWebEntryHandler.class.getMethod("dispatch", ServletWebRequest.class);
+            CORE_DISPATCH_METHOD = LingWebEntryHandler.class.getMethod("dispatch", ServletWebRequest.class);
         } catch (NoSuchMethodException e) {
             throw new ExceptionInInitializerError("Cannot find LingWebEntryHandler.dispatch method: " + e);
         }
     }
 
     private void registerInternal(WebInterfaceMetadata metadata, boolean throwOnError) {
-        if (!hostSupport.isInitialized()) {
+        if (!coreWebSupport.isInitialized()) {
             log.warn("WebInterfaceManager not initialized, skipping registration: {}", metadata.getUrlPattern());
             return;
         }
@@ -136,7 +136,7 @@ public class WebInterfaceManager implements WebRouteResolver {
         try {
             // 保留 targetMethod 引用用于内部调用分发，但不再暴露给灵核
             Method targetMethod = requireTargetMethod(metadata, routeKey);
-            metadata.minimizeHostReferences();
+            metadata.minimizeCoreStrongReferences();
 
             RequestMappingInfo info = resolveRequestMappingInfo(metadata);
 
@@ -145,10 +145,10 @@ public class WebInterfaceManager implements WebRouteResolver {
                 // Spring MVC 只会看到 LingWebEntryHandler.dispatch(ServletWebRequest)
                 // 其 HandlerMapping 内部缓存永远只持有 AppClassLoader 的类引用
                 LingWebEntryHandler entryHandler = new LingWebEntryHandler(this, routeKey);
-                hostSupport.registerMapping(routeKey, info, entryHandler, HOST_DISPATCH_METHOD, mappingInfoMap);
+                coreWebSupport.registerMapping(routeKey, info, entryHandler, CORE_DISPATCH_METHOD, mappingInfoMap);
                 log.info("Registered proxy mapping: {} {}", metadata.getHttpMethod(), metadata.getUrlPattern());
                 // ✅ 注册后清理 SpringDoc 缓存，确保 UI 同步
-                hostSupport.clearSpringDocCache();
+                coreWebSupport.clearSpringDocCache();
             }
 
             metadataMap.compute(routeKey, (key, existing) -> mergeRouteMetadata(routeKey, existing, metadata));
@@ -188,7 +188,7 @@ public class WebInterfaceManager implements WebRouteResolver {
     }
 
     private void unregisterInternal(String lingId, ClassLoader targetLoader) {
-        if (!hostSupport.isInitialized()) {
+        if (!coreWebSupport.isInitialized()) {
             return;
         }
 
@@ -241,7 +241,7 @@ public class WebInterfaceManager implements WebRouteResolver {
         for (WebInterfaceMetadata meta : removedMetas) {
             org.springframework.context.ApplicationContext lingContext = meta.getLingApplicationContext();
             if (lingContext != null) {
-                hostSupport.clearLingAdapterCaches(lingContext, targetLoader);
+                coreWebSupport.clearLingAdapterCaches(lingContext, targetLoader);
                 // 同一灵元 context 多个 meta 共享 Adapter，清理一次即可
                 break;
             }
@@ -254,10 +254,10 @@ public class WebInterfaceManager implements WebRouteResolver {
         // 🔥 纯代理架构下，卸载只需移除 HandlerMapping 中的路由映射
         // 无需清理灵核的任何 Bean、BPP 缓存或 Adapter 缓存
         // 因为灵核从未接触过灵元的类
-        hostSupport.unregisterMappings(routesToRemove, mappingInfoMap, targetLoader);
+        coreWebSupport.unregisterMappings(routesToRemove, mappingInfoMap, targetLoader);
 
         // ✅ 注销后立即清理 SpringDoc 缓存，防止 UI 出现过期路由
-        hostSupport.clearSpringDocCache();
+        coreWebSupport.clearSpringDocCache();
 
         // 🔥 彻底解决“无法卸载”的关键：强制清理 Spring 核心缓存池对该 ClassLoader 的引用
         if (targetLoader != null) {
@@ -340,7 +340,7 @@ public class WebInterfaceManager implements WebRouteResolver {
         }
         long startNanos = System.nanoTime();
         try {
-            Object result = hostSupport.invokeTarget(meta, routeId, webRequest);
+            Object result = coreWebSupport.invokeTarget(meta, routeId, webRequest);
             recordMetrics(meta, resolution, startNanos, true, null);
             return result;
         } catch (Exception ex) {

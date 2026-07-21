@@ -27,16 +27,16 @@ import java.util.Map;
  * 卸载路径上的 Spring 内部缓存清理使用字段反射（非双栈选型，SB3 必需）。
  */
 @Slf4j
-final class SpringWebHostSupport {
+final class SpringWebCoreSupport {
 
-    private RequestMappingHandlerMapping hostMapping;
-    private ConfigurableApplicationContext hostContext;
+    private RequestMappingHandlerMapping coreMapping;
+    private ConfigurableApplicationContext coreContext;
 
     void init(RequestMappingHandlerMapping mapping,
             RequestMappingHandlerAdapter adapter,
             ConfigurableApplicationContext context) {
-        this.hostMapping = mapping;
-        this.hostContext = context;
+        this.coreMapping = mapping;
+        this.coreContext = context;
     }
 
     public void setApplicationContext(GenericApplicationContext applicationContext) {
@@ -56,7 +56,7 @@ final class SpringWebHostSupport {
     }
 
     boolean isInitialized() {
-        return hostMapping != null && hostContext != null;
+        return coreMapping != null && coreContext != null;
     }
 
     public void registerMapping(String routeKey,
@@ -64,7 +64,7 @@ final class SpringWebHostSupport {
             Object handler,
             Method dispatchMethod,
             Map<String, RequestMappingInfo> mappingInfoMap) {
-        hostMapping.registerMapping(mappingInfo, handler, dispatchMethod);
+        coreMapping.registerMapping(mappingInfo, handler, dispatchMethod);
         mappingInfoMap.put(routeKey, mappingInfo);
     }
 
@@ -139,7 +139,7 @@ final class SpringWebHostSupport {
                 continue;
             }
             try {
-                hostMapping.unregisterMapping(info);
+                coreMapping.unregisterMapping(info);
             } catch (Exception e) {
                 log.warn("Failed to unregister mapping: {}", routeKey, e);
             }
@@ -218,16 +218,16 @@ final class SpringWebHostSupport {
     }
 
     void clearSpringDocCache() {
-        if (hostContext == null) {
+        if (coreContext == null) {
             return;
         }
         try {
             // SpringDoc v1 & v2 缓存清理：
             // 它们通常将结果缓存在指定的 Resource Bean 中，或者使用自定义的 Cache 接口
-            String[] cacheBeanNames = hostContext.getBeanNamesForType(Object.class);
+            String[] cacheBeanNames = coreContext.getBeanNamesForType(Object.class);
             for (String beanName : cacheBeanNames) {
                 if (beanName.toLowerCase().contains("springdoc") && beanName.toLowerCase().contains("cache")) {
-                    Object cacheBean = hostContext.getBean(beanName);
+                    Object cacheBean = coreContext.getBean(beanName);
                     // 尝试清理特定的 map 字段 (不同版本实现不同，此处暴力尝试 common candidates)
                     clearInternalCacheMap(cacheBean, "cache");
                     clearInternalCacheMap(cacheBean, "openApiCache");
@@ -257,20 +257,20 @@ final class SpringWebHostSupport {
     }
 
     private void clearCorsLookupCache(ClassLoader targetLoader) {
-        if (hostMapping == null) {
+        if (coreMapping == null) {
             return;
         }
         try {
-            Field mappingRegistryField = ReflectionUtils.findField(hostMapping.getClass(), "mappingRegistry");
+            Field mappingRegistryField = ReflectionUtils.findField(coreMapping.getClass(), "mappingRegistry");
             if (mappingRegistryField == null) {
-                mappingRegistryField = ReflectionUtils.findField(hostMapping.getClass().getSuperclass(),
+                mappingRegistryField = ReflectionUtils.findField(coreMapping.getClass().getSuperclass(),
                         "mappingRegistry");
             }
             if (mappingRegistryField == null) {
                 return;
             }
             ReflectionUtils.makeAccessible(mappingRegistryField);
-            Object mappingRegistry = ReflectionUtils.getField(mappingRegistryField, hostMapping);
+            Object mappingRegistry = ReflectionUtils.getField(mappingRegistryField, coreMapping);
             if (mappingRegistry == null) {
                 return;
             }
@@ -341,7 +341,7 @@ final class SpringWebHostSupport {
                 }
             }
 
-            // registry：灵元注册时 hostMapping.registerMapping(info) 写入的 MappingRegistration 持有灵元 HandlerMethod。
+            // registry：灵元注册时 coreMapping.registerMapping(info) 写入的 MappingRegistration 持有灵元 HandlerMethod。
             // unregisterMapping(info) 会清掉对应条目，但 SB3 的 getHandler 在灵元注册前调时可能写入额外条目。
             // 直接按灵元 ClassLoader 反向清理 registry：MappingRegistration.handlerMethod.beanType.getClassLoader()。
             Field registryField = ReflectionUtils.findField(mappingRegistry.getClass(), "registry");

@@ -20,8 +20,9 @@ import java.util.Objects;
 /**
  * 灵元 Controller 使用的 Web 接口元数据。
  *
- * <p>该对象会强持有稳定的路由信息，但会把运行期对象引用降级为弱引用或延迟查找，
- * 以避免灵核长期持有灵元 Controller 实例和 ApplicationContext。</p>
+ * <p>强持有稳定的路由与文档字符串（path、permission、OpenAPI 文案等），
+ * 对灵元 Controller 实例 / Method / ApplicationContext 降为弱引用或延迟查找，
+ * 避免灵核侧注册表长期强引用灵元运行期对象。</p>
  */
 @Data
 @Builder
@@ -67,6 +68,8 @@ public class WebInterfaceMetadata {
     private String opSummary;
     private String opDescription;
     private String[] opTags;
+    /** 主 tag 描述（通常来自类级 {@code @Tag#description}，注册时预提取） */
+    private String opTagDescription;
     private transient RequestMappingInfo requestMappingInfo;
 
     private transient WeakReference<Object> targetBeanRef;
@@ -149,7 +152,11 @@ public class WebInterfaceMetadata {
         return lingApplicationContextRef != null ? lingApplicationContextRef.get() : null;
     }
 
-    public void minimizeHostReferences() {
+    /**
+     * 弱化灵核侧对灵元运行期对象的强引用（Bean / Method / ApplicationContext）。
+     * ClassLoader 保持强引用以便卸载时按身份匹配路由元数据。
+     */
+    public void minimizeCoreStrongReferences() {
         Class<?> targetClass = resolveUserClass(targetBean);
         if (targetClass != null) {
             targetClassName = targetClass.getName();
@@ -171,14 +178,13 @@ public class WebInterfaceMetadata {
             targetBeanRef = new WeakReference<>(targetBean);
             targetBean = null;
         }
-        // 🔥 classLoader 不降级为 WeakReference：卸载时依赖 ClassLoader 身份匹配，
+        // classLoader 不降级为 WeakReference：卸载时依赖 ClassLoader 身份匹配，
         // 若被 GC 则无法正确识别待移除的元数据，导致路由残留
         if (lingApplicationContext != null) {
             lingApplicationContextRef = new WeakReference<>(lingApplicationContext);
             lingApplicationContext = null;
         }
     }
-
     public void clearReferences() {
         targetBean = null;
         targetMethod = null;
@@ -197,6 +203,7 @@ public class WebInterfaceMetadata {
         opSummary = null;
         opDescription = null;
         opTags = null;
+        opTagDescription = null;
         requestMappingInfo = null;
     }
 

@@ -1,8 +1,6 @@
 package com.lingframe.starter.adapter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lingframe.api.annotation.Auditable;
-import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
 import com.lingframe.core.context.DefaultLingContext;
@@ -11,12 +9,13 @@ import com.lingframe.core.ling.LingServiceRegistrar;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.config.LingFrameInfo;
-import com.lingframe.core.governance.GovernanceStrategy;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.core.spi.LingUnloadHook;
+import com.lingframe.starter.resource.LingScanCachePurger;
 import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.starter.spi.SpringAwareUnloadHook;
 import com.lingframe.starter.util.JacksonCacheEvictUtil;
+import com.lingframe.starter.web.LingWebMetadataExtractor;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
 import java.io.File;
@@ -27,26 +26,16 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
-import org.springframework.core.annotation.AnnotatedElementUtils;
-import org.springframework.core.annotation.AnnotationAttributes;
-import org.springframework.util.ReflectionUtils;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -57,17 +46,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class SpringLingContainer implements LingContainer {
 
     private static final String DISABLE_LOGGING_SHUTDOWN_HOOK = "logging.register-shutdown-hook=false";
-
-    private static final RequestMethod[] DEFAULT_HTTP_METHODS = new RequestMethod[] {
-            RequestMethod.GET,
-            RequestMethod.HEAD,
-            RequestMethod.POST,
-            RequestMethod.PUT,
-            RequestMethod.PATCH,
-            RequestMethod.DELETE,
-            RequestMethod.OPTIONS,
-            RequestMethod.TRACE
-    };
 
     // 🔥 非 final：stop() 时必须清空，否则 builder 持有 ResourceLoader → ClassLoader 引用链
     // 跨线程读写的字段必须 volatile：start() 由部署线程写入，stop()/isActive() 可能由其他线程读取，
@@ -305,319 +283,42 @@ public class SpringLingContainer implements LingContainer {
     }
 
     /**
-     * 扫描并注册 @RestController（原生 Spring MVC 注册）
+     * 扫描并注册 @RestController。
+     * 注解解析下沉至 {@link LingWebMetadataExtractor}；提取完成后有界 purge 注解静态缓存。
      */
     private void scanAndRegisterControllers() {
-        if (!(lingContext instanceof DefaultLingContext))
+        if (!(lingContext instanceof DefaultLingContext)) {
             return;
+        }
         String lingId = lingContext.getLingId();
+        LingWebMetadataExtractor extractor = new LingWebMetadataExtractor(version, classLoader, context);
 
-        // 获取所有 @RestController
         Map<String, Object> controllers = context.getBeansWithAnnotation(RestController.class);
-
         for (Map.Entry<String, Object> entry : controllers.entrySet()) {
             String beanName = entry.getKey();
             Object bean = entry.getValue();
             try {
                 Class<?> targetClass = AopUtils.getTargetClass(bean);
-
-                // 解析类级 @RequestMapping
-                RequestMapping classMapping = AnnotatedElementUtils.findMergedAnnotation(targetClass,
-                        RequestMapping.class);
-
-                // 遍历方法
-                ReflectionUtils.doWithMethods(targetClass, method -> {
-                    // 查找 RequestMapping (包含 GetMapping, PostMapping 等)
-                    RequestMapping mapping = AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class);
-                    if (mapping != null) {
-                        registerControllerMappings(lingId, beanName, bean, method, classMapping, mapping);
+                if (targetClass.getClassLoader() != classLoader) {
+                    continue;
+                }
+                List<WebInterfaceMetadata> metadataList =
+                        extractor.extractFromController(lingId, beanName, bean, targetClass);
+                for (WebInterfaceMetadata metadata : metadataList) {
+                    metadata.minimizeCoreStrongReferences();
+                    log.info("🌍 [LingFrame Web] Found Controller: {} [{}]",
+                            metadata.getHttpMethod(), metadata.getUrlPattern());
+                    if (webInterfaceManager != null) {
+                        webInterfaceManager.registerSync(metadata);
                     }
-                });
+                }
             } catch (Exception e) {
                 log.error("Failed to parse controller bean in ling: {}", lingId, e);
             }
         }
-    }
 
-
-    private void registerControllerMappings(String lingId, String beanName, Object bean, Method method,
-                                            RequestMapping classMapping, RequestMapping mapping) {
-        String permission = resolvePermission(method);
-        Auditable auditAnn = AnnotatedElementUtils.findMergedAnnotation(method, Auditable.class);
-        SwaggerOp swaggerOp = extractSwaggerOperation(method);
-        Set<String> fullPaths = resolveFullPaths(lingId, classMapping, mapping);
-        RequestMethod[] httpMethods = resolveHttpMethods(classMapping, mapping);
-        String[] params = resolveParams(classMapping, mapping);
-        String[] headers = resolveHeaders(classMapping, mapping);
-        String[] consumes = resolveConsumes(classMapping, mapping);
-        String[] produces = resolveProduces(classMapping, mapping);
-
-        for (String fullPath : fullPaths) {
-            for (RequestMethod requestMethod : httpMethods) {
-                String httpMethod = requestMethod.name();
-                AuditInfo auditInfo = resolveAuditInfo(auditAnn, httpMethod, fullPath, method.getName());
-                RequestMappingInfo requestMappingInfo = buildRequestMappingInfo(
-                        fullPath, requestMethod, params, headers, consumes, produces);
-
-                WebInterfaceMetadata metadata = buildWebInterfaceMetadata(
-                        lingId, beanName, bean, method, fullPath, httpMethod,
-                        params, headers, consumes, produces, permission, auditInfo, swaggerOp, requestMappingInfo);
-                metadata.minimizeHostReferences();
-
-                log.info("🌍 [LingFrame Web] Found Controller: {} [{}]", httpMethod, fullPath);
-                if (webInterfaceManager != null) {
-                    webInterfaceManager.registerSync(metadata);
-                }
-            }
-        }
-    }
-
-    /**
-     * 解析方法所需的权限标识：优先从 @RequiresPermission 注解获取，回退到 GovernanceStrategy 推断。
-     */
-    private String resolvePermission(Method method) {
-        RequiresPermission permAnn = AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class);
-        if (permAnn != null) {
-            return permAnn.value();
-        }
-        return GovernanceStrategy.inferPermission(method);
-    }
-
-    /**
-     * 解析审计信息：有 @Auditable 注解则强制审计，写操作自动审计，其余不审计。
-     */
-    private AuditInfo resolveAuditInfo(Auditable auditAnn, String httpMethod, String fullPath, String methodName) {
-        if (auditAnn != null) {
-            return new AuditInfo(true, auditAnn.action());
-        }
-        if (isWriteMethod(httpMethod)) {
-            return new AuditInfo(true, httpMethod + " " + fullPath);
-        }
-        return new AuditInfo(false, methodName);
-    }
-
-    /**
-     * 提取 Swagger @Operation 注解信息（summary/description/tags）。
-     * 使用字符串类名动态搜索，避免对 swagger-annotations 的强编译依赖。
-     *
-     * @return SwaggerOp 持有者，字段可能为 null
-     */
-    private SwaggerOp extractSwaggerOperation(Method method) {
-        SwaggerOp op = new SwaggerOp();
-        try {
-            AnnotationAttributes opAttr = AnnotatedElementUtils.findMergedAnnotationAttributes(
-                    method, "io.swagger.v3.oas.annotations.Operation", false, false);
-            if (opAttr != null) {
-                op.summary = opAttr.getString("summary");
-                op.description = opAttr.getString("description");
-                op.tags = opAttr.getStringArray("tags");
-            }
-        } catch (Throwable ignored) {
-            // 即使类路径无 Swagger 也不影响基本路由注册
-        }
-        return op;
-    }
-
-    /**
-     * 构建 Spring RequestMappingInfo，包含路径、方法、参数、请求头、consumes/produces 约束。
-     */
-    private RequestMappingInfo buildRequestMappingInfo(String fullPath, RequestMethod requestMethod,
-                                                       String[] params, String[] headers,
-                                                       String[] consumes, String[] produces) {
-        RequestMappingInfo.Builder mappingBuilder = RequestMappingInfo
-                .paths(fullPath)
-                .methods(requestMethod);
-        if (params.length > 0) {
-            mappingBuilder.params(params);
-        }
-        if (headers.length > 0) {
-            mappingBuilder.headers(headers);
-        }
-        if (consumes.length > 0) {
-            mappingBuilder.consumes(consumes);
-        }
-        if (produces.length > 0) {
-            mappingBuilder.produces(produces);
-        }
-        return mappingBuilder.build();
-    }
-
-    /**
-     * 构建 WebInterfaceMetadata，聚合路由、权限、审计、Swagger 等全部元信息。
-     */
-    private WebInterfaceMetadata buildWebInterfaceMetadata(
-            String lingId, String beanName, Object bean, Method method,
-            String fullPath, String httpMethod,
-            String[] params, String[] headers, String[] consumes, String[] produces,
-            String permission, AuditInfo auditInfo, SwaggerOp swaggerOp,
-            RequestMappingInfo requestMappingInfo) {
-        return WebInterfaceMetadata.builder()
-                .lingId(lingId)
-                .version(version)
-                .targetBeanName(beanName)
-                .targetBean(bean)
-                .targetClassName(resolveControllerClass(bean, method).getName())
-                .targetMethodName(method.getName())
-                .targetMethodParameterTypeNames(resolveParameterTypeNames(method))
-                .targetMethod(method)
-                .classLoader(this.classLoader)
-                .lingApplicationContext(this.context)
-                .urlPattern(fullPath)
-                .httpMethod(httpMethod)
-                .params(copyStringArray(params))
-                .headers(copyStringArray(headers))
-                .consumes(copyStringArray(consumes))
-                .produces(copyStringArray(produces))
-                .requiredPermission(permission)
-                .shouldAudit(auditInfo.shouldAudit)
-                .auditAction(auditInfo.auditAction)
-                .opSummary(swaggerOp.summary)
-                .opDescription(swaggerOp.description)
-                .opTags(swaggerOp.tags != null ? Arrays.copyOf(swaggerOp.tags, swaggerOp.tags.length) : null)
-                .requestMappingInfo(requestMappingInfo)
-                .build();
-    }
-
-    /** 审计信息持有者（shouldAudit + auditAction） */
-    private static final class AuditInfo {
-        final boolean shouldAudit;
-        final String auditAction;
-        AuditInfo(boolean shouldAudit, String auditAction) {
-            this.shouldAudit = shouldAudit;
-            this.auditAction = auditAction;
-        }
-    }
-
-    /** Swagger @Operation 信息持有者 */
-    private static final class SwaggerOp {
-        String summary;
-        String description;
-        String[] tags;
-    }
-
-    private Set<String> resolveFullPaths(String lingId, RequestMapping classMapping, RequestMapping methodMapping) {
-        String[] classPaths = resolvePaths(classMapping);
-        String[] methodPaths = resolvePaths(methodMapping);
-        LinkedHashSet<String> fullPaths = new LinkedHashSet<>();
-        for (String classPath : classPaths) {
-            for (String methodPath : methodPaths) {
-                fullPaths.add(normalizePath("/" + lingId + "/" + classPath + "/" + methodPath));
-            }
-        }
-        return fullPaths;
-    }
-
-    private Class<?> resolveControllerClass(Object bean, Method method) {
-        Class<?> targetClass = bean != null ? AopUtils.getTargetClass(bean) : null;
-        return targetClass != null ? targetClass : method.getDeclaringClass();
-    }
-
-    private String[] resolvePaths(RequestMapping mapping) {
-        if (mapping == null) {
-            return new String[] {""};
-        }
-        if (mapping.path().length > 0) {
-            return mapping.path();
-        }
-        if (mapping.value().length > 0) {
-            return mapping.value();
-        }
-        return new String[] {""};
-    }
-
-    private RequestMethod[] resolveHttpMethods(RequestMapping classMapping, RequestMapping methodMapping) {
-        if (methodMapping != null && methodMapping.method().length > 0) {
-            return methodMapping.method();
-        }
-        if (classMapping != null && classMapping.method().length > 0) {
-            return classMapping.method();
-        }
-        return DEFAULT_HTTP_METHODS;
-    }
-
-    private String[] resolveParams(RequestMapping classMapping, RequestMapping methodMapping) {
-        return mergeExpressions(classMapping != null ? classMapping.params() : new String[0],
-                methodMapping != null ? methodMapping.params() : new String[0]);
-    }
-
-    private String[] resolveHeaders(RequestMapping classMapping, RequestMapping methodMapping) {
-        return mergeExpressions(classMapping != null ? classMapping.headers() : new String[0],
-                methodMapping != null ? methodMapping.headers() : new String[0]);
-    }
-
-    private String[] resolveConsumes(RequestMapping classMapping, RequestMapping methodMapping) {
-        if (methodMapping != null && methodMapping.consumes().length > 0) {
-            return copyStringArray(methodMapping.consumes());
-        }
-        return classMapping != null ? copyStringArray(classMapping.consumes()) : new String[0];
-    }
-
-    private String[] resolveProduces(RequestMapping classMapping, RequestMapping methodMapping) {
-        if (methodMapping != null && methodMapping.produces().length > 0) {
-            return copyStringArray(methodMapping.produces());
-        }
-        return classMapping != null ? copyStringArray(classMapping.produces()) : new String[0];
-    }
-
-    private String[] mergeExpressions(String[] first, String[] second) {
-        LinkedHashSet<String> merged = new LinkedHashSet<>();
-        addExpressions(merged, first);
-        addExpressions(merged, second);
-        return merged.toArray(new String[0]);
-    }
-
-    private void addExpressions(Set<String> target, String[] source) {
-        if (source == null) {
-            return;
-        }
-        for (String expression : source) {
-            if (expression == null || expression.trim().isEmpty()) {
-                continue;
-            }
-            target.add(expression);
-        }
-    }
-
-    private boolean isWriteMethod(String httpMethod) {
-        return "POST".equals(httpMethod)
-                || "PUT".equals(httpMethod)
-                || "PATCH".equals(httpMethod)
-                || "DELETE".equals(httpMethod);
-    }
-
-    private String normalizePath(String path) {
-        String normalized = path.replaceAll("/+", "/");
-        if (normalized.isEmpty()) {
-            return "/";
-        }
-        if (!normalized.startsWith("/")) {
-            normalized = "/" + normalized;
-        }
-        if (normalized.length() > 1 && normalized.endsWith("/")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-        return normalized;
-    }
-
-    private String[] copyStringArray(String[] source) {
-        if (source == null || source.length == 0) {
-            return new String[0];
-        }
-        String[] copy = new String[source.length];
-        System.arraycopy(source, 0, copy, 0, source.length);
-        return copy;
-    }
-
-    private String[] resolveParameterTypeNames(Method method) {
-        Class<?>[] parameterTypes = method.getParameterTypes();
-        if (parameterTypes.length == 0) {
-            return new String[0];
-        }
-        String[] names = new String[parameterTypes.length];
-        for (int i = 0; i < parameterTypes.length; i++) {
-            names[i] = parameterTypes[i].getName();
-        }
-        return names;
+        // 缩短扫描写入的注解/反射静态缓存存活窗口（不替代卸载全量 cleaner）
+        LingScanCachePurger.purgeAnnotationCachesAfterMetadataExtract(lingId, classLoader);
     }
 
     @Override
@@ -651,8 +352,8 @@ public class SpringLingContainer implements LingContainer {
                 if (this.mainContext != null) {
                     try {
                         // 1. 清理灵核主容器中的 ObjectMapper 缓存 (最重要的，因为网关走这里)
-                        Map<String, ObjectMapper> hostOms = this.mainContext.getBeansOfType(ObjectMapper.class);
-                        for (ObjectMapper om : hostOms.values()) {
+                        Map<String, ObjectMapper> coreObjectMappers = this.mainContext.getBeansOfType(ObjectMapper.class);
+                        for (ObjectMapper om : coreObjectMappers.values()) {
                             JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
                         }
                         

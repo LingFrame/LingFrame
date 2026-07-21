@@ -95,8 +95,8 @@ class WebGovernanceSupportTest {
     }
 
     @Test
-    @DisplayName("buildInvocationContext 分支与注解解析测试")
-    void testBuildInvocationContext() throws Exception {
+    @DisplayName("buildInvocationContext：灵元路径以 metadata 为真源，忽略 Method 上注解差异")
+    void testBuildInvocationContext_lingPathPrefersMetadata() throws Exception {
         WebGovernanceSupport support = new WebGovernanceSupport();
         WebRequestFacade request = mock(WebRequestFacade.class);
         when(request.getMethod()).thenReturn("POST");
@@ -107,6 +107,7 @@ class WebGovernanceSupportTest {
         when(principal.getName()).thenReturn("admin");
         when(request.getUserPrincipal()).thenReturn(principal);
 
+        // Method 上注解为 test:perm / test:audit，与 meta 故意不一致
         Method method = TestController.class.getMethod("governedMethod");
         EntryInvocationGovernanceResolver resolver = mock(EntryInvocationGovernanceResolver.class);
 
@@ -117,7 +118,6 @@ class WebGovernanceSupportTest {
                 .auditAction("meta:audit")
                 .build();
 
-        // 场景 1：带有注解且有 trace id 的请求
         InvocationContext ctx = support.buildInvocationContext(request, method, "ling-id", meta, resolver);
 
         assertEquals("trace-123", ctx.getTraceId());
@@ -125,33 +125,77 @@ class WebGovernanceSupportTest {
         assertEquals("ling-id:http", ctx.getServiceFQSID());
         assertEquals("HTTP", ctx.getResourceType());
         assertEquals("POST /api/test", ctx.getResourceId());
-        assertEquals("test:perm", ctx.governance().getRequiredPermission()); // 注解优先于 meta
-        assertEquals(AccessType.WRITE, ctx.governance().getAccessType());    // POST 映射为 WRITE
-        assertEquals("test:audit", ctx.governance().getAuditAction());        // 注解优先于 meta
+        // 灵元路径：metadata 优先，不得再被 Method 注解覆盖
+        assertEquals("meta:perm", ctx.governance().getRequiredPermission());
+        assertEquals(AccessType.WRITE, ctx.governance().getAccessType());
+        assertEquals("meta:audit", ctx.governance().getAuditAction());
         assertTrue(ctx.governance().isShouldAudit());
         assertEquals("admin", ctx.getMetadata().get(AuditMetadataKeys.PRINCIPAL));
 
         verify(resolver).applyTo(ctx, "ling-id");
+    }
 
-        // 场景 2：GET 请求且无 Trace ID 的环境
+    @Test
+    @DisplayName("buildInvocationContext：灵核路径 meta 为空时仍可读 Method 注解")
+    void testBuildInvocationContext_corePathReadsAnnotations() throws Exception {
+        WebGovernanceSupport support = new WebGovernanceSupport();
         WebRequestFacade getRequest = mock(WebRequestFacade.class);
         when(getRequest.getMethod()).thenReturn("GET");
         when(getRequest.getRequestURI()).thenReturn("/api/test");
         when(getRequest.getRemoteUser()).thenReturn("guest");
 
         Method methodNoAudit = TestController.class.getMethod("governedMethodNoAudit");
-        InvocationContext ctxGet = support.buildInvocationContext(getRequest, methodNoAudit, "ling-id", null, null);
+        InvocationContext ctxGet = support.buildInvocationContext(getRequest, methodNoAudit, "ling-core", null, null);
 
-        assertNotNull(ctxGet.getTraceId()); // 自动生成 traceId
-        assertEquals(AccessType.READ, ctxGet.governance().getAccessType()); // GET 映射为 READ
-        assertFalse(ctxGet.governance().isShouldAudit());                  // GET 默认不审计
+        assertNotNull(ctxGet.getTraceId());
+        assertEquals(AccessType.READ, ctxGet.governance().getAccessType());
+        assertEquals("test:perm2", ctxGet.governance().getRequiredPermission());
+        assertFalse(ctxGet.governance().isShouldAudit());
         assertEquals("guest", ctxGet.getMetadata().get(AuditMetadataKeys.PRINCIPAL));
+    }
 
-        // 场景 3：无注解的方法，从 meta 解析或默认行为
+    @Test
+    @DisplayName("buildInvocationContext：灵元 metadata 缺权限字段时按方法名推断，不读注解")
+    void testBuildInvocationContext_lingPathInfersWhenMetadataPermissionMissing() throws Exception {
+        WebGovernanceSupport support = new WebGovernanceSupport();
+        WebRequestFacade getRequest = mock(WebRequestFacade.class);
+        when(getRequest.getMethod()).thenReturn("GET");
+        when(getRequest.getRequestURI()).thenReturn("/api/test");
+
+        Method annotatedMethod = TestController.class.getMethod("governedMethod");
+        // shouldAudit=false 已在注册时固化；permission 为空时推断，不得回落到注解 test:perm
+        WebInterfaceMetadata meta = WebInterfaceMetadata.builder()
+                .lingId("ling-id")
+                .shouldAudit(false)
+                .auditAction("GET /api/test")
+                .build();
+
+        InvocationContext ctx = support.buildInvocationContext(getRequest, annotatedMethod, "ling-id", meta, null);
+        assertEquals("TestController:EXECUTE", ctx.governance().getRequiredPermission());
+        assertFalse(ctx.governance().isShouldAudit());
+        assertEquals("GET /api/test", ctx.governance().getAuditAction());
+        assertNotEquals("test:perm", ctx.governance().getRequiredPermission());
+    }
+
+    @Test
+    @DisplayName("buildInvocationContext：灵元 metadata 完整时即使 Method 无注解也使用 meta")
+    void testBuildInvocationContext_lingPathUsesMetaWithoutMethodAnnotations() throws Exception {
+        WebGovernanceSupport support = new WebGovernanceSupport();
+        WebRequestFacade getRequest = mock(WebRequestFacade.class);
+        when(getRequest.getMethod()).thenReturn("GET");
+        when(getRequest.getRequestURI()).thenReturn("/api/test");
+
         Method defaultMethod = TestController.class.getMethod("methodWithoutAnnotation");
+        WebInterfaceMetadata meta = WebInterfaceMetadata.builder()
+                .lingId("ling-id")
+                .requiredPermission("meta:perm")
+                .shouldAudit(true)
+                .auditAction("meta:audit")
+                .build();
         InvocationContext ctxDefault = support.buildInvocationContext(getRequest, defaultMethod, "ling-id", meta, null);
         assertEquals("meta:perm", ctxDefault.governance().getRequiredPermission());
         assertEquals("meta:audit", ctxDefault.governance().getAuditAction());
+        assertTrue(ctxDefault.governance().isShouldAudit());
     }
 
     @Test

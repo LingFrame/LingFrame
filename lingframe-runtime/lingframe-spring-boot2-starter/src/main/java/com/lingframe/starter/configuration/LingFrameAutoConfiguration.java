@@ -71,13 +71,13 @@ public class LingFrameAutoConfiguration {
     @Bean
     public ApplicationListener<ContextRefreshedEvent> lingWebInitializer(
             WebInterfaceManager manager,
-            @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping hostMapping,
+            @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping coreMapping,
             RequestMappingHandlerAdapter adapter) {
         return event -> {
             if (event.getApplicationContext().getParent() == null) {
                 if (event.getApplicationContext() instanceof ConfigurableApplicationContext) {
                     ConfigurableApplicationContext cac = (ConfigurableApplicationContext) event.getApplicationContext();
-                    manager.init(hostMapping, adapter, cac);
+                    manager.init(coreMapping, adapter, cac);
                 }
             }
         };

@@ -42,7 +42,7 @@ final class SpringCleanupSupport {
         return null;
     }
 
-    /** 判断对象是否关联目标 ClassLoader（Class / Method / 实例 ClassLoader / MethodClassKey） */
+    /** 判断对象是否关联目标 ClassLoader（Class / Method / 实例 ClassLoader / MethodClassKey / Soft|Weak|CRHM Entry） */
     static boolean isRelatedToClassLoader(Object obj, ClassLoader targetCL) {
         if (obj == null || targetCL == null)
             return false;
@@ -54,7 +54,39 @@ final class SpringCleanupSupport {
             return ((Method) obj).getDeclaringClass().getClassLoader() == targetCL;
         if (obj.getClass().getClassLoader() == targetCL)
             return true;
-        return checkMethodClassKey(obj, targetCL);
+        if (checkMethodClassKey(obj, targetCL))
+            return true;
+        // Soft/WeakReference：dump 中常见 SoftReference 拖住灵元 Class
+        if (obj instanceof java.lang.ref.Reference<?>) {
+            Object referent = ((java.lang.ref.Reference<?>) obj).get();
+            return isRelatedToClassLoader(referent, targetCL);
+        }
+        // ConcurrentReferenceHashMap$Entry：key/value 可能是 SoftReference 或 MethodClassKey
+        String cn = obj.getClass().getName();
+        if (cn.contains("ConcurrentReferenceHashMap$Entry") || cn.endsWith("$Entry")) {
+            if (isFieldRelatedToClassLoader(obj, "key", targetCL)
+                    || isFieldRelatedToClassLoader(obj, "value", targetCL)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 反射读取字段并判断是否关联目标 ClassLoader */
+    static boolean isFieldRelatedToClassLoader(Object obj, String fieldName, ClassLoader targetCL) {
+        if (obj == null || fieldName == null) {
+            return false;
+        }
+        try {
+            Field f = findFieldInHierarchy(obj.getClass(), fieldName);
+            if (f == null) {
+                return false;
+            }
+            f.setAccessible(true);
+            return isRelatedToClassLoader(f.get(obj), targetCL);
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     /** 检查 MethodClassKey / MethodKey 形式的键是否关联目标 ClassLoader */
@@ -135,14 +167,179 @@ final class SpringCleanupSupport {
                 Map<?, ?> map = (Map<?, ?>) f.get(null);
                 if (map == null || map.isEmpty())
                     continue;
-                int before = map.size();
-                map.entrySet().removeIf(entry -> isRelatedToClassLoader(entry.getKey(), cl)
-                        || isRelatedToClassLoader(entry.getValue(), cl));
-                totalRemoved += (before - map.size());
+                totalRemoved += clearMapRelatedToClassLoader(map, cl);
             } catch (Exception ignored) {
             }
         }
         return totalRemoved;
+    }
+
+    /**
+     * 清理 Map 中与目标 ClassLoader 相关的条目。
+     * <p>
+     * 兼容 {@code ConcurrentReferenceHashMap}：
+     * <ol>
+     *   <li>{@code purgeUnreferencedEntries}</li>
+     *   <li>按 key/value（含 SoftReference / MethodClassKey）removeIf</li>
+     *   <li>深清 CRHM 内部 Entry 的 Soft/Weak referent（否则 Entry 仍钉住 MethodClassKey）</li>
+     * </ol>
+     */
+    static int clearMapRelatedToClassLoader(Map<?, ?> map, ClassLoader cl) {
+        if (map == null || cl == null) {
+            return 0;
+        }
+        // ConcurrentReferenceHashMap：清掉已无强引用的 Soft/Weak 条目
+        try {
+            Method purge = map.getClass().getMethod("purgeUnreferencedEntries");
+            purge.invoke(map);
+        } catch (Exception ignored) {
+            // 非 CRHM 或无此方法
+        }
+        if (map.isEmpty()) {
+            return 0;
+        }
+        int before = map.size();
+        try {
+            map.entrySet().removeIf(entry -> isRelatedToClassLoader(entry.getKey(), cl)
+                    || isRelatedToClassLoader(entry.getValue(), cl)
+                    || isRelatedToClassLoader(entry, cl));
+        } catch (UnsupportedOperationException e) {
+            try {
+                Iterator<?> it = map.entrySet().iterator();
+                while (it.hasNext()) {
+                    Map.Entry<?, ?> entry = (Map.Entry<?, ?>) it.next();
+                    if (isRelatedToClassLoader(entry.getKey(), cl)
+                            || isRelatedToClassLoader(entry.getValue(), cl)
+                            || isRelatedToClassLoader(entry, cl)) {
+                        it.remove();
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        } catch (Exception ignored) {
+        }
+        int removed = Math.max(0, before - map.size());
+        // 关键：CRHM 内部 SoftReference 可能在 remove 后仍短暂持有 MethodClassKey/Class
+        removed += deepClearConcurrentReferenceHashMap(map, cl);
+        try {
+            Method purge = map.getClass().getMethod("purgeUnreferencedEntries");
+            purge.invoke(map);
+        } catch (Exception ignored) {
+        }
+        return removed;
+    }
+
+    /**
+     * 深清 Spring ConcurrentReferenceHashMap。
+     * <p>
+     * 结构（Spring 6）：{@code segments[]} → {@code Segment.references[]} →
+     * {@code SoftEntryReference}（SoftReference&lt;Entry&gt;）链，Entry 强持有 key/value。
+     * heap 证据：MethodClassKey 在 Entry.key 上，整条 Entry 被 Soft 引用；
+     * 仅 entrySet.removeIf 后 SoftEntryReference 可能仍短暂钉住 Entry。
+     * 对关联目标 CL 的链节点调用 {@code release()} 切断 Soft 边。
+     */
+    static int deepClearConcurrentReferenceHashMap(Map<?, ?> map, ClassLoader cl) {
+        if (map == null || cl == null) {
+            return 0;
+        }
+        if (!map.getClass().getName().contains("ConcurrentReferenceHashMap")) {
+            return 0;
+        }
+        int released = 0;
+        try {
+            Field segmentsField = findFieldInHierarchy(map.getClass(), "segments");
+            if (segmentsField == null) {
+                return 0;
+            }
+            segmentsField.setAccessible(true);
+            Object segments = segmentsField.get(map);
+            if (segments == null || !segments.getClass().isArray()) {
+                return 0;
+            }
+            int segLen = java.lang.reflect.Array.getLength(segments);
+            for (int s = 0; s < segLen; s++) {
+                Object segment = java.lang.reflect.Array.get(segments, s);
+                if (segment == null) {
+                    continue;
+                }
+                Field refsField = findFieldInHierarchy(segment.getClass(), "references");
+                if (refsField == null) {
+                    continue;
+                }
+                refsField.setAccessible(true);
+                Object refs = refsField.get(segment);
+                if (refs == null || !refs.getClass().isArray()) {
+                    continue;
+                }
+                int refLen = java.lang.reflect.Array.getLength(refs);
+                for (int i = 0; i < refLen; i++) {
+                    Object ref = java.lang.reflect.Array.get(refs, i);
+                    released += releaseCrhmReferenceChainIfRelated(ref, cl, 0);
+                }
+            }
+            if (released > 0) {
+                log.debug("CRHM deep-release: {} Soft/Weak entry reference(s) released for target CL",
+                        released);
+            }
+        } catch (Exception e) {
+            log.trace("deepClearConcurrentReferenceHashMap failed: {}", e.getMessage());
+        }
+        return released;
+    }
+
+    /**
+     * 沿 SoftEntryReference 链：Entry.key/value 关联目标 CL 则 release()。
+     */
+    private static int releaseCrhmReferenceChainIfRelated(Object ref, ClassLoader cl, int depth) {
+        if (ref == null || depth > 256 || cl == null) {
+            return 0;
+        }
+        int released = 0;
+        Object current = ref;
+        while (current != null && depth < 256) {
+            depth++;
+            try {
+                // Reference.get() → Entry
+                Method get = current.getClass().getMethod("get");
+                Object entry = get.invoke(current);
+                boolean related = false;
+                if (entry != null) {
+                    // Entry 实现 Map.Entry
+                    if (entry instanceof Map.Entry<?, ?>) {
+                        Map.Entry<?, ?> e = (Map.Entry<?, ?>) entry;
+                        related = isRelatedToClassLoader(e.getKey(), cl)
+                                || isRelatedToClassLoader(e.getValue(), cl);
+                    } else {
+                        related = isFieldRelatedToClassLoader(entry, "key", cl)
+                                || isFieldRelatedToClassLoader(entry, "value", cl);
+                    }
+                }
+                Method getNext = null;
+                try {
+                    getNext = current.getClass().getMethod("getNext");
+                } catch (NoSuchMethodException ignored) {
+                    // ignore
+                }
+                Object next = getNext != null ? getNext.invoke(current) : null;
+                if (related) {
+                    try {
+                        Method release = current.getClass().getMethod("release");
+                        release.invoke(current);
+                        released++;
+                    } catch (NoSuchMethodException e) {
+                        // SoftReference.clear()
+                        if (current instanceof java.lang.ref.Reference<?>) {
+                            ((java.lang.ref.Reference<?>) current).clear();
+                            released++;
+                        }
+                    }
+                }
+                current = next;
+            } catch (Exception e) {
+                break;
+            }
+        }
+        return released;
     }
 
     /** 从对象的所有 Map 类型字段中，移除 key 为目标 ClassLoader 加载的 Class 的条目 */

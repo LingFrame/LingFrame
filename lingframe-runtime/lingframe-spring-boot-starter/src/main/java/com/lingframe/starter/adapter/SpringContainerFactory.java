@@ -82,11 +82,12 @@ public class SpringContainerFactory implements ContainerFactory {
             String excludeStr = String.join(",", excludes);
 
             SpringApplicationBuilder builder = new SpringApplicationBuilder()
-                    // 🔥 不设置父容器，实现完全隔离
-                    // 原因：
-                    // 1. 父子容器关系导致灵核 BeanFactory 持有子容器引用，造成 ClassLoader 泄漏
-                    // 2. 零信任设计：灵元不应直接访问灵核 Bean，应通过 LingContext
-                    // 3. 核心 Bean 已在 registerBeans() 中手动注入
+                    // 🔥 不设置父容器，避免灵核 BeanFactory 持有子容器引用造成 ClassLoader 泄漏
+                    // 这是 BeanFactory 层隔离，不是「运行期与灵核 Spring 静态宇宙正交」：
+                    // 共享 Spring 下，AnnotatedElementUtils / BridgeMethodResolver.cache 等
+                    // 进程级静态缓存仍会写入灵元 Class，需由卸载 cleaner（见 resource/ 包）覆盖。
+                    // 零信任设计：灵元不应直接访问灵核 Bean，应通过 LingContext。
+                    // 核心 Bean 已在 registerBeans() 中手动注入。
                     .resourceLoader(new DefaultResourceLoader(classLoader)) // 使用隔离加载器
                     .sources(sourceClass)
                     .bannerMode(Banner.Mode.OFF)

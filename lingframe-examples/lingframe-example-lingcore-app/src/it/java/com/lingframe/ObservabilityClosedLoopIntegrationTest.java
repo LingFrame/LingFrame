@@ -316,7 +316,7 @@ class ObservabilityClosedLoopIntegrationTest {
                 + summary.path("recoveryCount").asLong(0);
     }
 
-    private static final String ACCESS_TOKEN = "123456";
+    private static final String ACCESS_TOKEN = "lingframe";
 
     private JsonNode getJson(String path) throws Exception {
         HttpHeaders headers = new HttpHeaders();

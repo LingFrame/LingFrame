@@ -102,11 +102,11 @@ class NativeLingFrameTest {
         // 第一次启动
         LingLifecycleEngine first = NativeLingFrame.start(config);
         assertNotNull(first);
-        assertNotNull(NativeLingFrame.getHostContext());
+        assertNotNull(NativeLingFrame.getLingCoreContext());
 
         // 关闭
         NativeLingFrame.shutdown();
-        assertThrows(LingInvocationException.class, NativeLingFrame::getHostContext);
+        assertThrows(LingInvocationException.class, NativeLingFrame::getLingCoreContext);
 
         // 重新启动
         LingFrameConfig config2 = LingFrameConfig.builder()
@@ -118,7 +118,7 @@ class NativeLingFrameTest {
 
         LingLifecycleEngine second = NativeLingFrame.start(config2);
         assertNotNull(second);
-        assertNotNull(NativeLingFrame.getHostContext());
+        assertNotNull(NativeLingFrame.getLingCoreContext());
 
         NativeLingFrame.shutdown();
     }

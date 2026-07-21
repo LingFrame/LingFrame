@@ -142,7 +142,7 @@ class LingWebGovernanceFilterTest {
                 webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, null,
                 invocationGovernanceResolver);
 
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/host/demo/detail");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/lingcore/demo/detail");
         MockHttpServletResponse response = new MockHttpServletResponse();
         DemoController controller = new DemoController();
         Method targetMethod = DemoController.class.getMethod("detail");

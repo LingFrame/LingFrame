@@ -515,7 +515,7 @@ class DefaultWebRouteResolverTest {
                 .httpMethod("GET")
                 .requiredPermission("demo:read")
                 .build();
-        sourceMetadata.minimizeHostReferences();
+        sourceMetadata.minimizeCoreStrongReferences();
         String routeKey = "GET#/ling-a/demo/detail";
         metadataMap.put(routeKey, Collections.singletonList(sourceMetadata));
         routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/detail"));

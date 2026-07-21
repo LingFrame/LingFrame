@@ -79,8 +79,8 @@ class WebInterfaceMetadataTest {
         assertEquals(metadata.getLingId(), snapshot.getLingId());
         assertEquals(metadata.getUrlPattern(), snapshot.getUrlPattern());
 
-        // 8. minimizeHostReferences
-        metadata.minimizeHostReferences();
+        // 8. minimizeCoreStrongReferences：弱化灵核侧对灵元运行期对象的强引用
+        metadata.minimizeCoreStrongReferences();
         assertEquals(controller, metadata.getTargetBean());
 
         // 9. clearReferences

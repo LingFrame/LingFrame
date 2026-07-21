@@ -53,7 +53,7 @@ class DashboardUiSmokeIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    private static final String ACCESS_TOKEN = "123456";
+    private static final String ACCESS_TOKEN = "lingframe";
 
     @Test
     @DisplayName("应覆盖 Dashboard 静态页面可达性、灵元状态机切换与治理持久化保存")

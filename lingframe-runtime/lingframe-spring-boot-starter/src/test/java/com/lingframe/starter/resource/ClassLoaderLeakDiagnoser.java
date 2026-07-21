@@ -53,7 +53,7 @@ public final class ClassLoaderLeakDiagnoser {
     /**
      * 泄漏诊断的总入口。
      */
-    public static void diagnoseClassLoaderLeak(ClassLoader leakedLoader, Object hostContext, Object testHost) {
+    public static void diagnoseClassLoaderLeak(ClassLoader leakedLoader, Object coreContext, Object testLingCore) {
         if (leakedLoader == null) {
             return;
         }
@@ -74,12 +74,12 @@ public final class ClassLoaderLeakDiagnoser {
         } catch (Exception ignored) {}
 
         // 1. 扫描灵核 Spring 容器的单例 Bean 实例
-        diagnoseApplicationContext(hostContext, leakedLoader, leakedClassNames);
+        diagnoseApplicationContext(coreContext, leakedLoader, leakedClassNames);
 
-        // 1.2 扫描灵核 TestHost 实例字段 (极重要，因为 HandlerMapping/Adapter 是 new 出来的非 Bean 实例)
-        if (testHost != null) {
-            writeLog("[DIAG-HOST] 开始扫描 TestHost 实例字段...");
-            checkObjectForLeak(testHost, "TestHost", leakedLoader, leakedClassNames, Collections.newSetFromMap(new IdentityHashMap<>()), 0);
+        // 1.2 扫描灵核 TestLingCore 实例字段 (极重要，因为 HandlerMapping/Adapter 是 new 出来的非 Bean 实例)
+        if (testLingCore != null) {
+            writeLog("[DIAG-CORE] 开始扫描 TestLingCore 实例字段...");
+            checkObjectForLeak(testLingCore, "TestLingCore", leakedLoader, leakedClassNames, Collections.newSetFromMap(new IdentityHashMap<>()), 0);
         }
 
         // 1.5 扫描 java.io.ObjectStreamClass 静态缓存 (Bootstrap 级别)
@@ -887,6 +887,153 @@ public final class ClassLoaderLeakDiagnoser {
             cur = cur.getParent();
         }
         return result;
+    }
+
+    /**
+     * GC 失败后的标准诊断入口：heap dump + 可疑线程 TCCL + 灵核 Bean 字段扫描。
+     *
+     * @param dumpClassName  用于生成 dump 文件名的类名（通常为测试类名）
+     * @param coreContext    灵核 {@code ApplicationContext}，可为 null
+     */
+    public static void diagnoseAfterGcFailure(String dumpClassName, Object coreContext) {
+        dumpHeap(dumpClassName, true);
+        diagnoseSuspectThreadsHoldingLingClassLoader();
+        diagnoseSuspectBeansHoldingLingClassLoader(coreContext);
+    }
+
+    /**
+     * 扫描活动线程的 contextClassLoader，找出仍指向 LingClassLoader 的线程。
+     * 仅诊断输出，不修改线程状态。
+     */
+    public static void diagnoseSuspectThreadsHoldingLingClassLoader() {
+        try {
+            ThreadGroup root = Thread.currentThread().getThreadGroup();
+            while (root.getParent() != null) {
+                root = root.getParent();
+            }
+            Thread[] threads = new Thread[root.activeCount() * 2 + 50];
+            root.enumerate(threads, true);
+            int suspect = 0;
+            for (Thread t : threads) {
+                if (t == null) {
+                    continue;
+                }
+                ClassLoader tccl = t.getContextClassLoader();
+                if (tccl == null) {
+                    continue;
+                }
+                String tcclName = tccl.getClass().getName();
+                if (tcclName.contains("LingClassLoader")) {
+                    writeLog(String.format(
+                            "[DIAG-Thread] suspect thread: name='%s', state=%s, daemon=%s, alive=%s, contextCL=%s@%s",
+                            t.getName(), t.getState(), t.isDaemon(), t.isAlive(),
+                            tcclName, Integer.toHexString(System.identityHashCode(tccl))));
+                    suspect++;
+                }
+            }
+            writeLog("[DIAG-Thread] total suspect threads holding LingClassLoader: " + suspect);
+        } catch (Exception e) {
+            writeLog("[DIAG-Thread] scan failed: " + e.getMessage());
+        } finally {
+            flushLogs();
+        }
+    }
+
+    /**
+     * 扫描灵核 ApplicationContext 单例 Bean 的非静态字段（深度 ≤2），
+     * 找出仍持有 LingClassLoader 或由其加载的 Class 的 Bean。
+     * 跳过 JDK / Spring / Servlet 标准包，仅扫业务/灵核侧类型。
+     *
+     * @param coreContext 灵核 ApplicationContext，非 ApplicationContext 或 null 则跳过
+     */
+    public static void diagnoseSuspectBeansHoldingLingClassLoader(Object coreContext) {
+        if (coreContext == null) {
+            return;
+        }
+        try {
+            Method getBeanDefinitionNames = coreContext.getClass().getMethod("getBeanDefinitionNames");
+            Method getBean = coreContext.getClass().getMethod("getBean", String.class);
+            String[] names = (String[]) getBeanDefinitionNames.invoke(coreContext);
+            if (names == null) {
+                return;
+            }
+            int suspect = 0;
+            for (String name : names) {
+                Object bean;
+                try {
+                    bean = getBean.invoke(coreContext, name);
+                } catch (Exception ignored) {
+                    continue;
+                }
+                if (bean == null) {
+                    continue;
+                }
+                String beanTypeName = bean.getClass().getName();
+                if (beanTypeName.startsWith("java.")
+                        || beanTypeName.startsWith("org.springframework.")
+                        || beanTypeName.startsWith("jakarta.")
+                        || beanTypeName.startsWith("javax.")) {
+                    continue;
+                }
+                if (scanFieldsForLingClassLoader(bean, bean.getClass(), 0, 2, name)) {
+                    suspect++;
+                }
+            }
+            writeLog("[DIAG-Bean] total suspect beans holding LingClassLoader: " + suspect);
+        } catch (Exception e) {
+            writeLog("[DIAG-Bean] scan failed: " + e.getMessage());
+        } finally {
+            flushLogs();
+        }
+    }
+
+    private static boolean scanFieldsForLingClassLoader(Object root, Class<?> type, int depth, int maxDepth,
+                                                        String path) {
+        if (root == null || depth > maxDepth) {
+            return false;
+        }
+        for (Field f : type.getDeclaredFields()) {
+            if (Modifier.isStatic(f.getModifiers())) {
+                continue;
+            }
+            try {
+                f.setAccessible(true);
+                Object value = f.get(root);
+                if (value == null) {
+                    continue;
+                }
+                ClassLoader vCl = value.getClass().getClassLoader();
+                if (vCl != null && vCl.getClass().getName().contains("LingClassLoader")) {
+                    writeLog(String.format(
+                            "[DIAG-Bean] suspect field: %s.%s -> value type=%s loaded by LingClassLoader@%s",
+                            path, f.getName(), value.getClass().getName(),
+                            Integer.toHexString(System.identityHashCode(vCl))));
+                    return true;
+                }
+                if (value instanceof Class<?>) {
+                    ClassLoader cCl = ((Class<?>) value).getClassLoader();
+                    if (cCl != null && cCl.getClass().getName().contains("LingClassLoader")) {
+                        writeLog(String.format(
+                                "[DIAG-Bean] suspect Class field: %s.%s -> %s loaded by LingClassLoader@%s",
+                                path, f.getName(), ((Class<?>) value).getName(),
+                                Integer.toHexString(System.identityHashCode(cCl))));
+                        return true;
+                    }
+                }
+                String valueTypeName = value.getClass().getName();
+                if (depth < maxDepth
+                        && !valueTypeName.startsWith("java.")
+                        && !valueTypeName.startsWith("org.springframework.")) {
+                    if (scanFieldsForLingClassLoader(value, value.getClass(), depth + 1, maxDepth,
+                            path + "." + f.getName())) {
+                        return true;
+                    }
+                }
+            } catch (Throwable ignored) {
+                // 跳过不可达字段
+            }
+        }
+        return false;
     }
 
     public static void dumpHeap(String className) {
