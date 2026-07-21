@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * AccessTokenProperties.validate() 启动期校验测试
+ * AccessTokenProperties.afterPropertiesSet() 启动期校验测试
  * <p>
  * 覆盖三条路径：
  * <ul>
@@ -28,7 +28,7 @@ class AccessTokenPropertiesTest {
         p.setEnabled(true);
         p.setToken("");
 
-        assertThrows(IllegalArgumentException.class, p::validate);
+        assertThrows(IllegalArgumentException.class, p::afterPropertiesSet);
     }
 
     @Test
@@ -38,7 +38,7 @@ class AccessTokenPropertiesTest {
         p.setEnabled(false);
         p.setToken("");
 
-        assertDoesNotThrow(p::validate);
+        assertDoesNotThrow(p::afterPropertiesSet);
     }
 
     @Test
@@ -48,7 +48,7 @@ class AccessTokenPropertiesTest {
         p.setEnabled(true);
         p.setToken("secret-token");
 
-        assertDoesNotThrow(p::validate);
+        assertDoesNotThrow(p::afterPropertiesSet);
     }
 
     @Test
@@ -59,7 +59,7 @@ class AccessTokenPropertiesTest {
         p.setToken("123456");
         p.setAllowWeak(true);
 
-        assertDoesNotThrow(p::validate);
+        assertDoesNotThrow(p::afterPropertiesSet);
         assertTrue(AccessTokenProperties.isWeakToken("123456"));
         assertTrue(AccessTokenProperties.isWeakToken("admin"));
         assertFalse(AccessTokenProperties.isWeakToken("a-strong-unique-token-9f3"));
@@ -73,7 +73,7 @@ class AccessTokenPropertiesTest {
         p.setToken("123456");
         p.setAllowWeak(false);
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, p::validate);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, p::afterPropertiesSet);
         assertTrue(ex.getMessage().contains("too weak"));
     }
 
@@ -85,6 +85,6 @@ class AccessTokenPropertiesTest {
         p.setToken("a-strong-unique-token-9f3");
         p.setAllowWeak(false);
 
-        assertDoesNotThrow(p::validate);
+        assertDoesNotThrow(p::afterPropertiesSet);
     }
 }

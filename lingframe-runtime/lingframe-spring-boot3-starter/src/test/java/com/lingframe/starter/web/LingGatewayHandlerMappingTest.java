@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,7 +48,7 @@ class LingGatewayHandlerMappingTest {
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/42");
         when(webInterfaceManager.gatewayHandler()).thenReturn(new WebInterfaceManager.LingGatewayHandler(webInterfaceManager));
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
         LingGatewayHandlerMapping mapping = new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager);
 
@@ -87,7 +88,7 @@ class LingGatewayHandlerMappingTest {
         request.setContextPath("/app");
         when(webInterfaceManager.gatewayHandler())
                 .thenReturn(new WebInterfaceManager.LingGatewayHandler(webInterfaceManager));
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
         LingGatewayHandlerMapping mapping = new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager);
 
@@ -124,7 +125,7 @@ class LingGatewayHandlerMappingTest {
         request.setServletPath("/gateway");
         when(webInterfaceManager.gatewayHandler())
                 .thenReturn(new WebInterfaceManager.LingGatewayHandler(webInterfaceManager));
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
         LingGatewayHandlerMapping mapping = new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager);
 
@@ -160,7 +161,7 @@ class LingGatewayHandlerMappingTest {
         request.addHeader("X-Forwarded-Prefix", "/proxy");
         when(webInterfaceManager.gatewayHandler())
                 .thenReturn(new WebInterfaceManager.LingGatewayHandler(webInterfaceManager));
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
         LingGatewayHandlerMapping mapping = new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager);
 

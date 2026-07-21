@@ -12,6 +12,7 @@ import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
+import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
 import com.lingframe.starter.web.WebRouteResolver;
 import org.junit.jupiter.api.DisplayName;
@@ -89,7 +90,7 @@ class LingWebGovernanceFilterTest {
         WebRouteResolution resolution = new WebRouteResolution(
                 "GET#/ling-a/demo/detail", metadata, runtime, targetInstance);
 
-        when(webRouteResolver.resolveRoute(request)).thenAnswer(invocation -> {
+        when(webRouteResolver.resolveRoute(any())).thenAnswer(invocation -> {
             request.setAttribute(WebInterfaceManager.REQUEST_ROUTE_RESOLUTION_KEY, resolution);
             request.setAttribute(WebInterfaceManager.REQUEST_METADATA_KEY, metadata);
             request.setAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY, metadata.getVersion());
@@ -160,7 +161,7 @@ class LingWebGovernanceFilterTest {
         WebRouteResolution resolution = new WebRouteResolution(
                 "GET#/ling-a/demo/detail", metadata, runtime, null);
 
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
         filter.doFilterInternal(request, response, filterChain);
 
@@ -195,7 +196,7 @@ class LingWebGovernanceFilterTest {
         WebRouteResolution resolution = new WebRouteResolution(
                 "GET#/ling-a/demo/detail", metadata, runtime, targetInstance);
 
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
         filter.doFilterInternal(request, response, filterChain);
 
@@ -218,7 +219,7 @@ class LingWebGovernanceFilterTest {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/host/api");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        when(webRouteResolver.resolveRoute(request)).thenReturn(null);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(null);
 
         filter.doFilterInternal(request, response, filterChain);
 
@@ -239,7 +240,7 @@ class LingWebGovernanceFilterTest {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/host/api");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        when(webRouteResolver.resolveRoute(request)).thenReturn(null);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(null);
         when(requestMappingHandlerMapping.getHandler(any())).thenReturn(null);
 
         filter.doFilterInternal(request, response, filterChain);
@@ -277,7 +278,7 @@ class LingWebGovernanceFilterTest {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/detail");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
         when(targetInstance.getVersion()).thenReturn("v1");
 
         filter.doFilterInternal(request, response, filterChain);
@@ -311,7 +312,7 @@ class LingWebGovernanceFilterTest {
         {
             MockHttpServletRequest request = new MockHttpServletRequest("GET", "/detail");
             MockHttpServletResponse response = new MockHttpServletResponse();
-            when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+            when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
             when(targetInstance.getVersion()).thenReturn("v1");
 
             doThrow(new com.lingframe.api.exception.LingInvocationException(
@@ -328,7 +329,7 @@ class LingWebGovernanceFilterTest {
         {
             MockHttpServletRequest request = new MockHttpServletRequest("GET", "/detail");
             MockHttpServletResponse response = new MockHttpServletResponse();
-            when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+            when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
             doThrow(new com.lingframe.api.exception.LingInvocationException(
                     "ling-a:http",
@@ -344,7 +345,7 @@ class LingWebGovernanceFilterTest {
         {
             MockHttpServletRequest request = new MockHttpServletRequest("GET", "/detail");
             MockHttpServletResponse response = new MockHttpServletResponse();
-            when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+            when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
             doThrow(new com.lingframe.api.exception.LingInvocationException(
                     "ling-a:http",
@@ -386,7 +387,7 @@ class LingWebGovernanceFilterTest {
         {
             MockHttpServletRequest request = new MockHttpServletRequest("GET", "/detail");
             MockHttpServletResponse response = new MockHttpServletResponse();
-            when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+            when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
             when(targetInstance.getVersion()).thenReturn("v1");
             
             // 模拟 filterChain 抛出 RuntimeException
@@ -408,7 +409,7 @@ class LingWebGovernanceFilterTest {
         {
             MockHttpServletRequest request = new MockHttpServletRequest("GET", "/detail");
             MockHttpServletResponse response = new MockHttpServletResponse();
-            when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+            when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
             Answer<Void> throwTimeout = inv -> {
                 throw new TimeoutException("Read timed out");

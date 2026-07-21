@@ -15,8 +15,6 @@ import com.lingframe.starter.web.WebGovernanceSupport;
 import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
 import com.lingframe.starter.web.WebRouteResolver;
-import java.security.Principal;
-
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,6 +30,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.security.Principal;
 
 /**
  * 面向 Spring Boot 3.x 的统一 Web 治理过滤器。
@@ -168,17 +167,15 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         if (!isLingRequest && !LING_CORE_ID.equals(lingId)) {
             return;
         }
-
-        MetricsCollector metricsCollector = metricsCollectorProvider != null ? metricsCollectorProvider.getIfAvailable() : null;
+        MetricsCollector metricsCollector =
+                metricsCollectorProvider != null ? metricsCollectorProvider.getIfAvailable() : null;
         if (metricsCollector == null || lingId == null || lingId.isEmpty()) {
             return;
         }
-
         long costMs = (System.nanoTime() - startNanos) / 1_000_000;
         String version = resolveVersion(request, ctx);
         LingHealthMetrics metrics = metricsCollector.getOrCreate(lingId);
         LingHealthMetrics versionMetrics = metricsCollector.getOrCreate(lingId, version);
-
         boolean success = error == null && response.getStatus() < 500;
         if (success) {
             metrics.recordSuccess(costMs);
@@ -187,7 +184,6 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             }
             return;
         }
-
         boolean isTimeout = response.getStatus() == HttpServletResponse.SC_GATEWAY_TIMEOUT || isTimeoutError(error);
         metrics.recordFailure(costMs, isTimeout);
         if (versionMetrics != metrics) {

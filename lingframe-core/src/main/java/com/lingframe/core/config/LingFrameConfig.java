@@ -3,6 +3,7 @@ package com.lingframe.core.config;
 import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.runtime.FixedRuntimeMode;
 import com.lingframe.core.runtime.RuntimeMode;
+import com.lingframe.core.runtime.SwitchableRuntimeMode;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.ToString;
@@ -176,7 +177,7 @@ public class LingFrameConfig implements LingFrameInfo {
      * <p>
      * 装配方式：
      * <ul>
-     *   <li>Spring 环境：由 Starter 注入 {@link com.lingframe.core.runtime.SwitchableRuntimeMode}
+     *   <li>Spring 环境：由 Starter 注入 {@link SwitchableRuntimeMode}
      *       （密码认证 + 失败锁定，支持运行时切换）</li>
      *   <li>非 Spring 环境或测试：可调用 builder 的 {@code devMode(boolean)} 便捷方法，
      *       内部转换为 {@link FixedRuntimeMode#fixed(boolean)}（不可切换）</li>

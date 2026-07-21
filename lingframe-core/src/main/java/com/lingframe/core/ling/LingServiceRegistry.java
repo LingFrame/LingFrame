@@ -1,6 +1,7 @@
 package com.lingframe.core.ling;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * LingServiceRegistry 专注于服务契约目录。
@@ -102,7 +103,7 @@ public interface LingServiceRegistry {
      *
      * @return 契约 ID 集合（不可变快照）；无任何注册时返回空集
      */
-    java.util.Set<String> getAllContractIds();
+    Set<String> getAllContractIds();
 
     /**
      * 注册契约提供方。

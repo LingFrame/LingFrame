@@ -8,10 +8,10 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.sql.Driver;
 import java.sql.DriverManager;
-import java.util.Enumeration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * {@link JdbcDriverUnloadHook} 的补充测试。
@@ -19,6 +19,11 @@ import static org.junit.jupiter.api.Assertions.*;
  * 已有 {@link JvmUnloadHookTest.JdbcDriverHookTest} 覆盖基础安全校验路径，
  * 此处补充：通过 URLClassLoader 隔离加载的 TestDriver 注册/反注册全链路、
  * 空/null lingId、幂等调用等分支。
+ * <p>
+ * 隔离 ClassLoader 加载的 Driver 对 {@link DriverManager#getDrivers()} 不可见
+ * （按 caller ClassLoader 过滤）。全链路断言依赖
+ * {@code --add-opens java.sql/java.sql=ALL-UNNAMED} 以反射读取
+ * {@code registeredDrivers}；缺省时跳过深度路径，避免 IDE 直跑误报失败。
  */
 @DisplayName("JdbcDriverUnloadHook 补充测试")
 class JdbcDriverUnloadHookSupplementTest {
@@ -26,8 +31,8 @@ class JdbcDriverUnloadHookSupplementTest {
     private final JdbcDriverUnloadHook hook = new JdbcDriverUnloadHook();
 
     /**
-     * 通过 parent=null 的 URLClassLoader 加载 TestDriver，使其 getClassLoader()
-     * 等于该 URLClassLoader，从而被卸载钩子的 ClassLoader 匹配规则命中。
+     * 通过 parent=平台 ClassLoader 的 URLClassLoader 加载 TestDriver，使其
+     * getClassLoader() 等于该 URLClassLoader，从而被卸载钩子的 ClassLoader 匹配规则命中。
      */
     private ClassLoader createIsolatedClassLoader() throws Exception {
         URL testClassesUrl = JdbcDriverUnloadHookSupplementTest.class
@@ -81,6 +86,10 @@ class JdbcDriverUnloadHookSupplementTest {
     @Test
     @DisplayName("cleanup 应反注册由目标 ClassLoader 加载的 JDBC Driver")
     void shouldDeregisterDriverLoadedByTargetClassLoader() throws Exception {
+        // 隔离 CL 加载的 Driver 对 getDrivers() 不可见；无反射权限时无法验证注册状态
+        assumeTrue(JvmCleanupSupport.DRIVER_MANAGER_FIELD != null,
+                "需要 --add-opens java.sql/java.sql=ALL-UNNAMED 以反射验证隔离 ClassLoader 的 Driver 注册状态");
+
         ClassLoader isolatedCL = createIsolatedClassLoader();
         try {
             // 通过隔离 CL 加载 TestDriver 并实例化
@@ -92,16 +101,15 @@ class JdbcDriverUnloadHookSupplementTest {
             // 注册到全局 DriverManager
             DriverManager.registerDriver(driver);
             try {
-                // 确认已注册
-                assertTrue(isDriverRegistered(driver),
+                // 确认已注册（反射读取内部列表，绕过 caller ClassLoader 过滤）
+                assertTrue(isDriverRegisteredViaReflection(driver),
                         "Driver 应已注册到 DriverManager");
 
                 // 执行清理
                 assertDoesNotThrow(() -> hook.cleanup("ling-jdbc", isolatedCL));
 
                 // 反射路径会直接从内部列表移除；公开 API 路径受 caller 检查限制可能失败
-                // 这里断言 Driver 已从注册表中移除（反射路径成功的情况下）
-                assertFalse(isDriverRegistered(driver),
+                assertFalse(isDriverRegisteredViaReflection(driver),
                         "Driver 应已被反注册");
             } finally {
                 // 兜底清理：确保不污染后续测试
@@ -130,20 +138,15 @@ class JdbcDriverUnloadHookSupplementTest {
      * 注意：{@link DriverManager#getDrivers()} 会按 caller ClassLoader 过滤，
      * 隔离 CL 加载的 driver 对测试类不可见。因此这里通过反射直接读取
      * {@code registeredDrivers} 字段（与 {@link JdbcDriverUnloadHook} 的反射路径一致）。
+     * <p>
+     * 调用前须已确认 {@link JvmCleanupSupport#DRIVER_MANAGER_FIELD} 非 null。
      */
     @SuppressWarnings("unchecked")
-    private boolean isDriverRegistered(Driver target) throws Exception {
-        if (JvmCleanupSupport.DRIVER_MANAGER_FIELD == null) {
-            // 反射字段不可用时退回 getDrivers（隔离 CL 的 driver 可能不可见）
-            Enumeration<Driver> drivers = DriverManager.getDrivers();
-            while (drivers.hasMoreElements()) {
-                if (drivers.nextElement() == target) {
-                    return true;
-                }
-            }
+    private boolean isDriverRegisteredViaReflection(Driver target) throws Exception {
+        List<Object> registered = (List<Object>) JvmCleanupSupport.DRIVER_MANAGER_FIELD.get(null);
+        if (registered == null) {
             return false;
         }
-        List<Object> registered = (List<Object>) JvmCleanupSupport.DRIVER_MANAGER_FIELD.get(null);
         Field driverField = null;
         for (Object info : registered) {
             if (driverField == null) {

@@ -8,8 +8,10 @@ import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.FilterRegistryConfig;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.LatestVersionPolicy;
 import com.lingframe.core.security.DefaultPermissionService;
+import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
@@ -106,8 +108,8 @@ public class FilterRegistryBenchmark {
             }
 
             @Override
-            public Object doFilter(com.lingframe.core.pipeline.InvocationContext context,
-	                    com.lingframe.core.spi.LingFilterChain chain) throws Throwable {
+            public Object doFilter(InvocationContext context,
+                            LingFilterChain chain) throws Throwable {
                 return chain.doFilter(context);
             }
         };

@@ -2,6 +2,8 @@ package com.lingframe.core.runtime;
 
 import lombok.extern.slf4j.Slf4j;
 
+import com.lingframe.core.config.LingFrameConfig;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -12,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 可切换运行时模式实现（dev/prod 运行时切换）。
  * <p>
- * 设计目标：在保持 {@link com.lingframe.core.config.LingFrameConfig} 不可变的前提下，
+ * 设计目标：在保持 {@link LingFrameConfig} 不可变的前提下，
  * 通过 volatile 覆盖值实现运行时 dev/prod 切换，下沉到 core 层并强制密码二次认证。
  * <p>
  * 安全语义：
@@ -26,7 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 线程安全：override、lockUntil 为 volatile，switchMode 同步保护认证+切换的复合操作。
  * <p>
  * 非 Spring 环境使用：直接 {@code new SwitchableRuntimeMode(devMode, password)} 构造，
- * 传给 {@link com.lingframe.core.config.LingFrameConfig.Builder#runtimeMode(RuntimeMode)}。
+ * 传给 {@link LingFrameConfig.Builder#runtimeMode(RuntimeMode)}。
  */
 @Slf4j
 public final class SwitchableRuntimeMode implements RuntimeMode {

@@ -5,9 +5,9 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.dashboard.dto.LeakDetectionRecordDTO;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.InitializingBean;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -19,9 +19,11 @@ import java.util.stream.Collectors;
  * <p>
  * 订阅 LeakDetectionEvent，按 lingId:version 缓存最新检测结果。
  * 未回收的记录（collected=false）置顶排序，最多保留 100 条。
+ * <p>
+ * 使用 Spring 生命周期接口兼容 SB2/SB3，避免 javax/jakarta.annotation 差异。
  */
 @Slf4j
-public class LeakDetectionCacheService {
+public class LeakDetectionCacheService implements InitializingBean, DisposableBean {
 
     private static final int MAX_RECORDS = 100;
 
@@ -35,12 +37,16 @@ public class LeakDetectionCacheService {
         this.eventBus = eventBus;
     }
 
-    @PostConstruct
+    @Override
+    public void afterPropertiesSet() {
+        init();
+    }
+
     public void init() {
         eventBus.subscribeGlobal(MonitoringEvents.LeakDetectionEvent.class, listener);
     }
 
-    @PreDestroy
+    @Override
     public void destroy() {
         eventBus.unsubscribeGlobal(MonitoringEvents.LeakDetectionEvent.class, listener);
     }

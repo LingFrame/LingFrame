@@ -163,8 +163,11 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
         }
 
         // 关闭状态下更新滑动窗口
-        // 使用 floorMod 防御性计算索引，即使序号异常为负也不会越界
-        int idx = (int) Math.floorMod(currentIndex.getAndIncrement(), slidingWindowSize);
+        // 防御性计算索引，即使序号异常为负也不会越界
+        // 注意：Math.floorMod(long, int) 是 JDK 9+ API，这里用兼容 JDK 8 的实现
+        long seq = currentIndex.getAndIncrement();
+        int rem = (int) (seq % slidingWindowSize);
+        int idx = (rem >= 0) ? rem : rem + slidingWindowSize;
 
         // 移除旧值
         if (failureWindow[idx])

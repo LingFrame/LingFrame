@@ -1,6 +1,7 @@
 package com.lingframe.benchmark;
 
 import com.lingframe.api.config.LingDefinition;
+import com.lingframe.api.context.LingContext;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
@@ -196,7 +197,7 @@ public class BenchmarkDeploymentHelper {
      */
     private static class BenchmarkContainerFactory implements ContainerFactory {
         @Override
-        public LingContainer create(com.lingframe.api.config.LingDefinition definition, File jarFile,
+        public LingContainer create(LingDefinition definition, File jarFile,
                 ClassLoader classLoader) {
             return new BenchmarkContainer(classLoader);
         }
@@ -222,7 +223,7 @@ public class BenchmarkDeploymentHelper {
         }
 
         @Override
-        public void start(com.lingframe.api.context.LingContext context) {
+        public void start(LingContext context) {
             active = true;
         }
 

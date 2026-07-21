@@ -16,7 +16,7 @@ import java.util.Map;
  * SpringDoc 分组桥接器。
  *
  * <p>负责把 SpringDoc v1/v2 的全局 / 分组自定义器接口统一桥接到
- * {@link LingOpenApiCustomizerAdapter}，避免灵核侧继续理解 SpringDoc 的内部流程差异。</p>
+ * {@link LingOpenApiCustomizerAdapter}。</p>
  */
 public final class LingSpringDocCustomizerBridge {
 
@@ -129,72 +129,77 @@ public final class LingSpringDocCustomizerBridge {
         }
     }
 
-    private abstract static class BaseInvocationHandler implements InvocationHandler {
-        protected final LingOpenApiCustomizerAdapter adapter;
+    private static final class GlobalInvocationHandler implements InvocationHandler {
+        private final LingOpenApiCustomizerAdapter adapter;
 
-        private BaseInvocationHandler(LingOpenApiCustomizerAdapter adapter) {
+        private GlobalInvocationHandler(LingOpenApiCustomizerAdapter adapter) {
             this.adapter = adapter;
         }
 
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) {
-            String methodName = method.getName();
-            if ("customise".equals(methodName) && args != null && args.length == 1 && args[0] instanceof OpenAPI) {
-                customise((OpenAPI) args[0]);
-                return null;
+            if (method.getDeclaringClass() == Object.class) {
+                return handleObjectMethod(proxy, method, args);
             }
-            if ("equals".equals(methodName)) {
-                return proxy == args[0];
-            }
-            if ("hashCode".equals(methodName)) {
-                return System.identityHashCode(proxy);
-            }
-            if ("toString".equals(methodName)) {
-                return getClass().getSimpleName();
+            if ("customise".equals(method.getName()) || "customize".equals(method.getName())) {
+                if (args != null && args.length >= 1 && args[0] instanceof OpenAPI) {
+                    adapter.customise((OpenAPI) args[0]);
+                }
             }
             return null;
         }
-
-        protected abstract void customise(OpenAPI openApi);
     }
 
-    private static final class GlobalInvocationHandler extends BaseInvocationHandler {
-        private GlobalInvocationHandler(LingOpenApiCustomizerAdapter adapter) {
-            super(adapter);
-        }
-
-        @Override
-        protected void customise(OpenAPI openApi) {
-            adapter.customise(openApi);
-        }
-    }
-
-    private static final class GroupedInvocationHandler extends BaseInvocationHandler {
+    private static final class GroupedInvocationHandler implements InvocationHandler {
+        private final LingOpenApiCustomizerAdapter adapter;
         private final Object groupedOpenApi;
 
         private GroupedInvocationHandler(LingOpenApiCustomizerAdapter adapter, Object groupedOpenApi) {
-            super(adapter);
+            this.adapter = adapter;
             this.groupedOpenApi = groupedOpenApi;
         }
 
         @Override
-        protected void customise(OpenAPI openApi) {
-            adapter.customise(
-                    openApi,
-                    readStringCollection("getPathsToMatch"),
-                    readStringCollection("getPackagesToScan"),
-                    readStringCollection("getPathsToExclude"),
-                    readStringCollection("getPackagesToExclude"));
-        }
-
-        @SuppressWarnings("unchecked")
-        private Collection<String> readStringCollection(String methodName) {
-            Method method = findMethod(groupedOpenApi.getClass(), methodName);
-            if (method == null) {
-                return null;
+        public Object invoke(Object proxy, Method method, Object[] args) {
+            if (method.getDeclaringClass() == Object.class) {
+                return handleObjectMethod(proxy, method, args);
             }
-            Object value = LingSpringDocCustomizerBridge.invoke(method, groupedOpenApi);
-            return value instanceof Collection ? (Collection<String>) value : null;
+            if (("customise".equals(method.getName()) || "customize".equals(method.getName()))
+                    && args != null && args.length >= 1 && args[0] instanceof OpenAPI) {
+                Collection<String> pathsToMatch = readStringCollection(groupedOpenApi, "getPathsToMatch");
+                Collection<String> packagesToScan = readStringCollection(groupedOpenApi, "getPackagesToScan");
+                Collection<String> pathsToExclude = readStringCollection(groupedOpenApi, "getPathsToExclude");
+                Collection<String> packagesToExclude = readStringCollection(groupedOpenApi, "getPackagesToExclude");
+                adapter.customise((OpenAPI) args[0], pathsToMatch, packagesToScan, pathsToExclude, packagesToExclude);
+            }
+            return null;
         }
+    }
+
+    private static Object handleObjectMethod(Object proxy, Method method, Object[] args) {
+        String name = method.getName();
+        if ("toString".equals(name)) {
+            return "LingSpringDocCustomizerBridgeProxy";
+        }
+        if ("hashCode".equals(name)) {
+            return System.identityHashCode(proxy);
+        }
+        if ("equals".equals(name)) {
+            return proxy == args[0];
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Collection<String> readStringCollection(Object target, String methodName) {
+        Method method = findMethod(target.getClass(), methodName);
+        if (method == null) {
+            return Collections.emptyList();
+        }
+        Object value = invoke(method, target);
+        if (value instanceof Collection) {
+            return (Collection<String>) value;
+        }
+        return Collections.emptyList();
     }
 }

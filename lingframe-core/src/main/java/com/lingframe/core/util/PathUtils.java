@@ -2,6 +2,7 @@ package com.lingframe.core.util;
 
 import lombok.extern.slf4j.Slf4j;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -67,7 +68,7 @@ public class PathUtils {
      * 从当前工作目录及系统类路径 (classpath) 中解析可能存在的本地目录，作为路径查找的搜索基准。
      */
     private static List<File> getPotentialBaseDirs() {
-        List<File> baseDirs = new java.util.ArrayList<>();
+        List<File> baseDirs = new ArrayList<>();
 
         // 1. 获取当前工作目录 (Cwd)
         try {

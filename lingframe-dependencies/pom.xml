@@ -77,8 +77,9 @@
                 <springdoc.version>2.8.5</springdoc.version>
                 <springdoc.artifactId>springdoc-openapi-starter-webmvc-ui</springdoc.artifactId>
 
-                <junit-jupiter.version>5.9.3</junit-jupiter.version>
-                <mockito.version>5.3.1</mockito.version>
+                <junit-jupiter.version>5.10.2</junit-jupiter.version>
+                <mockito.version>5.11.0</mockito.version>
+                <archunit.version>1.2.1</archunit.version>
             </properties>
         </profile>
         <!-- JDK 9+ JVM arguments profile to allow reflective access in tests -->
@@ -232,6 +233,15 @@
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-api</artifactId>
                 <version>${slf4j.version}</version>
+            </dependency>
+
+            <!-- JUnit BOM -->
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>${junit-jupiter.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
 
             <!-- 测试 -->

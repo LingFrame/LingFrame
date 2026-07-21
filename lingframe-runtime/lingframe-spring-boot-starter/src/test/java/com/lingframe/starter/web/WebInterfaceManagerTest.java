@@ -88,12 +88,12 @@ class WebInterfaceManagerTest {
 
         manager.registerSync(metadata);
 
-        assertNotNull(manager.resolveRoute(new MockHttpServletRequest("GET", "/ling-a/demo/detail")));
+        assertNotNull(manager.resolveRoute((new MockHttpServletRequest("GET", "/ling-a/demo/detail"))));
         verify(hostMapping).registerMapping(any(RequestMappingInfo.class), any(), any(Method.class));
 
         manager.unregisterSync("ling-a", DemoController.class.getClassLoader());
 
-        assertNull(manager.resolveRoute(new MockHttpServletRequest("GET", "/ling-a/demo/detail")));
+        assertNull(manager.resolveRoute((new MockHttpServletRequest("GET", "/ling-a/demo/detail"))));
         verify(hostMapping).unregisterMapping(any(RequestMappingInfo.class));
     }
 
@@ -117,7 +117,7 @@ class WebInterfaceManagerTest {
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
         request.addParameter("mode", "full");
-        WebRouteResolution resolution = manager.resolveRoute(request);
+        WebRouteResolution resolution = manager.resolveRoute((request));
 
         assertNotNull(resolution);
         assertEquals("full", resolution.getMetadata().getTargetMethodName());
@@ -159,7 +159,7 @@ class WebInterfaceManagerTest {
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/echo");
         request.addParameter("name", "alice");
-        WebRouteResolution resolution = manager.resolveRoute(request);
+        WebRouteResolution resolution = manager.resolveRoute((request));
 
         assertNotNull(resolution);
         assertEquals("echo", resolution.getMetadata().getTargetMethodName());
@@ -200,8 +200,8 @@ class WebInterfaceManagerTest {
         manager.registerSync(first);
         manager.registerSync(second);
 
-        assertNotNull(manager.resolveRoute(new MockHttpServletRequest("GET", "/ling-a/demo/first")));
-        assertNotNull(manager.resolveRoute(new MockHttpServletRequest("GET", "/ling-a/demo/second")));
+        assertNotNull(manager.resolveRoute((new MockHttpServletRequest("GET", "/ling-a/demo/first"))));
+        assertNotNull(manager.resolveRoute((new MockHttpServletRequest("GET", "/ling-a/demo/second"))));
         verify(hostMapping, times(2)).registerMapping(any(RequestMappingInfo.class), any(), any(Method.class));
     }
 
@@ -244,7 +244,7 @@ class WebInterfaceManagerTest {
         assertEquals("dispatch", handlerMethod.getMethod().getName());
         assertEquals(WebInterfaceManager.LingWebEntryHandler.class, handlerMethod.getBeanType());
 
-        WebRouteResolution resolution = manager.resolveRoute(new MockHttpServletRequest("GET", "/ling-a/demo/detail"),
+        WebRouteResolution resolution = manager.resolveRoute((new MockHttpServletRequest("GET", "/ling-a/demo/detail")),
                 handlerMethod);
         assertNotNull(resolution);
         assertTrue(handlerMethod.getBean() instanceof WebInterfaceManager.LingWebEntryHandler);
@@ -317,7 +317,7 @@ class WebInterfaceManagerTest {
         assertTrue(afterHandler.getBean() instanceof WebInterfaceManager.LingWebEntryHandler);
         assertEquals(WebInterfaceManager.LingWebEntryHandler.class, afterHandler.getBeanType());
 
-        WebRouteResolution resolution = manager.resolveRoute(new MockHttpServletRequest("GET", "/ling-a/demo/detail"));
+        WebRouteResolution resolution = manager.resolveRoute((new MockHttpServletRequest("GET", "/ling-a/demo/detail")));
         assertNotNull(resolution);
         assertEquals("v2", resolution.getMetadata().getVersion());
     }

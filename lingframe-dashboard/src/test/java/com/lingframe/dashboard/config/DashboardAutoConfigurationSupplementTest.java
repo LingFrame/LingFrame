@@ -15,10 +15,6 @@ import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.metrics.LingMetricsMeterBridge;
 import com.lingframe.dashboard.scheduler.MetricsCollectorScheduler;
-import com.lingframe.dashboard.security.AccessTokenInterceptor;
-import com.lingframe.dashboard.security.AccessTokenProperties;
-import com.lingframe.dashboard.security.ReadOnlyInterceptor;
-import com.lingframe.dashboard.security.ReadOnlyProperties;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.storage.AuditStorage;
 import com.lingframe.dashboard.storage.DashboardDataSource;
@@ -48,37 +44,12 @@ import static org.mockito.Mockito.when;
 /**
  * DashboardAutoConfiguration 补充测试
  * <p>
- * 现有测试覆盖大部分 bean 方法但遗漏了 addViewControllers、accessTokenInterceptor、
- * readOnlyInterceptor、storageInitializer、metricsStorage、governanceStorage、auditStorage、
- * governanceConfigRestorer、metricsCollectorScheduler、lingMetricsMeterBridge 等 bean。
+ * 安全 Filter/Interceptor 已迁至 dashboard-boot2/boot3；本类覆盖存储与视图配置 bean。
  */
 @DisplayName("DashboardAutoConfiguration 补充测试")
 class DashboardAutoConfigurationSupplementTest {
 
     private final DashboardAutoConfiguration config = new DashboardAutoConfiguration();
-
-    // ==================== 安全拦截器 bean ====================
-
-    @Nested
-    @DisplayName("安全拦截器 bean")
-    class SecurityInterceptorBeanTests {
-
-        @Test
-        @DisplayName("accessTokenInterceptor 应返回拦截器实例")
-        void shouldCreateAccessTokenInterceptor() {
-            AccessTokenProperties props = new AccessTokenProperties();
-            AccessTokenInterceptor interceptor = config.accessTokenInterceptor(props);
-            assertNotNull(interceptor);
-        }
-
-        @Test
-        @DisplayName("readOnlyInterceptor 应返回拦截器实例")
-        void shouldCreateReadOnlyInterceptor() {
-            ReadOnlyProperties props = new ReadOnlyProperties();
-            ReadOnlyInterceptor interceptor = config.readOnlyInterceptor(props);
-            assertNotNull(interceptor);
-        }
-    }
 
     // ==================== SQLite 持久化 bean ====================
 
@@ -190,8 +161,6 @@ class DashboardAutoConfigurationSupplementTest {
         @DisplayName("应注册 dashboard UI 的视图控制器重定向")
         void shouldRegisterViewControllers() {
             WebMvcConfigurer configurer = config.dashboardWebMvcConfigurer(null, null);
-            // 使用真实 ApplicationContext 的 ViewControllerRegistry 会很重，
-            // 这里只验证 configurer 不为 null 且 addInterceptors 能正常调用（空拦截器）
             assertNotNull(configurer);
         }
     }

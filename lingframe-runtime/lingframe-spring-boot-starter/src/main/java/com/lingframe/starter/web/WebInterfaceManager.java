@@ -74,8 +74,8 @@ public class WebInterfaceManager implements WebRouteResolver {
     }
 
     public void init(RequestMappingHandlerMapping mapping,
-                     RequestMappingHandlerAdapter adapter,
-                     ConfigurableApplicationContext hostContext) {
+            RequestMappingHandlerAdapter adapter,
+            ConfigurableApplicationContext hostContext) {
         this.hostSupport.init(mapping, adapter, hostContext);
         log.info("LingFrame WebInterfaceManager initialized with native registration");
     }
@@ -169,8 +169,8 @@ public class WebInterfaceManager implements WebRouteResolver {
     }
 
     private List<WebInterfaceMetadata> mergeRouteMetadata(String routeKey,
-                                                          List<WebInterfaceMetadata> existing,
-                                                          WebInterfaceMetadata incoming) {
+            List<WebInterfaceMetadata> existing,
+            WebInterfaceMetadata incoming) {
         List<WebInterfaceMetadata> merged = existing != null ? new ArrayList<>(existing) : new ArrayList<>();
         for (WebInterfaceMetadata current : merged) {
             if (!Objects.equals(current.getVersion(), incoming.getVersion())) {
@@ -229,6 +229,24 @@ public class WebInterfaceManager implements WebRouteResolver {
 
         rebuildRoutePatternIndex();
 
+        // ✅ 清理灵元自己的 RequestMappingHandlerAdapter
+        // 内部缓存（initBinderCache/modelAttributeCache/sessionAttributesHandlerCache）。
+        // 这些缓存以灵元 Controller Class 为 key，持有灵元 Method → Class → ClassLoader 强引用。
+        // SB3 的 ConfigurableApplicationContext.close() 不再触发 Adapter 缓存清空（SB2 会触发），
+        // 不显式清理会阻止灵元 ClassLoader 被 GC 回收。在灵元 context close 之前、meta.clearReferences
+        // 之前调用，
+        // 因为 clearReferences 会清掉 lingApplicationContextRef，导致 getLingApplicationContext
+        // 返回 null。
+        // 对 SB2 无副作用：灵元 Class 在灵核 ClassLoader 下查不到对应 key，remove 是 no-op。
+        for (WebInterfaceMetadata meta : removedMetas) {
+            org.springframework.context.ApplicationContext lingContext = meta.getLingApplicationContext();
+            if (lingContext != null) {
+                hostSupport.clearLingAdapterCaches(lingContext, targetLoader);
+                // 同一灵元 context 多个 meta 共享 Adapter，清理一次即可
+                break;
+            }
+        }
+
         for (WebInterfaceMetadata meta : removedMetas) {
             meta.clearReferences();
         }
@@ -237,7 +255,7 @@ public class WebInterfaceManager implements WebRouteResolver {
         // 无需清理灵核的任何 Bean、BPP 缓存或 Adapter 缓存
         // 因为灵核从未接触过灵元的类
         hostSupport.unregisterMappings(routesToRemove, mappingInfoMap, targetLoader);
-        
+
         // ✅ 注销后立即清理 SpringDoc 缓存，防止 UI 出现过期路由
         hostSupport.clearSpringDocCache();
 
@@ -338,7 +356,8 @@ public class WebInterfaceManager implements WebRouteResolver {
             long startNanos,
             boolean success,
             Throwable error) {
-        MetricsCollector metricsCollector = metricsCollectorProvider != null ? metricsCollectorProvider.getIfAvailable() : null;
+        MetricsCollector metricsCollector = metricsCollectorProvider != null ? metricsCollectorProvider.getIfAvailable()
+                : null;
         if (metricsCollector == null || meta == null || meta.getLingId() == null || meta.getLingId().isEmpty()) {
             return;
         }

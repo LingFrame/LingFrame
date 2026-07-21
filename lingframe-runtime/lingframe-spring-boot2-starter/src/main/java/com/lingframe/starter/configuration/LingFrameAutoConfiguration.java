@@ -5,6 +5,7 @@ import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.filter.LingWebGovernanceFilter;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
+import com.lingframe.starter.web.JavaxRepeatableReadFilterFactory;
 import com.lingframe.starter.web.LingGatewayHandlerMapping;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebRouteResolver;
@@ -26,12 +27,14 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 /**
- * 面向 Spring Boot 2.x 的自动配置入口
+ * 面向 Spring Boot 2.x 的自动配置入口。
+ * <p>
+ * 显式导入 {@link JavaxRepeatableReadFilterFactory}，保证可重复读 Filter 的唯一注册点。
  */
 @Configuration
 @ConditionalOnWebApplication
 @ConditionalOnProperty(prefix = "lingframe", name = "enabled", havingValue = "true", matchIfMissing = true)
-@Import(LingFrameCoreConfiguration.class)
+@Import({LingFrameCoreConfiguration.class, JavaxRepeatableReadFilterFactory.class})
 public class LingFrameAutoConfiguration {
 
     @Bean

@@ -73,7 +73,12 @@ import java.util.Properties;
 @ConditionalOnWebApplication
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 @EnableConfigurationProperties({StorageProperties.class, AccessTokenProperties.class, ReadOnlyProperties.class, CorsProperties.class, RateLimitProperties.class})
-@ComponentScan(basePackages = {"com.lingframe.dashboard.controller", "com.lingframe.dashboard.security", "com.lingframe.dashboard.storage"})
+// Filter/Interceptor 实现由矩阵源码集 java-javax / java-jakarta 编译进同一坐标
+@ComponentScan(basePackages = {
+        "com.lingframe.dashboard.controller",
+        "com.lingframe.dashboard.security",
+        "com.lingframe.dashboard.storage"
+})
 public class DashboardAutoConfiguration {
 
     public DashboardAutoConfiguration() {
@@ -288,7 +293,7 @@ public class DashboardAutoConfiguration {
         return scheduler;
     }
 
-    // ==================== AccessToken 安全 ====================
+    // ==================== AccessToken / 只读 安全 ====================
 
     @Bean
     @ConditionalOnProperty(prefix = "lingframe.dashboard.access-token", name = "enabled", havingValue = "true")
@@ -296,7 +301,13 @@ public class DashboardAutoConfiguration {
         return new AccessTokenInterceptor(accessTokenProperties);
     }
 
-    // ==================== WebMvc 配置 ====================
+    @Bean
+    @ConditionalOnProperty(prefix = "lingframe.dashboard.readonly", name = "enabled", havingValue = "true")
+    public ReadOnlyInterceptor readOnlyInterceptor(ReadOnlyProperties readOnlyProperties) {
+        return new ReadOnlyInterceptor(readOnlyProperties);
+    }
+
+    // ==================== WebMvc ====================
 
     @Bean
     public WebMvcConfigurer dashboardWebMvcConfigurer(
@@ -315,16 +326,13 @@ public class DashboardAutoConfiguration {
 
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
-                // 只读模式拦截器（优先级高于 token 拦截器）
                 if (readOnlyInterceptor != null) {
                     registry.addInterceptor(readOnlyInterceptor)
                             .addPathPatterns("/lingframe/dashboard/**")
                             .excludePathPatterns(
                                     "/lingframe/dashboard/ui/**",
-                                    "/lingframe/dashboard/stream"
-                            );
+                                    "/lingframe/dashboard/stream");
                 }
-                // Token 认证拦截器
                 if (accessTokenInterceptor != null) {
                     registry.addInterceptor(accessTokenInterceptor)
                             .addPathPatterns(
@@ -336,16 +344,9 @@ public class DashboardAutoConfiguration {
                                     "/lingframe/dashboard/packages/**",
                                     "/lingframe/dashboard/contract-routing/**",
                                     "/lingframe/dashboard/migration/**",
-                                    "/lingframe/dashboard/stream-ticket"
-                            );
+                                    "/lingframe/dashboard/stream-ticket");
                 }
             }
         };
-    }
-
-    @Bean
-    @ConditionalOnProperty(prefix = "lingframe.dashboard.readonly", name = "enabled", havingValue = "true")
-    public ReadOnlyInterceptor readOnlyInterceptor(ReadOnlyProperties readOnlyProperties) {
-        return new ReadOnlyInterceptor(readOnlyProperties);
     }
 }

@@ -19,7 +19,7 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.web.server.LocalServerPort;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -62,7 +62,7 @@ class ObservabilityClosedLoopIntegrationTest {
         System.setProperty("sun.net.http.allowRestrictedHeaders", "true");
     }
 
-    @LocalServerPort
+    @Value("${local.server.port}")
     private int port;
 
     @Autowired

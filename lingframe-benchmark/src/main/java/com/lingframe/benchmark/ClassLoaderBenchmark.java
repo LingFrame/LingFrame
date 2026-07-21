@@ -236,7 +236,7 @@ public class ClassLoaderBenchmark {
         cw.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, internalClassName, null, superInternalClassName, null);
 
         // 写入一个公开无参构造函数
-        org.objectweb.asm.MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
         mv.visitCode();
         mv.visitVarInsn(Opcodes.ALOAD, 0); // this
         mv.visitMethodInsn(Opcodes.INVOKESPECIAL, superInternalClassName, "<init>", "()V", false);

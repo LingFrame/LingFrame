@@ -15,8 +15,6 @@ import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.storage.GovernanceStorage;
-import com.lingframe.dashboard.security.AccessTokenInterceptor;
-import com.lingframe.dashboard.security.ReadOnlyInterceptor;
 import com.lingframe.dashboard.service.CanaryDecisionService;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
@@ -30,8 +28,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistration;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.io.File;
@@ -40,17 +36,14 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * Dashboard 自动配置单元测试
  * 覆盖：简单 bean 方法返回类型 / dashboardJdbcTemplate 目录创建 / dashboardService 条件注入 /
- *      WebMvcConfigurer 拦截器注册（存在/缺失）
+ *      WebMvc 视图配置（安全拦截器由 dashboard-boot2/boot3 注册）
  */
 class DashboardAutoConfigurationTest {
 
@@ -175,49 +168,9 @@ class DashboardAutoConfigurationTest {
     }
 
     @Test
-    @DisplayName("WebMvcConfigurer 应注册 readOnly 与 accessToken 两个拦截器（均存在时）")
-    void shouldRegisterBothInterceptorsWhenPresent() {
-        ReadOnlyInterceptor readOnly = mock(ReadOnlyInterceptor.class);
-        AccessTokenInterceptor token = mock(AccessTokenInterceptor.class);
-
-        WebMvcConfigurer configurer = config.dashboardWebMvcConfigurer(token, readOnly);
-        InterceptorRegistry registry = mock(InterceptorRegistry.class);
-        InterceptorRegistration reg = mock(InterceptorRegistration.class);
-        when(registry.addInterceptor(any())).thenReturn(reg);
-        when(reg.addPathPatterns(any(String[].class))).thenReturn(reg);
-        when(reg.excludePathPatterns(any(String[].class))).thenReturn(reg);
-
-        configurer.addInterceptors(registry);
-
-        verify(registry).addInterceptor(readOnly);
-        verify(registry).addInterceptor(token);
-    }
-
-    @Test
-    @DisplayName("WebMvcConfigurer 在两个拦截器均为 null 时应跳过注册，不抛异常")
-    void shouldSkipRegistrationWhenBothNull() {
+    @DisplayName("WebMvcConfigurer 应提供视图转发与拦截器装配入口")
+    void shouldCreateWebMvcConfigurer() {
         WebMvcConfigurer configurer = config.dashboardWebMvcConfigurer(null, null);
-        InterceptorRegistry registry = mock(InterceptorRegistry.class);
-
-        configurer.addInterceptors(registry);
-
-        verify(registry, never()).addInterceptor(any());
-    }
-
-    @Test
-    @DisplayName("WebMvcConfigurer 仅 readOnly 存在时应只注册 readOnly")
-    void shouldRegisterOnlyReadOnlyWhenTokenAbsent() {
-        ReadOnlyInterceptor readOnly = mock(ReadOnlyInterceptor.class);
-        WebMvcConfigurer configurer = config.dashboardWebMvcConfigurer(null, readOnly);
-        InterceptorRegistry registry = mock(InterceptorRegistry.class);
-        InterceptorRegistration reg = mock(InterceptorRegistration.class);
-        when(registry.addInterceptor(any())).thenReturn(reg);
-        when(reg.addPathPatterns(any(String[].class))).thenReturn(reg);
-        when(reg.excludePathPatterns(any(String[].class))).thenReturn(reg);
-
-        configurer.addInterceptors(registry);
-
-        verify(registry).addInterceptor(readOnly);
-        verify(registry, never()).addInterceptor(any(AccessTokenInterceptor.class));
+        assertNotNull(configurer);
     }
 }

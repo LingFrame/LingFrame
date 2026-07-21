@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * {@link ThreadReferenceUnloadHook} 的补充测试。
@@ -19,6 +20,11 @@ import static org.junit.jupiter.api.Assertions.*;
  * 已有 {@link JvmUnloadHookTest.ThreadReferenceHookTest} 覆盖基础安全校验与
  * contextClassLoader/ThreadLocal 清理路径。此处补充：Timer 线程中断、
  * 遗留线程池关闭、空/null lingId、幂等调用等分支。
+ * <p>
+ * Timer 线程的 contextClassLoader 通过创建前设置当前线程 TCCL 继承，
+ * 避免反射写 {@code Thread.contextClassLoader}（JDK 16+ 需 add-opens）。
+ * 遗留线程池关闭依赖反射读取 {@code Thread.target}，缺
+ * {@code --add-opens java.base/java.lang=ALL-UNNAMED} 时跳过深度断言。
  */
 @DisplayName("ThreadReferenceUnloadHook 补充测试")
 class ThreadReferenceUnloadHookSupplementTest {
@@ -72,12 +78,18 @@ class ThreadReferenceUnloadHookSupplementTest {
     void shouldInterruptTimerThreadWithMatchingClassLoader() throws Exception {
         ClassLoader customCL = new ClassLoader() {
         };
-        Timer timer = new Timer("ling-timer-test");
         AtomicReference<String> result = new AtomicReference<>("not-cancelled");
         CountDownLatch scheduled = new CountDownLatch(1);
+        Timer timer = null;
+        ClassLoader previousTCCL = Thread.currentThread().getContextClassLoader();
         try {
-            // 设置 Timer 线程的 contextClassLoader 为目标 CL
-            // Timer 内部线程的 contextClassLoader 默认为创建者 CL，这里通过调度任务间接验证清理不抛异常
+            // TimerThread 创建时继承创建者 TCCL，避免反射写 Thread.contextClassLoader
+            Thread.currentThread().setContextClassLoader(customCL);
+            timer = new Timer("ling-timer-test");
+        } finally {
+            Thread.currentThread().setContextClassLoader(previousTCCL);
+        }
+        try {
             timer.schedule(new TimerTask() {
                 @Override
                 public void run() {
@@ -91,36 +103,31 @@ class ThreadReferenceUnloadHookSupplementTest {
                 }
             }, 0);
             // 等待任务开始
-            assertTrue(scheduled.await(2, TimeUnit.SECONDS));
+            assertTrue(scheduled.await(2, TimeUnit.SECONDS), "Timer 任务应已开始");
 
-            // 通过反射设置 Timer 线程的 contextClassLoader，使其匹配目标 CL
-            java.lang.reflect.Field targetField = Thread.class.getDeclaredField("contextClassLoader");
-            targetField.setAccessible(true);
-            // 找到 TimerThread 并设置其 contextClassLoader
-            Thread[] threads = JvmCleanupSupport.getActiveThreads();
-            Thread timerThread = null;
-            for (Thread t : threads) {
-                if (t != null && "java.util.TimerThread".equals(t.getClass().getName())
-                        && t.getName().equals("ling-timer-test")) {
-                    timerThread = t;
-                    break;
-                }
-            }
+            Thread timerThread = findTimerThread("ling-timer-test");
             assertNotNull(timerThread, "应能找到 Timer 线程");
-            targetField.set(timerThread, customCL);
+            assertSame(customCL, timerThread.getContextClassLoader(),
+                    "Timer 线程应继承目标 ClassLoader 作为 TCCL");
 
             // 执行清理，Timer 线程应被中断
             assertDoesNotThrow(() -> hook.cleanup("ling-t", customCL));
             timerThread.join(2000);
-            assertEquals("interrupted", result.get());
+            assertEquals("interrupted", result.get(), "Timer 任务应因线程中断而退出");
         } finally {
-            timer.cancel();
+            if (timer != null) {
+                timer.cancel();
+            }
         }
     }
 
     @Test
     @DisplayName("cleanup 应关闭关联目标 CL 的遗留线程池")
     void shouldShutdownOrphanThreadPool() throws Exception {
+        // 从 Worker 追溯 ThreadPoolExecutor 依赖 Thread.target 反射
+        assumeTrue(JvmCleanupSupport.THREAD_TARGET_FIELD != null,
+                "需要 --add-opens java.base/java.lang=ALL-UNNAMED 以反射读取 Thread.target 关闭遗留线程池");
+
         ClassLoader customCL = new ClassLoader() {
         };
         ExecutorService pool = Executors.newSingleThreadExecutor(r -> {
@@ -129,7 +136,6 @@ class ThreadReferenceUnloadHookSupplementTest {
             return t;
         });
         CountDownLatch started = new CountDownLatch(1);
-        CountDownLatch done = new CountDownLatch(1);
         AtomicReference<String> result = new AtomicReference<>("not-interrupted");
         try {
             pool.submit(() -> {
@@ -142,17 +148,31 @@ class ThreadReferenceUnloadHookSupplementTest {
                     result.set("interrupted");
                 }
             });
-            assertTrue(started.await(2, TimeUnit.SECONDS));
+            assertTrue(started.await(2, TimeUnit.SECONDS), "工作线程应已启动");
 
             // 执行清理，线程池应被 shutdownNow
             assertDoesNotThrow(() -> hook.cleanup("ling-pool", customCL));
-            // 工作线程应被中断
-            assertTrue(done.await(3, TimeUnit.SECONDS) || result.get().equals("interrupted")
-                    || pool.isShutdown());
+            assertTrue(pool.awaitTermination(3, TimeUnit.SECONDS) || pool.isShutdown()
+                            || "interrupted".equals(result.get()),
+                    "线程池应被 shutdown，或工作线程被中断；actual state="
+                            + (pool.isShutdown() ? "shutdown" : "running")
+                            + ", result=" + result.get());
         } finally {
             pool.shutdownNow();
             pool.awaitTermination(2, TimeUnit.SECONDS);
         }
+    }
+
+    /** 按名称定位活动中的 java.util.TimerThread */
+    private static Thread findTimerThread(String name) {
+        for (Thread t : JvmCleanupSupport.getActiveThreads()) {
+            if (t != null
+                    && "java.util.TimerThread".equals(t.getClass().getName())
+                    && name.equals(t.getName())) {
+                return t;
+            }
+        }
+        return null;
     }
 
     @Test

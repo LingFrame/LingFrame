@@ -8,7 +8,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 /**
- * 只读模式拦截器：拒绝所有写操作（POST/DELETE/PUT/PATCH）
+ * 只读模式拦截器。
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -17,17 +17,16 @@ public class ReadOnlyInterceptor implements HandlerInterceptor {
     private final ReadOnlyProperties properties;
 
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
+            throws Exception {
         if (!properties.isEnabled()) {
             return true;
         }
-
         String method = request.getMethod();
-        if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method) || "OPTIONS".equalsIgnoreCase(method)) {
+        if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method)
+                || "OPTIONS".equalsIgnoreCase(method)) {
             return true;
         }
-
-        // 检查白名单路径
         String uri = request.getRequestURI();
         if (properties.getAllowedPaths() != null) {
             for (String allowed : properties.getAllowedPaths()) {
@@ -36,7 +35,6 @@ public class ReadOnlyInterceptor implements HandlerInterceptor {
                 }
             }
         }
-
         log.warn("Write operation rejected in read-only mode: {} {}", method, uri);
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType("application/json;charset=UTF-8");

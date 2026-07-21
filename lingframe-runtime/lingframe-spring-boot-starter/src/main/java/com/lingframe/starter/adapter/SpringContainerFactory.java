@@ -54,10 +54,6 @@ public class SpringContainerFactory implements ContainerFactory {
             Class<?> sourceClass = classLoader.loadClass(mainClass);
 
             // 校验 Servlet API 版本一致性，避免 boot2/boot3 Filter 接口错位。
-            // 灵核用 WebApplicationType.NONE 禁止灵元起 Tomcat，灵元 Filter 通过灵核
-            // Servlet 容器注册；若灵元自带 jakarta.servlet（boot3）而灵核是 javax.servlet
-            // （boot2），Filter 接口签名不匹配，注册必然失败。
-            // 该错误必须前置暴露，否则灵元部署后 Filter/Controller 静默不生效，难以诊断。
             String coreServletApi = detectServletApiPackage(SpringContainerFactory.class.getClassLoader());
             String lingServletApi = detectServletApiPackage(classLoader);
             if (coreServletApi != null && lingServletApi != null
@@ -131,28 +127,25 @@ public class SpringContainerFactory implements ContainerFactory {
     }
 
     /**
-     * 检测 ClassLoader 能看到的 Servlet API 包名。
-     * <p>
-     * LingClassLoader 是 child-first：灵元自带 servlet API 时优先返回灵元版本；
-     * 灵元不带时 fallback 到父加载器（灵核），返回灵核版本。
-     * 两种情况都能正确反映"灵元运行时实际使用的 servlet API"。
+     * 检测 ClassLoader 能看到的 Servlet API 包名前缀。
      *
-     * @return "javax"（Spring Boot 2.x）/ "jakarta"（Spring Boot 3.x）/ null（无 servlet API）
+     * @return "javax" / "jakarta" / null
      */
     private static String detectServletApiPackage(ClassLoader cl) {
-        if (cl == null) return null;
+        if (cl == null) {
+            return null;
+        }
         try {
             cl.loadClass("javax.servlet.Filter");
             return "javax";
         } catch (ClassNotFoundException ignored) {
-            // 灵核/灵元不带 javax.servlet，继续检测 jakarta
+            // continue
         }
         try {
             cl.loadClass("jakarta.servlet.Filter");
             return "jakarta";
         } catch (ClassNotFoundException ignored) {
-            // 也不带 jakarta.servlet
+            return null;
         }
-        return null;
     }
 }

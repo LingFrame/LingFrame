@@ -10,6 +10,7 @@ import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
+import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
 import com.lingframe.starter.web.WebRouteResolver;
 import jakarta.servlet.FilterChain;
@@ -85,7 +86,7 @@ class LingWebGovernanceFilterTest {
         WebRouteResolution resolution = new WebRouteResolution(
                 "GET#/ling-a/demo/detail", metadata, runtime, targetInstance);
 
-        when(webRouteResolver.resolveRoute(request)).thenAnswer(invocation -> {
+        when(webRouteResolver.resolveRoute(any())).thenAnswer(invocation -> {
             request.setAttribute(WebInterfaceManager.REQUEST_ROUTE_RESOLUTION_KEY, resolution);
             request.setAttribute(WebInterfaceManager.REQUEST_METADATA_KEY, metadata);
             request.setAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY, metadata.getVersion());
@@ -146,7 +147,7 @@ class LingWebGovernanceFilterTest {
         DemoController controller = new DemoController();
         Method targetMethod = DemoController.class.getMethod("detail");
 
-        when(webRouteResolver.resolveRoute(request)).thenReturn(null);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(null);
         when(requestMappingHandlerMapping.getHandler(request))
                 .thenReturn(new org.springframework.web.servlet.HandlerExecutionChain(
                         new org.springframework.web.method.HandlerMethod(controller, targetMethod)));
@@ -184,7 +185,7 @@ class LingWebGovernanceFilterTest {
         WebRouteResolution resolution = new WebRouteResolution(
                 "GET#/ling-a/demo/detail", metadata, runtime, null);
 
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
         filter.doFilterInternal(request, response, filterChain);
 
@@ -219,7 +220,7 @@ class LingWebGovernanceFilterTest {
         WebRouteResolution resolution = new WebRouteResolution(
                 "GET#/ling-a/demo/detail", metadata, runtime, targetInstance);
 
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
         filter.doFilterInternal(request, response, filterChain);
 

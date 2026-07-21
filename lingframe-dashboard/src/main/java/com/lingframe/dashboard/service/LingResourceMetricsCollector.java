@@ -5,12 +5,12 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.dashboard.dto.LingResourceMetricsDTO;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import com.sun.management.ThreadMXBean;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -32,9 +32,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>堆分配增量：com.sun.management.ThreadMXBean.getThreadAllocatedBytes 差值，精确</li>
  *   <li>Metaspace：类数 × 平均字节，近似</li>
  * </ul>
+ * 使用 Spring 生命周期接口兼容 SB2/SB3，避免 javax/jakarta.annotation 差异。
  */
 @Slf4j
-public class LingResourceMetricsCollector {
+public class LingResourceMetricsCollector implements InitializingBean, DisposableBean {
 
     private final LingRepository lingRepository;
     private final long metaspaceBytesPerClass;
@@ -57,7 +58,11 @@ public class LingResourceMetricsCollector {
         this.metaspaceBytesPerClass = metaspaceBytesPerClass;
     }
 
-    @PostConstruct
+    @Override
+    public void afterPropertiesSet() {
+        init();
+    }
+
     public void init() {
         java.lang.management.ThreadMXBean bean = ManagementFactory.getThreadMXBean();
         if (bean instanceof ThreadMXBean) {
@@ -85,7 +90,7 @@ public class LingResourceMetricsCollector {
         }
     }
 
-    @PreDestroy
+    @Override
     public void destroy() {
         cache.clear();
         lastAllocatedBytes.clear();

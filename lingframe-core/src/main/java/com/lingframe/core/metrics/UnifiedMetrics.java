@@ -2,6 +2,7 @@ package com.lingframe.core.metrics;
 
 import lombok.Data;
 import java.lang.management.ManagementFactory;
+import java.lang.management.OperatingSystemMXBean;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,8 +38,8 @@ public class UnifiedMetrics {
         SystemMetrics systemMetrics = new SystemMetrics();
         systemMetrics.setUptime(ManagementFactory.getRuntimeMXBean().getUptime());
 
-        java.lang.management.OperatingSystemMXBean osBean =
-            java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+        OperatingSystemMXBean osBean =
+            ManagementFactory.getOperatingSystemMXBean();
         if (osBean.getSystemLoadAverage() >= 0) {
             systemMetrics.setSystemLoadAverage(osBean.getSystemLoadAverage());
         }

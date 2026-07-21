@@ -25,6 +25,7 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- 编译期 provided：共享源码尽量不 import servlet；测试/Mock 与历史兼容仍可 provided 对齐 -->
         <dependency>
             <groupId>javax.servlet</groupId>
             <artifactId>javax.servlet-api</artifactId>

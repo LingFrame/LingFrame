@@ -217,6 +217,6 @@ class AnnotationContractTest {
     }
 
     private static void assertNotNull(Object obj) {
-        org.junit.jupiter.api.Assertions.assertNotNull(obj);
+        assertNotNull(obj);
     }
 }

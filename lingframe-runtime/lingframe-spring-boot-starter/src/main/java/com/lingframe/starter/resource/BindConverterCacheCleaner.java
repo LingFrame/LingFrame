@@ -182,13 +182,23 @@ final class BindConverterCacheCleaner {
         int cleared = 0;
         Class<?> cls = node.getClass();
 
-        // 1. 若 node 是 Map，检查其 value 是否持有目标 CL（直接或通过 classLoader 字段），是则清空
+        // 1. 若 node 是 Map，检查其 value 是否持有目标 CL（直接、通过 classLoader/cl 字段、或经嵌套对象持有），是则清空
         if (node instanceof Map<?, ?>) {
             Map<?, ?> map = (Map<?, ?>) node;
             boolean related = false;
+            // 先判直接持有；再判嵌套持有（value 是 holder 对象，其字段才持有 CL）
             for (Object v : map.values()) {
-                if (v != null && isHoldingTargetClassLoader(v, target)) {
+                if (v == null) {
+                    continue;
+                }
+                if (isHoldingTargetClassLoader(v, target)) {
                     related = true;
+                    break;
+                }
+                int subCleared = clearDefaultEditorsDeep(v, target, lingId, depth + 1, visited);
+                if (subCleared > 0) {
+                    related = true;
+                    cleared += subCleared;
                     break;
                 }
             }

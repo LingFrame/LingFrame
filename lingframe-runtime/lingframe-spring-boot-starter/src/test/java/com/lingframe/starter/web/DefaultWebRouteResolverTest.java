@@ -78,8 +78,8 @@ class DefaultWebRouteResolverTest {
         });
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
-        WebRouteResolution first = resolver.resolveRoute(request);
-        WebRouteResolution second = resolver.resolveRoute(routeKey, request);
+        WebRouteResolution first = resolver.resolveRoute((request));
+        WebRouteResolution second = resolver.resolveRoute(routeKey, (request));
         WebInterfaceMetadata requestMetadata = first.getMetadata();
 
         assertSame(first, second);
@@ -119,7 +119,7 @@ class DefaultWebRouteResolverTest {
         when(v1Instance.getVersion()).thenReturn("v1");
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/42");
-        WebRouteResolution resolution = resolver.resolveRoute(request);
+        WebRouteResolution resolution = resolver.resolveRoute((request));
 
         assertNotNull(resolution);
         assertEquals("ling-a", resolution.getMetadata().getLingId());
@@ -153,7 +153,7 @@ class DefaultWebRouteResolverTest {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
         request.setAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY, "v1");
 
-        WebRouteResolution resolution = resolver.resolveRoute(request);
+        WebRouteResolution resolution = resolver.resolveRoute((request));
 
         assertNotNull(resolution);
         assertEquals(v1Meta, resolution.getMetadata());
@@ -181,7 +181,7 @@ class DefaultWebRouteResolverTest {
         when(trafficRouter.route(anyList(), any(InvocationContext.class))).thenReturn(null);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
-        WebRouteResolution resolution = resolver.resolveRoute(routeKey, request);
+        WebRouteResolution resolution = resolver.resolveRoute(routeKey, (request));
 
         assertNotNull(resolution);
         assertEquals(v2Meta, resolution.getMetadata());
@@ -217,7 +217,7 @@ class DefaultWebRouteResolverTest {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/app/ling-a/demo/42");
         request.setContextPath("/app");
 
-        WebRouteResolution resolution = resolver.resolveRoute(request);
+        WebRouteResolution resolution = resolver.resolveRoute((request));
 
         assertNotNull(resolution);
         assertEquals("ling-a", resolution.getMetadata().getLingId());
@@ -257,7 +257,7 @@ class DefaultWebRouteResolverTest {
         request.setContextPath("/app");
         request.setServletPath("/gateway");
 
-        WebRouteResolution resolution = resolver.resolveRoute(request);
+        WebRouteResolution resolution = resolver.resolveRoute((request));
 
         assertNotNull(resolution);
         assertEquals("ling-a", resolution.getMetadata().getLingId());
@@ -296,7 +296,7 @@ class DefaultWebRouteResolverTest {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/proxy/ling-a/demo/42");
         request.addHeader("X-Forwarded-Prefix", "/proxy");
 
-        WebRouteResolution resolution = resolver.resolveRoute(request);
+        WebRouteResolution resolution = resolver.resolveRoute((request));
 
         assertNotNull(resolution);
         assertEquals("ling-a", resolution.getMetadata().getLingId());
@@ -335,7 +335,7 @@ class DefaultWebRouteResolverTest {
         HandlerMethod handlerMethod = new HandlerMethod(springDocBeanName, beanFactory, targetMethod);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
 
-        WebRouteResolution resolution = resolver.resolveRoute(request, handlerMethod);
+        WebRouteResolution resolution = resolver.resolveRoute((request), handlerMethod);
 
         assertNotNull(resolution);
         assertEquals(metadata, resolution.getMetadata());
@@ -391,7 +391,7 @@ class DefaultWebRouteResolverTest {
         HandlerMethod handlerMethod = new HandlerMethod(springDocBeanName, beanFactory, integerMethod);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/overloaded");
 
-        WebRouteResolution resolution = resolver.resolveRoute(request, handlerMethod);
+        WebRouteResolution resolution = resolver.resolveRoute((request), handlerMethod);
 
         assertNotNull(resolution);
         assertEquals(integerMetadata, resolution.getMetadata());
@@ -435,7 +435,7 @@ class DefaultWebRouteResolverTest {
         request.addParameter("mode", "full");
         request.addHeader("X-Test", "1");
 
-        WebRouteResolution resolution = resolver.resolveRoute(request);
+        WebRouteResolution resolution = resolver.resolveRoute((request));
 
         assertNotNull(resolution);
         assertEquals("full", resolution.getMetadata().getTargetMethodName());
@@ -444,7 +444,7 @@ class DefaultWebRouteResolverTest {
 
         MockHttpServletRequest missingHeader = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
         missingHeader.addParameter("mode", "full");
-        assertNull(resolver.resolveRoute(missingHeader));
+        assertNull(resolver.resolveRoute((missingHeader)));
     }
 
     @Test
@@ -481,7 +481,7 @@ class DefaultWebRouteResolverTest {
         request.setContentType("application/json");
         request.addHeader("Accept", "application/json");
 
-        WebRouteResolution resolution = resolver.resolveRoute(request);
+        WebRouteResolution resolution = resolver.resolveRoute((request));
 
         assertNotNull(resolution);
         assertEquals("createJson", resolution.getMetadata().getTargetMethodName());
@@ -491,7 +491,7 @@ class DefaultWebRouteResolverTest {
         MockHttpServletRequest wrongContentType = new MockHttpServletRequest("POST", "/ling-a/demo/detail");
         wrongContentType.setContentType("application/xml");
         wrongContentType.addHeader("Accept", "application/json");
-        assertNull(resolver.resolveRoute(wrongContentType));
+        assertNull(resolver.resolveRoute((wrongContentType)));
     }
 
     @Test
@@ -527,7 +527,7 @@ class DefaultWebRouteResolverTest {
         when(v1Instance.getVersion()).thenReturn("v1");
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
-        WebRouteResolution resolution = resolver.resolveRoute(request);
+        WebRouteResolution resolution = resolver.resolveRoute((request));
         WebInterfaceMetadata requestMetadata = resolution.getMetadata();
         sourceMetadata.clearReferences();
 

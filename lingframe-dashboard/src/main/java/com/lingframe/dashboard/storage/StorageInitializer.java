@@ -2,21 +2,26 @@ package com.lingframe.dashboard.storage;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.jdbc.core.JdbcTemplate;
-
-import javax.annotation.PostConstruct;
 
 /**
  * 数据库初始化器：建表 + 过期数据清理
+ * <p>
+ * 使用 {@link InitializingBean} 兼容 SB2/SB3，避免 javax/jakarta.annotation 差异。
  */
 @Slf4j
 @RequiredArgsConstructor
-public class StorageInitializer {
+public class StorageInitializer implements InitializingBean {
 
     private final JdbcTemplate jdbcTemplate;
     private final StorageProperties properties;
 
-    @PostConstruct
+    @Override
+    public void afterPropertiesSet() {
+        init();
+    }
+
     public void init() {
         try {
             // 启用 WAL 模式（并发读写性能优化，内存数据库不支持则忽略）

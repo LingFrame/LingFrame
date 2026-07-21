@@ -1,8 +1,11 @@
 package com.lingframe.core.ling;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DefaultLingServiceRegistry implements LingServiceRegistry {
@@ -21,7 +24,7 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     // 反向索引：契约 ID → 灵元 ID 集合
     // 契约 ID 取 FQSID 去掉 "lingId:" 前缀后的剩余部分（裸契约名或短 ID）。
     // 路由层按接口类型查灵元时用此索引，避免 O(n) 遍历全表。
-    private final Map<String, java.util.Set<String>> contractToLingIds = new ConcurrentHashMap<>();
+    private final Map<String, Set<String>> contractToLingIds = new ConcurrentHashMap<>();
 
     // 路由升维：契约 ID → 提供方描述符列表（含权重）
     // L0 provider 级路由的主索引，与 contractToLingIds 并行维护。
@@ -126,9 +129,9 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     }
 
     @Override
-    public java.util.Set<String> getAllContractIds() {
+    public Set<String> getAllContractIds() {
         // 返回不可变快照，避免外部修改影响内部索引
-        return java.util.Collections.unmodifiableSet(new java.util.HashSet<>(providerIndex.keySet()));
+        return Collections.unmodifiableSet(new HashSet<>(providerIndex.keySet()));
     }
 
     @Override
@@ -201,11 +204,11 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         returnTypeCache.keySet().removeIf(k -> k.startsWith(prefix));
         implClassNameCache.keySet().removeIf(k -> k.startsWith(prefix));
         // 清理反向索引：从每个契约的灵元集合中移除本灵元
-        for (java.util.Set<String> lingIdSet : contractToLingIds.values()) {
+        for (Set<String> lingIdSet : contractToLingIds.values()) {
             lingIdSet.remove(lingId);
         }
         // 清空空集合，防内存泄漏
-        contractToLingIds.values().removeIf(java.util.Set::isEmpty);
+        contractToLingIds.values().removeIf(Set::isEmpty);
         // 路由升维：同步清理 providerIndex
         evictProvider(lingId);
     }

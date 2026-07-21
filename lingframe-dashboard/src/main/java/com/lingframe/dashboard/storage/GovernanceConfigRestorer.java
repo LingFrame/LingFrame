@@ -5,8 +5,8 @@ import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.router.CanaryRouter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.InitializingBean;
 
-import javax.annotation.PostConstruct;
 import java.util.Map;
 
 /**
@@ -14,9 +14,11 @@ import java.util.Map;
  * <p>
  * 内部委托 {@link GovernanceAdminService} 持久化 patch，
  * 不再直接持有 {@code LocalGovernanceRegistry}。
+ * <p>
+ * 使用 {@link InitializingBean} 兼容 SB2/SB3，避免 javax/jakarta.annotation 差异。
  */
 @Slf4j
-public class GovernanceConfigRestorer {
+public class GovernanceConfigRestorer implements InitializingBean {
 
     private final GovernanceStorage governanceStorage;
     private final GovernanceAdminService governanceAdmin;
@@ -34,7 +36,11 @@ public class GovernanceConfigRestorer {
         this.objectMapper = objectMapper;
     }
 
-    @PostConstruct
+    @Override
+    public void afterPropertiesSet() {
+        restore();
+    }
+
     public void restore() {
         try {
             Map<String, Map<String, String>> allConfigs = governanceStorage.loadAllConfigs();

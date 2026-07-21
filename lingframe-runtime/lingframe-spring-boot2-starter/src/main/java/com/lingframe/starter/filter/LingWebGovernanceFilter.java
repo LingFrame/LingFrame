@@ -86,17 +86,13 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         try {
             try {
                 Method method = GOVERNANCE_SUPPORT.resolveGovernedMethod(isLingRequest, lingMeta, handlerMethod, lingId);
-                ctx = GOVERNANCE_SUPPORT.buildInvocationContext(
-                        requestFacade, method, lingId, lingMeta, invocationGovernanceResolver);
+                ctx = GOVERNANCE_SUPPORT.buildInvocationContext(requestFacade, method, lingId, lingMeta,
+                        invocationGovernanceResolver);
                 ctx.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
-                if (lingRoute != null) {
+                if (isLingRequest && lingRoute != null) {
                     GOVERNANCE_SUPPORT.preResolveLingTarget(ctx, lingRoute);
                 }
                 pipelineEngine.invoke(ctx);
-                LingInstance routed = ctx.routing().getTargetInstance();
-                if (routed != null) {
-                    request.setAttribute("ling.target.version", routed.getVersion());
-                }
             } catch (LingInvocationException e) {
                 if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
                     log.warn("[Governance] Security rejected (SB2): {} -> {}",

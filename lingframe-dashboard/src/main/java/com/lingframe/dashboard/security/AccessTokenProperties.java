@@ -2,10 +2,10 @@ package com.lingframe.dashboard.security;
 
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.Assert;
 
-import javax.annotation.PostConstruct;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,7 +21,7 @@ import java.util.List;
 @Slf4j
 @Data
 @ConfigurationProperties(prefix = "lingframe.dashboard.access-token")
-public class AccessTokenProperties {
+public class AccessTokenProperties implements InitializingBean {
 
     /**
      * 是否启用令牌认证，默认 true（生产强制鉴权）。
@@ -53,9 +53,12 @@ public class AccessTokenProperties {
     /**
      * 启动期校验：启用鉴权时 token 不能为空，否则启动失败（fail-closed）。
      * 当 {@code allowWeak=false} 时，弱口令同样 fail-closed。
+     * <p>
+     * 使用 {@link InitializingBean} 而非 {@code javax/jakarta.annotation.PostConstruct}，
+     * 保证 SB2/SB3 共用同一 main 源码，不依赖注解包差异。
      */
-    @PostConstruct
-    void validate() {
+    @Override
+    public void afterPropertiesSet() {
         if (enabled) {
             Assert.hasText(token,
                     "lingframe.dashboard.access-token.token must be set when access-token.enabled=true (production). "

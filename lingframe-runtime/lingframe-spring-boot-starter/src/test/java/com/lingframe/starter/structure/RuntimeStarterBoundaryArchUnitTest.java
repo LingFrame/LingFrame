@@ -44,4 +44,14 @@ public class RuntimeStarterBoundaryArchUnitTest {
             noClasses().that().resideInAPackage("..starter..")
                     .and().haveSimpleNameNotContaining("Configuration")
                     .should().callMethod("com.lingframe.core.config.LingFrameConfig", "current");
+
+    /**
+     * 公共 starter 不得直接依赖 javax/jakarta Servlet API：
+     * 双栈差异由 boot2/boot3 薄适配层持有，共享代码只依赖 Facade/SPI。
+     */
+    @ArchTest
+    static final ArchRule noServletApiInSharedStarter =
+            noClasses().that().resideInAPackage("..starter..")
+                    .should().dependOnClassesThat()
+                    .resideInAnyPackage("javax.servlet..", "jakarta.servlet..");
 }

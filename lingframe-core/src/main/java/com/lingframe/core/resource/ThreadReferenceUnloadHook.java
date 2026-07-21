@@ -84,6 +84,18 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
             log.warn("[{}] stopTimerThreads failed", lingId, t);
         }
 
+        // 3.5 HttpClient SelectorManager 守护线程清理
+        // Spring Boot 3 / JDK 11+ 的 jdk.internal.net.http.HttpClientImpl 启动后
+        // 会留下一个 SelectorManager 守护线程（线程名形如 "HttpClient-<id>-SelectorManager"），
+        // 其 contextClassLoader 持有灵元 ClassLoader，阻止灵元 CL 被 GC 回收。
+        // 该线程在灵元 undeploy 链路里不会被自动终止，需要显式中断 + 置空 contextCL。
+        // Spring Boot 2 / JDK 8 下灵元若未使用 HttpClient 则无此线程，扫描为 no-op。
+        try {
+            stopHttpClientSelectorThreads(lingId, classLoader);
+        } catch (Throwable t) {
+            log.warn("[{}] stopHttpClientSelectorThreads failed", lingId, t);
+        }
+
         // 4. 遗留线程池清理
         try {
             shutdownOrphanThreadPools(lingId, classLoader);
@@ -477,6 +489,62 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
         }
         if (count > 0) {
             log.info("[{}] Stopped {} Timer thread(s)", lingId, count);
+        }
+    }
+
+    /**
+     * 终止 jdk.internal.net.http.HttpClientImpl 的 SelectorManager 守护线程。
+     * <p>
+     * JDK 11+ 的 HttpClient 启动后会留下一个 SelectorManager 守护线程
+     * （线程名形如 "HttpClient-<id>-SelectorManager"），其 contextClassLoader
+     * 持有灵元 ClassLoader，阻止灵元 CL 被 GC 回收。
+     * <p>
+     * 该线程在中断后会自行退出 selector 阻塞循环（HttpClient 内部 awaiter 队列为空时收尾），
+     * 若中段后仍存活则显式置空 contextClassLoader，断开对灵元 CL 的强引用。
+     * JDK 8 / 灵元未使用 HttpClient 时扫描为 no-op。
+     */
+    private void stopHttpClientSelectorThreads(String lingId, ClassLoader classLoader) {
+        int count = 0;
+        for (Thread t : JvmCleanupSupport.getActiveThreads()) {
+            if (t == null) continue;
+            if (JvmCleanupSupport.isVirtualThread(t)) continue;
+
+            String name = t.getName();
+            // HttpClient 守护线程名形如 "HttpClient-2-SelectorManager"
+            if (!name.startsWith("HttpClient-") || !name.contains("SelectorManager")) {
+                continue;
+            }
+            ClassLoader tccl = JvmCleanupSupport.getContextClassLoaderSafe(t);
+            if (tccl != classLoader) {
+                // 仅处理关联灵元 CL 的线程，避免误杀其他灵元或灵核 HttpClient
+                continue;
+            }
+
+            log.info("[{}] Interrupting HttpClient SelectorManager thread: {} (state={})",
+                    lingId, name, t.getState());
+            t.interrupt();
+            try {
+                t.join(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+            if (t.isAlive()) {
+                // 中断后仍存活：HttpClient 内部 selector 可能处于长阻塞，
+                // 显式置空 contextClassLoader 断开强引用，允许灵元 CL 被 GC
+                try {
+                    t.setContextClassLoader(null);
+                    log.info("[{}] HttpClient SelectorManager {} still alive after interrupt, cleared contextCL",
+                            lingId, name);
+                } catch (SecurityException ignored) {
+                    // 受 SecurityManager 限制无法置空，记录但仍计入处理数
+                    log.debug("[{}] Cannot clear contextCL on thread {}", lingId, name);
+                }
+            }
+            count++;
+        }
+        if (count > 0) {
+            log.info("[{}] Stopped {} HttpClient SelectorManager thread(s)", lingId, count);
         }
     }
 

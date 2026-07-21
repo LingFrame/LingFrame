@@ -474,31 +474,6 @@ public class WebInterfaceMetadata {
         return false;
     }
 
-    private boolean matchesExpression(String expression, StringValueLookup lookup) {
-        if (expression == null || expression.trim().isEmpty()) {
-            return true;
-        }
-        String trimmed = expression.trim();
-        int notEqualsIndex = trimmed.indexOf("!=");
-        if (notEqualsIndex >= 0) {
-            String name = trimmed.substring(0, notEqualsIndex);
-            String value = trimmed.substring(notEqualsIndex + 2);
-            String actual = lookup.get(name);
-            return actual != null && !actual.equals(value);
-        }
-        int equalsIndex = trimmed.indexOf('=');
-        if (equalsIndex >= 0) {
-            String name = trimmed.substring(0, equalsIndex);
-            String value = trimmed.substring(equalsIndex + 1);
-            String actual = lookup.get(name);
-            return actual != null && actual.equals(value);
-        }
-        if (trimmed.startsWith("!")) {
-            return lookup.get(trimmed.substring(1)) == null;
-        }
-        return lookup.get(trimmed) != null;
-    }
-
     private String readRequestParameter(Object request, String name) {
         return readRequestString(request, "getParameter", name);
     }
@@ -535,6 +510,31 @@ public class WebInterfaceMetadata {
         }
         ReflectionUtils.makeAccessible(method);
         return ReflectionUtils.invokeMethod(method, target);
+    }
+
+    private boolean matchesExpression(String expression, StringValueLookup lookup) {
+        if (expression == null || expression.trim().isEmpty()) {
+            return true;
+        }
+        String trimmed = expression.trim();
+        int notEqualsIndex = trimmed.indexOf("!=");
+        if (notEqualsIndex >= 0) {
+            String name = trimmed.substring(0, notEqualsIndex);
+            String value = trimmed.substring(notEqualsIndex + 2);
+            String actual = lookup.get(name);
+            return actual != null && !actual.equals(value);
+        }
+        int equalsIndex = trimmed.indexOf('=');
+        if (equalsIndex >= 0) {
+            String name = trimmed.substring(0, equalsIndex);
+            String value = trimmed.substring(equalsIndex + 1);
+            String actual = lookup.get(name);
+            return actual != null && actual.equals(value);
+        }
+        if (trimmed.startsWith("!")) {
+            return lookup.get(trimmed.substring(1)) == null;
+        }
+        return lookup.get(trimmed) != null;
     }
 
     private int requestConditionWeight() {
