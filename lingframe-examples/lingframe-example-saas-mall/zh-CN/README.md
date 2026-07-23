@@ -2,7 +2,7 @@
 
 > SaaS 多租户商城 —— 灵珑 v0.4 二维路由机制的最佳活样本。
 
-本示例展示如何把一个单体 Spring Boot 商城应用（[`lingframe-example-ling-mall`](../lingframe-example-ling-mall)）渐进式拆解为「灵核磐石底座 + 多业务灵元扩展」的二维路由架构。
+本示例展示如何把一个单体 Spring Boot 商城应用（[`lingframe-example-ling-mall`](../lingframe-example-ling-mall)）渐进式拆解为“灵核磐石底座 + 多业务灵元扩展”的二维路由架构。
 
 ## 1. 模块组成
 
@@ -17,7 +17,7 @@ lingframe-example-saas-mall
 
 ### 1.1 saas-api：显性契约层
 
-灵核与灵元之间的「跨类加载器公共契约」，定义 5 个业务接口：
+灵核与灵元之间的“跨类加载器公共契约”，定义 5 个业务接口：
 
 | 接口 | 实现方 | 调用方 |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ lingframe-example-saas-mall
 
 ### 1.2 saas-lingcore：灵核磐石底座
 
-- 复用 [`lingframe-example-ling-mall`](../lingframe-example-ling-mall) 全部底座（entity/mapper/service），实现「100% 复用既有投资」
+- 复用 [`lingframe-example-ling-mall`](../lingframe-example-ling-mall) 全部底座（entity/mapper/service），实现“100% 复用既有投资”
 - 3 个 Controller 用 `@LingReference` 注入灵元代理，对外暴露 SaaS 多租户 API
 - 2 个 `@Service` 实现灵核侧契约，供灵元反向调用
 
@@ -150,7 +150,7 @@ lingframe:
 
 ## 5. 从单体到多灵元的迁移路径
 
-本示例展示了「绞杀迁移」的标准 5 步法：
+本示例展示了“绞杀迁移”的标准 5 步法：
 
 ### Step 1：底座复用（已完成）
 
@@ -158,7 +158,7 @@ lingframe:
 
 ### Step 2：抽取显性契约（已完成）
 
-把需要跨灵元调用的接口抽到独立模块 `lingframe-example-saas-api`，包含接口定义 + DTO。这是灵核与灵元之间的「跨类加载器公共契约」。
+把需要跨灵元调用的接口抽到独立模块 `lingframe-example-saas-api`，包含接口定义 + DTO。这是灵核与灵元之间的“跨类加载器公共契约”。
 
 ### Step 3：抽取业务灵元（已完成）
 
@@ -214,6 +214,6 @@ canary 版本通过 `properties.canary: true` 标记，由 `CanaryRoutingFilter`
 
 ## 6. 相关示例
 
-- [lingframe-example-ling-mall](../lingframe-example-ling-mall/README.md) —— 老单体最小化改造为灵元的范例
+- [lingframe-example-ling-mall](../lingframe-example-ling-mall/zh-CN/README.md) —— 老单体最小化改造为灵元的范例
 - [lingframe-example-lingcore-app](../lingframe-example-lingcore-app) —— 灵核示例，演示多灵元加载与 Dashboard 治理
 - [lingframe-example-ling-user](../lingframe-example-ling-user) + [lingframe-example-ling-user-canary](../lingframe-example-ling-user-canary) —— 双版本灰度场景示例

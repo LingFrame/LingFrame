@@ -2,8 +2,8 @@
 
 示例分两条路径，按目标选入口即可。
 
-判用与最短跑通：仓库根 [README.zh-CN.md](../README.zh-CN.md)。  
-公开文档地图：[docs/zh-CN/README.md](../docs/zh-CN/README.md)。
+判用与最短跑通：仓库根 [README.md](../../README.md)。  
+公开文档地图：[docs/zh-CN/README.md](../../docs/zh-CN/README.md)。
 
 ## 1. 入门：怎么开发、怎么用
 
@@ -15,7 +15,7 @@
 | `lingframe-example-order-api` | 共享契约（Shared API） |
 | `lingframe-example-ling-native` | 非 Spring 灵元入口参考 |
 
-最短跑通：仓库根目录 `QUICK_START.zh-CN.md`，或 `docs/zh-CN/getting-started.md`。
+最短跑通：仓库根目录 `QUICK_START.md`，或 `docs/zh-CN/getting-started.md`。
 
 ```powershell
 mvn -pl lingframe-examples/lingframe-example-lingcore-app -am package -DskipTests
@@ -30,7 +30,7 @@ mvn spring-boot:run
 
 | 模块 | 作用 |
 | --- | --- |
-| `lingframe-example-ling-mall` | 单体商城底座（可当作「既有系统」） |
+| `lingframe-example-ling-mall` | 单体商城底座（可当作“既有系统”） |
 | `lingframe-example-saas-mall` | 在 mall 上渐进拆成灵核 + 多业务灵元（oauth / refund / seckill） |
 
 说明与二维路由对照见：

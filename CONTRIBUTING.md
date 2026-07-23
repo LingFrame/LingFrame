@@ -1,113 +1,113 @@
-# Contributing Guidelines
+# 贡献指南
 
-Thank you for your interest in LingFrame.
+感谢你愿意参与灵珑。
 
-This document serves as the outward-facing entry point for contributions.  
-The truly authoritative development rules are strictly bound to [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md).
+这份文档是对外贡献入口。  
+真正权威的开发规则仍以 [DEVELOPMENT_MANUAL.md](DEVELOPMENT_MANUAL.md) 为准。
 
-If this is your first time participating in this project, we strongly advise against jumping straight into modifying code. Adopting the project's stance, familiarizing yourself with the public architecture, and reading the development manual first will save you a formidable amount of detours.
+如果你是第一次参与这个项目，不建议一上来就直接改代码。先理解项目立场、公开架构，再进入开发手册，会少走很多弯路。
 
 ---
 
-## Read These Before You Start
+## 开始之前先读这些
 
 1. [WHY.md](WHY.md)
 2. [MANIFESTO.md](MANIFESTO.md)
 3. [README.md](README.md)
-4. [docs/glossary.md](docs/glossary.md)
-5. [docs/architecture.md](docs/architecture.md)
+4. [docs/zh-CN/faq.md](docs/zh-CN/faq.md)（术语表部分）
+5. [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md)
 6. [DEVELOPMENT_MANUAL.md](DEVELOPMENT_MANUAL.md)
 
-If old comments, old documentation, habitual localized patterns, or incompletely scrubbed legacy implementations conflict with the development manual, the development manual takes unquestioned precedence.
+如果旧注释、旧文档、本地习惯，或未完全清理的旧实现与开发手册冲突，优先遵循开发手册。
 
 ---
 
-## Suitable Directions for First-Time Contributors
+## 适合作为第一次贡献的方向
 
-If this is your first foray into the codebase, give priority consideration to these types of tasks:
+如果这是你第一次参与，优先考虑下面这些类型：
 
-- Documentation amendments matching factual implementations.
-- Readability improvements across example projects.
-- Injecting previously absent tests around already-delivered behaviors.
-- Small bug fixes that do not interact with macro-architectural boundaries.
+- 基于真实实现的文档修正
+- 示例工程可读性提升
+- 已交付行为的测试补充
+- 不触碰架构边界的小型 bug 修复
 
-It is highly discouraged to tackle these on your very first contribution:
+不建议第一次贡献就做：
 
-- Rewriting state machine semantics out-of-the-blue.
-- Toggling Shared API contracts.
-- Modifying classloader hierarchies.
-- Refactoring lifecycle orchestrations.
-- Sweeping global terminology replacements without meticulously syncing accompanying tests and documents.
-
----
-
-## Minimum Requirements Before Submitting
-
-- The codebase builds properly.
-- Relevant tests pass flawlessly.
-- Modifications have carefully refrained from wrecking architectural boundaries.
-- If changes graze state machines, lifecycles, governance semantics, or Shared API thresholds, testing layers MUST be updated concurrently.
-- If changes sway terminology, boundaries, or runtime behaviors, documentation MUST be synchronized properly.
+- 状态机语义重写
+- Shared API 契约变更
+- classloader 边界调整
+- 生命周期编排重构
+- 没有同时核对代码与文档的全局术语重写
 
 ---
 
-## Non-Negotiable Rules
+## 提交前最低要求
 
-- Code comments MUST be in Chinese.
-- Execution logs MUST be in English.
-- In English contexts, use the names `LingCore` and `Ling`.
-- In Chinese contexts, use the names "灵核" and "灵元".
-- Do not delete high-value architectural reasoning, pitfall accounts, or risk-flagging comments merely for the visual sake of "cleaner code".
-- Test display names should be designated in Chinese.
-
----
-
-## The Hard Constraints of the Shared API
-
-The `Shared API` must be respected fundamentally as the **process-level common contract boundary**, not simply treated as just another shared Maven dependency.
-
-- Contract designs adhere to the consumer-driven paradigm.
-- Upgradable pathways must overwhelmingly prioritize backward-compatible, incremental evolutions.
-- Entirely novel Shared API JARs are permitted entry prior to boundary `freeze`.
-- Shared API JARs that are already loaded are absolutely forbidden from being hot-updated or hot-unloaded.
-- Breaking modifications upon existing contracts intrinsically mandate process restarts to execute safely.
-
-This remains one of the single most pivotal contribution constraints across the entire project structure.
+- 项目可以正常构建
+- 相关测试通过
+- 改动没有破坏架构边界
+- 如果涉及状态机、生命周期、治理语义或 Shared API，测试必须同步更新
+- 如果涉及术语、边界或行为变化，文档必须同步更新
 
 ---
 
-## What Counts as Macro-Architectural Overhauls?
+## 不可谈判的规则
 
-The following sets of modifications all count as architectural-grade overhauls. If pull requests for these solely alter code without replenishing test suites and rewriting documentation proofs, they cannot typically be marked complete:
-
-- State machine semantic drift.
-- Orchestration cycle phase shifts.
-- Re-aligning write authority and ownership boundaries.
-- Classloader isolation revisions.
-- Shared API contract ruptures.
-- Semantic changes around `timeout`, `permission`, `unload`, or `audit` assertions.
-
-If you interact with these zones, your PR must explicitly spell out the motivation and blast radius.
+- 注释必须使用中文
+- 日志必须使用英文
+- 英文语境中使用 `LingCore`、`Ling`
+- 中文语境中使用“灵核”“灵元”
+- 不要为了“代码更整洁”删除高价值的设计原因、踩坑说明或风险警告注释
+- 测试展示名应使用中文
 
 ---
 
-## A Pragmatic Contribution Flow
+## Shared API 的硬约束
 
-1. Sync up with the absolute latest upstream code.
-2. Read the relevant document paths before laying a finger on files.
-3. Fix the active crisis utilizing minimal-impact alterations.
-4. Extensively verify the build and surrounding ecosystem tests.
-5. Double-check whether any structural documentation inherently mandates rewriting.
-6. Submit a PR explicitly spelling out:
-   - What changed.
-   - Why it changed exactly that way.
-   - How it can be verified.
-   - Note down whether it bruised architecture, tests, or documentation arrays.
+必须把 `Shared API` 当作**进程级公共契约边界**，而不是普通共享依赖。
+
+- 契约设计遵循消费者驱动
+- 优先采用可向后兼容的增量演进
+- 全新的 shared API JAR 可以在边界 freeze 前引入
+- 已经加载的 shared API JAR 不允许热更新、热卸载
+- 已有契约的变更需要通过重启进程生效
+
+这是整个项目里最重要的贡献约束之一。
 
 ---
 
-## A Final Caution to First-Timers
+## 哪些改动属于架构级改动
 
-> Inside LingFrame: when in doubt, prioritize protecting the boundaries.
+下面这些改动都属于架构级变更，如果只改代码、不补测试和文档，通常不能算完成：
 
-Countless actually hazardous PRs rarely enter masquerading as "massive sweeping rewrites." Instead, they creep in starting as tiny, "convenience-minded tweaks" that slowly whittle down Shared API disciplines, erode lifecycle ownership restrictions, and disintegrate governance consistencies.
+- 状态机语义变更
+- 生命周期编排变更
+- 所有权 / 写边界变更
+- classloader 边界变更
+- Shared API 契约变更
+- `timeout` / `permission` / `unload` / `audit` 语义变更
+
+如果你触碰了这些内容，PR 里必须把原因和影响写清楚。
+
+---
+
+## 一条实用的贡献流程
+
+1. 同步最新代码。
+2. 在动手前先读相关文档。
+3. 用最小改动解决当前问题。
+4. 验证构建与相关测试。
+5. 重新检查文档是否也需要更新。
+6. 提交 PR 时清楚说明：
+   - 改了什么
+   - 为什么这样改
+   - 如何验证
+   - 是否影响架构、测试、文档
+
+---
+
+## 给第一次参与者的一句提醒
+
+> 在灵珑里，不确定时优先保护边界。
+
+很多真正危险的改动，看起来都不像“大改动”，而是从一个“顺手方便一下”的小改动开始，慢慢削弱 shared API 纪律、生命周期所有权，或治理一致性。

@@ -55,3 +55,7 @@ lingframe-benchmark/develop
 /.arts
 /.atomcode
 /.project-meta
+.mcp.json
+.codex/config.toml
+/docs/release
+/tools

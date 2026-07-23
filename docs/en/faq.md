@@ -24,7 +24,7 @@ This document collects common questions and answers about LingFrame.
 
 ### Q3: What is the relationship between LingFrame and Spring Boot?
 
-**A:** LingFrame is built on top of Spring Boot and provides a Spring Boot Starter for rapid integration. It is not a replacement for Spring Boot, but rather provides runtime governance capabilities on top of it.
+**A:** LingFrame is not a Spring Boot replacement. The governance kernel (`lingframe-core`) is Spring-agnostic; Spring Boot integration lives in `lingframe-runtime` via a **shared** `lingframe-spring-boot-starter` plus stack-specific `lingframe-spring-boot2-starter` / `lingframe-spring-boot3-starter` (typed `javax` / `jakarta`, no reflective Servlet probing). Dashboard stays a **single GAV** with matrix source sets. Detail: [DEVELOPMENT_MANUAL.md](../DEVELOPMENT_MANUAL.en.md) section 5.2.
 
 ### Q4: What is a "Ling"?
 
@@ -36,13 +36,23 @@ This document collects common questions and answers about LingFrame.
 
 ✅ Suitable for:
 - Monolithic systems that have been running for years and cannot easily incur downtime or be rewritten.
+- Large microservices whose internal code has bloated into a "distributed monolith" and need internal evolution boundaries.
 - Teams that want to gradually introduce isolation, canary routing, rate limiting, circuit breaking, and permission auditing.
 - Scenarios where you want to establish runtime order without tearing down the existing system.
 
 ❌ Not suitable for:
-- Being a microservices replacement.
+- Being a microservices replacement (they are complementary, not mutually exclusive).
 - Purely frontend plugin marketplaces or low-code platforms.
 - Expecting automatic elimination of underlying business complexity.
+
+### Q6: What is the relationship between LingFrame and Microservices / Service Mesh?
+
+**A:** They are complementary, not mutually exclusive.
+
+- **Microservices & Service Mesh solve inter-process** partitioning, deployment, networking, and inter-service communication;
+- **LingFrame solves intra-process** boundary establishment, runtime governance, and gradual evolution inside a single JVM.
+
+LingFrame does not answer "how many services a system should be split into"; it answers "how each service should continuously evolve internally." If a microservice grows too large over time (becoming a distributed monolith), LingFrame can be introduced inside that service process to isolate new and legacy features into lings, achieving gradual refactoring without embarking on a high-risk, cross-network rewrite.
 
 ---
 
@@ -56,7 +66,7 @@ This document collects common questions and answers about LingFrame.
 2. **Event-Driven Linkage**: The two layers are linked via events, avoiding objects directly writing states backwards and forwards.
 3. **Observability**: State mutations are accompanied by published events, which makes tracking easier.
 
-See [Runtime Dual-State Machine Architecture](runtime-dual-state-machine-architecture.md) for more details.
+See [Architecture Design](architecture.md) §1 for more details.
 
 ### Q7: Why can't the Shared API be hot-updated?
 
@@ -243,25 +253,25 @@ lingframe:
 
 ### Q22: Which JDK versions does LingFrame support?
 
-**A:**
+**A:** Build/CI matrices in this repo:
 
-| JDK Version | Support Level |
-|----------|----------|
-| JDK 8 | ✅ Supported (Some features constrained) |
-| JDK 11 | ✅ Supported |
-| JDK 17 | ✅ Fully Supported (Recommended) |
-| JDK 21 | ✅ Supported |
+| Path | JDK | Notes |
+| --- | --- | --- |
+| **Primary / examples** | **JDK 8** | Default Maven profile + Spring Boot 2.7 |
+| **Support line** | **JDK 17** | Explicit `-Pspring-boot3` (Spring Boot 3.x) |
+
+Other LTS JDKs may work for applications, but published verification is the two matrices above. Always `clean` when switching matrices (SB3 class files fail on JDK 8).
 
 ### Q23: Which Spring Boot versions does LingFrame support?
 
 **A:**
 
-| Spring Boot Version | Support Level |
-|------------------|----------|
-| 2.7.x | ✅ Supported (Some features constrained) |
-| 3.0.x | ✅ Supported |
-| 3.1.x | ✅ Supported |
-| 3.2.x | ✅ Fully Supported (Recommended) |
+| Path | Spring Boot | Starter coordinate |
+| --- | --- | --- |
+| **Primary** | **2.7.x** | `lingframe-spring-boot2-starter` (+ shared `lingframe-spring-boot-starter`) |
+| **Support** | **3.x** (repo BOM tracks a current 3.5.x line) | `lingframe-spring-boot3-starter` (+ shared starter) |
+
+Do not put Servlet types in shared code or invent dual dashboard GAVs. See [production-hardening](production-hardening.md) section 6 and the development manual section 5.2.
 
 ### Q24: How can I contribute to LingFrame?
 
@@ -293,3 +303,73 @@ lingframe:
 ### Q28: When will Messaging Proxies (Kafka/RabbitMQ) be supported?
 
 **A:** This is planned during the Phase 5 Ecosystem Expansion phase. See the [Roadmap](roadmap.md) for details.
+
+---
+
+## 8. Glossary — Terms At A Glance
+
+This section is prepared for developers encountering LingFrame for the first time.
+If other documents feel too dense, read through this section first. Returning to the other material will feel remarkably easier.
+
+### LingFrame
+
+The overall project name: an order-keeping architecture and JVM runtime governance framework for long-running systems.
+
+### LingCore
+
+The LingCore process: the application side that runs the governance kernel.
+
+### Ling
+
+The isolated business unit that is independently loaded, managed, and governed within the LingCore process.
+
+### Shared API
+
+The process-level shared contract boundary bridging LingCore to Lings, or Lings to Lings.
+
+It is currently utilized to carry:
+
+- Interfaces
+- DTOs (Data Transfer Objects)
+- Essential annotations
+- Essential constants
+
+### Governance Kernel
+
+The core runtime layer responsible for applying unified application governance rules.
+
+### Invocation Pipeline
+
+The strictly ordered primary execution chain running all invocation governance decisions.
+
+### `NORMAL`
+
+Execution mode: exercises all governance components alongside the actual terminal invocation.
+
+### `SIMULATION`
+
+Execution mode: exercises the real governance path logic, but does not produce actual business side-effects.
+
+### `GOVERN_ONLY`
+
+Execution mode: exercises the governance flow, but cuts the Pipeline short, omitting the final terminal invocation entirely.
+
+### `InstanceStatus`
+
+The distinct lifecycle state belonging to a specific Ling instance.
+
+### `RuntimeStatus`
+
+The macro availability state that a Ling as a whole currently exposes from the perspective of LingCore.
+
+### Dashboard
+
+Right now, the Dashboard should be more deeply understood as the runtime governance control surface, rather than merely a frontend webpage.
+
+### Canary
+
+Routing a deliberate subset of incoming traffic to a specific Ling version or instance, instead of dispatching everything to the default path.
+
+### Unload Cleanup
+
+When a Ling is explicitly removed, the runtime will drain requests, evict resources, clear classloader-linked states, and finally execute passive leak diagnostics.

@@ -1,75 +1,75 @@
 # LingFrame Quick Start
 
-This page does one thing only: **get LingFrame running through the shortest possible path**.
+这份文档只做一件事：**用最短路径把 LingFrame 跑起来。**
 
-If you only want to know whether the sample boots, the dashboard opens, and a real request works, this is enough.  
-For full onboarding, continue to `docs/getting-started.md`.
+如果你想先判断“能不能跑、界面能不能看到、请求能不能打通”，看这份就够了。  
+如果你想正式入门，再去看 `docs/getting-started.md`。
 
-## 1. Requirements
+## 1. 环境要求
 
-- JDK 17+ recommended
+- JDK 17+ 推荐
 - Maven 3.8+
 
-## 2. Build the sample
+## 2. 构建示例
 
-From the repository root:
+在仓库根目录执行：
 
 ```powershell
 mvn -pl lingframe-examples/lingframe-example-lingcore-app -am package -DskipTests
 ```
 
-## 3. Start the sample app
+## 3. 启动示例应用
 
 ```powershell
 cd .\lingframe-examples\lingframe-example-lingcore-app
 mvn spring-boot:run
 ```
 
-Default entry points:
+默认入口：
 
-- App and APIs: `http://localhost:8888`
-- Dashboard: `http://localhost:8888/dashboard.html`
+- 应用与接口：`http://localhost:8888`
+- Dashboard：`http://localhost:8888/dashboard.html`
 
-## 4. Check that lings are loaded
+## 4. 验证灵元是否加载
 
 ```powershell
 curl http://localhost:8888/lingframe/dashboard/lings
 ```
 
-You should normally see:
+正常情况下你会看到：
 
 - `order-ling`
 - `user-ling`
 
-## 5. Send one real request
+## 5. 发一个真实请求
 
 ```powershell
 curl http://localhost:8888/user-ling/user/listUsers
 ```
 
-If it returns normally, the minimum runtime path is working:
+如果返回正常，说明这条最小运行链已经打通：
 
-- LingCore booted
-- lings were loaded
-- web routing is alive
-- dashboard is usable
+- 灵核启动成功
+- 灵元已加载
+- Web 请求可达
+- Dashboard 可观察
 
-## 6. Optional: run one verified regression
+## 6. 可选：跑一条已验证回归
 
-Observability closed loop:
+观测闭环回归：
 
 ```powershell
 mvn -pl lingframe-examples/lingframe-example-lingcore-app -am "-Pspring-boot2,integration-check" verify "-Dit.test=ObservabilityClosedLoopIntegrationTest"
 ```
 
-Browser-level dashboard smoke:
+Dashboard 浏览器级冒烟：
 
 ```powershell
 mvn -pl lingframe-examples/lingframe-example-lingcore-app -am "-Pspring-boot2,integration-check" verify "-Dit.test=DashboardUiSmokeIntegrationTest"
 ```
 
-## 7. What to read next
+## 7. 下一步看什么
 
-- Full onboarding: `docs/getting-started.md`
-- Dashboard docs: `docs/dashboard.md`
-- Project overview: `README.md`
+- 正式入门：`docs/getting-started.md`
+- Dashboard 说明：`docs/dashboard.md`
+- 项目总览：`README.md`

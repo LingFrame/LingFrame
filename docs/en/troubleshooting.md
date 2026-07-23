@@ -104,6 +104,21 @@ lingframe:
   dev-mode: true  # Enable DEV_AGGRESSIVE leak diagnostics in development mode
 ```
 
+### 1.4 Third-Party Reflective Scan Conflict (SpringDoc / Swagger)
+
+**Symptom:** Under Spring Boot 3 + JDK 17+ with SpringDoc, `NoClassDefFoundError` or a class-loading deadlock may occur.
+
+**Cause:** SpringDoc's OpenAPI scanner reflectively traverses the entire application at container startup or on first request (even touching classes across distinct ClassLoaders). If a ling's internal types leak into controller signatures or properties, the scanner triggers chained class loading across the `LingClassLoader` / `AppClassLoader` boundary, leading to `ClassNotFoundException` or `LinkageError`.
+
+**Solution:**
+1. **Hide models**: avoid exposing undefined ling-private models in Shared API to controller signatures.
+2. **Package filtering**: in `application.yml`, configure SpringDoc's `packages-to-scan` to scan only the main app package and **exclude ling packages**:
+```yaml
+springdoc:
+  packages-to-scan: com.my.core.app
+```
+3. **Environment isolation**: enable SpringDoc only in dev; disable in production (recommended).
+
 ---
 
 ## 2. Lifecycle Issues

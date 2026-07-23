@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides unified guidance to AI coding assistants when working with code in this repository.
 
 ---
 
@@ -14,8 +14,8 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 | 来源 | 角色 |
 | --- | --- |
-| [DEVELOPMENT_MANUAL.zh-CN.md](DEVELOPMENT_MANUAL.zh-CN.md) | **开发规范唯一真源**；与旧文档/实现冲突时，以本手册 + 当前代码事实为准 |
-| [AI_ASSISTANT_GUIDE.zh-CN.md](AI_ASSISTANT_GUIDE.zh-CN.md) | AI 额外执行规则（不重复手册全文） |
+| [DEVELOPMENT_MANUAL.md](DEVELOPMENT_MANUAL.md) | **开发规范唯一真源**；与旧文档/实现冲突时，以本手册 + 当前代码事实为准 |
+| [AGENTS.md](AGENTS.md) | AI 助手统一工作入口（不重复手册全文） |
 | [MANIFESTO.md](MANIFESTO.md) / [WHY.md](WHY.md) | 风格与价值观冲突时的上位依据 |
 | [docs/development/](docs/development/) | 内部开发区：`proposal` / `assessment` / `archive` **不得**当作现行规范；须与手册和代码交叉确认 |
 
@@ -61,7 +61,7 @@ mvn -pl lingframe-examples/lingframe-example-lingcore-app -am package -DskipTest
 cd lingframe-examples/lingframe-example-lingcore-app && mvn spring-boot:run
 # 默认 http://localhost:8888 ，Dashboard: /dashboard.html
 
-# 可选集成回归（见 QUICK_START.zh-CN.md）
+# 可选集成回归（见 QUICK_START.md）
 mvn -pl lingframe-examples/lingframe-example-lingcore-app -am "-Pspring-boot2,integration-check" verify "-Dit.test=ObservabilityClosedLoopIntegrationTest"
 
 # JMH 基准（非默认模块）
@@ -80,12 +80,14 @@ mvn -pl lingframe-benchmark package -Pbenchmark -DskipTests
 | --- | --- | --- |
 | `lingframe-api` | 契约层：接口、注解、异常、安全抽象 | 放业务实现、重依赖 |
 | `lingframe-core` | 治理内核：流水线、路由、状态机、生命周期、事件总线 | 依赖任何生态环境（不以 Spring 为设计前提） |
-| `lingframe-runtime` | 运行时适配：`spring-boot-starter` + SB2/SB3 starter + `native`；Web 治理过滤器、Bean 拦截 | 反向污染 `lingframe-core` |
+| `lingframe-runtime` | 运行时适配：公共 `spring-boot-starter` + 栈专属 `spring-boot2/3-starter` + `native`；Web 治理过滤器、Bean 拦截 | 反向污染 `lingframe-core`；禁止在公共 starter 反射探测 Servlet |
 | `lingframe-infrastructure` | 基础设施代理：`infra-storage` / `infra-cache` 等 | 让灵元直接穿透底层设施 |
-| `lingframe-dashboard` | 治理控制面：生命周期、灰度、模拟、SSE | 越权写入核心内部状态 |
+| `lingframe-dashboard` | 治理控制面：生命周期、灰度、模拟、SSE；**单 GAV**，Servlet 差异在 `java-javax` / `java-jakarta` 矩阵源码集 | 越权写入核心内部状态；禁止拆 dashboard-boot2/3 双坐标 |
 | `lingframe-examples` | 示例灵核应用与灵元 | 生产代码 / 架构事实来源 |
 
 灵元只能依赖 `lingframe-api`，**禁止**依赖 `lingframe-core`。
+
+**双栈（摘要，细则见手册第 5.2 节）**：默认 `-Pspring-boot2`（JDK 8，示例主路径）；`-Pspring-boot3`（JDK 17，支持线）。Runtime 用双 starter 类型化差异；Dashboard 用单 artifact + `build-helper` 矩阵源码集。切换矩阵务必 `clean`。
 
 定位入口（不全列类树）：
 
@@ -153,6 +155,7 @@ SPI/动态过滤器不得占用内置 order 保留位。
 - **全新 Shared API JAR 可热加载**；**已进入共享边界的 JAR 不允许热更新或热卸载**；替换/破坏性变更必须**重启进程**
 - `SharedApiManager` 启动边界：预加载 → 注册包前缀 → **冻结** → 再加载灵元
 - 类加载权威：`LingInstance.getClassLoader()`，不要把 TCCL 当隔离真源
+- 隔离边界诚实表述见 `DEVELOPMENT_MANUAL` §6.4.5。代码注释 / 文档 / 提交说明里**禁止**写「完全隔离」「绝对隔离」「架构保证零引用」「永不进入灵核静态域」；正确表述是「类型隔离」「编排隔离」「卸载后可证 GC」「BeanFactory 层隔离」
 
 ---
 
@@ -183,6 +186,13 @@ SPI/动态过滤器不得占用内置 order 保留位。
 - 禁止扩大字符串魔法键 / 隐式状态
 - 禁止为兼容保留已确认错误的旧边界
 - 禁止删除高价值设计注释、踩坑说明、风险提示
+- **职责分职（禁止混用）**：
+  - **切流 / 停流** → 二维路由、灰度权重、契约权重
+  - **启停授权** → `LING_ENABLE` 等 capability
+  - **RuntimeStatus** → 实例聚合**事实**，禁止用状态机表达切流
+  - **真下线回收** → 卸载（STOPPING → REMOVED）
+- **RuntimeCoordinator.register 时序**：实例状态事件出现前必须先 `register(lingId)`（生产：`ensureRuntimeForDeployment`）；禁止依赖事件防御性 register
+- **DB 治理边界**：存储权限主要覆盖 **Spring DataSource Bean 代理路径**；`DriverManager` / 手搓连接 / 非 Bean 池可绕过——模型边界须诚实，禁止吹成全路径沙箱
 - 反射 / JVM 深水区补丁仅在必要时使用，必须封装并配套风险说明、测试与可观测性
 - 治理语义（timeout、permission、audit、unload、routing fallback、状态含义等）必须可证明：有归属、有失败路径、有日志/事件/测试
 

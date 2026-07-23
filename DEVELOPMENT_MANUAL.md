@@ -1,219 +1,219 @@
-# LingFrame Development Manual
+# 灵珑开发手册
 
-> This manual is the current single source of truth for LingFrame development rules.
+> 本手册是灵珑当前阶段的统一开发规范源。
 >
-> It is intended for:
-> - newcomers entering the repository for the first time
-> - maintainers working on architecture, code, tests, and documentation
-> - any AI assistant that modifies code, tests, or docs in this repository
+> 适用对象：
+> - 第一次进入仓库的新同学
+> - 参与架构、开发、测试、文档编写的维护者
+> - 任何会修改本仓库代码、文档、测试的 AI 助手
 >
-> If older documents, historical habits, or local implementations conflict with this manual, follow this manual, [MANIFESTO.md](MANIFESTO.md), [WHY.md](WHY.md), and the current code facts.
+> 若旧文档、历史习惯、局部实现与本手册冲突，以本手册、[MANIFESTO.md](MANIFESTO.md)、[WHY.md](WHY.md) 与当前代码事实为准。
 
 ---
 
-## 1. Core Principles
+## 1. 总原则
 
-If you only remember a few things, remember these six first:
+如果你只记得几件事，就先记住下面这 6 条：
 
-1. **The first principle is to serve people, and to serve them over the long term.**
-2. **LingFrame is first a JVM runtime governance framework for long-running single-process systems, not a feature bundle.**
-3. **Converge boundaries, isolation, permission, reclamation, and observability before discussing feature expansion.**
-4. **Complexity will not disappear, but it must stay in places that are controllable, explainable, and verifiable.**
-5. **Every design must answer first: who has write authority, who is read-only, and who is responsible for orchestration.**
-6. **If newcomers cannot understand the docs, if semantics cannot be verified, or if governance cannot be traced, the work is not complete.**
+1. **第一原则是为人服务，而且是长期地为人服务。**
+2. **灵珑首先是面向 JVM 单进程长期运行系统的运行时治理框架，不是功能集合。**
+3. **先收束边界、隔离、权限、回收、可观测，再讨论功能扩张。**
+4. **复杂性不会消失，但必须待在可控、可解释、可验证的位置。**
+5. **任何设计都要先回答：谁有写权限，谁只读，谁负责编排。**
+6. **新人看不懂的文档、无法验证的语义、无法追踪的治理，都不算完成。**
 
-When you are unsure about a change, return to these six points first.
-
----
-
-## 2. The LingFrame Style
-
-LingFrame style is not just a writing tone. It is a stable set of engineering judgments.
-
-### 2.1 What LingFrame Prefers
-
-- serve people instead of sacrificing understanding cost, maintenance experience, and collaboration confidence for technical perfection
-- prioritize boundaries instead of adding features first and constraints later
-- keep a single source of truth instead of letting multiple objects maintain parallel state
-- prioritize runtime governance instead of pushing problems downstream to deployment shape
-- keep the skeleton stable while allowing implementation replacement
-- keep long-running behavior observable instead of only being "theoretically maintainable"
-- stay pragmatic, low-intrusion, reversible, and verifiable instead of romanticizing rewrites
-
-### 2.2 Signals That Do Not Fit LingFrame
-
-If an approach is technically possible, but it:
-
-- expands implicit state and stringly typed magic keys
-- keeps pushing complexity into Spring / JVM deep-water patches
-- depends on "let it pass by default" instead of clear boundaries
-- makes timeout, unload, permission, or similar semantics impossible to prove
-- sacrifices understanding and maintenance experience for architectural neatness
-- scatters write authority across multiple objects and layers
-- keeps a boundary that is already known to be wrong only for compatibility
-
-then it usually does not fit the LingFrame style.
+当你对某个改动拿不准时，先回到这 6 条。
 
 ---
 
-## 3. Terminology And Expression
+## 2. 灵珑风格
 
-Terminology must stay consistent. Do not let different docs, code, logs, and tests use different words for the same concept.
+灵珑的风格不是“文学气质”，而是一套稳定的工程判断。
 
-| Term | Meaning | Avoid |
+### 2.1 灵珑偏好的方向
+
+- 为人服务，而不是为了技术完美牺牲理解成本、维护体验与协作信心
+- 边界优先，而不是先堆功能再回头补约束
+- 唯一真源，而不是多个对象各自维护一份状态
+- 运行时治理优先，而不是把问题一直推给部署形态
+- 骨架稳定、实现可替换，而不是频繁改动公共语义
+- 长期运行可观测，而不是只在理论上“应该可修”
+- 务实、低侵入、可回退、可验证，而不是浪漫化重构
+
+### 2.2 不符合灵珑风格的信号
+
+如果一个方案虽然“技术上能做”，但它：
+
+- 扩大隐式状态和字符串魔法键
+- 把复杂性继续堆进 Spring / JVM 深水区补丁
+- 依赖“默认兜底放过”而不是边界清晰
+- 让 timeout、卸载、权限等语义无法证明
+- 为了架构整洁牺牲理解成本和维护体验
+- 让写权限散落到多个对象、多个层次
+- 为了兼容保留已经确认错误的旧边界
+
+那它通常就不符合灵珑风格。
+
+---
+
+## 3. 术语与表达
+
+术语必须统一。不要在不同文档、代码、日志、测试里各叫各的。
+
+| 术语 | 含义 | 禁止或不推荐 |
 | --- | --- | --- |
-| LingFrame | the whole project / the whole framework | Ling plugin system, plugin platform |
-| LingCore | the core process / core application side that carries governance capabilities | Host |
-| Ling | a governed, isolated, loadable / unloadable runtime unit | Plugin |
-| Runtime | the runtime aggregate view of a ling inside LingCore | host state object |
-| Instance | one concrete running entity of one ling version | version object, slot object |
-| Shared API | the shared interface and DTO contract layer between lings | shared implementation, shared business logic |
-| Governance Kernel | the governance capability set provided by `lingframe-core` | business layer, application layer |
+| 灵珑 | 整个项目 / 整个框架 | Ling 插件系统、插件平台 |
+| 灵核 | 承载治理能力的核心进程 / 核心应用侧 | 宿主、Host |
+| 灵元 | 被治理、被隔离、可装载 / 卸载的运行单元 | 插件、Plugin |
+| 运行时 | 某个灵元在灵核内的运行时聚合视图 | 宿主状态对象 |
+| 实例 | 某个灵元某个版本的具体运行实体 | 版本对象、槽位对象 |
+| 共享 API | 灵元之间共享的接口与 DTO 契约层 | 共享实现、共享业务逻辑 |
+| 治理内核 | `lingframe-core` 提供的治理能力集合 | 业务层、应用层 |
 
-### 3.1 Hard Rules For Terminology
+### 3.1 术语硬规则
 
-- In Chinese contexts, the project name should be written as "灵珑"; if English needs to be added, use "灵珑（LingFrame）" or "灵珑 · LingFrame"
-- In English contexts, the project name should be `LingFrame`
-- Do not write "LingFrame（灵珑）" or "LingFrame's ..." in Chinese contexts
-- In docs, comments, and review notes, use `LingCore` and `Ling` consistently in English contexts
-- Do not reintroduce "Host" where `LingCore` is the established term
-- Do not downgrade `Ling` back to `Plugin`
-- If old fields or old docs still contain historical wording, new content must not continue that wording
-
----
-
-## 4. The Minimum Mental Model For Newcomers
-
-When you first enter the codebase, do not try to memorize every class at once. Start with this minimum model.
-
-### 4.1 The Two-Layer Runtime State Model
-
-- The **instance layer** answers: what lifecycle phase is this concrete instance actually in right now
-- The **runtime layer** answers: what macro status does this ling present externally as a whole
-- The two layers are related, but they do not directly modify each other
-- Their linkage should depend on events and snapshots, not on objects holding each other and mutating each other freely
-
-### 4.2 Five Key Roles
-
-| Role | Responsibility | Core Constraint |
-| --- | --- | --- |
-| `LingInstance` | carrier of a single ling instance | must not expose public write access to the state machine |
-| `InstanceCoordinator` | the only write entry for instance state | only this role may advance instance state |
-| `InstancePool` | manages active members, the default instance, and the dying queue | manages membership only, not the full lifecycle |
-| `LingRuntime` | runtime aggregate for a ling | exposes read-only views externally and must not own runtime state machine write authority |
-| `RuntimeCoordinator` | the only write entry for runtime state | only this role may advance `RuntimeStatus` |
-
-### 4.3 Two Orchestration Roles
-
-| Role | Responsibility | Must Not Do |
-| --- | --- | --- |
-| `DefaultLingLifecycleEngine` | organizes deploy, switch, and unload order | must not bypass coordinators to mutate state directly |
-| `LingUnloadCoordinator` | handles unload cleanup, resource reclamation, and leak detection | must not replace lifecycle orchestration |
-
-If you understand these seven roles, you can usually follow most architectural judgments in the repository.
+- 中文语境下，项目名优先使用“灵珑”；如需补充英文名，写作“灵珑（LingFrame）/ 灵珑 · LingFrame”
+- 英文语境下，项目名使用 `LingFrame`
+- 不要在中文语境中写成“LingFrame（灵珑）”或“LingFrame 的……”
+- 文档、注释、评审说明中统一使用“灵核”“灵元”
+- 不要把灵核重新叫回“宿主”
+- 不要把灵元重新降格成“Plugin”
+- 若旧字段、旧文档仍有历史术语，新增内容不得继续沿用
 
 ---
 
-## 5. Repository Structure And Responsibility Boundaries
+## 4. 新人最小心智模型
 
-| Module | Role | Allowed To Do | Must Not Do |
+第一次进入代码库，不要试图一次性背下所有类。先记住这套最小模型。
+
+### 4.1 运行时双层状态机
+
+- **实例层**回答：某个具体版本实例现在真实处于什么生命周期阶段
+- **运行时层**回答：某个灵元作为整体现在对外呈现什么宏观状态
+- 两层之间有关联，但没有互相直改
+- 联动依赖事件与快照，不是对象之间互相拿着对方乱改
+
+### 4.2 五个关键角色
+
+| 角色 | 作用 | 核心约束 |
+| --- | --- | --- |
+| `LingInstance` | 单个灵元实例的承载体 | 对外不暴露状态机写权限 |
+| `InstanceCoordinator` | 实例状态唯一写入口 | 只有它能推进实例状态 |
+| `InstancePool` | 管理活跃成员、默认实例、濒死队列 | 只管成员关系，不管完整生命周期 |
+| `LingRuntime` | 灵元运行时聚合体 | 对外只暴露只读视图，不持有运行时状态机写权限 |
+| `RuntimeCoordinator` | 运行时状态唯一写入口 | 只有它能推进 `RuntimeStatus` |
+
+### 4.3 两个编排角色
+
+| 角色 | 作用 | 不能做什么 |
+| --- | --- | --- |
+| `DefaultLingLifecycleEngine` | 组织部署、切换、卸载顺序 | 不能绕过 coordinator 直接改状态 |
+| `LingUnloadCoordinator` | 负责卸载清理、资源回收、泄漏检测 | 不能替代生命周期编排 |
+
+如果你理解了这 7 个角色，仓库里大多数架构判断都能看懂。
+
+---
+
+## 5. 仓库结构与职责边界
+
+| 模块 | 角色 | 允许做什么 | 不允许做什么 |
 | --- | --- | --- | --- |
-| `lingframe-api` | contract layer | define required ling interfaces, annotations, and base contracts | hold business implementation or heavy dependencies |
-| `lingframe-core` | governance kernel | lifecycle, state machines, permission, audit, routing, isolation, governance | depend on any specific runtime ecosystem |
-| `lingframe-runtime/*` | runtime adaptation layer | connect the governance kernel to Spring Boot and other runtime ecosystems | push adaptation details back into `lingframe-core` |
-| `lingframe-infrastructure/*` | infrastructure proxy layer | govern DB / cache / messaging and similar capabilities through proxies | let business lings bypass governance and hit low-level infrastructure directly |
-| `lingframe-dashboard` | visualization and governance entry | show state, update governance strategy, trigger governance actions | write internal core state with elevated privileges |
-| `lingframe-examples` | examples and validation | demonstrate typical usage patterns | become the source of truth for core design facts |
+| `lingframe-api` | 契约层 | 定义灵元必须的接口、注解、基础契约 | 放业务实现、放重依赖 |
+| `lingframe-core` | 治理内核 | 生命周期、状态机、权限、审计、路由、隔离、治理 | 依赖任何生态环境 |
+| `lingframe-runtime/*` | 运行时适配层 | 把治理内核接到 Spring Boot 等运行时生态 | 反向污染 `lingframe-core` 的边界 |
+| `lingframe-infrastructure/*` | 基础设施代理层 | 以代理方式接管 DB / Cache / 消息等能力 | 让业务灵元直接穿透到底层设施 |
+| `lingframe-dashboard` | 可视化与治理入口 | 展示状态、更新治理策略、触发治理动作 | 越权写入核心内部状态 |
+| `lingframe-examples` | 示例与验证 | 演示典型使用方式 | 承担核心设计事实来源 |
 
-### 5.1 Dependency Rules
+### 5.1 依赖规则
 
-- business lings depend on `lingframe-api`, not on `lingframe-core`
-- `lingframe-core` should stay as pure Java core as much as possible and must not assume Spring as its design base
-- runtime adaptation belongs in `lingframe-runtime`; do not push adaptation details back into `lingframe-core`
-- infrastructure capabilities should join governance through proxies instead of letting business lings connect to resources directly
+- 业务灵元依赖 `lingframe-api`，不依赖 `lingframe-core`
+- `lingframe-core` 必须尽量保持纯 Java 核心，不以 Spring 为设计前提
+- 运行时适配放在 `lingframe-runtime`，不要反向把适配细节塞回 `lingframe-core`
+- 基础设施能力通过代理接入治理，不让业务灵元裸连资源
 
 ---
 
-## 6. Hard Architectural Constraints
+## 6. 架构硬约束
 
-This chapter is the red line. Violations here are usually not style differences. They are architectural regressions.
+这一章是红线。违反这里的规则，通常不是“风格差异”，而是架构退化。
 
-### 6.1 Write Authority Must Be Clear
+### 6.1 写权限必须清晰
 
-Every design must answer first: who has write authority, who is read-only, and who orchestrates.
+任何设计都必须先回答：谁有写权限，谁只读，谁负责编排。
 
-| Concept | Single Source Of Truth | Single Write Entry | Other Roles |
+| 概念 | 唯一真源 | 唯一写入口 | 其他角色 |
 | --- | --- | --- | --- |
-| instance state | internal state machine inside `LingInstance` | `InstanceCoordinator` | everyone else may only read or react to events |
-| runtime state | internal FSM / snapshot inside `RuntimeCoordinator` | `RuntimeCoordinator` | `LingRuntime` is read-only |
-| instance membership | `InstancePool` | `InstancePool`, driven by orchestration | do not maintain a second membership truth elsewhere |
-| lifecycle phase order | `DefaultLingLifecycleEngine` | the orchestration logic itself | do not scatter sequence logic across objects |
-| unload cleanup | `LingUnloadCoordinator` | the cleanup coordinator | must not be taken over directly by arbitrary business code |
+| 实例状态 | `LingInstance` 内部状态机 | `InstanceCoordinator` | 其他对象只能读或响应事件 |
+| 运行时状态 | `RuntimeCoordinator` 内部 FSM / 快照 | `RuntimeCoordinator` | `LingRuntime` 只读 |
+| 实例成员关系 | `InstancePool` | `InstancePool` 受编排驱动变更 | 不额外维护第二份成员真源 |
+| 生命周期阶段顺序 | `DefaultLingLifecycleEngine` | 编排逻辑本身 | 不能把顺序逻辑散落到各对象 |
+| 卸载清理 | `LingUnloadCoordinator` | 清理协调器 | 不能由任意业务代码直接接管 |
 
-### 6.2 State Machine Rules
+### 6.2 状态机相关规则
 
-- do not operate state machines directly from business code
-- do not let `LingRuntime` own a second runtime FSM again
-- do not let `LingInstance` expose public state mutation APIs
-- do not let `InstancePool` evolve into the overall lifecycle controller
-- do not let orchestration bypass coordinators to mutate state
-- do not reopen state mutation entry points that have already been intentionally converged away
+- 不允许在业务代码中直接操作状态机
+- 不允许让 `LingRuntime` 重新持有第二份 runtime FSM
+- 不允许让 `LingInstance` 暴露公共状态修改 API
+- 不允许让 `InstancePool` 演化成“生命周期总控器”
+- 不允许让编排层跳过 coordinator 直接改状态
+- 不允许为了兼容旧接口重新开放已经收敛掉的状态修改入口
 
-### 6.3 Event Linkage Rules
+### 6.3 事件联动规则
 
-- state linkage should prefer events over objects directly changing each other's state
-- instance-layer events should aggregate upward into the runtime layer; the runtime layer must not tamper with instance facts in reverse
-- runtime aggregation should prefer **snapshots** instead of directly scanning complex object graphs as the only truth
-- before adding a linkage path, explain whether it belongs to the instance layer, runtime layer, membership layer, or unload layer
+- 状态联动优先走事件，不走对象间互相改状态
+- 实例层事件向上汇聚到运行时层，运行时层不反向篡改实例事实
+- 运行时聚合优先使用**快照**，不要直接扫描复杂对象图作为唯一依据
+- 新增联动链路前，先说明它属于实例层、运行时层、成员层还是卸载层
 
-### 6.4 Shared API / ClassLoader Rules
+### 6.4 Shared API / ClassLoader 规则
 
-- put only interfaces, DTOs, and necessary annotations in Shared API, not business implementation
-- the goal of Shared API is contract consistency, not shared logic
-- when adding shared packages, shared JARs, or class-loading boundary rules, always consider unload behavior and type consistency together
-- do not put implementation classes into Shared API for convenience
-- semantics such as class-loader freeze and shared-boundary freeze must be supported by APIs, logs, and tests, not only by verbal agreement
+- Shared API 里只放接口、DTO、必要注解，不放业务实现
+- Shared API 的目标是保证契约一致，不是共享逻辑
+- 新增共享包、共享 JAR、类加载边界规则时，必须同步考虑卸载和类型一致性
+- 不要为了“方便”把实现类塞进共享 API
+- 类加载冻结、共享边界冻结这类语义不能只停留在口头约定，必须有 API、日志和测试支撑
 
-### 6.4.1 Hard Constraints For Shared API Contract Evolution
+### 6.4.1 Shared API 契约演进硬约束
 
-In LingFrame, `Shared API` is not an ordinary dependency. Once it enters the shared class-loading boundary, it becomes a **process-level public contract**.
+灵珑中的 `Shared API` 不是普通依赖，而是进入共享类加载边界后的**进程级公共契约**。
 
-- Shared API design follows **consumer-driven contracts**
-- Shared API only allows **backward-compatible incremental evolution**
-- a **brand-new Shared API JAR** may be hot-loaded into the shared boundary
-- a **Shared API JAR that has already entered the shared boundary** must not be hot-updated or hot-unloaded
-- any Shared API change involving replacement, override, deletion, rollback, rename, or signature change must take effect through a **process restart**
+- Shared API 设计遵循**消费者驱动契约**
+- Shared API 只允许**向后兼容的增量演进**
+- **全新的 Shared API JAR** 可以热加载进入共享边界
+- **已经进入共享边界的 Shared API JAR** 不允许热更新，也不允许热卸载
+- 任何涉及替换、覆盖、删除、回滚、重命名、签名变化的 Shared API 变更，都必须通过**重启进程**生效
 
-### 6.4.2 What Counts As A Breaking Shared API Change
+### 6.4.2 Shared API 破坏性更新判定
 
-The following are always treated as **breaking changes**:
+以下情况一律按**破坏性更新**处理：
 
-- deleting, renaming, or moving existing interfaces, classes, methods, fields, or enum entries
-- changing method signatures, return types, parameter types, generic bounds, or exception contracts
-- changing DTO field names, field types, serialized structure, required-field meaning, or default-value meaning
-- changing annotation semantics in a way that changes existing consumer behavior
-- changing enum value meaning, order, or names in a way that changes existing logic or serialized output
-- any change that requires existing consumers to recompile, readapt, or reinterpret behavior before they can continue to run safely
+- 删除、重命名或移动已有接口、类、方法、字段、枚举项
+- 修改方法签名、返回类型、参数类型、泛型边界、异常契约
+- 修改 DTO 字段名、字段类型、序列化结构、必填语义、默认值语义
+- 修改注解语义，导致既有消费者行为变化
+- 修改枚举值含义、排序、名称，导致既有判断逻辑或序列化结果变化
+- 任何会让既有消费者需要重编译、重适配、重解释才能继续安全运行的变更
 
-### 6.4.3 Shared API Design Recommendations
+### 6.4.3 Shared API 设计建议
 
-- prefer adding new interfaces, default methods, new DTOs, or new versioned namespaces instead of directly changing old contract semantics
-- the shared layer should express "what can be said", not "how it is done"
-- DTOs should remain simple, stable, and serializable instead of holding business logic
-- if a breaking change is truly required, introduce a new contract version explicitly and switch through a process restart
+- 优先新增接口、默认方法、新 DTO、新版本命名空间，不直接改旧契约语义
+- 共享层只表达“能说什么”，不表达“怎么做”
+- DTO 尽量保持简单、稳定、可序列化，不塞业务逻辑
+- 如确实需要破坏性变化，应显式引入新版本契约，并通过进程重启切换
 
-### 6.4.4 Shared API Change Delivery Requirements
+### 6.4.4 Shared API 变更交付要求
 
-Any Shared API change must include at least:
+任何涉及 Shared API 的改动，提交时至少要补齐：
 
-- compatibility notes
-- scope-of-impact notes
-- upgrade instructions
-- tests or validation notes
+- 兼容性说明
+- 影响面说明
+- 升级方式说明
+- 测试或验证说明
 
-### 6.5 Governance Semantics Must Be Provable
+### 6.5 治理语义必须可证明
 
-The following semantics must not rely on "everyone just understands them":
+以下语义不能靠“大家默认懂”：
 
 - timeout
 - permission
@@ -221,249 +221,263 @@ The following semantics must not rely on "everyone just understands them":
 - unload
 - resource cleanup
 - routing fallback
-- the meaning of statuses such as `degraded`, `stopping`, and `removed`
+- degraded / stopping / removed 等状态含义
 
-Requirements:
+要求：
 
-- each semantic must belong to a clearly defined object or state
-- each semantic must be explainable through logs, events, tests, or documentation
-- each semantic must include failure paths, not only success paths
-- each semantic must be verifiable; "it should work in theory" is not acceptable
+- 必须有明确归属对象或归属状态
+- 必须能被日志、事件、测试或文档解释
+- 必须有失败路径，而不只是成功路径
+- 必须能被验证，不接受“理论上应该如此”
 
-### 6.6 Reflection And Low-Level Patch Rules
+### 6.6 反射与底层补丁规则
 
-LingFrame does not ban reflection or JVM deep-water work. It bans **uncontrolled use** of them.
+灵珑不是禁止反射或 JVM 深水区处理，而是禁止**失控地使用**。
 
-If reflection or JVM patching is necessary:
+如果必须做反射或 JVM 补丁：
 
-- first prove that the complexity is necessary, not lazy complexity
-- contain the complexity inside a boundary instead of letting it spread everywhere
-- document the risks, preconditions, failure consequences, and exit strategy
-- provide matching tests, logs, and observability notes
-- do not let an unmaintainable patch become a general project pattern
+- 先证明这是必要复杂性，而不是偷懒复杂性
+- 把复杂性封装在边界内，不能到处散开
+- 写清楚风险、前提、失败后果和退出策略
+- 配套测试、日志和可观测性说明
+- 不把不可维护的补丁扩散成项目通用模式
 
----
+### 6.7 治理流水线与 SPI 过滤器规则
 
-## 7. Development Rules
+治理流水线（Pipeline）是由 `FilterRegistry` 在启动时严格校验和保护的核心防线：
+- **内置保留位**：`[100, 1000]` 范围内的特定 order 被内置基础、路由、权限、隔离过滤器占用。
+- **沙箱约束**：外部通过 SPI 或动态注册注入的 `LingInvocationFilter`，其 `order` 必须避开这些内置保留位（推荐使用 `order < 100` 的前置处理，或在特定保留区间之间的空隙）。
+- **Fail-Fast**：一旦 SPI 过滤器非法占用内置位，内核将在启动期立刻抛出异常并失败，拒绝以“失真的治理链”处理线上流量。
 
-### 7.1 Language And Expression
+### 6.8 非 Bean 数据源（DataSource）代理边界
 
-- comments should be in Chinese
-- logs should be in English
-- test display names, documentation body text, and design explanations should prefer Chinese
-- terminology must follow Chapter 3
-
-### 7.2 Comment Requirements
-
-LingFrame does not pursue surface-level cleanliness. It pursues complete and useful content.
-
-The following comments must be preserved or added when needed:
-
-- design intent
-- boundary explanation
-- concurrency assumptions
-- reasons for state-machine linkage
-- pitfall notes
-- resource reclamation risks
-- necessary but non-obvious ordering constraints
-
-The following must not be done just for style consistency:
-
-- deleting high-value pitfall notes
-- deleting important design explanations
-- deleting risk warnings
-- removing information-rich content only to make the file look cleaner
-
-### 7.3 Types And Structure
-
-- prefer explicit types, enums, state objects, and domain objects
-- use `Map<String, Object>`, attachment bags, and string state keys carefully
-- if string keys are necessary, explain their source, scope, lifecycle, and constraints
-- when adding complex context, prefer extracting named state objects instead of hanging more loose fields onto a large object
-
-### 7.4 API Design
-
-- keep skeleton and constraints stable, while allowing implementation replacement
-- public API naming should express semantics, not only technical actions
-- when designing, ask whether someone can still understand it six months later
-- do not merge two layers of responsibility into one object just to save one class
-
-### 7.5 Exceptions, Logging, And Observability
-
-- error logs must state the object, action, reason, and key context
-- do not swallow exceptions
-- do not throw only at the deepest layer while leaving upper layers silent
-- key governance paths must be understandable from logs
-- when adding a key governance semantic, prefer adding events, logs, or assertions instead of only comments
+- 灵珑的 SQL 治理依赖对 `DataSource` 的代理。
+- 如果是由 Spring 容器管理的 Bean，`LingFrameBeanPostProcessor` 会自动进行拦截与包装。
+- **红线**：如果业务代码或三方件直接通过 `DriverManager`、静态代码块、或自行 `new HikariDataSource()` 创建了不归 Spring 容器管辖的数据源，它们将脱离治理网络。
+- **要求**：开发者必须显式调用 `LingConnectionProxyFactory.wrap(...)` 手动包装此类野生数据源，否则其数据库访问将绕过所有隔离和鉴权规则。
 
 ---
 
-## 8. Testing Rules
+## 7. 开发规范
 
-### 8.1 Basic Rules
+### 7.1 语言与表达
 
-- use JUnit 5 by default
-- use Mockito when mocking is needed
-- prioritize unit tests and contract tests for core architectural behavior
-- test display names should be in Chinese, with `@Nested + @DisplayName` preferred
+- 注释用中文
+- 日志用英文
+- 测试展示名、文档正文、设计说明优先中文
+- 术语统一遵循第 3 章
 
-### 8.2 What Must Be Tested First
+### 7.2 注释要求
 
-When a change touches the following, tests should be added first:
+灵珑不追求“表面干净”，追求“内容完整且有用”。
 
-- state machine transitions
-- lifecycle orchestration order
-- multi-version switching
-- dying queue / draining / reclamation
+必须保留或补充以下注释：
+
+- 设计动机
+- 边界说明
+- 并发前提
+- 状态机联动理由
+- 踩坑说明
+- 资源回收风险
+- 不直观但必要的顺序约束
+
+禁止为了“统一风格”做这些事：
+
+- 删除高价值踩坑注释
+- 删除重要设计解释
+- 删除风险提示
+- 只为了看起来整洁而移除有信息量的内容
+
+### 7.3 类型与结构
+
+- 优先使用显式类型、枚举、状态对象、领域对象
+- 谨慎使用 `Map<String, Object>`、附件表、字符串状态键
+- 如必须使用字符串键，必须解释来源、范围、生命周期与约束
+- 新增复杂上下文时，优先拆成有名字的状态对象，不要继续往大对象上挂零散字段
+
+### 7.4 API 设计
+
+- 骨架与约束稳定，实现允许替换
+- 公共 API 命名要表达语义，不要只表达技术动作
+- 设计时优先考虑“半年后别人还能不能读懂”
+- 不要为了省一个类，把两层职责混到一个对象里
+
+### 7.5 异常、日志、可观测性
+
+- 错误日志必须说明对象、动作、原因和关键上下文
+- 不要吞异常
+- 不要只在最底层抛异常而上层完全失语
+- 治理关键路径必须能从日志看出发生了什么
+- 新增关键治理语义时，优先补事件、日志或断言，而不是只补注释
+
+---
+
+## 8. 测试规范
+
+### 8.1 基本规则
+
+- 默认使用 JUnit 5
+- 需要 mock 时使用 Mockito
+- 核心架构行为优先做单元测试和契约测试
+- 测试展示名统一中文，优先使用 `@Nested + @DisplayName`
+
+### 8.2 必测内容
+
+涉及以下内容时，必须优先补测试：
+
+- 状态机迁移
+- 生命周期编排顺序
+- 多版本切换
+- 濒死队列 / 排空 / 回收
 - timeout
 - permission / audit
 - routing
-- pipeline order
-- class-loader boundaries
-- shared API freeze semantics
-- concurrency safety
-- post-unload resource cleanup
+- pipeline 顺序
+- classloader 边界
+- shared API 冻结语义
+- 并发安全
+- 卸载后的资源清理
 
-### 8.3 Testing Red Lines
+### 8.3 测试红线
 
-- do not test only the happy path
-- do not test only "the code runs" without testing "the semantics are correct"
-- do not encode architecture sequence dependencies in implementation details without contract tests
-- do not change test semantics just because you are refactoring test style
-- do not delete informative display names and explanations for the sake of tidiness
+- 不要只测 happy path
+- 不要只测“代码跑通”，不测“语义正确”
+- 不要把架构顺序依赖写死在实现细节里却没有契约测试
+- 不要因为重构测试风格而改动测试语义
+- 不要为了整洁删除有信息量的展示名和说明
 
-### 8.4 Recommended Test Coverage By Change Type
+### 8.4 推荐的测试补位方式
 
-| Change Type | Minimum Test Coverage |
+| 变更类型 | 至少需要的测试 |
 | --- | --- |
-| state machine changes | transition tests + invalid transition tests |
-| lifecycle orchestration changes | sequence tests + failure rollback / interruption tests |
-| filter order changes | pipeline contract tests |
-| unload and reclamation changes | resource cleanup tests + long-running degradation tests |
-| permission / timeout / audit changes | allow / deny / fallback / audit tests |
+| 状态机改动 | 状态迁移测试 + 异常迁移测试 |
+| 生命周期编排改动 | 顺序测试 + 失败回滚 / 中断测试 |
+| Filter 顺序改动 | Pipeline 契约测试 |
+| 卸载与回收改动 | 资源回收测试 + 长时间运行退化测试 |
+| 权限 / 超时 / 审计改动 | 成功 / 拒绝 / 回退 / 审计测试 |
 
 ---
 
-## 9. Documentation Rules
+## 9. 文档规范
 
-### 9.1 Changes That Must Update Documentation
+### 9.1 哪些改动必须更新文档
 
-The following changes must not be code-only:
+以下改动不能只改代码：
 
-- architecture boundary changes
-- terminology changes
-- state machine changes
-- lifecycle order changes
-- Shared API rule changes
-- testing rule changes
-- AI execution rule changes
+- 架构边界变化
+- 术语变化
+- 状态机变化
+- 生命周期顺序变化
+- 共享 API 规则变化
+- 测试规范变化
+- AI 必须遵守的规则变化
 
-### 9.2 Documentation Update Principles
+### 9.2 文档更新原则
 
-- documentation must serve understanding, not concept stacking
-- explain "why this way" before "how to do it"
-- once a rule becomes a hard constraint, do not leave it only in chat history
-- if newcomers cannot understand the documentation, the work is not complete
-
----
-
-## 10. AI And Delivery Requirements
-
-This chapter is execution-oriented. It does not repeat the core principles. It states what must be done.
-
-### 10.1 What Must Be Done Before Modifying
-
-1. Identify which layer the change belongs to first: instance layer, runtime layer, membership layer, orchestration layer, unload layer, adaptation layer, or documentation layer.
-2. Confirm first what the single source of truth is, who has write authority, and who is read-only.
-3. Confirm first whether the change affects tests, logs, documentation, and terminology.
-
-If you cannot answer "who has write authority", you should not start modifying code.
-
-### 10.2 What Must Not Be Done
-
-- bypass `InstanceCoordinator` / `RuntimeCoordinator` and mutate state directly
-- spread write authority back into aggregates, pools, or business objects
-- continue expanding stringly typed magic keys
-- keep boundaries that are already known to be wrong for compatibility only
-- keep piling complexity into Spring reflection patches or JVM black-box patches
-- delete high-value design comments, pitfall notes, or risk warnings
-- silently switch `LingCore` and `Ling` back to historical terms
-
-### 10.3 Minimum Delivery Requirements
-
-Whenever code is changed, at minimum check all of the following:
-
-- whether the code still respects boundaries
-- whether tests still cover key semantics
-- whether documentation is updated
-- whether terminology stays consistent
-- whether logs are still in English
-- whether comments are still in Chinese
+- 文档必须服务理解，不服务概念堆叠
+- 优先解释“为什么这样做”，其次才是“怎么做”
+- 已成为硬约束的规则，不要只写在聊天记录里
+- 新人看不懂的文档，不算完成
 
 ---
 
-## 11. Pre-Commit Checklist
+## 10. AI 与提交要求
 
-### 11.1 Architecture Checklist
+这一章是执行层，不重复解释总原则，只说必须做什么。
 
-- I can clearly state who has write authority, who is read-only, and who orchestrates
-- I did not add a second source of truth for state
-- I did not let objects mutate each other's state again
-- I did not turn a membership manager into the lifecycle controller
-- I did not expand the usage of stringly typed magic keys
+### 10.1 修改前必须做的事
 
-### 11.2 Code Checklist
+1. 先识别这次改动位于哪一层：实例层、运行时层、成员层、编排层、卸载层、适配层或文档层
+2. 先确认谁是唯一真源、谁有写权限、谁只读
+3. 先确认这次改动是否影响测试、日志、文档和术语
 
-- comments are in Chinese
-- logs are in English
-- terminology follows Chapter 3
-- high-value risk comments were not removed
-- the new complex logic is still explainable where it lives
+如果答不出“谁有写权限”，就不应该开始改代码。
 
-### 11.3 Test Checklist
+### 10.2 禁止做的事
 
-- test display names are in Chinese
-- `@Nested` is used where grouping is needed
-- key semantics are covered, not only flow completion
-- architecture sequence changes have contract-test coverage or equivalent protection
+- 绕过 `InstanceCoordinator` / `RuntimeCoordinator` 直接改状态
+- 把写权限重新散回聚合对象、池对象、业务对象
+- 继续扩大字符串魔法键
+- 为了兼容保留已经确认错误的旧边界
+- 把复杂性继续往 Spring 反射补丁、JVM 黑盒补丁里堆
+- 删除高价值设计注释、踩坑说明、风险提示
+- 擅自把“灵核”“灵元”改回旧术语
 
-### 11.4 Documentation Checklist
+### 10.3 交付最低要求
 
-- if the change affects rules, boundaries, terminology, or state machines, I updated the documentation
-- a newcomer can still find a document that explains this change
+只要改动涉及代码，至少同时考虑：
+
+- 代码是否守住边界
+- 测试是否覆盖关键语义
+- 文档是否同步
+- 术语是否统一
+- 日志是否仍为英文
+- 注释是否仍为中文
 
 ---
 
-## 12. Recommended Reading Order For Newcomers
+## 11. 提交前检查清单
 
-If this is your first time reading LingFrame, use this order:
+### 11.1 架构检查
+
+- 我能明确说出谁有写权限、谁只读、谁编排
+- 我没有新增第二份状态真源
+- 我没有让对象之间重新互相改状态
+- 我没有把成员管理对象做成生命周期总控器
+- 我没有扩大字符串魔法键的使用范围
+
+### 11.2 代码检查
+
+- 注释是中文
+- 日志是英文
+- 术语统一遵循第 3 章
+- 高价值风险注释没有被清掉
+- 新增复杂逻辑的位置是可解释的
+
+### 11.3 测试检查
+
+- 测试展示名是中文
+- 必要的场景分组使用了 `@Nested`
+- 关键语义有测试，而不是只有流程测试
+- 架构顺序变化时有契约测试或等价覆盖
+
+### 11.4 文档检查
+
+- 改动影响到规则、边界、术语、状态机时，我同步更新了文档
+- 新人看到这次改动，仍然能找到解释它的文档
+
+---
+
+## 12. 新人建议阅读顺序
+
+如果你是第一次接触灵珑，建议按这个顺序理解项目：
 
 1. [WHY.md](WHY.md)
 2. [MANIFESTO.md](MANIFESTO.md)
 3. [README.md](README.md)
-4. this manual
+4. 本手册
 5. `LingInstance` / `InstanceCoordinator`
 6. `LingRuntime` / `RuntimeCoordinator`
 7. `InstancePool`
 8. `DefaultLingLifecycleEngine`
 9. `LingUnloadCoordinator`
-10. related test classes
+10. 相关测试类
 
-If you are an AI assistant, read at least the following before changing anything:
+如果你是 AI 助手，建议在修改前至少阅读：
 
-1. this manual
-2. the code in the affected module
-3. the corresponding tests
-4. the corresponding architecture documentation
+1. 本手册
+2. 涉及模块的代码
+3. 对应测试
+4. 对应架构文档
 
 ---
 
-## 13. The Final Decision Standard
+## 13. 最后一条判断标准
 
-To judge whether a change is worth making, ask only these three questions in the end:
+判断一个改动值不值得做，最后只问三个问题：
 
-1. Does it make the boundary clearer?
-2. Does it make the semantics more provable?
-3. Does it make long-running behavior more explainable?
+1. 它有没有让边界更清楚？
+2. 它有没有让语义更可证明？
+3. 它有没有让长期运行更可解释？
 
-If none of the three can be answered clearly, the change probably should not enter LingFrame.
+如果三个问题都答不上来，这个改动大概率不该进入灵珑。

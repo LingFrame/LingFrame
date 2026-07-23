@@ -13,7 +13,7 @@ A ling is a business unit that:
 - Exposes services through LingFrame contracts.
 - Runs under the governance kernel.
 
-If you are unfamiliar with the terminology, please review the [Glossary](glossary.md) first.
+If you are unfamiliar with the terminology, please review the [Glossary & FAQ](faq.md) first.
 
 ---
 

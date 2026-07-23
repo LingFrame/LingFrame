@@ -3,7 +3,7 @@
 Examples are organized in **two tracks**.
 
 Fit + shortest run: root [README.md](../README.md).  
-Public docs map: [docs/README.md](../docs/README.md).
+Public docs map: [docs/en/README.md](../docs/en/README.md).
 
 ## 1. Getting started (how to build and use)
 
@@ -15,7 +15,7 @@ Public docs map: [docs/README.md](../docs/README.md).
 | `lingframe-example-order-api` | Shared API contracts |
 | `lingframe-example-ling-native` | Non-Spring ling entry |
 
-Shortest path: root `QUICK_START.md`, or `docs/getting-started.md`.
+Shortest path: root `QUICK_START.md`, or `docs/en/getting-started.md`.
 
 ```powershell
 mvn -pl lingframe-examples/lingframe-example-lingcore-app -am package -DskipTests
@@ -39,4 +39,4 @@ Details: `lingframe-example-saas-mall/README.md`
 
 - Getting-started defaults favor local use (`dev-mode`, sample token) — see each module’s `application.yaml`
 - Production-oriented fragment: `lingframe-example-lingcore-app/src/main/resources/application-prod.yaml.example`
-- Full checklist: `docs/production-hardening.md`
+- Full checklist: `docs/en/production-hardening.md`

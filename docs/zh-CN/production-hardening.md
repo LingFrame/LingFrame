@@ -3,7 +3,7 @@
 面向把灵珑装进**真实生产灵核**时的最小硬化建议。  
 不替代安全审计；只列可立即落地的配置与运维动作。
 
-> 术语：用「灵核 / 灵元」，不要写「宿主 / 插件」。
+> 术语：使用“灵核 / 灵元”，不要使用“宿主 / 插件”。
 
 ---
 
@@ -73,6 +73,13 @@ lingframe:
 
 调用侧在 ClassLoader 已清空时会得到确定性 `STATE_REJECTED`，避免难诊断 NPE。
 
+### 共享 Spring 与卸载 SLA
+
+- 默认与灵核**共享** `org.springframework.*`（runtime 父委派）。进程级静态缓存写入是模型代价，**不是**“运行期绝对静态隔离”。
+- 卸载 SLA：**规范 undeploy 后 `LingClassLoader` 可被 GC（可证明）**；不要把“Spring 静态 Map 永不出现灵元类型键”当成验收标准。
+- 观察：卸载完成事件 / 泄漏检测记录；`dev-mode` 下检测更积极。
+- 若确认泄漏：失败路径可能在 `java.io.tmpdir` 写出 `ling-leak-*.hprof`。建议使用标准堆转储分析工具（如 Eclipse MAT、JProfiler 或 VisualVM）对 `.hprof` 堆转储文件进行分析（关注 `LingClassLoader` 的 GC Root 强引用路径）。
+
 ---
 
 ## 4. 服务演练场（Playground）
@@ -83,23 +90,29 @@ lingframe:
 
 ---
 
-## 5. 状态操作语义
+## 5. 状态与流量：各归其位
 
-| 操作 | 含义 |
+| 手段 | 用途 |
 | --- | --- |
-| **软停**（Runtime → `INACTIVE`） | 停新流量 / 收权；**实例仍在进程内** |
-| **卸载 / REMOVED** | 排空 + tearDown + 资源清理 |
+| **二维路由 / 权重 / 灰度** | **流量切分与停流**（不要用 RuntimeStatus 假想停流） |
+| **权限 / `LING_ENABLE`** | 控制面启停授权 |
+| **`INACTIVE`** | **事实**：无可用实例（聚合结果） |
+| **卸载 → STOPPING → REMOVED** | 彻底下线、回收资源 |
 
-软停 API：`POST /lingframe/dashboard/lings/{lingId}/soft-stop`（body 可选 `{"version":"..."}`）。  
-勿把软停当成「已干净卸载」。
+不要用 RuntimeStatus 表达切流/停流；切流只改路由权重。
 
 ---
 
 ## 6. 构建与运行时矩阵
 
-- 主验证路径：Spring Boot 2.7 + JDK 8（默认 profile）
-- 双栈：`-Pspring-boot3` + JDK 17
-- 0.4 定位：**设计债收敛后的候选内核**，不是「无需再硬化的生产认证」
+- 主验证路径：Spring Boot 2.7 + JDK 8（默认 profile `spring-boot2`）
+- 支持线：`-Pspring-boot3` + JDK 17
+- 结构（禁止反射探测 Servlet）：
+  - Runtime：公共 `lingframe-spring-boot-starter` + 类型化 `lingframe-spring-boot2-starter` / `lingframe-spring-boot3-starter`
+  - Dashboard：单 GAV + `src/java-javax` / `src/java-jakarta`（及对应 test），由 `build-helper` 按 profile 追加
+- 切换矩阵务必 `clean`（SB3 的 class 在 JDK 8 上会直接失败）
+- 贡献者细则：[DEVELOPMENT_MANUAL.md](../../DEVELOPMENT_MANUAL.md) 第 5.2 节
+- 0.4 交付：**控制面 + 路由升维 + 正确性收口**；配置与边界见本文清单
 
 ---
 
@@ -109,19 +122,66 @@ lingframe:
 - [ ] Dashboard `allow-weak: false` + 强 token
 - [ ] 按需打开 `ling-core-governance.enabled` / `check-permissions`
 - [ ] `security.strict-mode: true`（除非有可审计豁免）
-- [ ] 明确 `force-drain-on-timeout` 与超时时间
+- [ ] 明确 `force-drain-on-timeout` 与超时时间（默认 true 会在 drain 超时后强制 tearDown）
 - [ ] Shared API 变更走重启与版本包策略
 - [ ] 不把示例 `123456` / 全开 dev 旁路原样上线
+- [ ] 灵元访问 DB **只走注入的 DataSource Bean**，禁止灵元内 `DriverManager` / 私有池绕开治理
 
 ---
 
-## 8. 数据库表级治理语义（AND 逻辑）
+## 8. 可复制的生产 profile 片段
 
-在生产环境中如果启用了 `ling-core-governance` 并代理了数据源，以下是数据治理的关键事实：
+```yaml
+# application-prod.yaml（示例，按环境改 token）
+lingframe:
+  enabled: true
+  dev-mode: false
+  ling-core-governance:
+    enabled: true
+    check-permissions: true
+  security:
+    strict-mode: true
+  runtime:
+    force-cleanup-delay: 60s
+    force-drain-on-timeout: true   # 长事务不可打断时改为 false
+  dashboard:
+    enabled: true
+    access-token:
+      enabled: true
+      token: "<rotate-me-strong-token>"
+      allow-weak: false
+```
 
-- **表级多条件治理（AND 语义）**：当同时对表或操作配置了权限、审计、限流时，这些治理逻辑是严格的 **AND 关系**。
-  - **任何一个**拦截点（如权限拒绝、或超出限流、或审计拦截）触发，SQL 都会被阻断，并抛出 `LingGovernanceException` / `LingSecurityException`。
-- **运维提示**：
-  - 排查 SQL 被拒时，必须结合 `X-Ling-Trace-Id` 查看日志中的 `[Ling-Governance]` 标签。
-  - 先确认权限是否匹配，再确认是否撞了表级或全局限流。
-  - 如果日志中出现 `Unmanaged DataSource` 警告，意味着该流量绕过了所有治理，需检查数据源注册代码。
+本地示例可继续 `dev-mode: true` + `allow-weak: true`；**激活 `prod` profile 时不要沿用示例 token**。
+
+---
+
+## 9. 存储治理边界与表级语义
+
+### 9.1 哪些路径会被代理（必须诚实）
+
+| 路径 | 是否治理 | 机制 |
+| --- | --- | --- |
+| 灵核 / 灵元 Spring 容器中的 **`DataSource` Bean** | **是（主路径）** | `DataSourceWrapperProcessor` → `LingDataSourceProxy` → `LingConnectionProxy` |
+| 灵元 `spring.datasource.*` 经 `LingDataSourceRegistrar` 注册为 Bean | **是**（成为 Bean 且被 BPP 包装后） | 同上 |
+| 灵元内 `DriverManager.getConnection(...)` | **否** | 无 Bean 生命周期钩子 |
+| 手搓连接池 / 字段里直接持有的非 Bean `DataSource` | **否** | 不进入包装器 |
+| 代理上的 `getConnection(user, pass)` | **拦截**（仅代理路径） | 禁止任意凭据；直连驱动仍可能绕开 |
+
+这是**组织型**治理（注入 + 代理），**不是** JVM 沙箱。生产约定：灵元**只**通过注入的 DataSource 访问库。
+
+### 9.2 表级多条件（AND）
+
+在代理路径生效且配置了表级权限/审计/限流时：
+
+- 治理点之间是严格 **AND**：任一拦截则 SQL 阻断。
+- 排障结合追踪 ID / 治理日志；先权限、再限流。
+
+### 9.3 可选加固（非 0.4 必做）
+
+| 方案 | 作用 | 代价 |
+| --- | --- | --- |
+| 规范 + Code Review / ArchUnit | 禁止灵元依赖 `DriverManager` 等 | 低，推荐 |
+| 加载期扫描扩展（禁止 DriverManager 调用） | 安装时拒包 | 中，误杀风险 |
+| Java Agent / 字节码插桩 | 运行时强制 | 高，复杂度大 |
+| 仅开放受管 DataSource 给灵元 | 架构上不给直连入口 | 中，要改装配约定 |
