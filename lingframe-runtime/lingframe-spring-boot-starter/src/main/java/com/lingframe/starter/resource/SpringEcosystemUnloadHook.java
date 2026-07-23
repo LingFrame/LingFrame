@@ -21,6 +21,11 @@ import com.lingframe.starter.spi.SpringAwareUnloadHook;
  *       时序绝对受控，避免并行竞态。</li>
  * </ul>
  * <p>
+ * <b>cleanup 同步排空契约</b>（非「靠下次 insert 或内存压力」）：
+ * 对 ConcurrentReferenceHashMap 类缓存为
+ * {@code selective remove → SoftEntryReference.release 深清 →（有关联时）clear 热点表 → purgeUnreferencedEntries}；
+ * 热点表示例见 {@link SpringStaticCacheCleaner}（如 BridgeMethodResolver）。
+ * <p>
  * Spring 清理方法深度耦合（共享 context、专用判断器互相递归、两阶段严格时序），
  * 因此在顶层保持单一 SPI Bean，不拆成多个 LingUnloadHook。
  */
@@ -112,30 +117,33 @@ public class SpringEcosystemUnloadHook implements SpringAwareUnloadHook {
         log.info("[{}] Starting Spring ecosystem cleanup (Spring {}.x)...",
                 lingId, SPRING_MAJOR_VERSION);
 
-        // 1. Spring 框架公开 API 静态缓存
+        // cleanup 串行顺序（与清单一致；单步失败不中断后续）：
+        // 1) 公开 API 静态缓存（含 BridgeMethodResolver 同步排空 Soft）
         safeCleanup(lingId, "SpringStaticCache.clearStablePublicCaches",
                 () -> staticCacheCleaner.clearStablePublicCaches(lingId, classLoader));
-        // 2. SpringFactoriesLoader
+        // 2) SpringFactoriesLoader
         safeCleanup(lingId, "SpringStaticCache.clearSpringFactoriesCache",
                 () -> staticCacheCleaner.clearSpringFactoriesCache(lingId, classLoader));
-        // 3. Spring ShutdownHook 残留引用（仅 ClassLoader 级清理，Context 级清理已在 preCleanup 完成）
+        // 3) Spring ShutdownHook 残留引用（仅 ClassLoader 级；Context 级已在 preCleanup）
         safeCleanup(lingId, "SpringShutdownHookCleaner",
                 () -> shutdownHookCleaner.clear(lingId, classLoader));
-        // 4. CGLIB 缓存
+        // 4) CGLIB（具体类代理；契约上优先 JDK 动态代理可降此面）
         safeCleanup(lingId, "CglibCacheCleaner",
                 () -> cglibCacheCleaner.clear(lingId, classLoader));
-        // 5. Objenesis 缓存
+        // 5) Objenesis
         safeCleanup(lingId, "ObjenesisCacheCleaner",
                 () -> objenesisCacheCleaner.clear(lingId, classLoader));
-        // 6. EL 缓存
+        // 6) EL
         safeCleanup(lingId, "ElCacheCleaner",
                 () -> elCacheCleaner.clear(lingId, classLoader));
-        // 7. BindConverter 静态单例（@ConfigurationProperties 绑定器，持有灵元 PropertyEditor 的 ClassLoader）
+        // 7) BindConverter（@ConfigurationProperties 绑定器，可持灵元 PropertyEditor CL）
         safeCleanup(lingId, "BindConverterCacheCleaner",
                 () -> bindConverterCacheCleaner.clear(lingId, classLoader));
-        // 8. JDK Proxy 缓存（WeakCache 中 CacheValue 持有代理 Class → ClassLoader 强引用链）
+        // 8) JDK Proxy WeakCache（CacheValue → 代理 Class → ClassLoader）
         safeCleanup(lingId, "JdkProxyCacheCleaner",
                 () -> jdkProxyCacheCleaner.clear(lingId, classLoader));
+        log.info("[{}] Spring ecosystem cleanup steps finished (Spring {}.x)",
+                lingId, SPRING_MAJOR_VERSION);
     }
 
     /**

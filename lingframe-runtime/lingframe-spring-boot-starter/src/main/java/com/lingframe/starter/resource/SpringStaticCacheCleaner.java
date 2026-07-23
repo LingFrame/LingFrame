@@ -20,8 +20,10 @@ import java.util.ResourceBundle;
  * 这些缓存 key 是灵元加载的 Class，会阻止灵元 ClassLoader GC。
  * 包括：CachedIntrospectionResults / ReflectionUtils / AnnotationUtils /
  * SpringFactoriesLoader / ResolvableType / Property.annotationCache /
- * ResourceBundle /
- * Micrometer TimedAnnotations。
+ * ResourceBundle / Micrometer TimedAnnotations / BridgeMethodResolver 等。
+ * <p>
+ * 共享 Spring 父委派下，清理是证据驱动、按点扩展的；新增清理点须有 dump/回归证据，
+ * 并保持与现有 Cleaner 拆分一致。
  * <p>
  * 专用判断器 {@link #isPropertyRelatedToClassLoader} 和
  * {@link #isResolvableTypeRelated} 留在本类内部，不下沉到 Support。
@@ -159,8 +161,14 @@ final class SpringStaticCacheCleaner {
 
     /**
      * BridgeMethodResolver.cache = ConcurrentReferenceHashMap&lt;MethodClassKey, Method&gt;。
-     * Soft 引用整个 Entry；System.gc 不保证清 Soft。有灵元关联时：
-     * 1) 选择性 remove 2) deep Soft release 3) 仍有残留则 clear 整表。
+     * SoftEntryReference 软引用整个 Entry；System.gc 不保证清 Soft。
+     * <p>
+     * <b>同步排空顺序</b>（卸载契约，非靠下次 insert / 内存压力）：
+     * <ol>
+     *   <li>selective remove（MethodClassKey / Soft 关联灵元 CL）</li>
+     *   <li>CRHM SoftEntryReference.release 深清</li>
+     *   <li>仍有关联时 cache.clear() + purgeUnreferencedEntries（表可重建）</li>
+     * </ol>
      */
     private void clearBridgeMethodResolverCache(String lingId, ClassLoader lingClassLoader) {
         try {

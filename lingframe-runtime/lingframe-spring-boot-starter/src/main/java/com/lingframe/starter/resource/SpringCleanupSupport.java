@@ -14,6 +14,9 @@ import java.util.Map;
  * 提供所有 {@code *Cleaner} 共用的反射探测与 ClassLoader 关联判断，
  * 不含任何业务语义。专用判断器（如 {@code isJacksonRelatedToClassLoader}）
  * 放在对应 Cleaner 内部，不下沉到此处。
+ * <p>
+ * ConcurrentReferenceHashMap 深清（SoftEntryReference.release）与
+ * {@link #isRelatedToClassLoader} 对 Soft/MethodClassKey 的识别，服务于卸载同步排空。
  */
 @Slf4j
 final class SpringCleanupSupport {
