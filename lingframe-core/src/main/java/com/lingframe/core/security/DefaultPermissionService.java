@@ -1,6 +1,7 @@
 package com.lingframe.core.security;
 
 import com.lingframe.api.context.LingCallContext;
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionAuditRecord;
 import com.lingframe.api.security.PermissionAuditResult;
@@ -24,8 +25,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class DefaultPermissionService implements PermissionService {
 
     private static final String GLOBAL_WHITELIST_PREFIX = "com.lingframe.api.";
-    private static final String LING_CORE_ID = "lingcore-app";
-
     private final EventBus eventBus;
     private final LingFrameConfig config;
     private final Map<String, Map<String, AccessType>> permissions = new ConcurrentHashMap<>();
@@ -51,9 +50,13 @@ public class DefaultPermissionService implements PermissionService {
             return true;
         }
 
-        // 显式灵核身份 + 未开启灵核权限检查
-        if (LING_CORE_ID.equals(lingId) && !config.isLingCoreCheckPermissions()) {
-            log.debug("[Auth] LINGCORE application bypassed");
+        // 显式灵核身份 + 未开启灵核权限检查：灵核不是灵元、永无 ling.yml 权限声明，
+        // 把灵核 ID 当灵元查权限表语义本身就错——会必报 unauthorized access。
+        // gate 在 !config.isLingCoreCheckPermissions() 上：基础设施代理（cache/SQL/Redis）
+        // 直接调 isAllowed 不走 PermissionGovernanceFilter，加固 toggle 必须在此 gate 才能控制这表面。
+        // 加固 toggle lingCoreCheckPermissions=true 时灵核身份也走权限表 enforce（按需声明）。
+        if (LingCoreConstants.LINGCORE_LING_ID.equals(lingId) && !config.isLingCoreCheckPermissions()) {
+            log.debug("[Auth] LINGCORE identity bypassed ling permission table (not a ling, check-permissions disabled)");
             return true;
         }
 

@@ -1,6 +1,9 @@
 package com.lingframe.dashboard.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lingframe.api.security.AccessType;
+import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
@@ -10,9 +13,11 @@ import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.CanaryRouter;
+import com.lingframe.core.spi.GovernanceDecision;
 import com.lingframe.dashboard.dto.InvokeResultDTO;
 import com.lingframe.dashboard.dto.ServiceMetadataDTO;
 import com.lingframe.dashboard.util.ParameterParsingUtils;
+import java.lang.reflect.Method;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -35,11 +40,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ServicePlaygroundService {
 
+    /** Dashboard 控制面身份——模块私有，不污染 lingframe-api 契约层（dashboard 是选配模块） */
+    private static final String DASHBOARD_CALLER_ID = "dashboard";
+
     private final LingServiceRegistry lingServiceRegistry;
     private final LingRepository lingRepository;
     private final InvocationPipelineEngine pipelineEngine;
     private final ObjectMapper objectMapper;
     private final CanaryRouter canaryRouter;
+    private final GovernanceArbitrator governanceArbitrator;
+    private final PermissionService permissionService;
 
     /**
      * 获取指定灵元的所有服务元数据
@@ -351,7 +361,11 @@ public class ServicePlaygroundService {
             InvocationContext ctx = InvocationContext.obtain();
             try {
                 ctx.setTargetLingId(lingId);
-                ctx.setCallerLingId("dashboard");
+                // dashboard 是控制面工具调灵元方法，不是灵核也不是灵元——
+                // 用模块私有控制面身份 DASHBOARD_CALLER_ID（不污染 lingframe-api 契约层也不污染 core 内核）。
+                // core 治理链 zero special-case：dashboard 调 invoke 前自己先 arbitrate 拿 capability + grant 自己，
+                // 持权限表记录后 core 自然放行，不为选配模块开后门。
+                ctx.setCallerLingId(DASHBOARD_CALLER_ID);
                 ctx.setServiceFQSID(fqsid);
                 ctx.setMethodName(methodName);
                 ctx.setParameterTypeNames(parameterTypes);
@@ -383,6 +397,26 @@ public class ServicePlaygroundService {
                             .build();
                 }
                 ctx.routing().setTargetInstance(targetInstance);
+
+                // dashboard 自己赋权（不污染 core 治理链 zero special-case）：
+                // 调 invoke 前先复用 GovernanceArbitrator 推 capability，再 PermissionService.grant 给自己赋权。
+                // 持权限表记录后 core 治理链自然放行——core 不为选配模块开后门，权限模型也不改通配。
+                try {
+                    Method targetMethod = resolveTargetMethod(targetInstance, fqsid, methodName, parameterTypes);
+                    if (targetMethod != null && governanceArbitrator != null) {
+                        GovernanceDecision decision = governanceArbitrator.arbitrate(runtime, targetMethod, ctx);
+                        if (decision != null && decision.getRequiredPermission() != null) {
+                            AccessType accessType = decision.getAccessType() != null
+                                    ? decision.getAccessType() : AccessType.READ;
+                            permissionService.grant(DASHBOARD_CALLER_ID, decision.getRequiredPermission(), accessType);
+                            log.debug("[Playground] dashboard self-granted capability={} access={} for {}/{}",
+                                    decision.getRequiredPermission(), accessType, fqsid, methodName);
+                        }
+                    }
+                } catch (Exception grantEx) {
+                    log.debug("[Playground] dashboard self-grant skipped for {}/{}: {}",
+                            fqsid, methodName, grantEx.getMessage());
+                }
 
                 // 控制面审计：谁、何时、打了哪个服务（不记录 token / 完整 args，避免敏感参数进日志）
                 log.info("[Playground] caller=dashboard lingId={} fqsid={} method={} mode={} routingMode={} "
@@ -501,6 +535,48 @@ public class ServicePlaygroundService {
                     fqsid, targetInstance.getVersion());
         }
         return null;
+    }
+
+    /**
+     * 解析灵元目标方法——dashboard 自己赋权前调 GovernanceArbitrator 拿 capability 用。
+     * <p>
+     * 显式注解服务：用注册表实现类名 + ClassLoader 反射拿方法；
+     * 接口服务：从目标实例容器拿 Bean，按方法名 + 参数签名精确定位。
+     *
+     * @param targetInstance 目标灵元实例
+     * @param fqsid 服务全限定 ID
+     * @param methodName 方法名
+     * @param parameterTypes 参数类型签名
+     * @return 反射 Method 或 null（拿不到时不报错，dashboard 跳过赋权由 core 拒）
+     */
+    private Method resolveTargetMethod(LingInstance targetInstance, String fqsid,
+                                       String methodName, String[] parameterTypes) {
+        if (targetInstance == null || methodName == null || methodName.isEmpty()) {
+            return null;
+        }
+        ClassLoader cl = targetInstance.getClassLoader();
+        if (cl == null) {
+            return null;
+        }
+        String className = resolveTargetClassName(fqsid, targetInstance);
+        if (className == null || className.isEmpty()) {
+            return null;
+        }
+        try {
+            Class<?> targetClass = Class.forName(className, false, cl);
+            if (parameterTypes == null || parameterTypes.length == 0) {
+                return targetClass.getMethod(methodName);
+            }
+            Class<?>[] paramClasses = new Class<?>[parameterTypes.length];
+            for (int i = 0; i < parameterTypes.length; i++) {
+                paramClasses[i] = Class.forName(parameterTypes[i], false, cl);
+            }
+            return targetClass.getMethod(methodName, paramClasses);
+        } catch (Exception e) {
+            log.debug("[Playground] Failed to resolve target method {}.{}: {}",
+                    className, methodName, e.getMessage());
+            return null;
+        }
     }
 
     /**

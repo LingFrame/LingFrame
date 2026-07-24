@@ -1,6 +1,7 @@
 package com.lingframe.dashboard.config;
 
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.event.EventBus;
@@ -158,8 +159,11 @@ public class DashboardAutoConfiguration {
             LingRepository lingRepository,
             InvocationPipelineEngine pipelineEngine,
             ObjectMapper objectMapper,
-            CanaryRouter canaryRouter) {
-        return new ServicePlaygroundService(lingServiceRegistry, lingRepository, pipelineEngine, objectMapper, canaryRouter);
+            CanaryRouter canaryRouter,
+            GovernanceArbitrator governanceArbitrator,
+            PermissionService permissionService) {
+        return new ServicePlaygroundService(lingServiceRegistry, lingRepository, pipelineEngine,
+                objectMapper, canaryRouter, governanceArbitrator, permissionService);
     }
 
     @Bean

@@ -37,4 +37,16 @@ public interface LingFrameInfo {
      * @return true 表示开启隐式注册（默认）
      */
     boolean isImplicitRegistration();
+
+    /**
+     * 是否对灵核身份调用开启权限表校验。
+     * <p>
+     * 关闭时（默认）灵核身份 caller 豁免灵元权限表，走灵核审计边界守护；
+     * 开启时灵核身份 caller 也走权限表校验，与 {@code LingFrameConfig.isLingCoreCheckPermissions()}
+     * 和 {@code DefaultPermissionService} 的豁免条件对齐——这是生产加固 toggle，
+     * 操作员设 {@code ling-core-governance.check-permissions: true} 即 enforce。
+     *
+     * @return true 表示灵核身份调用也走权限表校验
+     */
+    boolean isLingCoreCheckPermissions();
 }

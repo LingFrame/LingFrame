@@ -28,7 +28,7 @@
 </p>
 
 <p align="center">
-  <strong>English</strong> | <a href="./README.md">中文</a>
+  <a href="./README.md">中文</a> | <strong>English</strong>
 </p>
 
 As a system runs longer, business keeps evolving, and the codebase grows too massive for anyone to refactor safely.
@@ -120,7 +120,7 @@ Key points:
 └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Design stance: [WHY.md](WHY.md) · [MANIFESTO.md](MANIFESTO.md)
+Design stance: [WHY.md](WHY.en.md) · [MANIFESTO.md](MANIFESTO.en.md)
 
 ---
 
@@ -142,7 +142,7 @@ curl http://localhost:8888/lingframe/dashboard/lings
 curl http://localhost:8888/user-ling/user/listUsers
 ```
 
-Command detail: [QUICK_START.md](QUICK_START.md)
+Command detail: [QUICK_START.md](QUICK_START.en.md)
 
 After it boots:
 
@@ -197,7 +197,7 @@ Two example tracks (see [lingframe-examples/README.en.md](lingframe-examples/REA
 - Shared API is a process-level contract: new packages can be preloaded; **contracts already in the shared boundary are not hot-updated or hot-unloaded** (an architectural trade-off to ensure type safety; breaking changes require a restart);
 - Storage governance mainly covers Spring-injected DataSources, not every hand-rolled JDBC path;
 - Dangerous-API scanning is load-time signaling, not a full JVM security sandbox;
-- Primary verification path (**examples default**): Spring Boot 2.7 + JDK 8; Spring Boot 3 + JDK 17 is the support line (runtime dual starters + dashboard single-GAV matrix sources; see [DEVELOPMENT_MANUAL](DEVELOPMENT_MANUAL.md) §5.2);
+- Primary verification path (**examples default**): Spring Boot 2.7 + JDK 8; Spring Boot 3 + JDK 17 is the support line (runtime dual starters + dashboard single-GAV matrix sources; see [DEVELOPMENT_MANUAL](DEVELOPMENT_MANUAL.en.md) §5.2);
 - **0.4.0 is Pre-1.0**: evaluate with examples and [production hardening](docs/en/production-hardening.md) before production.
 
 ---
@@ -255,10 +255,10 @@ Reproduce: [`lingframe-benchmark/README.md`](lingframe-benchmark/README.md). Loa
 | Goal | Doc |
 | --- | --- |
 | Read by stage | [docs/en/README.md](docs/en/README.md) |
-| Integrate, write lings, configure | [docs/en/README.md — Adopt and develop](docs/en/README.md#adopt-and-develop) |
+| Integrate, write lings, configure | [docs/en/README.md — Adopt and develop](docs/en/README.md) |
 | Production config | [production-hardening](docs/en/production-hardening.md) |
 | Architecture | [architecture](docs/en/architecture.md) |
-| This release | [CHANGELOG](CHANGELOG.en.md) · [0.4.0 notes](docs/release/en/0.4.0-release-notes.md) |
+| This release | [CHANGELOG](CHANGELOG.en.md) |
 | Contribute | [CONTRIBUTING](CONTRIBUTING.en.md) · [DEVELOPMENT_MANUAL](DEVELOPMENT_MANUAL.en.md) |
 
 ---

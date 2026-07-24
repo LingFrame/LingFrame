@@ -1,5 +1,6 @@
 package com.lingframe.core.pipeline;
 
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.security.AuditMetadataKeys;
 import com.lingframe.api.security.PermissionAuditRecord;
@@ -67,6 +68,26 @@ public class PermissionGovernanceFilter implements LingInvocationFilter {
         }
 
         boolean allowed = permissionService.isAllowed(callerLingId, capability, ctx.governance().getAccessType());
+
+        // 灵核身份（LingCoreConstants.LINGCORE_LING_ID）调灵元 Bean 是灵核审计边界内调用，
+        // 不走灵元权限表校验：灵核不是灵元、无 ling.yml 权限声明，把灵核 caller 当灵元 ID 查
+        // 会误报 [DEV WARNING] ling [lingcore-app] unauthorized access。
+        // gate 挪到 Deny-by-Default 坎后：守任 prod 零信任红线——灵核 caller 无声明 capability 也拒。
+        // gate 在 !isLingCoreCheckPermissions() 上：与 DefaultPermissionService:54 豁免条件对齐，
+        // 操作员设 ling-core-governance.check-permissions: true 加固时仍 enforce 这条路径。
+        if (!allowed && LingCoreConstants.LINGCORE_LING_ID.equals(callerLingId)
+                && lingFrameInfo != null && !lingFrameInfo.isLingCoreCheckPermissions()) {
+            log.debug("[Security] LINGCORE caller bypassing ling permission table: capability={}", capability);
+            try {
+                Object result = chain.doFilter(ctx);
+                auditIfNeeded(ctx, PermissionAuditResult.ALLOWED, null, startNanos);
+                return result;
+            } catch (Throwable throwable) {
+                auditIfNeeded(ctx, PermissionAuditResult.FAILED, describeFailure(throwable), startNanos);
+                throw throwable;
+            }
+        }
+
         if (!allowed) {
             log.warn("[Security] Permission denied: caller={}, capability={}, type={}",
                     callerLingId, capability, ctx.governance().getAccessType());

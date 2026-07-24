@@ -48,6 +48,16 @@ public class JakartaRepeatableReadFilter implements Filter {
             return;
         }
         httpRequest.setAttribute(FILTERED_ATTRIBUTE, Boolean.TRUE);
+
+        // multipart/form-data 请求必须放行让 Servlet 容器（Tomcat）懒解析 Part，
+        // 缓存请求体会消费原始 InputStream 导致 multipart 解析器拿到空流 →
+        // MissingServletRequestPartException: Required part 'xxx' is not present
+        String contentType = httpRequest.getContentType();
+        if (contentType != null && contentType.toLowerCase().startsWith("multipart/")) {
+            chain.doFilter(request, response);
+            return;
+        }
+
         chain.doFilter(new RepeatableReadRequest(httpRequest), response);
     }
 

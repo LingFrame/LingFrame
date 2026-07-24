@@ -1,6 +1,9 @@
 package com.lingframe.dashboard.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lingframe.api.security.AccessType;
+import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
@@ -10,6 +13,7 @@ import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.router.CanaryRouter;
+import com.lingframe.core.spi.GovernanceDecision;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.dashboard.dto.InvokeResultDTO;
 import com.lingframe.dashboard.dto.ServiceMetadataDTO;
@@ -34,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,6 +58,12 @@ class ServicePlaygroundServiceTest {
     @Mock
     private CanaryRouter canaryRouter;
 
+    @Mock
+    private GovernanceArbitrator governanceArbitrator;
+
+    @Mock
+    private PermissionService permissionService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Nested
@@ -63,7 +74,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("当灵元未注册任何服务时返回空列表")
         void shouldReturnEmptyListWhenNoServicesRegistered() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
             when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(Collections.emptyList());
 
             List<ServiceMetadataDTO> services = playgroundService.getServices("test-ling");
@@ -76,7 +87,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("当灵元注册服务时应正确返回结构化元数据")
         void shouldReturnStructuredMetadataWhenServicesRegistered() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
             when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(Arrays.asList("test-ling:EchoService"));
             when(serviceRegistry.getProviderMethods("test-ling:EchoService"))
                     .thenReturn(Arrays.asList("echo(java.lang.String)", "ping()"));
@@ -119,7 +130,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("当同时注册了接口服务和显式注解服务时，应合并显式服务为接口服务方法的别名并过滤掉显式服务卡片")
         void shouldMergeExplicitServicesIntoInterfaceServices() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
 
             when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(Arrays.asList(
                     "test-ling:com.example.OrderService",
@@ -169,7 +180,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("当同时注册了接口服务和显式注解服务，但它们的实现类名不同时，不应合并它们")
         void shouldNotMergeExplicitServicesIntoInterfaceServicesIfImplementationClassNamesDiffer() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
 
             when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(Arrays.asList(
                     "test-ling:com.example.UserService",
@@ -210,7 +221,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("当同一个方法注册了多个不同的显式服务别名时，为了防止 alternateFqsid 覆盖冲突，不应归并它们")
         void shouldNotMergeExplicitServicesIfMultipleDifferentAliasesExistForSameMethod() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
 
             when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(Arrays.asList(
                     "test-ling:com.example.UserService",
@@ -258,7 +269,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("当调用 getServices 时，若显式服务方法在不同版本的 ClassLoader 中解析结果不同，应正确附带其可用的版本列表")
         void shouldOnlyAttachAvailableVersionsForExplicitService() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
 
             String fqsid = "test-ling:query_user";
             when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(Collections.singletonList(fqsid));
@@ -305,7 +316,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("调用不存在的灵元时返回失败")
         void shouldReturnErrorWhenLingNotExists() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
             when(repository.getRuntime("non-exist")).thenReturn(null);
 
             InvokeResultDTO result = playgroundService.invokeService("non-exist", "non-exist:Service", "hello",
@@ -319,7 +330,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("调用不可用的灵元时返回失败")
         void shouldReturnErrorWhenLingNotAvailable() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(false);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
@@ -335,7 +346,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("调用成功时应返回正确结果和治理轨迹并安全回收上下文")
         void shouldReturnSuccessResultAndTraceWhenInvokeSucceeds() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
@@ -391,7 +402,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("simulation=true 时应使用 SIMULATION 模式且标记无副作用")
         void shouldUseSimulationModeWhenRequested() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
@@ -431,7 +442,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("调用抛出异常时应捕获并返回错误且安全回收上下文")
         void shouldReturnErrorResultWhenInvokeThrowsException() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
@@ -464,7 +475,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("调用服务时若参数类型不匹配，应自动进行类型强转")
         void shouldConvertArgumentsWhenTypesMismatch() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
@@ -503,7 +514,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("按比例路由模式应返回实际路由版本")
         void shouldReturnRoutedVersionInProportionalMode() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(runtime.getLingId()).thenReturn("test-ling");
@@ -541,7 +552,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("按比例路由模式金丝雀比例为0时应路由到稳定版")
         void shouldRouteToStableWhenCanaryPercentZero() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(runtime.getLingId()).thenReturn("test-ling");
@@ -576,7 +587,7 @@ class ServicePlaygroundServiceTest {
         @DisplayName("按比例路由模式单版本时应退化为该版本")
         void shouldDegradeToSingleInstanceInProportionalMode() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter);
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(runtime.getLingId()).thenReturn("test-ling");
@@ -598,6 +609,46 @@ class ServicePlaygroundServiceTest {
 
             assertTrue(result.isSuccess());
             assertEquals("1.0", result.getRoutedVersion());
+        }
+
+        @Test
+        @DisplayName("调灵元前应先 GovernanceArbitrator 推 capability + PermissionService.grant 给 dashboard 赋权")
+        void shouldSelfGrantBeforeInvokeSoCoreDoesNotRejectUnauthorized() {
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
+                    pipelineEngine, objectMapper, canaryRouter, governanceArbitrator, permissionService);
+            LingRuntime runtime = mock(LingRuntime.class);
+            when(runtime.isAvailable()).thenReturn(true);
+            when(repository.getRuntime("test-ling")).thenReturn(runtime);
+            InstancePool instancePool = mock(InstancePool.class);
+            when(runtime.getInstancePool()).thenReturn(instancePool);
+            LingInstance instance = mock(LingInstance.class);
+            when(instancePool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
+            when(instancePool.getDefault()).thenReturn(instance);
+            when(instance.getVersion()).thenReturn("1.0");
+            when(instance.isReady()).thenReturn(true);
+            when(instance.getClassLoader()).thenReturn(this.getClass().getClassLoader());
+
+            // 显式注解服务路径：resolveTargetClassName 走 lingServiceRegistry.getImplementationClassName
+            // 返回测试类自己（DummyQueryService）→ resolveTargetMethod 拿 Method(query) → arbitrate 拿 capability
+            when(serviceRegistry.getImplementationClassName("test-ling:query_user"))
+                    .thenReturn(DummyQueryService.class.getName());
+
+            // GovernanceArbitrator 推出 capability="test-ling:query_user:query" + AccessType.READ
+            GovernanceDecision decision = GovernanceDecision.builder()
+                    .requiredPermission("test-ling:query_user:query")
+                    .accessType(AccessType.READ)
+                    .build();
+            when(governanceArbitrator.arbitrate(any(), any(), any())).thenReturn(decision);
+
+            when(pipelineEngine.invoke(any(InvocationContext.class))).thenReturn("ok");
+
+            InvokeResultDTO result = playgroundService.invokeService(
+                    "test-ling", "test-ling:query_user", "query",
+                    new String[] { "java.lang.String" }, new Object[] { "world" }, null, "SPECIFIED");
+
+            assertTrue(result.isSuccess());
+            // 验 dashboard 调 invoke 前已 grant 自己赋权——core 治理链查权限表有记录自然放行
+            verify(permissionService).grant("dashboard", "test-ling:query_user:query", AccessType.READ);
         }
     }
 

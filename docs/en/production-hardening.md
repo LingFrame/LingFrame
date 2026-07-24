@@ -105,7 +105,7 @@ Do not express traffic shift via RuntimeStatus; change routing weights only.
   - Runtime: shared `lingframe-spring-boot-starter` + typed `lingframe-spring-boot2-starter` / `lingframe-spring-boot3-starter`
   - Dashboard: single GAV + `src/java-javax` / `src/java-jakarta` (and matching tests) via `build-helper`
 - Always `clean` when switching matrices (SB3 class files break JDK 8)
-- Contributor detail: [DEVELOPMENT_MANUAL.md](../DEVELOPMENT_MANUAL.en.md) section 5.2
+- Contributor detail: [DEVELOPMENT_MANUAL.md](../../DEVELOPMENT_MANUAL.en.md) section 5.2
 - 0.4 delivery: **control plane + routing elevation + correctness closure**; config and boundaries are listed in this checklist
 
 ---

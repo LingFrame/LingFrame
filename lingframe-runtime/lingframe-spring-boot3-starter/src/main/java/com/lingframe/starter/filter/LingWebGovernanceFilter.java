@@ -1,6 +1,7 @@
 package com.lingframe.starter.filter;
 
 import com.lingframe.api.context.LingCallContext;
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.metrics.LingHealthMetrics;
@@ -39,7 +40,6 @@ import java.security.Principal;
 @RequiredArgsConstructor
 public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
-    private static final String LING_CORE_ID = "lingcore-app";
     private static final WebGovernanceSupport GOVERNANCE_SUPPORT = new WebGovernanceSupport();
 
     private final WebRouteResolver webRouteResolver;
@@ -74,7 +74,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             return;
         }
 
-        String lingId = isLingRequest ? lingMeta.getLingId() : LING_CORE_ID;
+        String lingId = isLingRequest ? lingMeta.getLingId() : LingCoreConstants.LINGCORE_LING_ID;
         ClassLoader originalCL = null;
         if (isLingRequest) {
             originalCL = Thread.currentThread().getContextClassLoader();
@@ -164,7 +164,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             boolean isLingRequest,
             long startNanos,
             Throwable error) {
-        if (!isLingRequest && !LING_CORE_ID.equals(lingId)) {
+        if (!isLingRequest && !LingCoreConstants.LINGCORE_LING_ID.equals(lingId)) {
             return;
         }
         MetricsCollector metricsCollector =

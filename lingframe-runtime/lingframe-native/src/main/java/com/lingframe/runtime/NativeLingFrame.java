@@ -1,5 +1,6 @@
 package com.lingframe.runtime;
 
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.audit.AuditManager;
@@ -206,8 +207,8 @@ public class NativeLingFrame {
             HOT_SWAP_WATCHER = watcher;
         }
 
-        // 注册一个特殊的 "lingcore-app" 上下文
-        LING_CORE_CONTEXT = new DefaultLingContext("lingcore-app", lingRepository, lingServiceRegistry, pipelineEngine,
+        // 注册一个特殊的灵核上下文（lingId 固定为 LingCoreConstants.LINGCORE_LING_ID）
+        LING_CORE_CONTEXT = new DefaultLingContext(LingCoreConstants.LINGCORE_LING_ID, lingRepository, lingServiceRegistry, pipelineEngine,
                 permissionService, eventBus);
 
         // 自动扫描灵元
@@ -329,7 +330,7 @@ public class NativeLingFrame {
      */
     public static LingContext getLingCoreContext() {
         if (!started.get()) {
-            throw new LingInvocationException("lingcore-app", LingInvocationException.ErrorKind.STATE_REJECTED, "LingFrame not started");
+            throw new LingInvocationException(LingCoreConstants.LINGCORE_LING_ID, LingInvocationException.ErrorKind.STATE_REJECTED, "LingFrame not started");
         }
         return LING_CORE_CONTEXT;
     }

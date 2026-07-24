@@ -214,6 +214,6 @@ canary 版本通过 `properties.canary: true` 标记，由 `CanaryRoutingFilter`
 
 ## 6. 相关示例
 
-- [lingframe-example-ling-mall](../lingframe-example-ling-mall/zh-CN/README.md) —— 老单体最小化改造为灵元的范例
+- [lingframe-example-ling-mall](../../lingframe-example-ling-mall/zh-CN/README.md) —— 老单体最小化改造为灵元的范例
 - [lingframe-example-lingcore-app](../lingframe-example-lingcore-app) —— 灵核示例，演示多灵元加载与 Dashboard 治理
 - [lingframe-example-ling-user](../lingframe-example-ling-user) + [lingframe-example-ling-user-canary](../lingframe-example-ling-user-canary) —— 双版本灰度场景示例

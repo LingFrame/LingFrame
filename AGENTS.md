@@ -61,7 +61,7 @@ mvn -pl lingframe-examples/lingframe-example-lingcore-app -am package -DskipTest
 cd lingframe-examples/lingframe-example-lingcore-app && mvn spring-boot:run
 # 默认 http://localhost:8888 ，Dashboard: /dashboard.html
 
-# 可选集成回归（见 QUICK_START.md）
+# 可选集成回归（见 [QUICK_START.md](QUICK_START.md)）
 mvn -pl lingframe-examples/lingframe-example-lingcore-app -am "-Pspring-boot2,integration-check" verify "-Dit.test=ObservabilityClosedLoopIntegrationTest"
 
 # JMH 基准（非默认模块）

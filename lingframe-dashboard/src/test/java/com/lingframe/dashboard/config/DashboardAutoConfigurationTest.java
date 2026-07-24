@@ -1,6 +1,7 @@
 package com.lingframe.dashboard.config;
 
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.event.EventBus;
@@ -119,7 +120,8 @@ class DashboardAutoConfigurationTest {
     void shouldCreateServicePlaygroundService() {
         assertNotNull(config.servicePlaygroundService(
                 mock(LingServiceRegistry.class), mock(LingRepository.class),
-                mock(InvocationPipelineEngine.class), mock(ObjectMapper.class), mock(CanaryRouter.class)));
+                mock(InvocationPipelineEngine.class), mock(ObjectMapper.class), mock(CanaryRouter.class),
+                mock(GovernanceArbitrator.class), mock(PermissionService.class)));
     }
 
     @Test

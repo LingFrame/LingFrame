@@ -28,7 +28,7 @@
 </p>
 
 <p align="center">
-  <a href="./README.md">English</a> | <strong>中文</strong>
+  <strong>中文</strong> | <a href="./README.en.md">English</a>
 </p>
 
 系统运行久了，业务不停迭代，代码越来越庞大，结果谁也不敢轻易改动。
@@ -280,13 +280,13 @@ mainClass: "com.example.UserLing"
 
 ## 继续往下
 
-| 目标 | 文档 |
-| --- | --- |
-| 按阶段阅读 | [docs/zh-CN/README.md](docs/zh-CN/README.md) |
-| 集成、写灵元、配置 | [文档地图 · 接入与开发](docs/zh-CN/README.md#接入与开发) |
-| 生产配置 | [production-hardening](docs/zh-CN/production-hardening.md) |
-| 架构 | [架构设计](docs/zh-CN/architecture.md) |
-| 本版交付 | [CHANGELOG](CHANGELOG.md) · [0.4.0 发布说明](docs/release/0.4.0-release-notes.md) |
+| 目标 | 文档                                                              |
+| --- |-----------------------------------------------------------------|
+| 按阶段阅读 | [详细目录](docs/zh-CN/README.md)                                    |
+| 集成、写灵元、配置 | [文档地图 · 接入与开发](docs/zh-CN/README.md#接入与开发)                      |
+| 生产配置 | [production-hardening](docs/zh-CN/production-hardening.md)      |
+| 架构 | [架构设计](docs/zh-CN/architecture.md)                              |
+| 本版交付 | [CHANGELOG](CHANGELOG.md)                                       |
 | 参与贡献 | [CONTRIBUTING](CONTRIBUTING.md) · [开发手册](DEVELOPMENT_MANUAL.md) |
 
 ---

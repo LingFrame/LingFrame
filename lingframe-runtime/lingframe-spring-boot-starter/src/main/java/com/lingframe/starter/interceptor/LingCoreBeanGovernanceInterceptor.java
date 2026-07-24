@@ -2,6 +2,7 @@ package com.lingframe.starter.interceptor;
 
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
@@ -33,7 +34,6 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
     private final boolean governInternalCalls;
     private final boolean checkPermissions;
     private final EntryInvocationGovernanceResolver invocationGovernanceResolver;
-    private static final String LING_CORE_ID = "lingcore-app";
 
     @Override
     public Object invoke(MethodInvocation invocation) throws Throwable {
@@ -58,15 +58,15 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
                 log.debug("[Governance Interceptor] Internal LINGCORE call, governance disabled, skipping");
                 return invocation.proceed();
             }
-            callerLingId = LING_CORE_ID;
+            callerLingId = LingCoreConstants.LINGCORE_LING_ID;
             log.debug("[Governance Interceptor] No ling context, using LINGCORE as caller: {}", callerLingId);
         } else {
             log.debug("[Governance Interceptor] ling {} calling LINGCORE method: {}.{}",
                     callerLingId, method.getDeclaringClass().getSimpleName(), method.getName());
         }
 
-        // 如果配置为不对灵核应用进行权限检查，直接执行
-        if (LING_CORE_ID.equals(callerLingId) && !checkPermissions) {
+        // 如果配置为不对灵核应用进行权限检查，灵核 caller 直接放行；灵元 caller 不跳（走 pipelineEngine 治理）
+        if (LingCoreConstants.LINGCORE_LING_ID.equals(callerLingId) && !checkPermissions) {
             log.debug("[Governance Interceptor] LINGCORE app, permission check disabled, proceeding");
             return invocation.proceed();
         }
@@ -136,9 +136,9 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         // 构建上下文
         InvocationContext ctx = InvocationContext.obtain();
         ctx.setTraceId(LingCallContext.getTraceId());
-        ctx.setTargetLingId(LING_CORE_ID); // 这里写目标标识，而不是旧字段语义上的 lingId
+        ctx.setTargetLingId(LingCoreConstants.LINGCORE_LING_ID); // 这里写目标标识，而不是旧字段语义上的 lingId
         ctx.setCallerLingId(callerLingId);
-        ctx.setServiceFQSID(LING_CORE_ID + ":" + method.getDeclaringClass().getName());
+        ctx.setServiceFQSID(LingCoreConstants.LINGCORE_LING_ID + ":" + method.getDeclaringClass().getName());
         ctx.setResourceType("RPC");
         ctx.setResourceId(method.getDeclaringClass().getSimpleName() + "." + method.getName());
         ctx.setOperation(method.getName());
@@ -153,7 +153,7 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
         ctx.setLabels(new HashMap<>());
         ctx.governance().setRuleSource(null); // 这里尚未进入规则仲裁阶段，因此显式置空
         if (invocationGovernanceResolver != null) {
-            invocationGovernanceResolver.applyTo(ctx, LING_CORE_ID);
+            invocationGovernanceResolver.applyTo(ctx, LingCoreConstants.LINGCORE_LING_ID);
         }
 
         // 入口已经拿到了 Method 元信息，就直接喂给 resolution 分区，后续治理与终端无需重复猜测

@@ -1,10 +1,5 @@
 # Architecture Design
 
-This document describes the **actually landed outward architecture in the current code**.  
-It deliberately avoids the older narrative that no longer matches the runtime reality.
-
-If one sentence captures the point of this document:
-
 > LingFrame's current architecture is not only answering "how a ling is loaded",  
 > but also formally answering "how a ling is governed, converged, and cleanly retired".
 
