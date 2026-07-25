@@ -6,7 +6,7 @@ user-ling: !!com.lingframe.api.config.GovernancePolicy
     capability: Ling_ENABLE
   - accessType: EXECUTE
     capability: LING_ENABLE
-  - accessType: READ
+  - accessType: NONE
     capability: cache:local
   - accessType: EXECUTE
     capability: ipc:user-ling
@@ -14,7 +14,7 @@ user-ling: !!com.lingframe.api.config.GovernancePolicy
     capability: ipc:ling-stress-web
   - accessType: EXECUTE
     capability: ipc:order-ling
-  - accessType: READ
+  - accessType: NONE
     capability: storage:sql
   invocation:
     cpuBudgetMsPerMinute: null

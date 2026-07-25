@@ -97,6 +97,14 @@ springdoc:
 logging:
   level:
     com.lingframe: INFO
+  file:
+    name: log/lingframe.log
+  logback:
+    rolling policy:
+      max-file-size: 100MB       # 单文件上限，超过则滚动
+      max-history: 30            # 保留历史天数
+      total-size-cap: 5GB        # 总上限，超过则删除最老
+      clean-history-on-start: true
 
 management:
   endpoints:

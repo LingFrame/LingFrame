@@ -28,6 +28,12 @@
 </p>
 
 <p align="center">
+  <a href="https://dashboard.lingframe.cn" target="_blank">
+    <img src="https://img.shields.io/badge/Live_Demo-Online_Demo-brightgreen?style=for-the-badge&logo=rocket" alt="Live Demo">
+  </a>
+</p>
+
+<p align="center">
   <a href="./README.md">中文</a> | <strong>English</strong>
 </p>
 
@@ -126,7 +132,12 @@ Design stance: [WHY.md](WHY.en.md) · [MANIFESTO.md](MANIFESTO.en.md)
 
 ## Shortest path to run
 
-Need a JDK (**examples default to 8**; support line may use 17) and Maven.
+- **Option 1: Online demo (zero setup)**
+  Visit [LingFrame Live Demo](https://dashboard.lingframe.cn) to operate the Dashboard in-browser and experience ling governance and traffic shifting — no local environment required.
+  Access token: `lingframe` .
+
+- **Option 2: Run locally (for evaluation)**
+  Need a JDK (**examples default to 8**; support line may use 17) and Maven.
 
 ```powershell
 mvn -pl lingframe-examples/lingframe-example-lingcore-app -am package -DskipTests
@@ -151,7 +162,11 @@ After it boots:
 3. Check monitor / governance for live signals  
 4. With multiple versions, change traffic by **weights** — do not use runtime status as a traffic switch  
 
-![LingFrame Dashboard](./docs/en/images/dashboard.png)
+### Dashboard preview
+
+[![LingFrame Dashboard](./docs/en/images/dashboard.png)](https://dashboard.lingframe.cn)
+
+> Click the screenshot to open the live demo. The online environment ships with sample lings and supports live lifecycle, routing, and simulation drills.
 
 Two example tracks (see [lingframe-examples/README.en.md](lingframe-examples/README.en.md) for the map):
 
@@ -221,6 +236,23 @@ lingframe:
   ling-home: "lings"      # directory of packaged lings
   # preload-api-jars: [ "path/to/shared-api" ]
 ```
+
+### Optional Dashboard
+
+Adding the `lingframe-dashboard` dependency alone does not enable the control plane — you must explicitly set `lingframe.dashboard.enabled: true`. Minimal runnable config:
+
+```yaml
+lingframe:
+  dashboard:
+    enabled: true
+    access-token:
+      enabled: true
+      token: "${LINGFRAME_DASHBOARD_TOKEN}"   # required in production; empty token fails to start (fail-closed)
+    storage:
+      path: "/var/lib/lingframe/dashboard.db" # SQLite persistence; point to a writable directory in production
+```
+
+Full config reference with per-item comments: [`application-prod.yaml.example`](lingframe-examples/lingframe-example-lingcore-app/src/main/resources/application-prod.yaml.example) · Production hardening checklist: [`docs/en/production-hardening.md`](docs/en/production-hardening.md).
 
 **Ling `ling.yml` (skeleton):**
 

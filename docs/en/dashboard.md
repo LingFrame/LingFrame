@@ -98,8 +98,72 @@ Where:
 - The install API needs extra enablement: `lingframe.dashboard.install-enabled=true`
 - The hot-reload API is only available when `lingframe.dev-mode=true`
 
-![LingFrame Dashboard Example](./images/dashboard.png)
+[![LingFrame Dashboard Example](./images/dashboard.png)](https://dashboard.lingframe.cn)
+
+> Click the screenshot to open the live demo.
+> Online demo access token: `lingframe` .
 *Fig: The Dashboard can act as a UI consumer for the governance control surface.*
+
+## Configuration
+
+All Dashboard config keys live under the `lingframe.dashboard` prefix. For a full production template with per-item comments, see
+[`application-prod.yaml.example`](../../lingframe-examples/lingframe-example-lingcore-app/src/main/resources/application-prod.yaml.example).
+
+### Top-level switches
+
+| Key | Default | Description |
+| :-- | :-- | :-- |
+| `lingframe.dashboard.enabled` | `false` | Master switch. **Adding the dependency alone does not enable it** — must be explicitly `true` |
+| `lingframe.dashboard.install-enabled` | `false` | Whether uploading and installing lings via the Dashboard is allowed |
+| `lingframe.dashboard.metaspace-estimate-bytes-per-class` | `10240` | Estimated Metaspace bytes per class (metrics estimation only) |
+
+### Access token auth (`access-token`)
+
+| Key | Default | Description |
+| :-- | :-- | :-- |
+| `enabled` | `true` | Enable token auth; disabling requires an explicit `enabled=false` |
+| `token` | `""` | Primary access token; required when `enabled=true`, otherwise startup fails (fail-closed) |
+| `allow-weak` | `true` | `false` rejects weak tokens at startup; production must be `false` |
+| `secondary-tokens` | `[]` | Backup tokens (used during rotation windows) |
+
+Token is sent via the `X-Access-Token` header only.
+
+### CORS (`cors`)
+
+| Key | Default | Description |
+| :-- | :-- | :-- |
+| `enabled` | `true` | Set `false` to skip the filter entirely (dev escape hatch) |
+| `allowed-origins` | `[]` | Allowed cross-origin list; empty + access-token enabled = same-origin only |
+| `allowed-methods` | `["GET","POST","DELETE","OPTIONS"]` | HTTP methods allowed by CORS |
+| `allowed-headers` | `["Content-Type","X-Access-Token","X-Requested-With"]` | Allowed request headers |
+| `max-age` | `3600` | Preflight cache duration (seconds) |
+
+### Rate limiting (`rate-limit`)
+
+| Key | Default | Description |
+| :-- | :-- | :-- |
+| `trusted-proxy-ips` | `[]` | Trusted reverse-proxy IP set; only when the direct TCP IP is in this set is `X-Forwarded-For` parsed, to prevent spoofed bypass |
+| `max-requests-per-second` | `30` | Max requests per second per IP |
+| `ip-idle-threshold-ms` | `600000` | IPs inactive longer than this (ms) are pruned |
+
+### Read-only mode (`readonly`)
+
+| Key | Default | Description |
+| :-- | :-- | :-- |
+| `enabled` | `false` | When enabled, all write operations (POST/DELETE) are rejected; only GET is allowed |
+| `allowed-paths` | `[]` | Paths permitted in read-only mode (prefix match), e.g. health checks |
+
+### SQLite persistence (`storage`)
+
+| Key | Default | Description |
+| :-- | :-- | :-- |
+| `enabled` | `true` | Whether persistence storage is enabled |
+| `path` | `${user.home}/.lingframe/dashboard.db` | SQLite database file path; in containers, mount a persistent volume |
+| `metrics-retention-days` | `7` | Metrics data retention (days) |
+| `audit-retention-days` | `30` | Audit log retention (days) |
+| `metrics-collect-interval-seconds` | `30` | Metrics collection interval (seconds) |
+| `backup-interval-hours` | `6` | Database backup interval (hours); `0` disables backups |
+| `backup-retention-count` | `5` | Number of backup files to retain |
 
 ## API Endpoints
 

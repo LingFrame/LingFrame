@@ -28,6 +28,12 @@
 </p>
 
 <p align="center">
+  <a href="https://dashboard.lingframe.cn" target="_blank">
+    <img src="https://img.shields.io/badge/Live_Demo-在线体验-brightgreen?style=for-the-badge&logo=rocket" alt="Live Demo">
+  </a>
+</p>
+
+<p align="center">
   <strong>中文</strong> | <a href="./README.en.md">English</a>
 </p>
 
@@ -126,7 +132,12 @@
 
 ## 最短跑通
 
-需要 JDK（**示例默认 8**；支持线可用 17）与 Maven。
+- **方式一：在线体验（零门槛）**
+  直接访问 [灵珑 Live Demo](https://dashboard.lingframe.cn)，即可在线操作 Dashboard 体验灵元治理与切流，无需本地环境。
+  访问令牌：`lingframe`。
+
+- **方式二：本地跑通（开发评估）**
+  需要 JDK（**示例默认 8**；支持线可用 17）与 Maven。
 
 ```powershell
 mvn -pl lingframe-examples/lingframe-example-lingcore-app -am package -DskipTests
@@ -151,7 +162,11 @@ curl http://localhost:8888/user-ling/user/listUsers
 3. 看监控 / 治理页是否有真实信号  
 4. 多版本时用流量权重放量，不要用运行时状态代替切流  
 
-![灵珑 Dashboard](./docs/images/dashboard.zh-CN.png)
+### Dashboard 预览
+
+[![灵珑 Dashboard](./docs/images/dashboard.zh-CN.png)](https://dashboard.lingframe.cn)
+
+> 点击截图即可进入在线体验；线上环境已内置示例灵元，支持实时查看生命周期、路由切流与模拟演练。
 
 示例两条路径（总览见 [lingframe-examples/zh-CN/README.md](lingframe-examples/zh-CN/README.md)）：
 
@@ -249,6 +264,23 @@ lingframe:
   ling-home: "lings"      # 已打包灵元目录
   # preload-api-jars: [ "path/to/shared-api" ]
 ```
+
+### 选配 Dashboard
+
+引入 `lingframe-dashboard` 依赖后，必须显式设置 `lingframe.dashboard.enabled: true` 才会装配控制面。最小可运行配置：
+
+```yaml
+lingframe:
+  dashboard:
+    enabled: true
+    access-token:
+      enabled: true
+      token: "${LINGFRAME_DASHBOARD_TOKEN}"   # 生产必填，留空启动失败（fail-closed）
+    storage:
+      path: "/var/lib/lingframe/dashboard.db" # SQLite 持久化；生产指向独立可写目录
+```
+
+全量配置项与逐项说明：[`application-prod.yaml.example`](lingframe-examples/lingframe-example-lingcore-app/src/main/resources/application-prod.yaml.example) · 生产硬化清单：[`docs/zh-CN/production-hardening.md`](docs/zh-CN/production-hardening.md)。
 
 **灵元 `ling.yml`（骨架）：**
 

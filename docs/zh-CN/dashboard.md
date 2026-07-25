@@ -98,8 +98,72 @@ Dashboard 后端控制面默认暴露在：
 - 安装接口需要额外启用：`lingframe.dashboard.install-enabled=true`
 - 热重载接口只在 `lingframe.dev-mode=true` 时可用
 
-![LingFrame Dashboard 示例](./../images/dashboard.zh-CN.png)
+[![LingFrame Dashboard 示例](./../images/dashboard.zh-CN.png)](https://dashboard.lingframe.cn)
+
+> 点击截图即可进入在线体验。
+> 在线演示访问令牌：`lingframe`。
 *图示：Dashboard 可以是治理控制面的一个 UI 消费者。*
+
+## 配置项
+
+Dashboard 的所有配置项前缀为 `lingframe.dashboard`。生产全量模板见
+[`application-prod.yaml.example`](../../lingframe-examples/lingframe-example-lingcore-app/src/main/resources/application-prod.yaml.example)。
+
+### 顶层开关
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `lingframe.dashboard.enabled` | `false` | 控制面总开关。**仅引入依赖不会启用**，必须显式 `true` 才装配 |
+| `lingframe.dashboard.install-enabled` | `false` | 是否允许通过 Dashboard 上传安装灵元 |
+| `lingframe.dashboard.metaspace-estimate-bytes-per-class` | `10240` | 单类 Metaspace 估算字节数（仅用于指标估算） |
+
+### 访问令牌鉴权（`access-token`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `enabled` | `true` | 启用令牌认证；关闭须显式 `enabled=false` |
+| `token` | `""` | 主访问令牌；`enabled=true` 时必填，否则启动失败（fail-closed） |
+| `allow-weak` | `true` | `false` 时弱口令启动失败；生产必须 `false` |
+| `secondary-tokens` | `[]` | 备用令牌列表（用于轮换过渡期） |
+
+Token 只走 Header：`X-Access-Token`。
+
+### 跨域过滤（`cors`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `enabled` | `true` | 设为 `false` 时整个 Filter 跳过（开发逃生口） |
+| `allowed-origins` | `[]` | 允许的跨域源列表；空 + `access-token` 启用 = 仅同源 |
+| `allowed-methods` | `["GET","POST","DELETE","OPTIONS"]` | CORS 允许的 HTTP 方法 |
+| `allowed-headers` | `["Content-Type","X-Access-Token","X-Requested-With"]` | 允许的请求头 |
+| `max-age` | `3600` | 预检请求缓存时间（秒） |
+
+### 限流（`rate-limit`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `trusted-proxy-ips` | `[]` | 受信反向代理 IP 集合；仅直连 IP 在此集合中时才解析 `X-Forwarded-For`，避免伪造绕过限流 |
+| `max-requests-per-second` | `30` | 每秒每 IP 最大请求数 |
+| `ip-idle-threshold-ms` | `600000` | IP 不活跃超过此时间（毫秒）后清理 |
+
+### 只读模式（`readonly`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `enabled` | `false` | 启用后所有写操作（POST/DELETE）被拒绝，仅允许 GET |
+| `allowed-paths` | `[]` | 只读模式下允许的路径（前缀匹配），如健康检查等 |
+
+### SQLite 持久化存储（`storage`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `enabled` | `true` | 是否启用持久化存储 |
+| `path` | `${user.home}/.lingframe/dashboard.db` | SQLite 数据库文件路径；容器环境务必挂载持久卷 |
+| `metrics-retention-days` | `7` | 指标数据保留天数 |
+| `audit-retention-days` | `30` | 审计日志保留天数 |
+| `metrics-collect-interval-seconds` | `30` | 指标采集间隔（秒） |
+| `backup-interval-hours` | `6` | 数据库备份间隔（小时），`0` 表示不备份 |
+| `backup-retention-count` | `5` | 备份文件保留数量 |
 
 ## API 端点
 
