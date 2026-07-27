@@ -1,6 +1,5 @@
 package com.lingframe.core.metrics;
 
-import com.lingframe.core.ling.ProviderKind;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -11,7 +10,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * ProviderMetricsCollector 单元测试。
- * 覆盖：记录调用、按契约查询、evict 清理、空值容错。
+ * 覆盖：记录调用、按契约查询、evict 清理、空值容错、并发安全。
+ * <p>
+ * 去身份化后按 contractId × lingId 二维统计，不再引用 ProviderKind。
  */
 @DisplayName("ProviderMetricsCollector 单元测试")
 class ProviderMetricsCollectorTest {
@@ -25,16 +26,16 @@ class ProviderMetricsCollectorTest {
         void recordThenQueryByContract() {
             ProviderMetricsCollector collector = new ProviderMetricsCollector();
 
-            collector.recordInvocation("svc-a", "lingcore-app", ProviderKind.CORE, true, 10);
-            collector.recordInvocation("svc-a", "lingcore-app", ProviderKind.CORE, true, 20);
-            collector.recordInvocation("svc-a", "user-ling", ProviderKind.LING, false, 5);
+            collector.recordInvocation("svc-a", "lingcore-app", true, 10);
+            collector.recordInvocation("svc-a", "lingcore-app", true, 20);
+            collector.recordInvocation("svc-a", "user-ling", false, 5);
 
             List<ProviderMetricsCollector.ProviderStats> stats = collector.getStatsByContract("svc-a");
 
             assertEquals(2, stats.size());
             // 灵核：2 次调用，全部成功，总延迟 30ms
             ProviderMetricsCollector.ProviderStats coreStats = stats.stream()
-                    .filter(s -> s.getKind() == ProviderKind.CORE)
+                    .filter(s -> "lingcore-app".equals(s.getLingId()))
                     .findFirst().orElse(null);
             assertNotNull(coreStats);
             assertEquals(2, coreStats.getTotalInvocations());
@@ -45,7 +46,7 @@ class ProviderMetricsCollectorTest {
 
             // 灵元：1 次调用，失败，延迟 5ms
             ProviderMetricsCollector.ProviderStats lingStats = stats.stream()
-                    .filter(s -> s.getKind() == ProviderKind.LING)
+                    .filter(s -> "user-ling".equals(s.getLingId()))
                     .findFirst().orElse(null);
             assertNotNull(lingStats);
             assertEquals(1, lingStats.getTotalInvocations());
@@ -57,8 +58,8 @@ class ProviderMetricsCollectorTest {
         @DisplayName("getContractIds 返回所有有调用记录的契约")
         void getContractIdsReturnsAll() {
             ProviderMetricsCollector collector = new ProviderMetricsCollector();
-            collector.recordInvocation("svc-a", "lingcore-app", ProviderKind.CORE, true, 10);
-            collector.recordInvocation("svc-b", "user-ling", ProviderKind.LING, true, 10);
+            collector.recordInvocation("svc-a", "lingcore-app", true, 10);
+            collector.recordInvocation("svc-b", "user-ling", true, 10);
 
             assertEquals(2, collector.getContractIds().size());
             assertTrue(collector.getContractIds().contains("svc-a"));
@@ -82,9 +83,9 @@ class ProviderMetricsCollectorTest {
         @DisplayName("null 参数静默跳过")
         void nullArgsSkipped() {
             ProviderMetricsCollector collector = new ProviderMetricsCollector();
-            collector.recordInvocation(null, "ling-1", ProviderKind.CORE, true, 10);
-            collector.recordInvocation("svc-a", null, ProviderKind.CORE, true, 10);
-            collector.recordInvocation("svc-a", "ling-1", null, true, 10);
+            // contractId / lingId 任一为 null 均静默跳过
+            collector.recordInvocation(null, "ling-1", true, 10);
+            collector.recordInvocation("svc-a", null, true, 10);
 
             assertTrue(collector.getContractIds().isEmpty());
         }
@@ -105,16 +106,16 @@ class ProviderMetricsCollectorTest {
         @DisplayName("evict 移除指定 lingId 的所有指标")
         void evictRemovesLingId() {
             ProviderMetricsCollector collector = new ProviderMetricsCollector();
-            collector.recordInvocation("svc-a", "lingcore-app", ProviderKind.CORE, true, 10);
-            collector.recordInvocation("svc-a", "user-ling", ProviderKind.LING, true, 10);
-            collector.recordInvocation("svc-b", "user-ling", ProviderKind.LING, true, 10);
+            collector.recordInvocation("svc-a", "lingcore-app", true, 10);
+            collector.recordInvocation("svc-a", "user-ling", true, 10);
+            collector.recordInvocation("svc-b", "user-ling", true, 10);
 
             collector.evict("user-ling");
 
             // svc-a 只剩灵核
             List<ProviderMetricsCollector.ProviderStats> svcA = collector.getStatsByContract("svc-a");
             assertEquals(1, svcA.size());
-            assertEquals(ProviderKind.CORE, svcA.get(0).getKind());
+            assertEquals("lingcore-app", svcA.get(0).getLingId());
 
             // svc-b 完全清空
             assertTrue(collector.getStatsByContract("svc-b").isEmpty());
@@ -124,7 +125,7 @@ class ProviderMetricsCollectorTest {
         @DisplayName("evict null 安全")
         void evictNullSafe() {
             ProviderMetricsCollector collector = new ProviderMetricsCollector();
-            collector.recordInvocation("svc-a", "lingcore-app", ProviderKind.CORE, true, 10);
+            collector.recordInvocation("svc-a", "lingcore-app", true, 10);
 
             collector.evict(null); // 不抛异常
 
@@ -147,8 +148,7 @@ class ProviderMetricsCollectorTest {
             for (int i = 0; i < threads; i++) {
                 ts[i] = new Thread(() -> {
                     for (int j = 0; j < perThread; j++) {
-                        collector.recordInvocation("svc-a", "lingcore-app",
-                                ProviderKind.CORE, true, 1);
+                        collector.recordInvocation("svc-a", "lingcore-app", true, 1);
                     }
                 });
                 ts[i].start();

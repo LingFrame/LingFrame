@@ -1,18 +1,20 @@
 package com.lingframe.starter.util;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
+import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.DriverManager;
+import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
-
+import java.util.Properties;
+import java.util.logging.Logger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 /**
  * {@link JdbcCleanupHelper} 补充测试。
@@ -35,7 +37,7 @@ class JdbcCleanupHelperSupplementTest {
         }
 
         @Override
-        public java.sql.Connection connect(String url, java.util.Properties info) {
+        public Connection connect(String url, Properties info) {
             return null;
         }
 
@@ -50,8 +52,8 @@ class JdbcCleanupHelperSupplementTest {
         }
 
         @Override
-        public java.sql.DriverPropertyInfo[] getPropertyInfo(String url, java.util.Properties info) {
-            return new java.sql.DriverPropertyInfo[0];
+        public DriverPropertyInfo[] getPropertyInfo(String url, Properties info) {
+            return new DriverPropertyInfo[0];
         }
 
         @Override
@@ -60,8 +62,8 @@ class JdbcCleanupHelperSupplementTest {
         }
 
         @Override
-        public java.util.logging.Logger getParentLogger() {
-            return java.util.logging.Logger.getGlobal();
+        public Logger getParentLogger() {
+            return Logger.getGlobal();
         }
     }
 

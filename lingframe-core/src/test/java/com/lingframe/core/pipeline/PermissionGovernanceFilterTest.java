@@ -13,16 +13,16 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.LingFilterChain;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-
 import java.util.HashMap;
-
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -267,9 +267,9 @@ class PermissionGovernanceFilterTest {
         // 加固 toggle 开启时：DefaultPermissionService:54 不豁免灵核 → isAllowed 返回 false；
         // PermissionGovernanceFilter 灵核豁免 gate !isLingCoreCheckPermissions() 也不命中 → 走 !allowed 拒路径。
         EventBus eventBus = new EventBus();
-        java.util.concurrent.atomic.AtomicReference<MonitoringEvents.AuditLogEvent> captured =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        AtomicReference<MonitoringEvents.AuditLogEvent> captured =
+                new AtomicReference<>();
+        CountDownLatch latch = new CountDownLatch(1);
         eventBus.subscribe("test-audit", MonitoringEvents.AuditLogEvent.class, event -> {
             captured.set(event);
             latch.countDown();
@@ -309,9 +309,9 @@ class PermissionGovernanceFilterTest {
     void lingcoreCallerBypassesWithRealPermissionServiceWhenDefaultConfig() throws Throwable {
         // 默认配置：lingCoreCheckPermissions=false，灵核身份豁免灵元权限表
         EventBus eventBus = new EventBus();
-        java.util.concurrent.atomic.AtomicReference<MonitoringEvents.AuditLogEvent> captured =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        AtomicReference<MonitoringEvents.AuditLogEvent> captured =
+                new AtomicReference<>();
+        CountDownLatch latch = new CountDownLatch(1);
         eventBus.subscribe("test-audit", MonitoringEvents.AuditLogEvent.class, event -> {
             captured.set(event);
             latch.countDown();

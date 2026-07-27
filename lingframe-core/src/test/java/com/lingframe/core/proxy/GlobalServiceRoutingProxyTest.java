@@ -15,10 +15,14 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+
 /**
  * GlobalServiceRoutingProxy 测试。
  * 覆盖：动态路由、代理复用、离线异常、Object 方法处理、
- * 默认路由 __provider__ 占位符。
+ * 默认路由（裸 contractId FQSID）。
+ * <p>
+ * 去身份化后无 targetLingId 时 SmartServiceProxy 组装 FQSID 直接为裸 contractId（接口全限定名），
+ * 由 ContractProviderRoutingFilter 在 L0 阶段按 provider 权重选中具体 provider。
  */
 @DisplayName("GlobalServiceRoutingProxy 测试")
 class GlobalServiceRoutingProxyTest {
@@ -57,8 +61,8 @@ class GlobalServiceRoutingProxyTest {
                     () -> proxy.invoke(new Object(), method, null));
         }
         // 路由升维后，无 targetLingId 不再走「反向索引兜底 + 空仓抛异常」路径，
-        // 而是返回 __provider__ 占位符交由 pipeline 内 ContractProviderRoutingFilter 决策。
-        // 原有的 noTargetAndEmptyRepoThrows 测试用例已迁移至「默认路由 __provider__ 占位符」
+        // 而是组装裸 contractId FQSID 交由 pipeline 内 ContractProviderRoutingFilter 决策。
+        // 原有的 noTargetAndEmptyRepoThrows 测试用例已迁移至「默认路由裸 contractId」
         // Nested 类，由 pipeline 行为覆盖。
     }
 
@@ -171,15 +175,15 @@ class GlobalServiceRoutingProxyTest {
             } catch (Exception ignored) {
             }
 
-            // lingRepository.getRuntime 只被调用一次（resolveTargetLingId 每次都调用）
+            // lingRepository.getRuntime 只被调用（resolveTargetLingId 每次都调用）
             verify(lingRepository, atLeast(2)).getRuntime("ling-1");
         }
     }
 
-    // ==================== 默认路由 __provider__ 占位符 ====================
+    // ==================== 默认路由裸 contractId ====================
 
     @Nested
-    @DisplayName("默认路由 __provider__ 占位符")
+    @DisplayName("默认路由裸 contractId")
     class ProviderRouting {
 
         @Test
@@ -194,7 +198,7 @@ class GlobalServiceRoutingProxyTest {
                     new Class[]{Runnable.class},
                     (p, m, a) -> null), dummyMethod, null);
 
-            // __provider__ 路径不预校验 runtime——交由 ContractProviderRoutingFilter 决策
+            // 裸 contractId 路径不预校验 runtime——交由 ContractProviderRoutingFilter 决策
             verify(lingRepository, never()).getRuntime(anyString());
             // 反向索引已被删除——不再调 lingServiceRegistry
             verify(lingServiceRegistry, never()).getLingIdsByContractId(anyString());
@@ -203,8 +207,8 @@ class GlobalServiceRoutingProxyTest {
         }
 
         @Test
-        @DisplayName("无 targetLingId 时构造 __provider__:contractId FQSID")
-        void noTargetConstructsProviderFQSID() throws Throwable {
+        @DisplayName("无 targetLingId 时组装裸 contractId FQSID")
+        void noTargetConstructsBareContractIdFqsid() throws Throwable {
             // 用 Answer 在 ctx.recycle() 之前捕获 FQSID——recycle 会清空 ThreadLocal 字段
             AtomicReference<String> capturedFqsid = new AtomicReference<>();
             when(pipelineEngine.invoke(any())).thenAnswer(invocation -> {
@@ -220,7 +224,8 @@ class GlobalServiceRoutingProxyTest {
                     new Class[]{Runnable.class},
                     (p, m, a) -> null), dummyMethod, null);
 
-            assertEquals("__provider__:com.example.Service", capturedFqsid.get());
+            // 裸 contractId（接口全限定名），无 lingId: 前缀
+            assertEquals("com.example.Service", capturedFqsid.get());
         }
 
         @Test

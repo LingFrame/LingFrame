@@ -1,7 +1,7 @@
 package com.lingframe.dashboard.service;
 
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.core.ling.LingServiceRegistry;
-import com.lingframe.core.ling.ProviderKind;
 import com.lingframe.core.metrics.ProviderMetricsCollector;
 import com.lingframe.core.metrics.ProviderMetricsCollector.ProviderStats;
 import com.lingframe.dashboard.dto.ContractMigrationProgressDTO;
@@ -16,8 +16,12 @@ import java.util.stream.Collectors;
 /**
  * 迁移进度服务。
  * <p>
- * 聚合 {@link ProviderMetricsCollector} 的调用统计，
- * 按「灵核 vs 灵元」维度展示流量迁移进度，辅助决策「灵核旧实现是否可下线」。
+ * 蚑合 {@link ProviderMetricsCollector} 的调用统计，
+ * 按「灵核 baseline vs 灵元」维度展示流量迁移进度，辅助决策「灵核旧实现是否可下线」。
+ * <p>
+ * 灵核识别：通过 {@link LingCoreConstants#LINGCORE_LING_ID} 常量比较 lingId，
+ * 仅 Dashboard 运维视图用，不参与路由决策。
+ * 观测层 ProviderMetricsCollector 只按 contractId × lingId 二维统计，不引用身份维度。
  */
 @Slf4j
 public class MigrationProgressService {
@@ -34,13 +38,13 @@ public class MigrationProgressService {
     /**
      * 查询所有契约的迁移进度。
      * <p>
-     * 性能优化：用 groupingBy 一次性按 contractId 聚合所有 stats，
+     * 性能优化：用 groupingBy 一次性按 contractId 蚑合所有 stats，
      * 避免每个契约都遍历整个 statsMap 造成 O(n²) 性能瓶颈。
      *
      * @return 迁移进度列表，按灵核流量占比升序（灵核 0 调用排最前）
      */
     public List<ContractMigrationProgressDTO> getAllProgress() {
-        // 一次性按 contractId 分组：O(n) 遍历 + O(n) 聚合
+        // 一次性按 contractId 分组：O(n) 遍历 + O(n) 蚑合
         Map<String, List<ProviderStats>> statsByContract = providerMetricsCollector.getAllStats().stream()
                 .collect(Collectors.groupingBy(ProviderStats::getContractId));
 
@@ -61,10 +65,13 @@ public class MigrationProgressService {
     }
 
     /**
-     * 聚合单个契约的 stats 列表为迁移进度 DTO。
+     * 蚑合单个契约的 stats 列表为迁移进度 DTO。
      * <p>
      * 提取为私有方法供 {@link #getAllProgress()} 和 {@link #getProgress(String)} 复用，
      * 避免重复实现聚合逻辑。
+     * <p>
+     * 灵核识别：通过 lingId == {@link LingCoreConstants#LINGCORE_LING_ID} 判定，
+     * 命中则计入 coreInvocations，否则计入 lingInvocations。
      */
     private ContractMigrationProgressDTO buildProgress(String contractId, List<ProviderStats> stats) {
         // 防御性处理：null/空列表返回零值 DTO，避免 NPE
@@ -80,7 +87,7 @@ public class MigrationProgressService {
 
         for (ProviderStats s : safeStats) {
             providerCount++;
-            if (s.getKind() == ProviderKind.CORE) {
+            if (isCoreBaseline(s.getLingId())) {
                 coreInvocations += s.getTotalInvocations();
                 coreDurationTotal += s.getTotalDurationMs();
                 coreFailures += s.getFailureCount();
@@ -124,5 +131,14 @@ public class MigrationProgressService {
                 .filter(ContractMigrationProgressDTO::isCoreStale)
                 .map(ContractMigrationProgressDTO::getContractId)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 判定是否灵核 baseline：lingId == LingCoreConstants.LINGCORE_LING_ID。
+     * <p>
+     * 仅 Dashboard 运维视图用，不参与路由决策。
+     */
+    private boolean isCoreBaseline(String lingId) {
+        return LingCoreConstants.LINGCORE_LING_ID.equals(lingId);
     }
 }

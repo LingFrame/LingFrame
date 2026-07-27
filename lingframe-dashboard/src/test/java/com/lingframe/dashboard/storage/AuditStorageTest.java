@@ -1,21 +1,21 @@
 package com.lingframe.dashboard.storage;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Assertions;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
-
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import org.mockito.Mockito;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * 审计日志存储单元测试
@@ -105,7 +105,7 @@ class AuditStorageTest {
             storage.queryAuditLogs(null, 1000L, 2000L, 0);
             storage.queryAuditLogs(null, 1000L, 2000L, -5);
 
-            verify(jdbcTemplate, org.mockito.Mockito.times(2)).queryForList(anyString(), any(Object[].class));
+            verify(jdbcTemplate, Mockito.times(2)).queryForList(anyString(), any(Object[].class));
         }
     }
 
@@ -116,6 +116,6 @@ class AuditStorageTest {
 
         int deleted = storage.cleanupBefore(System.currentTimeMillis());
 
-        org.junit.jupiter.api.Assertions.assertEquals(10, deleted);
+        Assertions.assertEquals(10, deleted);
     }
 }

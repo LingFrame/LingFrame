@@ -5,7 +5,7 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.spi.CanaryConfigurable;
+import com.lingframe.core.routing.MigrationStateHolder;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LingAlertManager;
@@ -22,7 +22,6 @@ import java.util.List;
 /**
  * {@link DefaultLingLifecycleEngine} 的装配参数对象。
  * <p>
- * 收敛原 13 参数构造器 + 5 个 setter 的依赖注入爆炸问题，
  * 强依赖走 Builder 必填字段，可选组件走 {@code @Builder.Default} 默认 null。
  * <p>
  * 设计意图：
@@ -56,7 +55,7 @@ public class LifecycleEngineConfig {
     @Builder.Default
     private final LingHotSwapWatcher hotSwapWatcher = null;
     @Builder.Default
-    private final CanaryConfigurable canaryConfigurable = null;
+    private final MigrationStateHolder migrationStateHolder = null;
     @Builder.Default
     private final LingMetricsCollector metricsCollector = null;
     @Builder.Default

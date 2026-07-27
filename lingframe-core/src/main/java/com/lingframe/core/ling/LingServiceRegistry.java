@@ -1,5 +1,8 @@
 package com.lingframe.core.ling;
 
+import com.lingframe.api.exception.RoutingArchitectureViolationException;
+import com.lingframe.core.routing.ProviderDescriptor;
+
 import java.util.List;
 import java.util.Set;
 
@@ -88,13 +91,24 @@ public interface LingServiceRegistry {
      * 按契约 ID 查询所有提供方（含权重）。
      * <p>
      * 路由升维后的主入口，替代 {@link #getLingIdsByContractId}。
-     * 返回的描述符列表包含每个提供方的 lingId、类型和权重，
+     * 返回的描述符列表包含每个提供方的 lingId 和权重，
      * 供 {@code ProviderWeightRouter} 做 L0 provider 级选路。
      *
      * @param contractId 契约 ID
      * @return 提供方描述符列表；未命中返回空列表
      */
     List<ProviderDescriptor> getProvidersByContractId(String contractId);
+
+    /**
+     * 查询指定灵元/灵核声明的所有契约 ID。
+     * <p>
+     * Dashboard 迁移阶段管理用此方法把 lingId 解析为真实 contractId,
+     * 替代旧前端把 lingId 当 contractId 误用的 literal 'default' 兜底。
+     *
+     * @param lingId 灵元/灵核 ID
+     * @return 匑约 ID 集合；灵元未声明任何契约时返回空集
+     */
+    Set<String> getContractsByLingId(String lingId);
 
     /**
      * 列出所有已注册 provider 的契约 ID。
@@ -108,15 +122,29 @@ public interface LingServiceRegistry {
     /**
      * 注册契约提供方。
      * <p>
-     * 灵元和灵核在注册服务契约时同步调用，声明「本 lingId 以什么类型和权重提供该契约」。
-     * 幂等：同一 (contractId, lingId) 重复注册只保留首次的 kind，weight 以最后一次为准。
+     * 灵元和灵核在注册服务契约时同步调用，声明「本 lingId 以什么权重提供该契约」。
+     * 幂等：同一 (contractId, lingId) 重复注册时 weight 以最后一次为准。
      *
      * @param contractId 契约 ID
      * @param lingId 提供方灵元/灵核 ID
-     * @param kind 提供方类型
      * @param weight 初始权重 0-100
+     * @throws RoutingArchitectureViolationException 候选数超过 2
      */
-    void registerProvider(String contractId, String lingId, ProviderKind kind, int weight);
+    void registerProvider(String contractId, String lingId, int weight);
+
+    /**
+     * 注册契约提供方（带版本）。
+     * <p>
+     * 迭代期使用：同一灵元部署两个版本时，Provider 标识为 {@code lingId:version}。
+     * 幂等：同一 (contractId, providerKey) 重复注册时 weight 以最后一次为准。
+     *
+     * @param contractId 契约 ID
+     * @param lingId 提供方灵元/灵核 ID
+     * @param version 版本标识（迭代期不可为 null）
+     * @param weight 初始权重 0-100
+     * @throws RoutingArchitectureViolationException 候选数超过 2
+     */
+    void registerProvider(String contractId, String lingId, String version, int weight);
 
     /**
      * 驱逐指定 lingId 的所有提供方注册条目。
@@ -126,6 +154,17 @@ public interface LingServiceRegistry {
      * @param lingId 灵元/灵核 ID
      */
     void evictProvider(String lingId);
+
+    /**
+     * 精细化注销指定契约下的某个 provider。
+     * <p>
+     * 迭代完成相变确认后，退出方候选应从契约索引中精准注销，
+     * 替代全量 {@link #evictProvider} 的粒度。
+     *
+     * @param contractId 契约 ID
+     * @param providerKey 提供方路由键（{@link ProviderDescriptor#providerKey()}）
+     */
+    void unregisterProvider(String contractId, String providerKey);
 
     /**
      * 更新提供方权重（Dashboard 下发）。

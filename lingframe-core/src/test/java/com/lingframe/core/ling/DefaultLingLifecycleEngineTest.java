@@ -1,27 +1,27 @@
 package com.lingframe.core.ling;
 
+import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.alert.AlertManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.dev.HotSwapWatcher;
-import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
+import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.spi.CanaryConfigurable;
+import com.lingframe.core.routing.MigrationStateHolder;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LeakRiskLevel;
 import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.LingLoaderFactory;
-import com.lingframe.core.alert.AlertManager;
-import com.lingframe.core.metrics.GovernanceMetricsCollector;
-import com.lingframe.core.metrics.MetricsCollector;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
 import java.util.Collections;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -208,7 +208,7 @@ class DefaultLingLifecycleEngineTest {
             assertEquals(com.lingframe.core.fsm.InstanceStatus.READY, instance.currentStatus());
             assertEquals(com.lingframe.core.fsm.RuntimeStatus.ACTIVE, runtime.currentStatus());
             verify(pipelineEngine).recoverLingGovernance("ling1");
-            verify(container).start(org.mockito.ArgumentMatchers.any());
+            verify(container).start(ArgumentMatchers.any());
             verify(container, never()).stop();
         } finally {
             runtimeCoordinator.stop();
@@ -321,7 +321,8 @@ class DefaultLingLifecycleEngineTest {
         runtimeCoordinator.start();
 
         HotSwapWatcher watcher = mock(HotSwapWatcher.class);
-        CanaryConfigurable canary = mock(CanaryConfigurable.class);
+        MigrationStateHolder migrationStateHolder =
+                new MigrationStateHolder();
 
         DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
                 .containerFactory(mock(ContainerFactory.class))
@@ -337,10 +338,10 @@ class DefaultLingLifecycleEngineTest {
                 .unloadCoordinator(mock(LingUnloadCoordinator.class))
                 .runtimeCoordinator(runtimeCoordinator)
                 .hotSwapWatcher(watcher)
-                .canaryConfigurable(canary)
+                .migrationStateHolder(migrationStateHolder)
                 .build());
 
-        assertTrue(engine.getCanaryConfigurable().isPresent());
+        assertNotNull(engine.getMigrationStateHolder());
         runtimeCoordinator.stop();
     }
 

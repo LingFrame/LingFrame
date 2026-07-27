@@ -1,11 +1,9 @@
-package com.lingframe.core.router;
+package com.lingframe.core.routing;
 
-import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.spi.TrafficRouter;
-import lombok.AccessLevel;
 import lombok.Getter;
-import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -15,6 +13,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 
+/**
+ * 标签匹配路由器。
+ * <p>
+ * 根据请求标签与实例标签的匹配度选择实例。
+ * 无请求标签时退化为权重路由。
+ */
 @Slf4j
 public class LabelMatchRouter implements TrafficRouter {
 
@@ -48,9 +52,9 @@ public class LabelMatchRouter implements TrafficRouter {
         // 标签打分逻辑
         return validCandidates.stream()
                 .map(inst -> new ScoredInstance(inst, calculateScore(inst.getLabels(), requestLabels)))
-                .filter(si -> si.score() >= 0) // 过滤掉不匹配的 (score = -1)
-                .max(Comparator.comparingInt(si -> si.score()))
-                .map(si -> si.instance())
+                .filter(si -> si.getScore() >= 0) // 过滤掉不匹配的 (score = -1)
+                .max(Comparator.comparingInt(si -> si.getScore()))
+                .map(si -> si.getInstance())
                 .orElse(validCandidates.get(0));
     }
 
@@ -121,19 +125,14 @@ public class LabelMatchRouter implements TrafficRouter {
         return score;
     }
 
-    @Value
-    @Getter(AccessLevel.NONE) // 不生成标准 getter
+    @Getter
     public class ScoredInstance {
         LingInstance instance;
         int score;
 
-        // Record 风格的访问器
-        public LingInstance instance() {
-            return instance;
-        }
-
-        public int score() {
-            return score;
+        ScoredInstance(LingInstance instance, int score) {
+            this.instance = instance;
+            this.score = score;
         }
     }
 }

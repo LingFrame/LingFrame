@@ -79,9 +79,14 @@ public class SmartServiceProxy implements InvocationHandler {
                     m -> m.getDeclaringClass().getName() + ":" + m.getName());
             ctx.setResourceId(resourceId);
 
-            // 组装最终的目标服务寻址标： `targetLingId:interfaceFQCN`
+            // 组装目标服务寻址标：
+            // - targetLingId 非空（显式 pinning）→ 老格式 "lingId:contractId"
+            // - targetLingId 为 null（默认路由）→ 裸 contractId，由 L0 ContractProviderRoutingFilter
+            //   按 provider 权重选具体 provider 并补设 ctx.targetLingId
             String serviceInterfaceName = interfaceName != null ? interfaceName : method.getDeclaringClass().getName();
-            String serviceFQSID = targetLingId + ":" + serviceInterfaceName;
+            String serviceFQSID = targetLingId != null && !targetLingId.isEmpty()
+                    ? targetLingId + ":" + serviceInterfaceName
+                    : serviceInterfaceName;
             ctx.setServiceFQSID(serviceFQSID);
 
             ctx.governance().setAccessType(AccessType.EXECUTE);

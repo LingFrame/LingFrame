@@ -1,5 +1,6 @@
 package com.lingframe.starter.filter;
 
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.security.AuditMetadataKeys;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
@@ -15,10 +16,18 @@ import com.lingframe.starter.web.WebInterfaceMetadata;
 import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
 import com.lingframe.starter.web.WebRouteResolver;
+import java.lang.reflect.Method;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import javax.servlet.FilterChain;
+import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import static org.mockito.ArgumentMatchers.any;
 import org.mockito.Mock;
+import static org.mockito.Mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.ObjectProvider;
@@ -27,16 +36,6 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerExecutionChain;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
-
-import javax.servlet.FilterChain;
-import java.lang.reflect.Method;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("LingWebGovernanceFilter 测试")
@@ -315,7 +314,7 @@ class LingWebGovernanceFilterTest {
             when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
             when(targetInstance.getVersion()).thenReturn("v1");
 
-            doThrow(new com.lingframe.api.exception.LingInvocationException(
+            doThrow(new LingInvocationException(
                     "ling-a:http",
                     com.lingframe.api.exception.LingInvocationException.ErrorKind.SECURITY_REJECTED,
                     "Access denied"
@@ -331,7 +330,7 @@ class LingWebGovernanceFilterTest {
             MockHttpServletResponse response = new MockHttpServletResponse();
             when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
-            doThrow(new com.lingframe.api.exception.LingInvocationException(
+            doThrow(new LingInvocationException(
                     "ling-a:http",
                     com.lingframe.api.exception.LingInvocationException.ErrorKind.STATE_REJECTED,
                     "Ling is disabled"
@@ -347,7 +346,7 @@ class LingWebGovernanceFilterTest {
             MockHttpServletResponse response = new MockHttpServletResponse();
             when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
-            doThrow(new com.lingframe.api.exception.LingInvocationException(
+            doThrow(new LingInvocationException(
                     "ling-a:http",
                     com.lingframe.api.exception.LingInvocationException.ErrorKind.RATE_LIMITED,
                     "Unexpected server error"

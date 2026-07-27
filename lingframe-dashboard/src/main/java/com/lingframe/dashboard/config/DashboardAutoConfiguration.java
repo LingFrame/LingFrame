@@ -15,10 +15,9 @@ import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.ProviderMetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.router.LabelMatchRouter;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
-import com.lingframe.core.router.CanaryRouter;
-import com.lingframe.core.router.ProviderWeightRouter;
+import com.lingframe.core.routing.MigrationStateHolder;
 import com.lingframe.dashboard.metrics.LingMetricsMeterBridge;
 import com.lingframe.dashboard.scheduler.MetricsCollectorScheduler;
 import com.lingframe.dashboard.security.AccessTokenInterceptor;
@@ -27,7 +26,6 @@ import com.lingframe.dashboard.security.CorsProperties;
 import com.lingframe.dashboard.security.RateLimitProperties;
 import com.lingframe.dashboard.security.ReadOnlyInterceptor;
 import com.lingframe.dashboard.security.ReadOnlyProperties;
-import com.lingframe.dashboard.service.CanaryDecisionService;
 import com.lingframe.dashboard.service.ContractRoutingService;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
@@ -56,7 +54,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Primary;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -89,22 +86,23 @@ public class DashboardAutoConfiguration {
     // ==================== 基础组件 ====================
 
     @Bean
-    public LingInfoConverter lingInfoConverter() {
-        return new LingInfoConverter();
+    public LingInfoConverter lingInfoConverter(
+            MetricsCollector metricsCollector,
+            @Autowired(required = false) LingServiceRegistry lingServiceRegistry,
+            @Autowired(required = false) ProviderMetricsCollector providerMetricsCollector) {
+        return new LingInfoConverter(metricsCollector, lingServiceRegistry, providerMetricsCollector);
     }
 
     @Bean
-    @Primary
-    public CanaryRouter canaryRouter() {
-        return new CanaryRouter(new LabelMatchRouter());
+    @ConditionalOnMissingBean
+    public MigrationStateHolder migrationStateHolder(
+            @Autowired(required = false) GovernanceStorage governanceStorage) {
+        // 命中 GovernanceStorage 命中实现 MigrationStateStore 接口；SQLite 启用时注入实现持久化,
+        // dashboard 独立运行时 fallback 到无持久化的默认构造
+        return new MigrationStateHolder(governanceStorage);
     }
 
     // ==================== Service ====================
-
-    @Bean
-    public CanaryDecisionService canaryDecisionService(MetricsCollector metricsCollector) {
-        return new CanaryDecisionService(metricsCollector);
-    }
 
     @Bean
     public LeakDetectionCacheService leakDetectionCacheService(EventBus eventBus) {
@@ -124,16 +122,17 @@ public class DashboardAutoConfiguration {
             LingLifecycleEngine lifecycleEngine,
             LingRepository lingRepository,
             GovernanceAdminService governanceAdmin,
-            CanaryRouter canaryRouter,
             LingInfoConverter lingInfoConverter,
             PermissionService permissionService,
             RuntimeCoordinator runtimeCoordinator,
             ObjectMapper objectMapper,
+            MigrationStateHolder migrationStateHolder,
             @Autowired(required = false) GovernanceStorage governanceStorage) {
-        DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository, governanceAdmin, canaryRouter,
+        DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository, governanceAdmin,
                 lingInfoConverter,
                 permissionService,
                 runtimeCoordinator,
+                migrationStateHolder,
                 objectMapper);
         // 条件注入 GovernanceStorage（SQLite 启用时才有，禁用时为 null）
         if (governanceStorage != null) {
@@ -146,11 +145,10 @@ public class DashboardAutoConfiguration {
     public SimulateService simulateService(
             LingRepository lingRepository,
             EventBus eventBus,
-            CanaryRouter canaryRouter,
             PermissionService permissionService,
             InvocationPipelineEngine pipelineEngine,
             LingFrameInfo lingFrameInfo) {
-        return new SimulateService(lingRepository, eventBus, canaryRouter, permissionService, pipelineEngine, lingFrameInfo);
+        return new SimulateService(lingRepository, eventBus, permissionService, pipelineEngine, lingFrameInfo);
     }
 
     @Bean
@@ -159,11 +157,10 @@ public class DashboardAutoConfiguration {
             LingRepository lingRepository,
             InvocationPipelineEngine pipelineEngine,
             ObjectMapper objectMapper,
-            CanaryRouter canaryRouter,
             GovernanceArbitrator governanceArbitrator,
             PermissionService permissionService) {
         return new ServicePlaygroundService(lingServiceRegistry, lingRepository, pipelineEngine,
-                objectMapper, canaryRouter, governanceArbitrator, permissionService);
+                objectMapper, governanceArbitrator, permissionService);
     }
 
     @Bean
@@ -284,9 +281,10 @@ public class DashboardAutoConfiguration {
     public GovernanceConfigRestorer governanceConfigRestorer(
             GovernanceStorage governanceStorage,
             GovernanceAdminService governanceAdmin,
-            CanaryRouter canaryRouter,
+            @Autowired(required = false) ProviderWeightRouter providerWeightRouter,
             ObjectMapper objectMapper) {
-        return new GovernanceConfigRestorer(governanceStorage, governanceAdmin, canaryRouter, objectMapper);
+        // ProviderWeightRouter 由 starter 装配；dashboard 独立运行时 fallback 到 null，恢复阶段跳过权重覆盖
+        return new GovernanceConfigRestorer(governanceStorage, governanceAdmin, providerWeightRouter, objectMapper);
     }
 
     @Bean

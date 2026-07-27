@@ -3,21 +3,19 @@ package com.lingframe.dashboard.controller;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
+import com.lingframe.core.routing.MigrationStateHolder;
 import com.lingframe.core.spi.LeakRiskLevel;
 import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.LeakRiskReportDTO;
 import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.service.DashboardService;
-import com.lingframe.dashboard.service.CanaryDecisionService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
 import java.util.Collections;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -34,7 +32,7 @@ class LingControllerTest {
         LingFrameConfig config = mock(LingFrameConfig.class);
         LingController controller = new LingController(config, dashboardService, metricsCollector, governanceMetricsCollector,
                 runtimeDiagnosticsService,
-                mock(CanaryDecisionService.class), false);
+                new MigrationStateHolder(), false);
 
         LingUninstallResultDTO dto = LingUninstallResultDTO.builder()
                 .lingId("ling1")

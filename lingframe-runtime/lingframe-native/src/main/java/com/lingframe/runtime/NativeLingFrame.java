@@ -47,8 +47,8 @@ import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.FilterRegistryConfig;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.pipeline.LatestVersionPolicy;
-import com.lingframe.core.router.CanaryRouter;
+import com.lingframe.core.routing.LabelMatchRouter;
+import com.lingframe.core.routing.MigrationStateHolder;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.LingServiceInvoker;
 import com.lingframe.core.invoker.FastLingServiceInvoker;
@@ -132,13 +132,13 @@ public class NativeLingFrame {
         MetricsCollector metricsCollector = new MetricsCollector(lingRepository);
         GovernanceMetricsCollector governanceMetricsCollector = new GovernanceMetricsCollector();
 
-        CanaryRouter canaryRouter = new CanaryRouter(new LatestVersionPolicy());
+        LabelMatchRouter trafficRouter = new LabelMatchRouter();
         FilterRegistry filterRegistry = new FilterRegistry(FilterRegistryConfig.builder()
                 .methodCache(invokableMethodCache)
                 .permissionService(permissionService)
                 .serviceInvoker(invoker)
                 .lingRepository(lingRepository)
-                .trafficRouter(canaryRouter)
+                .trafficRouter(trafficRouter)
                 .eventBus(eventBus)
                 .serviceRegistry(lingServiceRegistry)
                 .metricsCollector(metricsCollector)
@@ -196,7 +196,7 @@ public class NativeLingFrame {
                 .lingResourceManager(RESOURCE_MANAGER)
                 .unloadCoordinator(unloadCoordinator)
                 .runtimeCoordinator(RUNTIME_COORDINATOR)
-                .canaryConfigurable(canaryRouter)
+                .migrationStateHolder(new MigrationStateHolder())
                 .metricsCollector(metricsCollector)
                 .governanceMetricsCollector(governanceMetricsCollector)
                 .hotSwapWatcher(watcher)

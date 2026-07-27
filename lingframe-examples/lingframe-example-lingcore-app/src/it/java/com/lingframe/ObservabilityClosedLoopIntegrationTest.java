@@ -12,41 +12,40 @@ import com.lingframe.starter.web.WebGovernanceSupport;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.mock.web.MockHttpServletRequest;
-
+import java.security.Principal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.List;
-import java.util.function.Predicate;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-
+import java.util.function.Predicate;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.annotation.DirtiesContext;
 
 @SpringBootTest(
         classes = ObservabilityTestApplication.class,
@@ -297,7 +296,7 @@ class ObservabilityClosedLoopIntegrationTest {
         }
 
         @Override
-        public java.security.Principal getUserPrincipal() {
+        public Principal getUserPrincipal() {
             return request.getUserPrincipal();
         }
 

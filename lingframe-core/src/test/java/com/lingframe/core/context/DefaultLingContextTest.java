@@ -1,20 +1,20 @@
 package com.lingframe.core.context;
 
+import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import java.lang.reflect.Method;
+import java.util.Collections;
+import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import java.lang.reflect.Method;
-import java.util.Collections;
-import com.lingframe.api.event.LingEvent;
-import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
+import org.mockito.Mockito;
 import static org.mockito.Mockito.*;
 
 @DisplayName("DefaultLingContext 测试")
@@ -130,7 +130,7 @@ class DefaultLingContextTest {
     @Test
     @DisplayName("getService 带完整 FQSID 锚点：serviceId 含冒号时忽略 lingId")
     void getServiceWithFqsidAnchor() {
-        when(registry.getLingIdsByContractId(anyString())).thenReturn(java.util.Collections.emptyList());
+        when(registry.getLingIdsByContractId(anyString())).thenReturn(Collections.emptyList());
         Runnable proxy = context.getService(Runnable.class, "ignored-ling", "target-ling:java.lang.Runnable").orElse(null);
         // 代理对象应能创建；路由命中由调用时 resolveTargetLingId 处理
         assertNotNull(proxy);
@@ -139,7 +139,7 @@ class DefaultLingContextTest {
     @Test
     @DisplayName("getService 带灵元锚点：lingId 非空时拼 [lingId]:[接口名]")
     void getServiceWithLingIdAnchor() {
-        when(registry.getLingIdsByContractId(anyString())).thenReturn(java.util.Collections.emptyList());
+        when(registry.getLingIdsByContractId(anyString())).thenReturn(Collections.emptyList());
         Runnable proxy = context.getService(Runnable.class, "user-ling", null).orElse(null);
         assertNotNull(proxy);
     }
@@ -151,7 +151,7 @@ class DefaultLingContextTest {
         context.expose("custom-svc", handler);
         // registerProtocolService 内部会调 registry.registerServiceMetadata
         // 用至少一次注册即可证明 expose 走了注册路径
-        verify(registry, org.mockito.Mockito.atLeastOnce()).registerServiceMetadata(
+        verify(registry, Mockito.atLeastOnce()).registerServiceMetadata(
                 eq("test-ling:custom-svc"), eq("echo"), any(String[].class), eq("java.lang.String"));
     }
 
@@ -161,7 +161,7 @@ class DefaultLingContextTest {
         context.expose(null, new TestService());
         context.expose("", new TestService());
         context.expose("x", null);
-        verify(registry, org.mockito.Mockito.never()).registerServiceMetadata(
+        verify(registry, Mockito.never()).registerServiceMetadata(
                 anyString(), anyString(), any(String[].class), anyString());
     }
 

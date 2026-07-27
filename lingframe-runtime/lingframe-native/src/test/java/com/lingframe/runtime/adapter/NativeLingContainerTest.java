@@ -3,25 +3,23 @@ package com.lingframe.runtime.adapter;
 import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.event.LingEvent;
+import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.api.ling.Ling;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.exception.LingInstallException;
+import com.lingframe.core.ling.BusinessInterfaceFilter;
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.DefaultLingServiceRegistry;
-import com.lingframe.core.ling.BusinessInterfaceFilter;
-import com.lingframe.core.ling.LingServiceRegistrar;
 import com.lingframe.core.ling.InvokableMethodCache;
+import com.lingframe.core.ling.LingServiceRegistrar;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.FilterRegistryConfig;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.pipeline.LatestVersionPolicy;
 import com.lingframe.core.security.DefaultPermissionService;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.lang.reflect.Method;
@@ -30,8 +28,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-
 import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 @DisplayName("NativeLingContainer 测试")
 class NativeLingContainerTest {
@@ -166,7 +165,7 @@ class NativeLingContainerTest {
                     new File(".")
             );
         });
-        assertTrue(ex.getCause() instanceof com.lingframe.api.exception.InvalidArgumentException);
+        assertTrue(ex.getCause() instanceof InvalidArgumentException);
     }
 
     public static class BadConstructorLing implements Ling {

@@ -10,7 +10,6 @@ import lombok.ToString;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -45,18 +44,6 @@ public class LingRuntime implements RoutableTarget {
     // 这里保留的是一个只读访问点，用于查询宏观运行时状态。
     private final RuntimeCoordinator runtimeCoordinator;
 
-    // 流量统计
-    @Getter
-    private final AtomicLong totalRequests = new AtomicLong(0);
-    @Getter
-    private final AtomicLong stableRequests = new AtomicLong(0);
-    @Getter
-    private final AtomicLong canaryRequests = new AtomicLong(0);
-    @Getter
-    private final AtomicLong activeRequests = new AtomicLong(0);
-    @Getter
-    private volatile long statsWindowStart = System.currentTimeMillis();
-
     @Getter
     private final long installedAt = System.currentTimeMillis();
 
@@ -85,31 +72,6 @@ public class LingRuntime implements RoutableTarget {
         if (newStatus == RuntimeStatus.STOPPING || newStatus == RuntimeStatus.REMOVED) {
             instancePool.shutdown();
         }
-    }
-
-    public void recordRequest(boolean isCanary) {
-        totalRequests.incrementAndGet();
-        if (isCanary) {
-            canaryRequests.incrementAndGet();
-        } else {
-            stableRequests.incrementAndGet();
-        }
-    }
-
-    public void resetTrafficStats() {
-        totalRequests.set(0);
-        stableRequests.set(0);
-        canaryRequests.set(0);
-        activeRequests.set(0);
-        statsWindowStart = System.currentTimeMillis();
-    }
-
-    public void startRequest() {
-        activeRequests.incrementAndGet();
-    }
-
-    public void endRequest() {
-        activeRequests.decrementAndGet();
     }
 
     public boolean isAvailable() {

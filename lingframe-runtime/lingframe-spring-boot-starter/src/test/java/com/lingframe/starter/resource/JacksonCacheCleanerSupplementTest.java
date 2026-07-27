@@ -1,12 +1,14 @@
 package com.lingframe.starter.resource;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Collections;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationContext;
-
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import org.springframework.context.ApplicationContext;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 
 /**
  * {@link JacksonCacheCleaner} 补充测试。
@@ -40,7 +42,7 @@ class JacksonCacheCleanerSupplementTest {
     void shouldCatchExceptionWhenGetBeansOfTypeFails() {
         JacksonCacheCleaner cleaner = new JacksonCacheCleaner();
         ApplicationContext mainContext = mock(ApplicationContext.class);
-        when(mainContext.getBeansOfType(com.fasterxml.jackson.databind.ObjectMapper.class))
+        when(mainContext.getBeansOfType(ObjectMapper.class))
                 .thenThrow(new RuntimeException("context not ready"));
 
         assertDoesNotThrow(() -> cleaner.clear("ling-a", mainContext,
@@ -52,11 +54,11 @@ class JacksonCacheCleanerSupplementTest {
     void shouldHandleEmptyMapperBeans() {
         JacksonCacheCleaner cleaner = new JacksonCacheCleaner();
         ApplicationContext mainContext = mock(ApplicationContext.class);
-        when(mainContext.getBeansOfType(com.fasterxml.jackson.databind.ObjectMapper.class))
-                .thenReturn(java.util.Collections.emptyMap());
+        when(mainContext.getBeansOfType(ObjectMapper.class))
+                .thenReturn(Collections.emptyMap());
         when(mainContext.getBeansOfType(
-                org.springframework.http.converter.json.MappingJackson2HttpMessageConverter.class))
-                .thenReturn(java.util.Collections.emptyMap());
+                MappingJackson2HttpMessageConverter.class))
+                .thenReturn(Collections.emptyMap());
 
         assertDoesNotThrow(() -> cleaner.clear("ling-a", mainContext,
                 getClass().getClassLoader(), "cleanup"));
@@ -67,12 +69,12 @@ class JacksonCacheCleanerSupplementTest {
     void shouldSafelyCleanupRealObjectMapper() {
         JacksonCacheCleaner cleaner = new JacksonCacheCleaner();
         ApplicationContext mainContext = mock(ApplicationContext.class);
-        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        when(mainContext.getBeansOfType(com.fasterxml.jackson.databind.ObjectMapper.class))
-                .thenReturn(java.util.Collections.singletonMap("objectMapper", mapper));
+        ObjectMapper mapper = new ObjectMapper();
+        when(mainContext.getBeansOfType(ObjectMapper.class))
+                .thenReturn(Collections.singletonMap("objectMapper", mapper));
         when(mainContext.getBeansOfType(
-                org.springframework.http.converter.json.MappingJackson2HttpMessageConverter.class))
-                .thenReturn(java.util.Collections.emptyMap());
+                MappingJackson2HttpMessageConverter.class))
+                .thenReturn(Collections.emptyMap());
 
         // 系统 ClassLoader 不加载灵元类，清理应返回 0 但不抛异常
         assertDoesNotThrow(() -> cleaner.clear("ling-a", mainContext,

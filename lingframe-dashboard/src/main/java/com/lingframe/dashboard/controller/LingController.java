@@ -4,12 +4,14 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
+import com.lingframe.core.metrics.LingHealthMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.DashboardService;
-import com.lingframe.dashboard.service.CanaryDecisionService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
+import com.lingframe.core.routing.MigrationPhase;
+import com.lingframe.core.routing.MigrationStateHolder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,7 +42,7 @@ public class LingController {
     private final MetricsCollector metricsCollector;
     private final GovernanceMetricsCollector governanceMetricsCollector;
     private final RuntimeDiagnosticsService runtimeDiagnosticsService;
-    private final CanaryDecisionService canaryDecisionService;
+    private final MigrationStateHolder migrationStateHolder;
     private final boolean installEnabled;
 
     public LingController(LingFrameConfig lingFrameConfig,
@@ -48,14 +50,14 @@ public class LingController {
             MetricsCollector metricsCollector,
             GovernanceMetricsCollector governanceMetricsCollector,
             RuntimeDiagnosticsService runtimeDiagnosticsService,
-            CanaryDecisionService canaryDecisionService,
+            MigrationStateHolder migrationStateHolder,
             @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
         this.lingFrameConfig = lingFrameConfig;
         this.dashboardService = dashboardService;
         this.metricsCollector = metricsCollector;
         this.governanceMetricsCollector = governanceMetricsCollector;
         this.runtimeDiagnosticsService = runtimeDiagnosticsService;
-        this.canaryDecisionService = canaryDecisionService;
+        this.migrationStateHolder = migrationStateHolder;
         this.installEnabled = installEnabled;
     }
 
@@ -209,17 +211,135 @@ public class LingController {
         }
     }
 
-    @PostMapping("/{lingId}/canary")
-    public ApiResponse<Void> setCanary(
+    /**
+     * 迁移阶段管理：发起迁移（灵核独占 → 灵元接管）。
+     * <p>
+     * 前置条件：当前阶段为 CORE_EXCLUSIVE。
+     */
+    @PostMapping("/{lingId}/migration/start")
+    public ApiResponse<Void> startMigration(
             @PathVariable String lingId,
-            @RequestBody CanaryConfigDTO request) {
+            @RequestBody MigrationStartDTO request) {
         try {
-            dashboardService.setCanaryConfig(lingId, request.getPercent(), request.getCanaryVersion());
-            return ApiResponse.ok("灰度配置已更新", null);
+            if (migrationStateHolder == null) {
+                return ApiResponse.error("迁移状态机未装配");
+            }
+            migrationStateHolder.startMigration(
+                    request.getContractId(), request.getOldCandidate(), request.getNewCandidate());
+            return ApiResponse.ok("迁移已发起", null);
         } catch (Exception e) {
-            log.error("Failed to set canary: {}", lingId, e);
-            return ApiResponse.error("灰度配置失败: " + e.getMessage());
+            log.error("Failed to start migration: {}", lingId, e);
+            return ApiResponse.error("发起迁移失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 迁移阶段管理：发起迭代（灵元独占 → 灵元新版本接管）。
+     * <p>
+     * 前置条件：当前阶段为 LING_EXCLUSIVE。
+     */
+    @PostMapping("/{lingId}/iteration/start")
+    public ApiResponse<Void> startIteration(
+            @PathVariable String lingId,
+            @RequestBody MigrationStartDTO request) {
+        try {
+            if (migrationStateHolder == null) {
+                return ApiResponse.error("迁移状态机未装配");
+            }
+            migrationStateHolder.startIteration(
+                    request.getContractId(), request.getOldCandidate(), request.getNewCandidate());
+            return ApiResponse.ok("迭代已发起", null);
+        } catch (Exception e) {
+            log.error("Failed to start iteration: {}", lingId, e);
+            return ApiResponse.error("发起迭代失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 迁移阶段管理：显式确认相变完成（含排空校验）。
+     */
+    @PostMapping("/{contractId}/migration/confirm")
+    public ApiResponse<Void> confirmPhaseTransition(
+            @PathVariable String contractId,
+            @RequestParam boolean drainOk) {
+        try {
+            if (migrationStateHolder == null) {
+                return ApiResponse.error("迁移状态机未装配");
+            }
+            migrationStateHolder.confirmPhaseTransition(contractId, drainOk);
+            return ApiResponse.ok("相变已确认", null);
+        } catch (Exception e) {
+            log.error("Failed to confirm phase transition: {}", contractId, e);
+            return ApiResponse.error("确认相变失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 迁移阶段管理：排空校验查询——查退出方候选活跃请求数是否为 0。
+     * <p>
+     * 前端 {@code confirmTransition} 调用此端点判定 drainOk,
+     * 替代硬编 {@code drainOk=true} 绕过排空校验的旧行为。
+     *
+     * @param contractId 契约 ID
+     * @param candidate  退出方候选 provider 键
+     * @return {@code drained=true} 表示活跃请求数为 0,可确认相变
+     */
+    @GetMapping("/{contractId}/migration/drain-check")
+    public ApiResponse<DrainCheckDTO> checkDrain(
+            @PathVariable String contractId,
+            @RequestParam String candidate) {
+        try {
+            // 命中 LingHealthMetrics 读取候选 provider 对应灵元的活跃请求数
+            // 候选键可能是 lingId 或 lingId:version,提取 lingId 部分查活跃计数
+            String lingId = candidate.indexOf(':') > 0
+                    ? candidate.substring(0, candidate.indexOf(':')) : candidate;
+            long active = 0;
+            if (metricsCollector != null) {
+                LingHealthMetrics m = metricsCollector.getOrCreate(lingId);
+                if (m != null) {
+                    active = m.getActiveRequests().get();
+                }
+            }
+            boolean drained = active == 0;
+            return ApiResponse.ok(new DrainCheckDTO(drained, active));
+        } catch (Exception e) {
+            log.error("Failed to check drain: contract={} candidate={}", contractId, candidate, e);
+            return ApiResponse.error("排空校验失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 迁移阶段管理：回滚相变。
+     */
+    @PostMapping("/{contractId}/migration/rollback")
+    public ApiResponse<Void> rollbackPhaseTransition(@PathVariable String contractId) {
+        try {
+            if (migrationStateHolder == null) {
+                return ApiResponse.error("迁移状态机未装配");
+            }
+            migrationStateHolder.rollbackPhaseTransition(contractId);
+            return ApiResponse.ok("相变已回滚", null);
+        } catch (Exception e) {
+            log.error("Failed to rollback phase transition: {}", contractId, e);
+            return ApiResponse.error("回滚相变失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 迁移阶段查询：返回指定契约的当前迁移阶段与候选元数据。
+     */
+    @GetMapping("/{contractId}/migration/phase")
+    public ApiResponse<MigrationPhaseDTO> getMigrationPhase(@PathVariable String contractId) {
+        if (migrationStateHolder == null) {
+            return ApiResponse.ok(new MigrationPhaseDTO(contractId, MigrationPhase.CORE_EXCLUSIVE.name(), null, null));
+        }
+        MigrationStateHolder.PhaseRecord rec = migrationStateHolder.getRecord(contractId);
+        MigrationPhase phase = migrationStateHolder.getPhase(contractId);
+        MigrationPhaseDTO dto = new MigrationPhaseDTO(
+                contractId, phase.name(),
+                rec != null ? rec.getOldCandidate() : null,
+                rec != null ? rec.getNewCandidate() : null);
+        return ApiResponse.ok(dto);
     }
 
     @GetMapping("/{lingId}/stats")
@@ -279,19 +399,6 @@ public class LingController {
         } catch (Exception e) {
             log.error("Failed to get governance matrix", e);
             return ApiResponse.error("获取治理规则矩阵失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 金丝雀发布决策辅助：基于稳定版与金丝雀版健康指标对比给出建议。
-     */
-    @GetMapping("/{lingId}/canary-decision")
-    public ApiResponse<CanaryDecisionDTO> getCanaryDecision(@PathVariable String lingId) {
-        try {
-            return ApiResponse.ok(canaryDecisionService.decide(lingId));
-        } catch (Exception e) {
-            log.error("Failed to get canary decision: {}", lingId, e);
-            return ApiResponse.error("获取金丝雀决策失败: " + e.getMessage());
         }
     }
 

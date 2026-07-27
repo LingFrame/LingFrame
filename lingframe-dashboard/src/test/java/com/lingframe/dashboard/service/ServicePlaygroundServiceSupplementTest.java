@@ -9,7 +9,6 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.dto.InvokeResultDTO;
 import com.lingframe.dashboard.dto.ServiceMetadataDTO;
 import org.junit.jupiter.api.DisplayName;
@@ -60,9 +59,6 @@ class ServicePlaygroundServiceSupplementTest {
     @Mock
     private InvocationPipelineEngine pipelineEngine;
 
-    @Mock
-    private CanaryRouter canaryRouter;
-
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Nested
@@ -73,7 +69,7 @@ class ServicePlaygroundServiceSupplementTest {
         @DisplayName("当 fqsidList 为 null 时返回空列表")
         void shouldReturnEmptyListWhenFqsidListIsNull() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter, null, null);
+                    pipelineEngine, objectMapper, null, null);
             when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(null);
 
             List<ServiceMetadataDTO> services = playgroundService.getServices("test-ling");
@@ -86,7 +82,7 @@ class ServicePlaygroundServiceSupplementTest {
         @DisplayName("当所有方法在所有版本都不可用时应过滤掉整个服务")
         void shouldFilterOutServiceWhenAllMethodsUnavailableInAllVersions() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter, null, null);
+                    pipelineEngine, objectMapper, null, null);
             String fqsid = "test-ling:EchoService";
             when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(Collections.singletonList(fqsid));
             when(serviceRegistry.getProviderMethods(fqsid)).thenReturn(Arrays.asList("echo()", "ping()"));
@@ -114,7 +110,7 @@ class ServicePlaygroundServiceSupplementTest {
         @DisplayName("当部分方法在所有版本不可用时应只过滤不可用方法，保留可用方法")
         void shouldOnlyFilterOutUnavailableMethodsAndKeepAvailableOnes() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter, null, null);
+                    pipelineEngine, objectMapper, null, null);
             String fqsid = "test-ling:EchoService";
             when(serviceRegistry.getServicesByLingId("test-ling")).thenReturn(Collections.singletonList(fqsid));
             when(serviceRegistry.getProviderMethods(fqsid)).thenReturn(Arrays.asList("echo()", "ping()"));
@@ -152,7 +148,7 @@ class ServicePlaygroundServiceSupplementTest {
         @DisplayName("当 runtime 不存在时返回包含灵元 ID 的精确错误信息")
         void shouldReturnExactErrorWhenLingNotFound() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter, null, null);
+                    pipelineEngine, objectMapper, null, null);
             when(repository.getRuntime("ling1")).thenReturn(null);
 
             InvokeResultDTO result = playgroundService.invokeService("ling1", "ling1:Service", "hello",
@@ -166,7 +162,7 @@ class ServicePlaygroundServiceSupplementTest {
         @DisplayName("当 runtime 不可用时返回包含灵元 ID 的精确错误信息")
         void shouldReturnExactErrorWhenLingNotAvailable() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter, null, null);
+                    pipelineEngine, objectMapper, null, null);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(false);
             when(repository.getRuntime("ling1")).thenReturn(runtime);
@@ -182,7 +178,7 @@ class ServicePlaygroundServiceSupplementTest {
         @DisplayName("当指定版本但找不到对应实例且无兜底实例时返回 Target version not available 错误")
         void shouldReturnErrorWhenTargetVersionNotAvailable() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter, null, null);
+                    pipelineEngine, objectMapper, null, null);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
@@ -205,7 +201,7 @@ class ServicePlaygroundServiceSupplementTest {
         @DisplayName("当未指定版本且无任何可用实例时返回 No available instance 错误")
         void shouldReturnErrorWhenNoAvailableInstance() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter, null, null);
+                    pipelineEngine, objectMapper, null, null);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
@@ -226,7 +222,7 @@ class ServicePlaygroundServiceSupplementTest {
         @DisplayName("当目标实例未就绪时返回 Target instance not ready 错误并安全回收上下文")
         void shouldReturnErrorWhenTargetInstanceNotReady() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter, null, null);
+                    pipelineEngine, objectMapper, null, null);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
@@ -254,7 +250,7 @@ class ServicePlaygroundServiceSupplementTest {
         @DisplayName("当参数转换失败时返回 Parameter conversion failed 错误")
         void shouldReturnErrorWhenParameterConversionFails() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter, null, null);
+                    pipelineEngine, objectMapper, null, null);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
@@ -282,7 +278,7 @@ class ServicePlaygroundServiceSupplementTest {
         @DisplayName("当实例的 ClassLoader 为 null 时不应改变线程上下文类加载器")
         void shouldNotChangeContextClassLoaderWhenInstanceClassLoaderIsNull() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter, null, null);
+                    pipelineEngine, objectMapper, null, null);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);
@@ -319,7 +315,7 @@ class ServicePlaygroundServiceSupplementTest {
         @DisplayName("SPECIFIED 模式成功调用时应返回正数耗时和 null 路由版本")
         void shouldReturnSuccessWithDurationAndTargetRoutedVersion() {
             ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
-                    pipelineEngine, objectMapper, canaryRouter, null, null);
+                    pipelineEngine, objectMapper, null, null);
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.isAvailable()).thenReturn(true);
             when(repository.getRuntime("test-ling")).thenReturn(runtime);

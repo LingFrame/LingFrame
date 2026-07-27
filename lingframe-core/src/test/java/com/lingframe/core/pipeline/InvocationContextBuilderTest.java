@@ -56,6 +56,23 @@ class InvocationContextBuilderTest {
             assertEquals("order-ling:submit", ctx.getServiceFQSID());
             assertEquals("order-ling", ctx.getTargetLingId());
         }
+
+        @DisplayName("裸 contractId FQSID 下 getLingIdFromFqsid 返回 null，forNormal 不误 pin targetLingId")
+        @Test
+        void forNormal_bareContractId_doesNotPinTargetLingId() {
+            // 裸 contractId 场景：FQSID 无冒号，lingId 应为 null，
+            // forNormal 不应把 contractId 误当 lingId pin 到 targetLingId。
+            // 由 L0 ContractProviderRoutingFilter 解析出真实 targetLingId。
+            InvocationContext ctx = InvocationContextBuilder.forNormal("caller-ling", "com.example.UserService")
+                    .build();
+
+            assertEquals(InvocationExecutionMode.NORMAL, ctx.execution().getMode());
+            assertEquals("com.example.UserService", ctx.getServiceFQSID());
+            assertNull(ctx.getLingIdFromFqsid(), "裸 contractId 下 getLingIdFromFqsid 应返回 null");
+            assertNull(ctx.getTargetLingId(), "裸 contractId 下 forNormal 不应误 pin targetLingId");
+            assertEquals("com.example.UserService", ctx.getServiceNameFromFqsid(),
+                    "裸 contractId 应作为 serviceName 缓存");
+        }
     }
 
     @DisplayName("治理字段链式设置语义")

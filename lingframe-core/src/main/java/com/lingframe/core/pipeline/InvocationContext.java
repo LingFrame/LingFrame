@@ -205,8 +205,11 @@ public class InvocationContext {
                 this.cachedLingId = serviceFQSID.substring(0, colonIndex);
                 this.cachedServiceName = serviceFQSID.substring(colonIndex + 1);
             } else {
-                this.cachedLingId = serviceFQSID;
-                this.cachedServiceName = null;
+                // 裸契约名（无冒号）场景：不把 contractId 误当 lingId。
+                // 见 getLingIdFromFqsid() 契约——裸 FQSID 下 lingId 为 null，
+                // 调用方须优先读 getTargetLingId()（L0 阶段已解析）。
+                this.cachedLingId = null;
+                this.cachedServiceName = serviceFQSID;
             }
         }
     }
@@ -215,10 +218,10 @@ public class InvocationContext {
      * 从 FQSID 中提取 lingId 部分。
      * <p>
      * 旧格式（{@code lingId:serviceName}）返回真实 lingId。
-     * 新格式（{@code __provider__:contractId}）返回占位符 {@code __provider__}——
-     * 调用方如需「当前调用的真实目标 lingId」，应优先使用 {@link #getEffectiveLingId()}。
+     * 裸契约名（无冒号）场景返回 null——调用方如需「当前调用的真实目标 lingId」，
+     * 应优先使用 {@link #getEffectiveLingId()}，L0 阶段已解析出 targetLingId。
      *
-     * @return FQSID 中的 lingId 部分；如果 FQSID 为 null 则返回 null
+     * @return FQSID 中的 lingId 部分；如果 FQSID 为 null 或不含冒号则返回 null
      */
     public String getLingIdFromFqsid() {
         return cachedLingId;
@@ -232,8 +235,8 @@ public class InvocationContext {
      *   <li>{@link #getTargetLingId()}——ContractProviderRoutingFilter 在 L0 阶段已解析出真实 lingId</li>
      *   <li>{@link #getLingIdFromFqsid()}——fallback 兼容旧格式 FQSID（{@code lingId:serviceName}）</li>
      * </ol>
-     * 新格式 FQSID（{@code __provider__:contractId}）下 {@link #getLingIdFromFqsid()}
-     * 返回占位符，必须优先读 {@link #getTargetLingId()}。
+     * 裸契约名 FQSID 下 {@link #getLingIdFromFqsid()} 返回 null，
+     * 必须优先读 {@link #getTargetLingId()}。
      *
      * @return 真实目标 lingId；如果都为 null 则返回 null
      */

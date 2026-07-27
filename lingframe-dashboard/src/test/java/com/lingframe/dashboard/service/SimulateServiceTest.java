@@ -12,8 +12,8 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.config.LingFrameInfo;
-import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.api.security.PermissionService;
+// CanaryRouter 已删除，路由层去身份化
 import com.lingframe.dashboard.dto.SimulateResultDTO;
 import com.lingframe.dashboard.dto.StressResultDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +49,6 @@ class SimulateServiceTest {
 
     private LingRepository lingRepository;
     private EventBus eventBus;
-    private CanaryRouter canaryRouter;
     private PermissionService permissionService;
     private InvocationPipelineEngine pipelineEngine;
     private LingFrameInfo lingFrameInfo;
@@ -59,12 +58,10 @@ class SimulateServiceTest {
     void setUp() {
         lingRepository = mock(LingRepository.class);
         eventBus = mock(EventBus.class);
-        canaryRouter = mock(CanaryRouter.class);
         permissionService = mock(PermissionService.class);
         pipelineEngine = mock(InvocationPipelineEngine.class);
         lingFrameInfo = mock(LingFrameInfo.class);
-        service = new SimulateService(lingRepository, eventBus, canaryRouter,
-                permissionService, pipelineEngine, lingFrameInfo);
+        service = new SimulateService(lingRepository, eventBus, permissionService, pipelineEngine, lingFrameInfo);
     }
 
     // ==================== simulateResource ====================
@@ -292,8 +289,10 @@ class SimulateServiceTest {
         }
 
         @Test
-        @DisplayName("canaryRouter 路由到稳定版时应返回 STABLE 结果")
-        void shouldReturnStableResult() {
+        @DisplayName("压测走 Pipeline SIMULATION 模式，应返回 STABLE 结果")
+        void shouldReturnStableResultViaPipeline() {
+            // canaryRouter 已删除，压测改走 pipelineEngine.invoke(ctx) SIMULATION 模式
+            // 这里校验 stressTest 在 runtime 可用 + 单活跃实例时不抛异常，返回 DTO
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
             LingInstance instance = mock(LingInstance.class);
@@ -304,68 +303,14 @@ class SimulateServiceTest {
             when(runtime.getInstancePool()).thenReturn(pool);
             when(pool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
             when(pool.getDefault()).thenReturn(instance);
-            when(canaryRouter.route(anyList(), any())).thenReturn(instance);
             when(instance.getDefinition()).thenReturn(def);
             when(def.getVersion()).thenReturn("1.0.0");
-            when(runtime.getActiveRequests()).thenReturn(new AtomicLong(0));
-
-            StressResultDTO result = service.stressTest("ling1");
-
-            assertEquals("ling1", result.getLingId());
-            assertEquals(1, result.getTotalRequests());
-            assertEquals(1, result.getV1Requests());
-            assertEquals(0, result.getV2Requests());
-            assertEquals(100, result.getV1Percent());
-        }
-
-        @Test
-        @DisplayName("canaryRouter 路由到金丝雀版时应返回 CANARY 结果")
-        void shouldReturnCanaryResult() {
-            LingRuntime runtime = mock(LingRuntime.class);
-            InstancePool pool = mock(InstancePool.class);
-            LingInstance stable = mock(LingInstance.class);
-            LingInstance canary = mock(LingInstance.class);
-            LingDefinition canaryDef = mock(LingDefinition.class);
-
-            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
-            when(runtime.isAvailable()).thenReturn(true);
-            when(runtime.getInstancePool()).thenReturn(pool);
-            when(pool.getActiveInstances()).thenReturn(Arrays.asList(stable, canary));
-            when(pool.getDefault()).thenReturn(stable); // 默认是稳定版
-            when(canaryRouter.route(anyList(), any())).thenReturn(canary); // 路由到金丝雀
-            when(canary.getDefinition()).thenReturn(canaryDef);
-            when(canaryDef.getVersion()).thenReturn("2.0.0");
-            when(runtime.getActiveRequests()).thenReturn(new AtomicLong(5));
-
-            StressResultDTO result = service.stressTest("ling1");
-
-            assertEquals(1, result.getTotalRequests());
-            assertEquals(0, result.getV1Requests());
-            assertEquals(1, result.getV2Requests());
-            assertEquals(100, result.getV2Percent());
-        }
-
-        @Test
-        @DisplayName("canaryRouter 返回 null 时应回退到默认实例")
-        void shouldFallbackToDefaultWhenRouterReturnsNull() {
-            LingRuntime runtime = mock(LingRuntime.class);
-            InstancePool pool = mock(InstancePool.class);
-            LingInstance instance = mock(LingInstance.class);
-            LingDefinition def = mock(LingDefinition.class);
-
-            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
-            when(runtime.isAvailable()).thenReturn(true);
-            when(runtime.getInstancePool()).thenReturn(pool);
-            when(pool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
-            when(pool.getDefault()).thenReturn(instance);
-            when(canaryRouter.route(anyList(), any())).thenReturn(null); // 路由返回 null
-            when(instance.getDefinition()).thenReturn(def);
-            when(def.getVersion()).thenReturn("1.0.0");
-            when(runtime.getActiveRequests()).thenReturn(new AtomicLong(0));
+            // pipelineEngine.invoke 由 StressResultDTO 装配兜底处理，活跃计数下沉到 LingHealthMetrics
 
             StressResultDTO result = service.stressTest("ling1");
 
             assertNotNull(result);
+            assertEquals("ling1", result.getLingId());
             assertEquals(1, result.getTotalRequests());
         }
     }

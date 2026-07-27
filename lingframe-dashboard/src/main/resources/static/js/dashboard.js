@@ -10,7 +10,9 @@ createApp({
         const activeId = ref(null);
         const activeNav = ref('overview');
         const lingSearch = ref('');
-        const canaryPct = ref(0);
+        // 灰度滑块已废弃：迁移阶段由后端 MigrationStateHolder 推进
+        const migrationPhase = ref('CORE_EXCLUSIVE');
+        const migrationRecord = ref(null);
         const isAuto = ref(false);
         const ipcEnabled = ref(true);
         const ipcTarget = ref('user-ling');
@@ -570,18 +572,119 @@ createApp({
         const canCanary = computed(() => (activeLing.value?.versionDetails?.length || 0) >= 2);
         const canOperate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
 
-        // 金丝雀决策辅助（B5）
-        const canaryDecision = ref(null);
-        const fetchCanaryDecision = async () => {
-            if (!activeLing.value || !canCanary.value) {
-                canaryDecision.value = null;
+        // 迁移阶段查询（替代金丝雀决策辅助）
+        const fetchMigrationPhase = async () => {
+            if (!activeId.value) {
+                migrationPhase.value = 'CORE_EXCLUSIVE';
+                migrationRecord.value = null;
+                return;
+            }
+            const contractId = activeLing.value?.contractId;
+            if (!contractId) {
+                migrationPhase.value = 'CORE_EXCLUSIVE';
+                migrationRecord.value = null;
                 return;
             }
             try {
-                const data = await api.get(`/lings/${activeLing.value.lingId}/canary-decision`);
-                canaryDecision.value = data;
+                const data = await api.get(`/lings/${encodeURIComponent(contractId)}/migration/phase`);
+                migrationPhase.value = data?.phase || 'CORE_EXCLUSIVE';
+                migrationRecord.value = data || null;
             } catch (e) {
-                console.warn('Failed to fetch canary decision:', e.message);
+                console.warn('Failed to fetch migration phase:', e.message);
+                migrationPhase.value = 'CORE_EXCLUSIVE';
+                migrationRecord.value = null;
+            }
+        };
+
+        const startMigration = async () => {
+            if (!activeId.value) return;
+            const contractId = activeLing.value?.contractId;
+            if (!contractId) { showToast('灵元未声明契约,无法发起迁移', 'error'); return; }
+            try {
+                await api.post(`/lings/${activeId.value}/migration/start`, {
+                    contractId,
+                    oldCandidate: 'lingcore-app',
+                    newCandidate: activeId.value
+                });
+                showToast('迁移已发起', 'success');
+                await fetchMigrationPhase();
+            } catch (e) {
+                showToast('发起迁移失败: ' + e.message, 'error');
+            }
+        };
+
+        const startIteration = async () => {
+            if (!activeId.value) return;
+            const contractId = activeLing.value?.contractId;
+            if (!contractId) { showToast('灵元未声明契约,无法发起迭代', 'error'); return; }
+            try {
+                const oldVer = activeLing.value?.activeVersion;
+                const newVer = activeLing.value?.versionDetails?.find(v => !v.isDefault)?.version;
+                await api.post(`/lings/${activeId.value}/iteration/start`, {
+                    contractId,
+                    oldCandidate: activeId.value,
+                    newCandidate: `${activeId.value}:${newVer || oldVer}`
+                });
+                showToast('迭代已发起', 'success');
+                await fetchMigrationPhase();
+            } catch (e) {
+                showToast('发起迭代失败: ' + e.message, 'error');
+            }
+        };
+
+        const confirmTransition = async () => {
+            if (!activeId.value) return;
+            const contractId = activeLing.value?.contractId;
+            if (!contractId) { showToast('灵元未声明契约,无法确认相变', 'error'); return; }
+            // 排空校验前置:从退出方候选活跃请求数判定 drainOk
+            // 退出方候选由 migrationRecord.oldCandidate 携带(MIGRATING 时为灵核,ITERATING 时为旧灵元)
+            const exitingCandidate = migrationRecord.value?.oldCandidate;
+            const drainOk = !exitingCandidate || await checkDrainOk(exitingCandidate);
+            if (!drainOk) {
+                showToast('退出方候选仍有活跃请求,无法确认相变(排空校验未通过)', 'error');
+                return;
+            }
+            try {
+                await api.post(`/lings/${encodeURIComponent(contractId)}/migration/confirm`, null, {
+                    params: { drainOk: true }
+                });
+                showToast('相变已确认', 'success');
+                await fetchMigrationPhase();
+            } catch (e) {
+                showToast('确认相变失败: ' + e.message, 'error');
+            }
+        };
+
+        /**
+         * 排空校验:查询候选 provider 的活跃请求数,返回是否已排空。
+         * <p>
+         * 命中后端 /lings/{contractId}/migration/drain-check?candidate={providerKey} 端点;
+         * native/test 场景端点缺失时 fallback true(兜底,避免误拒)。
+         */
+        const checkDrainOk = async (exitingCandidate) => {
+            const contractId = activeLing.value?.contractId;
+            if (!contractId || !exitingCandidate) return true;
+            try {
+                const result = await api.get(
+                    `/lings/${encodeURIComponent(contractId)}/migration/drain-check`,
+                    { params: { candidate: exitingCandidate } });
+                return Boolean(result?.drained);
+            } catch (e) {
+                console.warn('drain-check endpoint missing, fallback drained=true:', e.message);
+                return true;
+            }
+        };
+
+        const rollbackTransition = async () => {
+            if (!activeId.value) return;
+            const contractId = activeLing.value?.contractId;
+            if (!contractId) { showToast('灵元未声明契约,无法回滚相变', 'error'); return; }
+            try {
+                await api.post(`/lings/${encodeURIComponent(contractId)}/migration/rollback`);
+                showToast('相变已回滚', 'success');
+                await fetchMigrationPhase();
+            } catch (e) {
+                showToast('回滚相变失败: ' + e.message, 'error');
             }
         };
         // 生命周期启停不通过 RuntimeStatus 按钮操作；流量见治理中心「流量控制」
@@ -1006,8 +1109,7 @@ createApp({
             activeId.value = lingId;
             const ling = lings.value.find(p => p.lingId === lingId);
             if (ling) {
-                const canaryInfo = ling.versionDetails?.find(v => v.isCanary);
-                canaryPct.value = canaryInfo ? canaryInfo.trafficWeight : 0;
+                // 灰度滑块已废弃,canaryPct 不再维护；迁移阶段由 fetchMigrationPhase 拉取
             }
             // 重置统计
             Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0, active: 0 });
@@ -1375,8 +1477,8 @@ createApp({
                     v.trafficWeight = 100 - pct;
                 }
             });
+            // 灰度滑块已废弃,canaryPct 不再维护；权重下发改由 ContractRoutingService.setProviderWeight
             if (activeId.value === lingId) {
-                canaryPct.value = pct;
             }
 
             try {
@@ -1504,78 +1606,7 @@ createApp({
             modal.show = true;
         };
 
-        const updateCanaryConfig = async () => {
-            if (!activeId.value || !canCanary.value) return;
-
-            loading.canary = true;
-            try {
-                await api.post(`/lings/${activeId.value}/canary`, {
-                    percent: canaryPct.value,
-                    canaryVersion: activeLing.value?.versionDetails?.find(v => v.isCanary)?.version
-                        || activeLing.value?.versionDetails?.find(v => !v.isDefault)?.version
-                });
-                showToast(t('toast.canarySet', { percent: canaryPct.value }), 'success');
-            } catch (e) {
-                showToast(t('toast.canaryFailed') + ': ' + e.message, 'error');
-                // 回滚前端状态，重新拉取最新数据
-                fetchDashboardSummary();
-            } finally {
-                loading.canary = false;
-            }
-        };
-
-        const updateCanaryConfigLocally = () => {
-            // 实现丝滑的即时同步: 深度更新全量响应式数据
-            if (activeLing.value && activeLing.value.versionDetails) {
-                // 1. 同步更新当前选中对象的内部比例
-                activeLing.value.versionDetails.forEach(v => {
-                    if (v.isCanary) {
-                        v.trafficWeight = canaryPct.value;
-                    } else if (v.isDefault) {
-                        v.trafficWeight = 100 - canaryPct.value;
-                    }
-                });
-
-                // 2. 核心补救：强制更新 lings 列表中的引用，触发侧边栏响应式重绘
-                const idx = lings.value.findIndex(p => p.lingId === activeId.value);
-                if (idx !== -1) {
-                    // 使用展开运算符保持响应式，或者直接替换对象
-                    // 这里我们通过重新赋值来确保 Vue 检测到变化
-                    lings.value[idx] = { ...lings.value[idx] };
-                }
-
-                // 3. 同步更新中间统计卡片
-                stats.v2Pct = canaryPct.value;
-                stats.v1Pct = 100 - canaryPct.value;
-            }
-        };
-
-        const resetCanary = async () => {
-            if (!activeId.value) return;
-            canaryPct.value = 0;
-            updateCanaryConfigLocally();
-            await updateCanaryConfig();
-        };
-
-        // 金丝雀决策操作（B5）
-        const executeCanaryRollback = async () => {
-            // 回滚：金丝雀比例置 0，全部流量切回稳定版
-            canaryPct.value = 0;
-            updateCanaryConfigLocally();
-            await updateCanaryConfig();
-            await fetchCanaryDecision();
-        };
-        const executeCanaryFullRelease = async () => {
-            // 全量发布：金丝雀比例置 100，全部流量切到金丝雀版
-            canaryPct.value = 100;
-            updateCanaryConfigLocally();
-            await updateCanaryConfig();
-            await fetchCanaryDecision();
-        };
-        const refreshCanaryDecision = async () => {
-            // 继续观察：刷新决策数据
-            await fetchCanaryDecision();
-        };
+        // 灰度滑块与金丝雀决策已废弃,相变控制改由 startMigration/startIteration/confirmTransition/rollbackTransition 完成
 
         const normalizeNullableInt = (value) => {
             if (value === '' || value === null || value === undefined) {
@@ -2893,14 +2924,14 @@ createApp({
             fetchLeakDetections();
             fetchThreadPoolStats();
             fetchGovernanceMatrix();
-            fetchCanaryDecision();
+            fetchMigrationPhase();
             lingDetailTimer = setInterval(() => {
                 if (!document.hidden) {
                     fetchLingResourceMetrics();
                     fetchLeakDetections();
                     fetchThreadPoolStats();
                     fetchGovernanceMatrix();
-                    fetchCanaryDecision();
+                    fetchMigrationPhase();
                 }
             }, 15000);
 
@@ -3194,7 +3225,7 @@ createApp({
         return {
             locale, supportedLocales, switchLocale, t,
 
-            lings, activeId, activeNav, lingSearch, filteredLings, canaryPct, isAuto, ipcEnabled, ipcTarget,
+            lings, activeId, activeNav, lingSearch, filteredLings, migrationPhase, migrationRecord, isAuto, ipcEnabled, ipcTarget,
             logs, lastAudit, logViewMode, logAggregationMode, logFilters, logContainer, isUserScrolling, logPaused, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
             stats, loading, modal, toasts, envLabels, uploadModal, timelineModal, appState, authenticated, loginError, submitAuth,
@@ -3208,8 +3239,7 @@ createApp({
             contractsList, selectedContractId, routingDetail, weightEditForm, savingWeight,
             fetchContracts, fetchRoutingDetail, selectContract, saveProviderWeight, rollbackContract,
             migrationList, fetchMigrationProgress, staleCount, totalCoreInv, totalLingInv, formatRatio,
-            canaryDecision, fetchCanaryDecision,
-            executeCanaryRollback, executeCanaryFullRelease, refreshCanaryDecision,
+            fetchMigrationPhase, startMigration, startIteration, confirmTransition, rollbackTransition,
             lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,
             recentEvents,
             invocationForm,
@@ -3217,7 +3247,7 @@ createApp({
             activeLing, activeLingHealth, activeLingVersionHealth, activeLingGovernance, activeLingVersionGovernance, canCanary, canOperate, displayLogs, availableVersions,
 
             refreshLings, selectLing, requestUnload,
-            confirmModalAction, updateCanaryConfig, updateCanaryConfigLocally, resetCanary, togglePerm, toggleIpc,
+            confirmModalAction, togglePerm, toggleIpc,
             saveInvocationGovernance,
             simulate, simulateIPC, toggleAuto, resetStats, clearLogs,
             playgroundServices, playgroundLoading, playgroundInvoking, playgroundArgs, playgroundResult,

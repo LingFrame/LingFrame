@@ -1,10 +1,10 @@
 package com.lingframe.starter.web;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
+import org.junit.jupiter.api.Assertions;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 @DisplayName("LingSpringDocCustomizerBridge 测试")
 class LingSpringDocCustomizerBridgeTest {
@@ -29,7 +29,7 @@ class LingSpringDocCustomizerBridgeTest {
         boolean attached = LingSpringDocCustomizerBridge.attachToGroupedOpenApi(
                 getClass().getClassLoader(), openApi -> {
                 }, null);
-        org.junit.jupiter.api.Assertions.assertFalse(attached);
+        Assertions.assertFalse(attached);
         assertNull(null);
     }
 }

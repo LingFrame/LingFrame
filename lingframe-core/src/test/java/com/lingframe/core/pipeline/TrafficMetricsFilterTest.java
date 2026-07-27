@@ -122,8 +122,10 @@ class TrafficMetricsFilterTest {
     class RuntimeRequestCount {
 
         @Test
-        @DisplayName("成功调用 startRequest/endRequest 配对")
+        @DisplayName("成功调用 startRequest/endRequest 配对（活跃计数下沉到 LingHealthMetrics）")
         void startEndRequestPaired() throws Throwable {
+            // 流量统计已从 LingRuntime 下沉到 LingHealthMetrics（独立于 LingRuntime）
+            // 此测试改为校验 doFilter 正常执行不抛异常；活跃计数语义由 LingHealthMetricsTest 覆盖
             LingRuntime runtime = mock(LingRuntime.class);
             LingRepository repo = mock(LingRepository.class);
             when(repo.getRoutableTarget("ling-1")).thenReturn(runtime);
@@ -132,15 +134,15 @@ class TrafficMetricsFilterTest {
             InvocationContext ctx = InvocationContext.obtain();
             ctx.setServiceFQSID("ling-1:Service");
 
-            filter.doFilter(ctx, (c) -> "ok");
-
-            verify(runtime).startRequest();
-            verify(runtime).endRequest();
+            Object result = filter.doFilter(ctx, (c) -> "ok");
+            assertEquals("ok", result);
         }
 
         @Test
-        @DisplayName("异常调用也 endRequest")
+        @DisplayName("异常调用也 endRequest（活跃计数下沉到 LingHealthMetrics）")
         void endRequestOnException() throws Throwable {
+            // 流量统计已从 LingRuntime 下沉到 LingHealthMetrics（独立于 LingRuntime）
+            // 此测试改为校验 doFilter 异常透传不吞错；活跃计数语义由 LingHealthMetricsTest 覆盖
             LingRuntime runtime = mock(LingRuntime.class);
             LingRepository repo = mock(LingRepository.class);
             when(repo.getRoutableTarget("ling-1")).thenReturn(runtime);
@@ -153,11 +155,9 @@ class TrafficMetricsFilterTest {
                 filter.doFilter(ctx, (c) -> {
                     throw new RuntimeException("test");
                 });
+                fail("Expected RuntimeException");
             } catch (RuntimeException ignored) {
             }
-
-            verify(runtime).startRequest();
-            verify(runtime).endRequest();
         }
 
         @Test

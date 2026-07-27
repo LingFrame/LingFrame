@@ -1,18 +1,17 @@
 package com.lingframe.starter.resource;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.Map;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.BridgeMethodResolver;
 import org.springframework.core.MethodClassKey;
-
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.net.URL;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * {@link SpringStaticCacheCleaner} 补充测试。
@@ -82,7 +81,7 @@ class SpringStaticCacheCleanerSupplementTest {
         // parent = 平台/扩展加载器，避免直接命中 AppClassLoader 上已加载的同名类
         URL location = FakeLingMarker.class.getProtectionDomain().getCodeSource().getLocation();
         ClassLoader platformParent = ClassLoader.getSystemClassLoader().getParent();
-        try (java.net.URLClassLoader fakeLingCl = new java.net.URLClassLoader(
+        try (URLClassLoader fakeLingCl = new URLClassLoader(
                 new URL[]{location}, platformParent)) {
             Class<?> markerClass = Class.forName(FakeLingMarker.class.getName(), true, fakeLingCl);
             assertTrue(markerClass.getClassLoader() == fakeLingCl,

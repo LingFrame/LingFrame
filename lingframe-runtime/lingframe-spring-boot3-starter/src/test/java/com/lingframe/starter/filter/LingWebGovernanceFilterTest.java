@@ -14,27 +14,27 @@ import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
 import com.lingframe.starter.web.WebRouteResolver;
 import jakarta.servlet.FilterChain;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
-
 import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import static org.mockito.ArgumentMatchers.any;
+import org.mockito.Mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.HandlerExecutionChain;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("LingWebGovernanceFilter 测试")
@@ -149,8 +149,8 @@ class LingWebGovernanceFilterTest {
 
         when(webRouteResolver.resolveRoute(any())).thenReturn(null);
         when(requestMappingHandlerMapping.getHandler(request))
-                .thenReturn(new org.springframework.web.servlet.HandlerExecutionChain(
-                        new org.springframework.web.method.HandlerMethod(controller, targetMethod)));
+                .thenReturn(new HandlerExecutionChain(
+                        new HandlerMethod(controller, targetMethod)));
 
         filter.doFilterInternal(request, response, filterChain);
 

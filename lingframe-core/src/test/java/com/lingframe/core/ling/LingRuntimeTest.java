@@ -108,34 +108,6 @@ class LingRuntimeTest {
     }
 
     @Nested
-    @DisplayName("请求统计")
-    class RequestStatsTests {
-
-        @Test
-        @DisplayName("应正确累计总请求、稳定请求与金丝雀请求")
-        void shouldRecordTrafficStats() {
-            runtime.recordRequest(false);
-            runtime.recordRequest(false);
-            runtime.recordRequest(true);
-
-            assertEquals(3, runtime.getTotalRequests().get());
-            assertEquals(2, runtime.getStableRequests().get());
-            assertEquals(1, runtime.getCanaryRequests().get());
-        }
-
-        @Test
-        @DisplayName("应正确跟踪活跃请求数")
-        void shouldTrackActiveRequests() {
-            runtime.startRequest();
-            runtime.startRequest();
-            assertEquals(2, runtime.getActiveRequests().get());
-
-            runtime.endRequest();
-            assertEquals(1, runtime.getActiveRequests().get());
-        }
-    }
-
-    @Nested
     @DisplayName("事件与状态联动")
     class EventAndStateTests {
 

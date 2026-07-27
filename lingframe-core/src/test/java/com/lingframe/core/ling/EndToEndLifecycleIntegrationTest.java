@@ -18,16 +18,6 @@ import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.LingLoaderFactory;
 import com.lingframe.core.spi.LingSecurityVerifier;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-
-import javax.tools.JavaCompiler;
-import javax.tools.StandardJavaFileManager;
-import javax.tools.StandardLocation;
-import javax.tools.ToolProvider;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -44,11 +34,19 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-
+import javax.tools.JavaCompiler;
+import javax.tools.StandardJavaFileManager;
+import javax.tools.StandardLocation;
+import javax.tools.ToolProvider;
+import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -285,7 +283,7 @@ class EndToEndLifecycleIntegrationTest {
         when(serviceRegistry.getServicesByLingId(LING_ID)).thenReturn(Collections.emptyList());
 
         FilterRegistry registry = new FilterRegistry(FilterRegistryConfig.builder()
-                .methodCache(new com.lingframe.core.ling.InvokableMethodCache())
+                .methodCache(new InvokableMethodCache())
                 .permissionService(permissionService)
                 .lingRepository(repository)
                 .trafficRouter(new LatestVersionPolicy())
@@ -318,7 +316,7 @@ class EndToEndLifecycleIntegrationTest {
 
         LingFrameConfig config = LingFrameConfig.builder()
                 .apiOverrideCheckEnabled(false)
-                .runtimeConfig(com.lingframe.core.ling.LingRuntimeConfig.builder()
+                .runtimeConfig(LingRuntimeConfig.builder()
                         .bulkheadMaxConcurrent(10)
                         .defaultTimeoutMs(5000)
                         .rateLimitPerSecond(100)

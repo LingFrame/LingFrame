@@ -17,7 +17,7 @@ import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.ling.LingRuntimeConfig;
-import com.lingframe.core.router.LabelMatchRouter;
+import com.lingframe.core.routing.LabelMatchRouter;
 import com.lingframe.core.runtime.SwitchableRuntimeMode;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.GovernancePolicyProvider;

@@ -1,18 +1,17 @@
 package com.lingframe.dashboard.storage;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
 import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 /**
  * SQLite 存储层集成测试
@@ -38,7 +37,7 @@ class StorageIntegrationTest {
         initializer.init();
 
         metricsStorage = new MetricsStorage(jdbcTemplate);
-        governanceStorage = new GovernanceStorage(jdbcTemplate, new com.fasterxml.jackson.databind.ObjectMapper());
+        governanceStorage = new GovernanceStorage(jdbcTemplate, new ObjectMapper());
         auditStorage = new AuditStorage(jdbcTemplate);
     }
 
@@ -60,7 +59,7 @@ class StorageIntegrationTest {
     @Test
     void governanceConfig_compositePrimaryKey_preventsOverwrite() {
         // 同一 lingId 不同 config_type 应共存
-        governanceStorage.saveCanaryConfig("ling1", "{\"percent\":50}");
+        governanceStorage.saveMigrationConfig("ling1", "{\"percent\":50}");
         governanceStorage.saveInvocationConfig("ling1", "{\"timeout\":1000}");
 
         Map<String, Map<String, String>> configs = governanceStorage.loadAllConfigs();
@@ -70,10 +69,10 @@ class StorageIntegrationTest {
 
     @Test
     void governanceConfig_upsert_updatesExisting() {
-        governanceStorage.saveCanaryConfig("ling1", "{\"percent\":50}");
-        governanceStorage.saveCanaryConfig("ling1", "{\"percent\":80}");
+        governanceStorage.saveMigrationConfig("ling1", "{\"percent\":50}");
+        governanceStorage.saveMigrationConfig("ling1", "{\"percent\":80}");
 
-        String config = governanceStorage.loadCanaryConfig("ling1");
+        String config = governanceStorage.loadMigrationConfig("ling1");
         assertTrue(config.contains("80"));
     }
 
@@ -87,7 +86,7 @@ class StorageIntegrationTest {
             final int idx = i;
             executor.submit(() -> {
                 try {
-                    governanceStorage.saveCanaryConfig("ling-cc" + idx, "{\"p\":" + idx + "}");
+                    governanceStorage.saveMigrationConfig("ling-cc" + idx, "{\"p\":" + idx + "}");
                 } finally {
                     latch.countDown();
                 }

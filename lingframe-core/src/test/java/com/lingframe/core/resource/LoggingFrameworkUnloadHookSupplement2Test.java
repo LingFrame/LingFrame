@@ -1,14 +1,13 @@
 package com.lingframe.core.resource;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
 import java.lang.reflect.Method;
 import java.util.logging.Handler;
 import java.util.logging.LogManager;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
-
 import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 /**
  * {@link LoggingFrameworkUnloadHook} 的第二轮补充测试。
@@ -95,7 +94,7 @@ class LoggingFrameworkUnloadHookSupplement2Test {
         Logger preLogger = Logger.getLogger("lingframe.pre-cleanup");
         preLogger.addHandler(new Handler() {
             @Override
-            public void publish(java.util.logging.LogRecord record) {
+            public void publish(LogRecord record) {
             }
 
             @Override

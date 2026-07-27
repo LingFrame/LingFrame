@@ -249,7 +249,64 @@
 - **沙箱约束**：外部通过 SPI 或动态注册注入的 `LingInvocationFilter`，其 `order` 必须避开这些内置保留位（推荐使用 `order < 100` 的前置处理，或在特定保留区间之间的空隙）。
 - **Fail-Fast**：一旦 SPI 过滤器非法占用内置位，内核将在启动期立刻抛出异常并失败，拒绝以“失真的治理链”处理线上流量。
 
-### 6.8 非 Bean 数据源（DataSource）代理边界
+**路由层去身份化原则**：路由层（`ContractProviderRoutingFilter` / `ProviderWeightRouter`）只认 `weight` 和方法资格，不引用实现方身份（灵核/灵元）。身份在注册时沉淀为 `weight` 数值：灵核默认 `weight=100`，灵元默认 `weight=0`。方法资格通过 `LingServiceRegistry.hasMethod(lingId:contractId, methodName, paramTypes)` 判定——未声明被调用方法的 provider 被自然剔除，流量落回声明了该方法的 provider，方法级 fallback 是路由的副产物而非新增能力。
+
+**候选数硬约束（「禁止叠加」从规范升级为系统能力）**：同一契约同一时刻最多 2 个候选 provider，由双层断言强制：
+
+- **注册层源头拦**：`DefaultLingServiceRegistry.registerProvider` 在注册第 3 个 provider 时立即抛 `RoutingArchitectureViolationException`，编排层从源头拦截，避免注册层泄漏时路由静默退化。
+- **路由层兜底断言**：`ProviderWeightRouter.selectProvider` 入口校验 `candidates.size() > 2`，违例时抛 `RoutingArchitectureViolationException`，立即终止调用链并触发强告警，**绝不静默降级**。
+
+候选数硬约束不是"理论上应该如此"，而是有 API、日志、测试支撑的系统能力。若未来确需三元路由，应扩展 `MigrationPhase` 状态机显式支持，而非放宽本约束。
+
+### 6.8 迁移状态机（`MigrationPhase`）
+
+路由层与功能管理层（迁移状态机）彻底拆分，建立双层清晰架构：
+
+- **功能管理层**：`MigrationPhase` 枚举（`CORE_EXCLUSIVE` / `MIGRATING` / `LING_EXCLUSIVE` / `ITERATING`）+ `MigrationStateHolder`，表达"迁移阶段是路由层的元状态"。
+- **路由层**：`ProviderWeightRouter` 纯权重二元选路，输入 ≤2 个 candidate，按 weight 选一个。
+
+四状态迁移图：
+
+```
+CORE_EXCLUSIVE ──startMigration──→ MIGRATING
+MIGRATING      ──confirmPhase───→ LING_EXCLUSIVE
+MIGRATING      ──rollback──────→ CORE_EXCLUSIVE
+LING_EXCLUSIVE ──startIteration─→ ITERATING
+ITERATING      ──confirmPhase───→ LING_EXCLUSIVE
+ITERATING      ──rollback──────→ LING_EXCLUSIVE
+```
+
+归属与边界：
+
+- `MigrationPhase` / `MigrationStateHolder` 归属 `com.lingframe.core.routing` 包，与路由器同包。
+- **不入侵运行时 FSM**（`RuntimeStatus`）：`MigrationPhase` 是路由层的元状态，与实例/运行时状态机正交。
+- `MigrationStateHolder` 是迁移阶段的唯一真源，`DefaultLingLifecycleEngine` 编排 + `confirmPhaseTransition` 显式确认推进阶段。
+
+显式确认 + 排空校验机制：
+
+- 否定"权重归零即自动相变"的过度自动化，防止运维临时拉零观察时触发不可逆跃迁。
+- 采用"权重归零为必要条件 + 显式确认指令（`confirmPhaseTransition`）"。
+- 确认相变前校验两个硬指标：
+  1. 待退出方的权重必须已降为 0；
+  2. 待退出方的在途请求数必须已排空（`activeRequests == 0`）。
+
+相变方向控制：
+
+- 归零并确认退出的是 `oldCandidateKey` → 视为"迁移/迭代完成"（前进至 EXCLUSIVE 阶段，注销旧候选位）。
+- 归零并确认退出的是 `newCandidateKey` → 视为"迁移/迭代回滚"（后退至上一个 EXCLUSIVE 阶段，注销新候选位）。
+
+迭代期 Provider 标识：
+
+- **迁移期（CORE ↔ LING）**：灵核标识 `lingcore-app`，灵元标识为裸 `lingId`。
+- **迭代期（v1 ↔ v2）**：同一灵元部署两个版本时，Provider 标识显式升级为 `lingId:version`（例如 `user-ling:1.0.0` 与 `user-ling:1.1.0`）。
+- **迭代完成确认相变后**：保留版本的 Provider 标识收敛回裸 `lingId`。
+
+持久化与重启一致性：
+
+- `MigrationPhase` 状态及候选元数据（`lingId`, `phase`, `oldCandidate`, `newCandidate`）统一持久化至 `GovernanceStorage`（`config_type = 'migration'`）。
+- `GovernanceConfigRestorer` 在启动恢复时，先恢复状态机 phase，再恢复 `ProviderWeightRouter` 的权重覆盖，保证重启前后状态完全一致。
+
+### 6.9 非 Bean 数据源（DataSource）代理边界
 
 - 灵珑的 SQL 治理依赖对 `DataSource` 的代理。
 - 如果是由 Spring 容器管理的 Bean，`LingFrameBeanPostProcessor` 会自动进行拦截与包装。

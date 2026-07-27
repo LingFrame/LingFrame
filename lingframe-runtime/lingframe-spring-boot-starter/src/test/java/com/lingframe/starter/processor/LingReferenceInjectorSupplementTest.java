@@ -2,20 +2,19 @@ package com.lingframe.starter.processor;
 
 import com.lingframe.api.annotation.LingReference;
 import com.lingframe.api.context.LingContext;
+import java.util.Optional;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
+import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-
-import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.mockito.Mockito.when;
 
 /**
  * {@link LingReferenceInjector} 补充测试。
@@ -66,7 +65,7 @@ class LingReferenceInjectorSupplementTest {
     @Test
     @DisplayName("postProcessBeforeInitialization 应注入默认锚点 @LingReference 字段")
     void shouldInjectDefaultAnchorField() {
-        TestService mockService = org.mockito.Mockito.mock(TestService.class);
+        TestService mockService = Mockito.mock(TestService.class);
         when(lingContext.getService(TestService.class, "", "")).thenReturn(Optional.of(mockService));
 
         LingReferenceInjector injector = new LingReferenceInjector("ling-a", lingContext);
@@ -81,7 +80,7 @@ class LingReferenceInjectorSupplementTest {
     @Test
     @DisplayName("带路由锚点（lingId/serviceId）应透到 getService(Class,lingId,serviceId)")
     void shouldPassAnchorToGetService() {
-        TestService mockService = org.mockito.Mockito.mock(TestService.class);
+        TestService mockService = Mockito.mock(TestService.class);
         when(lingContext.getService(TestService.class, "user-ling", "authService"))
                 .thenReturn(Optional.of(mockService));
 
@@ -97,14 +96,14 @@ class LingReferenceInjectorSupplementTest {
     @Test
     @DisplayName("字段已有值时应跳过注入")
     void shouldSkipWhenFieldAlreadyInjected() {
-        TestService existing = org.mockito.Mockito.mock(TestService.class);
+        TestService existing = Mockito.mock(TestService.class);
         when(lingContext.getService(TestService.class, "", "")).thenReturn(Optional.of(existing));
 
         LingReferenceInjector injector = new LingReferenceInjector("ling-a", lingContext);
 
         DefaultAnchorBean bean = new DefaultAnchorBean();
         // 预先设置字段值
-        TestService preSet = org.mockito.Mockito.mock(TestService.class);
+        TestService preSet = Mockito.mock(TestService.class);
         bean.service = preSet;
 
         injector.postProcessBeforeInitialization(bean, "targetBean");
@@ -126,7 +125,7 @@ class LingReferenceInjectorSupplementTest {
 
         // AfterInit 阶段：lingContext 已就绪（通过新构造函数补 ctx）
         LingReferenceInjector armedInjector = new LingReferenceInjector("ling-a", lingContext);
-        TestService mockService = org.mockito.Mockito.mock(TestService.class);
+        TestService mockService = Mockito.mock(TestService.class);
         when(lingContext.getService(TestService.class, "", "")).thenReturn(Optional.of(mockService));
 
         Object resultAfter = armedInjector.postProcessAfterInitialization(bean, "targetBean");

@@ -20,7 +20,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -90,10 +89,10 @@ class ResilienceGovernanceFilterTest {
         }
 
         @Test
-        @DisplayName("新格式 __provider__: FQSID 应优先读 targetLingId 查限流器/熔断器")
-        void doFilter_WhenProviderFqsid_ShouldReadTargetLingIdForLimiter() throws Throwable {
-            // 模拟 ContractProviderRoutingFilter 已设置 targetLingId
-            context.setServiceFQSID("__provider__:com.example.DemoService");
+        @DisplayName("裸 contractId FQSID 应优先读 targetLingId 查限流器/熔断器")
+        void doFilter_WhenBareContractId_ShouldReadTargetLingIdForLimiter() throws Throwable {
+            // 模拟 ContractProviderRoutingFilter 已设置 targetLingId，FQSID 保持裸 contractId
+            context.setServiceFQSID("com.example.DemoService");
             context.setTargetLingId("demo-ling");
 
             LingRuntimeConfig config = LingRuntimeConfig.builder()

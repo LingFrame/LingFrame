@@ -1,7 +1,6 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
-import com.lingframe.core.ling.ProviderKind;
 import com.lingframe.core.metrics.ProviderMetricsCollector;
 import com.lingframe.core.spi.LingFilterChain;
 
@@ -60,24 +59,22 @@ public class InvocationPipelineEngine {
     /**
      * 记录 provider 维度调用指标。
      * <p>
-     * provider 类型埋点：从 ctx.routing().getProviderKind() 读取 L0 路由阶段写入的 provider 类型，
-     * 按 contractId × lingId × kind 三维统计调用量和延迟。
-     * 旧格式 FQSID 不经过 ContractProviderRoutingFilter 时 providerKind 为 null，静默跳过。
+     * 按 contractId × lingId 二维统计调用量和延迟。
+     * contractId 取 FQSID 冒号后部分；裸 contractId 场景下取 FQSID 本身。
      */
     private void recordProviderMetrics(InvocationContext ctx, boolean success, long durationMs) {
-        ProviderKind kind = ctx.routing().getProviderKind();
-        if (kind == null) {
-            return; // 旧格式 FQSID 或未走 provider 路由，不埋点
-        }
         String lingId = ctx.getTargetLingId();
         String contractId = extractContractId(ctx.getServiceFQSID());
-        providerMetricsCollector.recordInvocation(contractId, lingId, kind, success, durationMs);
+        if (contractId == null || lingId == null) {
+            return;
+        }
+        providerMetricsCollector.recordInvocation(contractId, lingId, success, durationMs);
     }
 
     /**
      * 从 FQSID 提取 contractId。
-     * 新格式 {@code __provider__:contractId} → 取前缀后部分；
-     * 旧格式 {@code lingId:serviceName} → 取冒号后部分。
+     * 旧格式 {@code lingId:serviceName} → 取冒号后部分；
+     * 裸 contractId（无冒号）→ 取 FQSID 本身。
      */
     private String extractContractId(String fqsid) {
         if (fqsid == null) {

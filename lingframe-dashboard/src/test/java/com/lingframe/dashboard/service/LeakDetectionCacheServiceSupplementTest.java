@@ -3,17 +3,21 @@ package com.lingframe.dashboard.service;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.dashboard.dto.LeakDetectionRecordDTO;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.List;
-
+import org.junit.jupiter.api.Assertions;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -268,9 +272,9 @@ class LeakDetectionCacheServiceSupplementTest {
         void shouldSubscribeOnInit() {
             service.init();
 
-            org.mockito.Mockito.verify(eventBus).subscribeGlobal(
-                    org.mockito.ArgumentMatchers.eq(MonitoringEvents.LeakDetectionEvent.class),
-                    org.mockito.ArgumentMatchers.any());
+            Mockito.verify(eventBus).subscribeGlobal(
+                    ArgumentMatchers.eq(MonitoringEvents.LeakDetectionEvent.class),
+                    ArgumentMatchers.any());
         }
 
         @Test
@@ -279,9 +283,9 @@ class LeakDetectionCacheServiceSupplementTest {
             service.init();
             service.destroy();
 
-            org.mockito.Mockito.verify(eventBus).unsubscribeGlobal(
-                    org.mockito.ArgumentMatchers.eq(MonitoringEvents.LeakDetectionEvent.class),
-                    org.mockito.ArgumentMatchers.any());
+            Mockito.verify(eventBus).unsubscribeGlobal(
+                    ArgumentMatchers.eq(MonitoringEvents.LeakDetectionEvent.class),
+                    ArgumentMatchers.any());
         }
 
         @Test
@@ -290,7 +294,7 @@ class LeakDetectionCacheServiceSupplementTest {
             service.init();
             service.destroy();
             // 再次 destroy（虽然 unsubscribe 会再次调用，但 mock 不抛异常）
-            org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> service.destroy());
+            Assertions.assertDoesNotThrow(() -> service.destroy());
         }
     }
 
@@ -304,12 +308,12 @@ class LeakDetectionCacheServiceSupplementTest {
 
         // 通过反射调用 private handleEvent 方法触发缓存，并覆盖 timestamp 字段
         try {
-            java.lang.reflect.Field tsField = MonitoringEvents.LeakDetectionEvent.class
+            Field tsField = MonitoringEvents.LeakDetectionEvent.class
                     .getDeclaredField("timestamp");
             tsField.setAccessible(true);
             tsField.setLong(event, timestamp);
 
-            java.lang.reflect.Method method = LeakDetectionCacheService.class
+            Method method = LeakDetectionCacheService.class
                     .getDeclaredMethod("handleEvent", MonitoringEvents.LeakDetectionEvent.class);
             method.setAccessible(true);
             method.invoke(service, event);
@@ -319,7 +323,7 @@ class LeakDetectionCacheServiceSupplementTest {
     }
 
     // 静态导入 assertDoesNotThrow 避免在测试方法中用全限定名
-    private static void assertDoesNotThrow(org.junit.jupiter.api.function.Executable executable) {
-        org.junit.jupiter.api.Assertions.assertDoesNotThrow(executable);
+    private static void assertDoesNotThrow(Executable executable) {
+        Assertions.assertDoesNotThrow(executable);
     }
 }

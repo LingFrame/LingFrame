@@ -12,7 +12,6 @@ import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.spi.GovernanceDecision;
 import com.lingframe.dashboard.dto.InvokeResultDTO;
 import com.lingframe.dashboard.dto.ServiceMetadataDTO;
@@ -47,7 +46,6 @@ public class ServicePlaygroundService {
     private final LingRepository lingRepository;
     private final InvocationPipelineEngine pipelineEngine;
     private final ObjectMapper objectMapper;
-    private final CanaryRouter canaryRouter;
     private final GovernanceArbitrator governanceArbitrator;
     private final PermissionService permissionService;
 
@@ -634,29 +632,20 @@ public class ServicePlaygroundService {
             return instances.get(0);
         }
         LingInstance defaultInst = runtime.getInstancePool().getDefault();
-        // 读取金丝雀比例
-        CanaryRouter.CanaryConfig config = canaryRouter.getCanaryConfig(runtime.getLingId());
-        int canaryPercent = config != null ? config.getPercent() : 0;
-        // 按比例随机选择
-        int roll = ThreadLocalRandom.current().nextInt(100);
-        if (roll < canaryPercent) {
-            // 路由到金丝雀版
-            String canaryVersion = config != null ? config.getCanaryVersion() : null;
-            if (canaryVersion != null) {
-                LingInstance canary = runtime.getInstancePool().getInstance(canaryVersion);
-                if (canary != null) {
-                    return canary;
-                }
+        // 灰度配置已废弃，二元候选改用默认实例 vs 非默认实例的 50/50 权重分布
+        // 真实权重由 ProviderWeightRouter 在 Pipeline 内决策，这里仅做 PROPORTIONAL 模式兜底
+        if (defaultInst != null) {
+            List<LingInstance> nonDefault = instances.stream()
+                    .filter(inst -> !inst.equals(defaultInst))
+                    .collect(Collectors.toList());
+            if (nonDefault.isEmpty()) {
+                return defaultInst;
             }
-            // 金丝雀版本未找到，退化为非默认实例
-            for (LingInstance inst : instances) {
-                if (!inst.equals(defaultInst)) {
-                    return inst;
-                }
-            }
+            // 二元候选：50/50 随机选默认或非默认实例
+            int roll = ThreadLocalRandom.current().nextInt(2);
+            return roll == 0 ? defaultInst : nonDefault.get(0);
         }
-        // 路由到稳定版
-        return defaultInst != null ? defaultInst : instances.get(0);
+        return instances.get(0);
     }
 
     private List<InvokeResultDTO.TraceEntry> buildTraces(List<EngineTrace> engineTraces) {

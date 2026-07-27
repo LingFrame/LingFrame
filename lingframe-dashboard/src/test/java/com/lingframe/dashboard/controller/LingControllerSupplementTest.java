@@ -6,23 +6,17 @@ import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
+import com.lingframe.core.routing.MigrationStateHolder;
 import com.lingframe.dashboard.dto.ApiResponse;
-import com.lingframe.dashboard.dto.CanaryConfigDTO;
-import com.lingframe.dashboard.dto.CanaryDecisionDTO;
+import com.lingframe.dashboard.dto.DashboardSummaryDTO;
 import com.lingframe.dashboard.dto.GovernanceMatrixRowDTO;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.dto.RuntimeGovernanceReadinessDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
 import com.lingframe.dashboard.dto.TransitionHistoryDTO;
-import com.lingframe.dashboard.service.CanaryDecisionService;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.util.ArrayList;
@@ -31,15 +25,18 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * LingController 补充测试。
@@ -60,12 +57,13 @@ class LingControllerSupplementTest {
         final MetricsCollector metricsCollector = mock(MetricsCollector.class);
         final GovernanceMetricsCollector governanceMetricsCollector = mock(GovernanceMetricsCollector.class);
         final RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
-        final CanaryDecisionService canaryDecisionService = mock(CanaryDecisionService.class);
+        final MigrationStateHolder migrationStateHolder =
+                new MigrationStateHolder();
         final LingController controller;
 
         ControllerFixture(boolean installEnabled) {
             this.controller = new LingController(config, dashboardService, metricsCollector,
-                    governanceMetricsCollector, runtimeDiagnosticsService, canaryDecisionService,
+                    governanceMetricsCollector, runtimeDiagnosticsService, migrationStateHolder,
                     installEnabled);
         }
     }
@@ -385,45 +383,6 @@ class LingControllerSupplementTest {
         }
     }
 
-    // ==================== setCanary ====================
-
-    @Nested
-    @DisplayName("setCanary - 设置灰度配置")
-    class SetCanaryTest {
-
-        @Test
-        @DisplayName("正常设置灰度配置")
-        void shouldSetCanaryConfig() {
-            ControllerFixture fixture = new ControllerFixture(false);
-            CanaryConfigDTO config = CanaryConfigDTO.builder()
-                    .percent(50)
-                    .canaryVersion("2.0.0")
-                    .build();
-
-            ApiResponse<Void> response = fixture.controller.setCanary("ling1", config);
-
-            assertTrue(response.isSuccess());
-            assertEquals("灰度配置已更新", response.getMessage());
-        }
-
-        @Test
-        @DisplayName("service 抛出异常时返回失败")
-        void shouldReturnErrorOnException() {
-            ControllerFixture fixture = new ControllerFixture(false);
-            doThrow(new RuntimeException("ling not found"))
-                    .when(fixture.dashboardService).setCanaryConfig("ling1", 50, "2.0.0");
-            CanaryConfigDTO config = CanaryConfigDTO.builder()
-                    .percent(50)
-                    .canaryVersion("2.0.0")
-                    .build();
-
-            ApiResponse<Void> response = fixture.controller.setCanary("ling1", config);
-
-            assertFalse(response.isSuccess());
-            assertTrue(response.getMessage().contains("灰度配置失败"));
-        }
-    }
-
     // ==================== getStats ====================
 
     @Nested
@@ -576,47 +535,6 @@ class LingControllerSupplementTest {
         }
     }
 
-    // ==================== getCanaryDecision ====================
-
-    @Nested
-    @DisplayName("getCanaryDecision - 金丝雀决策")
-    class GetCanaryDecisionTest {
-
-        @Test
-        @DisplayName("正常返回决策建议")
-        void shouldReturnCanaryDecision() {
-            ControllerFixture fixture = new ControllerFixture(false);
-            CanaryDecisionDTO decision = CanaryDecisionDTO.builder()
-                    .recommendation("OBSERVE")
-                    .reason("数据样本不足")
-                    .sufficientData(false)
-                    .build();
-            when(fixture.canaryDecisionService.decide("ling1")).thenReturn(decision);
-
-            ApiResponse<CanaryDecisionDTO> response =
-                    fixture.controller.getCanaryDecision("ling1");
-
-            assertTrue(response.isSuccess());
-            assertNotNull(response.getData());
-            assertEquals("OBSERVE", response.getData().getRecommendation());
-            assertFalse(response.getData().isSufficientData());
-        }
-
-        @Test
-        @DisplayName("service 抛出异常时返回失败")
-        void shouldReturnErrorOnException() {
-            ControllerFixture fixture = new ControllerFixture(false);
-            when(fixture.canaryDecisionService.decide("ling1"))
-                    .thenThrow(new RuntimeException("decision error"));
-
-            ApiResponse<CanaryDecisionDTO> response =
-                    fixture.controller.getCanaryDecision("ling1");
-
-            assertFalse(response.isSuccess());
-            assertTrue(response.getMessage().contains("获取金丝雀决策失败"));
-        }
-    }
-
     // ==================== getDashboardSummary ====================
 
     @Nested
@@ -658,7 +576,7 @@ class LingControllerSupplementTest {
                             .summary("ok")
                             .build());
 
-            ApiResponse<com.lingframe.dashboard.dto.DashboardSummaryDTO> response =
+            ApiResponse<DashboardSummaryDTO> response =
                     fixture.controller.getDashboardSummary();
 
             assertTrue(response.isSuccess());
@@ -683,7 +601,7 @@ class LingControllerSupplementTest {
             when(fixture.runtimeDiagnosticsService.getGovernanceReadiness())
                     .thenReturn(RuntimeGovernanceReadinessDTO.builder().status("LIMITED").build());
 
-            ApiResponse<com.lingframe.dashboard.dto.DashboardSummaryDTO> response =
+            ApiResponse<DashboardSummaryDTO> response =
                     fixture.controller.getDashboardSummary();
 
             assertTrue(response.isSuccess());
@@ -699,7 +617,7 @@ class LingControllerSupplementTest {
             when(fixture.metricsCollector.getAllSnapshots())
                     .thenThrow(new RuntimeException("summary error"));
 
-            ApiResponse<com.lingframe.dashboard.dto.DashboardSummaryDTO> response =
+            ApiResponse<DashboardSummaryDTO> response =
                     fixture.controller.getDashboardSummary();
 
             assertFalse(response.isSuccess());

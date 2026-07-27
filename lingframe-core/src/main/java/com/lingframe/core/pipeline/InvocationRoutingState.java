@@ -1,7 +1,6 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.core.ling.LingInstance;
-import com.lingframe.core.ling.ProviderKind;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -25,19 +24,9 @@ public class InvocationRoutingState {
      */
     private boolean preResolved;
 
-    /**
-     * 选中 provider 的类型标记。
-     * <p>
-     * 由 {@code ContractProviderRoutingFilter} 在 L0 阶段写入，
-     * 供观测和 Dashboard 区分流量来源（CORE baseline vs LING 灵元）。
-     * 旧格式 FQSID 不经过 provider 路由时为 null。
-     */
-    private ProviderKind providerKind;
-
     void reset() {
         this.targetInstance = null;
         this.preResolved = false;
-        this.providerKind = null;
     }
 
     void copyFrom(InvocationRoutingState source) {
@@ -46,6 +35,5 @@ public class InvocationRoutingState {
         }
         this.targetInstance = source.targetInstance;
         this.preResolved = source.preResolved;
-        this.providerKind = source.providerKind;
     }
 }

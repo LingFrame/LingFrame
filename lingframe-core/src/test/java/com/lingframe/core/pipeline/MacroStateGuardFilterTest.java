@@ -17,7 +17,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -101,13 +100,14 @@ class MacroStateGuardFilterTest {
         }
 
         @Test
-        @DisplayName("新格式 __provider__: FQSID 应优先读 targetLingId 而非占位符")
-        void doFilter_WhenProviderFqsid_ShouldReadTargetLingIdNotPlaceholder() throws Throwable {
-            // 模拟 ContractProviderRoutingFilter 在 L0 阶段已解析出真实 lingId
-            context.setServiceFQSID("__provider__:com.example.UserService");
+        @DisplayName("裸 contractId FQSID 应优先读 targetLingId 而非从 FQSID 提取")
+        void doFilter_WhenBareContractId_ShouldReadTargetLingIdNotExtractFromFqsid() throws Throwable {
+            // 模拟 ContractProviderRoutingFilter 在 L0 阶段已解析出真实 lingId 并设置 targetLingId
+            // FQSID 保持裸 contractId（L0 不改写 FQSID）
+            context.setServiceFQSID("com.example.UserService");
             context.setTargetLingId("ling-a");
 
-            // 应该用 "ling-a" 查询，而不是 "__provider__" 占位符
+            // 应该用 "ling-a" 查询，而不是从 FQSID 提取
             when(lingRepository.getRoutableTarget("ling-a")).thenReturn(lingRuntime);
             when(lingRuntime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
 
@@ -117,9 +117,8 @@ class MacroStateGuardFilterTest {
             Object result = filter.doFilter(context, filterChain);
 
             assertEquals(expectedResult, result);
-            // 关键断言：用真实 lingId 查询，绝不查占位符
+            // 关键断言：用真实 lingId 查询，绝不从裸 contractId FQSID 提取
             verify(lingRepository).getRoutableTarget("ling-a");
-            verify(lingRepository, never()).getRoutableTarget("__provider__");
             verify(filterChain).doFilter(context);
         }
     }

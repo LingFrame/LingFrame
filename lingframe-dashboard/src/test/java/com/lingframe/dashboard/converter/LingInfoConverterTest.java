@@ -11,7 +11,7 @@ import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.router.CanaryRouter;
+// CanaryRouter 已删除，路由层去身份化
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import org.junit.jupiter.api.DisplayName;
@@ -36,7 +36,7 @@ class LingInfoConverterTest {
     void shouldExposeFineGrainedCapabilities() {
         LingRuntime runtime = mock(LingRuntime.class);
         InstancePool instancePool = mock(InstancePool.class);
-        CanaryRouter canaryRouter = mock(CanaryRouter.class);
+        // CanaryRouter 已删除
         PermissionService permissionService = mock(PermissionService.class);
 
         when(runtime.getLingId()).thenReturn("ling-a");
@@ -45,7 +45,7 @@ class LingInfoConverterTest {
         when(runtime.getInstalledAt()).thenReturn(123L);
         when(instancePool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
         when(instancePool.getAllInstances()).thenReturn(Collections.<LingInstance>emptyList());
-        when(canaryRouter.getCanaryPercent("ling-a")).thenReturn(0);
+        // canaryRouter 已删除
 
         when(permissionService.getPermission("ling-a", Capabilities.STORAGE_SQL))
                 .thenReturn(PermissionInfo.permanent("ling-a", Capabilities.STORAGE_SQL, AccessType.WRITE, "test"));
@@ -73,7 +73,7 @@ class LingInfoConverterTest {
         policy.getInvocation().setCpuBudgetMsPerMinute(900);
         policy.getInvocation().setMemoryBudgetMb(64);
 
-        LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, canaryRouter, permissionService, policy);
+        LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permissionService, policy);
 
         assertEquals(1, dto.getPermissions().getSqlCapabilities().size());
         assertEquals("storage:sql:table:users", dto.getPermissions().getSqlCapabilities().get(0));
@@ -96,7 +96,7 @@ class LingInfoConverterTest {
         // 期望：versionDetails 只包含 activePool 中的新实例
         LingRuntime runtime = mock(LingRuntime.class);
         InstancePool instancePool = mock(InstancePool.class);
-        CanaryRouter canaryRouter = mock(CanaryRouter.class);
+        // CanaryRouter 已删除
         PermissionService permissionService = mock(PermissionService.class);
         EventBus eventBus = mock(EventBus.class);
 
@@ -104,7 +104,7 @@ class LingInfoConverterTest {
         when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
         when(runtime.getInstancePool()).thenReturn(instancePool);
         when(runtime.getInstalledAt()).thenReturn(123L);
-        when(canaryRouter.getCanaryPercent("ling-a")).thenReturn(0);
+        // canaryRouter 已删除
 
         // 新实例：正常 READY 状态
         LingDefinition newDef = new LingDefinition();
@@ -124,7 +124,7 @@ class LingInfoConverterTest {
         when(instancePool.getActiveInstances()).thenReturn(Collections.singletonList(newInstance));
         when(instancePool.getDefault()).thenReturn(newInstance);
 
-        LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, canaryRouter, permissionService, null);
+        LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permissionService, null);
 
         // 只应返回 1 个版本（新实例），dyingQueue 中的旧实例不展示
         assertEquals(1, dto.getVersionDetails().size());
@@ -141,7 +141,7 @@ class LingInfoConverterTest {
     void shouldMarkCanaryInstanceAndSetWeight() {
         LingRuntime runtime = mock(LingRuntime.class);
         InstancePool pool = mock(InstancePool.class);
-        CanaryRouter router = mock(CanaryRouter.class);
+        // CanaryRouter 已删除
         PermissionService permSvc = mock(PermissionService.class);
         EventBus eventBus = mock(EventBus.class);
 
@@ -149,7 +149,7 @@ class LingInfoConverterTest {
         when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
         when(runtime.getInstancePool()).thenReturn(pool);
         when(runtime.getInstalledAt()).thenReturn(123L);
-        when(router.getCanaryPercent("ling-a")).thenReturn(30);
+        // router 已删除
 
         // 默认实例
         LingDefinition defaultDef = new LingDefinition();
@@ -173,7 +173,7 @@ class LingInfoConverterTest {
         when(pool.getActiveInstances()).thenReturn(Arrays.asList(defaultInstance, canaryInstance));
         when(pool.getDefault()).thenReturn(defaultInstance);
 
-        LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, null);
+        LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, null);
 
         assertEquals(2, dto.getVersionDetails().size());
 
@@ -195,7 +195,7 @@ class LingInfoConverterTest {
     void shouldAllowFallbackToNonDefaultWhenNoCanaryFlag() {
         LingRuntime runtime = mock(LingRuntime.class);
         InstancePool pool = mock(InstancePool.class);
-        CanaryRouter router = mock(CanaryRouter.class);
+        // CanaryRouter 已删除
         PermissionService permSvc = mock(PermissionService.class);
         EventBus eventBus = mock(EventBus.class);
 
@@ -203,7 +203,7 @@ class LingInfoConverterTest {
         when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
         when(runtime.getInstancePool()).thenReturn(pool);
         when(runtime.getInstalledAt()).thenReturn(123L);
-        when(router.getCanaryPercent("ling-a")).thenReturn(0);
+        // router 已删除
 
         // 默认实例
         LingDefinition defaultDef = new LingDefinition();
@@ -224,7 +224,7 @@ class LingInfoConverterTest {
         when(pool.getActiveInstances()).thenReturn(Arrays.asList(defaultInstance, otherInstance));
         when(pool.getDefault()).thenReturn(defaultInstance);
 
-        LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, null);
+        LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, null);
 
         assertEquals(2, dto.getVersionDetails().size());
 
@@ -241,7 +241,7 @@ class LingInfoConverterTest {
     void shouldRecognizeNumericCanaryFlag() {
         LingRuntime runtime = mock(LingRuntime.class);
         InstancePool pool = mock(InstancePool.class);
-        CanaryRouter router = mock(CanaryRouter.class);
+        // CanaryRouter 已删除
         PermissionService permSvc = mock(PermissionService.class);
         EventBus eventBus = mock(EventBus.class);
 
@@ -249,7 +249,7 @@ class LingInfoConverterTest {
         when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
         when(runtime.getInstancePool()).thenReturn(pool);
         when(runtime.getInstalledAt()).thenReturn(123L);
-        when(router.getCanaryPercent("ling-a")).thenReturn(50);
+        // router 已删除
 
         LingDefinition def = new LingDefinition();
         def.setId("ling-a");
@@ -264,7 +264,7 @@ class LingInfoConverterTest {
         when(pool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
         when(pool.getDefault()).thenReturn(instance);
 
-        LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, null);
+        LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, null);
 
         assertEquals(1, dto.getVersionDetails().size());
         assertTrue(dto.getVersionDetails().get(0).getIsCanary(), "canary=1 应识别为 canary");

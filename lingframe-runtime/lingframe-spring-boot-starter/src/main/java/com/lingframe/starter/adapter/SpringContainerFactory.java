@@ -1,26 +1,25 @@
 package com.lingframe.starter.adapter;
 
 import com.lingframe.api.config.LingDefinition;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.LingUnloadHook;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.loader.AsmMainClassScanner;
+import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.starter.web.WebInterfaceManager;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.Banner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.io.DefaultResourceLoader;
-
-import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Collections;
-
-import com.lingframe.starter.spi.LingContextCustomizer;
 
 @Slf4j
 public class SpringContainerFactory implements ContainerFactory {
@@ -111,7 +110,7 @@ public class SpringContainerFactory implements ContainerFactory {
                     sourceFile);
             // 注入灵核只读配置门面，替代静态穿透 LingFrameConfig.current()
             try {
-                container.setLingFrameInfo(mainContext.getBean(com.lingframe.core.config.LingFrameInfo.class));
+                container.setLingFrameInfo(mainContext.getBean(LingFrameInfo.class));
             } catch (Exception e) {
                 // 灵核未装 LingFrameInfo bean 时兜底默认值，保持向后兼容
                 log.debug("[{}] LingFrameInfo bean not available, fallback to default implicit registration", lingId);

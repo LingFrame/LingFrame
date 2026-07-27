@@ -1,8 +1,10 @@
 package com.lingframe.starter.resource;
 
+import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
 import java.lang.management.RuntimeMXBean;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
@@ -32,7 +34,7 @@ public final class ClassLoaderLeakDiagnoser {
 
     private static void flushLogs() {
         try {
-            java.io.File targetDir = new java.io.File("target");
+            File targetDir = new File("target");
             if (!targetDir.exists()) {
                 targetDir.mkdirs();
             }
@@ -1096,7 +1098,7 @@ public final class ClassLoaderLeakDiagnoser {
             }
 
             // 3. 打印当前堆内存使用情况
-            java.lang.management.MemoryMXBean memory = ManagementFactory.getMemoryMXBean();
+            MemoryMXBean memory = ManagementFactory.getMemoryMXBean();
             System.err.println("[GC-DIAG] 堆内存使用: " + memory.getHeapMemoryUsage());
             System.err.println("[GC-DIAG] GC 次数: " + ManagementFactory.getGarbageCollectorMXBeans().stream()
                     .map(b -> b.getName() + "=" + b.getCollectionCount() + "/" + b.getCollectionTime() + "ms")

@@ -1,4 +1,4 @@
-package com.lingframe.core.router;
+package com.lingframe.core.routing;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.event.EventBus;

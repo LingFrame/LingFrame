@@ -2,6 +2,7 @@ package com.lingframe.dashboard.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
+import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.fsm.RuntimeCoordinator;
@@ -11,38 +12,35 @@ import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.LingPackageDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
+import com.lingframe.dashboard.dto.TransitionHistoryDTO;
 import com.lingframe.dashboard.storage.GovernanceStorage;
-import com.lingframe.api.exception.LingNotFoundException;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.junit.jupiter.api.extension.ExtendWith;
-
 import java.io.File;
 import java.nio.file.Path;
 import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import org.mockito.Mock;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * DashboardService 补充测试（第二批）
@@ -65,8 +63,6 @@ class DashboardServiceSupplement2Test {
     @Mock
     GovernanceAdminService governanceAdmin;
     @Mock
-    CanaryRouter canaryRouter;
-    @Mock
     LingInfoConverter lingInfoConverter;
     @Mock
     PermissionService permissionService;
@@ -75,8 +71,8 @@ class DashboardServiceSupplement2Test {
 
     private DashboardService newService() {
         return new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                governanceAdmin, canaryRouter, lingInfoConverter, permissionService,
-                runtimeCoordinator, SHARED_OBJECT_MAPPER);
+                governanceAdmin, lingInfoConverter, permissionService,
+                runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
     }
 
     // ==================== updatePermissions / updateGovernancePolicy / updateInvocationGovernance 委托 ====================
@@ -144,7 +140,7 @@ class DashboardServiceSupplement2Test {
             lenient().when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(new GovernancePolicy());
             // updateStatus 成功后调用 getLingInfo，需要 converter 返回 DTO
             LingInfoDTO expectedDto = mock(LingInfoDTO.class);
-            when(lingInfoConverter.toDTO(eq(runtime), any(), any(), any())).thenReturn(expectedDto);
+            when(lingInfoConverter.toDTO(eq(runtime), any(), any())).thenReturn(expectedDto);
 
             LingInfoDTO result = service.updateStatus("ling1", RuntimeStatus.REMOVED, null);
 
@@ -236,66 +232,6 @@ class DashboardServiceSupplement2Test {
         }
     }
 
-    // ==================== setCanaryConfig 持久化分支 ====================
-
-    @Nested
-    @DisplayName("setCanaryConfig 持久化分支")
-    class SetCanaryConfigTests {
-
-        @Test
-        @DisplayName("runtime 不存在时应抛 LingNotFoundException")
-        void shouldThrowWhenRuntimeNotExist() {
-            DashboardService service = newService();
-            when(lingRepository.getRuntime("ling1")).thenReturn(null);
-
-            assertThrows(LingNotFoundException.class,
-                    () -> service.setCanaryConfig("ling1", 50, "v2"));
-        }
-
-        @Test
-        @DisplayName("注入 GovernanceStorage 后应持久化灰度配置")
-        void shouldPersistWhenStorageInjected() throws Exception {
-            DashboardService service = newService();
-            LingRuntime runtime = mock(LingRuntime.class);
-            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
-            GovernanceStorage storage = mock(GovernanceStorage.class);
-
-            service.setGovernanceStorage(storage);
-            service.setCanaryConfig("ling1", 30, "v2");
-
-            verify(storage).saveCanaryConfig(eq("ling1"), anyString());
-        }
-
-        @Test
-        @DisplayName("storage 抛异常时应吞掉异常不影响主流程")
-        void shouldSwallowStorageException() {
-            DashboardService service = newService();
-            LingRuntime runtime = mock(LingRuntime.class);
-            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
-            GovernanceStorage storage = mock(GovernanceStorage.class);
-            doThrow(new RuntimeException("storage error"))
-                    .when(storage).saveCanaryConfig(anyString(), anyString());
-
-            service.setGovernanceStorage(storage);
-
-            // 不应抛异常
-            assertDoesNotThrow(() -> service.setCanaryConfig("ling1", 30, "v2"));
-        }
-
-        @Test
-        @DisplayName("未注入 storage 时不应尝试持久化")
-        void shouldNotPersistWhenStorageNotInjected() {
-            DashboardService service = newService();
-            LingRuntime runtime = mock(LingRuntime.class);
-            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
-
-            service.setCanaryConfig("ling1", 50, "v2");
-
-            // 验证 canaryRouter.setCanaryConfig 被调用
-            verify(canaryRouter).setCanaryConfig("ling1", 50, "v2");
-        }
-    }
-
     // ==================== getTrafficStats / resetTrafficStats ====================
 
     @Nested
@@ -323,15 +259,15 @@ class DashboardServiceSupplement2Test {
         }
 
         @Test
-        @DisplayName("resetTrafficStats 在 runtime 存在时应调用 runtime.resetTrafficStats")
-        void shouldCallRuntimeResetTrafficStats() {
+        @DisplayName("resetTrafficStats 在 runtime 存在时不抛异常（流量统计已下沉到 MetricsCollector）")
+        void shouldNotThrowWhenRuntimeExistsForResetTrafficStats() {
+            // 流量统计已从 LingRuntime 下沉到 ProviderMetricsCollector / LingHealthMetrics
+            // resetTrafficStats 保留为 Dashboard 兼容入口，不再调 runtime.resetTrafficStats
             DashboardService service = newService();
             LingRuntime runtime = mock(LingRuntime.class);
             when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
 
-            service.resetTrafficStats("ling1");
-
-            verify(runtime).resetTrafficStats();
+            assertDoesNotThrow(() -> service.resetTrafficStats("ling1"));
         }
     }
 
@@ -357,7 +293,7 @@ class DashboardServiceSupplement2Test {
             DashboardService service = newService();
             // runtimeCoordinator.getStatus 默认返回 null（mock），status 为 null 时应短路返回空列表
 
-            List<com.lingframe.dashboard.dto.TransitionHistoryDTO> result =
+            List<TransitionHistoryDTO> result =
                     service.getTransitionHistory("ling1");
 
             assertNotNull(result);

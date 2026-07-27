@@ -1,11 +1,11 @@
 package com.lingframe.starter.resource;
 
-import lombok.extern.slf4j.Slf4j;
-
 import java.lang.ref.Reference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.concurrent.ConcurrentMap;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 清理 JDK {@link java.lang.reflect.Proxy} 内部静态缓存。
@@ -34,7 +34,7 @@ final class JdkProxyCacheCleaner {
             return;
         }
         try {
-            Field cacheField = java.lang.reflect.Proxy.class.getDeclaredField("proxyClassCache");
+            Field cacheField = Proxy.class.getDeclaredField("proxyClassCache");
             cacheField.setAccessible(true);
             Object cache = cacheField.get(null);
             if (cache == null) {

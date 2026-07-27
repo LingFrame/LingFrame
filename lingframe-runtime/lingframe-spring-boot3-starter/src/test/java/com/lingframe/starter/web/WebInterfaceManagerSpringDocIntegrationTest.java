@@ -3,35 +3,35 @@ package com.lingframe.starter.web;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.starter.configuration.LingFrameAutoConfiguration;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.ApplicationRunner;
-import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.Bean;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.method.HandlerMethod;
-import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
-
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 @SpringBootTest(
         classes = WebInterfaceManagerSpringDocIntegrationTest.TestApplication.class,
@@ -177,11 +177,11 @@ class WebInterfaceManagerSpringDocIntegrationTest {
 
     @SpringBootApplication
     @ImportAutoConfiguration(LingFrameAutoConfiguration.class)
-    @org.springframework.context.annotation.Import(TestConfig.class)
+    @Import(TestConfig.class)
     static class TestApplication {
     }
 
-    @org.springframework.boot.test.context.TestConfiguration
+    @TestConfiguration
     static class TestConfig {
         @Bean
         DemoLingController demoLingController() {

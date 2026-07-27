@@ -2,34 +2,33 @@ package com.lingframe.dashboard.service;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.context.LingContext;
+import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.fsm.RuntimeCoordinator;
-import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.InstancePool;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.ling.LingUninstallResult;
-import com.lingframe.core.router.CanaryRouter;
+import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.core.spi.LingContainer;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -50,7 +49,6 @@ class DashboardLingOperationsSupplementTest {
 
     private LingLifecycleEngine lifecycleEngine;
     private LingRepository lingRepository;
-    private CanaryRouter canaryRouter;
     private DashboardLifecycleEventStore lifecycleEventStore;
     private DashboardLingSourceResolver lingSourceResolver;
     private DashboardLingOperations operations;
@@ -59,12 +57,11 @@ class DashboardLingOperationsSupplementTest {
     void setUp() {
         lifecycleEngine = mock(LingLifecycleEngine.class);
         lingRepository = mock(LingRepository.class);
-        canaryRouter = mock(CanaryRouter.class);
         lifecycleEventStore = mock(DashboardLifecycleEventStore.class);
         lingSourceResolver = new DashboardLingSourceResolver(
-                com.lingframe.core.config.LingFrameConfig.builder().build());
+                LingFrameConfig.builder().build());
         operations = new DashboardLingOperations(lifecycleEngine, lingRepository,
-                canaryRouter, lifecycleEventStore, lingSourceResolver);
+                null, lifecycleEventStore, lingSourceResolver);
     }
 
     // ==================== installLing 异常路径 ====================
@@ -127,7 +124,7 @@ class DashboardLingOperationsSupplementTest {
         @DisplayName("uninstallLing 触发后应记录 DEAD 事件")
         void shouldRecordDeadEventWhenUninstallTriggered() {
             when(lifecycleEngine.undeployWithReport("ling1"))
-                    .thenReturn(LingUninstallResult.triggered("ling1", null, Collections.<com.lingframe.core.spi.LeakRiskReport>emptyList()));
+                    .thenReturn(LingUninstallResult.triggered("ling1", null, Collections.<LeakRiskReport>emptyList()));
 
             operations.uninstallLing("ling1");
 
@@ -138,7 +135,7 @@ class DashboardLingOperationsSupplementTest {
         @DisplayName("uninstallLing(version) 触发后应记录 UNLOAD 事件")
         void shouldRecordUnloadEventWhenVersionUninstallTriggered() {
             when(lifecycleEngine.undeployWithReport("ling1", "1.0.0"))
-                    .thenReturn(LingUninstallResult.triggered("ling1", "1.0.0", Collections.<com.lingframe.core.spi.LeakRiskReport>emptyList()));
+                    .thenReturn(LingUninstallResult.triggered("ling1", "1.0.0", Collections.<LeakRiskReport>emptyList()));
 
             operations.uninstallLing("ling1", "1.0.0");
 

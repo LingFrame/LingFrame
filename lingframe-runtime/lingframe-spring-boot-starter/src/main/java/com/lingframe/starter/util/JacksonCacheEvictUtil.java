@@ -1,8 +1,7 @@
 package com.lingframe.starter.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.convert.support.DefaultConversionService;
 
 import java.lang.reflect.Field;
@@ -10,9 +9,8 @@ import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+@Slf4j
 public class JacksonCacheEvictUtil {
-
-    private static final Logger log = LoggerFactory.getLogger(JacksonCacheEvictUtil.class);
 
     public static void evictByClassLoader(ObjectMapper objectMapper, ClassLoader targetLoader) {
         if (objectMapper == null)

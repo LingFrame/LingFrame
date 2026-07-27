@@ -2,20 +2,18 @@ package com.lingframe.dashboard.service;
 
 import com.lingframe.core.event.EventBus;
 import com.lingframe.dashboard.dto.LogStreamDTO;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.concurrent.Semaphore;
-
+import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.eq;
@@ -23,6 +21,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * SSE 日志流服务测试
@@ -76,7 +75,7 @@ class LogStreamServiceTest {
         @DisplayName("达到 MAX_CONNECTIONS 上限时应抛 IllegalStateException")
         void shouldRejectWhenMaxConnectionsReached() throws Exception {
             // 通过反射耗尽 Semaphore 许可，模拟连接数达到上限
-            java.lang.reflect.Field f = LogStreamService.class.getDeclaredField("connectionSemaphore");
+            Field f = LogStreamService.class.getDeclaredField("connectionSemaphore");
             f.setAccessible(true);
             Semaphore semaphore = (Semaphore) f.get(service);
             int permits = semaphore.drainPermits();
@@ -86,7 +85,7 @@ class LogStreamServiceTest {
             assertThrows(IllegalStateException.class, () -> service.createEmitter());
 
             // emitters 列表不应增长（仍为 0）
-            java.lang.reflect.Field ef = LogStreamService.class.getDeclaredField("emitters");
+            Field ef = LogStreamService.class.getDeclaredField("emitters");
             ef.setAccessible(true);
             @SuppressWarnings("unchecked")
             List<SseEmitter> emitters = (List<SseEmitter>) ef.get(service);
@@ -96,7 +95,7 @@ class LogStreamServiceTest {
         @Test
         @DisplayName("正常创建 emitter 后许可应减少 1")
         void shouldAcquirePermitOnCreateEmitter() throws Exception {
-            java.lang.reflect.Field f = LogStreamService.class.getDeclaredField("connectionSemaphore");
+            Field f = LogStreamService.class.getDeclaredField("connectionSemaphore");
             f.setAccessible(true);
             Semaphore semaphore = (Semaphore) f.get(service);
             int initialPermits = semaphore.availablePermits();

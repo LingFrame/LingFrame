@@ -7,25 +7,22 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.spi.ServiceExporter;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.mockito.Mockito.any;
+import org.mockito.Mockito;
 import static org.mockito.Mockito.anyList;
 import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * {@link ServiceExporterListener} 补充测试。
@@ -118,14 +115,14 @@ class ServiceExporterListenerSupplementTest {
     @DisplayName("onLingStarted 在某个 exporter 抛异常时应隔离异常继续执行")
     void shouldIsolateExporterException() {
         EventBus eventBus = new EventBus();
-        ServiceExporter failingExporter = org.mockito.Mockito.mock(ServiceExporter.class);
-        ServiceExporter normalExporter = org.mockito.Mockito.mock(ServiceExporter.class);
+        ServiceExporter failingExporter = Mockito.mock(ServiceExporter.class);
+        ServiceExporter normalExporter = Mockito.mock(ServiceExporter.class);
         List<String> services = Collections.singletonList("user:UserService");
 
         when(lingRepository.getRuntime("ling-a")).thenReturn(runtime);
         when(lingServiceRegistry.getServicesByLingId("ling-a")).thenReturn(services);
         // 第一个 exporter 抛异常
-        org.mockito.Mockito.doThrow(new RuntimeException("Nacos down"))
+        Mockito.doThrow(new RuntimeException("Nacos down"))
                 .when(failingExporter).export("ling-a", services);
 
         new ServiceExporterListener(eventBus, lingRepository, lingServiceRegistry,
@@ -142,7 +139,7 @@ class ServiceExporterListenerSupplementTest {
     @DisplayName("onLingStopped 应对所有 exporter 调用 unexport")
     void shouldUnexportOnLingStopped() {
         EventBus eventBus = new EventBus();
-        ServiceExporter exporter2 = org.mockito.Mockito.mock(ServiceExporter.class);
+        ServiceExporter exporter2 = Mockito.mock(ServiceExporter.class);
 
         new ServiceExporterListener(eventBus, lingRepository, lingServiceRegistry,
                 Arrays.asList(exporter, exporter2));

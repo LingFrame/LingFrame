@@ -16,6 +16,12 @@ import java.util.Map;
 public class LingInfoDTO {
 
     private String lingId;
+    /**
+     * 灵元声明的首个契约 ID（兜底）；迁移阶段管理用此字段把 lingId 解析为真实 contractId,
+     * 替代旧前端把 lingId 当 contractId 误用的 literal 'default' 兜底。
+     * 多契约场景后续扩展。
+     */
+    private String contractId;
     private String status; // 全局聚合状态: ACTIVE, INACTIVE, DEGRADED, STOPPING, REMOVED
     private List<VersionInfo> versionDetails; // 所有运行版本的明细树
     private ResourcePermissions permissions;

@@ -133,27 +133,38 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
             }
         }
 
+        // 活跃请求计数下沉到 LingHealthMetrics（独立于 LingRuntime）
         // 请求计数仅对灵元（LingRuntime）生效；灵核无状态机，跳过
-        LingRuntime lingRuntime = runtime instanceof LingRuntime ? (LingRuntime) runtime : null;
-        if (lingRuntime != null) {
-            lingRuntime.startRequest();
+        String lingIdForActive = ctx.getTargetLingId();
+        if (lingIdForActive == null && ctx.getServiceFQSID() != null) {
+            String fqsid = ctx.getServiceFQSID();
+            int idx = fqsid.indexOf(':');
+            if (idx > 0) {
+                lingIdForActive = fqsid.substring(0, idx);
+            }
         }
+        LingHealthMetrics activeMetrics = (metricsCollector != null && lingIdForActive != null)
+                ? metricsCollector.getOrCreate(lingIdForActive) : null;
+        if (activeMetrics != null) {
+            activeMetrics.startRequest();
+        }
+        // lingRuntime 不再持有流量统计，删 startRequest/endRequest 直写
 
         String lingId = ctx.getTargetLingId();
         String serviceFQSID = ctx.getServiceFQSID();
         String operation = ctx.getOperation();
         int depth = LingCallContext.getDepth();
-        
+
         LingCallContext.increaseDepth();
-        
+
         publishTrace(traceId, lingId, "→ " + (operation != null ? operation : serviceFQSID), "IN", depth);
 
         try {
             Object result = chain.doFilter(ctx);
             long costMs = (System.nanoTime() - start) / 1_000_000;
-            publishTrace(traceId, lingId, 
-                "← " + (operation != null ? operation : serviceFQSID) + " (" + costMs + "ms)", 
-                "OUT", depth);
+            publishTrace(traceId, lingId,
+                    "← " + (operation != null ? operation : serviceFQSID) + " (" + costMs + "ms)",
+                    "OUT", depth);
             recordMetrics(ctx, start, true, null);
             return result;
         } catch (Error e) {
@@ -163,14 +174,14 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
         } catch (Throwable t) {
             long costMs = (System.nanoTime() - start) / 1_000_000;
             publishTrace(traceId, lingId,
-                "✗ " + (operation != null ? operation : serviceFQSID) + " (" + costMs + "ms) - " + t.getClass().getSimpleName(),
-                "ERROR", depth);
+                    "✗ " + (operation != null ? operation : serviceFQSID) + " (" + costMs + "ms) - " + t.getClass().getSimpleName(),
+                    "ERROR", depth);
             recordMetrics(ctx, start, false, t);
             throw t;
         } finally {
             LingCallContext.decreaseDepth();
-            if (lingRuntime != null) {
-                lingRuntime.endRequest();
+            if (activeMetrics != null) {
+                activeMetrics.endRequest();
             }
         }
     }
@@ -238,9 +249,9 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
         if (ctx.getTargetVersion() != null && !ctx.getTargetVersion().isEmpty()) {
             return ctx.getTargetVersion();
         }
-        // 版本号仅灵元（LingRuntime）有 InstancePool；灵核无版本概念
-        LingRuntime runtime = ctx.getLingRuntime();
-        return runtime != null ? runtime.getInstancePool().getVersion() : null;
+        // 版本号优先从 InvocationContext 获取，删除对 LingRuntime 的依赖
+        // 灵核无版本概念，灵元版本由上游路由过滤器填充到 ctx
+        return null;
     }
     
     /**

@@ -1,14 +1,14 @@
 package com.lingframe.core.util;
 
+import com.lingframe.api.config.LingDefinition;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.error.YAMLException;
-
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link YamlCompatUtils} 的第二轮补充测试。
@@ -26,7 +26,7 @@ class YamlCompatUtilsSupplement2Test {
         // 用全局标签显式指定类型，触发 TagInspector.isGlobalTagAllowed
         // 类名以 com.lingframe. 开头，代理应返回 true
         String input = "!!com.lingframe.api.config.LingDefinition\nid: tag-test\nversion: 1.0.0\n";
-        com.lingframe.api.config.LingDefinition def =
+        LingDefinition def =
                 yaml.load(input);
         assertNotNull(def);
         assertEquals("tag-test", def.getId());
@@ -48,7 +48,7 @@ class YamlCompatUtilsSupplement2Test {
     void shouldAllowLingframeTagInSafeYaml() {
         Yaml yaml = YamlCompatUtils.createSafeYaml();
         String input = "!!com.lingframe.api.config.LingDefinition\nid: safe-tag\nversion: 2.0\n";
-        com.lingframe.api.config.LingDefinition def = yaml.load(input);
+        LingDefinition def = yaml.load(input);
         assertNotNull(def);
         assertEquals("safe-tag", def.getId());
     }
@@ -59,7 +59,7 @@ class YamlCompatUtilsSupplement2Test {
         DumperOptions options = new DumperOptions();
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.FLOW);
         Yaml yaml = YamlCompatUtils.createSafeYaml(options);
-        String dumped = yaml.dump(java.util.Collections.singletonMap("k", "v"));
+        String dumped = yaml.dump(Collections.singletonMap("k", "v"));
         assertNotNull(dumped);
         // FLOW 风格应含花括号
         assertTrue(dumped.contains("{"));
@@ -83,7 +83,7 @@ class YamlCompatUtilsSupplement2Test {
     @DisplayName("createSafeYaml 应能 dump 并重新 load")
     void shouldRoundTripDumpAndLoad() {
         Yaml yaml = YamlCompatUtils.createSafeYaml();
-        java.util.Map<String, Object> original = new java.util.LinkedHashMap<>();
+        Map<String, Object> original = new LinkedHashMap<>();
         original.put("name", "round-trip");
         original.put("value", 100);
         String dumped = yaml.dump(original);

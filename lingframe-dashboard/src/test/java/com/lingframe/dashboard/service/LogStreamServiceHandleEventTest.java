@@ -13,22 +13,25 @@ import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.dashboard.dto.LogStreamDTO;
+import java.io.File;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.List;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
-import java.io.File;
-import java.lang.reflect.Method;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.mockito.ArgumentMatchers;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * LogStreamService handle* 事件处理方法补充测试
@@ -49,7 +52,7 @@ class LogStreamServiceHandleEventTest {
         service = new LogStreamService(eventBus);
         spy = spy(service);
         // 禁用真实 broadcast（避免异步线程干扰断言）
-        doNothing().when(spy).broadcast(org.mockito.ArgumentMatchers.any());
+        doNothing().when(spy).broadcast(ArgumentMatchers.any());
     }
 
     @AfterEach
@@ -596,16 +599,16 @@ class LogStreamServiceHandleEventTest {
             // 通过 createEmitter 创建真实 emitter（获取许可 + 加入列表）
             SseEmitter emitter = spy.createEmitter();
 
-            java.lang.reflect.Field ef = LogStreamService.class.getDeclaredField("emitters");
+            Field ef = LogStreamService.class.getDeclaredField("emitters");
             ef.setAccessible(true);
             @SuppressWarnings("unchecked")
-            java.util.List<SseEmitter> emitters = (java.util.List<SseEmitter>) ef.get(spy);
+            List<SseEmitter> emitters = (List<SseEmitter>) ef.get(spy);
             assertEquals(1, emitters.size());
 
             // 记录许可数
-            java.lang.reflect.Field sf = LogStreamService.class.getDeclaredField("connectionSemaphore");
+            Field sf = LogStreamService.class.getDeclaredField("connectionSemaphore");
             sf.setAccessible(true);
-            java.util.concurrent.Semaphore semaphore = (java.util.concurrent.Semaphore) sf.get(spy);
+            Semaphore semaphore = (Semaphore) sf.get(spy);
             int permitsBefore = semaphore.availablePermits();
 
             Method m = LogStreamService.class.getDeclaredMethod("releaseEmitter", SseEmitter.class);
@@ -623,7 +626,7 @@ class LogStreamServiceHandleEventTest {
             Method m = LogStreamService.class.getDeclaredMethod("withCoreClassLoader", Runnable.class);
             m.setAccessible(true);
 
-            java.util.concurrent.atomic.AtomicReference<ClassLoader> captured = new java.util.concurrent.atomic.AtomicReference<>();
+            AtomicReference<ClassLoader> captured = new AtomicReference<>();
             Runnable task = () -> captured.set(Thread.currentThread().getContextClassLoader());
             Runnable wrapped = (Runnable) m.invoke(spy, task);
             wrapped.run();

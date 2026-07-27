@@ -6,7 +6,7 @@ This file provides unified guidance to AI coding assistants when working with co
 
 ## 项目简介
 
-灵珑（LingFrame）是一个面向长期运行系统的 JVM 运行时治理框架。核心能力：单进程内灵元隔离、热加载/规范热卸载、运行时治理（权限、审计、限流、熔断、灰度）、Dashboard 控制面。
+灵珑（LingFrame）是一个面向长期运行系统的 JVM 运行时治理框架。核心能力：单进程内灵元隔离、热加载/规范热卸载、运行时治理（权限、审计、限流、熔断、二元迁移）、Dashboard 控制面。
 
 当前版本：`0.4.0`（`lingframe-dependencies` 的 `revision`）。默认构建矩阵为 **Spring Boot 2.7 / JDK 8**；**Spring Boot 3.5 / JDK 17** 通过 `-Pspring-boot3` 切换。
 
@@ -117,6 +117,7 @@ mvn -pl lingframe-benchmark package -Pbenchmark -DskipTests
 | 实例成员关系 | `InstancePool` | 受编排驱动变更 | 不管完整生命周期 |
 | 生命周期阶段顺序 | `DefaultLingLifecycleEngine` | 编排逻辑本身 | 不能跳过 coordinator 直改状态 |
 | 卸载清理 | `LingUnloadCoordinator` | 清理协调器 | 不能替代生命周期编排 |
+| 迁移阶段 | `MigrationStateHolder` | `DefaultLingLifecycleEngine` 编排 + `confirmPhaseTransition` 显式确认 | 其他对象只能读或响应事件 |
 
 ### 七个关键角色
 
@@ -134,7 +135,13 @@ mvn -pl lingframe-benchmark package -Pbenchmark -DskipTests
 
 `InvocationPipelineEngine` 是治理主链；内置过滤器按序执行（以 `PipelineArchitectureContractTest` / `FilterRegistry` 为准）：
 
-`ContractProviderRoutingFilter` → `TrafficMetricsFilter` → `MacroStateGuardFilter` → `CanaryRoutingFilter` → `InvocationPolicyPrefillFilter` → `ResilienceGovernanceFilter` → `ContextIsolationFilter` → `GovernanceDecisionFilter` → `PermissionGovernanceFilter` → `ThreadIsolationGovernanceFilter` → `TerminalInvokerFilter`
+`ContractProviderRoutingFilter` → `TrafficMetricsFilter` → `MacroStateGuardFilter` → `InvocationPolicyPrefillFilter` → `ResilienceGovernanceFilter` → `ContextIsolationFilter` → `GovernanceDecisionFilter` → `PermissionGovernanceFilter` → `ThreadIsolationGovernanceFilter` → `TerminalInvokerFilter`
+
+**路由层去身份化**：路由层只认 `weight` 和方法资格，不引用实现方身份（灵核/灵元）。身份在注册时沉淀为 `weight` 数值（灵核默认 100，灵元默认 0），方法资格通过 `LingServiceRegistry.hasMethod` 判定——未声明被调用方法的 provider 被剔除，方法级 fallback 是路由的副产物。
+
+**候选数硬约束**：同一契约同一时刻最多 2 个候选 provider，由双层断言强制——`DefaultLingServiceRegistry.registerProvider` 注册第 3 个时抛 `RoutingArchitectureViolationException`，`ProviderWeightRouter.selectProvider` 入口校验 `candidates.size() > 2` 抛同异常，立即终止调用链并强告警，绝不静默降级。
+
+**迁移状态机**：`MigrationPhase`（`CORE_EXCLUSIVE` / `MIGRATING` / `LING_EXCLUSIVE` / `ITERATING`）+ `MigrationStateHolder` 归属 `core.routing` 包，与路由器同包表达"迁移阶段是路由层的元状态"，不入侵运行时 FSM。详见 `DEVELOPMENT_MANUAL.md` §6.8。
 
 三种执行模式：`NORMAL`（真实执行）、`SIMULATION`（模拟）、`GOVERN_ONLY`（仅治理）。
 
@@ -187,7 +194,7 @@ SPI/动态过滤器不得占用内置 order 保留位。
 - 禁止为兼容保留已确认错误的旧边界
 - 禁止删除高价值设计注释、踩坑说明、风险提示
 - **职责分职（禁止混用）**：
-  - **切流 / 停流** → 二维路由、灰度权重、契约权重
+  - **切流 / 停流** → 二维路由、二元迁移权重、契约权重
   - **启停授权** → `LING_ENABLE` 等 capability
   - **RuntimeStatus** → 实例聚合**事实**，禁止用状态机表达切流
   - **真下线回收** → 卸载（STOPPING → REMOVED）

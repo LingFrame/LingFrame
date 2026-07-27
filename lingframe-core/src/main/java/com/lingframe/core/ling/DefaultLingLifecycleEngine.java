@@ -7,6 +7,7 @@ import com.lingframe.api.event.lifecycle.LingInstalledEvent;
 import com.lingframe.api.event.lifecycle.LingInstallingEvent;
 import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.api.event.lifecycle.LingUninstallingEvent;
+import com.lingframe.api.exception.RoutingArchitectureViolationException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
@@ -16,11 +17,13 @@ import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.routing.MigrationPhase;
+import com.lingframe.core.routing.MigrationStateHolder;
+import com.lingframe.core.routing.ProviderDescriptor;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
-import com.lingframe.core.spi.CanaryConfigurable;
 import com.lingframe.core.spi.LingLoaderFactory;
 import com.lingframe.core.spi.RoutableTarget;
 import com.lingframe.core.spi.LingSecurityVerifier;
@@ -37,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 
 /**
@@ -63,7 +67,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     private final InvocationPipelineEngine pipelineEngine;
     private final LingUnloadCoordinator unloadCoordinator;
     private LingHotSwapWatcher hotSwapWatcher;
-    private CanaryConfigurable canaryConfigurable;
+    private MigrationStateHolder migrationStateHolder;
 
     private final InstanceCoordinator instanceCoordinator;
     private final RuntimeCoordinator runtimeCoordinator;
@@ -94,7 +98,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
                 "unloadCoordinator is required (assemble a complete LingUnloadCoordinator at the wiring layer)");
 
         this.hotSwapWatcher = config.getHotSwapWatcher();
-        this.canaryConfigurable = config.getCanaryConfigurable();
+        this.migrationStateHolder = config.getMigrationStateHolder();
         this.metricsCollector = config.getMetricsCollector();
         this.governanceMetricsCollector = config.getGovernanceMetricsCollector();
         this.alertManager = config.getAlertManager();
@@ -131,8 +135,8 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     }
 
     @Override
-    public Optional<CanaryConfigurable> getCanaryConfigurable() {
-        return Optional.ofNullable(canaryConfigurable);
+    public MigrationStateHolder getMigrationStateHolder() {
+        return migrationStateHolder;
     }
 
     @Override
@@ -172,6 +176,9 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         String lingId = lingDefinition.getId();
         String version = lingDefinition.getVersion();
         eventBus.publish(new LingInstallingEvent(lingId, version, sourceFile));
+
+        // 前置独占检查：禁止叠加迁移/迭代
+        assertExclusiveForDeployment(lingId);
 
         ClassLoader lingClassLoader = null;
         LingContainer container = null;
@@ -494,6 +501,51 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             // 部署失败必须同时收口 RuntimeCoordinator，避免 ghost INACTIVE 状态机残留
             runtimeCoordinator.unregister(lingId);
             lingRepository.unregister(lingId);
+        }
+    }
+
+    /**
+     * 前置独占检查：禁止叠加迁移/迭代。
+     * <p>
+     * 部署灵元时，遍历其声明提供方契约，对每个契约查 {@link MigrationStateHolder#getPhase}：
+     * 非独占态（MIGRATING / ITERATING）表示已有迁移/迭代在途，禁止新部署并审计告警。
+     * <p>
+     * native/test 场景下 {@code migrationStateHolder} 为 null，跳过校验。
+     *
+     * @param lingId 待部署灵元 ID
+     * @throws RoutingArchitectureViolationException 非独占态发起新部署
+     */
+    private void assertExclusiveForDeployment(String lingId) {
+        if (migrationStateHolder == null) {
+            return;
+        }
+        // 查灵元已声明的提供方契约（如尚未注册则无检查可做，属首次部署）
+        // 此处仅对灵元已有 provider 登记的契约做独占校验，避免灵元首次部署被误拒
+        Set<String> contractIds = lingServiceRegistry.getAllContractIds();
+        for (String contractId : contractIds) {
+            List<ProviderDescriptor> providers = lingServiceRegistry.getProvidersByContractId(contractId);
+            if (providers == null || providers.isEmpty()) {
+                continue;
+            }
+            // 只关心本灵元参与的契约
+            boolean involved = false;
+            for (ProviderDescriptor desc : providers) {
+                if (lingId.equals(desc.getLingId())) {
+                    involved = true;
+                    break;
+                }
+            }
+            if (!involved) {
+                continue;
+            }
+            MigrationPhase phase = migrationStateHolder.getPhase(contractId);
+            if (!phase.isExclusive()) {
+                log.error("Deployment rejected: contract={} is in {} phase, exclusive required, ling={}",
+                        contractId, phase, lingId);
+                throw new RoutingArchitectureViolationException(
+                        "Deployment rejected: contract=" + contractId + " is in " + phase
+                                + " phase, exclusive required before new deployment, ling=" + lingId);
+            }
         }
     }
 

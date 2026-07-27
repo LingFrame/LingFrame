@@ -1,12 +1,13 @@
 package com.lingframe.starter.resource;
 
-import lombok.extern.slf4j.Slf4j;
-
+import java.lang.ref.Reference;
+import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Iterator;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Spring 生态清理共享工具。
@@ -60,8 +61,8 @@ final class SpringCleanupSupport {
         if (checkMethodClassKey(obj, targetCL))
             return true;
         // Soft/WeakReference：dump 中常见 SoftReference 拖住灵元 Class
-        if (obj instanceof java.lang.ref.Reference<?>) {
-            Object referent = ((java.lang.ref.Reference<?>) obj).get();
+        if (obj instanceof Reference<?>) {
+            Object referent = ((Reference<?>) obj).get();
             return isRelatedToClassLoader(referent, targetCL);
         }
         // ConcurrentReferenceHashMap$Entry：key/value 可能是 SoftReference 或 MethodClassKey
@@ -259,9 +260,9 @@ final class SpringCleanupSupport {
             if (segments == null || !segments.getClass().isArray()) {
                 return 0;
             }
-            int segLen = java.lang.reflect.Array.getLength(segments);
+            int segLen = Array.getLength(segments);
             for (int s = 0; s < segLen; s++) {
-                Object segment = java.lang.reflect.Array.get(segments, s);
+                Object segment = Array.get(segments, s);
                 if (segment == null) {
                     continue;
                 }
@@ -274,9 +275,9 @@ final class SpringCleanupSupport {
                 if (refs == null || !refs.getClass().isArray()) {
                     continue;
                 }
-                int refLen = java.lang.reflect.Array.getLength(refs);
+                int refLen = Array.getLength(refs);
                 for (int i = 0; i < refLen; i++) {
-                    Object ref = java.lang.reflect.Array.get(refs, i);
+                    Object ref = Array.get(refs, i);
                     released += releaseCrhmReferenceChainIfRelated(ref, cl, 0);
                 }
             }
@@ -331,8 +332,8 @@ final class SpringCleanupSupport {
                         released++;
                     } catch (NoSuchMethodException e) {
                         // SoftReference.clear()
-                        if (current instanceof java.lang.ref.Reference<?>) {
-                            ((java.lang.ref.Reference<?>) current).clear();
+                        if (current instanceof Reference<?>) {
+                            ((Reference<?>) current).clear();
                             released++;
                         }
                     }

@@ -197,10 +197,11 @@ class InvocationPolicyPrefillFilterTest {
     }
 
     @Test
-    @DisplayName("新格式 __provider__: FQSID 应优先读 targetLingId 查治理策略")
-    void prefillsFromTargetLingIdWhenProviderFqsid() throws Throwable {
+    @DisplayName("裸 contractId FQSID 应优先读 targetLingId 查治理策略")
+    void prefillsFromTargetLingIdWhenBareContractId() throws Throwable {
         // 覆盖 setUp 的旧格式 FQSID，模拟 ContractProviderRoutingFilter 已解析出真实 lingId
-        context.setServiceFQSID("__provider__:com.example.DemoService");
+        // L0 不改写 FQSID，保持裸 contractId
+        context.setServiceFQSID("com.example.DemoService");
         context.setTargetLingId("demo-ling");
 
         when(lingDefinition.getGovernance()).thenReturn(new GovernancePolicy());

@@ -34,8 +34,6 @@ public class LingServiceRegistrar {
     private final BusinessInterfaceFilter interfaceFilter;
     private final boolean implicitRegistration;
     private final DefaultLingContext context;
-    /** 提供方类型，默认灵元（灵核侧构造时显式传 CORE） */
-    private final ProviderKind providerKind;
     /** 注册时携带的初始权重，默认 0（多 provider 场景灵元不自动接流量，需 Dashboard 配置） */
     private final int defaultWeight;
 
@@ -52,52 +50,46 @@ public class LingServiceRegistrar {
      * 实例绑定三件事）；ctx 为空时退回直接调 registry（仅 metadataCache + implClassName，
      * 实例绑定丢失——演练场 hasServiceMethod 会判 false）。适配层应始终传 ctx。
      * <p>
-     * 默认 kind=LING, weight=0（灵元场景）。灵核侧应使用 {@link #forCore(LingServiceRegistry, BusinessInterfaceFilter, boolean, DefaultLingContext)}
-     * 工厂方法避免直接引用 ProviderKind 类（灵元 ClassLoader 可能加载不到 core 模块新类）。
+     * 默认 weight=0（灵元场景）。灵核侧应使用 {@link #forCore(LingServiceRegistry, BusinessInterfaceFilter, boolean, DefaultLingContext)}
+     * 工厂方法携带 weight=100 注册。
      */
     public LingServiceRegistrar(LingServiceRegistry registry,
             BusinessInterfaceFilter interfaceFilter,
             boolean implicitRegistration,
             DefaultLingContext context) {
-        this(registry, interfaceFilter, implicitRegistration, context, ProviderKind.LING, 0);
+        this(registry, interfaceFilter, implicitRegistration, context, 0);
     }
 
     /**
-     * 路由升维：灵核专用工厂方法。
+     * 灵核专用工厂方法。
      * <p>
-     * 灵核侧（{@code LingCoreServiceRegistrarProcessor}）用此方法替代直接调 6 参数构造函数，
-     * 避免在 starter 模块直接引用 {@link ProviderKind}——
-     * 灵元 ClassLoader 隔离场景下可能加载不到 core 模块新类，导致 NoClassDefFoundError。
-     * 本方法把 ProviderKind.CORE 引用收敛到 core 模块内部。
+     * 灵核侧（{@code LingCoreServiceRegistrarProcessor}）用此方法注册灵核 Bean，
+     * 携带默认权重 100（灵核 baseline 默认承接全量流量，路由层不引用实现方身份，
+     * 身份在注册时沉淀为 weight 数值）。
      */
     public static LingServiceRegistrar forCore(LingServiceRegistry registry,
             BusinessInterfaceFilter interfaceFilter,
             boolean implicitRegistration,
             DefaultLingContext context) {
-        return new LingServiceRegistrar(registry, interfaceFilter, implicitRegistration, context,
-                ProviderKind.CORE, 100);
+        return new LingServiceRegistrar(registry, interfaceFilter, implicitRegistration, context, 100);
     }
 
     /**
-     * 路由升维：显式指定提供方类型和初始权重的构造函数。
+     * 显式指定初始权重的构造函数。
      * <p>
-     * 灵核侧（{@code LingCoreServiceRegistrarProcessor}）用此构造函数传 {@code CORE} 和 {@code weight=100}。
-     * 灵元侧用旧构造函数，默认 {@code LING} 和 {@code weight=0}。
+     * 灵核侧用此构造函数传 {@code weight=100}；灵元侧用旧构造函数，默认 {@code weight=0}。
      *
-     * @param providerKind 提供方类型
      * @param defaultWeight 注册时携带的初始权重 0-100
      */
     public LingServiceRegistrar(LingServiceRegistry registry,
             BusinessInterfaceFilter interfaceFilter,
             boolean implicitRegistration,
             DefaultLingContext context,
-            ProviderKind providerKind,
             int defaultWeight) {
         this.registry = registry;
         this.interfaceFilter = interfaceFilter != null ? interfaceFilter : BusinessInterfaceFilter.coreDefaults();
         this.implicitRegistration = implicitRegistration;
         this.context = context;
-        this.providerKind = providerKind != null ? providerKind : ProviderKind.LING;
         this.defaultWeight = Math.max(0, Math.min(100, defaultWeight));
     }
 
@@ -323,11 +315,11 @@ public class LingServiceRegistrar {
             registry.registerImplementationClassName(fqsid, bean.getClass().getName());
         }
         // 路由升维：从 FQSID 提取 contractId，登记 provider 索引
-        // 幂等：同一 (contractId, lingId) 重复注册只保留首次 kind，weight 以最新为准
+        // 幂等：同一 (contractId, lingId) 重复注册 weight 以最新为准
         String lingId = extractLingIdFromFqsid(fqsid);
         String contractId = extractContractIdFromFqsid(fqsid);
         if (lingId != null && contractId != null) {
-            registry.registerProvider(contractId, lingId, providerKind, defaultWeight);
+            registry.registerProvider(contractId, lingId, defaultWeight);
         }
     }
 

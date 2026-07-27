@@ -1,9 +1,8 @@
 package com.lingframe.dashboard.service;
 
 import com.lingframe.core.ling.LingServiceRegistry;
-import com.lingframe.core.ling.ProviderDescriptor;
-import com.lingframe.core.ling.ProviderKind;
-import com.lingframe.core.router.ProviderWeightRouter;
+import com.lingframe.core.routing.ProviderDescriptor;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
 import com.lingframe.dashboard.dto.ProviderWeightDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +21,10 @@ import static org.mockito.Mockito.*;
 /**
  * ContractRoutingService 单元测试。
  * 覆盖：多 provider 契约列表、权重查询、权重下发、一键回滚。
+ * <p>
+ * 去身份化后 ProviderDescriptor 不再携带 ProviderKind，
+ * 灵核识别通过 LingCoreConstants.LINGCORE_LING_ID 常量比较 lingId 实现，
+ * 仅 Dashboard 运维视图用，不参与路由决策。
  */
 @DisplayName("ContractRoutingService 单元测试")
 class ContractRoutingServiceTest {
@@ -51,16 +54,16 @@ class ContractRoutingServiceTest {
                     .thenReturn(new HashSet<>(Arrays.asList("svc-a", "svc-b", "svc-c")));
             when(lingServiceRegistry.getProvidersByContractId("svc-a"))
                     .thenReturn(Arrays.asList(
-                            new ProviderDescriptor("svc-a", "lingcore-app", ProviderKind.CORE, 100),
-                            new ProviderDescriptor("svc-a", "user-ling", ProviderKind.LING, 0)));
+                            new ProviderDescriptor("svc-a", "lingcore-app", 100),
+                            new ProviderDescriptor("svc-a", "user-ling", 0)));
             when(lingServiceRegistry.getProvidersByContractId("svc-b"))
                     .thenReturn(Collections.singletonList(
-                            new ProviderDescriptor("svc-b", "lingcore-app", ProviderKind.CORE, 100)));
+                            new ProviderDescriptor("svc-b", "lingcore-app", 100)));
             when(lingServiceRegistry.getProvidersByContractId("svc-c"))
                     .thenReturn(Arrays.asList(
-                            new ProviderDescriptor("svc-c", "lingcore-app", ProviderKind.CORE, 100),
-                            new ProviderDescriptor("svc-c", "ling-a", ProviderKind.LING, 0),
-                            new ProviderDescriptor("svc-c", "ling-b", ProviderKind.LING, 0)));
+                            new ProviderDescriptor("svc-c", "lingcore-app", 100),
+                            new ProviderDescriptor("svc-c", "ling-a", 0),
+                            new ProviderDescriptor("svc-c", "ling-b", 0)));
 
             List<String> result = service.listMultiProviderContracts();
 
@@ -88,26 +91,27 @@ class ContractRoutingServiceTest {
     class GetContractRouting {
 
         @Test
-        @DisplayName("无覆盖时 ADR 默认 CORE=100 LING=0")
-        void adrDefaultsWhenNoOverride() {
+        @DisplayName("无覆盖时生效权重取注册时初始 weight")
+        void registeredDefaultsWhenNoOverride() {
+            // 灵核注册时 weight=100，灵元注册时 weight=0——身份影响已沉淀为 weight 数值
             when(lingServiceRegistry.getProvidersByContractId("svc-a"))
                     .thenReturn(Arrays.asList(
-                            new ProviderDescriptor("svc-a", "lingcore-app", ProviderKind.CORE, 100),
-                            new ProviderDescriptor("svc-a", "user-ling", ProviderKind.LING, 0)));
+                            new ProviderDescriptor("svc-a", "lingcore-app", 100),
+                            new ProviderDescriptor("svc-a", "user-ling", 0)));
 
             ContractRoutingDTO dto = service.getContractRouting("svc-a");
 
             assertEquals("svc-a", dto.getContractId());
             assertTrue(dto.isMultiProvider());
             assertEquals(2, dto.getProviders().size());
-            // ADR 默认值：灵核 100，灵元 0
+            // 注册默认值：灵核 100，灵元 0
             assertEquals(100, dto.getCoreEffectiveWeight());
             assertEquals(0, dto.getLingEffectiveWeight());
 
             // 验证灵核 provider DTO
             ProviderWeightDTO coreDto = dto.getProviders().get(0);
             assertEquals("lingcore-app", coreDto.getLingId());
-            assertEquals(ProviderKind.CORE, coreDto.getKind());
+            assertTrue(coreDto.isCoreBaseline(), "lingcore-app 应被识别为灵核 baseline");
             assertEquals(100, coreDto.getRegisteredWeight());
             assertNull(coreDto.getOverrideWeight());
             assertEquals(100, coreDto.getEffectiveWeight());
@@ -115,7 +119,7 @@ class ContractRoutingServiceTest {
             // 验证灵元 provider DTO
             ProviderWeightDTO lingDto = dto.getProviders().get(1);
             assertEquals("user-ling", lingDto.getLingId());
-            assertEquals(ProviderKind.LING, lingDto.getKind());
+            assertFalse(lingDto.isCoreBaseline(), "user-ling 应被识别为灵元");
             assertEquals(0, lingDto.getRegisteredWeight());
             assertNull(lingDto.getOverrideWeight());
             assertEquals(0, lingDto.getEffectiveWeight());
@@ -126,8 +130,8 @@ class ContractRoutingServiceTest {
         void overrideTakesPrecedence() {
             when(lingServiceRegistry.getProvidersByContractId("svc-a"))
                     .thenReturn(Arrays.asList(
-                            new ProviderDescriptor("svc-a", "lingcore-app", ProviderKind.CORE, 100),
-                            new ProviderDescriptor("svc-a", "user-ling", ProviderKind.LING, 0)));
+                            new ProviderDescriptor("svc-a", "lingcore-app", 100),
+                            new ProviderDescriptor("svc-a", "user-ling", 0)));
             // 预设覆盖：灵核 30，灵元 70
             providerWeightRouter.setProviderWeight("svc-a", "lingcore-app", 30);
             providerWeightRouter.setProviderWeight("svc-a", "user-ling", 70);
@@ -198,13 +202,13 @@ class ContractRoutingServiceTest {
     class RollbackToCore {
 
         @Test
-        @DisplayName("回滚后 CORE=100 LING=0")
+        @DisplayName("回滚后灵核 baseline=100 灵元=0")
         void rollbackSetsCore100Ling0() {
             when(lingServiceRegistry.getProvidersByContractId("svc-a"))
                     .thenReturn(Arrays.asList(
-                            new ProviderDescriptor("svc-a", "lingcore-app", ProviderKind.CORE, 100),
-                            new ProviderDescriptor("svc-a", "user-ling", ProviderKind.LING, 0),
-                            new ProviderDescriptor("svc-a", "ling-b", ProviderKind.LING, 0)));
+                            new ProviderDescriptor("svc-a", "lingcore-app", 100),
+                            new ProviderDescriptor("svc-a", "user-ling", 0),
+                            new ProviderDescriptor("svc-a", "ling-b", 0)));
 
             // 预设非默认覆盖
             providerWeightRouter.setProviderWeight("svc-a", "lingcore-app", 30);
@@ -220,12 +224,12 @@ class ContractRoutingServiceTest {
         }
 
         @Test
-        @DisplayName("无 CORE provider 时回滚仍将所有 LING 设为 0")
+        @DisplayName("无灵核 provider 时回滚仍将所有灵元设为 0")
         void rollbackWithNoCoreProvider() {
             when(lingServiceRegistry.getProvidersByContractId("svc-b"))
                     .thenReturn(Arrays.asList(
-                            new ProviderDescriptor("svc-b", "ling-a", ProviderKind.LING, 50),
-                            new ProviderDescriptor("svc-b", "ling-b", ProviderKind.LING, 50)));
+                            new ProviderDescriptor("svc-b", "ling-a", 50),
+                            new ProviderDescriptor("svc-b", "ling-b", 50)));
 
             // 预设覆盖
             providerWeightRouter.setProviderWeight("svc-b", "ling-a", 80);

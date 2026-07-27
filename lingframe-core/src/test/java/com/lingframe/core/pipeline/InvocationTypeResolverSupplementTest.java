@@ -1,9 +1,9 @@
 package com.lingframe.core.pipeline;
 
+import java.util.List;
+import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link InvocationTypeResolver} 的补充测试。
@@ -61,7 +61,7 @@ class InvocationTypeResolverSupplementTest {
     @DisplayName("loadClass 应通过 Class.forName 加载引用类型")
     void shouldLoadReferenceType() throws ClassNotFoundException {
         Class<?> cls = InvocationTypeResolver.loadClass("java.util.List", getClass().getClassLoader());
-        assertEquals(java.util.List.class, cls);
+        assertEquals(List.class, cls);
     }
 
     @Test

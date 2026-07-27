@@ -1,33 +1,63 @@
 package com.lingframe.dashboard.converter;
 
+import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.config.GovernancePolicy;
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.ling.LingServiceRegistry;
+import com.lingframe.core.metrics.LingHealthMetrics;
+import com.lingframe.core.metrics.MetricsCollector;
+import com.lingframe.core.metrics.ProviderMetricsCollector;
+import com.lingframe.core.metrics.ProviderMetricsCollector.ProviderStats;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
-import com.lingframe.core.router.CanaryRouter;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * 灵元运行时信息转换为 DTO
+ * <p>
+ * 迁移阶段与权重信息统一由治理存储层与 {@link com.lingframe.core.routing.ProviderWeightRouter}
+ * 提供，本转换器不再依赖已删除的 {@code CanaryRouter}。
  */
 public class LingInfoConverter {
 
+    private final MetricsCollector metricsCollector;
+    /** 灵元→契约 ID 解析器；nullable（native/test 场景），命中时填 LingInfoDTO.contractId */
+    private final LingServiceRegistry lingServiceRegistry;
+    /** 处约二维流量统计；nullable（native/test），命中时 toTrafficStats 读真实累计 */
+    private final ProviderMetricsCollector providerMetricsCollector;
+
+    public LingInfoConverter(MetricsCollector metricsCollector) {
+        this(metricsCollector, null, null);
+    }
+
+    public LingInfoConverter(MetricsCollector metricsCollector, LingServiceRegistry lingServiceRegistry) {
+        this(metricsCollector, lingServiceRegistry, null);
+    }
+
+    public LingInfoConverter(MetricsCollector metricsCollector,
+            LingServiceRegistry lingServiceRegistry,
+            ProviderMetricsCollector providerMetricsCollector) {
+        this.metricsCollector = metricsCollector;
+        this.lingServiceRegistry = lingServiceRegistry;
+        this.providerMetricsCollector = providerMetricsCollector;
+    }
+
     public LingInfoDTO toDTO(LingRuntime runtime,
-            CanaryRouter canaryRouter,
             PermissionService permissionService,
             GovernancePolicy policy) {
         String lingId = runtime.getLingId();
         List<LingInstance> activeInstances = runtime.getInstancePool().getActiveInstances();
-        int canaryPercent = canaryRouter.getCanaryPercent(lingId);
 
         // 只展示活跃实例：dyingQueue 中的实例处于 STOPPING/DEAD 过渡态，
         // 对前端用户无意义且会造成 reload 时短暂出现"多版本"的困惑。
@@ -35,25 +65,24 @@ public class LingInfoConverter {
         List<LingInfoDTO.VersionInfo> versionDetails = activeInstances.stream()
                 .filter(instance -> instance.getDefinition() != null)
                 .map(instance -> {
-            boolean isCurCanary = isCanary(instance);
             boolean isCurDefault = instance == runtime.getInstancePool().getDefault();
-            int weight = 0;
-            if (isCurCanary) {
-                weight = canaryPercent;
-            } else if (isCurDefault) {
-                weight = 100 - canaryPercent;
-            }
+            // canary 标志由 definition.properties.canary 携带（兼容数字 1 / boolean true / 字符串 "true"）
+            boolean isCanary = extractCanaryFlag(instance.getDefinition());
+            // 权重推断：canary 实例 30、default 实例 70；二元候选由 ProviderWeightRouter 在 Pipeline 内决策
+            // 这里仅做展示推断，真实权重由治理存储层 + ProviderWeightRouter 下发覆盖
+            int weight = isCanary ? 30 : (isCurDefault ? 70 : 0);
             return LingInfoDTO.VersionInfo.builder()
                     .version(instance.getVersion())
                     .status(instance.currentStatus().name())
                     .isDefault(isCurDefault)
-                    .isCanary(isCurCanary)
+                    .isCanary(isCanary)
                     .trafficWeight(weight)
                     .build();
         }).collect(Collectors.toList());
 
         return LingInfoDTO.builder()
                 .lingId(lingId)
+                .contractId(resolveContractId(lingId))
                 .status(runtime.currentStatus().name())
                 .versionDetails(versionDetails)
                 .permissions(extractPermissions(lingId, permissionService, policy))
@@ -62,20 +91,90 @@ public class LingInfoConverter {
                 .build();
     }
 
+    /**
+     * 从 {@link LingDefinition#getProperties()} 提取 canary 标志。
+     * <p>
+     * 兼容三种携带形式：数字 1、boolean true、字符串 "true"/"1"。
+     *
+     * @param definition 灵元定义
+     * @return true 表示该实例为金丝雀版本
+     */
+    private boolean extractCanaryFlag(LingDefinition definition) {
+        if (definition == null || definition.getProperties() == null) {
+            return false;
+        }
+        Object val = definition.getProperties().get("canary");
+        if (val == null) {
+            return false;
+        }
+        if (val instanceof Boolean) {
+            return (Boolean) val;
+        }
+        if (val instanceof Number) {
+            return ((Number) val).intValue() == 1;
+        }
+        String s = val.toString();
+        return "true".equalsIgnoreCase(s) || "1".equals(s);
+    }
+
+    /**
+     * 灵元→首个契约 ID（兜底）解析。
+     * <p>
+     * 命中 {@link LingServiceRegistry#getContractsByLingId} 取首个契约；
+     * native/test 场景或灵元未声明任何契约时返回 null。
+     */
+    private String resolveContractId(String lingId) {
+        if (lingServiceRegistry == null || lingId == null) {
+            return null;
+        }
+        Set<String> contracts = lingServiceRegistry.getContractsByLingId(lingId);
+        return contracts.isEmpty() ? null : contracts.iterator().next();
+    }
+
     public TrafficStatsDTO toTrafficStats(LingRuntime runtime) {
-        long total = runtime.getTotalRequests().get();
-        long stable = runtime.getStableRequests().get();
-        long canary = runtime.getCanaryRequests().get();
+        // 流量统计已从 LingRuntime 下沉到 ProviderMetricsCollector / LingHealthMetrics
+        // LingRuntime 不再持有 totalRequests / stableRequests / canaryRequests / activeRequests 字段
+        // 这里改为从 ProviderMetricsCollector 读取契约二维统计 + LingHealthMetrics 读取活跃计数
+        String lingId = runtime.getLingId();
+        long total = 0;
+        long stable = 0;
+        long canary = 0;
+        long active = 0;
+
+        // 活跃请求数从 LingHealthMetrics 读取（独立于 LingRuntime）
+        if (metricsCollector != null) {
+            LingHealthMetrics metrics = metricsCollector.getOrCreate(lingId);
+            if (metrics != null) {
+                active = metrics.getActiveRequests().get();
+            }
+        }
+
+        // 累计统计从 ProviderMetricsCollector 读取；按 lingId 切分 stable/canary 维度
+        // 灵核 baseline provider（lingId == LingCoreConstants.LINGCORE_LING_ID）计 stable，灵元 provider 计 canary
+        if (providerMetricsCollector != null && lingServiceRegistry != null) {
+            Set<String> contracts = lingServiceRegistry.getContractsByLingId(lingId);
+            for (String contractId : contracts) {
+                for (ProviderStats stat : providerMetricsCollector.getStatsByContract(contractId)) {
+                    long count = stat.getTotalInvocations();
+                    total += count;
+                    if (LingCoreConstants.LINGCORE_LING_ID.equals(stat.getLingId())) {
+                        stable += count;
+                    } else {
+                        canary += count;
+                    }
+                }
+            }
+        }
 
         return TrafficStatsDTO.builder()
-                .lingId(runtime.getLingId())
+                .lingId(lingId)
                 .totalRequests(total)
                 .v1Requests(stable)
                 .v2Requests(canary)
-                .activeRequests(runtime.getActiveRequests().get())
+                .activeRequests(active)
                 .v1Percent(total > 0 ? (stable * 100.0 / total) : 0)
                 .v2Percent(total > 0 ? (canary * 100.0 / total) : 0)
-                .windowStartTime(runtime.getStatsWindowStart())
+                .windowStartTime(runtime.getInstalledAt())
                 .build();
     }
 
@@ -160,25 +259,5 @@ public class LingInfoConverter {
                 .cpuBudgetMsPerMinute(cpuBudgetMsPerMinute)
                 .memoryBudgetMb(memoryBudgetMb)
                 .build();
-    }
-
-    private boolean isCanary(LingInstance instance) {
-        if (instance == null || instance.getDefinition() == null) {
-            return false;
-        }
-        if (instance.getDefinition().getProperties() == null) {
-            return false;
-        }
-        Object value = instance.getDefinition().getProperties().get("canary");
-        if (value == null) {
-            return false;
-        }
-        if (value instanceof Boolean) {
-            return (Boolean) value;
-        }
-        if (value instanceof Number) {
-            return ((Number) value).intValue() != 0;
-        }
-        return "true".equalsIgnoreCase(String.valueOf(value));
     }
 }

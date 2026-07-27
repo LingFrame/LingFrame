@@ -15,28 +15,27 @@ import com.lingframe.core.ling.*;
 import com.lingframe.core.loader.LingDiscoveryService;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
+import com.lingframe.core.metrics.ProviderMetricsCollector;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.router.ProviderWeightRouter;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.core.spi.*;
-import com.lingframe.starter.event.ServiceExporterListener;
 import com.lingframe.starter.config.LingFrameProperties;
+import com.lingframe.starter.event.ServiceExporterListener;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.starter.web.WebInterfaceManager;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Supplier;
+import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import static org.mockito.Mockito.*;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.ApplicationContext;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.Supplier;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 @DisplayName("LingFrameLifecycleBeansConfiguration 单元测试")
 class LingFrameLifecycleBeansConfigurationTest {
@@ -102,8 +101,8 @@ class LingFrameLifecycleBeansConfigurationTest {
                 containerFactory, permissionService, lingLoaderFactory, verifiersProvider, eventBus,
                 lingFrameConfig, lingRepository, lingServiceRegistry, pipelineEngine, unloadHooks,
                 lingResourceManager, leakDetector, runtimeCoordinator,
-                mock(org.springframework.beans.factory.ObjectProvider.class),
-                mock(org.springframework.beans.factory.ObjectProvider.class)
+                mock(ObjectProvider.class),
+                mock(ObjectProvider.class)
         );
         assertNotNull(lifecycleEngine);
 
@@ -125,7 +124,7 @@ class LingFrameLifecycleBeansConfigurationTest {
 
         // 4. invocationPipelineEngine
         InvocationPipelineEngine invocationPipelineEngine = config.invocationPipelineEngine(
-                filterRegistry, new com.lingframe.core.metrics.ProviderMetricsCollector());
+                filterRegistry, new ProviderMetricsCollector());
         assertNotNull(invocationPipelineEngine);
 
         // 5. lingDiscoveryService

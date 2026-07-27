@@ -4,6 +4,7 @@ import com.lingframe.api.annotation.LingReference;
 import com.lingframe.example.saas.api.RefundPolicy;
 import com.lingframe.example.saas.api.SaasOrderService;
 import com.lingframe.example.saas.api.dto.SaasRefundTicket;
+import java.math.BigDecimal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -37,7 +38,7 @@ public class VipRefundPolicyImpl implements RefundPolicy {
         }
 
         // KA VIP 租户急速退款规则：10000.00元以内的订单全自动秒退
-        if (ticket.getAmount().compareTo(new java.math.BigDecimal("10000.00")) < 0) {
+        if (ticket.getAmount().compareTo(new BigDecimal("10000.00")) < 0) {
             log.info("Refund amount {} is eligible. Executing VIP auto-approval on tenant: {} ...", ticket.getAmount(), tenantId);
             
             // 直接进行显式方法调用：零反射，强类型安全！

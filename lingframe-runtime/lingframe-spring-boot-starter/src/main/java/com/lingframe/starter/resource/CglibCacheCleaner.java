@@ -1,13 +1,16 @@
 package com.lingframe.starter.resource;
 
-import lombok.extern.slf4j.Slf4j;
-
 import java.lang.ref.Reference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.Vector;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 清理 Spring CGLIB {@code AbstractClassGenerator} 静态缓存与 MethodProxy 残留。
@@ -124,7 +127,7 @@ final class CglibCacheCleaner {
             ClassLoader lingCl = resolveClassLoaderFromData(classLoaderData);
             int classCount = 0;
             int cleaned = 0;
-            java.util.Set<Class<?>> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+            Set<Class<?>> seen = Collections.newSetFromMap(new IdentityHashMap<>());
 
             // 通道 1：LoadingCache values
             Field generatedClassesField = classLoaderData.getClass().getDeclaredField("generatedClasses");
@@ -204,7 +207,7 @@ final class CglibCacheCleaner {
     private int clearMethodProxyViaReservedNames(String lingId,
                                                  Object classLoaderData,
                                                  ClassLoader lingCl,
-                                                 java.util.Set<Class<?>> seen) {
+                                                 Set<Class<?>> seen) {
         if (lingCl == null) {
             return 0;
         }
@@ -212,12 +215,12 @@ final class CglibCacheCleaner {
             Field namesField = classLoaderData.getClass().getDeclaredField("reservedClassNames");
             namesField.setAccessible(true);
             Object raw = namesField.get(classLoaderData);
-            if (!(raw instanceof java.util.Collection<?>)) {
+            if (!(raw instanceof Collection<?>)) {
                 return 0;
             }
             int cleaned = 0;
             int resolved = 0;
-            for (Object nameObj : (java.util.Collection<?>) raw) {
+            for (Object nameObj : (Collection<?>) raw) {
                 if (!(nameObj instanceof String)) {
                     continue;
                 }

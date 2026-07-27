@@ -16,7 +16,7 @@ import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingUninstallResult;
-import com.lingframe.core.router.CanaryRouter;
+// CanaryRouter 已删除，路由层去身份化
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.LingInfoDTO;
@@ -41,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -74,8 +75,6 @@ class DashboardServiceSupplementTest {
     @Mock
     GovernanceAdminService governanceAdmin;
     @Mock
-    CanaryRouter canaryRouter;
-    @Mock
     LingInfoConverter lingInfoConverter;
     @Mock
     PermissionService permissionService;
@@ -84,8 +83,8 @@ class DashboardServiceSupplementTest {
 
     private DashboardService newService() {
         return new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                governanceAdmin, canaryRouter, lingInfoConverter, permissionService,
-                runtimeCoordinator, SHARED_OBJECT_MAPPER);
+                governanceAdmin, lingInfoConverter, permissionService,
+                runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
     }
 
     // ==================== 查询接口 ====================
@@ -105,7 +104,7 @@ class DashboardServiceSupplementTest {
             // getEffectivePolicy 内部会再次调用 getRuntime，mock 默认返回 null → 静态策略为 null
             lenient().when(lingRepository.getRuntime("ling1")).thenReturn(null);
             lenient().when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(new GovernancePolicy());
-            when(lingInfoConverter.toDTO(eq(runtime), eq(canaryRouter), eq(permissionService), any()))
+            when(lingInfoConverter.toDTO(eq(runtime), eq(permissionService), any()))
                     .thenReturn(dto);
 
             List<LingInfoDTO> result = service.getAllLingInfos();
@@ -127,7 +126,7 @@ class DashboardServiceSupplementTest {
             lenient().when(pool.getDefault()).thenReturn(null);
             lenient().when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(new GovernancePolicy());
             lenient().when(governanceAdmin.getEffectivePolicy("ling1")).thenReturn(null);
-            when(lingInfoConverter.toDTO(eq(runtime), eq(canaryRouter), eq(permissionService), any()))
+            when(lingInfoConverter.toDTO(eq(runtime), eq(permissionService), any()))
                     .thenReturn(dto);
 
             LingInfoDTO result = service.getLingInfo("ling1");
@@ -202,67 +201,6 @@ class DashboardServiceSupplementTest {
         }
     }
 
-    // ==================== 灰度配置 ====================
-
-    @Nested
-    @DisplayName("灰度配置")
-    class CanaryConfigTests {
-
-        @Test
-        @DisplayName("setCanaryConfig 在 runtime 不存在时应抛 LingNotFoundException")
-        void setCanaryConfigShouldThrowWhenRuntimeMissing() {
-            DashboardService service = newService();
-            when(lingRepository.getRuntime("ling1")).thenReturn(null);
-
-            assertThrows(LingNotFoundException.class,
-                    () -> service.setCanaryConfig("ling1", 50, "1.0.1"));
-        }
-
-        @Test
-        @DisplayName("setCanaryConfig 在注入 GovernanceStorage 后应持久化灰度配置")
-        void setCanaryConfigShouldPersistWhenStorageInjected() {
-            DashboardService service = newService();
-            LingRuntime runtime = mock(LingRuntime.class);
-            GovernanceStorage storage = mock(GovernanceStorage.class);
-            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
-            service.setGovernanceStorage(storage);
-
-            service.setCanaryConfig("ling1", 30, "1.0.1");
-
-            verify(canaryRouter).setCanaryConfig("ling1", 30, "1.0.1");
-            verify(storage).saveCanaryConfig(eq("ling1"), anyString());
-        }
-
-        @Test
-        @DisplayName("setCanaryConfig 在 storage 抛异常时应吞掉异常不影响主流程")
-        void setCanaryConfigShouldSwallowStorageException() {
-            DashboardService service = newService();
-            LingRuntime runtime = mock(LingRuntime.class);
-            GovernanceStorage storage = mock(GovernanceStorage.class);
-            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
-            doThrow(new RuntimeException("db down")).when(storage)
-                    .saveCanaryConfig(anyString(), anyString());
-            service.setGovernanceStorage(storage);
-
-            // 不应抛异常
-            service.setCanaryConfig("ling1", 30, "1.0.1");
-
-            verify(canaryRouter).setCanaryConfig("ling1", 30, "1.0.1");
-        }
-
-        @Test
-        @DisplayName("setCanaryConfig 在未注入 storage 时不应尝试持久化")
-        void setCanaryConfigShouldNotPersistWhenNoStorage() {
-            DashboardService service = newService();
-            LingRuntime runtime = mock(LingRuntime.class);
-            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
-
-            service.setCanaryConfig("ling1", 30, "1.0.1");
-
-            verify(canaryRouter).setCanaryConfig("ling1", 30, "1.0.1");
-        }
-    }
-
     // ==================== 流量统计 ====================
 
     @Nested
@@ -304,15 +242,15 @@ class DashboardServiceSupplementTest {
         }
 
         @Test
-        @DisplayName("resetTrafficStats 在 runtime 存在时应调用 runtime.resetTrafficStats")
-        void resetTrafficStatsShouldDelegateToRuntime() {
+        @DisplayName("resetTrafficStats 在 runtime 存在时不抛异常（流量统计已下沉到 MetricsCollector）")
+        void resetTrafficStatsShouldNotThrowWhenRuntimeExists() {
+            // 流量统计已从 LingRuntime 下沉到 ProviderMetricsCollector / LingHealthMetrics
+            // resetTrafficStats 保留为 Dashboard 兼容入口，不再调 runtime.resetTrafficStats
             DashboardService service = newService();
             LingRuntime runtime = mock(LingRuntime.class);
             when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
 
-            service.resetTrafficStats("ling1");
-
-            verify(runtime).resetTrafficStats();
+            assertDoesNotThrow(() -> service.resetTrafficStats("ling1"));
         }
     }
 
@@ -427,7 +365,7 @@ class DashboardServiceSupplementTest {
 
             assertNotNull(result);
             assertTrue(result.isUninstallTriggered());
-            verify(canaryRouter).removeCanaryConfig("ling1");
+            // canaryRouter 已删除，卸载清理改由 MigrationStateHolder.evict 处理（service 持 null 时不调用）
         }
 
         @Test
@@ -443,7 +381,7 @@ class DashboardServiceSupplementTest {
 
             assertNotNull(result);
             assertEquals("1.0.0", result.getVersion());
-            verify(canaryRouter).removeCanaryConfig("ling1");
+            // canaryRouter 已删除，卸载清理改由 MigrationStateHolder.evict 处理（service 持 null 时不调用）
         }
 
         @Test
@@ -462,26 +400,8 @@ class DashboardServiceSupplementTest {
     }
 
     // ==================== 存储注入 ====================
-
-    @Nested
-    @DisplayName("存储注入")
-    class StorageInjectionTests {
-
-        @Test
-        @DisplayName("setGovernanceStorage 应同时注入到 governanceSupport")
-        void setGovernanceStorageShouldPropagateToGovernanceSupport() {
-            DashboardService service = newService();
-            GovernanceStorage storage = mock(GovernanceStorage.class);
-            LingRuntime runtime = mock(LingRuntime.class);
-            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
-
-            service.setGovernanceStorage(storage);
-            service.setCanaryConfig("ling1", 50, "1.0.1");
-
-            // governanceStorage 已注入，saveCanaryConfig 应被调用
-            verify(storage).saveCanaryConfig(eq("ling1"), anyString());
-        }
-    }
+    // 命中已删 setCanaryConfig API，StorageInjectionTests.setGovernanceStorageShouldPropagateToGovernanceSupport 已不适用
+    // governanceStorage 的注入传播由 governanceSupport 单测覆盖
 
     // ==================== 安装异常路径 ====================
 

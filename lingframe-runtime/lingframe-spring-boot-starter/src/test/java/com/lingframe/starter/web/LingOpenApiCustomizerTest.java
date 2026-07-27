@@ -3,23 +3,23 @@ package com.lingframe.starter.web;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.Paths;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.springframework.mock.env.MockEnvironment;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
-
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
+import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.mock.env.MockEnvironment;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 @DisplayName("LingOpenApiCustomizer 测试")
 class LingOpenApiCustomizerTest {
@@ -241,15 +241,15 @@ class LingOpenApiCustomizerTest {
             return "ok";
         }
 
-        public String createUser(@org.springframework.web.bind.annotation.RequestBody String user) {
+        public String createUser(@RequestBody String user) {
             return "ok";
         }
 
-        public String createUsers(@org.springframework.web.bind.annotation.RequestBody String[] users) {
+        public String createUsers(@RequestBody String[] users) {
             return "ok";
         }
 
-        public String getUser(@org.springframework.web.bind.annotation.PathVariable String path) {
+        public String getUser(@PathVariable String path) {
             return "ok";
         }
     }

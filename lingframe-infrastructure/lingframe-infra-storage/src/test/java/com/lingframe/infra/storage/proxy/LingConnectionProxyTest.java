@@ -3,11 +3,6 @@ package com.lingframe.infra.storage.proxy;
 import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -19,8 +14,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executor;
-
+import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -194,7 +193,7 @@ class LingConnectionProxyTest {
             Executor executor = mock(Executor.class);
             // abort 不得下发到原生连接（可用性攻击面）
             assertThrows(SQLException.class, () -> proxy.abort(executor));
-            verify(target, never()).abort(org.mockito.ArgumentMatchers.any());
+            verify(target, never()).abort(ArgumentMatchers.any());
 
             proxy.setNetworkTimeout(executor, 100);
             verify(target).setNetworkTimeout(executor, 100);
@@ -259,7 +258,7 @@ class LingConnectionProxyTest {
 
             SQLException ex = assertThrows(SQLException.class, () -> proxy.abort(mock(Executor.class)));
             assertTrue(ex.getMessage().contains("abort is forbidden"));
-            verify(target, never()).abort(org.mockito.ArgumentMatchers.any());
+            verify(target, never()).abort(ArgumentMatchers.any());
         }
     }
 

@@ -7,19 +7,6 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.metrics.LingHealthMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.spi.TrafficRouter;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.CachedIntrospectionResults;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.context.request.ServletWebRequest;
-import org.springframework.web.method.HandlerMethod;
-import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
-
-import javax.annotation.PreDestroy;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,6 +20,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.CachedIntrospectionResults;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.context.request.ServletWebRequest;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 /**
  * 负责灵元 Controller 的 Web 接口注册、路由解析与调用分发。
@@ -239,7 +239,7 @@ public class WebInterfaceManager implements WebRouteResolver {
         // 返回 null。
         // 对 SB2 无副作用：灵元 Class 在灵核 ClassLoader 下查不到对应 key，remove 是 no-op。
         for (WebInterfaceMetadata meta : removedMetas) {
-            org.springframework.context.ApplicationContext lingContext = meta.getLingApplicationContext();
+            ApplicationContext lingContext = meta.getLingApplicationContext();
             if (lingContext != null) {
                 coreWebSupport.clearLingAdapterCaches(lingContext, targetLoader);
                 // 同一灵元 context 多个 meta 共享 Adapter，清理一次即可

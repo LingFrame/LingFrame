@@ -1,16 +1,16 @@
 package com.lingframe.starter.resource;
 
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.MutablePropertySources;
-
-import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 
 /**
  * �灵元 Context 活跃期预清理：Environment PropertySources + EventMulticaster retrieverCache。
@@ -63,7 +63,7 @@ final class EnvironmentCleaner {
             } else {
                 log.trace("[{}] retrieverCache field not found", lingId);
             }
-        } catch (org.springframework.beans.factory.NoSuchBeanDefinitionException e) {
+        } catch (NoSuchBeanDefinitionException e) {
             log.trace("[{}] No ApplicationEventMulticaster bean found", lingId);
         } catch (Exception e) {
             log.debug("[{}] Failed to clear retrieverCache: {}", lingId, e.getMessage());

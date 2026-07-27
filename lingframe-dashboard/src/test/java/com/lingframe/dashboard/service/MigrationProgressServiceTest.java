@@ -1,7 +1,6 @@
 package com.lingframe.dashboard.service;
 
 import com.lingframe.core.ling.LingServiceRegistry;
-import com.lingframe.core.ling.ProviderKind;
 import com.lingframe.core.metrics.ProviderMetricsCollector;
 import com.lingframe.dashboard.dto.ContractMigrationProgressDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +16,10 @@ import static org.mockito.Mockito.mock;
 /**
  * MigrationProgressService 单元测试。
  * 覆盖：流量分布聚合、灵核 stale 识别、空数据处理。
+ * <p>
+ * 去身份化后 ProviderMetricsCollector 按 contractId × lingId 二维统计，
+ * 灵核识别通过 LingCoreConstants.LINGCORE_LING_ID 常量比较 lingId 实现，
+ * 仅 Dashboard 运维视图用，不参与路由决策。
  */
 @DisplayName("MigrationProgressService 单元测试")
 class MigrationProgressServiceTest {
@@ -38,12 +41,12 @@ class MigrationProgressServiceTest {
         @Test
         @DisplayName("灵核和灵元调用量正确聚合")
         void coreAndLingAggregated() {
-            // 灵核 30 次，灵元 70 次
+            // 灵核 lingcore-app 30 次，灵元 user-ling 70 次
             for (int i = 0; i < 30; i++) {
-                collector.recordInvocation("svc-a", "lingcore-app", ProviderKind.CORE, true, 10);
+                collector.recordInvocation("svc-a", "lingcore-app", true, 10);
             }
             for (int i = 0; i < 70; i++) {
-                collector.recordInvocation("svc-a", "user-ling", ProviderKind.LING, true, 20);
+                collector.recordInvocation("svc-a", "user-ling", true, 20);
             }
 
             ContractMigrationProgressDTO dto = service.getProgress("svc-a");
@@ -63,7 +66,7 @@ class MigrationProgressServiceTest {
         @Test
         @DisplayName("灵核 0 调用且灵元有调用时 coreStale=true")
         void coreStaleWhenZeroCoreInvocations() {
-            collector.recordInvocation("svc-a", "user-ling", ProviderKind.LING, true, 10);
+            collector.recordInvocation("svc-a", "user-ling", true, 10);
 
             ContractMigrationProgressDTO dto = service.getProgress("svc-a");
 
@@ -90,14 +93,14 @@ class MigrationProgressServiceTest {
         @DisplayName("getAllProgress 返回所有契约并按灵核占比升序")
         void getAllProgressSortedByCoreRatio() {
             // svc-a：灵核 50%
-            collector.recordInvocation("svc-a", "lingcore-app", ProviderKind.CORE, true, 10);
-            collector.recordInvocation("svc-a", "user-ling", ProviderKind.LING, true, 10);
+            collector.recordInvocation("svc-a", "lingcore-app", true, 10);
+            collector.recordInvocation("svc-a", "user-ling", true, 10);
 
             // svc-b：灵核 0%（stale）
-            collector.recordInvocation("svc-b", "user-ling", ProviderKind.LING, true, 10);
+            collector.recordInvocation("svc-b", "user-ling", true, 10);
 
             // svc-c：灵核 100%
-            collector.recordInvocation("svc-c", "lingcore-app", ProviderKind.CORE, true, 10);
+            collector.recordInvocation("svc-c", "lingcore-app", true, 10);
 
             List<ContractMigrationProgressDTO> list = service.getAllProgress();
 
@@ -119,10 +122,10 @@ class MigrationProgressServiceTest {
         @Test
         @DisplayName("getStaleCoreContracts 返回灵核 0 调用的契约")
         void staleContractsReturned() {
-            collector.recordInvocation("svc-a", "lingcore-app", ProviderKind.CORE, true, 10);
-            collector.recordInvocation("svc-a", "user-ling", ProviderKind.LING, true, 10);
+            collector.recordInvocation("svc-a", "lingcore-app", true, 10);
+            collector.recordInvocation("svc-a", "user-ling", true, 10);
 
-            collector.recordInvocation("svc-b", "user-ling", ProviderKind.LING, true, 10);
+            collector.recordInvocation("svc-b", "user-ling", true, 10);
 
             List<String> stale = service.getStaleCoreContracts();
 

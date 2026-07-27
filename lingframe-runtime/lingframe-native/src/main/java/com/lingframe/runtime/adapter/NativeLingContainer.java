@@ -2,20 +2,19 @@ package com.lingframe.runtime.adapter;
 
 import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.context.LingContext;
+import com.lingframe.api.exception.InvalidArgumentException;
+import com.lingframe.api.exception.LingRuntimeException;
 import com.lingframe.api.ling.Ling;
 import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.context.DefaultLingContext;
+import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.ling.BusinessInterfaceFilter;
 import com.lingframe.core.ling.LingServiceRegistrar;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.spi.LingContainer;
-import com.lingframe.api.exception.InvalidArgumentException;
-import com.lingframe.core.exception.LingInstallException;
-import com.lingframe.api.exception.LingRuntimeException;
-import lombok.extern.slf4j.Slf4j;
-
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Stream;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 纯 Java 灵元容器
@@ -187,7 +187,7 @@ public class NativeLingContainer implements LingContainer {
         if (clazz.getAnnotation(LingService.class) != null) {
             return true;
         }
-        for (java.lang.reflect.Method m : clazz.getMethods()) {
+        for (Method m : clazz.getMethods()) {
             if (m.getAnnotation(LingService.class) != null) {
                 return true;
             }

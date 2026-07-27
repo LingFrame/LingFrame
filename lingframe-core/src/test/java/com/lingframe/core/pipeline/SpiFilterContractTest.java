@@ -10,7 +10,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
-import com.lingframe.core.router.ProviderWeightRouter;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingServiceInvoker;

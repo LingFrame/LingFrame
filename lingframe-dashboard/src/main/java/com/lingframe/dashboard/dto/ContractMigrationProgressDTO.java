@@ -1,6 +1,5 @@
 package com.lingframe.dashboard.dto;
 
-import com.lingframe.core.ling.ProviderKind;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -9,8 +8,11 @@ import lombok.NoArgsConstructor;
 /**
  * 契约迁移进度 DTO。
  * <p>
- * 描述某契约的「灵核 vs 灵元」流量分布，
+ * 描述某契约的「灵核 baseline vs 灵元」流量分布，
  * 供 Dashboard 迁移进度看板识别「可下线的灵核实现」。
+ * <p>
+ * 灵核/灵元区分仅在 Dashboard 层使用（运维视图），通过 lingId == LingCoreConstants.LINGCORE_LING_ID 判定。
+ * 路由层不引用身份维度，观测层 ProviderMetricsCollector 也只按 contractId × lingId 二维统计。
  */
 @Data
 @Builder

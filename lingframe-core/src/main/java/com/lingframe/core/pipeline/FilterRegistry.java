@@ -11,7 +11,8 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
-import com.lingframe.core.router.ProviderWeightRouter;
+import com.lingframe.core.routing.ContractProviderRoutingFilter;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.LingServiceInvoker;
 import com.lingframe.core.spi.ThreadPoolStatsProvider;
@@ -94,12 +95,10 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         // L0 provider 级路由：未注入 weightRouter 时创建默认实例（默认权重 CORE=100/LING=0，无 Dashboard 覆盖）
         ProviderWeightRouter weightRouter = providerWeightRouter != null ? providerWeightRouter : new ProviderWeightRouter();
         ContractProviderRoutingFilter providerRouting = new ContractProviderRoutingFilter(
-                serviceRegistry, lingRepository, weightRouter);
+                serviceRegistry, lingRepository, weightRouter, trafficRouter);
 
         MacroStateGuardFilter stateGuard = new MacroStateGuardFilter(lingRepository);
-        CanaryRoutingFilter routing = new CanaryRoutingFilter(
-                lingRepository,
-                trafficRouter != null ? trafficRouter : new LatestVersionPolicy());
+        // CanaryRoutingFilter 已删除：路由层由 ContractProviderRoutingFilter + ProviderWeightRouter 完成
         // 预填充 filter：在 RESILIENCE 之前把灵元级 effective policy 预填到 ctx.governance()，
         // 守护"ctx 为唯一通行证"原则，让弹性组件通过 ctx 读取治理意图
         InvocationPolicyPrefillFilter policyPrefill = new InvocationPolicyPrefillFilter(lingRepository, governanceRegistry);
@@ -117,7 +116,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         builtinFilters.add(providerRouting);
         builtinFilters.add(new TrafficMetricsFilter(lingRepository, metricsCollector, eventBus));
         builtinFilters.add(stateGuard);
-        builtinFilters.add(routing);
+        // CanaryRoutingFilter 已删除，路由层由 ContractProviderRoutingFilter + ProviderWeightRouter 完成
         builtinFilters.add(policyPrefill);
         builtinFilters.add(resilience);
         builtinFilters.add(resolution);
@@ -229,7 +228,6 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         assertOrder(orders, ContractProviderRoutingFilter.class, FilterPhase.PROVIDER_ROUTING);
         assertOrder(orders, TrafficMetricsFilter.class, FilterPhase.METRICS);
         assertOrder(orders, MacroStateGuardFilter.class, FilterPhase.STATE_GUARD);
-        assertOrder(orders, CanaryRoutingFilter.class, FilterPhase.ROUTING);
         assertOrder(orders, InvocationPolicyPrefillFilter.class, FilterPhase.POLICY_PREFILL);
         assertOrder(orders, ResilienceGovernanceFilter.class, FilterPhase.RESILIENCE);
         assertOrder(orders, ContextIsolationFilter.class, FilterPhase.RESOLUTION);
@@ -240,8 +238,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
 
         assertBefore(orders, ContractProviderRoutingFilter.class, TrafficMetricsFilter.class);
         assertBefore(orders, TrafficMetricsFilter.class, MacroStateGuardFilter.class);
-        assertBefore(orders, MacroStateGuardFilter.class, CanaryRoutingFilter.class);
-        assertBefore(orders, CanaryRoutingFilter.class, InvocationPolicyPrefillFilter.class);
+        assertBefore(orders, MacroStateGuardFilter.class, InvocationPolicyPrefillFilter.class);
         assertBefore(orders, InvocationPolicyPrefillFilter.class, ResilienceGovernanceFilter.class);
         assertBefore(orders, ResilienceGovernanceFilter.class, ContextIsolationFilter.class);
         assertBefore(orders, ContextIsolationFilter.class, GovernanceDecisionFilter.class);
@@ -254,7 +251,6 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         return filter instanceof ContractProviderRoutingFilter
                 || filter instanceof TrafficMetricsFilter
                 || filter instanceof MacroStateGuardFilter
-                || filter instanceof CanaryRoutingFilter
                 || filter instanceof InvocationPolicyPrefillFilter
                 || filter instanceof ResilienceGovernanceFilter
                 || filter instanceof ContextIsolationFilter

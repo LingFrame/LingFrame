@@ -9,13 +9,13 @@ import com.lingframe.example.mall.mapper.MemberLevelMapper;
 import com.lingframe.example.mall.mapper.MemberMapper;
 import com.lingframe.example.mall.mapper.NotificationMapper;
 import com.lingframe.example.mall.service.MemberService;
+import java.math.BigDecimal;
+import java.util.Date;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Date;
-import java.util.List;
 
 @Service
 @Slf4j
@@ -64,7 +64,7 @@ public class MemberServiceImpl extends ServiceImpl<MemberMapper, Member> impleme
             Notification notice = new Notification();
             notice.setTitle("会员等级升级通知");
             notice.setContent("恭喜！您的成长值已达到 " + member.getGrowth() + "，成功升级为【" + levelName + "】！" +
-                    "您目前下单将享有 " + (levelConfig != null ? levelConfig.getDiscountRate().multiply(new java.math.BigDecimal("10")) : "10") + " 折专属特权优惠！");
+                    "您目前下单将享有 " + (levelConfig != null ? levelConfig.getDiscountRate().multiply(new BigDecimal("10")) : "10") + " 折专属特权优惠！");
             notice.setType(1); // 个人私信
             notice.setReceiverId(userId);
             notice.setCreatedAt(new Date());

@@ -1,27 +1,8 @@
 package com.lingframe.starter.web;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import com.lingframe.api.exception.LingException;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.support.GenericApplicationContext;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.http.converter.StringHttpMessageConverter;
-import org.springframework.util.ReflectionUtils;
-import org.springframework.web.method.HandlerMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.context.request.ServletWebRequest;
-import org.springframework.web.servlet.HandlerExecutionChain;
-import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
-
+import com.lingframe.core.metrics.LingHealthMetrics;
+import com.lingframe.core.metrics.MetricsCollector;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collections;
@@ -29,16 +10,35 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeoutException;
-
+import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import static org.mockito.ArgumentMatchers.*;
+import org.mockito.Mock;
 import static org.mockito.Mockito.*;
-import com.lingframe.core.metrics.MetricsCollector;
-import com.lingframe.core.metrics.LingHealthMetrics;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.GenericApplicationContext;
+import org.springframework.http.converter.StringHttpMessageConverter;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.util.ReflectionUtils;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.context.request.ServletWebRequest;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.HandlerExecutionChain;
+import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("WebInterfaceManager 测试")
@@ -517,7 +517,7 @@ class WebInterfaceManagerTest {
         coreContext.refresh();
         RequestMappingHandlerAdapter coreAdapter = createCoreAdapter(coreContext);
 
-        org.springframework.beans.factory.ObjectProvider<MetricsCollector> metricsProvider = mock(org.springframework.beans.factory.ObjectProvider.class);
+        ObjectProvider<MetricsCollector> metricsProvider = mock(ObjectProvider.class);
         MetricsCollector collector = mock(MetricsCollector.class);
         LingHealthMetrics health = mock(LingHealthMetrics.class);
         
@@ -535,7 +535,7 @@ class WebInterfaceManagerTest {
         Method failMethod = ExceptionController.class.getMethod("fail");
         Method timeoutMethod = ExceptionController.class.getMethod("timeout");
 
-        org.springframework.context.ApplicationContext mockLingContext = mock(org.springframework.context.ApplicationContext.class);
+        ApplicationContext mockLingContext = mock(ApplicationContext.class);
         when(mockLingContext.getBean(RequestMappingHandlerAdapter.class)).thenReturn(coreAdapter);
 
         WebInterfaceMetadata metaFail = WebInterfaceMetadata.builder()

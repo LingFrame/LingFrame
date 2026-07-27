@@ -3,20 +3,18 @@ package com.lingframe.core.governance.provider;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.ling.InstancePool;
-import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.spi.GovernanceDecision;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.spi.GovernanceDecision;
+import java.lang.reflect.Method;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Collections;
+import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-
-import java.lang.reflect.Method;
-import java.time.Duration;
-import java.util.Collections;
-
-import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 /**
@@ -60,7 +58,7 @@ class ReferenceRuleGovernanceProviderTest {
         when(patch.getPermissions()).thenReturn(null);
         when(patch.getAudits()).thenReturn(null);
         when(patch.getInvocation()).thenReturn(null);
-        when(patch.getReferences()).thenReturn(java.util.Arrays.asList(rules));
+        when(patch.getReferences()).thenReturn(Arrays.asList(rules));
         when(localRegistry.getPatch("test-ling")).thenReturn(patch);
         return patch;
     }

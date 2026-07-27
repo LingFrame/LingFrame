@@ -1,7 +1,13 @@
 package com.lingframe.starter.web;
 
-import lombok.extern.slf4j.Slf4j;
 import com.lingframe.api.exception.LingException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
@@ -12,13 +18,6 @@ import org.springframework.web.servlet.ModelAndView;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
-
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
 
 /**
  * 集中处理灵核 Spring 环境中的注册、调用与缓存清理。
@@ -168,7 +167,7 @@ final class SpringWebCoreSupport {
      * @param lingContext 灵元自己的 ApplicationContext；灵元 Adapter 实例由此取出
      * @param targetLoader 灵元 ClassLoader；用于判定 Adapter 缓存 key 是否属于该灵元
      */
-    void clearLingAdapterCaches(org.springframework.context.ApplicationContext lingContext,
+    void clearLingAdapterCaches(ApplicationContext lingContext,
             ClassLoader targetLoader) {
         if (lingContext == null || targetLoader == null) {
             return;
@@ -393,7 +392,7 @@ final class SpringWebCoreSupport {
             if (getPatternValues != null) {
                 ReflectionUtils.makeAccessible(getPatternValues);
                 @SuppressWarnings("unchecked")
-                java.util.List<String> patterns = (java.util.List<String>) ReflectionUtils
+                List<String> patterns = (List<String>) ReflectionUtils
                         .invokeMethod(getPatternValues, requestMappingInfo);
                 if (patterns != null) {
                     for (String pattern : patterns) {

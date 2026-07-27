@@ -9,6 +9,7 @@ import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.storage.GovernanceStorage;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,9 +25,8 @@ import java.util.Map;
  * 本类只承载 Dashboard 特有的 DTO 镜像逻辑（{@link ResourcePermissionDTO} /
  * {@link InvocationGovernanceDTO}），不下沉 core。
  */
+@Slf4j
 public class DashboardGovernanceSupport {
-
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DashboardGovernanceSupport.class);
 
     private final GovernanceAdminService governanceAdmin;
     private final PermissionService permissionService;

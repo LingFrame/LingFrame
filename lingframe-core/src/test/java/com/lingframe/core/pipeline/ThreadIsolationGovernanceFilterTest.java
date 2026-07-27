@@ -8,30 +8,28 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
+import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
 import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.spi.LingFilterChain;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @DisplayName("ThreadIsolationGovernanceFilter 测试")
 class ThreadIsolationGovernanceFilterTest {
@@ -360,7 +358,7 @@ class ThreadIsolationGovernanceFilterTest {
                     return buffer.length > 0 ? "ok" : "fail";
                 }));
 
-                com.lingframe.core.metrics.GovernanceMetricsSnapshot snapshot = collector.getSummary("ling1");
+                GovernanceMetricsSnapshot snapshot = collector.getSummary("ling1");
                 assertEquals(2, snapshot.getMaxConcurrentThreadsBudget());
                 assertEquals(500, snapshot.getCpuBudgetMsPerMinute());
                 assertEquals(8, snapshot.getMemoryBudgetMb());
@@ -384,12 +382,12 @@ class ThreadIsolationGovernanceFilterTest {
     }
 
     @Nested
-    @DisplayName("新格式 __provider__: FQSID 读路径")
-    class ProviderFqsidTests {
+    @DisplayName("裸 contractId FQSID 读路径")
+    class BareContractIdTests {
 
         @Test
-        @DisplayName("新格式 FQSID 应优先读 targetLingId 查 runtime，线程隔离正常生效")
-        void shouldReadTargetLingIdWhenProviderFqsid() throws Throwable {
+        @DisplayName("裸 contractId FQSID 应优先读 targetLingId 查 runtime，线程隔离正常生效")
+        void shouldReadTargetLingIdWhenBareContractId() throws Throwable {
             LingRepository repository = new DefaultLingRepository();
             LingRuntimeConfig config = LingRuntimeConfig.builder()
                     .bulkheadMaxConcurrent(1)
@@ -400,8 +398,8 @@ class ThreadIsolationGovernanceFilterTest {
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
             InvocationContext context = InvocationContext.obtain();
-            // 模拟 ContractProviderRoutingFilter 已设置 targetLingId
-            context.setServiceFQSID("__provider__:TestService");
+            // 模拟 ContractProviderRoutingFilter 已设置 targetLingId，FQSID 保持裸 contractId
+            context.setServiceFQSID("TestService");
             context.setTargetLingId("ling1");
 
             try {

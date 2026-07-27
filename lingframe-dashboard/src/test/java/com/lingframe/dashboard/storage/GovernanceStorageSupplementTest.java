@@ -163,7 +163,7 @@ class GovernanceStorageSupplementTest {
         @Test
         @DisplayName("应按 lingId 分组返回所有配置类型")
         void shouldGroupByLingId() {
-            storage.saveCanaryConfig("ling1", "{\"p\":1}");
+            storage.saveMigrationConfig("ling1", "{\"p\":1}");
             storage.saveInvocationConfig("ling1", "{\"t\":2}");
             storage.savePermissionConfig("ling2", "{\"r\":3}");
 
@@ -171,7 +171,7 @@ class GovernanceStorageSupplementTest {
 
             assertEquals(2, all.size());
             assertEquals(2, all.get("ling1").size());
-            assertTrue(all.get("ling1").containsKey("canary"));
+            assertTrue(all.get("ling1").containsKey("migration"));
             assertTrue(all.get("ling1").containsKey("invocation"));
             assertEquals(1, all.get("ling2").size());
             assertTrue(all.get("ling2").containsKey("permission"));

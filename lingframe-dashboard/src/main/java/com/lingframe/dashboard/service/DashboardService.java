@@ -2,10 +2,12 @@ package com.lingframe.dashboard.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
+import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.fsm.TransitionRecord;
@@ -13,7 +15,8 @@ import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.router.CanaryRouter;
+import com.lingframe.core.loader.LingManifestLoader;
+import com.lingframe.core.routing.MigrationStateHolder;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.LingInfoDTO;
@@ -29,9 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -51,7 +52,7 @@ public class DashboardService {
     }
 
     private final LingRepository lingRepository;
-    private final CanaryRouter canaryRouter;
+    private final MigrationStateHolder migrationStateHolder;
     private final LingInfoConverter converter;
     private final PermissionService permissionService;
     private final DashboardGovernanceSupport governanceSupport;
@@ -79,14 +80,13 @@ public class DashboardService {
             LingLifecycleEngine lifecycleEngine,
             LingRepository lingRepository,
             GovernanceAdminService governanceAdmin,
-            CanaryRouter canaryRouter,
             LingInfoConverter converter,
             PermissionService permissionService,
             RuntimeCoordinator runtimeCoordinator,
+            MigrationStateHolder migrationStateHolder,
             ObjectMapper objectMapper) {
         this(
                 lingRepository,
-                canaryRouter,
                 converter,
                 permissionService,
                 new DashboardGovernanceSupport(governanceAdmin, permissionService, objectMapper),
@@ -95,11 +95,11 @@ public class DashboardService {
                 lifecycleEngine,
                 runtimeCoordinator,
                 new DashboardUninstallResultMapper(),
-                objectMapper);
+                objectMapper,
+                migrationStateHolder);
     }
 
     DashboardService(LingRepository lingRepository,
-            CanaryRouter canaryRouter,
             LingInfoConverter converter,
             PermissionService permissionService,
             DashboardGovernanceSupport governanceSupport,
@@ -108,15 +108,16 @@ public class DashboardService {
             LingLifecycleEngine lifecycleEngine,
             RuntimeCoordinator runtimeCoordinator,
             DashboardUninstallResultMapper uninstallResultMapper,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            MigrationStateHolder migrationStateHolder) {
         this.lingRepository = lingRepository;
-        this.canaryRouter = canaryRouter;
         this.converter = converter;
         this.permissionService = permissionService;
         this.governanceSupport = governanceSupport;
         this.lifecycleEventStore = lifecycleEventStore;
         this.uninstallResultMapper = uninstallResultMapper;
         this.objectMapper = objectMapper;
+        this.migrationStateHolder = migrationStateHolder;
         this.statusCoordinator = new DashboardStatusCoordinator(
                 lifecycleEngine,
                 permissionService,
@@ -126,7 +127,7 @@ public class DashboardService {
         this.lingOperations = new DashboardLingOperations(
                 lifecycleEngine,
                 lingRepository,
-                canaryRouter,
+                migrationStateHolder,
                 lifecycleEventStore,
                 lingSourceResolver);
     }
@@ -136,7 +137,6 @@ public class DashboardService {
                 .filter(Objects::nonNull)
                 .map(runtime -> converter.toDTO(
                         runtime,
-                        canaryRouter,
                         permissionService,
                         governanceSupport.getEffectivePolicy(runtime.getLingId())))
                 .collect(Collectors.toList());
@@ -149,7 +149,6 @@ public class DashboardService {
         }
         return converter.toDTO(
                 runtime,
-                canaryRouter,
                 permissionService,
                 governanceSupport.getEffectivePolicy(lingId));
     }
@@ -205,23 +204,14 @@ public class DashboardService {
         return getLingInfo(lingId);
     }
 
-    public void setCanaryConfig(String lingId, int percent, String canaryVersion) {
+    public void resetTrafficStats(String lingId) {
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             throw new LingNotFoundException(lingId);
         }
-        canaryRouter.setCanaryConfig(lingId, percent, canaryVersion);
-        // 持久化灰度配置到 SQLite
-        if (governanceStorage != null) {
-            try {
-                Map<String, Object> canaryData = new LinkedHashMap<>();
-                canaryData.put("percent", percent);
-                canaryData.put("canaryVersion", canaryVersion);
-                governanceStorage.saveCanaryConfig(lingId, objectMapper.writeValueAsString(canaryData));
-            } catch (Exception e) {
-                log.warn("Failed to persist canary configuration: {}", lingId, e);
-            }
-        }
+        // 流量统计已下沉到 ProviderMetricsCollector / LingHealthMetrics，LingRuntime 不再背
+        // 此方法保留为 Dashboard 兼容入口，实际清理由治理存储层处理
+        log.debug("[Dashboard] resetTrafficStats requested for {} (handled by metrics collector)", lingId);
     }
 
     public TrafficStatsDTO getTrafficStats(String lingId) {
@@ -230,14 +220,6 @@ public class DashboardService {
             throw new LingNotFoundException(lingId);
         }
         return converter.toTrafficStats(runtime);
-    }
-
-    public void resetTrafficStats(String lingId) {
-        LingRuntime runtime = lingRepository.getRuntime(lingId);
-        if (runtime == null) {
-            throw new LingNotFoundException(lingId);
-        }
-        runtime.resetTrafficStats();
     }
 
     public List<LifecycleEvent> getLifecycleEvents(String lingId) {
@@ -303,7 +285,7 @@ public class DashboardService {
         List<LingPackageDTO> packageList = new ArrayList<>();
         for (File file : files) {
             try {
-                com.lingframe.api.config.LingDefinition definition = com.lingframe.core.loader.LingManifestLoader.parseDefinition(file);
+                LingDefinition definition = LingManifestLoader.parseDefinition(file);
                 if (definition == null) {
                     continue;
                 }
@@ -320,14 +302,14 @@ public class DashboardService {
                 List<String> declaredPerms = new ArrayList<>();
                 if (definition.getGovernance() != null) {
                     if (definition.getGovernance().getCapabilities() != null) {
-                        for (com.lingframe.api.config.GovernancePolicy.CapabilityRule rule : definition.getGovernance().getCapabilities()) {
+                        for (GovernancePolicy.CapabilityRule rule : definition.getGovernance().getCapabilities()) {
                             if (rule.getCapability() != null) {
                                 declaredPerms.add(rule.getCapability() + " (" + (rule.getAccessType() != null ? rule.getAccessType() : "EXECUTE") + ")");
                             }
                         }
                     }
                     if (definition.getGovernance().getPermissions() != null) {
-                        for (com.lingframe.api.config.GovernancePolicy.PermissionRule rule : definition.getGovernance().getPermissions()) {
+                        for (GovernancePolicy.PermissionRule rule : definition.getGovernance().getPermissions()) {
                             if (rule.getMethodPattern() != null) {
                                 declaredPerms.add("Method: " + rule.getMethodPattern() + " [" + (rule.getPermissionId() != null ? rule.getPermissionId() : "ALLOW") + "]");
                             }
@@ -357,7 +339,7 @@ public class DashboardService {
     public LingInfoDTO deployPackage(String lingId, String version) {
         File file = lingOperations.getLingSourceResolver().resolveSourceFile(lingId, version);
         if (file == null || !file.exists()) {
-            throw new com.lingframe.core.exception.LingInstallException(lingId, "物理包文件不存在: " + lingId + ":" + version, null);
+            throw new LingInstallException(lingId, "物理包文件不存在: " + lingId + ":" + version, null);
         }
         String id = lingOperations.installLing(file);
         return getLingInfo(id);

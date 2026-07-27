@@ -8,8 +8,7 @@ import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.LingServiceInvoker;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -22,9 +21,8 @@ import java.lang.reflect.Method;
  * ⚠️ 这是“真正落地副作用”的最后一环，所以它必须严格消费前面阶段的显式分区结果，
  * 而不能再回退到 attachment key 或额外的隐式推导。
  */
+@Slf4j
 public class TerminalInvokerFilter implements LingInvocationFilter {
-
-    private static final Logger log = LoggerFactory.getLogger(TerminalInvokerFilter.class);
 
     /**
      * 方法句柄缓存由引擎统一持有，避免终端过滤器自己持久化目标实例。
@@ -74,7 +72,15 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
         }
 
         // MethodHandle 可以缓存，但不能把目标 Bean 本身长期缓存在核心层，否则卸载时最容易形成强引用链
-        String cacheKey = target.getLingId() + ":" + target.getVersion() + "@" + ctx.getServiceFQSID() + "#"
+        // cacheKey 必须稳定标识「目标实例 + 契约 + 方法」：
+        // L0 路由不改写 FQSID，裸 contractId 场景下 ctx.getServiceFQSID() 可能不含 lingId 前缀，
+        // 故改用 ctx.getEffectiveLingId() + ":" + 裸契约名拼装，避免 cacheKey 漂移。
+        // 裸契约名取 FQSID 冒号后部分；无冒号时取 FQSID 本身（即裸 contractId）。
+        String fqsid = ctx.getServiceFQSID();
+        int colonIdx = fqsid != null ? fqsid.indexOf(':') : -1;
+        String contractPart = colonIdx > 0 && colonIdx < fqsid.length() - 1 ? fqsid.substring(colonIdx + 1) : fqsid;
+        String cacheKey = target.getLingId() + ":" + target.getVersion() + "@"
+                + ctx.getEffectiveLingId() + ":" + contractPart + "#"
                 + ctx.getMethodName();
         MethodHandle handle = methodCache.computeIfAbsent(cacheKey, key -> resolveMethodHandle(ctx, serviceBean, resolvedTypes, key));
 

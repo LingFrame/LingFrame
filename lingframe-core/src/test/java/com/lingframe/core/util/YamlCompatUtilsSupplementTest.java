@@ -1,14 +1,13 @@
 package com.lingframe.core.util;
 
 import com.lingframe.api.config.LingDefinition;
+import java.util.Collections;
+import java.util.Map;
+import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
-
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link YamlCompatUtils} 的补充测试。
@@ -35,7 +34,7 @@ class YamlCompatUtilsSupplementTest {
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
         Yaml yaml = YamlCompatUtils.createSafeYaml(options);
         assertNotNull(yaml);
-        String dumped = yaml.dump(java.util.Collections.singletonMap("k", "v"));
+        String dumped = yaml.dump(Collections.singletonMap("k", "v"));
         assertNotNull(dumped);
         // BLOCK 风格应不含流式花括号
         assertFalse(dumped.contains("{"));

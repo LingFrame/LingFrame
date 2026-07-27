@@ -1,7 +1,6 @@
-package com.lingframe.core.router;
+package com.lingframe.core.routing;
 
-import com.lingframe.core.ling.ProviderDescriptor;
-import com.lingframe.core.ling.ProviderKind;
+import com.lingframe.core.routing.ProviderDescriptor;
 import com.lingframe.core.pipeline.InvocationContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,7 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 
 /**
  * ProviderWeightRouter 测试。
- * 覆盖：单 provider 直选、默认权重（CORE=100/LING=0）、Dashboard 覆盖、权重分布。
+ * 覆盖：单 provider 直选、默认权重（注册时沉淀的 weight）、Dashboard 覆盖、权重分布。
+ * <p>
+ * 去身份化后不再引用 ProviderKind，权重数值在注册时已沉淀。
  */
 @DisplayName("ProviderWeightRouter 测试")
 class ProviderWeightRouterTest {
@@ -52,7 +53,7 @@ class ProviderWeightRouterTest {
     @Test
     @DisplayName("单 provider 时直接选中，不检查权重")
     void singleCandidateSelectedDirectly() {
-        ProviderDescriptor core = new ProviderDescriptor("svc", "ling-core", ProviderKind.CORE, 0);
+        ProviderDescriptor core = new ProviderDescriptor("svc", "ling-core", 0);
         assertSame(core, router.selectProvider(Collections.singletonList(core), ctx));
     }
 
@@ -60,26 +61,27 @@ class ProviderWeightRouterTest {
 
     @Nested
     @DisplayName("无 Dashboard 配置时的默认权重")
-    class AdrDefaults {
+    class RegisteredDefaults {
 
         @Test
-        @DisplayName("多 provider 无配置时灵核承接全量，灵元零流量")
-        void coreWinsAllTrafficByDefault() {
-            ProviderDescriptor core = new ProviderDescriptor("svc", "ling-core", ProviderKind.CORE, 100);
-            ProviderDescriptor ling = new ProviderDescriptor("svc", "ling-a", ProviderKind.LING, 100);
+        @DisplayName("多 provider 无配置时按注册 weight 决策：weight=100 承接全量，weight=0 零流量")
+        void registeredWeightWinsAllTrafficByDefault() {
+            // 灵核注册时 weight=100，灵元注册时 weight=0——身份影响已沉淀为 weight 数值
+            ProviderDescriptor core = new ProviderDescriptor("svc", "ling-core", 100);
+            ProviderDescriptor ling = new ProviderDescriptor("svc", "ling-a", 0);
 
-            // 默认 CORE=100/LING=0，确定性结果——无需统计循环
+            // 注册 weight 确定性结果——无需统计循环
             for (int i = 0; i < 10; i++) {
                 ProviderDescriptor selected = router.selectProvider(Arrays.asList(core, ling), ctx);
-                assertSame(core, selected, "无 Dashboard 配置时灵核应承接全量流量");
+                assertSame(core, selected, "无 Dashboard 配置时 weight=100 的 provider 应承接全量流量");
             }
         }
 
         @Test
-        @DisplayName("无灵核 provider 且全未配置时兜底选第一个")
+        @DisplayName("所有 provider weight 均为 0 时兜底选第一个")
         void fallbackToFirstWhenAllZero() {
-            ProviderDescriptor ling1 = new ProviderDescriptor("svc", "ling-a", ProviderKind.LING, 0);
-            ProviderDescriptor ling2 = new ProviderDescriptor("svc", "ling-b", ProviderKind.LING, 0);
+            ProviderDescriptor ling1 = new ProviderDescriptor("svc", "ling-a", 0);
+            ProviderDescriptor ling2 = new ProviderDescriptor("svc", "ling-b", 0);
 
             ProviderDescriptor selected = router.selectProvider(Arrays.asList(ling1, ling2), ctx);
             assertNotNull(selected);
@@ -96,8 +98,8 @@ class ProviderWeightRouterTest {
         @Test
         @DisplayName("Dashboard 配置后按权重分配流量")
         void weightedDistributionAfterDashboardConfig() {
-            ProviderDescriptor core = new ProviderDescriptor("svc", "ling-core", ProviderKind.CORE, 100);
-            ProviderDescriptor ling = new ProviderDescriptor("svc", "ling-a", ProviderKind.LING, 0);
+            ProviderDescriptor core = new ProviderDescriptor("svc", "ling-core", 100);
+            ProviderDescriptor ling = new ProviderDescriptor("svc", "ling-a", 0);
 
             // Dashboard 配置：灵核 70%，灵元 30%
             router.setProviderWeight("svc", "ling-core", 70);
@@ -118,17 +120,17 @@ class ProviderWeightRouterTest {
         }
 
         @Test
-        @DisplayName("clearProviderWeight 后回退到默认值")
-        void clearOverrideFallsBackToAdr() {
-            ProviderDescriptor core = new ProviderDescriptor("svc", "ling-core", ProviderKind.CORE, 100);
-            ProviderDescriptor ling = new ProviderDescriptor("svc", "ling-a", ProviderKind.LING, 0);
+        @DisplayName("clearProviderWeight 后回退到注册时初始 weight")
+        void clearOverrideFallsBackToRegistered() {
+            ProviderDescriptor core = new ProviderDescriptor("svc", "ling-core", 100);
+            ProviderDescriptor ling = new ProviderDescriptor("svc", "ling-a", 0);
 
             router.setProviderWeight("svc", "ling-a", 50);
             router.clearProviderWeight("svc", "ling-a");
 
-            // 清除覆盖后回到默认 CORE=100/LING=0，确定性结果
+            // 清除覆盖后回到注册时 weight=0，确定性结果——灵核承接全量
             ProviderDescriptor selected = router.selectProvider(Arrays.asList(core, ling), ctx);
-            assertSame(core, selected, "清除覆盖后灵核应重新承接全量");
+            assertSame(core, selected, "清除覆盖后 weight=100 的灵核应重新承接全量");
         }
 
         @Test
@@ -137,8 +139,8 @@ class ProviderWeightRouterTest {
             router.setProviderWeight("svc", "ling-a", 200);
             router.setProviderWeight("svc", "ling-b", -10);
 
-            ProviderDescriptor a = new ProviderDescriptor("svc", "ling-a", ProviderKind.LING, 0);
-            ProviderDescriptor b = new ProviderDescriptor("svc", "ling-b", ProviderKind.LING, 0);
+            ProviderDescriptor a = new ProviderDescriptor("svc", "ling-a", 0);
+            ProviderDescriptor b = new ProviderDescriptor("svc", "ling-b", 0);
 
             // ling-a=200 截断为 100，ling-b=-10 截断为 0 → 确定性选 ling-a
             ProviderDescriptor selected = router.selectProvider(Arrays.asList(a, b), ctx);

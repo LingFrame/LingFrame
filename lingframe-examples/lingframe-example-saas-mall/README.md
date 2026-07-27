@@ -49,12 +49,12 @@ lingframe-example-saas-mall
 | --- | --- | --- | --- |
 | `SaasRefundController.refundPolicy` | 灵核 → 灵元 | `ling-refund` (LING, 0) 唯一 | ✅ `VipRefundPolicyImpl` |
 | `SaasAuthController.oauthAbility` | 灵核 → 灵元 | `ling-oauth` (LING, 0) 唯一 | ✅ `OAuthAbilityImpl` |
-| `SaasSeckillController.seckillAbility` | 灵核 → 灵元 | `ling-seckill` (LING, 0) 唯一 | ✅ `SeckillAbilityImpl` |
-| `VipRefundPolicyImpl.saasOrderService` | 灵元 → 灵核 | `lingcore` (CORE, 100) 唯一 | ✅ `SaasOrderServiceImpl` |
-| `SeckillAbilityImpl.saasOrderService` | 灵元 → 灵核 | `lingcore` (CORE, 100) 唯一 | ✅ `SaasOrderServiceImpl` |
-| `SeckillAbilityImpl.activeQueryService` | 灵元 → 灵核 | `lingcore` (CORE, 100) 唯一 | ✅ `SaasSeckillActiveQueryServiceImpl` |
+| `SaasSeckillController.seckillAbility` | 灵核 → 灵元 | `ling-seckill` (weight=0) 唯一 | ✅ `SeckillAbilityImpl` |
+| `VipRefundPolicyImpl.saasOrderService` | 灵元 → 灵核 | `lingcore` (weight=100) 唯一 | ✅ `SaasOrderServiceImpl` |
+| `SeckillAbilityImpl.saasOrderService` | 灵元 → 灵核 | `lingcore` (weight=100) 唯一 | ✅ `SaasOrderServiceImpl` |
+| `SeckillAbilityImpl.activeQueryService` | 灵元 → 灵核 | `lingcore` (weight=100) 唯一 | ✅ `SaasSeckillActiveQueryServiceImpl` |
 
-> **关键点**：所有 `@LingReference` 字段都**未指定 lingId**，走默认的 `__provider__` 占位符路径。
+> **关键点**：所有 `@LingReference` 字段都**未指定 lingId**，走默认的裸 contractId 路由路径。
 > 单 provider 场景下 `ProviderWeightRouter` 短路返回，权重 0 的灵元 provider 仍能被唯一命中。
 
 ### 2.1 Provider 注册对照
@@ -64,7 +64,6 @@ lingframe-example-saas-mall
 | 注册器 | `LingCoreServiceRegistrarProcessor` | `SpringLingContainer.scanAndRegisterLingServices` |
 | Bean 来源 | 灵核 ApplicationContext 中的 `@Service`/`@Component`/`@Repository` Bean | 灵元子容器中的 `@Component` Bean |
 | 调用工厂 | `LingServiceRegistrar.forCore(...)` | `new LingServiceRegistrar(...)` |
-| ProviderKind | `CORE` | `LING` |
 | 默认权重 | 100（自动承接全量流量） | 0（需 Dashboard 显式配置才接流量） |
 | lingId | `lingcore-app` | 各灵元自己的 id（如 `ling-oauth`） |
 | FQSID 格式 | `lingcore-app:<接口全限定名>` | `<lingId>:<接口全限定名>` |
@@ -79,17 +78,16 @@ lingframe-example-saas-mall
 
 2. 调用 saasOrderService.createOrder(...)
    └─ GlobalServiceRoutingProxy.resolveTargetLingId()
-      ├─ targetLingId == null
-      └─ 返回 "__provider__" 占位符
+      └─ targetLingId == null → 走默认裸 contractId 路由路径
 
-3. SmartServiceProxy 拼接 FQSID
-   └─ serviceFQSID = "__provider__:com.lingframe.example.saas.api.SaasOrderService"
+3. SmartServiceProxy 组装 FQSID
+   └─ serviceFQSID = "com.lingframe.example.saas.api.SaasOrderService"（裸 contractId）
 
 4. InvocationPipelineEngine 进入 Pipeline
    └─ ContractProviderRoutingFilter (L0 阶段)
-      ├─ 识别 "__provider__:" 前缀
-      ├─ 提取 contractId = "com.lingframe.example.saas.api.SaasOrderService"
-      ├─ 查询 provider 索引：[(lingcore-app, CORE, 100)] 唯一
+      ├─ targetLingId == null 触发 L0 路由
+      ├─ contractId = "com.lingframe.example.saas.api.SaasOrderService"
+      ├─ 查询 provider 索引：[(lingcore-app, weight=100)] 唯一
       ├─ ProviderWeightRouter.selectProvider() 短路返回 lingcore-app
       └─ ctx.setTargetLingId("lingcore-app") + ctx.setRuntime(灵核 runtime)
 

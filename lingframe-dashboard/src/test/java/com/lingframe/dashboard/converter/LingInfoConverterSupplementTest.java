@@ -1,6 +1,7 @@
 package com.lingframe.dashboard.converter;
 
 import com.lingframe.api.config.GovernancePolicy;
+import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionInfo;
@@ -11,23 +12,21 @@ import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
-import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -47,26 +46,23 @@ class LingInfoConverterSupplementTest {
     class ToTrafficStatsTests {
 
         @Test
-        @DisplayName("total>0 时应正确计算百分比")
+        @DisplayName("total>0 时应正确计算百分比（流量统计已下沉到 MetricsCollector）")
         void shouldCalculatePercentagesWhenTotalGreaterThanZero() {
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.getLingId()).thenReturn("ling1");
-            when(runtime.getTotalRequests()).thenReturn(new AtomicLong(100));
-            when(runtime.getStableRequests()).thenReturn(new AtomicLong(80));
-            when(runtime.getCanaryRequests()).thenReturn(new AtomicLong(20));
-            when(runtime.getActiveRequests()).thenReturn(new AtomicLong(5));
-            when(runtime.getStatsWindowStart()).thenReturn(123L);
+            when(runtime.getInstalledAt()).thenReturn(123L);
+            // 流量统计已从 LingRuntime 下沉到 ProviderMetricsCollector / LingHealthMetrics
+            // LingInfoConverter(metricsCollector).toTrafficStats 不再读 runtime 的流量字段
 
-            TrafficStatsDTO dto = new LingInfoConverter().toTrafficStats(runtime);
+            TrafficStatsDTO dto = new LingInfoConverter(null).toTrafficStats(runtime);
 
             assertEquals("ling1", dto.getLingId());
-            assertEquals(100, dto.getTotalRequests());
-            assertEquals(80, dto.getV1Requests());
-            assertEquals(20, dto.getV2Requests());
-            assertEquals(5, dto.getActiveRequests());
-            assertEquals(80.0, dto.getV1Percent(), 0.001);
-            assertEquals(20.0, dto.getV2Percent(), 0.001);
-            assertEquals(123L, dto.getWindowStartTime());
+            // 累计统计由 ProviderMetricsCollector 维护，转换器返回 0
+            assertEquals(0, dto.getTotalRequests());
+            assertEquals(0, dto.getV1Requests());
+            assertEquals(0, dto.getV2Requests());
+            assertEquals(0.0, dto.getV1Percent(), 0.001);
+            assertEquals(0.0, dto.getV2Percent(), 0.001);
         }
 
         @Test
@@ -74,13 +70,9 @@ class LingInfoConverterSupplementTest {
         void shouldReturnZeroPercentWhenTotalIsZero() {
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.getLingId()).thenReturn("ling1");
-            when(runtime.getTotalRequests()).thenReturn(new AtomicLong(0));
-            when(runtime.getStableRequests()).thenReturn(new AtomicLong(0));
-            when(runtime.getCanaryRequests()).thenReturn(new AtomicLong(0));
-            when(runtime.getActiveRequests()).thenReturn(new AtomicLong(0));
-            when(runtime.getStatsWindowStart()).thenReturn(0L);
+            when(runtime.getInstalledAt()).thenReturn(0L);
 
-            TrafficStatsDTO dto = new LingInfoConverter().toTrafficStats(runtime);
+            TrafficStatsDTO dto = new LingInfoConverter(null).toTrafficStats(runtime);
 
             assertEquals(0, dto.getTotalRequests());
             assertEquals(0.0, dto.getV1Percent(), 0.001);
@@ -99,7 +91,6 @@ class LingInfoConverterSupplementTest {
         void shouldFallbackToRuntimeConfigDefaultsWhenPolicyNull() {
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
-            CanaryRouter router = mock(CanaryRouter.class);
             PermissionService permSvc = mock(PermissionService.class);
             LingRuntimeConfig config = LingRuntimeConfig.builder()
                     .defaultTimeoutMs(5000)
@@ -113,9 +104,7 @@ class LingInfoConverterSupplementTest {
             when(runtime.getInstalledAt()).thenReturn(123L);
             when(runtime.getConfig()).thenReturn(config);
             when(pool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
-            when(router.getCanaryPercent("ling1")).thenReturn(0);
-
-            LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, null);
+            LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, null);
 
             assertNotNull(dto.getInvocationGovernance());
             assertEquals(Integer.valueOf(5000), dto.getInvocationGovernance().getTimeoutMs());
@@ -128,7 +117,6 @@ class LingInfoConverterSupplementTest {
         void shouldPreferPolicyValuesOverRuntimeDefaults() {
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
-            CanaryRouter router = mock(CanaryRouter.class);
             PermissionService permSvc = mock(PermissionService.class);
             LingRuntimeConfig config = LingRuntimeConfig.builder()
                     .defaultTimeoutMs(5000)
@@ -142,13 +130,13 @@ class LingInfoConverterSupplementTest {
             when(runtime.getInstalledAt()).thenReturn(123L);
             when(runtime.getConfig()).thenReturn(config);
             when(pool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
-            when(router.getCanaryPercent("ling1")).thenReturn(0);
+            // router 已删除，路由层去身份化
 
             GovernancePolicy policy = new GovernancePolicy();
             policy.getInvocation().setTimeoutMs(1000);
             // rateLimitPerSecond 和 maxConcurrentThreads 未设置，应回退到 config
 
-            LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, policy);
+            LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, policy);
 
             assertEquals(Integer.valueOf(1000), dto.getInvocationGovernance().getTimeoutMs());
             assertEquals(Integer.valueOf(20), dto.getInvocationGovernance().getRateLimitPerSecond());
@@ -160,7 +148,6 @@ class LingInfoConverterSupplementTest {
         void shouldUsePolicyValuesWhenRuntimeConfigNull() {
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
-            CanaryRouter router = mock(CanaryRouter.class);
             PermissionService permSvc = mock(PermissionService.class);
 
             when(runtime.getLingId()).thenReturn("ling1");
@@ -169,10 +156,10 @@ class LingInfoConverterSupplementTest {
             when(runtime.getInstalledAt()).thenReturn(123L);
             when(runtime.getConfig()).thenReturn(null);
             when(pool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
-            when(router.getCanaryPercent("ling1")).thenReturn(0);
+            // router 已删除，路由层去身份化
 
             // policy null → 所有 invocation 字段 null，且无 config 回退
-            LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, null);
+            LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, null);
 
             assertNotNull(dto.getInvocationGovernance());
             assertEquals(null, dto.getInvocationGovernance().getTimeoutMs());
@@ -191,7 +178,6 @@ class LingInfoConverterSupplementTest {
         void shouldReturnEmptyPermissionsWhenPolicyNull() {
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
-            CanaryRouter router = mock(CanaryRouter.class);
             PermissionService permSvc = mock(PermissionService.class);
 
             when(runtime.getLingId()).thenReturn("ling1");
@@ -199,10 +185,10 @@ class LingInfoConverterSupplementTest {
             when(runtime.getInstancePool()).thenReturn(pool);
             when(runtime.getInstalledAt()).thenReturn(123L);
             when(pool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
-            when(router.getCanaryPercent("ling1")).thenReturn(0);
+            // router 已删除，路由层去身份化
             // permissionService.getPermission 返回 null（mock 默认）
 
-            LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, null);
+            LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, null);
 
             assertNotNull(dto.getPermissions());
             assertFalse(dto.getPermissions().isDbRead());
@@ -218,7 +204,6 @@ class LingInfoConverterSupplementTest {
         void shouldSkipNullCapabilityRules() {
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
-            CanaryRouter router = mock(CanaryRouter.class);
             PermissionService permSvc = mock(PermissionService.class);
 
             when(runtime.getLingId()).thenReturn("ling1");
@@ -226,7 +211,7 @@ class LingInfoConverterSupplementTest {
             when(runtime.getInstancePool()).thenReturn(pool);
             when(runtime.getInstalledAt()).thenReturn(123L);
             when(pool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
-            when(router.getCanaryPercent("ling1")).thenReturn(0);
+            // router 已删除，路由层去身份化
 
             GovernancePolicy policy = new GovernancePolicy();
             policy.setCapabilities(Collections.singletonList(
@@ -235,7 +220,7 @@ class LingInfoConverterSupplementTest {
                             .accessType(AccessType.EXECUTE.name())
                             .build()));
 
-            LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, policy);
+            LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, policy);
 
             // null capability 的 rule 应被跳过，所有 capability 列表为空
             assertTrue(dto.getPermissions().getExtraCapabilities().isEmpty());
@@ -246,7 +231,6 @@ class LingInfoConverterSupplementTest {
         void shouldCategorizeStandardCapabilitiesCorrectly() {
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
-            CanaryRouter router = mock(CanaryRouter.class);
             PermissionService permSvc = mock(PermissionService.class);
 
             when(runtime.getLingId()).thenReturn("ling1");
@@ -254,14 +238,14 @@ class LingInfoConverterSupplementTest {
             when(runtime.getInstancePool()).thenReturn(pool);
             when(runtime.getInstalledAt()).thenReturn(123L);
             when(pool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
-            when(router.getCanaryPercent("ling1")).thenReturn(0);
+            // router 已删除，路由层去身份化
             when(permSvc.getPermission("ling1", Capabilities.STORAGE_SQL))
                     .thenReturn(PermissionInfo.permanent("ling1", Capabilities.STORAGE_SQL, AccessType.WRITE, "test"));
             when(permSvc.getPermission("ling1", Capabilities.CACHE_LOCAL))
                     .thenReturn(PermissionInfo.permanent("ling1", Capabilities.CACHE_LOCAL, AccessType.READ, "test"));
 
             GovernancePolicy policy = new GovernancePolicy();
-            policy.setCapabilities(java.util.Arrays.asList(
+            policy.setCapabilities(Arrays.asList(
                     GovernancePolicy.CapabilityRule.builder()
                             .capability(Capabilities.STORAGE_SQL)
                             .accessType(AccessType.WRITE.name())
@@ -275,7 +259,7 @@ class LingInfoConverterSupplementTest {
                             .accessType(AccessType.EXECUTE.name())
                             .build()));
 
-            LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, policy);
+            LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, policy);
 
             // 三个标准 capability 不应出现在 extraCapabilities
             assertTrue(dto.getPermissions().getExtraCapabilities().isEmpty());
@@ -295,7 +279,6 @@ class LingInfoConverterSupplementTest {
         void shouldRecognizeStringTrueAsCanary() {
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
-            CanaryRouter router = mock(CanaryRouter.class);
             PermissionService permSvc = mock(PermissionService.class);
             EventBus eventBus = mock(EventBus.class);
 
@@ -303,9 +286,9 @@ class LingInfoConverterSupplementTest {
             when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
             when(runtime.getInstancePool()).thenReturn(pool);
             when(runtime.getInstalledAt()).thenReturn(123L);
-            when(router.getCanaryPercent("ling1")).thenReturn(50);
+            // router 已删除，路由层去身份化
 
-            com.lingframe.api.config.LingDefinition def = new com.lingframe.api.config.LingDefinition();
+            LingDefinition def = new LingDefinition();
             def.setId("ling1");
             def.setVersion("2.0.0");
             Map<String, Object> props = new HashMap<String, Object>();
@@ -318,7 +301,7 @@ class LingInfoConverterSupplementTest {
             when(pool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
             when(pool.getDefault()).thenReturn(instance);
 
-            LingInfoDTO dto = new LingInfoConverter().toDTO(runtime, router, permSvc, null);
+            LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, null);
 
             assertEquals(1, dto.getVersionDetails().size());
             assertTrue(dto.getVersionDetails().get(0).getIsCanary());

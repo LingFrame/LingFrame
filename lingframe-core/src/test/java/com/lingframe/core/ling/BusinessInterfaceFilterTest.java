@@ -1,14 +1,13 @@
 package com.lingframe.core.ling;
 
+import java.io.Serializable;
+import java.lang.Runnable;
+import java.util.Collections;
+import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.slf4j.Logger;
 
 /**
  * {@link BusinessInterfaceFilter} 独立单测。
@@ -24,7 +23,7 @@ class BusinessInterfaceFilterTest {
     }
 
     /** 测试用 JDK 接口（应被排除） */
-    public interface TestJdkMarker extends java.io.Serializable {
+    public interface TestJdkMarker extends Serializable {
     }
 
     @Nested
@@ -36,8 +35,8 @@ class BusinessInterfaceFilterTest {
         void shouldExcludeJdkInterfaces() {
             BusinessInterfaceFilter filter = BusinessInterfaceFilter.coreDefaults();
 
-            assertFalse(filter.isBusinessInterface(java.io.Serializable.class));
-            assertFalse(filter.isBusinessInterface(java.lang.Runnable.class));
+            assertFalse(filter.isBusinessInterface(Serializable.class));
+            assertFalse(filter.isBusinessInterface(Runnable.class));
         }
 
         @Test
@@ -61,7 +60,7 @@ class BusinessInterfaceFilterTest {
 
             assertTrue(filter.isBusinessInterface(TestBusinessService.class));
             // JDK 接口仍应被排除（我们追加了 java. 前缀）
-            assertFalse(filter.isBusinessInterface(java.io.Serializable.class));
+            assertFalse(filter.isBusinessInterface(Serializable.class));
         }
 
         @Test
@@ -70,7 +69,7 @@ class BusinessInterfaceFilterTest {
             BusinessInterfaceFilter filter = BusinessInterfaceFilter.coreDefaults();
 
             // slf4j 与 lombok 同属 core 基础设施，不应被视为业务接口
-            assertFalse(filter.isBusinessInterface(org.slf4j.Logger.class),
+            assertFalse(filter.isBusinessInterface(Logger.class),
                     "org.slf4j.Logger 应被 core 默认排除前缀排除");
         }
     }
@@ -116,7 +115,7 @@ class BusinessInterfaceFilterTest {
             // 清空 core 默认后，测试嵌套接口应被视为业务接口（不在任何排除前缀内）
             assertTrue(filter.isBusinessInterface(TestBusinessService.class));
             // JDK 接口不被排除（清空后没追加 java. 前缀）
-            assertTrue(filter.isBusinessInterface(java.io.Serializable.class));
+            assertTrue(filter.isBusinessInterface(Serializable.class));
         }
     }
 

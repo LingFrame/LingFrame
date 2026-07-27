@@ -11,7 +11,6 @@ import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.metrics.LingMetricsMeterBridge;
 import com.lingframe.dashboard.scheduler.MetricsCollectorScheduler;
@@ -111,7 +110,7 @@ class DashboardAutoConfigurationSupplementTest {
 
             GovernanceConfigRestorer restorer = config.governanceConfigRestorer(
                     governanceStorage, mock(GovernanceAdminService.class),
-                    mock(CanaryRouter.class), new ObjectMapper());
+                    null, new ObjectMapper());
 
             assertNotNull(restorer);
         }

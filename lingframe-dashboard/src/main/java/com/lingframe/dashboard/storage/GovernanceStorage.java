@@ -2,33 +2,84 @@ package com.lingframe.dashboard.storage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
+import com.lingframe.core.routing.MigrationStateHolder;
+import com.lingframe.core.routing.MigrationStateHolder.MigrationStateStore;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 治理配置存储：灰度/调用治理/权限配置的持久化与恢复
+ * 治理配置存储：迁移阶段/调用治理/权限配置的持久化与恢复
+ * <p>
+ * 重构后原「灰度配置」({@code config_type='canary'})升级为「迁移阶段」({@code config_type='migration'}),
+ * 落盘内容含契约 ID、候选 provider 键与权重——由 {@link MigrationStateHolder}
+ * 在相变时触发持久化。
  */
 @Slf4j
 @RequiredArgsConstructor
-public class GovernanceStorage {
+public class GovernanceStorage implements MigrationStateStore {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
-    // ==================== 灰度配置 ====================
+    // ==================== 迁移阶段配置 ====================
 
-    public void saveCanaryConfig(String lingId, String configJson) {
-        saveConfig(lingId, "canary", configJson);
+    /**
+     * 持久化迁移阶段配置({@code config_type='migration'})。
+     * <p>
+     * 替代原 {@code saveCanaryConfig}——落盘键由旧 lingId 维度升级为契约维度,
+     * 内容含契约 ID、候选 provider 键与权重。
+     *
+     * @param contractId 契约 ID
+     * @param configJson 含 {@code oldCandidate/newCandidate/percent} 的 JSON
+     */
+    public void saveMigrationConfig(String contractId, String configJson) {
+        saveConfig(contractId, "migration", configJson);
     }
 
-    public String loadCanaryConfig(String lingId) {
-        return loadConfig(lingId, "canary");
+    public String loadMigrationConfig(String contractId) {
+        return loadConfig(contractId, "migration");
+    }
+
+    /**
+     * 删除迁移阶段持久化记录（迁移完成或灵元卸载触发）。
+     * <p>
+     * 命中 {@link MigrationStateHolder#evict} 命中通过 {@link MigrationStateStore#delete} 调用。
+     */
+    public void deleteMigrationConfig(String contractId) {
+        deleteConfig(contractId, "migration");
+    }
+
+    /**
+     * {@link MigrationStateHolder.MigrationStateStore} 实现:落盘迁移阶段记录。
+     * <p>
+     * 内容含 phase/oldCandidate/newCandidate 三字段,
+     * 替代原「灰度配置」({@code config_type='canary'}) 命中只存 percent/canaryVersion 命中旧砟名。
+     */
+    public void save(String contractId, MigrationStateHolder.PhaseRecord record) {
+        try {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("phase", record.getPhase().name());
+            data.put("oldCandidate", record.getOldCandidate());
+            data.put("newCandidate", record.getNewCandidate());
+            saveMigrationConfig(contractId, objectMapper.writeValueAsString(data));
+        } catch (Exception e) {
+            log.warn("Failed to persist migration phase: contract={}", contractId, e);
+        }
+    }
+
+    /**
+     * {@link MigrationStateHolder.MigrationStateStore} 实现:删除迁移阶段记录。
+     */
+    public void delete(String contractId) {
+        deleteMigrationConfig(contractId);
     }
 
     // ==================== 调用治理配置 ====================
@@ -74,6 +125,12 @@ public class GovernanceStorage {
             String.class, lingId, configType
         );
         return results.isEmpty() ? null : results.get(0);
+    }
+
+    private void deleteConfig(String lingId, String configType) {
+        jdbcTemplate.update(
+            "DELETE FROM governance_config WHERE ling_id = ? AND config_type = ?",
+            lingId, configType);
     }
 
     /**

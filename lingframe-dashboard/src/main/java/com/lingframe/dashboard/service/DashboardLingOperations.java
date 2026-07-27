@@ -10,7 +10,7 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingUninstallResult;
 import com.lingframe.core.loader.LingManifestLoader;
-import com.lingframe.core.router.CanaryRouter;
+import com.lingframe.core.routing.MigrationStateHolder;
 
 import java.io.File;
 import java.util.Collections;
@@ -26,7 +26,7 @@ public class DashboardLingOperations {
 
     private final LingLifecycleEngine lifecycleEngine;
     private final LingRepository lingRepository;
-    private final CanaryRouter canaryRouter;
+    private final MigrationStateHolder migrationStateHolder;
     private final DashboardLifecycleEventStore lifecycleEventStore;
     private final DashboardLingSourceResolver lingSourceResolver;
 
@@ -35,12 +35,12 @@ public class DashboardLingOperations {
 
     public DashboardLingOperations(LingLifecycleEngine lifecycleEngine,
             LingRepository lingRepository,
-            CanaryRouter canaryRouter,
+            MigrationStateHolder migrationStateHolder,
             DashboardLifecycleEventStore lifecycleEventStore,
             DashboardLingSourceResolver lingSourceResolver) {
         this.lifecycleEngine = lifecycleEngine;
         this.lingRepository = lingRepository;
-        this.canaryRouter = canaryRouter;
+        this.migrationStateHolder = migrationStateHolder;
         this.lifecycleEventStore = lifecycleEventStore;
         this.lingSourceResolver = lingSourceResolver;
     }
@@ -72,7 +72,9 @@ public class DashboardLingOperations {
 
     public LingUninstallResult uninstallLing(String lingId) {
         try {
-            canaryRouter.removeCanaryConfig(lingId);
+            if (migrationStateHolder != null) {
+                migrationStateHolder.evict(lingId);
+            }
             LingUninstallResult result = lifecycleEngine.undeployWithReport(lingId);
             if (result.isUninstallTriggered()) {
                 lifecycleEventStore.addEvent(
@@ -90,7 +92,9 @@ public class DashboardLingOperations {
 
     public LingUninstallResult uninstallLing(String lingId, String version) {
         try {
-            canaryRouter.removeCanaryConfig(lingId);
+            if (migrationStateHolder != null) {
+                migrationStateHolder.evict(lingId);
+            }
             LingUninstallResult result = lifecycleEngine.undeployWithReport(lingId, version);
             if (result.isUninstallTriggered()) {
                 lifecycleEventStore.addEvent(

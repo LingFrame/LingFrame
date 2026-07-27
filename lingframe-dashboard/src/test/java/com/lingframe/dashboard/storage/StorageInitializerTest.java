@@ -1,18 +1,17 @@
 package com.lingframe.dashboard.storage;
 
+import org.junit.jupiter.api.Assertions;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 /**
  * StorageInitializer 测试
@@ -173,6 +172,6 @@ class StorageInitializerTest {
     }
 
     private static void assertEquals(int expected, int actual) {
-        org.junit.jupiter.api.Assertions.assertEquals(expected, actual);
+        Assertions.assertEquals(expected, actual);
     }
 }

@@ -9,8 +9,7 @@ import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.core.util.NamedThreadFactory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
@@ -27,9 +26,9 @@ import java.util.concurrent.*;
  * ⚠️ 线程池线程默认挂 CORE_CLASSLOADER，单次调用再临时切到目标灵元的 ClassLoader。
  * 如果让线程池常驻线程永久挂住灵元 ClassLoader，灵元卸载后最容易出现“功能没问题，但就是回收不掉”的隐性泄漏。
  */
+@Slf4j
 public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, ThreadPoolStatsProvider {
 
-    private static final Logger log = LoggerFactory.getLogger(ThreadIsolationGovernanceFilter.class);
     private static final ClassLoader CORE_CLASSLOADER = ThreadIsolationGovernanceFilter.class.getClassLoader();
     private static final ThreadMXBean THREAD_MX_BEAN = ManagementFactory.getThreadMXBean();
 
@@ -53,15 +52,16 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
 
     @Override
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
-        String fqsid = ctx.getServiceFQSID();
-        if (fqsid == null || !fqsid.contains(":")) {
+        // 路由去身份化后 FQSID 可能为裸 contractId（无冒号），
+        // 隔离池命名以 ctx.getEffectiveLingId() 为准——L0 阶段已解析出真实 lingId
+        String lingId = ctx.getEffectiveLingId();
+        if (lingId == null || lingId.isEmpty()) {
             return chain.doFilter(ctx);
         }
         if (ctx.execution().getMode().isGovernOnly()) {
             return chain.doFilter(ctx);
         }
 
-        String lingId = ctx.getEffectiveLingId();
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             return chain.doFilter(ctx);
@@ -112,32 +112,32 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
         try {
             future = executor.submit(isolatedTask);
         } catch (RejectedExecutionException e) {
-            log.warn("[Isolation:{}] Execution rejected because bulkhead is full for {}", lingId, fqsid);
+            log.warn("[Isolation:{}] Execution rejected because bulkhead is full for {}", lingId, ctx.getServiceFQSID());
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordBulkheadRejected(lingId, ctx.getTargetVersion());
                 recordThreadBudgetSnapshot(lingId, ctx, executorHolder);
             }
-            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.BULKHEAD_FULL, e);
+            throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.BULKHEAD_FULL, e);
         }
 
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             future.cancel(true);
-            log.error("[Isolation:{}] Execution timed out after {} ms for {}", lingId, timeoutMs, fqsid);
+            log.error("[Isolation:{}] Execution timed out after {} ms for {}", lingId, timeoutMs, ctx.getServiceFQSID());
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordTimeout(lingId, ctx.getTargetVersion());
             }
-            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.TIMEOUT);
+            throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.TIMEOUT);
         } catch (ExecutionException e) {
             Throwable cause = unwrapExecutionCause(e.getCause());
             if (cause instanceof LingInvocationException) {
                 throw (LingInvocationException) cause;
             }
-            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.INVOKE_ERROR, cause);
+            throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INVOKE_ERROR, cause);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
+            throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
         } finally {
             recordThreadBudgetSnapshot(lingId, ctx, executorHolder);
         }

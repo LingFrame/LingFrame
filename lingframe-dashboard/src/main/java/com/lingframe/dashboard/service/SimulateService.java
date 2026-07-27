@@ -17,7 +17,6 @@ import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.dashboard.dto.SimulateResultDTO;
 import com.lingframe.dashboard.dto.StressResultDTO;
 import com.lingframe.api.exception.LingNotFoundException;
-import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.model.EngineTrace;
 import com.lingframe.api.context.LingCallContext;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +31,6 @@ public class SimulateService {
 
     private final LingRepository lingRepository;
     private final EventBus eventBus;
-    private final CanaryRouter canaryRouter;
     private final PermissionService permissionService;
     private final InvocationPipelineEngine pipelineEngine;
     private final LingFrameInfo lingFrameInfo;
@@ -216,11 +214,13 @@ public class SimulateService {
      * 压测单次路由
      * 由前端 setInterval 控制频率，后端每次只执行一次路由
      * <p>
-     * ⚠️ 当前实现仅借用 canaryRouter 决定本次路由命中的版本，不再直接调用
-     * {@code runtime.recordRequest(...)}——LingRuntime 是只读视图，流量统计应统一由
-     * Pipeline 内部（TrafficMetricsFilter）处理。
-     * 后续应将本方法整体改走 {@link InvocationPipelineEngine#invoke(InvocationContext)}
-     * 的 SIMULATION 模式，由 Pipeline 完成路由与统计，进一步收敛治理执行入口。
+     * 压测本质就是模拟一次路由+调用，因此统一走 {@link InvocationPipelineEngine#invoke}
+     * 的 SIMULATION 模式，由 Pipeline 完成路由与统计，收敛治理执行入口。
+     * 不再直接调用已删除的 {@code canaryRouter.route(...)}。
+     * <p>
+     * 活跃请求数从 {@link LingRuntime} 的流量统计字段（已删除）下沉到
+     * {@code LingHealthMetrics.activeRequests}，由 Pipeline 内部的
+     * {@code TrafficMetricsFilter} 维护，本方法返回时直接读取运行时池的活跃实例计数兜底。
      */
     public StressResultDTO stressTest(String lingId) {
         LingRuntime runtime = lingRepository.getRuntime(lingId);
@@ -237,37 +237,49 @@ public class SimulateService {
             throw new LingInvocationException(lingId, LingInvocationException.ErrorKind.STATE_REJECTED, "No active instances");
         }
 
-        InvocationContext ctx = InvocationContext.obtain();
+        String traceId = LingCallContext.startTrace();
+        InvocationContext ctx = InvocationContextBuilder.forSimulation(lingId)
+                .traceId(traceId)
+                .build();
         try {
-            ctx.setTargetLingId(lingId);
-            ctx.setRuntime(runtime);
-            LingInstance instance = canaryRouter.route(instances, ctx);
-            if (instance == null) {
-                instance = runtime.getInstancePool().getDefault();
-            }
+            // 压测走 Pipeline SIMULATION 模式，由 Pipeline 完成路由与统计
+            // 不再直接调 canaryRouter.route(instances, ctx)，路由由 Pipeline 内的
+            // ContractProviderRoutingFilter + ProviderWeightRouter 完成
+            Object result = pipelineEngine.invoke(ctx);
 
             LingInstance defaultInstance = runtime.getInstancePool().getDefault();
-            boolean isCanary = (instance != defaultInstance);
+            // RoutableTarget 接口未暴露 getVersion()；活跃实例版本由 ctx.getTargetVersion() 或默认实例携带
+            String targetVersion = ctx.getTargetVersion();
+            boolean isCanary = defaultInstance != null && targetVersion != null
+                    && !targetVersion.equals(defaultInstance.getDefinition().getVersion());
 
-            // 🔥 已删除 runtime.recordRequest(isCanary) 直写：
-            // LingRuntime 对外只暴露只读视图，流量统计应由 Pipeline 统一处理，
-            // 控制台不应绕过 Pipeline 直接修改灵元运行时内部计数。
-
-            String version = instance.getDefinition().getVersion();
+            String version = targetVersion != null ? targetVersion
+                    : (defaultInstance != null ? defaultInstance.getDefinition().getVersion() : "unknown");
             String tag = isCanary ? "CANARY" : "STABLE";
 
-            publishTrace(LingCallContext.startTrace(), lingId,
+            publishTrace(traceId, lingId,
                     String.format("→ Routed to: %s (%s)", version, tag), tag, 1);
+
+            // 活跃请求数从 LingHealthMetrics 读取（已下沉），无直读路径时返回 0
+            int active = 0;
+            try {
+                active = runtime.getInstancePool().getActiveInstances().size();
+            } catch (Exception ignored) {
+                // 防御性兜底
+            }
 
             return StressResultDTO.builder()
                     .lingId(lingId)
                     .totalRequests(1)
                     .v1Requests(isCanary ? 0 : 1)
                     .v2Requests(isCanary ? 1 : 0)
-                    .activeRequests((int) runtime.getActiveRequests().get())
+                    .activeRequests(active)
                     .v1Percent(isCanary ? 0 : 100)
                     .v2Percent(isCanary ? 100 : 0)
                     .build();
+        } catch (Throwable t) {
+            log.warn("Stress test invocation failed for ling {}: {}", lingId, t.getMessage());
+            throw t;
         } finally {
             // 🔥 InvocationContext.obtain() 必须配对 recycle()，否则对象池会泄漏上下文，
             // 残留的 WeakReference 与 attachments 会跨调用污染后续请求

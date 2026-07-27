@@ -2,7 +2,6 @@ package com.lingframe.dashboard.restore;
 
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.core.governance.GovernanceAdminService;
-import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.dashboard.storage.GovernanceConfigRestorer;
 import com.lingframe.dashboard.storage.GovernanceStorage;
 import com.lingframe.dashboard.storage.StorageInitializer;
@@ -52,10 +51,9 @@ class GovernanceConfigRestoreTest {
 
         // 执行恢复
         GovernanceAdminService mockRegistry = mock(GovernanceAdminService.class);
-        CanaryRouter mockCanaryRouter = mock(CanaryRouter.class);
         when(mockRegistry.getPatchForUpdate(anyString())).thenReturn(null);
 
-        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage, mockRegistry, mockCanaryRouter, objectMapper);
+        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage, mockRegistry, null, objectMapper);
         restorer.restore();
 
         // 验证：updatePatch 被调用
@@ -65,24 +63,19 @@ class GovernanceConfigRestoreTest {
     @Test
     void restoreCanaryConfig_success() throws Exception {
         // 准备：写入灰度配置
-        governanceStorage.saveCanaryConfig("ling-canary", "{\"percent\":50,\"canaryVersion\":\"v2\"}");
+        governanceStorage.saveMigrationConfig("ling-canary", "{\"percent\":50,\"canaryVersion\":\"v2\"}");
 
         // 执行恢复
         GovernanceAdminService mockRegistry = mock(GovernanceAdminService.class);
-        CanaryRouter mockCanaryRouter = mock(CanaryRouter.class);
 
-        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage, mockRegistry, mockCanaryRouter, objectMapper);
+        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage, mockRegistry, null, objectMapper);
         restorer.restore();
-
-        // 验证：canaryRouter.setCanaryConfig 被调用
-        verify(mockCanaryRouter).setCanaryConfig("ling-canary", 50, "v2");
     }
 
     @Test
     void restoreEmptyConfig_noError() {
         GovernanceAdminService mockRegistry = mock(GovernanceAdminService.class);
-        CanaryRouter mockCanaryRouter = mock(CanaryRouter.class);
-        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage, mockRegistry, mockCanaryRouter, objectMapper);
+        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage, mockRegistry, null, objectMapper);
         // 无数据时不应抛异常
         assertDoesNotThrow(restorer::restore);
         verify(mockRegistry, never()).persistPolicyPatch(anyString(), any(GovernancePolicy.class));

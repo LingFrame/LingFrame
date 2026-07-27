@@ -82,7 +82,7 @@ governance:
 
 1. 添加 `lingframe-api` 依赖
 2. 在需要暴露的方法上加 `@LingService` 注解（或依赖隐式接口注册）
-3. 灵核的 `SpringLingContainer.scanAndRegisterLingServices` 会自动扫描注册为 `ProviderKind.LING` provider
+3. 灵核的 `SpringLingContainer.scanAndRegisterLingServices` 会自动扫描注册为 weight=0 的灵元 provider
 
 这一步是**可选的渐进式演进**——最小化改造的灵元即使不暴露契约，也已获得类加载隔离和独立生命周期价值。
 

@@ -14,7 +14,6 @@ import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingUninstallResult;
 import com.lingframe.core.ling.LingRepository;
-import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.spi.LeakRiskLevel;
 import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.dashboard.converter.LingInfoConverter;
@@ -60,8 +59,6 @@ class DashboardServiceTest {
     @Mock
     GovernanceAdminService governanceAdmin;
     @Mock
-    CanaryRouter canaryRouter;
-    @Mock
     LingInfoConverter lingInfoConverter;
     @Mock
     PermissionService permissionService;
@@ -76,7 +73,7 @@ class DashboardServiceTest {
         @DisplayName("更新治理策略时应同步刷新运行时权限")
         void updateGovernancePolicyRefreshesPermissionsFromPolicy() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceAdmin, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator, SHARED_OBJECT_MAPPER);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
 
             AtomicReference<GovernancePolicy> storedPatch = new AtomicReference<>();
             when(governanceAdmin.getPatchForUpdate("ling1")).thenAnswer(invocation -> storedPatch.get() == null ? new GovernancePolicy() : storedPatch.get().copy());
@@ -107,7 +104,7 @@ class DashboardServiceTest {
         @DisplayName("仅更新调用治理时应保留已有能力规则")
         void updateGovernancePolicyShouldMergeInvocationPatchWithoutClearingCapabilities() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceAdmin, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator, SHARED_OBJECT_MAPPER);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
 
             GovernancePolicy existingPatch = new GovernancePolicy();
             existingPatch.setCapabilities(Arrays.asList(
@@ -150,7 +147,7 @@ class DashboardServiceTest {
         @DisplayName("更新权限时应持久化策略并同步运行时权限")
         void updatePermissionsPersistsPolicyAndSyncsRuntimePermissions() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceAdmin, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator, SHARED_OBJECT_MAPPER);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
 
             AtomicReference<GovernancePolicy> storedPatch = new AtomicReference<>();
             when(governanceAdmin.getPatchForUpdate("ling1")).thenAnswer(invocation -> storedPatch.get() == null ? new GovernancePolicy() : storedPatch.get().copy());
@@ -184,7 +181,7 @@ class DashboardServiceTest {
         @DisplayName("更新调用治理时应保留资源权限并返回最新调用治理配置")
         void updateInvocationGovernanceShouldKeepCapabilitiesAndReturnUpdatedView() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceAdmin, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator, SHARED_OBJECT_MAPPER);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
 
             GovernancePolicy existingPatch = new GovernancePolicy();
             existingPatch.setCapabilities(Arrays.asList(
@@ -237,7 +234,7 @@ class DashboardServiceTest {
         @DisplayName("恢复状态更新时应触发生命周期引擎恢复")
         void updateStatusShouldTriggerRecover() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceAdmin, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator, SHARED_OBJECT_MAPPER);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
 
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool instancePool = mock(InstancePool.class);
@@ -245,7 +242,7 @@ class DashboardServiceTest {
             when(runtime.currentStatus()).thenReturn(RuntimeStatus.DEGRADED);
             lenient().when(runtime.getInstancePool()).thenReturn(instancePool);
             lenient().when(instancePool.getDefault()).thenReturn(null);
-            lenient().when(lingInfoConverter.toDTO(eq(runtime), eq(canaryRouter), eq(permissionService), any())).thenReturn(null);
+            lenient().when(lingInfoConverter.toDTO(eq(runtime), eq(permissionService), any())).thenReturn(null);
 
             service.updateStatus("ling1", RuntimeStatus.RECOVERING, "1.0.0");
 
@@ -262,7 +259,7 @@ class DashboardServiceTest {
         @DisplayName("卸载灵元时应返回结构化风险摘要")
         void uninstallLingShouldReturnStructuredRiskSummary() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceAdmin, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator, SHARED_OBJECT_MAPPER);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
             LeakRiskReport report = LeakRiskReport.riskDetected(
                     "ling1",
                     "1.0.0",
@@ -279,14 +276,13 @@ class DashboardServiceTest {
             assertEquals(LeakRiskLevel.RISK_DETECTED, result.getOverallRiskLevel());
             assertEquals(1, result.getReports().size());
             assertEquals("thread=worker-1", result.getReports().get(0).getDetails().get(0));
-            verify(canaryRouter).removeCanaryConfig("ling1");
         }
 
         @Test
         @DisplayName("按版本卸载时应返回对应版本的风险摘要")
         void uninstallLingVersionShouldReturnVersionScopedRiskSummary() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceAdmin, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator, SHARED_OBJECT_MAPPER);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
             LeakRiskReport report = LeakRiskReport.checkFailed(
                     "ling1",
                     "1.0.1",
@@ -303,7 +299,6 @@ class DashboardServiceTest {
             assertEquals("1.0.1", result.getVersion());
             assertEquals(LeakRiskLevel.CHECK_FAILED, result.getOverallRiskLevel());
             assertEquals(1, result.getReports().size());
-            verify(canaryRouter).removeCanaryConfig("ling1");
         }
     }
 }

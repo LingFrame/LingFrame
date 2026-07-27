@@ -8,7 +8,6 @@ import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingUninstallResult;
-import com.lingframe.core.router.CanaryRouter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -41,11 +40,10 @@ class DashboardLingOperationsTest {
     void shouldRemoveCanaryConfigAndRecordTimelineWhenUninstallingLing() {
         LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
         LingRepository lingRepository = mock(LingRepository.class);
-        CanaryRouter canaryRouter = mock(CanaryRouter.class);
         DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
         DashboardLingSourceResolver sourceResolver = mock(DashboardLingSourceResolver.class);
         DashboardLingOperations operations = new DashboardLingOperations(
-                lifecycleEngine, lingRepository, canaryRouter, eventStore, sourceResolver);
+                lifecycleEngine, lingRepository, null, eventStore, sourceResolver);
 
         LingUninstallResult result = LingUninstallResult.triggered("ling1", null, Collections.emptyList());
         when(lifecycleEngine.undeployWithReport("ling1")).thenReturn(result);
@@ -53,7 +51,6 @@ class DashboardLingOperationsTest {
         LingUninstallResult actual = operations.uninstallLing("ling1");
 
         assertEquals(result, actual);
-        verify(canaryRouter).removeCanaryConfig("ling1");
         assertEquals(1, eventStore.getEvents("ling1").size());
         assertEquals("DEAD", eventStore.getEvents("ling1").get(0).getType());
     }
@@ -63,11 +60,10 @@ class DashboardLingOperationsTest {
     void shouldReloadLingThroughSourceResolverAndLifecycleEngine() {
         LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
         LingRepository lingRepository = mock(LingRepository.class);
-        CanaryRouter canaryRouter = mock(CanaryRouter.class);
         DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
         DashboardLingSourceResolver sourceResolver = mock(DashboardLingSourceResolver.class);
         DashboardLingOperations operations = new DashboardLingOperations(
-                lifecycleEngine, lingRepository, canaryRouter, eventStore, sourceResolver);
+                lifecycleEngine, lingRepository, null, eventStore, sourceResolver);
 
         LingRuntime runtime = mock(LingRuntime.class);
         InstancePool instancePool = mock(InstancePool.class);
@@ -102,11 +98,10 @@ class DashboardLingOperationsTest {
     void shouldFailReloadWhenSourceCannotBeResolved() {
         LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
         LingRepository lingRepository = mock(LingRepository.class);
-        CanaryRouter canaryRouter = mock(CanaryRouter.class);
         DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
         DashboardLingSourceResolver sourceResolver = mock(DashboardLingSourceResolver.class);
         DashboardLingOperations operations = new DashboardLingOperations(
-                lifecycleEngine, lingRepository, canaryRouter, eventStore, sourceResolver);
+                lifecycleEngine, lingRepository, null, eventStore, sourceResolver);
 
         LingRuntime runtime = mock(LingRuntime.class);
         InstancePool instancePool = mock(InstancePool.class);

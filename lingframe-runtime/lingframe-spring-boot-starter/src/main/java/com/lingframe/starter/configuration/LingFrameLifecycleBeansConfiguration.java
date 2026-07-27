@@ -33,7 +33,7 @@ import com.lingframe.core.metrics.ProviderMetricsCollector;
 import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.pipeline.FilterRegistryConfig;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.core.router.ProviderWeightRouter;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.core.security.ApiOverrideVerifier;
 import com.lingframe.core.security.DangerousApiVerifier;
 import com.lingframe.core.spi.ContainerFactory;
