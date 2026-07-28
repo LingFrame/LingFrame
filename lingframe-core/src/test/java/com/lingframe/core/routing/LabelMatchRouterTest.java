@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -85,7 +86,8 @@ class LabelMatchRouterTest {
             context.setLabels(Collections.singletonMap("version", "v3"));
 
             LingInstance selected = router.route(candidates, context);
-            assertEquals("1.0.1", selected.getVersion());
+            // 所有候选与请求标签冲突（score=-1）时返回 null，让调用方当路由失败处理
+            assertNull(selected);
         }
     }
 

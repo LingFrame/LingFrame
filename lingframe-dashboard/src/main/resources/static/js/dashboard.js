@@ -306,7 +306,9 @@ createApp({
                 Object.keys(weightEditForm).forEach(k => delete weightEditForm[k]);
                 (data?.providers || []).forEach(p => {
                     // 用 _value 而非 v-model 以避免 null 输入框出现 "null" 文本
-                    weightEditForm[p.lingId] = p.overrideWeight === null || p.overrideWeight === undefined ? null : p.overrideWeight;
+                    // 键名用 providerKey（迭代期 lingId:version）与 saveProviderWeight 路径对齐
+                    const pk = p.version ? `${p.lingId}:${p.version}` : p.lingId;
+                    weightEditForm[pk] = p.overrideWeight === null || p.overrideWeight === undefined ? null : p.overrideWeight;
                 });
             } catch (e) {
                 if (seq !== routingDetailSeq) return;
@@ -324,9 +326,12 @@ createApp({
             await fetchRoutingDetail(id);
         };
 
-        const saveProviderWeight = async (lingId) => {
+        // providerKey 即路由键：迁移期裸 lingId，迭代期 lingId:version，与后端读路径键化一致
+        // 传错形会致权重落键错位、读路径静默丢失
+        const saveProviderWeight = async (lingId, version) => {
             if (!selectedContractId.value) return;
-            const raw = weightEditForm[lingId];
+            const providerKey = version ? `${lingId}:${version}` : lingId;
+            const raw = weightEditForm[providerKey];
             // null / 空字符串都视为「未覆盖」语义——但后端要求 weight 必填，这里把 null 转为 0
             // 真正想撤销覆盖应使用「回滚灵核 100%」按钮清空全部 override
             const weight = raw === null || raw === '' || raw === undefined ? 0 : Number(raw);
@@ -334,21 +339,22 @@ createApp({
                 showToast(t('contractRouting.weightHint'), 'error');
                 return;
             }
-            savingWeight[lingId] = true;
+            savingWeight[providerKey] = true;
             try {
                 const data = await api.post(
                     '/contract-routing/' + encodeURIComponent(selectedContractId.value) + '/weight',
-                    { lingId, weight }
+                    { providerKey, weight }
                 );
                 routingDetail.value = data;
                 // 保存成功后回写表单为生效的 overrideWeight，避免输入框残留旧值
-                const updated = (data?.providers || []).find(p => p.lingId === lingId);
-                weightEditForm[lingId] = updated ? updated.overrideWeight : weight;
+                const updated = (data?.providers || []).find(p =>
+                    (version ? p.lingId === lingId && p.version === version : p.lingId === lingId));
+                weightEditForm[providerKey] = updated ? updated.overrideWeight : weight;
                 showToast(t('toast.weightSaved'), 'success');
             } catch (e) {
                 showToast(t('toast.weightSaveFailed') + ': ' + e.message, 'error');
             } finally {
-                savingWeight[lingId] = false;
+                savingWeight[providerKey] = false;
             }
         };
 
@@ -373,7 +379,8 @@ createApp({
                     routingDetail.value = data;
                     // 同步表单：回滚后所有 overrideWeight 应为 null
                     (data?.providers || []).forEach(p => {
-                        weightEditForm[p.lingId] = p.overrideWeight === null || p.overrideWeight === undefined ? null : p.overrideWeight;
+                        const pk = p.version ? `${p.lingId}:${p.version}` : p.lingId;
+                        weightEditForm[pk] = p.overrideWeight === null || p.overrideWeight === undefined ? null : p.overrideWeight;
                     });
                     showToast(t('toast.rollbackDone'), 'success');
                 } catch (e) {
@@ -639,6 +646,7 @@ createApp({
             // 排空校验前置:从退出方候选活跃请求数判定 drainOk
             // 退出方候选由 migrationRecord.oldCandidate 携带(MIGRATING 时为灵核,ITERATING 时为旧灵元)
             const exitingCandidate = migrationRecord.value?.oldCandidate;
+            // exitingCandidate 漏 c 会让排空校验永久绕过（strict 模式 ReferenceError / sloppy 模式 undefined 致短路）
             const drainOk = !exitingCandidate || await checkDrainOk(exitingCandidate);
             if (!drainOk) {
                 showToast('退出方候选仍有活跃请求,无法确认相变(排空校验未通过)', 'error');

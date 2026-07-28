@@ -253,17 +253,21 @@ public class SimulateService {
             boolean isCanary = defaultInstance != null && targetVersion != null
                     && !targetVersion.equals(defaultInstance.getDefinition().getVersion());
 
-            String version = targetVersion != null ? targetVersion
-                    : (defaultInstance != null ? defaultInstance.getDefinition().getVersion() : "unknown");
+            // 灵核无版本概念：targetVersion == null 即路由落到灵核，报哨兵值 LINGCORE,
+            // 不可回退到 defaultInstance 的灵元版本——会与灵元路由混淆
+            String version = targetVersion != null ? targetVersion : "LINGCORE";
             String tag = isCanary ? "CANARY" : "STABLE";
 
             publishTrace(traceId, lingId,
                     String.format("→ Routed to: %s (%s)", version, tag), tag, 1);
 
-            // 活跃请求数从 LingHealthMetrics 读取（已下沉），无直读路径时返回 0
+            // 活跃请求数 = 各活跃实例在途请求数之和（LingInstance.activeRequests AtomicLong 聚合）
+            // 不可用 getInstancePool().getActiveInstances().size()——那是部署实例数（恒 1-2），非在途请求数
             int active = 0;
             try {
-                active = runtime.getInstancePool().getActiveInstances().size();
+                active = runtime.getInstancePool().getActiveInstances().stream()
+                        .mapToInt(inst -> (int) inst.getActiveRequestCount())
+                        .sum();
             } catch (Exception ignored) {
                 // 防御性兜底
             }

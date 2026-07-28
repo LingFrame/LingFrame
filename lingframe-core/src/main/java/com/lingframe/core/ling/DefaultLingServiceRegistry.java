@@ -225,11 +225,13 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         if (contractId == null || lingId == null) {
             return;
         }
+        // 迭代期同一 lingId 可能注册为多个 providerKey（lingId:v1 + lingId:v2），
+        // 全部匹配项均更新权重，不可仅改首个就 break——否则第二版本权重停滞，
+        // 与 registerProvider/unregisterProvider 的 providerKey 键化语义背离
         providerIndex.computeIfPresent(contractId, (key, list) -> {
             for (int i = 0; i < list.size(); i++) {
                 if (list.get(i).getLingId().equals(lingId)) {
                     list.set(i, list.get(i).withWeight(weight));
-                    break;
                 }
             }
             return list;

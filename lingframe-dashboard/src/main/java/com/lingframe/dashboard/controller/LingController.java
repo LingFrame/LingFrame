@@ -289,13 +289,18 @@ public class LingController {
             @PathVariable String contractId,
             @RequestParam String candidate) {
         try {
+            // 迭代期候选（lingId:version 格式）退出方与新版本同 lingId、共享 LingHealthMetrics 聚合计数，
+            // 新版本在途时聚合永 > 0、退出方无法排空确认——当前无 version-scoped active counter,
+            // 显式拒绝迭代候选,仅迁移期单版本候选可校验;后续补 version 计数后可放开
+            if (candidate.indexOf(':') > 0) {
+                return ApiResponse.error("迭代期候选暂不支持排空校验：无 version-scoped 活跃计数");
+            }
             // 命中 LingHealthMetrics 读取候选 provider 对应灵元的活跃请求数
-            // 候选键可能是 lingId 或 lingId:version,提取 lingId 部分查活跃计数
-            String lingId = candidate.indexOf(':') > 0
-                    ? candidate.substring(0, candidate.indexOf(':')) : candidate;
+            // 用 get 而非 getOrCreate,避兔在 GET 端点上懒建幻影 metrics 条目
+            String lingId = candidate;
             long active = 0;
             if (metricsCollector != null) {
-                LingHealthMetrics m = metricsCollector.getOrCreate(lingId);
+                LingHealthMetrics m = metricsCollector.get(lingId);
                 if (m != null) {
                     active = m.getActiveRequests().get();
                 }
@@ -333,8 +338,10 @@ public class LingController {
         if (migrationStateHolder == null) {
             return ApiResponse.ok(new MigrationPhaseDTO(contractId, MigrationPhase.CORE_EXCLUSIVE.name(), null, null));
         }
+        // 单读 PhaseRecord 后本地推导 phase，避免 getRecord + getPhase 双读间并发 confirmPhaseTransition
+        // 致 DTO 携带永不存在的 phase/candidate 组合（torn view）
         MigrationStateHolder.PhaseRecord rec = migrationStateHolder.getRecord(contractId);
-        MigrationPhase phase = migrationStateHolder.getPhase(contractId);
+        MigrationPhase phase = rec != null ? rec.getPhase() : MigrationPhase.CORE_EXCLUSIVE;
         MigrationPhaseDTO dto = new MigrationPhaseDTO(
                 contractId, phase.name(),
                 rec != null ? rec.getOldCandidate() : null,

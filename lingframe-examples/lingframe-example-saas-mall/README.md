@@ -47,8 +47,8 @@ lingframe-example-saas-mall
 
 | 字段 | 调用方向 | 候选 provider | 选中 |
 | --- | --- | --- | --- |
-| `SaasRefundController.refundPolicy` | 灵核 → 灵元 | `ling-refund` (LING, 0) 唯一 | ✅ `VipRefundPolicyImpl` |
-| `SaasAuthController.oauthAbility` | 灵核 → 灵元 | `ling-oauth` (LING, 0) 唯一 | ✅ `OAuthAbilityImpl` |
+| `SaasRefundController.refundPolicy` | 灵核 → 灵元 | `ling-refund` (weight=0) 唯一 | ✅ `VipRefundPolicyImpl` |
+| `SaasAuthController.oauthAbility` | 灵核 → 灵元 | `ling-oauth` (weight=0) 唯一 | ✅ `OAuthAbilityImpl` |
 | `SaasSeckillController.seckillAbility` | 灵核 → 灵元 | `ling-seckill` (weight=0) 唯一 | ✅ `SeckillAbilityImpl` |
 | `VipRefundPolicyImpl.saasOrderService` | 灵元 → 灵核 | `lingcore` (weight=100) 唯一 | ✅ `SaasOrderServiceImpl` |
 | `SeckillAbilityImpl.saasOrderService` | 灵元 → 灵核 | `lingcore` (weight=100) 唯一 | ✅ `SaasOrderServiceImpl` |

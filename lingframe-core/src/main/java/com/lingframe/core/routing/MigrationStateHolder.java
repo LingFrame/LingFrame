@@ -5,6 +5,8 @@ import com.lingframe.core.event.ProviderWeightChangedEvent;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -75,7 +77,7 @@ public class MigrationStateHolder {
      * @param contractId     契约 ID
      * @param oldCandidate   灵核 provider 键（如 {@code lingcore-app})
      * @param newCandidate   灵元 provider 键（裸 {@code lingId})
-     @throws RoutingArchitectureViolationException 非独占态发起迁移
+     * @throws RoutingArchitectureViolationException 非独占态发起迁移
      */
     public synchronized void startMigration(String contractId, String oldCandidate, String newCandidate) {
         Objects.requireNonNull(contractId, "contractId");
@@ -90,8 +92,8 @@ public class MigrationStateHolder {
                             + " current=" + current);
         }
         PhaseRecord next = new PhaseRecord(MigrationPhase.MIGRATING, oldCandidate, newCandidate);
-        phases.put(contractId, next);
         persist(contractId, next);
+        phases.put(contractId, next);
         log.info("Migration started: contract={} core={} ling={}", contractId, oldCandidate, newCandidate);
     }
 
@@ -118,8 +120,8 @@ public class MigrationStateHolder {
                             + " current=" + current);
         }
         PhaseRecord next = new PhaseRecord(MigrationPhase.ITERATING, oldCandidate, newCandidate);
-        phases.put(contractId, next);
         persist(contractId, next);
+        phases.put(contractId, next);
         log.info("Iteration started: contract={} old={} new={}", contractId, oldCandidate, newCandidate);
     }
 
@@ -151,8 +153,8 @@ public class MigrationStateHolder {
         // 两者均进入 LING_EXCLUSIVE 态；三元两分支返回同值是冗余,直接赋值消除歧义
         MigrationPhase next = MigrationPhase.LING_EXCLUSIVE;
         PhaseRecord nextRec = new PhaseRecord(next, rec.newCandidate, null);
-        phases.put(contractId, nextRec);
         persist(contractId, nextRec);
+        phases.put(contractId, nextRec);
         log.info("Phase transition confirmed: contract={} → {}", contractId, next);
     }
 
@@ -181,8 +183,8 @@ public class MigrationStateHolder {
         // ITERATING 命中保留旧灵元(oldCandidate)；三元两分支返回同值是冗余,直接赋值消除歧义
         String keepCandidate = rec.oldCandidate;
         PhaseRecord nextRec = new PhaseRecord(next, keepCandidate, null);
-        phases.put(contractId, nextRec);
         persist(contractId, nextRec);
+        phases.put(contractId, nextRec);
         log.info("Phase transition rolled back: contract={} → {} keep={}", contractId, next, keepCandidate);
     }
 
@@ -195,20 +197,26 @@ public class MigrationStateHolder {
      * @param lingId 被卸载灵元 ID
      */
     public synchronized void evict(String lingId) {
-        phases.entrySet().removeIf(e -> {
+        // 先持久化删除、成功后才内存移除：避免 store.delete 抛异常时出现
+        // 「磁盘已部分删除 / 内存仍存」的相反方向状态分裂
+        List<String> contractsToEvict = new ArrayList<>();
+        for (Map.Entry<String, PhaseRecord> e : phases.entrySet()) {
             PhaseRecord rec = e.getValue();
             // 培配候选键:优先按迭代期 lingId:version 命中,其次按迁移期裸 lingId 命中
             // 不用 startsWith 避免前缀碰撞(user-ling 命中卸载会误删 user-ling-v2 命中无关记录)
             boolean involved = matchesCandidate(rec.oldCandidate, lingId)
                     || matchesCandidate(rec.newCandidate, lingId);
             if (involved) {
-                log.info("Evicting migration record for ling={} contract={}", lingId, e.getKey());
                 if (store != null) {
                     store.delete(e.getKey());
                 }
+                contractsToEvict.add(e.getKey());
+                log.info("Evicting migration record for ling={} contract={}", lingId, e.getKey());
             }
-            return involved;
-        });
+        }
+        for (String contractId : contractsToEvict) {
+            phases.remove(contractId);
+        }
     }
 
     private void persist(String contractId, PhaseRecord rec) {

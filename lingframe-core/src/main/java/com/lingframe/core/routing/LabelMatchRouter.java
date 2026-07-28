@@ -49,13 +49,20 @@ public class LabelMatchRouter implements TrafficRouter {
             return doWeightedRoute(validCandidates);
         }
 
-        // 标签打分逻辑
-        return validCandidates.stream()
+        // 标签打分逻辑：先过滤不兼容候选（score = -1），再按最高分选实例
+        // 若所有候选均与请求标签冲突（过滤后为空），返回 null 让调用方当路由失败处理，
+        // 严禁回退到 validCandidates.get(0)——那是被评分逻辑显式标记为不兼容的实例
+        List<ScoredInstance> compatible = validCandidates.stream()
                 .map(inst -> new ScoredInstance(inst, calculateScore(inst.getLabels(), requestLabels)))
-                .filter(si -> si.getScore() >= 0) // 过滤掉不匹配的 (score = -1)
+                .filter(si -> si.getScore() >= 0)
+                .collect(java.util.stream.Collectors.toList());
+        if (compatible.isEmpty()) {
+            return null;
+        }
+        return compatible.stream()
                 .max(Comparator.comparingInt(si -> si.getScore()))
-                .map(si -> si.getInstance())
-                .orElse(validCandidates.get(0));
+                .map(ScoredInstance::getInstance)
+                .orElse(compatible.get(0).getInstance());
     }
 
     private LingInstance doWeightedRoute(List<LingInstance> candidates) {

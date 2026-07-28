@@ -2,6 +2,7 @@ package com.lingframe.dashboard.storage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.routing.ProviderWeightRouter;
 import lombok.extern.slf4j.Slf4j;
@@ -83,8 +84,24 @@ public class GovernanceConfigRestorer implements InitializingBean {
                             providerWeightRouter.setProviderWeight(
                                     String.valueOf(contractIdObj),
                                     String.valueOf(oldCandidateObj), oldWeight);
+                            hasPatch = true;
+                        } else if (percentObj != null && canaryVersionObj != null) {
+                            // 兼容旧 canary JSON：无 contractId/oldCandidate/newCandidate 三键,
+                            // 用 lingId 命中契约键、canaryVersion �命中新候选、灵核 baseline 命中旧候选,
+                            // percent 映为新候选权重、100-percent 映为灵核权重,避免重启后灰度切流静默丢失
+                            int newWeight = ((Number) percentObj).intValue();
+                            int oldWeight = 100 - newWeight;
+                            String newCandidate = String.valueOf(canaryVersionObj);
+                            String oldCandidate = LingCoreConstants.LINGCORE_LING_ID;
+                            providerWeightRouter.setProviderWeight(lingId, newCandidate, newWeight);
+                            providerWeightRouter.setProviderWeight(lingId, oldCandidate, oldWeight);
+                            log.warn("Legacy canary config restored as migration weights: lingId={}, newCandidate={}, oldCandidate=lingcore",
+                                    lingId, newCandidate);
+                            hasPatch = true;
+                        } else {
+                            // 不可恢复的旧格式（缺 percent 或 canaryVersion）:计数不增,告警可观测
+                            log.warn("Legacy canary/migration JSON unreadable, skipped: lingId={}", lingId);
                         }
-                        hasPatch = true;
                     } catch (Exception e) {
                         log.warn("Failed to restore migration configuration: lingId={}", lingId, e);
                     }

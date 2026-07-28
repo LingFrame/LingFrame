@@ -124,10 +124,21 @@ public class ContractRoutingService {
      * @param lingId     提供方灵元/灵核 ID
      * @param weight     新权重 0-100
      */
-    public void setProviderWeight(String contractId, String lingId, int weight) {
-        providerWeightRouter.setProviderWeight(contractId, lingId, weight);
-        log.info("[ContractRouting] Weight updated: contract=[{}], ling=[{}], weight=[{}]",
-                contractId, lingId, weight);
+    /**
+     * 设置某契约下指定 provider 的权重。
+     * <p>
+     * 入参 {@code providerKey} 必须与路由读路径键化一致——裸 {@code lingId}（迁移期）
+     * 或 {@code lingId:version}（迭代期），即 {@link ProviderDescriptor#providerKey()}。
+     * 传错形（如迭代期传裸 lingId）会致权重落键错位、读路径静默丢失。
+     *
+     * @param contractId  呑约 ID
+     * @param providerKey 提供方路由键（lingId 或 lingId:version）
+     * @param weight      新权重 0-100
+     */
+    public void setProviderWeight(String contractId, String providerKey, int weight) {
+        providerWeightRouter.setProviderWeight(contractId, providerKey, weight);
+        log.info("[ContractRouting] Weight updated: contract=[{}], provider=[{}], weight=[{}]",
+                contractId, providerKey, weight);
     }
 
     /**

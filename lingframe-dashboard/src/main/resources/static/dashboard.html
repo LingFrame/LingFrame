@@ -2357,16 +2357,16 @@
                                                             <td class="p-2 text-right font-mono t-text-sub">{{ p.registeredWeight }}</td>
                                                             <td class="p-2 text-right">
                                                                 <input type="number" min="0" max="100"
-                                                                    v-model.number="weightEditForm[p.lingId]"
+                                                                    v-model.number="weightEditForm[p.version ? (p.lingId + ':' + p.version) : p.lingId]"
                                                                     :placeholder="t('contractRouting.overridePlaceholder')"
                                                                     class="w-20 text-right t-bg-card border t-border rounded px-2 py-1 text-xs t-text focus:outline-none focus:border-blue-500">
                                                             </td>
                                                             <td class="p-2 text-right font-mono font-bold t-text">{{ p.effectiveWeight }}</td>
                                                             <td class="p-2 text-center">
-                                                                <button @click="saveProviderWeight(p.lingId)"
-                                                                    :disabled="savingWeight[p.lingId]"
+                                                                <button @click="saveProviderWeight(p.lingId, p.version)"
+                                                                    :disabled="savingWeight[p.version ? (p.lingId + ':' + p.version) : p.lingId]"
                                                                     class="px-2 py-1 text-[11px] rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40">
-                                                                    <span v-if="savingWeight[p.lingId]" class="spinner" style="width:10px;height:10px;border-width:1px;display:inline-block;"></span>
+                                                                    <span v-if="savingWeight[p.version ? (p.lingId + ':' + p.version) : p.lingId]" class="spinner" style="width:10px;height:10px;border-width:1px;display:inline-block;"></span>
                                                                     {{ t('contractRouting.save') }}
                                                                 </button>
                                                             </td>

@@ -63,17 +63,19 @@ public class ContractRoutingController {
     /**
      * 设置某契约下指定 provider 的权重。
      * <p>
-     * 请求体格式：{@code {"lingId": "user-ling", "weight": 30}}
+     * 请求体格式：{@code {"providerKey": "user-ling", "weight": 30}}<br>
+     * {@code providerKey} 即路由键——迁移期裸 {@code lingId}，迭代期 {@code lingId:version}，
+     * 与路由读路径键化一致；传错形会致权重落键错位、读路径静默丢失。
      */
     @PostMapping("/{contractId}/weight")
     public ApiResponse<ContractRoutingDTO> setProviderWeight(
             @PathVariable String contractId,
             @RequestBody Map<String, Object> body) {
         try {
-            String lingId = (String) body.get("lingId");
+            String providerKey = (String) body.get("providerKey");
             Object weightObj = body.get("weight");
-            if (lingId == null || lingId.isEmpty()) {
-                return ApiResponse.error("lingId 不能为空");
+            if (providerKey == null || providerKey.isEmpty()) {
+                return ApiResponse.error("providerKey 不能为空");
             }
             if (weightObj == null) {
                 return ApiResponse.error("weight 不能为空");
@@ -84,7 +86,7 @@ public class ContractRoutingController {
             if (weight < 0 || weight > 100) {
                 return ApiResponse.error("weight 必须是 0-100 的整数");
             }
-            contractRoutingService.setProviderWeight(contractId, lingId, weight);
+            contractRoutingService.setProviderWeight(contractId, providerKey, weight);
             return ApiResponse.ok("权重已更新", contractRoutingService.getContractRouting(contractId));
         } catch (NumberFormatException e) {
             return ApiResponse.error("weight 必须是 0-100 的整数");

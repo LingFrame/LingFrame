@@ -62,8 +62,8 @@ public class ProviderWeightRouter {
                 .put(providerKey, clamped);
 
         if (eventBus != null && (oldWeight == null || oldWeight != clamped)) {
-            eventBus.publish(new ProviderWeightChangedEvent(contractId, providerKey,
-                    oldWeight != null ? oldWeight : 0, clamped));
+            // oldWeight 为 null 表示首次覆盖，传 null 让消费方区分「从未覆盖」与「覆盖前为 0」
+            eventBus.publish(new ProviderWeightChangedEvent(contractId, providerKey, oldWeight, clamped));
         }
     }
 

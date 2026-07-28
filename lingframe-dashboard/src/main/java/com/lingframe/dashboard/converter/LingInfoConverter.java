@@ -111,10 +111,11 @@ public class LingInfoConverter {
             return (Boolean) val;
         }
         if (val instanceof Number) {
-            return ((Number) val).intValue() == 1;
+            // 与 DashboardLingSourceResolver.isCanary 对齐：非零即 canary，避免同实例身份判定分裂
+            return ((Number) val).intValue() != 0;
         }
-        String s = val.toString();
-        return "true".equalsIgnoreCase(s) || "1".equals(s);
+        // String 分支同样对齐 sibling：仅认 "true"，不认 "1"——保持 dashboard 单一真源
+        return "true".equalsIgnoreCase(String.valueOf(val));
     }
 
     /**
