@@ -15,7 +15,11 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 /**
- * 安全响应头 Filter。
+ * 安全响应头 Filter（jakarta 栈薄壳）。
+ * <p>
+ * 只负责把 {@link SecurityHeaders} 产出的头映射 setHeader 到响应。
+ *
+ * @author lingframe
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -25,25 +29,10 @@ public class SecurityHeadersFilter implements Filter {
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
-        HttpServletResponse httpResponse = (HttpServletResponse) response;
         HttpServletRequest httpRequest = (HttpServletRequest) request;
-
-        httpResponse.setHeader("X-Frame-Options", "SAMEORIGIN");
-        httpResponse.setHeader("X-Content-Type-Options", "nosniff");
-        httpResponse.setHeader("X-XSS-Protection", "1; mode=block");
-        if (httpRequest.isSecure()) {
-            httpResponse.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-        }
-        httpResponse.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-        httpResponse.setHeader("Content-Security-Policy",
-                "default-src 'self'; "
-                        + "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com; "
-                        + "style-src 'self' 'unsafe-inline' cdn.tailwindcss.com; "
-                        + "font-src 'self' data:; "
-                        + "img-src 'self' data:; "
-                        + "connect-src 'self'; "
-                        + "frame-ancestors 'self'");
-
+        HttpServletResponse httpResponse = (HttpServletResponse) response;
+        SecurityHeaders.buildHeaders(httpRequest.isSecure())
+                .forEach(httpResponse::setHeader);
         chain.doFilter(request, response);
     }
 }

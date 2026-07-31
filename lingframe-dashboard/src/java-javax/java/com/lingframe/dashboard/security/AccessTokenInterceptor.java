@@ -1,36 +1,32 @@
 package com.lingframe.dashboard.security;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 /**
- * 访问令牌拦截器。
+ * 访问令牌拦截器（javax 栈薄壳）。
+ * <p>
+ * 只负责 Servlet 适配与响应写出，业务逻辑由 {@link AccessTokenVerifier} 承载。
+ *
+ * @author lingframe
  */
-@Slf4j
-@RequiredArgsConstructor
 public class AccessTokenInterceptor implements HandlerInterceptor {
 
-    private final AccessTokenProperties properties;
+    private final AccessTokenVerifier verifier;
+
+    public AccessTokenInterceptor(AccessTokenProperties properties) {
+        this.verifier = new AccessTokenVerifier(properties);
+    }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception {
-        if (!properties.isEnabled()) {
-            return true;
+        SecurityDecision decision = verifier.check(new ServletRequestSnapshot(request));
+        if (!decision.isProceed()) {
+            ServletResponses.applyBody(decision, response);
         }
-        String token = request.getHeader("X-Access-Token");
-        if (properties.isValidToken(token)) {
-            return true;
-        }
-        log.warn("Access token verification failed: {} {}", request.getMethod(), request.getRequestURI());
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write(
-                "{\"success\":false,\"message\":\"Unauthorized: invalid or missing access token\"}");
-        return false;
+        return decision.isProceed();
     }
 }

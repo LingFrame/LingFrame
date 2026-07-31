@@ -1,44 +1,32 @@
 package com.lingframe.dashboard.security;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 /**
- * 只读模式拦截器。
+ * 只读模式拦截器（javax 栈薄壳）。
+ * <p>
+ * 只负责 Servlet 适配与响应写出，业务逻辑由 {@link ReadOnlyPolicy} 承载。
+ *
+ * @author lingframe
  */
-@Slf4j
-@RequiredArgsConstructor
 public class ReadOnlyInterceptor implements HandlerInterceptor {
 
-    private final ReadOnlyProperties properties;
+    private final ReadOnlyPolicy policy;
+
+    public ReadOnlyInterceptor(ReadOnlyProperties properties) {
+        this.policy = new ReadOnlyPolicy(properties);
+    }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception {
-        if (!properties.isEnabled()) {
-            return true;
+        SecurityDecision decision = policy.check(new ServletRequestSnapshot(request));
+        if (!decision.isProceed()) {
+            ServletResponses.applyBody(decision, response);
         }
-        String method = request.getMethod();
-        if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method)
-                || "OPTIONS".equalsIgnoreCase(method)) {
-            return true;
-        }
-        String uri = request.getRequestURI();
-        if (properties.getAllowedPaths() != null) {
-            for (String allowed : properties.getAllowedPaths()) {
-                if (uri.startsWith(allowed)) {
-                    return true;
-                }
-            }
-        }
-        log.warn("Write operation rejected in read-only mode: {} {}", method, uri);
-        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-        response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"success\":false,\"message\":\"当前为只读模式，写操作已禁用\"}");
-        return false;
+        return decision.isProceed();
     }
 }
