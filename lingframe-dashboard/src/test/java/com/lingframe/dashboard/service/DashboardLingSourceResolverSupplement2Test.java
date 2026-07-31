@@ -249,28 +249,48 @@ class DashboardLingSourceResolverSupplement2Test {
     class SelectStableInstanceSupplementTests {
 
         @Test
-        @DisplayName("所有实例均为灰度但无默认实例且活跃列表非空时应返回首个活跃实例")
-        void shouldReturnFirstActiveWhenAllCanaryAndNoDefault() {
+        @DisplayName("存在默认实例时应直接返回默认实例，不遍历活跃列表")
+        void shouldReturnDefaultWhenPresent() {
             DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(mock(LingFrameConfig.class));
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
             when(runtime.getInstancePool()).thenReturn(pool);
 
-            LingInstance canary1 = buildCanaryInstance("ling1", "v1");
-            LingInstance canary2 = buildCanaryInstance("ling1", "v2");
-            when(pool.getActiveInstances()).thenReturn(Arrays.asList(canary1, canary2));
-            when(pool.getDefault()).thenReturn(null);
+            LingInstance defaultInstance = buildMockInstance("ling1", "v1");
+            LingInstance other = buildMockInstance("ling1", "v2");
+            when(pool.getActiveInstances()).thenReturn(Arrays.asList(other, defaultInstance));
+            when(pool.getDefault()).thenReturn(defaultInstance);
 
             LingInstance result = resolver.selectStableInstance(runtime);
 
-            // 无非灰度实例，无默认，回退到首个活跃实例
+            // 默认实例优先短路返回，活跃列表顺序不影响结果
             assertNotNull(result);
             assertEquals("v1", result.getVersion());
         }
 
         @Test
-        @DisplayName("所有实例均为灰度但无默认实例且活跃列表为空时应返回 null")
-        void shouldReturnNullWhenAllCanaryNoDefaultNoActive() {
+        @DisplayName("无默认实例但活跃列表非空时应返回首个活跃实例")
+        void shouldReturnFirstActiveWhenNoDefault() {
+            DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(mock(LingFrameConfig.class));
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool pool = mock(InstancePool.class);
+            when(runtime.getInstancePool()).thenReturn(pool);
+
+            LingInstance first = buildMockInstance("ling1", "v1");
+            LingInstance second = buildMockInstance("ling1", "v2");
+            when(pool.getActiveInstances()).thenReturn(Arrays.asList(first, second));
+            when(pool.getDefault()).thenReturn(null);
+
+            LingInstance result = resolver.selectStableInstance(runtime);
+
+            // 无默认实例时兜底取活跃列表首个
+            assertNotNull(result);
+            assertEquals("v1", result.getVersion());
+        }
+
+        @Test
+        @DisplayName("无默认实例且活跃列表为空时应返回 null")
+        void shouldReturnNullWhenNoDefaultAndNoActive() {
             DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(mock(LingFrameConfig.class));
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
@@ -282,88 +302,11 @@ class DashboardLingSourceResolverSupplement2Test {
 
             assertNull(result);
         }
-
-        @Test
-        @DisplayName("实例的 definition 为 null 时应视为稳定实例返回")
-        void shouldTreatInstanceWithNullDefinitionAsStable() {
-            DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(mock(LingFrameConfig.class));
-            LingRuntime runtime = mock(LingRuntime.class);
-            InstancePool pool = mock(InstancePool.class);
-            when(runtime.getInstancePool()).thenReturn(pool);
-
-            LingInstance nullDefInstance = mock(LingInstance.class);
-            when(nullDefInstance.getDefinition()).thenReturn(null);
-            when(nullDefInstance.getVersion()).thenReturn("v1");
-
-            LingInstance stableInstance = buildStableInstance("ling1", "v2");
-            when(pool.getActiveInstances()).thenReturn(Arrays.asList(nullDefInstance, stableInstance));
-            when(pool.getDefault()).thenReturn(null);
-
-            LingInstance result = resolver.selectStableInstance(runtime);
-
-            // isCanary(null definition) 返回 false，null-def 实例被视为稳定实例并返回
-            assertNotNull(result);
-            assertEquals("v1", result.getVersion());
-        }
-
-        @Test
-        @DisplayName("应跳过灰度实例返回首个稳定实例")
-        void shouldSkipCanaryAndReturnStable() {
-            DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(mock(LingFrameConfig.class));
-            LingRuntime runtime = mock(LingRuntime.class);
-            InstancePool pool = mock(InstancePool.class);
-            when(runtime.getInstancePool()).thenReturn(pool);
-
-            LingInstance canary1 = buildCanaryInstance("ling1", "c1");
-            LingInstance canary2 = buildCanaryInstance("ling1", "c2");
-            LingInstance stable = buildStableInstance("ling1", "v1");
-            when(pool.getActiveInstances()).thenReturn(Arrays.asList(canary1, canary2, stable));
-            when(pool.getDefault()).thenReturn(null);
-
-            LingInstance result = resolver.selectStableInstance(runtime);
-
-            assertNotNull(result);
-            assertEquals("v1", result.getVersion());
-        }
-
-        @Test
-        @DisplayName("isCanary(instance) 当 instance 为 null 时应返回 false")
-        void shouldReturnFalseForNullInstance() {
-            DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(mock(LingFrameConfig.class));
-            LingRuntime runtime = mock(LingRuntime.class);
-            InstancePool pool = mock(InstancePool.class);
-            when(runtime.getInstancePool()).thenReturn(pool);
-
-            // 列表首个元素为 null，应被 isCanary(null) 判定为 false（即视为稳定实例）
-            LingInstance nullInstance = null;
-            when(pool.getActiveInstances()).thenReturn(Collections.singletonList(nullInstance));
-            when(pool.getDefault()).thenReturn(null);
-
-            // 由于 isCanary(null) 返回 false，null 实例会被当作稳定实例返回
-            LingInstance result = resolver.selectStableInstance(runtime);
-
-            assertNull(result);
-        }
     }
 
     // ==================== 辅助方法 ====================
 
-    private LingInstance buildCanaryInstance(String lingId, String version) {
-        LingDefinition definition = new LingDefinition();
-        definition.setId(lingId);
-        definition.setVersion(version);
-        Map<String, Object> props = new HashMap<>();
-        props.put("canary", true);
-        definition.setProperties(props);
-
-        LingInstance instance = mock(LingInstance.class);
-        when(instance.getDefinition()).thenReturn(definition);
-        when(instance.getVersion()).thenReturn(version);
-        when(instance.getLingId()).thenReturn(lingId);
-        return instance;
-    }
-
-    private LingInstance buildStableInstance(String lingId, String version) {
+    private LingInstance buildMockInstance(String lingId, String version) {
         LingDefinition definition = new LingDefinition();
         definition.setId(lingId);
         definition.setVersion(version);

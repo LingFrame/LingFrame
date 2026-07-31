@@ -23,7 +23,7 @@
 | `lingframe-api` | contracts, annotations, exceptions, security abstractions |
 | `lingframe-core` | pipeline, routing, runtime state, lifecycle orchestration, event bus, governance logic |
 | `lingframe-runtime` | Spring Boot integration: common `spring-boot-starter` + stack-specific `spring-boot2/3-starter` (typed Web Filter / Mapping); Bean interception |
-| `lingframe-dashboard` | governance control plane, simulation API, canary operations, SSE event stream; **single GAV**, Servlet differences in `java-javax` / `java-jakarta` matrix source sets |
+| `lingframe-dashboard` | governance control plane, simulation API, migration operations, SSE event stream; **single GAV**, Servlet differences in `java-javax` / `java-jakarta` matrix source sets |
 | `lingframe-infrastructure` | infrastructure proxy paths, currently storage and cache as implemented reference paths |
 | `lingframe-examples` | sample LingCore apps and demo lings |
 
@@ -98,7 +98,6 @@ The single-source-of-truth table:
 ContractProviderRoutingFilter   → L0 provider routing (contract FQSID, before metrics phase)
 TrafficMetricsFilter            → record request facts and early metrics / trace info
 MacroStateGuardFilter           → reject early when macro runtime state is unsafe
-CanaryRoutingFilter             → select target instance and handle canary routing
 InvocationPolicyPrefillFilter  → prefill effective policy intent into ctx.governance() before resilience
 ResilienceGovernanceFilter      → execute circuit breaking, rate limit, and other resilience decisions
 ContextIsolationFilter          → resolve target class, method, and ClassLoader isolation context
@@ -127,6 +126,36 @@ TerminalInvokerFilter           → execute real terminal call, generate simulat
 
 - SPI/dynamic filters must not occupy builtin reserved orders; pick non-reserved slots between core phases
 - Pipeline data flow must be traceable; no expanding string magic keys to carry core semantics
+
+**Three-Layer Physical Division of Routing**: `ContractProviderRoutingFilter` is internally split into three layers by physical fact, with one-way data flow and zero identity leakage between layers:
+
+```
+① Physical Safety Filter
+   - drop nodes whose status != READY (STOPPING/DYING are naturally unselectable)
+   - method-qualification filter (lingServiceRegistry.hasMethod drops nodes not covering the called method)
+   - output: physically-qualified Candidate list
+   - existing basis: filterByMethod + LingRuntime.getReadyInstances
+        ↓
+② Generalized Routing Selection
+   - sub-order: LabelMatchRouter exact label match first (return on hit) → fall back to ProviderWeightRouter N-way weighted probabilistic split
+   - effective weight: Dashboard runtime override > initial weight at registration
+   - capacity: naturally supports N candidates; when candidate count > 2, WARN once only on "count change", no exception thrown to force-interrupt business
+   - output: selected target Provider
+        ↓
+③ Native In-Flight Drain
+   - selected node runs enter() count +1, exit() count -1
+   - replaced/offline node entering STOPPING relies on awaitIdle() for physical drain
+   - existing basis: LingInstance.activeRequests + exit + awaitIdle
+```
+
+Inter-layer physical laws:
+
+| Law | Content | Basis |
+| :-- | :-- | :-- |
+| One-way data flow | Layer 1 output → Layer 2 input → Layer 2 output → Layer 3 takeover | avoid bidirectional coupling loops |
+| Zero identity leakage between layers | no layer judges named identity like "LingCore vs Ling" or "stable vs canary"; it only reads `weight` + `labels` + `version` + `READY` predicates | SPI purity constraint |
+| Physical safety precedes routing | Layer 1 is the precondition of Layer 2 — non-READY or method-unqualified nodes never enter selection | JVM physical fact: STOPPING nodes are unselectable |
+| Routing vs drain division of labor | routing only "picks one among READY nodes"; unload drain is physically owned by `LingInstance` | JVM physical law: unload without drain leaks |
 
 ### 4. Shared API: Process-Level Public Contract
 
@@ -205,7 +234,7 @@ Parent ClassLoader (eco packages, injected by runtime; core does not bind Spring
 **Reload**:
 
 - first deploy a replacement instance on the side
-- preserve the original instance's default/canary roles and labels
+- preserve the original instance's default roles and labels
 - traffic shift to the new instance
 - unload the old instance only after the new instance is ready
 

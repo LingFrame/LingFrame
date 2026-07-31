@@ -131,7 +131,7 @@ public class ContractRoutingService {
      * 或 {@code lingId:version}（迭代期），即 {@link ProviderDescriptor#providerKey()}。
      * 传错形（如迭代期传裸 lingId）会致权重落键错位、读路径静默丢失。
      *
-     * @param contractId  呑约 ID
+     * @param contractId  契约 ID
      * @param providerKey 提供方路由键（lingId 或 lingId:version）
      * @param weight      新权重 0-100
      */

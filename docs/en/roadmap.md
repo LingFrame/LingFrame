@@ -53,7 +53,7 @@ Core Capabilities:
 - ✅ Permission control (`@RequiresPermission`)
 - ✅ Security Auditing (`@Auditable`)
 - ✅ Full-chain tracing (`LingCallContext`)
-- ✅ Canary routing (`CanaryRouter`)
+- ✅ Provider weight routing (`ProviderWeightRouter`, identity-free N-way weight routing)
 - ✅ Circuit breakers (`SlidingWindowCircuitBreaker`)
 - ✅ Rate limiting (`TokenBucketRateLimiter`)
 - ✅ Timeout constraints & Fallbacks (Integrated within `SmartServiceProxy`)

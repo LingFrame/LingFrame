@@ -11,7 +11,7 @@
 
 1. [根 README](../../README.md) — 适不适合我、大概多快、怎么跑  
 2. [最短上手](../../QUICK_START.md) — 命令细节  
-3. [示例说明](../../lingframe-examples/zh-CN/README.md) — 入门线 / 商城演进线  
+3. [示例说明](../../lingframe-examples/README.md) — 入门线 / 商城演进线  
 4. 真要接到自己项目时，再看下面“接入与开发”
 
 ---
@@ -48,7 +48,7 @@
 | [业务灵元开发](ling-development.md) | 怎么写一个灵元 |
 | [Shared API 规范](shared-api-guidelines.md) | 共用接口契约怎么放、怎么演进 |
 | [基础设施开发](infrastructure-development.md) | 数据库 / 缓存等代理路径 |
-| [saas-mall 说明](../../lingframe-examples/lingframe-example-saas-mall/zh-CN/README.md) | 商城演进对照 |
+| [saas-mall 说明](../../lingframe-examples/lingframe-example-saas-mall/README.md) | 商城演进对照 |
 | [生产配置清单](production-hardening.md) | 上线前配置 |
 
 ---

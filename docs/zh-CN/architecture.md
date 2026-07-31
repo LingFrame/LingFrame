@@ -23,7 +23,7 @@
 | `lingframe-api` | 协约、注解、异常、安全抽象 |
 | `lingframe-core` | Pipeline、路由、运行时状态、生命周期编排、事件总线、治理逻辑 |
 | `lingframe-runtime` | Spring Boot 集成：公共 `spring-boot-starter` + 栈专属 `spring-boot2/3-starter`（类型化 Web Filter / Mapping）；Bean 拦截 |
-| `lingframe-dashboard` | 治理控制面、模拟 API、灰度操作、SSE 事件流；**单 GAV**，Servlet 差异在 `java-javax` / `java-jakarta` 矩阵源码集 |
+| `lingframe-dashboard` | 治理控制面、模拟 API、迁移操作、SSE 事件流；**单 GAV**，Servlet 差异在 `java-javax` / `java-jakarta` 矩阵源码集 |
 | `lingframe-infrastructure` | 基础设施代理路径，目前以存储与缓存为已实现参考路径 |
 | `lingframe-examples` | 示例灵核应用与演示灵元 |
 
@@ -98,7 +98,6 @@
 ContractProviderRoutingFilter   → L0 provider 路由（契约式 FQSID，在指标阶段之前）
 TrafficMetricsFilter            → 记录请求事实与早期指标、追踪信息
 MacroStateGuardFilter           → 当宏观运行时状态不安全时提前拒绝请求
-CanaryRoutingFilter             → 选择目标实例并处理灰度路由
 InvocationPolicyPrefillFilter  → 在弹性治理前把有效策略意图预填入 ctx.governance()
 ResilienceGovernanceFilter      → 执行熔断、限流等韧性治理决策
 ContextIsolationFilter          → 解析目标类、方法与 ClassLoader 隔离上下文
@@ -127,6 +126,36 @@ TerminalInvokerFilter           → 执行真实终端调用、生成模拟结�
 
 - SPI/动态过滤器不得占用内置保留 order，须选择核心阶段之间的非保留序号
 - Pipeline 数据流动必须可追溯，禁止扩大字符串魔术键承载核心语义
+
+**路由三层物理分工**：`ContractProviderRoutingFilter` 内部按物理事实分三层，层间单向数据流、零身份泄漏：
+
+```
+① 物理安全过滤层
+   - 自动剔除 status != READY 的节点（STOPPING/DYING 天然不可选）
+   - 方法资格过滤（lingServiceRegistry.hasMethod，剔除未覆盖方法的节点）
+   - 输出：物理合格 Candidate 列表
+   - 现有底子：filterByMethod + LingRuntime.getReadyInstances
+        ↓
+② 泛化选路计算层
+   - 子顺序：先 LabelMatchRouter 标签精确匹配（命中即返）→ 退化到 ProviderWeightRouter N 元权重概率分流
+   - 有效权重：Dashboard 运行期覆盖 > 注册时初始 weight
+   - 容量：天然支持 N 个候选，候选数 > 2 时仅「候选数变化」时 WARN 一次，不抛异常强打断业务
+   - 输出：选中目标 Provider
+        ↓
+③ 原生引用计数与排空防护
+   - 选中节点执行 enter() 计数 +1，exit() 计数 -1
+   - 被替换/下线节点进入 STOPPING 时，依托 awaitIdle() 进行物理排空
+   - 现有底子：LingInstance.activeRequests + exit + awaitIdle
+```
+
+层间物理定律：
+
+| 定律 | 内容 | 依据 |
+| :-- | :-- | :-- |
+| 单向数据流 | 第一层输出 → 第二层输入 → 第二层输出 → 第三层接管 | 避免双向耦合死循环 |
+| 层间零身份泄漏 | 任一层不判「灵核 vs 灵元」「稳定 vs 金丝雀」具名身份，只认 `weight` + `labels` + `version` + `READY` 谓词 | SPI 纯洁性约束 |
+| 物理安全先于选路 | 第一层是第二层的前提——非 READY 或方法资格不过的节点不进选路 | JVM 物理事实：STOPPING 节点不可选 |
+| 路由与排空分工 | 路由只负责「在 READY 节点中选一个」；卸载排空由 `LingInstance` 物理接管 | JVM 物理定律：不排空卸载必泄露 |
 
 ### 4. Shared API：进程级公共契约
 
@@ -205,7 +234,7 @@ LingClassLoader（灵元业务类，Child-First）
 **重载**：
 
 - 先旁路部署一个替代实例
-- 保留原实例的 default/canary 角色与 labels
+- 保留原实例的 default 角色与 labels
 - 切流到新实例
 - 在新实例 ready 后再卸载旧实例
 

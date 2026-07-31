@@ -11,7 +11,7 @@ Shorter "does it fit me + run it" lives in the root [README.md](../../README.en.
 
 1. [Root README](../../README.en.md) — fit, rough cost, how to run  
 2. [Shortest path](../../QUICK_START.en.md) — commands  
-3. [Examples](../../lingframe-examples/README.en.md) — starter vs legacy tracks  
+3. [Examples](../../lingframe-examples/en/README.en.md) — starter vs legacy tracks  
 4. Only then open "Adopt & develop" if you integrate for real  
 
 ---
@@ -48,7 +48,7 @@ After boot: ling list → one real request → skim monitor/governance.
 | [Ling development](ling-development.md) | Write a business ling |
 | [Shared API guidelines](shared-api-guidelines.md) | Shared contracts |
 | [Infrastructure development](infrastructure-development.md) | DB / cache proxy paths |
-| [saas-mall README](../../lingframe-examples/lingframe-example-saas-mall/README.en.md) | Legacy gradual migration |
+| [saas-mall README](../../lingframe-examples/lingframe-example-saas-mall/README.md) | Legacy gradual migration |
 | [Production hardening](production-hardening.md) | Before production |
 
 ---

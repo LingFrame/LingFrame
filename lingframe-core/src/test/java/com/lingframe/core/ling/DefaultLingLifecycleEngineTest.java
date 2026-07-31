@@ -345,6 +345,70 @@ class DefaultLingLifecycleEngineTest {
         runtimeCoordinator.stop();
     }
 
+    @Test
+    @DisplayName("替换默认实例时应把旧默认实例移送濒死队列，不应成为孤儿引用")
+    void replacingDefaultInstanceShouldMoveOldOneToDyingQueue() throws Exception {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, runtimeCoordinator);
+        InstanceCoordinator coordinator = new InstanceCoordinator(eventBus);
+
+        runtimeCoordinator.register("ling1");
+        LingRuntime runtime = new LingRuntime(
+                "ling1",
+                LingRuntimeConfig.defaults(),
+                eventBus,
+                coordinator,
+                runtimeCoordinator);
+
+        // 先部署一个默认实例 v1.0.0
+        LingInstance v1 = createReadyInstance("ling1", "1.0.0", coordinator);
+        runtime.getInstancePool().addInstance(v1, true);
+
+        // 再部署一个新默认实例 v2.0.0：通过反射调用 publishReadyInstance 触发旧默认移送逻辑
+        // publishReadyInstance 是 private，直接调 pool.addInstance 不会触发修复后的移送
+        LingInstance v2 = createReadyInstance("ling1", "2.0.0", coordinator);
+        invokePublishReady(engine, runtime, v2, true);
+
+        // 旧默认 v1 应该已进入濒死队列（isDying 为真）
+        assertTrue(v1.isDying(),
+                "被替换的旧默认实例应被 moveToDying 推进到 STOPPING，而非成为孤儿引用");
+        // 新默认应为 v2
+        assertEquals(v2, runtime.getInstancePool().getDefault());
+        // 濒死队列计数应至少 1
+        assertTrue(runtime.getInstancePool().getDyingCount() >= 1,
+                "旧默认实例应计入 dyingCount，使排空统计可观测");
+
+        runtimeCoordinator.stop();
+    }
+
+    private void invokePublishReady(DefaultLingLifecycleEngine engine, LingRuntime runtime,
+                                    LingInstance instance, boolean isDefault) throws Exception {
+        java.lang.reflect.Method m = DefaultLingLifecycleEngine.class.getDeclaredMethod(
+                "publishReadyInstance", LingRuntime.class, LingInstance.class, boolean.class);
+        m.setAccessible(true);
+        m.invoke(engine, runtime, instance, isDefault);
+    }
+
+    private LingInstance createReadyInstance(String lingId, String version, InstanceCoordinator coordinator) {
+        LingContainer container = mock(LingContainer.class);
+        when(container.isActive()).thenReturn(true);
+        when(container.getClassLoader()).thenReturn(getClass().getClassLoader());
+
+        LingDefinition definition = new LingDefinition();
+        definition.setId(lingId);
+        definition.setVersion(version);
+        definition.setMainClass("demo.Main");
+
+        LingInstance instance = new LingInstance(container, definition, new EventBus());
+        coordinator.prepare(instance);
+        coordinator.start(instance);
+        coordinator.markReady(instance);
+        return instance;
+    }
+
     private DefaultLingLifecycleEngine createMinimalEngine(EventBus eventBus, RuntimeCoordinator runtimeCoordinator) {
         return createMinimalEngine(eventBus, runtimeCoordinator, null, null, null);
     }

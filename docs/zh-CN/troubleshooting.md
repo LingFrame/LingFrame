@@ -246,23 +246,28 @@ LingInvocationException: Call rejected by governance
 
 **排查：**
 
-1. 检查灰度配置：
-```yaml
-# ling.yml 中
-governance:
-  canary:
-    enabled: true
-    weight: 30  # 30% 流量
+1. 检查权重路由配置——金丝雀已收敛为「按版本权重分流」，不再有 `governance.canary` yaml 配置。通过 Dashboard API 查询当前契约下 provider 权重：
+
+```bash
+curl http://localhost:8888/lingframe/dashboard/contract-routing/{contractId}
 ```
 
-2. 检查实例标签：
+若需调整，下发运行期权重覆盖：
+
 ```bash
-grep "labels\|canary" logs/lingframe.log
+curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/{contractId}/weight \
+  -H "Content-Type: application/json" \
+  -d '{"providerKey": "user-ling:1.1.0", "weight": 30}'
+```
+
+2. 检查实例标签（金丝雀标记应放在 `labels` / `properties`，不再进路由决策链）：
+```bash
+grep "labels\|ProviderWeightRouter" logs/lingframe.log
 ```
 
 3. 检查路由策略：
 ```bash
-grep "CanaryRouting\|LabelMatchRouter" logs/lingframe.log
+grep "ContractProviderRouting\|LabelMatchRouter\|ProviderWeightRouter" logs/lingframe.log
 ```
 
 ---

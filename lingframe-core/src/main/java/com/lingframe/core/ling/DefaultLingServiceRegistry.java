@@ -177,13 +177,7 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
                     return list;
                 }
             }
-            // 二元候选硬约束：注册第 3 个 provider 时立即快速失败
-            if (list.size() >= 2) {
-                throw new RoutingArchitectureViolationException(
-                        "Routing layer accepts at most 2 candidate providers, contract=" + contractId
-                                + " existing=" + list.size() + " reject=" + providerKey);
-            }
-            // 新条目
+            // 新条目：支持多 Provider 注册
             list.add(descriptor);
             return list;
         });

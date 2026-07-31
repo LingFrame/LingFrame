@@ -267,44 +267,4 @@ class LingInfoConverterSupplementTest {
             assertTrue(dto.getPermissions().isCacheRead());
         }
     }
-
-    // ==================== isCanary 字符串分支 ====================
-
-    @Nested
-    @DisplayName("isCanary 字符串识别")
-    class CanaryStringTests {
-
-        @Test
-        @DisplayName("canary 属性为字符串 'true' 时应识别为 canary")
-        void shouldRecognizeStringTrueAsCanary() {
-            LingRuntime runtime = mock(LingRuntime.class);
-            InstancePool pool = mock(InstancePool.class);
-            PermissionService permSvc = mock(PermissionService.class);
-            EventBus eventBus = mock(EventBus.class);
-
-            when(runtime.getLingId()).thenReturn("ling1");
-            when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
-            when(runtime.getInstancePool()).thenReturn(pool);
-            when(runtime.getInstalledAt()).thenReturn(123L);
-            // router 已删除，路由层去身份化
-
-            LingDefinition def = new LingDefinition();
-            def.setId("ling1");
-            def.setVersion("2.0.0");
-            Map<String, Object> props = new HashMap<String, Object>();
-            props.put("canary", "true"); // 字符串而非 boolean
-            def.setProperties(props);
-            LingContainer container = mock(LingContainer.class);
-            when(container.isActive()).thenReturn(true);
-            LingInstance instance = new LingInstance(container, def, eventBus);
-
-            when(pool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
-            when(pool.getDefault()).thenReturn(instance);
-
-            LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, null);
-
-            assertEquals(1, dto.getVersionDetails().size());
-            assertTrue(dto.getVersionDetails().get(0).getIsCanary());
-        }
-    }
 }

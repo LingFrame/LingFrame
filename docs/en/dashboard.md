@@ -6,7 +6,7 @@ The current codebase already provides a viable backend governance entry point co
 
 - Ling lifecycle operations
 - Governance patches and permission updates
-- Canary releases 
+- Gray releases 
 - Simulation testing
 - Metrics and health snapshots
 - SSE streaming based on monitoring events
@@ -23,7 +23,7 @@ The significance of the Dashboard is not just "having an admin page," but that i
 | **Runtime Control** | Adjust runtime state through `ACTIVE`, `INACTIVE` and removal flows |
 | **Governance Patches** | Query and update governance strategy patches |
 | **Permission Governance** | Update DB/Cache permissions and IPC capability authorizations |
-| **Canary Releases** | Configure canary ratios and canary version routing |
+| **Gray Releases** | Configure gray ratios and gray version routing |
 | **Traffic Statistics** | View total requests, version routing split, active requests, and statistic window start |
 | **Simulation Testing** | Resource simulation, IPC simulation, stress test routing, and dev/prod mode toggling |
 | **Metrics & Health** | JVM metrics, single-ling health snapshot, and holistic health snapshots |
@@ -179,18 +179,18 @@ Token is sent via the `X-Access-Token` header only.
 | POST | `/lingframe/dashboard/lings/{lingId}/reload` | Hot-reload in dev mode |
 | POST | `/lingframe/dashboard/lings/{lingId}/status` | Update the ling's runtime state |
 
-### Canary Releases
+### Gray Releases
 
 | Method | Endpoint | Description |
 | :-- | :-- | :-- |
-| POST | `/lingframe/dashboard/lings/{lingId}/canary` | Update canary ratios and target version |
+| POST | `/lingframe/dashboard/lings/{lingId}/gray` | Update gray ratios and target version |
 
 Example body:
 
 ```json
 {
   "percent": 10,
-  "canaryVersion": "2.0.0"
+  "grayVersion": "2.0.0"
 }
 ```
 
@@ -251,12 +251,12 @@ curl http://localhost:8888/lingframe/dashboard/lings
 curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/reload
 ```
 
-### Configure Canary Release
+### Configure Gray Release
 
 ```bash
-curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
+curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/gray \
   -H "Content-Type: application/json" \
-  -d '{"percent": 20, "canaryVersion": "2.0.0"}'
+  -d '{"percent": 20, "grayVersion": "2.0.0"}'
 ```
 
 ## Need to Know

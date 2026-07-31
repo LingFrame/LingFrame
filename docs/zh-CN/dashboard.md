@@ -179,20 +179,22 @@ Token 只走 Header：`X-Access-Token`。
 | POST | `/lingframe/dashboard/lings/{lingId}/reload` | 开发态热重载 |
 | POST | `/lingframe/dashboard/lings/{lingId}/status` | 更新灵元运行时状态 |
 
-### 灰度发布
+### 权重路由
 
 | 方法 | 端点 | 说明 |
 | :-- | :-- | :-- |
-| POST | `/lingframe/dashboard/lings/{lingId}/canary` | 更新灰度比例与灰度版本 |
+| POST | `/lingframe/dashboard/contract-routing/{contractId}/weight` | 设置某契约下指定 provider 的权重 |
 
 请求体示例：
 
 ```json
 {
-  "percent": 10,
-  "canaryVersion": "2.0.0"
+  "providerKey": "order-ling",
+  "weight": 20
 }
 ```
+
+> `providerKey` 即路由键——迁移期裸 `lingId`，迭代期 `lingId:version`，与路由读路径键化一致。`weight` 为 0-100 整数；Dashboard 下发后立即覆盖 `ProviderWeightRouter` 内的运行期权重，IPC 与 Web 治理链同时生效。
 
 ### 治理规则
 
@@ -251,12 +253,12 @@ curl http://localhost:8888/lingframe/dashboard/lings
 curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/reload
 ```
 
-### 配置灰度发布
+### 配置权重路由
 
 ```bash
-curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
+curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/order-ling/weight \
   -H "Content-Type: application/json" \
-  -d '{"percent": 20, "canaryVersion": "2.0.0"}'
+  -d '{"providerKey": "order-ling", "weight": 20}'
 ```
 
 ## 注意事项

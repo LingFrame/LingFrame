@@ -822,13 +822,15 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/user-ling/reload
 
 Canary release:
 
-> Canary routes a portion of traffic to a designated ling version or instance.
+> Canary routes a portion of traffic to a designated ling version or instance—by nature it is per-version weight splitting, a special case (N=2) of `ProviderWeightRouter` N-way weights.
 
 ```bash
-curl -X POST http://localhost:8888/lingframe/dashboard/lings/user-ling/canary \
+curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/user-ling/weight \
   -H "Content-Type: application/json" \
-  -d '{"percent": 20, "canaryVersion": "1.1.0"}'
+  -d '{"providerKey": "user-ling:1.1.0", "weight": 20}'
 ```
+
+> `providerKey` is the routing key—bare `lingId` during migration, `lingId:version` during iteration, consistent with the read-path keying. `weight` is an integer 0-100; once the Dashboard pushes it, the runtime weight in `ProviderWeightRouter` is overridden immediately and takes effect on both IPC and Web governance chains.
 
 Traffic stats:
 

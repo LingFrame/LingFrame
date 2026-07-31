@@ -364,7 +364,7 @@ class ObservabilityClosedLoopIntegrationTest {
         Iterator<JsonNode> iterator = ling.path("versionDetails").elements();
         while (iterator.hasNext()) {
             JsonNode version = iterator.next();
-            if (version.path("isCanary").asBoolean(false)) {
+            if (!version.path("isDefault").asBoolean(false)) {
                 return version.path("version").asText(null);
             }
         }

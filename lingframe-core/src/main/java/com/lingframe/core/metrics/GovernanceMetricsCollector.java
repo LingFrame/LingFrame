@@ -131,22 +131,25 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
             snapshot.setCpuBudgetExceededCount(snapshot.getCpuBudgetExceededCount() + versionSnapshot.getCpuBudgetExceededCount());
             snapshot.setEstimatedHeapDeltaBytes(Math.max(snapshot.getEstimatedHeapDeltaBytes(), versionSnapshot.getEstimatedHeapDeltaBytes()));
             snapshot.setMemoryBudgetExceededCount(snapshot.getMemoryBudgetExceededCount() + versionSnapshot.getMemoryBudgetExceededCount());
-            snapshot.setCpuBudgetMsPerMinute(sumNullable(snapshot.getCpuBudgetMsPerMinute(), versionSnapshot.getCpuBudgetMsPerMinute()));
-            snapshot.setMemoryBudgetMb(sumNullable(snapshot.getMemoryBudgetMb(), versionSnapshot.getMemoryBudgetMb()));
+            // 预算上限字段应取最大值而非求和：上限是多版本共享的容量边界，
+            // 求和会得出一个不存在意义的加和值，误判预算超支。
+            // 与同方法 estimatedHeapDeltaBytes 取 max 的语义对齐。
+            snapshot.setCpuBudgetMsPerMinute(maxNullable(snapshot.getCpuBudgetMsPerMinute(), versionSnapshot.getCpuBudgetMsPerMinute()));
+            snapshot.setMemoryBudgetMb(maxNullable(snapshot.getMemoryBudgetMb(), versionSnapshot.getMemoryBudgetMb()));
             timestamp = Math.max(timestamp, versionSnapshot.getTimestamp());
         }
         snapshot.setTimestamp(timestamp > 0 ? timestamp : System.currentTimeMillis());
         return snapshot;
     }
 
-    private Integer sumNullable(Integer left, Integer right) {
+    private Integer maxNullable(Integer left, Integer right) {
         if (left == null) {
             return right;
         }
         if (right == null) {
             return left;
         }
-        return left + right;
+        return Math.max(left, right);
     }
 
     private String versionKey(String lingId, String version) {

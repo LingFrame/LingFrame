@@ -37,7 +37,6 @@ public class LingInfoDTO {
         private String version;
         private String status;
         private Boolean isDefault;
-        private Boolean isCanary;
         private int trafficWeight; // 这个版本承载的流量占比 0-100
     }
 

@@ -465,7 +465,6 @@ class LingControllerSupplementTest {
             LingInfoDTO.VersionInfo versionInfo = LingInfoDTO.VersionInfo.builder()
                     .version("1.0.0")
                     .isDefault(true)
-                    .isCanary(false)
                     .trafficWeight(100)
                     .build();
             LingInfoDTO.InvocationGovernance gov = LingInfoDTO.InvocationGovernance.builder()
@@ -496,7 +495,6 @@ class LingControllerSupplementTest {
             assertEquals("ling1", row.getLingId());
             assertEquals("1.0.0", row.getVersion());
             assertTrue(row.isDefault());
-            assertFalse(row.isCanary());
             assertEquals(Integer.valueOf(1000), row.getTimeoutMs());
             assertEquals(Integer.valueOf(100), row.getRateLimitPerSecond());
         }

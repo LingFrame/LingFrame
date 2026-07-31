@@ -16,7 +16,7 @@ import java.util.List;
  * <ul>
  *   <li>方法名跟随 {@code LingRuntime} 既有命名（如 {@code currentStatus()} 而非 {@code getStatus()}），
  *       使 {@code LingRuntime implements RoutableTarget} 零逻辑改动</li>
- *   <li>灵核相关方法（如 {@code isCanaryTarget}）下沉到接口，
+ *   <li>灵核与灵元统一抽象，
  *       避免 Pipeline 直接调 {@code LingRuntime.getInstancePool()} 等 LingRuntime 独有方法</li>
  * </ul>
  */
@@ -52,17 +52,5 @@ public interface RoutableTarget {
      * 灵核永远返回 true。
      */
     boolean isAvailable();
-
-    /**
-     * 判断给定实例是否为 canary（灰度）实例。
-     * <p>
-     * 下沉到接口避免 Pipeline 直接调 {@code LingRuntime.getInstancePool().getDefault()}。
-     * <ul>
-     *   <li>灵元实现：{@code return target != instancePool.getDefault();}</li>
-     *   <li>灵核实现：{@code return false}（灵核只有单例，无 canary 概念）</li>
-     * </ul>
-     *
-     * @param target 待判定的实例
-     */
-    boolean isCanaryTarget(LingInstance target);
 }
+

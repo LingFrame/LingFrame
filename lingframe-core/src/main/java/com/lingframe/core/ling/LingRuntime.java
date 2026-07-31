@@ -108,21 +108,5 @@ public class LingRuntime implements RoutableTarget {
                 .filter(LingInstance::isReady)
                 .collect(Collectors.toList());
     }
-
-    /**
-     * 判断给定实例是否为 canary（灰度）实例。
-     * <p>
-     * 路由升维：审计逻辑下沉到接口实现。
-     * 灵元的 canary 判定：与 InstancePool 的默认（stable）实例不同的即为 canary。
-     * 避免 Pipeline 直接调 {@code getInstancePool().getDefault()}——这是 LingRuntime 独有方法，
-     * 灵核 {@code LingCoreRoutableTarget} 没有 InstancePool，无法走同一路径。
-     */
-    @Override
-    public boolean isCanaryTarget(LingInstance target) {
-        if (target == null) {
-            return false;
-        }
-        LingInstance defaultInstance = instancePool.getDefault();
-        return target != defaultInstance;
-    }
 }
+

@@ -12,6 +12,7 @@ import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.routing.ContractProviderRoutingFilter;
+import com.lingframe.core.routing.InstanceRoutingFilter;
 import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.LingServiceInvoker;
@@ -98,7 +99,9 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
                 serviceRegistry, lingRepository, weightRouter, trafficRouter);
 
         MacroStateGuardFilter stateGuard = new MacroStateGuardFilter(lingRepository);
-        // CanaryRoutingFilter 已删除：路由层由 ContractProviderRoutingFilter + ProviderWeightRouter 完成
+        // L1 实例级路由：承接 L0 provider 路由已设置的 ctx.runtime，从 READY 实例池选出具体实例；
+        // 补全 ROUTING 阶段，与 ContractProviderRoutingFilter 分层独立（provider 策略 / instance 策略）
+        InstanceRoutingFilter instanceRouting = new InstanceRoutingFilter(trafficRouter);
         // 预填充 filter：在 RESILIENCE 之前把灵元级 effective policy 预填到 ctx.governance()，
         // 守护"ctx 为唯一通行证"原则，让弹性组件通过 ctx 读取治理意图
         InvocationPolicyPrefillFilter policyPrefill = new InvocationPolicyPrefillFilter(lingRepository, governanceRegistry);
@@ -116,7 +119,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         builtinFilters.add(providerRouting);
         builtinFilters.add(new TrafficMetricsFilter(lingRepository, metricsCollector, eventBus));
         builtinFilters.add(stateGuard);
-        // CanaryRoutingFilter 已删除，路由层由 ContractProviderRoutingFilter + ProviderWeightRouter 完成
+        builtinFilters.add(instanceRouting);
         builtinFilters.add(policyPrefill);
         builtinFilters.add(resilience);
         builtinFilters.add(resolution);
@@ -228,6 +231,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         assertOrder(orders, ContractProviderRoutingFilter.class, FilterPhase.PROVIDER_ROUTING);
         assertOrder(orders, TrafficMetricsFilter.class, FilterPhase.METRICS);
         assertOrder(orders, MacroStateGuardFilter.class, FilterPhase.STATE_GUARD);
+        assertOrder(orders, InstanceRoutingFilter.class, FilterPhase.ROUTING);
         assertOrder(orders, InvocationPolicyPrefillFilter.class, FilterPhase.POLICY_PREFILL);
         assertOrder(orders, ResilienceGovernanceFilter.class, FilterPhase.RESILIENCE);
         assertOrder(orders, ContextIsolationFilter.class, FilterPhase.RESOLUTION);
@@ -238,7 +242,8 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
 
         assertBefore(orders, ContractProviderRoutingFilter.class, TrafficMetricsFilter.class);
         assertBefore(orders, TrafficMetricsFilter.class, MacroStateGuardFilter.class);
-        assertBefore(orders, MacroStateGuardFilter.class, InvocationPolicyPrefillFilter.class);
+        assertBefore(orders, MacroStateGuardFilter.class, InstanceRoutingFilter.class);
+        assertBefore(orders, InstanceRoutingFilter.class, InvocationPolicyPrefillFilter.class);
         assertBefore(orders, InvocationPolicyPrefillFilter.class, ResilienceGovernanceFilter.class);
         assertBefore(orders, ResilienceGovernanceFilter.class, ContextIsolationFilter.class);
         assertBefore(orders, ContextIsolationFilter.class, GovernanceDecisionFilter.class);
@@ -251,6 +256,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         return filter instanceof ContractProviderRoutingFilter
                 || filter instanceof TrafficMetricsFilter
                 || filter instanceof MacroStateGuardFilter
+                || filter instanceof InstanceRoutingFilter
                 || filter instanceof InvocationPolicyPrefillFilter
                 || filter instanceof ResilienceGovernanceFilter
                 || filter instanceof ContextIsolationFilter

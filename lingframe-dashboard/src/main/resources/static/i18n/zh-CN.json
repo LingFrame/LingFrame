@@ -219,8 +219,6 @@
     "statusUpdateFailed": "状态更新失败",
     "lingUnloaded": "灵元已卸载",
     "unloadFailed": "卸载失败",
-    "canarySet": "灰度比例已设置为 {percent}%",
-    "canaryFailed": "灰度配置失败",
     "permEnabled": "{perm} 已开启",
     "permDisabled": "{perm} 已关闭",
     "permUpdateFailed": "权限更新失败",

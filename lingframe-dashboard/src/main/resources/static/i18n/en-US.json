@@ -219,8 +219,6 @@
         "statusUpdateFailed": "Failed to update status",
                 "lingUnloaded": "Ling unloaded",
         "unloadFailed": "Unload failed",
-        "canarySet": "Canary ratio set to {percent}%",
-        "canaryFailed": "Canary config failed",
         "permEnabled": "{perm} enabled",
         "permDisabled": "{perm} disabled",
         "permUpdateFailed": "Permission update failed",

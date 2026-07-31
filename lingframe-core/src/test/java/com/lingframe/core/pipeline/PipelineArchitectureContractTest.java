@@ -6,6 +6,7 @@ import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.routing.ContractProviderRoutingFilter;
+import com.lingframe.core.routing.InstanceRoutingFilter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -40,6 +41,7 @@ class PipelineArchitectureContractTest {
                 ContractProviderRoutingFilter.class,
                 TrafficMetricsFilter.class,
                 MacroStateGuardFilter.class,
+                InstanceRoutingFilter.class,
                 InvocationPolicyPrefillFilter.class,
                 ResilienceGovernanceFilter.class,
                 ContextIsolationFilter.class,

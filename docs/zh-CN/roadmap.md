@@ -53,7 +53,7 @@
 - ✅ 权限控制（@RequiresPermission）
 - ✅ 安全审计（@Auditable）
 - ✅ 全链路追踪（LingCallContext）
-- ✅ 灰度发布（CanaryRouter）
+- ✅ Provider 权重路由（`ProviderWeightRouter`，去身份化 N 元权重路由）
 - ✅ 熔断机制（SlidingWindowCircuitBreaker）
 - ✅ 限流机制（TokenBucketRateLimiter）
 - ✅ 超时控制与降级兜底（整合于 SmartServiceProxy）

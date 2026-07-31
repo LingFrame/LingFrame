@@ -219,8 +219,9 @@ public class LingFrameLifecycleBeansConfiguration {
     }
 
     @Bean
-    public LingDiscoveryService lingDiscoveryService(LingFrameConfig config, LingLifecycleEngine lifecycleEngine) {
-        return new LingDiscoveryService(config, lifecycleEngine);
+    public LingDiscoveryService lingDiscoveryService(LingFrameConfig config, LingLifecycleEngine lifecycleEngine,
+            LingRepository lingRepository) {
+        return new LingDiscoveryService(config, lifecycleEngine, lingRepository);
     }
 
     @Bean

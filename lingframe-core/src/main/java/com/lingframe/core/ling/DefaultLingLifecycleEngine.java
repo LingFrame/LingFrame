@@ -474,7 +474,16 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         // 先提交到实例池，再发布 READY 事实。
         // 这样一旦 RuntimeCoordinator 因 READY 聚合出 ACTIVE，
         // 运行时侧的成员视图已经能看到这个实例，避免“状态先变绿、成员还没挂上”的瞬时割裂。
-        runtime.getInstancePool().addInstance(instance, isDefault);
+        LingInstance replacedDefault = runtime.getInstancePool().addInstance(instance, isDefault);
+
+        // 被替换的旧默认实例必须立即走濒死流程：先 stop 推进到 STOPPING，再入 dyingQueue，
+        // 否则它既不在 activePool（已被原子替换）也不在 dyingQueue，成为孤儿引用，
+        // 跳过排空校验且 dyingCount 统计失真。
+        if (replacedDefault != null && replacedDefault != instance) {
+            log.info("[{}] Replaced default instance {} -> {}, moving old one to dying queue",
+                    runtime.getLingId(), replacedDefault.getVersion(), instance.getVersion());
+            runtime.getInstancePool().moveToDying(replacedDefault);
+        }
 
         // READY 事实向上游汇报，RuntimeCoordinator 再基于事件推导宏观状态。
         instanceCoordinator.markReady(instance);

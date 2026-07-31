@@ -249,7 +249,64 @@ The governance Pipeline is a core defense line strictly validated and protected 
 - **Sandbox constraint**: externally injected `LingInvocationFilter` via SPI or dynamic registration must avoid these builtin reserved orders (recommended: use `order < 100` for preprocessing, or gaps between specific reserved ranges).
 - **Fail-Fast**: if an SPI filter illegally occupies a builtin slot, the kernel throws immediately at startup and refuses to process live traffic with a "distorted governance chain".
 
-### 6.8 Non-Bean DataSource Proxy Boundary
+**Routing Layer Identity-Free Principle**: the routing layer (`ContractProviderRoutingFilter` / `ProviderWeightRouter`) only honors `weight` and method qualification, never the provider identity (LingCore/Ling). Identity sediment at registration time as `weight`: LingCore defaults `weight=100`, Ling defaults `weight=0`. Method qualification decided by `LingServiceRegistry.hasMethod(lingId:contractId, methodName, paramTypes)`—providers that did not declare the called method are naturally excluded, traffic falls back to providers that declared the method, method-level fallback is a byproduct of routing not a newly introduced capability.
+
+**Routing Layer N-way Weight Split ("No Stacking" upgraded from norm to system capability)**: the same contract may have multiple providers coexist at any moment, dispatched by `ProviderWeightRouter` in proportion to weights (binary is just the N=2 special case; N≥3 covers multi-version coexistence / multi-tenancy):
+
+- **Registration layer allows multiple providers**: `DefaultLingServiceRegistry.registerProvider` allows any N providers to register, with Dashboard controlling weight overrides.
+- **Routing layer N-way weight split**: `ProviderWeightRouter.selectProvider` natively supports proportional random allocation across any N candidates by weight. When candidate count > 2, it only warns once "on count change" (to avoid hot-path log flooding) and **does not throw to force-interrupt business**—acknowledging that multi-version coexistence (stable + canary + urgent patch) is a real production need.
+
+The N-way weight split is not "theoretically should be so" but a system capability backed by API, logs, and tests. The `MigrationPhase` state machine expresses the macro phases of functional (contract) traffic governance—CORE_EXCLUSIVE / MIGRATING / LING_EXCLUSIVE / ITERATING; the binary phase (N=2) is a special case, and N≥3 is the multi-version coexistence / multi-tenancy scenario natively supported by the router.
+
+### 6.8 Migration State Machine (`MigrationPhase`)
+
+The routing layer and functional management layer (migration state machine) are completely split, establishing a clear two-layer architecture:
+
+- **Functional management layer**: `MigrationPhase` enum (`CORE_EXCLUSIVE` / `MIGRATING` / `LING_EXCLUSIVE` / `ITERATING`) + `MigrationStateHolder`, expressing "migration phase is the meta-state of the routing layer".
+- **Routing layer**: `ProviderWeightRouter` pure-weight binary routing, input ≤2 candidates, select one by weight.
+
+Four-state transition diagram:
+
+```
+CORE_EXCLUSIVE ──startMigration──→ MIGRATING
+MIGRATING      ──confirmPhase───→ LING_EXCLUSIVE
+MIGRATING      ──rollback──────→ CORE_EXCLUSIVE
+LING_EXCLUSIVE ──startIteration─→ ITERATING
+ITERATING      ──confirmPhase───→ LING_EXCLUSIVE
+ITERATING      ──rollback──────→ LING_EXCLUSIVE
+```
+
+Ownership and boundaries:
+
+- `MigrationPhase` / `MigrationStateHolder` belong to the `com.lingframe.core.routing` package, same package as the routers.
+- **Does not invade runtime FSM** (`RuntimeStatus`): `MigrationPhase` is the meta-state of the routing layer, orthogonal to instance/runtime state machines.
+- `MigrationStateHolder` is the sole source of migration phase, `DefaultLingLifecycleEngine` orchestration + `confirmPhaseTransition` explicit confirmation advances the phase.
+
+Explicit confirmation + drain check mechanism:
+
+- Rejects the over-automation of "weight zeroing triggers auto phase transition", preventing irreversible transitions when ops temporarily zero for observation.
+- Adopts "weight zeroing as necessary condition + explicit confirmation command (`confirmPhaseTransition`)".
+- Before confirming phase transition, validates two hard indicators:
+  1. The exiting party's weight must have dropped to 0;
+  2. The exiting party's in-flight request count must have drained (`activeRequests == 0`).
+
+Phase transition direction control:
+
+- If the zeroed and confirmed exiting party is `oldCandidateKey` → treated as "migration/iteration complete" (advance to EXCLUSIVE phase, deregister the old candidate slot).
+- If the zeroed and confirmed exiting party is `newCandidateKey` → treated as "migration/iteration rollback" (retreat to the previous EXCLUSIVE phase, deregister the new candidate slot).
+
+Provider identity during iteration:
+
+- **Migration period (CORE ↔ LING)**: LingCore identity is `lingcore-app`, Ling identity is bare `lingId`.
+- **Iteration period (v1 ↔ v2)**: when the same Ling deploys two versions, Provider identity is explicitly upgraded to `lingId:version` (e.g., `user-ling:1.0.0` and `user-ling:1.1.0`).
+- **After iteration completes and phase transition is confirmed**: the retained version's Provider identity converges back to bare `lingId`.
+
+Persistence and restart consistency:
+
+- `MigrationPhase` state and candidate metadata (`lingId`, `phase`, `oldCandidate`, `newCandidate`) are uniformly persisted to `GovernanceStorage` (`config_type = 'migration'`).
+- `GovernanceConfigRestorer` during startup recovery first restores the state machine phase, then restores `ProviderWeightRouter`'s weight overrides, ensuring complete state consistency across restarts.
+
+### 6.9 Non-Bean DataSource Proxy Boundary
 
 - LingFrame's SQL governance depends on proxying `DataSource`.
 - If managed by the Spring container as a Bean, `LingFrameBeanPostProcessor` auto-intercepts and wraps it.

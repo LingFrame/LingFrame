@@ -3,6 +3,7 @@ package com.lingframe.core.loader;
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.ling.LingLifecycleEngine;
+import com.lingframe.core.ling.LingRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +29,7 @@ class LingDiscoveryServiceTest {
 
     private LingFrameConfig config;
     private LingLifecycleEngine lifecycleEngine;
+    private LingRepository lingRepository;
     private LingDiscoveryService service;
 
     @BeforeEach
@@ -40,7 +42,8 @@ class LingDiscoveryServiceTest {
                 .build();
         LingFrameConfig.init(config);
         lifecycleEngine = mock(LingLifecycleEngine.class);
-        service = new LingDiscoveryService(config, lifecycleEngine);
+        lingRepository = mock(LingRepository.class);
+        service = new LingDiscoveryService(config, lifecycleEngine, lingRepository);
     }
 
     @AfterEach
@@ -59,7 +62,7 @@ class LingDiscoveryServiceTest {
         LingFrameConfig.clear();
         LingFrameConfig.init(noScanConfig);
 
-        LingDiscoveryService noScanService = new LingDiscoveryService(noScanConfig, lifecycleEngine);
+        LingDiscoveryService noScanService = new LingDiscoveryService(noScanConfig, lifecycleEngine, lingRepository);
         noScanService.scanAndLoad();
 
         verify(lifecycleEngine, never()).deploy(any(LingDefinition.class), any(File.class), anyBoolean(), any(Map.class));
@@ -82,15 +85,15 @@ class LingDiscoveryServiceTest {
         LingFrameConfig.clear();
         LingFrameConfig.init(cfg);
 
-        new LingDiscoveryService(cfg, lifecycleEngine).scanAndLoad();
+        new LingDiscoveryService(cfg, lifecycleEngine, lingRepository).scanAndLoad();
 
         verify(lifecycleEngine, times(1)).deploy(any(LingDefinition.class), eq(lingDir), eq(true), any(Map.class));
     }
 
     @Test
-    @DisplayName("扫描金丝雀灵元时 deploy 参数为 false")
+    @DisplayName("扫描金丝雀灵元时统一调用生命周期部署，setAsDefault 按已存在 default 判定")
     @SuppressWarnings("unchecked")
-    void shouldDeployCanaryLingWithDefaultFalse() throws IOException {
+    void shouldDeployCanaryLingAsDefaultWhenNoExistingDefault() throws IOException {
         File lingDir = new File(tempDir, "canary-ling");
         lingDir.mkdirs();
         String yaml = "id: canary-ling\nversion: 2.0.0\nproperties:\n  canary: true\n";
@@ -104,9 +107,9 @@ class LingDiscoveryServiceTest {
         LingFrameConfig.clear();
         LingFrameConfig.init(cfg);
 
-        new LingDiscoveryService(cfg, lifecycleEngine).scanAndLoad();
+        new LingDiscoveryService(cfg, lifecycleEngine, lingRepository).scanAndLoad();
 
-        verify(lifecycleEngine, times(1)).deploy(any(LingDefinition.class), eq(lingDir), eq(false), any(Map.class));
+        verify(lifecycleEngine, times(1)).deploy(any(LingDefinition.class), eq(lingDir), eq(true), any(Map.class));
     }
 
     @Test
@@ -125,7 +128,7 @@ class LingDiscoveryServiceTest {
         LingFrameConfig.clear();
         LingFrameConfig.init(cfg);
 
-        new LingDiscoveryService(cfg, lifecycleEngine).scanAndLoad();
+        new LingDiscoveryService(cfg, lifecycleEngine, lingRepository).scanAndLoad();
 
         verify(lifecycleEngine, never()).deploy(any(LingDefinition.class), any(File.class), anyBoolean(), any(Map.class));
     }
@@ -142,7 +145,7 @@ class LingDiscoveryServiceTest {
         LingFrameConfig.clear();
         LingFrameConfig.init(cfg);
 
-        new LingDiscoveryService(cfg, lifecycleEngine).scanAndLoad();
+        new LingDiscoveryService(cfg, lifecycleEngine, lingRepository).scanAndLoad();
 
         verify(lifecycleEngine, never()).deploy(any(LingDefinition.class), any(File.class), anyBoolean(), any(Map.class));
     }
@@ -159,7 +162,7 @@ class LingDiscoveryServiceTest {
         LingFrameConfig.clear();
         LingFrameConfig.init(cfg);
 
-        new LingDiscoveryService(cfg, lifecycleEngine).scanAndLoad();
+        new LingDiscoveryService(cfg, lifecycleEngine, lingRepository).scanAndLoad();
 
         verify(lifecycleEngine, never()).deploy(any(LingDefinition.class), any(File.class), anyBoolean(), any(Map.class));
     }
@@ -189,7 +192,7 @@ class LingDiscoveryServiceTest {
         LingFrameConfig.clear();
         LingFrameConfig.init(cfg);
 
-        new LingDiscoveryService(cfg, lifecycleEngine).scanAndLoad();
+        new LingDiscoveryService(cfg, lifecycleEngine, lingRepository).scanAndLoad();
 
         // 第二个灵元仍然应该被尝试部署
         verify(lifecycleEngine, atLeastOnce()).deploy(any(LingDefinition.class), eq(lingDir2), anyBoolean(), any(Map.class));

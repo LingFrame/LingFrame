@@ -58,14 +58,9 @@ public class DashboardLingSourceResolver {
         if (runtime == null) {
             return null;
         }
-        for (LingInstance instance : runtime.getInstancePool().getActiveInstances()) {
-            if (!isCanary(instance)) {
-                return instance;
-            }
-        }
-        LingInstance fallback = runtime.getInstancePool().getDefault();
-        if (fallback != null) {
-            return fallback;
+        LingInstance defaultInstance = runtime.getInstancePool().getDefault();
+        if (defaultInstance != null) {
+            return defaultInstance;
         }
         List<LingInstance> activeInstances = runtime.getInstancePool().getActiveInstances();
         return activeInstances.isEmpty() ? null : activeInstances.get(0);
@@ -111,23 +106,6 @@ public class DashboardLingSourceResolver {
         }
         properties.put("reload", true);
         properties.put("reloadVersion", reloadVersion);
-    }
-
-    public boolean isCanary(LingDefinition definition) {
-        if (definition == null || definition.getProperties() == null) {
-            return false;
-        }
-        Object value = definition.getProperties().get("canary");
-        if (value == null) {
-            return false;
-        }
-        if (value instanceof Boolean) {
-            return (Boolean) value;
-        }
-        if (value instanceof Number) {
-            return ((Number) value).intValue() != 0;
-        }
-        return "true".equalsIgnoreCase(String.valueOf(value));
     }
 
     private File findFromRoots(String lingId, String version) {
@@ -181,12 +159,5 @@ public class DashboardLingSourceResolver {
             }
         }
         return null;
-    }
-
-    private boolean isCanary(LingInstance instance) {
-        if (instance == null || instance.getDefinition() == null) {
-            return false;
-        }
-        return isCanary(instance.getDefinition());
     }
 }

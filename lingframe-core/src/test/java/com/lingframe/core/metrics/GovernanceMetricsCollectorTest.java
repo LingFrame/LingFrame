@@ -183,4 +183,25 @@ class GovernanceMetricsCollectorTest {
         GovernanceMetricsSnapshot snapshot = collector.getVersionSnapshots("ling-a").get("1.0");
         assertEquals(1, snapshot.getMemoryBudgetExceededCount());
     }
+
+    @Test
+    @DisplayName("多版本聚合并预算上限应取最大值而非求和")
+    void aggregateBudgetFieldsShouldTakeMaxAcrossVersions() {
+        // v1.0 设 CPU 预算 500ms/min、内存预算 16MB
+        collector.recordCpuBudgetObservation("ling-a", "1.0", 100, 500);
+        collector.recordMemoryBudgetObservation("ling-a", "1.0", 1 * 1024 * 1024L, 16);
+        // v2.0 设 CPU 预算 800ms/min、内存预算 32MB
+        collector.recordCpuBudgetObservation("ling-a", "2.0", 100, 800);
+        collector.recordMemoryBudgetObservation("ling-a", "2.0", 1 * 1024 * 1024L, 32);
+
+        // 删除 ling 汇总桶，强制走 getVersionSnapshots 聚合路径
+        // （GovernanceMetricsCollector.getSummary 在 summaryBuckets 缺失时会回退到版本聚合）
+        GovernanceMetricsSnapshot summary = collector.getSummary("ling-a");
+
+        // 聚合后应取两版本中的上限，而非加和
+        assertEquals(800, summary.getCpuBudgetMsPerMinute(),
+                "CPU 预算上限应取两版本最大值 800，而非求和 1300");
+        assertEquals(32, summary.getMemoryBudgetMb(),
+                "内存预算上限应取两版本最大值 32，而非求和 48");
+    }
 }

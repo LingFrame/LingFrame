@@ -1,6 +1,7 @@
 package com.lingframe.core.routing;
 
-import com.lingframe.core.routing.ProviderDescriptor;
+import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
+import com.lingframe.core.event.EventBus;
 import com.lingframe.core.pipeline.InvocationContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -145,6 +146,85 @@ class ProviderWeightRouterTest {
             // ling-a=200 截断为 100，ling-b=-10 截断为 0 → 确定性选 ling-a
             ProviderDescriptor selected = router.selectProvider(Arrays.asList(a, b), ctx);
             assertSame(a, selected, "ling-a 权重 200 截断为 100，承接全量");
+        }
+
+        @Test
+        @DisplayName("支持 N 元（3 个及以上候选节点）多 Provider 按权重比例分配")
+        void supportNWayProviderWeightDistribution() {
+            ProviderDescriptor p1 = new ProviderDescriptor("svc", "ling-a", 50);
+            ProviderDescriptor p2 = new ProviderDescriptor("svc", "ling-b", 30);
+            ProviderDescriptor p3 = new ProviderDescriptor("svc", "ling-c", 20);
+
+            Map<ProviderDescriptor, Integer> counts = new HashMap<>();
+            int totalRuns = 1000;
+            for (int i = 0; i < totalRuns; i++) {
+                ProviderDescriptor selected = router.selectProvider(Arrays.asList(p1, p2, p3), ctx);
+                counts.put(selected, counts.getOrDefault(selected, 0) + 1);
+            }
+
+            // 50:30:20 预期 500:300:200，允许 ±80 容差
+            assertWithinTolerance(500, counts.getOrDefault(p1, 0), 80, "P1 流量占比与权重相符");
+            assertWithinTolerance(300, counts.getOrDefault(p2, 0), 80, "P2 流量占比与权重相符");
+            assertWithinTolerance(200, counts.getOrDefault(p3, 0), 80, "P3 流量占比与权重相符");
+        }
+    }
+
+    // ==================== 卸载清理 ====================
+
+    @Nested
+    @DisplayName("卸载清理 evictProvider")
+    class EvictOnUnload {
+
+        @Test
+        @DisplayName("清理裸 lingId 和 lingId:version 两种 providerKey（跨所有契约）")
+        void evictBothBareAndVersionedKey() {
+            router.setProviderWeight("svc-a", "ling-a", 30);
+            router.setProviderWeight("svc-a", "ling-a:1.1.0", 50);
+            router.setProviderWeight("svc-b", "ling-a", 20);
+
+            router.evictProvider("ling-a");
+
+            assertNull(router.getOverrideWeight("svc-a", "ling-a"));
+            assertNull(router.getOverrideWeight("svc-a", "ling-a:1.1.0"));
+            assertNull(router.getOverrideWeight("svc-b", "ling-a"));
+        }
+
+        @Test
+        @DisplayName("清理后空 contractId entry 被回收，无关契约保留")
+        void emptyContractEvictedUnrelatedKept() {
+            router.setProviderWeight("svc-a", "ling-a", 30);
+            router.setProviderWeight("svc-b", "ling-b", 40);
+
+            router.evictProvider("ling-a");
+
+            assertNull(router.getOverrideWeight("svc-a", "ling-a"));
+            assertEquals(Integer.valueOf(40), router.getOverrideWeight("svc-b", "ling-b"));
+        }
+
+        @Test
+        @DisplayName("不误删前缀碰撞的无关条目（user-ling 不清 user-ling-v2）")
+        void noFalsePositiveOnPrefixCollision() {
+            router.setProviderWeight("svc", "user-ling", 30);
+            router.setProviderWeight("svc", "user-ling-v2", 50);
+
+            router.evictProvider("user-ling");
+
+            assertNull(router.getOverrideWeight("svc", "user-ling"));
+            assertEquals(Integer.valueOf(50), router.getOverrideWeight("svc", "user-ling-v2"));
+        }
+
+        @Test
+        @DisplayName("灵元卸载事件自动触发权重清理")
+        void unloadEventTriggersEvict() {
+            EventBus eventBus = new EventBus();
+            ProviderWeightRouter eventRouter = new ProviderWeightRouter(eventBus);
+            eventRouter.setProviderWeight("svc", "ling-a", 30);
+            assertEquals(Integer.valueOf(30), eventRouter.getOverrideWeight("svc", "ling-a"));
+
+            // LingUninstalledEvent 同步分发，publish 返回时监听器已执行
+            eventBus.publish(new LingUninstalledEvent("ling-a"));
+
+            assertNull(eventRouter.getOverrideWeight("svc", "ling-a"));
         }
     }
 

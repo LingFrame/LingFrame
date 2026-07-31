@@ -1,10 +1,13 @@
 package com.lingframe.core.routing;
 
-import com.lingframe.api.exception.RoutingArchitectureViolationException;
+import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.ProviderWeightChangedEvent;
 import com.lingframe.core.pipeline.InvocationContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,14 +28,17 @@ import java.util.concurrent.ThreadLocalRandom;
  * <p>
  * 线程安全：权重覆盖表使用 {@link ConcurrentHashMap}，支持 Dashboard 并发下发。
  * <p>
- * 二元候选硬约束：{@link #selectProvider} 入口校验 {@code candidates.size() > 2}，
- * 违例时抛出 {@link RoutingArchitectureViolationException}，
- * 立即终止调用链并触发强告警，绝不静默降级。
+ * 支持 N 元多候选按权重分流：支持任意 N 个候选 provider 概率分配。
  */
 public class ProviderWeightRouter {
 
+    private static final Logger log = LoggerFactory.getLogger(ProviderWeightRouter.class);
+
     /** contractId → (providerKey → 权重)，Dashboard 运行期覆盖 */
     private final Map<String, Map<String, Integer>> providerWeights = new ConcurrentHashMap<>();
+
+    /** 记录上一次候选节点数量，仅在候选数量发生变化时打印 warn 告警，避免热路径日志打满 */
+    private final Map<String, Integer> lastCandidateCount = new ConcurrentHashMap<>();
 
     /** 事件总线，权重变更后广播 {@link ProviderWeightChangedEvent} */
     private final EventBus eventBus;
@@ -43,6 +49,10 @@ public class ProviderWeightRouter {
 
     public ProviderWeightRouter(EventBus eventBus) {
         this.eventBus = eventBus;
+        // 监听灵元卸载事件，自动清理该灵元的权重覆盖条目，防止内存泄漏与重注册误用旧权重
+        if (eventBus != null) {
+            eventBus.subscribeGlobal(LingUninstalledEvent.class, this::onLingUninstalled);
+        }
     }
 
     /**
@@ -81,6 +91,41 @@ public class ProviderWeightRouter {
     }
 
     /**
+     * 卸载清理：移除指定灵元在所有契约下的权重覆盖条目（含所有版本）。
+     * <p>
+     * 由 {@link LingUninstalledEvent} 监听自动触发，也可手动调用。
+     * 匹配规则与 {@code MigrationStateHolder.matchesCandidate} 一致：
+     * 裸 {@code lingId}（迁移期）或 {@code lingId:version}（迭代期）均清理；
+     * 不用 {@code String.startsWith(lingId)} 避免前缀碰撞
+     * （如 {@code user-ling} 误清 {@code user-ling-v2} 的无关条目）。
+     *
+     * @param lingId 被卸载灵元 ID
+     */
+    public void evictProvider(String lingId) {
+        if (lingId == null) {
+            return;
+        }
+        String versionSeparator = lingId + ":";
+        for (String contractId : providerWeights.keySet()) {
+            // compute 原子操作：与并发 setProviderWeight/clearProviderWeight 安全
+            providerWeights.compute(contractId, (key, contractMap) -> {
+                if (contractMap == null) {
+                    return null;
+                }
+                contractMap.keySet().removeIf(providerKey ->
+                        lingId.equals(providerKey) || providerKey.startsWith(versionSeparator));
+                // 空 map 回收 entry，防内存泄漏（与 DefaultLingServiceRegistry.evictProvider 一致）
+                return contractMap.isEmpty() ? null : contractMap;
+            });
+        }
+    }
+
+    /** 灵元卸载事件回调：自动清理该灵元的权重覆盖条目 */
+    private void onLingUninstalled(LingUninstalledEvent event) {
+        evictProvider(event.getLingId());
+    }
+
+    /**
      * 查询指定 provider 的运行期覆盖权重。
      * <p>
      * Dashboard 契约路由页面用此方法展示「当前已下发的权重」。
@@ -95,44 +140,70 @@ public class ProviderWeightRouter {
     }
 
     /**
-     * 按权重选择一个 provider。
+     * 按权重选择一个 provider（支持 N 元概率切流）。
      * <p>
      * 有效权重计算：Dashboard 覆盖 > 注册时初始 weight。
      * 候选为空返回 null；所有权重为 0 时兜底选第一个。
-     * <p>
-     * 二元候选硬约束：候选数超过 2 时抛出
-     * {@link RoutingArchitectureViolationException}，
-     * 立即终止调用链并触发强告警。
      *
      * @param candidates 候选提供方列表（同一 contractId）
-     * @param ctx        调用上下文（预留，供未来基于 traceId 的粘性路由扩展）
+     * @param ctx        调用上下文
      * @return 选中的提供方；候选为空返回 null
-     * @throws RoutingArchitectureViolationException 当候选数 &gt; 2
      */
     public ProviderDescriptor selectProvider(List<ProviderDescriptor> candidates, InvocationContext ctx) {
         if (candidates == null || candidates.isEmpty()) {
             return null;
         }
 
-        // 二元候选硬约束：灵珑路由层只支持 ≤2 个候选 provider
-        if (candidates.size() > 2) {
-            throw new RoutingArchitectureViolationException(
-                    "Routing layer accepts at most 2 candidate providers, got " + candidates.size()
-                            + " for contractId=" + candidates.get(0).getContractId());
+        // 零分配快路径（Zero-Allocation Fast-Path）：常态下无对象创建，仅在极端异常遇到 null 元素时延迟分配
+        boolean hasNull = false;
+        for (int i = 0; i < candidates.size(); i++) {
+            if (candidates.get(i) == null) {
+                hasNull = true;
+                break;
+            }
         }
 
-        if (candidates.size() == 1) {
-            return candidates.get(0);
+        List<ProviderDescriptor> validCandidates = candidates;
+        if (hasNull) {
+            validCandidates = new ArrayList<>(candidates.size());
+            for (int i = 0; i < candidates.size(); i++) {
+                ProviderDescriptor c = candidates.get(i);
+                if (c != null) {
+                    validCandidates.add(c);
+                }
+            }
+            if (validCandidates.isEmpty()) {
+                return null;
+            }
         }
 
-        String contractId = candidates.get(0).getContractId();
+        String contractId = validCandidates.get(0).getContractId();
+
+        // 仅在候选节点数发生变化且超过 2 个时打印警告日志
+        if (validCandidates.size() > 2) {
+            Integer lastCount = lastCandidateCount.get(contractId);
+            if (lastCount == null || lastCount != validCandidates.size()) {
+                log.warn("Routing with {} candidates (>2) for contractId={}, treating as N-way weight split",
+                        validCandidates.size(), contractId);
+                lastCandidateCount.put(contractId, validCandidates.size());
+            }
+        } else if (lastCandidateCount.containsKey(contractId)) {
+            // 候选数回落到 ≤2 时清状态，下次再超 2 会重新告警；
+            // containsKey 守卫避免稳态二元路由（绝大多数请求）下对空 map 做写操作
+            lastCandidateCount.remove(contractId);
+        }
+
+        if (validCandidates.size() == 1) {
+            return validCandidates.get(0);
+        }
+
         Map<String, Integer> overrides = providerWeights.get(contractId);
 
         // 计算有效权重：Dashboard 覆盖 > 注册时初始 weight
         int totalWeight = 0;
-        int[] effectiveWeights = new int[candidates.size()];
-        for (int i = 0; i < candidates.size(); i++) {
-            ProviderDescriptor desc = candidates.get(i);
+        int[] effectiveWeights = new int[validCandidates.size()];
+        for (int i = 0; i < validCandidates.size(); i++) {
+            ProviderDescriptor desc = validCandidates.get(i);
             Integer override = overrides != null ? overrides.get(desc.providerKey()) : null;
             int w = override != null ? override : desc.getWeight();
             effectiveWeights[i] = Math.max(0, w);
@@ -141,19 +212,19 @@ public class ProviderWeightRouter {
 
         if (totalWeight == 0) {
             // 所有 provider 权重为 0，兜底选第一个
-            return candidates.get(0);
+            return validCandidates.get(0);
         }
 
         int r = ThreadLocalRandom.current().nextInt(totalWeight);
         int cumulative = 0;
-        for (int i = 0; i < candidates.size(); i++) {
+        for (int i = 0; i < validCandidates.size(); i++) {
             cumulative += effectiveWeights[i];
             if (r < cumulative) {
-                return candidates.get(i);
+                return validCandidates.get(i);
             }
         }
 
-        // 浮点/边界兜底，不可达
-        return candidates.get(candidates.size() - 1);
+        // 边界兜底
+        return validCandidates.get(validCandidates.size() - 1);
     }
 }

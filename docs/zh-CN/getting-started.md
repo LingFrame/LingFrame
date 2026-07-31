@@ -778,13 +778,15 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/user-ling/reload
 
 灰度发布：
 
-> 灰度是把一部分流量路由到指定灵元版本或实例。
+> 灰度是把一部分流量路由到指定灵元版本或实例——本质是按版本权重分流，`ProviderWeightRouter` N 元权重的特例（N=2）。
 
 ```bash
-curl -X POST http://localhost:8888/lingframe/dashboard/lings/user-ling/canary \
+curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/user-ling/weight \
   -H "Content-Type: application/json" \
-  -d '{"percent": 20, "canaryVersion": "1.1.0"}'
+  -d '{"providerKey": "user-ling:1.1.0", "weight": 20}'
 ```
+
+> `providerKey` 即路由键——迁移期裸 `lingId`，迭代期 `lingId:version`，与路由读路径键化一致。`weight` 为 0-100 整数；Dashboard 下发后立即覆盖 `ProviderWeightRouter` 内的运行期权重，IPC 与 Web 治理链同时生效。
 
 流量统计：
 
@@ -883,15 +885,15 @@ Shared API 当前仍然是强边界。
 - 权限与治理信号是否可见
 - 卸载是否能进入规范链路
 
-**阶段 4：灵元稳定后再引入灰度**
+**阶段 4：灵元稳定后再引入多版本权重路由**
 
-当前灰度能力已经可用，但更适合在灵元本身稳定之后再引入。
+当前按版本权重分流（`ProviderWeightRouter` N 元权重，二元 N=2 即金丝雀特例）能力已经可用，但更适合在灵元本身稳定之后再引入。
 
 推荐顺序：
 
 1. 先单版本跑通
 2. 再验证热重载 / 多版本共存
-3. 最后再引入 canary
+3. 最后再引入多版本权重路由（金丝雀即其 N=2 特例）
 
 ### 接入前只需要知道的三件技术事实
 

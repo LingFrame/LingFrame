@@ -394,13 +394,10 @@
                     <!-- 版本详情（多版本） -->
                     <div v-if="p.versionDetails && p.versionDetails.length > 0" class="mt-1.5 space-y-1">
                         <div v-for="v in p.versionDetails" :key="v.version" class="flex items-center gap-1.5 text-xs">
-                            <span class="font-mono truncate max-w-[100px]"
-                                :class="v.isCanary ? 'text-amber-400' : 't-text-sub'" :title="v.version">{{ v.version
+                            <span class="font-mono truncate max-w-[100px] t-text-sub" :title="v.version">{{ v.version
                                 }}</span>
-                            <span v-if="v.isCanary"
-                                class="text-[11px] px-1 py-px rounded bg-amber-500/20 text-amber-400 font-bold tracking-tight">CANARY</span>
-                            <span v-else-if="v.isDefault"
-                                class="text-[11px] px-1 py-px rounded bg-blue-500/20 text-blue-400 font-bold tracking-tight">STABLE</span>
+                            <span v-if="v.isDefault"
+                                class="text-[11px] px-1 py-px rounded bg-blue-500/20 text-blue-400 font-bold tracking-tight">DEFAULT</span>
                             <span v-if="v.trafficWeight != null" class="t-text-muted ml-auto">{{ v.trafficWeight
                                 }}%</span>
                         </div>
@@ -409,8 +406,8 @@
                     <div v-else class="flex gap-2 flex-wrap mt-1">
                         <span v-if="p.activeVersion" class="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">{{
                             p.activeVersion }}</span>
-                        <span v-if="p.canaryVersion"
-                            class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">{{ p.canaryVersion
+                        <span v-if="getCanaryVersion(p)"
+                            class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">{{ getCanaryVersion(p)
                             }}</span>
                     </div>
                     <!-- 底部元信息 -->
@@ -737,11 +734,11 @@
                                                         class="flex items-center gap-2">
                                                         <div class="w-16 h-1.5 rounded-full t-bg-hover overflow-hidden">
                                                             <div class="h-full rounded-full bg-blue-400"
-                                                                :style="{ width: `${100 - (ling.canaryTrafficPct || 0)}%` }">
+                                                                :style="{ width: `${100 - getCanaryTrafficPct(ling)}%` }">
                                                             </div>
                                                         </div>
                                                         <span class="text-xs t-text-muted font-mono">{{ 100 -
-                                                            (ling.canaryTrafficPct || 0) }}%</span>
+                                                            getCanaryTrafficPct(ling) }}%</span>
                                                     </div>
                                                     <span v-else class="text-xs t-text-muted">100%</span>
                                                 </td>
@@ -814,8 +811,6 @@
                                                                 {{ v.version }}
                                                                 <span v-if="v.isDefault"
                                                                     class="ml-1 text-[10px] bg-blue-500/20 text-blue-400 px-1 rounded">DEFAULT</span>
-                                                                <span v-if="v.isCanary"
-                                                                    class="ml-1 text-[10px] bg-orange-500/20 text-orange-400 px-1 rounded">CANARY</span>
                                                             </td>
                                                             <td class="py-3 px-3">
                                                                 <span
@@ -828,7 +823,7 @@
                                                                     <div
                                                                         class="w-16 h-1.5 rounded-full t-bg-hover overflow-hidden">
                                                                         <div class="h-full rounded-full transition-all duration-500"
-                                                                            :class="v.isCanary ? 'bg-orange-400' : (v.isDefault ? 'bg-blue-400' : 'bg-slate-400')"
+                                                                            :class="v.isDefault ? 'bg-blue-400' : 'bg-slate-400'"
                                                                             :style="{ width: `${v.trafficWeight}%` }">
                                                                         </div>
                                                                     </div>
@@ -1630,9 +1625,6 @@
                                                             <span v-if="row.isDefault"
                                                                 class="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded mr-1">{{
                                                                 t('governance.matrixDefault') }}</span>
-                                                            <span v-if="row.isCanary"
-                                                                class="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">{{
-                                                                t('governance.matrixCanary') }}</span>
                                                         </td>
                                                         <td class="p-2 text-right font-mono">{{ row.trafficWeight }}
                                                         </td>

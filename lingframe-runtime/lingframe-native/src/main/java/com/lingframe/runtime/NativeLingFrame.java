@@ -213,7 +213,7 @@ public class NativeLingFrame {
 
         // 自动扫描灵元
         if (config.getLingRoots() != null || config.getLingHome() != null) {
-            LingDiscoveryService discoveryService = new LingDiscoveryService(config, lifecycleEngine);
+            LingDiscoveryService discoveryService = new LingDiscoveryService(config, lifecycleEngine, lingRepository);
             log.info("Executing initial ling scan...");
             discoveryService.scanAndLoad();
         }

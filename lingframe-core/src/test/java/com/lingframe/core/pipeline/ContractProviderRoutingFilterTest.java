@@ -1,7 +1,10 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
+import com.lingframe.core.ling.InstancePool;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.routing.ContractProviderRoutingFilter;
 import com.lingframe.core.routing.ProviderDescriptor;
@@ -19,11 +22,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -266,6 +275,50 @@ class ContractProviderRoutingFilterTest {
         }
     }
 
+    // ==================== 物理第二层：标签精准优先与多租户分流 ====================
+
+    @Nested
+    @DisplayName("标签精准路由测试")
+    class LabelRoutingTests {
+
+        @Test
+        @DisplayName("请求包含标签且命中标号实例时，优先命中该实例而非随机权重分流")
+        void labelMatchTakesPrecedenceOverWeight() throws Throwable {
+            context.setServiceFQSID("com.example.UserService");
+            context.setMethodName("getUser");
+            context.setParameterTypeNames(new String[]{"java.lang.String"});
+            Map<String, String> reqLabels = new HashMap<>();
+            reqLabels.put("tenant", "Tenant-A");
+            context.setLabels(reqLabels);
+
+            ProviderDescriptor defaultLing = new ProviderDescriptor("com.example.UserService", "ling-default", 100);
+            ProviderDescriptor tenantLing = new ProviderDescriptor("com.example.UserService", "ling-tenant-a", 0);
+
+            LingRuntime tenantRuntime = mock(LingRuntime.class);
+            InstancePool tenantPool = mock(InstancePool.class);
+            LingInstance tenantInstance = mock(LingInstance.class);
+            Map<String, String> labels = new HashMap<>();
+            labels.put("tenant", "Tenant-A");
+
+            when(tenantInstance.getLabels()).thenReturn(labels);
+            when(tenantPool.getActiveInstances()).thenReturn(Collections.singletonList(tenantInstance));
+            when(tenantRuntime.getInstancePool()).thenReturn(tenantPool);
+
+            when(lingServiceRegistry.getProvidersByContractId("com.example.UserService"))
+                    .thenReturn(Arrays.asList(defaultLing, tenantLing));
+            when(lingServiceRegistry.hasMethod(anyString(), anyString(), any())).thenReturn(true);
+            lenient().when(lingRepository.getRoutableTarget("ling-tenant-a")).thenReturn(tenantRuntime);
+
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            Object result = filter.doFilter(context, filterChain);
+
+            assertSame(expected, result);
+            assertEquals("ling-tenant-a", context.getTargetLingId(), "按标精准路由应优先落选命中标签的实例");
+        }
+    }
+
     // ==================== 容错 ====================
 
     @Test
@@ -281,5 +334,59 @@ class ContractProviderRoutingFilterTest {
 
         assertSame(expected, result);
         verifyNoInteractions(lingRepository);
+    }
+
+    @Test
+    @DisplayName("迭代期同 lingId 多版本并存时，标签路由应按描述符版本对齐，不误选旧版本")
+    void labelRoutingShouldMatchVersionInIterationPeriod() throws Throwable {
+        context.setServiceFQSID("com.example.UserService");
+        context.setMethodName("getUser");
+        context.setParameterTypeNames(new String[]{"java.lang.String"});
+        Map<String, String> reqLabels = new HashMap<>();
+        reqLabels.put("env", "canary");
+        context.setLabels(reqLabels);
+
+        // 同 lingId 两个版本：v1.0.0 旧版本、v2.0.0 新版本
+        ProviderDescriptor v1Provider = new ProviderDescriptor(
+                "com.example.UserService", "ling-a", "1.0.0", 100);
+        ProviderDescriptor v2Provider = new ProviderDescriptor(
+                "com.example.UserService", "ling-a", "2.0.0", 0);
+
+        LingRuntime runtime = mock(LingRuntime.class);
+        InstancePool pool = mock(InstancePool.class);
+
+        // v1 实例标签不匹配请求（env=stable），v2 实例标签匹配（env=canary）
+        // 修复前：v1Provider 遍历池时命中 v2 实例（标签匹配），错返回 v1Provider
+        // 修复后：v1Provider 因版本对齐跳过 v2 实例，v2Provider 命中 v2 实例
+        LingInstance v1Instance = mock(LingInstance.class);
+        when(v1Instance.getVersion()).thenReturn("1.0.0");
+        Map<String, String> v1Labels = new HashMap<>();
+        v1Labels.put("env", "stable");
+        when(v1Instance.getLabels()).thenReturn(v1Labels);
+
+        LingInstance v2Instance = mock(LingInstance.class);
+        when(v2Instance.getVersion()).thenReturn("2.0.0");
+        Map<String, String> v2Labels = new HashMap<>();
+        v2Labels.put("env", "canary");
+        when(v2Instance.getLabels()).thenReturn(v2Labels);
+
+        // 堆返回顺序：v1 在前，v2 在后——v1 因标签不匹配被跳过，v2 命中
+        when(pool.getActiveInstances()).thenReturn(Arrays.asList(v1Instance, v2Instance));
+        when(runtime.getInstancePool()).thenReturn(pool);
+
+        when(lingServiceRegistry.getProvidersByContractId("com.example.UserService"))
+                .thenReturn(Arrays.asList(v1Provider, v2Provider));
+        when(lingServiceRegistry.hasMethod(anyString(), anyString(), any())).thenReturn(true);
+        lenient().when(lingRepository.getRoutableTarget("ling-a")).thenReturn(runtime);
+
+        Object expected = new Object();
+        when(filterChain.doFilter(context)).thenReturn(expected);
+
+        Object result = filter.doFilter(context, filterChain);
+
+        assertSame(expected, result);
+        // 应选中 v2 描述符（新版本），而非 v1（v1 实例标签不匹配，v1Provider 不应跨版本命中 v2 实例）
+        assertEquals("2.0.0", context.getTargetVersion(),
+                "迭代期标签路由应锁版本到 v2.0.0，而非误选列表首个 v1.0.0");
     }
 }

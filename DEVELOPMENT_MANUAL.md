@@ -251,12 +251,12 @@
 
 **路由层去身份化原则**：路由层（`ContractProviderRoutingFilter` / `ProviderWeightRouter`）只认 `weight` 和方法资格，不引用实现方身份（灵核/灵元）。身份在注册时沉淀为 `weight` 数值：灵核默认 `weight=100`，灵元默认 `weight=0`。方法资格通过 `LingServiceRegistry.hasMethod(lingId:contractId, methodName, paramTypes)` 判定——未声明被调用方法的 provider 被自然剔除，流量落回声明了该方法的 provider，方法级 fallback 是路由的副产物而非新增能力。
 
-**候选数硬约束（「禁止叠加」从规范升级为系统能力）**：同一契约同一时刻最多 2 个候选 provider，由双层断言强制：
+**路由层 N 元权重分流（「禁止叠加」从规范升级为系统能力）**：同一契约同一时刻允许多 provider 共存，由 `ProviderWeightRouter` 按权重比例随机分配（二元只是 N=2 的特例，N≥3 即多版本共存/多租户场景）：
 
-- **注册层源头拦**：`DefaultLingServiceRegistry.registerProvider` 在注册第 3 个 provider 时立即抛 `RoutingArchitectureViolationException`，编排层从源头拦截，避免注册层泄漏时路由静默退化。
-- **路由层兜底断言**：`ProviderWeightRouter.selectProvider` 入口校验 `candidates.size() > 2`，违例时抛 `RoutingArchitectureViolationException`，立即终止调用链并触发强告警，**绝不静默降级**。
+- **注册层允许多 provider**：`DefaultLingServiceRegistry.registerProvider` 允许任意 N 个 provider 注册，Dashboard 控制权重覆盖。
+- **路由层 N 元权重分流**：`ProviderWeightRouter.selectProvider` 天然支持任意 N 个候选按权重比例随机分配。候选数 > 2 时仅「候选数变化」时告警一次（避免热路径打满日志），**不主动抛异常强打断业务**——承认多版本共存（稳定版 + 灰度版 + 紧急 Patch 版）是生产真实需求。
 
-候选数硬约束不是"理论上应该如此"，而是有 API、日志、测试支撑的系统能力。若未来确需三元路由，应扩展 `MigrationPhase` 状态机显式支持，而非放宽本约束。
+N 元权重分流不是"理论上应该如此"，而是有 API、日志、测试支撑的系统能力。`MigrationPhase` 状态机表达功能（契约）流量治理的宏观阶段——CORE_EXCLUSIVE / MIGRATING / LING_EXCLUSIVE / ITERATING，二元态（N=2）是特例，N≥3 时即多版本共存/多租户场景，路由器天然支持。
 
 ### 6.8 迁移状态机（`MigrationPhase`）
 

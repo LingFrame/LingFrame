@@ -250,19 +250,17 @@ public class SimulateService {
             LingInstance defaultInstance = runtime.getInstancePool().getDefault();
             // RoutableTarget 接口未暴露 getVersion()；活跃实例版本由 ctx.getTargetVersion() 或默认实例携带
             String targetVersion = ctx.getTargetVersion();
-            boolean isCanary = defaultInstance != null && targetVersion != null
+            boolean isNonDefault = defaultInstance != null && targetVersion != null
                     && !targetVersion.equals(defaultInstance.getDefinition().getVersion());
 
-            // 灵核无版本概念：targetVersion == null 即路由落到灵核，报哨兵值 LINGCORE,
-            // 不可回退到 defaultInstance 的灵元版本——会与灵元路由混淆
+            // 灵核无版本概念：targetVersion == null 即路由落到灵核，报哨兵值 LINGCORE
             String version = targetVersion != null ? targetVersion : "LINGCORE";
-            String tag = isCanary ? "CANARY" : "STABLE";
+            String tag = isNonDefault ? "NON_DEFAULT" : "DEFAULT";
 
             publishTrace(traceId, lingId,
                     String.format("→ Routed to: %s (%s)", version, tag), tag, 1);
 
             // 活跃请求数 = 各活跃实例在途请求数之和（LingInstance.activeRequests AtomicLong 聚合）
-            // 不可用 getInstancePool().getActiveInstances().size()——那是部署实例数（恒 1-2），非在途请求数
             int active = 0;
             try {
                 active = runtime.getInstancePool().getActiveInstances().stream()
@@ -275,11 +273,11 @@ public class SimulateService {
             return StressResultDTO.builder()
                     .lingId(lingId)
                     .totalRequests(1)
-                    .v1Requests(isCanary ? 0 : 1)
-                    .v2Requests(isCanary ? 1 : 0)
+                    .v1Requests(isNonDefault ? 0 : 1)
+                    .v2Requests(isNonDefault ? 1 : 0)
                     .activeRequests(active)
-                    .v1Percent(isCanary ? 0 : 100)
-                    .v2Percent(isCanary ? 100 : 0)
+                    .v1Percent(isNonDefault ? 0 : 100)
+                    .v2Percent(isNonDefault ? 100 : 0)
                     .build();
         } catch (Throwable t) {
             log.warn("Stress test invocation failed for ling {}: {}", lingId, t.getMessage());

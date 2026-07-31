@@ -200,8 +200,14 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
             }
         }
 
-        String serviceName = ctx.getServiceFQSID().split(":", 2)[1];
-        if (serviceName.contains("#")) {
+        // 裸 contractId（无 ':' 分隔）兜底：与同方法上方 colonIdx 兜底语义对齐，
+        // 否则 split 返回单元素数组，[1] 直接抛 ArrayIndexOutOfBoundsException
+        String fqsid = ctx.getServiceFQSID();
+        int colonIdx = fqsid != null ? fqsid.indexOf(':') : -1;
+        String serviceName = (colonIdx > 0 && colonIdx < fqsid.length() - 1)
+                ? fqsid.substring(colonIdx + 1)
+                : fqsid;
+        if (serviceName != null && serviceName.contains("#")) {
             serviceName = serviceName.split("#", 2)[0];
         }
 

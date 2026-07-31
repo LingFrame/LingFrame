@@ -245,23 +245,28 @@ LingInvocationException: Call rejected by governance
 
 **Diagnosis:**
 
-1. Check canary configuration:
-```yaml
-# In ling.yml
-governance:
-  canary:
-    enabled: true
-    weight: 30  # 30% traffic
+1. Check weight routing configuration—canary has converged into "per-version weight splitting"; there is no longer a `governance.canary` yaml entry. Query the current provider weights for a contract via the Dashboard API:
+
+```bash
+curl http://localhost:8888/lingframe/dashboard/contract-routing/{contractId}
 ```
 
-2. Check instance labels:
+To adjust, push a runtime weight override:
+
 ```bash
-grep "labels\|canary" logs/lingframe.log
+curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/{contractId}/weight \
+  -H "Content-Type: application/json" \
+  -d '{"providerKey": "user-ling:1.1.0", "weight": 30}'
+```
+
+2. Check instance labels (canary markers should live in `labels` / `properties`, no longer on the routing decision chain):
+```bash
+grep "labels\|ProviderWeightRouter" logs/lingframe.log
 ```
 
 3. Check routing strategy:
 ```bash
-grep "CanaryRouting\|LabelMatchRouter" logs/lingframe.log
+grep "ContractProviderRouting\|LabelMatchRouter\|ProviderWeightRouter" logs/lingframe.log
 ```
 
 ---

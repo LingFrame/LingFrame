@@ -1,5 +1,6 @@
 package com.lingframe.core.pipeline;
 
+import com.lingframe.core.invoker.FastLingServiceInvoker;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.LingContainer;
@@ -56,6 +57,32 @@ class TerminalInvokerFilterTest {
             Object result = filter.doFilter(context, null);
             assertEquals("fallback-value", result);
             assertEquals(2, attempts.get());
+        } finally {
+            context.recycle();
+        }
+    }
+
+    @Test
+    @DisplayName("裸 contractId（无冒号）场景下 getServiceBean 不应抛数组越界")
+    void shouldNotThrowArrayIndexOutOfBoundsForBareContractId() throws Throwable {
+        TestService service = new TestService();
+        LingContainer container = buildContainer(service);
+        LingInstance instance = buildReadyInstance(container);
+
+        TerminalInvokerFilter filter = new TerminalInvokerFilter(new InvokableMethodCache(), new FastLingServiceInvoker());
+        InvocationContext context = InvocationContext.obtain();
+        // 裸 contractId：无冒号分隔，触发 getServiceBean 兜底分支
+        context.setServiceFQSID(TestService.class.getName());
+        context.setMethodName("ping");
+        context.setArgs(new Object[0]);
+        context.routing().setTargetInstance(instance);
+        // 显式不设置 targetClassName，强制走 getServiceBean 的 serviceName 兜底路径
+        context.resolution().setResolvedParameterTypes(new Class<?>[0]);
+        context.governance().setRetryCount(0);
+
+        try {
+            Object result = filter.doFilter(context, null);
+            assertEquals("pong", result);
         } finally {
             context.recycle();
         }

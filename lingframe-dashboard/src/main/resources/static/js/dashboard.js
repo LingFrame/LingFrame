@@ -1463,43 +1463,6 @@ createApp({
             modal.show = true;
         };
 
-        const getLingCanaryWeight = (ling) => {
-            if (!ling || !ling.versionDetails) return 0;
-            const canary = ling.versionDetails.find(v => v.isCanary);
-            return canary ? canary.trafficWeight : 0;
-        };
-
-        const updateCanaryWeight = async (lingId, weight) => {
-            const ling = lings.value.find(p => p.lingId === lingId);
-            if (!ling || !ling.versionDetails) return;
-            const pct = parseInt(weight, 10);
-
-            const canaryVer = ling.versionDetails.find(v => v.isCanary)?.version
-                || ling.versionDetails.find(v => !v.isDefault)?.version;
-            if (!canaryVer) return;
-
-            ling.versionDetails.forEach(v => {
-                if (v.version === canaryVer) {
-                    v.trafficWeight = pct;
-                } else {
-                    v.trafficWeight = 100 - pct;
-                }
-            });
-            // 灰度滑块已废弃,canaryPct 不再维护；权重下发改由 ContractRoutingService.setProviderWeight
-            if (activeId.value === lingId) {
-            }
-
-            try {
-                await api.post(`/lings/${lingId}/canary`, {
-                    percent: pct,
-                    canaryVersion: canaryVer
-                });
-                showToast(t('toast.canarySet', { percent: pct }), 'success');
-            } catch (e) {
-                showToast(t('toast.canaryFailed') + ': ' + e.message, 'error');
-            }
-        };
-
         const requestUnloadWithName = (lingId, deleteFileOption = false) => {
             const ling = lings.value.find(p => p.lingId === lingId);
             modal.isDanger = true;
@@ -2431,9 +2394,6 @@ createApp({
             if (versionInfo.isDefault) {
                 return t('traffic.stable');
             }
-            if (versionInfo.isCanary) {
-                return t('traffic.canary');
-            }
             return t('healthCard.version');
         };
 
@@ -2550,14 +2510,29 @@ createApp({
             return lingServiceCounts[lingId] || 0;
         };
 
+        // 灵元非默认版本号（灰度场景展示用）：多版本并存时取首个非默认版本
+        // 灰度发布是 N 元路由分发的场景之一，这里仅做展示派生，真实权重由契约路由页下发
+        const getCanaryVersion = (ling) => {
+            if (!ling || !ling.versionDetails) return null;
+            const v = ling.versionDetails.find(vd => !vd.isDefault);
+            return v ? v.version : null;
+        };
+
+        // 灵元非默认版本流量占比（0-100）：多版本并存时为各非默认版本 trafficWeight 之和
+        // 后端 LingInfoConverter 默认下发 default=100 / 非默认=0，Dashboard 可经契约路由页覆盖
+        const getCanaryTrafficPct = (ling) => {
+            if (!ling || !ling.versionDetails || ling.versionDetails.length < 2) return 0;
+            return ling.versionDetails.reduce((s, v) => s + (v.isDefault ? 0 : (v.trafficWeight || 0)), 0);
+        };
+
         const getLogColor = (log) => {
             if (log.tag === 'FAIL' || log.tag === 'ERROR') return 'text-red-400';
             if (log.tag === 'OK' || log.tag === 'COMPLETE') return 'text-green-400';
             if (log.type === 'AUDIT') return 'text-indigo-400';
             if (log.tag === 'IN') return 'text-blue-400';
             if (log.tag === 'OUT') return 'text-amber-400';
-            if (log.tag === 'CANARY') return 'text-amber-400';
-            if (log.tag === 'STABLE') return 'text-blue-400';
+            if (log.tag === 'NON_DEFAULT') return 'text-amber-400';
+            if (log.tag === 'DEFAULT') return 'text-blue-400';
             if (log.tag === 'START' || log.tag === 'SUMMARY') return 'text-purple-400';
             return 'text-slate-400';
         };
@@ -3269,7 +3244,7 @@ createApp({
             playgroundRoutingMode, playgroundSimulation,
             handleLogScroll, scrollToTop, filterLogs, resetLogFilters,
             formatDrift, formatTime, formatSize, formatMetricNumber, formatBudgetPercent, formatBudgetValue, formatUptime, formatPlaygroundResult,
-            getStatusClass, getLingShortName, getLingTagClass, getLingHealthDotClass, getLingUptime, getLingServiceCount, getLogColor, getTrend,
+            getStatusClass, getLingShortName, getLingTagClass, getLingHealthDotClass, getLingUptime, getLingServiceCount, getCanaryVersion, getCanaryTrafficPct, getLogColor, getTrend,
             getTimelineEventClass, getTimelineEventIcon, getTimelineEventTypeClass, getLingHealthStatusClass, getLingHealthRoleLabel, getVersionGovernance, hasGovernanceSignals,
             openUploadModal, closeUploadModal, handleFileSelect, handleFileDrop, startUpload, doReloadLing, requestUnloadWithName, requestUnloadSpecific,
             openTimelineModal, closeTimelineModal, loadTimelineData,
@@ -3277,7 +3252,7 @@ createApp({
             fetchLingResourceMetrics, fetchLeakDetections, fetchThreadPoolStats, formatBytes,
             uninstallResultModal, closeUninstallResultModal, getUninstallRiskLabel, getUninstallRiskClass, getUninstallTriggerLabel,
 
-            currentTheme, toggleTheme, packages, fetchPackages, deployPackage, deletePackageFile, updateCanaryWeight, getLingCanaryWeight,
+            currentTheme, toggleTheme, packages, fetchPackages, deployPackage, deletePackageFile,
             consoleExpanded, hasNewTraceAlert, globalLogContainer, onboardingSteps, packageSearch, filteredPackages,
             startTour, goToChecklistStep
         };

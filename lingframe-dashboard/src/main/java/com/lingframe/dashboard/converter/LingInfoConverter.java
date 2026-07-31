@@ -66,16 +66,11 @@ public class LingInfoConverter {
                 .filter(instance -> instance.getDefinition() != null)
                 .map(instance -> {
             boolean isCurDefault = instance == runtime.getInstancePool().getDefault();
-            // canary 标志由 definition.properties.canary 携带（兼容数字 1 / boolean true / 字符串 "true"）
-            boolean isCanary = extractCanaryFlag(instance.getDefinition());
-            // 权重推断：canary 实例 30、default 实例 70；二元候选由 ProviderWeightRouter 在 Pipeline 内决策
-            // 这里仅做展示推断，真实权重由治理存储层 + ProviderWeightRouter 下发覆盖
-            int weight = isCanary ? 30 : (isCurDefault ? 70 : 0);
+            int weight = isCurDefault ? 100 : 0;
             return LingInfoDTO.VersionInfo.builder()
                     .version(instance.getVersion())
                     .status(instance.currentStatus().name())
                     .isDefault(isCurDefault)
-                    .isCanary(isCanary)
                     .trafficWeight(weight)
                     .build();
         }).collect(Collectors.toList());
@@ -89,33 +84,6 @@ public class LingInfoConverter {
                 .invocationGovernance(extractInvocationGovernance(runtime, policy))
                 .installedAt(runtime.getInstalledAt())
                 .build();
-    }
-
-    /**
-     * 从 {@link LingDefinition#getProperties()} 提取 canary 标志。
-     * <p>
-     * 兼容三种携带形式：数字 1、boolean true、字符串 "true"/"1"。
-     *
-     * @param definition 灵元定义
-     * @return true 表示该实例为金丝雀版本
-     */
-    private boolean extractCanaryFlag(LingDefinition definition) {
-        if (definition == null || definition.getProperties() == null) {
-            return false;
-        }
-        Object val = definition.getProperties().get("canary");
-        if (val == null) {
-            return false;
-        }
-        if (val instanceof Boolean) {
-            return (Boolean) val;
-        }
-        if (val instanceof Number) {
-            // 与 DashboardLingSourceResolver.isCanary 对齐：非零即 canary，避免同实例身份判定分裂
-            return ((Number) val).intValue() != 0;
-        }
-        // String 分支同样对齐 sibling：仅认 "true"，不认 "1"——保持 dashboard 单一真源
-        return "true".equalsIgnoreCase(String.valueOf(val));
     }
 
     /**

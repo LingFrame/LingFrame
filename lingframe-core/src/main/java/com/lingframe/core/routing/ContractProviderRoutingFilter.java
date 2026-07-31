@@ -14,6 +14,8 @@ import com.lingframe.core.spi.TrafficRouter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * L0 provider 级路由过滤器。
@@ -116,7 +118,13 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
         // 过滤后为空时 fallback 到全集（兼容灵元方法注册不全但权重仍需生效的场景）
         List<ProviderDescriptor> candidates = !qualified.isEmpty() ? qualified : providers;
 
-        ProviderDescriptor selected = providerWeightRouter.selectProvider(candidates, ctx);
+        // 标签优先匹配：若 ctx 带有请求标签（如 tenant/role/env），优先精确匹配候选 Provider
+        ProviderDescriptor selected = selectByLabels(candidates, ctx);
+        if (selected == null) {
+            // 无标签命中时，退化到基于 Effective Weight 的 N 元加权概率分流
+            selected = providerWeightRouter.selectProvider(candidates, ctx);
+        }
+
         if (selected == null) {
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
         }
@@ -134,6 +142,61 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
         ctx.setRuntime(target);
 
         return chain.doFilter(ctx);
+    }
+
+    /**
+     * 标签优先匹配：当 InvocationContext 携带标签时，尝试在候选 Provider 中寻找完全兼容匹配的 Provider。
+     * <p>
+     * 版本对齐：命中实例的 version 必须与描述符的 version 一致；描述符 version 为 null（迁移期灵元）
+     * 时放宽到任意实例版本。否则迭代期同 lingId 多版本并存场景下，标签命中可能误选旧版本实例，
+     * 使下游版本锁定失效。
+     */
+    private ProviderDescriptor selectByLabels(List<ProviderDescriptor> candidates, InvocationContext ctx) {
+        if (ctx == null || ctx.getLabels() == null || ctx.getLabels().isEmpty()) {
+            return null;
+        }
+        Map<String, String> reqLabels = ctx.getLabels();
+        for (ProviderDescriptor desc : candidates) {
+            RoutableTarget rt = lingRepository != null ? lingRepository.getRoutableTarget(desc.getLingId()) : null;
+            if (rt instanceof LingRuntime) {
+                LingRuntime runtime = (LingRuntime) rt;
+                for (LingInstance instance : runtime.getInstancePool().getActiveInstances()) {
+                    if (!versionMatches(desc, instance)) {
+                        continue;
+                    }
+                    if (matchLabels(instance.getLabels(), reqLabels)) {
+                        return desc;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 描述符版本与实例版本是否对齐。
+     * <p>
+     * 描述符 version 为 null（迁移期灵元裸 lingId）时放宽到任意实例版本；
+     * 否则要求严格相等，避免迭代期误选旧版本。
+     */
+    private boolean versionMatches(ProviderDescriptor desc, LingInstance instance) {
+        if (desc.getVersion() == null) {
+            return true;
+        }
+        return Objects.equals(desc.getVersion(), instance.getVersion());
+    }
+
+    private boolean matchLabels(Map<String, String> instLabels, Map<String, String> reqLabels) {
+        if (instLabels == null) {
+            return false;
+        }
+        for (Map.Entry<String, String> entry : reqLabels.entrySet()) {
+            String val = instLabels.get(entry.getKey());
+            if (!Objects.equals(val, entry.getValue())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

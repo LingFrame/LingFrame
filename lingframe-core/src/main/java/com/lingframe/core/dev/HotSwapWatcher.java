@@ -150,8 +150,8 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent>, 
             // ✅ 强制恢复 TCCL（防止 undeploy 过程中被改变）
             currentThread.setContextClassLoader(originalTCCL);
 
-            boolean isCanary = resolveCanaryFlag(lingDefinition);
-            lifecycleEngine.deploy(lingDefinition, source, !isCanary, Collections.emptyMap());
+            boolean setAsDefault = true;
+            lifecycleEngine.deploy(lingDefinition, source, setAsDefault, Collections.emptyMap());
             // ✅ 再次恢复 TCCL（防止 deploy/start 过程中被改变）
             currentThread.setContextClassLoader(originalTCCL);
 
@@ -187,19 +187,6 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent>, 
             }
         }
         return loaders;
-    }
-
-    /**
-     * ✅ 抽取 canary 判断逻辑
-     */
-    private boolean resolveCanaryFlag(LingDefinition lingDefinition) {
-        Map<String, Object> properties = lingDefinition.getProperties();
-        if (properties == null)
-            return false;
-        Object value = properties.get("canary");
-        if (value instanceof Boolean)
-            return (Boolean) value;
-        return "true".equalsIgnoreCase(String.valueOf(value));
     }
 
     // ======================== 注册/注销 ========================

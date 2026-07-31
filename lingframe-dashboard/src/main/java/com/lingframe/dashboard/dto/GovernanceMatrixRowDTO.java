@@ -13,7 +13,6 @@ public class GovernanceMatrixRowDTO {
     private String lingId;
     private String version;
     private boolean isDefault;
-    private boolean isCanary;
     /** 流量权重（0-100） */
     private int trafficWeight;
     // 调用治理参数

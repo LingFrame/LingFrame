@@ -56,8 +56,9 @@ public class DashboardLingOperations {
             if (definition == null) {
                 throw new InvalidArgumentException("file", "Not a valid ling package: " + file.getName());
             }
-            boolean isCanary = lingSourceResolver.isCanary(definition);
-            lifecycleEngine.deploy(definition, file, !isCanary, Collections.<String, String>emptyMap());
+            LingRuntime runtime = lingRepository.getRuntime(definition.getId());
+            boolean setAsDefault = runtime == null || runtime.getInstancePool().getDefault() == null;
+            lifecycleEngine.deploy(definition, file, setAsDefault, Collections.<String, String>emptyMap());
             lifecycleEventStore.addEvent(
                     definition.getId(),
                     definition.getVersion(),

@@ -18,7 +18,6 @@ import java.util.List;
  * <ul>
  *   <li>{@link #currentStatus()} 永远返回 {@link RuntimeStatus#ACTIVE}，使 {@code MacroStateGuardFilter} 守卫通过</li>
  *   <li>{@link #isAvailable()} 永远返回 true</li>
- *   <li>{@link #isCanaryTarget(LingInstance)} 永远返回 false（灵核只有单例，无 canary 概念）</li>
  *   <li>{@link #getReadyInstances()} 返回单例列表</li>
  * </ul>
  * <p>
@@ -59,10 +58,5 @@ public class LingCoreRoutableTarget implements RoutableTarget {
         // 灵核永远可用（进程级常驻）
         return true;
     }
-
-    @Override
-    public boolean isCanaryTarget(LingInstance target) {
-        // 灵核只有单例，无 canary 概念
-        return false;
-    }
 }
+

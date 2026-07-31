@@ -128,7 +128,7 @@ class LingFrameLifecycleBeansConfigurationTest {
         assertNotNull(invocationPipelineEngine);
 
         // 5. lingDiscoveryService
-        LingDiscoveryService discoveryService = config.lingDiscoveryService(lingFrameConfig, lifecycleEngine);
+        LingDiscoveryService discoveryService = config.lingDiscoveryService(lingFrameConfig, lifecycleEngine, lingRepository);
         assertNotNull(discoveryService);
 
         // 6. lingDeployService

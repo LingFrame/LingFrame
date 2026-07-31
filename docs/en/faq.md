@@ -37,7 +37,7 @@ This document collects common questions and answers about LingFrame.
 ✅ Suitable for:
 - Monolithic systems that have been running for years and cannot easily incur downtime or be rewritten.
 - Large microservices whose internal code has bloated into a "distributed monolith" and need internal evolution boundaries.
-- Teams that want to gradually introduce isolation, canary routing, rate limiting, circuit breaking, and permission auditing.
+- Teams that want to gradually introduce isolation, gray routing, rate limiting, circuit breaking, and permission auditing.
 - Scenarios where you want to establish runtime order without tearing down the existing system.
 
 ❌ Not suitable for:
@@ -122,14 +122,14 @@ Solutions:
 private UserService userService;
 ```
 
-### Q12: How do I execute a Canary Release?
+### Q12: How do I execute a Gray Release?
 
 **A:** Through the Dashboard API configuration:
 
 ```bash
-curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
+curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/gray \
   -H "Content-Type: application/json" \
-  -d '{"percent": 20, "canaryVersion": "2.0.0"}'
+  -d '{"percent": 20, "grayVersion": "2.0.0"}'
 ```
 
 See [Dashboard Docs](dashboard.md) for details.
@@ -366,7 +366,7 @@ The macro availability state that a Ling as a whole currently exposes from the p
 
 Right now, the Dashboard should be more deeply understood as the runtime governance control surface, rather than merely a frontend webpage.
 
-### Canary
+### Gray
 
 Routing a deliberate subset of incoming traffic to a specific Ling version or instance, instead of dispatching everything to the default path.
 

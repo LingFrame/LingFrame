@@ -387,7 +387,6 @@ public class LingController {
                             .lingId(ling.getLingId())
                             .version(v.getVersion())
                             .isDefault(Boolean.TRUE.equals(v.getIsDefault()))
-                            .isCanary(Boolean.TRUE.equals(v.getIsCanary()))
                             .trafficWeight(v.getTrafficWeight())
                             .timeoutMs(gov != null ? gov.getTimeoutMs() : null)
                             .rateLimitPerSecond(gov != null ? gov.getRateLimitPerSecond() : null)
