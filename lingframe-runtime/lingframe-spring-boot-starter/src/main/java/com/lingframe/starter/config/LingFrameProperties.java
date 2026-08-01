@@ -100,6 +100,16 @@ public class LingFrameProperties {
     private LingCoreGovernance lingCoreGovernance = new LingCoreGovernance();
 
     /**
+     * 本地治理补丁文件路径（{@link LocalGovernanceRegistry} 加载与落盘位置）。
+     * <p>
+     * 支持绝对路径与相对路径（相对进程工作目录）。默认 {@code ./config/ling-governance-patch.yml}，
+     * 文件不存在时视为无补丁，治理策略走框架默认值。
+     * <p>
+     * 测试场景可指向不存在的路径以隔离治理补丁干扰（如禁用 demo 限流配置）。
+     */
+    private String governancePatchPath = "./config/ling-governance-patch.yml";
+
+    /**
      * 可信灵元 ID 白名单，豁免危险 API 严格模式校验。
      * <p>
      * 白名单中的灵元在严格模式下也使用非严格模式进行 API 安全扫描，

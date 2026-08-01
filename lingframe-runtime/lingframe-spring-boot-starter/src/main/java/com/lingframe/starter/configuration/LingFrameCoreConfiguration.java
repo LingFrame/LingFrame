@@ -75,8 +75,10 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
-    public LocalGovernanceRegistry localGovernanceRegistry(EventBus eventBus) {
-        return new LocalGovernanceRegistry(eventBus);
+    public LocalGovernanceRegistry localGovernanceRegistry(EventBus eventBus,
+            LingFrameProperties properties) {
+        // 治理补丁路径可配置：默认 ./config/ling-governance-patch.yml，测试可指向不存在路径隔离补丁
+        return new LocalGovernanceRegistry(eventBus, properties.getGovernancePatchPath());
     }
 
     @Bean

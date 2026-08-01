@@ -1,4 +1,4 @@
-saas-refund-ling: !!com.lingframe.api.config.GovernancePolicy
+saas-inventory-hold-ling: !!com.lingframe.api.config.GovernancePolicy
   audits: [
     ]
   capabilities:

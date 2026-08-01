@@ -53,7 +53,8 @@ class GlobalServiceRoutingProxyTest {
         @Test
         @DisplayName("目标灵元不在线时抛出 LingInvocationException")
         void offlineTargetThrows() {
-            when(lingRepository.getRuntime("ling-1")).thenReturn(null);
+            // 路由升维后显式 pinning 走 getRoutableTarget，统一覆盖灵元与灵核
+            when(lingRepository.getRoutableTarget("ling-1")).thenReturn(null);
             GlobalServiceRoutingProxy proxy = createProxy("ling-1");
 
             Method method = getServiceMethod();
@@ -77,7 +78,8 @@ class GlobalServiceRoutingProxyTest {
         void explicitTargetLingId() throws Throwable {
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.getLingId()).thenReturn("ling-1");
-            when(lingRepository.getRuntime("ling-1")).thenReturn(runtime);
+            // 路由升维：显式 pinning 走 getRoutableTarget，统一覆盖灵元（LingRuntime）与灵核
+            when(lingRepository.getRoutableTarget("ling-1")).thenReturn(runtime);
 
             GlobalServiceRoutingProxy proxy = createProxy("ling-1");
 
@@ -85,7 +87,7 @@ class GlobalServiceRoutingProxyTest {
             // 所以用一个非 Object 方法来测试路由
             // 但 invoke 内部会先 resolveTargetLingId，然后委托给 SmartServiceProxy
             // SmartServiceProxy 需要 InvocationPipelineEngine 工作
-            // 这里只验证 resolveTargetLingId 逻辑正确调用了 getRuntime
+            // 这里只验证 resolveTargetLingId 逻辑正确调用了 getRoutableTarget
             try {
                 Method dummyMethod = Runnable.class.getMethod("run");
                 proxy.invoke(Proxy.newProxyInstance(
@@ -94,9 +96,9 @@ class GlobalServiceRoutingProxyTest {
                         (p, m, a) -> null), dummyMethod, null);
             } catch (LingInvocationException e) {
                 // SmartServiceProxy 内部可能因缺少完整上下文而抛异常
-                // 但关键是 lingRepository.getRuntime 被调用了
+                // 但关键是 lingRepository.getRoutableTarget 被调用了
             }
-            verify(lingRepository).getRuntime("ling-1");
+            verify(lingRepository).getRoutableTarget("ling-1");
         }
     }
 
@@ -149,7 +151,8 @@ class GlobalServiceRoutingProxyTest {
         void sameLingIdReusesProxy() throws Throwable {
             LingRuntime runtime = mock(LingRuntime.class);
             when(runtime.getLingId()).thenReturn("ling-1");
-            when(lingRepository.getRuntime("ling-1")).thenReturn(runtime);
+            // 路由升维：显式 pinning 走 getRoutableTarget
+            when(lingRepository.getRoutableTarget("ling-1")).thenReturn(runtime);
 
             GlobalServiceRoutingProxy proxy = createProxy("ling-1");
 
@@ -175,8 +178,8 @@ class GlobalServiceRoutingProxyTest {
             } catch (Exception ignored) {
             }
 
-            // lingRepository.getRuntime 只被调用（resolveTargetLingId 每次都调用）
-            verify(lingRepository, atLeast(2)).getRuntime("ling-1");
+            // 每次 invoke 都会预校验在线状态——getRoutableTarget 至少被调用 2 次
+            verify(lingRepository, atLeast(2)).getRoutableTarget("ling-1");
         }
     }
 
@@ -198,7 +201,9 @@ class GlobalServiceRoutingProxyTest {
                     new Class[]{Runnable.class},
                     (p, m, a) -> null), dummyMethod, null);
 
-            // 裸 contractId 路径不预校验 runtime——交由 ContractProviderRoutingFilter 决策
+            // 裸 contractId 路径不预校验——交由 ContractProviderRoutingFilter 决策
+            // 路由升维后预校验入口为 getRoutableTarget（覆盖灵元与灵核），getRuntime 在 proxy 中已彻底退役
+            verify(lingRepository, never()).getRoutableTarget(anyString());
             verify(lingRepository, never()).getRuntime(anyString());
             // 反向索引已被删除——不再调 lingServiceRegistry
             verify(lingServiceRegistry, never()).getLingIdsByContractId(anyString());

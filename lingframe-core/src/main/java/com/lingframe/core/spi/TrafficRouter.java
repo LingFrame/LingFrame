@@ -11,9 +11,8 @@ import java.util.List;
  * 职责：从众多实例中选出一个最佳实例
  * <p>
  * 设计说明：
- * - 此接口专注于路由决策
- * - 金丝雀配置管理请使用 {@link CanaryConfigurable} 接口
- * - 如需同时支持路由和金丝雀配置，实现类可同时实现两个接口
+ * - 此接口专注于路由决策（从候选实例中选一）
+ * - 金丝雀/迭代灰度统一走权重路由（ProviderWeightRouter 按权重分流），不再有独立的金丝雀配置接口
  */
 public interface TrafficRouter {
 

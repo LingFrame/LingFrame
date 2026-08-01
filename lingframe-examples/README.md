@@ -31,9 +31,9 @@ mvn spring-boot:run
 | 模块 | 作用 |
 | --- | --- |
 | `lingframe-example-ling-mall` | 单体商城底座（可当作“既有系统”） |
-| `lingframe-example-saas-mall` | 在 mall 上渐进拆成灵核 + 多业务灵元（oauth / refund / seckill） |
+| `lingframe-example-saas-mall` | 在 mall 上渐进拆成灵核 + 多业务灵元（oauth / seckill / inventory） |
 
-说明与二维路由对照见：
+说明与契约路由对照见：
 
 `lingframe-example-saas-mall/README.md`
 

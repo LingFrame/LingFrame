@@ -37,12 +37,14 @@ lingframe:
   enabled: true
   dev-mode: true
   ling-home: lings
-  preload-api-jars:
-    - ../lingframe-example-saas-api
+  # 灵元 implements 灵核原生接口（ling-mall 的 UserService/SeckillService/OrderService），
+  # 灵元 pom 以 provided 依赖 ling-mall——灵元 jar 不打包这些契约类，运行期经 LingClassLoader
+  # 父回退到灵核 ClassLoader 解析，灵核与灵元看到同一 Class 对象，身份一致。
+  # 故无需 preload-api-jars 显式预载共享契约（ling-mall 混合契约+实现，整包预载会过度共享灵核实现类）。
   ling-roots:
     - ../lingframe-example-saas-ling-oauth
     - ../lingframe-example-saas-ling-seckill
-    - ../lingframe-example-saas-ling-refund
+    - ../lingframe-example-saas-ling-inventory
   ling-core-governance:
     enabled: false
     govern-internal-calls: true

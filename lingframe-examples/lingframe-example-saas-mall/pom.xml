@@ -14,10 +14,9 @@
     <description>SaaS商城灵核与多业务灵元拆解总工程</description>
 
     <modules>
-        <module>lingframe-example-saas-api</module>
         <module>lingframe-example-saas-lingcore</module>
         <module>lingframe-example-saas-ling-oauth</module>
         <module>lingframe-example-saas-ling-seckill</module>
-        <module>lingframe-example-saas-ling-refund</module>
+        <module>lingframe-example-saas-ling-inventory</module>
     </modules>
 </project>

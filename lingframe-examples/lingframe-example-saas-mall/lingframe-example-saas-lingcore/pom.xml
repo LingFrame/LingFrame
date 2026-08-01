@@ -24,13 +24,6 @@
             <artifactId>lingframe-dashboard</artifactId>
         </dependency>
 
-        <!-- 本项目公共契约层 -->
-        <dependency>
-            <groupId>com.lingframe</groupId>
-            <artifactId>lingframe-example-saas-api</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
         <!-- 复用大单体的底座数据结构及 Mapper 服务 (实现 100% 重用) -->
         <dependency>
             <groupId>com.lingframe</groupId>
@@ -78,7 +71,7 @@
         </dependency>
         <dependency>
             <groupId>com.lingframe</groupId>
-            <artifactId>lingframe-example-saas-ling-refund</artifactId>
+            <artifactId>lingframe-example-saas-ling-inventory</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>

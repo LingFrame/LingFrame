@@ -21,12 +21,20 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- 本项目公共契约 -->
+        <!-- 灵核底座原生契约：灵元 implements UserService 实现接口级双 provider 切流 -->
+        <!-- provided：编译期可见灵核类，运行期由灵核类加载器提供，灵元 jar 不打包 -->
         <dependency>
             <groupId>com.lingframe</groupId>
-            <artifactId>lingframe-example-saas-api</artifactId>
+            <artifactId>lingframe-example-ling-mall</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
+        </dependency>
+
+        <!-- MyBatis-Plus 适配层：DelegatingIServiceSupport 统一处理 IService 桩 delegate -->
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-infra-mybatis-plus</artifactId>
+            <version>${project.version}</version>
         </dependency>
 
         <dependency>

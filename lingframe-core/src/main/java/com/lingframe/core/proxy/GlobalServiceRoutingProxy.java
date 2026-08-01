@@ -2,9 +2,9 @@ package com.lingframe.core.proxy;
 
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingRepository;
-import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.spi.RoutableTarget;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import lombok.extern.slf4j.Slf4j;
@@ -71,11 +71,13 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
             return method.invoke(this, args);
         }
 
-        // 显式 pinning 路径：保持老语义，预先校验灵元在线状态，离线即抛 STATE_REJECTED
+        // 显式 pinning 路径：保持老语义，预先校验目标在线状态，离线即抛 STATE_REJECTED
         // 默认路由路径（targetLingId == null）：跳过预校验，交由 L0 路由过滤器统一决策
+        // 路由升维：用 getRoutableTarget 统一覆盖灵元（LingRuntime）与灵核（LingCoreRoutableTarget），
+        // 修复灵元 delegate 到灵核（@LingReference(lingId="lingcore-app")）时 getRuntime 返回 null 误判离线的问题
         if (targetLingId != null) {
-            LingRuntime runtime = lingRepository.getRuntime(targetLingId);
-            if (runtime == null) {
+            RoutableTarget target = lingRepository.getRoutableTarget(targetLingId);
+            if (target == null) {
                 throw new LingInvocationException(interfaceName,
                         LingInvocationException.ErrorKind.STATE_REJECTED,
                         "Service is currently offline");

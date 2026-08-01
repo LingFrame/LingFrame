@@ -256,14 +256,12 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
         }
 
-        // 灵核 RoutableTarget 没有 READY 实例池——GOVERN_ONLY/SIMULATION 模式放行借道治理
-        // NORMAL 模式下旧格式 FQSID 调灵核不合理（灵核入口走 GOVERN_ONLY），抛 ROUTE_FAILURE
+        // 灵核 RoutableTarget（非 LingRuntime）：设置 runtime 后放行，交 InstanceRoutingFilter.routeCoreTarget
+        // 从灵核单例实例池取实例。灵元 delegate 到灵核（@LingReference(lingId="lingcore-app")）是 NORMAL 模式
+        // 合法调用，不应在此拦截；GOVERN_ONLY/SIMULATION 借道治理同样放行。
         if (!(runtime instanceof LingRuntime)) {
             ctx.setRuntime(runtime);
-            if (ctx.execution().getMode().isGovernOnly() || ctx.execution().getMode().isSimulation()) {
-                return chain.doFilter(ctx);
-            }
-            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
+            return chain.doFilter(ctx);
         }
 
         LingRuntime lingRuntime = (LingRuntime) runtime;

@@ -21,18 +21,19 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- 本项目公共契约 -->
+        <!-- 灵核底座原生契约：灵元 implements SeckillService 实现接口级双 provider 切流 -->
         <dependency>
             <groupId>com.lingframe</groupId>
-            <artifactId>lingframe-example-saas-api</artifactId>
+            <artifactId>lingframe-example-ling-mall</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
         </dependency>
 
+        <!-- MyBatis-Plus 适配层：DelegatingIServiceSupport 统一处理 IService 桩 delegate -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-jdbc</artifactId>
-            <scope>provided</scope>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-infra-mybatis-plus</artifactId>
+            <version>${project.version}</version>
         </dependency>
 
         <dependency>
@@ -46,6 +47,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
             <scope>provided</scope>
+        </dependency>
+
+        <!-- 测试依赖：junit5 + mockito（由 spring-boot-starter-test 统一管理版本） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

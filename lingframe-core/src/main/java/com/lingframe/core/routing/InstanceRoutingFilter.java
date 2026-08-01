@@ -7,6 +7,7 @@ import com.lingframe.core.pipeline.FilterPhase;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
+import com.lingframe.core.spi.RoutableTarget;
 import com.lingframe.core.spi.TrafficRouter;
 
 import java.util.ArrayList;
@@ -27,8 +28,10 @@ import java.util.Objects;
  * 已由入口预解析（web 入口 {@code preResolveLingTarget}）或旧格式 FQSID
  * （{@code routeByLingId}）选定实例时，本过滤器短路放行，零重复执行。
  * <p>
- * 灵核路径：{@link InvocationContext#getLingRuntime()} 对灵核返回 null，本过滤器放行，
- * 保持「灵核 NORMAL 走 GOVERN_ONLY」既有设计，交由 {@code ContextIsolationFilter} 处理。
+ * 灵核路径：{@link InvocationContext#getLingRuntime()} 对灵核返回 null。灵核作为 CORE provider
+ * 被 {@code @LingReference} 调用时为 NORMAL 模式（{@code SmartServiceProxy} 不显式设 mode，默认 NORMAL），
+ * 本过滤器从灵核单例实例池取实例设为 targetInstance，让下游 {@code ContextIsolationFilter} 切灵核
+ * ClassLoader、{@code TerminalInvokerFilter} 取灵核 Bean 真实执行；SIMULATION/GOVERN_ONLY 借道治理放行。
  * <p>
  * 版本锁定：迭代期 {@code ctx.targetVersion} 由 L0 阶段设置，本过滤器据此过滤候选实例，
  * 避免误选旧版本破坏灰度语义；迁移期 {@code targetVersion} 为 null 时不过滤。
@@ -59,10 +62,10 @@ public class InstanceRoutingFilter implements LingInvocationFilter {
             return chain.doFilter(ctx);
         }
 
-        // 2. 灵核或 runtime 未设 → 放行（灵核 NORMAL 走 GOVERN_ONLY，交 ContextIsolationFilter 处理）
+        // 2. 灵核路径（runtime 非 LingRuntime）或 runtime 未设 → 交 routeCoreTarget 处理
         LingRuntime lingRuntime = ctx.getLingRuntime();
         if (lingRuntime == null) {
-            return chain.doFilter(ctx);
+            return routeCoreTarget(ctx, chain);
         }
 
         // 3. 从 READY 实例池选候选，按迭代期版本锁定过滤
@@ -111,6 +114,46 @@ public class InstanceRoutingFilter implements LingInvocationFilter {
         ctx.routing().setTargetInstance(target);
         ctx.setTargetLingId(target.getLingId());
         ctx.setTargetVersion(target.getVersion());
+        return chain.doFilter(ctx);
+    }
+
+    /**
+     * 灵核路径或 runtime 未设时的路由处理。
+     * <p>
+     * runtime 未设：放行（SIMULATION/GOVERN_ONLY 借道治理，交下游 ContextIsolationFilter 处理）。
+     * <p>
+     * 灵核作为 CORE provider 被 {@code @LingReference} 调用时为 NORMAL 模式
+     * （{@code SmartServiceProxy} 不显式设 mode，默认 NORMAL）：
+     * 从灵核单例实例池取实例设为 targetInstance，让 {@code ContextIsolationFilter}
+     * 切灵核 ClassLoader、{@code TerminalInvokerFilter} 取灵核 Bean 真实执行。
+     * SIMULATION/GOVERN_ONLY 借道治理不要求真实目标实例，放行。
+     *
+     * @param ctx   调用上下文
+     * @param chain 过滤器链
+     * @return chain.doFilter 的结果
+     * @throws LingInvocationException NORMAL 模式下灵核实例池为空时抛 ROUTE_FAILURE
+     */
+    private Object routeCoreTarget(InvocationContext ctx, LingFilterChain chain) throws Throwable {
+        RoutableTarget runtime = ctx.getRuntime();
+        if (runtime == null) {
+            // runtime 未设 → 放行（交下游 ContextIsolationFilter 处理）
+            return chain.doFilter(ctx);
+        }
+        // SIMULATION/GOVERN_ONLY 借道治理不要求真实目标实例，放行
+        if (ctx.execution().getMode().isSimulation()
+                || ctx.execution().getMode().isGovernOnly()) {
+            return chain.doFilter(ctx);
+        }
+        // NORMAL 模式：从灵核单例实例池取实例设为 targetInstance
+        List<LingInstance> coreInstances = runtime.getReadyInstances();
+        if (coreInstances == null || coreInstances.isEmpty()) {
+            throw new LingInvocationException(ctx.getServiceFQSID(),
+                    LingInvocationException.ErrorKind.ROUTE_FAILURE);
+        }
+        LingInstance coreTarget = coreInstances.get(0);
+        ctx.routing().setTargetInstance(coreTarget);
+        ctx.setTargetLingId(coreTarget.getLingId());
+        // 灵核无版本概念，targetVersion 保持原值（通常为 null，不覆盖）
         return chain.doFilter(ctx);
     }
 }

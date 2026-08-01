@@ -2,14 +2,15 @@ package com.lingframe.example.saas;
 
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.constant.LingCoreConstants;
+import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.ling.LingServiceRegistry;
+import com.lingframe.core.pipeline.FilterRegistry;
 import com.lingframe.core.routing.ProviderDescriptor;
 import com.lingframe.core.routing.ProviderWeightRouter;
-import com.lingframe.example.mall.dto.ResponseResult;
-import com.lingframe.example.saas.api.dto.OAuthRenderResult;
-import com.lingframe.example.saas.controller.SaasAuthController;
+import com.lingframe.example.mall.service.UserService;
+import com.lingframe.api.annotation.LingReference;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -23,38 +24,34 @@ import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.context.SecurityContextImpl;
 
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * SaaS 商城运行时治理可观测性集成测试。
  * <p>
- * 演示灵珑「运行时治理五件套」中限流与治理链路顺序的可观测效果。
+ * 演示灵珑「二维路由 + 治理」的设计语义——治理随流量走，Dashboard 控制面统一调配。
  * <p>
- * <b>关键设计点</b>：灵核底座 {@code OAuthAbilityCoreImpl} 注册为 CORE provider（权重=100），
- * 灵元 {@code OAuthAbilityImpl} 注册为 LING provider（权重=0）。
- * 默认流量按权重走灵核，灵核治理被 {@code ling-core-governance.enabled=false} 禁用。
- * <p>
- * 本测试演示<b>Dashboard 灰度引流</b>的真实路径：通过 {@link ProviderWeightRouter#setProviderWeight}
- * 把灵元 provider 权重调到 100、灵核 provider 权重降到 0，让流量 100% 切换到灵元，治理补丁下发到灵元后限流即触发。
- * 这正是灵珑「二维路由 + 治理」的设计语义——治理随流量走，Dashboard 控制面统一调配。
+ * <b>关键设计点</b>：灵核底座 {@code UserServiceImpl} 注册为 CORE provider（权重=100），
+ * 灵元 {@code SaaSUserServiceImpl} 注册为 LING provider（权重=0）。
+ * 默认流量按权重走灵核；本测试通过 {@link ProviderWeightRouter#setProviderWeight}
+ * 把灵元 provider 权重调到 100、灵核 provider 权重降到 0，让流量 100% 切换到灵元，
+ * 治理补丁下发到灵元后限流即触发。
  * <p>
  * <b>令牌桶状态注意</b>：{@code TokenBucketRateLimiter} 按 {@code rateLimitPerSecond=1} 每秒补充 1 个令牌。
  * 同一 {@code @SpringBootTest} 共享单例限流器，跨测试方法令牌不重置。
  * 因此限流相关断言集中在同一个测试方法内完成，避免跨方法令牌竞争；
  * 非限流断言（provider 路由权重）放独立方法，不消耗令牌。
  */
-// 测试场景下 dashboard SQLite 路径指向系统临时目录，避免：
-// 1. 污染用户家目录（${user.home}/.lingframe/）
-// 2. 全量 mvn test 时跨模块 surefire fork 进程对同一文件的句柄竞争（Windows "拒绝访问"）
-// 测试逻辑不依赖 dashboard 持久化，但 Spring Boot 启动需 storage bean 可写
-@TestPropertySource(properties = "lingframe.dashboard.storage.path=${java.io.tmpdir}/lingframe-mall-test-dashboard.db")
+// 测试场景下 dashboard SQLite 路径指向系统临时目录，避免污染用户家目录与跨进程句柄竞争；
+// 治理补丁路径与切流测试共用同一临时文件——两测试共享 Spring 上下文（LingFrameConfig 为 JVM 级静态单例，
+// 不同 TestPropertySource 会触发重复 init），本测试 @AfterAll 清理补丁保证切流测试无限流干扰
+@TestPropertySource(properties = {
+        "lingframe.dashboard.storage.path=${java.io.tmpdir}/lingframe-mall-test-dashboard.db",
+        "lingframe.governance-patch-path=${java.io.tmpdir}/lingframe-mall-test-patch.yml"
+})
 @SpringBootTest(classes = SaasMallApplication.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Slf4j
@@ -62,10 +59,10 @@ import java.util.List;
 public class SaasMallGovernanceObservabilityTest {
 
     private static final String OAUTH_LING_ID = "saas-oauth-ling";
-    private static final String OAUTH_CONTRACT = "com.lingframe.example.saas.api.OAuthAbility";
+    private static final String USER_CONTRACT = "com.lingframe.example.mall.service.UserService";
 
-    @Autowired
-    private SaasAuthController authController;
+    @LingReference
+    private UserService userService;
 
     @Autowired
     private LocalGovernanceRegistry governanceRegistry;
@@ -76,6 +73,9 @@ public class SaasMallGovernanceObservabilityTest {
     @Autowired
     private ProviderWeightRouter providerWeightRouter;
 
+    @Autowired
+    private FilterRegistry filterRegistry;
+
     /**
      * 唯一一次性 setup：下发治理补丁 + 灰度引流配置。
      * <p>
@@ -85,10 +85,11 @@ public class SaasMallGovernanceObservabilityTest {
     @BeforeAll
     void setUpGovernance() {
         // 1. Dashboard 灰度引流：把灵元 provider 权重调到 100，流量切换到灵元
-        providerWeightRouter.setProviderWeight(OAUTH_CONTRACT, OAUTH_LING_ID, 100);
+        providerWeightRouter.setProviderWeight(USER_CONTRACT, OAUTH_LING_ID, 100);
         // 灵核 provider 权重降为 0，确保流量 100% 切到灵元（否则按默认权重 50/50 分流，限流断言 flaky）
-        providerWeightRouter.setProviderWeight(OAUTH_CONTRACT, LingCoreConstants.LINGCORE_LING_ID, 0);
-        log.info("Provider weight overridden: {} ling={} weight=100, core={} weight=0", OAUTH_CONTRACT, OAUTH_LING_ID, LingCoreConstants.LINGCORE_LING_ID);
+        providerWeightRouter.setProviderWeight(USER_CONTRACT, LingCoreConstants.LINGCORE_LING_ID, 0);
+        log.info("Provider weight overridden: {} ling={} weight=100, core={} weight=0",
+                USER_CONTRACT, OAUTH_LING_ID, LingCoreConstants.LINGCORE_LING_ID);
 
         // 2. 治理补丁下发到灵元（现在灵元接流量）
         GovernancePolicy lingPatch = new GovernancePolicy();
@@ -111,21 +112,27 @@ public class SaasMallGovernanceObservabilityTest {
     @AfterAll
     void tearDownGovernance() {
         // 恢复默认权重，避免污染其他测试类
-        providerWeightRouter.clearProviderWeight(OAUTH_CONTRACT, OAUTH_LING_ID);
-        providerWeightRouter.clearProviderWeight(OAUTH_CONTRACT, LingCoreConstants.LINGCORE_LING_ID);
+        providerWeightRouter.clearProviderWeight(USER_CONTRACT, OAUTH_LING_ID);
+        providerWeightRouter.clearProviderWeight(USER_CONTRACT, LingCoreConstants.LINGCORE_LING_ID);
+        // 清理限流补丁：两测试共享上下文，恢复灵元治理为空策略，避免切流测试被限流干扰
+        governanceRegistry.updatePatch(OAUTH_LING_ID, new GovernancePolicy());
+        // 驱逐灵元弹性资源缓存（限流器/熔断器）：getLimiter 在无治理下发时会复用缓存限流器，
+        // 仅清补丁不够，必须 evict 让切流测试按 config 默认值重建限流器（默认无限流）
+        filterRegistry.evictLingResources(OAUTH_LING_ID);
+        log.info("Governance patch cleared and resilience resources evicted for ling [{}]", OAUTH_LING_ID);
     }
 
     @BeforeEach
-    void setUpSecurityContext() {
-        GrantedAuthority authority = new SimpleGrantedAuthority("order:admin:refundAudit");
-        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                "test-admin", "n/a", Collections.singleton(authority));
-        SecurityContextHolder.setContext(new SecurityContextImpl(auth));
+    void setUpTenantLabel() {
+        // 治理测试统一用 tenant_vip，确保灵元覆盖点不拦截（tenant_block 才拦截）
+        Map<String, String> labels = new HashMap<>();
+        labels.put("tenant", "tenant_vip");
+        LingCallContext.setLabels(labels);
     }
 
     @AfterEach
-    void clearSecurityContext() {
-        SecurityContextHolder.clearContext();
+    void clearContext() {
+        LingCallContext.clear();
     }
 
     @Nested
@@ -136,15 +143,15 @@ public class SaasMallGovernanceObservabilityTest {
         @DisplayName("灵元 provider 权重覆盖为 100，灵核降为 0——流量 100% 切到灵元")
         public void testLingProviderWeightOverridden() {
             List<ProviderDescriptor> providers =
-                    serviceRegistry.getProvidersByContractId(OAUTH_CONTRACT);
+                    serviceRegistry.getProvidersByContractId(USER_CONTRACT);
             Assertions.assertEquals(2, providers.size(),
-                    "OAuth 契约应有灵核 + 灵元两个 provider");
+                    "UserService 契约应有灵核 + 灵元两个 provider");
 
-            Integer override = providerWeightRouter.getOverrideWeight(OAUTH_CONTRACT, OAUTH_LING_ID);
+            Integer override = providerWeightRouter.getOverrideWeight(USER_CONTRACT, OAUTH_LING_ID);
             Assertions.assertEquals(100, override,
                     "Dashboard 覆盖后灵元 provider 权重应为 100");
 
-            Integer coreOverride = providerWeightRouter.getOverrideWeight(OAUTH_CONTRACT, LingCoreConstants.LINGCORE_LING_ID);
+            Integer coreOverride = providerWeightRouter.getOverrideWeight(USER_CONTRACT, LingCoreConstants.LINGCORE_LING_ID);
             Assertions.assertEquals(0, coreOverride,
                     "Dashboard 覆盖后灵核 provider 权重应为 0，流量 100% 切灵元");
             log.info("Provider weight override confirmed: ling={} weight=100, core={} weight=0",
@@ -169,22 +176,19 @@ public class SaasMallGovernanceObservabilityTest {
             Thread.sleep(1100);
 
             // 第 1 次调用——应当正常通过治理链
-            ResponseResult<OAuthRenderResult> firstCall =
-                    authController.socialRender("tenant_vip", "gitee");
-            log.info("First OAuth call passed governance: code={}", firstCall.getCode());
-            Assertions.assertEquals(200, firstCall.getCode(),
-                    "限流配额内的第 1 次调用应当通过治理");
-            Assertions.assertNotNull(firstCall.getData().getRedirectUrl(),
-                    "第 1 次调用应当真实路由到灵元 provider");
+            String firstToken = userService.socialLogin("gitee", "rate_limit_openId_1", "nick1", "avatar1");
+            log.info("First UserService call passed governance: token={}", firstToken);
+            Assertions.assertNotNull(firstToken,
+                    "限流配额内的第 1 次调用应当通过治理并返回 token");
 
             // 第 2 次调用——令牌桶已空，应当被 ResilienceGovernanceFilter 限流
             // 这证明 ResilienceGovernanceFilter (300) 在 TerminalInvokerFilter 之前拦截，
             // 被限流的请求不会到达灵元实现
             LingInvocationException ex = Assertions.assertThrows(
                     LingInvocationException.class,
-                    () -> authController.socialRender("tenant_vip", "gitee"),
+                    () -> userService.socialLogin("gitee", "rate_limit_openId_2", "nick2", "avatar2"),
                     "第 2 次调用应当触发限流被拒绝");
-            log.info("Second OAuth call rate-limited: kind={}, fqsid={}",
+            log.info("Second UserService call rate-limited: kind={}, fqsid={}",
                     ex.getKind(), ex.getFqsid());
             Assertions.assertEquals(
                     LingInvocationException.ErrorKind.RATE_LIMITED, ex.getKind(),

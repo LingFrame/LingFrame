@@ -18,7 +18,3 @@ governance:
         accessType: "WRITE"
       - capability: "ipc:order-ling"
         accessType: "EXECUTE"
-
-# --- 金丝雀配置 ---
-properties:
-  canary: true
