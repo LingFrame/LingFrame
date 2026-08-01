@@ -47,6 +47,9 @@
         <junit-jupiter.version>5.9.3</junit-jupiter.version>
         <mockito.version>4.11.0</mockito.version>
         <archunit.version>0.23.1</archunit.version>
+
+        <!-- Jacoco 测试覆盖率输出目录变量，支持外部注入以避免并行构建冲突 -->
+        <jacoco.dest.folder>default</jacoco.dest.folder>
     </properties>
 
     <profiles>
@@ -342,7 +345,7 @@
                                     使用 java.io.tmpdir 避免 Windows 中文路径导致 agent 无法写入 exec 文件。
                                     默认的 ${project.build.directory}/jacoco.exec 在中文路径下会写入失败。
                                 -->
-                                <destFile>${java.io.tmpdir}/jacoco/${project.artifactId}.exec</destFile>
+                                <destFile>${java.io.tmpdir}/jacoco/${jacoco.dest.folder}/${project.artifactId}.exec</destFile>
                                 <!--
                                     按 ClassLoader 排除运行时动态加载的测试灵元类，不依赖灵元类包名。
                                     JaCoCo InjectedClassRuntime 对每个加载了被插桩类的 ClassLoader
@@ -363,7 +366,7 @@
                                 <goal>report</goal>
                             </goals>
                             <configuration>
-                                <dataFile>${java.io.tmpdir}/jacoco/${project.artifactId}.exec</dataFile>
+                                <dataFile>${java.io.tmpdir}/jacoco/${jacoco.dest.folder}/${project.artifactId}.exec</dataFile>
                             </configuration>
                         </execution>
                         <execution>
@@ -372,7 +375,7 @@
                                 <goal>check</goal>
                             </goals>
                             <configuration>
-                                <dataFile>${java.io.tmpdir}/jacoco/${project.artifactId}.exec</dataFile>
+                                <dataFile>${java.io.tmpdir}/jacoco/${jacoco.dest.folder}/${project.artifactId}.exec</dataFile>
                                 <rules>
                                     <rule>
                                         <element>BUNDLE</element>

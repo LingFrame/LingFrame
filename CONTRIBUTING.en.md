@@ -3,7 +3,7 @@
 Thank you for your interest in LingFrame.
 
 This document serves as the outward-facing entry point for contributions.  
-The truly authoritative development rules are strictly bound to [DEVELOPMENT_MANUAL.md](DEVELOPMENT_MANUAL.md).
+The truly authoritative development rules are strictly bound to [DEVELOPMENT_MANUAL.md](docs/en/development-manual.md).
 
 If this is your first time participating in this project, we strongly advise against jumping straight into modifying code. Adopting the project's stance, familiarizing yourself with the public architecture, and reading the development manual first will save you a formidable amount of detours.
 
@@ -11,12 +11,12 @@ If this is your first time participating in this project, we strongly advise aga
 
 ## Read These Before You Start
 
-1. [WHY.md](WHY.md)
-2. [MANIFESTO.md](MANIFESTO.md)
+1. [WHY.md](docs/en/why.md)
+2. [MANIFESTO.md](docs/en/manifesto.md)
 3. [README.md](README.md)
 4. [docs/en/faq.md](docs/en/faq.md) (Glossary section)
 5. [docs/en/architecture.md](docs/en/architecture.md)
-6. [DEVELOPMENT_MANUAL.md](DEVELOPMENT_MANUAL.md)
+6. [DEVELOPMENT_MANUAL.md](docs/en/development-manual.md)
 
 If old comments, old documentation, habitual localized patterns, or incompletely scrubbed legacy implementations conflict with the development manual, the development manual takes unquestioned precedence.
 

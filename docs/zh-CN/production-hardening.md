@@ -111,7 +111,7 @@ lingframe:
   - Runtime：公共 `lingframe-spring-boot-starter` + 类型化 `lingframe-spring-boot2-starter` / `lingframe-spring-boot3-starter`
   - Dashboard：单 GAV + `src/java-javax` / `src/java-jakarta`（及对应 test），由 `build-helper` 按 profile 追加
 - 切换矩阵务必 `clean`（SB3 的 class 在 JDK 8 上会直接失败）
-- 贡献者细则：[DEVELOPMENT_MANUAL.md](../../DEVELOPMENT_MANUAL.md) 第 5.2 节
+- 贡献者细则：[development-manual.md](development-manual.md) 第 5.2 节
 - 0.4 交付：**控制面 + 路由升维 + 正确性收口**；配置与边界见本文清单
 
 ---

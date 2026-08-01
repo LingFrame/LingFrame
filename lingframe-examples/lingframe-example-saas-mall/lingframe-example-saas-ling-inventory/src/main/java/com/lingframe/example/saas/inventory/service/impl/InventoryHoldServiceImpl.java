@@ -10,8 +10,8 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -52,11 +52,18 @@ public class InventoryHoldServiceImpl implements InventoryHoldService, Disposabl
     private static final long MAX_TTL_SECONDS = 3600L;
 
     /** 超时自动释放调度器 */
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "inventory-hold-expiry");
-        t.setDaemon(true);
-        return t;
-    });
+    private final ScheduledExecutorService scheduler;
+
+    {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, r -> {
+            Thread t = new Thread(r, "inventory-hold-expiry");
+            t.setDaemon(true);
+            return t;
+        });
+        // 关键修复：shutdown 时立即丢弃未到期的延时任务，避免 awaitTermination 满等超时
+        executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        this.scheduler = executor;
+    }
 
     /**
      * Spring 用的无参构造器：显式声明，避免被下方包私有有参构造器覆盖后默认无参构造器消失。
@@ -225,8 +232,26 @@ public class InventoryHoldServiceImpl implements InventoryHoldService, Disposabl
             scheduler.shutdownNow();
             Thread.currentThread().interrupt();
         }
+        // 执行补偿：释放所有尚未确认且未超时的预占库存，防止灵核库存永久死锁泄漏
+        int compensatedCount = 0;
+        for (HoldRecord record : holdRecords.values()) {
+            synchronized (record) {
+                if (record.status == HoldStatus.HOLDING) {
+                    boolean released = coreInventoryService.releaseStock(record.skuId, record.count);
+                    if (released) {
+                        record.status = HoldStatus.RELEASED;
+                        compensatedCount++;
+                        log.info("Inventory hold released during destroy compensation. holdId={}, skuId={}, count={}", 
+                                record.holdId, record.skuId, record.count);
+                    } else {
+                        log.warn("Failed to release stock during destroy compensation. holdId={}, skuId={}, count={}", 
+                                record.holdId, record.skuId, record.count);
+                    }
+                }
+            }
+        }
         holdRecords.clear();
-        log.info("InventoryHoldServiceImpl destroyed: scheduler shutdown, holdRecords cleared");
+        log.info("InventoryHoldServiceImpl destroyed: scheduler shutdown, holdRecords cleared, compensated {} holding records", compensatedCount);
     }
 
     /** 预占单据状态 */

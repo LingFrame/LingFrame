@@ -3,7 +3,7 @@
 感谢你愿意参与灵珑。
 
 这份文档是对外贡献入口。  
-真正权威的开发规则仍以 [DEVELOPMENT_MANUAL.md](DEVELOPMENT_MANUAL.md) 为准。
+真正权威的开发规则仍以 [DEVELOPMENT_MANUAL.md](docs/zh-CN/development-manual.md) 为准。
 
 如果你是第一次参与这个项目，不建议一上来就直接改代码。先理解项目立场、公开架构，再进入开发手册，会少走很多弯路。
 
@@ -11,12 +11,12 @@
 
 ## 开始之前先读这些
 
-1. [WHY.md](WHY.md)
-2. [MANIFESTO.md](MANIFESTO.md)
+1. [WHY.md](docs/zh-CN/why.md)
+2. [MANIFESTO.md](docs/zh-CN/manifesto.md)
 3. [README.md](README.md)
 4. [docs/zh-CN/faq.md](docs/zh-CN/faq.md)（术语表部分）
 5. [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md)
-6. [DEVELOPMENT_MANUAL.md](DEVELOPMENT_MANUAL.md)
+6. [DEVELOPMENT_MANUAL.md](docs/zh-CN/development-manual.md)
 
 如果旧注释、旧文档、本地习惯，或未完全清理的旧实现与开发手册冲突，优先遵循开发手册。
 

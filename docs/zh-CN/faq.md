@@ -24,7 +24,7 @@
 
 ### Q3: 灵珑和 Spring Boot 的关系是什么？
 
-**A:** 灵珑不是 Spring Boot 的替代品。治理内核（`lingframe-core`）不以 Spring 为前提；Spring Boot 集成在 `lingframe-runtime`：公共 `lingframe-spring-boot-starter` + 栈专属 `lingframe-spring-boot2-starter` / `lingframe-spring-boot3-starter`（类型化 `javax` / `jakarta`，禁止反射探测 Servlet）。Dashboard 保持**单 GAV** + 矩阵源码集。细则见 [开发手册](../../DEVELOPMENT_MANUAL.md) 第 5.2 节。
+**A:** 灵珑不是 Spring Boot 的替代品。治理内核（`lingframe-core`）不以 Spring 为前提；Spring Boot 集成在 `lingframe-runtime`：公共 `lingframe-spring-boot-starter` + 栈专属 `lingframe-spring-boot2-starter` / `lingframe-spring-boot3-starter`（类型化 `javax` / `jakarta`，禁止反射探测 Servlet）。Dashboard 保持**单 GAV** + 矩阵源码集。细则见 [开发手册](development-manual.md) 第 5.2 节。
 
 ### Q4: "灵元"是什么？
 

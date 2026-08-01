@@ -20,7 +20,7 @@ Closes #(issue number)
 
 Before submitting this PR, please confirm:
 
-- [ ] I have read the [CONTRIBUTING.md](../CONTRIBUTING.md) and [DEVELOPMENT_MANUAL.md](../DEVELOPMENT_MANUAL.md)
+- [ ] I have read the [CONTRIBUTING.md](../CONTRIBUTING.md) and [DEVELOPMENT_MANUAL.md](../docs/zh-CN/development-manual.md)
 - [ ] My code follows the project's coding style and terminology conventions
 - [ ] Comments are written in Chinese as required
 - [ ] Log messages are written in English as required

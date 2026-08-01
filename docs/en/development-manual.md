@@ -7,7 +7,7 @@
 > - maintainers working on architecture, code, tests, and documentation
 > - any AI assistant that modifies code, tests, or docs in this repository
 >
-> If older documents, historical habits, or local implementations conflict with this manual, follow this manual, [MANIFESTO.md](MANIFESTO.md), [WHY.md](WHY.md), and the current code facts.
+> If older documents, historical habits, or local implementations conflict with this manual, follow this manual, [manifesto.md](manifesto.md), [why.md](why.md), and the current code facts.
 
 ---
 
@@ -509,8 +509,8 @@ Whenever code is changed, at minimum check all of the following:
 
 If this is your first time reading LingFrame, use this order:
 
-1. [WHY.md](WHY.md)
-2. [MANIFESTO.md](MANIFESTO.md)
+1. [why.md](why.md)
+2. [manifesto.md](manifesto.md)
 3. [README.md](README.md)
 4. this manual
 5. `LingInstance` / `InstanceCoordinator`

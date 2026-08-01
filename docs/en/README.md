@@ -10,7 +10,7 @@ Shorter "does it fit me + run it" lives in the root [README.md](../../README.en.
 ## Suggested order
 
 1. [Root README](../../README.en.md) — fit, rough cost, how to run  
-2. [Shortest path](../../QUICK_START.en.md) — commands  
+2. [Shortest path](quick-start.md) — commands  
 3. [Examples](../../lingframe-examples/en/README.en.md) — starter vs legacy tracks  
 4. Only then open "Adopt & develop" if you integrate for real  
 
@@ -23,7 +23,7 @@ Shorter "does it fit me + run it" lives in the root [README.md](../../README.en.
 | [Root README](../../README.en.md) | Problem, scenarios, vs common approaches, boundaries |
 | [Getting started](getting-started.md) | First-wave adoption tactics + from-scratch tutorial |
 | [Glossary & FAQ](faq.md) | Terms and common questions |
-| [WHY](../../WHY.en.md) / [MANIFESTO](../../MANIFESTO.en.md) | Design stance (optional) |
+| [WHY](why.md) / [MANIFESTO](manifesto.md) | Design stance (optional) |
 
 ---
 
@@ -31,7 +31,7 @@ Shorter "does it fit me + run it" lives in the root [README.md](../../README.en.
 
 | Doc | For |
 | --- | --- |
-| [Shortest path](../../QUICK_START.en.md) | Boot commands |
+| [Shortest path](quick-start.md) | Boot commands |
 | [Getting started](getting-started.md) | What started and what it proves |
 | [Dashboard](dashboard.md) | What the console can do |
 | [Examples](../../lingframe-examples/README.en.md) | Two tracks |
@@ -68,7 +68,7 @@ After boot: ling list → one real request → skim monitor/governance.
 | Doc | For |
 | --- | --- |
 | [Architecture](architecture.md) | How the pieces fit (incl. dual-layer state machine) |
-| [Development manual](../../DEVELOPMENT_MANUAL.en.md) | Rules for contributors (incl. dual-stack section 5.2) |
+| [Development manual](development-manual.md) | Rules for contributors (incl. dual-stack section 5.2) |
 | [Contributing](../../CONTRIBUTING.en.md) | How to send changes |
 
 ---

@@ -4,7 +4,11 @@ import com.lingframe.example.mall.service.InventoryService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-
+import org.awaitility.Awaitility;
+import java.util.concurrent.TimeUnit;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.mockito.ArgumentCaptor;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -261,10 +265,11 @@ class InventoryHoldServiceImplTest {
             InventoryHoldServiceImpl impl = new InventoryHoldServiceImpl(core);
             try {
                 String holdId = impl.holdStock(1L, 3, 1);
-                // 等待 autoExpire 调度执行（TTL=1s，等 2s 确保触发）
-                Thread.sleep(2000);
-                assertEquals("EXPIRED", impl.getHoldStatus(holdId), "TTL 到期后状态应为 EXPIRED");
-                verify(core).releaseStock(1L, 3);
+                // 使用 Awaitility 替代死等，任务执行完毕瞬间即通过测试
+                Awaitility.await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+                    assertEquals("EXPIRED", impl.getHoldStatus(holdId), "TTL 到期后状态应为 EXPIRED");
+                    verify(core).releaseStock(1L, 3);
+                });
             } finally {
                 impl.destroy();
             }
@@ -279,10 +284,11 @@ class InventoryHoldServiceImplTest {
             InventoryHoldServiceImpl impl = new InventoryHoldServiceImpl(core);
             try {
                 String holdId = impl.holdStock(1L, 3, 1);
-                Thread.sleep(2000);
-                assertEquals("RELEASED", impl.getHoldStatus(holdId),
-                        "灵核释放失败时状态应为 RELEASED");
-                verify(core).releaseStock(1L, 3);
+                Awaitility.await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+                    assertEquals("RELEASED", impl.getHoldStatus(holdId),
+                            "灵核释放失败时状态应为 RELEASED");
+                    verify(core).releaseStock(1L, 3);
+                });
             } finally {
                 impl.destroy();
             }
@@ -290,17 +296,29 @@ class InventoryHoldServiceImplTest {
 
         @Test
         @DisplayName("非 HOLDING 单据不触发自动释放：确认扣减后 autoExpire 无操作")
-        void autoExpireSkippedForNonHolding() throws InterruptedException {
+        void autoExpireSkippedForNonHolding() {
             InventoryService core = mock(InventoryService.class);
             when(core.lockStock(any(), anyInt())).thenReturn(true);
             when(core.deductLockedStock(any(), anyInt())).thenReturn(true);
             InventoryHoldServiceImpl impl = new InventoryHoldServiceImpl(core);
+            
+            // 注入 Mock Scheduler 彻底消除时钟依赖与 CI 环境的竞态
+            ScheduledExecutorService mockScheduler = mock(ScheduledExecutorService.class);
+            ReflectionTestUtils.setField(impl, "scheduler", mockScheduler);
+            
             try {
                 String holdId = impl.holdStock(1L, 3, 1);
+                
+                // 捕获提交的延迟任务
+                ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+                verify(mockScheduler).schedule(taskCaptor.capture(), anyLong(), any());
+                
                 impl.confirmDeduct(holdId);
                 assertEquals("CONFIRMED", impl.getHoldStatus(holdId));
-                Thread.sleep(2000);
-                // autoExpire 检查状态非 HOLDING，直接 return，不调灵核 releaseStock
+                
+                // 立即手动执行延迟任务，验证其遇到非 HOLDING 状态时会直接短路退出
+                taskCaptor.getValue().run();
+                
                 assertEquals("CONFIRMED", impl.getHoldStatus(holdId), "已确认单据状态不应被 autoExpire 改变");
                 verify(core, never()).releaseStock(any(), anyInt());
             } finally {
@@ -314,16 +332,18 @@ class InventoryHoldServiceImplTest {
     class DestroyTest {
 
         @Test
-        @DisplayName("destroy 后 holdRecords 已清空，查询返回 NOT_FOUND")
+        @DisplayName("destroy 执行补偿释放未决的 HOLDING 库存，并清空 holdRecords")
         void destroyClearsRecords() {
             InventoryService core = mock(InventoryService.class);
             when(core.lockStock(any(), anyInt())).thenReturn(true);
+            when(core.releaseStock(any(), anyInt())).thenReturn(true);
             InventoryHoldServiceImpl impl = new InventoryHoldServiceImpl(core);
             String holdId = impl.holdStock(1L, 5, 60);
             assertEquals("HOLDING", impl.getHoldStatus(holdId));
 
             impl.destroy();
 
+            verify(core).releaseStock(1L, 5); // 验证触发了补偿释放
             assertEquals("NOT_FOUND", impl.getHoldStatus(holdId),
                     "destroy 后预占记录应已清空，查询返回 NOT_FOUND");
         }

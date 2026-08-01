@@ -221,6 +221,10 @@ LingClassLoader（灵元业务类，Child-First）
 
 **它解决的问题**：动态加载容易；长期运行进程里的规范热卸载难。如果卸载、清理、泄漏诊断被当成事后工具而不是正式运行时职责，长期稳定性退化。
 
+![热部署切流时序图](../images/hot-deploy-sequence.svg)
+
+> 时序图展示从「部署新版本」到「权重切流」再到「旧实例排空卸载」的全过程——灵珑「不停机替换灵元」卖点的工程实现路径。
+
 **设计**：`DefaultLingLifecycleEngine` 是顶层生命周期编排器。它把部署、重载、卸载意图翻译成有序运行时动作，但把状态写入留给 `InstanceCoordinator` 和 `RuntimeCoordinator`。
 
 **部署**：

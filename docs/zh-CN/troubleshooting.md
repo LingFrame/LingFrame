@@ -26,6 +26,10 @@
 
 ## 一、ClassLoader 问题
 
+![ClassLoader 拓扑图](../images/classloader-topology.svg)
+
+> 灵珑的类加载拓扑：每个灵元有独立 `LingClassLoader`（Child-First），白名单类（`java.*`、`com.lingframe.api.*`、`org.slf4j.*` 等）强制父委派，使灵核与灵元看到同一 Class 对象。下方排查多数围绕「同名不同 ClassLoader」与「白名单边界误判」展开。
+
 ### 1.1 ClassNotFoundException / NoClassDefFoundError
 
 **症状：**

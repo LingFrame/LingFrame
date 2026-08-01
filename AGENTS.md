@@ -14,9 +14,9 @@ This file provides unified guidance to AI coding assistants when working with co
 
 | 来源 | 角色 |
 | --- | --- |
-| [DEVELOPMENT_MANUAL.md](DEVELOPMENT_MANUAL.md) | **开发规范唯一真源**；与旧文档/实现冲突时，以本手册 + 当前代码事实为准 |
+| [DEVELOPMENT_MANUAL.md](docs/zh-CN/development-manual.md) | **开发规范唯一真源**；与旧文档/实现冲突时，以本手册 + 当前代码事实为准 |
 | [AGENTS.md](AGENTS.md) | AI 助手统一工作入口（不重复手册全文） |
-| [MANIFESTO.md](MANIFESTO.md) / [WHY.md](WHY.md) | 风格与价值观冲突时的上位依据 |
+| [MANIFESTO.md](docs/zh-CN/manifesto.md) / [WHY.md](docs/zh-CN/why.md) | 风格与价值观冲突时的上位依据 |
 | [docs/development/](docs/development/) | 内部开发区：`proposal` / `assessment` / `archive` **不得**当作现行规范；须与手册和代码交叉确认 |
 
 本文件是 AI 工作摘要，不是规范本身。不要在公开文档或提交说明中引用未公开的内部规划材料。
@@ -61,7 +61,7 @@ mvn -pl lingframe-examples/lingframe-example-lingcore-app -am package -DskipTest
 cd lingframe-examples/lingframe-example-lingcore-app && mvn spring-boot:run
 # 默认 http://localhost:8888 ，Dashboard: /dashboard.html
 
-# 可选集成回归（见 [QUICK_START.md](QUICK_START.md)）
+# 可选集成回归（见 [最短上手](docs/zh-CN/quick-start.md)）
 mvn -pl lingframe-examples/lingframe-example-lingcore-app -am "-Pspring-boot2,integration-check" verify "-Dit.test=ObservabilityClosedLoopIntegrationTest"
 
 # JMH 基准（非默认模块）
@@ -141,7 +141,7 @@ mvn -pl lingframe-benchmark package -Pbenchmark -DskipTests
 
 **N元权重分流**：同一契约同一时刻允许多 provider 共存，由 `ProviderWeightRouter` 按权重比例随机分配（二元只是 N=2 的特例，N≥3 即多版本共存/多租户场景）——`DefaultLingServiceRegistry.registerProvider` 允许任意 N 个 provider 注册，`ProviderWeightRouter.selectProvider` 候选数 > 2 时仅「候选数变化」时告警一次，不主动抛异常强打断业务。
 
-**迁移状态机**：`MigrationPhase`（`CORE_EXCLUSIVE` / `MIGRATING` / `LING_EXCLUSIVE` / `ITERATING`）+ `MigrationStateHolder` 归属 `core.routing` 包，与路由器同包表达"迁移阶段是路由层的元状态"，不入侵运行时 FSM。详见 `DEVELOPMENT_MANUAL.md` §6.8。
+**迁移状态机**：`MigrationPhase`（`CORE_EXCLUSIVE` / `MIGRATING` / `LING_EXCLUSIVE` / `ITERATING`）+ `MigrationStateHolder` 归属 `core.routing` 包，与路由器同包表达"迁移阶段是路由层的元状态"，不入侵运行时 FSM。详见 `development-manual.md` §6.8。
 
 三种执行模式：`NORMAL`（真实执行）、`SIMULATION`（模拟）、`GOVERN_ONLY`（仅治理）。
 
@@ -162,7 +162,7 @@ SPI/动态过滤器不得占用内置 order 保留位。
 - **全新 Shared API JAR 可热加载**；**已进入共享边界的 JAR 不允许热更新或热卸载**；替换/破坏性变更必须**重启进程**
 - `SharedApiManager` 启动边界：预加载 → 注册包前缀 → **冻结** → 再加载灵元
 - 类加载权威：`LingInstance.getClassLoader()`，不要把 TCCL 当隔离真源
-- 隔离边界诚实表述见 `DEVELOPMENT_MANUAL` §6.4.5。代码注释 / 文档 / 提交说明里**禁止**写「完全隔离」「绝对隔离」「架构保证零引用」「永不进入灵核静态域」；正确表述是「类型隔离」「编排隔离」「卸载后可证 GC」「BeanFactory 层隔离」
+- 隔离边界诚实表述见 `development-manual.md` §6.4.5。代码注释 / 文档 / 提交说明里**禁止**写「完全隔离」「绝对隔离」「架构保证零引用」「永不进入灵核静态域」；正确表述是「类型隔离」「编排隔离」「卸载后可证 GC」「BeanFactory 层隔离」
 
 ---
 

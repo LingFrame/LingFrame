@@ -2,6 +2,19 @@
 
 Examples are organized in **two tracks**.
 
+## Reverse selection table: what you want to do → which example to read
+
+| You want to | Read this example |
+| --- | --- |
+| Shortest path to run a Ling | `lingcore-app` + `ling-user` / `ling-order` |
+| Adopt LingFrame without touching a line of the legacy system | `saas-mall` (LingCore = `ling-mall` reused as-is as the base) |
+| Override a legacy impl for strangle-migration | `saas-ling-oauth` (overrides `UserService.socialLogin`, adds SaaS multi-tenant governance) |
+| Extend a legacy impl with extra governance | `saas-ling-seckill` (extends `SeckillService`, adds tenant-level quota pre-check) |
+| Add a capability the legacy system lacks | `saas-ling-inventory` (TTL inventory hold; LingCore has no such contract → sole provider) |
+| Canary release demo | `ling-order-canary` / `ling-user-canary` (dual versions + weight-based traffic shift) |
+| Ling delegates to LingCore IService | `saas-ling-oauth` + `lingframe-infra-mybatis-plus` (`DelegatingIServiceSupport` removes IService boilerplate) |
+| Cross-Ling invocation | `lingcore-app` where `ling-order` calls `ling-user` via `@LingReference` |
+
 Fit + shortest run: root [README.md](../README.md).  
 Public docs map: [docs/en/README.md](../docs/en/README.md).
 
@@ -15,7 +28,7 @@ Public docs map: [docs/en/README.md](../docs/en/README.md).
 | `lingframe-example-order-api` | Shared API contracts |
 | `lingframe-example-ling-native` | Non-Spring ling entry |
 
-Shortest path: root `QUICK_START.md`, or `docs/en/getting-started.md`.
+Shortest path: [Quick start](../docs/en/quick-start.md), or `docs/en/getting-started.md`.
 
 ```powershell
 mvn -pl lingframe-examples/lingframe-example-lingcore-app -am package -DskipTests

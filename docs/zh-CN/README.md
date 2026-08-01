@@ -10,7 +10,7 @@
 ## 建议顺序
 
 1. [根 README](../../README.md) — 适不适合我、大概多快、怎么跑  
-2. [最短上手](../../QUICK_START.md) — 命令细节  
+2. [最短上手](quick-start.md) — 命令细节  
 3. [示例说明](../../lingframe-examples/README.md) — 入门线 / 商城演进线  
 4. 真要接到自己项目时，再看下面“接入与开发”
 
@@ -23,7 +23,7 @@
 | [根 README](../../README.md) | 问题、场景、和常见做法的差别、边界 |
 | [快速开始](getting-started.md) | 首轮接入策略 + 从零构建完整应用 |
 | [术语表 & FAQ](faq.md) | 名词解释 + 常见问题 |
-| [WHY](../../WHY.md) / [MANIFESTO](../../MANIFESTO.md) | 设计立场（可选） |
+| [WHY](why.md) / [MANIFESTO](manifesto.md) | 设计立场（可选） |
 
 ---
 
@@ -31,7 +31,7 @@
 
 | 文档 | 干什么用 |
 | --- | --- |
-| [最短上手](../../QUICK_START.md) | 启动命令 |
+| [最短上手](quick-start.md) | 启动命令 |
 | [快速开始](getting-started.md) | 刚才启动了什么、说明了什么 |
 | [控制台说明](dashboard.md) | 控制台能做什么 |
 | [示例说明](../../lingframe-examples/zh-CN/README.md) | 两条示例线 |
@@ -68,7 +68,7 @@
 | 文档 | 干什么用 |
 | --- | --- |
 | [架构设计](architecture.md) | 整体怎么拼起来的（含双层状态机） |
-| [开发手册](../../DEVELOPMENT_MANUAL.md) | 贡献与开发规则（含双栈第 5.2 节） |
+| [开发手册](development-manual.md) | 贡献与开发规则（含双栈第 5.2 节） |
 | [贡献指南](../../CONTRIBUTING.md) | 怎么提 PR |
 
 ---

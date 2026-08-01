@@ -2,7 +2,7 @@
 
 This document is the **formal getting-started guide**.
 
-If you just want to get the examples up and running first, prioritize reading `QUICK_START.md` in the repository root.
+If you just want to get the examples up and running first, prioritize reading [Quick start](quick-start.md).
 This document, however, focuses on explaining what happens after you get it running:
 
 - What exactly was started in the example?
@@ -802,6 +802,10 @@ curl http://localhost:8888/user-ling/user/listUsers
 ### 3.7 Hot Reload Demo
 
 > ⚠️ Hot reload is only available under dev mode (`dev-mode: true`)
+
+![Hot-deploy traffic-shifting sequence](../images/hot-deploy-sequence.svg)
+
+> Hot reload is one trigger point in the full "deploy new version → weight-based traffic shift → drain & unload old instances" sequence; the diagram above shows the complete sequence, this section only demonstrates the reload step.
 
 Modify `UserServiceImpl` — add logging or change business logic.
 

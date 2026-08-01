@@ -24,7 +24,7 @@ This document collects common questions and answers about LingFrame.
 
 ### Q3: What is the relationship between LingFrame and Spring Boot?
 
-**A:** LingFrame is not a Spring Boot replacement. The governance kernel (`lingframe-core`) is Spring-agnostic; Spring Boot integration lives in `lingframe-runtime` via a **shared** `lingframe-spring-boot-starter` plus stack-specific `lingframe-spring-boot2-starter` / `lingframe-spring-boot3-starter` (typed `javax` / `jakarta`, no reflective Servlet probing). Dashboard stays a **single GAV** with matrix source sets. Detail: [DEVELOPMENT_MANUAL.md](../../DEVELOPMENT_MANUAL.en.md) section 5.2.
+**A:** LingFrame is not a Spring Boot replacement. The governance kernel (`lingframe-core`) is Spring-agnostic; Spring Boot integration lives in `lingframe-runtime` via a **shared** `lingframe-spring-boot-starter` plus stack-specific `lingframe-spring-boot2-starter` / `lingframe-spring-boot3-starter` (typed `javax` / `jakarta`, no reflective Servlet probing). Dashboard stays a **single GAV** with matrix source sets. Detail: [development-manual.md](development-manual.md) section 5.2.
 
 ### Q4: What is a "Ling"?
 

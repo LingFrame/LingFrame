@@ -2,7 +2,7 @@
 
 这份文档是**正式入门文档**。
 
-如果你只想先把示例跑起来，请优先看仓库根目录的 `QUICK_START.md`。
+如果你只想先把示例跑起来，请优先看 [最短上手](quick-start.md)。
 这份文档则负责在跑通之后，继续解释：
 
 - 示例里到底启动了什么
@@ -24,7 +24,7 @@
 - **支持线**（可选）：JDK 17 + Spring Boot 3.x（`-Pspring-boot3`）
 - Maven 3.8+
 
-双栈结构（runtime 双 starter + dashboard 单 GAV 矩阵源码集）见 [生产配置清单](production-hardening.md) 第 6 节，细则见 [开发手册](../../DEVELOPMENT_MANUAL.md) 第 5.2 节。
+双栈结构（runtime 双 starter + dashboard 单 GAV 矩阵源码集）见 [生产配置清单](production-hardening.md) 第 6 节，细则见 [开发手册](development-manual.md) 第 5.2 节。
 
 ---
 
@@ -758,6 +758,10 @@ curl http://localhost:8888/user-ling/user/listUsers
 ### 3.7 热更新演示
 
 > ⚠️ 热更新仅在开发模式（`dev-mode: true`）下可用
+
+![热部署切流时序图](../images/hot-deploy-sequence.svg)
+
+> 热更新是「部署新版本 → 权重切流 → 旧实例排空卸载」全过程的一个触发点；上图展示了完整时序，本节只演示其中 reload 这一步。
 
 修改 `UserServiceImpl`，添加日志或修改业务逻辑。
 

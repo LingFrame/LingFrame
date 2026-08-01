@@ -140,7 +140,8 @@ class ObservabilityClosedLoopIntegrationTest {
     private JsonNode waitForLingsLoaded() throws Exception {
         return waitForCondition("/lingframe/dashboard/lings", root -> {
             JsonNode data = root.path("data");
-            return data.isArray() && data.size() >= 2 && findLing(data, "user-ling") != null;
+            JsonNode userLing = findLing(data, "user-ling");
+            return data.isArray() && data.size() >= 2 && userLing != null && findCanaryVersion(userLing) != null;
         }).path("data");
     }
 

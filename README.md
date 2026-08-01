@@ -126,7 +126,9 @@
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-设计立场：[WHY.md](WHY.md) · [MANIFESTO.md](MANIFESTO.md)
+设计立场：[WHY](docs/zh-CN/why.md) · [MANIFESTO](docs/zh-CN/manifesto.md)
+
+> 上图是静态分层。**不停机替换灵元版本**是灵珑的核心卖点——它是一条完整时序：部署新版本 → 权重切流 → 旧实例排空卸载。完整时序图见 [`docs/images/hot-deploy-sequence.svg`](docs/images/hot-deploy-sequence.svg)。
 
 ---
 
@@ -153,7 +155,7 @@ curl http://localhost:8888/lingframe/dashboard/lings
 curl http://localhost:8888/user-ling/user/listUsers
 ```
 
-命令细节：[QUICK_START.md](QUICK_START.md)
+命令细节：[最短上手](docs/zh-CN/quick-start.md)
 
 跑起来后建议：
 
@@ -319,7 +321,7 @@ mainClass: "com.example.UserLing"
 | 生产配置 | [production-hardening](docs/zh-CN/production-hardening.md)      |
 | 架构 | [架构设计](docs/zh-CN/architecture.md)                              |
 | 本版交付 | [CHANGELOG](CHANGELOG.md)                                       |
-| 参与贡献 | [CONTRIBUTING](CONTRIBUTING.md) · [开发手册](DEVELOPMENT_MANUAL.md) |
+| 参与贡献 | [CONTRIBUTING](CONTRIBUTING.md) · [开发手册](docs/zh-CN/development-manual.md) |
 
 ---
 

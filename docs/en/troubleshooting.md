@@ -26,6 +26,10 @@ Problem Occurred
 
 ## 1. ClassLoader Issues
 
+![ClassLoader topology](../images/classloader-topology.svg)
+
+> LingFrame's class-loading topology: each Ling has its own `LingClassLoader` (Child-First); whitelisted classes (`java.*`, `com.lingframe.api.*`, `org.slf4j.*`, etc.) are forcibly delegated to the parent, so LingCore and Lings see the same Class object. Most troubleshooting below revolves around "same name, different ClassLoader" and "whitelist boundary misjudgment."
+
 ### 1.1 ClassNotFoundException / NoClassDefFoundError
 
 **Symptoms:**

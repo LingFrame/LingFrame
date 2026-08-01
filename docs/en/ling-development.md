@@ -210,3 +210,77 @@ Your primary responsibilities are:
 - Do not let ordinary business lings directly depend on `lingframe-core`.
 
 Next steps: if you want to understand the contract boundary, head to [Shared API Guidelines](shared-api-guidelines.md); if you want to understand the infrastructure proxy model, head to [Infrastructure Development Guide](infrastructure-development.md).
+
+---
+
+## Constraints & Limitations (stated explicitly to avoid pitfalls)
+
+LingFrame is low-intrusion, but it still has boundaries. This section states them plainly — understanding these limits earns more trust than believing in "absolute isolation."
+
+### The isolation boundary is "orchestration isolation / type isolation," not "absolute isolation"
+
+Under a single JVM + shared LingCore Spring context, **"absolute isolation" is physically impossible** — process-level static caches (e.g. `AnnotatedElementUtils`, `BridgeMethodResolver.cache`) hold references to Ling classes.
+
+The honest statements LingFrame can make:
+- **Type isolation**: each Ling has its own `LingClassLoader` (Child-First); the same class name seen by two Lings is a different `Class` object
+- **Orchestration isolation**: on unload, `LingUnloadCoordinator` drains requests, evicts resources, cleans cache references; after unload, GC is provable
+- **BeanFactory-level isolation**: the Ling's Spring context is separated from the LingCore's
+
+What LingFrame cannot and does not promise:
+- "Lings never reference each other" — if your Ling code holds another Ling's object, the framework does not intercept it
+- "ClassLoader is GC'd immediately after unload" — we only promise "provably GC after orchestration + resource cleanup"; if Ling code leaks via static collections/threads, the framework's diagnostics can report it but cannot clean it on the code's behalf
+
+### Once Shared API is frozen, breaking changes require a process restart
+
+Shared API is the process-level public contract boundary. After preloading and freezing before Lings load:
+- **A brand-new Shared API JAR can be hot-loaded** (additive)
+- **A JAR already inside the shared boundary cannot be hot-updated or hot-unloaded** (no modify, no delete)
+
+Forcing a change causes the same class to be loaded by different ClassLoaders, leading to `ClassCastException` and overall type-system corruption. **The correct path for breaking changes is to restart the process.**
+
+### A Ling can use AOP / standalone threads / static variables, but they are not auto-reclaimed on unload
+
+Ling code may use Spring AOP, spawn standalone threads, and hold static variables — the framework does not intercept. But **none of these vanish automatically on Ling unload**:
+
+| Resource | Default behavior on unload | What you must do |
+| --- | --- | --- |
+| Ling `@Component` / Beans | Closed by `SpringLingContainer.stop()` | Usually no manual action |
+| Standalone thread pools / schedulers | **Do not stop automatically** — daemon threads hold Ling Class → ClassLoader reference chain | Implement `DisposableBean.destroy()` or `@PreDestroy`, shutdown the scheduler and clear tasks |
+| Static collections | **Not cleared automatically** — static references hold Ling class objects | Actively clear them in the unload hook |
+| ThreadLocal | **Not removed automatically** | Call `remove()` in the stop callback |
+
+**Positive example**: `lingframe-example-saas-mall`'s `InventoryHoldServiceImpl` explicitly implements `DisposableBean.destroy()` to shut down the TTL scheduler and clear hold records — this is the required posture when a Ling holds thread resources.
+
+### DB governance boundary: covers the Spring DataSource Bean proxy path, not a full sandbox
+
+LingFrame's storage-permission governance **primarily covers the Spring `DataSource` Bean proxy path** — i.e. DataSource calls obtained via the LingCore Spring container are governed.
+
+**What can bypass it**:
+- `DriverManager.getConnection()` hand-rolled connections
+- Non-Bean database connection pools
+- An independent DataSource introduced by the Ling itself
+
+This is a **model boundary**, not a full-path sandbox — the docs do not advertise it as a "full-path sandbox." If your Ling needs strict storage governance, access the database via the LingCore's Spring DataSource path.
+
+### Ling dependency discipline: `provided` dependency on LingCore interfaces; mis-declaring it as `compile` causes Class identity corruption
+
+When a Ling `implements` a LingCore-native interface (e.g. in the saas-mall example, a Ling implements ling-mall's `UserService`), the pom must depend on the LingCore module with `<scope>provided</scope>`:
+
+```xml
+<!-- Correct: provided; resolved at runtime by the LingCore ClassLoader via parent-first fallback -->
+<dependency>
+    <groupId>com.lingframe</groupId>
+    <artifactId>lingframe-example-ling-mall</artifactId>
+    <scope>provided</scope>
+</dependency>
+```
+
+At runtime, the Ling's `LingClassLoader` falls back to the LingCore ClassLoader to resolve these interfaces; **the LingCore and the Ling see the same `Class` object, with consistent identity**.
+
+If mistakenly declared as `compile` (default scope), the Ling JAR bundles a copy of the LingCore interface, and Child-First loading produces **a second Class** — leading to `ClassCastException: com.example.UserService cannot be cast to com.example.UserService` (same name, different ClassLoader).
+
+### A Ling must not directly depend on `lingframe-core`
+
+A Ling may only depend on `lingframe-api` (the contract layer: interfaces, annotations, exceptions, security abstractions). **Directly depending on `lingframe-core` is a boundary violation** — it pulls governance-kernel implementation classes into the Ling's ClassLoader, forming an unresolved reference chain on unload.
+
+ An ordinary `@Component` business Ling neither needs nor should touch any class in `lingframe-core`.

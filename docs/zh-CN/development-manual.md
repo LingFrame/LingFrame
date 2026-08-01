@@ -7,7 +7,7 @@
 > - 参与架构、开发、测试、文档编写的维护者
 > - 任何会修改本仓库代码、文档、测试的 AI 助手
 >
-> 若旧文档、历史习惯、局部实现与本手册冲突，以本手册、[MANIFESTO.md](MANIFESTO.md)、[WHY.md](WHY.md) 与当前代码事实为准。
+> 若旧文档、历史习惯、局部实现与本手册冲突，以本手册、[manifesto.md](manifesto.md)、[why.md](why.md) 与当前代码事实为准。
 
 ---
 
@@ -509,8 +509,8 @@ ITERATING      ──rollback──────→ LING_EXCLUSIVE
 
 如果你是第一次接触灵珑，建议按这个顺序理解项目：
 
-1. [WHY.md](WHY.md)
-2. [MANIFESTO.md](MANIFESTO.md)
+1. [why.md](why.md)
+2. [manifesto.md](manifesto.md)
 3. [README.md](README.md)
 4. 本手册
 5. `LingInstance` / `InstanceCoordinator`

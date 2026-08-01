@@ -221,6 +221,10 @@ Parent ClassLoader (eco packages, injected by runtime; core does not bind Spring
 
 **The problem it solves**: dynamic loading is easy; disciplined hot unload in a long-running process is hard. If unload, cleanup, and leak diagnostics are treated as事后 tools rather than formal runtime responsibilities, long-term stability degrades.
 
+![Hot-deploy traffic-shifting sequence](../images/hot-deploy-sequence.svg)
+
+> The sequence diagram shows the full path from "deploy new version" → "weight-based traffic shift" → "drain & unload old instances" — the engineering implementation of LingFrame's "replace a Ling version without restarting" promise.
+
 **The design**: `DefaultLingLifecycleEngine` is the top-level lifecycle orchestrator. It translates deploy, reload, and unload intent into ordered runtime actions, but leaves state writing to `InstanceCoordinator` and `RuntimeCoordinator`.
 
 **Deploy**:
