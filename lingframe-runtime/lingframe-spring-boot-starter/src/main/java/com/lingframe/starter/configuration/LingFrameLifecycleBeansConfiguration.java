@@ -8,6 +8,7 @@ import com.lingframe.core.classloader.SharedApiManager;
 import com.lingframe.core.classloader.LingClassLoader;
 import com.lingframe.starter.adapter.LingCoreContainerAdapter;
 import com.lingframe.starter.classloader.EcosystemParentPackages;
+import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.deploy.DefaultLingDeployService;
@@ -333,7 +334,10 @@ public class LingFrameLifecycleBeansConfiguration {
     @Bean
     public WebInterfaceManager webInterfaceManager(LingRepository lingRepository,
             TrafficRouter trafficRouter,
-            ObjectProvider<MetricsCollector> metricsCollectorProvider) {
-        return new WebInterfaceManager(lingRepository, trafficRouter, metricsCollectorProvider);
+            LingFrameProperties properties) {
+        // Web 请求指标统一由 LingWebGovernanceFilter 计量（单点），此处不再注入 MetricsCollector（C1）；
+        // 转发前缀白名单（C10）来自 lingframe.trusted-forwarded-prefixes，空则不采信客户端转发头
+        return new WebInterfaceManager(lingRepository, trafficRouter,
+                properties != null ? properties.getTrustedForwardedPrefixes() : Collections.emptyList());
     }
 }

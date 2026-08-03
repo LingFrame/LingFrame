@@ -269,7 +269,7 @@ class DefaultWebRouteResolverTest {
     }
 
     @Test
-    @DisplayName("请求携带 forwarded prefix 时应匹配模板路由")
+    @DisplayName("转发头在配置白名单内时应匹配模板路由（C10 显式信任）")
     void shouldResolveTemplatedRouteWithForwardedPrefix() throws Exception {
         Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
         Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
@@ -288,7 +288,8 @@ class DefaultWebRouteResolverTest {
         routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/{id}"));
 
         DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
-                metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
+                metadataMap, routePatternsByMethod, lingRepository, trafficRouter,
+                Collections.singletonList("/proxy"));
         when(lingRepository.getRuntime("ling-a")).thenReturn(runtime);
         when(runtime.getReadyInstances()).thenReturn(Collections.singletonList(v1Instance));
         when(v1Instance.getVersion()).thenReturn("v1");
@@ -598,6 +599,82 @@ class DefaultWebRouteResolverTest {
                 .requiredPermission("demo:read")
                 .requestMappingInfo(builder.build())
                 .build();
+    }
+
+    @Test
+    @DisplayName("路由解析应归一化 . / .. / %2e 路径段（C10）")
+    void shouldNormalizeDotSegmentsWhenResolving() throws Exception {
+        Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Method targetMethod = DemoController.class.getMethod("detail");
+        WebInterfaceMetadata metadata = conditionedMetadata(targetMethod, "GET", "/ling-a/demo/detail", new String[0], new String[0], new String[0], new String[0]);
+        String routeKey = "GET#/ling-a/demo/detail";
+        metadataMap.put(routeKey, Collections.singletonList(metadata));
+        routePatternsByMethod.put("GET", Collections.singleton("/ling-a/demo/detail"));
+
+        DefaultWebRouteResolver resolver = new DefaultWebRouteResolver(
+                metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
+        when(lingRepository.getRuntime("ling-a")).thenReturn(runtime);
+        when(runtime.getReadyInstances()).thenReturn(Collections.singletonList(v1Instance));
+        when(v1Instance.getVersion()).thenReturn("v1");
+
+        // .. / . / %2e%2e / %2e 变体均应在归一化后命中同一路由，而非被路由绕过
+        String[] attemptedUris = {
+                "/ling-a/demo/../demo/detail",
+                "/ling-a/./demo/detail",
+                "/ling-a/%2e%2e/ling-a/demo/detail",
+                "/ling-a/%2e/demo/detail",
+                "/x/../ling-a/demo/detail",
+                "//ling-a/demo/detail"
+        };
+        for (String uri : attemptedUris) {
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", uri);
+            WebRouteResolution resolution = resolver.resolveRoute(request);
+            assertNotNull(resolution, "URI 「" + uri + "」 应经归一化后命中路由");
+        }
+    }
+
+    @Test
+    @DisplayName("转发头被伪造且未配白名单时应不被采信（C10 默认安全）")
+    void shouldIgnoreForwardedPrefixHeadersWithoutTrustedWhitelist() throws Exception {
+        Map<String, List<WebInterfaceMetadata>> metadataMap = new ConcurrentHashMap<>();
+        Map<String, Set<String>> routePatternsByMethod = new ConcurrentHashMap<>();
+        Method targetMethod = DemoController.class.getMethod("detail");
+        String pattern = "/api/ling/demo/detail";
+        WebInterfaceMetadata metadata = conditionedMetadata(targetMethod, "GET", pattern, new String[0], new String[0], new String[0], new String[0]);
+        String routeKey = "GET#/api/ling/demo/detail";
+        metadataMap.put(routeKey, Collections.singletonList(metadata));
+        routePatternsByMethod.put("GET", Collections.singleton(pattern));
+
+        when(lingRepository.getRuntime("ling-a")).thenReturn(runtime);
+        when(runtime.getReadyInstances()).thenReturn(Collections.singletonList(v1Instance));
+        when(v1Instance.getVersion()).thenReturn("v1");
+
+        // 无白名单（默认构造）：伪造 X-Forwarded-Prefix=/api 不应剥离前缀，仍按原路径命中
+        DefaultWebRouteResolver noWhitelist = new DefaultWebRouteResolver(
+                metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
+        MockHttpServletRequest forged = new MockHttpServletRequest("GET", "/api/ling/demo/detail");
+        forged.addHeader("X-Forwarded-Prefix", "/api");
+        assertNotNull(noWhitelist.resolveRoute(forged),
+                "未配置白名单时不得采信伪造转发头做前缀剥离");
+
+        // 白名单非空但不匹配伪造值：同样不采信
+        DefaultWebRouteResolver mismatchedWhitelist = new DefaultWebRouteResolver(
+                metadataMap, routePatternsByMethod, lingRepository, trafficRouter,
+                Collections.singletonList("/real"));
+        MockHttpServletRequest forged2 = new MockHttpServletRequest("GET", "/api/ling/demo/detail");
+        forged2.addHeader("X-Forwarded-Prefix", "/api");
+        assertNotNull(mismatchedWhitelist.resolveRoute(forged2),
+                "伪造转发头不在白名单内时不得采信");
+
+        // 白名单匹配才剥离：剥离后路径无法命中原 pattern → 视为路由失效（防止转移拦截）
+        DefaultWebRouteResolver trustedWhitlist = new DefaultWebRouteResolver(
+                metadataMap, routePatternsByMethod, lingRepository, trafficRouter,
+                Collections.singletonList("/api"));
+        MockHttpServletRequest trusted = new MockHttpServletRequest("GET", "/api/ling/demo/detail");
+        trusted.addHeader("X-Forwarded-Prefix", "/api");
+        assertNull(trustedWhitlist.resolveRoute(trusted),
+                "白名单匹配时应剥离 /api 前缀，剥离后不应命中 /api 前缀路由");
     }
 
     static class DemoController {

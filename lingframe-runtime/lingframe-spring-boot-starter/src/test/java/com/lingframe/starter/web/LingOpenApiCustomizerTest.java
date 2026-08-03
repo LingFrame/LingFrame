@@ -50,7 +50,7 @@ class LingOpenApiCustomizerTest {
                 .opTagDescription("Users module from class @Tag")
                 .build();
 
-        WebInterfaceManager manager = new WebInterfaceManager(null, null, null) {
+        WebInterfaceManager manager = new WebInterfaceManager(null, null) {
             @Override
             public Map<String, List<WebInterfaceMetadata>> getMetadataMap() {
                 return Collections.singletonMap(metadata.buildRouteKey(), Collections.singletonList(metadata));
@@ -123,7 +123,7 @@ class LingOpenApiCustomizerTest {
         map.put(metaArrayPost.buildRouteKey(), Collections.singletonList(metaArrayPost));
         map.put(metaPath.buildRouteKey(), Collections.singletonList(metaPath));
 
-        WebInterfaceManager manager = new WebInterfaceManager(null, null, null) {
+        WebInterfaceManager manager = new WebInterfaceManager(null, null) {
             @Override
             public Map<String, List<WebInterfaceMetadata>> getMetadataMap() {
                 return map;
@@ -180,7 +180,7 @@ class LingOpenApiCustomizerTest {
         map.put(metaInclude.buildRouteKey(), Collections.singletonList(metaInclude));
         map.put(metaExcludePath.buildRouteKey(), Collections.singletonList(metaExcludePath));
 
-        WebInterfaceManager manager = new WebInterfaceManager(null, null, null) {
+        WebInterfaceManager manager = new WebInterfaceManager(null, null) {
             @Override
             public Map<String, List<WebInterfaceMetadata>> getMetadataMap() {
                 return map;
@@ -217,7 +217,7 @@ class LingOpenApiCustomizerTest {
                 .httpMethod("GET")
                 .build();
 
-        WebInterfaceManager manager = new WebInterfaceManager(null, null, null) {
+        WebInterfaceManager manager = new WebInterfaceManager(null, null) {
             @Override
             public Map<String, List<WebInterfaceMetadata>> getMetadataMap() {
                 return Collections.singletonMap(metaMismatch.buildRouteKey(), Collections.singletonList(metaMismatch));

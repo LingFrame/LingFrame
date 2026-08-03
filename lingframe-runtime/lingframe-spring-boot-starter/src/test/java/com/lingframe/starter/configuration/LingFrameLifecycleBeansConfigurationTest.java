@@ -205,7 +205,7 @@ class LingFrameLifecycleBeansConfigurationTest {
         assertNotNull(referenceInjector);
 
         // 14. webInterfaceManager
-        WebInterfaceManager webInterfaceManagerBean = config.webInterfaceManager(lingRepository, trafficRouter, metricsCollectorProvider);
+        WebInterfaceManager webInterfaceManagerBean = config.webInterfaceManager(lingRepository, trafficRouter, properties);
         assertNotNull(webInterfaceManagerBean);
     }
 }

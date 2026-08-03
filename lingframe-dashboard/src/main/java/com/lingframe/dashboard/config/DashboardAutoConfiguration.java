@@ -54,6 +54,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -68,6 +69,10 @@ import java.util.Properties;
 
 @Slf4j
 @AutoConfiguration
+// 必须启用调度：SseTicketController.cleanupExpired / RateLimitFilter.cleanupIdleBuckets /
+// LingResourceMetricsCollector.sample / DatabaseBackupScheduler.backup 依赖 @Scheduled 生效，
+// 缺失将导致 ticket 桶 / 限流桶内存无界增长、指标不采样、备份不产生。
+@EnableScheduling
 @ConditionalOnWebApplication
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 @EnableConfigurationProperties({StorageProperties.class, AccessTokenProperties.class, ReadOnlyProperties.class, CorsProperties.class, RateLimitProperties.class})
@@ -282,9 +287,12 @@ public class DashboardAutoConfiguration {
             GovernanceStorage governanceStorage,
             GovernanceAdminService governanceAdmin,
             @Autowired(required = false) ProviderWeightRouter providerWeightRouter,
+            @Autowired(required = false) MigrationStateHolder migrationStateHolder,
             ObjectMapper objectMapper) {
-        // ProviderWeightRouter 由 starter 装配；dashboard 独立运行时 fallback 到 null，恢复阶段跳过权重覆盖
-        return new GovernanceConfigRestorer(governanceStorage, governanceAdmin, providerWeightRouter, objectMapper);
+        // ProviderWeightRouter / MigrationStateHolder 由 starter 装配；dashboard 独立运行时 fallback 到 null，
+        // 权重覆盖与迁移阶段重建恢复流程自动降级跳过
+        return new GovernanceConfigRestorer(governanceStorage, governanceAdmin,
+                providerWeightRouter, migrationStateHolder, objectMapper);
     }
 
     @Bean
@@ -298,7 +306,8 @@ public class DashboardAutoConfiguration {
     // ==================== AccessToken / 只读 安全 ====================
 
     @Bean
-    @ConditionalOnProperty(prefix = "lingframe.dashboard.access-token", name = "enabled", havingValue = "true")
+    @ConditionalOnProperty(prefix = "lingframe.dashboard.access-token", name = "enabled",
+            havingValue = "true", matchIfMissing = true)
     public AccessTokenInterceptor accessTokenInterceptor(AccessTokenProperties accessTokenProperties) {
         return new AccessTokenInterceptor(accessTokenProperties);
     }

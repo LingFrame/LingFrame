@@ -1,15 +1,15 @@
 package com.lingframe.core.event;
 
 import com.lingframe.api.event.LingEvent;
-import com.lingframe.core.routing.MigrationStateHolder;
-import com.lingframe.core.routing.ProviderWeightRouter;
 import lombok.Getter;
 
 /**
  * Provider 权重变更事件。
  * <p>
- * 由 {@link ProviderWeightRouter} 在权重下发变更后广播，
- * 供 {@link MigrationStateHolder} 监听并推进迁移状态机。
+ * ⚠️ 当前<b>无发布者、无订阅者</b>（死广播）：{@code ProviderWeightRouter} 已停止 publish
+ * （迁移推进是显式编排动作，仅由 {@code confirmPhaseTransition} + 排空校验驱动），
+ * {@code MigrationStateHolder} 从未真正订阅。
+ * 保留类型定义作为契约预留；未来若实现「权重归零 → 自动推进」接线，需同时恢复发布与订阅。
  * <p>
  * 事件语义：契约 {@code contractId} 下 {@code providerKey} 的权重
  * 从 {@code oldWeight} 变为 {@code newWeight}。

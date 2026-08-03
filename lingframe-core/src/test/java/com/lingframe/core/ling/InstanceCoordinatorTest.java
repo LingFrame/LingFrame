@@ -2,6 +2,7 @@ package com.lingframe.core.ling;
 
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.event.InstanceDestroyedEvent;
 import com.lingframe.core.event.InstanceStateChangedEvent;
 import com.lingframe.core.exception.IllegalStateTransitionException;
 import com.lingframe.core.fsm.InstanceStatus;
@@ -252,6 +253,31 @@ class InstanceCoordinatorTest {
             coord.tearDown(instance);
 
             verify(customTerminator).terminate(instance);
+        }
+
+        @Test
+        @DisplayName("terminate 失败时实例进入 ERROR 且仍发布 InstanceDestroyedEvent（快照收敛）")
+        void terminateFailurePublishesDestroyedEvent() {
+            LingInstanceTerminator failingTerminator = mock(LingInstanceTerminator.class);
+            doThrow(new RuntimeException("resource cleanup failed")).when(failingTerminator).terminate(any());
+            InstanceCoordinator coord = new InstanceCoordinator(eventBus, failingTerminator);
+
+            AtomicReference<InstanceDestroyedEvent> destroyed = new AtomicReference<>();
+            eventBus.subscribeGlobal(InstanceDestroyedEvent.class, destroyed::set);
+
+            LingInstance instance = createInstance("ling-1", "v1");
+            coord.prepare(instance);
+            coord.start(instance);
+            coord.markReady(instance);
+
+            assertDoesNotThrow(() -> coord.tearDown(instance));
+            assertEquals(InstanceStatus.ERROR, instance.currentStatus(),
+                    "terminate 失败后实例应进入 ERROR 而非 DEAD");
+
+            awaitOrFail(destroyed);
+            assertNotNull(destroyed.get(), "tearDown 失败后仍应补发 InstanceDestroyedEvent，避免 RuntimeCoordinator 快照残留");
+            assertEquals("ling-1", destroyed.get().getLingId());
+            assertEquals("v1", destroyed.get().getVersion());
         }
     }
 

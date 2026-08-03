@@ -68,6 +68,23 @@ class ParameterParsingUtilsTest {
             assertThrows(ClassNotFoundException.class,
                     () -> ParameterParsingUtils.resolveClass("com.nonexistent.FakeClass", null));
         }
+
+        @Test
+        @DisplayName("resolveClass 只加载不初始化（不触发静态块副作用）")
+        void shouldLoadClassWithoutInitialization() throws Exception {
+            String name = "com.lingframe.dashboard.util.ParameterParsingUtilsTest$StaticInitProbe";
+            assertTrue(StaticInitRegistry.initializedClasses.isEmpty(), "前置：探针类尚未被初始化");
+
+            Class<?> clazz = ParameterParsingUtils.resolveClass(name, null);
+            assertEquals(name, clazz.getName());
+            assertTrue(StaticInitRegistry.initializedClasses.isEmpty(),
+                    "resolveClass 不应触发类初始化（静态块副作用被禁止）");
+
+            // 对照：显式初始化后标记应出现，证明本测试具备检测类初始化的能力
+            Class.forName(name, true, clazz.getClassLoader());
+            assertTrue(StaticInitRegistry.initializedClasses.contains(name),
+                    "对照：显式 Class.forName(init=true) 应触发静态块");
+        }
     }
 
     @Nested
@@ -230,5 +247,17 @@ class ParameterParsingUtilsTest {
     public static class TestPojo {
         public String name;
         public int age;
+    }
+
+    /** 记录已被初始化的类名（供「resolveClass 禁初始化」测试使用） */
+    public static class StaticInitRegistry {
+        public static final java.util.List<String> initializedClasses = new java.util.ArrayList<>();
+    }
+
+    /** 静态块含副作用的探针类：被初始化时应向 {@link StaticInitRegistry} 写入标记 */
+    public static class StaticInitProbe {
+        static {
+            StaticInitRegistry.initializedClasses.add(StaticInitProbe.class.getName());
+        }
     }
 }

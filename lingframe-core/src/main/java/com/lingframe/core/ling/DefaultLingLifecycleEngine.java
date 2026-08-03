@@ -285,6 +285,11 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             runtime.getInstancePool().moveToDying(instance);
         }
 
+        // 在排空前先进入 STOPPING 意图态（C3）：moveToDying 后实例已 STOPPING，
+        // drain 窗口内 Runtime 宏观状态应呈现 STOPPING 而非 ACTIVE，避免「实例停摆 / 宏观 ACTIVE」失真；
+        // 后续 doFullUndeploy 内的 enterRuntimeStopping 幂等（已是 STOPPING 则跳过）。
+        enterRuntimeStopping(lingId, runtime);
+
         drainInstances(lingId, activeInstances,
                 runtime.getConfig().getForceCleanupDelaySeconds(),
                 runtime.getConfig().getDrainPollIntervalMs(),
@@ -483,6 +488,13 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             log.info("[{}] Replaced default instance {} -> {}, moving old one to dying queue",
                     runtime.getLingId(), replacedDefault.getVersion(), instance.getVersion());
             runtime.getInstancePool().moveToDying(replacedDefault);
+            // 立即排空该池的濒死队列（含本次被替换实例）：
+            // 已无在途请求（isIdle）的实例直接经 InstanceCoordinator.tearDown 回收，
+            // 否则反复「部署新版本顶替旧版本」会持续累积 LingClassLoader + Spring 容器，
+            // 导致 Metaspace/堆无界增长。
+            // 此前替换时仍在途、现已空闲的实例也会在本次排空中一并回收（级联场景兜底）。
+            // 仍未空闲的实例保留在队列，等待后续部署时的再次排空或显式卸载。
+            runtime.getInstancePool().cleanupIdleInstances(null);
         }
 
         // READY 事实向上游汇报，RuntimeCoordinator 再基于事件推导宏观状态。

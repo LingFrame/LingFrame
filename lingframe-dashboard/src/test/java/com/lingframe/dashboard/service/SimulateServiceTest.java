@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
@@ -373,5 +374,85 @@ class SimulateServiceTest {
             assertFalse(result.isAllowed());
             assertTrue(result.getMessage().contains("Pipeline Rejected"));
         }
+    }
+
+    // ==================== InvocationContext 池配对回收 ====================
+
+    @Nested
+    @DisplayName("InvocationContext 池配对回收（obtain/recycle）")
+    class InvocationContextRecycleTests {
+
+        @BeforeEach
+        void setUpRuntime() {
+            LingRuntime runtime = mock(LingRuntime.class);
+            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
+            when(lingRepository.getRuntime("target")).thenReturn(runtime);
+            when(runtime.isAvailable()).thenReturn(true);
+            InstancePool pool = mock(InstancePool.class);
+            when(runtime.getInstancePool()).thenReturn(pool);
+            LingInstance instance = mock(LingInstance.class);
+            when(pool.getDefault()).thenReturn(instance);
+            when(instance.getVersion()).thenReturn("1.0");
+            when(instance.getClassLoader()).thenReturn(getClass().getClassLoader());
+            when(pipelineEngine.invoke(any(InvocationContext.class))).thenReturn("ok");
+        }
+
+        @Test
+        @DisplayName("simulateResource 调用后应把上下文回收回线程池（池大小不变）")
+        void simulateResourceShouldRecycleContext() throws Exception {
+            int before = primeInvocationContextPool(2);
+            service.simulateResource("ling1", "dbRead");
+            assertEquals(before, invocationContextPoolSize(),
+                    "simulateResource 必须配对 recycle()，否则对象池会泄漏上下文");
+            assertNull(InvocationContext.current(), "调用后不应残留 ThreadLocal 活动上下文");
+        }
+
+        @Test
+        @DisplayName("simulateIpc 调用后应把上下文回收回线程池（池大小不变）")
+        void simulateIpcShouldRecycleContext() throws Exception {
+            int before = primeInvocationContextPool(2);
+            service.simulateIpc("ling1", "target", true);
+            assertEquals(before, invocationContextPoolSize(),
+                    "simulateIpc 必须配对 recycle()，否则对象池会泄漏上下文");
+            assertNull(InvocationContext.current(), "调用后不应残留 ThreadLocal 活动上下文");
+        }
+
+        @Test
+        @DisplayName("simulateMethod 调用后应把上下文回收回线程池（池大小不变）")
+        void simulateMethodShouldRecycleContext() throws Exception {
+            int before = primeInvocationContextPool(2);
+            service.simulateMethod("ling1", "com.example.Svc", "hello", AccessType.READ);
+            assertEquals(before, invocationContextPoolSize(),
+                    "simulateMethod 必须配对 recycle()，否则对象池会泄漏上下文");
+            assertNull(InvocationContext.current(), "调用后不应残留 ThreadLocal 活动上下文");
+        }
+
+        @Test
+        @DisplayName("simulateIpc 目标灵元不存在时应不触碰对象池（池大小不变）")
+        void simulateIpcWithoutTargetShouldNotTouchPool() throws Exception {
+            when(lingRepository.getRuntime("target")).thenReturn(null);
+            int before = primeInvocationContextPool(2);
+            service.simulateIpc("ling1", "target", true);
+            assertEquals(before, invocationContextPoolSize());
+        }
+    }
+
+    /** 向当前线程的对象池预热 n 个可回收上下文，返回预热后的池大小 */
+    private static int primeInvocationContextPool(int n) throws Exception {
+        List<InvocationContext> tmp = new java.util.ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            tmp.add(InvocationContext.obtain());
+        }
+        tmp.forEach(InvocationContext::recycle);
+        return invocationContextPoolSize();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static int invocationContextPoolSize() throws Exception {
+        java.lang.reflect.Field stackField = InvocationContext.class.getDeclaredField("STACK");
+        stackField.setAccessible(true);
+        ThreadLocal<java.util.Deque<InvocationContext>> tl =
+                (ThreadLocal<java.util.Deque<InvocationContext>>) stackField.get(null);
+        return tl.get().size();
     }
 }

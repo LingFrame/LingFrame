@@ -1,6 +1,7 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.context.LingCallContext;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.metrics.MetricsCollector;
@@ -228,6 +229,74 @@ class TrafficMetricsFilterTest {
             ctx.setServiceFQSID("ling-1:Service");
 
             assertDoesNotThrow(() -> filter.doFilter(ctx, (c) -> "ok"));
+        }
+
+        @Test
+        @DisplayName("LingInvocationException.ErrorKind.TIMEOUT 类型化异常应计为超时失败")
+        void typedTimeoutRecordedAsTimeout() throws Throwable {
+            MetricsCollector collector = mock(MetricsCollector.class);
+            LingHealthMetrics healthMetrics = mock(LingHealthMetrics.class);
+            when(collector.getOrCreate(anyString())).thenReturn(healthMetrics);
+            when(collector.getOrCreate(anyString(), any())).thenReturn(healthMetrics);
+
+            TrafficMetricsFilter filter = new TrafficMetricsFilter(null, collector);
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setServiceFQSID("ling-1:Service");
+
+            try {
+                filter.doFilter(ctx, (c) -> {
+                    throw new LingInvocationException("ling-1:Service", LingInvocationException.ErrorKind.TIMEOUT);
+                });
+            } catch (LingInvocationException ignored) {
+            }
+
+            verify(healthMetrics).recordFailure(anyLong(), eq(true));
+        }
+
+        @Test
+        @DisplayName("桥接层普通异常消息含 timeout 仍走消息兜底判为超时")
+        void businessMessageContainingTimeoutCountedAsTimeoutViaFallback() throws Throwable {
+            MetricsCollector collector = mock(MetricsCollector.class);
+            LingHealthMetrics healthMetrics = mock(LingHealthMetrics.class);
+            when(collector.getOrCreate(anyString())).thenReturn(healthMetrics);
+            when(collector.getOrCreate(anyString(), any())).thenReturn(healthMetrics);
+
+            TrafficMetricsFilter filter = new TrafficMetricsFilter(null, collector);
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setServiceFQSID("ling-1:Service");
+
+            try {
+                filter.doFilter(ctx, (c) -> {
+                    throw new IllegalStateException("connection timeout reported by business");
+                });
+            } catch (IllegalStateException ignored) {
+            }
+
+            verify(healthMetrics).recordFailure(anyLong(), eq(true));
+        }
+
+        @Test
+        @DisplayName("非超时类型化错误即使消息含 timeout 字样也不应判为超时（类型化信号优先）")
+        void nonTimeoutTypedErrorNotCountedAsTimeout() throws Throwable {
+            MetricsCollector collector = mock(MetricsCollector.class);
+            LingHealthMetrics healthMetrics = mock(LingHealthMetrics.class);
+            when(collector.getOrCreate(anyString())).thenReturn(healthMetrics);
+            when(collector.getOrCreate(anyString(), any())).thenReturn(healthMetrics);
+
+            TrafficMetricsFilter filter = new TrafficMetricsFilter(null, collector);
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setServiceFQSID("ling-1:Service");
+
+            try {
+                filter.doFilter(ctx, (c) -> {
+                    throw new LingInvocationException("ling-1:Service",
+                            LingInvocationException.ErrorKind.RATE_LIMITED,
+                            "simulated timeout wording but typed as rate limited");
+                });
+            } catch (LingInvocationException ignored) {
+            }
+
+            verify(healthMetrics).recordFailure(anyLong(), eq(false));
         }
     }
 

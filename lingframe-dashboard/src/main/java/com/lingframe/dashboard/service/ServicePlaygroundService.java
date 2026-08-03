@@ -287,6 +287,9 @@ public class ServicePlaygroundService {
         String executionMode = simulation
                 ? InvocationExecutionMode.SIMULATION.name()
                 : InvocationExecutionMode.NORMAL.name();
+        // dashboard 自授 capability 记录：finally 中必须按此 revoke，防止权限表单调累积。
+        // 声明在 try 之外，保证 finally 可见。
+        String grantedCapability = null;
         try {
             LingRuntime runtime = lingRepository.getRuntime(lingId);
             if (runtime == null) {
@@ -399,6 +402,7 @@ public class ServicePlaygroundService {
                 // dashboard 自己赋权（不污染 core 治理链 zero special-case）：
                 // 调 invoke 前先复用 GovernanceArbitrator 推 capability，再 PermissionService.grant 给自己赋权。
                 // 持权限表记录后 core 治理链自然放行——core 不为选配模块开后门，权限模型也不改通配。
+                // 调用结束（成功或失败）必须 revoke，防止 dashboard 主体权限单调累积（永久提权记录）。
                 try {
                     Method targetMethod = resolveTargetMethod(targetInstance, fqsid, methodName, parameterTypes);
                     if (targetMethod != null && governanceArbitrator != null) {
@@ -407,6 +411,7 @@ public class ServicePlaygroundService {
                             AccessType accessType = decision.getAccessType() != null
                                     ? decision.getAccessType() : AccessType.READ;
                             permissionService.grant(DASHBOARD_CALLER_ID, decision.getRequiredPermission(), accessType);
+                            grantedCapability = decision.getRequiredPermission();
                             log.debug("[Playground] dashboard self-granted capability={} access={} for {}/{}",
                                     decision.getRequiredPermission(), accessType, fqsid, methodName);
                         }
@@ -436,6 +441,16 @@ public class ServicePlaygroundService {
                         .traces(buildTraces(ctx.execution().getTraces()))
                         .build();
             } finally {
+                if (grantedCapability != null) {
+                    try {
+                        permissionService.revoke(DASHBOARD_CALLER_ID, grantedCapability);
+                        log.debug("[Playground] dashboard revoked capability={} for {}/{}",
+                                grantedCapability, fqsid, methodName);
+                    } catch (Exception revokeEx) {
+                        log.warn("[Playground] dashboard revoke failed for capability={} {}/{}: {}",
+                                grantedCapability, fqsid, methodName, revokeEx.getMessage());
+                    }
+                }
                 ctx.recycle();
             }
         } catch (Exception e) {

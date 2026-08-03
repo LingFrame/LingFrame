@@ -73,11 +73,21 @@ class LingCoreBeanGovernanceProcessorTest {
 
         TestService service = new TestService();
 
-        // 场景 1：如果 context 还没准备好，直接返回原 bean
+        // 场景 1：治理组件缺失（context 未就绪）时默认 fail-closed，拒绝无治理裸 Bean（C9）
         ApplicationContext emptyCtx = mock(ApplicationContext.class);
         LingCoreBeanGovernanceProcessor emptyProcessor = new LingCoreBeanGovernanceProcessor();
         emptyProcessor.setApplicationContext(emptyCtx);
-        assertSame(service, emptyProcessor.postProcessAfterInitialization(service, "testService"));
+        assertThrows(IllegalStateException.class, () ->
+            emptyProcessor.postProcessAfterInitialization(service, "testService"));
+
+        // 场景 1b：fail-open=true 时组件缺失降级为返回裸 Bean（不抛错）
+        ApplicationContext partialCtx = mock(ApplicationContext.class);
+        LingFrameProperties partialProps = new LingFrameProperties();
+        partialProps.getLingCoreGovernance().setFailOpen(true);
+        when(partialCtx.getBean(LingFrameProperties.class)).thenReturn(partialProps);
+        LingCoreBeanGovernanceProcessor partialProcessor = new LingCoreBeanGovernanceProcessor();
+        partialProcessor.setApplicationContext(partialCtx);
+        assertSame(service, partialProcessor.postProcessAfterInitialization(service, "testService"));
 
         // 场景 2：灵核治理未开启，直接返回原 bean
         properties.getLingCoreGovernance().setEnabled(false);
@@ -106,8 +116,13 @@ class LingCoreBeanGovernanceProcessorTest {
         // 场景 8：postProcessBeforeInitialization 应该原样返回
         assertSame(service, processor.postProcessBeforeInitialization(service, "testService"));
 
-        // 场景 9：测试 final 类 Bean，代理创建失败时走 catch 并返回原 bean
+        // 场景 9：final 类 Bean 代理创建失败 → 默认 fail-closed 抛错拒绝裸 Bean（C9）
         FinalService finalService = new FinalService();
+        assertThrows(IllegalStateException.class, () ->
+            processor.postProcessAfterInitialization(finalService, "finalService"));
+
+        // 场景 9b：fail-open=true 时代理失败降级返回原 Bean（保留告警日志）
+        properties.getLingCoreGovernance().setFailOpen(true);
         assertSame(finalService, processor.postProcessAfterInitialization(finalService, "finalService"));
 
         // 场景 10：测试 beanName 为 null 时因 @NonNull 限制抛出 NullPointerException

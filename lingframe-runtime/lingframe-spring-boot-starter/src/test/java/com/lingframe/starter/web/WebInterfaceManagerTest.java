@@ -1,8 +1,6 @@
 package com.lingframe.starter.web;
 
 import com.lingframe.api.exception.LingException;
-import com.lingframe.core.metrics.LingHealthMetrics;
-import com.lingframe.core.metrics.MetricsCollector;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collections;
@@ -23,7 +21,6 @@ import static org.mockito.ArgumentMatchers.*;
 import org.mockito.Mock;
 import static org.mockito.Mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.http.converter.StringHttpMessageConverter;
@@ -66,7 +63,7 @@ class WebInterfaceManagerTest {
         coreContext = new GenericApplicationContext();
         coreContext.refresh();
 
-        manager = new WebInterfaceManager(null, null, null);
+        manager = new WebInterfaceManager(null, null);
         manager.init(coreMapping, null, coreContext);
 
         DemoController controller = new DemoController();
@@ -103,7 +100,7 @@ class WebInterfaceManagerTest {
         coreContext = new GenericApplicationContext();
         coreContext.refresh();
 
-        manager = new WebInterfaceManager(null, null, null);
+        manager = new WebInterfaceManager(null, null);
         manager.init(coreMapping, null, coreContext);
 
         DemoController controller = new DemoController();
@@ -131,7 +128,7 @@ class WebInterfaceManagerTest {
         coreContext.refresh();
 
         RequestMappingHandlerAdapter coreAdapter = createCoreAdapter(coreContext);
-        manager = new WebInterfaceManager(null, null, null);
+        manager = new WebInterfaceManager(null, null);
         manager.init(coreMapping, coreAdapter, coreContext);
 
         DemoController controller = new DemoController();
@@ -180,7 +177,7 @@ class WebInterfaceManagerTest {
         coreContext = new GenericApplicationContext();
         coreContext.refresh();
 
-        manager = new WebInterfaceManager(null, null, null);
+        manager = new WebInterfaceManager(null, null);
         manager.init(coreMapping, null, coreContext);
 
         FirstInheritedController firstController = new FirstInheritedController();
@@ -212,7 +209,7 @@ class WebInterfaceManagerTest {
         coreContext.refresh();
 
         RequestMappingHandlerMapping realCoreMapping = createCoreMapping(coreContext);
-        manager = new WebInterfaceManager(null, null, null);
+        manager = new WebInterfaceManager(null, null);
         manager.init(realCoreMapping, null, coreContext);
 
         DemoController controller = new DemoController();
@@ -258,7 +255,7 @@ class WebInterfaceManagerTest {
         coreContext.refresh();
 
         RequestMappingHandlerMapping realCoreMapping = createCoreMapping(coreContext);
-        manager = new WebInterfaceManager(null, null, null);
+        manager = new WebInterfaceManager(null, null);
         manager.init(realCoreMapping, null, coreContext);
 
         ClassLoader v1Loader = new ClassLoader() {
@@ -446,7 +443,7 @@ class WebInterfaceManagerTest {
     @Test
     @DisplayName("同步注册与注销不再依赖 executor，executor 异常不影响同步路径")
     void testSyncMethodsImmuneToExecutorFailures() throws Exception {
-        manager = new WebInterfaceManager(null, null, null);
+        manager = new WebInterfaceManager(null, null);
 
         // 替换为 mock executor，验证同步路径完全不调用它
         Field field = WebInterfaceManager.class.getDeclaredField("registryExecutor");
@@ -473,7 +470,7 @@ class WebInterfaceManagerTest {
         coreContext = new GenericApplicationContext();
         coreContext.refresh();
 
-        manager = new WebInterfaceManager(null, null, null);
+        manager = new WebInterfaceManager(null, null);
         manager.init(coreMapping, null, coreContext);
 
         DemoController controller = new DemoController();
@@ -511,21 +508,13 @@ class WebInterfaceManagerTest {
     }
 
     @Test
-    @DisplayName("测试分发已解析路由时的异常处理及 Metrics 超时分支")
+    @DisplayName("测试分发已解析路由时的异常处理透传（指标已收敛到 LingWebGovernanceFilter，本层不再计量）")
     void testDispatchResolvedExceptionsAndMetrics() throws Exception {
         coreContext = new GenericApplicationContext();
         coreContext.refresh();
         RequestMappingHandlerAdapter coreAdapter = createCoreAdapter(coreContext);
 
-        ObjectProvider<MetricsCollector> metricsProvider = mock(ObjectProvider.class);
-        MetricsCollector collector = mock(MetricsCollector.class);
-        LingHealthMetrics health = mock(LingHealthMetrics.class);
-        
-        when(metricsProvider.getIfAvailable()).thenReturn(collector);
-        when(collector.getOrCreate(anyString())).thenReturn(health);
-        when(collector.getOrCreate(anyString(), any())).thenReturn(health);
-
-        manager = new WebInterfaceManager(null, null, metricsProvider);
+        manager = new WebInterfaceManager(null, null);
         manager.init(coreMapping, coreAdapter, coreContext);
 
         // 1. meta 为 null 的异常分支
@@ -571,13 +560,9 @@ class WebInterfaceManagerTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         ServletWebRequest webRequest = createServletWebRequest(request, response);
 
-        // 2.1 模拟普通业务异常
+        // 2. 业务异常与超时异常均应透传（异常处理在 WebInterfaceManager 不落 metrics）
         assertThrows(Exception.class, () -> manager.dispatch("GET#/fail", webRequest));
-        verify(health).recordFailure(anyLong(), eq(false));
-
-        // 2.2 模拟超时异常
         assertThrows(Exception.class, () -> manager.dispatch("GET#/timeout", webRequest));
-        verify(health).recordFailure(anyLong(), eq(true));
     }
 
     static class ExceptionController {

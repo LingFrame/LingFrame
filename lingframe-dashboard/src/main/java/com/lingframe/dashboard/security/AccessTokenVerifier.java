@@ -28,6 +28,14 @@ public class AccessTokenVerifier {
             return SecurityDecision.proceed();
         }
         String token = snapshot.getHeader("X-Access-Token");
+        // 支持标准的 Authorization: Bearer <token> 模式
+        if (token == null || token.isEmpty()) {
+            String authHeader = snapshot.getHeader("Authorization");
+            if (authHeader != null && authHeader.toLowerCase().startsWith("bearer ")) {
+                token = authHeader.substring(7).trim();
+            }
+        }
+        
         if (properties.isValidToken(token)) {
             return SecurityDecision.proceed();
         }

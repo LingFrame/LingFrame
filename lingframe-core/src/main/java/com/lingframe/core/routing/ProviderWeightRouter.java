@@ -2,7 +2,6 @@ package com.lingframe.core.routing;
 
 import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.event.ProviderWeightChangedEvent;
 import com.lingframe.core.pipeline.InvocationContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +39,7 @@ public class ProviderWeightRouter {
     /** 记录上一次候选节点数量，仅在候选数量发生变化时打印 warn 告警，避免热路径日志打满 */
     private final Map<String, Integer> lastCandidateCount = new ConcurrentHashMap<>();
 
-    /** 事件总线，权重变更后广播 {@link ProviderWeightChangedEvent} */
+    /** 事件总线：仅用于监听灵元卸载事件清理权重覆盖条目（不再广播权重变更，见 setProviderWeight 注释） */
     private final EventBus eventBus;
 
     public ProviderWeightRouter() {
@@ -58,8 +57,10 @@ public class ProviderWeightRouter {
     /**
      * 设置 provider 权重（Dashboard 下发）。
      * <p>
-     * 权重变更后通过 {@link EventBus} 广播 {@link ProviderWeightChangedEvent}，
-     * 供 {@link MigrationStateHolder} 监听并推进迁移状态机。
+     * <b>不再广播 {@link ProviderWeightChangedEvent}</b>：迁移阶段推进是显式编排动作，
+     * 仅由外部 {@code confirmPhaseTransition} + 排空校验（drainOk）驱动，
+     * 权重变更事件在系统中无消费者（死广播），已删除 publish 调用。
+     * 若未来需要「权重归零 → 自动推进」接线，再显式订阅本类事件重新引入。
      *
      * @param contractId  契约 ID
      * @param providerKey 提供方路由键（{@link ProviderDescriptor#providerKey()}）
@@ -67,14 +68,8 @@ public class ProviderWeightRouter {
      */
     public void setProviderWeight(String contractId, String providerKey, int weight) {
         int clamped = Math.max(0, Math.min(100, weight));
-        Integer oldWeight = getOverrideWeight(contractId, providerKey);
         providerWeights.computeIfAbsent(contractId, k -> new ConcurrentHashMap<>())
                 .put(providerKey, clamped);
-
-        if (eventBus != null && (oldWeight == null || oldWeight != clamped)) {
-            // oldWeight 为 null 表示首次覆盖，传 null 让消费方区分「从未覆盖」与「覆盖前为 0」
-            eventBus.publish(new ProviderWeightChangedEvent(contractId, providerKey, oldWeight, clamped));
-        }
     }
 
     /**
@@ -118,6 +113,10 @@ public class ProviderWeightRouter {
                 return contractMap.isEmpty() ? null : contractMap;
             });
         }
+        // 同步清理 lastCandidateCount，防止卸载后长时间无请求导致 entry 内存残留
+        // 采用保守策略，卸载灵元时直接清空所有 contractId 告警状态，下次有请求时会重新计数。
+        // 代价极小（可能多打印一次告警），但能确保不会有僵尸 entry 残留。
+        lastCandidateCount.clear();
     }
 
     /** 灵元卸载事件回调：自动清理该灵元的权重覆盖条目 */

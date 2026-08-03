@@ -68,7 +68,7 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
 
     @Override
     public List<String> getProviderMethods(String serviceFQSID) {
-        return metadataCache.getOrDefault(serviceFQSID, new ArrayList<>());
+        return metadataCache.getOrDefault(serviceFQSID, Collections.emptyList());
     }
 
     @Override

@@ -118,18 +118,19 @@ public class DashboardService {
         this.uninstallResultMapper = uninstallResultMapper;
         this.objectMapper = objectMapper;
         this.migrationStateHolder = migrationStateHolder;
-        this.statusCoordinator = new DashboardStatusCoordinator(
-                lifecycleEngine,
-                permissionService,
-                runtimeCoordinator,
-                governanceSupport,
-                lifecycleEventStore);
         this.lingOperations = new DashboardLingOperations(
                 lifecycleEngine,
                 lingRepository,
                 migrationStateHolder,
                 lifecycleEventStore,
                 lingSourceResolver);
+        this.statusCoordinator = new DashboardStatusCoordinator(
+                lifecycleEngine,
+                permissionService,
+                runtimeCoordinator,
+                governanceSupport,
+                lifecycleEventStore,
+                this.lingOperations);
     }
 
     public List<LingInfoDTO> getAllLingInfos() {

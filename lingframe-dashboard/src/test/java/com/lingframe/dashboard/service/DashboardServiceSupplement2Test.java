@@ -12,6 +12,7 @@ import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.ling.LingUninstallResult;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.LingInfoDTO;
@@ -21,6 +22,7 @@ import com.lingframe.dashboard.dto.TransitionHistoryDTO;
 import com.lingframe.dashboard.storage.GovernanceStorage;
 import java.io.File;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -127,24 +129,27 @@ class DashboardServiceSupplement2Test {
         }
 
         @Test
-        @DisplayName("updateStatus 在目标为 REMOVED 时应成功卸载路径并返回 DTO")
+        @DisplayName("updateStatus 在目标为 REMOVED 时应走完整卸载路径并返回 DTO")
         void shouldReturnDtoWhenUpdateStatusSucceeds() {
             DashboardService service = newService();
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
-            // REMOVED 走 lifecycleEngine.undeploy（mock 无副作用），避免触发 transition 的 NPE
+            // REMOVED 走 DashboardLingOperations.uninstallLing → undeployWithReport（C7 完整卸载语义），
+            // stub 返回 triggered 结果（真实实现契约：undeployWithReport 永不返回 null）
             when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
             lenient().when(runtime.getInstancePool()).thenReturn(pool);
             lenient().when(pool.getDefault()).thenReturn(null);
             when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
             lenient().when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(new GovernancePolicy());
+            when(lifecycleEngine.undeployWithReport("ling1"))
+                    .thenReturn(LingUninstallResult.triggered("ling1", null, Collections.emptyList()));
             // updateStatus 成功后调用 getLingInfo，需要 converter 返回 DTO
             LingInfoDTO expectedDto = mock(LingInfoDTO.class);
             when(lingInfoConverter.toDTO(eq(runtime), any(), any())).thenReturn(expectedDto);
 
             LingInfoDTO result = service.updateStatus("ling1", RuntimeStatus.REMOVED, null);
 
-            verify(lifecycleEngine).undeploy("ling1");
+            verify(lifecycleEngine).undeployWithReport("ling1");
             assertNotNull(result);
         }
     }

@@ -92,6 +92,7 @@
 - **运行时层**回答：某个灵元作为整体现在对外呈现什么宏观状态
 - 两层之间有关联，但没有互相直改
 - 联动依赖事件与快照，不是对象之间互相拿着对方乱改
+- **全量卸载 drain 窗口**：`undeployWithReport` 先将活跃实例 `moveToDying`（实例层 STOPPING），随后立即 `enterRuntimeStopping` 推进运行时层 STOPPING，再阻塞排空——drain 窗口内宏观状态呈现 STOPPING（下线意图）而非 ACTIVE，消除「实例已停摆 / 宏观仍 ACTIVE」的状态失真；drain 完成后实例全部 DEAD，运行时层自动推进 REMOVED，最后由 `unregister` 收口。
 
 ### 4.2 五个关键角色
 
@@ -286,6 +287,9 @@ ITERATING      ──rollback──────→ LING_EXCLUSIVE
 
 - 否定"权重归零即自动相变"的过度自动化，防止运维临时拉零观察时触发不可逆跃迁。
 - 采用"权重归零为必要条件 + 显式确认指令（`confirmPhaseTransition`）"。
+- **无自动推进**：`MigrationStateHolder` 不监听任何权重变更事件；`ProviderWeightChangedEvent`
+  历史上宣称被监听（死广播），实际从未订阅，已删除发布与伪声明。阶段推进仅由
+  `startMigration` + 权重调整 + 排空校验 + `confirmPhaseTransition` / `rollbackPhaseTransition` 显式驱动。
 - 确认相变前校验两个硬指标：
   1. 待退出方的权重必须已降为 0；
   2. 待退出方的在途请求数必须已排空（`activeRequests == 0`）。
@@ -304,7 +308,8 @@ ITERATING      ──rollback──────→ LING_EXCLUSIVE
 持久化与重启一致性：
 
 - `MigrationPhase` 状态及候选元数据（`lingId`, `phase`, `oldCandidate`, `newCandidate`）统一持久化至 `GovernanceStorage`（`config_type = 'migration'`）。
-- `GovernanceConfigRestorer` 在启动恢复时，先恢复状态机 phase，再恢复 `ProviderWeightRouter` 的权重覆盖，保证重启前后状态完全一致。
+- `GovernanceConfigRestorer` 在启动恢复时重建 `MigrationStateHolder` 阶段（含候选元数据），保障重启后迁移/迭代阶段语义一致；旧灰度 `percent` 格式向后兼容映射。
+- **诚实边界**：`ProviderWeightRouter` 的权重覆盖为运行期下发、**不持久化**。重启后切流比例回到注册默认权重，需要运维重新下发；不能声称「重启前后状态完全一致」。
 
 ### 6.9 非 Bean 数据源（DataSource）代理边界
 
@@ -312,6 +317,18 @@ ITERATING      ──rollback──────→ LING_EXCLUSIVE
 - 如果是由 Spring 容器管理的 Bean，`LingFrameBeanPostProcessor` 会自动进行拦截与包装。
 - **红线**：如果业务代码或三方件直接通过 `DriverManager`、静态代码块、或自行 `new HikariDataSource()` 创建了不归 Spring 容器管辖的数据源，它们将脱离治理网络。
 - **要求**：开发者必须显式调用 `LingConnectionProxyFactory.wrap(...)` 手动包装此类野生数据源，否则其数据库访问将绕过所有隔离和鉴权规则。
+
+### 6.10 Dashboard 控制面鉴权规范
+
+控制面（Dashboard）是治理读功能区，其安全默认必须可证明、可回归：
+
+- **鉴权装配 fail-closed**：`lingframe.dashboard.access-token.enabled` 默认 `true`（POJO 默认即强制鉴权），且 Bean 装配条件必须与之一致——`@ConditionalOnProperty(..., matchIfMissing = true)`，即运维只配 `token`、省略 `enabled` 时也必须注册鉴权拦截器。禁止「POJO 默认 true、Bean 条件默认不注册」的不一致（2026-08-03 评审 A1，已修复并有反射测试防护）。
+- **Token 恒时比较**：`isValidToken` 必须用 `MessageDigest.isEqual` 恒时比较，禁止 `List.contains`（时序侧信道，A3 已修复）。
+- **Playground 权限纪律**：模拟调用临时 `grant` 的能力必须在 `finally` 中 `revoke` 配对，禁止永久累积（A2）；`resolveClass` 禁类初始化（`Class.forName(name, false, cl)`）。
+- **转发头白名单**：`X-Forwarded-Prefix / X-Forwarded-Path` 仅在配置白名单 `lingframe.trusted-forwarded-prefixes` 内才被采信；空列表 = 不采信任何客户端转发头（C10）。
+- **定时任务**：依赖 `@Scheduled` 的清理/采样任务（ticket、限流桶、指标采样、备份）必须在装配类显式开启调度（B2）。
+
+以上语义均有归属（dashboard 安全组件）、有失败路径（fail-closed 启动失败/拒绝）、有测试与事件支撑，符合「治理语义必须可证明」。
 
 ---
 

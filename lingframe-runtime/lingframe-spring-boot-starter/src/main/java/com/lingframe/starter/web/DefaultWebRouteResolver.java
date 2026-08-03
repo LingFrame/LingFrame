@@ -27,16 +27,29 @@ public final class DefaultWebRouteResolver implements WebRouteResolver {
     private final Map<String, Set<String>> routePatternsByMethod;
     private final LingRepository lingRepository;
     private final TrafficRouter trafficRouter;
+    private final List<String> trustedForwardedPrefixes;
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
 
     public DefaultWebRouteResolver(Map<String, List<WebInterfaceMetadata>> metadataMap,
                                    Map<String, Set<String>> routePatternsByMethod,
                                    LingRepository lingRepository,
                                    TrafficRouter trafficRouter) {
+        this(metadataMap, routePatternsByMethod, lingRepository, trafficRouter,
+                Collections.<String>emptyList());
+    }
+
+    public DefaultWebRouteResolver(Map<String, List<WebInterfaceMetadata>> metadataMap,
+                                   Map<String, Set<String>> routePatternsByMethod,
+                                   LingRepository lingRepository,
+                                   TrafficRouter trafficRouter,
+                                   List<String> trustedForwardedPrefixes) {
         this.metadataMap = metadataMap;
         this.routePatternsByMethod = routePatternsByMethod;
         this.lingRepository = lingRepository;
         this.trafficRouter = trafficRouter;
+        this.trustedForwardedPrefixes = trustedForwardedPrefixes != null
+                ? trustedForwardedPrefixes
+                : Collections.<String>emptyList();
     }
 
     @Override
@@ -47,7 +60,7 @@ public final class DefaultWebRouteResolver implements WebRouteResolver {
         }
 
         String httpMethod = resolveHttpMethod(request);
-        String lookupPath = WebRequestPathSupport.resolveLookupPath(request);
+        String lookupPath = WebRequestPathSupport.resolveLookupPath(request, trustedForwardedPrefixes);
         if (httpMethod == null || lookupPath == null) {
             return null;
         }

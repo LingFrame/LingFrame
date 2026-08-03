@@ -58,8 +58,10 @@ public class LingFrameAutoConfiguration {
     @Bean
     public LingGatewayHandlerMapping lingGatewayHandlerMapping(
             WebRouteResolver webRouteResolver,
-            WebInterfaceManager webInterfaceManager) {
-        return new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager);
+            WebInterfaceManager webInterfaceManager,
+            LingFrameProperties properties) {
+        return new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager,
+                properties.getTrustedForwardedPrefixes());
     }
 
     @Bean

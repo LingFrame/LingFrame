@@ -14,6 +14,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p>
  * 使用固定大小的 RingBuffer 统计最近 N 次请求的失败率。
  * 避免引入 Resilience4j 依赖。
+ * <p>
+ * <b>并发设计说明 (Rationale)</b>: 
+ * 在 {@link #checkThresholds()} 中对 {@code failureCount} 和 {@code totalCallsInWindow}
+ * 的读取采用了分离的近似读取（非原子快照）。在低/中等并发场景下，这最多引起阈值计算的极小抖动
+ * （推迟或提前一两次请求触发熔断）。这属于为避免加重锁（提升核心路由性能）而做出的有意取舍。
+ * 若未来此熔断器被应用于极高并发场景（如单实例每秒百万级突发调用），此并发读写的近似"抖动"
+ * 可能会放大，届时可考虑通过高低位组合打包至单个 AtomicLong 的方式实现完全原子快照。
  */
 @Slf4j
 public class SlidingWindowCircuitBreaker implements CircuitBreaker {

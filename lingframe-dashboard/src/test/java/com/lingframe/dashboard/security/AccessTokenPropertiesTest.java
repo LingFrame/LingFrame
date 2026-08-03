@@ -87,4 +87,44 @@ class AccessTokenPropertiesTest {
 
         assertDoesNotThrow(p::afterPropertiesSet);
     }
+
+    @Test
+    @DisplayName("isValidToken 合法/非法/空 token 三态正确")
+    void isValidTokenShouldAcceptValidAndRejectInvalid() {
+        AccessTokenProperties p = new AccessTokenProperties();
+        p.setEnabled(true);
+        p.setToken("main-secret-token");
+        p.getSecondaryTokens().add("rotation-token-1");
+        p.getSecondaryTokens().add("rotation-token-2");
+
+        assertTrue(p.isValidToken("main-secret-token"));
+        assertTrue(p.isValidToken("rotation-token-1"));
+        assertTrue(p.isValidToken("rotation-token-2"));
+        assertFalse(p.isValidToken("wrong-token"));
+        assertFalse(p.isValidToken(null));
+        assertFalse(p.isValidToken(""));
+    }
+
+    @Test
+    @DisplayName("isValidToken 恒时比较不因前缀相同而提前通过")
+    void isValidTokenShouldNotMatchByPrefix() {
+        AccessTokenProperties p = new AccessTokenProperties();
+        p.setEnabled(true);
+        p.setToken("main-secret-token-abcdef");
+
+        assertFalse(p.isValidToken("main-secret-token-abcdeX"), "同长度最后一位不同不应通过");
+        assertFalse(p.isValidToken("main-secret-token-abcde"), "前缀相同但更短不应通过");
+        assertTrue(p.isValidToken("main-secret-token-abcdef"));
+    }
+
+    @Test
+    @DisplayName("disabled 时 isValidToken 恒放行")
+    void isValidTokenShouldPassWhenDisabled() {
+        AccessTokenProperties p = new AccessTokenProperties();
+        p.setEnabled(false);
+        p.setToken("");
+
+        assertTrue(p.isValidToken("anything"));
+        assertTrue(p.isValidToken(null));
+    }
 }

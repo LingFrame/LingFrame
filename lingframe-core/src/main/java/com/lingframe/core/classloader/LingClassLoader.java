@@ -92,6 +92,9 @@ public class LingClassLoader extends URLClassLoader {
         // 🔥 关键修复：关闭 URLConnection 的缓存机制
         // 在 Windows 平台上，如果底层 JarURLConnection 启用了缓存，
         // 即便调用了 URLClassLoader.close()，文件句柄依然可能被 JVM 占用，导致无法覆盖重装。
+        // ⚠️ 注意副作用：此设置会修改 JVM 全局的 jar 协议缓存默认值。
+        // 如果灵核自身或其他组件（如某些 Web 容器）强依赖 JAR URL 缓存来提升性能，
+        // 可能会受到轻微影响。但为保证灵元的热重装能力，关闭缓存是必需的折衷。
         try {
             // 为兼容 JDK 8：该版本没有 setDefaultUseCaches(String protocol, boolean defaultVal)
             // 必须创建一个真实的 jar URL 连接实例来关闭整个 JVM 级别的 jar 缓存默认值

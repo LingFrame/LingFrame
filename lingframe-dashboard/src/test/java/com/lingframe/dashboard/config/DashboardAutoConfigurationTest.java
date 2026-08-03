@@ -23,10 +23,12 @@ import com.lingframe.dashboard.service.LogStreamService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import com.lingframe.dashboard.service.ServicePlaygroundService;
 import com.lingframe.dashboard.service.SimulateService;
+import com.lingframe.dashboard.security.AccessTokenProperties;
 import com.lingframe.dashboard.storage.GovernanceStorage;
 import com.lingframe.dashboard.storage.StorageProperties;
 import java.io.File;
 import java.nio.file.Path;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,6 +38,8 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
@@ -163,5 +167,29 @@ class DashboardAutoConfigurationTest {
     void shouldCreateWebMvcConfigurer() {
         WebMvcConfigurer configurer = config.dashboardWebMvcConfigurer(null, null);
         assertNotNull(configurer);
+    }
+
+    @Test
+    @DisplayName("accessTokenInterceptor 条件应 matchIfMissing=true（省略 enabled 时仍注册，与 AccessTokenProperties 默认 fail-closed 一致）")
+    void accessTokenInterceptorShouldMatchIfMissing() throws Exception {
+        java.lang.reflect.Method method = DashboardAutoConfiguration.class
+                .getMethod("accessTokenInterceptor", AccessTokenProperties.class);
+        ConditionalOnProperty condition = method.getAnnotation(ConditionalOnProperty.class);
+        assertNotNull(condition, "accessTokenInterceptor 应声明 @ConditionalOnProperty");
+        assertTrue(condition.matchIfMissing(),
+                "省略 lingframe.dashboard.access-token.enabled 时必须注册拦截器（AccessTokenProperties.enabled 默认 true）");
+        assertEquals("lingframe.dashboard.access-token", condition.prefix());
+        assertArrayEquals(new String[]{"enabled"}, condition.name());
+        assertEquals("true", condition.havingValue());
+    }
+
+    @Test
+    @DisplayName("配置类应启用调度（否则 4 个 @Scheduled 定时任务全部失效）")
+    void shouldEnableScheduling() {
+        EnableScheduling enableScheduling = DashboardAutoConfiguration.class.getAnnotation(EnableScheduling.class);
+        assertNotNull(enableScheduling,
+                "DashboardAutoConfiguration 必须声明 @EnableScheduling，否则 SseTicketController.cleanupExpired / "
+                        + "RateLimitFilter.cleanupIdleBuckets / LingResourceMetricsCollector.sample / "
+                        + "DatabaseBackupScheduler.backup 永不运行");
     }
 }

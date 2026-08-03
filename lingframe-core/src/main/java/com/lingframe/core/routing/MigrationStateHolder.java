@@ -1,7 +1,6 @@
 package com.lingframe.core.routing;
 
 import com.lingframe.api.exception.RoutingArchitectureViolationException;
-import com.lingframe.core.event.ProviderWeightChangedEvent;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -26,8 +25,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * 以 {@code config_type = 'migration'} 落盘；本类不直接耦合存储实现，
  * 通过 {@link MigrationStateStore} 接口注入。
  * <p>
- * 监听 {@link ProviderWeightChangedEvent}：当某 provider 权重归零时，
- * 状态机不自动跃迁，必须等显式 {@code confirmPhaseTransition} + 排空校验。
+ * <b>迁移无自动推进</b>：本类不监听任何权重变更事件（历史上 {@link com.lingframe.core.event.ProviderWeightChangedEvent}
+ * 曾宣称由本类监听，实际从未订阅，属死广播，已删除发布与伪声明）。
+ * 阶段推进仅由显式编排驱动：外部先调 {@code startMigration}，再在权重调整 + 排空校验（drainOk）
+ * 通过后调用 {@code confirmPhaseTransition}（或失败时 {@code rollbackPhaseTransition}）。
  *
  * @author lingframe
  */
@@ -186,6 +187,44 @@ public class MigrationStateHolder {
         persist(contractId, nextRec);
         phases.put(contractId, nextRec);
         log.info("Phase transition rolled back: contract={} → {} keep={}", contractId, next, keepCandidate);
+    }
+
+    /**
+     * 启动恢复专用：按持久化记录重建指定契约的迁移阶段。
+     * <p>
+     * 仅由 Dashboard 侧 {@code GovernanceConfigRestorer} 在启动恢复时调用；
+     * 不走前置阶段校验（重启后内存态为空，无「当前阶段」可比对），
+     * 也不触发持久化回写（数据来源即持久化记录）。
+     * <p>
+     * 校验规则：
+     * <ul>
+     *   <li>{@code contractId} / {@code phase} 非空</li>
+     *   <li>二元候选态（MIGRATING / ITERATING）必须提供双候选键；独占态仅需保留方候选键</li>
+     * </ul>
+     *
+     * @param contractId   契约 ID
+     * @param phase        恢复的目标阶段
+     * @param oldCandidate 退出方候选键（独占态下为保留方候选键）
+     * @param newCandidate 进入方候选键（独占态下可为 null）
+     * @throws IllegalArgumentException 参数不合法
+     */
+    public synchronized void restorePhase(String contractId, MigrationPhase phase,
+                                          String oldCandidate, String newCandidate) {
+        Objects.requireNonNull(contractId, "contractId");
+        Objects.requireNonNull(phase, "phase");
+        if (phase.isBinary() && (oldCandidate == null || newCandidate == null)) {
+            throw new IllegalArgumentException(
+                    "restorePhase requires both candidates for binary phase, contract=" + contractId
+                            + " phase=" + phase);
+        }
+        if (!phase.isBinary() && oldCandidate == null) {
+            throw new IllegalArgumentException(
+                    "restorePhase requires oldCandidate for exclusive phase, contract=" + contractId
+                            + " phase=" + phase);
+        }
+        phases.put(contractId, new PhaseRecord(phase, oldCandidate, newCandidate));
+        log.info("Migration phase restored: contract={} phase={} old={} new={}",
+                contractId, phase, oldCandidate, newCandidate);
     }
 
     /**

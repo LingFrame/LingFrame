@@ -57,7 +57,8 @@ class DashboardStatusCoordinatorTest {
                 new DashboardGovernanceSupport(governanceAdmin, permissionService, SHARED_OBJECT_MAPPER);
         DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
         DashboardStatusCoordinator coordinator = new DashboardStatusCoordinator(
-                lifecycleEngine, permissionService, runtimeCoordinator, governanceSupport, eventStore);
+                lifecycleEngine, permissionService, runtimeCoordinator, governanceSupport, eventStore,
+                mock(DashboardLingOperations.class));
 
         coordinator.updateStatus("ling1", RuntimeStatus.INACTIVE, RuntimeStatus.ACTIVE, "1.0.0");
 
@@ -85,7 +86,8 @@ class DashboardStatusCoordinatorTest {
                 new DashboardGovernanceSupport(governanceAdmin, permissionService, SHARED_OBJECT_MAPPER);
         DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
         DashboardStatusCoordinator coordinator = new DashboardStatusCoordinator(
-                lifecycleEngine, permissionService, runtimeCoordinator, governanceSupport, eventStore);
+                lifecycleEngine, permissionService, runtimeCoordinator, governanceSupport, eventStore,
+                mock(DashboardLingOperations.class));
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> coordinator.updateStatus("ling1", RuntimeStatus.INACTIVE, RuntimeStatus.ACTIVE, "1.0.0"));
@@ -109,7 +111,8 @@ class DashboardStatusCoordinatorTest {
                 permissionService,
                 runtimeCoordinator,
                 mock(DashboardGovernanceSupport.class),
-                store);
+                store,
+                mock(DashboardLingOperations.class));
 
         coordinator.updateStatus("ling1", RuntimeStatus.DEGRADED, RuntimeStatus.RECOVERING, "1.0.0");
 

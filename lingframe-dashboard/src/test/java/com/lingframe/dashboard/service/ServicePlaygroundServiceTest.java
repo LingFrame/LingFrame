@@ -610,6 +610,80 @@ class ServicePlaygroundServiceTest {
             // 验 dashboard 调 invoke 前已 grant 自己赋权——core 治理链查权限表有记录自然放行
             verify(permissionService).grant("dashboard", "test-ling:query_user:query", AccessType.READ);
         }
+
+        @Test
+        @DisplayName("调用成功后应 revoke 已授权 capability（防止 dashboard 主体权限单调累积）")
+        void shouldRevokeSelfGrantedCapabilityAfterInvoke() {
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
+                    pipelineEngine, objectMapper, governanceArbitrator, permissionService);
+            LingRuntime runtime = mock(LingRuntime.class);
+            when(runtime.isAvailable()).thenReturn(true);
+            when(repository.getRuntime("test-ling")).thenReturn(runtime);
+            InstancePool instancePool = mock(InstancePool.class);
+            when(runtime.getInstancePool()).thenReturn(instancePool);
+            LingInstance instance = mock(LingInstance.class);
+            when(instancePool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
+            when(instancePool.getDefault()).thenReturn(instance);
+            when(instance.getVersion()).thenReturn("1.0");
+            when(instance.isReady()).thenReturn(true);
+            when(instance.getClassLoader()).thenReturn(this.getClass().getClassLoader());
+
+            when(serviceRegistry.getImplementationClassName("test-ling:query_user"))
+                    .thenReturn(DummyQueryService.class.getName());
+
+            GovernanceDecision decision = GovernanceDecision.builder()
+                    .requiredPermission("test-ling:query_user:query")
+                    .accessType(AccessType.READ)
+                    .build();
+            when(governanceArbitrator.arbitrate(any(), any(), any())).thenReturn(decision);
+
+            when(pipelineEngine.invoke(any(InvocationContext.class))).thenReturn("ok");
+
+            InvokeResultDTO result = playgroundService.invokeService(
+                    "test-ling", "test-ling:query_user", "query",
+                    new String[] { "java.lang.String" }, new Object[] { "world" }, null, "SPECIFIED");
+
+            assertTrue(result.isSuccess());
+            verify(permissionService).grant("dashboard", "test-ling:query_user:query", AccessType.READ);
+            verify(permissionService).revoke("dashboard", "test-ling:query_user:query");
+        }
+
+        @Test
+        @DisplayName("调用失败时也应 revoke 已授权 capability（不残留提权记录）")
+        void shouldRevokeGrantedCapabilityEvenWhenInvokeFails() {
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
+                    pipelineEngine, objectMapper, governanceArbitrator, permissionService);
+            LingRuntime runtime = mock(LingRuntime.class);
+            when(runtime.isAvailable()).thenReturn(true);
+            when(repository.getRuntime("test-ling")).thenReturn(runtime);
+            InstancePool instancePool = mock(InstancePool.class);
+            when(runtime.getInstancePool()).thenReturn(instancePool);
+            LingInstance instance = mock(LingInstance.class);
+            when(instancePool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
+            when(instancePool.getDefault()).thenReturn(instance);
+            when(instance.getVersion()).thenReturn("1.0");
+            when(instance.isReady()).thenReturn(true);
+            when(instance.getClassLoader()).thenReturn(this.getClass().getClassLoader());
+
+            when(serviceRegistry.getImplementationClassName("test-ling:query_user"))
+                    .thenReturn(DummyQueryService.class.getName());
+
+            GovernanceDecision decision = GovernanceDecision.builder()
+                    .requiredPermission("test-ling:query_user:query")
+                    .accessType(AccessType.READ)
+                    .build();
+            when(governanceArbitrator.arbitrate(any(), any(), any())).thenReturn(decision);
+
+            when(pipelineEngine.invoke(any(InvocationContext.class))).thenThrow(new RuntimeException("biz error"));
+
+            InvokeResultDTO result = playgroundService.invokeService(
+                    "test-ling", "test-ling:query_user", "query",
+                    new String[] { "java.lang.String" }, new Object[] { "world" }, null, "SPECIFIED");
+
+            assertFalse(result.isSuccess());
+            verify(permissionService).grant("dashboard", "test-ling:query_user:query", AccessType.READ);
+            verify(permissionService).revoke("dashboard", "test-ling:query_user:query");
+        }
     }
 
     public static class DummyQueryService {

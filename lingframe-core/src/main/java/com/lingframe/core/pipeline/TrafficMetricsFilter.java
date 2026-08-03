@@ -1,6 +1,6 @@
 package com.lingframe.core.pipeline;
 
-import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.metrics.LingHealthMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
@@ -255,19 +255,25 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
     }
     
     /**
-     * 判断是否为超时异常
+     * 判断是否为超时异常。
+     * <p>
+     * 类型化信号优先：{@link LingInvocationException} 自带 {@link ErrorKind}，
+     * {@code ErrorKind.TIMEOUT} 直接判定为超时，非 TIMEOUT 类型化错误直接判定为否——
+     * 不再落入消息文本兜底（业务透传消息可能误含 "timeout" 字样）。
+     * 仅对非 {@link LingInvocationException}（如桥接层包装的 JDBC 超时等）保留 cause 链消息兜底。
      */
     private boolean isTimeoutError(Throwable error) {
         if (error == null) {
             return false;
         }
-        
+        if (error instanceof LingInvocationException) {
+            return ((LingInvocationException) error).getKind() == LingInvocationException.ErrorKind.TIMEOUT;
+        }
         String message = error.getMessage();
         if (message != null) {
             message = message.toLowerCase();
             return message.contains("timeout") || message.contains("timed out");
         }
-        
         return isTimeoutError(error.getCause());
     }
     

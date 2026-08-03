@@ -167,6 +167,54 @@ class MigrationStateHolderTest {
     }
 
     @Nested
+    @DisplayName("启动阶段恢复")
+    class RestorePhaseTests {
+
+        @Test
+        @DisplayName("二元候选态恢复 MIGRATING 并带候选元数据")
+        void restoreBinaryPhaseReconstructsCandidates() {
+            holder.restorePhase("svc", MigrationPhase.MIGRATING, "lingcore-app", "user-ling");
+            assertEquals(MigrationPhase.MIGRATING, holder.getPhase("svc"));
+            MigrationStateHolder.PhaseRecord rec = holder.getRecord("svc");
+            assertEquals("lingcore-app", rec.getOldCandidate());
+            assertEquals("user-ling", rec.getNewCandidate());
+        }
+
+        @Test
+        @DisplayName("独占态恢复 LING_EXCLUSIVE 仅需保留方候选")
+        void restoreExclusivePhaseKeepsOnlyCandidate() {
+            holder.restorePhase("svc", MigrationPhase.LING_EXCLUSIVE, "user-ling", null);
+            assertEquals(MigrationPhase.LING_EXCLUSIVE, holder.getPhase("svc"));
+            assertEquals("user-ling", holder.getRecord("svc").getOldCandidate());
+        }
+
+        @Test
+        @DisplayName("二元态缺候选键应抛 IllegalArgumentException")
+        void restoreBinaryRequiresBothCandidates() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> holder.restorePhase("svc", MigrationPhase.MIGRATING, "lingcore-app", null));
+        }
+
+        @Test
+        @DisplayName("独占态缺保留方应抛 IllegalArgumentException")
+        void restoreExclusiveRequiresCandidate() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> holder.restorePhase("svc", MigrationPhase.LING_EXCLUSIVE, null, null));
+        }
+
+        @Test
+        @DisplayName("恢复后仍可正常推进后续相变")
+        void restoredPhaseCanContinue() {
+            holder.restorePhase("svc", MigrationPhase.MIGRATING, "lingcore-app", "user-ling");
+            holder.confirmPhaseTransition("svc", true);
+            assertEquals(MigrationPhase.LING_EXCLUSIVE, holder.getPhase("svc"));
+
+            holder.startIteration("svc", "user-ling", "user-ling:1.1.0");
+            assertEquals(MigrationPhase.ITERATING, holder.getPhase("svc"));
+        }
+    }
+
+    @Nested
     @DisplayName("卸载清理")
     class EvictTests {
 

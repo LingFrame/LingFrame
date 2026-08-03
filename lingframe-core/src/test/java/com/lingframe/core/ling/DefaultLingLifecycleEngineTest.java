@@ -6,7 +6,9 @@ import com.lingframe.core.alert.AlertManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.dev.HotSwapWatcher;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
+import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
@@ -18,6 +20,7 @@ import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.LingLoaderFactory;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -346,8 +349,8 @@ class DefaultLingLifecycleEngineTest {
     }
 
     @Test
-    @DisplayName("替换默认实例时应把旧默认实例移送濒死队列，不应成为孤儿引用")
-    void replacingDefaultInstanceShouldMoveOldOneToDyingQueue() throws Exception {
+    @DisplayName("替换默认实例时应立即回收空闲的旧默认实例，不使其滞留濒死队列")
+    void replacingDefaultInstanceShouldReclaimOldOneImmediately() throws Exception {
         EventBus eventBus = new EventBus();
         RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
         runtimeCoordinator.start();
@@ -372,16 +375,118 @@ class DefaultLingLifecycleEngineTest {
         LingInstance v2 = createReadyInstance("ling1", "2.0.0", coordinator);
         invokePublishReady(engine, runtime, v2, true);
 
-        // 旧默认 v1 应该已进入濒死队列（isDying 为真）
-        assertTrue(v1.isDying(),
-                "被替换的旧默认实例应被 moveToDying 推进到 STOPPING，而非成为孤儿引用");
+        // 旧默认 v1 无在途请求（idle），应被立即回收：先 moveToDying（非孤儿），随即 tearDown 到 DEAD
+        assertEquals(InstanceStatus.DEAD, v1.currentStatus(),
+                "被替换的空闲旧默认实例应被立即 tearDown 到 DEAD，而非滞留濒死队列累积引用");
         // 新默认应为 v2
         assertEquals(v2, runtime.getInstancePool().getDefault());
-        // 濒死队列计数应至少 1
-        assertTrue(runtime.getInstancePool().getDyingCount() >= 1,
-                "旧默认实例应计入 dyingCount，使排空统计可观测");
+        // 濒死队列不应滞留空闲实例
+        assertEquals(0, runtime.getInstancePool().getDyingCount(),
+                "空闲实例应立即回收，濒死队列不应滞留");
 
         runtimeCoordinator.stop();
+    }
+
+    @Test
+    @DisplayName("全量卸载的 drain 窗口内 Runtime 应呈现 STOPPING 而非 ACTIVE（C3）")
+    void fullUndeployDrainWindowShouldPresentRuntimeStopping() throws Exception {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
+        when(serviceRegistry.getServicesByLingId("c3-ling")).thenReturn(Collections.emptyList());
+
+        LingUnloadCoordinator unloadCoordinator = mock(LingUnloadCoordinator.class);
+        when(unloadCoordinator.checkBeforeLingUnload(ArgumentMatchers.anyString(), ArgumentMatchers.anyList()))
+                .thenReturn(Collections.emptyList());
+
+        DefaultLingRepository repository = new DefaultLingRepository();
+        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(mock(ContainerFactory.class))
+                .permissionService(mock(PermissionService.class))
+                .lingLoaderFactory(mock(LingLoaderFactory.class))
+                .verifiers(Collections.emptyList())
+                .eventBus(eventBus)
+                .lingFrameConfig(LingFrameConfig.builder()
+                        .runtimeConfig(LingRuntimeConfig.builder().forceCleanupDelaySeconds(30).build())
+                        .build())
+                .lingRepository(repository)
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(mock(InvocationPipelineEngine.class))
+                .lingResourceManager(null)
+                .unloadCoordinator(unloadCoordinator)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
+
+        InstanceCoordinator coordinator = new InstanceCoordinator(eventBus);
+        // 不预先 markReady：实例状态事件必须在 register 之后出现（AGENTS.md 硬约束）。
+        LingContainer container = mock(LingContainer.class);
+        when(container.isActive()).thenReturn(true);
+        when(container.getClassLoader()).thenReturn(getClass().getClassLoader());
+        LingDefinition lingDefinition = new LingDefinition();
+        lingDefinition.setId("c3-ling");
+        lingDefinition.setVersion("1.0.0");
+        lingDefinition.setMainClass("demo.Main");
+        LingInstance instance = new LingInstance(container, lingDefinition, eventBus);
+
+        LingRuntime runtime = new LingRuntime(
+                "c3-ling",
+                LingRuntimeConfig.builder().forceCleanupDelaySeconds(30).build(),
+                eventBus,
+                coordinator,
+                runtimeCoordinator);
+        runtimeCoordinator.register("c3-ling");
+        runtime.getInstancePool().addInstance(instance, true);
+        repository.register(runtime);
+
+        // 引导实例进入 READY，READY 事件触发 RuntimeCoordinator 聚合至 ACTIVE。
+        coordinator.prepare(instance);
+        coordinator.start(instance);
+        coordinator.markReady(instance);
+        awaitStatus(runtime, RuntimeStatus.ACTIVE);
+
+        // 模拟在途请求：instance 非 idle，迫使 drain 阻塞等待。
+        assertTrue(instance.tryEnter());
+
+        AtomicReference<Throwable> unloadFailure = new AtomicReference<>();
+        Thread unloadThread = new Thread(() -> {
+            try {
+                engine.undeployWithReport("c3-ling");
+            } catch (Throwable t) {
+                unloadFailure.set(t);
+            }
+        });
+        unloadThread.start();
+
+        try {
+            // 等待 drain 窗口：moveToDying 已发生、实例 STOPPING，Runtime 宏观应进入 STOPPING（C3 收敛点）。
+            awaitStatus(runtime, RuntimeStatus.STOPPING);
+            assertEquals(RuntimeStatus.STOPPING, runtime.currentStatus(),
+                    "drain 窗口内宏观状态应为 STOPPING，而非 ACTIVE");
+            assertFalse(instance.isIdle(),
+                    "drain 窗口内 in-flight 实例应仍处于非 idle，证明卸载确实被阻塞在排空阶段");
+
+            // 结束 in-flight，唤醒 drain，卸载继续走完。
+            instance.exit();
+            unloadThread.join(15000);
+            assertFalse(unloadThread.isAlive(), "全量卸载子线程应正常结束");
+            assertNull(unloadFailure.get(), "全量卸载不应失败: " + unloadFailure.get());
+        } finally {
+            unloadThread.interrupt();
+            runtimeCoordinator.stop();
+        }
+    }
+
+    private void awaitStatus(LingRuntime runtime, RuntimeStatus expected) {
+        for (int i = 0; i < 200 && runtime.currentStatus() != expected; i++) {
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
     }
 
     private void invokePublishReady(DefaultLingLifecycleEngine engine, LingRuntime runtime,

@@ -52,7 +52,15 @@ try {
     exit 1
 }
 
-$currentDir = Get-Location
+$projectRoot = $PSScriptRoot
+if (-not (Test-Path (Join-Path $projectRoot "pom.xml")) -and (Test-Path (Join-Path $projectRoot "..\pom.xml"))) {
+    $projectRoot = (Resolve-Path (Join-Path $projectRoot "..")).Path
+}
+if (-not (Test-Path (Join-Path $projectRoot "pom.xml"))) {
+    Write-Host "`n[FATAL] Cannot find root pom.xml. Please place this script in the project root or a 'scripts' subdirectory." -ForegroundColor Red
+    exit 1
+}
+$currentDir = $projectRoot
 $cloneDir = Join-Path $env:TEMP "lingframe_sb3_parallel_clone"
 
 Write-Host "`n[1/3] Building isolated sandbox for SB3..." -ForegroundColor Yellow
@@ -66,14 +74,14 @@ if ($roboExitCode -ge 8) {
 
 Write-Host "[2/3] Sandbox ready at $cloneDir" -ForegroundColor Green
 
-$logDir = Join-Path $currentDir "target\test-logs"
+$logDir = Join-Path $currentDir ".test-logs"
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
 $logSb2 = Join-Path $logDir "sb2-build.log"
 $logSb3 = Join-Path $logDir "sb3-build.log"
 if (Test-Path $logSb2) { Remove-Item $logSb2 }
 if (Test-Path $logSb3) { Remove-Item $logSb3 }
 
-$mvnArgs = "clean verify -Pintegration-check -Djacoco.dest.folder=sb2"
+$mvnArgs = "clean verify -Pspring-boot2,integration-check -Djacoco.dest.folder=sb2"
 $mvnArgsSb3 = "clean verify -Pspring-boot3,integration-check -Djacoco.dest.folder=sb3"
 
 if (-not $FailFast) {

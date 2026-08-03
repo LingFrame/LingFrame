@@ -50,6 +50,7 @@ class DashboardStatusCoordinatorSupplementTest {
     private RuntimeCoordinator runtimeCoordinator;
     private DashboardGovernanceSupport governanceSupport;
     private DashboardLifecycleEventStore eventStore;
+    private DashboardLingOperations lingOperations;
     private DashboardStatusCoordinator coordinator;
 
     @BeforeEach
@@ -60,22 +61,27 @@ class DashboardStatusCoordinatorSupplementTest {
         governanceSupport = mock(DashboardGovernanceSupport.class);
         // 事件存储使用真实实现，便于断言时间线内容
         eventStore = new DashboardLifecycleEventStore();
+        lingOperations = mock(DashboardLingOperations.class);
         coordinator = new DashboardStatusCoordinator(
-                lifecycleEngine, permissionService, runtimeCoordinator, governanceSupport, eventStore);
+                lifecycleEngine, permissionService, runtimeCoordinator, governanceSupport, eventStore, lingOperations);
     }
 
     // ==================== updateStatus 分支 ====================
 
     @Test
-    @DisplayName("REMOVED 分支应调用 lifecycleEngine.undeploy，且不触发状态跃迁或权限撤销")
+    @DisplayName("REMOVED 分支应复用 uninstallLing 完整卸载流程（含迁移状态清理与 DEAD 事件）")
     void shouldUndeployWhenRemoved() {
+        when(lingOperations.uninstallLing("ling1")).thenReturn(
+                com.lingframe.core.ling.LingUninstallResult.triggered("ling1", null, Collections.emptyList()));
+
         coordinator.updateStatus("ling1", RuntimeStatus.ACTIVE, RuntimeStatus.REMOVED, "1.0.0");
 
-        verify(lifecycleEngine).undeploy("ling1");
+        // REMOVED 与 Dashboard 卸载入口同路（C7）：委托完整 uninstall 流程，而非裸 undeploy
+        verify(lingOperations).uninstallLing("ling1");
+        verify(lifecycleEngine, never()).undeploy("ling1");
         // REMOVED 不应触碰运行时状态机或权限服务
         verifyNoMoreInteractions(runtimeCoordinator);
         verifyNoMoreInteractions(permissionService);
-        assertTrue(eventStore.getEvents("ling1").isEmpty());
     }
 
     @Test
@@ -224,7 +230,7 @@ class DashboardStatusCoordinatorSupplementTest {
     // ==================== deactivateLing ====================
 
     @Test
-    @DisplayName("transition INACTIVE 失败时仍应撤销 LING_ENABLE（收权优先；切流走路由）")
+    @DisplayName("transition INACTIVE 失败时仍应撤销 LING_ENABLE 但不写 INACTIVE 事件（C7）")
     void shouldRevokeEvenWhenDeactivateTransitionFails() {
         when(runtimeCoordinator.transition("ling1", RuntimeStatus.INACTIVE))
                 .thenReturn(transitionFailure());
@@ -234,8 +240,8 @@ class DashboardStatusCoordinatorSupplementTest {
 
         verify(permissionService).revoke("ling1", Capabilities.LING_ENABLE);
         verify(lifecycleEngine, never()).undeploy("ling1");
-        List<DashboardService.LifecycleEvent> events = eventStore.getEvents("ling1");
-        assertEquals(1, events.size());
+        // transition 未成功不得写 INACTIVE 事件（时间线只记录真实发生的事实）
+        assertTrue(eventStore.getEvents("ling1").isEmpty());
     }
 
     @Test

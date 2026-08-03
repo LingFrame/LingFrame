@@ -35,7 +35,7 @@ class WebInterfaceManagerSupplementTest {
     @Test
     @DisplayName("gatewayHandler 应返回持有 manager 的 LingGatewayHandler 实例")
     void shouldReturnGatewayHandlerInstance() {
-        manager = new WebInterfaceManager(null, null, null);
+        manager = new WebInterfaceManager(null, null);
         WebInterfaceManager.LingGatewayHandler handler = manager.gatewayHandler();
 
         assertNotNull(handler);
@@ -45,7 +45,7 @@ class WebInterfaceManagerSupplementTest {
     @Test
     @DisplayName("LingGatewayHandler.dispatch 在无可用路由时应抛出 LingException")
     void gatewayHandlerDispatchShouldThrowWhenNoRouteAvailable() {
-        manager = new WebInterfaceManager(null, null, null);
+        manager = new WebInterfaceManager(null, null);
         WebInterfaceManager.LingGatewayHandler handler = manager.gatewayHandler();
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/non-existent");
@@ -60,7 +60,7 @@ class WebInterfaceManagerSupplementTest {
     @Test
     @DisplayName("LingWebEntryHandler 应持有构造时传入的 routeKey")
     void entryHandlerShouldHoldRouteKey() {
-        manager = new WebInterfaceManager(null, null, null);
+        manager = new WebInterfaceManager(null, null);
         String routeKey = "GET#/ling-a/sample";
         WebInterfaceManager.LingWebEntryHandler handler =
                 new WebInterfaceManager.LingWebEntryHandler(manager, routeKey);
@@ -71,7 +71,7 @@ class WebInterfaceManagerSupplementTest {
     @Test
     @DisplayName("LingWebEntryHandler.dispatch 应委派到 manager.dispatch(routeKey, webRequest)")
     void entryHandlerDispatchShouldDelegateToManagerByRouteKey() {
-        manager = new WebInterfaceManager(null, null, null);
+        manager = new WebInterfaceManager(null, null);
         String routeKey = "GET#/ling-a/missing";
         WebInterfaceManager.LingWebEntryHandler handler =
                 new WebInterfaceManager.LingWebEntryHandler(manager, routeKey);

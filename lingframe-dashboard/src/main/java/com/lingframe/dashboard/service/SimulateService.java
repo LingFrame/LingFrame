@@ -97,7 +97,7 @@ public class SimulateService {
             message = "Execution Failed: " + e.getMessage();
         }
 
-        return SimulateResultDTO.builder()
+        SimulateResultDTO dto = SimulateResultDTO.builder()
                 .traceId(traceId)
                 .lingId(lingId)
                 .resourceType(resourceType)
@@ -109,6 +109,10 @@ public class SimulateService {
                 // 暴露 Core 在干跑期间攒下的宝贵探针数据
                 .traces(ctx.execution().getTraces() != null ? new ArrayList<>(ctx.execution().getTraces()) : null)
                 .build();
+        // InvocationContext.obtain() 必须配对 recycle()，否则对象池会泄漏上下文，
+        // 残留的 WeakReference 与 attachments 会跨调用污染后续请求
+        ctx.recycle();
+        return dto;
     }
 
     /**
@@ -198,7 +202,7 @@ public class SimulateService {
             }
         }
 
-        return SimulateResultDTO.builder()
+        SimulateResultDTO dto = SimulateResultDTO.builder()
                 .traceId(traceId)
                 .lingId(lingId)
                 .targetLingId(targetLingId)
@@ -208,6 +212,12 @@ public class SimulateService {
                 .traces(ctx != null && ctx.execution().getTraces() != null ? new ArrayList<>(ctx.execution().getTraces()) : null)
                 .timestamp(System.currentTimeMillis())
                 .build();
+        // InvocationContext.obtain() 必须配对 recycle()，否则对象池会泄漏上下文，
+        // 残留的 WeakReference 与 attachments 会跨调用污染后续请求
+        if (ctx != null) {
+            ctx.recycle();
+        }
+        return dto;
     }
 
     /**
@@ -356,7 +366,7 @@ public class SimulateService {
             message = "Simulation Exception: " + e.getMessage();
         }
 
-        return SimulateResultDTO.builder()
+        SimulateResultDTO dto = SimulateResultDTO.builder()
                 .traceId(traceId)
                 .lingId(lingId)
                 .resourceType("METHOD")
@@ -367,6 +377,12 @@ public class SimulateService {
                 .timestamp(System.currentTimeMillis())
                 .traces(ctx != null && ctx.execution().getTraces() != null ? new ArrayList<>(ctx.execution().getTraces()) : null)
                 .build();
+        // InvocationContext.obtain() 必须配对 recycle()，否则对象池会泄漏上下文，
+        // 残留的 WeakReference 与 attachments 会跨调用污染后续请求
+        if (ctx != null) {
+            ctx.recycle();
+        }
+        return dto;
     }
 
     private String mapResourceType(String type) {

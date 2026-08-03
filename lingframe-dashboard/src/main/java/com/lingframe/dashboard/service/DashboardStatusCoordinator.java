@@ -23,17 +23,20 @@ public class DashboardStatusCoordinator {
     private final RuntimeCoordinator runtimeCoordinator;
     private final DashboardGovernanceSupport governanceSupport;
     private final DashboardLifecycleEventStore lifecycleEventStore;
+    private final DashboardLingOperations lingOperations;
 
     public DashboardStatusCoordinator(LingLifecycleEngine lifecycleEngine,
             PermissionService permissionService,
             RuntimeCoordinator runtimeCoordinator,
             DashboardGovernanceSupport governanceSupport,
-            DashboardLifecycleEventStore lifecycleEventStore) {
+            DashboardLifecycleEventStore lifecycleEventStore,
+            DashboardLingOperations lingOperations) {
         this.lifecycleEngine = lifecycleEngine;
         this.permissionService = permissionService;
         this.runtimeCoordinator = runtimeCoordinator;
         this.governanceSupport = governanceSupport;
         this.lifecycleEventStore = lifecycleEventStore;
+        this.lingOperations = lingOperations;
     }
 
     public void updateStatus(String lingId, RuntimeStatus currentStatus, RuntimeStatus newStatus, String version) {
@@ -48,7 +51,10 @@ public class DashboardStatusCoordinator {
                 recoverLing(lingId, version);
                 break;
             case REMOVED:
-                lifecycleEngine.undeploy(lingId);
+                // 复用 DashboardLingOperations.uninstallLing 完整卸载流程（C7）：
+                // 含 MigrationStateHolder.evict 迁移状态清理、undeployWithReport 预检与 DEAD 事件，
+                // 避免 REMOVED 分支与 Dashboard 卸载入口两条路径清理语义分叉。
+                lingOperations.uninstallLing(lingId);
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported status: " + newStatus);
@@ -121,6 +127,8 @@ public class DashboardStatusCoordinator {
         if (!inactiveResult.isSuccess()) {
             log.info("[Dashboard] transition INACTIVE for {} from {} result={} (permission already revoked)",
                     lingId, currentStatus, inactiveResult.code());
+            // transition 失败不写 INACTIVE 事件（C7）：时间线只记录真实发生的事实，避免「声称停用」。
+            return;
         }
 
         lifecycleEventStore.addEvent(lingId, version, "INACTIVE", "收回启用权限",

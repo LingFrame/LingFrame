@@ -11,10 +11,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("EventBus 测试")
@@ -250,5 +250,54 @@ public class EventBusTest {
             }
             eventBus.shutdown();
         }
+    }
+
+    @Test
+    @DisplayName("BLOCK 策略下 listener 内部再次 publish 异步事件不应死锁")
+    void publishShouldNotDeadlockWhenListenerRePublishesUnderBlockPolicy() throws Exception {
+        EventBus eventBus = new EventBus(1, 1, EventBus.OverflowPolicy.BLOCK);
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        // innerPublishDone 在内部 publish 返回后触发；若死锁则永不返回，await 超时失败
+        CountDownLatch innerPublishDone = new CountDownLatch(1);
+        // 记录内部 publish 前后的 drop 计数，作为「降级为 DROP」的直接证据
+        long[] droppedAroundInnerPublish = new long[2];
+        AtomicBoolean internalPublished = new AtomicBoolean(false);
+
+        eventBus.subscribe("ling-a", MonitoringEvents.TraceLogEvent.class, event -> {
+            entered.countDown();
+            try {
+                // listener 运行在 dispatcher 线程上，阻塞自己以制造「队列已满 + 后续 publish 发生在 dispatcher 线程内」的场景
+                release.await(2, TimeUnit.SECONDS);
+
+                if (internalPublished.compareAndSet(false, true)) {
+                    droppedAroundInnerPublish[0] = eventBus.getDroppedAsyncEvents();
+                    // 队列满 + BLOCK：若无死锁防御会一直阻塞；OverflowHandler 识别 dispatcher 线程后降级 DROP
+                    eventBus.publish(new MonitoringEvents.TraceLogEvent("trace-inner", "ling-a", "action", "INFO", 1));
+                    droppedAroundInnerPublish[1] = eventBus.getDroppedAsyncEvents();
+                    innerPublishDone.countDown();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+
+        // 单核心线程：第一个 publish 直接被 dispatcher 取走执行并阻塞
+        eventBus.publish(new MonitoringEvents.TraceLogEvent("trace-1", "ling-a", "action", "INFO", 1));
+        assertTrue(entered.await(1, TimeUnit.SECONDS), "listener 应被 dispatcher 执行");
+
+        // 第二个 publish 填满队列
+        eventBus.publish(new MonitoringEvents.TraceLogEvent("trace-2", "ling-a", "action", "INFO", 1));
+
+        // 释放后 dispatcher 继续执行，内部 publish 触发降级 DROP
+        release.countDown();
+
+        // 确定性等待：若死锁则 innerPublishDone 在 2s 内不会被触发
+        assertTrue(innerPublishDone.await(2, TimeUnit.SECONDS),
+                "内部 publish 应在 2s 内返回（证明未死锁）");
+        assertTrue(droppedAroundInnerPublish[1] > droppedAroundInnerPublish[0],
+                "内部 publish 应因降级而增加 dropped 计数");
+
+        eventBus.shutdown();
     }
 }

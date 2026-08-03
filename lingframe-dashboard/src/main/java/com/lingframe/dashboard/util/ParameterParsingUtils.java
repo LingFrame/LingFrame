@@ -40,10 +40,12 @@ public class ParameterParsingUtils {
         if (primitive != null) {
             return primitive;
         }
+        // 仅加载不做类初始化（initialize=false），避免恶意/意外传入的类名触发静态块副作用；
+        // 真实业务执行阶段仍会按正常路径完成类的初始化。
         if (classLoader != null) {
-            return Class.forName(typeName, true, classLoader);
+            return Class.forName(typeName, false, classLoader);
         } else {
-            return Class.forName(typeName);
+            return Class.forName(typeName, false, ParameterParsingUtils.class.getClassLoader());
         }
     }
 

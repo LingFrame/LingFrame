@@ -141,6 +141,14 @@ public class LingFrameProperties {
      */
     private RuntimeConfig runtime = new RuntimeConfig();
 
+    /**
+     * 可信转发前缀白名单（反代部署）。
+     * <p>
+     * 仅当转发头（X-Forwarded-Prefix / X-Forwarded-Path）声明的前缀与此白名单完全匹配时，
+     * 路由解析才采信该头做前缀剥离；空列表（默认）表示不信任任何客户端转发头（C10 安全默认）。
+     */
+    private List<String> trustedForwardedPrefixes = new ArrayList<>();
+
     @Data
     public static class Audit {
         /**
@@ -305,7 +313,7 @@ public class LingFrameProperties {
          */
         private boolean governInternalCalls = false;
 
-        /**
+/**
          * 是否对灵核应用进行权限检查，默认值为 false
          * <p>
          * true: 灵核应用也需要通过权限检查
@@ -315,6 +323,16 @@ public class LingFrameProperties {
          * 注意：开启后可能会影响灵元的正常运行，建议仅在必要时开启
          */
         private boolean checkPermissions = false;
+
+        /**
+         * Bean 治理失败时是否放行，默认关闭（fail-closed）
+         * <p>
+         * false（默认，fail-closed）：需治理的 Bean 因依赖缺失或代理创建失败时，直接抛错终止启动，
+         * 杜绝「声称治理却绕过治理」的静默裸 Bean。
+         * <p>
+         * true（fail-open）：恢复到降级语义，仅记录告警日志并返回裸 Bean，供既有应用平滑过渡。
+         */
+        private boolean failOpen = false;
     }
 
     /**

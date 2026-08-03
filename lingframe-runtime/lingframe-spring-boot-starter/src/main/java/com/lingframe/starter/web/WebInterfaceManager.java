@@ -4,8 +4,6 @@ import com.lingframe.api.exception.LingException;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.metrics.LingHealthMetrics;
-import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.spi.TrafficRouter;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -59,18 +57,22 @@ public class WebInterfaceManager implements WebRouteResolver {
 
     private final DefaultWebRouteResolver routeResolver;
     private final SpringWebCoreSupport coreWebSupport = new SpringWebCoreSupport();
-    private final ObjectProvider<MetricsCollector> metricsCollectorProvider;
 
     public static final String REQUEST_METADATA_KEY = "ling.web.metadata";
     public static final String REQUEST_ROUTE_RESOLUTION_KEY = "ling.web.route.resolution";
     public static final String REQUEST_TARGET_VERSION_KEY = "ling.target.version";
 
     public WebInterfaceManager(LingRepository lingRepository,
+            TrafficRouter trafficRouter) {
+        this(lingRepository, trafficRouter, Collections.<String>emptyList());
+    }
+
+    public WebInterfaceManager(LingRepository lingRepository,
             TrafficRouter trafficRouter,
-            ObjectProvider<MetricsCollector> metricsCollectorProvider) {
+            List<String> trustedForwardedPrefixes) {
+        // C10：转发前缀白名单默认空（不采信客户端转发头），由装配层显式注入可信值
         this.routeResolver = new DefaultWebRouteResolver(
-                metadataMap, routePatternsByMethod, lingRepository, trafficRouter);
-        this.metricsCollectorProvider = metricsCollectorProvider;
+                metadataMap, routePatternsByMethod, lingRepository, trafficRouter, trustedForwardedPrefixes);
     }
 
     public void init(RequestMappingHandlerMapping mapping,
@@ -338,65 +340,13 @@ public class WebInterfaceManager implements WebRouteResolver {
         if (targetLoader != null) {
             Thread.currentThread().setContextClassLoader(targetLoader);
         }
-        long startNanos = System.nanoTime();
+        // 指标统一由 LingWebGovernanceFilter.recordWebMetrics 计量（唯一计量点），
+        // 本分发路径不再记录 success/failure，避免同一 Web 请求被双层双计（C1）。
         try {
-            Object result = coreWebSupport.invokeTarget(meta, routeId, webRequest);
-            recordMetrics(meta, resolution, startNanos, true, null);
-            return result;
-        } catch (Exception ex) {
-            recordMetrics(meta, resolution, startNanos, false, ex);
-            throw ex;
+            return coreWebSupport.invokeTarget(meta, routeId, webRequest);
         } finally {
             Thread.currentThread().setContextClassLoader(original);
         }
-    }
-
-    private void recordMetrics(WebInterfaceMetadata meta,
-            WebRouteResolution resolution,
-            long startNanos,
-            boolean success,
-            Throwable error) {
-        MetricsCollector metricsCollector = metricsCollectorProvider != null ? metricsCollectorProvider.getIfAvailable()
-                : null;
-        if (metricsCollector == null || meta == null || meta.getLingId() == null || meta.getLingId().isEmpty()) {
-            return;
-        }
-
-        long costMs = (System.nanoTime() - startNanos) / 1_000_000;
-        String lingId = meta.getLingId();
-        String version = resolution != null && resolution.getTargetInstance() != null
-                ? resolution.getTargetInstance().getVersion()
-                : meta.getVersion();
-
-        LingHealthMetrics metrics = metricsCollector.getOrCreate(lingId);
-        LingHealthMetrics versionMetrics = metricsCollector.getOrCreate(lingId, version);
-        if (success) {
-            metrics.recordSuccess(costMs);
-            if (versionMetrics != metrics) {
-                versionMetrics.recordSuccess(costMs);
-            }
-            return;
-        }
-
-        boolean isTimeout = isTimeoutError(error);
-        metrics.recordFailure(costMs, isTimeout);
-        if (versionMetrics != metrics) {
-            versionMetrics.recordFailure(costMs, isTimeout);
-        }
-    }
-
-    private boolean isTimeoutError(Throwable error) {
-        if (error == null) {
-            return false;
-        }
-        String message = error.getMessage();
-        if (message != null) {
-            String lower = message.toLowerCase();
-            if (lower.contains("timeout") || lower.contains("timed out")) {
-                return true;
-            }
-        }
-        return isTimeoutError(error.getCause());
     }
 
     public LingGatewayHandler gatewayHandler() {

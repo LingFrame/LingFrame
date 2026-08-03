@@ -6,6 +6,8 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.Assert;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -112,7 +114,11 @@ public class AccessTokenProperties implements InitializingBean {
     }
 
     /**
-     * 验证 token 是否有效
+     * 验证 token 是否有效。
+     * <p>
+     * 使用 {@link MessageDigest#isEqual(byte[], byte[])} 恒时比较，避免基于
+     * 字符串 {@code equals} 的短路径提前返回带来的时序侧信道（token 逐字节猜测攻击）。
+     * 长度差异仍可通过响应时序观察（不可避免，且与 token 内容无关）。
      */
     public boolean isValidToken(String inputToken) {
         if (!enabled) {
@@ -121,6 +127,24 @@ public class AccessTokenProperties implements InitializingBean {
         if (inputToken == null || inputToken.isEmpty()) {
             return false;
         }
-        return getAllValidTokens().contains(inputToken);
+        for (String valid : getAllValidTokens()) {
+            if (constantTimeEquals(valid, inputToken)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 恒时字符串比较：先比较长度（非敏感信息），再对 UTF-8 字节做 MessageDigest.isEqual。
+     */
+    private static boolean constantTimeEquals(String expected, String input) {
+        if (expected == null || input == null) {
+            return false;
+        }
+        return expected.length() == input.length()
+                && MessageDigest.isEqual(
+                        expected.getBytes(StandardCharsets.UTF_8),
+                        input.getBytes(StandardCharsets.UTF_8));
     }
 }
