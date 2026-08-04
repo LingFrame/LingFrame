@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @SpringBootTest
 @Slf4j
+@DisplayName("Mall 订单集成测试")
 public class MallOrderTest {
 
     @Autowired

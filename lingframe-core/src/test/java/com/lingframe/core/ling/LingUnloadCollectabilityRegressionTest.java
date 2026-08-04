@@ -160,7 +160,7 @@ class LingUnloadCollectabilityRegressionTest {
                 .build());
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(registry);
         LingUnloadCoordinator unloadCoordinator =
-                new LingUnloadCoordinator(pipelineEngine, Collections.emptyList(), null, null);
+                new LingUnloadCoordinator(pipelineEngine, Collections.emptyList(), Collections.emptyList(), null, null);
 
         AtomicReference<CloseAwareClassLoader> loaderHolder = new AtomicReference<>();
         AtomicBoolean classLoaderClosed = new AtomicBoolean(false);

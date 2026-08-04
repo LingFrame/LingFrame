@@ -26,6 +26,7 @@ import static org.mockito.Mockito.when;
  * 覆盖：backupIntervalHours≤0 早退 / dbFile 不存在早退 / 正常备份 /
  *      WAL checkpoint 异常隔离 / cleanupOldBackups 保留策略 / 整体异常不传播
  */
+@DisplayName("SQLite 数据库备份调度器单元测试")
 class DatabaseBackupSchedulerTest {
 
     private StorageProperties properties;

@@ -12,6 +12,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@DisplayName("泄漏检测缓存服务测试")
 class LeakDetectionCacheServiceTest {
 
     private EventBus eventBus;

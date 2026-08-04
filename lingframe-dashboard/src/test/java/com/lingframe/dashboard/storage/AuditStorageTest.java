@@ -21,6 +21,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * 审计日志存储单元测试
  * 覆盖：saveAuditLog / queryAuditLogs（lingId 有/无 + 默认时间 + 默认 limit） / cleanupBefore
  */
+@DisplayName("审计日志存储单元测试")
 class AuditStorageTest {
 
     private JdbcTemplate jdbcTemplate;

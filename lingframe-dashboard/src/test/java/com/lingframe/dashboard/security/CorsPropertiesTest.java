@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * CORS 配置属性默认值与读写测试
  */
+@DisplayName("CORS 配置属性测试")
 class CorsPropertiesTest {
 
     @Test

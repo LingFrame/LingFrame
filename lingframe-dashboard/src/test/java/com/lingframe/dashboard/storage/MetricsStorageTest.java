@@ -26,6 +26,7 @@ import static org.mockito.Mockito.when;
  * 指标数据存储单元测试
  * 覆盖：saveSnapshot / queryHistory（原始+聚合+默认时间范围） / cleanupBefore
  */
+@DisplayName("指标数据存储单元测试")
 class MetricsStorageTest {
 
     private JdbcTemplate jdbcTemplate;

@@ -286,7 +286,7 @@ class LingUnloadCoordinatorParallelTest {
             ObservableHook hook = new ObservableHook("legacy");
 
             LingUnloadCoordinator coordinator = new LingUnloadCoordinator(
-                    null, Collections.singletonList(hook), null, null);
+                    null, Collections.emptyList(), Collections.singletonList(hook), null, null);
 
             coordinator.onVersionUnload("ling-1", "v1", new ClassLoader() {});
             assertEquals(1, hook.callCount.get());

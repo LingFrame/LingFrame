@@ -110,7 +110,7 @@ class DashboardAutoConfigurationSupplementTest {
 
             GovernanceConfigRestorer restorer = config.governanceConfigRestorer(
                     governanceStorage, mock(GovernanceAdminService.class),
-                    null, null, new ObjectMapper());
+                    null, new ObjectMapper());
 
             assertNotNull(restorer);
         }

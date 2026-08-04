@@ -11,9 +11,6 @@ public final class GovernanceConfigTypes {
     /** 迁移阶段记录（新格式：phase/oldCandidate/newCandidate） */
     public static final String MIGRATION = "migration";
 
-    /** 旧灰度格式（percent/canaryVersion，向后兼容读取） */
-    public static final String CANARY = "canary";
-
     /** 调用治理（InvocationPolicy，JSON） */
     public static final String INVOCATION = "invocation";
 

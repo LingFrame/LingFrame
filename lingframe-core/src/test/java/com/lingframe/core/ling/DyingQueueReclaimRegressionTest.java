@@ -194,7 +194,7 @@ class DyingQueueReclaimRegressionTest {
                 .build());
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(registry);
         LingUnloadCoordinator unloadCoordinator =
-                new LingUnloadCoordinator(pipelineEngine, Collections.emptyList(), null, null);
+                new LingUnloadCoordinator(pipelineEngine, Collections.emptyList(), Collections.emptyList(), null, null);
 
         LingLoaderFactory loaderFactory = (lingId, sourceFile, parent) -> {
             try {

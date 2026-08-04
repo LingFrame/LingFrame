@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * 状态机转换历史测试。
  * 覆盖：记录追加、快照查询、环形覆盖、并发安全、容量配置。
  */
+@DisplayName("状态机转换历史测试")
 class StateMachineHistoryTest {
 
     /**

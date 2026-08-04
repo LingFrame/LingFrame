@@ -302,13 +302,12 @@ public class DashboardAutoConfiguration {
     public GovernanceConfigRestorer governanceConfigRestorer(
             GovernanceStorage governanceStorage,
             GovernanceAdminService governanceAdmin,
-            @Autowired(required = false) ProviderWeightRouter providerWeightRouter,
             @Autowired(required = false) MigrationStateHolder migrationStateHolder,
             ObjectMapper objectMapper) {
-        // ProviderWeightRouter / MigrationStateHolder 由 starter 装配；dashboard 独立运行时 fallback 到 null，
-        // 权重覆盖与迁移阶段重建恢复流程自动降级跳过
+        // MigrationStateHolder 由 starter 装配；dashboard 独立运行时 fallback 到 null，
+        // 迁移阶段重建恢复流程自动降级跳过
         return new GovernanceConfigRestorer(governanceStorage, governanceAdmin,
-                providerWeightRouter, migrationStateHolder, objectMapper);
+                migrationStateHolder, objectMapper);
     }
 
     @Bean

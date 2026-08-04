@@ -56,18 +56,8 @@ public interface PermissionService {
 
     /**
      * 记录结构化审计事件。
-     * <p>
-     * 默认实现用于兼容旧版本实现，避免只理解历史布尔结果的实现被破坏。
      */
-    default void audit(PermissionAuditRecord record) {
-        if (record == null) {
-            return;
-        }
-        audit(record.getCallerLingId(),
-                record.getCapability(),
-                record.getAction(),
-                record.getResult() != null && record.getResult().isSuccess());
-    }
+    void audit(PermissionAuditRecord record);
 
     default void removeLing(String lingId) {
     }

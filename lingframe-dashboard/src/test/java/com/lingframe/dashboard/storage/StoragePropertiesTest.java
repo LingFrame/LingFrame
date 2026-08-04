@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * SQLite 存储配置属性默认值与读写测试
  */
+@DisplayName("SQLite 存储配置属性测试")
 class StoragePropertiesTest {
 
     @Test

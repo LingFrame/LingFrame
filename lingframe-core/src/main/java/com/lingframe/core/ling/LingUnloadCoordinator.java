@@ -75,18 +75,6 @@ public class LingUnloadCoordinator {
         this.parallelExecutor = executor;
     }
 
-    /**
-     * 兼容旧的单桶构造（全部 Hook 归入 JVM 桶）。
-     * <p>
-     * 新代码应优先使用两桶构造。此构造保留向后兼容。
-     */
-    public LingUnloadCoordinator(InvocationPipelineEngine pipelineEngine,
-                                 List<LingUnloadHook> allHooks,
-                                 LingResourceManager lingResourceManager,
-                                 LeakDetector leakDetector) {
-        this(pipelineEngine, Collections.emptyList(), allHooks, lingResourceManager, leakDetector);
-    }
-
     public LeakDetector getLeakDetector() {
         return leakDetector;
     }

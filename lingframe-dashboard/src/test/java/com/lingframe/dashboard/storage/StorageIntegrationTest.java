@@ -9,6 +9,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -16,6 +17,7 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 /**
  * SQLite 存储层集成测试
  */
+@DisplayName("SQLite 存储层集成测试")
 class StorageIntegrationTest {
 
     private JdbcTemplate jdbcTemplate;
@@ -42,6 +44,7 @@ class StorageIntegrationTest {
     }
 
     @Test
+    @DisplayName("初始化应创建所需数据表")
     void tablesCreated_success() {
         // 验证 metrics_snapshot 表存在
         List<Map<String, Object>> result = jdbcTemplate.queryForList(
@@ -57,6 +60,7 @@ class StorageIntegrationTest {
     }
 
     @Test
+    @DisplayName("同一 lingId 不同 config_type 应共存不覆盖")
     void governanceConfig_compositePrimaryKey_preventsOverwrite() {
         // 同一 lingId 不同 config_type 应共存
         governanceStorage.saveMigrationConfig("ling1", "{\"percent\":50}");
@@ -68,6 +72,7 @@ class StorageIntegrationTest {
     }
 
     @Test
+    @DisplayName("同类型治理配置应覆盖更新为最新值")
     void governanceConfig_upsert_updatesExisting() {
         governanceStorage.saveMigrationConfig("ling1", "{\"percent\":50}");
         governanceStorage.saveMigrationConfig("ling1", "{\"percent\":80}");
@@ -77,6 +82,7 @@ class StorageIntegrationTest {
     }
 
     @Test
+    @DisplayName("并发写入应在超时内完成且不抛异常")
     void concurrentWrites_busyTimeout_doesNotThrow() throws Exception {
         int threads = 5;
         CountDownLatch latch = new CountDownLatch(threads);

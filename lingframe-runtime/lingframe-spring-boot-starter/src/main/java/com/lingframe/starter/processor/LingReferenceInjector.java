@@ -37,7 +37,7 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
         this.currentLingId = currentLingId;
     }
 
-    // 兼容旧构造函数（灵元内部使用）
+    /** 携带预置 {@link LingContext} 的构造（灵元容器装配路径使用）；{@link #lingContext} 为空时按需解析 */
     public LingReferenceInjector(String currentLingId, LingContext lingContext) {
         this.currentLingId = currentLingId;
         this.lingContext = lingContext;

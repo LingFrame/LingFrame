@@ -42,7 +42,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
  * <p>
  * 去身份化后触发条件为 ctx.getTargetLingId() == null，
  * 候选 provider 默认按注册时携带的 weight 决策，方法级资格过滤决定谁进池子。
- * 路由层不引用 ProviderKind，不再使用 __provider__: 前缀。
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ContractProviderRoutingFilter 测试")

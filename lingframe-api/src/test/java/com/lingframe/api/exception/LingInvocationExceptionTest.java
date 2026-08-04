@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * LingInvocationException 及 ErrorKind 枚举测试
  */
+@DisplayName("LingInvocationException 及 ErrorKind 枚举测试")
 class LingInvocationExceptionTest {
 
     @Nested

@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * API 安全模块测试
  */
+@DisplayName("API 安全模块测试")
 class SecurityApiTest {
 
     @Nested

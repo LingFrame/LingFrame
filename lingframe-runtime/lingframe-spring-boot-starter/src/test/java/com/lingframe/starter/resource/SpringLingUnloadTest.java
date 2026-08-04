@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
  * 以确保在干净的 SpringBoot 环境中验证 ClassLoader 卸载，避免测试框架的引用干扰。
  */
 @Slf4j
+@DisplayName("SpringBoot 卸载测试入口")
 public class SpringLingUnloadTest {
 
     /**

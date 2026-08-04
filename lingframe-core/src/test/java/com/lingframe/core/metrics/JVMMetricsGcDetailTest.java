@@ -7,6 +7,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@DisplayName("JVM 指标 GC 详情测试")
 class JVMMetricsGcDetailTest {
 
     @Test

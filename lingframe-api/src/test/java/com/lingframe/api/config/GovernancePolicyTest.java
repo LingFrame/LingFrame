@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * GovernancePolicy 及内部类测试
  */
+@DisplayName("GovernancePolicy 及内部类测试")
 class GovernancePolicyTest {
 
     @Nested

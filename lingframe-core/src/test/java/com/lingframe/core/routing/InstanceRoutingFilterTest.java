@@ -55,7 +55,7 @@ class InstanceRoutingFilterTest {
     @BeforeEach
     void setUp() {
         context = InvocationContext.obtain();
-        context.setServiceFQSID("__provider__:com.example.UserService");
+        context.setServiceFQSID("com.example.UserService");
     }
 
     @AfterEach

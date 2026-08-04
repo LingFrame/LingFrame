@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
  * SSE Ticket 控制器单元测试
  * 覆盖：颁发 / 验证消费（一次性） / 过期 / 清理 / token 未启用放行
  */
+@DisplayName("SSE Ticket 控制器单元测试")
 class SseTicketControllerTest {
 
     private AccessTokenProperties tokenProps;

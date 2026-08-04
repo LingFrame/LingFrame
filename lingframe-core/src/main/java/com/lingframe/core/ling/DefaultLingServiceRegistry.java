@@ -23,18 +23,12 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     // 接口服务也会注册（冗余但幂等），不影响正确性。
     private final Map<String, String> implClassNameCache = new ConcurrentHashMap<>();
 
-    // 反向索引：契约 ID → 灵元 ID 集合
-    // 契约 ID 取 FQSID 去掉 "lingId:" 前缀后的剩余部分（裸契约名或短 ID）。
-    // 路由层按接口类型查灵元时用此索引，避免 O(n) 遍历全表。
-    private final Map<String, Set<String>> contractToLingIds = new ConcurrentHashMap<>();
-
     // 反向索引：灵元 ID → FQSID 集合
     // 供 getServicesByLingId 直接 O(1) 命中，避免对 metadataCache 全表前缀扫描产生的 O(n) 遍历。
     private final Map<String, Set<String>> lingToServices = new ConcurrentHashMap<>();
 
     // 路由升维：契约 ID → 提供方描述符列表（含权重）
-    // L0 provider 级路由的主索引，与 contractToLingIds 并行维护。
-    // contractToLingIds 保留供旧调用方（dashboard 等）兼容使用，本索引供 ProviderWeightRouter 使用。
+    // L0 provider 级路由的主索引，供 ProviderWeightRouter 使用。
     private final Map<String, List<ProviderDescriptor>> providerIndex = new ConcurrentHashMap<>();
 
     @Override
@@ -245,12 +239,6 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         metadataCache.keySet().removeIf(k -> k.startsWith(prefix));
         returnTypeCache.keySet().removeIf(k -> k.startsWith(prefix));
         implClassNameCache.keySet().removeIf(k -> k.startsWith(prefix));
-        // 清理反向索引：从每个契约的灵元集合中移除本灵元
-        for (Set<String> lingIdSet : contractToLingIds.values()) {
-            lingIdSet.remove(lingId);
-        }
-        // 清空空集合，防内存泄漏
-        contractToLingIds.values().removeIf(Set::isEmpty);
         // 清理反向索引：灵元 → FQSID 整条移除
         lingToServices.remove(lingId);
         // 路由升维：同步清理 providerIndex
@@ -275,7 +263,6 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         }
         String lingId = serviceFQSID.substring(0, idx);
         String contractId = serviceFQSID.substring(idx + 1);
-        contractToLingIds.computeIfAbsent(contractId, k -> ConcurrentHashMap.newKeySet()).add(lingId);
         // 反向索引：灵元 → FQSID，供 getServicesByLingId O(1) 命中
         lingToServices.computeIfAbsent(lingId, k -> ConcurrentHashMap.newKeySet()).add(serviceFQSID);
         // 路由升维：同步登记 providerIndex，默认灵元 weight=0

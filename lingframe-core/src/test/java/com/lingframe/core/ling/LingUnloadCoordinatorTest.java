@@ -38,6 +38,7 @@ class LingUnloadCoordinatorTest {
         leakDetector = mock(LeakDetector.class);
         coordinator = new LingUnloadCoordinator(
                 pipelineEngine,
+                Collections.emptyList(),
                 Collections.singletonList(unloadHook),
                 resourceManager,
                 leakDetector);
@@ -85,6 +86,7 @@ class LingUnloadCoordinatorTest {
 
             LingUnloadCoordinator coord = new LingUnloadCoordinator(
                     pipelineEngine,
+                    Collections.emptyList(),
                     Arrays.asList(failingHook, normalHook),
                     resourceManager,
                     leakDetector);
@@ -105,6 +107,7 @@ class LingUnloadCoordinatorTest {
 
             LingUnloadCoordinator coord = new LingUnloadCoordinator(
                     pipelineEngine,
+                    Collections.emptyList(),
                     Collections.singletonList(errorHook),
                     resourceManager,
                     leakDetector);
@@ -128,6 +131,7 @@ class LingUnloadCoordinatorTest {
 
             LingUnloadCoordinator coord = new LingUnloadCoordinator(
                     pipelineEngine,
+                    Collections.emptyList(),
                     Arrays.asList(exceptionHook, errorHook, normalHook),
                     resourceManager,
                     leakDetector);
@@ -166,7 +170,7 @@ class LingUnloadCoordinatorTest {
         @DisplayName("pipelineEngine 为 null 时不抛异常")
         void nullPipelineEngineSafe() {
             LingUnloadCoordinator coord = new LingUnloadCoordinator(
-                    null, Collections.emptyList(), resourceManager, leakDetector);
+                    null, Collections.emptyList(), Collections.emptyList(), resourceManager, leakDetector);
             assertDoesNotThrow(() -> coord.onLingUnload("ling-1"));
         }
 
@@ -174,7 +178,7 @@ class LingUnloadCoordinatorTest {
         @DisplayName("resourceManager 为 null 时不抛异常")
         void nullResourceManagerSafe() {
             LingUnloadCoordinator coord = new LingUnloadCoordinator(
-                    pipelineEngine, Collections.emptyList(), null, leakDetector);
+                    pipelineEngine, Collections.emptyList(), Collections.emptyList(), null, leakDetector);
             assertDoesNotThrow(() -> coord.onLingUnload("ling-1"));
         }
     }
@@ -209,7 +213,7 @@ class LingUnloadCoordinatorTest {
         @DisplayName("LeakDetector 为 null 返回 CHECK_FAILED")
         void nullLeakDetectorReturnsCheckFailed() {
             LingUnloadCoordinator coord = new LingUnloadCoordinator(
-                    pipelineEngine, Collections.emptyList(), resourceManager, null);
+                    pipelineEngine, Collections.emptyList(), Collections.emptyList(), resourceManager, null);
 
             ClassLoader cl = mock(ClassLoader.class);
             LeakRiskReport result = coord.checkBeforeVersionUnload("ling-1", "v1", cl);
@@ -301,7 +305,7 @@ class LingUnloadCoordinatorTest {
         @DisplayName("null LeakDetector 不调用检测")
         void nullLeakDetectorSkipsDetection() {
             LingUnloadCoordinator coord = new LingUnloadCoordinator(
-                    pipelineEngine, Collections.emptyList(), resourceManager, null);
+                    pipelineEngine, Collections.emptyList(), Collections.emptyList(), resourceManager, null);
 
             ClassLoader cl = mock(ClassLoader.class);
             coord.detectLeak("ling-1", "v1", cl);

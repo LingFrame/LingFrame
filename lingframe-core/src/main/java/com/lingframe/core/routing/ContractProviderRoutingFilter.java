@@ -21,11 +21,10 @@ import java.util.Objects;
  * L0 provider 级路由过滤器。
  * <p>
  * 在 Pipeline 最早阶段（{@link FilterPhase#PROVIDER_ROUTING}）执行，
- * 从 {@code __provider__:} 前缀的 FQSID 中提取契约 ID（裸 contractId），
- * 按 provider 权重选择目标 lingId 并设置 {@code ctx.runtime}，
+ * 从裸 contractId FQSID 中按 provider 权重选择目标 lingId 并设置 {@code ctx.runtime}，
  * 让后续过滤器直接使用已解析的 runtime。
  * <p>
- * 契约级路由与灵元级路由共存：契约级 FQSID（{@code __provider__:contractId}）由本过滤器处理，
+ * 契约级路由与灵元级路由共存：契约级 FQSID（裸 contractId）由本过滤器处理，
  * 旧格式 FQSID（{@code lingId:serviceName}）不触发此阶段，直接放行让下游按 lingId 路由。
  * <p>
  * 方法级资格过滤：候选 provider 中，只有真正声明了被调用方法的 provider 才进入选择池。
@@ -41,9 +40,6 @@ import java.util.Objects;
  * 支持迭代期二元版本路由。
  */
 public class ContractProviderRoutingFilter implements LingInvocationFilter {
-
-    /** 優约级路由 FQSID 前缀，新格式：{@code __provider__:contractId} */
-    public static final String PROVIDER_FQSID_PREFIX = "__provider__:";
 
     private final LingServiceRegistry lingServiceRegistry;
     private final LingRepository lingRepository;
@@ -80,7 +76,7 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
         // 旧格式 FQSID（lingId:serviceName）走灵元级路由接管分支
         // 入口放行条件用 targetInstance（与原版 CanaryRoutingFilter 一致）：
         // 只锁 lingId 不锁 instance 时仍需本过滤器解析具体实例
-        if (fqsid.indexOf(':') >= 0 && !fqsid.startsWith(PROVIDER_FQSID_PREFIX)) {
+        if (fqsid.indexOf(':') >= 0) {
             if (ctx.routing().getTargetInstance() != null) {
                 ctx.routing().setPreResolved(true);
                 return chain.doFilter(ctx);
@@ -88,20 +84,14 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
             return routeByLingId(ctx, chain, fqsid);
         }
 
-        // 優先识别 v0.4 新格式裸 contractId（无 lingId: 前缀）；兼容旧 __provider__:contractId 前缀
+        // 识别 v0.4 新格式裸 contractId（无 lingId: 前缀）
         // 入口放行条件用 targetLingId（与原版 ContractProviderRoutingFilter 一致）：
         // 调用方已锁定灵元时本过滤器不覆盖入口意图
         if (ctx.getTargetLingId() != null) {
             return chain.doFilter(ctx);
         }
 
-        String contractId;
-        if (fqsid.startsWith(PROVIDER_FQSID_PREFIX)) {
-            contractId = fqsid.substring(PROVIDER_FQSID_PREFIX.length());
-        } else {
-            // 裸 contractId（无 ':' 分隔）——v0.4 新格式
-            contractId = fqsid;
-        }
+        String contractId = fqsid;
 
         if (lingServiceRegistry == null) {
             // 无 serviceRegistry（native/test 场景），无法做契约级路由，放行

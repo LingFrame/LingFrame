@@ -48,6 +48,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * 覆盖：简单 bean 方法返回类型 / dashboardJdbcTemplate 目录创建 / dashboardService 条件注入 /
  *      WebMvc 视图配置（安全拦截器由 dashboard-boot2/boot3 注册）
  */
+@DisplayName("Dashboard 自动配置单元测试")
 class DashboardAutoConfigurationTest {
 
     private final DashboardAutoConfiguration config = new DashboardAutoConfiguration();

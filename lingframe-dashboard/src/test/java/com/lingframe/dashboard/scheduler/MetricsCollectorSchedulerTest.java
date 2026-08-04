@@ -22,6 +22,7 @@ import static org.mockito.Mockito.when;
  * 定时采集调度器单元测试
  * 覆盖：start/stop 生命周期、interval≤0 默认值、collectAndSave 正常与异常隔离
  */
+@DisplayName("定时采集调度器单元测试")
 class MetricsCollectorSchedulerTest {
 
     private MetricsStorage mockStorage() {
