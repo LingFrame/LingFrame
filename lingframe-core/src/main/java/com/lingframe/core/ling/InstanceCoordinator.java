@@ -118,6 +118,8 @@ final class InstanceCoordinator {
             // 销毁失败后成员关系通常已被调用方（如 InstancePool.cleanupIdleInstances）移除，
             // 实例无法再被正常销毁路径触及。必须补发 InstanceDestroyedEvent，
             // 否则 RuntimeCoordinator 快照会残留 ERROR 实例，宏观状态永不收敛（僵尸 ERROR）。
+            // 事件语义为「实例生命周期终结，可做快照收口和资源回收」，不保证 Bean 物理资源
+            // 已完全释放；下游 ResourceManager 的清理操作（线程池/缓存驱逐）对失败场景同样安全。
             publishDestroyed(identity);
         }
     }

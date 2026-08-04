@@ -127,6 +127,9 @@ public class InstancePool {
 
     /**
      * 是否允许添加新实例（背压检测）
+     * <p>
+     * 该门控目前不作为部署路径的写死约束（部署由生命力引擎编排），
+     * 保留为待调用方的可选背压检测助手；成员关系的真正决策在 {@link #addInstance} 内完成。
      */
     public boolean canAddInstance() {
         return dyingQueue.size() < maxDyingInstances;

@@ -13,6 +13,7 @@ import com.lingframe.dashboard.dto.ResourceCleanupCapabilityDTO;
 import com.lingframe.dashboard.dto.RuntimeGovernanceReadinessDTO;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
 import com.lingframe.dashboard.service.LingResourceMetricsCollector;
+import com.lingframe.dashboard.service.MetricsAggregationService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,7 +43,8 @@ class MetricsControllerTest {
                 mock(LeakDetectionCacheService.class),
                 mock(LingResourceMetricsCollector.class),
                 mock(ThreadPoolStatsProvider.class),
-                mock(EventBus.class));
+                mock(EventBus.class),
+                new MetricsAggregationService(metricsCollector, mock(GovernanceMetricsCollector.class)));
 
         MetricsSnapshot summary = new MetricsSnapshot();
         summary.setLingId("ling1");
@@ -89,7 +91,8 @@ class MetricsControllerTest {
                 mock(LeakDetectionCacheService.class),
                 mock(LingResourceMetricsCollector.class),
                 mock(ThreadPoolStatsProvider.class),
-                mock(EventBus.class));
+                mock(EventBus.class),
+                new MetricsAggregationService(mock(MetricsCollector.class), governanceMetricsCollector));
 
         GovernanceMetricsSnapshot summary = new GovernanceMetricsSnapshot();
         summary.setLingId("ling1");
@@ -133,7 +136,8 @@ class MetricsControllerTest {
                 mock(LeakDetectionCacheService.class),
                 mock(LingResourceMetricsCollector.class),
                 mock(ThreadPoolStatsProvider.class),
-                mock(EventBus.class));
+                mock(EventBus.class),
+                mock(MetricsAggregationService.class));
 
         ResourceCleanupCapabilityDTO dto = ResourceCleanupCapabilityDTO.builder()
                 .runtime("BasicUnloadHook")
@@ -165,7 +169,8 @@ class MetricsControllerTest {
                 mock(LeakDetectionCacheService.class),
                 mock(LingResourceMetricsCollector.class),
                 mock(ThreadPoolStatsProvider.class),
-                mock(EventBus.class));
+                mock(EventBus.class),
+                mock(MetricsAggregationService.class));
 
         RuntimeGovernanceReadinessDTO dto = RuntimeGovernanceReadinessDTO.builder()
                 .status("LIMITED")

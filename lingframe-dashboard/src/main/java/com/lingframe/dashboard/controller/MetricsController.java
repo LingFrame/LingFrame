@@ -4,7 +4,6 @@ import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.classloader.LingClassLoader;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
-import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
 import com.lingframe.core.metrics.JVMMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
@@ -13,6 +12,7 @@ import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.dashboard.dto.*;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
 import com.lingframe.dashboard.service.LingResourceMetricsCollector;
+import com.lingframe.dashboard.service.MetricsAggregationService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +45,7 @@ public class MetricsController {
     private final LingResourceMetricsCollector lingResourceMetricsCollector;
     private final ThreadPoolStatsProvider threadPoolStatsProvider;
     private final EventBus eventBus;
+    private final MetricsAggregationService metricsAggregationService;
 
     /**
      * 获取 JVM 综合性能指标（CPU / 内存 / 堆 / Metaspace / 类加载 / 线程 / GC / 系统信息）
@@ -78,16 +79,7 @@ public class MetricsController {
     @GetMapping("/lings/health/all")
     public ApiResponse<Map<String, LingHealthViewDTO>> getAllLingHealth() {
         try {
-            Map<String, LingHealthViewDTO> allMetrics = metricsCollector.getAllSnapshots().stream()
-                    .collect(Collectors.toMap(
-                            MetricsSnapshot::getLingId,
-                            snapshot -> LingHealthViewDTO.builder()
-                                    .summary(snapshot)
-                                    .versions(metricsCollector.getVersionSnapshots(snapshot.getLingId()))
-                                    .build(),
-                            (existing, replacement) -> replacement
-                    ));
-            return ApiResponse.ok(allMetrics);
+            return ApiResponse.ok(metricsAggregationService.getAllHealthView());
         } catch (Exception e) {
             log.error("Failed to get all health metrics", e);
             return ApiResponse.error("获取健康指标失败: " + e.getMessage());
@@ -100,16 +92,7 @@ public class MetricsController {
     @GetMapping("/lings/governance/all")
     public ApiResponse<Map<String, LingGovernanceMetricsViewDTO>> getAllLingGovernanceMetrics() {
         try {
-            Map<String, LingGovernanceMetricsViewDTO> allMetrics = governanceMetricsCollector.getAllSummaries().values().stream()
-                    .collect(Collectors.toMap(
-                            GovernanceMetricsSnapshot::getLingId,
-                            snapshot -> LingGovernanceMetricsViewDTO.builder()
-                                    .summary(snapshot)
-                                    .versions(governanceMetricsCollector.getVersionSnapshots(snapshot.getLingId()))
-                                    .build(),
-                            (existing, replacement) -> replacement
-                    ));
-            return ApiResponse.ok(allMetrics);
+            return ApiResponse.ok(metricsAggregationService.getAllGovernanceView());
         } catch (Exception e) {
             log.error("Failed to get governance metrics", e);
             return ApiResponse.error("获取治理指标失败: " + e.getMessage());

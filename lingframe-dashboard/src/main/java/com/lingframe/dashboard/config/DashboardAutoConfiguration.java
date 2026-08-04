@@ -31,6 +31,7 @@ import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
 import com.lingframe.dashboard.service.LingResourceMetricsCollector;
 import com.lingframe.dashboard.service.LogStreamService;
+import com.lingframe.dashboard.service.MetricsAggregationService;
 import com.lingframe.dashboard.service.MigrationProgressService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import com.lingframe.dashboard.service.SimulateService;
@@ -94,8 +95,11 @@ public class DashboardAutoConfiguration {
     public LingInfoConverter lingInfoConverter(
             MetricsCollector metricsCollector,
             @Autowired(required = false) LingServiceRegistry lingServiceRegistry,
-            @Autowired(required = false) ProviderMetricsCollector providerMetricsCollector) {
-        return new LingInfoConverter(metricsCollector, lingServiceRegistry, providerMetricsCollector);
+            @Autowired(required = false) ProviderMetricsCollector providerMetricsCollector,
+            @Autowired(required = false) ProviderWeightRouter providerWeightRouter) {
+        // ProviderWeightRouter 由 LingFrameLifecycleBeansConfiguration 装配；
+        // dashboard 独立运行时 fallback 到 null，toDTO 回退占位权重语义
+        return new LingInfoConverter(metricsCollector, lingServiceRegistry, providerMetricsCollector, providerWeightRouter);
     }
 
     @Bean
@@ -163,9 +167,13 @@ public class DashboardAutoConfiguration {
             InvocationPipelineEngine pipelineEngine,
             ObjectMapper objectMapper,
             GovernanceArbitrator governanceArbitrator,
-            PermissionService permissionService) {
-        return new ServicePlaygroundService(lingServiceRegistry, lingRepository, pipelineEngine,
+            PermissionService permissionService,
+            @Autowired(required = false) ProviderWeightRouter providerWeightRouter) {
+        ServicePlaygroundService service = new ServicePlaygroundService(lingServiceRegistry, lingRepository, pipelineEngine,
                 objectMapper, governanceArbitrator, permissionService);
+        // PROPORTIONAL 模式按真实权重分流；无 router 时保持 50/50 兜底
+        service.setProviderWeightRouter(providerWeightRouter);
+        return service;
     }
 
     @Bean
@@ -181,11 +189,12 @@ public class DashboardAutoConfiguration {
     @Bean
     public ContractRoutingService contractRoutingService(
             LingServiceRegistry lingServiceRegistry,
-            @Autowired(required = false) ProviderWeightRouter providerWeightRouter) {
+            @Autowired(required = false) ProviderWeightRouter providerWeightRouter,
+            @Autowired(required = false) MigrationStateHolder migrationStateHolder) {
         // ProviderWeightRouter 由 LingFrameLifecycleBeansConfiguration 装配；
         // dashboard 独立运行（无 starter 依赖）时 fallback 到新建实例，保证不空指针
         ProviderWeightRouter router = providerWeightRouter != null ? providerWeightRouter : new ProviderWeightRouter();
-        return new ContractRoutingService(lingServiceRegistry, router);
+        return new ContractRoutingService(lingServiceRegistry, router, migrationStateHolder);
     }
 
     @Bean
@@ -213,6 +222,13 @@ public class DashboardAutoConfiguration {
     @ConditionalOnMissingBean
     public GovernanceMetricsCollector governanceMetricsCollector() {
         return new GovernanceMetricsCollector();
+    }
+
+    @Bean
+    public MetricsAggregationService metricsAggregationService(
+            MetricsCollector metricsCollector,
+            GovernanceMetricsCollector governanceMetricsCollector) {
+        return new MetricsAggregationService(metricsCollector, governanceMetricsCollector);
     }
 
     @Bean

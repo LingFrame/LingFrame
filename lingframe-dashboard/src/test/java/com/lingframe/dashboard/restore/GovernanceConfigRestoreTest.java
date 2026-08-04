@@ -152,6 +152,12 @@ class GovernanceConfigRestoreTest {
         assertEquals(MigrationPhase.LING_EXCLUSIVE, holder.getPhase("svc-100"));
         // percent=0 表示回退灵核，保持默认 CORE_EXCLUSIVE 不重建
         assertEquals(MigrationPhase.CORE_EXCLUSIVE, holder.getPhase("svc-0"));
+        // 独占态记录的候选归属：percent=100 流量全在灵元侧，保留方应为进入方（newCandidate）
+        MigrationStateHolder.PhaseRecord rec = holder.getRecord("svc-100");
+        assertNotNull(rec);
+        assertEquals("user-ling", rec.getOldCandidate(),
+                "LING_EXCLUSIVE 独占态 oldCandidate 应为保留方（灵元），不能误落成灵核");
+        assertNull(rec.getNewCandidate(), "独占态 newCandidate 应为 null");
     }
 
     @Test

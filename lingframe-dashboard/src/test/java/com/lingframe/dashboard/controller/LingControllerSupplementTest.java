@@ -2,7 +2,6 @@ package com.lingframe.dashboard.controller;
 
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.fsm.RuntimeStatus;
-import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.MetricsSnapshot;
@@ -10,21 +9,23 @@ import com.lingframe.core.routing.MigrationStateHolder;
 import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.DashboardSummaryDTO;
 import com.lingframe.dashboard.dto.GovernanceMatrixRowDTO;
+import com.lingframe.dashboard.dto.LingGovernanceMetricsViewDTO;
+import com.lingframe.dashboard.dto.LingHealthViewDTO;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.dto.RuntimeGovernanceReadinessDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
 import com.lingframe.dashboard.dto.TransitionHistoryDTO;
+import com.lingframe.dashboard.service.ContractRoutingService;
 import com.lingframe.dashboard.service.DashboardService;
+import com.lingframe.dashboard.service.MetricsAggregationService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -55,16 +56,17 @@ class LingControllerSupplementTest {
         final LingFrameConfig config = mock(LingFrameConfig.class);
         final DashboardService dashboardService = mock(DashboardService.class);
         final MetricsCollector metricsCollector = mock(MetricsCollector.class);
-        final GovernanceMetricsCollector governanceMetricsCollector = mock(GovernanceMetricsCollector.class);
         final RuntimeDiagnosticsService runtimeDiagnosticsService = mock(RuntimeDiagnosticsService.class);
         final MigrationStateHolder migrationStateHolder =
                 new MigrationStateHolder();
+        final ContractRoutingService contractRoutingService = mock(ContractRoutingService.class);
+        final MetricsAggregationService metricsAggregationService = mock(MetricsAggregationService.class);
         final LingController controller;
 
         ControllerFixture(boolean installEnabled) {
             this.controller = new LingController(config, dashboardService, metricsCollector,
-                    governanceMetricsCollector, runtimeDiagnosticsService, migrationStateHolder,
-                    installEnabled);
+                    runtimeDiagnosticsService, migrationStateHolder,
+                    contractRoutingService, metricsAggregationService, installEnabled);
         }
     }
 
@@ -543,21 +545,24 @@ class LingControllerSupplementTest {
         @DisplayName("正常返回概览数据（含生命周期事件）")
         void shouldReturnDashboardSummary() {
             ControllerFixture fixture = new ControllerFixture(false);
-            // 健康指标快照
+            // 健康指标视图（聚合委托给 MetricsAggregationService）
             MetricsSnapshot snapshot = new MetricsSnapshot();
             snapshot.setLingId("ling1");
             snapshot.setTotalRequests(100L);
-            when(fixture.metricsCollector.getAllSnapshots())
-                    .thenReturn(Collections.singletonList(snapshot));
-            when(fixture.metricsCollector.getVersionSnapshots("ling1"))
-                    .thenReturn(Collections.emptyMap());
-            // 治理指标快照
+            LingHealthViewDTO healthView = LingHealthViewDTO.builder()
+                    .summary(snapshot)
+                    .versions(Collections.emptyMap())
+                    .build();
+            when(fixture.metricsAggregationService.getAllHealthView())
+                    .thenReturn(Collections.singletonMap("ling1", healthView));
+            // 治理指标视图
             GovernanceMetricsSnapshot govSnapshot = GovernanceMetricsSnapshot.empty("ling1");
-            Map<String, GovernanceMetricsSnapshot> govSummaries = new HashMap<>();
-            govSummaries.put("ling1", govSnapshot);
-            when(fixture.governanceMetricsCollector.getAllSummaries()).thenReturn(govSummaries);
-            when(fixture.governanceMetricsCollector.getVersionSnapshots("ling1"))
-                    .thenReturn(Collections.emptyMap());
+            LingGovernanceMetricsViewDTO govView = LingGovernanceMetricsViewDTO.builder()
+                    .summary(govSnapshot)
+                    .versions(Collections.emptyMap())
+                    .build();
+            when(fixture.metricsAggregationService.getAllGovernanceView())
+                    .thenReturn(Collections.singletonMap("ling1", govView));
             // 生命周期事件（超过 10 条以验证截断逻辑）
             List<DashboardService.LifecycleEvent> events = new ArrayList<>();
             for (int i = 0; i < 12; i++) {
@@ -591,8 +596,8 @@ class LingControllerSupplementTest {
         @DisplayName("空数据时返回空概览")
         void shouldReturnEmptySummary() {
             ControllerFixture fixture = new ControllerFixture(false);
-            when(fixture.metricsCollector.getAllSnapshots()).thenReturn(Collections.emptyList());
-            when(fixture.governanceMetricsCollector.getAllSummaries()).thenReturn(Collections.emptyMap());
+            when(fixture.metricsAggregationService.getAllHealthView()).thenReturn(Collections.emptyMap());
+            when(fixture.metricsAggregationService.getAllGovernanceView()).thenReturn(Collections.emptyMap());
             when(fixture.dashboardService.getLifecycleEvents(null)).thenReturn(Collections.emptyList());
             when(fixture.runtimeDiagnosticsService.getCleanupCapabilities())
                     .thenReturn(Collections.emptyMap());
@@ -612,7 +617,7 @@ class LingControllerSupplementTest {
         @DisplayName("service 抛出异常时返回失败")
         void shouldReturnErrorOnException() {
             ControllerFixture fixture = new ControllerFixture(false);
-            when(fixture.metricsCollector.getAllSnapshots())
+            when(fixture.metricsAggregationService.getAllHealthView())
                     .thenThrow(new RuntimeException("summary error"));
 
             ApiResponse<DashboardSummaryDTO> response =

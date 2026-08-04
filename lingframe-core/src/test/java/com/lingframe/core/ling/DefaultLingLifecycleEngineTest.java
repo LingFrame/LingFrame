@@ -208,8 +208,8 @@ class DefaultLingLifecycleEngineTest {
         try {
             engine.recover("ling1", "1.0.0");
 
-            assertEquals(com.lingframe.core.fsm.InstanceStatus.READY, instance.currentStatus());
-            assertEquals(com.lingframe.core.fsm.RuntimeStatus.ACTIVE, runtime.currentStatus());
+            assertEquals(InstanceStatus.READY, instance.currentStatus());
+            assertEquals(RuntimeStatus.ACTIVE, runtime.currentStatus());
             verify(pipelineEngine).recoverLingGovernance("ling1");
             verify(container).start(ArgumentMatchers.any());
             verify(container, never()).stop();

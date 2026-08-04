@@ -85,13 +85,14 @@ public class DashboardGovernanceSupport {
         if (dto.getIpcServices() != null) {
             List<String> toRemove = new ArrayList<>();
             for (String key : ruleMap.keySet()) {
-                if (key.startsWith("ipc:")) {
+                if (key.startsWith(Capabilities.IPC_PREFIX)) {
                     toRemove.add(key);
                 }
             }
             toRemove.forEach(ruleMap::remove);
             for (String targetLingId : dto.getIpcServices()) {
-                ruleMap.put("ipc:" + targetLingId, capabilityRule("ipc:" + targetLingId, AccessType.EXECUTE));
+                String ipcCapability = Capabilities.ipcCapability(targetLingId);
+                ruleMap.put(ipcCapability, capabilityRule(ipcCapability, AccessType.EXECUTE));
             }
         }
 

@@ -15,6 +15,7 @@ import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.routing.MigrationStateHolder;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
@@ -56,6 +57,7 @@ class DashboardAutoConfigurationTest {
     void shouldCreateLingInfoConverter() {
         assertNotNull(config.lingInfoConverter(
                 mock(MetricsCollector.class),
+                null,
                 null,
                 null));
     }
@@ -112,7 +114,8 @@ class DashboardAutoConfigurationTest {
         assertNotNull(config.servicePlaygroundService(
                 mock(LingServiceRegistry.class), mock(LingRepository.class),
                 mock(InvocationPipelineEngine.class), mock(ObjectMapper.class),
-                mock(GovernanceArbitrator.class), mock(PermissionService.class)));
+                mock(GovernanceArbitrator.class), mock(PermissionService.class),
+                mock(ProviderWeightRouter.class)));
     }
 
     @Test

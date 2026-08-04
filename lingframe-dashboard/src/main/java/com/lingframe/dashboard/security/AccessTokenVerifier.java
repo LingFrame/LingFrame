@@ -3,6 +3,8 @@ package com.lingframe.dashboard.security;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Locale;
+
 /**
  * 访问令牌校验决策器。
  * <p>
@@ -31,7 +33,7 @@ public class AccessTokenVerifier {
         // 支持标准的 Authorization: Bearer <token> 模式
         if (token == null || token.isEmpty()) {
             String authHeader = snapshot.getHeader("Authorization");
-            if (authHeader != null && authHeader.toLowerCase().startsWith("bearer ")) {
+            if (authHeader != null && authHeader.toLowerCase(Locale.ROOT).startsWith("bearer ")) {
                 token = authHeader.substring(7).trim();
             }
         }

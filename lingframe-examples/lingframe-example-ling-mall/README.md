@@ -43,6 +43,8 @@ governance:
 
 灵核装载器据此识别灵元 ID、版本、入口类，创建 `LingClassLoader` 隔离加载。
 
+> ⚠️ **非治理演示意图**：`ling.yml` 声明的 `storage:sql WRITE` / `cache:local WRITE` 能力属于**声明式占位**，代码中零 `@RequiresPermission`、零 `@LingService`，能力声明没有代码级约束点锚定。本模块定位是「老单体最小化改造灵元」示范，刻意保持零灵珑依赖、零业务代码改动，仅演示类加载隔离与独立生命周期。**不要把它当作带治理约束的灵元范本**；需要治理约束请参考 `lingframe-example-saas-mall` 的 `@RequiresPermission`/`@LingService` 路径。
+
 ### 2.2 添加 `Ling-Id` JAR manifest
 
 [`pom.xml`](pom.xml) 的 `maven-jar-plugin` 配置：

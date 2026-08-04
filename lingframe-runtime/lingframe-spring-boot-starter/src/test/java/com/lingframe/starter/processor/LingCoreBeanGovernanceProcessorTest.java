@@ -89,6 +89,16 @@ class LingCoreBeanGovernanceProcessorTest {
         partialProcessor.setApplicationContext(partialCtx);
         assertSame(service, partialProcessor.postProcessAfterInitialization(service, "testService"));
 
+        // 场景 1c：显式关闭治理（enabled=false）时组件缺失也应直接放行，
+        // 不与「治理不可用」并入同一条失败路径（enabled 检查先于可用性拒绝）
+        ApplicationContext disabledCtx = mock(ApplicationContext.class);
+        LingFrameProperties disabledProps = new LingFrameProperties();
+        disabledProps.getLingCoreGovernance().setEnabled(false);
+        when(disabledCtx.getBean(LingFrameProperties.class)).thenReturn(disabledProps);
+        LingCoreBeanGovernanceProcessor disabledProcessor = new LingCoreBeanGovernanceProcessor();
+        disabledProcessor.setApplicationContext(disabledCtx);
+        assertSame(service, disabledProcessor.postProcessAfterInitialization(service, "testService"));
+
         // 场景 2：灵核治理未开启，直接返回原 bean
         properties.getLingCoreGovernance().setEnabled(false);
         assertSame(service, processor.postProcessAfterInitialization(service, "testService"));

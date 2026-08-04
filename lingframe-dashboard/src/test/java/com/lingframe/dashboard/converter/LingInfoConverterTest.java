@@ -7,23 +7,24 @@ import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
-// CanaryRouter 已删除，路由层去身份化
+import com.lingframe.core.ling.LingServiceRegistry;
+import com.lingframe.core.routing.ProviderDescriptor;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-
+import java.util.HashSet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -36,16 +37,14 @@ class LingInfoConverterTest {
     void shouldExposeFineGrainedCapabilities() {
         LingRuntime runtime = mock(LingRuntime.class);
         InstancePool instancePool = mock(InstancePool.class);
-        // CanaryRouter 已删除
         PermissionService permissionService = mock(PermissionService.class);
 
         when(runtime.getLingId()).thenReturn("ling-a");
-        when(runtime.currentStatus()).thenReturn(com.lingframe.core.fsm.RuntimeStatus.ACTIVE);
+        when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
         when(runtime.getInstancePool()).thenReturn(instancePool);
         when(runtime.getInstalledAt()).thenReturn(123L);
         when(instancePool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
         when(instancePool.getAllInstances()).thenReturn(Collections.<LingInstance>emptyList());
-        // canaryRouter 已删除
 
         when(permissionService.getPermission("ling-a", Capabilities.STORAGE_SQL))
                 .thenReturn(PermissionInfo.permanent("ling-a", Capabilities.STORAGE_SQL, AccessType.WRITE, "test"));
@@ -96,7 +95,6 @@ class LingInfoConverterTest {
         // 期望：versionDetails 只包含 activePool 中的新实例
         LingRuntime runtime = mock(LingRuntime.class);
         InstancePool instancePool = mock(InstancePool.class);
-        // CanaryRouter 已删除
         PermissionService permissionService = mock(PermissionService.class);
         EventBus eventBus = mock(EventBus.class);
 
@@ -104,7 +102,6 @@ class LingInfoConverterTest {
         when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
         when(runtime.getInstancePool()).thenReturn(instancePool);
         when(runtime.getInstalledAt()).thenReturn(123L);
-        // canaryRouter 已删除
 
         // 新实例：正常 READY 状态
         LingDefinition newDef = new LingDefinition();
@@ -118,7 +115,7 @@ class LingInfoConverterTest {
         LingInstance oldInstance = mock(LingInstance.class);
         when(oldInstance.getDefinition()).thenReturn(new LingDefinition());
         when(oldInstance.getVersion()).thenReturn("1.0.0");
-        when(oldInstance.currentStatus()).thenReturn(com.lingframe.core.fsm.InstanceStatus.STOPPING);
+        when(oldInstance.currentStatus()).thenReturn(InstanceStatus.STOPPING);
 
         // activeInstances 只含新实例，getAllInstances 含两者
         when(instancePool.getActiveInstances()).thenReturn(Collections.singletonList(newInstance));
@@ -129,5 +126,89 @@ class LingInfoConverterTest {
         // 只应返回 1 个版本（新实例），dyingQueue 中的旧实例不展示
         assertEquals(1, dto.getVersionDetails().size());
         assertEquals("1.0.0-reload-1", dto.getVersionDetails().get(0).getVersion());
+    }
+
+    @Nested
+    @DisplayName("trafficWeight 展示事实")
+    class TrafficWeightTest {
+
+        private LingServiceRegistry registryWith(LingInstance defaultInstance, ProviderDescriptor... descriptors) {
+            LingServiceRegistry registry = mock(LingServiceRegistry.class);
+            when(registry.getContractsByLingId("ling-a"))
+                    .thenReturn(new HashSet<>(Collections.singletonList("svc-a")));
+            when(registry.getProvidersByContractId("svc-a"))
+                    .thenReturn(Arrays.asList(descriptors));
+            return registry;
+        }
+
+        private LingRuntime runtimeWith(LingInstance defaultInstance) {
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool instancePool = mock(InstancePool.class);
+            when(runtime.getLingId()).thenReturn("ling-a");
+            when(runtime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
+            when(runtime.getInstancePool()).thenReturn(instancePool);
+            when(runtime.getInstalledAt()).thenReturn(123L);
+            when(instancePool.getActiveInstances())
+                    .thenReturn(Collections.singletonList(defaultInstance));
+            when(instancePool.getDefault()).thenReturn(defaultInstance);
+            return runtime;
+        }
+
+        @Test
+        @DisplayName("应读注册权重而非占位 100/0")
+        void shouldReadRegisteredWeight() {
+            LingInstance instance = mock(LingInstance.class);
+            LingDefinition def = new LingDefinition();
+            def.setId("ling-a");
+            def.setVersion("2.0.0");
+            when(instance.getDefinition()).thenReturn(def);
+            when(instance.getVersion()).thenReturn("2.0.0");
+            when(instance.currentStatus()).thenReturn(InstanceStatus.READY);
+
+            LingServiceRegistry registry = registryWith(instance,
+                    new ProviderDescriptor("svc-a", "ling-a", 70));
+            LingInfoDTO dto = new LingInfoConverter(null, registry, null)
+                    .toDTO(runtimeWith(instance), mock(PermissionService.class), null);
+
+            assertEquals(70, dto.getVersionDetails().get(0).getTrafficWeight());
+        }
+
+        @Test
+        @DisplayName("应优先读 ProviderWeightRouter 覆盖权重")
+        void shouldPreferOverrideWeight() {
+            LingInstance instance = mock(LingInstance.class);
+            LingDefinition def = new LingDefinition();
+            def.setId("ling-a");
+            def.setVersion("2.0.0");
+            when(instance.getDefinition()).thenReturn(def);
+            when(instance.getVersion()).thenReturn("2.0.0");
+            when(instance.currentStatus()).thenReturn(InstanceStatus.READY);
+
+            LingServiceRegistry registry = registryWith(instance,
+                    new ProviderDescriptor("svc-a", "ling-a", 70));
+            ProviderWeightRouter router = new ProviderWeightRouter();
+            router.setProviderWeight("svc-a", "ling-a", 30);
+            LingInfoDTO dto = new LingInfoConverter(null, registry, null, router)
+                    .toDTO(runtimeWith(instance), mock(PermissionService.class), null);
+
+            assertEquals(30, dto.getVersionDetails().get(0).getTrafficWeight());
+        }
+
+        @Test
+        @DisplayName("契约未声明时回退占位语义")
+        void shouldFallbackWhenNoContract() {
+            LingInstance instance = mock(LingInstance.class);
+            LingDefinition def = new LingDefinition();
+            def.setId("ling-a");
+            def.setVersion("2.0.0");
+            when(instance.getDefinition()).thenReturn(def);
+            when(instance.getVersion()).thenReturn("2.0.0");
+            when(instance.currentStatus()).thenReturn(InstanceStatus.READY);
+
+            LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtimeWith(instance),
+                    mock(PermissionService.class), null);
+
+            assertEquals(100, dto.getVersionDetails().get(0).getTrafficWeight());
+        }
     }
 }

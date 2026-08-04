@@ -12,6 +12,8 @@ import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.routing.ProviderDescriptor;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.core.spi.GovernanceDecision;
 import com.lingframe.dashboard.dto.InvokeResultDTO;
 import com.lingframe.dashboard.dto.ServiceMetadataDTO;
@@ -48,6 +50,19 @@ public class ServicePlaygroundService {
     private final ObjectMapper objectMapper;
     private final GovernanceArbitrator governanceArbitrator;
     private final PermissionService permissionService;
+
+    /**
+     * L0 provider 权重路由器（可选，setter 注入）。
+     * <p>
+     * PROPORTIONAL 模式按真实权重（Dashboard 覆盖 > 注册权重）比例随机选实例，
+     * 替代硬编码 50/50 兜底。null 时回退 50/50 兜底语义（native/test 未装配）。
+     */
+    private ProviderWeightRouter providerWeightRouter;
+
+    /** 注入权重路由器（可选装配；装配层有 router 时调用，null 时保持 50/50 兜底） */
+    public void setProviderWeightRouter(ProviderWeightRouter providerWeightRouter) {
+        this.providerWeightRouter = providerWeightRouter;
+    }
 
     /**
      * 获取指定灵元的所有服务元数据
@@ -315,7 +330,7 @@ public class ServicePlaygroundService {
             LingInstance targetInstance;
             String routedVersion = null;
             if (proportional) {
-                targetInstance = resolveProportionalInstance(runtime);
+                targetInstance = resolveProportionalInstance(runtime, lingId);
                 if (targetInstance != null) {
                     routedVersion = targetInstance.getVersion();
                 }
@@ -629,12 +644,13 @@ public class ServicePlaygroundService {
     }
 
     /**
-     * 按流量分发比例随机选择目标实例（C2 按比例路由模式）。
+     * 按流量分发比例随机选择目标实例（PROPORTIONAL 模式）。
      * <p>
-     * 读取当前灵元的金丝雀配置（稳定版/金丝雀版比例），按比例随机路由。
-     * 只有一个版本时退化为该版本实例。
+     * 优先读取 contractId 下各 provider 的真实权重（Dashboard 覆盖 > 注册权重），
+     * 按权重比例随机选实例。未装配 {@link ProviderWeightRouter} 或无法解析契约时，
+     * 回退 50/50 兜底语义（默认实例 vs 首个非默认实例）。
      */
-    private LingInstance resolveProportionalInstance(LingRuntime runtime) {
+    private LingInstance resolveProportionalInstance(LingRuntime runtime, String lingId) {
         if (runtime == null || runtime.getInstancePool() == null) {
             return null;
         }
@@ -646,9 +662,15 @@ public class ServicePlaygroundService {
         if (instances.size() == 1) {
             return instances.get(0);
         }
+
+        // 优先按真实权重比例选择
+        LingInstance weighted = resolveByWeight(instances, lingId);
+        if (weighted != null) {
+            return weighted;
+        }
+
+        // 回退：默认实例 vs 首个非默认实例 50/50 兜底
         LingInstance defaultInst = runtime.getInstancePool().getDefault();
-        // 灰度配置已废弃，二元候选改用默认实例 vs 非默认实例的 50/50 权重分布
-        // 真实权重由 ProviderWeightRouter 在 Pipeline 内决策，这里仅做 PROPORTIONAL 模式兜底
         if (defaultInst != null) {
             List<LingInstance> nonDefault = instances.stream()
                     .filter(inst -> !inst.equals(defaultInst))
@@ -656,11 +678,64 @@ public class ServicePlaygroundService {
             if (nonDefault.isEmpty()) {
                 return defaultInst;
             }
-            // 二元候选：50/50 随机选默认或非默认实例
             int roll = ThreadLocalRandom.current().nextInt(2);
             return roll == 0 ? defaultInst : nonDefault.get(0);
         }
         return instances.get(0);
+    }
+
+    /**
+     * 按 contractId 下各 provider 的真实权重（override > 注册权重）比例随机选实例。
+     * <p>
+     * 迭代期 providerKey 为 {@code lingId:version}，迁移期为裸 {@code lingId}。
+     * 通过 lingId 解析契约，再按 providerKey 匹配候选实例的有效权重做加权随机。
+     *
+     * @return 按权重选中的实例；无法解析契约 / 匹配 provider / 权重全 0 时返回 null
+     */
+    private LingInstance resolveByWeight(List<LingInstance> instances, String lingId) {
+        if (providerWeightRouter == null || lingServiceRegistry == null || lingId == null) {
+            return null;
+        }
+        Set<String> contracts = lingServiceRegistry.getContractsByLingId(lingId);
+        String contractId = contracts == null || contracts.isEmpty() ? null : contracts.iterator().next();
+        if (contractId == null) {
+            return null;
+        }
+
+        // 收集每个实例的有效权重：override 优先，否则注册权重
+        List<int[]> weighted = new ArrayList<>(); // {index, weight}
+        int totalWeight = 0;
+        for (int i = 0; i < instances.size(); i++) {
+            LingInstance instance = instances.get(i);
+            String version = instance.getVersion();
+            String providerKey = version != null ? lingId + ":" + version : lingId;
+            Integer weight = null;
+            for (ProviderDescriptor desc : lingServiceRegistry.getProvidersByContractId(contractId)) {
+                if (!desc.providerKey().equals(providerKey)) {
+                    continue;
+                }
+                Integer override = providerWeightRouter.getOverrideWeight(contractId, desc.providerKey());
+                weight = override != null ? override : desc.getWeight();
+                break;
+            }
+            if (weight == null || weight <= 0) {
+                continue;
+            }
+            weighted.add(new int[]{i, weight});
+            totalWeight += weight;
+        }
+        if (weighted.isEmpty() || totalWeight <= 0) {
+            return null;
+        }
+        int roll = ThreadLocalRandom.current().nextInt(totalWeight);
+        int cumulative = 0;
+        for (int[] entry : weighted) {
+            cumulative += entry[1];
+            if (roll < cumulative) {
+                return instances.get(entry[0]);
+            }
+        }
+        return instances.get(weighted.get(weighted.size() - 1)[0]);
     }
 
     private List<InvokeResultDTO.TraceEntry> buildTraces(List<EngineTrace> engineTraces) {

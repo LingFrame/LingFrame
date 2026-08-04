@@ -54,8 +54,7 @@ public final class GovernancePermissionSynchronizer {
         }
 
         // 先在内存构建完整权限映射，再通过 replacePermissions 原子替换。
-        // 历史实现先 removeLing 再逐条 grant，两者之间存在权限真空窗口，
-        // 期间该灵元的所有请求都会被拒绝。
+        // 先 removeLing 再逐条 grant 会留下权限真空窗口，期间该灵元的所有请求都会被拒绝。
         Map<String, AccessType> newPermissions = new HashMap<>();
 
         if (policy != null && policy.getCapabilities() != null && !policy.getCapabilities().isEmpty()) {

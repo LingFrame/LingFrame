@@ -3,7 +3,6 @@ package com.lingframe.starter.filter;
 import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.exception.LingInvocationException;
-import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.metrics.LingHealthMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationContext;
@@ -12,6 +11,7 @@ import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import com.lingframe.starter.web.WebInterfaceMetadata;
+import com.lingframe.starter.web.WebRequestKeys;
 import com.lingframe.starter.web.WebGovernanceSupport;
 import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
@@ -188,7 +188,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
     }
 
     private String resolveVersion(HttpServletRequest request, InvocationContext ctx) {
-        Object versionAttr = request.getAttribute("ling.target.version");
+        Object versionAttr = request.getAttribute(WebRequestKeys.TARGET_VERSION);
         if (versionAttr instanceof String && !((String) versionAttr).isEmpty()) {
             return (String) versionAttr;
         }

@@ -129,6 +129,13 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
         LingFrameProperties props = getProperties();
         EntryInvocationGovernanceResolver resolver = getInvocationGovernanceResolver();
 
+        // 显式关闭治理时直接放行，不做可用性校验：
+        // 避免「显式关闭治理」被并入「治理组件不可用」同一条失败路径（props 为 null 无法判定 enabled，
+        // 落入下方可用性分支按 fail-closed/fail-open 处理）。
+        if (props != null && !props.getLingCoreGovernance().isEnabled()) {
+            return bean;
+        }
+
         // 治理组件未就绪：需治理却无法治理 → 按 fail-closed/fail-open 开关决定行为（C9）。
         // 不返回「无治理裸 Bean」作为默认成功路径，消除静默缺失治理。
         if (props == null || permService == null || engine == null || resolver == null) {
@@ -143,11 +150,6 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
                         "LingCore bean [" + beanName + "] must be governed but " + reason
                                 + "; start aborted (fail-closed). Set lingframe.ling-core-governance.fail-open=true to degrade.");
             }
-            return bean;
-        }
-
-        // 检查是否启用了灵核 Bean 治理
-        if (!props.getLingCoreGovernance().isEnabled()) {
             return bean;
         }
 

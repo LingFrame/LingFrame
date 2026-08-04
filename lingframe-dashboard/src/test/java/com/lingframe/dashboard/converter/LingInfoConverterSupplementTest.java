@@ -1,25 +1,19 @@
 package com.lingframe.dashboard.converter;
 
 import com.lingframe.api.config.GovernancePolicy;
-import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
-import com.lingframe.core.spi.LingContainer;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -130,7 +124,6 @@ class LingInfoConverterSupplementTest {
             when(runtime.getInstalledAt()).thenReturn(123L);
             when(runtime.getConfig()).thenReturn(config);
             when(pool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
-            // router 已删除，路由层去身份化
 
             GovernancePolicy policy = new GovernancePolicy();
             policy.getInvocation().setTimeoutMs(1000);
@@ -156,7 +149,6 @@ class LingInfoConverterSupplementTest {
             when(runtime.getInstalledAt()).thenReturn(123L);
             when(runtime.getConfig()).thenReturn(null);
             when(pool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
-            // router 已删除，路由层去身份化
 
             // policy null → 所有 invocation 字段 null，且无 config 回退
             LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, null);
@@ -185,7 +177,6 @@ class LingInfoConverterSupplementTest {
             when(runtime.getInstancePool()).thenReturn(pool);
             when(runtime.getInstalledAt()).thenReturn(123L);
             when(pool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
-            // router 已删除，路由层去身份化
             // permissionService.getPermission 返回 null（mock 默认）
 
             LingInfoDTO dto = new LingInfoConverter(null).toDTO(runtime, permSvc, null);
@@ -211,7 +202,6 @@ class LingInfoConverterSupplementTest {
             when(runtime.getInstancePool()).thenReturn(pool);
             when(runtime.getInstalledAt()).thenReturn(123L);
             when(pool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
-            // router 已删除，路由层去身份化
 
             GovernancePolicy policy = new GovernancePolicy();
             policy.setCapabilities(Collections.singletonList(
@@ -238,7 +228,6 @@ class LingInfoConverterSupplementTest {
             when(runtime.getInstancePool()).thenReturn(pool);
             when(runtime.getInstalledAt()).thenReturn(123L);
             when(pool.getActiveInstances()).thenReturn(Collections.<LingInstance>emptyList());
-            // router 已删除，路由层去身份化
             when(permSvc.getPermission("ling1", Capabilities.STORAGE_SQL))
                     .thenReturn(PermissionInfo.permanent("ling1", Capabilities.STORAGE_SQL, AccessType.WRITE, "test"));
             when(permSvc.getPermission("ling1", Capabilities.CACHE_LOCAL))

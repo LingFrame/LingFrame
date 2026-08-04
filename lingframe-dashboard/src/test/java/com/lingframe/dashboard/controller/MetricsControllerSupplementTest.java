@@ -12,6 +12,7 @@ import com.lingframe.dashboard.dto.LingResourceMetricsDTO;
 import com.lingframe.dashboard.dto.ThreadPoolStatsDTO;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
 import com.lingframe.dashboard.service.LingResourceMetricsCollector;
+import com.lingframe.dashboard.service.MetricsAggregationService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -45,10 +46,11 @@ class MetricsControllerSupplementTest {
             LeakDetectionCacheService leakDetectionCacheService,
             LingResourceMetricsCollector lingResourceMetricsCollector,
             ThreadPoolStatsProvider threadPoolStatsProvider,
-            EventBus eventBus) {
+            EventBus eventBus,
+            MetricsAggregationService metricsAggregationService) {
         return new MetricsController(metricsCollector, governanceMetricsCollector,
                 runtimeDiagnosticsService, leakDetectionCacheService,
-                lingResourceMetricsCollector, threadPoolStatsProvider, eventBus);
+                lingResourceMetricsCollector, threadPoolStatsProvider, eventBus, metricsAggregationService);
     }
 
     private MetricsController newControllerWithMock(EventBus eventBus) {
@@ -59,7 +61,8 @@ class MetricsControllerSupplementTest {
                 mock(LeakDetectionCacheService.class),
                 mock(LingResourceMetricsCollector.class),
                 mock(ThreadPoolStatsProvider.class),
-                eventBus);
+                eventBus,
+                mock(MetricsAggregationService.class));
     }
 
     // ==================== getJvmMetrics ====================
@@ -115,7 +118,7 @@ class MetricsControllerSupplementTest {
             MetricsController controller = newController(metricsCollector,
                     mock(GovernanceMetricsCollector.class), mock(RuntimeDiagnosticsService.class),
                     mock(LeakDetectionCacheService.class), mock(LingResourceMetricsCollector.class),
-                    mock(ThreadPoolStatsProvider.class), mock(EventBus.class));
+                    mock(ThreadPoolStatsProvider.class), mock(EventBus.class), mock(MetricsAggregationService.class));
 
             ApiResponse<MetricsSnapshot> response = controller.getLingHealth("ling1");
 
@@ -132,7 +135,7 @@ class MetricsControllerSupplementTest {
             MetricsController controller = newController(metricsCollector,
                     mock(GovernanceMetricsCollector.class), mock(RuntimeDiagnosticsService.class),
                     mock(LeakDetectionCacheService.class), mock(LingResourceMetricsCollector.class),
-                    mock(ThreadPoolStatsProvider.class), mock(EventBus.class));
+                    mock(ThreadPoolStatsProvider.class), mock(EventBus.class), mock(MetricsAggregationService.class));
 
             ApiResponse<MetricsSnapshot> response = controller.getLingHealth("ling1");
 
@@ -161,7 +164,7 @@ class MetricsControllerSupplementTest {
                     mock(MetricsCollector.class), mock(GovernanceMetricsCollector.class),
                     mock(RuntimeDiagnosticsService.class), leakService,
                     mock(LingResourceMetricsCollector.class),
-                    mock(ThreadPoolStatsProvider.class), mock(EventBus.class));
+                    mock(ThreadPoolStatsProvider.class), mock(EventBus.class), mock(MetricsAggregationService.class));
 
             ApiResponse<List<LeakDetectionRecordDTO>> response = controller.getLeakDetections();
 
@@ -179,7 +182,7 @@ class MetricsControllerSupplementTest {
                     mock(MetricsCollector.class), mock(GovernanceMetricsCollector.class),
                     mock(RuntimeDiagnosticsService.class), leakService,
                     mock(LingResourceMetricsCollector.class),
-                    mock(ThreadPoolStatsProvider.class), mock(EventBus.class));
+                    mock(ThreadPoolStatsProvider.class), mock(EventBus.class), mock(MetricsAggregationService.class));
 
             ApiResponse<List<LeakDetectionRecordDTO>> response = controller.getLeakDetections();
 
@@ -204,7 +207,7 @@ class MetricsControllerSupplementTest {
             MetricsController controller = newController(
                     mock(MetricsCollector.class), mock(GovernanceMetricsCollector.class),
                     mock(RuntimeDiagnosticsService.class), mock(LeakDetectionCacheService.class),
-                    mock(LingResourceMetricsCollector.class), provider, mock(EventBus.class));
+                    mock(LingResourceMetricsCollector.class), provider, mock(EventBus.class), mock(MetricsAggregationService.class));
 
             ApiResponse<List<ThreadPoolStatsDTO>> response = controller.getThreadPoolStats();
 
@@ -229,7 +232,7 @@ class MetricsControllerSupplementTest {
             MetricsController controller = newController(
                     mock(MetricsCollector.class), mock(GovernanceMetricsCollector.class),
                     mock(RuntimeDiagnosticsService.class), mock(LeakDetectionCacheService.class),
-                    mock(LingResourceMetricsCollector.class), provider, mock(EventBus.class));
+                    mock(LingResourceMetricsCollector.class), provider, mock(EventBus.class), mock(MetricsAggregationService.class));
 
             ApiResponse<List<ThreadPoolStatsDTO>> response = controller.getThreadPoolStats();
 
@@ -259,7 +262,7 @@ class MetricsControllerSupplementTest {
             MetricsController controller = newController(
                     mock(MetricsCollector.class), mock(GovernanceMetricsCollector.class),
                     mock(RuntimeDiagnosticsService.class), mock(LeakDetectionCacheService.class),
-                    collector, mock(ThreadPoolStatsProvider.class), mock(EventBus.class));
+                    collector, mock(ThreadPoolStatsProvider.class), mock(EventBus.class), mock(MetricsAggregationService.class));
 
             ApiResponse<List<LingResourceMetricsDTO>> response = controller.getPerLingMetrics();
 

@@ -4,8 +4,10 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Policy;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.lingframe.api.context.LingCallContext;
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
+import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import lombok.extern.slf4j.Slf4j;
 
@@ -57,8 +59,8 @@ public class LingCaffeineCacheProxy<K, V> implements Cache<K, V> {
             return;
         }
 
-        boolean allowed = permissionService.isAllowed(callerLingId, "cache:local", accessType);
-        permissionService.audit(callerLingId, "cache:local", operation, allowed);
+        boolean allowed = permissionService.isAllowed(callerLingId, Capabilities.CACHE_LOCAL, accessType);
+        permissionService.audit(callerLingId, Capabilities.CACHE_LOCAL, operation, allowed);
 
         if (!allowed) {
             throw new PermissionDeniedException(
@@ -148,7 +150,7 @@ public class LingCaffeineCacheProxy<K, V> implements Cache<K, V> {
         if (callerLingId == null) {
             // 灵核特权：放行但记录审计（避免特权路径绕过审计），直接全清，不走 checkPermission（与 LingSpringCacheProxy.clear 对齐，
             // 避免治理开启时被 fail-closed 拦截导致灵核无法运维清理）
-            permissionService.audit("LINGCORE", "cache:invalidateAll", "invalidateAll", true);
+            permissionService.audit(LingCoreConstants.LINGCORE_LING_ID, Capabilities.CACHE_INVALIDATE_ALL, "invalidateAll", true);
             target.invalidateAll();
             return;
         }

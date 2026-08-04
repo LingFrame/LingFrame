@@ -11,9 +11,11 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.routing.ProviderDescriptor;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.core.spi.GovernanceDecision;
-import com.lingframe.core.spi.LingContainer;
 import com.lingframe.dashboard.dto.InvokeResultDTO;
 import com.lingframe.dashboard.dto.ServiceMetadataDTO;
 import org.junit.jupiter.api.DisplayName;
@@ -413,7 +415,7 @@ class ServicePlaygroundServiceTest {
 
             doAnswer(invocation -> {
                 InvocationContext ctx = invocation.getArgument(0);
-                assertEquals(com.lingframe.core.pipeline.InvocationExecutionMode.SIMULATION,
+                assertEquals(InvocationExecutionMode.SIMULATION,
                         ctx.execution().getMode());
                 return null;
             }).when(pipelineEngine).invoke(any(InvocationContext.class));
@@ -569,6 +571,56 @@ class ServicePlaygroundServiceTest {
 
             assertTrue(result.isSuccess());
             assertEquals("1.0", result.getRoutedVersion());
+        }
+
+        @Test
+        @DisplayName("按比例路由模式应按 ProviderWeightRouter 真实权重分流，权重为 0 的版本不参与")
+        void shouldRespectRealWeightInProportionalMode() {
+            ServicePlaygroundService playgroundService = new ServicePlaygroundService(serviceRegistry, repository,
+                    pipelineEngine, objectMapper, governanceArbitrator, permissionService);
+            ProviderWeightRouter router = new ProviderWeightRouter();
+            // 稳定版 1.0 权重 100（全量），金丝雀 2.0 权重 0（无流量）
+            router.setProviderWeight("test-ling:Service", "test-ling:1.0", 100);
+            router.setProviderWeight("test-ling:Service", "test-ling:2.0", 0);
+            playgroundService.setProviderWeightRouter(router);
+
+            LingRuntime runtime = mock(LingRuntime.class);
+            when(runtime.isAvailable()).thenReturn(true);
+            when(runtime.getLingId()).thenReturn("test-ling");
+            when(repository.getRuntime("test-ling")).thenReturn(runtime);
+
+            InstancePool instancePool = mock(InstancePool.class);
+            LingInstance stable = mock(LingInstance.class);
+            LingInstance canary = mock(LingInstance.class);
+            when(runtime.getInstancePool()).thenReturn(instancePool);
+            when(instancePool.getActiveInstances()).thenReturn(Arrays.asList(stable, canary));
+            when(instancePool.getDefault()).thenReturn(stable);
+            when(stable.getVersion()).thenReturn("1.0");
+            when(stable.isReady()).thenReturn(true);
+            when(stable.getClassLoader()).thenReturn(this.getClass().getClassLoader());
+            when(canary.getVersion()).thenReturn("2.0");
+            when(canary.isReady()).thenReturn(true);
+            when(canary.getClassLoader()).thenReturn(this.getClass().getClassLoader());
+
+            // 契约解析 + provider 描述符（权重 0 的 provider 因其 override=0 被剔除）
+            when(serviceRegistry.getContractsByLingId("test-ling"))
+                    .thenReturn(Collections.singleton("test-ling:Service"));
+            when(serviceRegistry.getProvidersByContractId("test-ling:Service"))
+                    .thenReturn(Arrays.asList(
+                            new ProviderDescriptor("test-ling:Service", "test-ling", "1.0", 100),
+                            new ProviderDescriptor("test-ling:Service", "test-ling", "2.0", 0)));
+
+            when(pipelineEngine.invoke(any(InvocationContext.class))).thenReturn("ok");
+
+            // 权重 100 / 0：多次调用应始终路由到稳定版 1.0（金丝雀无流量）
+            for (int i = 0; i < 20; i++) {
+                InvokeResultDTO result = playgroundService.invokeService(
+                        "test-ling", "test-ling:Service", "hello",
+                        new String[0], new Object[0], null, "PROPORTIONAL");
+                assertTrue(result.isSuccess());
+                assertEquals("1.0", result.getRoutedVersion(),
+                        "权重 100/0 时应始终路由到稳定版 1.0，实际: " + result.getRoutedVersion());
+            }
         }
 
         @Test

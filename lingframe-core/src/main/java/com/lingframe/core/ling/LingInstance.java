@@ -158,6 +158,13 @@ public class LingInstance {
         return currentStatus() == InstanceStatus.DEAD;
     }
 
+    /**
+     * 轻量进入守卫（仅计数活跃请求，不登记调用快照）。
+     * <p>
+     * 生产热路径统一走 {@link #beginInvocation(ActiveInvocationSnapshot)}（带快照可观测性）；
+     * 本方法保留为受测的轻量守卫入口，供外部只在需并发保护而不关心快照的场景使用，
+     * 与 {@link #beginInvocation} 共享同一 `activeRequests` 计数与存活校验。
+     */
     public boolean tryEnter() {
         if (isDying() || !isReady()) {
             return false;

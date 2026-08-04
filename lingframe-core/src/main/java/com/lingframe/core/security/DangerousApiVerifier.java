@@ -83,9 +83,8 @@ public class DangerousApiVerifier implements LingSecurityVerifier {
     /**
      * 构建严格模式拦截异常的 message，携带具体违规清单与修复提示。
      * <p>
-     * 历史实现只返回 "Ling contains potentially dangerous APIs"，调用方（含 MCP 工具）
-     * 无法定位是哪个类/哪个 API 触发拦截，导致诊断需要翻日志。改为把前 N 条违规
-     * 拼进 message，让 DeployTool 能直接回传给 IDE。
+     * 把前 N 条违规拼进 message，让调用方（含 MCP 工具 / DeployTool）能直接定位
+     * 是哪个类/哪个 API 触发拦截，无需翻日志就能回传给 IDE。
      */
     private String buildStrictModeMessage(String lingId, AsmDangerousApiScanner.ScanResult result) {
         List<String> violationLines = result.getWarnings().stream()

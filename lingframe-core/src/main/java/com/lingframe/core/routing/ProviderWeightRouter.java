@@ -57,9 +57,9 @@ public class ProviderWeightRouter {
     /**
      * 设置 provider 权重（Dashboard 下发）。
      * <p>
-     * <b>不再广播 {@link ProviderWeightChangedEvent}</b>：迁移阶段推进是显式编排动作，
+     * <b>不发布 {@link ProviderWeightChangedEvent}</b>：迁移阶段推进是显式编排动作，
      * 仅由外部 {@code confirmPhaseTransition} + 排空校验（drainOk）驱动，
-     * 权重变更事件在系统中无消费者（死广播），已删除 publish 调用。
+     * 权重变更事件在系统中无消费者（死广播）。
      * 若未来需要「权重归零 → 自动推进」接线，再显式订阅本类事件重新引入。
      *
      * @param contractId  契约 ID

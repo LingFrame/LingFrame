@@ -48,7 +48,7 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
     private final LingServiceRegistry lingServiceRegistry;
     private final LingRepository lingRepository;
     private final ProviderWeightRouter providerWeightRouter;
-    /** 灵元级路由器（接管已删除的 CanaryRoutingFilter 的旧格式 FQSID 路由） */
+    /** 灵元级路由器（负责旧格式 FQSID 的灵元级路由） */
     private final TrafficRouter trafficRouter;
 
     public ContractProviderRoutingFilter(LingServiceRegistry lingServiceRegistry,
@@ -227,10 +227,9 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
     }
 
     /**
-     * 旧格式 FQSID（{@code lingId:serviceName}）灵元级路由接管。
+     * 旧格式 FQSID（{@code lingId:serviceName}）灵元级路由。
      * <p>
-     * 替代已删除的 {@code CanaryRoutingFilter}：从 FQSID 提取 lingId，
-     * 用 {@link TrafficRouter} 在 READY 实例中选目标实例并写入 ctx，
+     * 从 FQSID 提取 lingId，用 {@link TrafficRouter} 在 READY 实例中选目标实例并写入 ctx，
      * 让后续过滤器直接使用已解析的 runtime 与 targetInstance。
      *
      * @param ctx   调用上下文

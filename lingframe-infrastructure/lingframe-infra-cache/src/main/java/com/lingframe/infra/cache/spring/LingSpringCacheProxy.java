@@ -1,8 +1,10 @@
 package com.lingframe.infra.cache.spring;
 
 import com.lingframe.api.context.LingCallContext;
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.AccessType;
+import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.infra.cache.proxy.CacheNamespaceSupport;
 import lombok.RequiredArgsConstructor;
@@ -47,8 +49,8 @@ public class LingSpringCacheProxy implements Cache {
             return;
         }
 
-        boolean allowed = permissionService.isAllowed(callerLingId, "cache:local", accessType);
-        permissionService.audit(callerLingId, "cache:local", operation, allowed);
+        boolean allowed = permissionService.isAllowed(callerLingId, Capabilities.CACHE_LOCAL, accessType);
+        permissionService.audit(callerLingId, Capabilities.CACHE_LOCAL, operation, allowed);
 
         if (!allowed) {
             throw new PermissionDeniedException("Ling [" + callerLingId + "] denied access to local cache operation: " + operation);
@@ -71,8 +73,8 @@ public class LingSpringCacheProxy implements Cache {
             return target.getNativeCache();
         }
         // 灵元拒绝时同样审计，与 clear()/invalidate() 行为对齐
-        permissionService.audit(callerLingId, "cache:nativeCache", "getNativeCache", false);
-        throw new PermissionDeniedException(callerLingId, "cache:nativeCache");
+        permissionService.audit(callerLingId, Capabilities.CACHE_NATIVE_CACHE, "getNativeCache", false);
+        throw new PermissionDeniedException(callerLingId, Capabilities.CACHE_NATIVE_CACHE);
     }
 
     @Override
@@ -114,12 +116,12 @@ public class LingSpringCacheProxy implements Cache {
         String callerLingId = LingCallContext.getLingId();
         if (callerLingId == null) {
             // 灵核特权：放行但记录审计（避免特权路径绕过审计），不再走 checkPermission（避免治理开启时被 fail-closed 拦截）
-            permissionService.audit("LINGCORE", "cache:clear", "clear", true);
+            permissionService.audit(LingCoreConstants.LINGCORE_LING_ID, Capabilities.CACHE_CLEAR, "clear", true);
             target.clear();
             return;
         }
-        permissionService.audit(callerLingId, "cache:clear", "clear", false);
-        throw new PermissionDeniedException(callerLingId, "cache:clear");
+        permissionService.audit(callerLingId, Capabilities.CACHE_CLEAR, "clear", false);
+        throw new PermissionDeniedException(callerLingId, Capabilities.CACHE_CLEAR);
     }
 
     @Override
@@ -141,11 +143,11 @@ public class LingSpringCacheProxy implements Cache {
         String callerLingId = LingCallContext.getLingId();
         if (callerLingId == null) {
             // 灵核特权：放行但记录审计（避免特权路径绕过审计），不再走 checkPermission（避免治理开启时被 fail-closed 拦截）
-            permissionService.audit("LINGCORE", "cache:invalidate", "invalidate", true);
+            permissionService.audit(LingCoreConstants.LINGCORE_LING_ID, Capabilities.CACHE_INVALIDATE, "invalidate", true);
             return target.invalidate();
         }
-        permissionService.audit(callerLingId, "cache:invalidate", "invalidate", false);
-        throw new PermissionDeniedException(callerLingId, "cache:invalidate");
+        permissionService.audit(callerLingId, Capabilities.CACHE_INVALIDATE, "invalidate", false);
+        throw new PermissionDeniedException(callerLingId, Capabilities.CACHE_INVALIDATE);
     }
 
 }

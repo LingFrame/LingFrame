@@ -1,6 +1,5 @@
 package com.lingframe.core.ling;
 
-import com.lingframe.api.exception.RoutingArchitectureViolationException;
 import com.lingframe.core.routing.ProviderDescriptor;
 
 import java.util.ArrayList;
@@ -28,6 +27,10 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     // 契约 ID 取 FQSID 去掉 "lingId:" 前缀后的剩余部分（裸契约名或短 ID）。
     // 路由层按接口类型查灵元时用此索引，避免 O(n) 遍历全表。
     private final Map<String, Set<String>> contractToLingIds = new ConcurrentHashMap<>();
+
+    // 反向索引：灵元 ID → FQSID 集合
+    // 供 getServicesByLingId 直接 O(1) 命中，避免对 metadataCache 全表前缀扫描产生的 O(n) 遍历。
+    private final Map<String, Set<String>> lingToServices = new ConcurrentHashMap<>();
 
     // 路由升维：契约 ID → 提供方描述符列表（含权重）
     // L0 provider 级路由的主索引，与 contractToLingIds 并行维护。
@@ -86,14 +89,14 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
 
     @Override
     public List<String> getServicesByLingId(String lingId) {
-        String prefix = lingId + ":";
-        List<String> services = new ArrayList<>();
-        for (String fqsid : metadataCache.keySet()) {
-            if (fqsid.startsWith(prefix)) {
-                services.add(fqsid);
-            }
+        if (lingId == null) {
+            return Collections.emptyList();
         }
-        return services;
+        Set<String> services = lingToServices.get(lingId);
+        if (services == null || services.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return new ArrayList<>(services);
     }
 
     @Override
@@ -248,6 +251,8 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         }
         // 清空空集合，防内存泄漏
         contractToLingIds.values().removeIf(Set::isEmpty);
+        // 清理反向索引：灵元 → FQSID 整条移除
+        lingToServices.remove(lingId);
         // 路由升维：同步清理 providerIndex
         evictProvider(lingId);
     }
@@ -271,6 +276,8 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         String lingId = serviceFQSID.substring(0, idx);
         String contractId = serviceFQSID.substring(idx + 1);
         contractToLingIds.computeIfAbsent(contractId, k -> ConcurrentHashMap.newKeySet()).add(lingId);
+        // 反向索引：灵元 → FQSID，供 getServicesByLingId O(1) 命中
+        lingToServices.computeIfAbsent(lingId, k -> ConcurrentHashMap.newKeySet()).add(serviceFQSID);
         // 路由升维：同步登记 providerIndex，默认灵元 weight=0
         registerProvider(contractId, lingId, 0);
     }

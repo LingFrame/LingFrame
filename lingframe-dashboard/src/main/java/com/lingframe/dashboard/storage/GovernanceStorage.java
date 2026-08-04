@@ -41,11 +41,11 @@ public class GovernanceStorage implements MigrationStateStore {
      * @param configJson 含 {@code oldCandidate/newCandidate/percent} 的 JSON
      */
     public void saveMigrationConfig(String contractId, String configJson) {
-        saveConfig(contractId, "migration", configJson);
+        saveConfig(contractId, GovernanceConfigTypes.MIGRATION, configJson);
     }
 
     public String loadMigrationConfig(String contractId) {
-        return loadConfig(contractId, "migration");
+        return loadConfig(contractId, GovernanceConfigTypes.MIGRATION);
     }
 
     /**
@@ -54,7 +54,7 @@ public class GovernanceStorage implements MigrationStateStore {
      * 命中 {@link MigrationStateHolder#evict} 命中通过 {@link MigrationStateStore#delete} 调用。
      */
     public void deleteMigrationConfig(String contractId) {
-        deleteConfig(contractId, "migration");
+        deleteConfig(contractId, GovernanceConfigTypes.MIGRATION);
     }
 
     /**
@@ -85,21 +85,21 @@ public class GovernanceStorage implements MigrationStateStore {
     // ==================== 调用治理配置 ====================
 
     public void saveInvocationConfig(String lingId, String configJson) {
-        saveConfig(lingId, "invocation", configJson);
+        saveConfig(lingId, GovernanceConfigTypes.INVOCATION, configJson);
     }
 
     public String loadInvocationConfig(String lingId) {
-        return loadConfig(lingId, "invocation");
+        return loadConfig(lingId, GovernanceConfigTypes.INVOCATION);
     }
 
     // ==================== 权限配置 ====================
 
     public void savePermissionConfig(String lingId, String configJson) {
-        saveConfig(lingId, "permission", configJson);
+        saveConfig(lingId, GovernanceConfigTypes.PERMISSION, configJson);
     }
 
     public String loadPermissionConfig(String lingId) {
-        return loadConfig(lingId, "permission");
+        return loadConfig(lingId, GovernanceConfigTypes.PERMISSION);
     }
 
     // ==================== 通用读写 ====================

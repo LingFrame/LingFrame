@@ -79,9 +79,9 @@ public class GovernanceConfigRestorer implements InitializingBean {
                 boolean hasPatch = false;
 
                 // 恢复迁移阶段配置（config_type='migration'）
-                String migrationJson = configs.get("migration");
+                String migrationJson = configs.get(GovernanceConfigTypes.MIGRATION);
                 if (migrationJson == null) {
-                    migrationJson = configs.get("canary"); // 向后兼容旧灰度格式
+                    migrationJson = configs.get(GovernanceConfigTypes.CANARY); // 向后兼容旧灰度格式
                 }
                 if (migrationJson != null) {
                     try {
@@ -147,7 +147,7 @@ public class GovernanceConfigRestorer implements InitializingBean {
                 GovernancePolicy mergedPatch = null;
                 for (Map.Entry<String, String> configEntry : configs.entrySet()) {
                     String key = configEntry.getKey();
-                    if ("canary".equals(key) || "migration".equals(key)) {
+                    if (GovernanceConfigTypes.CANARY.equals(key) || GovernanceConfigTypes.MIGRATION.equals(key)) {
                         continue; // 迁移阶段已单独处理
                     }
                     try {
@@ -205,14 +205,18 @@ public class GovernanceConfigRestorer implements InitializingBean {
      * </ul>
      */
     private void restorePhaseFromPercent(String contractId, int newWeight,
-                                         String oldCandidate, String newCandidate) {
+                                        String oldCandidate, String newCandidate) {
         if (newWeight <= 0) {
             return;
         }
-        MigrationPhase phase = newWeight >= 100
-                ? MigrationPhase.LING_EXCLUSIVE
-                : MigrationPhase.MIGRATING;
-        restorePhase(contractId, phase, oldCandidate, newCandidate);
+        if (newWeight >= 100) {
+            // 灵元独占：保留方为进入方（newCandidate），newCandidate 置 null。
+            // 与 MigrationStateHolder.confirmPhaseTransition 收口不变量一致：
+            // 独占态记录 oldCandidate = 保留方候选、newCandidate = null。
+            restorePhase(contractId, MigrationPhase.LING_EXCLUSIVE, newCandidate, null);
+            return;
+        }
+        restorePhase(contractId, MigrationPhase.MIGRATING, oldCandidate, newCandidate);
     }
 
     private String stringOrNull(Object value) {

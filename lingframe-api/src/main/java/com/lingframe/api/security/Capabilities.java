@@ -31,6 +31,26 @@ public final class Capabilities {
      */
     public static final String CACHE_REDIS = "cache:redis";
 
+    /**
+     * 清空整个缓存（跨灵元共享操作，仅灵核特权放行）
+     */
+    public static final String CACHE_CLEAR = "cache:clear";
+
+    /**
+     * 全量失效缓存（跨灵元共享操作，仅灵核特权放行）
+     */
+    public static final String CACHE_INVALIDATE = "cache:invalidate";
+
+    /**
+     * Caffeine 全量失效（跨灵元共享操作，仅灵核特权放行）
+     */
+    public static final String CACHE_INVALIDATE_ALL = "cache:invalidateAll";
+
+    /**
+     * 暴露原生缓存句柄（灵元拒绝，防绕过命名空间隔离）
+     */
+    public static final String CACHE_NATIVE_CACHE = "cache:nativeCache";
+
     // ==================== 网络 ====================
     /**
      * HTTP 出站请求
@@ -58,6 +78,25 @@ public final class Capabilities {
      * 跨灵元调用
      */
     public static final String IPC_INVOKE = "ipc:invoke";
+
+    /**
+     * 面向「目标灵元」的动态 IPC 能力前缀。
+     * <p>
+     * 具体能力键为 {@code IPC_PREFIX + targetLingId}（例如 {@code ipc:user-ling}），
+     * 表示"调用目标灵元的服务方法"。通用宣称用 {@link #IPC_INVOKE}，
+     * 按目标灵元鉴权用 {@link #ipcCapability(String)} 动态构造，禁止散落字面量拼接。
+     */
+    public static final String IPC_PREFIX = "ipc:";
+
+    /**
+     * 构造针对目标灵元的 IPC 能力键：{@code ipc:<targetLingId>}。
+     *
+     * @param targetLingId 被调目标灵元 ID（非空）
+     * @return 形如 {@code ipc:user-ling} 的能力键
+     */
+    public static String ipcCapability(String targetLingId) {
+        return IPC_PREFIX + targetLingId;
+    }
 
     // ==================== 灵元管理 ====================
     /**

@@ -1,6 +1,7 @@
 package com.lingframe.infra.cache.proxy;
 
 import com.lingframe.api.context.LingCallContext;
+import com.lingframe.api.exception.PermissionDeniedException;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -29,7 +30,7 @@ public final class CacheNamespaceSupport {
         if (rawKey instanceof NamespacedKey) {
             NamespacedKey nk = (NamespacedKey) rawKey;
             if (!lingId.equals(nk.getLingId())) {
-                throw new SecurityException(
+                throw new PermissionDeniedException(
                         "Cross-ling namespace key detected: current=" + lingId
                                 + ", key.lingId=" + nk.getLingId());
             }

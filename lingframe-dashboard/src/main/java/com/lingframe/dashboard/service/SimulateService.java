@@ -1,6 +1,7 @@
 package com.lingframe.dashboard.service;
 
 import com.lingframe.api.security.AccessType;
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
@@ -157,10 +158,10 @@ public class SimulateService {
                     .callerLingId(lingId)
                     .traceId(traceId)
                     .resourceType("IPC")
-                    .resourceId("ipc:" + lingId + "->" + targetLingId)
+                    .resourceId(Capabilities.IPC_PREFIX + lingId + "->" + targetLingId)
                     .operation("ipc_call")
                     .accessType(AccessType.EXECUTE)
-                    .requiredPermission("ipc:" + targetLingId)
+                    .requiredPermission(Capabilities.ipcCapability(targetLingId))
                     .auditAction("IPC_CALL")
                     .build(lingRepository);
 
@@ -172,7 +173,6 @@ public class SimulateService {
                 if (routed == null) {
                     throw new LingInvocationException(targetLingId, LingInvocationException.ErrorKind.STATE_REJECTED, "No active instances");
                 }
-                // 🔥 已删除 targetRuntime.recordRequest(false) 直写：
                 // 流量统计由 Pipeline 内部 TrafficMetricsFilter 统一处理，
                 // 控制台不应绕过 Pipeline 直接修改灵元运行时内部计数
 
@@ -183,7 +183,7 @@ public class SimulateService {
                 message = "IPC Call Simulated Success";
 
                 // 检查是否被开发模式豁免
-                if (isDevModeBypass(lingId, "ipc:" + targetLingId, AccessType.EXECUTE)) {
+                if (isDevModeBypass(lingId, Capabilities.ipcCapability(targetLingId), AccessType.EXECUTE)) {
                     message += " (⚠️ Dev Mode Bypass)";
                     ctx.execution().addTrace(EngineTrace.builder()
                             .source("SimulateService")
@@ -226,11 +226,10 @@ public class SimulateService {
      * <p>
      * 压测本质就是模拟一次路由+调用，因此统一走 {@link InvocationPipelineEngine#invoke}
      * 的 SIMULATION 模式，由 Pipeline 完成路由与统计，收敛治理执行入口。
-     * 不再直接调用已删除的 {@code canaryRouter.route(...)}。
      * <p>
-     * 活跃请求数从 {@link LingRuntime} 的流量统计字段（已删除）下沉到
-     * {@code LingHealthMetrics.activeRequests}，由 Pipeline 内部的
-     * {@code TrafficMetricsFilter} 维护，本方法返回时直接读取运行时池的活跃实例计数兜底。
+     * 活跃请求数由 {@code LingHealthMetrics.activeRequests} 维护，
+     * 由 Pipeline 内部的 {@code TrafficMetricsFilter} 更新，本方法返回时
+     * 直接读取运行时池的活跃实例计数兜底。
      */
     public StressResultDTO stressTest(String lingId) {
         LingRuntime runtime = lingRepository.getRuntime(lingId);
@@ -263,8 +262,8 @@ public class SimulateService {
             boolean isNonDefault = defaultInstance != null && targetVersion != null
                     && !targetVersion.equals(defaultInstance.getDefinition().getVersion());
 
-            // 灵核无版本概念：targetVersion == null 即路由落到灵核，报哨兵值 LINGCORE
-            String version = targetVersion != null ? targetVersion : "LINGCORE";
+            // 灵核无版本概念：targetVersion == null 即路由落到灵核，报哨兵值 LINGCORE_LING_ID
+            String version = targetVersion != null ? targetVersion : LingCoreConstants.LINGCORE_LING_ID;
             String tag = isNonDefault ? "NON_DEFAULT" : "DEFAULT";
 
             publishTrace(traceId, lingId,

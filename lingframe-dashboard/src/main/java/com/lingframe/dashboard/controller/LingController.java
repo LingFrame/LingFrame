@@ -2,13 +2,12 @@ package com.lingframe.dashboard.controller;
 
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.fsm.RuntimeStatus;
-import com.lingframe.core.metrics.GovernanceMetricsCollector;
-import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
 import com.lingframe.core.metrics.LingHealthMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
-import com.lingframe.core.metrics.MetricsSnapshot;
 import com.lingframe.dashboard.dto.*;
+import com.lingframe.dashboard.service.ContractRoutingService;
 import com.lingframe.dashboard.service.DashboardService;
+import com.lingframe.dashboard.service.MetricsAggregationService;
 import com.lingframe.dashboard.service.RuntimeDiagnosticsService;
 import com.lingframe.core.routing.MigrationPhase;
 import com.lingframe.core.routing.MigrationStateHolder;
@@ -25,7 +24,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 灵元治理仪表盘控制器
@@ -40,24 +38,29 @@ public class LingController {
     private final LingFrameConfig lingFrameConfig;
     private final DashboardService dashboardService;
     private final MetricsCollector metricsCollector;
-    private final GovernanceMetricsCollector governanceMetricsCollector;
     private final RuntimeDiagnosticsService runtimeDiagnosticsService;
     private final MigrationStateHolder migrationStateHolder;
+    /** 契约路由业务层：迁移写操作唯一入口（直调 holder 已收敛到 {@link ContractRoutingService}） */
+    private final ContractRoutingService contractRoutingService;
+    /** 指标聚合：health/governance 总览聚合，收敛到共享 service 供本控制器与 MetricsController 复用 */
+    private final MetricsAggregationService metricsAggregationService;
     private final boolean installEnabled;
 
     public LingController(LingFrameConfig lingFrameConfig,
             DashboardService dashboardService,
             MetricsCollector metricsCollector,
-            GovernanceMetricsCollector governanceMetricsCollector,
             RuntimeDiagnosticsService runtimeDiagnosticsService,
             MigrationStateHolder migrationStateHolder,
+            ContractRoutingService contractRoutingService,
+            MetricsAggregationService metricsAggregationService,
             @Value("${lingframe.dashboard.install-enabled:false}") boolean installEnabled) {
         this.lingFrameConfig = lingFrameConfig;
         this.dashboardService = dashboardService;
         this.metricsCollector = metricsCollector;
-        this.governanceMetricsCollector = governanceMetricsCollector;
         this.runtimeDiagnosticsService = runtimeDiagnosticsService;
         this.migrationStateHolder = migrationStateHolder;
+        this.contractRoutingService = contractRoutingService;
+        this.metricsAggregationService = metricsAggregationService;
         this.installEnabled = installEnabled;
     }
 
@@ -221,10 +224,7 @@ public class LingController {
             @PathVariable String lingId,
             @RequestBody MigrationStartDTO request) {
         try {
-            if (migrationStateHolder == null) {
-                return ApiResponse.error("迁移状态机未装配");
-            }
-            migrationStateHolder.startMigration(
+            contractRoutingService.startMigration(
                     request.getContractId(), request.getOldCandidate(), request.getNewCandidate());
             return ApiResponse.ok("迁移已发起", null);
         } catch (Exception e) {
@@ -243,10 +243,7 @@ public class LingController {
             @PathVariable String lingId,
             @RequestBody MigrationStartDTO request) {
         try {
-            if (migrationStateHolder == null) {
-                return ApiResponse.error("迁移状态机未装配");
-            }
-            migrationStateHolder.startIteration(
+            contractRoutingService.startIteration(
                     request.getContractId(), request.getOldCandidate(), request.getNewCandidate());
             return ApiResponse.ok("迭代已发起", null);
         } catch (Exception e) {
@@ -263,10 +260,7 @@ public class LingController {
             @PathVariable String contractId,
             @RequestParam boolean drainOk) {
         try {
-            if (migrationStateHolder == null) {
-                return ApiResponse.error("迁移状态机未装配");
-            }
-            migrationStateHolder.confirmPhaseTransition(contractId, drainOk);
+            contractRoutingService.confirmTransition(contractId, drainOk);
             return ApiResponse.ok("相变已确认", null);
         } catch (Exception e) {
             log.error("Failed to confirm phase transition: {}", contractId, e);
@@ -319,10 +313,7 @@ public class LingController {
     @PostMapping("/{contractId}/migration/rollback")
     public ApiResponse<Void> rollbackPhaseTransition(@PathVariable String contractId) {
         try {
-            if (migrationStateHolder == null) {
-                return ApiResponse.error("迁移状态机未装配");
-            }
-            migrationStateHolder.rollbackPhaseTransition(contractId);
+            contractRoutingService.rollbackTransition(contractId);
             return ApiResponse.ok("相变已回滚", null);
         } catch (Exception e) {
             log.error("Failed to rollback phase transition: {}", contractId, e);
@@ -414,25 +405,8 @@ public class LingController {
     @GetMapping("/dashboard-summary")
     public ApiResponse<DashboardSummaryDTO> getDashboardSummary() {
         try {
-            Map<String, LingHealthViewDTO> healthMetrics = metricsCollector.getAllSnapshots().stream()
-                    .collect(Collectors.toMap(
-                            MetricsSnapshot::getLingId,
-                            snapshot -> LingHealthViewDTO.builder()
-                                    .summary(snapshot)
-                                    .versions(metricsCollector.getVersionSnapshots(snapshot.getLingId()))
-                                    .build(),
-                            (existing, replacement) -> replacement
-                    ));
-                    
-            Map<String, LingGovernanceMetricsViewDTO> governanceMetrics = governanceMetricsCollector.getAllSummaries().values().stream()
-                    .collect(Collectors.toMap(
-                            GovernanceMetricsSnapshot::getLingId,
-                            snapshot -> LingGovernanceMetricsViewDTO.builder()
-                                    .summary(snapshot)
-                                    .versions(governanceMetricsCollector.getVersionSnapshots(snapshot.getLingId()))
-                                    .build(),
-                            (existing, replacement) -> replacement
-                    ));
+            Map<String, LingHealthViewDTO> healthMetrics = metricsAggregationService.getAllHealthView();
+            Map<String, LingGovernanceMetricsViewDTO> governanceMetrics = metricsAggregationService.getAllGovernanceView();
 
             // 最近生命周期事件：取全部事件的最后10条并倒序，用于概览页"最近事件"
             List<DashboardService.LifecycleEvent> allEvents = dashboardService.getLifecycleEvents(null);

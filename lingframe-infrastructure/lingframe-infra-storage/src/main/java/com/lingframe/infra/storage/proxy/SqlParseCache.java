@@ -2,6 +2,7 @@ package com.lingframe.infra.storage.proxy;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.lingframe.api.constant.LingCoreConstants;
 
 import java.util.concurrent.TimeUnit;
 
@@ -18,7 +19,7 @@ public final class SqlParseCache {
 
     private static final int MAX_CACHE_SIZE = 5000;
     private static final long CACHE_EXPIRE_TIME = TimeUnit.MINUTES.toMillis(10);
-    private static final String DEFAULT_LING_ID = "LINGCORE";
+    private static final String DEFAULT_LING_ID = LingCoreConstants.LINGCORE_LING_ID;
 
     // 全局缓存：key 为 normalizeLingId(lingId) + "\0" + sql，既保留灵元隔离又共享 LRU 容量
     private static final Cache<String, SqlPermissionSupport.SqlPermissionPlan> CACHE = Caffeine.newBuilder()

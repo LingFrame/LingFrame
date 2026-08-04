@@ -1,6 +1,5 @@
 package com.lingframe.dashboard.converter;
 
-import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.security.AccessType;
@@ -14,6 +13,8 @@ import com.lingframe.core.metrics.LingHealthMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.ProviderMetricsCollector;
 import com.lingframe.core.metrics.ProviderMetricsCollector.ProviderStats;
+import com.lingframe.core.routing.ProviderDescriptor;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
 
@@ -26,8 +27,8 @@ import java.util.stream.Collectors;
 /**
  * 灵元运行时信息转换为 DTO
  * <p>
- * 迁移阶段与权重信息统一由治理存储层与 {@link com.lingframe.core.routing.ProviderWeightRouter}
- * 提供，本转换器不再依赖已删除的 {@code CanaryRouter}。
+ * 迁移阶段与权重信息统一由治理存储层与 {@link ProviderWeightRouter}
+ * 提供。
  */
 public class LingInfoConverter {
 
@@ -36,21 +37,31 @@ public class LingInfoConverter {
     private final LingServiceRegistry lingServiceRegistry;
     /** 处约二维流量统计；nullable（native/test），命中时 toTrafficStats 读真实累计 */
     private final ProviderMetricsCollector providerMetricsCollector;
+    /** 契约权重路由；nullable（native/test），命中时 toDTO 读覆盖权重而非占位 100/0 */
+    private final ProviderWeightRouter providerWeightRouter;
 
     public LingInfoConverter(MetricsCollector metricsCollector) {
-        this(metricsCollector, null, null);
+        this(metricsCollector, null, null, null);
     }
 
     public LingInfoConverter(MetricsCollector metricsCollector, LingServiceRegistry lingServiceRegistry) {
-        this(metricsCollector, lingServiceRegistry, null);
+        this(metricsCollector, lingServiceRegistry, null, null);
     }
 
     public LingInfoConverter(MetricsCollector metricsCollector,
             LingServiceRegistry lingServiceRegistry,
             ProviderMetricsCollector providerMetricsCollector) {
+        this(metricsCollector, lingServiceRegistry, providerMetricsCollector, null);
+    }
+
+    public LingInfoConverter(MetricsCollector metricsCollector,
+            LingServiceRegistry lingServiceRegistry,
+            ProviderMetricsCollector providerMetricsCollector,
+            ProviderWeightRouter providerWeightRouter) {
         this.metricsCollector = metricsCollector;
         this.lingServiceRegistry = lingServiceRegistry;
         this.providerMetricsCollector = providerMetricsCollector;
+        this.providerWeightRouter = providerWeightRouter;
     }
 
     public LingInfoDTO toDTO(LingRuntime runtime,
@@ -66,7 +77,7 @@ public class LingInfoConverter {
                 .filter(instance -> instance.getDefinition() != null)
                 .map(instance -> {
             boolean isCurDefault = instance == runtime.getInstancePool().getDefault();
-            int weight = isCurDefault ? 100 : 0;
+            int weight = resolveTrafficWeight(lingId, instance, isCurDefault);
             return LingInfoDTO.VersionInfo.builder()
                     .version(instance.getVersion())
                     .status(instance.currentStatus().name())
@@ -98,6 +109,40 @@ public class LingInfoConverter {
         }
         Set<String> contracts = lingServiceRegistry.getContractsByLingId(lingId);
         return contracts.isEmpty() ? null : contracts.iterator().next();
+    }
+
+    /**
+     * 解析实例的展示流量权重。
+     * <p>
+     * 读取顺序：契约提供方描述符注册权重 → ProviderWeightRouter 覆盖权重；
+     * 覆盖权重存在时以其为准（与路由决策一致）。
+     * 契约未声明 / 描述符未命中 / registry 缺失时回退占位语义（默认实例 100，其余 0），
+     * 保证 native/test 及未接入路由的场景展示不退化。
+     */
+    private int resolveTrafficWeight(String lingId, LingInstance instance, boolean isCurDefault) {
+        if (lingServiceRegistry == null || lingId == null) {
+            return isCurDefault ? 100 : 0;
+        }
+        String contractId = resolveContractId(lingId);
+        if (contractId == null) {
+            return isCurDefault ? 100 : 0;
+        }
+        for (ProviderDescriptor desc : lingServiceRegistry.getProvidersByContractId(contractId)) {
+            if (!lingId.equals(desc.getLingId())) {
+                continue;
+            }
+            // version=null 是迁移期描述符的合法语义（灵元整体权重，匹配任意版本实例）；
+            // version!=null 是迭代期描述符（多版本并存，必须精确匹配版本）。
+            // 详见 ProviderDescriptor Javadoc。
+            if (desc.getVersion() != null && !desc.getVersion().equals(instance.getVersion())) {
+                continue;
+            }
+            Integer override = providerWeightRouter == null
+                    ? null
+                    : providerWeightRouter.getOverrideWeight(contractId, desc.providerKey());
+            return override != null ? override : desc.getWeight();
+        }
+        return isCurDefault ? 100 : 0;
     }
 
     public TrafficStatsDTO toTrafficStats(LingRuntime runtime) {
@@ -170,8 +215,8 @@ public class LingInfoConverter {
                     continue;
                 }
                 String capability = rule.getCapability();
-                if (capability.startsWith("ipc:")) {
-                    ipcServices.add(capability.substring(4)); // 去掉 ipc: 前缀
+                if (capability.startsWith(Capabilities.IPC_PREFIX)) {
+                    ipcServices.add(capability.substring(Capabilities.IPC_PREFIX.length())); // 去掉 ipc: 前缀
                 } else if (capability.startsWith("storage:sql:table:")) {
                     sqlCapabilities.add(capability);
                 } else if (capability.startsWith("cache:redis:")) {

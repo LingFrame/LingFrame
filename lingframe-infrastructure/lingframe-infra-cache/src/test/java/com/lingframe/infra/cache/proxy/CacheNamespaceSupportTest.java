@@ -1,6 +1,7 @@
 package com.lingframe.infra.cache.proxy;
 
 import com.lingframe.api.context.LingCallContext;
+import com.lingframe.api.exception.PermissionDeniedException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -105,13 +106,13 @@ class CacheNamespaceSupportTest {
     class CrossLingForgeryDefenseTests {
 
         @Test
-        @DisplayName("灵元 A 传入灵元 B 的 NamespacedKey 时应抛 SecurityException")
+        @DisplayName("灵元 A 传入灵元 B 的 NamespacedKey 时应抛 PermissionDeniedException")
         void shouldRejectCrossLingNamespacedKey() {
             LingCallContext.setLingId("ling-a");
             CacheNamespaceSupport.NamespacedKey foreignKey =
                     new CacheNamespaceSupport.NamespacedKey("ling-b", "users", "user:1");
 
-            SecurityException ex = assertThrows(SecurityException.class,
+            PermissionDeniedException ex = assertThrows(PermissionDeniedException.class,
                     () -> CacheNamespaceSupport.namespaceKey("users", foreignKey));
 
             assertTrue(ex.getMessage().contains("Cross-ling namespace key detected"));
@@ -132,13 +133,13 @@ class CacheNamespaceSupportTest {
         }
 
         @Test
-        @DisplayName("批量包装中混入跨灵元 key 时应抛 SecurityException")
+        @DisplayName("批量包装中混入跨灵元 key 时应抛 PermissionDeniedException")
         void shouldRejectCrossLingKeyInBatch() {
             LingCallContext.setLingId("ling-a");
             CacheNamespaceSupport.NamespacedKey foreignKey =
                     new CacheNamespaceSupport.NamespacedKey("ling-b", "users", "user:1");
 
-            assertThrows(SecurityException.class,
+            assertThrows(PermissionDeniedException.class,
                     () -> CacheNamespaceSupport.namespaceKeys("users", Arrays.asList("k1", foreignKey, "k3")));
         }
     }

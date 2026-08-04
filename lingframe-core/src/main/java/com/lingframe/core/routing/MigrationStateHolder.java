@@ -25,9 +25,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * 以 {@code config_type = 'migration'} 落盘；本类不直接耦合存储实现，
  * 通过 {@link MigrationStateStore} 接口注入。
  * <p>
- * <b>迁移无自动推进</b>：本类不监听任何权重变更事件（历史上 {@link com.lingframe.core.event.ProviderWeightChangedEvent}
- * 曾宣称由本类监听，实际从未订阅，属死广播，已删除发布与伪声明）。
- * 阶段推进仅由显式编排驱动：外部先调 {@code startMigration}，再在权重调整 + 排空校验（drainOk）
+ * <b>迁移无自动推进</b>：本类不监听任何权重变更事件，阶段推进仅由显式编排驱动：
+ * 外部先调 {@code startMigration}，再在权重调整 + 排空校验（drainOk）
  * 通过后调用 {@code confirmPhaseTransition}（或失败时 {@code rollbackPhaseTransition}）。
  *
  * @author lingframe

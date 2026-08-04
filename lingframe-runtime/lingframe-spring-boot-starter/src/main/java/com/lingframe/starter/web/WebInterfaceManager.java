@@ -21,7 +21,6 @@ import java.util.concurrent.TimeUnit;
 import javax.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.CachedIntrospectionResults;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -57,10 +56,6 @@ public class WebInterfaceManager implements WebRouteResolver {
 
     private final DefaultWebRouteResolver routeResolver;
     private final SpringWebCoreSupport coreWebSupport = new SpringWebCoreSupport();
-
-    public static final String REQUEST_METADATA_KEY = "ling.web.metadata";
-    public static final String REQUEST_ROUTE_RESOLUTION_KEY = "ling.web.route.resolution";
-    public static final String REQUEST_TARGET_VERSION_KEY = "ling.target.version";
 
     public WebInterfaceManager(LingRepository lingRepository,
             TrafficRouter trafficRouter) {

@@ -16,14 +16,12 @@ import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingUninstallResult;
-// CanaryRouter 已删除，路由层去身份化
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
 import com.lingframe.dashboard.dto.TransitionHistoryDTO;
-import com.lingframe.dashboard.storage.GovernanceStorage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -37,16 +35,13 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -365,7 +360,6 @@ class DashboardServiceSupplementTest {
 
             assertNotNull(result);
             assertTrue(result.isUninstallTriggered());
-            // canaryRouter 已删除，卸载清理改由 MigrationStateHolder.evict 处理（service 持 null 时不调用）
         }
 
         @Test
@@ -381,7 +375,6 @@ class DashboardServiceSupplementTest {
 
             assertNotNull(result);
             assertEquals("1.0.0", result.getVersion());
-            // canaryRouter 已删除，卸载清理改由 MigrationStateHolder.evict 处理（service 持 null 时不调用）
         }
 
         @Test

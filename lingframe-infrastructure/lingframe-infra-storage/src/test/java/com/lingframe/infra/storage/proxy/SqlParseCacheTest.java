@@ -44,7 +44,7 @@ class SqlParseCacheTest {
         }
 
         @Test
-        @DisplayName("null/空 lingId 应归一化为 LINGCORE")
+        @DisplayName("null/空 lingId 应归一化为灵核标识（lingcore-app）")
         void shouldNormalizeNullLingId() {
             SqlParseCache.put(null, "select 1", plan(AccessType.READ));
             assertEquals(AccessType.READ, SqlParseCache.get(null, "select 1").getAccessType());

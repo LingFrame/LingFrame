@@ -313,7 +313,7 @@ public class LingFrameProperties {
          */
         private boolean governInternalCalls = false;
 
-/**
+        /**
          * 是否对灵核应用进行权限检查，默认值为 false
          * <p>
          * true: 灵核应用也需要通过权限检查

@@ -9,6 +9,7 @@ import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.fsm.TransitionRecord;
 import com.lingframe.core.fsm.TransitionResult;
 import com.lingframe.core.ling.LingLifecycleEngine;
+import com.lingframe.core.ling.LingUninstallResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -72,11 +73,11 @@ class DashboardStatusCoordinatorSupplementTest {
     @DisplayName("REMOVED 分支应复用 uninstallLing 完整卸载流程（含迁移状态清理与 DEAD 事件）")
     void shouldUndeployWhenRemoved() {
         when(lingOperations.uninstallLing("ling1")).thenReturn(
-                com.lingframe.core.ling.LingUninstallResult.triggered("ling1", null, Collections.emptyList()));
+                LingUninstallResult.triggered("ling1", null, Collections.emptyList()));
 
         coordinator.updateStatus("ling1", RuntimeStatus.ACTIVE, RuntimeStatus.REMOVED, "1.0.0");
 
-        // REMOVED 与 Dashboard 卸载入口同路（C7）：委托完整 uninstall 流程，而非裸 undeploy
+        // REMOVED 与 Dashboard 卸载入口同路：委托完整 uninstall 流程，而非裸 undeploy
         verify(lingOperations).uninstallLing("ling1");
         verify(lifecycleEngine, never()).undeploy("ling1");
         // REMOVED 不应触碰运行时状态机或权限服务

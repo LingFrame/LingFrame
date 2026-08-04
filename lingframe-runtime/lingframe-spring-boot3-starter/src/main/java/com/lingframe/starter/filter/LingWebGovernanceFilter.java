@@ -12,6 +12,7 @@ import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import com.lingframe.starter.web.WebInterfaceMetadata;
+import com.lingframe.starter.web.WebRequestKeys;
 import com.lingframe.starter.web.WebGovernanceSupport;
 import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
@@ -98,7 +99,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
                 pipelineEngine.invoke(ctx);
                 LingInstance routed = ctx.routing().getTargetInstance();
                 if (routed != null) {
-                    request.setAttribute("ling.target.version", routed.getVersion());
+                    request.setAttribute(WebRequestKeys.TARGET_VERSION, routed.getVersion());
                 }
             } catch (LingInvocationException e) {
                 if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
@@ -192,7 +193,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
     }
 
     private String resolveVersion(HttpServletRequest request, InvocationContext ctx) {
-        Object versionAttr = request.getAttribute("ling.target.version");
+        Object versionAttr = request.getAttribute(WebRequestKeys.TARGET_VERSION);
         if (versionAttr instanceof String && !((String) versionAttr).isEmpty()) {
             return (String) versionAttr;
         }

@@ -18,7 +18,6 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -89,9 +88,18 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
 
     /**
-     * 单线程分发器，避免抢占业务线程池
+     * 事件分发线程池（固定小规模并行）。
+     * <p>
+     * 用固定 4 线程的小池代替单线程 dispatcher 顺序广播：单个慢/阻塞 emitter
+     * 的 send 只占用一个 worker，不拖累其余连接的广播（避免 head-of-line 阻塞）；
+     * 同时维持「不抢占业务线程池」。
+     * <p>
+     * 内存权衡说明：每 emitter 独立任务意味着高峰事件率 × 慢客户端时，无界队列积压的任务数
+     * 从「每事件 1 个」放大为「每事件 N 个」（N=活跃 emitter 数）。积压上限由
+     * {@link #MAX_CONNECTIONS}（连接数上限）间接封顶，不会失控，但内存压力曲线比旧实现陡。
+     * 若后续出现高 emitter 数 × 高事件率场景，需考虑有界队列 + 丢弃/背压策略。
      */
-    private final ExecutorService dispatcher = Executors.newSingleThreadExecutor(r -> {
+    private final ExecutorService dispatcher = Executors.newFixedThreadPool(4, r -> {
         Thread t = new Thread(r, "ling-sse-dispatcher");
         t.setDaemon(true);
         t.setContextClassLoader(CORE_CLASSLOADER);
@@ -180,7 +188,11 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         try {
             emitter.send(SseEmitter.event().name("connected").data("ok"));
         } catch (Exception e) {
-            log.warn("Failed to send initial SSE event", e);
+            // 首次 send 失败说明连接已死：立即释放许可并完成，避免该连接永久占用许可
+            log.warn("Failed to send initial SSE event, releasing permit", e);
+            releaseEmitter(emitter);
+            emitter.complete();
+            throw new IllegalStateException("Failed to establish SSE connection", e);
         }
 
         log.info("New SSE connection. Active: {}", emitters.size());
@@ -494,10 +506,11 @@ public class LogStreamService implements InitializingBean, DisposableBean {
             return;
         }
 
-        // 异步提交给分发线程，不阻塞当前业务线程 (Core Kernel)
+        // 异步提交给分发线程池，不阻塞当前业务线程 (Core Kernel)。
+        // 每个 emitter 独立提交任务，避免单个慢 emitter 拖累其余连接（head-of-line 阻塞）。
         try {
-            dispatcher.submit(withCoreClassLoader(() -> {
-                for (SseEmitter emitter : emitters) {
+            for (SseEmitter emitter : emitters) {
+                dispatcher.submit(withCoreClassLoader(() -> {
                     try {
                         emitter.send(SseEmitter.event()
                                 .name("log-event")
@@ -506,8 +519,8 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                         // send 失败视为连接已死，统一通过 releaseEmitter 释放许可并移除
                         releaseEmitter(emitter);
                     }
-                }
-            }));
+                }));
+            }
         } catch (RejectedExecutionException e) {
             // 关闭过程中拒绝提交任务属于正常现象，直接忽略
         }
@@ -523,16 +536,16 @@ public class LogStreamService implements InitializingBean, DisposableBean {
             return;
         }
         try {
-            dispatcher.submit(withCoreClassLoader(() -> {
-                for (SseEmitter emitter : emitters) {
+            for (SseEmitter emitter : emitters) {
+                dispatcher.submit(withCoreClassLoader(() -> {
                     try {
                         emitter.send(SseEmitter.event().name("ping").data("pong"));
                     } catch (Exception e) {
                         // send 失败视为连接已死，统一通过 releaseEmitter 释放许可并移除
                         releaseEmitter(emitter);
                     }
-                }
-            }));
+                }));
+            }
         } catch (RejectedExecutionException e) {
             // 关闭过程中拒绝提交任务属于正常现象，直接忽略
         }

@@ -8,9 +8,9 @@ import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.spi.RoutableTarget;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
-import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
 import com.lingframe.starter.web.WebRequestFacade;
+import com.lingframe.starter.web.WebRequestKeys;
 import com.lingframe.starter.web.WebRouteResolution;
 import com.lingframe.starter.web.WebRouteResolver;
 import jakarta.servlet.FilterChain;
@@ -87,9 +87,9 @@ class LingWebGovernanceFilterTest {
                 "GET#/ling-a/demo/detail", metadata, runtime, targetInstance);
 
         when(webRouteResolver.resolveRoute(any())).thenAnswer(invocation -> {
-            request.setAttribute(WebInterfaceManager.REQUEST_ROUTE_RESOLUTION_KEY, resolution);
-            request.setAttribute(WebInterfaceManager.REQUEST_METADATA_KEY, metadata);
-            request.setAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY, metadata.getVersion());
+            request.setAttribute(WebRequestKeys.ROUTE_RESOLUTION, resolution);
+            request.setAttribute(WebRequestKeys.METADATA, metadata);
+            request.setAttribute(WebRequestKeys.TARGET_VERSION, metadata.getVersion());
             return resolution;
         });
         when(targetInstance.getVersion()).thenReturn("v1");
@@ -127,9 +127,9 @@ class LingWebGovernanceFilterTest {
         assertSame(runtime, observedRuntime.get());
         assertEquals("alice", observedPrincipal.get());
         assertTrue(observedPreResolved.get());
-        assertSame(resolution, request.getAttribute(WebInterfaceManager.REQUEST_ROUTE_RESOLUTION_KEY));
-        assertSame(metadata, request.getAttribute(WebInterfaceManager.REQUEST_METADATA_KEY));
-        assertEquals("v1", request.getAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY));
+        assertSame(resolution, request.getAttribute(WebRequestKeys.ROUTE_RESOLUTION));
+        assertSame(metadata, request.getAttribute(WebRequestKeys.METADATA));
+        assertEquals("v1", request.getAttribute(WebRequestKeys.TARGET_VERSION));
         verify(filterChain).doFilter(request, response);
     }
 

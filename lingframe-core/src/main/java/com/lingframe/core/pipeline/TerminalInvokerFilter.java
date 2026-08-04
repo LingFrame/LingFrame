@@ -107,7 +107,7 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
                     if (fallbackValue != null) {
                         log.warn("[TerminalInvoker] Invocation failed after {} attempt(s), returning fallback for {}",
                                 attempt, ctx.getServiceFQSID());
-                        return fallbackValue;
+                        return convertFallbackValue(fallbackValue, handle.type().returnType(), ctx);
                     }
                     throw lastFailure;
                 }
@@ -135,6 +135,72 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
         }
         return new LingInvocationException(ctx.getServiceFQSID(),
                 LingInvocationException.ErrorKind.INVOKE_ERROR, throwable);
+    }
+
+    /**
+     * 将 fallback 配置字符串转换为目标方法返回类型。
+     * <p>
+     * fallbackValue 在配置层是 {@code String}，而真实方法可能返回 {@code int}/{@code boolean} 等
+     * 非 String 类型。若不转换直接返回，调用方在类型转换处会抛 {@code ClassCastException}，
+     * 掩盖「回退值类型不匹配」这一配置错误。这里按句柄返回类型做显式转换：
+     * <ul>
+     *   <li>返回类型为 String / Object / 无法识别时——原样返回（String 语义兜底）</li>
+     *   <li>返回类型为基本类型或包装类型——解析对应字符串</li>
+     *   <li>其余复杂类型不支持——拒绝并抛 {@link LingInvocationException}，避免静默 ClassCastException</li>
+     * </ul>
+     */
+    private Object convertFallbackValue(String fallbackValue, Class<?> returnType, InvocationContext ctx) {
+        if (returnType == null || returnType == String.class || returnType == Object.class) {
+            return fallbackValue;
+        }
+        try {
+            if (returnType == int.class || returnType == Integer.class) {
+                return Integer.parseInt(fallbackValue.trim());
+            }
+            if (returnType == long.class || returnType == Long.class) {
+                return Long.parseLong(fallbackValue.trim());
+            }
+            if (returnType == double.class || returnType == Double.class) {
+                return Double.parseDouble(fallbackValue.trim());
+            }
+            if (returnType == float.class || returnType == Float.class) {
+                return Float.parseFloat(fallbackValue.trim());
+            }
+            if (returnType == boolean.class || returnType == Boolean.class) {
+                // parseBoolean 对任意非 "true" 值静默返回 false（"ture"/"1"/"yes" 均不误报），
+                // 与数值分支的「解析失败显式拒绝」语义不一致；这里显式校验，配置拼错时拒绝而非静默降级
+                String trimmed = fallbackValue.trim();
+                if (!"true".equalsIgnoreCase(trimmed) && !"false".equalsIgnoreCase(trimmed)) {
+                    throw new NumberFormatException("boolean fallback requires 'true' or 'false'");
+                }
+                return Boolean.parseBoolean(trimmed);
+            }
+            if (returnType == short.class || returnType == Short.class) {
+                return Short.parseShort(fallbackValue.trim());
+            }
+            if (returnType == byte.class || returnType == Byte.class) {
+                return Byte.parseByte(fallbackValue.trim());
+            }
+            if (returnType == char.class || returnType == Character.class) {
+                String trimmedChar = fallbackValue.trim();
+                if (trimmedChar.length() != 1) {
+                    throw new NumberFormatException("char fallback requires single-char value");
+                }
+                return trimmedChar.charAt(0);
+            }
+        } catch (NumberFormatException e) {
+            throw new LingInvocationException(ctx.getServiceFQSID(),
+                    LingInvocationException.ErrorKind.INVOKE_ERROR,
+                    new IllegalArgumentException("fallbackValue '" + fallbackValue
+                            + "' cannot be converted to return type " + returnType.getSimpleName(), e));
+        }
+        log.warn("[TerminalInvoker] fallbackValue for {} has unsupported return type {}; "
+                + "rejecting instead of returning String that would ClassCastException",
+                ctx.getServiceFQSID(), returnType.getSimpleName());
+        throw new LingInvocationException(ctx.getServiceFQSID(),
+                LingInvocationException.ErrorKind.INVOKE_ERROR,
+                new IllegalArgumentException("fallbackValue not supported for return type "
+                        + returnType.getSimpleName()));
     }
 
     private boolean shouldRetry(Throwable throwable) {

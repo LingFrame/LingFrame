@@ -13,7 +13,6 @@ import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.api.security.PermissionService;
-// CanaryRouter 已删除，路由层去身份化
 import com.lingframe.dashboard.dto.SimulateResultDTO;
 import com.lingframe.dashboard.dto.StressResultDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,11 +20,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -33,10 +29,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyBoolean;
-import static org.mockito.Mockito.anyList;
-import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -292,8 +284,7 @@ class SimulateServiceTest {
         @Test
         @DisplayName("压测走 Pipeline SIMULATION 模式，应返回 STABLE 结果")
         void shouldReturnStableResultViaPipeline() {
-            // canaryRouter 已删除，压测改走 pipelineEngine.invoke(ctx) SIMULATION 模式
-            // 这里校验 stressTest 在 runtime 可用 + 单活跃实例时不抛异常，返回 DTO
+            // 校验 stressTest 在 runtime 可用 + 单活跃实例时不抛异常，返回 DTO
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
             LingInstance instance = mock(LingInstance.class);

@@ -87,9 +87,9 @@ class DefaultWebRouteResolverTest {
         assertEquals(v2Meta, requestMetadata);
         assertSame(runtime, first.getRuntime());
         assertSame(v2Instance, first.getTargetInstance());
-        assertSame(first, request.getAttribute(WebInterfaceManager.REQUEST_ROUTE_RESOLUTION_KEY));
-        assertSame(requestMetadata, request.getAttribute(WebInterfaceManager.REQUEST_METADATA_KEY));
-        assertEquals("v2", request.getAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY));
+        assertSame(first, request.getAttribute(WebRequestKeys.ROUTE_RESOLUTION));
+        assertSame(requestMetadata, request.getAttribute(WebRequestKeys.METADATA));
+        assertEquals("v2", request.getAttribute(WebRequestKeys.TARGET_VERSION));
         verify(trafficRouter).route(anyList(), any(InvocationContext.class));
     }
 
@@ -128,8 +128,8 @@ class DefaultWebRouteResolverTest {
         assertEquals("GET", resolution.getMetadata().getHttpMethod());
         assertSame(targetMethod, resolution.getMetadata().getTargetMethod());
         assertEquals("GET#/ling-a/demo/{id}", resolution.getRouteKey());
-        assertEquals("v1", request.getAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY));
-        assertSame(resolution.getMetadata(), request.getAttribute(WebInterfaceManager.REQUEST_METADATA_KEY));
+        assertEquals("v1", request.getAttribute(WebRequestKeys.TARGET_VERSION));
+        assertSame(resolution.getMetadata(), request.getAttribute(WebRequestKeys.METADATA));
     }
 
     @Test
@@ -151,7 +151,7 @@ class DefaultWebRouteResolverTest {
         when(v1Instance.getVersion()).thenReturn("v1");
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
-        request.setAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY, "v1");
+        request.setAttribute(WebRequestKeys.TARGET_VERSION, "v1");
 
         WebRouteResolution resolution = resolver.resolveRoute((request));
 
@@ -341,9 +341,9 @@ class DefaultWebRouteResolverTest {
         assertNotNull(resolution);
         assertEquals(metadata, resolution.getMetadata());
         assertEquals(routeKey, resolution.getRouteKey());
-        assertSame(resolution, request.getAttribute(WebInterfaceManager.REQUEST_ROUTE_RESOLUTION_KEY));
-        assertSame(resolution.getMetadata(), request.getAttribute(WebInterfaceManager.REQUEST_METADATA_KEY));
-        assertEquals("v1", request.getAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY));
+        assertSame(resolution, request.getAttribute(WebRequestKeys.ROUTE_RESOLUTION));
+        assertSame(resolution.getMetadata(), request.getAttribute(WebRequestKeys.METADATA));
+        assertEquals("v1", request.getAttribute(WebRequestKeys.TARGET_VERSION));
     }
 
     @Test
