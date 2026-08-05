@@ -318,8 +318,6 @@
                     <version>3.2.5</version>
                     <configuration>
                         <argLine>@{argLine} -Dfile.encoding=UTF-8</argLine>
-                        <useManifestOnlyJar>false</useManifestOnlyJar>
-                        <reuseForks>false</reuseForks>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -328,8 +326,6 @@
                     <version>3.2.5</version>
                     <configuration>
                         <argLine>@{argLine} -Dfile.encoding=UTF-8</argLine>
-                        <useManifestOnlyJar>false</useManifestOnlyJar>
-                        <reuseForks>false</reuseForks>
                     </configuration>
                 </plugin>
 
@@ -351,7 +347,6 @@
                                 -->
                                 <destFile>${java.io.tmpdir}/jacoco/${jacoco.dest.folder}/${project.artifactId}.exec</destFile>
                                 <exclClassLoaders>*CloseAwareClassLoader*:*LingClassLoader*</exclClassLoaders>
-                                <inclBootstrapClasses>true</inclBootstrapClasses>
                                 <!--
                                     按 ClassLoader 排除运行时动态加载的测试灵元类，不依赖灵元类包名。
                                     JaCoCo InjectedClassRuntime 对每个加载了被插桩类的 ClassLoader
