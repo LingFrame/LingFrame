@@ -46,11 +46,19 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.TestPropertySource;
 
 @SpringBootTest(
         classes = ObservabilityTestApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
 )
+@TestPropertySource(properties = {
+        // 用每次运行唯一的临时 SQLite 存储，避免复用固定路径残留的治理配置（限流/超时）导致 flaky
+        "lingframe.dashboard.storage.path=${java.io.tmpdir}/lingframe-observability-closed-loop-${random.uuid}.db",
+        // 用每次运行唯一的临时治理 patch 文件，避免写回共享的源码 config/ling-governance-patch.yml
+        // 造成测试间互相污染（本测试会通过 API 设 rateLimit=1 并 save() 回源文件）
+        "lingframe.governance-patch-path=${java.io.tmpdir}/lingframe-observability-closed-loop-${random.uuid}-patch.yml"
+})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @EnabledIfSystemProperty(named = "lingframe.runE2E", matches = "true")
 @DisplayName("观测闭环集成回归")
