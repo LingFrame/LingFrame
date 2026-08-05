@@ -318,6 +318,7 @@
                     <version>3.2.5</version>
                     <configuration>
                         <argLine>@{argLine} -Dfile.encoding=UTF-8</argLine>
+                        <useManifestOnlyJar>false</useManifestOnlyJar>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -326,6 +327,7 @@
                     <version>3.2.5</version>
                     <configuration>
                         <argLine>@{argLine} -Dfile.encoding=UTF-8</argLine>
+                        <useManifestOnlyJar>false</useManifestOnlyJar>
                     </configuration>
                 </plugin>
 
