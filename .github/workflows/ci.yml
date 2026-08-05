@@ -32,11 +32,17 @@ jobs:
 
       # 显式带上 spring-boot2：只开 integration-check 会停用 activeByDefault 的 boot2 profile
       # JDK8 forked VM 跑完全部 core 测试后偶发 NoClassDefFoundError（surefire StringUtils）：
-      # 单 fork 复用 + 大量自定义 ClassLoader（LingClassLoader/CloseAwareClassLoader）累积压力。
-      # 给 forked VM 的 Metaspace 留 1g 余量、初始 256m，消除清理阶段引导类解析失败。
+      # 原始异常通常是 OOM（surefire dump 机制在 OOM 后加载 StringUtils 又失败）。
+      # 单 fork 复用 + 大量自定义 ClassLoader 累积。给 forked VM 加 heap 2g + Metaspace 1g 余量。
       # 仅 CI 注入，pom.xml 的 argLine 不动，本地构建不受影响。
       - name: Build & Test
-        run: mvn -B clean verify -Pspring-boot2,integration-check -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+        run: mvn -B clean verify -Pspring-boot2,integration-check -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+
+      # 失败时打印 surefire dump 文件，暴露原始异常（NoClassDefFoundError 是 dump 路径的二次错误）
+      - name: Print surefire dump on failure
+        if: failure()
+        run: |
+          find . -name '*.dump*' -path '*/surefire-reports/*' -print -exec cat {} \; || true
 
       - name: Upload JaCoCo Coverage Report
         if: always()
@@ -74,10 +80,13 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
+      # 用 install 而非 verify：把 reactor 产物（含公共 starter jar）装入本地仓库，
+      # 供后续 SB3 gateway mapping smoke 的 -pl 单模块步骤解析依赖
       - name: Build & Test (Spring Boot 3)
-        run: mvn -B clean verify -Pspring-boot3
+        run: mvn -B clean install -Pspring-boot3
 
       # 双栈冒烟：显式再跑 SB3 网关映射单测，防止 AutoConfig 与映射类漂移被全量日志淹没
+      # 依赖上一步 install 装入本地仓库的公共 starter jar；-pl 单模块无需 -am
       - name: SB3 gateway mapping smoke
         run: mvn -B -pl lingframe-runtime/lingframe-spring-boot3-starter test -Dtest=LingGatewayHandlerMappingTest -Pspring-boot3
 
@@ -156,7 +165,7 @@ jobs:
           cache: 'maven'
 
       - name: Generate Coverage
-        run: mvn -B clean verify -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+        run: mvn -B clean verify -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
 
       - name: Check Coverage Threshold
         run: |
