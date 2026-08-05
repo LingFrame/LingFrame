@@ -1,6 +1,10 @@
 package com.lingframe.core.ling;
 
 import com.lingframe.api.annotation.LingService;
+import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.context.DefaultLingContext;
+import com.lingframe.core.event.EventBus;
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -140,6 +144,38 @@ class LingServiceRegistrarTest {
             // 隐式注册不应发生——ImplicitBean 无 @LingService 方法，也不应按接口注册
             verify(registry, never()).registerServiceMetadata(
                     anyString(), anyString(), any(String[].class), anyString());
+        }
+    }
+
+    @Nested
+    @DisplayName("版本派生")
+    class VersionDerivation {
+
+        @Test
+        @DisplayName("有实例上下文时 provider 注册携带版本（lingId:version）")
+        void versionDerivedFromInstanceContext() {
+            LingInstance instanceMock = mock(LingInstance.class);
+            when(instanceMock.getLingId()).thenReturn("user-ling");
+            when(instanceMock.getVersion()).thenReturn("2.0.0");
+            DefaultLingContext context = new DefaultLingContext(
+                    instanceMock, mock(LingRepository.class), registry,
+                    mock(InvocationPipelineEngine.class), mock(PermissionService.class), new EventBus());
+            LingServiceRegistrar registrar = new LingServiceRegistrar(registry, filter, true, context);
+
+            registrar.register("user-ling", new MethodAnnotatedBean(), MethodAnnotatedBean.class);
+
+            // 版本真源 = 实例上下文：同一灵元多版本并存时以 lingId:version 区分候选
+            verify(registry).registerProvider(eq("sendSms"), eq("user-ling"), eq("2.0.0"), eq(0));
+        }
+
+        @Test
+        @DisplayName("无对应上下文时 provider 注册版本为 null（不捏造版本）")
+        void versionNullWithoutContext() {
+            LingServiceRegistrar registrar = new LingServiceRegistrar(registry, filter, true);
+
+            registrar.register("user-ling", new MethodAnnotatedBean(), MethodAnnotatedBean.class);
+
+            verify(registry).registerProvider(eq("sendSms"), eq("user-ling"), isNull(), eq(0));
         }
     }
 

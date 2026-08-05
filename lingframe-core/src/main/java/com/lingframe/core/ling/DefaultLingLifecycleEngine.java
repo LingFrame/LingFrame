@@ -489,12 +489,21 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
                     runtime.getLingId(), replacedDefault.getVersion(), instance.getVersion());
             runtime.getInstancePool().moveToDying(replacedDefault);
             // 立即排空该池的濒死队列（含本次被替换实例）：
-            // 已无在途请求（isIdle）的实例直接经 InstanceCoordinator.tearDown 回收，
+            // 已无在途请求（isIdle）的实例直接回收，
             // 否则反复「部署新版本顶替旧版本」会持续累积 LingClassLoader + Spring 容器，
             // 导致 Metaspace/堆无界增长。
             // 此前替换时仍在途、现已空闲的实例也会在本次排空中一并回收（级联场景兜底）。
             // 仍未空闲的实例保留在队列，等待后续部署时的再次排空或显式卸载。
-            runtime.getInstancePool().cleanupIdleInstances(null);
+            // ⚠️ 回收必须走完整卸载（tearDown + 卸载钩子 + 关闭 ClassLoader + 泄漏检测），
+            // 不能只 tearDown 实例而放任 LingClassLoader 悬空：否则每次替换/重载都会
+            // 泄漏一个未关闭的类加载器，且无法通过 DefaultLeakDetector 验证 GC 回收。
+            runtime.getInstancePool().cleanupIdleInstances(instanceToReclaim -> {
+                // 被替换实例已从实例池移除，捞出定义未被清空前先取版本快照
+                String reclaimedVersion = instanceToReclaim.getVersion();
+                finalizeInstanceUnload(runtime.getLingId(), instanceToReclaim);
+                reconcileServiceRegistryAfterVersionUnload(
+                        runtime.getLingId(), runtime, reclaimedVersion);
+            });
         }
 
         // READY 事实向上游汇报，RuntimeCoordinator 再基于事件推导宏观状态。
@@ -649,12 +658,47 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     }
 
     private void unloadSingleInstance(String lingId, LingRuntime runtime, LingInstance instance) {
+        // 先取版本快照再 tearDown：tearDown 后实例定义被清空，getVersion() 将回归占位值
+        String version = instance.getVersion();
+        finalizeInstanceUnload(lingId, instance);
+        runtime.getInstancePool().removeInstance(instance);
+        reconcileServiceRegistryAfterVersionUnload(lingId, runtime, version);
+    }
+
+    /**
+     * 版本退役后的服务注册表精确清理。
+     * <p>
+     * 灵元仍存活其他版本实例时，只按版本驱逐 provider（{@code lingId:version}），
+     * 保留仍在服务的其他版本；最后一版由全量卸载路径 {@link #clearServiceRegistry} 接管。
+     */
+    private void reconcileServiceRegistryAfterVersionUnload(String lingId, LingRuntime runtime, String version) {
+        if (version == null) {
+            return;
+        }
+        if (runtime.getInstancePool().getAllInstances().isEmpty()) {
+            return;
+        }
+        lingServiceRegistry.evictProvider(lingId, version);
+        log.info("[{}] Version-scoped provider cleanup: version={}, other instances remain",
+                lingId, version);
+    }
+
+    /**
+     * 单实例完整卸载的资源回收段：tearDown 实例 + 卸载钩子 + 关闭 ClassLoader + 泄漏检测。
+     * <p>
+     * 注意：本方法不负责把实例从实例池移除——调用方需明确：
+     * <ul>
+     *   <li>显式卸载路径（{@link #unloadSingleInstance}）在回收段之外调用
+     *       {@link InstancePool#removeInstance} 完成成员移除；</li>
+     *   <li>{@link InstancePool#cleanupIdleInstances} 的 destroyer 回调场景由 removeIf
+     *       自己从濒死队列移除，禁止在本方法内再次 removeInstance（避免并发修改）。</li>
+     * </ul>
+     */
+    private void finalizeInstanceUnload(String lingId, LingInstance instance) {
+        // 先取快照再 tearDown：tearDown 后实例定义会被清空，getVersion()/getClassLoader() 将回归占位值。
         String version = instance.getVersion();
         ClassLoader classLoader = instance.getClassLoader();
-
         instanceCoordinator.tearDown(instance);
-        runtime.getInstancePool().removeInstance(instance);
-
         unloadCoordinator.onVersionUnload(lingId, version, classLoader);
         closeClassLoader(lingId, version, classLoader);
         unloadCoordinator.detectLeak(lingId, version, classLoader);

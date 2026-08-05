@@ -72,27 +72,12 @@ public interface LingServiceRegistry {
     List<String> getServicesByLingId(String lingId);
 
     /**
-     * 按契约 ID 反向索引灵元。
-     * <p>
-     * 契约 ID 可以是：
-     * <ul>
-     *   <li>完整 FQSID（如 {@code user-ling:com.example.UserService}）——精确等价匹配</li>
-     *   <li>裸契约名（如 {@code com.example.UserService}）——匹配所有 lingId 下注册该契约的灵元</li>
-     *   <li>短 ID（如 {@code sendSms}）——匹配所有 lingId 下注册该短 ID 的灵元</li>
-     * </ul>
-     * 路由层用此方法把「按接口类型」的查询从 O(n) 遍历降为 O(1) 反向索引命中。
-     *
-     * @param contractId 契约 ID（FQSID / 裸契约名 / 短 ID）
-     * @return 注册了该契约的所有灵元 ID；未命中返回空列表
-     */
-    List<String> getLingIdsByContractId(String contractId);
-
-    /**
      * 按契约 ID 查询所有提供方（含权重）。
      * <p>
-     * 路由升维后的主入口，替代 {@link #getLingIdsByContractId}。
-     * 返回的描述符列表包含每个提供方的 lingId 和权重，
+     * 路由主入口：返回的描述符列表包含每个提供方的 lingId 和权重，
      * 供 {@code ProviderWeightRouter} 做 L0 provider 级选路。
+     * 同一契约同一时刻允许多 provider 共存（同灵元多版本 / 多租户），
+     * 每条描述符以 {@code lingId:version} 的 providerKey 区分候选。
      *
      * @param contractId 契约 ID
      * @return 提供方描述符列表；未命中返回空列表
@@ -123,26 +108,19 @@ public interface LingServiceRegistry {
      * 注册契约提供方。
      * <p>
      * 灵元和灵核在注册服务契约时同步调用，声明「本 lingId 以什么权重提供该契约」。
-     * 幂等：同一 (contractId, lingId) 重复注册时 weight 以最后一次为准。
-     *
-     * @param contractId 契约 ID
-     * @param lingId 提供方灵元/灵核 ID
-     * @param weight 初始权重 0-100
-     * @throws RoutingArchitectureViolationException 候选数超过 2
-     */
-    void registerProvider(String contractId, String lingId, int weight);
-
-    /**
-     * 注册契约提供方（带版本）。
-     * <p>
-     * 迭代期使用：同一灵元部署两个版本时，Provider 标识为 {@code lingId:version}。
      * 幂等：同一 (contractId, providerKey) 重复注册时 weight 以最后一次为准。
+     * <p>
+     * 版本语义：version 由实例上下文派生，provider 注册标识恒为 {@code lingId}（version 为 null）
+     * 或 {@code lingId:version}；灵元多版本并存时以 version 区分候选。灵核无版本概念传 null。
+     * <p>
+     * 默认基线：某契约尚无任何 provider 时，首个 provider 以 weight=100 成为默认基线
+     * （替代「无灵核时全部权重为 0」的空转态）；已有 provider 的契约保持传入权重。
+     * 契约下权重全部为 0 时同样会提升首个 provider 到 100，保证始终存在一个「默认 provider」。
      *
      * @param contractId 契约 ID
      * @param lingId 提供方灵元/灵核 ID
-     * @param version 版本标识（迭代期不可为 null）
-     * @param weight 初始权重 0-100
-     * @throws RoutingArchitectureViolationException 候选数超过 2
+     * @param version 版本标识（灵元场景由上下文派生；灵核传 null）
+     * @param weight 请求权重 0-100；契约首 provider 会被提升为基础 100
      */
     void registerProvider(String contractId, String lingId, String version, int weight);
 
@@ -154,6 +132,17 @@ public interface LingServiceRegistry {
      * @param lingId 灵元/灵核 ID
      */
     void evictProvider(String lingId);
+
+    /**
+     * 按版本驱逐指定灵元某版本的所有提供方注册条目。
+     * <p>
+     * 迭代期退役旧版本时调用（引擎判断灵元仍有其他版本实例存活时），
+     * 只移除 {@code lingId:version} 的 provider，保留仍在服务的其他版本 provider。
+     *
+     * @param lingId  灵元 ID
+     * @param version 待驱逐的版本标识；为 null 时不做任何操作
+     */
+    void evictProvider(String lingId, String version);
 
     /**
      * 精细化注销指定契约下的某个 provider。

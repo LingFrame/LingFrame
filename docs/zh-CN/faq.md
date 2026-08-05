@@ -129,10 +129,10 @@ private UserService userService;
 ```bash
 curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/order-ling/weight \
   -H "Content-Type: application/json" \
-  -d '{"providerKey": "order-ling", "weight": 20}'
+  -d '{"providerKey": "order-ling:1.1.0", "weight": 20}'
 ```
 
-> `providerKey` 即路由键——迁移期裸 `lingId`，迭代期 `lingId:version`，与路由读路径键化一致。`weight` 为 0-100 整数；Dashboard 下发后立即覆盖 `ProviderWeightRouter` 内的运行期权重，IPC 与 Web 治理链同时生效。详见 [Dashboard 文档](dashboard.md)。
+> `providerKey` 即路由键——灵元恒为 `lingId:version`（版本真源来自绑定实例上下文），灵核为裸 `lingcore-app`，写侧注册与路由读路径键化一致。`weight` 为 0-100 整数；Dashboard 下发后立即覆盖 `ProviderWeightRouter` 内的运行期权重，IPC 与 Web 治理链同时生效。详见 [Dashboard 文档](dashboard.md)。
 
 ### Q14: 如何处理灵元依赖？
 

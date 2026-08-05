@@ -166,7 +166,7 @@ curl http://localhost:8888/user-ling/user/listUsers
 
 ### Dashboard 预览
 
-[![灵珑 Dashboard](./docs/images/dashboard.zh-CN.png)](https://dashboard.lingframe.cn)
+[![灵珑 Dashboard](./docs/images/dashboard.0.4.0.png)](https://dashboard.lingframe.cn)
 
 > 点击截图即可进入在线体验；线上环境已内置示例灵元，支持实时查看生命周期、路由切流与模拟演练。
 

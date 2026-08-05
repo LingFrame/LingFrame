@@ -156,8 +156,9 @@ public class DashboardAutoConfiguration {
             EventBus eventBus,
             PermissionService permissionService,
             InvocationPipelineEngine pipelineEngine,
-            LingFrameInfo lingFrameInfo) {
-        return new SimulateService(lingRepository, eventBus, permissionService, pipelineEngine, lingFrameInfo);
+            LingFrameInfo lingFrameInfo,
+            LingServiceRegistry lingServiceRegistry) {
+        return new SimulateService(lingRepository, eventBus, permissionService, pipelineEngine, lingFrameInfo, lingServiceRegistry);
     }
 
     @Bean

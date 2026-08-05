@@ -299,11 +299,12 @@ ITERATING      ──rollback──────→ LING_EXCLUSIVE
 - 归零并确认退出的是 `oldCandidateKey` → 视为"迁移/迭代完成"（前进至 EXCLUSIVE 阶段，注销旧候选位）。
 - 归零并确认退出的是 `newCandidateKey` → 视为"迁移/迭代回滚"（后退至上一个 EXCLUSIVE 阶段，注销新候选位）。
 
-迭代期 Provider 标识：
+Provider 标识与版本化注册：
 
-- **迁移期（CORE ↔ LING）**：灵核标识 `lingcore-app`，灵元标识为裸 `lingId`。
-- **迭代期（v1 ↔ v2）**：同一灵元部署两个版本时，Provider 标识显式升级为 `lingId:version`（例如 `user-ling:1.0.0` 与 `user-ling:1.1.0`）。
-- **迭代完成确认相变后**：保留版本的 Provider 标识收敛回裸 `lingId`。
+- **注册键恒带版本**：写侧 `registerProvider(contractId, lingId, version, weight)` 统一携带版本——灵核标识裸 `lingcore-app`（无实例上下文，版本为 `null`），灵元标识恒为 `lingId:version`（版本真源 `DefaultLingContext.getVersion()`，从绑定实例派生）。迁移期与迭代期一致，不再区分。
+- **同灵元多版本并存**：同一灵元部署两个版本时并存两个 provider 候选（例如 `user-ling:1.0.0` 与 `user-ling:1.1.0`），路由层按权重分流。
+- **退役版本精确清理**：实例退役时按 `lingId:version` 精确驱逐该版本 provider，其余版本继续服务；灵元全量卸载才做全量 evict（`evictProvider(lingId)` / `evict(lingId)`）。
+- **无灵核基线兜底**：某契约下无 `weight=100` provider 且所有 provider 权重为 0 时，首个注册 provider 提升为基线 100，杜绝「全部为 0 的静默空转」。Dashboard 权重覆盖的 `providerKey` 恒为 `lingId:version`（灵核为 `lingcore-app`）。
 
 持久化与重启一致性：
 

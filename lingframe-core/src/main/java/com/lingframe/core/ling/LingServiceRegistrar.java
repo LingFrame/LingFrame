@@ -304,6 +304,7 @@ public class LingServiceRegistrar {
      * <p>
      * 路由升维：无论走哪条路径，都同步调用 {@code registerProvider} 登记 provider 索引，
      * 使 {@code ProviderWeightRouter} 能按契约查到所有提供方。
+     * 版本标识从绑定实例上下文派生（{@code lingId:version}），保证同灵元多版本并存时候选可区分。
      */
     private void registerViaContext(String fqsid, Object bean, Method method) {
         if (context != null) {
@@ -315,11 +316,14 @@ public class LingServiceRegistrar {
             registry.registerImplementationClassName(fqsid, bean.getClass().getName());
         }
         // 路由升维：从 FQSID 提取 contractId，登记 provider 索引
-        // 幂等：同一 (contractId, lingId) 重复注册 weight 以最新为准
+        // 幂等：同一 (contractId, providerKey) 重复注册 weight 以最新为准
         String lingId = extractLingIdFromFqsid(fqsid);
         String contractId = extractContractIdFromFqsid(fqsid);
         if (lingId != null && contractId != null) {
-            registry.registerProvider(contractId, lingId, defaultWeight);
+            // 版本真源：从绑定实例的上下文派生——同一灵元多版本并存时以 lingId:version 区分候选；
+            // 灵核上下文（instance=null）无版本概念，注册键保持裸 lingId
+            String version = context != null ? context.getVersion() : null;
+            registry.registerProvider(contractId, lingId, version, defaultWeight);
         }
     }
 

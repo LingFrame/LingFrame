@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -83,6 +84,7 @@ class DashboardLingOperationsTest {
 
         when(instancePool.getDefault()).thenReturn(target);
         when(instancePool.getInstance("1.0.0-reload-1")).thenReturn(reloaded);
+        when(instancePool.getAllInstances()).thenReturn(Collections.singletonList(target));
 
         String lingId = operations.reloadLing("ling1", null);
 
@@ -91,6 +93,45 @@ class DashboardLingOperationsTest {
         verify(lifecycleEngine).undeploy("ling1", target);
         assertEquals(1, eventStore.getEvents("ling1").size());
         assertEquals("RELOAD", eventStore.getEvents("ling1").get(0).getType());
+    }
+
+    @Test
+    @DisplayName("默认实例重载后已被替换流程回收时不再重复卸载旧实例")
+    void shouldSkipUninstallWhenOldDefaultAlreadyReclaimed() {
+        LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
+        LingRepository lingRepository = mock(LingRepository.class);
+        DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
+        DashboardLingSourceResolver sourceResolver = mock(DashboardLingSourceResolver.class);
+        DashboardLingOperations operations = new DashboardLingOperations(
+                lifecycleEngine, lingRepository, null, eventStore, sourceResolver);
+
+        LingRuntime runtime = mock(LingRuntime.class);
+        InstancePool instancePool = mock(InstancePool.class);
+        LingInstance target = mock(LingInstance.class);
+        LingInstance reloaded = mock(LingInstance.class);
+
+        when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
+        when(runtime.getInstancePool()).thenReturn(instancePool);
+        when(sourceResolver.selectStableInstance(runtime)).thenReturn(target);
+        when(target.getVersion()).thenReturn("1.0.0");
+        when(target.getLabels()).thenReturn(new HashMap<String, String>());
+
+        File source = createLingDirectory("ling1", "1.0.0");
+        when(sourceResolver.resolveSourceFile("ling1", "1.0.0")).thenReturn(source);
+        when(sourceResolver.buildReloadVersion(runtime, "1.0.0")).thenReturn("1.0.0-reload-1");
+        doNothing().when(sourceResolver).markReload(any(LingDefinition.class), any(HashMap.class), eq("1.0.0-reload-1"));
+
+        when(instancePool.getDefault()).thenReturn(target);
+        when(instancePool.getInstance("1.0.0-reload-1")).thenReturn(reloaded);
+        // 模拟 deployForReload 即时回收：旧默认实例已从实例池移除（被替换流程清理）
+        when(instancePool.getAllInstances()).thenReturn(Collections.emptyList());
+
+        String lingId = operations.reloadLing("ling1", null);
+
+        assertEquals("ling1", lingId);
+        verify(lifecycleEngine).deployForReload(any(LingDefinition.class), same(source), eq(true), any(HashMap.class));
+        verify(lifecycleEngine, never()).undeploy("ling1", target);
+        verify(lifecycleEngine, never()).undeploy("ling1", "1.0.0");
     }
 
     @Test

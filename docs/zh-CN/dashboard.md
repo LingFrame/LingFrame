@@ -98,7 +98,7 @@ Dashboard 后端控制面默认暴露在：
 - 安装接口需要额外启用：`lingframe.dashboard.install-enabled=true`
 - 热重载接口只在 `lingframe.dev-mode=true` 时可用
 
-[![LingFrame Dashboard 示例](./../images/dashboard.zh-CN.png)](https://dashboard.lingframe.cn)
+[![LingFrame Dashboard 示例](./../images/dashboard.0.4.0.png)](https://dashboard.lingframe.cn)
 
 > 点击截图即可进入在线体验。
 > 在线演示访问令牌：`lingframe`。
@@ -189,12 +189,12 @@ Token 只走 Header：`X-Access-Token`。
 
 ```json
 {
-  "providerKey": "order-ling",
+  "providerKey": "order-ling:1.1.0",
   "weight": 20
 }
 ```
 
-> `providerKey` 即路由键——迁移期裸 `lingId`，迭代期 `lingId:version`，与路由读路径键化一致。`weight` 为 0-100 整数；Dashboard 下发后立即覆盖 `ProviderWeightRouter` 内的运行期权重，IPC 与 Web 治理链同时生效。
+> `providerKey` 即路由键——灵元恒为 `lingId:version`（版本真源来自绑定实例上下文），灵核为裸 `lingcore-app`，写侧注册与路由读路径键化一致。`weight` 为 0-100 整数；Dashboard 下发后立即覆盖 `ProviderWeightRouter` 内的运行期权重，IPC 与 Web 治理链同时生效。
 
 ### 治理规则
 
@@ -258,7 +258,7 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/reload
 ```bash
 curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/order-ling/weight \
   -H "Content-Type: application/json" \
-  -d '{"providerKey": "order-ling", "weight": 20}'
+  -d '{"providerKey": "order-ling:1.1.0", "weight": 20}'
 ```
 
 ## 注意事项

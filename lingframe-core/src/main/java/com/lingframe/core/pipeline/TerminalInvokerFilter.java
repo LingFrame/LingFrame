@@ -52,6 +52,32 @@ public class TerminalInvokerFilter implements LingInvocationFilter {
         // ⚠️ 终端执行只从显式协议分区读取目标实例和解析结果，不再依赖 attachments + magic key
         LingInstance target = ctx.routing().getTargetInstance();
         Class<?>[] resolvedTypes = ctx.resolution().getResolvedParameterTypes();
+
+        // SIMULATION 契约级干跑（无具体方法名：压测 / 资源模拟）：路由目标存在即视为模拟成功，
+        // 不解析真实 Bean 与 MethodHandle——契约级入口没有方法名，getMethod(null, ...) 必然失败；
+        // 资源模拟没有 FQSID，getServiceBean 也必然取不到 Bean。终端不真实执行，验证到路由层即可。
+        if (ctx.execution().getMode().isSimulation()
+                && (ctx.getMethodName() == null || ctx.getMethodName().isEmpty())) {
+            if (target == null) {
+                String action = ctx.governance().getAuditAction() != null ? ctx.governance().getAuditAction() : "UNKNOWN";
+                ctx.execution().addTrace(EngineTrace.builder()
+                        .source("TerminalInvokerFilter")
+                        .action("🛡️ Simulation completed without concrete route target, action=" + action)
+                        .type("OK")
+                        .depth(10)
+                        .build());
+                return "Simulation Success: " + action;
+            }
+            ctx.execution().addTrace(EngineTrace.builder()
+                    .source("TerminalInvokerFilter")
+                    .action("🛡️ Simulation reached terminal target " + target.getLingId())
+                    .type("OK")
+                    .depth(10)
+                    .build());
+            String simulatedTarget = ctx.getServiceFQSID() != null ? ctx.getServiceFQSID() : target.getLingId();
+            return "Simulation Success for: " + simulatedTarget;
+        }
+
         if (target == null || resolvedTypes == null) {
             if (ctx.execution().getMode().isSimulation()) {
                 String action = ctx.governance().getAuditAction() != null ? ctx.governance().getAuditAction() : "UNKNOWN";

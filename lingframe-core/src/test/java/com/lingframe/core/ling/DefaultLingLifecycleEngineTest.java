@@ -20,6 +20,7 @@ import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.LingLoaderFactory;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.DisplayName;
@@ -388,6 +389,107 @@ class DefaultLingLifecycleEngineTest {
     }
 
     @Test
+    @DisplayName("替换默认实例时被替换实例应完整卸载并关闭 ClassLoader、触发泄漏检测")
+    void reclaimedOldDefaultShouldRunFullUnloadIncludingCloseClassLoader() throws Exception {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        LingUnloadCoordinator unloadCoordinator = mock(LingUnloadCoordinator.class);
+        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(mock(ContainerFactory.class))
+                .permissionService(mock(PermissionService.class))
+                .lingLoaderFactory(mock(LingLoaderFactory.class))
+                .verifiers(Collections.emptyList())
+                .eventBus(eventBus)
+                .lingFrameConfig(LingFrameConfig.builder().build())
+                .lingRepository(new DefaultLingRepository())
+                .lingServiceRegistry(mock(LingServiceRegistry.class))
+                .pipelineEngine(mock(InvocationPipelineEngine.class))
+                .lingResourceManager(null)
+                .unloadCoordinator(unloadCoordinator)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
+
+        InstanceCoordinator coordinator = new InstanceCoordinator(eventBus);
+        runtimeCoordinator.register("ling1");
+        LingRuntime runtime = new LingRuntime(
+                "ling1",
+                LingRuntimeConfig.defaults(),
+                eventBus,
+                coordinator,
+                runtimeCoordinator);
+
+        TrackedCleanableClassLoader tracked = new TrackedCleanableClassLoader();
+        LingContainer oldContainer = mock(LingContainer.class);
+        when(oldContainer.isActive()).thenReturn(true);
+        when(oldContainer.getClassLoader()).thenReturn(tracked);
+        LingDefinition oldDef = new LingDefinition();
+        oldDef.setId("ling1");
+        oldDef.setVersion("1.0.0");
+        oldDef.setMainClass("demo.Main");
+        LingInstance v1 = new LingInstance(oldContainer, oldDef, eventBus);
+        coordinator.prepare(v1);
+        coordinator.start(v1);
+        coordinator.markReady(v1);
+        runtime.getInstancePool().addInstance(v1, true);
+
+        LingInstance v2 = createReadyInstance("ling1", "2.0.0", coordinator);
+        invokePublishReady(engine, runtime, v2, true);
+
+        assertTrue(tracked.closed.get(),
+                "被替换的空闲旧实例应关闭其 ClassLoader，否则替换/重载持续泄漏 LingClassLoader");
+        verify(unloadCoordinator).onVersionUnload(
+                ArgumentMatchers.eq("ling1"), ArgumentMatchers.eq("1.0.0"), ArgumentMatchers.same(tracked));
+        verify(unloadCoordinator).detectLeak(
+                ArgumentMatchers.eq("ling1"), ArgumentMatchers.eq("1.0.0"), ArgumentMatchers.same(tracked));
+
+        runtimeCoordinator.stop();
+    }
+
+    @Test
+    @DisplayName("替换默认实例退役旧版本时，应版本级精确清理 provider（其他版本仍服务时不做全量 evict）")
+    void replacingDefaultShouldEvictProviderByVersionOnly() throws Exception {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
+        LingUnloadCoordinator unloadCoordinator = mock(LingUnloadCoordinator.class);
+        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(mock(ContainerFactory.class))
+                .permissionService(mock(PermissionService.class))
+                .lingLoaderFactory(mock(LingLoaderFactory.class))
+                .verifiers(Collections.emptyList())
+                .eventBus(eventBus)
+                .lingFrameConfig(LingFrameConfig.builder().build())
+                .lingRepository(new DefaultLingRepository())
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(mock(InvocationPipelineEngine.class))
+                .lingResourceManager(null)
+                .unloadCoordinator(unloadCoordinator)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
+
+        InstanceCoordinator coordinator = new InstanceCoordinator(eventBus);
+        runtimeCoordinator.register("ling1");
+        LingRuntime runtime = new LingRuntime(
+                "ling1", LingRuntimeConfig.defaults(), eventBus, coordinator, runtimeCoordinator);
+
+        LingInstance v1 = createReadyInstance("ling1", "1.0.0", coordinator);
+        runtime.getInstancePool().addInstance(v1, true);
+        LingInstance v2 = createReadyInstance("ling1", "2.0.0", coordinator);
+        invokePublishReady(engine, runtime, v2, true);
+
+        // 旧版本 v1 退役时 v2 仍在服务 —— 只按版本精确清理 provider，不做全量 evict
+        verify(serviceRegistry).evictProvider("ling1", "1.0.0");
+        verify(serviceRegistry, never()).evictProvider("ling1");
+        verify(serviceRegistry, never()).evict("ling1");
+
+        runtimeCoordinator.stop();
+    }
+
+    @Test
     @DisplayName("全量卸载的 drain 窗口内 Runtime 应呈现 STOPPING 而非 ACTIVE（C3）")
     void fullUndeployDrainWindowShouldPresentRuntimeStopping() throws Exception {
         EventBus eventBus = new EventBus();
@@ -512,6 +614,15 @@ class DefaultLingLifecycleEngineTest {
         coordinator.start(instance);
         coordinator.markReady(instance);
         return instance;
+    }
+
+    private static final class TrackedCleanableClassLoader extends ClassLoader implements AutoCloseable {
+        private final AtomicBoolean closed = new AtomicBoolean(false);
+
+        @Override
+        public void close() {
+            closed.set(true);
+        }
     }
 
     private DefaultLingLifecycleEngine createMinimalEngine(EventBus eventBus, RuntimeCoordinator runtimeCoordinator) {

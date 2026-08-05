@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <ul>
  *   <li>仅显式 @LingService 标注的方法/类型会注册</li>
  *   <li>灵元 Bean 实现的业务接口不会被自动注册</li>
- *   <li>反向索引中不含隐式接口键</li>
+ *   <li>provider 索引中不含隐式接口契约</li>
  * </ul>
  */
 @DisplayName("implicitRegistration=false 行为测试")
@@ -47,12 +47,13 @@ class ImplicitRegistrationDisabledTest {
 
         registrar.register("user-ling", new MixedBean(), MixedBean.class);
 
-        // 显式应注册
-        assertFalse(registry.getLingIdsByContractId("explicitSvc").isEmpty());
-        assertTrue(registry.getLingIdsByContractId("explicitSvc").contains("user-ling"));
+        // 显式应注册为 provider
+        assertFalse(registry.getProvidersByContractId("explicitSvc").isEmpty());
+        assertTrue(registry.getProvidersByContractId("explicitSvc").stream()
+                .anyMatch(p -> "user-ling".equals(p.getLingId())));
 
-        // 隐式不应注册——按接口全限定名反查应空
-        assertTrue(registry.getLingIdsByContractId(TestBusinessService.class.getName()).isEmpty());
+        // 隐式不应注册——按接口全限定名反查 provider 应空
+        assertTrue(registry.getProvidersByContractId(TestBusinessService.class.getName()).isEmpty());
     }
 
     @Test
@@ -65,8 +66,8 @@ class ImplicitRegistrationDisabledTest {
         registrar.register("user-ling", new MixedBean(), MixedBean.class);
 
         // 显式应注册
-        assertFalse(registry.getLingIdsByContractId("explicitSvc").isEmpty());
+        assertFalse(registry.getProvidersByContractId("explicitSvc").isEmpty());
         // 隐式也应注册
-        assertFalse(registry.getLingIdsByContractId(TestBusinessService.class.getName()).isEmpty());
+        assertFalse(registry.getProvidersByContractId(TestBusinessService.class.getName()).isEmpty());
     }
 }

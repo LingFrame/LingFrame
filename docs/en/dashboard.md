@@ -98,7 +98,7 @@ Where:
 - The install API needs extra enablement: `lingframe.dashboard.install-enabled=true`
 - The hot-reload API is only available when `lingframe.dev-mode=true`
 
-[![LingFrame Dashboard Example](./images/dashboard.png)](https://dashboard.lingframe.cn)
+[![LingFrame Dashboard Example](../images/dashboard.0.4.0.en.png)](https://dashboard.lingframe.cn)
 
 > Click the screenshot to open the live demo.
 > Online demo access token: `lingframe` .

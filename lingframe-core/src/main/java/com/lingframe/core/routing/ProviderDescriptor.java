@@ -13,9 +13,10 @@ import lombok.Getter;
  * 路由层只认 weight 和方法资格，不引用实现方身份（灵核/灵元）。
  * 身份在注册时沉淀为 weight 数值：灵核默认 weight=100，灵元默认 weight=0。
  * <p>
- * 迭代期版本区分：当同一灵元部署两个版本时，Provider 注册标识显式升级为
- * {@code lingId:version}（例如 {@code user-ling:1.0.0} 与 {@code user-ling:1.1.0}）。
- * 迭代完成并确认相变后，保留版本的 Provider 标识收敛回裸 {@code lingId}。
+ * 迭代期版本区分：灵元 provider 注册标识恒为 {@code lingId:version}
+ * （例如 {@code user-ling:1.0.0} 与 {@code user-ling:1.1.0}），
+ * 由实例上下文在注册时派生，退役版本通过「逐版本精确清理」从索引移除；
+ * 灵核无版本概念，注册标识为裸 {@code lingcore-app}。
  */
 @Getter
 public class ProviderDescriptor {
@@ -29,9 +30,8 @@ public class ProviderDescriptor {
     /**
      * 版本标识。
      * <p>
-     * 迁移期：灵核为 {@code lingcore-app}，灵元为裸 {@code lingId}，version 可为 null。
-     * 迭代期：标识为 {@code lingId:version}，version 不可为 null。
-     * 迭代完成相变确认后，保留版本的标识收敛回裸 {@code lingId}。
+     * 灵核为 {@code lingcore-app} 无版本概念，version 为 null；
+     * 灵元注册标识恒为 {@code lingId:version}，version 由实例上下文派生。
      */
     private final String version;
 

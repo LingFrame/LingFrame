@@ -240,8 +240,8 @@ public class MigrationStateHolder {
         List<String> contractsToEvict = new ArrayList<>();
         for (Map.Entry<String, PhaseRecord> e : phases.entrySet()) {
             PhaseRecord rec = e.getValue();
-            // 培配候选键:优先按迭代期 lingId:version 命中,其次按迁移期裸 lingId 命中
-            // 不用 startsWith 避免前缀碰撞(user-ling 命中卸载会误删 user-ling-v2 命中无关记录)
+            // 匹配候选键：优先按 lingId:version 命中，其次按裸 lingId（仅灵核 lingcore-app）
+            // 不用 startsWith 避免前缀碰撞(user-ling 卸载会误删 user-ling-v2 无关记录)
             boolean involved = matchesCandidate(rec.oldCandidate, lingId)
                     || matchesCandidate(rec.newCandidate, lingId);
             if (involved) {
@@ -264,24 +264,24 @@ public class MigrationStateHolder {
     }
 
     /**
-     * 培配候选键是否属于指定灵元。
+     * 判断候选键是否属于指定灵元。
      * <p>
-     * 培配键可能命中裸 lingId（迁移期灵元）或 lingId:version（迭代期灵元版本）;
-     * 命中 lingcore-app 命中灵核时不培配（灵核卸载不调本方法）。
+     * 候选键可能是裸 lingId（仅灵核 lingcore-app）或 lingId:version（灵元版本）;
+     * 命中 lingcore-app 时不匹配（灵核卸载不调本方法）。
      * <p>
      * 不用 {@code String.startsWith} 避免前缀碰撞:
-     * 例如 {@code user-ling} 命中卸载时 {@code startsWith} 会误删 {@code user-ling-v2}
-     * 命中无关迁移记录。
+     * 例如 {@code user-ling} 卸载时 {@code startsWith} 会误删 {@code user-ling-v2}
+     * 的无关迁移记录。
      *
-     * @param candidateKey 命中候选键（{@link PhaseRecord#getOldCandidate} / {@link PhaseRecord#getNewCandidate})
-     * @param lingId      命中卸载灵元 ID
-     * @return true 命中候选属于该灵元
+     * @param candidateKey 候选键（{@link PhaseRecord#getOldCandidate} / {@link PhaseRecord#getNewCandidate})
+     * @param lingId      卸载灵元 ID
+     * @return true 表示候选属于该灵元
      */
     private boolean matchesCandidate(String candidateKey, String lingId) {
         if (candidateKey == null || lingId == null) {
             return false;
         }
-        // 命中裸 lingId 命中或 lingId:version 命中前缀（命中 ':' 命中分隔符后才安全）
+        // 裸 lingId 或 lingId:version 前缀（以 ':' 分隔后才安全）
         return candidateKey.equals(lingId)
                 || candidateKey.startsWith(lingId + ":");
     }

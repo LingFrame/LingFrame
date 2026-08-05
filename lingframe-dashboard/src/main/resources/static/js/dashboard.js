@@ -7,8 +7,9 @@ createApp({
     setup() {
         // ==================== 状态 ====================
         const lings = ref([]);
-        const activeId = ref(null);
-        const activeNav = ref('overview');
+        // 持久化视图与选中灵元：刷新后恢复上下文（选中灵元可能已卸载，refreshLings 时会校验清空）
+        const activeId = ref(localStorage.getItem('lingframe_active_ling') || null);
+        const activeNav = ref(localStorage.getItem('lingframe_nav') || 'overview');
         const lingSearch = ref('');
         // 灰度滑块已废弃：迁移阶段由后端 MigrationStateHolder 推进
         const migrationPhase = ref('CORE_EXCLUSIVE');
@@ -190,13 +191,13 @@ createApp({
         });
 
         // 治理中心 Tab 状态（记忆到 localStorage）
+        // 注：流量控制 Tab 已撤销——迁移阶段推进并入「契约路由」，压测/命中指标/审计并入党务验证视图
         const governanceTabs = computed(() => [
             { key: 'config', label: t('governance.tabConfig') },
-            { key: 'traffic', label: t('governance.tabTraffic') },
             { key: 'health', label: t('governance.tabHealth') },
             { key: 'readiness', label: t('governance.tabReadiness') }
         ]);
-        const activeGovernanceTab = ref(localStorage.getItem('lingframe_gov_tab') || 'config');
+        const activeGovernanceTab = ref(['config', 'health', 'readiness'].includes(localStorage.getItem('lingframe_gov_tab')) ? localStorage.getItem('lingframe_gov_tab') : 'config');
         const switchGovernanceTab = (key) => {
             activeGovernanceTab.value = key;
             localStorage.setItem('lingframe_gov_tab', key);
@@ -324,9 +325,10 @@ createApp({
         const selectContract = async (id) => {
             selectedContractId.value = id;
             await fetchRoutingDetail(id);
+            fetchMigrationPhase();
         };
 
-        // providerKey 即路由键：迁移期裸 lingId，迭代期 lingId:version，与后端读路径键化一致
+        // providerKey 即路由键：灵元恒为 lingId:version，灵核为 lingcore-app，与后端读路径键化一致
         // 传错形会致权重落键错位、读路径静默丢失
         const saveProviderWeight = async (lingId, version) => {
             if (!selectedContractId.value) return;
@@ -356,40 +358,6 @@ createApp({
             } finally {
                 savingWeight[providerKey] = false;
             }
-        };
-
-        const rollbackContract = () => {
-            if (!selectedContractId.value) return;
-            // 复用既有 modal 二次确认机制，与卸载确认风格一致
-            modal.show = true;
-            modal.loading = false;
-            modal.isDanger = false;
-            modal.showVersionSelect = false;
-            modal.versions = [];
-            modal.title = t('contractRouting.rollbackConfirmTitle');
-            modal.message = t('contractRouting.rollbackConfirmMessage', { contractId: selectedContractId.value });
-            modal.actionText = t('contractRouting.rollbackAction');
-            modal.onConfirm = async () => {
-                modal.loading = true;
-                try {
-                    const data = await api.post(
-                        '/contract-routing/' + encodeURIComponent(selectedContractId.value) + '/rollback',
-                        {}
-                    );
-                    routingDetail.value = data;
-                    // 同步表单：回滚后所有 overrideWeight 应为 null
-                    (data?.providers || []).forEach(p => {
-                        const pk = p.version ? `${p.lingId}:${p.version}` : p.lingId;
-                        weightEditForm[pk] = p.overrideWeight === null || p.overrideWeight === undefined ? null : p.overrideWeight;
-                    });
-                    showToast(t('toast.rollbackDone'), 'success');
-                } catch (e) {
-                    showToast(t('toast.rollbackFailed') + ': ' + e.message, 'error');
-                } finally {
-                    modal.loading = false;
-                    modal.show = false;
-                }
-            };
         };
 
         // ==================== 迁移进度看板 ====================
@@ -579,14 +547,30 @@ createApp({
         const canCanary = computed(() => (activeLing.value?.versionDetails?.length || 0) >= 2);
         const canOperate = computed(() => activeLing.value?.status === 'ACTIVE' || activeLing.value?.status === 'DEGRADED');
 
-        // 迁移阶段查询（替代金丝雀决策辅助）
+        // —— 迁移阶段：按「契约」驱动（迁移API以契约为主键，灵元身份从路由 detail 的 provider 推导）——
+        // provider 身份以 coreBaseline 判定（ProviderWeightDTO 仅有 coreBaseline 字段，无 kind）
+        const routingHasCore = computed(() => (routingDetail.value?.providers || []).some(p => p.coreBaseline));
+        const routingHasLing = computed(() => (routingDetail.value?.providers || []).some(p => !p.coreBaseline));
+        // 无灵核契约不可能处于迁移态（迁移=灵核→灵元）：后端无记录时默认 CORE_EXCLUSIVE，
+        // 前端把迁移相关阶段归一为 LING_EXCLUSIVE（纯迭代基线），只保留迭代入口。
+        // 迭代基线即「旧灵元独占」，由 startIteration 发起旧→新版本。
+        const effectivePhase = computed(() => {
+            const phase = migrationPhase.value;
+            if (routingHasCore.value) return phase;
+            if (phase === 'CORE_EXCLUSIVE' || phase === 'MIGRATING') return 'LING_EXCLUSIVE';
+            return phase;
+        });
+        const routingLingId = computed(() => {
+            const ling = (routingDetail.value?.providers || []).find(p => !p.coreBaseline);
+            return ling?.lingId || null;
+        });
+        const routingLingVersion = computed(() => {
+            const ling = (routingDetail.value?.providers || []).find(p => !p.coreBaseline);
+            return ling?.version || null;
+        });
+
         const fetchMigrationPhase = async () => {
-            if (!activeId.value) {
-                migrationPhase.value = 'CORE_EXCLUSIVE';
-                migrationRecord.value = null;
-                return;
-            }
-            const contractId = activeLing.value?.contractId;
+            const contractId = selectedContractId.value;
             if (!contractId) {
                 migrationPhase.value = 'CORE_EXCLUSIVE';
                 migrationRecord.value = null;
@@ -604,14 +588,16 @@ createApp({
         };
 
         const startMigration = async () => {
-            if (!activeId.value) return;
-            const contractId = activeLing.value?.contractId;
-            if (!contractId) { showToast('灵元未声明契约,无法发起迁移', 'error'); return; }
+            const contractId = selectedContractId.value;
+            const lingId = routingLingId.value;
+            if (!contractId || !lingId) { showToast('请先选择包含灵元 provider 的契约,无法发起迁移', 'error'); return; }
+            // 迁移=灵核→灵元，无灵核契约只能做版本迭代
+            if (!routingHasCore.value) { showToast('该契约无灵核 provider,不支持迁移,请走版本迭代', 'error'); return; }
             try {
-                await api.post(`/lings/${activeId.value}/migration/start`, {
+                await api.post(`/lings/${lingId}/migration/start`, {
                     contractId,
                     oldCandidate: 'lingcore-app',
-                    newCandidate: activeId.value
+                    newCandidate: lingId
                 });
                 showToast('迁移已发起', 'success');
                 await fetchMigrationPhase();
@@ -621,16 +607,15 @@ createApp({
         };
 
         const startIteration = async () => {
-            if (!activeId.value) return;
-            const contractId = activeLing.value?.contractId;
-            if (!contractId) { showToast('灵元未声明契约,无法发起迭代', 'error'); return; }
+            const contractId = selectedContractId.value;
+            const lingId = routingLingId.value;
+            if (!contractId || !lingId) { showToast('请先选择包含灵元 provider 的契约,无法发起迭代', 'error'); return; }
             try {
-                const oldVer = activeLing.value?.activeVersion;
-                const newVer = activeLing.value?.versionDetails?.find(v => !v.isDefault)?.version;
-                await api.post(`/lings/${activeId.value}/iteration/start`, {
+                const newVer = routingLingVersion.value;
+                await api.post(`/lings/${lingId}/iteration/start`, {
                     contractId,
-                    oldCandidate: activeId.value,
-                    newCandidate: `${activeId.value}:${newVer || oldVer}`
+                    oldCandidate: lingId,
+                    newCandidate: `${lingId}:${newVer || ''}`
                 });
                 showToast('迭代已发起', 'success');
                 await fetchMigrationPhase();
@@ -640,9 +625,8 @@ createApp({
         };
 
         const confirmTransition = async () => {
-            if (!activeId.value) return;
-            const contractId = activeLing.value?.contractId;
-            if (!contractId) { showToast('灵元未声明契约,无法确认相变', 'error'); return; }
+            const contractId = selectedContractId.value;
+            if (!contractId) { showToast('请先选择契约,无法确认相变', 'error'); return; }
             // 排空校验前置:从退出方候选活跃请求数判定 drainOk
             // 退出方候选由 migrationRecord.oldCandidate 携带(MIGRATING 时为灵核,ITERATING 时为旧灵元)
             const exitingCandidate = migrationRecord.value?.oldCandidate;
@@ -670,7 +654,7 @@ createApp({
          * native/test 场景端点缺失时 fallback true(兜底,避免误拒)。
          */
         const checkDrainOk = async (exitingCandidate) => {
-            const contractId = activeLing.value?.contractId;
+            const contractId = selectedContractId.value;
             if (!contractId || !exitingCandidate) return true;
             try {
                 const result = await api.get(
@@ -684,9 +668,8 @@ createApp({
         };
 
         const rollbackTransition = async () => {
-            if (!activeId.value) return;
-            const contractId = activeLing.value?.contractId;
-            if (!contractId) { showToast('灵元未声明契约,无法回滚相变', 'error'); return; }
+            const contractId = selectedContractId.value;
+            if (!contractId) { showToast('请先选择契约,无法回滚相变', 'error'); return; }
             try {
                 await api.post(`/lings/${encodeURIComponent(contractId)}/migration/rollback`);
                 showToast('相变已回滚', 'success');
@@ -695,7 +678,7 @@ createApp({
                 showToast('回滚相变失败: ' + e.message, 'error');
             }
         };
-        // 生命周期启停不通过 RuntimeStatus 按钮操作；流量见治理中心「流量控制」
+        // 生命周期启停不通过 RuntimeStatus 按钮操作；流量编排见「契约路由」与「服务验证」
         const activeLingHealth = computed(() => activeId.value ? lingHealthMetrics[activeId.value]?.summary || null : null);
         const activeLingVersionHealth = computed(() => {
             if (!activeId.value || !activeLing.value?.versionDetails) {
@@ -1102,6 +1085,10 @@ createApp({
             loading.lings = true;
             try {
                 lings.value = await api.get('/lings');
+                // 持久化的 activeId 可能已被卸载掉线，校验存在性后清空
+                if (activeId.value && !lings.value.some(p => p.lingId === activeId.value)) {
+                    activeId.value = null;
+                }
             } catch (e) {
                 showToast(t('toast.getLingsFailed') + ': ' + e.message, 'error');
             } finally {
@@ -2969,6 +2956,7 @@ createApp({
 
         // 监听导航切换，切换到监控页时重绘图表
         watch(activeNav, (val) => {
+            localStorage.setItem('lingframe_nav', val);
             if (val === 'monitor') {
                 destroyCharts();
                 nextTick(() => drawMonitorCharts());
@@ -2980,6 +2968,15 @@ createApp({
             } else if (val === 'migration') {
                 // 进入迁移看板页时拉取全量进度
                 fetchMigrationProgress();
+            }
+        });
+
+        // 持久化选中灵元：刷新后恢复；卸载校验见 refreshLings
+        watch(activeId, (val) => {
+            if (val) {
+                localStorage.setItem('lingframe_active_ling', val);
+            } else {
+                localStorage.removeItem('lingframe_active_ling');
             }
         });
 
@@ -3220,7 +3217,8 @@ createApp({
             GOVERNANCE_PRESETS, selectedPreset, applyPreset,
             governanceMatrix, matrixSortKey, matrixSortAsc, fetchGovernanceMatrix, sortedMatrix, sortMatrix,
             contractsList, selectedContractId, routingDetail, weightEditForm, savingWeight,
-            fetchContracts, fetchRoutingDetail, selectContract, saveProviderWeight, rollbackContract,
+            fetchContracts, fetchRoutingDetail, selectContract, saveProviderWeight,
+            routingHasCore, routingHasLing, routingLingId, routingLingVersion, effectivePhase,
             migrationList, fetchMigrationProgress, staleCount, totalCoreInv, totalLingInv, formatRatio,
             fetchMigrationPhase, startMigration, startIteration, confirmTransition, rollbackTransition,
             lingHealthMetrics, lingGovernanceMetrics, runtimeDiagnostics, runtimeGovernanceReadiness, runtimeDiagnosticsList,

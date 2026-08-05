@@ -80,25 +80,25 @@ class DefaultLingServiceRegistryConcurrentEvictTest {
             // 收敛后：补一次注册，断言反向索引能命中——验「evict 后注册」终态一致
             registry.registerServiceMetadata(
                     "ling-a:com.example.UserService", "query", new String[]{}, "java.lang.String");
-            List<String> lingIds = registry.getLingIdsByContractId("com.example.UserService");
-            assertNotNull(lingIds);
-            assertTrue(lingIds.contains("ling-a"),
-                    "evict 收敛后重新注册的灵元应被反向索引命中，实际=" + lingIds);
+            List<String> services = registry.getServicesByLingId("ling-a");
+            assertNotNull(services);
+            assertTrue(services.contains("ling-a:com.example.UserService"),
+                    "evict 收敛后重新注册的灵元应被反向索引命中，实际=" + services);
         }
 
         @Test
-        @DisplayName("evict 后空契约集合应被清空，防内存泄漏")
+        @DisplayName("evict 后反向索引应清空，防内存泄漏")
         void shouldCleanEmptyContractSetsAfterEvict() {
             DefaultLingServiceRegistry registry = new DefaultLingServiceRegistry();
 
             registry.registerServiceMetadata(
                     "ling-a:com.example.UserService", "query", new String[]{}, "java.lang.String");
-            assertFalse(registry.getLingIdsByContractId("com.example.UserService").isEmpty());
+            assertFalse(registry.getServicesByLingId("ling-a").isEmpty());
 
             registry.evict("ling-a");
 
-            // evict 后反查应空——空集合已被 removeIf(Set::isEmpty) 清掉
-            assertTrue(registry.getLingIdsByContractId("com.example.UserService").isEmpty());
+            // evict 后反查应空——灵元→FQSID 整条移除
+            assertTrue(registry.getServicesByLingId("ling-a").isEmpty());
         }
     }
 }

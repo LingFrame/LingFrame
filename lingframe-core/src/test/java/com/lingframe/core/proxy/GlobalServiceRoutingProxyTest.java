@@ -205,8 +205,6 @@ class GlobalServiceRoutingProxyTest {
             // 路由升维后预校验入口为 getRoutableTarget（覆盖灵元与灵核），getRuntime 在 proxy 中已彻底退役
             verify(lingRepository, never()).getRoutableTarget(anyString());
             verify(lingRepository, never()).getRuntime(anyString());
-            // 反向索引已被删除——不再调 lingServiceRegistry
-            verify(lingServiceRegistry, never()).getLingIdsByContractId(anyString());
             // 委托最终落到 pipelineEngine
             verify(pipelineEngine, atLeast(1)).invoke(any());
         }

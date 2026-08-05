@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -260,6 +261,54 @@ class TerminalInvokerFilterTest {
 
         try {
             assertThrows(LingInvocationException.class, () -> filter.doFilter(context, null));
+        } finally {
+            context.recycle();
+        }
+    }
+
+    @Test
+    @DisplayName("SIMULATION 契约级干跑（无方法名）不应解析 MethodHandle 抛 NPE")
+    void shouldNotResolveMethodHandleForContractLevelSimulation() throws Throwable {
+        TestService service = new TestService();
+        LingContainer container = buildContainer(service);
+        LingInstance instance = buildReadyInstance(container);
+
+        TerminalInvokerFilter filter = new TerminalInvokerFilter(new InvokableMethodCache(), new FastLingServiceInvoker());
+        InvocationContext context = InvocationContext.obtain();
+        // 压测上下文：裸契约 + 无方法名（契约级 L0 路由场景）
+        context.setServiceFQSID(TestService.class.getName());
+        context.routing().setTargetInstance(instance);
+        context.resolution().setResolvedParameterTypes(new Class<?>[0]);
+        context.execution().setMode(InvocationExecutionMode.SIMULATION);
+
+        try {
+            Object result = filter.doFilter(context, null);
+            assertTrue(String.valueOf(result).startsWith("Simulation Success for:"));
+        } finally {
+            context.recycle();
+        }
+    }
+
+    @Test
+    @DisplayName("SIMULATION 资源模拟（无 FQSID）不应因取不到 Bean 抛 ROUTE_FAILURE")
+    void shouldNotFailResourceSimulationWithoutFqsid() throws Throwable {
+        TestService service = new TestService();
+        LingContainer container = buildContainer(service);
+        LingInstance instance = buildReadyInstance(container);
+
+        TerminalInvokerFilter filter = new TerminalInvokerFilter(new InvokableMethodCache(), new FastLingServiceInvoker());
+        InvocationContext context = InvocationContext.obtain();
+        // simulateResource 路径：只带目标灵元，无 FQSID、无方法名
+        context.setTargetLingId("demo-ling");
+        context.routing().setTargetInstance(instance);
+        context.resolution().setResolvedParameterTypes(new Class<?>[0]);
+        context.governance().setAuditAction("SIMULATE:DBREAD");
+        context.execution().setMode(InvocationExecutionMode.SIMULATION);
+
+        try {
+            Object result = filter.doFilter(context, null);
+            assertTrue(String.valueOf(result).startsWith("Simulation Success for:"));
+            assertEquals("demo-ling", context.getTargetLingId());
         } finally {
             context.recycle();
         }

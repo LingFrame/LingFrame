@@ -90,6 +90,13 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             return chain.doFilter(ctx);
         }
 
+        // SIMULATION 干跑（Dashboard 压测/模拟）：不消费真实限流预算、不污染熔断器统计。
+        // 模拟流量是验证路由与治理链的探针，不是真实业务流量——高频压测若被限流打回，
+        // 则永远压测不出分流效果；模拟失败若记入熔断器，会把真实灵元误判为故障。
+        if (ctx.execution().getMode().isSimulation()) {
+            return chain.doFilter(ctx);
+        }
+
         String lingId = ctx.getEffectiveLingId();
 
         // 1. 限流检查

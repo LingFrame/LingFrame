@@ -225,6 +225,66 @@ class DashboardLingSourceResolverSupplementTest {
         }
     }
 
+    // ==================== resolveHomePackageFile ====================
+
+    @Nested
+    @DisplayName("resolveHomePackageFile")
+    class ResolveHomePackageFileTests {
+
+        @Test
+        @DisplayName("即使 dev 模式下目标/classes 存在，也只解析 ling-home 下的物理包")
+        void shouldIgnoreDevRootsAndOnlyResolveFromHome() throws IOException {
+            // 构造 dev root 下的 target/classes，匹配同一 lingId/version
+            Path classesDir = tempDir.resolve("target").resolve("classes");
+            Files.createDirectories(classesDir);
+            Files.write(classesDir.resolve("ling.yml"),
+                    ("id: ling1\nversion: 1.0.0\nmainClass: \"demo.Main\"\n").getBytes());
+
+            // 构造 ling-home 下的物理包目录（同样匹配 lingId/version）
+            Path homeDir = tempDir.resolve("home");
+            Path packageDir = homeDir.resolve("ling1-1.0.0");
+            Files.createDirectories(packageDir);
+            Files.write(packageDir.resolve("ling.yml"),
+                    ("id: ling1\nversion: 1.0.0\nmainClass: \"demo.Main\"\n").getBytes());
+
+            DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(
+                    LingFrameConfig.builder()
+                            .devMode(true)
+                            .lingRoots(Collections.singletonList(tempDir.toString()))
+                            .lingHome(homeDir.toString())
+                            .build());
+
+            // resolveSourceFile 会优先 dev classes，而物理包解析必须只认 ling-home
+            File sourceFile = resolver.resolveSourceFile("ling1", "1.0.0");
+            File homePackage = resolver.resolveHomePackageFile("ling1", "1.0.0");
+
+            assertEquals(classesDir.toFile(), sourceFile);
+            assertEquals(packageDir.toFile(), homePackage);
+            assertFalse(homePackage.getPath().contains("target" + File.separator + "classes"));
+        }
+
+        @Test
+        @DisplayName("lingHome 为 null 时应返回 null")
+        void shouldReturnNullWhenHomeNull() {
+            DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(
+                    LingFrameConfig.builder().build());
+
+            assertNull(resolver.resolveHomePackageFile("ling1", "1.0.0"));
+        }
+
+        @Test
+        @DisplayName("ling-home 下无匹配物理包时应返回 null")
+        void shouldReturnNullWhenNoMatchInHome() throws IOException {
+            Path homeDir = tempDir.resolve("home");
+            Files.createDirectories(homeDir);
+
+            DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(
+                    LingFrameConfig.builder().lingHome(homeDir.toString()).build());
+
+            assertNull(resolver.resolveHomePackageFile("ling1", "1.0.0"));
+        }
+    }
+
     // ==================== 辅助方法 ====================
 
     private LingDefinition newDefinitionWithCanary(Object canaryValue) {

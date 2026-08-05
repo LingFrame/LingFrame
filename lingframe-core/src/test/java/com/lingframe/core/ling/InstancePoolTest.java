@@ -253,6 +253,17 @@ class InstancePoolTest {
             assertEquals(3, destroyCount.get());
             assertEquals(0, pool.getDyingCount());
         }
+
+        @Test
+        @DisplayName("传 null destroyer 应拒绝（仅 tearDown 的半回收会泄漏 ClassLoader）")
+        void nullDestroyerShouldBeRejected() {
+            assertThrows(NullPointerException.class,
+                    () -> pool.cleanupIdleInstances(null),
+                    "NULL destroyer allowed a tearDown-only half-reclaim, which leaks LingClassLoader");
+            assertThrows(NullPointerException.class,
+                    () -> pool.forceCleanupAll(null),
+                    "NULL destroyer allowed a tearDown-only half-reclaim, which leaks LingClassLoader");
+        }
     }
 
     @Nested

@@ -175,7 +175,15 @@ public class DashboardLingOperations {
                 throw new LingInstallException(lingId, "Hot reload failed: new instance not found", null);
             }
 
-            lifecycleEngine.undeploy(lingId, target);
+            // 仅当旧实例仍被实例池持有时才显式卸载：
+            // wasDefault=true 且旧实例空闲时,deployForReload 内部的 publishReadyInstance 已将其
+            // 移入濒死队列并回收（def 置空），此时再 undeploy(target) 会命中 engine 的
+            // getAllInstances().contains 守卫，打印误导性的 <destroyed> WARN；
+            // 若旧实例仍在池中（非默认实例，或替换时尚有在途请求未被立即回收），
+            // 则必须显式卸载以确保资源回收。
+            if (runtime.getInstancePool().getAllInstances().contains(target)) {
+                lifecycleEngine.undeploy(lingId, target);
+            }
             lifecycleEventStore.addEvent(
                     lingId,
                     reloadVersion,

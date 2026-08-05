@@ -63,9 +63,9 @@ public class ContractRoutingController {
     /**
      * 设置某契约下指定 provider 的权重。
      * <p>
-     * 请求体格式：{@code {"providerKey": "user-ling", "weight": 30}}<br>
-     * {@code providerKey} 即路由键——迁移期裸 {@code lingId}，迭代期 {@code lingId:version}，
-     * 与路由读路径键化一致；传错形会致权重落键错位、读路径静默丢失。
+     * 请求体格式：{@code {"providerKey": "user-ling:1.1.0", "weight": 30}}<br>
+     * {@code providerKey} 即路由键——灵元恒为 {@code lingId:version}（版本真源来自绑定实例上下文），
+     * 灵核为裸 {@code lingcore-app}，与路由读路径键化一致；传错形会致权重落键错位、读路径静默丢失。
      */
     @PostMapping("/{contractId}/weight")
     public ApiResponse<ContractRoutingDTO> setProviderWeight(

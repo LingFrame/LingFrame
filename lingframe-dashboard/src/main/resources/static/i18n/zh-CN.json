@@ -255,8 +255,6 @@
     "invocationUpdateFailed": "调用治理更新失败",
     "weightSaved": "权重已更新",
     "weightSaveFailed": "权重更新失败",
-    "rollbackDone": "已回滚到灵核 100%",
-    "rollbackFailed": "回滚失败",
     "fetchContractsFailed": "获取契约列表失败",
     "fetchRoutingFailed": "获取契约路由失败",
     "fetchMigrationFailed": "获取迁移进度失败",
@@ -442,7 +440,6 @@
   "governance": {
     "matrixRowHint": "点击跳转到该灵元的治理配置详情",
     "tabConfig": "治理配置",
-    "tabTraffic": "流量控制",
     "tabHealth": "健康观测",
     "tabReadiness": "运行时就绪",
     "presetLabel": "预设方案",
@@ -579,10 +576,6 @@
     "overridePlaceholder": "未覆盖",
     "effectiveWeight": "生效权重",
     "save": "保存",
-    "rollback": "回滚灵核 100%",
-    "rollbackConfirmTitle": "确认回滚到灵核",
-    "rollbackConfirmMessage": "将清空契约 {contractId} 下所有运行期权重覆盖，灵核将承接 100% 流量，灵元 provider 权重归零。",
-    "rollbackAction": "确认回滚",
     "weightHint": "0-100 整数，保存后即时生效"
   },
   "migration": {
@@ -608,7 +601,27 @@
     "status": "状态",
     "statusStale": "可下线",
     "statusMigrating": "迁移中",
-    "staleHint": "灵核已无调用，可下线灵核实现"
+    "staleHint": "灵核已无调用，可下线灵核实现",
+    "phaseTitle": "契约迁移阶段",
+    "phaseHelp": "按契约推进迁移，取代流量分发 Tab 与灰度滑块",
+    "iterationPhaseTitle": "版本迭代阶段",
+    "iterationPhaseHelp": "无灵核 provider，仅支持灵元新版本迭代",
+    "canStartMigration": "可发起迁移（灵核 → 灵元）",
+    "canStartIteration": "可发起迭代（旧灵元 → 新版本）",
+    "canStartIterationNoCore": "可发起版本迭代（旧灵元 → 新版本）",
+    "iterationOnlyHint": "该契约无灵核 provider，仅能推进版本迭代，不支持灵核迁移",
+    "binaryRequiresConfirm": "处于迁移/迭代中，需确认或回滚相变",
+    "binaryCandidateOnly": "迁移与迭代均以选中契约及其灵元 provider 为依据发起",
+    "startMigration": "发起迁移",
+    "startIteration": "发起迭代",
+    "confirm": "确认相变",
+    "rollback": "回滚相变",
+    "phase": {
+      "CORE_EXCLUSIVE": "灵核独享",
+      "MIGRATING": "迁移中",
+      "LING_EXCLUSIVE": "灵元独享",
+      "ITERATING": "迭代中"
+    }
   },
   "tour": {
     "restart": "新手引导",

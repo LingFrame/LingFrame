@@ -74,6 +74,21 @@ class ContractRoutingServiceTest {
         }
 
         @Test
+        @DisplayName("同一灵元两个版本注册同一契约应列入多 provider 列表")
+        void sameLingTwoVersionsCountAsMultiProvider() {
+            when(lingServiceRegistry.getAllContractIds()).thenReturn(Collections.singleton("svc-x"));
+            when(lingServiceRegistry.getProvidersByContractId("svc-x"))
+                    .thenReturn(Arrays.asList(
+                            new ProviderDescriptor("svc-x", "user-ling", "1.0.0", 50),
+                            new ProviderDescriptor("svc-x", "user-ling", "1.1.0", 50)));
+
+            List<String> result = service.listMultiProviderContracts();
+
+            assertTrue(result.contains("svc-x"),
+                    "同灵元两版本 provider 应计为多 provider 契约（契约列表核心回归）");
+        }
+
+        @Test
         @DisplayName("无任何注册时返回空列表")
         void emptyWhenNoContracts() {
             when(lingServiceRegistry.getAllContractIds()).thenReturn(Collections.emptySet());
@@ -151,6 +166,23 @@ class ContractRoutingServiceTest {
             assertEquals(0, lingDto.getRegisteredWeight());
             assertEquals(70, lingDto.getOverrideWeight());
             assertEquals(70, lingDto.getEffectiveWeight());
+        }
+
+        @Test
+        @DisplayName("同灵元多版本契约应返回两个不同版本的 provider")
+        void sameLingMultiVersionReturnsBothProviders() {
+            when(lingServiceRegistry.getProvidersByContractId("svc-x"))
+                    .thenReturn(Arrays.asList(
+                            new ProviderDescriptor("svc-x", "user-ling", "1.0.0", 30),
+                            new ProviderDescriptor("svc-x", "user-ling", "1.1.0", 70)));
+
+            ContractRoutingDTO dto = service.getContractRouting("svc-x");
+
+            assertTrue(dto.isMultiProvider());
+            assertEquals(2, dto.getProviders().size());
+            assertEquals("1.0.0", dto.getProviders().get(0).getVersion());
+            assertEquals("1.1.0", dto.getProviders().get(1).getVersion());
+            assertEquals(100, dto.getLingEffectiveWeight());
         }
 
         @Test

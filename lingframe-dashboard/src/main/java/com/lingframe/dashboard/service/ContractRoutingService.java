@@ -86,7 +86,7 @@ public class ContractRoutingService {
         int lingEffective = 0;
 
         for (ProviderDescriptor desc : providers) {
-            // providerKey 命中迭代期需含 version（lingId 或 lingId:version），裸 lingId 会导致权重覆盖命中
+            // providerKey 与写侧注册键一致（灵元 lingId:version / 灵核 lingcore-app），裸 lingId 会导致权重覆盖命中
             Integer override = providerWeightRouter.getOverrideWeight(contractId, desc.providerKey());
             int effective = computeEffectiveWeight(desc, override);
             boolean isCore = isCoreBaseline(desc.getLingId());
@@ -127,12 +127,12 @@ public class ContractRoutingService {
     /**
      * 设置某契约下指定 provider 的权重。
      * <p>
-     * 入参 {@code providerKey} 必须与路由读路径键化一致——裸 {@code lingId}（迁移期）
-     * 或 {@code lingId:version}（迭代期），即 {@link ProviderDescriptor#providerKey()}。
-     * 传错形（如迭代期传裸 lingId）会致权重落键错位、读路径静默丢失。
+     * 入参 {@code providerKey} 必须与路由读路径键化一致——灵元恒为 {@code lingId:version}，
+     * 灵核为裸 {@code lingcore-app}，即 {@link ProviderDescriptor#providerKey()}。
+     * 传错形（如灵元侧传裸 lingId）会致权重落键错位、读路径静默丢失。
      *
      * @param contractId  契约 ID
-     * @param providerKey 提供方路由键（lingId 或 lingId:version）
+     * @param providerKey 提供方路由键（lingId:version 或 lingcore-app）
      * @param weight      新权重 0-100
      */
     public void setProviderWeight(String contractId, String providerKey, int weight) {

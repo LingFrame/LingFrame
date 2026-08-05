@@ -353,7 +353,6 @@ class DashboardServiceSupplementTest {
             DashboardService service = newService();
             when(lifecycleEngine.undeployWithReport("ling1"))
                     .thenReturn(LingUninstallResult.triggered("ling1", null, Collections.emptyList()));
-            when(lingFrameConfig.isDevMode()).thenReturn(false);
             when(lingFrameConfig.getLingHome()).thenReturn(null);
 
             LingUninstallResultDTO result = service.uninstallLing("ling1", true);
@@ -368,7 +367,6 @@ class DashboardServiceSupplementTest {
             DashboardService service = newService();
             when(lifecycleEngine.undeployWithReport("ling1", "1.0.0"))
                     .thenReturn(LingUninstallResult.triggered("ling1", "1.0.0", Collections.emptyList()));
-            when(lingFrameConfig.isDevMode()).thenReturn(false);
             when(lingFrameConfig.getLingHome()).thenReturn(null);
 
             LingUninstallResultDTO result = service.uninstallLing("ling1", "1.0.0", true);

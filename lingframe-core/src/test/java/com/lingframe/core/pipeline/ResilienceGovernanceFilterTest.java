@@ -118,6 +118,42 @@ class ResilienceGovernanceFilterTest {
     class RateLimitAndCircuitBreakerTests {
 
         @Test
+        @DisplayName("SIMULATION 干跑不消费限流预算：即使限流阈值极低也应透传")
+        void doFilter_WhenSimulationMode_ShouldBypassRateLimiter() throws Throwable {
+            context.setServiceFQSID("demo-ling:com.example.DemoService");
+            context.execution().setMode(InvocationExecutionMode.SIMULATION);
+
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            for (int i = 0; i < 5; i++) {
+                Object result = filter.doFilter(context, filterChain);
+                assertEquals(expected, result);
+            }
+            // 模拟流量不应创建限流器/熔断器，避免污染真实弹性状态
+            assertFalse(filter.hasLimiter("demo-ling"));
+            assertFalse(filter.hasBreaker("demo-ling"));
+        }
+
+        @Test
+        @DisplayName("SIMULATION 干跑失败不应记入熔断器（模拟探针不污染真实故障统计）")
+        void doFilter_WhenSimulationMode_ShouldNotPolluteCircuitBreaker() throws Throwable {
+            context.setServiceFQSID("demo-ling:com.example.DemoService");
+            context.execution().setMode(InvocationExecutionMode.SIMULATION);
+
+            when(filterChain.doFilter(context)).thenThrow(new IllegalStateException("simulated failure"));
+
+            for (int i = 0; i < 10; i++) {
+                try {
+                    filter.doFilter(context, filterChain);
+                } catch (Throwable ignored) {
+                    // 模拟失败透传，但不应触发熔断统计
+                }
+            }
+            assertFalse(filter.hasBreaker("demo-ling"), "SIMULATION 失败不应创建/污染熔断器");
+        }
+
+        @Test
         @DisplayName("并发或速率超过限制时应抛出限流异常")
         void doFilter_WhenConcurrencyExceedsLimit_ShouldThrowRateLimited() throws Throwable {
             setupMocks(1, 1000);

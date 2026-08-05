@@ -25,7 +25,8 @@ public class ProviderWeightDTO {
     private String lingId;
 
     /**
-     * 版本标识；迭代期二元候选时非空（{@code lingId:version}），迁移期为 null。
+     * 版本标识；灵元 provider 恒非空（写侧注册键为 {@code lingId:version}），
+     * 仅灵核 baseline（无版本概念）为 null。
      */
     private String version;
 

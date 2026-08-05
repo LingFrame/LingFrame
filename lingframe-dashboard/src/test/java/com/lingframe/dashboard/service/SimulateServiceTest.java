@@ -3,12 +3,14 @@ package com.lingframe.dashboard.service;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.api.security.AccessType;
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.ling.InstancePool;
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.config.LingFrameInfo;
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -29,7 +32,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -45,6 +50,7 @@ class SimulateServiceTest {
     private PermissionService permissionService;
     private InvocationPipelineEngine pipelineEngine;
     private LingFrameInfo lingFrameInfo;
+    private LingServiceRegistry lingServiceRegistry;
     private SimulateService service;
 
     @BeforeEach
@@ -54,7 +60,8 @@ class SimulateServiceTest {
         permissionService = mock(PermissionService.class);
         pipelineEngine = mock(InvocationPipelineEngine.class);
         lingFrameInfo = mock(LingFrameInfo.class);
-        service = new SimulateService(lingRepository, eventBus, permissionService, pipelineEngine, lingFrameInfo);
+        lingServiceRegistry = mock(LingServiceRegistry.class);
+        service = new SimulateService(lingRepository, eventBus, permissionService, pipelineEngine, lingFrameInfo, lingServiceRegistry);
     }
 
     // ==================== simulateResource ====================
@@ -284,7 +291,7 @@ class SimulateServiceTest {
         @Test
         @DisplayName("压测走 Pipeline SIMULATION 模式，应返回 STABLE 结果")
         void shouldReturnStableResultViaPipeline() {
-            // 校验 stressTest 在 runtime 可用 + 单活跃实例时不抛异常，返回 DTO
+            // 校验 stressTest 在 runtime 可用 + 单活跃实例 + 已注册契约时不抛异常，返回 DTO
             LingRuntime runtime = mock(LingRuntime.class);
             InstancePool pool = mock(InstancePool.class);
             LingInstance instance = mock(LingInstance.class);
@@ -297,13 +304,157 @@ class SimulateServiceTest {
             when(pool.getDefault()).thenReturn(instance);
             when(instance.getDefinition()).thenReturn(def);
             when(def.getVersion()).thenReturn("1.0.0");
-            // pipelineEngine.invoke 由 StressResultDTO 装配兜底处理，活跃计数下沉到 LingHealthMetrics
+            // 灵元注册了代表契约，压测才有可路由入口
+            when(lingServiceRegistry.getServicesByLingId("ling1"))
+                    .thenReturn(Collections.singletonList("ling1:com.example.UserService"));
 
             StressResultDTO result = service.stressTest("ling1");
 
             assertNotNull(result);
             assertEquals("ling1", result.getLingId());
             assertEquals(1, result.getTotalRequests());
+        }
+
+        @Test
+        @DisplayName("未注册任何契约时拒绝空转压测并抛 LingInvocationException")
+        void shouldThrowWhenNoRegisteredContract() {
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool pool = mock(InstancePool.class);
+            LingInstance instance = mock(LingInstance.class);
+
+            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
+            when(runtime.isAvailable()).thenReturn(true);
+            when(runtime.getInstancePool()).thenReturn(pool);
+            when(pool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
+            when(lingServiceRegistry.getServicesByLingId("ling1")).thenReturn(Collections.emptyList());
+
+            LingInvocationException ex = assertThrows(LingInvocationException.class,
+                    () -> service.stressTest("ling1"));
+            assertEquals(LingInvocationException.ErrorKind.ROUTE_FAILURE, ex.getKind());
+        }
+
+        @Test
+        @DisplayName("压测上下文带裸契约 ID 且不锁定 targetLingId（全契约 L0 路由前提）")
+        void shouldAssembleBareContractContextWithoutTargetLock() {
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool pool = mock(InstancePool.class);
+            LingInstance instance = mock(LingInstance.class);
+
+            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
+            when(runtime.isAvailable()).thenReturn(true);
+            when(runtime.getInstancePool()).thenReturn(pool);
+            when(pool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
+            when(pool.getDefault()).thenReturn(instance);
+            when(lingServiceRegistry.getServicesByLingId("ling1"))
+                    .thenReturn(Collections.singletonList("ling1:com.example.UserService"));
+            // 上下文在 stressTest 的 finally 中 recycle 会被清空，必须在 doAnswer 内（回收前）抓取字段
+            AtomicReference<String> fqsid = new AtomicReference<>();
+            AtomicReference<String> target = new AtomicReference<>();
+            AtomicReference<String> caller = new AtomicReference<>();
+            doAnswer(invocation -> {
+                InvocationContext c = invocation.getArgument(0);
+                fqsid.set(c.getServiceFQSID());
+                target.set(c.getTargetLingId());
+                caller.set(c.getCallerLingId());
+                return null;
+            }).when(pipelineEngine).invoke(any());
+
+            service.stressTest("ling1");
+
+            // 裸契约（无 lingId: 前缀）→ 触发 ContractProviderRoutingFilter 的 L0 provider 路由分支
+            assertEquals("com.example.UserService", fqsid.get());
+            // 未锁定 targetLingId → 不覆盖入口，L0 在全部候选（含灵核）间按权重选路
+            assertNull(target.get());
+            assertEquals("ling1", caller.get());
+        }
+
+        @Test
+        @DisplayName("路由命中灵核 baseline（无版本）时按 v1 计数")
+        void shouldCountCoreHitAsV1() {
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool pool = mock(InstancePool.class);
+            LingInstance instance = mock(LingInstance.class);
+
+            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
+            when(runtime.isAvailable()).thenReturn(true);
+            when(runtime.getInstancePool()).thenReturn(pool);
+            when(pool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
+            when(pool.getDefault()).thenReturn(instance);
+            when(lingServiceRegistry.getServicesByLingId("ling1"))
+                    .thenReturn(Collections.singletonList("ling1:com.example.UserService"));
+            // 模拟 L0 路由结果：命中灵核 provider（无版本）
+            doAnswer(invocation -> {
+                InvocationContext c = invocation.getArgument(0);
+                c.setTargetLingId(LingCoreConstants.LINGCORE_LING_ID);
+                return null;
+            }).when(pipelineEngine).invoke(any());
+
+            StressResultDTO result = service.stressTest("ling1");
+
+            assertEquals(1, result.getV1Requests());
+            assertEquals(0, result.getV2Requests());
+        }
+
+        @Test
+        @DisplayName("路由命中非默认版本 provider 时按 v2 计数")
+        void shouldCountNonDefaultVersionAsV2() {
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool pool = mock(InstancePool.class);
+            LingInstance instance = mock(LingInstance.class);
+            LingDefinition def = mock(LingDefinition.class);
+
+            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
+            when(runtime.isAvailable()).thenReturn(true);
+            when(runtime.getInstancePool()).thenReturn(pool);
+            when(pool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
+            when(pool.getDefault()).thenReturn(instance);
+            when(instance.getDefinition()).thenReturn(def);
+            when(def.getVersion()).thenReturn("1.0.0");
+            when(lingServiceRegistry.getServicesByLingId("ling1"))
+                    .thenReturn(Collections.singletonList("ling1:com.example.UserService"));
+            // 模拟 L0 路由结果：命中灵元非默认版本 provider
+            doAnswer(invocation -> {
+                InvocationContext c = invocation.getArgument(0);
+                c.setTargetLingId("ling1");
+                c.setTargetVersion("1.1.0");
+                return null;
+            }).when(pipelineEngine).invoke(any());
+
+            StressResultDTO result = service.stressTest("ling1");
+
+            assertEquals(0, result.getV1Requests());
+            assertEquals(1, result.getV2Requests());
+        }
+
+        @Test
+        @DisplayName("路由命中默认版本 provider 时按 v1 计数")
+        void shouldCountDefaultVersionAsV1() {
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool pool = mock(InstancePool.class);
+            LingInstance instance = mock(LingInstance.class);
+            LingDefinition def = mock(LingDefinition.class);
+
+            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
+            when(runtime.isAvailable()).thenReturn(true);
+            when(runtime.getInstancePool()).thenReturn(pool);
+            when(pool.getActiveInstances()).thenReturn(Collections.singletonList(instance));
+            when(pool.getDefault()).thenReturn(instance);
+            when(instance.getDefinition()).thenReturn(def);
+            when(def.getVersion()).thenReturn("1.0.0");
+            when(lingServiceRegistry.getServicesByLingId("ling1"))
+                    .thenReturn(Collections.singletonList("ling1:com.example.UserService"));
+            // 模拟 L0 路由结果：命中灵元默认版本 provider
+            doAnswer(invocation -> {
+                InvocationContext c = invocation.getArgument(0);
+                c.setTargetLingId("ling1");
+                c.setTargetVersion("1.0.0");
+                return null;
+            }).when(pipelineEngine).invoke(any());
+
+            StressResultDTO result = service.stressTest("ling1");
+
+            assertEquals(1, result.getV1Requests());
+            assertEquals(0, result.getV2Requests());
         }
     }
 

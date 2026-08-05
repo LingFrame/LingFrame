@@ -65,6 +65,17 @@ public class DefaultLingContext implements LingContext {
     }
 
     /**
+     * 上下文持有实例的版本号（服务注册携带版本的真源）。
+     * <p>
+     * 灵元上下文绑定 {@link LingInstance}，版本取实例声明版本；
+     * 灵核上下文（instance 为 null）无版本概念，返回 null——
+     * 这样灵核 provider 注册键保持裸 {@code lingcore-app}，不引入伪版本。
+     */
+    public String getVersion() {
+        return instance != null ? instance.getVersion() : null;
+    }
+
+    /**
      * 暴露 LingServiceRegistry 供适配层构造统注册器。
      * 边界：core 内部不通过此 getter 自用——适配层（Spring/Native）需要拿注册器
      * 委派给 LingServiceRegistrar，避免注册逻辑重复散在适配层。
@@ -282,6 +293,13 @@ public class DefaultLingContext implements LingContext {
                 continue;
             }
             registerProtocolService(fqsid, handler, method);
+        }
+        // 程序化暴露需同步登记版本化 provider 候选，否则契约无法被路由层（ProviderWeightRouter）查到。
+        // 不依赖 registerServiceMetadata 的占位登记——provider 候选只用版本化键（lingId:version）。
+        int sep = fqsid.indexOf(':');
+        if (sep > 0 && sep < fqsid.length() - 1) {
+            String contractId = fqsid.substring(sep + 1);
+            lingServiceRegistry.registerProvider(contractId, lingId, getVersion(), 0);
         }
         log.info("[Context] Programmatic service exposure: ling=[{}], serviceId=[{}], handler=[{}]",
                 lingId, serviceId, handler.getClass().getName());

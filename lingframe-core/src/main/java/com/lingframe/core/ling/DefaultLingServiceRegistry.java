@@ -94,32 +94,6 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     }
 
     @Override
-    public List<String> getLingIdsByContractId(String contractId) {
-        if (contractId == null || contractId.isEmpty()) {
-            return new ArrayList<>();
-        }
-        // 路由升维：优先从 providerIndex 提取，保持与 getProvidersByContractId 一致
-        List<ProviderDescriptor> providers = providerIndex.get(contractId);
-        if (providers != null && !providers.isEmpty()) {
-            List<String> lingIds = new ArrayList<>();
-            for (ProviderDescriptor desc : providers) {
-                if (!lingIds.contains(desc.getLingId())) {
-                    lingIds.add(desc.getLingId());
-                }
-            }
-            return lingIds;
-        }
-        // 兜底：FQSID 完整键命中时，提取 lingId 返回
-        if (contractId.indexOf(':') > 0 && metadataCache.containsKey(contractId)) {
-            String lingId = contractId.substring(0, contractId.indexOf(':'));
-            List<String> result = new ArrayList<>();
-            result.add(lingId);
-            return result;
-        }
-        return new ArrayList<>();
-    }
-
-    @Override
     public List<ProviderDescriptor> getProvidersByContractId(String contractId) {
         if (contractId == null || contractId.isEmpty()) {
             return new ArrayList<>();
@@ -152,30 +126,32 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
     }
 
     @Override
-    public void registerProvider(String contractId, String lingId, int weight) {
-        registerProvider(contractId, lingId, null, weight);
-    }
-
-    @Override
     public void registerProvider(String contractId, String lingId, String version, int weight) {
         if (contractId == null || contractId.isEmpty() || lingId == null) {
             return;
         }
+        // 提供方注册：幂等写入 providerIndex（版本化候选），provider-only 注册路径同样被路由索引承接
         ProviderDescriptor descriptor = new ProviderDescriptor(contractId, lingId, version, weight);
         String providerKey = descriptor.providerKey();
         // 幂等：同一 (contractId, providerKey) 已存在则更新 weight，不存在则追加
         providerIndex.compute(contractId, (key, existing) -> {
             List<ProviderDescriptor> list = existing != null ? existing : new ArrayList<>();
             // 查找是否已有同一 providerKey 的条目
+            boolean found = false;
             for (int i = 0; i < list.size(); i++) {
                 if (list.get(i).providerKey().equals(providerKey)) {
                     // 已存在：weight 以最新为准
                     list.set(i, descriptor);
-                    return list;
+                    found = true;
+                    break;
                 }
             }
-            // 新条目：支持多 Provider 注册
-            list.add(descriptor);
+            if (!found) {
+                // 新条目：支持多 Provider 注册
+                list.add(descriptor);
+            }
+            // 无灵核基线时保证默认 provider 存在：契约权重全部为 0 → 首个 provider 提升为基线 100
+            promoteDefaultBaseline(list);
             return list;
         });
     }
@@ -194,8 +170,35 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
                     return null;
                 }
                 list.removeIf(desc -> lingId.equals(desc.getLingId()));
-                // 空列表返回 null 让 ConcurrentHashMap 回收 entry，防内存泄漏
-                return list.isEmpty() ? null : list;
+                if (list.isEmpty()) {
+                    // 空列表返回 null 让 ConcurrentHashMap 回收 entry，防内存泄漏
+                    return null;
+                }
+                // 全量驱逐后仍保留「默认 provider 存在」不变量
+                promoteDefaultBaseline(list);
+                return list;
+            });
+        }
+    }
+
+    @Override
+    public void evictProvider(String lingId, String version) {
+        if (lingId == null || version == null) {
+            return;
+        }
+        // 逐版本精确清理：仅移除该 lingId 指定版本的 provider descriptor，
+        // 保留仍在服务的其他版本 provider（迭代期退役旧版本场景）
+        for (String contractId : providerIndex.keySet()) {
+            providerIndex.compute(contractId, (key, list) -> {
+                if (list == null) {
+                    return null;
+                }
+                list.removeIf(desc -> lingId.equals(desc.getLingId()) && version.equals(desc.getVersion()));
+                if (list.isEmpty()) {
+                    return null;
+                }
+                promoteDefaultBaseline(list);
+                return list;
             });
         }
     }
@@ -207,7 +210,11 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
         }
         providerIndex.computeIfPresent(contractId, (key, list) -> {
             list.removeIf(desc -> providerKey.equals(desc.providerKey()));
-            return list.isEmpty() ? null : list;
+            if (list.isEmpty()) {
+                return null;
+            }
+            promoteDefaultBaseline(list);
+            return list;
         });
     }
 
@@ -225,8 +232,28 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
                     list.set(i, list.get(i).withWeight(weight));
                 }
             }
+            promoteDefaultBaseline(list);
             return list;
         });
+    }
+
+    /**
+     * 维持「默认 provider」不变量：契约存在 provider 但权重全部为 0 时，
+     * 提升首个 provider 权重到基线 100，避免无灵核场景下全部权重为 0 的空转展示。
+     * <p>
+     * Dashboard 的权重覆盖走 {@link com.lingframe.core.routing.ProviderWeightRouter}，
+     * 与注册权重独立，不参与本方法判定。
+     */
+    private void promoteDefaultBaseline(List<ProviderDescriptor> list) {
+        if (list == null || list.isEmpty()) {
+            return;
+        }
+        for (ProviderDescriptor desc : list) {
+            if (desc.getWeight() > 0) {
+                return;
+            }
+        }
+        list.set(0, list.get(0).withWeight(100));
     }
 
     @Override
@@ -249,9 +276,10 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
      * 从 FQSID 提取 lingId 与 contractId，登记到反向索引。
      * contractId 为 FQSID 去掉 "lingId:" 前缀后的剩余（裸契约名或短 ID）。
      * <p>
-     * 路由升维：同时维护 providerIndex（默认灵元 weight=0），
-     * 使直接调 registerServiceMetadata 的调用方（dashboard 等）也能被 ProviderWeightRouter 查到。
-     * 灵核侧通过 LingServiceRegistrar.forCore 注册，weight=100。
+     * 仅维护元数据层反向索引（灵元 → FQSID）：
+     * <strong>不向 providerIndex 登记 version=null 的占位 provider</strong>。
+     * provider 候选只由版本化注册路径产生（{@link LingServiceRegistrar} / {@code expose()}），
+     * 占位 provider 会让同灵元多版本并存时出现「无版本幻影」，且无灵核基线提升会误命中占位符。
      */
     private void indexContractToLing(String serviceFQSID) {
         if (serviceFQSID == null) {
@@ -262,11 +290,8 @@ public class DefaultLingServiceRegistry implements LingServiceRegistry {
             return; // 不含 ':' 或 ':' 在末尾，非合法 FQSID，忽略
         }
         String lingId = serviceFQSID.substring(0, idx);
-        String contractId = serviceFQSID.substring(idx + 1);
         // 反向索引：灵元 → FQSID，供 getServicesByLingId O(1) 命中
         lingToServices.computeIfAbsent(lingId, k -> ConcurrentHashMap.newKeySet()).add(serviceFQSID);
-        // 路由升维：同步登记 providerIndex，默认灵元 weight=0
-        registerProvider(contractId, lingId, 0);
     }
 
     private String buildSignature(String methodName, String[] parameterTypes) {

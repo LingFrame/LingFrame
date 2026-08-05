@@ -50,6 +50,25 @@ public final class InvocationContextBuilder {
     }
 
     /**
+     * 契约级模拟模式构造器（压测专用）。
+     * <p>
+     * 与 {@link #forSimulation} 的区别：<strong>不锁定 targetLingId</strong>，
+     * 仅以裸契约 ID 作为入口，让 {@code ContractProviderRoutingFilter} 的 L0 provider 级路由
+     * 在全部候选（含灵核 baseline）之间按权重选路。这是验证「N 元权重分流」的关键——
+     * 锁死 targetLingId 会令 L0 分支直接放行（入口已锁定灵元时不覆盖入口意图），压测退化为空转。
+     *
+     * @param callerLingId  调用方灵元 ID（压测场景为被测灵元自身）
+     * @param bareContractId 裸契约 ID（不含 {@code lingId:} 前缀）
+     * @return 新构造器
+     */
+    public static InvocationContextBuilder forContractSimulation(String callerLingId, String bareContractId) {
+        InvocationContextBuilder b = new InvocationContextBuilder(InvocationExecutionMode.SIMULATION);
+        b.ctx.setCallerLingId(callerLingId);
+        b.ctx.setServiceFQSID(bareContractId);
+        return b;
+    }
+
+    /**
      * 仅治理模式构造器。
      * <p>
      * 用于 Dashboard 预检场景——只跑治理不真实执行。

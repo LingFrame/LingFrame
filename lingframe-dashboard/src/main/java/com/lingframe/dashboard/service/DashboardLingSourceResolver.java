@@ -74,6 +74,16 @@ public class DashboardLingSourceResolver {
         return findFromHome(lingId, version);
     }
 
+    /**
+     * 解析 ling-home 下的真实物理包（JAR）文件。
+     * <p>
+     * 物理删除只能作用于 ling-home 中的打包产物，禁止落入 dev 模式的
+     * {@code target/classes} 目录——否则删除的是编译后的 class 文件。
+     */
+    public File resolveHomePackageFile(String lingId, String version) {
+        return findFromHome(lingId, version);
+    }
+
     public String buildReloadVersion(LingRuntime runtime, String baseVersion) {
         int max = 0;
         String prefix = baseVersion + "-reload-";

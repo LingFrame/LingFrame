@@ -348,13 +348,20 @@ public class DashboardService {
 
     private void deleteHomePackageFile(String lingId, String version) {
         try {
-            File file = lingOperations.getLingSourceResolver().resolveSourceFile(lingId, version);
-            if (file != null && file.exists()) {
-                log.info("Deleted physical package file: {}", file.getAbsolutePath());
-                if (!file.delete()) {
-                    log.warn("Cannot delete file physically, will try to delete on JVM exit: {}", file.getAbsolutePath());
-                    file.deleteOnExit();
-                }
+            // 物理删除只认 ling-home 下的真实 JAR 物理包，禁止解析到 dev 模式 target/classes
+            File file = lingOperations.getLingSourceResolver().resolveHomePackageFile(lingId, version);
+            if (file == null || !file.exists()) {
+                log.info("Physical package not found in ling-home, skip delete: {}:{}", lingId, version);
+                return;
+            }
+            if (file.isDirectory()) {
+                log.warn("Skipping delete, resolved path is a directory: {}", file.getAbsolutePath());
+                return;
+            }
+            log.info("Deleted physical package file: {}", file.getAbsolutePath());
+            if (!file.delete()) {
+                log.warn("Cannot delete file physically, will try to delete on JVM exit: {}", file.getAbsolutePath());
+                file.deleteOnExit();
             }
         } catch (Exception e) {
             log.warn("Exception deleting physical file: {}:{}", lingId, version, e);

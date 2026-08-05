@@ -40,6 +40,7 @@
             -webkit-text-fill-color: transparent;
             background-clip: text;
             letter-spacing: 0.5px;
+            font-size: 16px;
         }
     </style>
 </head>
@@ -306,7 +307,7 @@
                         <p class="text-xs font-mono tracking-wide mt-0.5 flex items-center">
                             <span class="t-text-muted">{{ t('version') }}</span>
                             <span class="mx-1.5 t-text-muted">·</span>
-                            <span class="codename font-black italic">{{ t('branding.codename') }}</span>
+                            <span class="codename font-black">{{ t('branding.codename') }}</span>
                         </p>
                     </div>
                 </div>
@@ -328,39 +329,39 @@
             <nav class="flex-shrink-0 py-4">
                 <div class="text-sm t-text-muted uppercase tracking-wider px-5 mb-2">{{ t('sidebar.coreFeatures') }}
                 </div>
-                <div :class="['sidebar-item', activeNav === 'overview' ? 'active' : '']"
+                <button type="button" :class="['sidebar-item', activeNav === 'overview' ? 'active' : '']"
                     @click="activeNav = 'overview'">
                     <i class="fa-solid fa-satellite-dish w-4"></i>
                     <span class="text-base">{{ t('sidebar.overview') }}</span>
-                </div>
-                <div :class="['sidebar-item', activeNav === 'lings' ? 'active' : '']" @click="activeNav = 'lings'">
+                </button>
+                <button type="button" :class="['sidebar-item', activeNav === 'lings' ? 'active' : '']" @click="activeNav = 'lings'">
                     <i class="fa-solid fa-cubes w-4"></i>
                     <span class="text-base">{{ t('sidebar.lingCenter') }}</span>
-                </div>
-                <div :class="['sidebar-item', activeNav === 'monitor' ? 'active' : '']" @click="activeNav = 'monitor'">
+                </button>
+                <button type="button" :class="['sidebar-item', activeNav === 'monitor' ? 'active' : '']" @click="activeNav = 'monitor'">
                     <i class="fa-solid fa-chart-line w-4"></i>
                     <span class="text-base">{{ t('sidebar.monitor') }}</span>
-                </div>
-                <div :class="['sidebar-item', activeNav === 'governance' ? 'active' : '']"
-                    @click="activeNav = 'governance'" class="tour-nav-governance">
+                </button>
+                <button type="button" :class="['sidebar-item', activeNav === 'governance' ? 'active' : '', 'tour-nav-governance']"
+                    @click="activeNav = 'governance'">
                     <i class="fa-solid fa-gauge-high w-4"></i>
                     <span class="text-base">{{ t('sidebar.governance') }}</span>
-                </div>
-                <div :class="['sidebar-item', activeNav === 'contract-routing' ? 'active' : '']"
+                </button>
+                <button type="button" :class="['sidebar-item', activeNav === 'contract-routing' ? 'active' : '']"
                     @click="activeNav = 'contract-routing'">
                     <i class="fa-solid fa-shuffle w-4"></i>
                     <span class="text-base">{{ t('sidebar.contractRouting') }}</span>
-                </div>
-                <div :class="['sidebar-item', activeNav === 'migration' ? 'active' : '']"
+                </button>
+                <button type="button" :class="['sidebar-item', activeNav === 'migration' ? 'active' : '']"
                     @click="activeNav = 'migration'">
                     <i class="fa-solid fa-truck-arrow-right w-4"></i>
                     <span class="text-base">{{ t('sidebar.migration') }}</span>
-                </div>
-                <div :class="['sidebar-item', activeNav === 'verification' ? 'active' : '']"
-                    @click="activeNav = 'verification'" class="tour-nav-verification">
+                </button>
+                <button type="button" :class="['sidebar-item', activeNav === 'verification' ? 'active' : '', 'tour-nav-verification']"
+                    @click="activeNav = 'verification'">
                     <i class="fa-solid fa-flask-vial w-4"></i>
                     <span class="text-base">{{ t('sidebar.verification') }}</span>
-                </div>
+                </button>
             </nav>
 
             <!-- 灵元列表（常驻侧边栏） -->
@@ -376,8 +377,10 @@
                 <div v-if="lings.length === 0" class="text-xs t-text-muted px-2 py-4 text-center">
                     {{ t('lingList.empty') }}
                 </div>
-                <div v-for="p in filteredLings" :key="p.lingId"
+                <div v-for="p in filteredLings" :key="p.lingId" role="button" tabindex="0"
+                    :aria-label="'选择灵元 ' + p.lingId"
                     :class="['ling-item', activeId === p.lingId ? 'active' : '']" @click="selectLing(p.lingId)"
+                    @keydown.enter.prevent="selectLing(p.lingId)"
                     :data-testid="'ling-item-' + p.lingId">
                     <!-- 灵元名称行：健康灯 + 名称 + 状态 -->
                     <div class="flex items-center justify-between">
@@ -706,9 +709,12 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <tr v-for="ling in lings" :key="ling.lingId"
+                                            <tr v-for="ling in lings" :key="ling.lingId" tabindex="0"
+                                                :aria-label="'选择灵元 ' + ling.lingId"
                                                 class="border-b t-border t-border-faint last:border-0 hover:t-bg-faint transition-colors cursor-pointer"
-                                                @click="selectLing(ling.lingId)">
+                                                @click="selectLing(ling.lingId)"
+                                                @keydown.enter="selectLing(ling.lingId)"
+                                                @keydown.space.prevent="selectLing(ling.lingId)">
                                                 <td class="py-2.5 px-3">
                                                     <div class="flex items-center gap-2">
                                                         <span class="w-2 h-2 rounded-full shrink-0"
@@ -887,13 +893,13 @@
                                                         class="text-xs t-text-sub mt-2 flex items-center justify-between">
                                                         <span class="font-mono t-bg-page px-2 py-1 rounded">{{
                                                             t('demo.target') }}: {{ ipcTarget }}</span>
-                                                        <div @click="toggleIpc"
+                                                        <button type="button" role="switch" :aria-checked="ipcEnabled" @click="toggleIpc"
+                                                            :aria-label="t('demo.target') + ': IPC'"
                                                             :class="ipcEnabled ? 'bg-green-500' : 't-bg-hover'"
-                                                            class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
-                                                            <div :class="ipcEnabled ? 'translate-x-5' : 'translate-x-1'"
-                                                                class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform">
-                                                            </div>
-                                                        </div>
+                                                            class="switch-toggle w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                                                            <span :class="ipcEnabled ? 'translate-x-5' : 'translate-x-1'"
+                                                                class="absolute top-1 left-0 w-3 h-3 bg-white rounded-full transition-transform"></span>
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1122,7 +1128,7 @@
                                 </div>
                                 <!-- LingClassLoader 存活数 -->
                                 <div class="t-bg-faint rounded-lg p-3 text-center">
-                                    <div class="text-[10px] t-text-muted uppercase mb-1">ClassLoader</div>
+                                    <div class="text-[10px] t-text-muted uppercase mb-1">LingClassLoader</div>
                                     <div class="flex items-center justify-center gap-1">
                                         <span class="text-xl font-mono font-bold text-violet-400">{{
                                             perfMetrics.lingClassLoaderCount }}</span>
@@ -1411,47 +1417,47 @@
                                                 <div
                                                     class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
                                                     <span class="text-sm t-text-sub">{{ t('control.dbRead') }}</span>
-                                                    <div @click="togglePerm('DB_READ')"
+                                                    <button type="button" role="switch" :aria-checked="activeLing?.permissions?.dbRead !== false"
+                                                        @click="togglePerm('DB_READ')" :aria-label="t('control.dbRead')"
                                                         :class="activeLing?.permissions?.dbRead !== false ? 'bg-green-500' : 't-bg-hover'"
-                                                        class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
-                                                        <div :class="activeLing?.permissions?.dbRead !== false ? 'translate-x-5' : 'translate-x-1'"
-                                                            class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform">
-                                                        </div>
-                                                    </div>
+                                                        class="switch-toggle w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                                                        <span :class="activeLing?.permissions?.dbRead !== false ? 'translate-x-5' : 'translate-x-1'"
+                                                            class="absolute top-1 left-0 w-3 h-3 bg-white rounded-full transition-transform"></span>
+                                                    </button>
                                                 </div>
                                                 <div
                                                     class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
                                                     <span class="text-sm t-text-sub">{{ t('control.dbWrite') }}</span>
-                                                    <div @click="togglePerm('DB_WRITE')"
+                                                    <button type="button" role="switch" :aria-checked="activeLing?.permissions?.dbWrite !== false"
+                                                        @click="togglePerm('DB_WRITE')" :aria-label="t('control.dbWrite')"
                                                         :class="activeLing?.permissions?.dbWrite !== false ? 'bg-green-500' : 't-bg-hover'"
-                                                        class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
-                                                        <div :class="activeLing?.permissions?.dbWrite !== false ? 'translate-x-5' : 'translate-x-1'"
-                                                            class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform">
-                                                        </div>
-                                                    </div>
+                                                        class="switch-toggle w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                                                        <span :class="activeLing?.permissions?.dbWrite !== false ? 'translate-x-5' : 'translate-x-1'"
+                                                            class="absolute top-1 left-0 w-3 h-3 bg-white rounded-full transition-transform"></span>
+                                                    </button>
                                                 </div>
                                                 <div
                                                     class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
                                                     <span class="text-sm t-text-sub">{{ t('control.cacheRead') }}</span>
-                                                    <div @click="togglePerm('CACHE_READ')"
+                                                    <button type="button" role="switch" :aria-checked="activeLing?.permissions?.cacheRead !== false"
+                                                        @click="togglePerm('CACHE_READ')" :aria-label="t('control.cacheRead')"
                                                         :class="activeLing?.permissions?.cacheRead !== false ? 'bg-green-500' : 't-bg-hover'"
-                                                        class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
-                                                        <div :class="activeLing?.permissions?.cacheRead !== false ? 'translate-x-5' : 'translate-x-1'"
-                                                            class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform">
-                                                        </div>
-                                                    </div>
+                                                        class="switch-toggle w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                                                        <span :class="activeLing?.permissions?.cacheRead !== false ? 'translate-x-5' : 'translate-x-1'"
+                                                            class="absolute top-1 left-0 w-3 h-3 bg-white rounded-full transition-transform"></span>
+                                                    </button>
                                                 </div>
                                                 <div
                                                     class="flex items-center justify-between p-3 t-bg-faint border t-border rounded-lg">
                                                     <span class="text-sm t-text-sub">{{ t('control.cacheWrite')
                                                         }}</span>
-                                                    <div @click="togglePerm('CACHE_WRITE')"
+                                                    <button type="button" role="switch" :aria-checked="activeLing?.permissions?.cacheWrite !== false"
+                                                        @click="togglePerm('CACHE_WRITE')" :aria-label="t('control.cacheWrite')"
                                                         :class="activeLing?.permissions?.cacheWrite !== false ? 'bg-green-500' : 't-bg-hover'"
-                                                        class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
-                                                        <div :class="activeLing?.permissions?.cacheWrite !== false ? 'translate-x-5' : 'translate-x-1'"
-                                                            class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform">
-                                                        </div>
-                                                    </div>
+                                                        class="switch-toggle w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                                                        <span :class="activeLing?.permissions?.cacheWrite !== false ? 'translate-x-5' : 'translate-x-1'"
+                                                            class="absolute top-1 left-0 w-3 h-3 bg-white rounded-full transition-transform"></span>
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
@@ -1611,9 +1617,12 @@
                                                             t('governance.matrixEmpty') }}</td>
                                                     </tr>
                                                     <tr v-for="row in sortedMatrix()"
-                                                        :key="row.lingId + ':' + row.version"
+                                                        :key="row.lingId + ':' + row.version" tabindex="0"
+                                                        :aria-label="'查看治理配置 ' + row.lingId + ':' + row.version"
                                                         class="border-b t-border hover:t-bg-hover cursor-pointer transition-colors"
                                                         @click="jumpToGovernanceConfig(row.lingId)"
+                                                        @keydown.enter="jumpToGovernanceConfig(row.lingId)"
+                                                        @keydown.space.prevent="jumpToGovernanceConfig(row.lingId)"
                                                         :title="t('governance.matrixRowHint')">
                                                         <td class="p-2 font-mono t-text">
                                                             <i
@@ -1645,193 +1654,6 @@
                             </div>
                         </div>
 
-                        <!-- Tab 2: 流量控制 -->
-                        <div v-show="activeGovernanceTab === 'traffic'" class="content-grid grid grid-cols-12 gap-6">
-
-                            <!-- 左列：流量分发 -->
-                            <div class="col-span-12 lg:col-span-7 space-y-6">
-                                <!-- 流量分发 -->
-                                <div class="card relative">
-
-                                    <div class="card-header">
-                                        <div class="flex items-center gap-3">
-                                            <h3 class="font-bold text-base t-text">{{ t('traffic.title') }}</h3>
-                                            <span class="text-[10px] t-text-muted hidden sm:inline">{{
-                                                t('traffic.routingOnlyHint') }}</span>
-                                            <span v-if="!activeLing"
-                                                class="text-xs t-bg-faint t-text-sub px-2 py-0.5 rounded">{{
-                                                t('traffic.notSelected') }}</span>
-                                            <span v-else-if="!canOperate"
-                                                class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded">{{
-                                                t('traffic.inactive') }}</span>
-                                            <span v-else-if="canCanary"
-                                                class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">{{
-                                                t('traffic.canary') }}</span>
-                                            <span v-else class="text-xs t-bg-faint t-text-sub px-2 py-0.5 rounded">{{
-                                                t('traffic.singleVersion') }}</span>
-                                        </div>
-                                        <div class="flex gap-2">
-                                            <button @click="toggleAuto" :disabled="!canOperate"
-                                                :class="isAuto ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'"
-                                                class="action-btn text-white text-sm">
-                                                <i :class="isAuto ? 'fa-solid fa-stop' : 'fa-solid fa-play'"></i>
-                                                {{ isAuto ? t('traffic.stop') : t('traffic.stress') }}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <!-- 迁移阶段管理面板（替代金丝雀决策建议 + 灰度滑块） -->
-                                    <div v-if="canOperate" class="border-b px-5 py-3 flex items-center gap-3"
-                                        :class="{
-                                            'bg-emerald-500/10 border-emerald-500/30 text-emerald-400': migrationPhase === 'CORE_EXCLUSIVE' || migrationPhase === 'LING_EXCLUSIVE',
-                                            'bg-amber-500/10 border-amber-500/30 text-amber-400': migrationPhase === 'MIGRATING' || migrationPhase === 'ITERATING'
-                                        }">
-                                        <i :class="{
-                                            'fa-solid fa-shield-halved': migrationPhase === 'CORE_EXCLUSIVE',
-                                            'fa-solid fa-arrows-rotate': migrationPhase === 'MIGRATING',
-                                            'fa-solid fa-cube': migrationPhase === 'LING_EXCLUSIVE',
-                                            'fa-solid fa-code-branch': migrationPhase === 'ITERATING'
-                                        }"></i>
-                                        <div class="flex-1">
-                                            <span class="font-bold text-sm">{{ t('migration.phase.' + migrationPhase) }}</span>
-                                            <span v-if="migrationRecord" class="text-xs ml-2 opacity-80">
-                                                {{ migrationRecord.oldCandidate || '-' }} ↔ {{ migrationRecord.newCandidate || '-' }}
-                                            </span>
-                                            <span v-if="!migrationPhase || migrationPhase === 'CORE_EXCLUSIVE'"
-                                                class="text-xs ml-2 opacity-60">{{ t('migration.canStartMigration') }}</span>
-                                            <span v-else-if="migrationPhase === 'LING_EXCLUSIVE'"
-                                                class="text-xs ml-2 opacity-60">{{ t('migration.canStartIteration') }}</span>
-                                            <span v-else class="text-xs ml-2 opacity-60">{{ t('migration.binaryRequiresConfirm') }}</span>
-                                        </div>
-                                        <!-- 相变操作按钮 -->
-                                        <div class="flex gap-2 flex-shrink-0">
-                                            <button v-if="migrationPhase === 'CORE_EXCLUSIVE'" @click="startMigration"
-                                                class="px-3 py-1 text-xs font-bold rounded bg-blue-600 hover:bg-blue-500 text-white border border-blue-500/50">
-                                                <i class="fa-solid fa-play mr-1"></i>{{ t('migration.startMigration') }}
-                                            </button>
-                                            <button v-if="migrationPhase === 'LING_EXCLUSIVE'" @click="startIteration"
-                                                class="px-3 py-1 text-xs font-bold rounded bg-blue-600 hover:bg-blue-500 text-white border border-blue-500/50">
-                                                <i class="fa-solid fa-code-branch mr-1"></i>{{ t('migration.startIteration') }}
-                                            </button>
-                                            <button v-if="migrationPhase === 'MIGRATING' || migrationPhase === 'ITERATING'"
-                                                @click="confirmTransition"
-                                                class="px-3 py-1 text-xs font-bold rounded bg-green-600 hover:bg-green-500 text-white border border-green-500/50">
-                                                <i class="fa-solid fa-check mr-1"></i>{{ t('migration.confirm') }}
-                                            </button>
-                                            <button v-if="migrationPhase === 'MIGRATING' || migrationPhase === 'ITERATING'"
-                                                @click="rollbackTransition"
-                                                class="px-3 py-1 text-xs font-bold rounded bg-red-600 hover:bg-red-500 text-white border border-red-500/50">
-                                                <i class="fa-solid fa-rotate-left mr-1"></i>{{ t('migration.rollback') }}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div class="p-5">
-                                        <!-- 迁移阶段说明（替代灰度滑块） -->
-                                        <div class="mb-6">
-                                            <div class="flex justify-between text-sm font-medium mb-3 t-text-muted">
-                                                <span><i class="fa-solid fa-info-circle mr-1"></i>{{ t('migration.phaseHelp') }}</span>
-                                                <span v-if="migrationPhase">{{ migrationPhase }}</span>
-                                                <span v-else>-</span>
-                                            </div>
-                                            <p class="text-sm t-text-muted mt-3 text-center">
-                                                <i class="fa-solid fa-info-circle mr-1"></i>
-                                                {{ !activeLing ? t('traffic.selectLing') : !canOperate ?
-                                                    t('traffic.lingInactive') : t('migration.binaryCandidateOnly') }}
-                                            </p>
-                                        </div>
-
-                                        <!-- 指标卡片 -->
-                                        <div class="metric-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                                            <div class="metric-card">
-                                                <div class="text-xs t-text-muted uppercase mb-1">{{ t('traffic.total')
-                                                    }}
-                                                </div>
-                                                <div class="text-xl font-bold t-text font-mono">{{ stats.total }}</div>
-                                            </div>
-                                            <div class="metric-card border-blue-500/30">
-                                                <div class="text-xs text-blue-400 uppercase mb-1">{{ t('traffic.v1Hit')
-                                                    }}</div>
-                                                <div class="text-xl font-bold text-blue-400 font-mono">{{ stats.v1Pct
-                                                    }}%</div>
-                                            </div>
-                                            <div class="metric-card"
-                                                :class="canCanary && canOperate ? 'border-amber-500/30' : ''">
-                                                <div class="text-xs uppercase mb-1"
-                                                    :class="canCanary && canOperate ? 'text-amber-400' : 't-text-muted'">
-                                                    {{
-                                                    t('traffic.v2Hit') }}
-                                                </div>
-                                                <div class="text-xl font-bold font-mono"
-                                                    :class="canCanary && canOperate ? 'text-amber-400' : 't-text-muted'">
-                                                    {{ canCanary && canOperate ? stats.v2Pct + '%' : 'N/A' }}
-                                                </div>
-                                            </div>
-                                            <div class="metric-card">
-                                                <div class="text-xs t-text-muted uppercase mb-1">{{ t('traffic.drift')
-                                                    }}
-                                                </div>
-                                                <div class="text-xl font-bold font-mono t-text-muted">
-                                                    {{ canCanary && canOperate ? formatDrift(stats.v2Pct - stats.v1Pct) :
-                                                    'N/A' }}
-                                                </div>
-                                            </div>
-                                            <div class="metric-card border-purple-500/30">
-                                                <div class="text-xs text-purple-400 uppercase mb-1">{{
-                                                    t('traffic.active') }}
-                                                </div>
-                                                <div class="text-xl font-bold text-purple-400 font-mono">{{ stats.active
-                                                    || 0 }}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                            </div><!-- end 左列流量控制 -->
-
-                            <!-- 右列：审计结果（流量操作产生） -->
-                            <div class="col-span-12 lg:col-span-5 space-y-6">
-                                <!-- 审计结果 -->
-                                <div v-if="lastAudit"
-                                    :class="lastAudit.allowed ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'"
-                                    class="card border p-4">
-                                    <div class="flex justify-between items-start">
-                                        <div class="flex items-center gap-2">
-                                            <i
-                                                :class="lastAudit.allowed ? 'fa-solid fa-check-circle text-green-400' : 'fa-solid fa-times-circle text-red-400'"></i>
-                                            <span class="font-bold text-sm"
-                                                :class="lastAudit.allowed ? 'text-green-400' : 'text-red-400'">
-                                                {{ lastAudit.allowed ? t('audit.success') : t('audit.denied') }}
-                                            </span>
-                                            <span v-if="lastAudit.devModeBypass"
-                                                class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 ml-2 animate-pulse">
-                                                <i class="fa-solid fa-shield-cat mr-1"></i> {{ t('audit.devPass') }}
-                                            </span>
-                                        </div>
-                                        <button @click="lastAudit = null" class="t-text-muted hover:t-text">
-                                            <i class="fa-solid fa-xmark"></i>
-                                        </button>
-                                    </div>
-                                    <p class="text-sm mt-2 font-mono"
-                                        :class="lastAudit.allowed ? 'text-green-300' : 'text-red-300'">
-                                        [{{ lastAudit.traceId }}] {{ lastAudit.message }}
-                                    </p>
-                                    <div v-if="lastAudit.ruleSource"
-                                        class="mt-2 pt-2 border-t t-border text-xs t-text-muted flex items-center gap-2">
-                                        <span class="flex items-center gap-1">
-                                            <i class="fa-solid fa-gavel"></i>
-                                            {{ t('audit.ruleSource') }}:
-                                        </span>
-                                        <span
-                                            class="font-mono text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
-                                            {{ lastAudit.ruleSource }}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-
-                        </div><!-- end Tab 2 流量控制 -->
 
                         <!-- Tab 3: 健康观测 -->
                         <div v-show="activeGovernanceTab === 'health'" class="space-y-6">
@@ -2238,12 +2060,12 @@
                                         <p class="text-sm t-text-muted">{{ t('contractRouting.empty') }}</p>
                                     </div>
                                     <div v-else class="space-y-1">
-                                        <div v-for="cid in contractsList" :key="cid"
-                                            @click="selectContract(cid)"
-                                            :class="['cursor-pointer rounded-lg px-3 py-2 transition-all border',
+                                        <button type="button" v-for="cid in contractsList" :key="cid" @click="selectContract(cid)"
+                                            :aria-pressed="selectedContractId === cid"
+                                            :class="['cursor-pointer rounded-lg px-3 py-2 transition-all border text-left w-full',
                                                 selectedContractId === cid ? 'bg-blue-500/10 border-blue-500' : 't-bg-faint t-border hover:t-bg-hover']">
-                                            <div class="text-sm font-mono t-text truncate">{{ cid }}</div>
-                                        </div>
+                                            <span class="text-sm font-mono t-text truncate block">{{ cid }}</span>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -2260,18 +2082,73 @@
                             </div>
 
                             <template v-else>
+                                <!-- 阶段管理（迁移=灵核→灵元；无灵核契约仅版本迭代=灵元→新版本） -->
+                                <div class="card relative">
+                                    <div class="card-header">
+                                        <div class="flex items-center gap-3">
+                                            <h3 class="font-bold text-base t-text">{{ routingHasCore ? t('migration.phaseTitle') : t('migration.iterationPhaseTitle') }}</h3>
+                                            <span class="text-[10px] t-text-muted hidden sm:inline">{{
+                                                routingHasCore ? t('migration.phaseHelp') : t('migration.iterationPhaseHelp') }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="px-5 py-3 flex items-center gap-3 border-t"
+                                        :class="{
+                                            'bg-emerald-500/10 border-emerald-500/30 text-emerald-400': effectivePhase === 'CORE_EXCLUSIVE' || effectivePhase === 'LING_EXCLUSIVE',
+                                            'bg-amber-500/10 border-amber-500/30 text-amber-400': effectivePhase === 'MIGRATING' || effectivePhase === 'ITERATING'
+                                        }">
+                                        <i :class="{
+                                            'fa-solid fa-shield-halved': effectivePhase === 'CORE_EXCLUSIVE',
+                                            'fa-solid fa-arrows-rotate': effectivePhase === 'MIGRATING',
+                                            'fa-solid fa-cube': effectivePhase === 'LING_EXCLUSIVE',
+                                            'fa-solid fa-code-branch': effectivePhase === 'ITERATING'
+                                        }"></i>
+                                        <div class="flex-1">
+                                            <span class="font-bold text-sm">{{ t('migration.phase.' + effectivePhase) }}</span>
+                                            <span v-if="migrationRecord" class="text-xs ml-2 opacity-80">
+                                                {{ migrationRecord.oldCandidate || '-' }} ↔ {{ migrationRecord.newCandidate || '-' }}
+                                            </span>
+                                            <span v-if="!effectivePhase || effectivePhase === 'CORE_EXCLUSIVE'"
+                                                class="text-xs ml-2 opacity-60">{{ t('migration.canStartMigration') }}</span>
+                                            <span v-else-if="effectivePhase === 'LING_EXCLUSIVE'"
+                                                class="text-xs ml-2 opacity-60">{{ routingHasCore ? t('migration.canStartIteration') : t('migration.canStartIterationNoCore') }}</span>
+                                            <span v-else class="text-xs ml-2 opacity-60">{{ t('migration.binaryRequiresConfirm') }}</span>
+                                        </div>
+                                        <!-- 相变操作按钮 -->
+                                        <div class="flex gap-2 flex-shrink-0">
+                                            <button v-if="routingHasCore && effectivePhase === 'CORE_EXCLUSIVE'" @click="startMigration"
+                                                class="px-3 py-1 text-xs font-bold rounded bg-blue-600 hover:bg-blue-500 text-white border border-blue-500/50">
+                                                <i class="fa-solid fa-play mr-1"></i>{{ t('migration.startMigration') }}
+                                            </button>
+                                            <button v-if="effectivePhase === 'LING_EXCLUSIVE'" @click="startIteration"
+                                                class="px-3 py-1 text-xs font-bold rounded bg-blue-600 hover:bg-blue-500 text-white border border-blue-500/50">
+                                                <i class="fa-solid fa-code-branch mr-1"></i>{{ t('migration.startIteration') }}
+                                            </button>
+                                            <button v-if="effectivePhase === 'MIGRATING' || effectivePhase === 'ITERATING'"
+                                                @click="confirmTransition"
+                                                class="px-3 py-1 text-xs font-bold rounded bg-green-600 hover:bg-green-500 text-white border border-green-500/50">
+                                                <i class="fa-solid fa-check mr-1"></i>{{ t('migration.confirm') }}
+                                            </button>
+                                            <button v-if="effectivePhase === 'MIGRATING' || effectivePhase === 'ITERATING'"
+                                                @click="rollbackTransition"
+                                                class="px-3 py-1 text-xs font-bold rounded bg-red-600 hover:bg-red-500 text-white border border-red-500/50">
+                                                <i class="fa-solid fa-rotate-left mr-1"></i>{{ t('migration.rollback') }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="p-4">
+                                        <p class="text-sm t-text-muted text-center">
+                                            <i class="fa-solid fa-info-circle mr-1"></i>
+                                            {{ routingHasCore ? t('migration.binaryCandidateOnly') : t('migration.iterationOnlyHint') }}
+                                        </p>
+                                    </div>
+                                </div>
+
                                 <!-- 流量分布 card -->
                                 <div class="card">
                                     <div class="card-header">
-                                        <div class="flex items-center justify-between w-full">
-                                            <div class="flex items-center gap-2">
-                                                <i class="fa-solid fa-chart-pie text-purple-400"></i>
-                                                <h3 class="font-bold text-base t-text">{{ t('contractRouting.flowDistribution') }}</h3>
-                                            </div>
-                                            <button @click="rollbackContract"
-                                                class="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1.5">
-                                                <i class="fa-solid fa-rotate-left"></i>{{ t('contractRouting.rollback') }}
-                                            </button>
+                                        <div class="flex items-center gap-2">
+                                            <i class="fa-solid fa-chart-pie text-purple-400"></i>
+                                            <h3 class="font-bold text-base t-text">{{ t('contractRouting.flowDistribution') }}</h3>
                                         </div>
                                     </div>
                                     <div class="p-5">
@@ -2281,8 +2158,8 @@
                                         <div v-else-if="routingDetail">
                                             <div class="text-xs t-text-muted mb-3 font-mono break-all">{{ routingDetail.contractId }}</div>
                                             <div class="space-y-3">
-                                                <!-- 灵核权重 -->
-                                                <div>
+                                                <!-- 灵核权重（仅当契约存在灵核 baseline provider） -->
+                                                <div v-if="routingHasCore">
                                                     <div class="flex justify-between text-sm mb-1">
                                                         <span class="t-text-sub">{{ t('contractRouting.coreWeight') }}</span>
                                                         <span class="font-mono font-bold text-green-400">{{ routingDetail.coreEffectiveWeight }}</span>
@@ -2292,8 +2169,8 @@
                                                             :style="{width: routingDetail.coreEffectiveWeight + '%'}"></div>
                                                     </div>
                                                 </div>
-                                                <!-- 灵元权重 -->
-                                                <div>
+                                                <!-- 灵元权重（仅当契约存在灵元 provider） -->
+                                                <div v-if="routingHasLing">
                                                     <div class="flex justify-between text-sm mb-1">
                                                         <span class="t-text-sub">{{ t('contractRouting.lingWeight') }}</span>
                                                         <span class="font-mono font-bold text-blue-400">{{ routingDetail.lingEffectiveWeight }}</span>
@@ -2335,15 +2212,21 @@
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        <tr v-for="p in routingDetail.providers" :key="p.lingId" class="t-border-b">
+                                                        <tr v-for="p in routingDetail.providers" :key="p.version ? (p.lingId + ':' + p.version) : p.lingId" class="t-border-b">
                                                             <td class="p-2 font-mono t-text">
-                                                                <span v-if="p.kind === 'CORE'" class="text-green-400">{{ t('contractRouting.kindCore') }}</span>
-                                                                <span v-else>{{ p.lingId }}</span>
+                                                                <template v-if="p.coreBaseline">
+                                                                    <span class="text-green-400">{{ t('contractRouting.kindCore') }}</span>
+                                                                </template>
+                                                                <template v-else>
+                                                                    {{ p.lingId }}
+                                                                    <span v-if="p.version"
+                                                                        class="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-cyan-500/20 text-cyan-400 font-bold align-middle">v{{ p.version }}</span>
+                                                                </template>
                                                             </td>
                                                             <td class="p-2">
-                                                                <span :class="p.kind === 'CORE' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'"
+                                                                <span :class="p.coreBaseline ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'"
                                                                     class="px-2 py-0.5 rounded text-[10px] font-bold">
-                                                                    {{ p.kind === 'CORE' ? t('contractRouting.kindCore') : t('contractRouting.kindLing') }}
+                                                                    {{ p.coreBaseline ? t('contractRouting.kindCore') : t('contractRouting.kindLing') }}
                                                                 </span>
                                                             </td>
                                                             <td class="p-2 text-right font-mono t-text-sub">{{ p.registeredWeight }}</td>
@@ -2477,6 +2360,109 @@
                         <!-- 左列：功能演练 + 服务演练场 -->
                         <div class="col-span-12 space-y-6">
 
+                            <!-- 压测与审计 -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="flex items-center gap-3">
+                                        <h3 class="font-bold text-base t-text">{{ t('traffic.title') }}</h3>
+                                        <span class="text-[10px] t-text-muted hidden sm:inline">{{
+                                            t('traffic.routingOnlyHint') }}</span>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <button @click="toggleAuto" :disabled="!canOperate"
+                                            :class="isAuto ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'"
+                                            class="action-btn text-white text-sm">
+                                            <i :class="isAuto ? 'fa-solid fa-stop' : 'fa-solid fa-play'"></i>
+                                            {{ isAuto ? t('traffic.stop') : t('traffic.stress') }}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-5">
+                                    <div v-if="!canOperate || !activeLing" class="result-empty mb-3">{{
+                                        t('traffic.selectLing') }}</div>
+                                    <div class="metric-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                                        <div class="metric-card">
+                                            <div class="text-xs t-text-muted uppercase mb-1">{{ t('traffic.total')
+                                                }}
+                                            </div>
+                                            <div class="text-xl font-bold t-text font-mono">{{ stats.total }}</div>
+                                        </div>
+                                        <div class="metric-card border-blue-500/30">
+                                            <div class="text-xs text-blue-400 uppercase mb-1">{{ t('traffic.v1Hit')
+                                                }}</div>
+                                            <div class="text-xl font-bold text-blue-400 font-mono">{{ stats.v1Pct
+                                                }}%</div>
+                                        </div>
+                                        <div class="metric-card"
+                                            :class="canCanary && canOperate ? 'border-amber-500/30' : ''">
+                                            <div class="text-xs uppercase mb-1"
+                                                :class="canCanary && canOperate ? 'text-amber-400' : 't-text-muted'">
+                                                {{
+                                                t('traffic.v2Hit') }}
+                                            </div>
+                                            <div class="text-xl font-bold font-mono"
+                                                :class="canCanary && canOperate ? 'text-amber-400' : 't-text-muted'">
+                                                {{ canCanary && canOperate ? stats.v2Pct + '%' : 'N/A' }}
+                                            </div>
+                                        </div>
+                                        <div class="metric-card">
+                                            <div class="text-xs t-text-muted uppercase mb-1">{{ t('traffic.drift')
+                                                }}
+                                            </div>
+                                            <div class="text-xl font-bold font-mono t-text-muted">
+                                                {{ canCanary && canOperate ? formatDrift(stats.v2Pct - stats.v1Pct) :
+                                                'N/A' }}
+                                            </div>
+                                        </div>
+                                        <div class="metric-card border-purple-500/30">
+                                            <div class="text-xs text-purple-400 uppercase mb-1">{{
+                                                t('traffic.active') }}
+                                            </div>
+                                            <div class="text-xl font-bold text-purple-400 font-mono">{{ stats.active
+                                                || 0 }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- 审计结果 -->
+                                    <div v-if="lastAudit" class="mt-3"
+                                        :class="lastAudit.allowed ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'"
+                                        class="card border p-4">
+                                        <div class="flex justify-between items-start">
+                                            <div class="flex items-center gap-2">
+                                                <i
+                                                    :class="lastAudit.allowed ? 'fa-solid fa-check-circle text-green-400' : 'fa-solid fa-times-circle text-red-400'"></i>
+                                                <span class="font-bold text-sm"
+                                                    :class="lastAudit.allowed ? 'text-green-400' : 'text-red-400'">
+                                                    {{ lastAudit.allowed ? t('audit.success') : t('audit.denied') }}
+                                                </span>
+                                                <span v-if="lastAudit.devModeBypass"
+                                                    class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 ml-2 animate-pulse">
+                                                    <i class="fa-solid fa-shield-cat mr-1"></i> {{ t('audit.devPass') }}
+                                                </span>
+                                            </div>
+                                            <button @click="lastAudit = null" class="t-text-muted hover:t-text">
+                                                <i class="fa-solid fa-xmark"></i>
+                                            </button>
+                                        </div>
+                                        <p class="text-sm mt-2 font-mono"
+                                            :class="lastAudit.allowed ? 'text-green-300' : 'text-red-300'">
+                                            [{{ lastAudit.traceId }}] {{ lastAudit.message }}
+                                        </p>
+                                        <div v-if="lastAudit.ruleSource"
+                                            class="mt-2 pt-2 border-t t-border text-xs t-text-muted flex items-center gap-2">
+                                            <span class="flex items-center gap-1">
+                                                <i class="fa-solid fa-gavel"></i>
+                                                {{ t('audit.ruleSource') }}:
+                                            </span>
+                                            <span
+                                                class="font-mono text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
+                                                {{ lastAudit.ruleSource }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- 功能演练 -->
                             <div class="card">
                                 <div class="card-header">
@@ -2519,12 +2505,12 @@
                                     <div class="border-t t-border pt-4">
                                         <div class="flex items-center justify-between mb-3">
                                             <span class="text-sm font-medium t-text-sub">{{ t('demo.ipcAuth') }}</span>
-                                            <div @click="toggleIpc" :class="ipcEnabled ? 'bg-green-500' : 't-bg-hover'"
-                                                class="w-10 h-5 rounded-full relative transition-all cursor-pointer">
-                                                <div :class="ipcEnabled ? 'translate-x-5' : 'translate-x-1'"
-                                                    class="absolute top-1 w-3 h-3 bg-white rounded-full transition-transform">
-                                                </div>
-                                            </div>
+                                            <button type="button" role="switch" :aria-checked="ipcEnabled" @click="toggleIpc"
+                                                :aria-label="t('demo.ipcAuth')" :class="ipcEnabled ? 'bg-green-500' : 't-bg-hover'"
+                                                class="switch-toggle w-10 h-5 rounded-full relative transition-all cursor-pointer">
+                                                <span :class="ipcEnabled ? 'translate-x-5' : 'translate-x-1'"
+                                                    class="absolute top-1 left-0 w-3 h-3 bg-white rounded-full transition-transform"></span>
+                                            </button>
                                         </div>
                                         <button @click="simulateIPC" :disabled="!canOperate || loading.simulate"
                                             class="w-full action-btn bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-600/30 text-sm">
@@ -2819,7 +2805,9 @@
             <footer class="global-console-drawer font-mono"
                 :style="{ height: consoleExpanded ? consoleHeight + 'px' : '40px' }">
                 <div class="console-resize-handle" @mousedown="startConsoleResize" @click.stop></div>
-                <div class="console-header" @click="consoleExpanded = !consoleExpanded">
+                <div class="console-header" tabindex="0" @click="consoleExpanded = !consoleExpanded"
+                    :aria-expanded="consoleExpanded" @keydown.enter="consoleExpanded = !consoleExpanded"
+                    @keydown.space.prevent="consoleExpanded = !consoleExpanded">
                     <div class="console-title-area">
                         <i class="fa-solid fa-terminal"
                             :class="{ 'console-alert-pulse text-red-500': hasNewTraceAlert }"></i>

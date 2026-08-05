@@ -166,8 +166,8 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
     /**
      * 描述符版本与实例版本是否对齐。
      * <p>
-     * 描述符 version 为 null（迁移期灵元裸 lingId）时放宽到任意实例版本；
-     * 否则要求严格相等，避免迭代期误选旧版本。
+     * 描述符 version 为 null（无版本概念，仅灵核 provider）时放宽到任意实例版本；
+     * 否则要求严格相等，避免多版本并存时误选旧版本。
      */
     private boolean versionMatches(ProviderDescriptor desc, LingInstance instance) {
         if (desc.getVersion() == null) {

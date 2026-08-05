@@ -1,5 +1,6 @@
 package com.lingframe.core.ling;
 
+import com.lingframe.core.routing.ProviderDescriptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -307,6 +308,144 @@ class DefaultLingServiceRegistryTest {
             registry.evict("user-ling");
 
 
+        }
+    }
+
+    // ==================== provider 注册与版本共存 ====================
+
+    @Nested
+    @DisplayName("provider 注册与版本共存")
+    class ProviderRegistration {
+
+        @Test
+        @DisplayName("同一灵元两个版本注册同一契约应生成两个 provider")
+        void sameLingTwoVersionsProduceTwoProviders() {
+            registry.registerProvider("svc", "user-ling", "1.0.0", 0);
+            registry.registerProvider("svc", "user-ling", "1.1.0", 0);
+
+            List<ProviderDescriptor> providers = registry.getProvidersByContractId("svc");
+            assertEquals(2, providers.size());
+            assertTrue(providers.stream().anyMatch(p -> "user-ling:1.0.0".equals(p.providerKey())));
+            assertTrue(providers.stream().anyMatch(p -> "user-ling:1.1.0".equals(p.providerKey())));
+            // 按 lingId 去重后仍只对应一个灵元（同灵元多版本并存）
+            assertEquals(1, providers.stream().map(ProviderDescriptor::getLingId).distinct().count());
+        }
+
+        @Test
+        @DisplayName("无灵核时首个 provider 应提升为默认基线 100，而非全部为 0")
+        void firstProviderBecomesDefaultBaselineWithoutCore() {
+            registry.registerProvider("svc", "user-ling", "1.0.0", 0);
+            registry.registerProvider("svc", "user-ling", "1.1.0", 0);
+
+            List<ProviderDescriptor> providers = registry.getProvidersByContractId("svc");
+            assertTrue(providers.stream().anyMatch(p -> p.getWeight() == 100),
+                    "无灵核基线时应有默认 provider 为 100，实际全部为 0");
+        }
+
+        @Test
+        @DisplayName("已有灵核 100 基线时灵元 0 权重不被提升")
+        void lingStaysZeroWhenCoreBaselineExists() {
+            registry.registerProvider("svc", "lingcore-app", null, 100);
+            registry.registerProvider("svc", "user-ling", "1.0.0", 0);
+
+            List<ProviderDescriptor> providers = registry.getProvidersByContractId("svc");
+            assertEquals(2, providers.size());
+            assertEquals(100, findProp("lingcore-app", providers).getWeight());
+            assertEquals(0, findProp("user-ling", providers).getWeight());
+        }
+
+        @Test
+        @DisplayName("按版本驱逐只移除指定版本，其余版本保留并重新成为默认基线")
+        void evictProviderByVersionKeepsSiblingVersions() {
+            registry.registerProvider("svc", "user-ling", "1.0.0", 0);
+            registry.registerProvider("svc", "user-ling", "1.1.0", 0);
+
+            registry.evictProvider("user-ling", "1.0.0");
+
+            List<ProviderDescriptor> providers = registry.getProvidersByContractId("svc");
+            assertEquals(1, providers.size());
+            assertEquals("user-ling:1.1.0", providers.get(0).providerKey());
+            assertEquals(100, providers.get(0).getWeight(),
+                    "退役旧版本后剩余版本应成为默认基线 100");
+        }
+
+        @Test
+        @DisplayName("按版本驱逐版本为 null 时不执行任何操作")
+        void evictProviderByNullVersionIsNoOp() {
+            registry.registerProvider("svc", "user-ling", "1.0.0", 0);
+
+            registry.evictProvider("user-ling", null);
+
+            assertEquals(1, registry.getProvidersByContractId("svc").size());
+        }
+
+        @Test
+        @DisplayName("全量驱逐移除该灵元所有版本的 provider")
+        void evictProviderRemovesAllVersions() {
+            registry.registerProvider("svc", "user-ling", "1.0.0", 0);
+            registry.registerProvider("svc", "user-ling", "1.1.0", 0);
+
+            registry.evictProvider("user-ling");
+
+            assertTrue(registry.getProvidersByContractId("svc").isEmpty());
+        }
+
+        @Test
+        @DisplayName("仅注册元数据不应产生无版本幻影 provider（多版本并存回归）")
+        void metadataOnlyRegistrationMustNotCreatePhantomProvider() {
+            registry.registerServiceMetadata(
+                    "user-ling:canary_create_user", "create", new String[]{"java.lang.String"}, "void");
+
+            // provider 候选必须为空：占位 provider 已废弃，候选只由版本化注册产生
+            assertTrue(registry.getProvidersByContractId("canary_create_user").isEmpty());
+        }
+
+        @Test
+        @DisplayName("元数据 + 版本化注册后契约恰好一个 provider，无占位幻影（canary 场景回归）")
+        void versionedRegistrationAfterMetadataProducesSingleProvider() {
+            registry.registerServiceMetadata(
+                    "user-ling:canary_create_user", "create", new String[]{"java.lang.String"}, "void");
+            registry.registerProvider("canary_create_user", "user-ling", "1.1.0-canary", 0);
+
+            List<ProviderDescriptor> providers = registry.getProvidersByContractId("canary_create_user");
+            assertEquals(1, providers.size(),
+                    "同契约不应同时存在无版本幻影与版本化 provider");
+            assertEquals("user-ling:1.1.0-canary", providers.get(0).providerKey());
+            // 唯一提供方无灵核基线 → 提升为 100
+            assertEquals(100, providers.get(0).getWeight());
+        }
+
+        @Test
+        @DisplayName("灵核契约的 provider 由 registrar 直接写入，不依赖元数据占位")
+        void coreContractProviderComesFromRegistrarNotPlaceholder() {
+            // LingCoreServiceRegistrarProcessor → LingServiceRegistrar.forCore(weight=100) 行为：
+            // 同一次注册里 registerServiceMetadata + registerProvider("lingcore-app", null, 100)
+            String contract = "coreAuthService";
+            registry.registerServiceMetadata(
+                    "lingcore-app:" + contract, "check", new String[]{"java.lang.String"}, "boolean");
+            registry.registerProvider(contract, "lingcore-app", null, 100);
+
+            List<ProviderDescriptor> providers = registry.getProvidersByContractId(contract);
+            assertEquals(1, providers.size(), "灵核契约只应有一个 provider（来自 registrar 写权重，非元数据占位）");
+            assertEquals("lingcore-app", providers.get(0).providerKey());
+            assertEquals(100, providers.get(0).getWeight());
+        }
+
+        @Test
+        @DisplayName("灵核仅有元数据而无 provider 注册时，契约无路由候选（占位已彻底移除）")
+        void coreMetadataOnlyHasNoProviderCandidate() {
+            registry.registerServiceMetadata(
+                    "lingcore-app:coreAuthService", "check", new String[]{"java.lang.String"}, "boolean");
+
+            // 路由候选为空：占位已移除，灵核候选只能来自 registrar 的 registerProvider
+            assertTrue(registry.getProvidersByContractId("coreAuthService").isEmpty());
+        }
+
+        private ProviderDescriptor findProp(String lingId, List<ProviderDescriptor> providers) {
+            return providers.stream()
+                    .filter(p -> lingId.equals(p.getLingId()))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("provider not found: " + lingId));
         }
     }
 }

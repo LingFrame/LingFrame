@@ -255,8 +255,6 @@
         "invocationUpdateFailed": "Invocation governance update failed",
         "weightSaved": "Weight updated",
         "weightSaveFailed": "Weight update failed",
-        "rollbackDone": "Rolled back to core 100%",
-        "rollbackFailed": "Rollback failed",
         "fetchContractsFailed": "Failed to fetch contract list",
         "fetchRoutingFailed": "Failed to fetch contract routing",
         "fetchMigrationFailed": "Failed to fetch migration progress",
@@ -442,7 +440,6 @@
   "governance": {
     "matrixRowHint": "Click to jump to governance config for this ling",
     "tabConfig": "Governance Config",
-    "tabTraffic": "Traffic Control",
     "tabHealth": "Health Observation",
     "tabReadiness": "Runtime Readiness",
     "presetLabel": "Presets",
@@ -579,10 +576,6 @@
     "overridePlaceholder": "Not overridden",
     "effectiveWeight": "Effective Weight",
     "save": "Save",
-    "rollback": "Rollback to Core 100%",
-    "rollbackConfirmTitle": "Confirm Rollback to Core",
-    "rollbackConfirmMessage": "All runtime weight overrides under contract {contractId} will be cleared. Core will take 100% traffic, ling providers will get zero weight.",
-    "rollbackAction": "Confirm Rollback",
     "weightHint": "Integer 0-100, takes effect immediately after save"
   },
   "migration": {
@@ -608,7 +601,27 @@
     "status": "Status",
     "statusStale": "Decommission Ready",
     "statusMigrating": "Migrating",
-    "staleHint": "Core has zero invocations, can be decommissioned"
+    "staleHint": "Core has zero invocations, can be decommissioned",
+    "phaseTitle": "Contract Migration Phase",
+    "phaseHelp": "Advance migration per contract, replacing the traffic tab and canary slider",
+    "iterationPhaseTitle": "Version Iteration Phase",
+    "iterationPhaseHelp": "No core provider; only supports ling new-version iteration",
+    "canStartMigration": "Ready to start migration (core → ling)",
+    "canStartIteration": "Ready to start iteration (old ling → new version)",
+    "canStartIterationNoCore": "Ready to start version iteration (old ling → new version)",
+    "iterationOnlyHint": "This contract has no core provider; only version iteration can be advanced, core migration is not supported",
+    "binaryRequiresConfirm": "Migration/iteration in progress, confirm or rollback the phase transition",
+    "binaryCandidateOnly": "Migration and iteration are initiated based on the selected contract and its ling provider",
+    "startMigration": "Start Migration",
+    "startIteration": "Start Iteration",
+    "confirm": "Confirm Transition",
+    "rollback": "Rollback Transition",
+    "phase": {
+      "CORE_EXCLUSIVE": "Core Exclusive",
+      "MIGRATING": "Migrating",
+      "LING_EXCLUSIVE": "Ling Exclusive",
+      "ITERATING": "Iterating"
+    }
   },
   "tour": {
     "restart": "Guide",

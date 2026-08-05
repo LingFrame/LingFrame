@@ -4,7 +4,6 @@ import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.util.VersionUtils;
 import lombok.NonNull;
-import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -251,23 +250,23 @@ public class InstancePool {
     /**
      * 清理空闲的死亡实例。
      * <p>
-     * 如果未提供 destroyer，则默认仍经由 {@link InstanceCoordinator#tearDown(LingInstance)}
-     * 完成最终销毁，保持状态事件链完整。
+     * ⚠️ destroyer 必传：回收必须走完整卸载（如引擎的
+     * {@code finalizeInstanceUnload} = tearDown + 卸载钩子 + 关闭 ClassLoader + 泄漏检测）。
+     * 禁止传 null 退化为「仅 tearDown」——那样实例销毁了但 LingClassLoader 悬空，
+     * 每次替换/重载都会泄漏一个类加载器且无法通过泄漏检测验证 GC 回收。
      *
-     * @param destroyer 销毁回调
+     * @param destroyer 完整卸载回调
      * @return 销毁的实例数量
      */
     public int cleanupIdleInstances(Consumer<LingInstance> destroyer) {
+        Objects.requireNonNull(destroyer,
+                "destroyer is required: tearDown-only reclaim leaks LingClassLoader, provide a complete unload destroyer");
         int[] count = { 0 };
 
         dyingQueue.removeIf(instance -> {
             if (instance.isIdle()) {
                 try {
-                    if (destroyer != null) {
-                        destroyer.accept(instance);
-                    } else {
-                        instanceCoordinator.tearDown(instance);
-                    }
+                    destroyer.accept(instance);
                     count[0]++;
                     log.debug("[{}] Cleaned up idle instance: {}", lingId, instance.getVersion());
                     return true;
@@ -283,20 +282,21 @@ public class InstancePool {
 
     /**
      * 强制清理所有死亡实例。
+     * <p>
+     * destroyer 必传，语义同 {@link #cleanupIdleInstances(Consumer)}：
+     * 必须提供完整卸载回调，传 null 会导致「仅 tearDown 不关闭 ClassLoader」的半回收泄漏。
      *
-     * @param destroyer 销毁回调
+     * @param destroyer 完整卸载回调
      */
     public void forceCleanupAll(Consumer<LingInstance> destroyer) {
         log.warn("[{}] Force cleanup triggered, destroying {} dying instances",
                 lingId, dyingQueue.size());
 
+        Objects.requireNonNull(destroyer,
+                "destroyer is required: tearDown-only cleanup leaks LingClassLoader, provide a complete unload destroyer");
         dyingQueue.removeIf(instance -> {
             try {
-                if (destroyer != null) {
-                    destroyer.accept(instance);
-                } else {
-                    instanceCoordinator.tearDown(instance);
-                }
+                destroyer.accept(instance);
             } catch (Exception e) {
                 log.error("[{}] Failed to force destroy instance: {}", lingId, instance.getVersion(), e);
             }

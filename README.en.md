@@ -166,7 +166,7 @@ After it boots:
 
 ### Dashboard preview
 
-[![LingFrame Dashboard](./docs/en/images/dashboard.png)](https://dashboard.lingframe.cn)
+[![LingFrame Dashboard](./docs/images/dashboard.0.4.0.en.png)](https://dashboard.lingframe.cn)
 
 > Click the screenshot to open the live demo. The online environment ships with sample lings and supports live lifecycle, routing, and simulation drills.
 

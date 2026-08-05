@@ -57,21 +57,18 @@ class InvocationContextBuilderTest {
             assertEquals("order-ling", ctx.getTargetLingId());
         }
 
-        @DisplayName("裸 contractId FQSID 下 getLingIdFromFqsid 返回 null，forNormal 不误 pin targetLingId")
+        @DisplayName("forContractSimulation 设置 SIMULATION 模式，携带裸契约且不锁定 targetLingId")
         @Test
-        void forNormal_bareContractId_doesNotPinTargetLingId() {
-            // 裸 contractId 场景：FQSID 无冒号，lingId 应为 null，
-            // forNormal 不应把 contractId 误当 lingId pin 到 targetLingId。
-            // 由 L0 ContractProviderRoutingFilter 解析出真实 targetLingId。
-            InvocationContext ctx = InvocationContextBuilder.forNormal("caller-ling", "com.example.UserService")
+        void forContractSimulation_setsBareContractWithoutTargetLock() {
+            // 压测上下文语义：不锁定 targetLingId，让 L0 ContractProviderRoutingFilter
+            // 在全部候选（含灵核 baseline）间按权重选路；锁死 targetLingId 会令 L0 分支放行。
+            InvocationContext ctx = InvocationContextBuilder.forContractSimulation("ling1", "com.example.UserService")
                     .build();
 
-            assertEquals(InvocationExecutionMode.NORMAL, ctx.execution().getMode());
+            assertEquals(InvocationExecutionMode.SIMULATION, ctx.execution().getMode());
+            assertEquals("ling1", ctx.getCallerLingId());
             assertEquals("com.example.UserService", ctx.getServiceFQSID());
-            assertNull(ctx.getLingIdFromFqsid(), "裸 contractId 下 getLingIdFromFqsid 应返回 null");
-            assertNull(ctx.getTargetLingId(), "裸 contractId 下 forNormal 不应误 pin targetLingId");
-            assertEquals("com.example.UserService", ctx.getServiceNameFromFqsid(),
-                    "裸 contractId 应作为 serviceName 缓存");
+            assertNull(ctx.getTargetLingId(), "契约级模拟不应锁定 targetLingId");
         }
     }
 

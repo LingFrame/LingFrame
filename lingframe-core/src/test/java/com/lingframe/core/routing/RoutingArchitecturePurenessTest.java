@@ -23,7 +23,7 @@ class RoutingArchitecturePurenessTest {
     class ProviderKeyShapes {
 
         @Test
-        @DisplayName("迁移期无版本时 providerKey 为裸 lingId")
+        @DisplayName("无版本（仅灵核）时 providerKey 为裸 lingId")
         void shouldUseBareLingIdWhenNoVersion() {
             ProviderDescriptor desc = new ProviderDescriptor("svc-a", "user-ling", 70);
             assertEquals("user-ling", desc.providerKey());
@@ -31,7 +31,7 @@ class RoutingArchitecturePurenessTest {
         }
 
         @Test
-        @DisplayName("迭代期带版本时 providerKey 为 lingId:version")
+        @DisplayName("带版本时 providerKey 为 lingId:version")
         void shouldUseVersionedKeyDuringIteration() {
             ProviderDescriptor desc = new ProviderDescriptor("svc-a", "user-ling", "1.1.0", 40);
             assertEquals("user-ling:1.1.0", desc.providerKey());

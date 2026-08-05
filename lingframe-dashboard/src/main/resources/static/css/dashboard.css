@@ -33,6 +33,37 @@
     --sidebar-width: 260px;
 }
 
+/* ===== 可访问性：语义化交互与键盘焦点 ===== */
+/* 语义化 button 的轻量重置（Tailwind 预检已部分覆盖，此处兜底保证组件样式稳定） */
+button {
+    appearance: none;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    line-height: inherit;
+    cursor: pointer;
+}
+
+/* 键盘导航可见焦点：鼠标点击不显示轮廓，键盘 Tab 聚焦时高亮 */
+:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* 开关切换轨道（role=switch）：轨道为按钮，拇指为纯展示 */
+.switch-toggle {
+    display: inline-block;
+    flex-shrink: 0;
+}
+.switch-toggle span {
+    pointer-events: none;
+}
+
 html.theme-light {
     --primary-color: #3b82f6;
     --primary-hover: #2563eb;

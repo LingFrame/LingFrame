@@ -106,7 +106,7 @@ class DashboardAutoConfigurationTest {
         assertNotNull(config.simulateService(
                 mock(LingRepository.class), mock(EventBus.class),
                 mock(PermissionService.class), mock(InvocationPipelineEngine.class),
-                mock(LingFrameInfo.class)));
+                mock(LingFrameInfo.class), mock(LingServiceRegistry.class)));
     }
 
     @Test

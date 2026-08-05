@@ -130,7 +130,6 @@ class DefaultLingContextTest {
     @Test
     @DisplayName("getService 带完整 FQSID 锚点：serviceId 含冒号时忽略 lingId")
     void getServiceWithFqsidAnchor() {
-        when(registry.getLingIdsByContractId(anyString())).thenReturn(Collections.emptyList());
         Runnable proxy = context.getService(Runnable.class, "ignored-ling", "target-ling:java.lang.Runnable").orElse(null);
         // 代理对象应能创建；路由命中由调用时 resolveTargetLingId 处理
         assertNotNull(proxy);
@@ -139,7 +138,6 @@ class DefaultLingContextTest {
     @Test
     @DisplayName("getService 带灵元锚点：lingId 非空时拼 [lingId]:[接口名]")
     void getServiceWithLingIdAnchor() {
-        when(registry.getLingIdsByContractId(anyString())).thenReturn(Collections.emptyList());
         Runnable proxy = context.getService(Runnable.class, "user-ling", null).orElse(null);
         assertNotNull(proxy);
     }
@@ -181,8 +179,6 @@ class DefaultLingContextTest {
         // interfaceName 应为 customRun（短 ID 本身），而非 java.lang.Runnable（接口 FQCN）。
         // resolveTargetLingId 在 proxy.invoke() 时才调，创建 proxy 阶段不触发——
         // 此处只验 proxy 能创建，路由命中由调用时处理。
-        when(registry.getLingIdsByContractId(anyString())).thenReturn(Collections.emptyList());
-
         Runnable proxy = context.getService(Runnable.class, "ling-a", "customRun").orElse(null);
 
         // proxy 应能创建（路由命中由调用时 resolveTargetLingId 处理）
