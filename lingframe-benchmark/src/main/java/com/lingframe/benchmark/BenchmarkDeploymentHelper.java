@@ -132,8 +132,10 @@ public class BenchmarkDeploymentHelper {
                     resourceManager, leakDetector);
         } else {
             // 原有行为：全部桶为空，剥离资源清理噪声
+            // 构造为两桶签名：ecosystemHooks + jvmHooks 均为空
             unloadCoordinator = new LingUnloadCoordinator(
-                    pipelineEngine, Collections.<LingUnloadHook>emptyList(), resourceManager, leakDetector);
+                    pipelineEngine, Collections.<LingUnloadHook>emptyList(), Collections.<LingUnloadHook>emptyList(),
+                    resourceManager, leakDetector);
         }
 
         this.lifecycleEngine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()

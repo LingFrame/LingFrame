@@ -30,7 +30,12 @@ import static org.junit.jupiter.api.Assertions.fail;
 @SpringBootTest(
         classes = ObservabilityTestApplication.class,
         properties = {
-                "spring.datasource.url=jdbc:h2:mem:lingframe_dashboard_ui;DB_CLOSE_DELAY=0;MODE=MySQL"
+                "spring.datasource.url=jdbc:h2:mem:lingframe_dashboard_ui;DB_CLOSE_DELAY=0;MODE=MySQL",
+                // 用每次运行唯一的临时 SQLite 存储，避免复用固定路径残留的治理配置（限流/超时）导致 flaky
+                "lingframe.dashboard.storage.path=${java.io.tmpdir}/lingframe-dashboard-ui-smoke-${random.uuid}.db",
+                // 用每次运行唯一的临时治理 patch 文件，避免写回共享的源码 config/ling-governance-patch.yml
+                // 造成测试间互相污染（DashboardUiSmoke 通过 API 改治理配置会 save() 回源文件）
+                "lingframe.governance-patch-path=${java.io.tmpdir}/lingframe-dashboard-ui-smoke-${random.uuid}-patch.yml"
         },
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
 )

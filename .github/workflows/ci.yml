@@ -17,7 +17,7 @@ jobs:
   build-and-test:
     name: Build & Test (SB2 / JDK 8)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -31,12 +31,17 @@ jobs:
           cache: 'maven'
 
       # 显式带上 spring-boot2：只开 integration-check 会停用 activeByDefault 的 boot2 profile
-      # JDK8 forked VM 跑完全部 core 测试后偶发 NoClassDefFoundError（surefire StringUtils）：
-      # 原始异常通常是 OOM（surefire dump 机制在 OOM 后加载 StringUtils 又失败）。
-      # 单 fork 复用 + 大量自定义 ClassLoader 累积。给 forked VM 加 heap 2g + Metaspace 1g 余量。
-      # 仅 CI 注入，pom.xml 的 argLine 不动，本地构建不受影响。
-      - name: Build & Test
-        run: mvn -B clean verify -Pspring-boot2,integration-check -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+      # ^^ JDK8 forked VM 跑完全部 core 测试后偶发 NoClassDefFoundError（surefire StringUtils）：
+      # 单 fork 复用（default reuseForks=true）跑全部 ~1166 个 core 测试 + 大量自定义 ClassLoader
+      # （LingClassLoader/CloseAwareClassLoader/动态编译类）累积，JDK8 下测试收尾阶段引导类解析失败。
+      # 修复：lingframe-core 单独以 reuseForks=false 跑（每个测试类一个新 JVM，消除累积），
+      # 其余模块保持默认复用。仅 CI 隔离，pom.xml 不动，本地构建不受影响。
+      - name: Build & Test (core, isolated forks)
+        run: mvn -B clean install -Pspring-boot2,integration-check -pl lingframe-core -am -Dsurefire.reuseForks=false -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+
+      # core 已 install 进本地仓库，其余模块正常构建测试（默认 fork 复用）
+      - name: Build & Test (rest)
+        run: mvn -B verify -Pspring-boot2,integration-check -pl '!lingframe-core' -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
 
       # 失败时打印 surefire dump 文件，暴露原始异常（NoClassDefFoundError 是 dump 路径的二次错误）
       - name: Print surefire dump on failure
@@ -151,7 +156,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-test
     if: github.event_name == 'pull_request'
-    timeout-minutes: 10
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -164,12 +169,17 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Generate Coverage
-        run: mvn -B clean verify -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+      - name: Generate Coverage (core, isolated forks)
+        run: mvn -B clean install -pl lingframe-core -am -Dsurefire.reuseForks=false -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+
+      - name: Generate Coverage (rest)
+        run: mvn -B verify -pl '!lingframe-core' -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
 
       - name: Check Coverage Threshold
         run: |
-          mvn -B jacoco:check -pl lingframe-core,lingframe-dashboard,lingframe-runtime/lingframe-spring-boot-starter
+          # @check 引用 pom 中 <id>check</id> 的 execution（带 rules/dataFile）；
+          # 裸 `jacoco:check` 是 default-cli 调用，读不到 execution 的 rules → 报 missing/invalid
+          mvn -B jacoco:check@check -pl lingframe-core,lingframe-dashboard,lingframe-runtime/lingframe-spring-boot-starter
 
   coverage-check-sb3:
     name: Coverage Gate (SB3 / JDK 17)
@@ -194,7 +204,9 @@ jobs:
 
       - name: Check Coverage Threshold
         run: |
-          mvn -B jacoco:check -pl lingframe-core,lingframe-dashboard,lingframe-runtime/lingframe-spring-boot-starter
+          # @check 引用 pom 中 <id>check</id> 的 execution（带 rules/dataFile）；
+          # 裸 `jacoco:check` 是 default-cli 调用，读不到 execution 的 rules → 报 missing/invalid
+          mvn -B jacoco:check@check -pl lingframe-core,lingframe-dashboard,lingframe-runtime/lingframe-spring-boot-starter
 
   # ──────────────────────────────────────────────
   # 性能基线：JDK 8 + JDK 17 双版本基准测试
