@@ -60,7 +60,10 @@ public class SaasMallIntegrationTest {
     private static final String OAUTH_LING_ID = "saas-oauth-ling";
     private static final String SECKILL_LING_ID = "saas-seckill-ling";
     private static final String INVENTORY_LING_ID = "saas-inventory-hold-ling";
-    private static final String CORE_ID = LingCoreConstants.LINGCORE_LING_ID;
+    // 路由重构后 provider 键恒为 lingId:version：灵核为 lingcore-app:permanent，灵元为 lingId:1.0.0
+    private static final String CORE_ID = LingCoreConstants.LINGCORE_LING_ID + ":" + LingCoreConstants.LINGCORE_VERSION;
+    // 灵元 provider 键的版本段
+    private static final String LING_VERSION = "1.0.0";
 
     // 不指定 lingId：走契约的双 provider 权重切流
     @LingReference
@@ -310,12 +313,13 @@ public class SaasMallIntegrationTest {
     }
 
     private void switchToLing(String contract, String lingId) {
-        providerWeightRouter.setProviderWeight(contract, lingId, 100);
+        // 灵元 provider 恒以 lingId:version 注册，切流必须用版本化键
+        providerWeightRouter.setProviderWeight(contract, lingId + ":" + LING_VERSION, 100);
         providerWeightRouter.setProviderWeight(contract, CORE_ID, 0);
     }
 
     private void clearWeight(String contract, String lingId) {
-        providerWeightRouter.clearProviderWeight(contract, lingId);
+        providerWeightRouter.clearProviderWeight(contract, lingId + ":" + LING_VERSION);
         providerWeightRouter.clearProviderWeight(contract, CORE_ID);
     }
 

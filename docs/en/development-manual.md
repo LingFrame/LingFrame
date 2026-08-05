@@ -263,7 +263,7 @@ The N-way weight split is not "theoretically should be so" but a system capabili
 The routing layer and functional management layer (migration state machine) are completely split, establishing a clear two-layer architecture:
 
 - **Functional management layer**: `MigrationPhase` enum (`CORE_EXCLUSIVE` / `MIGRATING` / `LING_EXCLUSIVE` / `ITERATING`) + `MigrationStateHolder`, expressing "migration phase is the meta-state of the routing layer".
-- **Routing layer**: `ProviderWeightRouter` pure-weight binary routing, input ≤2 candidates, select one by weight.
+- **Routing layer**: `ProviderWeightRouter` pure-weight N-way routing, supports any number N of candidates distributed proportionally by weight (binary is just the N=2 special case).
 
 Four-state transition diagram:
 
@@ -295,11 +295,12 @@ Phase transition direction control:
 - If the zeroed and confirmed exiting party is `oldCandidateKey` → treated as "migration/iteration complete" (advance to EXCLUSIVE phase, deregister the old candidate slot).
 - If the zeroed and confirmed exiting party is `newCandidateKey` → treated as "migration/iteration rollback" (retreat to the previous EXCLUSIVE phase, deregister the new candidate slot).
 
-Provider identity during iteration:
+Provider identity and versioned registration:
 
-- **Migration period (CORE ↔ LING)**: LingCore identity is `lingcore-app`, Ling identity is bare `lingId`.
-- **Iteration period (v1 ↔ v2)**: when the same Ling deploys two versions, Provider identity is explicitly upgraded to `lingId:version` (e.g., `user-ling:1.0.0` and `user-ling:1.1.0`).
-- **After iteration completes and phase transition is confirmed**: the retained version's Provider identity converges back to bare `lingId`.
+- **Registration keys always carry a version**: the write side `registerProvider(contractId, lingId, version, weight)` uniformly carries a version—LingCore identifies as bare `lingcore-app` (no instance context, version is `null`), while a Ling always identifies as `lingId:version` (version truth source `DefaultLingContext.getVersion()`, derived from the bound instance). Migration and iteration periods are identical—no longer distinguished.
+- **Multiple versions of the same Ling coexist**: when the same Ling deploys two versions, two provider candidates coexist (e.g., `user-ling:1.0.0` and `user-ling:1.1.0`), and the routing layer splits traffic by weight.
+- **Precise version removal on retirement**: when an instance is retired, the provider for that version is evicted precisely by `lingId:version`; other still-serving versions continue. Only a full Ling uninstall performs a full evict (`evictProvider(lingId)` / `evict(lingId)`).
+- **No-LingCore baseline fallback**: when a contract has no `weight=100` provider and all provider weights are 0, the first registered provider is promoted to baseline 100, preventing silent "all-zero" idle routing. The `providerKey` used by Dashboard weight overrides is always `lingId:version` (or `lingcore-app` for LingCore).
 
 Persistence and restart consistency:
 

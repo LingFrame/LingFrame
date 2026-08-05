@@ -1,8 +1,8 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project will be documented in this file.
 
-## [V0.4.0] - 2026-07-19
+## [V0.4.0] - 2026-08-05
 
 Version: `lingframe-dependencies` → `revision=0.4.0`.  
 Primary path: Spring Boot 2.7 + JDK 8; Spring Boot 3.x + JDK 17 is the dual-stack support line.
@@ -18,18 +18,21 @@ On top of the 0.3 governance kernel, deliver the **control plane, elevated routi
 - Service Playground: real invoke by default, optional simulation; case save/replay and proportional routing
 - Governance center: resource permissions, invocation policies, presets, rule overview matrix
 - Canary decision assist (e.g. error-rate fluctuation hints)
-- Contract / provider weight and migration-progress controls
+- Contract / provider weight and migration-progress controls; stress test runs the real Pipeline with full-contract L0 routing (v1/v2 reflect real weight split including LingCore baseline)
 - Package management; SQLite persistence; access-token auth; read-only mode
 - Monitoring: JVM / per-collector GC, Ling resource drill-down, leak-detection records, thread-pool SPI stats, metric trends
 - Log console (pause/resume), themes & i18n, CORS / rate limiting
 
 ### 🚀 Core runtime & governance chain
 
+- **Architecture reorg**: core `router` → `routing` (routing promoted to a dedicated package with full Provider/Contract/Instance/Migration routers); new `runtime` package (`RuntimeMode` abstraction, fixed vs switchable); api adds `constant` (`LingCoreConstants` sentinel) and `resilience` (`FallbackCause` / `FallbackProvider` SPI) packages.
 - Pipeline elevation: `ContractProviderRoutingFilter` (L0 provider weights) + `InvocationPolicyPrefillFilter` + existing resilience / permission / thread-isolation chain
+- **N-way weight routing**: multiple providers coexist under one contract; `ProviderWeightRouter` splits traffic by weight (binary is just the N=2 special case; N≥3 means multi-version coexistence / multi-tenancy); warns only when candidate count changes, never blocks business
+- **Versioned provider registration**: `registerProvider(contractId, lingId, version, weight)` always carries a version—Ling is `lingId:version` (truth source `DefaultLingContext.getVersion()`, derived from the bound instance), LingCore is bare `lingcore-app`; retirement uses `evictProvider(lingId, version)` for precise cleanup while other versions keep serving; with no LingCore baseline the first provider is promoted to baseline 100 (no silent all-zero routing)
 - Multi-version canary and service-routing end-to-end; runtime override via `ProviderWeightRouter`
 - Implicit interface registration switch (`implicitRegistration`)
 - Microkernel SPI decoupling; ecosystem parent-delegate packages split out of core and injected by runtime
-- Unload cleanup via `LingUnloadHook` (thread / JDBC / logging / RMI / ShutdownHook / Debugger, etc.)
+- Unload cleanup via `LingUnloadHook` (thread / JDBC / logging / RMI / ShutdownHook / Debugger, etc.); reclaim always runs full unload (tearDown + unload hooks + close ClassLoader + leak detection); `InstancePool.cleanupIdleInstances` / `forceCleanupAll` require a destroyer (no tearDown-only half-reclaim leaking LingClassLoader); replacing the default instance retires the old version with precise per-version provider cleanup
 - Dual-FSM write authority centralized in `InstanceCoordinator` / `RuntimeCoordinator`; `LingRuntime` is a read-only aggregate
 - Traffic vs `RuntimeStatus`: cut traffic via 2D routing/weights; status only reflects instance aggregate facts
 - Runtime snapshots keyed by `instanceId`; `RuntimeCoordinator.unregister` on deploy failure / full undeploy
@@ -38,13 +41,20 @@ On top of the 0.3 governance kernel, deliver the **control plane, elevated routi
 - Assembly tree: `LifecycleEngineConfig` / `FilterRegistryConfig` builders; no global static `LingFrameConfig` singleton; fail-fast `init`
 - `AsyncLingEvent` marker; partitioned `InvocationContext`; exceptions unified as `LingInvocationException`
 - Configurable resilience parameters; `GovernancePolicy.copy` / deep-copy guards
+- **SIMULATION dry-run semantics**: stress test runs full-contract L0 routing (`forContractSimulation`, no targetLingId lock) across all candidates including LingCore; SIMULATION contract-level dry-run never resolves real method handles; SIMULATION traffic bypasses rate-limit / circuit-breaker budgets, not polluting real resilience state
 - Public terminology: LingCore / Ling
 
 ### 🚀 Infrastructure
 
 - Cache governance proxies and namespace isolation (Caffeine / Spring Cache / Redis wrap paths)
-- Storage proxy hardening; connection-level destructive calls (e.g. `Connection.abort`) blocked on the proxy
-- Boundary documented: storage governance is mainly the Spring `DataSource` Bean proxy path; `DriverManager` / non-Bean pools are outside that chain
+- Storage proxy hardening; connection-level destructive calls (e.g. Connection.abort) blocked on the proxy
+- **MyBatis-Plus proxy**: new lingframe-infra-mybatis-plus, interceptor-layer governance for pagination and audit
+- Boundary documented: storage governance is mainly the Spring DataSource Bean proxy path; DriverManager / non-Bean pools are outside that chain
+
+### 🚀 Config & benchmark modules
+
+- **lingframe-config**: extracted config aggregation layer, unifying LingFrameConfig / LingFrameInfo / LingRuntimeConfig carriers, decoupling core from runtime config
+- **lingframe-benchmark (-Pbenchmark)**: JMH suite covering Pipeline / FSM / ClassLoader / end-to-end lifecycle
 
 ### 🚀 Examples & benchmarks
 
@@ -68,12 +78,18 @@ On top of the 0.3 governance kernel, deliver the **control plane, elevated routi
 - SB3: `LingGatewayHandlerMapping` parity with SB2; CI smoke + example IT
 - Multi-module unit and contract tests expanded
 
-### 📦 Docs
+### 📦 Docs & specs
 
+- Doc system reorg: root-level `DEVELOPMENT_MANUAL.md` / `QUICK_START.md` / `MANIFESTO.md` / `WHY.md` etc. migrated to `docs/zh-CN/` and `docs/en/` (separate zh/en dirs); root keeps only `README` / `CHANGELOG` / `CONTRIBUTING` / `AGENTS`
 - Public `production-hardening`, Shared API security boundary, roadmap V0.4.0 section
 - Examples map: `lingframe-examples/README.md`
-- Release notes: `docs/en/release/0.4.0-RELEASE_NOTES.md`
 - Shared-Spring isolation boundary and unload SLA documented in release notes / production-hardening / architecture summary
+
+### 🛠 CI & engineering
+
+- New `.github/workflows/ci.yml` dual-stack CI (SB2+JDK8 / SB3+JDK17); issue & PR templates
+- New `scripts/test-dual-stack.ps1` local dual-stack regression script
+- Quality gates: `checkstyle` / `spotbugs` / `jacoco` on `verify`; `-Pintegration-check` enables integration-check profile
 
 ### ⚠️ Notes
 

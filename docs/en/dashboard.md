@@ -179,20 +179,22 @@ Token is sent via the `X-Access-Token` header only.
 | POST | `/lingframe/dashboard/lings/{lingId}/reload` | Hot-reload in dev mode |
 | POST | `/lingframe/dashboard/lings/{lingId}/status` | Update the ling's runtime state |
 
-### Gray Releases
+### Weight Routing
 
 | Method | Endpoint | Description |
 | :-- | :-- | :-- |
-| POST | `/lingframe/dashboard/lings/{lingId}/gray` | Update gray ratios and target version |
+| POST | `/lingframe/dashboard/contract-routing/{contractId}/weight` | Set the weight of a specific provider under a contract |
 
 Example body:
 
 ```json
 {
-  "percent": 10,
-  "grayVersion": "2.0.0"
+  "providerKey": "order-ling:1.1.0",
+  "weight": 20
 }
 ```
+
+> `providerKey` is the routing key—always `lingId:version` for a Ling (version sourced from the bound instance context), bare `lingcore-app` for LingCore, consistent across registration and routing read-path keying. `weight` is an integer 0-100; once the Dashboard pushes it, the runtime weight in `ProviderWeightRouter` is overridden immediately and takes effect on both IPC and Web governance chains.
 
 ### Governance Rules
 
@@ -251,12 +253,12 @@ curl http://localhost:8888/lingframe/dashboard/lings
 curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/reload
 ```
 
-### Configure Gray Release
+### Configure Weight Routing
 
 ```bash
-curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/gray \
+curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/order-ling/weight \
   -H "Content-Type: application/json" \
-  -d '{"percent": 20, "grayVersion": "2.0.0"}'
+  -d '{"providerKey": "order-ling:1.1.0", "weight": 20}'
 ```
 
 ## Need to Know

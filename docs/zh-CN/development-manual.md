@@ -264,7 +264,7 @@ N 元权重分流不是"理论上应该如此"，而是有 API、日志、测试
 路由层与功能管理层（迁移状态机）彻底拆分，建立双层清晰架构：
 
 - **功能管理层**：`MigrationPhase` 枚举（`CORE_EXCLUSIVE` / `MIGRATING` / `LING_EXCLUSIVE` / `ITERATING`）+ `MigrationStateHolder`，表达"迁移阶段是路由层的元状态"。
-- **路由层**：`ProviderWeightRouter` 纯权重二元选路，输入 ≤2 个 candidate，按 weight 选一个。
+- **路由层**：`ProviderWeightRouter` 纯权重 N 元选路，支持任意 N 个候选按 weight 比例随机分配（二元只是 N=2 的特例）。
 
 四状态迁移图：
 

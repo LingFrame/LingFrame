@@ -23,9 +23,9 @@
     --log-line-hover: #151b2b;
     --gradient-bg: linear-gradient(135deg, #050810 0%, #0a0f1a 50%, #0f141f 100%);
     /* 阴影与涟漪 */
-    --shadow-sm: rgba(0, 0, 0, 0.1);
-    --shadow-md: rgba(0, 0, 0, 0.15);
-    --shadow-lg: rgba(0, 0, 0, 0.3);
+    --app-shadow-sm: rgba(0, 0, 0, 0.1);
+    --app-shadow-md: rgba(0, 0, 0, 0.15);
+    --app-shadow-lg: rgba(0, 0, 0, 0.3);
     --ripple-color: rgba(255, 255, 255, 0.25);
     /* 遮罩层 */
     --overlay-bg: rgba(0, 0, 0, 0.6);
@@ -84,9 +84,9 @@ html.theme-light {
     --header-bg: rgba(241, 245, 249, 0.5);
     --log-line-hover: #f1f5f9;
     --gradient-bg: linear-gradient(135deg, #f1f5f9 0%, #f8fafc 50%, #e2e8f0 100%);
-    --shadow-sm: rgba(0, 0, 0, 0.04);
-    --shadow-md: rgba(0, 0, 0, 0.08);
-    --shadow-lg: rgba(0, 0, 0, 0.12);
+    --app-shadow-sm: rgba(0, 0, 0, 0.04);
+    --app-shadow-md: rgba(0, 0, 0, 0.08);
+    --app-shadow-lg: rgba(0, 0, 0, 0.12);
     --ripple-color: rgba(0, 0, 0, 0.08);
     --overlay-bg: rgba(15, 23, 42, 0.35);
     --loading-overlay: rgba(255, 255, 255, 0.88);
@@ -116,7 +116,7 @@ body {
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    box-shadow: 4px 0 24px var(--shadow-md);
+    box-shadow: 4px 0 24px var(--app-shadow-md);
     transition: background 0.3s, border 0.3s;
 }
 
@@ -150,7 +150,7 @@ body {
     background: var(--bg-card);
     border-radius: 16px;
     border: 1px solid var(--border);
-    box-shadow: 0 8px 32px var(--shadow-sm);
+    box-shadow: 0 8px 32px var(--app-shadow-sm);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s, border 0.3s;
     overflow: hidden;
     position: relative;
@@ -158,7 +158,7 @@ body {
 
 .card:hover {
     border-color: var(--primary-color);
-    box-shadow: 0 12px 48px var(--shadow-md);
+    box-shadow: 0 12px 48px var(--app-shadow-md);
     transform: translateY(-2px);
 }
 
@@ -277,7 +277,7 @@ body {
     background: var(--bg-input);
     outline: none;
     cursor: not-allowed;
-    box-shadow: inset 0 2px 4px var(--shadow-sm);
+    box-shadow: inset 0 2px 4px var(--app-shadow-sm);
 }
 
 .slider-disabled::-webkit-slider-thumb {
@@ -458,7 +458,7 @@ body {
 
 .action-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px var(--shadow-lg);
+    box-shadow: 0 8px 20px var(--app-shadow-lg);
 }
 
 .action-btn:active:not(:disabled) {
@@ -819,7 +819,7 @@ body {
     align-items: center;
     gap: 12px;
     animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 8px 32px var(--shadow-lg);
+    box-shadow: 0 8px 32px var(--app-shadow-lg);
     min-width: 300px;
 }
 

@@ -1,8 +1,8 @@
-# 更新日志
+﻿# 更新日志
 
 本项目的所有重大更改都将记录在此文件中。
 
-## [V0.4.0] - 2026-07-19
+## [V0.4.0] - 2026-08-05
 
 版本：`lingframe-dependencies` → `revision=0.4.0`。  
 主验证路径：Spring Boot 2.7 + JDK 8（默认 profile）；支持线：Spring Boot 3.5 + JDK 17（`-Pspring-boot3`）。
@@ -16,26 +16,36 @@
 - **全局概览与生命周期**：交付控制台概览（统计 / 事件 / 灵元列表）、生命周期管理中心（部署、启动/停止、重载、规范卸载）与包管理。
 - **服务演练场**：默认真调用，支持可选模拟；用例保存与回放，支持按比例路由演练。
 - **治理中心**：集中配置资源权限、调用治理策略、预设与规则概览矩阵。
-- **金丝雀与迁移辅助**：金丝雀决策辅助（错误率波动提示）；契约 / Provider 权重与迁移进度大盘。
+- **金丝雀与迁移辅助**：金丝雀决策辅助（错误率波动提示）；契约 / Provider 权重与迁移进度大盘；压测走真实 Pipeline 全契约 L0 路由，v1/v2 反映契约级权重分流（含灵核 baseline）。
 - **监控与运维**：JVM / 逐收集器 GC 监控、灵元资源下钻、泄漏检测记录、线程池 SPI 统计与指标趋势；支持日志控制台（暂停/继续）、主题切换与多语言（i18n）、CORS 与限流。
 - **持久化与安全**：SQLite 持久化存储、访问令牌认证与只读模式。
 
 ### 🚀 核心与治理主链
 
+- **架构包重组**：core `router` → `routing`（路由层升维为独立包，含 Provider/Contract/Instance/Migration 全套路由器）；新增 `runtime` 包（`RuntimeMode` 抽象，区分固定/可切换运行模式）；api 新增 `constant`（`LingCoreConstants` 灵核哨兵）与 `resilience`（`FallbackCause` / `FallbackProvider` SPI）包。
 - **Pipeline 升维**：新增 `ContractProviderRoutingFilter`（L0 Provider 权重路由）与 `InvocationPolicyPrefillFilter`，与既有弹性/权限/线程隔离 Filter 统筹织入。
+- **N 元权重路由**：同一契约同一时刻允许多 provider 共存，由 `ProviderWeightRouter` 按权重比例随机分流（二元只是 N=2 的特例，N≥3 即多版本共存/多租户）；候选数变化才告警一次，不主动打断业务。Dashboard 权重覆盖的 `providerKey` 恒为 `lingId:version`（灵元）或 `lingcore-app`（灵核）。
+- **版本化 provider 注册**：`registerProvider(contractId, lingId, version, weight)` 统一携带版本——灵元恒为 `lingId:version`（版本真源 `DefaultLingContext.getVersion()`，从绑定实例派生），灵核为裸 `lingcore-app`；退役按 `evictProvider(lingId, version)` 逐版本精确清理，其余版本继续服务；无灵核基线时首个 provider 提升为基线 100，杜绝「全部为 0 静默空转」。
 - **金丝雀与服务路由**：全链路多版本金丝雀与服务路由，支持运行时通过 `ProviderWeightRouter` 覆盖；提供隐式接口注册开关（`implicitRegistration`）。
 - **微内核 SPI 解耦**：生态父委派包从 core 剥离，由 runtime 注入。
-- **规范卸载清理**：通过 `LingUnloadHook` 统筹卸载清理（覆盖线程、JDBC、日志、RMI、ShutdownHook、Debugger 等）。
+- **规范卸载清理**：通过 `LingUnloadHook` 统筹卸载清理（覆盖线程、JDBC、日志、RMI、ShutdownHook、Debugger 等）；回收必走完整卸载（tearDown + 卸载钩子 + 关闭 ClassLoader + 泄漏检测），`InstancePool.cleanupIdleInstances`/`forceCleanupAll` 的 destroyer 强制必传，杜绝「仅 tearDown 不关闭 ClassLoader」的半回收泄漏；替换默认实例退役旧版本时按 `lingId:version` 精确清理 provider。
 - **双层状态机与写权限收束**：写权限收束于 `InstanceCoordinator` / `RuntimeCoordinator`；`LingRuntime` 为只读聚合视图；流量与 `RuntimeStatus` 分职（用二维路由/权重切流，状态仅反映实例事实快照）。
 - **快照与防错机制**：快照按 `instanceId` 标识；部署失败或全量卸载触发 `RuntimeCoordinator.unregister`；支持强制父委派独占与 `force-drain-on-timeout` 可配置排空；明确舱壁错误 `BULKHEAD_FULL`（`LING-2003`）；危险 API 加载期拒绝。
 - **装配树 Builder 化**：收敛为 `LifecycleEngineConfig` / `FilterRegistryConfig` Builder，消除全局静态单例，`init` 失败即止。
 - **正确性收口**：`AsyncLingEvent` 标记接口；分区 `InvocationContext`；异常体系统一为 `LingInvocationException`；深拷贝保护 `GovernancePolicy.copy`；统一术语为 LingCore / Ling。
+- **SIMULATION 干跑语义收束**：压测走全契约 L0 路由（`forContractSimulation` 不锁 targetLingId，在全部候选含灵核间按权重选路）；SIMULATION 契约级干跑不解析真实 Bean/MethodHandle；SIMULATION 流量旁路限流/熔断预算，不消费真实限流、不污染熔断器统计。
 
 ### 🚀 基础设施代理
 
 - **缓存治理代理**：Caffeine / Spring Cache / Redis 包装路径与命名空间隔离。
 - **存储代理硬化**：代理层拦截连接级破坏性调用（如 `Connection.abort`）。
+- **MyBatis-Plus 代理**：新增 `lingframe-infra-mybatis-plus`，拦截器层治理分页与审计。
 - **边界透明化**：明确存储治理主要覆盖 Spring `DataSource` Bean 代理路径，`DriverManager` / 非 Bean 连接池在此链之外。
+
+### 🚀 配置与基准模块
+
+- **`lingframe-config`**：抽取配置聚合层，统一 `LingFrameConfig` / `LingFrameInfo` / `LingRuntimeConfig` 等配置载体，消除 core 与 runtime 的配置耦合。
+- **`lingframe-benchmark`**（`-Pbenchmark`）：JMH 基准套件，覆盖 Pipeline、状态机、ClassLoader 与端到端生命周期。
 
 ### 🚀 示例与基准
 
@@ -58,9 +68,16 @@
 
 ### 📦 文档与规范
 
+- 文档体系重组：根目录 `DEVELOPMENT_MANUAL.md` / `QUICK_START.md` / `MANIFESTO.md` / `WHY.md` 等全部迁移至 `docs/zh-CN/` 与 `docs/en/`（中英分目录）；根目录仅保留 `README` / `CHANGELOG` / `CONTRIBUTING` / `AGENTS`。
 - 公开 [生产硬化配置清单](docs/zh-CN/production-hardening.md)、Shared API 安全边界与 [路线图](docs/zh-CN/roadmap.md) V0.4.0 章节。
-- 交付 [示例地图](lingframe-examples/zh-CN/README.md)、[0.4.0 发布说明](docs/release/0.4.0-release-notes.md)。
+- 交付 [示例地图](lingframe-examples/README.md)、[0.4.0 发布说明](docs/release/0.4.0-release-notes.md)。
 - 明确说明 Shared-Spring 隔离边界与规范卸载 SLA。
+
+### 🛠 CI 与工程化
+
+- 新增 `.github/workflows/ci.yml` 双栈 CI（SB2+JDK8 / SB3+JDK17）；issue 模板与 PR 模板。
+- 新增 `scripts/test-dual-stack.ps1` 双栈本地回归脚本。
+- 质量门：`checkstyle` / `spotbugs` / `jacoco` 挂在 `verify`；`-Pintegration-check` 启用集成检查 profile。
 
 ### ⚠️ 风险与注意事项
 

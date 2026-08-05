@@ -834,7 +834,7 @@ curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/user-lin
   -d '{"providerKey": "user-ling:1.1.0", "weight": 20}'
 ```
 
-> `providerKey` is the routing key—bare `lingId` during migration, `lingId:version` during iteration, consistent with the read-path keying. `weight` is an integer 0-100; once the Dashboard pushes it, the runtime weight in `ProviderWeightRouter` is overridden immediately and takes effect on both IPC and Web governance chains.
+> `providerKey` is the routing key—always `lingId:version` for a Ling (version sourced from the bound instance context), bare `lingcore-app` for LingCore, consistent across registration and routing read-path keying. `weight` is an integer 0-100; once the Dashboard pushes it, the runtime weight in `ProviderWeightRouter` is overridden immediately and takes effect on both IPC and Web governance chains.
 
 Traffic stats:
 

@@ -124,15 +124,15 @@ private UserService userService;
 
 ### Q12: How do I execute a Gray Release?
 
-**A:** Through the Dashboard API configuration:
+**A:** Through the Dashboard contract weight routing API—multiple providers under the same contract split traffic by weight; binary is just the N=2 special case:
 
 ```bash
-curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/gray \
+curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/order-ling/weight \
   -H "Content-Type: application/json" \
-  -d '{"percent": 20, "grayVersion": "2.0.0"}'
+  -d '{"providerKey": "order-ling:1.1.0", "weight": 20}'
 ```
 
-See [Dashboard Docs](dashboard.md) for details.
+> `providerKey` is the routing key—always `lingId:version` for a Ling (version sourced from the bound instance context), bare `lingcore-app` for LingCore, consistent across registration and routing read-path keying. `weight` is an integer 0-100; once the Dashboard pushes it, the runtime weight in `ProviderWeightRouter` is overridden immediately and takes effect on both IPC and Web governance chains. See [Dashboard Docs](dashboard.md) for details.
 
 ### Q13: How are Ling dependencies handled?
 
