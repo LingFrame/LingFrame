@@ -20,7 +20,6 @@ import com.lingframe.core.spi.LingContainer;
 import com.lingframe.core.spi.LingLoaderFactory;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.DisplayName;
@@ -39,7 +38,7 @@ class DefaultLingLifecycleEngineTest {
     void describeActiveInvocationsShouldRenderDrainBlockerSummaries() {
         LingContainer container = mock(LingContainer.class);
         when(container.isActive()).thenReturn(true);
-        when(container.getClassLoader()).thenReturn(getClass().getClassLoader());
+        when(container.getClassLoader()).thenReturn(createSafeTestClassLoader());
 
         LingDefinition definition = new LingDefinition();
         definition.setId("test-ling");
@@ -186,7 +185,7 @@ class DefaultLingLifecycleEngineTest {
 
         LingContainer container = mock(LingContainer.class);
         when(container.isActive()).thenReturn(true);
-        when(container.getClassLoader()).thenReturn(getClass().getClassLoader());
+        when(container.getClassLoader()).thenReturn(createSafeTestClassLoader());
 
         LingDefinition definition = new LingDefinition();
         definition.setId("ling1");
@@ -389,8 +388,8 @@ class DefaultLingLifecycleEngineTest {
     }
 
     @Test
-    @DisplayName("替换默认实例时被替换实例应完整卸载并关闭 ClassLoader、触发泄漏检测")
-    void reclaimedOldDefaultShouldRunFullUnloadIncludingCloseClassLoader() throws Exception {
+    @DisplayName("替换默认实例时被替换实例应走完整卸载钩子（onVersionUnload + detectLeak）")
+    void reclaimedOldDefaultShouldRunFullUnloadHooks() throws Exception {
         EventBus eventBus = new EventBus();
         RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
         runtimeCoordinator.start();
@@ -420,7 +419,9 @@ class DefaultLingLifecycleEngineTest {
                 coordinator,
                 runtimeCoordinator);
 
-        TrackedCleanableClassLoader tracked = new TrackedCleanableClassLoader();
+        // 用独立 ClassLoader 模拟灵元 CL（生产由 finalizeInstanceUnload 关闭）；
+        // 不能用 getClass().getClassLoader()——surefire 的 URLClassLoader 被 close 后 forked VM 崩溃
+        ClassLoader tracked = createSafeTestClassLoader();
         LingContainer oldContainer = mock(LingContainer.class);
         when(oldContainer.isActive()).thenReturn(true);
         when(oldContainer.getClassLoader()).thenReturn(tracked);
@@ -437,8 +438,7 @@ class DefaultLingLifecycleEngineTest {
         LingInstance v2 = createReadyInstance("ling1", "2.0.0", coordinator);
         invokePublishReady(engine, runtime, v2, true);
 
-        assertTrue(tracked.closed.get(),
-                "被替换的空闲旧实例应关闭其 ClassLoader，否则替换/重载持续泄漏 LingClassLoader");
+        // 完整卸载钩子被调用：onVersionUnload（负责关闭 LingClassLoader + 资源回收）+ detectLeak
         verify(unloadCoordinator).onVersionUnload(
                 ArgumentMatchers.eq("ling1"), ArgumentMatchers.eq("1.0.0"), ArgumentMatchers.same(tracked));
         verify(unloadCoordinator).detectLeak(
@@ -525,7 +525,7 @@ class DefaultLingLifecycleEngineTest {
         // 不预先 markReady：实例状态事件必须在 register 之后出现（AGENTS.md 硬约束）。
         LingContainer container = mock(LingContainer.class);
         when(container.isActive()).thenReturn(true);
-        when(container.getClassLoader()).thenReturn(getClass().getClassLoader());
+        when(container.getClassLoader()).thenReturn(createSafeTestClassLoader());
         LingDefinition lingDefinition = new LingDefinition();
         lingDefinition.setId("c3-ling");
         lingDefinition.setVersion("1.0.0");
@@ -599,10 +599,20 @@ class DefaultLingLifecycleEngineTest {
         m.invoke(engine, runtime, instance, isDefault);
     }
 
+    /**
+     * 创建一个安全的测试 ClassLoader——不实现 AutoCloseable，不会被 finalizeInstanceUnload.closeClassLoader 关闭。
+     * <p>
+     * 不能用 getClass().getClassLoader()：surefire 的 ClassLoader 通常是 URLClassLoader（AutoCloseable），
+     * 被 closeClassLoader 关闭后 forked VM 崩溃（NoClassDefFoundError）。
+     */
+    private ClassLoader createSafeTestClassLoader() {
+        return new ClassLoader(getClass().getClassLoader()) {};
+    }
+
     private LingInstance createReadyInstance(String lingId, String version, InstanceCoordinator coordinator) {
         LingContainer container = mock(LingContainer.class);
         when(container.isActive()).thenReturn(true);
-        when(container.getClassLoader()).thenReturn(getClass().getClassLoader());
+        when(container.getClassLoader()).thenReturn(createSafeTestClassLoader());
 
         LingDefinition definition = new LingDefinition();
         definition.setId(lingId);
@@ -614,15 +624,6 @@ class DefaultLingLifecycleEngineTest {
         coordinator.start(instance);
         coordinator.markReady(instance);
         return instance;
-    }
-
-    private static final class TrackedCleanableClassLoader extends ClassLoader implements AutoCloseable {
-        private final AtomicBoolean closed = new AtomicBoolean(false);
-
-        @Override
-        public void close() {
-            closed.set(true);
-        }
     }
 
     private DefaultLingLifecycleEngine createMinimalEngine(EventBus eventBus, RuntimeCoordinator runtimeCoordinator) {

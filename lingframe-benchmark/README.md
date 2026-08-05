@@ -12,7 +12,7 @@
 * **正式基准评估 (CLI)**：在正式发布、性能比对或生成合规报告时，**严禁使用 `@Fork(1)`**。必须使用命令行并通过 `-f 3` 显式覆盖，以保证统计学的置信区间：
   ```bash
   # 运行所有基准测试并 Fork 3 次进行精确统计
-  java -jar target/lingframe-benchmarks.jar -f 3
+  java -jar target/lingframe-benchmarks.jar -f 3 -prof gc
   ```
 
 ### 1.2 JIT 编译器 dontinline 入口级精细化收窄
