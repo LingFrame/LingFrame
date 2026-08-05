@@ -88,6 +88,9 @@ public class BenchmarkDeploymentHelper {
                 .build();
         LingFrameConfig customFrameConfig = LingFrameConfig.builder()
                 .runtimeConfig(customRuntimeConfig)
+                // 压测走 dev 模式：未声明权限的调用直接放行，不被 PermissionGovernanceFilter 的
+                // prod Deny-by-Default 零信任红线拦截（benchmark 测的是状态机/流水线开销，不是权限）
+                .devMode(true)
                 .build();
         LingFrameConfig.clear();
         LingFrameConfig.init(customFrameConfig);
@@ -106,6 +109,9 @@ public class BenchmarkDeploymentHelper {
                 .lingRepository(lingRepository)
                 .trafficRouter(new LatestVersionPolicy())
                 .eventBus(eventBus)
+                // 注入 LingFrameInfo（dev 模式实例），否则 PermissionGovernanceFilter 拿到 null
+                // 会按 prod Deny-by-Default 拒绝所有未声明权限的压测调用（bench-ling:com.bench.TestService）
+                .lingFrameInfo(LingFrameConfig.current())
                 .build());
 
         this.pipelineEngine = new InvocationPipelineEngine(filterRegistry);
