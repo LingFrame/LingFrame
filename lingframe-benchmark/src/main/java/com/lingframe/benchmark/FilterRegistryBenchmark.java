@@ -104,7 +104,7 @@ public class FilterRegistryBenchmark {
         static final LingInvocationFilter DYNAMIC_FILTER = new LingInvocationFilter() {
             @Override
             public int getOrder() {
-                return 500;
+                return 550;
             }
 
             @Override
