@@ -47,63 +47,13 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
             Component.class,
             Repository.class));
 
-    // 不需要拦截的 Bean 名称前缀
+    // 不需要拦截的 Bean 名称前缀：仅保留明确属于 Spring 容器与灵核框架内部的长前缀。
+    // 删除 "config"、"properties"、"server"、"filter" 等宽泛短前缀，避免误伤用户业务 Bean
+    // （如 configService、serverManager 等业务命名）。框架内部 Bean 排除主要依赖业务注解检查
+    // （@Service/@Component/@Repository），Spring 基础设施 Bean 不带这些注解自然被过滤。
     private static final Set<String> EXCLUDED_BEAN_PREFIXES = new HashSet<>(Arrays.asList(
             "org.springframework",
-            "lingframe",
-            "spring",
-            "server",
-            "tomcat",
-            "servlet",
-            "filter",
-            "listener",
-            "handlerMapping",
-            "handlerAdapter",
-            "viewResolver",
-            "multipartResolver",
-            "localeResolver",
-            "themeResolver",
-            "exceptionResolver",
-            "messageSource",
-            "applicationContext",
-            "beanFactory",
-            "environment",
-            "conversionService",
-            "validator",
-            "dataSource",
-            "entityManagerFactory",
-            "transactionManager",
-            "cacheManager",
-            "taskExecutor",
-            "threadPool",
-            "async",
-            "scheduled",
-            "webMvcConfigurer",
-            "webFluxConfigurer",
-            "securityFilterChain",
-            "authenticationManager",
-            "userDetailsService",
-            "passwordEncoder",
-            "jackson",
-            "objectMapper",
-            "messageConverter",
-            "restTemplate",
-            "webClient",
-            "feign",
-            "ribbon",
-            "eureka",
-            "consul",
-            "nacos",
-            "config",
-            "properties",
-            "yml",
-            "logging",
-            "actuator",
-            "management",
-            "metrics",
-            "health",
-            "info",
-            "prometheus"));
+            "lingframe"));
 
     @Override
     public void setApplicationContext(@NonNull ApplicationContext applicationContext) throws BeansException {
@@ -166,25 +116,40 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
 
     @Override
     public Object postProcessAfterInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
-        // 懒加载获取核心组件
+        // 先判定是否需要治理（纯基于 Bean 注解/名称，不依赖核心组件是否就绪）
+        boolean shouldGovern = shouldGovern(bean, beanName);
+        if (!shouldGovern) {
+            return bean;
+        }
+
+        // 再懒加载获取核心组件（仅对需治理的 Bean 触发，避免框架内部 Bean 提前初始化
+        // 造成 BeanPostProcessor 误伤，也保证治理语义只约束有业务注解的目标）
         PermissionService permService = getPermissionService();
         InvocationPipelineEngine engine = getPipelineEngine();
         LingFrameProperties props = getProperties();
         EntryInvocationGovernanceResolver resolver = getInvocationGovernanceResolver();
 
-        // 如果核心组件未准备好，直接返回
-        if (permService == null || engine == null || props == null) {
+        // 显式关闭治理时直接放行，不做可用性校验：
+        // 避免「显式关闭治理」被并入「治理组件不可用」同一条失败路径（props 为 null 无法判定 enabled，
+        // 落入下方可用性分支按 fail-closed/fail-open 处理）。
+        if (props != null && !props.getLingCoreGovernance().isEnabled()) {
             return bean;
         }
 
-        // 检查是否启用了灵核 Bean 治理
-        if (!props.getLingCoreGovernance().isEnabled()) {
-            return bean;
-        }
-
-        // 检查是否需要拦截
-        boolean shouldGovern = shouldGovern(bean, beanName);
-        if (!shouldGovern) {
+        // 治理组件未就绪：需治理却无法治理 → 按 fail-closed/fail-open 开关决定行为（C9）。
+        // 不返回「无治理裸 Bean」作为默认成功路径，消除静默缺失治理。
+        if (props == null || permService == null || engine == null || resolver == null) {
+            String reason = "governance dependencies unavailable"
+                    + " (properties=" + (props != null)
+                    + ", permissionService=" + (permService != null)
+                    + ", pipelineEngine=" + (engine != null)
+                    + ", resolver=" + (resolver != null) + ")";
+            log.error("[Governance] Refusing to govern bean [{}] without governance: {}", beanName, reason);
+            if (!isFailOpen(props)) {
+                throw new IllegalStateException(
+                        "LingCore bean [" + beanName + "] must be governed but " + reason
+                                + "; start aborted (fail-closed). Set lingframe.ling-core-governance.fail-open=true to degrade.");
+            }
             return bean;
         }
 
@@ -202,9 +167,23 @@ public class LingCoreBeanGovernanceProcessor implements BeanPostProcessor, Appli
                     bean.getClass().getSimpleName());
             return proxy;
         } catch (Exception e) {
-            log.error("Failed to create governance proxy for bean: {}", beanName, e);
+            log.error("[Governance] Failed to create governance proxy for bean: {}", beanName, e);
+            if (!isFailOpen(props)) {
+                throw new IllegalStateException("Failed to create governance proxy for bean [" + beanName
+                        + "]; verifying with fail-closed. Set lingframe.ling-core-governance.fail-open=true to degrade.",
+                        e);
+            }
             return bean;
         }
+    }
+
+    /**
+     * 判定失败是否可放行：fail-open 开关（C9）。
+     * <p>
+     * props 不可用时（配置系统未装配的极端时序）取安全默认 fail-closed=false（不放行）。
+     */
+    private boolean isFailOpen(LingFrameProperties props) {
+        return props != null && props.getLingCoreGovernance().isFailOpen();
     }
 
     @Override

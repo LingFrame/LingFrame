@@ -1,0 +1,77 @@
+server:
+  port: 8083
+
+spring:
+  mvc:
+    path match:
+      matching-strategy: ant_path_matcher
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      data-locations: classpath:data.sql
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:lingmall_saas;DB_CLOSE_DELAY=-1;MODE=MySQL
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  cache:
+    type: simple
+
+mybatis-plus:
+  configuration:
+    map-underline-to-camel-case: true
+  global-config:
+    db-config:
+      table-underline: true
+
+jwt:
+  secret: d29uZGVyZnVsLWxpbmctdGVzdC1tYWxsLXNlY3JldC1kZW1vLWtleS1mb3Itand0LXNpZ25pbmctcHJvZHVjdGlvbg==
+  expiration: 86400
+
+lingframe:
+  enabled: true
+  dev-mode: true
+  ling-home: lings
+  # 灵元 implements 灵核原生接口（ling-mall 的 UserService/SeckillService/OrderService），
+  # 灵元 pom 以 provided 依赖 ling-mall——灵元 jar 不打包这些契约类，运行期经 LingClassLoader
+  # 父回退到灵核 ClassLoader 解析，灵核与灵元看到同一 Class 对象，身份一致。
+  # 故无需 preload-api-jars 显式预载共享契约（ling-mall 混合契约+实现，整包预载会过度共享灵核实现类）。
+  ling-roots:
+    - ../lingframe-example-saas-ling-oauth
+    - ../lingframe-example-saas-ling-seckill
+    - ../lingframe-example-saas-ling-inventory
+  ling-core-governance:
+    enabled: false
+    govern-internal-calls: true
+    check-permissions: true
+  dashboard:
+    enabled: true
+    install-enabled: true
+    # SQLite 持久化存储
+    storage:
+      enabled: true
+      path: ${user.home}/.lingframe/mall-dashboard.db
+      metrics-retention-days: 7
+      audit-retention-days: 30
+      metrics-collect-interval-seconds: 30
+    # 访问令牌：示例本地允许弱口令；生产请设强 token 且 allow-weak: false
+    access-token:
+      enabled: true
+      token: "lingframe"
+      allow-weak: true
+  mode-switch-password: "lingframe"
+
+# SpringDoc OpenAPI 配置
+springdoc:
+  cache:
+    disabled: true
+  packages-to-scan: com.lingframe
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

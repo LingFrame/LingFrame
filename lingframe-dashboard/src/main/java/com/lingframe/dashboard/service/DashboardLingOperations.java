@@ -10,12 +10,14 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingUninstallResult;
 import com.lingframe.core.loader.LingManifestLoader;
-import com.lingframe.core.router.CanaryRouter;
+import com.lingframe.core.routing.MigrationStateHolder;
 
 import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Dashboard 灵元生命周期操作编排器。
@@ -24,21 +26,29 @@ public class DashboardLingOperations {
 
     private final LingLifecycleEngine lifecycleEngine;
     private final LingRepository lingRepository;
-    private final CanaryRouter canaryRouter;
+    private final MigrationStateHolder migrationStateHolder;
     private final DashboardLifecycleEventStore lifecycleEventStore;
     private final DashboardLingSourceResolver lingSourceResolver;
 
+    // 每个 lingId 独立的重载锁，防止并发 reload 导致版本号竞态和实例残留
+    private final Map<String, ReentrantLock> reloadLocks = new ConcurrentHashMap<>();
+
     public DashboardLingOperations(LingLifecycleEngine lifecycleEngine,
             LingRepository lingRepository,
-            CanaryRouter canaryRouter,
+            MigrationStateHolder migrationStateHolder,
             DashboardLifecycleEventStore lifecycleEventStore,
             DashboardLingSourceResolver lingSourceResolver) {
         this.lifecycleEngine = lifecycleEngine;
         this.lingRepository = lingRepository;
-        this.canaryRouter = canaryRouter;
+        this.migrationStateHolder = migrationStateHolder;
         this.lifecycleEventStore = lifecycleEventStore;
         this.lingSourceResolver = lingSourceResolver;
     }
+
+    public DashboardLingSourceResolver getLingSourceResolver() {
+        return this.lingSourceResolver;
+    }
+
 
     public String installLing(File file) {
         try {
@@ -46,8 +56,9 @@ public class DashboardLingOperations {
             if (definition == null) {
                 throw new InvalidArgumentException("file", "Not a valid ling package: " + file.getName());
             }
-            boolean isCanary = lingSourceResolver.isCanary(definition);
-            lifecycleEngine.deploy(definition, file, !isCanary, Collections.<String, String>emptyMap());
+            LingRuntime runtime = lingRepository.getRuntime(definition.getId());
+            boolean setAsDefault = runtime == null || runtime.getInstancePool().getDefault() == null;
+            lifecycleEngine.deploy(definition, file, setAsDefault, Collections.<String, String>emptyMap());
             lifecycleEventStore.addEvent(
                     definition.getId(),
                     definition.getVersion(),
@@ -62,7 +73,9 @@ public class DashboardLingOperations {
 
     public LingUninstallResult uninstallLing(String lingId) {
         try {
-            canaryRouter.removeCanaryConfig(lingId);
+            if (migrationStateHolder != null) {
+                migrationStateHolder.evict(lingId);
+            }
             LingUninstallResult result = lifecycleEngine.undeployWithReport(lingId);
             if (result.isUninstallTriggered()) {
                 lifecycleEventStore.addEvent(
@@ -80,7 +93,9 @@ public class DashboardLingOperations {
 
     public LingUninstallResult uninstallLing(String lingId, String version) {
         try {
-            canaryRouter.removeCanaryConfig(lingId);
+            if (migrationStateHolder != null) {
+                migrationStateHolder.evict(lingId);
+            }
             LingUninstallResult result = lifecycleEngine.undeployWithReport(lingId, version);
             if (result.isUninstallTriggered()) {
                 lifecycleEventStore.addEvent(
@@ -100,6 +115,19 @@ public class DashboardLingOperations {
     }
 
     public String reloadLing(String lingId, String version) {
+        // 同一 lingId 的 reload 必须串行执行，避免：
+        // 1. buildReloadVersion 并发竞态生成重复版本号
+        // 2. target 实例在 deployForReload 期间被其他 reload tearDown，导致 undeploy 失败
+        ReentrantLock lock = reloadLocks.computeIfAbsent(lingId, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            return doReloadLing(lingId, version);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private String doReloadLing(String lingId, String version) {
         try {
             LingRuntime runtime = lingRepository.getRuntime(lingId);
             if (runtime == null) {
@@ -110,7 +138,10 @@ public class DashboardLingOperations {
                     ? runtime.getInstancePool().getInstance(version)
                     : lingSourceResolver.selectStableInstance(runtime);
             if (target == null) {
-                throw new LingInstallException(lingId, "No available instance to reload", null);
+                String message = version != null
+                        ? "版本 " + version + " 不存在或已被卸载"
+                        : "无可用实例可重载";
+                throw new LingInstallException(lingId, message, null);
             }
 
             String targetVersion = target.getVersion();
@@ -144,7 +175,15 @@ public class DashboardLingOperations {
                 throw new LingInstallException(lingId, "Hot reload failed: new instance not found", null);
             }
 
-            lifecycleEngine.undeploy(lingId, target);
+            // 仅当旧实例仍被实例池持有时才显式卸载：
+            // wasDefault=true 且旧实例空闲时,deployForReload 内部的 publishReadyInstance 已将其
+            // 移入濒死队列并回收（def 置空），此时再 undeploy(target) 会命中 engine 的
+            // getAllInstances().contains 守卫，打印误导性的 <destroyed> WARN；
+            // 若旧实例仍在池中（非默认实例，或替换时尚有在途请求未被立即回收），
+            // 则必须显式卸载以确保资源回收。
+            if (runtime.getInstancePool().getAllInstances().contains(target)) {
+                lifecycleEngine.undeploy(lingId, target);
+            }
             lifecycleEventStore.addEvent(
                     lingId,
                     reloadVersion,

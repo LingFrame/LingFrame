@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1480 880" font-family="'Segoe UI','Microsoft YaHei',Helvetica,Arial,sans-serif">
+  <!-- LingFrame ClassLoader 拓扑 · 真三层父子链
+       依据真实代码：
+       DefaultLingLoaderFactory.determineParent (行 52-55)：
+         return SharedApiClassLoader.getInstance(lingCoreClassLoader);  // Ling 的父 = SharedApi 单例
+       SharedApiClassLoader (行 60-106)：
+         private static volatile SharedApiClassLoader INSTANCE;  // 单例
+         super(new URL[0], parent);  // parent = lingCoreClassLoader = AppClassLoader
+       SharedApiManager.preloadFromConfig (行 62-88) + freezeSharedBoundary (行 95-103)
+       LingClassLoader.loadClass (行 184-237) + shouldDelegateToParent (行 333-356)
+       LingClassLoader.bindSharedApiClassLoader (静态字段绑定，非父子)
+
+       真拓扑（加载器父子链）：
+         AppClassLoader（灵核即主应用）
+           ↓ parent
+         SharedApiClassLoader（单例，所有灵元共用同一份契约类）
+           ↓ parent
+         LingClassLoader（每个灵元/版本独立一份，Child-First）
+
+       关键：bindSharedApiClassLoader 把 SharedApi 单例再静态绑给 LingClassLoader 类字段，
+            让 shouldDelegateToParent 能用 isSharedClass 做白名单判定——
+            这是非性层的「身份绑定」，与父子链是两回事，图中用棕色虚线区分。 -->
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0f172a"/>
+    </marker>
+    <marker id="arrBind" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b45309"/>
+    </marker>
+    <style>
+      .h1{font-size:22px;font-weight:700;fill:#0f172a;text-anchor:middle}
+      .h2{font-size:13px;fill:#64748b;text-anchor:middle}
+      .boxApp{fill:#eff6ff;stroke:#1d4ed8;stroke-width:1.8}
+      .boxShared{fill:#fef3c7;stroke:#b45309;stroke-width:2}
+      .boxLing{fill:#f0fdf4;stroke:#15803d;stroke-width:1.6}
+      .boxManager{fill:#f8fafc;stroke:#94a3b8;stroke-width:1.4;stroke-dasharray:5 3}
+      .label{font-size:15px;font-weight:700;fill:#0f172a;text-anchor:middle}
+      .labelSub{font-size:12px;fill:#475569;text-anchor:middle}
+      .labelTiny{font-size:10.5px;fill:#64748b;text-anchor:middle}
+      .edge{stroke:#0f172a;stroke-width:2;fill:none}
+      .edgeBind{stroke:#b45309;stroke-width:1.4;fill:none;stroke-dasharray:4 3}
+      .edgeLabel{font-size:12px;fill:#0f172a;text-anchor:middle;font-weight:700}
+      .edgeLabelBind{font-size:11px;fill:#b45309;text-anchor:middle;font-style:italic}
+      .legend{font-size:12px;fill:#0f172a;text-anchor:start}
+      .legendH{font-size:13px;font-weight:700;fill:#0f172a;text-anchor:start}
+      .warnBox{fill:#fef2f2;stroke:#fecaca;stroke-width:1}
+      .warn{font-size:12px;fill:#b91c1c;font-style:italic}
+      .noteBox{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1;stroke-dasharray:3 3}
+      .note{font-size:11.5px;fill:#475569;text-anchor:start;font-style:italic}
+    </style>
+  </defs>
+
+  <text x="740" y="32" class="h1">LingFrame ClassLoader 拓扑 · 三层父子链</text>
+  <text x="740" y="54" class="h2">AppClassLoader → SharedApiClassLoader（单例）→ LingClassLoader · Child-First + 白名单强制父委派</text>
+
+  <!-- ===== 第一层：AppClassLoader（灵核即主应用） ===== -->
+  <rect x="560" y="86" width="360" height="76" rx="8" class="boxApp"/>
+  <text x="740" y="112" class="label">JVM AppClassLoader（灵核）</text>
+  <text x="740" y="130" class="labelSub">灵核即主应用 = AppClassLoader</text>
+  <text x="740" y="146" class="labelSub">DataSource / Mapper / @Service / Dashboard / lingframe-core 实现</text>
+
+  <!-- ===== 第二层：SharedApiClassLoader（单例，所有灵元共用） ===== -->
+  <rect x="520" y="246" width="440" height="96" rx="8" class="boxShared"/>
+  <text x="740" y="274" class="label">SharedApiClassLoader（单例）</text>
+  <text x="740" y="292" class="labelSub">进程级公共契约边界 · 所有灵元共用同一份契约 Class</text>
+  <text x="740" y="308" class="labelSub">super(new URL[0], parent=AppClassLoader) — 真父子链中间层</text>
+  <text x="740" y="324" class="labelSub">isSharedClass(name) 按完整类名精确判定（不 startsWith 包前缀）</text>
+  <text x="740" y="336" class="labelTiny">preload → bind → freeze 三段式；freezeBoundary 后拒收 addApi</text>
+
+  <!-- 父子边：App → Shared（实线，粗，黑） -->
+  <line x1="740" y1="162" x2="740" y2="246" class="edge" marker-end="url(#arr)"/>
+  <text x="760" y="208" class="edgeLabel">parent（构造传入 lingCoreClassLoader）</text>
+
+  <!-- ===== 第三层：LingClassLoader × 3（每个灵元/版本独立一份） ===== -->
+  <!-- 灵元 A v1 -->
+  <rect x="120" y="426" width="240" height="96" rx="8" class="boxLing"/>
+  <text x="240" y="452" class="label">LingClassLoader</text>
+  <text x="240" y="470" class="labelSub">(ling-a v1)</text>
+  <text x="240" y="486" class="labelSub">父 = SharedApiClassLoader 单例</text>
+  <text x="240" y="502" class="labelSub">Child-First：先自己 JAR 后父链</text>
+  <text x="240" y="516" class="labelTiny">独立实例，可独立卸载</text>
+
+  <!-- 灵元 A v2（与 v1 共存，类型隔离） -->
+  <rect x="400" y="426" width="240" height="96" rx="8" class="boxLing"/>
+  <text x="520" y="452" class="label">LingClassLoader</text>
+  <text x="520" y="470" class="labelSub">(ling-a v2)</text>
+  <text x="520" y="486" class="labelSub">与 v1 共存，同名类不同 Class 对象</text>
+  <text x="520" y="502" class="labelSub">独立实例，可独立卸载</text>
+  <text x="520" y="516" class="labelTiny">类型隔离的物理基础</text>
+
+  <!-- 灵元 B -->
+  <rect x="680" y="426" width="240" height="96" rx="8" class="boxLing"/>
+  <text x="800" y="452" class="label">LingClassLoader</text>
+  <text x="800" y="470" class="labelSub">(ling-b)</text>
+  <text x="800" y="486" class="labelSub">独立灵元，独立 ClassLoader</text>
+  <text x="800" y="502" class="labelSub">与 ling-a 互不可见对方类</text>
+  <text x="800" y="516" class="labelTiny">独立实例，可独立卸载</text>
+
+  <!-- 父子边：Shared → 三个 LingClassLoader（实线，粗，黑） -->
+  <line x1="640" y1="342" x2="240" y2="426" class="edge" marker-end="url(#arr)"/>
+  <line x1="700" y1="342" x2="520" y2="426" class="edge" marker-end="url(#arr)"/>
+  <line x1="800" y1="342" x2="800" y2="426" class="edge" marker-end="url(#arr)"/>
+  <text x="380" y="382" class="edgeLabel">parent（DefaultLingLoaderFactory.determineParent 返回 SharedApiClassLoader.getInstance）</text>
+
+  <!-- ===== 右侧：SharedApiManager（持有单例 + 编排冻冻） ===== -->
+  <rect x="1020" y="246" width="280" height="96" rx="8" class="boxManager"/>
+  <text x="1160" y="274" class="label">SharedApiManager</text>
+  <text x="1160" y="292" class="labelSub">持有 SharedApiClassLoader 单例（INSTANCE）</text>
+  <text x="1160" y="308" class="labelSub">preloadFromConfig → bindSharedApiClassLoader</text>
+  <text x="1160" y="324" class="labelSub">→ freezeSharedBoundary（冻结后拒收）</text>
+  <text x="1160" y="336" class="labelTiny">非性层父子，是持有/编排关系</text>
+
+  <!-- 持有边：Manager → Shared（虚线，棕） -->
+  <line x1="1020" y1="294" x2="960" y2="294" class="edgeBind" marker-end="url(#arrBind)"/>
+  <text x="990" y="288" class="edgeLabelBind">持有 holds</text>
+
+  <!-- ===== bind 静态字段绑定（非性层，让 shouldDelegateToParent 能识别共享类） ===== -->
+  <!-- bind 边：Shared → 每个 LingClassLoader 的静态字段（虚线，棕） -->
+  <line x1="600" y1="342" x2="280" y2="426" class="edgeBind" marker-end="url(#arrBind)"/>
+  <line x1="660" y1="342" x2="560" y2="426" class="edgeBind" marker-end="url(#arrBind)"/>
+  <line x1="760" y1="342" x2="840" y2="426" class="edgeBind" marker-end="url(#arrBind)"/>
+  <text x="460" y="396" class="edgeLabelBind">bind（静态字段绑定，非性层父子——让 isSharedClass 白名单判定生效）</text>
+
+  <!-- ===== loadClass 决策路径说明（底部） ===== -->
+  <rect x="40" y="546" width="1400" height="180" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="56" y="572" class="legendH">LingClassLoader.loadClass(name) 类查找顺序（依据 loadClass 行 184-237）</text>
+
+  <text x="56" y="596" class="legend">① findLoadedClass(name) 缓存命中 → 直接返回（每个加载器自己的已加载类缓存）</text>
+  <text x="56" y="618" class="legend">② shouldDelegateToParent(name)? — 检查 FORCE_PARENT_PACKAGES（java.* / com.lingframe.api.* 等）或 SharedApiClassLoader.isSharedClass(name)</text>
+  <text x="56" y="640" class="legend">　　└─ 命中白名单 → parent.loadClass 走父链：先到 SharedApiClassLoader 解析共享契约类，找不到再到 AppClassLoader</text>
+  <text x="56" y="662" class="legend">　　└─ 关键：灵元之间能共见同一份契约类，正是因为都把 SharedApiClassLoader 当父——同一单例加载的 Class 对象全进程唯一</text>
+  <text x="56" y="684" class="legend">③ findClass(name) — 子优先：优先从灵元自己的 JAR / 资源加载（Child-First 核心，灵元私有实现不污染灵核）</text>
+  <text x="56" y="706" class="legend">④ super.loadClass(name, resolve) — 兜底：自己没有再找父亲（加载公共库如 StringUtils；非白名单类由 Child-First 优先自加载）</text>
+
+  <!-- 诚实边界警示 -->
+  <rect x="40" y="746" width="1400" height="56" rx="3" class="warnBox"/>
+  <text x="56" y="766" class="warn">⚠ 诚实边界：编排隔离 / 类型隔离，卸载后可证 GC；非「绝对隔离」——灵核灵元共享灵核 Spring 静态缓存会持灵元 Class 引用，须由卸载编排清理。</text>
+  <text x="56" y="784" class="warn">权威真源：灵元实例的类加载权威是 LingInstance.getClassLoader()，不要把 TCCL 当隔离真源。closed 后 LingClassLoader.loadClass 抛 ClassLoaderException 拒再加载。</text>
+
+  <!-- ===== 图例区 ===== -->
+  <g transform="translate(40,806)">
+    <rect x="0" y="0" width="1400" height="0" rx="6" fill="none"/>
+  </g>
+</svg>

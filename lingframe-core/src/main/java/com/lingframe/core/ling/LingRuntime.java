@@ -4,12 +4,12 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.RuntimeStateChangedEvent;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.spi.RoutableTarget;
 import lombok.Getter;
 import lombok.ToString;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -24,15 +24,18 @@ import java.util.stream.Collectors;
  * 生命周期编排、实例切换、运行时联动分别由
  * {@link DefaultLingLifecycleEngine}、{@link InstancePool}、
  * {@link RuntimeCoordinator} 完成。
+ * <p>
+ * 路由升维：实现 {@link RoutableTarget} 窄接口，使 Pipeline 不再直接依赖本具体类，
+ * 灵核和灵元都能通过 {@code RoutableTarget} 类型统一表达。
  */
 @ToString
-public class LingRuntime {
+public class LingRuntime implements RoutableTarget {
 
     @Getter
     private final String lingId;
 
     @Getter
-    private final LingRuntimeConfig config;
+    private volatile LingRuntimeConfig config;
 
     @Getter
     private final InstancePool instancePool;
@@ -41,36 +44,18 @@ public class LingRuntime {
     // 这里保留的是一个只读访问点，用于查询宏观运行时状态。
     private final RuntimeCoordinator runtimeCoordinator;
 
-    // 流量统计
-    @Getter
-    private final AtomicLong totalRequests = new AtomicLong(0);
-    @Getter
-    private final AtomicLong stableRequests = new AtomicLong(0);
-    @Getter
-    private final AtomicLong canaryRequests = new AtomicLong(0);
-    @Getter
-    private final AtomicLong activeRequests = new AtomicLong(0);
-    @Getter
-    private volatile long statsWindowStart = System.currentTimeMillis();
-
     @Getter
     private final long installedAt = System.currentTimeMillis();
 
     public LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
-            RuntimeCoordinator runtimeCoordinator) {
-        this(lingId, config, eventBus, null, runtimeCoordinator);
-    }
-
-    LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
                 InstanceCoordinator instanceCoordinator, RuntimeCoordinator runtimeCoordinator) {
         this.lingId = lingId;
         this.config = config != null ? config : LingRuntimeConfig.defaults();
-        this.instancePool = new InstancePool(lingId, this.config.getMaxHistorySnapshots());
-        this.instancePool.setInstanceCoordinator(instanceCoordinator);
+        this.instancePool = new InstancePool(lingId, this.config.getMaxHistorySnapshots(), instanceCoordinator);
         this.runtimeCoordinator = Objects.requireNonNull(runtimeCoordinator, "RuntimeCoordinator is required");
 
-        // 灵核创建时立即注册运行时聚合器，保证首个实例事件到来前已有宏观状态落点。
-        this.runtimeCoordinator.register(lingId);
+        // ⚠️ 职责边界：运行时聚合器注册由编排层（DefaultLingLifecycleEngine.ensureRuntimeForDeployment）单次调用，
+        // LingRuntime 自身不注册，消除原双重注册的时序耦合。
         if (eventBus != null) {
             eventBus.subscribe(lingId, RuntimeStateChangedEvent.class, this::handleStateChanged);
         }
@@ -89,34 +74,21 @@ public class LingRuntime {
         }
     }
 
-    public void recordRequest(boolean isCanary) {
-        totalRequests.incrementAndGet();
-        if (isCanary) {
-            canaryRequests.incrementAndGet();
-        } else {
-            stableRequests.incrementAndGet();
-        }
-    }
-
-    public void resetTrafficStats() {
-        totalRequests.set(0);
-        stableRequests.set(0);
-        canaryRequests.set(0);
-        activeRequests.set(0);
-        statsWindowStart = System.currentTimeMillis();
-    }
-
-    public void startRequest() {
-        activeRequests.incrementAndGet();
-    }
-
-    public void endRequest() {
-        activeRequests.decrementAndGet();
-    }
-
     public boolean isAvailable() {
         return currentStatus() == RuntimeStatus.ACTIVE &&
                 instancePool.hasAvailableInstance();
+    }
+
+    /**
+     * 替换运行时配置。
+     * <p>
+     * 由治理配置变更链路调用，将 GovernancePolicy 中的调用治理参数
+     * 合并到 LingRuntimeConfig，使 Pipeline Filter 下次调用自然读到新值。
+     * <p>
+     * ⚠️ 此方法是引用替换（volatile 写），不是字段修改，线程安全。
+     */
+    public void updateConfig(LingRuntimeConfig newConfig) {
+        this.config = newConfig != null ? newConfig : LingRuntimeConfig.defaults();
     }
 
     /**
@@ -130,9 +102,11 @@ public class LingRuntime {
     /**
      * 获取所有 READY 状态实例（用于路由选择）
      */
+    @Override
     public List<LingInstance> getReadyInstances() {
         return instancePool.getActiveInstances().stream()
                 .filter(LingInstance::isReady)
                 .collect(Collectors.toList());
     }
 }
+

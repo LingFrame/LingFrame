@@ -98,8 +98,72 @@ Dashboard 后端控制面默认暴露在：
 - 安装接口需要额外启用：`lingframe.dashboard.install-enabled=true`
 - 热重载接口只在 `lingframe.dev-mode=true` 时可用
 
-![LingFrame Dashboard 示例](./../images/dashboard.zh-CN.png)
+[![LingFrame Dashboard 示例](./../images/dashboard.0.4.0.png)](https://dashboard.lingframe.cn)
+
+> 点击截图即可进入在线体验。
+> 在线演示访问令牌：`lingframe`。
 *图示：Dashboard 可以是治理控制面的一个 UI 消费者。*
+
+## 配置项
+
+Dashboard 的所有配置项前缀为 `lingframe.dashboard`。生产全量模板见
+[`application-prod.yaml.example`](../../lingframe-examples/lingframe-example-lingcore-app/src/main/resources/application-prod.yaml.example)。
+
+### 顶层开关
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `lingframe.dashboard.enabled` | `false` | 控制面总开关。**仅引入依赖不会启用**，必须显式 `true` 才装配 |
+| `lingframe.dashboard.install-enabled` | `false` | 是否允许通过 Dashboard 上传安装灵元 |
+| `lingframe.dashboard.metaspace-estimate-bytes-per-class` | `10240` | 单类 Metaspace 估算字节数（仅用于指标估算） |
+
+### 访问令牌鉴权（`access-token`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `enabled` | `true` | 启用令牌认证；关闭须显式 `enabled=false` |
+| `token` | `""` | 主访问令牌；`enabled=true` 时必填，否则启动失败（fail-closed） |
+| `allow-weak` | `true` | `false` 时弱口令启动失败；生产必须 `false` |
+| `secondary-tokens` | `[]` | 备用令牌列表（用于轮换过渡期） |
+
+Token 只走 Header：`X-Access-Token`。
+
+### 跨域过滤（`cors`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `enabled` | `true` | 设为 `false` 时整个 Filter 跳过（开发逃生口） |
+| `allowed-origins` | `[]` | 允许的跨域源列表；空 + `access-token` 启用 = 仅同源 |
+| `allowed-methods` | `["GET","POST","DELETE","OPTIONS"]` | CORS 允许的 HTTP 方法 |
+| `allowed-headers` | `["Content-Type","X-Access-Token","X-Requested-With"]` | 允许的请求头 |
+| `max-age` | `3600` | 预检请求缓存时间（秒） |
+
+### 限流（`rate-limit`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `trusted-proxy-ips` | `[]` | 受信反向代理 IP 集合；仅直连 IP 在此集合中时才解析 `X-Forwarded-For`，避免伪造绕过限流 |
+| `max-requests-per-second` | `30` | 每秒每 IP 最大请求数 |
+| `ip-idle-threshold-ms` | `600000` | IP 不活跃超过此时间（毫秒）后清理 |
+
+### 只读模式（`readonly`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `enabled` | `false` | 启用后所有写操作（POST/DELETE）被拒绝，仅允许 GET |
+| `allowed-paths` | `[]` | 只读模式下允许的路径（前缀匹配），如健康检查等 |
+
+### SQLite 持久化存储（`storage`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `enabled` | `true` | 是否启用持久化存储 |
+| `path` | `${user.home}/.lingframe/dashboard.db` | SQLite 数据库文件路径；容器环境务必挂载持久卷 |
+| `metrics-retention-days` | `7` | 指标数据保留天数 |
+| `audit-retention-days` | `30` | 审计日志保留天数 |
+| `metrics-collect-interval-seconds` | `30` | 指标采集间隔（秒） |
+| `backup-interval-hours` | `6` | 数据库备份间隔（小时），`0` 表示不备份 |
+| `backup-retention-count` | `5` | 备份文件保留数量 |
 
 ## API 端点
 
@@ -115,20 +179,22 @@ Dashboard 后端控制面默认暴露在：
 | POST | `/lingframe/dashboard/lings/{lingId}/reload` | 开发态热重载 |
 | POST | `/lingframe/dashboard/lings/{lingId}/status` | 更新灵元运行时状态 |
 
-### 灰度发布
+### 权重路由
 
 | 方法 | 端点 | 说明 |
 | :-- | :-- | :-- |
-| POST | `/lingframe/dashboard/lings/{lingId}/canary` | 更新灰度比例与灰度版本 |
+| POST | `/lingframe/dashboard/contract-routing/{contractId}/weight` | 设置某契约下指定 provider 的权重 |
 
 请求体示例：
 
 ```json
 {
-  "percent": 10,
-  "canaryVersion": "2.0.0"
+  "providerKey": "order-ling:1.1.0",
+  "weight": 20
 }
 ```
+
+> `providerKey` 即路由键——灵元恒为 `lingId:version`（版本真源来自绑定实例上下文），灵核为裸 `lingcore-app`，写侧注册与路由读路径键化一致。`weight` 为 0-100 整数；Dashboard 下发后立即覆盖 `ProviderWeightRouter` 内的运行期权重，IPC 与 Web 治理链同时生效。
 
 ### 治理规则
 
@@ -187,12 +253,12 @@ curl http://localhost:8888/lingframe/dashboard/lings
 curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/reload
 ```
 
-### 配置灰度发布
+### 配置权重路由
 
 ```bash
-curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
+curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/order-ling/weight \
   -H "Content-Type: application/json" \
-  -d '{"percent": 20, "canaryVersion": "2.0.0"}'
+  -d '{"providerKey": "order-ling:1.1.0", "weight": 20}'
 ```
 
 ## 注意事项
@@ -200,6 +266,13 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
 1. Dashboard 是可选模块，只有在 `lingframe.dashboard.enabled=true` 时才会启用。
 2. 安装接口默认关闭，需要显式设置 `lingframe.dashboard.install-enabled=true`。
 3. 热重载能力只属于开发态，`lingframe.dev-mode=false` 时会被拒绝。
-4. 当前实现默认开放 CORS，生产环境应在 Dashboard 前增加鉴权与访问控制。
+4. CORS 由集中式 `DashboardCorsFilter` 统一管控。当 access-token 认证已启用且未配置 `lingframe.dashboard.cors.allowed-origins` 时，仅允许同源请求。跨域部署场景需显式配置：
+   ```yaml
+   lingframe:
+     dashboard:
+       cors:
+         allowed-origins:
+           - "https://admin.example.com"
+   ```
 5. 真实后端 API 面才是文档应对齐的事实来源，UI 打包与前端壳层不是当前阶段重点。
 6. Dashboard 更适合被理解为运行时治理的观察与操作入口，而不是独立于内核之外的另一个系统。

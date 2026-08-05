@@ -1,6 +1,7 @@
 package com.lingframe.core.governance;
 
 import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.spi.GovernanceDecision;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

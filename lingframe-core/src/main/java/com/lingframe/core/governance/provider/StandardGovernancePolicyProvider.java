@@ -2,15 +2,17 @@ package com.lingframe.core.governance.provider;
 
 import com.lingframe.api.annotation.Auditable;
 import com.lingframe.api.annotation.RequiresPermission;
+
+import java.lang.annotation.Annotation;
 import com.lingframe.api.config.GovernancePolicy;
-import com.lingframe.core.governance.GovernanceDecision;
+import com.lingframe.core.spi.GovernanceDecision;
 import com.lingframe.core.governance.LingCoreGovernanceRule;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.GovernancePolicyProvider;
-import com.lingframe.core.strategy.GovernanceStrategy;
+import com.lingframe.core.governance.GovernanceStrategy;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
@@ -19,7 +21,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * 标准治理策略提供者
@@ -41,9 +43,27 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
     public StandardGovernancePolicyProvider(LocalGovernanceRegistry localRegistry,
             List<LingCoreGovernanceRule> rawRules) {
         this.localRegistry = localRegistry;
-        this.lingCoreRules = rawRules.stream()
-                .map(r -> new CompiledRule(compilePattern(r.getPattern()), r))
-                .collect(Collectors.toList());
+        List<CompiledRule> compiled = new ArrayList<>();
+        if (rawRules != null) {
+            for (LingCoreGovernanceRule r : rawRules) {
+                // 🔥 防御式构造：单条规则的 pattern 问题不应中断整个 Provider 初始化
+                // null/empty pattern → warn 后跳过
+                // PatternSyntaxException → error 后跳过
+                // 这样坏规则只影响自身，不会让所有灵核规则全部失效
+                try {
+                    Pattern pattern = compilePattern(r.getPattern());
+                    if (pattern == null) {
+                        // null/empty 已在 compilePattern 内 warn
+                        continue;
+                    }
+                    compiled.add(new CompiledRule(pattern, r));
+                } catch (PatternSyntaxException e) {
+                    log.error("Invalid governance rule pattern [{}], skipping this rule: {}",
+                            r.getPattern(), e.getMessage());
+                }
+            }
+        }
+        this.lingCoreRules = compiled;
     }
 
     @Override
@@ -115,19 +135,42 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
         boolean overridden = false;
 
         RequiresPermission permAnn = method.getAnnotation(RequiresPermission.class);
+        if (permAnn == null) {
+            permAnn = findInterfaceAnnotation(method, RequiresPermission.class);
+        }
         if (permAnn != null) {
             builder.requiredPermission(permAnn.value());
             overridden = true;
         }
 
-        if (method.isAnnotationPresent(Auditable.class)) {
-            Auditable auditAnn = method.getAnnotation(Auditable.class);
+        Auditable auditAnn = method.getAnnotation(Auditable.class);
+        if (auditAnn == null) {
+            auditAnn = findInterfaceAnnotation(method, Auditable.class);
+        }
+        if (auditAnn != null) {
             builder.auditEnabled(true);
             builder.auditAction(auditAnn.action());
             overridden = true;
         }
 
+        // 注解只声明契约：@LingService 不再承载治理入参（timeout 已删）。
+        // 超时/降级/重试等治理入参收敛到 YAML references 分区，由 applyPolicyOverlay 处理。
+
         return overridden;
+    }
+
+    private <A extends Annotation> A findInterfaceAnnotation(Method method, Class<A> annotationType) {
+        for (Class<?> iface : method.getDeclaringClass().getInterfaces()) {
+            try {
+                Method ifaceMethod = iface.getMethod(method.getName(), method.getParameterTypes());
+                A ann = ifaceMethod.getAnnotation(annotationType);
+                if (ann != null) {
+                    return ann;
+                }
+            } catch (NoSuchMethodException ignored) {
+            }
+        }
+        return null;
     }
 
     private PolicyOverlayResult applyPolicyOverlay(GovernanceDecision.GovernanceDecisionBuilder builder,
@@ -156,6 +199,30 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
                     builder.auditEnabled(rule.isEnabled());
                     builder.auditAction(rule.getAction());
                     accessControlOverride = true;
+                    break;
+                }
+            }
+        }
+
+        // 跨灵元服务引用治理规则：原散在 @LingReference.timeout/fallback 的入参收敛到此。
+        // 优先级语义：references（被调方方法名维度）先覆，invocation（被调方策略级）后覆——
+        // 后者优先级更高，被调方策略应能覆盖调用方侧声明。两者都命中同一方法且设同字段时，
+        // invocation 段会覆盖 references 段的值。
+        if (policy.getReferences() != null) {
+            for (GovernancePolicy.ReferenceRule rule : policy.getReferences()) {
+                if (isMatch(rule.getReferencePattern(), methodName)) {
+                    if (rule.getTimeoutMs() != null) {
+                        builder.timeout(Duration.ofMillis(rule.getTimeoutMs()));
+                        invocationOverride = true;
+                    }
+                    if (rule.getRetryCount() != null) {
+                        builder.retryCount(rule.getRetryCount());
+                        invocationOverride = true;
+                    }
+                    if (rule.getFallbackValue() != null) {
+                        builder.fallbackValue(rule.getFallbackValue());
+                        invocationOverride = true;
+                    }
                     break;
                 }
             }
@@ -225,10 +292,52 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
         sources.add(0, source);
     }
 
+    /**
+     * 将 Ant 风格模式编译为正则 Pattern。
+     * <p>
+     * <b>适用范围</b>：仅适用于方法名匹配（如 {@code lingId.methodName}），
+     * 其中 {@code *} 会被编译为 {@code .*}，可匹配含 {@code .} 的任意字符，
+     * 因此<b>不适用于路径匹配</b>（路径分隔符不应被 {@code *} 跨越）。
+     *
+     * @param antPattern Ant 风格模式，{@code *} 匹配任意字符（含 .），{@code ?} 匹配单字符
+     * @return 编译后的 Pattern；null/empty 模式返回 null
+     */
     private Pattern compilePattern(String antPattern) {
-        // 简单将 AntPath 转为 Regex (* -> .*)，生产级建议引入 Spring AntPathMatcher 逻辑
-        String regex = "^" + antPattern.replace(".", "\\.").replace("*", ".*") + "$";
-        return Pattern.compile(regex);
+        // 🔥 null/empty 防御：原实现直接 antPattern.replace 会抛 NPE，导致整个 Provider 构造失败
+        if (antPattern == null || antPattern.isEmpty()) {
+            log.warn("Skipping governance rule with null/empty pattern");
+            return null;
+        }
+        // Ant 风格转 Regex：
+        // - * → .* （匹配任意字符，含 .）
+        // - ? → . （匹配单字符）
+        // - 其他正则元字符（. + ( ) [ ] { } | ^ $ \ 等）用 Pattern.quote 转义，
+        //   避免被误判为正则语法（原实现只转义了 .，遇到 user.svc+backup 这种会出错）
+        StringBuilder regex = new StringBuilder("^");
+        StringBuilder literal = new StringBuilder();
+        for (int i = 0; i < antPattern.length(); i++) {
+            char c = antPattern.charAt(i);
+            if (c == '*') {
+                if (literal.length() > 0) {
+                    regex.append(Pattern.quote(literal.toString()));
+                    literal.setLength(0);
+                }
+                regex.append(".*");
+            } else if (c == '?') {
+                if (literal.length() > 0) {
+                    regex.append(Pattern.quote(literal.toString()));
+                    literal.setLength(0);
+                }
+                regex.append(".");
+            } else {
+                literal.append(c);
+            }
+        }
+        if (literal.length() > 0) {
+            regex.append(Pattern.quote(literal.toString()));
+        }
+        regex.append("$");
+        return Pattern.compile(regex.toString());
     }
 
     private boolean isMatch(String pattern, String methodName) {

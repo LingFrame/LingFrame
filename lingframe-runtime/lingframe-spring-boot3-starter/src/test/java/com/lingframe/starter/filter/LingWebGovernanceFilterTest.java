@@ -5,34 +5,36 @@ import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.spi.RoutableTarget;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
-import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
+import com.lingframe.starter.web.WebRequestFacade;
+import com.lingframe.starter.web.WebRequestKeys;
 import com.lingframe.starter.web.WebRouteResolution;
 import com.lingframe.starter.web.WebRouteResolver;
 import jakarta.servlet.FilterChain;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
-
 import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import static org.mockito.ArgumentMatchers.any;
+import org.mockito.Mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.HandlerExecutionChain;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("LingWebGovernanceFilter 测试")
@@ -84,10 +86,10 @@ class LingWebGovernanceFilterTest {
         WebRouteResolution resolution = new WebRouteResolution(
                 "GET#/ling-a/demo/detail", metadata, runtime, targetInstance);
 
-        when(webRouteResolver.resolveRoute(request)).thenAnswer(invocation -> {
-            request.setAttribute(WebInterfaceManager.REQUEST_ROUTE_RESOLUTION_KEY, resolution);
-            request.setAttribute(WebInterfaceManager.REQUEST_METADATA_KEY, metadata);
-            request.setAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY, metadata.getVersion());
+        when(webRouteResolver.resolveRoute(any())).thenAnswer(invocation -> {
+            request.setAttribute(WebRequestKeys.ROUTE_RESOLUTION, resolution);
+            request.setAttribute(WebRequestKeys.METADATA, metadata);
+            request.setAttribute(WebRequestKeys.TARGET_VERSION, metadata.getVersion());
             return resolution;
         });
         when(targetInstance.getVersion()).thenReturn("v1");
@@ -97,7 +99,7 @@ class LingWebGovernanceFilterTest {
         AtomicReference<Method> observedResolvedMethod = new AtomicReference<>();
         AtomicReference<Object> observedTargetInstance = new AtomicReference<>();
         AtomicReference<String> observedTargetVersion = new AtomicReference<>();
-        AtomicReference<LingRuntime> observedRuntime = new AtomicReference<>();
+        AtomicReference<RoutableTarget> observedRuntime = new AtomicReference<>();
         AtomicReference<Object> observedPrincipal = new AtomicReference<>();
         AtomicBoolean observedPreResolved = new AtomicBoolean(false);
 
@@ -125,9 +127,9 @@ class LingWebGovernanceFilterTest {
         assertSame(runtime, observedRuntime.get());
         assertEquals("alice", observedPrincipal.get());
         assertTrue(observedPreResolved.get());
-        assertSame(resolution, request.getAttribute(WebInterfaceManager.REQUEST_ROUTE_RESOLUTION_KEY));
-        assertSame(metadata, request.getAttribute(WebInterfaceManager.REQUEST_METADATA_KEY));
-        assertEquals("v1", request.getAttribute(WebInterfaceManager.REQUEST_TARGET_VERSION_KEY));
+        assertSame(resolution, request.getAttribute(WebRequestKeys.ROUTE_RESOLUTION));
+        assertSame(metadata, request.getAttribute(WebRequestKeys.METADATA));
+        assertEquals("v1", request.getAttribute(WebRequestKeys.TARGET_VERSION));
         verify(filterChain).doFilter(request, response);
     }
 
@@ -140,15 +142,15 @@ class LingWebGovernanceFilterTest {
                 webRouteResolver, pipelineEngine, properties, requestMappingHandlerMapping, null,
                 invocationGovernanceResolver);
 
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/host/demo/detail");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/lingcore/demo/detail");
         MockHttpServletResponse response = new MockHttpServletResponse();
         DemoController controller = new DemoController();
         Method targetMethod = DemoController.class.getMethod("detail");
 
-        when(webRouteResolver.resolveRoute(request)).thenReturn(null);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(null);
         when(requestMappingHandlerMapping.getHandler(request))
-                .thenReturn(new org.springframework.web.servlet.HandlerExecutionChain(
-                        new org.springframework.web.method.HandlerMethod(controller, targetMethod)));
+                .thenReturn(new HandlerExecutionChain(
+                        new HandlerMethod(controller, targetMethod)));
 
         filter.doFilterInternal(request, response, filterChain);
 
@@ -183,7 +185,7 @@ class LingWebGovernanceFilterTest {
         WebRouteResolution resolution = new WebRouteResolution(
                 "GET#/ling-a/demo/detail", metadata, runtime, null);
 
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
         filter.doFilterInternal(request, response, filterChain);
 
@@ -218,7 +220,7 @@ class LingWebGovernanceFilterTest {
         WebRouteResolution resolution = new WebRouteResolution(
                 "GET#/ling-a/demo/detail", metadata, runtime, targetInstance);
 
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
         filter.doFilterInternal(request, response, filterChain);
 

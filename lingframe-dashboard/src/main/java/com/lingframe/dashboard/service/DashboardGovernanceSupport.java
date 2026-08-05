@@ -1,15 +1,15 @@
 package com.lingframe.dashboard.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.governance.GovernancePermissionSynchronizer;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
-import com.lingframe.core.ling.LingRepository;
-import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
+import com.lingframe.dashboard.storage.GovernanceStorage;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,43 +18,52 @@ import java.util.Map;
 
 /**
  * Dashboard 治理策略辅助类，集中处理 patch 合并与权限同步。
+ * <p>
+ * 内部委托 {@link GovernanceAdminService} 完成策略合并 / patch 管理 / 权限同步，
+ * Dashboard 不再直接持有 {@code LocalGovernanceRegistry} 或调
+ * {@code GovernancePermissionSynchronizer} 静态方法。
+ * 本类只承载 Dashboard 特有的 DTO 镜像逻辑（{@link ResourcePermissionDTO} /
+ * {@link InvocationGovernanceDTO}），不下沉 core。
  */
+@Slf4j
 public class DashboardGovernanceSupport {
 
-    private final LingRepository lingRepository;
-    private final LocalGovernanceRegistry governanceRegistry;
+    private final GovernanceAdminService governanceAdmin;
     private final PermissionService permissionService;
+    // 复用 Spring 容器中的单例 ObjectMapper，避免每次序列化都创建新实例
+    private final ObjectMapper objectMapper;
 
-    public DashboardGovernanceSupport(LingRepository lingRepository,
-            LocalGovernanceRegistry governanceRegistry,
-            PermissionService permissionService) {
-        this.lingRepository = lingRepository;
-        this.governanceRegistry = governanceRegistry;
+    // 持久化存储（可选，由 DashboardService.setGovernanceStorage 间接注入）
+    private GovernanceStorage governanceStorage;
+
+    public void setGovernanceStorage(GovernanceStorage governanceStorage) {
+        this.governanceStorage = governanceStorage;
+    }
+
+    public DashboardGovernanceSupport(GovernanceAdminService governanceAdmin,
+            PermissionService permissionService,
+            ObjectMapper objectMapper) {
+        this.governanceAdmin = governanceAdmin;
         this.permissionService = permissionService;
+        this.objectMapper = objectMapper;
     }
 
     public GovernancePolicy getEffectivePolicy(String lingId) {
-        GovernancePolicy staticPolicy = getStaticPolicy(lingId);
-        GovernancePolicy patch = governanceRegistry.getPatch(lingId);
-        if (staticPolicy == null && patch == null) {
-            return null;
-        }
-        return GovernancePolicy.merge(staticPolicy, patch);
+        return governanceAdmin.getEffectivePolicy(lingId);
     }
 
     public GovernancePolicy getPatchForUpdate(String lingId) {
-        GovernancePolicy patch = governanceRegistry.getPatch(lingId);
-        return patch == null ? new GovernancePolicy() : patch.copy();
+        return governanceAdmin.getPatchForUpdate(lingId);
     }
 
     public void persistPolicyPatch(String lingId, GovernancePolicy patch) {
-        governanceRegistry.updatePatch(lingId, patch);
-        GovernancePermissionSynchronizer.syncPolicy(lingId, getEffectivePolicy(lingId), permissionService);
+        governanceAdmin.persistPolicyPatch(lingId, patch);
     }
 
     public void updateGovernancePolicy(String lingId, GovernancePolicy policy) {
         GovernancePolicy mergedPatch = GovernancePolicy.merge(getPatchForUpdate(lingId), policy);
         persistPolicyPatch(lingId, mergedPatch);
+        persistToStorage(lingId, mergedPatch);
     }
 
     public void updatePermissions(String lingId, ResourcePermissionDTO dto) {
@@ -71,23 +80,25 @@ public class DashboardGovernanceSupport {
         AccessType cacheAccess = determineAccessType(dto.isCacheRead(), dto.isCacheWrite());
         ruleMap.put(Capabilities.STORAGE_SQL, capabilityRule(Capabilities.STORAGE_SQL, sqlAccess));
         ruleMap.put(Capabilities.CACHE_LOCAL, capabilityRule(Capabilities.CACHE_LOCAL, cacheAccess));
-        ruleMap.put(Capabilities.Ling_ENABLE, capabilityRule(Capabilities.Ling_ENABLE, AccessType.EXECUTE));
+        ruleMap.put(Capabilities.LING_ENABLE, capabilityRule(Capabilities.LING_ENABLE, AccessType.EXECUTE));
 
         if (dto.getIpcServices() != null) {
             List<String> toRemove = new ArrayList<>();
             for (String key : ruleMap.keySet()) {
-                if (key.startsWith("ipc:")) {
+                if (key.startsWith(Capabilities.IPC_PREFIX)) {
                     toRemove.add(key);
                 }
             }
             toRemove.forEach(ruleMap::remove);
             for (String targetLingId : dto.getIpcServices()) {
-                ruleMap.put("ipc:" + targetLingId, capabilityRule("ipc:" + targetLingId, AccessType.EXECUTE));
+                String ipcCapability = Capabilities.ipcCapability(targetLingId);
+                ruleMap.put(ipcCapability, capabilityRule(ipcCapability, AccessType.EXECUTE));
             }
         }
 
         policy.setCapabilities(new ArrayList<>(ruleMap.values()));
         persistPolicyPatch(lingId, policy);
+        persistToStorage(lingId, policy);
     }
 
     public InvocationGovernanceDTO updateInvocationGovernance(String lingId, InvocationGovernanceDTO dto) {
@@ -107,6 +118,7 @@ public class DashboardGovernanceSupport {
         patch.setInvocation(invocation);
 
         persistPolicyPatch(lingId, patch);
+        persistToStorage(lingId, patch);
         return getInvocationGovernance(lingId);
     }
 
@@ -125,16 +137,6 @@ public class DashboardGovernanceSupport {
                 .build();
     }
 
-    private GovernancePolicy getStaticPolicy(String lingId) {
-        LingRuntime runtime = lingRepository.getRuntime(lingId);
-        if (runtime != null && runtime.getInstancePool().getDefault() != null
-                && runtime.getInstancePool().getDefault().getDefinition() != null) {
-            GovernancePolicy governance = runtime.getInstancePool().getDefault().getDefinition().getGovernance();
-            return governance == null ? null : governance.copy();
-        }
-        return null;
-    }
-
     private GovernancePolicy.CapabilityRule capabilityRule(String capability, AccessType accessType) {
         return GovernancePolicy.CapabilityRule.builder()
                 .capability(capability)
@@ -150,5 +152,19 @@ public class DashboardGovernanceSupport {
             return AccessType.READ;
         }
         return AccessType.NONE;
+    }
+
+    /**
+     * 将治理策略持久化到 SQLite（异步容错，不影响主流程）
+     */
+    private void persistToStorage(String lingId, GovernancePolicy policy) {
+        if (governanceStorage == null) {
+            return;
+        }
+        try {
+            governanceStorage.saveInvocationConfig(lingId, objectMapper.writeValueAsString(policy));
+        } catch (Exception e) {
+            log.warn("Failed to persist governance strategy: {}", lingId, e);
+        }
     }
 }

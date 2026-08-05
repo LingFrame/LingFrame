@@ -7,11 +7,15 @@ import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.lingframe.core.spi.ThreadPoolStatsProvider;
+import com.lingframe.core.util.NamedThreadFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 
@@ -22,9 +26,9 @@ import java.util.concurrent.*;
  * ⚠️ 线程池线程默认挂 CORE_CLASSLOADER，单次调用再临时切到目标灵元的 ClassLoader。
  * 如果让线程池常驻线程永久挂住灵元 ClassLoader，灵元卸载后最容易出现“功能没问题，但就是回收不掉”的隐性泄漏。
  */
-public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
+@Slf4j
+public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, ThreadPoolStatsProvider {
 
-    private static final Logger log = LoggerFactory.getLogger(ThreadIsolationGovernanceFilter.class);
     private static final ClassLoader CORE_CLASSLOADER = ThreadIsolationGovernanceFilter.class.getClassLoader();
     private static final ThreadMXBean THREAD_MX_BEAN = ManagementFactory.getThreadMXBean();
 
@@ -48,15 +52,16 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
 
     @Override
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
-        String fqsid = ctx.getServiceFQSID();
-        if (fqsid == null || !fqsid.contains(":")) {
+        // 路由去身份化后 FQSID 可能为裸 contractId（无冒号），
+        // 隔离池命名以 ctx.getEffectiveLingId() 为准——L0 阶段已解析出真实 lingId
+        String lingId = ctx.getEffectiveLingId();
+        if (lingId == null || lingId.isEmpty()) {
             return chain.doFilter(ctx);
         }
-        if (ctx.isGovernOnly()) {
+        if (ctx.execution().getMode().isGovernOnly()) {
             return chain.doFilter(ctx);
         }
 
-        String lingId = fqsid.split(":", 2)[0];
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             return chain.doFilter(ctx);
@@ -107,47 +112,47 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
         try {
             future = executor.submit(isolatedTask);
         } catch (RejectedExecutionException e) {
-            log.warn("[Isolation:{}] Execution rejected because bulkhead is full for {}", lingId, fqsid);
+            log.warn("[Isolation:{}] Execution rejected because bulkhead is full for {}", lingId, ctx.getServiceFQSID());
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordBulkheadRejected(lingId, ctx.getTargetVersion());
                 recordThreadBudgetSnapshot(lingId, ctx, executorHolder);
             }
-            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.RATE_LIMITED, e);
+            throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.BULKHEAD_FULL, e);
         }
 
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             future.cancel(true);
-            log.error("[Isolation:{}] Execution timed out after {} ms for {}", lingId, timeoutMs, fqsid);
+            log.error("[Isolation:{}] Execution timed out after {} ms for {}", lingId, timeoutMs, ctx.getServiceFQSID());
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordTimeout(lingId, ctx.getTargetVersion());
             }
-            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.TIMEOUT);
+            throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.TIMEOUT);
         } catch (ExecutionException e) {
             Throwable cause = unwrapExecutionCause(e.getCause());
             if (cause instanceof LingInvocationException) {
                 throw (LingInvocationException) cause;
             }
-            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.INVOKE_ERROR, cause);
+            throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INVOKE_ERROR, cause);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
+            throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
         } finally {
             recordThreadBudgetSnapshot(lingId, ctx, executorHolder);
         }
     }
 
     private int traceCount(InvocationContext ctx) {
-        return ctx.getTraces() == null ? 0 : ctx.getTraces().size();
+        return ctx.execution().getTraces() == null ? 0 : ctx.execution().getTraces().size();
     }
 
     private void mergeNewTraces(InvocationContext parent, InvocationContext child, int inheritedTraceCount) {
-        if (parent == null || child == null || child.getTraces() == null) {
+        if (parent == null || child == null || child.execution().getTraces() == null) {
             return;
         }
-        for (int i = inheritedTraceCount; i < child.getTraces().size(); i++) {
-            parent.addTrace(child.getTraces().get(i));
+        for (int i = inheritedTraceCount; i < child.execution().getTraces().size(); i++) {
+            parent.execution().addTrace(child.execution().getTraces().get(i));
         }
     }
 
@@ -198,18 +203,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
                 60L,
                 TimeUnit.SECONDS,
                 new SynchronousQueue<>(),
-                new ThreadFactory() {
-                    private int counter = 0;
-
-                    @Override
-                    public Thread newThread(Runnable runnable) {
-                        Thread thread = new Thread(runnable, "Ling-Iso-" + lingId + "-" + (++counter));
-                        thread.setDaemon(true);
-                        // ⚠️ 常驻线程只挂核心 ClassLoader；单次任务内再临时切换，避免线程把灵元 ClassLoader 挂死
-                        thread.setContextClassLoader(CORE_CLASSLOADER);
-                        return thread;
-                    }
-                },
+                NamedThreadFactory.daemon("Ling-Iso-" + lingId, CORE_CLASSLOADER),
                 new ThreadPoolExecutor.AbortPolicy());
     }
 
@@ -296,6 +290,29 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter {
     private long usedHeapBytes() {
         Runtime runtime = Runtime.getRuntime();
         return runtime.totalMemory() - runtime.freeMemory();
+    }
+
+    @Override
+    public List<ThreadPoolStats> getThreadPoolStats() {
+        if (executors.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<ThreadPoolStats> result = new ArrayList<>(executors.size());
+        for (Map.Entry<String, ExecutorHolder> entry : executors.entrySet()) {
+            ExecutorHolder holder = entry.getValue();
+            ThreadPoolExecutor pool = holder.executor;
+            if (pool == null || pool.isShutdown()) {
+                continue;
+            }
+            result.add(new ThreadPoolStats(
+                    entry.getKey(),
+                    pool.getActiveCount(),
+                    pool.getPoolSize(),
+                    holder.maxThreads,
+                    pool.getQueue() != null ? pool.getQueue().size() : 0,
+                    pool.getCompletedTaskCount()));
+        }
+        return result;
     }
 
     private static final class ExecutorHolder {

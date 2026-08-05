@@ -30,8 +30,9 @@ public class LingDataSourceProxy implements DataSource {
 
     @Override
     public Connection getConnection(String username, String password) throws SQLException {
-        Connection connection = target.getConnection(username, password);
-        return new LingConnectionProxy(connection, permissionService);
+        // 禁止灵元用任意凭据连接，强制使用灵核配置的连接池凭据
+        throw new SQLException("getConnection(username, password) is forbidden on governed DataSource, "
+                + "use getConnection() with configured credentials");
     }
 
     // --- 下面是必须实现的委托方法 ---
@@ -41,18 +42,14 @@ public class LingDataSourceProxy implements DataSource {
         if (iface.isAssignableFrom(getClass())) {
             return (T) this;
         }
-        if (iface.isAssignableFrom(LingDataSourceProxy.class)) {
-            return (T) this;
-        }
-        return target.unwrap(iface);
+        // 拒绝暴露原生数据源实现（如 HikariDataSource），防止绕过治理代理
+        throw new SQLException("Cannot unwrap to " + iface.getName()
+                + ": LingDataSourceProxy only exposes the DataSource interface");
     }
 
     @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
-        if (iface.isAssignableFrom(getClass())) {
-            return true;
-        }
-        return target.isWrapperFor(iface);
+        return iface.isAssignableFrom(getClass());
     }
 
     @Override

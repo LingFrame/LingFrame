@@ -16,5 +16,6 @@
     <modules>
         <module>lingframe-infra-storage</module>
         <module>lingframe-infra-cache</module>
+        <module>lingframe-infra-mybatis-plus</module>
     </modules>
 </project>

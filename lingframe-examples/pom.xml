@@ -18,9 +18,43 @@
         <module>lingframe-example-ling-user</module>
         <module>lingframe-example-ling-user-canary</module>
         <module>lingframe-example-ling-order</module>
+        <module>lingframe-example-ling-order-canary</module>
         <module>lingframe-example-order-api</module>
         <module>lingframe-example-ling-native</module>
     </modules>
+
+    <!--
+        仅在 Spring Boot 2 矩阵下构建的示例模块（ling-mall / saas-mall）。
+
+        原理：examples-spring-boot2 用 activeByDefault 激活，默认带入 mall 模块；
+        当显式激活 spring-boot3 时，本 POM 出现了显式激活的 profile，
+        Maven 会自动停用 activeByDefault 的 profile，从而 mall 不进 reactor。
+
+        注意：spring-boot3 profile 必须在本 POM 内重新声明（哪怕为空），
+        否则继承自 lingframe-dependencies 的 profile 激活不会触发
+        activeByDefault 的停用逻辑。
+    -->
+    <profiles>
+        <profile>
+            <id>examples-spring-boot2</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <modules>
+                <module>lingframe-example-ling-mall</module>
+                <module>lingframe-example-saas-mall</module>
+            </modules>
+        </profile>
+
+        <!--
+            在本 POM 重新声明 spring-boot3（空 profile），
+            仅用于让 -Pspring-boot3 时 activeByDefault 的 examples-spring-boot2 停用。
+            真正的 SB3 属性来自 lingframe-dependencies。
+        -->
+        <profile>
+            <id>spring-boot3</id>
+        </profile>
+    </profiles>
 
     <dependencyManagement>
         <dependencies>
@@ -44,4 +78,24 @@
             <artifactId>slf4j-api</artifactId>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>check</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

@@ -91,9 +91,14 @@
     </dependencies>
 
     <profiles>
+        <!--
+            仅打开 IT / E2E 开关，不绑定 Boot 运行时线。
+            运行时线由 spring-boot2（默认）或 spring-boot3 选择。
+            注意：只激活 integration-check 会停用 activeByDefault 的 spring-boot2，
+            因此本地/CI 应始终写成 -Pspring-boot2,integration-check 或 -Pspring-boot3,integration-check。
+        -->
         <profile>
             <id>integration-check</id>
-            <!-- 这里只打开集成验证开关，不负责选择 Spring Boot 运行时线。 -->
             <properties>
                 <lingframe.runE2E>true</lingframe.runE2E>
                 <skipITs>false</skipITs>
@@ -128,11 +133,10 @@
                     <groupId>com.lingframe</groupId>
                     <artifactId>lingframe-spring-boot3-starter</artifactId>
                 </dependency>
-                <!-- SpringDoc for Boot 3 -->
+                <!-- SpringDoc for Boot 3：与 dependencies 父 POM SB3 profile 对齐 -->
                 <dependency>
                     <groupId>org.springdoc</groupId>
-                    <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-                    <version>2.2.0</version>
+                    <artifactId>${springdoc.artifactId}</artifactId>
                 </dependency>
             </dependencies>
         </profile>
@@ -143,6 +147,14 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>repackage</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- Compiler ling -->
@@ -199,6 +211,7 @@
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <version>3.2.5</version>
                 <configuration>
+                    <classesDirectory>${project.build.outputDirectory}</classesDirectory>
                     <skipITs>${skipITs}</skipITs>
                     <!-- 两个集成用例都会启动完整灵核，分开 fork 可以避免静态状态串扰。 -->
                     <forkCount>1</forkCount>

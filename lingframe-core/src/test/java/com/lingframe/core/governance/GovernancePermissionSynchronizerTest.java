@@ -6,7 +6,6 @@ import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.InOrder;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -14,15 +13,18 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.inOrder;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 @DisplayName("GovernancePermissionSynchronizer 测试")
 class GovernancePermissionSynchronizerTest {
 
     @Test
-    @DisplayName("syncPolicy 应使用持久化能力规则覆盖运行时权限")
+    @DisplayName("syncPolicy 应使用持久化能力规则原子替换运行时权限")
     void syncPolicyShouldReplaceRuntimePermissionsWithPersistedCapabilities() {
         PermissionService permissionService = mock(PermissionService.class);
         GovernancePolicy policy = GovernancePolicy.builder()
@@ -40,10 +42,11 @@ class GovernancePermissionSynchronizerTest {
         int synced = GovernancePermissionSynchronizer.syncPolicy("demo-ling", policy, permissionService);
 
         assertEquals(2, synced);
-        InOrder inOrder = inOrder(permissionService);
-        inOrder.verify(permissionService).removeLing("demo-ling");
-        inOrder.verify(permissionService).grant("demo-ling", Capabilities.STORAGE_SQL, AccessType.WRITE);
-        inOrder.verify(permissionService).grant("demo-ling", Capabilities.CACHE_LOCAL, AccessType.READ);
+        // 验证通过 replacePermissions 原子替换，而非逐条 grant
+        verify(permissionService).replacePermissions(eq("demo-ling"), argThat(map ->
+                map != null && map.size() == 2
+                        && AccessType.WRITE.equals(map.get(Capabilities.STORAGE_SQL))
+                        && AccessType.READ.equals(map.get(Capabilities.CACHE_LOCAL))));
         verifyNoMoreInteractions(permissionService);
     }
 
@@ -55,8 +58,9 @@ class GovernancePermissionSynchronizerTest {
         int synced = GovernancePermissionSynchronizer.syncPolicy("demo-ling", new GovernancePolicy(), permissionService);
 
         assertEquals(0, synced);
-        InOrder inOrder = inOrder(permissionService);
-        inOrder.verify(permissionService).removeLing("demo-ling");
+        // 验证通过 replacePermissions 传入空 map 等价于清空，而非调用 removeLing 造成权限真空
+        verify(permissionService).replacePermissions(eq("demo-ling"), argThat(map ->
+                map != null && map.isEmpty()));
         verifyNoMoreInteractions(permissionService);
     }
 
@@ -84,9 +88,10 @@ class GovernancePermissionSynchronizerTest {
         int synced = GovernancePermissionSynchronizer.syncPolicy("demo-ling", policy, permissionService);
 
         assertEquals(1, synced);
-        InOrder inOrder = inOrder(permissionService);
-        inOrder.verify(permissionService).removeLing("demo-ling");
-        inOrder.verify(permissionService).grant("demo-ling", Capabilities.CACHE_LOCAL, AccessType.WRITE);
+        // 验证只保留有效规则，通过 replacePermissions 原子替换
+        verify(permissionService).replacePermissions(eq("demo-ling"), argThat(map ->
+                map != null && map.size() == 1
+                        && AccessType.WRITE.equals(map.get(Capabilities.CACHE_LOCAL))));
         verifyNoMoreInteractions(permissionService);
     }
 
@@ -113,11 +118,13 @@ class GovernancePermissionSynchronizerTest {
         int synced = GovernancePermissionSynchronizer.syncAll(patches, permissionService);
 
         assertEquals(2, synced);
-        InOrder inOrder = inOrder(permissionService);
-        inOrder.verify(permissionService).removeLing("ling-a");
-        inOrder.verify(permissionService).grant("ling-a", Capabilities.STORAGE_SQL, AccessType.READ);
-        inOrder.verify(permissionService).removeLing("ling-b");
-        inOrder.verify(permissionService).grant("ling-b", Capabilities.CACHE_LOCAL, AccessType.NONE);
+        // 验证每个 ling 都通过 replacePermissions 原子替换
+        verify(permissionService).replacePermissions(eq("ling-a"), argThat(map ->
+                map != null && map.size() == 1
+                        && AccessType.READ.equals(map.get(Capabilities.STORAGE_SQL))));
+        verify(permissionService).replacePermissions(eq("ling-b"), argThat(map ->
+                map != null && map.size() == 1
+                        && AccessType.NONE.equals(map.get(Capabilities.CACHE_LOCAL))));
         verifyNoMoreInteractions(permissionService);
     }
 }

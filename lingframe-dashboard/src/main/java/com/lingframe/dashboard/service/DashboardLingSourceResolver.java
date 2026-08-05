@@ -5,8 +5,11 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.loader.LingManifestLoader;
+import com.lingframe.core.util.PathUtils;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,18 +25,42 @@ public class DashboardLingSourceResolver {
         this.lingFrameConfig = lingFrameConfig;
     }
 
+    /**
+     * 列出磁盘 ling-home 目录下所有的 JAR 包物理文件。
+     */
+    public List<File> listHomeFiles() {
+        if (lingFrameConfig == null || lingFrameConfig.getLingHome() == null) {
+            return Collections.emptyList();
+        }
+        File home = new File(lingFrameConfig.getLingHome());
+        if (!home.exists() || !home.isDirectory()) {
+            return Collections.emptyList();
+        }
+        File[] files = home.listFiles();
+        if (files == null) {
+            return Collections.emptyList();
+        }
+        List<File> list = new ArrayList<File>();
+        for (File file : files) {
+            if (file.isFile() && file.getName().endsWith(".jar")) {
+                list.add(file);
+            }
+        }
+        return list;
+    }
+
+    public LingFrameConfig getLingFrameConfig() {
+        return this.lingFrameConfig;
+    }
+
+
     public LingInstance selectStableInstance(LingRuntime runtime) {
         if (runtime == null) {
             return null;
         }
-        for (LingInstance instance : runtime.getInstancePool().getActiveInstances()) {
-            if (!isCanary(instance)) {
-                return instance;
-            }
-        }
-        LingInstance fallback = runtime.getInstancePool().getDefault();
-        if (fallback != null) {
-            return fallback;
+        LingInstance defaultInstance = runtime.getInstancePool().getDefault();
+        if (defaultInstance != null) {
+            return defaultInstance;
         }
         List<LingInstance> activeInstances = runtime.getInstancePool().getActiveInstances();
         return activeInstances.isEmpty() ? null : activeInstances.get(0);
@@ -44,6 +71,16 @@ public class DashboardLingSourceResolver {
         if (developmentFile != null) {
             return developmentFile;
         }
+        return findFromHome(lingId, version);
+    }
+
+    /**
+     * 解析 ling-home 下的真实物理包（JAR）文件。
+     * <p>
+     * 物理删除只能作用于 ling-home 中的打包产物，禁止落入 dev 模式的
+     * {@code target/classes} 目录——否则删除的是编译后的 class 文件。
+     */
+    public File resolveHomePackageFile(String lingId, String version) {
         return findFromHome(lingId, version);
     }
 
@@ -81,23 +118,6 @@ public class DashboardLingSourceResolver {
         properties.put("reloadVersion", reloadVersion);
     }
 
-    public boolean isCanary(LingDefinition definition) {
-        if (definition == null || definition.getProperties() == null) {
-            return false;
-        }
-        Object value = definition.getProperties().get("canary");
-        if (value == null) {
-            return false;
-        }
-        if (value instanceof Boolean) {
-            return (Boolean) value;
-        }
-        if (value instanceof Number) {
-            return ((Number) value).intValue() != 0;
-        }
-        return "true".equalsIgnoreCase(String.valueOf(value));
-    }
-
     private File findFromRoots(String lingId, String version) {
         if (lingFrameConfig == null || !lingFrameConfig.isDevMode()) {
             return null;
@@ -107,7 +127,14 @@ public class DashboardLingSourceResolver {
             return null;
         }
         for (String root : roots) {
-            File candidate = new File(root + File.separator + "/target/classes");
+            File rootDir = PathUtils.resolvePath(
+                    root,
+                    lingFrameConfig.getLingHome() != null ? new File(lingFrameConfig.getLingHome()) : null
+            );
+            if (rootDir == null) {
+                continue;
+            }
+            File candidate = new File(rootDir, "target/classes");
             if (!candidate.exists()) {
                 continue;
             }
@@ -142,12 +169,5 @@ public class DashboardLingSourceResolver {
             }
         }
         return null;
-    }
-
-    private boolean isCanary(LingInstance instance) {
-        if (instance == null || instance.getDefinition() == null) {
-            return false;
-        }
-        return isCanary(instance.getDefinition());
     }
 }

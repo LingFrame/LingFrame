@@ -11,6 +11,8 @@ public class GovernanceMetricsSnapshot {
     private long circuitOpenRejections;
     private long circuitOpenedCount;
     private long bulkheadRejectedRequests;
+    private long forceDrainCount;
+    private long drainTimeoutAbortCount;
     private long recoveryCount;
     private int activeIsolatedThreads;
     private int maxConcurrentThreadsBudget;

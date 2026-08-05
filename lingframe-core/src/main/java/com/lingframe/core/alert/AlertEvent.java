@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -30,9 +31,9 @@ public class AlertEvent {
         LING_UNHEALTHY,
         LING_HEALTH_RECOVERED,
         
-        CANARY_ERROR_RATE_HIGH,
-        CANARY_LATENCY_HIGH,
-        CANARY_ROLLBACK_TRIGGERED,
+        GOVERNANCE_ERROR_RATE_HIGH,
+        GOVERNANCE_LATENCY_HIGH,
+        GOVERNANCE_PHASE_TRANSITION,
         
         CIRCUIT_BREAKER_OPENED,
         CIRCUIT_BREAKER_HALF_OPEN,
@@ -53,7 +54,7 @@ public class AlertEvent {
     
     public static AlertEvent info(AlertType type, String lingId, String message) {
         return AlertEvent.builder()
-                .alertId(java.util.UUID.randomUUID().toString())
+                .alertId(UUID.randomUUID().toString())
                 .level(AlertLevel.INFO)
                 .type(type)
                 .lingId(lingId)
@@ -64,7 +65,7 @@ public class AlertEvent {
     
     public static AlertEvent warning(AlertType type, String lingId, String message) {
         return AlertEvent.builder()
-                .alertId(java.util.UUID.randomUUID().toString())
+                .alertId(UUID.randomUUID().toString())
                 .level(AlertLevel.WARNING)
                 .type(type)
                 .lingId(lingId)
@@ -75,7 +76,7 @@ public class AlertEvent {
     
     public static AlertEvent error(AlertType type, String lingId, String message) {
         return AlertEvent.builder()
-                .alertId(java.util.UUID.randomUUID().toString())
+                .alertId(UUID.randomUUID().toString())
                 .level(AlertLevel.ERROR)
                 .type(type)
                 .lingId(lingId)
@@ -86,7 +87,7 @@ public class AlertEvent {
     
     public static AlertEvent critical(AlertType type, String lingId, String message) {
         return AlertEvent.builder()
-                .alertId(java.util.UUID.randomUUID().toString())
+                .alertId(UUID.randomUUID().toString())
                 .level(AlertLevel.CRITICAL)
                 .type(type)
                 .lingId(lingId)

@@ -19,20 +19,47 @@ public final class WebRequestPathSupport {
     private WebRequestPathSupport() {
     }
 
+    /**
+     * 无白名单版本：不采信任何客户端转发头（安全默认，C10）。
+     * <p>
+     * 需要反代前缀剥离的应用必须显式配置 {@code lingframe.trusted-forwarded-prefixes}，
+     * 并调用带白名单的重载。
+     */
     public static String resolveLookupPath(Object request) {
+        return resolveLookupPath(request, Collections.<String>emptyList());
+    }
+
+    /**
+     * 解析路由查找路径（C10 安全收敛）。
+     * <p>
+     * 1. 归一化路径：解码 {@code %2e} 变体并折叠 {@code .} / {@code ..} 段，防止
+     *    路由绕过（如 {@code /api/../admin}、{@code /api/%2e%2e/admin} 归一化为 {@code /admin}）。
+     * 2. 转发头剥离仅在白名单配置非空时生效：转发头声明的每个前缀都必须与
+     *    {@code trustedForwardedPrefixes} 中的值完全匹配才被采信，杜绝伪造
+     *    {@code X-Forwarded-Prefix} / {@code X-Forwarded-Path} 头劫持路由。
+     *
+     * @param trustedForwardedPrefixes 可信任的转发前缀白名单；空则不采信客户端头
+     */
+    public static String resolveLookupPath(Object request, List<String> trustedForwardedPrefixes) {
         Object uri = invokeNoArgMethod(request, "getRequestURI");
         if (!(uri instanceof String)) {
             return null;
         }
 
-        String requestUri = (String) uri;
-        requestUri = stripPrefixes(requestUri, resolveForwardedPrefixes(request));
+        String requestUri = normalizePath((String) uri);
+        requestUri = stripPrefixes(requestUri, resolveForwardedPrefixes(request, trustedForwardedPrefixes));
 
         String contextPath = readString(invokeNoArgMethod(request, "getContextPath"));
         requestUri = stripPrefix(requestUri, contextPath);
 
         String servletPath = readString(invokeNoArgMethod(request, "getServletPath"));
-        requestUri = stripPrefix(requestUri, servletPath);
+        // 默认 servlet（映射 "/"，Spring Boot 常见形态）下 getServletPath() 返回的
+        // 是整个请求路径而非空：此时若照单全收会把它整体剥掉，lookupPath 退化为 "/"，
+        // 导致灵元路由全 404。仅在 servletPath 是短于请求路径的真实前缀段时才剥离。
+        if (servletPath != null && !servletPath.isEmpty() && !servletPath.equals(requestUri)
+                && requestUri.startsWith(servletPath)) {
+            requestUri = stripPrefix(requestUri, servletPath);
+        }
 
         return requestUri.isEmpty() ? "/" : requestUri;
     }
@@ -96,21 +123,62 @@ public final class WebRequestPathSupport {
         return text;
     }
 
-    private static List<String> resolveForwardedPrefixes(Object request) {
+    /**
+     * 归一化路径段：解码 {@code %2e} 变体为点、折叠 {@code .} / {@code ..} 段（C10）。
+     * <p>
+     * 仅解码路径编码的点，不解码其它字符，避免改变分段语义；
+     * {@code ..} 段向上回退一段，位于根时视为根（不允许上溯越界）。
+     */
+    private static String normalizePath(String path) {
+        if (path == null || path.isEmpty()) {
+            return path;
+        }
+        String decoded = path.replace("%2e", ".").replace("%2E", ".");
+        boolean absolute = decoded.startsWith("/");
+        String[] segments = decoded.split("/", -1);
+        List<String> stack = new ArrayList<>();
+        for (String segment : segments) {
+            if (segment.isEmpty() || ".".equals(segment)) {
+                continue;
+            }
+            if ("..".equals(segment)) {
+                if (!stack.isEmpty()) {
+                    stack.remove(stack.size() - 1);
+                }
+                continue;
+            }
+            stack.add(segment);
+        }
+        String joined = String.join("/", stack);
+        if (absolute) {
+            joined = "/" + joined;
+        }
+        return joined.isEmpty() ? "/" : joined;
+    }
+
+    private static List<String> resolveForwardedPrefixes(Object request, List<String> trustedForwardedPrefixes) {
         List<String> prefixes = new ArrayList<>();
-        collectForwardedPrefixes(prefixes, readRequestString(request, "X-Forwarded-Prefix"));
-        collectForwardedPrefixes(prefixes, readRequestString(request, "X-Forwarded-Path"));
+        if (trustedForwardedPrefixes == null || trustedForwardedPrefixes.isEmpty()) {
+            return Collections.emptyList();
+        }
+        collectForwardedPrefixes(prefixes, readRequestString(request, "X-Forwarded-Prefix"), trustedForwardedPrefixes);
+        collectForwardedPrefixes(prefixes, readRequestString(request, "X-Forwarded-Path"), trustedForwardedPrefixes);
         return prefixes.isEmpty() ? Collections.<String>emptyList() : prefixes;
     }
 
-    private static void collectForwardedPrefixes(List<String> prefixes, String rawValue) {
+    private static void collectForwardedPrefixes(List<String> prefixes, String rawValue,
+            List<String> trustedForwardedPrefixes) {
         if (rawValue == null || rawValue.trim().isEmpty()) {
             return;
         }
         String[] segments = rawValue.split(",");
         for (String segment : segments) {
             String normalized = normalizePrefix(segment);
-            if (normalized != null && !normalized.isEmpty()) {
+            if (normalized == null || normalized.isEmpty()) {
+                continue;
+            }
+            // 白名单语义：转发头声明的每个前缀都必须与已配置值完全匹配才采信（C10）
+            if (trustedForwardedPrefixes.contains(normalized)) {
                 prefixes.add(normalized);
             }
         }

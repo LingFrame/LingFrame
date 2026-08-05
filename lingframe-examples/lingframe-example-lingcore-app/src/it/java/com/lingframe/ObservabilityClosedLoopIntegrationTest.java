@@ -12,39 +12,40 @@ import com.lingframe.starter.web.WebGovernanceSupport;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.web.server.LocalServerPort;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.mock.web.MockHttpServletRequest;
-
+import java.security.Principal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.List;
-import java.util.function.Predicate;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-
+import java.util.function.Predicate;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.annotation.DirtiesContext;
 
 @SpringBootTest(
         classes = ObservabilityTestApplication.class,
@@ -55,7 +56,12 @@ import static org.junit.jupiter.api.Assertions.fail;
 @DisplayName("观测闭环集成回归")
 class ObservabilityClosedLoopIntegrationTest {
 
-    @LocalServerPort
+    @BeforeAll
+    static void setupClass() {
+        System.setProperty("sun.net.http.allowRestrictedHeaders", "true");
+    }
+
+    @Value("${local.server.port}")
     private int port;
 
     @Autowired
@@ -93,7 +99,7 @@ class ObservabilityClosedLoopIntegrationTest {
 
         assertTrue(waitForCollectorMetric(), diagnosticSnapshot());
 
-        JsonNode healthAll = waitForCondition("/lingframe/dashboard/lings/health/all", root -> {
+        JsonNode healthAll = waitForCondition("/lingframe/dashboard/metrics/lings/health/all", root -> {
             JsonNode summary = root.path("data").path("user-ling").path("summary");
             return summary.path("totalRequests").asLong(0) >= 3;
         });
@@ -114,7 +120,7 @@ class ObservabilityClosedLoopIntegrationTest {
         int rejected = triggerGovernanceEntryBurst(canaryVersion);
         assertTrue(rejected > 0, "expected at least one rate-limited request, diagnostics=" + lastGovernanceBurstDiagnostics);
 
-        JsonNode governanceAll = waitForCondition("/lingframe/dashboard/lings/governance/all", root -> {
+        JsonNode governanceAll = waitForCondition("/lingframe/dashboard/metrics/lings/governance/all", root -> {
             JsonNode summary = root.path("data").path("user-ling").path("summary");
             return totalGovernanceSignals(summary) > 0;
         });
@@ -134,7 +140,8 @@ class ObservabilityClosedLoopIntegrationTest {
     private JsonNode waitForLingsLoaded() throws Exception {
         return waitForCondition("/lingframe/dashboard/lings", root -> {
             JsonNode data = root.path("data");
-            return data.isArray() && data.size() >= 2 && findLing(data, "user-ling") != null;
+            JsonNode userLing = findLing(data, "user-ling");
+            return data.isArray() && data.size() >= 2 && userLing != null && findCanaryVersion(userLing) != null;
         }).path("data");
     }
 
@@ -177,7 +184,7 @@ class ObservabilityClosedLoopIntegrationTest {
         CountDownLatch ready = new CountDownLatch(concurrency);
         CountDownLatch start = new CountDownLatch(1);
         try {
-            List<Future<Void>> futures = new java.util.ArrayList<>();
+            List<Future<Void>> futures = new ArrayList<>();
             for (int i = 0; i < concurrency; i++) {
                 futures.add(executor.submit(() -> {
                     ready.countDown();
@@ -206,7 +213,7 @@ class ObservabilityClosedLoopIntegrationTest {
         CountDownLatch start = new CountDownLatch(1);
         Map<String, Integer> kinds = new ConcurrentHashMap<>();
         try {
-            List<Future<Boolean>> futures = new java.util.ArrayList<>();
+            List<Future<Boolean>> futures = new ArrayList<>();
             for (int i = 0; i < concurrency; i++) {
                 futures.add(executor.submit(() -> {
                     ready.countDown();
@@ -262,7 +269,7 @@ class ObservabilityClosedLoopIntegrationTest {
                 "user-ling",
                 resolution.getMetadata(),
                 invocationGovernanceResolver);
-        ctx.setExecutionMode(InvocationExecutionMode.GOVERN_ONLY);
+        ctx.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
         WEB_GOVERNANCE_SUPPORT.preResolveLingTarget(ctx, resolution);
         return ctx;
     }
@@ -290,7 +297,7 @@ class ObservabilityClosedLoopIntegrationTest {
         }
 
         @Override
-        public java.security.Principal getUserPrincipal() {
+        public Principal getUserPrincipal() {
             return request.getUserPrincipal();
         }
 
@@ -309,8 +316,12 @@ class ObservabilityClosedLoopIntegrationTest {
                 + summary.path("recoveryCount").asLong(0);
     }
 
+    private static final String ACCESS_TOKEN = "lingframe";
+
     private JsonNode getJson(String path) throws Exception {
-        ResponseEntity<String> response = restTemplate.getForEntity(url(path), String.class);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Access-Token", ACCESS_TOKEN);
+        ResponseEntity<String> response = restTemplate.exchange(url(path), HttpMethod.GET, new HttpEntity<>(headers), String.class);
         assertEquals(HttpStatus.OK, response.getStatusCode(), "GET " + path + " should return 200");
         return objectMapper.readTree(response.getBody());
     }
@@ -318,14 +329,19 @@ class ObservabilityClosedLoopIntegrationTest {
     private JsonNode postJson(String path, String body) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Access-Token", ACCESS_TOKEN);
+        headers.set("Origin", "http://localhost:" + port);
         ResponseEntity<String> response = restTemplate.postForEntity(url(path), new HttpEntity<>(body, headers), String.class);
-        assertEquals(HttpStatus.OK, response.getStatusCode(), "POST " + path + " should return 200");
+        assertEquals(HttpStatus.OK, response.getStatusCode(), "POST " + path + " should return 200, body was: " + response.getBody());
         return objectMapper.readTree(response.getBody());
     }
 
     private JsonNode deleteJson(String path) throws Exception {
-        ResponseEntity<String> response = restTemplate.exchange(url(path), HttpMethod.DELETE, HttpEntity.EMPTY, String.class);
-        assertEquals(HttpStatus.OK, response.getStatusCode(), "DELETE " + path + " should return 200");
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Access-Token", ACCESS_TOKEN);
+        headers.set("Origin", "http://localhost:" + port);
+        ResponseEntity<String> response = restTemplate.exchange(url(path), HttpMethod.DELETE, new HttpEntity<>(headers), String.class);
+        assertEquals(HttpStatus.OK, response.getStatusCode(), "DELETE " + path + " should return 200, body was: " + response.getBody());
         return objectMapper.readTree(response.getBody());
     }
 
@@ -349,7 +365,7 @@ class ObservabilityClosedLoopIntegrationTest {
         Iterator<JsonNode> iterator = ling.path("versionDetails").elements();
         while (iterator.hasNext()) {
             JsonNode version = iterator.next();
-            if (version.path("isCanary").asBoolean(false)) {
+            if (!version.path("isDefault").asBoolean(false)) {
                 return version.path("version").asText(null);
             }
         }

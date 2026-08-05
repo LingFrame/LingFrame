@@ -1,6 +1,7 @@
 package com.lingframe.runtime;
 
 import com.lingframe.api.config.LingDefinition;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.core.ling.DefaultLingLifecycleEngine;
 import com.lingframe.core.ling.LingInstance;
@@ -27,6 +28,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
@@ -65,7 +67,7 @@ class NativeLingFrameTest {
             NativeLingFrame.start(config);
 
             assertThrows(IllegalStateException.class,
-                    () -> LingClassLoader.addSharedApiPackages(Collections.singletonList("demo.shared.")));
+                    () -> LingClassLoader.bindSharedApiClassLoader(null));
         } finally {
             NativeLingFrame.shutdown();
         }
@@ -84,7 +86,41 @@ class NativeLingFrameTest {
         NativeLingFrame.start(config);
         NativeLingFrame.shutdown();
 
-        assertDoesNotThrow(() -> LingClassLoader.addSharedApiPackages(Collections.singletonList("demo.shared.")));
+        assertDoesNotThrow(() -> LingClassLoader.bindSharedApiClassLoader(null));
+    }
+
+    @Test
+    @DisplayName("shutdown 后可重新 start，状态完全重置")
+    void shouldRestartAfterShutdown() {
+        LingFrameConfig config = LingFrameConfig.builder()
+                .lingHome(tempDir.toString())
+                .lingRoots(Collections.emptyList())
+                .preloadApiJars(Collections.emptyList())
+                .build();
+        LingFrameConfig.clear();
+
+        // 第一次启动
+        LingLifecycleEngine first = NativeLingFrame.start(config);
+        assertNotNull(first);
+        assertNotNull(NativeLingFrame.getLingCoreContext());
+
+        // 关闭
+        NativeLingFrame.shutdown();
+        assertThrows(LingInvocationException.class, NativeLingFrame::getLingCoreContext);
+
+        // 重新启动
+        LingFrameConfig config2 = LingFrameConfig.builder()
+                .lingHome(tempDir.toString())
+                .lingRoots(Collections.emptyList())
+                .preloadApiJars(Collections.emptyList())
+                .build();
+        LingFrameConfig.clear();
+
+        LingLifecycleEngine second = NativeLingFrame.start(config2);
+        assertNotNull(second);
+        assertNotNull(NativeLingFrame.getLingCoreContext());
+
+        NativeLingFrame.shutdown();
     }
 
     @Test
@@ -169,7 +205,7 @@ class NativeLingFrameTest {
 
         try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
             fileManager.setLocation(StandardLocation.CLASS_OUTPUT, Collections.singletonList(classesDir.toFile()));
-            Iterable<String> options = java.util.Arrays.asList("-classpath", System.getProperty("java.class.path"));
+            Iterable<String> options = Arrays.asList("-classpath", System.getProperty("java.class.path"));
             boolean success = compiler.getTask(
                     null,
                     fileManager,
@@ -202,9 +238,9 @@ class NativeLingFrameTest {
         context.setMethodName("echo");
         context.setParameterTypeNames(new String[] { "java.lang.String" });
         context.setArgs(new Object[] { input });
-        context.setRequiredPermission("native:test:invoke");
-        context.setAccessType(AccessType.EXECUTE);
-        context.resolution().setTargetClassName(serviceRegistry.getServiceClassName("native-e2e:demo.echo"));
+        context.governance().setRequiredPermission("native:test:invoke");
+        context.governance().setAccessType(AccessType.EXECUTE);
+
         try {
             return pipelineEngine.invoke(context);
         } catch (Throwable throwable) {

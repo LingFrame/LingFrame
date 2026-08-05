@@ -29,6 +29,21 @@
         <module>lingframe-dashboard</module>
     </modules>
 
+    <profiles>
+        <!--
+            性能基准测试模块（JMH）
+            通过 -Pbenchmark 激活：
+              mvn -pl lingframe-benchmark package -Pbenchmark -DskipTests
+            支持 JDK 8+ 和 JDK 17+，CI 在两个版本上分别运行。
+        -->
+        <profile>
+            <id>benchmark</id>
+            <modules>
+                <module>lingframe-benchmark</module>
+            </modules>
+        </profile>
+    </profiles>
+
     <build>
         <plugins>
             <plugin>
@@ -38,6 +53,18 @@
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>flatten-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
             </plugin>
         </plugins>
     </build>

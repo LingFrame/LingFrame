@@ -1,10 +1,13 @@
 package com.lingframe.core.pipeline;
 
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.security.AuditMetadataKeys;
 import com.lingframe.api.security.PermissionAuditRecord;
 import com.lingframe.api.security.PermissionAuditResult;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.config.LingFrameInfo;
+import com.lingframe.core.governance.GovernanceStrategy;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 import lombok.RequiredArgsConstructor;
@@ -14,12 +17,21 @@ import java.util.Map;
 
 /**
  * 权限检查与审计过滤器。
+ * <p>
+ * prod 模式下执行零信任红线：未显式声明 requiredPermission 的调用一律拒绝，
+ * 防止启发式推导（{@link GovernanceStrategy}）因方法命名不规范产生越权风险。
+ * dev 模式下维持原有「未声明即放行」兜底，便于开发期快速验证。
  */
 @Slf4j
 @RequiredArgsConstructor
 public class PermissionGovernanceFilter implements LingInvocationFilter {
 
     private final PermissionService permissionService;
+    /**
+     * 灵核全局配置只读门面，用于判断 dev/prod 模式。
+     * 可为 null（native/test 未注入时），此时按 prod 模式 Deny-by-Default 处理。
+     */
+    private final LingFrameInfo lingFrameInfo;
 
     @Override
     public int getOrder() {
@@ -29,21 +41,56 @@ public class PermissionGovernanceFilter implements LingInvocationFilter {
     @Override
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
         String callerLingId = ctx.getCallerLingId();
-        String capability = ctx.getRequiredPermission();
+        String capability = ctx.governance().getRequiredPermission();
         long startNanos = System.nanoTime();
 
         if (capability == null || capability.isEmpty()) {
-            log.warn("[Security] Capability is empty, rejecting: caller={}, type={}",
-                    callerLingId, ctx.getAccessType());
-            auditIfNeeded(ctx, PermissionAuditResult.DENIED, "Missing required permission", startNanos);
-            throw new LingInvocationException(ctx.getServiceFQSID(),
-                    LingInvocationException.ErrorKind.SECURITY_REJECTED);
+            // prod 模式零信任红线：未显式声明权限的一律拒绝，防止启发式推导越权。
+            // dev 模式维持「未声明即放行」兜底，便于开发期快速验证。
+            boolean devMode = lingFrameInfo != null && lingFrameInfo.isDevMode();
+            if (!devMode) {
+                log.warn("[Security] Deny-by-Default: no required permission declared in prod mode, caller={}, service={}",
+                        callerLingId, ctx.getServiceFQSID());
+                auditIfNeeded(ctx, PermissionAuditResult.DENIED, "Deny-by-Default (no permission declared)", startNanos);
+                throw new LingInvocationException(ctx.getServiceFQSID(),
+                        LingInvocationException.ErrorKind.SECURITY_REJECTED);
+            }
+            log.debug("[Security] No required permission declared, allowing (dev mode): caller={}, service={}",
+                    callerLingId, ctx.getServiceFQSID());
+            try {
+                Object result = chain.doFilter(ctx);
+                auditIfNeeded(ctx, PermissionAuditResult.ALLOWED, null, startNanos);
+                return result;
+            } catch (Throwable throwable) {
+                auditIfNeeded(ctx, PermissionAuditResult.FAILED, describeFailure(throwable), startNanos);
+                throw throwable;
+            }
         }
 
-        boolean allowed = permissionService.isAllowed(callerLingId, capability, ctx.getAccessType());
+        boolean allowed = permissionService.isAllowed(callerLingId, capability, ctx.governance().getAccessType());
+
+        // 灵核身份（LingCoreConstants.LINGCORE_LING_ID）调灵元 Bean 是灵核审计边界内调用，
+        // 不走灵元权限表校验：灵核不是灵元、无 ling.yml 权限声明，把灵核 caller 当灵元 ID 查
+        // 会误报 [DEV WARNING] ling [lingcore-app] unauthorized access。
+        // gate 挪到 Deny-by-Default 坎后：守任 prod 零信任红线——灵核 caller 无声明 capability 也拒。
+        // gate 在 !isLingCoreCheckPermissions() 上：与 DefaultPermissionService:54 豁免条件对齐，
+        // 操作员设 ling-core-governance.check-permissions: true 加固时仍 enforce 这条路径。
+        if (!allowed && LingCoreConstants.LINGCORE_LING_ID.equals(callerLingId)
+                && lingFrameInfo != null && !lingFrameInfo.isLingCoreCheckPermissions()) {
+            log.debug("[Security] LINGCORE caller bypassing ling permission table: capability={}", capability);
+            try {
+                Object result = chain.doFilter(ctx);
+                auditIfNeeded(ctx, PermissionAuditResult.ALLOWED, null, startNanos);
+                return result;
+            } catch (Throwable throwable) {
+                auditIfNeeded(ctx, PermissionAuditResult.FAILED, describeFailure(throwable), startNanos);
+                throw throwable;
+            }
+        }
+
         if (!allowed) {
             log.warn("[Security] Permission denied: caller={}, capability={}, type={}",
-                    callerLingId, capability, ctx.getAccessType());
+                    callerLingId, capability, ctx.governance().getAccessType());
             auditIfNeeded(ctx, PermissionAuditResult.DENIED, "Permission denied", startNanos);
             throw new LingInvocationException(ctx.getServiceFQSID(),
                     LingInvocationException.ErrorKind.SECURITY_REJECTED);
@@ -63,15 +110,15 @@ public class PermissionGovernanceFilter implements LingInvocationFilter {
             PermissionAuditResult result,
             String failureReason,
             long startNanos) {
-        if (!ctx.isShouldAudit()) {
+        if (!ctx.governance().isShouldAudit()) {
             return;
         }
 
         permissionService.audit(PermissionAuditRecord.builder()
                 .callerLingId(ctx.getCallerLingId())
                 .principal(resolvePrincipal(ctx))
-                .capability(ctx.getRequiredPermission())
-                .action(ctx.getAuditAction())
+                .capability(ctx.governance().getRequiredPermission())
+                .action(ctx.governance().getAuditAction())
                 .resource(ctx.getResourceId())
                 .result(result)
                 .failureReason(failureReason)

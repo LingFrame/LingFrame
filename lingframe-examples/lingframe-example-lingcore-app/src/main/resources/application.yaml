@@ -38,15 +38,12 @@ lingframe:
   dev-mode: true
   preload-api-jars:
     - ../lingframe-example-order-api
-    - lingframe-examples/lingframe-example-order-api
   ling-home: lings
   ling-roots:
     - ../lingframe-example-ling-order
+    - ../lingframe-example-ling-order-canary
     - ../lingframe-example-ling-user
     - ../lingframe-example-ling-user-canary
-    - lingframe-examples/lingframe-example-ling-order
-    - lingframe-examples/lingframe-example-ling-user
-    - lingframe-examples/lingframe-example-ling-user-canary
   ling-core-governance:
     enabled: false
     govern-internal-calls: true
@@ -55,6 +52,21 @@ lingframe:
   dashboard:
     enabled: true
     install-enabled: true
+    # SQLite 持久化存储
+    storage:
+      enabled: true
+      path: ${user.home}/.lingframe/dashboard.db
+      metrics-retention-days: 7
+      audit-retention-days: 30
+      metrics-collect-interval-seconds: 30
+    # 访问令牌：示例本地允许弱口令。
+    # 生产请复制 application-prod.yaml.example 为 application-prod.yaml，
+    # 使用强 token 且 allow-weak: false（见 docs/production-hardening.md）。
+    access-token:
+      enabled: true
+      token: "lingframe"
+      allow-weak: true
+  mode-switch-password: "lingframe"
 
 # SpringDoc OpenAPI 配置
 springdoc:
@@ -85,6 +97,14 @@ springdoc:
 logging:
   level:
     com.lingframe: INFO
+  file:
+    name: log/lingframe.log
+  logback:
+    rolling policy:
+      max-file-size: 100MB       # 单文件上限，超过则滚动
+      max-history: 30            # 保留历史天数
+      total-size-cap: 5GB        # 总上限，超过则删除最老
+      clean-history-on-start: true
 
 management:
   endpoints:

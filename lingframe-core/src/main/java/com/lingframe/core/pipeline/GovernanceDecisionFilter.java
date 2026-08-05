@@ -2,7 +2,7 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.governance.GovernanceArbitrator;
-import com.lingframe.core.governance.GovernanceDecision;
+import com.lingframe.core.spi.GovernanceDecision;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.LingFilterChain;
@@ -75,7 +75,7 @@ public class GovernanceDecisionFilter implements LingInvocationFilter {
     }
 
     private LingRuntime resolveRuntime(InvocationContext ctx) {
-        LingRuntime runtime = ctx.getRuntime();
+        LingRuntime runtime = ctx.getLingRuntime();
         if (runtime != null) {
             return runtime;
         }

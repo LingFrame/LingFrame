@@ -18,8 +18,10 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.*;
 
 /**
@@ -57,15 +59,47 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     private final EventBus eventBus;
     private static final ClassLoader CORE_CLASSLOADER = LogStreamService.class.getClassLoader();
 
+    /** 最大 SSE 连接数，防止恶意/异常场景 OOM */
+    private static final int MAX_CONNECTIONS = 100;
+
+    /** SSE 连接超时时间：30 分钟，避免死连接永久驻留 */
+    private static final long SSE_TIMEOUT_MS = 30 * 60 * 1000L;
+
+    /**
+     * 连接许可信号量：原子获取/释放，避免 check-then-act 竞态导致超限。
+     * 公平模式（true）避免线程饥饿。
+     */
+    private final Semaphore connectionSemaphore = new Semaphore(MAX_CONNECTIONS, true);
+
+    /**
+     * 已释放许可的 emitter 标记集合：保证每个 emitter 的许可只 release 一次，
+     * 避免 onCompletion/onTimeout/onError/broadcast 清理多路径触发导致许可超发。
+     * <p>
+     * 使用 WeakHashMap 支撑：emitter 从 {@link #emitters} 移除后失去强引用，
+     * GC 时自动清除标记条目，避免长期累积导致内存泄漏。
+     * 外层 {@link Collections#synchronizedSet(Set)} 保证并发安全。
+     */
+    private final Set<SseEmitter> released = Collections.synchronizedSet(
+            Collections.newSetFromMap(new WeakHashMap<>()));
+
     /**
      * 维护所有活跃的 SSE 连接。
      */
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
 
     /**
-     * 单线程分发器，避免抢占业务线程池
+     * 事件分发线程池（固定小规模并行）。
+     * <p>
+     * 用固定 4 线程的小池代替单线程 dispatcher 顺序广播：单个慢/阻塞 emitter
+     * 的 send 只占用一个 worker，不拖累其余连接的广播（避免 head-of-line 阻塞）；
+     * 同时维持「不抢占业务线程池」。
+     * <p>
+     * 内存权衡说明：每 emitter 独立任务意味着高峰事件率 × 慢客户端时，无界队列积压的任务数
+     * 从「每事件 1 个」放大为「每事件 N 个」（N=活跃 emitter 数）。积压上限由
+     * {@link #MAX_CONNECTIONS}（连接数上限）间接封顶，不会失控，但内存压力曲线比旧实现陡。
+     * 若后续出现高 emitter 数 × 高事件率场景，需考虑有界队列 + 丢弃/背压策略。
      */
-    private final ExecutorService dispatcher = Executors.newSingleThreadExecutor(r -> {
+    private final ExecutorService dispatcher = Executors.newFixedThreadPool(4, r -> {
         Thread t = new Thread(r, "ling-sse-dispatcher");
         t.setDaemon(true);
         t.setContextClassLoader(CORE_CLASSLOADER);
@@ -116,14 +150,37 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     /**
      * 创建新的 SSE 连接。
      *
+     * <p>并发安全：用 {@link Semaphore#tryAcquire(long, TimeUnit)} 原子获取许可，
+     * 避免 check-then-act 竞态导致超限。三个回调（onCompletion/onTimeout/onError）
+     * 都会释放许可，防止连接泄漏。
+     *
      * @return SSE 发射器实例
+     * @throws IllegalStateException 连接数达到上限
      */
     public SseEmitter createEmitter() {
-        SseEmitter emitter = new SseEmitter(0L);
+        // 原子获取许可，避免 if(size >= MAX) + add 的竞态超限
+        boolean acquired;
+        try {
+            acquired = connectionSemaphore.tryAcquire(1, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while acquiring SSE connection permit");
+        }
+        if (!acquired) {
+            log.warn("SSE connection rejected: max connections ({}) reached", MAX_CONNECTIONS);
+            throw new IllegalStateException("Max SSE connections reached: " + MAX_CONNECTIONS);
+        }
 
-        emitter.onCompletion(() -> removeEmitter(emitter));
-        emitter.onTimeout(() -> removeEmitter(emitter));
-        emitter.onError((e) -> removeEmitter(emitter));
+        // 设有限超时，避免死连接永久驻留
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+
+        // 三个回调都 release 许可并移除 emitter，避免泄漏
+        emitter.onCompletion(() -> releaseEmitter(emitter));
+        emitter.onTimeout(() -> {
+            releaseEmitter(emitter);
+            emitter.complete();
+        });
+        emitter.onError((e) -> releaseEmitter(emitter));
 
         emitters.add(emitter);
 
@@ -131,7 +188,11 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         try {
             emitter.send(SseEmitter.event().name("connected").data("ok"));
         } catch (Exception e) {
-            log.warn("Failed to send initial SSE event", e);
+            // 首次 send 失败说明连接已死：立即释放许可并完成，避免该连接永久占用许可
+            log.warn("Failed to send initial SSE event, releasing permit", e);
+            releaseEmitter(emitter);
+            emitter.complete();
+            throw new IllegalStateException("Failed to establish SSE connection", e);
         }
 
         log.info("New SSE connection. Active: {}", emitters.size());
@@ -445,21 +506,21 @@ public class LogStreamService implements InitializingBean, DisposableBean {
             return;
         }
 
-        // 异步提交给分发线程，不阻塞当前业务线程 (Core Kernel)
+        // 异步提交给分发线程池，不阻塞当前业务线程 (Core Kernel)。
+        // 每个 emitter 独立提交任务，避免单个慢 emitter 拖累其余连接（head-of-line 阻塞）。
         try {
-            dispatcher.submit(withCoreClassLoader(() -> {
-                List<SseEmitter> dead = new ArrayList<>();
-                for (SseEmitter emitter : emitters) {
+            for (SseEmitter emitter : emitters) {
+                dispatcher.submit(withCoreClassLoader(() -> {
                     try {
                         emitter.send(SseEmitter.event()
                                 .name("log-event")
                                 .data(logStreamDTO, MediaType.APPLICATION_JSON));
                     } catch (Exception e) {
-                        dead.add(emitter);
+                        // send 失败视为连接已死，统一通过 releaseEmitter 释放许可并移除
+                        releaseEmitter(emitter);
                     }
-                }
-                emitters.removeAll(dead);
-            }));
+                }));
+            }
         } catch (RejectedExecutionException e) {
             // 关闭过程中拒绝提交任务属于正常现象，直接忽略
         }
@@ -475,26 +536,32 @@ public class LogStreamService implements InitializingBean, DisposableBean {
             return;
         }
         try {
-            dispatcher.submit(withCoreClassLoader(() -> {
-                List<SseEmitter> dead = new ArrayList<>();
-                for (SseEmitter emitter : emitters) {
+            for (SseEmitter emitter : emitters) {
+                dispatcher.submit(withCoreClassLoader(() -> {
                     try {
                         emitter.send(SseEmitter.event().name("ping").data("pong"));
                     } catch (Exception e) {
-                        dead.add(emitter);
+                        // send 失败视为连接已死，统一通过 releaseEmitter 释放许可并移除
+                        releaseEmitter(emitter);
                     }
-                }
-                emitters.removeAll(dead);
-            }));
+                }));
+            }
         } catch (RejectedExecutionException e) {
             // 关闭过程中拒绝提交任务属于正常现象，直接忽略
         }
     }
 
     /**
-     * 移除已关闭的连接
+     * 释放 SSE 连接：归还许可并从活跃列表移除。
+     *
+     * <p>用 {@link Set#add(Object)} 的返回值保证每个 emitter 的许可只 release 一次，
+     * 避免 onCompletion/onTimeout/onError 以及 broadcast 清理多路径触发导致许可超发。
+     * emitter 失去强引用后由 WeakHashMap 自动清除，无需手动移除标记。
      */
-    private void removeEmitter(SseEmitter emitter) {
+    private void releaseEmitter(SseEmitter emitter) {
+        if (released.add(emitter)) {
+            connectionSemaphore.release();
+        }
         emitters.remove(emitter);
         log.debug("SSE connection closed. Active: {}", emitters.size());
     }
@@ -507,6 +574,16 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         eventBus.unsubscribeAll("lingframe-dashboard");
         dispatcher.shutdownNow();
         scheduler.shutdownNow();
+        try {
+            if (!dispatcher.awaitTermination(5, TimeUnit.SECONDS)) {
+                log.warn("SSE dispatcher did not terminate within 5s");
+            }
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                log.warn("SSE scheduler did not terminate within 5s");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         emitters.forEach(SseEmitter::complete);
     }
 

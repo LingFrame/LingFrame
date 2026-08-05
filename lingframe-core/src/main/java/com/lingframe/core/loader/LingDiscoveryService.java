@@ -3,6 +3,9 @@ package com.lingframe.core.loader;
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.ling.LingLifecycleEngine;
+import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.util.PathUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -27,6 +30,8 @@ public class LingDiscoveryService {
 
     private final LingFrameConfig config;
     private final LingLifecycleEngine lifecycleEngine;
+    /** 用于查询灵元是否已有默认实例，决定本次 deploy 的 setAsDefault */
+    private final LingRepository lingRepository;
 
     /**
      * 执行扫描并加载
@@ -61,11 +66,16 @@ public class LingDiscoveryService {
             log.info("Starting ling discovery from {}, count: {}", roots, roots.size());
             for (String root : roots) {
                 String realPath = root;
-                if (LingFrameConfig.current().isDevMode()) {
+                if (config.isDevMode()) {
                     realPath += File.separator + "/target/classes";
                 }
-                File realFile = new File(realPath);
-                installSingle(loadedLingIds, realFile);
+                File realFile = PathUtils.resolvePath(realPath, new File(config.getLingHome()));
+                try {
+                    // 🔥 单个 root 失败不中断整体扫描：坏灵元只打日志，不抛出
+                    installSingle(loadedLingIds, realFile);
+                } catch (Exception e) {
+                    log.error("⚠️ Failed to load ling from root: {}", realFile.getAbsolutePath(), e);
+                }
             }
         }
 
@@ -100,15 +110,13 @@ public class LingDiscoveryService {
             // 执行安装
             log.info("Discovered ling: {} v{} at {}", lingId, version, file.getName());
 
-            // 检查是否为金丝雀版本
-            if (def.getProperties() != null && Boolean.TRUE.equals(def.getProperties().get("canary"))) {
-                lifecycleEngine.deploy(def, file, false, Collections.emptyMap());
-                loadedLingIds.add(lingId);
-                return;
-            }
-
-            // 开发/生产模式由于引擎逻辑在内部判定，只需一致传 isDefault=true
-            lifecycleEngine.deploy(def, file, true, Collections.emptyMap());
+            // setAsDefault 仅在首次发现（无 runtime）或 runtime 尚无默认实例时置 true，
+            // 避免多版本共存场景下后发现的灵元强制覆盖既有默认实例。
+            // 与 DashboardLingOperations.installLing 同一判定模式。
+            LingRuntime existing = lingRepository != null ? lingRepository.getRuntime(lingId) : null;
+            boolean setAsDefault = existing == null
+                    || existing.getInstancePool().getDefault() == null;
+            lifecycleEngine.deploy(def, file, setAsDefault, Collections.emptyMap());
 
             loadedLingIds.add(lingId);
         } catch (Exception e) {
@@ -122,8 +130,10 @@ public class LingDiscoveryService {
             log.warn("Ling root does not exist: {}", root.getAbsolutePath());
             return false;
         }
-        if (!root.isDirectory()) {
-            log.warn("Ling root is not a directory: {}", root.getAbsolutePath());
+        // 🔥 允许 jar 文件作为灵元根：打包成 jar 的灵元同样需要被自动发现
+        // 原实现只接受目录，导致 jar 形态的灵元在 scanAndLoad 时被静默跳过
+        if (!root.isDirectory() && !root.getName().endsWith(".jar")) {
+            log.warn("Ling root is neither a directory nor a jar: {}", root.getAbsolutePath());
             return false;
         }
         if (!root.canRead()) {

@@ -1,5 +1,6 @@
 package com.lingframe.core.metrics;
 
+import com.lingframe.core.spi.LingGovernanceMetricsCollector;
 import lombok.Getter;
 
 import java.util.LinkedHashMap;
@@ -9,7 +10,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-public class GovernanceMetricsCollector {
+public class GovernanceMetricsCollector implements LingGovernanceMetricsCollector {
 
     private final Map<String, GovernanceMetricBucket> summaryBuckets = new ConcurrentHashMap<>();
     private final Map<String, GovernanceMetricBucket> versionBuckets = new ConcurrentHashMap<>();
@@ -32,6 +33,16 @@ public class GovernanceMetricsCollector {
 
     public void recordBulkheadRejected(String lingId, String version) {
         mutate(lingId, version, GovernanceMetricBucket::incrementBulkheadRejectedRequests);
+    }
+
+    @Override
+    public void recordForceDrain(String lingId, String version) {
+        mutate(lingId, version, GovernanceMetricBucket::incrementForceDrainCount);
+    }
+
+    @Override
+    public void recordDrainTimeoutAbort(String lingId, String version) {
+        mutate(lingId, version, GovernanceMetricBucket::incrementDrainTimeoutAbortCount);
     }
 
     public void recordRecovered(String lingId, String version) {
@@ -110,6 +121,8 @@ public class GovernanceMetricsCollector {
             snapshot.setCircuitOpenRejections(snapshot.getCircuitOpenRejections() + versionSnapshot.getCircuitOpenRejections());
             snapshot.setCircuitOpenedCount(snapshot.getCircuitOpenedCount() + versionSnapshot.getCircuitOpenedCount());
             snapshot.setBulkheadRejectedRequests(snapshot.getBulkheadRejectedRequests() + versionSnapshot.getBulkheadRejectedRequests());
+            snapshot.setForceDrainCount(snapshot.getForceDrainCount() + versionSnapshot.getForceDrainCount());
+            snapshot.setDrainTimeoutAbortCount(snapshot.getDrainTimeoutAbortCount() + versionSnapshot.getDrainTimeoutAbortCount());
             snapshot.setRecoveryCount(snapshot.getRecoveryCount() + versionSnapshot.getRecoveryCount());
             snapshot.setActiveIsolatedThreads(snapshot.getActiveIsolatedThreads() + versionSnapshot.getActiveIsolatedThreads());
             snapshot.setMaxConcurrentThreadsBudget(snapshot.getMaxConcurrentThreadsBudget() + versionSnapshot.getMaxConcurrentThreadsBudget());
@@ -118,22 +131,25 @@ public class GovernanceMetricsCollector {
             snapshot.setCpuBudgetExceededCount(snapshot.getCpuBudgetExceededCount() + versionSnapshot.getCpuBudgetExceededCount());
             snapshot.setEstimatedHeapDeltaBytes(Math.max(snapshot.getEstimatedHeapDeltaBytes(), versionSnapshot.getEstimatedHeapDeltaBytes()));
             snapshot.setMemoryBudgetExceededCount(snapshot.getMemoryBudgetExceededCount() + versionSnapshot.getMemoryBudgetExceededCount());
-            snapshot.setCpuBudgetMsPerMinute(sumNullable(snapshot.getCpuBudgetMsPerMinute(), versionSnapshot.getCpuBudgetMsPerMinute()));
-            snapshot.setMemoryBudgetMb(sumNullable(snapshot.getMemoryBudgetMb(), versionSnapshot.getMemoryBudgetMb()));
+            // 预算上限字段应取最大值而非求和：上限是多版本共享的容量边界，
+            // 求和会得出一个不存在意义的加和值，误判预算超支。
+            // 与同方法 estimatedHeapDeltaBytes 取 max 的语义对齐。
+            snapshot.setCpuBudgetMsPerMinute(maxNullable(snapshot.getCpuBudgetMsPerMinute(), versionSnapshot.getCpuBudgetMsPerMinute()));
+            snapshot.setMemoryBudgetMb(maxNullable(snapshot.getMemoryBudgetMb(), versionSnapshot.getMemoryBudgetMb()));
             timestamp = Math.max(timestamp, versionSnapshot.getTimestamp());
         }
         snapshot.setTimestamp(timestamp > 0 ? timestamp : System.currentTimeMillis());
         return snapshot;
     }
 
-    private Integer sumNullable(Integer left, Integer right) {
+    private Integer maxNullable(Integer left, Integer right) {
         if (left == null) {
             return right;
         }
         if (right == null) {
             return left;
         }
-        return left + right;
+        return Math.max(left, right);
     }
 
     private String versionKey(String lingId, String version) {
@@ -154,6 +170,8 @@ public class GovernanceMetricsCollector {
         private final LongAdder circuitOpenRejections = new LongAdder();
         private final LongAdder circuitOpenedCount = new LongAdder();
         private final LongAdder bulkheadRejectedRequests = new LongAdder();
+        private final LongAdder forceDrainCount = new LongAdder();
+        private final LongAdder drainTimeoutAbortCount = new LongAdder();
         private final LongAdder recoveryCount = new LongAdder();
         private final LongAdder threadBudgetExceededCount = new LongAdder();
         private final LongAdder cpuBudgetExceededCount = new LongAdder();
@@ -201,6 +219,16 @@ public class GovernanceMetricsCollector {
         private void incrementBulkheadRejectedRequests() {
             bulkheadRejectedRequests.increment();
             threadBudgetExceededCount.increment();
+            touch();
+        }
+
+        private void incrementForceDrainCount() {
+            forceDrainCount.increment();
+            touch();
+        }
+
+        private void incrementDrainTimeoutAbortCount() {
+            drainTimeoutAbortCount.increment();
             touch();
         }
 
@@ -256,6 +284,8 @@ public class GovernanceMetricsCollector {
             snapshot.setCircuitOpenRejections(circuitOpenRejections.sum());
             snapshot.setCircuitOpenedCount(circuitOpenedCount.sum());
             snapshot.setBulkheadRejectedRequests(bulkheadRejectedRequests.sum());
+            snapshot.setForceDrainCount(forceDrainCount.sum());
+            snapshot.setDrainTimeoutAbortCount(drainTimeoutAbortCount.sum());
             snapshot.setRecoveryCount(recoveryCount.sum());
             snapshot.setActiveIsolatedThreads(activeIsolatedThreads);
             snapshot.setMaxConcurrentThreadsBudget(maxConcurrentThreadsBudget);

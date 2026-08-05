@@ -10,7 +10,7 @@ governance:
     # ACL 入站规则 (StandardGovernancePolicyProvider 使用)
     permissions: []
 
-    # 灵元能力申请 (LingManager 使用)
+    # 灵元能力申请
     capabilities:
       - capability: "storage:sql"
         accessType: "WRITE"
@@ -18,7 +18,3 @@ governance:
         accessType: "WRITE"
       - capability: "ipc:order-ling"
         accessType: "EXECUTE"
-
-# --- 金丝雀配置 ---
-properties:
-  canary: true

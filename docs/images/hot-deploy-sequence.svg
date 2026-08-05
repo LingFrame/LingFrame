@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2200 2520" font-family="'Segoe UI','Microsoft YaHei',Helvetica,Arial,sans-serif">
+  <!-- LingFrame 热部署切流时序图 · UML Sequence Diagram
+       画布拉宽到 2200、生命线间距 260、消息行距 40+，解决拥挤。
+       依据真实代码路径：
+       deployInternal (LifecycleEngine 行 173-216) / ProviderWeightRouter.setProviderWeight (行 68-78)
+       undeployWithReport (行 257-294) + drainInstances (行 769-860) + doFullUndeploy (行 662-674)
+       onLingUnload (UnloadCoordinator 行 122-133) -->
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0f172a"/>
+    </marker>
+    <marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b91c1c"/>
+    </marker>
+    <marker id="arrDash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .h1{font-size:26px;font-weight:700;fill:#0f172a;text-anchor:middle}
+      .h2{font-size:15px;fill:#64748b;text-anchor:middle}
+      .actor{font-size:15px;font-weight:700;fill:#0f172a;text-anchor:middle}
+      .actorSub{font-size:12px;fill:#64748b;text-anchor:middle}
+      .msg{font-size:15px;fill:#0f172a;text-anchor:start}
+      .msgR{font-size:15px;fill:#b91c1c;text-anchor:start}
+      .phase{font-size:17px;font-weight:700;fill:#1d4ed8}
+      .phaseBox{fill:#eff6ff;stroke:#bfdbfe;stroke-width:1.4}
+      .warnBox{fill:#fef2f2;stroke:#fecaca;stroke-width:1.2}
+      .warn{font-size:13px;fill:#b91c1c;font-style:italic}
+      .noteBox{fill:#f8fafc;stroke:#cbd5e1;stroke-width:1;stroke-dasharray:3 3}
+      .note{font-size:13px;fill:#475569;text-anchor:start;font-style:italic}
+      .lifeLine{stroke:#cbd5e1;stroke-width:1;stroke-dasharray:5 4}
+      .actorBox{fill:#f1f5f9;stroke:#94a3b8;stroke-width:1.6}
+      .actorBoxCore{fill:#eff6ff;stroke:#1d4ed8;stroke-width:1.8}
+      .actorBoxDrain{fill:#fef3c7;stroke:#b45309;stroke-width:1.8}
+      .actorBoxUnload{fill:#fef2f2;stroke:#b91c1c;stroke-width:1.8}
+      .solid{stroke:#0f172a;stroke-width:1.6;fill:none}
+      .solidR{stroke:#b91c1c;stroke-width:1.6;fill:none}
+      .ret{stroke:#475569;stroke-width:1.3;fill:none;stroke-dasharray:6 3}
+      .self{stroke:#0f172a;stroke-width:1.6;fill:none}
+      .selfR{stroke:#b91c1c;stroke-width:1.6;fill:none}
+      .activation{fill:#dbeafe;stroke:#1d4ed8;stroke-width:1.2}
+      .activationR{fill:#fee2e2;stroke:#b91c1c;stroke-width:1.2}
+    </style>
+  </defs>
+
+  <text x="1100" y="40" class="h1">LingFrame 热部署切流时序图 · Hot-deploy Traffic-shifting Sequence</text>
+  <text x="1100" y="66" class="h2">UML sequence diagram · 不停机替换灵元版本 · drawn from real code paths</text>
+
+  <!-- ===== 7 条生命线头（间距 260，x 起始 140）===== -->
+  <!-- Caller=140, Dashboard=400, LifecycleEngine=660, InstanceCoord=920, RuntimeCoord=1180, Drain=1440, Unload=1700 -->
+  <rect x="40"   y="92" width="200" height="44" rx="6" class="actorBox"/>
+  <text x="140"  y="113" class="actor">调用方 Caller</text>
+  <text x="140"  y="130" class="actorSub">业务请求 / deploy API</text>
+
+  <rect x="300"  y="92" width="200" height="44" rx="6" class="actorBox"/>
+  <text x="400"  y="113" class="actor">Dashboard</text>
+  <text x="400"  y="130" class="actorSub">LingController · ContractRoutingController</text>
+
+  <rect x="560"  y="92" width="200" height="44" rx="6" class="actorBoxCore"/>
+  <text x="660"  y="113" class="actor">LifecycleEngine</text>
+  <text x="660"  y="130" class="actorSub">DefaultLingLifecycleEngine.deployInternal</text>
+
+  <rect x="820"  y="92" width="200" height="44" rx="6" class="actorBoxCore"/>
+  <text x="920"  y="113" class="actor">InstanceCoordinator</text>
+  <text x="920"  y="130" class="actorSub">实例状态唯一写入口</text>
+
+  <rect x="1080" y="92" width="200" height="44" rx="6" class="actorBoxCore"/>
+  <text x="1180" y="113" class="actor">RuntimeCoordinator</text>
+  <text x="1180" y="130" class="actorSub">运行时状态唯一写入口</text>
+
+  <rect x="1340" y="92" width="200" height="44" rx="6" class="actorBoxDrain"/>
+  <text x="1440" y="113" class="actor">DrainGuard</text>
+  <text x="1440" y="130" class="actorSub">LingInstance.awaitIdle + Pool.dying</text>
+
+  <rect x="1600" y="92" width="200" height="44" rx="6" class="actorBoxUnload"/>
+  <text x="1700" y="113" class="actor">UnloadCoordinator</text>
+  <text x="1700" y="130" class="actorSub">LingUnloadCoordinator · 资源驱逐</text>
+
+  <!-- 生命线（拉到 2480） -->
+  <line x1="140"  y1="136" x2="140"  y2="2480" class="lifeLine"/>
+  <line x1="400"  y1="136" x2="400"  y2="2480" class="lifeLine"/>
+  <line x1="660"  y1="136" x2="660"  y2="2480" class="lifeLine"/>
+  <line x1="920"  y1="136" x2="920"  y2="2480" class="lifeLine"/>
+  <line x1="1180" y1="136" x2="1180" y2="2480" class="lifeLine"/>
+  <line x1="1440" y1="136" x2="1440" y2="2480" class="lifeLine"/>
+  <line x1="1700" y1="136" x2="1700" y2="2480" class="lifeLine"/>
+
+  <!-- ===== 阶段① 部署新版本 ===== -->
+  <rect x="40" y="152" width="1760" height="32" rx="5" class="phaseBox"/>
+  <text x="60" y="175" class="phase">① 部署新版本 · deployInternal (LifecycleEngine 行 173-216)</text>
+
+  <!-- 1: Caller -> Dashboard: deploy -->
+  <line x1="140" y1="222" x2="400" y2="222" class="solid" marker-end="url(#arr)"/>
+  <text x="156" y="216" class="msg">1. POST /lings/install {lingId, version, sourcePath}</text>
+
+  <!-- 2: Dashboard -> LifecycleEngine: deploy() -->
+  <line x1="400" y1="262" x2="660" y2="262" class="solid" marker-end="url(#arr)"/>
+  <text x="416" y="256" class="msg">2. deploy(lingDefinition, sourceFile)</text>
+
+  <!-- LifecycleEngine 激活条 -->
+  <rect x="656" y="282" width="8" height="780" class="activation"/>
+
+  <!-- 3: self assertExclusiveForDeployment -->
+  <line x1="664" y1="302" x2="760" y2="302" class="self" marker-end="url(#arr)"/>
+  <text x="676" y="296" class="msg">3. assertExclusiveForDeployment(lingId) — 禁止叠加迁移/迭代</text>
+
+  <!-- 4: self validateDeploymentRequest -->
+  <line x1="664" y1="342" x2="760" y2="342" class="self" marker-end="url(#arr)"/>
+  <text x="676" y="336" class="msg">4. validateDeploymentRequest · verifySecurity · ensureVersionCanBeDeployed</text>
+
+  <!-- 5: self createClassLoader + createContainer -->
+  <line x1="664" y1="382" x2="760" y2="382" class="self" marker-end="url(#arr)"/>
+  <text x="676" y="376" class="msg">5. lingLoaderFactory.create(lingId, sourceFile, appClassLoader)</text>
+  <line x1="664" y1="404" x2="760" y2="404" class="self" marker-end="url(#arr)"/>
+  <text x="676" y="418" class="msg">　　→ LingClassLoader（父 = SharedApiClassLoader 单例；Child-First）</text>
+  <line x1="664" y1="438" x2="760" y2="438" class="self" marker-end="url(#arr)"/>
+  <text x="676" y="452" class="msg">　　containerFactory.create → LingContainer（灵元 Spring 上下文）</text>
+
+  <!-- 6: LifecycleEngine -> RuntimeCoordinator: ensureRuntimeForDeployment (register 先于实例事实) -->
+  <line x1="664" y1="494" x2="1180" y2="494" class="solid" marker-end="url(#arr)"/>
+  <text x="676" y="488" class="msg">6. ensureRuntimeForDeployment(lingId) → register(lingId) ★时序硬约束</text>
+
+  <!-- RuntimeCoordinator 激活条 -->
+  <rect x="1176" y="504" width="8" height="56" class="activation"/>
+
+  <!-- 7: RuntimeCoordinator -> LifecycleEngine: runtime (return) -->
+  <line x1="1176" y1="534" x2="664" y2="534" class="ret" marker-end="url(#arrDash)"/>
+  <text x="800" y="528" class="msg">7. «return» LingRuntime（已注册，等实例事实）</text>
+
+  <!-- 时序硬约束警示 -->
+  <rect x="40" y="562" width="1760" height="30" rx="4" class="warnBox"/>
+  <text x="60" y="582" class="warn">⚠ 时序硬约束：RuntimeCoordinator.register 必须先于实例状态事件；禁止依赖事件防御性 register（否则实例事实先到→运行时聚合无主→幽灵 runtime）</text>
+
+  <!-- 8: LifecycleEngine -> InstanceCoordinator: createDeploymentInstance + driveInstanceToLoading -->
+  <line x1="664" y1="624" x2="920" y2="624" class="solid" marker-end="url(#arr)"/>
+  <text x="676" y="618" class="msg">8. createDeploymentInstance → CREATED；driveInstanceToLoading → LOADING</text>
+
+  <!-- InstanceCoordinator 激活条 -->
+  <rect x="916" y="644" width="8" height="200" class="activation"/>
+
+  <!-- 9: LifecycleEngine -> InstanceCoordinator: startPreparedInstance -->
+  <line x1="664" y1="664" x2="916" y2="664" class="solid" marker-end="url(#arr)"/>
+  <text x="676" y="658" class="msg">9. startPreparedInstance(ctx) — STARTING：灵元 Spring 启动、Bean 装配、@LingReference 注入</text>
+
+  <!-- 10: InstanceCoordinator -> LifecycleEngine: READY (return) -->
+  <line x1="916" y1="704" x2="664" y2="704" class="ret" marker-end="url(#arrDash)"/>
+  <text x="676" y="698" class="msg">10. «return» instance READY — InstanceCoordinator 推进，唯一写入口</text>
+
+  <!-- 11: LifecycleEngine -> RuntimeCoordinator: publishReadyInstance (事件) -->
+  <line x1="664" y1="744" x2="1180" y2="744" class="solid" marker-end="url(#arr)"/>
+  <text x="676" y="738" class="msg">11. publishReadyInstance → 事件 InstanceStateChangedEvent(READY)</text>
+
+  <!-- RuntimeCoordinator 激活条 -->
+  <rect x="1176" y="764" width="8" height="56" class="activation"/>
+
+  <!-- 12: RuntimeCoordinator reevaluate -> LifecycleEngine -->
+  <line x1="1176" y1="794" x2="664" y2="794" class="ret" marker-end="url(#arrDash)"/>
+  <text x="676" y="788" class="msg">12. reevaluate 快照 → RuntimeStatus: INACTIVE → ACTIVE（聚合事实，非第二份 FSM）</text>
+
+  <!-- 13: self grantDeclaredPermissions + LingInstalledEvent -->
+  <line x1="664" y1="834" x2="760" y2="834" class="self" marker-end="url(#arr)"/>
+  <text x="676" y="828" class="msg">13. grantDeclaredPermissions（仅首次）+ publish LingInstalledEvent</text>
+
+  <!-- 14: LifecycleEngine -> Dashboard: 200 OK -->
+  <line x1="656" y1="874" x2="400" y2="874" class="ret" marker-end="url(#arrDash)"/>
+  <text x="416" y="868" class="msg">14. «return» 部署成功</text>
+
+  <!-- 15: Dashboard -> Caller: 200 OK -->
+  <line x1="400" y1="914" x2="140" y2="914" class="ret" marker-end="url(#arrDash)"/>
+  <text x="156" y="908" class="msg">15. «return» 200 OK {lingId, version, status: ACTIVE}</text>
+
+  <!-- ===== 阶段② 权重切流 ===== -->
+  <rect x="40" y="952" width="1760" height="32" rx="5" class="phaseBox"/>
+  <text x="60" y="975" class="phase">② 权重切流 · ProviderWeightRouter.setProviderWeight (行 68-78)</text>
+
+  <!-- 16: Caller -> Dashboard: POST weight -->
+  <line x1="140" y1="1022" x2="400" y2="1022" class="solid" marker-end="url(#arr)"/>
+  <text x="156" y="1016" class="msg">16. POST /contract-routing/{contractId}/weight {providerKey: "ling-a:2.0.0", weight: 20}</text>
+
+  <!-- Dashboard 激活条 -->
+  <rect x="396" y="1042" width="8" height="120" class="activation"/>
+
+  <!-- 17: Dashboard self validate 0-100 -->
+  <line x1="404" y1="1062" x2="500" y2="1062" class="self" marker-end="url(#arr)"/>
+  <text x="416" y="1056" class="msg">17. 显式校验 weight ∈ [0,100]（Controller 契约防御）</text>
+
+  <!-- 18: Dashboard -> LifecycleEngine(ProviderWeightRouter): setProviderWeight -->
+  <line x1="404" y1="1102" x2="660" y2="1102" class="solid" marker-end="url(#arr)"/>
+  <text x="416" y="1096" class="msg">18. contractRoutingService.setProviderWeight → ProviderWeightRouter.setProviderWeight</text>
+
+  <!-- LifecycleEngine 激活条（路由器在此语义层） -->
+  <rect x="656" y="1122" width="8" height="80" class="activation"/>
+
+  <!-- 19: self compute override + publish event -->
+  <line x1="664" y1="1142" x2="760" y2="1142" class="self" marker-end="url(#arr)"/>
+  <text x="676" y="1136" class="msg">19. providerWeights.compute 覆盖 + publish ProviderWeightChangedEvent</text>
+
+  <!-- 20: LifecycleEngine -> Dashboard: 200 OK -->
+  <line x1="656" y1="1182" x2="404" y2="1182" class="ret" marker-end="url(#arrDash)"/>
+  <text x="416" y="1176" class="msg">20. «return» 权重已更新</text>
+
+  <!-- 21: Dashboard -> Caller: 200 OK -->
+  <line x1="396" y1="1222" x2="140" y2="1222" class="ret" marker-end="url(#arrDash)"/>
+  <text x="156" y="1216" class="msg">21. «return» 200 OK {contractId, weights}</text>
+
+  <!-- 路由生效说明（note） -->
+  <rect x="40" y="1252" width="1760" height="60" rx="4" class="noteBox"/>
+  <text x="60" y="1276" class="note">后续请求路由：ContractProviderRoutingFilter → ProviderWeightRouter.selectProvider 按权重随机命中；</text>
+  <text x="60" y="1296" class="note">权重内流量走新实例 v2（NORMAL 模式 TerminalInvoker 取灵元 Bean），其余走旧实例 v1。</text>
+  <text x="60" y="1316" class="note">ProviderWeightChangedEvent 被 MigrationStateHolder 监听——但状态机不自动跃迁，须显式 confirmPhaseTransition + 排空校验（迁移期才用，灰度不动它）。</text>
+
+  <!-- ===== 阶段③ 卸载编排 ===== -->
+  <rect x="40" y="1340" width="1760" height="32" rx="5" class="phaseBox"/>
+  <text x="60" y="1363" class="phase">③ 旧实例卸载编排 · undeployWithReport (行 257-294) + drainInstances (行 769-860) + doFullUndeploy (行 662-674)</text>
+
+  <!-- 22: Caller -> Dashboard: POST undeploy + weight=0 -->
+  <line x1="140" y1="1410" x2="400" y2="1410" class="solidR" marker-end="url(#arrR)"/>
+  <text x="156" y="1404" class="msgR">22. POST /lings/{lingId}/undeploy（同时旧 provider weight=0，流量不再进入旧实例）</text>
+
+  <!-- 23: Dashboard -> LifecycleEngine: undeploy -->
+  <line x1="400" y1="1450" x2="660" y2="1450" class="solidR" marker-end="url(#arrR)"/>
+  <text x="416" y="1444" class="msgR">23. undeployWithReport(lingId)</text>
+
+  <!-- LifecycleEngine 激活条（卸载段） -->
+  <rect x="656" y="1470" width="8" height="900" class="activationR"/>
+
+  <!-- 24: LifecycleEngine -> UnloadCoordinator: checkBeforeLingUnload (leak 预检) -->
+  <line x1="664" y1="1490" x2="1700" y2="1490" class="solidR" marker-end="url(#arrR)"/>
+  <text x="676" y="1484" class="msgR">24. checkBeforeLingUnload(instances) — 卸载前泄漏预检，返回 LeakRiskReport</text>
+
+  <!-- UnloadCoordinator 激活条 -->
+  <rect x="1696" y="1510" width="8" height="56" class="activationR"/>
+
+  <!-- 25: UnloadCoordinator -> LifecycleEngine: LeakRiskReport -->
+  <line x1="1696" y1="1540" x2="664" y2="1540" class="ret" marker-end="url(#arrDash)"/>
+  <text x="900" y="1534" class="msg">25. «return» LeakRiskReport（预检不阻塞，仅报告）</text>
+
+  <!-- 26: self moveToDying -->
+  <line x1="664" y1="1580" x2="760" y2="1580" class="selfR" marker-end="url(#arrR)"/>
+  <text x="676" y="1574" class="msgR">26. instancePool.moveToDying(每个活跃实例) — 移出 activePool，剩余版本仍可服务</text>
+
+  <!-- 27: LifecycleEngine -> InstanceCoordinator: stop() READY→STOPPING -->
+  <line x1="664" y1="1620" x2="920" y2="1620" class="solidR" marker-end="url(#arrR)"/>
+  <text x="676" y="1614" class="msgR">27. instanceCoordinator.stop(instance) — READY → STOPPING（不再接新请求）</text>
+
+  <!-- InstanceCoordinator 激活条（卸载段） -->
+  <rect x="916" y="1640" width="8" height="56" class="activationR"/>
+
+  <!-- 28: InstanceCoordinator -> LifecycleEngine: STOPPING done -->
+  <line x1="916" y1="1670" x2="664" y2="1670" class="ret" marker-end="url(#arrDash)"/>
+  <text x="676" y="1664" class="msg">28. «return» 实例已 STOPPING</text>
+
+  <!-- 29: LifecycleEngine -> DrainGuard: drainInstances (awaitIdle) -->
+  <line x1="664" y1="1710" x2="1440" y2="1710" class="solidR" marker-end="url(#arrR)"/>
+  <text x="676" y="1704" class="msgR">29. drainInstances(lingId, instances, timeout, poll, forceOnTimeout)</text>
+
+  <!-- DrainGuard 激活条 -->
+  <rect x="1436" y="1730" width="8" height="220" class="activationR"/>
+
+  <!-- 30: DrainGuard self awaitIdle 循环 -->
+  <line x1="1444" y1="1750" x2="1540" y2="1750" class="selfR" marker-end="url(#arrR)"/>
+  <text x="1456" y="1744" class="msgR">30. for each instance: awaitIdle(slice) — 事件驱动等待，exit() 归零时 signal 呤醒</text>
+  <line x1="1444" y1="1790" x2="1540" y2="1790" class="selfR" marker-end="url(#arrR)"/>
+  <text x="1456" y="1804" class="msgR">　　while (now &lt; deadline): findPendingInstance → 阻塞等它 idle → 重扫全部</text>
+
+  <!-- 31: DrainGuard -> LifecycleEngine: all idle / timeout -->
+  <line x1="1436" y1="1870" x2="664" y2="1870" class="ret" marker-end="url(#arrDash)"/>
+  <text x="676" y="1864" class="msg">31. «return» 全部 idle 排空完成（或超时：forceDrainOnTimeout=false 则抛 IllegalStateException）</text>
+
+  <!-- 排空超时分支警示 -->
+  <rect x="40" y="1900" width="1760" height="60" rx="4" class="warnBox"/>
+  <text x="60" y="1924" class="warn">⚠ 排空超时分支：forceDrainOnTimeout=false → 抛 IllegalStateException，卸载中断，编排层感知；</text>
+  <text x="60" y="1944" class="warn">forceDrainOnTimeout=true → forceProceedWithWarnings 强推 + recordForceDrain 计入治理指标。</text>
+  <text x="60" y="1964" class="warn">不允许静默打断在途请求——这是「wait-only」语义，卸载可失败比悄悄丢请求安全。</text>
+
+  <!-- 32: self doFullUndeploy 开始 -->
+  <line x1="664" y1="2000" x2="760" y2="2000" class="selfR" marker-end="url(#arrR)"/>
+  <text x="676" y="1994" class="msgR">32. doFullUndeploy(lingId, runtime) — 排空完成后才进入确定卸载</text>
+
+  <!-- 33: LifecycleEngine -> RuntimeCoordinator: enterRuntimeStopping -->
+  <line x1="664" y1="2040" x2="1180" y2="2040" class="solidR" marker-end="url(#arrR)"/>
+  <text x="676" y="2034" class="msgR">33. enterRuntimeStopping → RuntimeStatus: ACTIVE → STOPPING</text>
+
+  <!-- RuntimeCoordinator 激活条（卸载段） -->
+  <rect x="1176" y="2060" width="8" height="56" class="activationR"/>
+
+  <!-- 34: RuntimeCoordinator -> LifecycleEngine: -->
+  <line x1="1176" y1="2090" x2="664" y2="2090" class="ret" marker-end="url(#arrDash)"/>
+  <text x="676" y="2084" class="msg">34. «return» 运行时层 STOPPING</text>
+
+  <!-- 35: LifecycleEngine -> UnloadCoordinator: onLingUnload (资源驱逐) -->
+  <line x1="664" y1="2130" x2="1700" y2="2130" class="solidR" marker-end="url(#arrR)"/>
+  <text x="676" y="2124" class="msgR">35. onLingUnload(lingId) — pipelineEngine.evictLingResources + evictMethodCache + lingResourceManager.closeResources</text>
+
+  <!-- UnloadCoordinator 激活条 -->
+  <rect x="1696" y="2150" width="8" height="80" class="activationR"/>
+
+  <!-- 36: UnloadCoordinator self close -->
+  <line x1="1704" y1="2170" x2="1800" y2="2170" class="selfR" marker-end="url(#arrR)"/>
+  <text x="1716" y="2164" class="msgR">36. 驱逐 Pipeline 持有资源 + InvokableMethodCache 缓存驱逐 + 灵元资源 close</text>
+
+  <!-- 37: UnloadCoordinator -> LifecycleEngine: -->
+  <line x1="1696" y1="2210" x2="664" y2="2210" class="ret" marker-end="url(#arrDash)"/>
+  <text x="900" y="2204" class="msg">37. «return» 资源驱逐完成</text>
+
+  <!-- 38: self clearServiceRegistry + finalizeLingRemoval -->
+  <line x1="664" y1="2250" x2="760" y2="2250" class="selfR" marker-end="url(#arrR)"/>
+  <text x="676" y="2244" class="msgR">38. clearServiceRegistry(lingId) + finalizeLingRemoval + closeClassLoader — 实例 DEAD</text>
+
+  <!-- 39: LifecycleEngine -> RuntimeCoordinator: unregister -->
+  <line x1="664" y1="2290" x2="1180" y2="2290" class="solidR" marker-end="url(#arrR)"/>
+  <text x="676" y="2284" class="msgR">39. runtimeCoordinator.unregister(lingId) + lingRepository.unregister(lingId)</text>
+
+  <!-- RuntimeCoordinator 激活条 -->
+  <rect x="1176" y="2310" width="8" height="56" class="activationR"/>
+
+  <!-- 40: RuntimeCoordinator -> LifecycleEngine: -->
+  <line x1="1176" y1="2340" x2="664" y2="2340" class="ret" marker-end="url(#arrDash)"/>
+  <text x="676" y="2334" class="msg">40. «return» 运行时层收口 REMOVED（unregister 必须确定性，不靠「恰好已是 REMOVED」）</text>
+
+  <!-- 41: self publish LingUninstalledEvent -->
+  <line x1="664" y1="2380" x2="760" y2="2380" class="selfR" marker-end="url(#arrR)"/>
+  <text x="676" y="2374" class="msgR">41. publish LingUninstalledEvent(lingId)</text>
+
+  <!-- 42: LifecycleEngine -> Dashboard: LingUninstallResult -->
+  <line x1="656" y1="2420" x2="400" y2="2420" class="ret" marker-end="url(#arrDash)"/>
+  <text x="416" y="2414" class="msg">42. «return» LingUninstallResult.triggered(leakRiskReports)</text>
+
+  <!-- 43: Dashboard -> Caller: 200 OK -->
+  <line x1="396" y1="2460" x2="140" y2="2460" class="ret" marker-end="url(#arrDash)"/>
+  <text x="156" y="2454" class="msg">43. «return» 200 OK {triggered: true, leakRiskReports}</text>
+
+  <!-- 44: 异步 leak 诊断 note -->
+  <rect x="40" y="2480" width="0" height="0" rx="0" fill="none"/>
+</svg>

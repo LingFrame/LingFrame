@@ -13,6 +13,19 @@
     <name>LingFrame :: Dashboard</name>
     <description>LingFrame 可视化治理中心</description>
 
+    <!--
+      双栈策略（单 GAV）：
+      - 业务/配置代码在 src/main 与 src/test（无 Servlet 类型绑定）
+      - javax/jakarta 差异仅在矩阵源码集：
+          src/java-javax + src/test-javax   （Spring Boot 2 / 默认）
+          src/java-jakarta + src/test-jakarta （Spring Boot 3）
+      - 由 build-helper 按 profile 追加；禁止反射探测 Servlet API
+    -->
+    <properties>
+        <dashboard.servlet.source.dir>${project.basedir}/src/java-javax/java</dashboard.servlet.source.dir>
+        <dashboard.servlet.test.dir>${project.basedir}/src/test-javax/java</dashboard.servlet.test.dir>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.lingframe</groupId>
@@ -27,6 +40,16 @@
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
+        </dependency>
+
+        <!-- SQLite 持久化 -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
         </dependency>
 
         <dependency>
@@ -55,5 +78,84 @@
             <artifactId>mockito-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- ArchUnit 架构守护：守住 dashboard → core 边界收敛契约 -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>add-dashboard-servlet-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${dashboard.servlet.source.dir}</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>add-dashboard-servlet-test-sources</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${dashboard.servlet.test.dir}</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>check</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- 默认 / 显式 SB2：javax.servlet 源码集 -->
+        <profile>
+            <id>spring-boot2</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <dashboard.servlet.source.dir>${project.basedir}/src/java-javax/java</dashboard.servlet.source.dir>
+                <dashboard.servlet.test.dir>${project.basedir}/src/test-javax/java</dashboard.servlet.test.dir>
+            </properties>
+        </profile>
+        <!-- SB3：jakarta.servlet 源码集 -->
+        <profile>
+            <id>spring-boot3</id>
+            <properties>
+                <dashboard.servlet.source.dir>${project.basedir}/src/java-jakarta/java</dashboard.servlet.source.dir>
+                <dashboard.servlet.test.dir>${project.basedir}/src/test-jakarta/java</dashboard.servlet.test.dir>
+            </properties>
+        </profile>
+    </profiles>
 </project>

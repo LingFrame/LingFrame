@@ -33,7 +33,7 @@ class RuntimeDiagnosticsServiceTest {
         SharedApiClassLoader.freezeBoundary();
 
         eventBus.publish(new MonitoringEvents.ResourceCleanupCapabilityEvent(
-                "BasicResourceGuard",
+                "BasicUnloadHook",
                 17,
                 false,
                 false,
@@ -58,7 +58,7 @@ class RuntimeDiagnosticsServiceTest {
         SharedApiClassLoader.freezeBoundary();
 
         eventBus.publish(new MonitoringEvents.ResourceCleanupCapabilityEvent(
-                "BasicResourceGuard",
+                "BasicUnloadHook",
                 17,
                 false,
                 false,
@@ -72,7 +72,7 @@ class RuntimeDiagnosticsServiceTest {
         captured.set(null);
         SharedApiClassLoader.resetInstance();
         eventBus.publish(new MonitoringEvents.ResourceCleanupCapabilityEvent(
-                "SpringBasicResourceGuard",
+                "SpringBasicUnloadHook",
                 17,
                 false,
                 false,
@@ -99,7 +99,7 @@ class RuntimeDiagnosticsServiceTest {
         SharedApiClassLoader.freezeBoundary();
 
         eventBus.publish(new MonitoringEvents.ResourceCleanupCapabilityEvent(
-                "BasicResourceGuard",
+                "BasicUnloadHook",
                 17,
                 false,
                 false,
@@ -113,7 +113,7 @@ class RuntimeDiagnosticsServiceTest {
 
         captured.set(null);
         eventBus.publish(new MonitoringEvents.ResourceCleanupCapabilityEvent(
-                "BasicResourceGuard",
+                "BasicUnloadHook",
                 17,
                 true,
                 true,
