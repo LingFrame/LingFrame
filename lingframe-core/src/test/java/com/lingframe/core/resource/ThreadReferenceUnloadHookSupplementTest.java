@@ -192,8 +192,8 @@ class ThreadReferenceUnloadHookSupplementTest {
         try {
             assertSame(customCL, t.getContextClassLoader());
             assertDoesNotThrow(() -> hook.cleanup("ling-ctx", customCL));
-            // contextClassLoader 应被清理（设为 null）
-            assertNull(t.getContextClassLoader());
+            // contextClassLoader 应被清理（不再指向被卸载的灵元 ClassLoader）
+            assertNotSame(customCL, t.getContextClassLoader());
         } finally {
             t.interrupt();
             t.join(2000);

@@ -148,7 +148,7 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
             }
             try {
                 if (t.getContextClassLoader() == classLoader) {
-                    t.setContextClassLoader(null);
+                    t.setContextClassLoader(ClassLoader.getSystemClassLoader());
                     cleared++;
                     log.info("[{}] Final clear contextClassLoader on thread: {}", lingId, t.getName());
                 }
@@ -306,7 +306,7 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
         // contextClassLoader
         try {
             if (t.getContextClassLoader() == classLoader) {
-                t.setContextClassLoader(null);
+                t.setContextClassLoader(ClassLoader.getSystemClassLoader());
                 log.info("[{}] Cleared contextClassLoader on thread: {}", lingId, t.getName());
             }
         } catch (Exception e) {
@@ -558,7 +558,7 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
             // 先断 TCCL：Selector 常卡在 select()，interrupt 不一定及时退出，
             // 若等 join 后再清 CL，GC 窗口内仍会强引用灵元 ClassLoader。
             try {
-                t.setContextClassLoader(null);
+                t.setContextClassLoader(ClassLoader.getSystemClassLoader());
                 log.info("[{}] Cleared contextCL on HttpClient SelectorManager: {} (state={})",
                         lingId, name, t.getState());
             } catch (SecurityException ignored) {
@@ -577,7 +577,7 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
                 // 二次保险：中断后仍存活时再清一次（部分 JDK 路径可能在 interrupt 中重设 TCCL）
                 try {
                     if (t.getContextClassLoader() == classLoader) {
-                        t.setContextClassLoader(null);
+                        t.setContextClassLoader(ClassLoader.getSystemClassLoader());
                     }
                 } catch (SecurityException ignored) {
                     // ignore
@@ -704,7 +704,7 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
             try {
                 // contextClassLoader（所有线程类型都有）
                 if (t.getContextClassLoader() == classLoader) {
-                    t.setContextClassLoader(null);
+                    t.setContextClassLoader(ClassLoader.getSystemClassLoader());
                     log.debug("[{}] Cleared contextClassLoader on thread: {}", lingId, t.getName());
                 }
 
