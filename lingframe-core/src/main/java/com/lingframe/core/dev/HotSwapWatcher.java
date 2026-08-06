@@ -10,6 +10,8 @@ import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.spi.LeakDetector;
+import com.lingframe.core.spi.LingHotSwapWatcher;
+import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -19,6 +21,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -30,9 +33,9 @@ import java.util.stream.Stream;
  * KISS：本类仅负责“监听并触发”，泄漏检测等重型任务由专门的基础设施（LeakDetector）承接。
  */
 @Slf4j
-public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
+public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent>, LingHotSwapWatcher {
 
-    private final LingLifecycleEngine lifecycleEngine;
+    private volatile LingLifecycleEngine lifecycleEngine;
     private final LingRepository lingRepository;
     private final EventBus eventBus;
     private final LeakDetector leakDetector;
@@ -46,24 +49,33 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
     private final AtomicBoolean isStarted = new AtomicBoolean(false);
 
     private final ScheduledExecutorService debounceExecutor = Executors.newSingleThreadScheduledExecutor(
-            r -> {
-                Thread thread = new Thread(r, "lingframe-hotswap-debounce");
-                thread.setDaemon(true);
-                return thread;
-            });
+            NamedThreadFactory.daemon("lingframe-hotswap-debounce"));
 
-    // ✅ 改为 volatile，防止并发问题
-    private volatile ScheduledFuture<?> debounceTask;
+    // 按 lingId 维护 debounce 任务，避免不同灵元的重载互相取消
+    private final Map<String, ScheduledFuture<?>> debounceTasks = new ConcurrentHashMap<>();
 
     public HotSwapWatcher(LingLifecycleEngine lifecycleEngine,
             LingRepository lingRepository,
             EventBus eventBus,
             LeakDetector leakDetector) {
-        this.lifecycleEngine = lifecycleEngine;
         this.lingRepository = lingRepository;
         this.eventBus = eventBus;
         this.leakDetector = leakDetector;
+        this.lifecycleEngine = lifecycleEngine;
         this.eventBus.subscribe("lingframe-hotswap", LingUninstalledEvent.class, this);
+    }
+
+    /**
+     * 延迟绑定生命周期引擎。
+     * <p>
+     * 用于解决 native 装配场景下 watcher 与 lifecycleEngine 的循环依赖：
+     * watcher 必须在 Builder 构造 engine 前创建（作为 hotSwapWatcher 参数传入），
+     * 但 watcher 又需要 engine 引用。此时先传 null 构造，engine 创建后调用此方法绑定。
+     *
+     * @param engine 生命周期引擎，不可为 null
+     */
+    public void setLifecycleEngine(LingLifecycleEngine engine) {
+        this.lifecycleEngine = Objects.requireNonNull(engine, "lifecycleEngine is required");
     }
 
     @Override
@@ -76,19 +88,25 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         unregister(lingId);
     }
 
-    private synchronized void scheduleReload(String lingId) {
-        if (debounceTask != null && !debounceTask.isDone()) {
-            debounceTask.cancel(false);
-        }
-
-        debounceTask = debounceExecutor.schedule(() -> {
-            try {
-                doReload(lingId);
-            } finally {
-                // ✅ 任务完成后清除引用，防止 lambda 被 ScheduledFuture 持有
-                debounceTask = null;
+    private void scheduleReload(String lingId) {
+        // compute 保证对单个 lingId 的 cancel+schedule 原子性，无需 synchronized
+        debounceTasks.compute(lingId, (k, existing) -> {
+            if (existing != null && !existing.isDone()) {
+                existing.cancel(false);
             }
-        }, 1000, TimeUnit.MILLISECONDS);
+            // holder 模式：让 lambda 内部能引用自己的 future，实现条件删除
+            final ScheduledFuture<?>[] holder = new ScheduledFuture<?>[1];
+            holder[0] = debounceExecutor.schedule(() -> {
+                try {
+                    doReload(lingId);
+                } finally {
+                    // 条件删除：仅当 map 中仍是自己的 future 时才移除，
+                    // 避免误删 doReload 期间新调度的任务
+                    debounceTasks.remove(lingId, holder[0]);
+                }
+            }, 1000, TimeUnit.MILLISECONDS);
+            return holder[0];
+        });
     }
 
     /**
@@ -132,8 +150,8 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
             // ✅ 强制恢复 TCCL（防止 undeploy 过程中被改变）
             currentThread.setContextClassLoader(originalTCCL);
 
-            boolean isCanary = resolveCanaryFlag(lingDefinition);
-            lifecycleEngine.deploy(lingDefinition, source, !isCanary, Collections.emptyMap());
+            boolean setAsDefault = true;
+            lifecycleEngine.deploy(lingDefinition, source, setAsDefault, Collections.emptyMap());
             // ✅ 再次恢复 TCCL（防止 deploy/start 过程中被改变）
             currentThread.setContextClassLoader(originalTCCL);
 
@@ -169,19 +187,6 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
             }
         }
         return loaders;
-    }
-
-    /**
-     * ✅ 抽取 canary 判断逻辑
-     */
-    private boolean resolveCanaryFlag(LingDefinition lingDefinition) {
-        Map<String, Object> properties = lingDefinition.getProperties();
-        if (properties == null)
-            return false;
-        Object value = properties.get("canary");
-        if (value instanceof Boolean)
-            return (Boolean) value;
-        return "true".equalsIgnoreCase(String.valueOf(value));
     }
 
     // ======================== 注册/注销 ========================
@@ -237,6 +242,7 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
                 try {
                     entry.getKey().cancel();
                 } catch (Exception ignored) {
+                    log.trace("WatchKey cancel failed for ling {}: {}", lingId, ignored.getMessage());
                 }
                 it.remove();
             }
@@ -257,13 +263,18 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         }
     }
 
+    private static final int MAX_CONSECUTIVE_ERRORS = 5;
+    private static final long ERROR_RETRY_MILLIS = 1000;
+
     private void startWatchLoop() {
         Thread thread = new Thread(() -> {
+            int consecutiveErrors = 0;
             while (true) {
                 try {
                     if (watchService == null)
                         break;
                     WatchKey key = watchService.take();
+                    consecutiveErrors = 0;
                     String lingId = keyLingMap.get(key);
                     if (lingId != null) {
                         scheduleReload(lingId);
@@ -275,7 +286,18 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
                 } catch (InterruptedException | ClosedWatchServiceException e) {
                     break;
                 } catch (Exception e) {
-                    log.error("Error in HotSwap loop", e);
+                    consecutiveErrors++;
+                    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                        log.error("HotSwap watch loop exiting after {} consecutive errors", consecutiveErrors, e);
+                        break;
+                    }
+                    log.warn("HotSwap watch loop error ({}/{}), retrying in {}ms",
+                            consecutiveErrors, MAX_CONSECUTIVE_ERRORS, ERROR_RETRY_MILLIS, e);
+                    try {
+                        Thread.sleep(ERROR_RETRY_MILLIS);
+                    } catch (InterruptedException ie) {
+                        break;
+                    }
                 }
             }
         });
@@ -301,6 +323,9 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent> {
         try {
             if (watchService != null)
                 watchService.close();
+            // 取消所有待执行的 debounce 任务
+            debounceTasks.values().forEach(task -> task.cancel(false));
+            debounceTasks.clear();
             debounceExecutor.shutdownNow();
             if (eventBus != null)
                 eventBus.unsubscribeAll("lingframe-hotswap");

@@ -1,8 +1,7 @@
 package com.lingframe.starter.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.convert.support.DefaultConversionService;
 
 import java.lang.reflect.Field;
@@ -10,14 +9,14 @@ import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+@Slf4j
 public class JacksonCacheEvictUtil {
 
-    private static final Logger log = LoggerFactory.getLogger(JacksonCacheEvictUtil.class);
-
     public static void evictByClassLoader(ObjectMapper objectMapper, ClassLoader targetLoader) {
-        if (objectMapper == null) return;
+        if (objectMapper == null)
+            return;
 
-        log.info("开始彻底清理 Jackson 缓存以释放 ClassLoader: {}", targetLoader);
+        log.info("Start completely clearing Jackson cache to release ClassLoader: {}", targetLoader);
 
         // 1. 清理 Serializer 缓存 (Map<TypeKey, JsonSerializer>)
         flushSerializerCache(objectMapper);
@@ -28,8 +27,28 @@ public class JacksonCacheEvictUtil {
         // 3. 清理 TypeFactory 缓存 (Map<AsKey, JavaType>)
         flushTypeFactoryCache(objectMapper);
 
+        // 3.5 清理 Jackson 全局静态 TypeFactory 缓存
+        flushJacksonDefaultTypeFactory();
+
         // 4. 清理 Spring 转换服务缓存
         clearConversionServiceCache();
+    }
+
+    private static void flushJacksonDefaultTypeFactory() {
+        try {
+            Class<?> tfClass = Class.forName("com.fasterxml.jackson.databind.type.TypeFactory");
+            Method defaultInstanceMethod = tfClass.getMethod("defaultInstance");
+            Object defaultInstance = defaultInstanceMethod.invoke(null);
+            if (defaultInstance != null) {
+                Object cache = getFieldValue(defaultInstance, "_typeCache");
+                invokeClear(cache);
+                log.info("✅ Jackson defaultInstance TypeFactoryCache cleared");
+            }
+        } catch (ClassNotFoundException e) {
+            // 无 Jackson
+        } catch (Exception e) {
+            log.warn("Failed to clear Jackson defaultInstance TypeFactoryCache: {}", e.getMessage());
+        }
     }
 
     private static void flushSerializerCache(ObjectMapper objectMapper) {
@@ -45,9 +64,9 @@ public class JacksonCacheEvictUtil {
             if (roMap instanceof AtomicReference) {
                 ((AtomicReference<?>) roMap).set(null);
             }
-            log.info("✅ SerializerCache 已彻底清空");
+            log.info("✅ SerializerCache cleared completely");
         } catch (Exception e) {
-            log.warn("清理 SerializerCache 失败: {}", e.getMessage());
+            log.warn("Failed to clear SerializerCache: {}", e.getMessage());
         }
     }
 
@@ -65,9 +84,9 @@ public class JacksonCacheEvictUtil {
             if (roMap instanceof AtomicReference) {
                 ((AtomicReference<?>) roMap).set(null);
             }
-            log.info("✅ DeserializerCache 已彻底清空");
+            log.info("✅ DeserializerCache cleared completely");
         } catch (Exception e) {
-            log.warn("清理 DeserializerCache 失败: {}", e.getMessage());
+            log.warn("Failed to clear DeserializerCache: {}", e.getMessage());
         }
     }
 
@@ -78,9 +97,9 @@ public class JacksonCacheEvictUtil {
 
             // 清空 LRUMap
             invokeClear(cache);
-            log.info("✅ TypeFactoryCache 已彻底清空");
+            log.info("✅ TypeFactoryCache cleared completely");
         } catch (Exception e) {
-            log.warn("清理 TypeFactoryCache 失败: {}", e.getMessage());
+            log.warn("Failed to clear TypeFactoryCache: {}", e.getMessage());
         }
     }
 
@@ -89,9 +108,9 @@ public class JacksonCacheEvictUtil {
             Object shared = DefaultConversionService.getSharedInstance();
             Object cache = getFieldValue(shared, "converterCache");
             invokeClear(cache);
-            log.info("✅ ConversionServiceCache 已清空");
+            log.info("✅ ConversionServiceCache cleared completely");
         } catch (Exception e) {
-            log.warn("清理 ConversionServiceCache 失败: {}", e.getMessage());
+            log.warn("Failed to clear ConversionServiceCache: {}", e.getMessage());
         }
     }
 
@@ -103,11 +122,14 @@ public class JacksonCacheEvictUtil {
             if (map instanceof Map) {
                 ((Map<?, ?>) map).clear();
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.trace("Failed to clear map field '{}': {}", fieldName, e.getMessage());
+        }
     }
 
     private static void invokeClear(Object obj) {
-        if (obj == null) return;
+        if (obj == null)
+            return;
         try {
             // 如果是 Map
             if (obj instanceof Map) {
@@ -120,13 +142,17 @@ public class JacksonCacheEvictUtil {
                 if (innerMap instanceof Map) {
                     ((Map<?, ?>) innerMap).clear();
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.trace("LRUMap _map field not accessible: {}", e.getMessage());
+            }
 
             // 尝试直接调用 clear 方法
             Method clear = obj.getClass().getMethod("clear");
             clear.setAccessible(true);
             clear.invoke(obj);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.trace("Failed to invoke clear on {}: {}", obj.getClass().getName(), e.getMessage());
+        }
     }
 
     private static Object getFieldValue(Object obj, String fieldName) throws Exception {

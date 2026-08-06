@@ -1,16 +1,19 @@
 package com.lingframe.dashboard.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.fsm.RuntimeCoordinator;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.governance.GovernanceAdminService;
+import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingLifecycleEngine;
+import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingUninstallResult;
 import com.lingframe.core.ling.LingRepository;
-import com.lingframe.core.router.CanaryRouter;
 import com.lingframe.core.spi.LeakRiskLevel;
 import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.dashboard.converter.LingInfoConverter;
@@ -31,15 +34,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("DashboardService 测试")
 class DashboardServiceTest {
+
+    // 测试类共享 ObjectMapper 单例，避免每个测试方法都 new 一个实例
+    private static final ObjectMapper SHARED_OBJECT_MAPPER = new ObjectMapper();
 
     @Mock
     LingFrameConfig lingFrameConfig;
@@ -49,9 +57,7 @@ class DashboardServiceTest {
     @Mock
     LingRepository lingRepository;
     @Mock
-    LocalGovernanceRegistry governanceRegistry;
-    @Mock
-    CanaryRouter canaryRouter;
+    GovernanceAdminService governanceAdmin;
     @Mock
     LingInfoConverter lingInfoConverter;
     @Mock
@@ -67,14 +73,14 @@ class DashboardServiceTest {
         @DisplayName("更新治理策略时应同步刷新运行时权限")
         void updateGovernancePolicyRefreshesPermissionsFromPolicy() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
 
             AtomicReference<GovernancePolicy> storedPatch = new AtomicReference<>();
-            when(governanceRegistry.getPatch("ling1")).thenAnswer(invocation -> storedPatch.get());
+            when(governanceAdmin.getPatchForUpdate("ling1")).thenAnswer(invocation -> storedPatch.get() == null ? new GovernancePolicy() : storedPatch.get().copy());
             doAnswer(invocation -> {
                 storedPatch.set(((GovernancePolicy) invocation.getArgument(1)).copy());
                 return null;
-            }).when(governanceRegistry).updatePatch(eq("ling1"), any(GovernancePolicy.class));
+            }).when(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
 
             GovernancePolicy policy = new GovernancePolicy();
             policy.setCapabilities(Arrays.asList(
@@ -90,16 +96,15 @@ class DashboardServiceTest {
             service.updateGovernancePolicy("ling1", policy);
 
             assertNotNull(storedPatch.get());
-            verify(permissionService).removeLing("ling1");
-            verify(permissionService).grant("ling1", Capabilities.STORAGE_SQL, AccessType.WRITE);
-            verify(permissionService).grant("ling1", Capabilities.CACHE_LOCAL, AccessType.READ);
+            // 验证委托 GovernanceAdminService 持久化（权限同步由其内部完成，不再此处验证）
+            verify(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
         }
 
         @Test
         @DisplayName("仅更新调用治理时应保留已有能力规则")
         void updateGovernancePolicyShouldMergeInvocationPatchWithoutClearingCapabilities() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
 
             GovernancePolicy existingPatch = new GovernancePolicy();
             existingPatch.setCapabilities(Arrays.asList(
@@ -109,11 +114,13 @@ class DashboardServiceTest {
                             .build()));
 
             AtomicReference<GovernancePolicy> storedPatch = new AtomicReference<>(existingPatch);
-            when(governanceRegistry.getPatch("ling1")).thenAnswer(invocation -> storedPatch.get());
+            when(governanceAdmin.getPatchForUpdate("ling1")).thenAnswer(invocation -> storedPatch.get() == null ? new GovernancePolicy() : storedPatch.get().copy());
             doAnswer(invocation -> {
                 storedPatch.set(((GovernancePolicy) invocation.getArgument(1)).copy());
                 return null;
-            }).when(governanceRegistry).updatePatch(eq("ling1"), any(GovernancePolicy.class));
+            }).when(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
+            // getInvocationGovernance 链路末尾调 getEffectivePolicy，stub 返回含 invocation 的策略
+            lenient().when(governanceAdmin.getEffectivePolicy("ling1")).thenAnswer(invocation -> storedPatch.get());
 
             GovernancePolicy invocationOnlyPolicy = new GovernancePolicy();
             invocationOnlyPolicy.getInvocation().setTimeoutMs(1800);
@@ -127,8 +134,8 @@ class DashboardServiceTest {
             assertEquals(Integer.valueOf(1800), saved.getInvocation().getTimeoutMs());
             assertEquals(Integer.valueOf(6), saved.getInvocation().getRateLimitPerSecond());
 
-            verify(permissionService).removeLing("ling1");
-            verify(permissionService).grant("ling1", Capabilities.STORAGE_SQL, AccessType.READ);
+            // 权限同步由 GovernanceAdminService 内部完成，不再此处验证
+            verify(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
         }
     }
 
@@ -140,14 +147,14 @@ class DashboardServiceTest {
         @DisplayName("更新权限时应持久化策略并同步运行时权限")
         void updatePermissionsPersistsPolicyAndSyncsRuntimePermissions() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
 
             AtomicReference<GovernancePolicy> storedPatch = new AtomicReference<>();
-            when(governanceRegistry.getPatch("ling1")).thenAnswer(invocation -> storedPatch.get());
+            when(governanceAdmin.getPatchForUpdate("ling1")).thenAnswer(invocation -> storedPatch.get() == null ? new GovernancePolicy() : storedPatch.get().copy());
             doAnswer(invocation -> {
                 storedPatch.set(((GovernancePolicy) invocation.getArgument(1)).copy());
                 return null;
-            }).when(governanceRegistry).updatePatch(eq("ling1"), any(GovernancePolicy.class));
+            }).when(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
 
             ResourcePermissionDTO dto = new ResourcePermissionDTO();
             dto.setDbRead(true);
@@ -161,12 +168,8 @@ class DashboardServiceTest {
             GovernancePolicy saved = storedPatch.get();
             assertEquals(5, saved.getCapabilities().size());
 
-            verify(permissionService).removeLing("ling1");
-            verify(permissionService).grant("ling1", Capabilities.STORAGE_SQL, AccessType.READ);
-            verify(permissionService).grant("ling1", Capabilities.CACHE_LOCAL, AccessType.WRITE);
-            verify(permissionService).grant("ling1", Capabilities.Ling_ENABLE, AccessType.EXECUTE);
-            verify(permissionService).grant("ling1", "ipc:lingA", AccessType.EXECUTE);
-            verify(permissionService).grant("ling1", "ipc:lingB", AccessType.EXECUTE);
+            // 权限同步由 GovernanceAdminService 内部完成，不再此处验证
+            verify(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
         }
     }
 
@@ -178,7 +181,7 @@ class DashboardServiceTest {
         @DisplayName("更新调用治理时应保留资源权限并返回最新调用治理配置")
         void updateInvocationGovernanceShouldKeepCapabilitiesAndReturnUpdatedView() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
 
             GovernancePolicy existingPatch = new GovernancePolicy();
             existingPatch.setCapabilities(Arrays.asList(
@@ -188,11 +191,13 @@ class DashboardServiceTest {
                             .build()));
 
             AtomicReference<GovernancePolicy> storedPatch = new AtomicReference<>(existingPatch);
-            when(governanceRegistry.getPatch("ling1")).thenAnswer(invocation -> storedPatch.get());
+            when(governanceAdmin.getPatchForUpdate("ling1")).thenAnswer(invocation -> storedPatch.get() == null ? new GovernancePolicy() : storedPatch.get().copy());
             doAnswer(invocation -> {
                 storedPatch.set(((GovernancePolicy) invocation.getArgument(1)).copy());
                 return null;
-            }).when(governanceRegistry).updatePatch(eq("ling1"), any(GovernancePolicy.class));
+            }).when(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
+            // getInvocationGovernance 链路末尾调 getEffectivePolicy，stub 返回含 invocation 的策略
+            lenient().when(governanceAdmin.getEffectivePolicy("ling1")).thenAnswer(invocation -> storedPatch.get());
 
             InvocationGovernanceDTO dto = InvocationGovernanceDTO.builder()
                     .timeoutMs(1200)
@@ -216,8 +221,8 @@ class DashboardServiceTest {
             assertEquals(Integer.valueOf(600), result.getCpuBudgetMsPerMinute());
             assertEquals(Integer.valueOf(48), result.getMemoryBudgetMb());
 
-            verify(permissionService).removeLing("ling1");
-            verify(permissionService).grant("ling1", Capabilities.CACHE_LOCAL, AccessType.WRITE);
+            // 权限同步由 GovernanceAdminService 内部完成，不再此处验证
+            verify(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
         }
     }
 
@@ -229,20 +234,20 @@ class DashboardServiceTest {
         @DisplayName("恢复状态更新时应触发生命周期引擎恢复")
         void updateStatusShouldTriggerRecover() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
 
-            com.lingframe.core.ling.LingRuntime runtime = org.mockito.Mockito.mock(com.lingframe.core.ling.LingRuntime.class);
-            com.lingframe.core.ling.InstancePool instancePool = org.mockito.Mockito.mock(com.lingframe.core.ling.InstancePool.class);
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool instancePool = mock(InstancePool.class);
             when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
-            when(runtime.currentStatus()).thenReturn(com.lingframe.core.fsm.RuntimeStatus.DEGRADED);
-            when(runtime.getInstancePool()).thenReturn(instancePool);
-            when(instancePool.getDefault()).thenReturn(null);
-            when(lingInfoConverter.toDTO(eq(runtime), eq(canaryRouter), eq(permissionService), any())).thenReturn(null);
+            when(runtime.currentStatus()).thenReturn(RuntimeStatus.DEGRADED);
+            lenient().when(runtime.getInstancePool()).thenReturn(instancePool);
+            lenient().when(instancePool.getDefault()).thenReturn(null);
+            lenient().when(lingInfoConverter.toDTO(eq(runtime), eq(permissionService), any())).thenReturn(null);
 
-            service.updateStatus("ling1", com.lingframe.core.fsm.RuntimeStatus.RECOVERING, "1.0.0");
+            service.updateStatus("ling1", RuntimeStatus.RECOVERING, "1.0.0");
 
             verify(lifecycleEngine).recover("ling1", "1.0.0");
-            verify(runtimeCoordinator, never()).transition(eq("ling1"), eq(com.lingframe.core.fsm.RuntimeStatus.RECOVERING));
+            verify(runtimeCoordinator, never()).transition(eq("ling1"), eq(RuntimeStatus.RECOVERING));
         }
     }
 
@@ -254,7 +259,7 @@ class DashboardServiceTest {
         @DisplayName("卸载灵元时应返回结构化风险摘要")
         void uninstallLingShouldReturnStructuredRiskSummary() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
             LeakRiskReport report = LeakRiskReport.riskDetected(
                     "ling1",
                     "1.0.0",
@@ -271,14 +276,13 @@ class DashboardServiceTest {
             assertEquals(LeakRiskLevel.RISK_DETECTED, result.getOverallRiskLevel());
             assertEquals(1, result.getReports().size());
             assertEquals("thread=worker-1", result.getReports().get(0).getDetails().get(0));
-            verify(canaryRouter).removeCanaryConfig("ling1");
         }
 
         @Test
         @DisplayName("按版本卸载时应返回对应版本的风险摘要")
         void uninstallLingVersionShouldReturnVersionScopedRiskSummary() {
             DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
-                    governanceRegistry, canaryRouter, lingInfoConverter, permissionService, runtimeCoordinator);
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
             LeakRiskReport report = LeakRiskReport.checkFailed(
                     "ling1",
                     "1.0.1",
@@ -295,7 +299,6 @@ class DashboardServiceTest {
             assertEquals("1.0.1", result.getVersion());
             assertEquals(LeakRiskLevel.CHECK_FAILED, result.getOverallRiskLevel());
             assertEquals(1, result.getReports().size());
-            verify(canaryRouter).removeCanaryConfig("ling1");
         }
     }
 }

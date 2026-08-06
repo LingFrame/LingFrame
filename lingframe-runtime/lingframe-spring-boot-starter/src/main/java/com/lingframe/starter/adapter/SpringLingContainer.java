@@ -1,47 +1,42 @@
 package com.lingframe.starter.adapter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lingframe.api.annotation.Auditable;
-import com.lingframe.api.annotation.LingService;
-import com.lingframe.api.annotation.RequiresPermission;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
 import com.lingframe.core.context.DefaultLingContext;
+import com.lingframe.core.ling.BusinessInterfaceFilter;
+import com.lingframe.core.ling.LingServiceRegistrar;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.spi.LingContainer;
-import com.lingframe.core.strategy.GovernanceStrategy;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.starter.processor.LingReferenceInjector;
-import com.lingframe.core.spi.ResourceGuard;
+import com.lingframe.core.spi.LingUnloadHook;
+import com.lingframe.starter.resource.LingScanCachePurger;
 import com.lingframe.starter.spi.LingContextCustomizer;
-import com.lingframe.starter.spi.SpringAwareResourceGuard;
+import com.lingframe.starter.spi.SpringAwareUnloadHook;
 import com.lingframe.starter.util.JacksonCacheEvictUtil;
+import com.lingframe.starter.web.LingWebMetadataExtractor;
 import com.lingframe.starter.web.WebInterfaceManager;
 import com.lingframe.starter.web.WebInterfaceMetadata;
+import java.io.File;
+import java.net.URL;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
-import org.springframework.core.annotation.AnnotatedElementUtils;
-import org.springframework.core.annotation.AnnotationAttributes;
-import org.springframework.util.ReflectionUtils;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Spring 容器适配器。
@@ -52,46 +47,80 @@ public class SpringLingContainer implements LingContainer {
 
     private static final String DISABLE_LOGGING_SHUTDOWN_HOOK = "logging.register-shutdown-hook=false";
 
-    private static final RequestMethod[] DEFAULT_HTTP_METHODS = new RequestMethod[] {
-            RequestMethod.GET,
-            RequestMethod.HEAD,
-            RequestMethod.POST,
-            RequestMethod.PUT,
-            RequestMethod.PATCH,
-            RequestMethod.DELETE,
-            RequestMethod.OPTIONS,
-            RequestMethod.TRACE
-    };
-
     // 🔥 非 final：stop() 时必须清空，否则 builder 持有 ResourceLoader → ClassLoader 引用链
-    private SpringApplicationBuilder builder;
-    private ConfigurableApplicationContext context;
-    private ClassLoader classLoader; // 非 final，以便在 stop() 中清除
-    private String version;
-    private WebInterfaceManager webInterfaceManager;
-    private List<String> excludedPackages;
-    private List<LingContextCustomizer> customizers; // 新增定制器
+    // 跨线程读写的字段必须 volatile：start() 由部署线程写入，stop()/isActive() 可能由其他线程读取，
+    // 没有 volatile 时读线程可能长期看到旧值，导致 stop() 后 isActive() 仍返回 true 等竞态。
+    private volatile SpringApplicationBuilder builder;
+    private volatile ConfigurableApplicationContext context;
+    private volatile ClassLoader classLoader; // 非 final，以便在 stop() 中清除
+    private volatile String version;
+    private volatile WebInterfaceManager webInterfaceManager;
+    private volatile List<String> excludedPackages;
+    private volatile List<LingContextCustomizer> customizers; // 新增定制器
     // 保存 Context 以便 stop 时使用
-    private LingContext lingContext;
-    private ApplicationContext mainContext; // 🔥 主容器引用
-    private final List<ResourceGuard> resourceGuards; // 🔥 资源守卫列表
+    private volatile LingContext lingContext;
+    private volatile ApplicationContext mainContext; // 🔥 主容器引用
+    private final List<LingUnloadHook> unloadHooks; // 🔥 卸载钩子列表
 
+    private volatile File sourceFile;
+
+    /**
+     * 容器是否已停止的幂等标志。
+     * <p>
+     * 使用 {@link AtomicBoolean} 配合 {@code compareAndSet(false, true)} 实现原子占位，
+     * 消除 volatile boolean 的非原子 check-then-act 竞态（并发 stop() 双重清理风险）。
+     * <p>
+     * stop() 第一次调用时 CAS 成功，再次调用直接返回；
+     * isActive() 基于 {@link #get()} 判定，避免在 context 已置 null 后仍尝试访问它。
+     */
+    private final AtomicBoolean stopped = new AtomicBoolean(false);
+
+    /**
+     * 灵核只读配置门面（可选注入）。
+     * <p>
+     * 替代静态穿透 {@code LingFrameConfig.current()} 读隐式注册开关；
+     * 装配链未注入时兜底默认 true（与 {@code LingFrameConfig} builder 默认值一致）。
+     */
+    private LingFrameInfo lingFrameInfo;
+
+    /**
+     * 注入灵核只读配置门面，替代静态穿透。
+     */
+    public void setLingFrameInfo(LingFrameInfo lingFrameInfo) {
+        this.lingFrameInfo = lingFrameInfo;
+    }
+
+    // 保留原构造函数，向后兼容测试用例
     public SpringLingContainer(SpringApplicationBuilder builder,
                                ClassLoader classLoader,
                                WebInterfaceManager webInterfaceManager,
                                List<String> excludedPackages,
                                List<LingContextCustomizer> customizers,
                                ApplicationContext mainContext,
-                               List<ResourceGuard> resourceGuards,
+                               List<LingUnloadHook> unloadHooks,
                                String version) {
+        this(builder, classLoader, webInterfaceManager, excludedPackages, customizers, mainContext, unloadHooks, version, null);
+    }
+
+    // 新增构造函数，支持传入部署物理资源路径
+    public SpringLingContainer(SpringApplicationBuilder builder,
+                               ClassLoader classLoader,
+                               WebInterfaceManager webInterfaceManager,
+                               List<String> excludedPackages,
+                               List<LingContextCustomizer> customizers,
+                               ApplicationContext mainContext,
+                               List<LingUnloadHook> unloadHooks,
+                               String version,
+                               File sourceFile) {
         this.builder = builder;
         this.classLoader = classLoader;
         this.webInterfaceManager = webInterfaceManager;
         this.excludedPackages = excludedPackages != null ? excludedPackages : Collections.emptyList();
         this.customizers = customizers != null ? customizers : Collections.emptyList();
         this.mainContext = mainContext;
-        this.resourceGuards = resourceGuards != null ? resourceGuards : Collections.emptyList();
+        this.unloadHooks = unloadHooks != null ? unloadHooks : Collections.emptyList();
         this.version = version;
+        this.sourceFile = sourceFile;
     }
 
     @Override
@@ -164,7 +193,7 @@ public class SpringLingContainer implements LingContainer {
             // 自动配置灵元独立数据源
             LingDataSourceRegistrar.register(context, lingClassLoader, lingId);
 
-            // 🔥 注入灵元私有的 HandlerAdapter，防止 DTO 等类污染宿主缓存
+            // 🔥 注入灵元私有的 HandlerAdapter，防止 DTO 等类污染灵核缓存
             context.registerBean(RequestMappingHandlerAdapter.class, () -> {
                 RequestMappingHandlerAdapter adapter = new RequestMappingHandlerAdapter();
                 // 必须设置 MessageConverters，否则无法处理 JSON
@@ -203,6 +232,19 @@ public class SpringLingContainer implements LingContainer {
         DefaultLingContext coreCtx = (DefaultLingContext) lingContext;
         String lingId = lingContext.getLingId();
 
+        // 🔥 统一注册器：收敛「显式 @LingService + 隐式接口」双轨注册逻辑到 core，
+        // 删除原散在 SpringLingContainer 的 isBusinessInterface 黑名单。
+        // 生态环境排除前缀由 Registrar 静态参考值提供，用户排除项透传 BusinessInterfaceFilter。
+        LingServiceRegistry registry = coreCtx.getLingServiceRegistry();
+        BusinessInterfaceFilter interfaceFilter = BusinessInterfaceFilter.builder()
+                .ecosystemExcluded(LingServiceRegistrar.defaultEcosystemExcluded())
+                .userExcluded(excludedPackages)
+                .build();
+        LingServiceRegistrar registrar = new LingServiceRegistrar(
+                registry, interfaceFilter,
+                lingFrameInfo == null ? true : lingFrameInfo.isImplicitRegistration(),
+                coreCtx);
+
         // 获取容器中所有 Bean 的名称
         String[] beanNames = context.getBeanDefinitionNames();
 
@@ -212,33 +254,28 @@ public class SpringLingContainer implements LingContainer {
                 // 处理 AOP 代理，获取目标类
                 Class<?> targetClass = AopUtils.getTargetClass(bean);
 
-                // 1. 显式 @LingService 注册 (FQSID: [LingID]:[ShortID])
-                ReflectionUtils.doWithMethods(targetClass, method -> {
-                    LingService lingService = AnnotatedElementUtils.findMergedAnnotation(method, LingService.class);
-                    if (lingService != null) {
-                        String shortId = lingService.id();
-                        String fqsid = lingId + ":" + shortId;
-                        coreCtx.registerProtocolService(fqsid, bean, method);
-                    }
-                });
+                // 防御式过滤：如果 targetClass 不是当前灵元的 ClassLoader 加载的，就跳过它，防止重复和误注册外部 Bean
+                if (targetClass.getClassLoader() != classLoader) {
+                    continue;
+                }
 
-                // 2. 隐式接口注册 (FQSID: [InterfaceName]:[MethodName])
-                // 支持 @LingReference 跨灵元调用
-                for (Class<?> iface : targetClass.getInterfaces()) {
-                    if (isBusinessInterface(iface)) {
-                        for (Method ifaceMethod : iface.getMethods()) {
-                            try {
-                                Method implMethod = targetClass.getMethod(
-                                        ifaceMethod.getName(), ifaceMethod.getParameterTypes());
-                                String canonicalFqsid = lingId + ":" + iface.getName();
-                                coreCtx.registerProtocolService(canonicalFqsid, bean, implMethod);
-                                String fqsid = iface.getName() + ":" + ifaceMethod.getName();
-                                coreCtx.registerProtocolService(fqsid, bean, implMethod);
-                            } catch (NoSuchMethodException ignored) {
-                            }
+                // 物理路径比对防误扫（防开发环境下 ClassLoader 穿透引起的多版本 Bean 串用）
+                if (sourceFile != null) {
+                    URL classUrl = targetClass.getResource(targetClass.getSimpleName() + ".class");
+                    if (classUrl != null) {
+                        // 剥离 URL 协议前缀（file:/ 或 jar:file:/），统一为纯路径后再比对
+                        String classPath = extractPathFromUrl(classUrl).replace("\\", "/").toLowerCase();
+                        String sourcePath = sourceFile.getAbsolutePath().replace("\\", "/").toLowerCase();
+                        if (!classPath.contains(sourcePath)) {
+                            log.warn("[{}] Ignored scan-leaked Bean [{}] (loaded from: {}, sourceFile: {})",
+                                    lingId, beanName, classPath, sourcePath);
+                            continue;
                         }
                     }
                 }
+
+                // 🔥 委派给统一注册器：显式 @LingService + 隐式接口一并处理
+                registrar.register(lingId, bean, targetClass);
             } catch (Exception e) {
                 log.warn("Error scanning bean {} for LingServices", beanName, e);
             }
@@ -246,452 +283,143 @@ public class SpringLingContainer implements LingContainer {
     }
 
     /**
-     * 判断是否为业务接口（排除 Java/Spring/常见框架接口 + 用户配置排除项）
-     */
-    private boolean isBusinessInterface(Class<?> iface) {
-        String name = iface.getName();
-
-        // 内置排除规则
-        if (name.startsWith("java.") ||
-                name.startsWith("javax.") ||
-                name.startsWith("jakarta.") ||
-                name.startsWith("org.springframework.") ||
-                name.startsWith("org.slf4j.") ||
-                name.startsWith("io.micrometer.") ||
-                name.startsWith("com.zaxxer.") ||
-                name.startsWith("lombok.") ||
-                name.startsWith("com.lingframe.api.context.") ||
-                name.startsWith("com.lingframe.api.ling.") ||
-                name.startsWith("com.lingframe.starter.")) {
-            return false;
-        }
-
-        // 用户配置的排除规则
-        for (String prefix : excludedPackages) {
-            if (name.startsWith(prefix)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * 扫描并注册 @RestController（原生 Spring MVC 注册）
+     * 扫描并注册 @RestController。
+     * 注解解析下沉至 {@link LingWebMetadataExtractor}；提取完成后有界 purge 注解静态缓存。
      */
     private void scanAndRegisterControllers() {
-        if (!(lingContext instanceof DefaultLingContext))
+        if (!(lingContext instanceof DefaultLingContext)) {
             return;
+        }
         String lingId = lingContext.getLingId();
+        LingWebMetadataExtractor extractor = new LingWebMetadataExtractor(version, classLoader, context);
 
-        // 获取所有 @RestController
         Map<String, Object> controllers = context.getBeansWithAnnotation(RestController.class);
-
         for (Map.Entry<String, Object> entry : controllers.entrySet()) {
             String beanName = entry.getKey();
             Object bean = entry.getValue();
             try {
                 Class<?> targetClass = AopUtils.getTargetClass(bean);
-
-                // 解析类级 @RequestMapping
-                RequestMapping classMapping = AnnotatedElementUtils.findMergedAnnotation(targetClass,
-                        RequestMapping.class);
-
-                // 遍历方法
-                ReflectionUtils.doWithMethods(targetClass, method -> {
-                    // 查找 RequestMapping (包含 GetMapping, PostMapping 等)
-                    RequestMapping mapping = AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class);
-                    if (mapping != null) {
-                        registerControllerMappings(lingId, beanName, bean, method, classMapping, mapping);
+                if (targetClass.getClassLoader() != classLoader) {
+                    continue;
+                }
+                List<WebInterfaceMetadata> metadataList =
+                        extractor.extractFromController(lingId, beanName, bean, targetClass);
+                for (WebInterfaceMetadata metadata : metadataList) {
+                    metadata.minimizeCoreStrongReferences();
+                    log.info("🌍 [LingFrame Web] Found Controller: {} [{}]",
+                            metadata.getHttpMethod(), metadata.getUrlPattern());
+                    if (webInterfaceManager != null) {
+                        webInterfaceManager.registerSync(metadata);
                     }
-                });
+                }
             } catch (Exception e) {
                 log.error("Failed to parse controller bean in ling: {}", lingId, e);
             }
         }
-    }
 
-    /**
-     * 解析单个方法并生成元数据（简化版，不再解析参数）
-     */
-    private void registerControllerMethod(String lingId, String beanName, Object bean, Method method,
-                                          RequestMapping classMapping, RequestMapping mapping) {
-        // 请求路径按 `/lingId/classUrl/methodUrl` 规则拼接
-        String baseUrl = classMapping != null && classMapping.path().length > 0 ? classMapping.path()[0] : "";
-        String methodUrl = mapping.path().length > 0 ? mapping.path()[0] : "";
-        String fullPath = null;
-
-        // 解析 HTTP 方法
-        String httpMethod = mapping.method().length > 0 ? mapping.method()[0].name() : "GET";
-
-        // 智能权限推导
-        String permission;
-        RequiresPermission permAnn = AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class);
-        if (permAnn != null) {
-            permission = permAnn.value();
-        } else {
-            permission = GovernanceStrategy.inferPermission(method);
-        }
-
-        // 智能审计推导
-        boolean shouldAudit = false;
-        String auditAction = method.getName();
-        Auditable auditAnn = AnnotatedElementUtils.findMergedAnnotation(method, Auditable.class);
-
-        if (auditAnn != null) {
-            shouldAudit = true;
-            auditAction = auditAnn.action();
-        } else if (!"GET".equals(httpMethod)) {
-            shouldAudit = true;
-            auditAction = httpMethod + " " + fullPath;
-        }
-
-        // 构建简化的元数据（不含参数定义，由 Spring 原生处理）
-        WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
-                .lingId(lingId)
-                .version(version)
-                .targetBeanName(beanName)
-                .targetBean(bean)
-                .targetClassName(resolveControllerClass(bean, method).getName())
-                .targetMethodName(method.getName())
-                .targetMethodParameterTypeNames(resolveParameterTypeNames(method))
-                .targetMethod(method)
-                .classLoader(this.classLoader)
-                .lingApplicationContext(this.context)
-                .urlPattern(fullPath)
-                .httpMethod(httpMethod)
-                .requiredPermission(permission)
-                .shouldAudit(shouldAudit)
-                .auditAction(auditAction)
-                .build();
-        metadata.minimizeHostReferences();
-
-        log.info("🌍 [LingFrame Web] Found Controller: {} [{}]", httpMethod, fullPath);
-
-        // 注册到 WebInterfaceManager
-        if (webInterfaceManager != null) {
-            webInterfaceManager.registerSync(metadata);
-        }
-    }
-
-    private void registerControllerMappings(String lingId, String beanName, Object bean, Method method,
-                                            RequestMapping classMapping, RequestMapping mapping) {
-        String permission;
-        RequiresPermission permAnn = AnnotatedElementUtils.findMergedAnnotation(method, RequiresPermission.class);
-        if (permAnn != null) {
-            permission = permAnn.value();
-        } else {
-            permission = GovernanceStrategy.inferPermission(method);
-        }
-
-        Auditable auditAnn = AnnotatedElementUtils.findMergedAnnotation(method, Auditable.class);
-        Set<String> fullPaths = resolveFullPaths(lingId, classMapping, mapping);
-        RequestMethod[] httpMethods = resolveHttpMethods(classMapping, mapping);
-        String[] params = resolveParams(classMapping, mapping);
-        String[] headers = resolveHeaders(classMapping, mapping);
-        String[] consumes = resolveConsumes(classMapping, mapping);
-        String[] produces = resolveProduces(classMapping, mapping);
-
-        for (String fullPath : fullPaths) {
-            for (RequestMethod requestMethod : httpMethods) {
-                String httpMethod = requestMethod.name();
-                boolean shouldAudit = false;
-                String auditAction = method.getName();
-                if (auditAnn != null) {
-                    shouldAudit = true;
-                    auditAction = auditAnn.action();
-                } else if (isWriteMethod(httpMethod)) {
-                    shouldAudit = true;
-                    auditAction = httpMethod + " " + fullPath;
-                }
-
-                RequestMappingInfo.Builder mappingBuilder = RequestMappingInfo
-                        .paths(fullPath)
-                        .methods(requestMethod);
-                if (params.length > 0) {
-                    mappingBuilder.params(params);
-                }
-                if (headers.length > 0) {
-                    mappingBuilder.headers(headers);
-                }
-                if (consumes.length > 0) {
-                    mappingBuilder.consumes(consumes);
-                }
-                if (produces.length > 0) {
-                    mappingBuilder.produces(produces);
-                }
-                RequestMappingInfo requestMappingInfo = mappingBuilder.build();
-                
-                String opSummary = null;
-                String opDescription = null;
-                String[] opTags = null;
-                try {
-                    // 使用字符串类名动态搜索，避免对 swagger-annotations 的强编译依赖
-                    AnnotationAttributes opAttr = AnnotatedElementUtils.findMergedAnnotationAttributes(
-                            method, "io.swagger.v3.oas.annotations.Operation", false, false);
-                    if (opAttr != null) {
-                        opSummary = opAttr.getString("summary");
-                        opDescription = opAttr.getString("description");
-                        opTags = opAttr.getStringArray("tags");
-                    }
-                } catch (Throwable ignored) {
-                    // 即使类路径无 Swagger 也不影响基本路由注册
-                }
-
-                WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
-                        .lingId(lingId)
-                        .version(version)
-                        .targetBeanName(beanName)
-                        .targetBean(bean)
-                        .targetClassName(resolveControllerClass(bean, method).getName())
-                        .targetMethodName(method.getName())
-                        .targetMethodParameterTypeNames(resolveParameterTypeNames(method))
-                        .targetMethod(method)
-                        .classLoader(this.classLoader)
-                        .lingApplicationContext(this.context)
-                        .urlPattern(fullPath)
-                        .httpMethod(httpMethod)
-                        .params(copyStringArray(params))
-                        .headers(copyStringArray(headers))
-                        .consumes(copyStringArray(consumes))
-                        .produces(copyStringArray(produces))
-                        .requiredPermission(permission)
-                        .shouldAudit(shouldAudit)
-                        .auditAction(auditAction)
-                        .opSummary(opSummary)
-                        .opDescription(opDescription)
-                        .opTags(opTags != null ? Arrays.copyOf(opTags, opTags.length) : null)
-                        .requestMappingInfo(requestMappingInfo)
-                        .build();
-                metadata.minimizeHostReferences();
-
-                log.info("🌍 [LingFrame Web] Found Controller: {} [{}]", httpMethod, fullPath);
-                if (webInterfaceManager != null) {
-                    webInterfaceManager.registerSync(metadata);
-                }
-            }
-        }
-    }
-
-    private Set<String> resolveFullPaths(String lingId, RequestMapping classMapping, RequestMapping methodMapping) {
-        String[] classPaths = resolvePaths(classMapping);
-        String[] methodPaths = resolvePaths(methodMapping);
-        LinkedHashSet<String> fullPaths = new LinkedHashSet<>();
-        for (String classPath : classPaths) {
-            for (String methodPath : methodPaths) {
-                fullPaths.add(normalizePath("/" + lingId + "/" + classPath + "/" + methodPath));
-            }
-        }
-        return fullPaths;
-    }
-
-    private Class<?> resolveControllerClass(Object bean, Method method) {
-        Class<?> targetClass = bean != null ? AopUtils.getTargetClass(bean) : null;
-        return targetClass != null ? targetClass : method.getDeclaringClass();
-    }
-
-    private String[] resolvePaths(RequestMapping mapping) {
-        if (mapping == null) {
-            return new String[] {""};
-        }
-        if (mapping.path().length > 0) {
-            return mapping.path();
-        }
-        if (mapping.value().length > 0) {
-            return mapping.value();
-        }
-        return new String[] {""};
-    }
-
-    private RequestMethod[] resolveHttpMethods(RequestMapping classMapping, RequestMapping methodMapping) {
-        if (methodMapping != null && methodMapping.method().length > 0) {
-            return methodMapping.method();
-        }
-        if (classMapping != null && classMapping.method().length > 0) {
-            return classMapping.method();
-        }
-        return DEFAULT_HTTP_METHODS;
-    }
-
-    private String[] resolveParams(RequestMapping classMapping, RequestMapping methodMapping) {
-        return mergeExpressions(classMapping != null ? classMapping.params() : new String[0],
-                methodMapping != null ? methodMapping.params() : new String[0]);
-    }
-
-    private String[] resolveHeaders(RequestMapping classMapping, RequestMapping methodMapping) {
-        return mergeExpressions(classMapping != null ? classMapping.headers() : new String[0],
-                methodMapping != null ? methodMapping.headers() : new String[0]);
-    }
-
-    private String[] resolveConsumes(RequestMapping classMapping, RequestMapping methodMapping) {
-        if (methodMapping != null && methodMapping.consumes().length > 0) {
-            return copyStringArray(methodMapping.consumes());
-        }
-        return classMapping != null ? copyStringArray(classMapping.consumes()) : new String[0];
-    }
-
-    private String[] resolveProduces(RequestMapping classMapping, RequestMapping methodMapping) {
-        if (methodMapping != null && methodMapping.produces().length > 0) {
-            return copyStringArray(methodMapping.produces());
-        }
-        return classMapping != null ? copyStringArray(classMapping.produces()) : new String[0];
-    }
-
-    private String[] mergeExpressions(String[] first, String[] second) {
-        LinkedHashSet<String> merged = new LinkedHashSet<>();
-        addExpressions(merged, first);
-        addExpressions(merged, second);
-        return merged.toArray(new String[0]);
-    }
-
-    private void addExpressions(Set<String> target, String[] source) {
-        if (source == null) {
-            return;
-        }
-        for (String expression : source) {
-            if (expression == null || expression.trim().isEmpty()) {
-                continue;
-            }
-            target.add(expression);
-        }
-    }
-
-    private boolean isWriteMethod(String httpMethod) {
-        return "POST".equals(httpMethod)
-                || "PUT".equals(httpMethod)
-                || "PATCH".equals(httpMethod)
-                || "DELETE".equals(httpMethod);
-    }
-
-    private String normalizePath(String path) {
-        String normalized = path.replaceAll("/+", "/");
-        if (normalized.isEmpty()) {
-            return "/";
-        }
-        if (!normalized.startsWith("/")) {
-            normalized = "/" + normalized;
-        }
-        if (normalized.length() > 1 && normalized.endsWith("/")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-        return normalized;
-    }
-
-    private String[] copyStringArray(String[] source) {
-        if (source == null || source.length == 0) {
-            return new String[0];
-        }
-        String[] copy = new String[source.length];
-        System.arraycopy(source, 0, copy, 0, source.length);
-        return copy;
-    }
-
-    private String[] resolveParameterTypeNames(Method method) {
-        Class<?>[] parameterTypes = method.getParameterTypes();
-        if (parameterTypes.length == 0) {
-            return new String[0];
-        }
-        String[] names = new String[parameterTypes.length];
-        for (int i = 0; i < parameterTypes.length; i++) {
-            names[i] = parameterTypes[i].getName();
-        }
-        return names;
+        // 缩短扫描写入的注解/反射静态缓存存活窗口（不替代卸载全量 cleaner）
+        LingScanCachePurger.purgeAnnotationCachesAfterMetadataExtract(lingId, classLoader);
     }
 
     @Override
     public void stop() {
-        if (context != null && context.isActive()) {
-            String lingId = (lingContext != null) ? lingContext.getLingId() : "unknown";
+        // 🔥 幂等：CAS 原子占位，避免并发/重复 stop() 引发二次清理
+        if (!stopped.compareAndSet(false, true)) {
+            return;
+        }
 
-            try {
-                Ling ling = this.context.getBean(Ling.class);
-                log.info("Triggering onStop for ling: {}", lingId);
-                ling.onStop(lingContext);
-            } catch (Exception e) {
-                // 忽略，可能没有入口类
-            }
+        ConfigurableApplicationContext closedContext = this.context;
+        // lingId 提升到方法作用域：后续引用清理日志需要用到，但此时 lingContext 可能已被置 null
+        String lingId = (lingContext != null) ? lingContext.getLingId() : "unknown";
+        try {
+            if (closedContext != null && closedContext.isActive()) {
 
-            // 注销 Web 接口元数据
-            if (webInterfaceManager != null) {
-                webInterfaceManager.unregisterSync(lingId, this.classLoader);
-            }
-
-            // ✅ 从主容器获取 ObjectMapper，而不是靠 @Autowired
-            try {
-            if (this.mainContext != null) {
                 try {
-                    // 1. 清理宿主主容器中的 ObjectMapper 缓存 (最重要的，因为网关走这里)
-                    Map<String, ObjectMapper> hostOms = this.mainContext.getBeansOfType(ObjectMapper.class);
-                    for (ObjectMapper om : hostOms.values()) {
-                        JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
-                    }
-                    
-                    // 2. 清理灵元内部容器中的 ObjectMapper 缓存 (防止内部引用不释放)
-                    if (this.context != null) {
-                        Map<String, ObjectMapper> lingOms = this.context.getBeansOfType(ObjectMapper.class);
+                    Ling ling = closedContext.getBean(Ling.class);
+                    log.info("Triggering onStop for ling: {}", lingId);
+                    ling.onStop(lingContext);
+                } catch (Exception e) {
+                    // 忽略，可能没有入口类
+                }
+
+                // 注销 Web 接口元数据
+                if (webInterfaceManager != null) {
+                    webInterfaceManager.unregisterSync(lingId, this.classLoader);
+                }
+
+                // ✅ 从主容器获取 ObjectMapper，而不是靠 @Autowired
+                try {
+                if (this.mainContext != null) {
+                    try {
+                        // 1. 清理灵核主容器中的 ObjectMapper 缓存 (最重要的，因为网关走这里)
+                        Map<String, ObjectMapper> coreObjectMappers = this.mainContext.getBeansOfType(ObjectMapper.class);
+                        for (ObjectMapper om : coreObjectMappers.values()) {
+                            JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
+                        }
+                        
+                        // 2. 清理灵元内部容器中的 ObjectMapper 缓存 (防止内部引用不释放)
+                        Map<String, ObjectMapper> lingOms = closedContext.getBeansOfType(ObjectMapper.class);
                         for (ObjectMapper om : lingOms.values()) {
                             JacksonCacheEvictUtil.evictByClassLoader(om, this.classLoader);
                         }
-                    }
-                    log.info("[{}] Jackson caches evicted successfully", lingId);
-                } catch (Exception e) {
-                    log.warn("[{}] Failed to evict Jackson caches", lingId, e);
-                }
-            }
-            } catch (Exception e) {
-                log.warn("清理 Jackson 缓存失败", e);
-            }
-
-            // 🔥 第一阶段清理：在 Context 关闭前执行 preCleanup
-            for (ResourceGuard guard : resourceGuards) {
-                if (guard instanceof SpringAwareResourceGuard) {
-                    try {
-                        SpringAwareResourceGuard awareGuard = (SpringAwareResourceGuard) guard;
-                        awareGuard.setContexts(this.mainContext, this.context);
-                        awareGuard.preCleanup(lingId);
+                        log.info("[{}] Jackson caches evicted successfully", lingId);
                     } catch (Exception e) {
-                        log.debug("Failed to invoke preCleanup on resource guard: {}", guard.getClass().getName(), e);
+                        log.warn("[{}] Failed to evict Jackson caches", lingId, e);
                     }
                 }
-            }
-            // 5. 关闭上下文 (核心隔离点)
-            try {
-                context.close();
-                log.info("[{}] Spring ApplicationContext closed successfully", lingId);
-            } catch (Exception e) {
-                // 🔥 关键修复：隔离上下文关闭异常，防止阻断整机卸载
-                log.error("[{}] Error during Spring ApplicationContext close, forcing reference cleanup", lingId, e);
-            }
-        }
+                } catch (Exception e) {
+                    log.warn("Failed to clear Jackson cache", e);
+                }
 
-        // 🔥 第二阶段清理会由 DefaultLingLifecycleEngine 调用 resourceGuard.cleanup()
-        // 此处仅确保 context 引用已设置（防御性补充，防止未初始化的 guard 错过注入）
-        for (ResourceGuard guard : resourceGuards) {
-            if (guard instanceof SpringAwareResourceGuard) {
+                // 🔥 第一阶段清理：在 Context 关闭前执行 preCleanup
+                // 上下文以参数传入，Hook 不再持有可变单例字段，消除并发卸载竞态
+                for (LingUnloadHook hook : unloadHooks) {
+                    if (hook instanceof SpringAwareUnloadHook) {
+                        try {
+                            SpringAwareUnloadHook awareHook = (SpringAwareUnloadHook) hook;
+                            awareHook.preCleanup(lingId, this.mainContext, closedContext);
+                        } catch (Exception e) {
+                            log.debug("Failed to invoke preCleanup on unload hook: {}", hook.getClass().getName(), e);
+                        }
+                    }
+                }
+                // 5. 关闭上下文 (核心隔离点)
                 try {
-                    ((SpringAwareResourceGuard) guard).setContexts(this.mainContext,
-                            this.context);
-                } catch (Exception ignored) {
+                    closedContext.close();
+                    log.info("[{}] Spring ApplicationContext closed successfully", lingId);
+                } catch (Exception e) {
+                    // 🔥 关键修复：隔离上下文关闭异常，防止阻断整机卸载
+                    log.error("[{}] Error during Spring ApplicationContext close, forcing reference cleanup", lingId, e);
                 }
             }
-        }
+        } finally {
+            // 🔥 第二阶段清理会由 DefaultLingLifecycleEngine 调用 unloadHook.cleanup()
+            // cleanup 签名不变（仅 lingId + classLoader），无需在此预置 context 引用
 
-        // 彻底断开所有强引用，辅助 GC 回收 ClassLoader
-        this.builder = null; 
-        this.context = null; 
-        this.mainContext = null; 
-        this.classLoader = null;
-        this.lingContext = null;
-        this.webInterfaceManager = null;
-        this.excludedPackages = null;
-        this.customizers = null;
-        this.version = null;
-        log.debug("[{}] Container references cleared", (lingContext != null) ? lingContext.getLingId() : "unknown");
+            // 彻底断开所有强引用，辅助 GC 回收 ClassLoader
+            // 必须在 finally 中执行，确保即使清理过程抛异常也能断开引用
+            this.builder = null; 
+            this.context = null; 
+            this.mainContext = null; 
+            this.classLoader = null;
+            this.lingContext = null;
+            this.webInterfaceManager = null;
+            this.excludedPackages = null;
+            this.customizers = null;
+            this.version = null;
+            this.sourceFile = null;
+            log.debug("[{}] Container references cleared", lingId);
+        }
     }
 
     @Override
     public boolean isActive() {
-        return context != null && context.isActive();
+        // 🔥 基于 stopped 标志判定，避免在 context 已置 null 后仍尝试访问它
+        if (stopped.get()) {
+            return false;
+        }
+        ConfigurableApplicationContext ctx = this.context;
+        return ctx != null && ctx.isActive();
     }
 
     @Override
@@ -726,5 +454,21 @@ public class SpringLingContainer implements LingContainer {
     @Override
     public ClassLoader getClassLoader() {
         return this.classLoader;
+    }
+
+    /**
+     * 从 URL 中提取纯路径部分，剥离协议前缀（file:/、jar:file:/ 等）。
+     */
+    private static String extractPathFromUrl(URL url) {
+        String spec = url.toString();
+        // 处理 jar:file:/...!/... 形式
+        if (spec.startsWith("jar:")) {
+            spec = spec.substring(4);
+        }
+        // 处理 file:/... 形式（Windows: file:/C:/...；Linux: file:/home/...）
+        if (spec.startsWith("file:")) {
+            spec = spec.substring(5);
+        }
+        return spec;
     }
 }

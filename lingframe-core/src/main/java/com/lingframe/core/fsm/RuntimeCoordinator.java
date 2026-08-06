@@ -1,15 +1,23 @@
 package com.lingframe.core.fsm;
 
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.event.LingEventListener;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.InstanceDestroyedEvent;
-import com.lingframe.core.event.InstanceStateChangedEvent;
 import com.lingframe.core.event.RuntimeStateChangedEvent;
+import com.lingframe.core.event.InstanceStateChangedEvent;
+import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 运行时状态协调器，也是 {@link RuntimeStatus} 状态机的唯一拥有者。
@@ -20,7 +28,15 @@ import java.util.concurrent.ConcurrentMap;
  *   <li>{@code RuntimeCoordinator} 订阅实例事件并维护运行时快照</li>
  *   <li>它再基于快照聚合出宏观 {@link RuntimeStatus}</li>
  * </ul>
- * 因此两层状态机不是“对象互相持有并直接改状态”，
+ * 这种事件联动机制中存在**写优先级锁死设计**（解决 P2-1）：
+ * 如果运维主动将状态转换为 {@link RuntimeStatus#STOPPING}（下线意图），
+ * 任何来自实例健康状态好转的重新评估（如实例从 ERROR 恢复为 READY）、或者定时的 DEGRADED 健康检查，
+ * 甚至外部强制 {@code transition(DEGRADED/ACTIVE)}，都会因为 FSM 规则物理拒绝而被压制。
+ * STOPPING 只允许单向进入 REMOVED。这保证了控制面的下线意图具有绝对最高优先级。
+ * <p>
+ * 换句话说：
+ * 实例层只负责“陈述事实”，运行时状态机基于事实聚合，并由 {@link RuntimeStatus#TRANSITIONS}
+ * 的合法性矩阵保证最终决议不会被底层的临时抖动所颠覆。
  * 而是“实例层产出事实，运行时层订阅事实并收敛宏观状态”。
  * <p>
  * 通过 {@link EventBus#subscribeGlobal} 以全局监听器身份订阅实例事件，
@@ -53,19 +69,24 @@ public class RuntimeCoordinator {
     private static final int MAX_RETRIES = 3;
 
     /**
+     * DEGRADED 灵元健康检查间隔（秒）
+     */
+    private static final long HEALTH_CHECK_INTERVAL_SECONDS = 30;
+
+    /**
      * `lingId -> 运行时状态机`
      * 这是运行时宏观状态的正式真源。
      */
     private final ConcurrentMap<String, StateMachine<RuntimeStatus>> machines = new ConcurrentHashMap<>();
 
     /**
-     * `lingId -> { instanceKey -> InstanceStatus }`
+     * `lingId -> { instanceId -> InstanceStatus }`
      * <p>
      * 维护每个 Ling 下所有活跃实例的状态快照。
-     * `instanceKey` 使用实例版本号 `version`，同一灵元的不同版本各占一个条目。
+     * 快照键必须是 {@link InstanceStateChangedEvent#getInstanceId()}（进程内实例唯一身份），
+     * 不得使用 version：同版本双实例（reload / allowSameVersion）会互相覆盖或 DEAD 抹掉存活实例。
      * 实例进入 DEAD 后从快照中移除。
      * 这是 runtime 聚合时看到的“事实视图”，而不是直接去扫描对象图。
-     * 这样可以把“实例状态写入”和“运行时状态聚合”解耦成事件边界。
      */
     private final ConcurrentMap<String, ConcurrentMap<String, InstanceStatus>> snapshots = new ConcurrentHashMap<>();
 
@@ -83,16 +104,26 @@ public class RuntimeCoordinator {
     private final LingEventListener<InstanceStateChangedEvent> stateChangedListener;
     private final LingEventListener<InstanceDestroyedEvent> destroyedListener;
 
+    /**
+     * DEGRADED 灵元定时健康检查调度器。
+     * <p>
+     * 当灵元因熔断打开进入 DEGRADED 后，如果没有新请求经过 Pipeline，
+     * {@code tryRecoverFromDegraded} 不会被触发，DEGRADED 将持续。
+     * 此调度器周期性扫描所有 DEGRADED 灵元并触发 reevaluate，
+     * 作为事件驱动路径的兜底保障。
+     */
+    private volatile ScheduledExecutorService healthCheckExecutor;
+
     public RuntimeCoordinator(EventBus eventBus) {
         this(eventBus, new DefaultRuntimeEvaluationPolicy());
     }
 
     /**
-     * @param eventBus 事件总线，为 null 时不发布事件
+     * @param eventBus 事件总线，不允许为 null
      * @param policy   聚合评估策略
      */
     public RuntimeCoordinator(EventBus eventBus, RuntimeEvaluationPolicy policy) {
-        this.eventBus = eventBus;
+        this.eventBus = Objects.requireNonNull(eventBus, "EventBus must not be null");
         this.policy = policy;
 
         // 构造时创建监听器引用，便于 start/stop 对称注册注销
@@ -103,21 +134,23 @@ public class RuntimeCoordinator {
     /* ==================== 生命周期管理 ==================== */
 
     /**
-     * 启动协调器：注册全局事件监听器
+     * 启动协调器：注册全局事件监听器 + 启动 DEGRADED 健康检查
      */
     public void start() {
         log.info("RuntimeCoordinator starting, subscribing to instance events");
         eventBus.subscribeGlobal(InstanceStateChangedEvent.class, stateChangedListener);
         eventBus.subscribeGlobal(InstanceDestroyedEvent.class, destroyedListener);
+        startHealthCheck();
     }
 
     /**
-     * 停止协调器：注销全局事件监听器
+     * 停止协调器：注销全局事件监听器 + 停止健康检查
      */
     public void stop() {
         log.info("RuntimeCoordinator stopping, unsubscribing from instance events");
         eventBus.unsubscribeGlobal(InstanceStateChangedEvent.class, stateChangedListener);
         eventBus.unsubscribeGlobal(InstanceDestroyedEvent.class, destroyedListener);
+        stopHealthCheck();
     }
 
     /* ==================== Ling 注册与注销 ==================== */
@@ -126,11 +159,21 @@ public class RuntimeCoordinator {
      * 注册一个 Ling，创建对应的运行时状态机。
      * 幂等操作：重复注册返回已有状态机。
      * 这是运行时 FSM 的唯一创建入口。
+     * <p>
+     * 灵核不注册到 RuntimeCoordinator——
+     * 由 {@code LingCoreRoutableTarget} 直接暴露 {@code currentStatus()=ACTIVE}，
+     * 不进状态机。{@code shutdown}/{@code transition} 调到灵核时
+     * {@code fsm == null} 直接拒绝。
      *
      * @param lingId Ling 标识
      * @return 该 Ling 的运行时状态机
      */
     public StateMachine<RuntimeStatus> register(String lingId) {
+        if (isLingCoreId(lingId)) {
+            throw new IllegalArgumentException(
+                    "Ling core id [lingcore-app] must not register into RuntimeCoordinator; "
+                            + "use LingCoreRoutableTarget only");
+        }
         snapshots.putIfAbsent(lingId, new ConcurrentHashMap<>());
         // `register` 是运行时状态机的唯一创建入口，保证 `LingRuntime` 与协调器
         // 读取的都是同一份宏观状态真源。
@@ -148,31 +191,60 @@ public class RuntimeCoordinator {
         return fsm != null ? fsm.current() : null;
     }
 
+    /**
+     * 查询灵元运行时状态转换历史。
+     * <p>
+     * 替代外围模块直接获取 StateMachine 的越界路径，
+     * 让 dashboard 等展示层只拿到转换记录列表，不触碰状态机内部对象。
+     *
+     * @param lingId 灵元 ID
+     * @return 转换记录列表（时序快照）；灵元未注册或无记录时返回空列表
+     */
+    public List<TransitionRecord<RuntimeStatus>> getTransitionHistory(String lingId) {
+        StateMachine<RuntimeStatus> machine = machines.get(lingId);
+        if (machine == null) {
+            return Collections.emptyList();
+        }
+        List<TransitionRecord<RuntimeStatus>> history = machine.history();
+        return history == null ? Collections.emptyList() : history;
+    }
+
     /* ==================== 事件监听入口 ==================== */
 
     /**
      * 处理实例状态变更事件。
      * <p>
      * 由实例状态协调器发布，本方法更新实例快照后触发聚合评估。
-     * 若该 Ling 尚未注册，自动防御性注册。
+     * 未 {@link #register} 的 ling 事件会被忽略（避免 unregister 后迟到事件复活 FSM）。
+     * 编排层须在实例事件出现前调用 {@link #register}（见 DefaultLingLifecycleEngine.ensureRuntimeForDeployment）。
      */
     public void onInstanceStateChanged(InstanceStateChangedEvent event) {
         String lingId = event.getLingId();
-        String version = event.getVersion();
+        String instanceId = event.getInstanceId();
         InstanceStatus to = event.getToStatus();
 
-        // 防御性注册（正常流程应在部署时显式调用 register）
-        register(lingId);
+        // 灵核实例（lingcore-app）不得进 RuntimeCoordinator：只走 LingCoreRoutableTarget
+        if (isLingCoreId(lingId)) {
+            log.debug("Ignore instance state event for ling core id [{}]", lingId);
+            return;
+        }
 
+        // 已注册灵元：更新快照。未注册：不防御性创建 FSM（避免 unregister 后迟到事件造 ghost）
         ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
+        if (states == null) {
+            log.debug("Ling [{}] not registered or already unregistered, ignore instance state change", lingId);
+            return;
+        }
 
         if (to == InstanceStatus.DEAD) {
-            // 终态实例移出快照
-            states.remove(version);
-            log.debug("Instance [{}/{}] removed from snapshot (DEAD)", lingId, version);
+            // 终态实例移出快照（按 instanceId，不影响同 version 的其他实例）
+            states.remove(instanceId);
+            log.debug("Instance [{}/{}] removed from snapshot (DEAD, version={})",
+                    lingId, instanceId, event.getVersion());
         } else {
-            states.put(version, to);
-            log.debug("Instance [{}/{}] snapshot updated to {}", lingId, version, to);
+            states.put(instanceId, to);
+            log.debug("Instance [{}/{}] snapshot updated to {} (version={})",
+                    lingId, instanceId, to, event.getVersion());
         }
 
         // 触发聚合评估：实例层只汇报事实，运行时层自己决定宏观状态。
@@ -187,14 +259,23 @@ public class RuntimeCoordinator {
      */
     public void onInstanceDestroyed(InstanceDestroyedEvent event) {
         String lingId = event.getLingId();
-        String version = event.getVersion();
+        String instanceId = event.getInstanceId();
 
-        ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
-        if (states != null) {
-            states.remove(version);
+        if (isLingCoreId(lingId)) {
+            return;
         }
 
+        ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
+        if (states == null) {
+            // 未注册 / 已 unregister：忽略，禁止通过销毁事件复活 FSM
+            return;
+        }
+        states.remove(instanceId);
         reevaluate(lingId);
+    }
+
+    private static boolean isLingCoreId(String lingId) {
+        return LingCoreConstants.LINGCORE_LING_ID.equals(lingId);
     }
 
     /* ==================== 主动运维操作 ==================== */
@@ -207,6 +288,8 @@ public class RuntimeCoordinator {
      * 当所有实例都 DEAD 后，由 {@link #reevaluate} 自动跃迁到 REMOVED。
      */
     public void shutdown(String lingId) {
+        // 灵核不在 machines map，fsm == null 直接拒绝。
+        // 「灵核不可卸载」语义由「灵核不进状态机」承担——能力是类型的派生属性。
         StateMachine<RuntimeStatus> fsm = machines.get(lingId);
         if (fsm == null) {
             log.warn("Cannot shutdown unknown ling [{}]", lingId);
@@ -225,14 +308,17 @@ public class RuntimeCoordinator {
     /**
      * 主动触发运行时状态转换（Dashboard/运维调用）。
      * <p>
-     * 此方法是外部触发状态转换的唯一入口，确保所有状态变更都通过 RuntimeCoordinator，
-     * 从而保证事件正确发布。
+     * 这是改变宏观状态的外部唯一入口。根据 {@link RuntimeStatus#TRANSITIONS} 定义，
+     * 当状态已进入 {@code STOPPING} 时，即使调用本方法试图切回 {@code ACTIVE} 或 {@code DEGRADED}，
+     * 也会被状态机直接拒绝并返回非法，从而锁死下线意图，防止优先级反转。
      *
      * @param lingId Ling 标识
      * @param target 目标状态
      * @return 转换结果
      */
     public TransitionResult<RuntimeStatus> transition(String lingId, RuntimeStatus target) {
+        // 迁移合法性委托给 RuntimeStatus.TRANSITIONS 现有转换表，由 StateMachine.transition 内部判定。
+        // 灵核不进 machines map，fsm == null 直接返回 illegal。
         StateMachine<RuntimeStatus> fsm = machines.get(lingId);
         if (fsm == null) {
             log.warn("Cannot transition unknown ling [{}]", lingId);
@@ -250,14 +336,76 @@ public class RuntimeCoordinator {
     }
 
     /**
-     * 清理已移除 Ling 的内存数据（可选，由大管家定期调用）
+     * 清理已移除 Ling 的内存数据。
+     * 仅当当前状态为 {@link RuntimeStatus#REMOVED} 时生效；
+     * 全量卸载路径必须先确定性进入 REMOVED，再调用本方法。
+     *
+     * @return 是否完成清理
      */
-    public void purge(String lingId) {
+    public boolean purge(String lingId) {
         StateMachine<RuntimeStatus> fsm = machines.get(lingId);
         if (fsm != null && fsm.current() == RuntimeStatus.REMOVED) {
             machines.remove(lingId);
             snapshots.remove(lingId);
             log.info("Ling [{}] purged from RuntimeCoordinator", lingId);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 编排层在「新 runtime 部署失败」或「全量卸载收口」时调用的确定性注销。
+     * <p>
+     * 不依赖实例快照是否为空：仓库侧已放弃该 ling 时，coordinator 不得残留 ghost 状态机。
+     * 语义：
+     * <ol>
+     *   <li>若尚未 REMOVED：优先走 STOPPING → REMOVED（合法表内路径）</li>
+     *   <li>清空快照并从 machines 移除</li>
+     * </ol>
+     * 幂等：对未注册 ling 直接返回 false。
+     *
+     * @param lingId 灵元 ID
+     * @return 是否移除了已注册条目
+     */
+    public boolean unregister(String lingId) {
+        StateMachine<RuntimeStatus> fsm = machines.get(lingId);
+        if (fsm == null) {
+            snapshots.remove(lingId);
+            return false;
+        }
+
+        RuntimeStatus current = fsm.current();
+        // 确定性收口到 REMOVED：合法表路径优先
+        // INACTIVE 可直达 REMOVED；ACTIVE/DEGRADED/RECOVERING 先 STOPPING 再 REMOVED
+        if (current == RuntimeStatus.INACTIVE) {
+            forceTransition(lingId, fsm, RuntimeStatus.REMOVED);
+        } else if (current == RuntimeStatus.ACTIVE
+                || current == RuntimeStatus.DEGRADED
+                || current == RuntimeStatus.RECOVERING) {
+            forceTransition(lingId, fsm, RuntimeStatus.STOPPING);
+            if (fsm.current() == RuntimeStatus.STOPPING) {
+                forceTransition(lingId, fsm, RuntimeStatus.REMOVED);
+            }
+        } else if (current == RuntimeStatus.STOPPING) {
+            forceTransition(lingId, fsm, RuntimeStatus.REMOVED);
+        }
+
+        RuntimeStatus finalStatus = fsm.current();
+        machines.remove(lingId);
+        snapshots.remove(lingId);
+        log.info("Ling [{}] unregistered from RuntimeCoordinator (final={})", lingId, finalStatus);
+        return true;
+    }
+
+    private void forceTransition(String lingId, StateMachine<RuntimeStatus> fsm, RuntimeStatus target) {
+        TransitionResult<RuntimeStatus> result = fsm.transition(target);
+        if (result.isSuccess() && result.from() != result.target()) {
+            log.info("Ling [{}] runtime unregister transition: {} -> {}",
+                    lingId, result.from(), result.target());
+            publishChanged(lingId, result);
+        } else if (result.isIllegal()) {
+            log.warn("Ling [{}] illegal transition {} -> {} during unregister",
+                    lingId, result.from(), target);
         }
     }
 
@@ -279,9 +427,7 @@ public class RuntimeCoordinator {
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             RuntimeStatus current = fsm.current();
 
-            // `STOPPING` 是运维意图态。
-            // 一旦进入 STOPPING，runtime 不允许再被“实例变好了”拉回 ACTIVE / DEGRADED / RECOVERING，
-            // 只允许在实例全部消失后继续前进到 REMOVED。
+            // `STOPPING` 是硬下线运维意图态：只允许推进到 REMOVED，不可被实例事实拉回 ACTIVE。
             if (current == RuntimeStatus.STOPPING) {
                 tryFinishShutdown(lingId, fsm);
                 return;
@@ -294,10 +440,12 @@ public class RuntimeCoordinator {
 
             // 收集实例状态快照，而不是直接操作 LingInstance：
             // 这样双层状态机是“事件联动”，不是“对象互写”。
+            // INACTIVE 是事实态（无可用实例），不是「停流」：有 READY 就应可聚合回 ACTIVE。
+            // 流量控制走路由/权重/权限，不占用 RuntimeStatus。
             ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
             Collection<InstanceStatus> stateValues = (states != null)
                     ? states.values()
-                    : java.util.Collections.emptyList();
+                    : Collections.emptyList();
 
             // 调用策略评估
             RuntimeStatus suggested = policy.evaluate(current, stateValues);
@@ -362,5 +510,70 @@ public class RuntimeCoordinator {
             return;
         }
         eventBus.publish(new RuntimeStateChangedEvent(lingId, result.from(), result.target()));
+    }
+
+    /* ==================== DEGRADED 定时健康检查 ==================== */
+
+    private void startHealthCheck() {
+        if (healthCheckExecutor != null) {
+            return;
+        }
+        synchronized (this) {
+            if (healthCheckExecutor != null) {
+                return;
+            }
+            ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(
+                    NamedThreadFactory.daemon("lingframe-degraded-health-check"));
+            executor.scheduleAtFixedRate(
+                    this::checkDegradedLings,
+                    HEALTH_CHECK_INTERVAL_SECONDS,
+                    HEALTH_CHECK_INTERVAL_SECONDS,
+                    TimeUnit.SECONDS);
+            healthCheckExecutor = executor;
+            log.info("DEGRADED health check started (interval={}s)", HEALTH_CHECK_INTERVAL_SECONDS);
+        }
+    }
+
+    private void stopHealthCheck() {
+        ScheduledExecutorService executor;
+        synchronized (this) {
+            executor = healthCheckExecutor;
+            if (executor == null) {
+                return;
+            }
+            healthCheckExecutor = null;
+        }
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+                log.warn("DEGRADED health check executor did not terminate in 5s, forced shutdown");
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        log.info("DEGRADED health check stopped");
+    }
+
+    /**
+     * 扫描所有 DEGRADED 灵元，触发 reevaluate。
+     * <p>
+     * 这是事件驱动路径的兜底：当灵元因熔断打开进入 DEGRADED，
+     * 但没有新请求经过 Pipeline 触发 {@code tryRecoverFromDegraded} 时，
+     * 此定时任务确保 DEGRADED 灵元最终能被重新评估。
+     */
+    private void checkDegradedLings() {
+        try {
+            for (String lingId : machines.keySet()) {
+                StateMachine<RuntimeStatus> fsm = machines.get(lingId);
+                if (fsm != null && fsm.current() == RuntimeStatus.DEGRADED) {
+                    log.debug("Health check: reevaluating DEGRADED ling [{}]", lingId);
+                    reevaluate(lingId);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("DEGRADED health check failed: {}", e.getMessage());
+        }
     }
 }

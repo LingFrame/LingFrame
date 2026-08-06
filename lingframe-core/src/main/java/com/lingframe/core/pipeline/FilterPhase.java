@@ -17,6 +17,17 @@ package com.lingframe.core.pipeline;
 public final class FilterPhase {
 
     /**
+     * L0 provider 级路由阶段。
+     * <p>
+     * 在所有正向阶段之前执行，从 FQSID 中提取契约 ID，
+     * 按 provider 权重选择目标 lingId 并设置 ctx.runtime，
+     * 让后续过滤器直接使用已解析的 runtime。
+     * <p>
+     * 旧格式 FQSID（{@code lingId:serviceName}）不触发此阶段，走兼容路径直接放行。
+     */
+    public static final int PROVIDER_ROUTING = -100;
+
+    /**
      * 指标与入口打点阶段。
      */
     public static final int METRICS = 0;
@@ -30,6 +41,17 @@ public final class FilterPhase {
      * 路由选路阶段。
      */
     public static final int ROUTING = 200;
+
+    /**
+     * 治理意图预填充阶段。
+     * <p>
+     * 在弹性治理之前把灵元级 effective policy（静态策略 + 动态补丁合并）的 invocation 字段
+     * 预填到 ctx.governance()，让弹性组件通过 ctx 读取治理意图，
+     * 守护"ctx 为 pipeline 唯一通行证"原则。
+     * <p>
+     * 必须在 ROUTING 之后（lingId 已确定）、RESILIENCE 之前（弹性组件读 ctx）。
+     */
+    public static final int POLICY_PREFILL = 240;
 
     /**
      * 弹性治理阶段。

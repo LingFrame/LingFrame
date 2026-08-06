@@ -8,6 +8,7 @@ import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.pipeline.FilterRegistry;
+import com.lingframe.core.pipeline.FilterRegistryConfig;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.pipeline.LatestVersionPolicy;
@@ -29,6 +30,8 @@ import javax.tools.ToolProvider;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
+import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -37,13 +40,13 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -73,7 +76,7 @@ class LingUnloadCollectabilityRegressionTest {
             assertFalse(cycle.hasLimiter);
             assertFalse(cycle.hasBreaker);
             assertFalse(cycle.hasExecutor);
-            assertTrue(cycle.classLoaderCollected);
+            assertClassLoaderCollected(cycle.classLoaderCollected);
 
             verify(runtime.serviceRegistry).evict(LING_ID);
             verify(runtime.permissionService).removeLing(LING_ID);
@@ -96,7 +99,7 @@ class LingUnloadCollectabilityRegressionTest {
                 assertFalse(cycle.hasLimiter);
                 assertFalse(cycle.hasBreaker);
                 assertFalse(cycle.hasExecutor);
-                assertTrue(cycle.classLoaderCollected);
+                assertClassLoaderCollected(cycle.classLoaderCollected);
             }
 
             verify(runtime.serviceRegistry, times(3)).evict(LING_ID);
@@ -119,7 +122,7 @@ class LingUnloadCollectabilityRegressionTest {
             assertFalse(cycle.hasLimiter);
             assertFalse(cycle.hasBreaker);
             assertFalse(cycle.hasExecutor);
-            assertTrue(cycle.classLoaderCollected);
+            assertClassLoaderCollected(cycle.classLoaderCollected);
             assertEquals(LeakRiskLevel.CHECK_FAILED, cycle.overallRiskLevel);
             assertTrue(cycle.uninstallTriggered);
 
@@ -147,11 +150,17 @@ class LingUnloadCollectabilityRegressionTest {
         LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
         when(serviceRegistry.getServicesByLingId(LING_ID)).thenReturn(Collections.emptyList());
 
-        FilterRegistry registry = new FilterRegistry(new InvokableMethodCache(), permissionService);
-        registry.initialize(repository, new LatestVersionPolicy(), eventBus, runtimeCoordinator);
+        FilterRegistry registry = new FilterRegistry(FilterRegistryConfig.builder()
+                .methodCache(new InvokableMethodCache())
+                .permissionService(permissionService)
+                .lingRepository(repository)
+                .trafficRouter(new LatestVersionPolicy())
+                .eventBus(eventBus)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
         InvocationPipelineEngine pipelineEngine = new InvocationPipelineEngine(registry);
         LingUnloadCoordinator unloadCoordinator =
-                new LingUnloadCoordinator(pipelineEngine, Collections.emptyList(), null, null);
+                new LingUnloadCoordinator(pipelineEngine, Collections.emptyList(), Collections.emptyList(), null, null);
 
         AtomicReference<CloseAwareClassLoader> loaderHolder = new AtomicReference<>();
         AtomicBoolean classLoaderClosed = new AtomicBoolean(false);
@@ -182,21 +191,22 @@ class LingUnloadCollectabilityRegressionTest {
                         .forceCleanupDelaySeconds(0)
                         .build())
                 .build();
-        List<LingSecurityVerifier> verifiers = Collections.singletonList(new DangerousApiVerifier(false));
+        List<LingSecurityVerifier> verifiers = Collections.singletonList(new DangerousApiVerifier(false, Collections.emptyList(), null));
 
-        DefaultLingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(
-                containerFactory,
-                permissionService,
-                loaderFactory,
-                verifiers,
-                eventBus,
-                config,
-                repository,
-                serviceRegistry,
-                pipelineEngine,
-                null,
-                unloadCoordinator,
-                runtimeCoordinator);
+        DefaultLingLifecycleEngine lifecycleEngine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(permissionService)
+                .lingLoaderFactory(loaderFactory)
+                .verifiers(verifiers)
+                .eventBus(eventBus)
+                .lingFrameConfig(config)
+                .lingRepository(repository)
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(pipelineEngine)
+                .lingResourceManager(null)
+                .unloadCoordinator(unloadCoordinator)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
 
         return new TestRuntime(workspace, classesDir, repository, permissionService, serviceRegistry, registry,
                 pipelineEngine, lifecycleEngine, runtimeCoordinator, loaderHolder, classLoaderClosed);
@@ -270,8 +280,8 @@ class LingUnloadCollectabilityRegressionTest {
         context.setMethodName("echo");
         context.setParameterTypeNames(new String[] { "java.lang.String" });
         context.setArgs(new Object[] { input });
-        context.setRequiredPermission(REQUIRED_PERMISSION);
-        context.setAccessType(AccessType.EXECUTE);
+        context.governance().setRequiredPermission(REQUIRED_PERMISSION);
+        context.governance().setAccessType(AccessType.EXECUTE);
         try {
             return pipelineEngine.invoke(context);
         } finally {
@@ -298,6 +308,18 @@ class LingUnloadCollectabilityRegressionTest {
             System.runFinalization();
             TimeUnit.MILLISECONDS.sleep(50);
         }
+    }
+
+    /**
+     * 断言 ClassLoader 已被 GC 回收。
+     */
+    private static void assertClassLoaderCollected(boolean collected) {
+        if (!collected) {
+            // 诊断：打印 JVM 启动参数，帮助定位 ClassLoader 泄漏原因
+            System.err.println("[DIAG] classLoaderCollected=false。"
+                    + "JVM inputArguments: " + ManagementFactory.getRuntimeMXBean().getInputArguments());
+        }
+        assertTrue(collected, "ClassLoader 应在 undeploy 后被 GC 回收，存在泄漏");
     }
 
     private void compileServiceClass(Path sourceDir, Path classesDir) throws IOException {
@@ -455,7 +477,7 @@ class LingUnloadCollectabilityRegressionTest {
             if (!Files.exists(path)) {
                 return;
             }
-            try (java.util.stream.Stream<Path> stream = Files.walk(path)) {
+            try (Stream<Path> stream = Files.walk(path)) {
                 stream.sorted((left, right) -> right.getNameCount() - left.getNameCount())
                         .forEach(current -> {
                             try {

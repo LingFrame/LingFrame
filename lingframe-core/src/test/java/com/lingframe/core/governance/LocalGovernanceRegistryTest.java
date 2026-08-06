@@ -15,11 +15,13 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(MockitoExtension.class)
@@ -96,6 +98,61 @@ class LocalGovernanceRegistryTest {
             assertEquals("perm-2", loadedPolicy.getPermissions().get(0).getPermissionId());
             assertEquals(Integer.valueOf(1500), loadedPolicy.getInvocation().getTimeoutMs());
             assertEquals(Integer.valueOf(9), loadedPolicy.getInvocation().getRateLimitPerSecond());
+        }
+    }
+
+    @Nested
+    @DisplayName("临时文件清理测试（P2.2）")
+    class TmpFileCleanupTests {
+
+        @Test
+        @DisplayName("正常 save 成功后 tmp 文件应不存在")
+        void shouldNotLeaveTmpFileAfterSuccessfulSave() {
+            GovernancePolicy policy = new GovernancePolicy();
+            registry.updatePatch("Ling-1", policy);
+
+            File tmpFile = new File(configFile.getAbsolutePath() + ".tmp");
+            assertFalse(tmpFile.exists(), "正常 save 成功后 tmp 文件应已被原子 move 走");
+            assertTrue(configFile.exists(), "目标文件应存在");
+        }
+
+        @Test
+        @DisplayName("move 失败时应清理残留 tmp 文件，避免磁盘泄漏")
+        void shouldCleanUpTmpFileWhenMoveFails() throws Exception {
+            // 构造让 Files.move 必然失败的场景：storePath 指向一个已存在的非空目录。
+            // move(文件, 非空目录, REPLACE_EXISTING) 在所有 OS 上都会抛 IOException。
+            Path storePath = tempDir.resolve("governance-as-dir");
+            Files.createDirectories(storePath);
+            Files.createFile(storePath.resolve("placeholder")); // 让目录非空
+
+            LocalGovernanceRegistry r = new LocalGovernanceRegistry(eventBus, storePath.toString());
+
+            GovernancePolicy policy = new GovernancePolicy();
+            // updatePatch 内部 save() 会写 tmp 成功，但 move 失败 → 抛 IllegalStateException 并清理 tmp
+            assertThrows(IllegalStateException.class,
+                    () -> r.updatePatch("Ling-x", policy),
+                    "move 失败应抛 IllegalStateException 让调用方感知失败");
+
+            // 验证残留 tmp 文件（唯一命名：storePath + ".tmp.<threadId>.<nanoTime>"）已被 deleteIfExists 清理
+            File[] tmpFiles = tempDir.toFile().listFiles(
+                    (dir, name) -> name.startsWith("governance-as-dir.tmp"));
+            assertNotNull(tmpFiles);
+            assertEquals(0, tmpFiles.length,
+                    "move 失败后残留 tmp 文件应被 deleteIfExists 清理");
+        }
+
+        @Test
+        @DisplayName("多次 updatePatch 不应累积 tmp 文件")
+        void shouldNotAccumulateTmpFilesAcrossMultipleUpdates() {
+            for (int i = 0; i < 5; i++) {
+                GovernancePolicy policy = new GovernancePolicy();
+                policy.getInvocation().setTimeoutMs(1000 + i);
+                registry.updatePatch("Ling-" + i, policy);
+            }
+
+            File tmpFile = new File(configFile.getAbsolutePath() + ".tmp");
+            assertFalse(tmpFile.exists(), "多次 updatePatch 不应留下累积的 tmp 文件");
+            assertTrue(configFile.exists());
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.lingframe.core.pipeline;
 
+import com.lingframe.api.resilience.FallbackCause;
+import com.lingframe.api.resilience.FallbackProvider;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
@@ -37,8 +39,12 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
     private final RuntimeCoordinator runtimeCoordinator;
     private final GovernanceMetricsCollector governanceMetricsCollector;
 
+    /** 可插拔的降级策略，为 null 时直接抛异常 */
+    private volatile FallbackProvider fallbackProvider;
+
     // 按 lingId 管理弹性组件实例
-    private final ConcurrentHashMap<String, CircuitBreaker> breakers = new ConcurrentHashMap<>();
+    // breakers 存 BreakerHolder 而非 CircuitBreaker，是为了在 timeoutMs 变化时能检测并重建实例
+    private final ConcurrentHashMap<String, BreakerHolder> breakers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, LimiterHolder> limiters = new ConcurrentHashMap<>();
 
     public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus, RuntimeCoordinator runtimeCoordinator) {
@@ -62,6 +68,16 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         this(null, null, null, null);
     }
 
+    /**
+     * 设置降级策略。
+     * <p>
+     * 设置后，熔断打开或限流拒绝时将优先调用降级策略获取响应，
+     * 仅当降级策略返回 null 时才抛出异常。
+     */
+    public void setFallbackProvider(FallbackProvider fallbackProvider) {
+        this.fallbackProvider = fallbackProvider;
+    }
+
     @Override
     public int getOrder() {
         return FilterPhase.RESILIENCE;
@@ -74,29 +90,50 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             return chain.doFilter(ctx);
         }
 
-        String lingId = fqsid.split(":")[0];
+        // SIMULATION 干跑（Dashboard 压测/模拟）：不消费真实限流预算、不污染熔断器统计。
+        // 模拟流量是验证路由与治理链的探针，不是真实业务流量——高频压测若被限流打回，
+        // 则永远压测不出分流效果；模拟失败若记入熔断器，会把真实灵元误判为故障。
+        if (ctx.execution().getMode().isSimulation()) {
+            return chain.doFilter(ctx);
+        }
+
+        String lingId = ctx.getEffectiveLingId();
 
         // 1. 限流检查
         RateLimiter limiter = getLimiter(lingId, ctx);
         if (limiter != null && !limiter.tryAcquire()) {
-            log.warn("[Resilience:{}] Rate limited, rejecting request: {}", lingId, fqsid);
+            // WARN 而非 DEBUG：限流拒绝是业务可见的异常路径，必须可观测（限流值/目标版本/调用方），
+            // 否则生产报表里「频繁 RATE_LIMITED」时无日志可查，只能靠猜。
+            LingRuntime runtimeForLog = lingRepository.getRuntime(lingId);
+            int effectiveRateLimit = runtimeForLog != null ? resolveRateLimit(ctx, runtimeForLog.getConfig()) : -1;
+            log.warn("[Resilience:{}] Rate limited, rejecting request: {}, rateLimit={}/s, targetVersion={}",
+                    lingId, fqsid, effectiveRateLimit, ctx.getTargetVersion());
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordRateLimited(lingId, ctx.getTargetVersion());
+            }
+            Object fallbackResult = tryFallback(fqsid, FallbackCause.RATE_LIMITED);
+            if (fallbackResult != null) {
+                return fallbackResult;
             }
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.RATE_LIMITED);
         }
 
         // 2. 熔断检查
-        CircuitBreaker breaker = getBreaker(lingId);
+        CircuitBreaker breaker = getBreaker(lingId, ctx);
         if (breaker != null && !breaker.tryAcquirePermission()) {
-            log.warn("[Resilience:{}] Circuit breaker OPEN, rejecting request: {}", lingId, fqsid);
+            log.warn("[Resilience:{}] Circuit breaker OPEN, rejecting request: {}, targetVersion={}",
+                    lingId, fqsid, ctx.getTargetVersion());
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordCircuitOpenRejected(lingId, ctx.getTargetVersion());
             }
 
-            // 🔥 熔断打开 → 将灵元宏观状态转为 DEGRADED
+            // 熔断打开 → 将灵元宏观状态转为 DEGRADED
             transitionToDegraded(lingId, ctx.getTargetVersion());
 
+            Object fallbackResult = tryFallback(fqsid, FallbackCause.CIRCUIT_OPEN);
+            if (fallbackResult != null) {
+                return fallbackResult;
+            }
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.CIRCUIT_OPEN);
         }
 
@@ -112,6 +149,10 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
                 tryRecoverFromDegraded(lingId, breaker);
             }
             return result;
+        } catch (Error e) {
+            // Error（OOM / StackOverflow）跳过熔断器 onError 副作用直接透传，
+            // 避免在 JVM 即将崩溃时再触发 breaker.onError 导致二次错误。
+            throw e;
         } catch (Throwable t) {
             if (breaker != null) {
                 long durationNanos = System.nanoTime() - startNanos;
@@ -121,32 +162,82 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         }
     }
 
-    private CircuitBreaker getBreaker(String lingId) {
-        return breakers.computeIfAbsent(lingId, id -> {
-            LingRuntime runtime = lingRepository.getRuntime(id);
-            if (runtime == null)
-                return null;
-            LingRuntimeConfig config = runtime.getConfig();
-            return new SlidingWindowCircuitBreaker(
+    /**
+     * 获取或构建灵元的熔断器。
+     * <p>
+     * 慢调用阈值（timeoutMs）优先读 ctx.governance()（由 InvocationPolicyPrefillFilter
+     * 在 RESILIENCE 之前预填充），回退 LingRuntimeConfig 静态默认值。
+     * 当 timeoutMs 变化时（治理下发后预填充值改变），用 compute 原子重建熔断器实例，
+     * 与 {@link #getLimiter} 的 LimiterHolder 模式对称。
+     * <p>
+     * B 类熔断参数（failureRate/slowCallRate/slidingWindowSize/minimumCalls/waitDuration）
+     * 仍读 config 静态默认值，这些参数没有"双写"问题，不进入治理下发链路。
+     */
+    private CircuitBreaker getBreaker(String lingId, InvocationContext ctx) {
+        // 快速路径：缓存命中且未治理下发 timeout 时直接返回，避免每次请求都读 runtime/config。
+        // 与 {@link #getLimiter} 的快速路径对称：governedTimeout 为 null 表示无治理下发，
+        // 此时 effectiveTimeout 会回退到 config 静态默认值，与 holder 创建时的 timeoutMs 一致，缓存有效。
+        BreakerHolder holder = breakers.get(lingId);
+        if (holder != null) {
+            Integer governedTimeout = ctx.governance().getTimeoutMs();
+            if (governedTimeout == null) {
+                return holder.breaker;
+            }
+        }
+
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
+        if (runtime == null) {
+            return null;
+        }
+        LingRuntimeConfig config = runtime.getConfig();
+        // 读 ctx.governance()（预填充后有值），回退 config 静态默认值
+        Integer governedTimeout = ctx.governance().getTimeoutMs();
+        int effectiveTimeout = governedTimeout != null ? governedTimeout : config.getDefaultTimeoutMs();
+
+        if (holder != null && holder.timeoutMs == effectiveTimeout) {
+            return holder.breaker;
+        }
+        holder = breakers.compute(lingId, (id, existing) -> {
+            if (existing != null && existing.timeoutMs == effectiveTimeout) {
+                return existing;
+            }
+            long waitDuration = config.getCircuitBreakerWaitDurationInOpenStateMs() > 0
+                    ? config.getCircuitBreakerWaitDurationInOpenStateMs()
+                    : effectiveTimeout * 10L;
+            CircuitBreaker breaker = new SlidingWindowCircuitBreaker(
                     id,
-                    50, // 失败率阈值 50%
-                    80, // 慢调用率阈值 80%
-                    config.getDefaultTimeoutMs(), // 慢调用判定阈值
-                    20, // 滑动窗口大小
-                    10, // 最小调用数
-                    config.getDefaultTimeoutMs() * 10L, // 熔断后等待时间
+                    config.getCircuitBreakerFailureRateThreshold(),
+                    config.getCircuitBreakerSlowCallRateThreshold(),
+                    effectiveTimeout,
+                    config.getCircuitBreakerSlidingWindowSize(),
+                    config.getCircuitBreakerMinimumNumberOfCalls(),
+                    waitDuration,
                     eventBus);
+            return new BreakerHolder(effectiveTimeout, breaker);
         });
+        return holder == null ? null : holder.breaker;
     }
 
     private RateLimiter getLimiter(String lingId, InvocationContext ctx) {
-        LimiterHolder holder = limiters.compute(lingId, (id, existing) -> {
-            LingRuntime runtime = lingRepository.getRuntime(id);
-            if (runtime == null) {
-                return null;
+        LimiterHolder holder = limiters.get(lingId);
+        if (holder != null) {
+            Integer governedRateLimit = ctx.governance().getRateLimitPerSecond();
+            if (governedRateLimit == null || governedRateLimit <= 0) {
+                return holder.limiter;
             }
+        }
 
-            int rateLimit = resolveRateLimit(ctx, runtime.getConfig());
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
+        if (runtime == null) {
+            return null;
+        }
+
+        int rateLimit = resolveRateLimit(ctx, runtime.getConfig());
+        if (holder != null && holder.rateLimitPerSecond == rateLimit) {
+            return holder.limiter;
+        }
+
+        holder = limiters.compute(lingId, (id, existing) -> {
             if (existing != null && existing.rateLimitPerSecond == rateLimit) {
                 return existing;
             }
@@ -236,6 +327,28 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         }
     }
 
+    /**
+     * 尝试调用降级策略获取响应。
+     *
+     * @return 降级结果，null 表示无法降级
+     */
+    private Object tryFallback(String fqsid, FallbackCause cause) {
+        FallbackProvider provider = this.fallbackProvider;
+        if (provider == null) {
+            return null;
+        }
+        try {
+            Object result = provider.fallback(fqsid, cause);
+            if (result != null) {
+                log.info("[Resilience] Fallback succeeded for cause={}, fqsid={}", cause, fqsid);
+            }
+            return result;
+        } catch (Throwable t) {
+            log.warn("[Resilience] Fallback failed for cause={}, fqsid={}: {}", cause, fqsid, t.getMessage());
+            return null;
+        }
+    }
+
     private static final class LimiterHolder {
         private final int rateLimitPerSecond;
         private final RateLimiter limiter;
@@ -243,6 +356,20 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         private LimiterHolder(int rateLimitPerSecond, RateLimiter limiter) {
             this.rateLimitPerSecond = rateLimitPerSecond;
             this.limiter = limiter;
+        }
+    }
+
+    /**
+     * 熔断器 holder：缓存 timeoutMs（慢调用阈值），用于检测治理下发后是否需要重建实例。
+     * 与 LimiterHolder 模式对称，只跟踪会动态变化的 A 类字段（timeoutMs）。
+     */
+    private static final class BreakerHolder {
+        private final int timeoutMs;
+        private final CircuitBreaker breaker;
+
+        private BreakerHolder(int timeoutMs, CircuitBreaker breaker) {
+            this.timeoutMs = timeoutMs;
+            this.breaker = breaker;
         }
     }
 }

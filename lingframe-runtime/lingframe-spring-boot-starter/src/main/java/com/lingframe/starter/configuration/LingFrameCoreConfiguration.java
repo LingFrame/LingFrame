@@ -9,6 +9,7 @@ import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.GovernancePermissionSynchronizer;
 import com.lingframe.core.governance.LingCoreGovernanceRule;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.governance.provider.StandardGovernancePolicyProvider;
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.DefaultLingServiceRegistry;
@@ -16,18 +17,20 @@ import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.ling.LingRuntimeConfig;
-import com.lingframe.core.router.LabelMatchRouter;
+import com.lingframe.core.routing.LabelMatchRouter;
+import com.lingframe.core.runtime.SwitchableRuntimeMode;
 import com.lingframe.core.security.DefaultPermissionService;
 import com.lingframe.core.spi.GovernancePolicyProvider;
 import com.lingframe.core.spi.LingLoaderFactory;
 import com.lingframe.core.spi.TrafficRouter;
-import com.lingframe.infra.cache.configuration.CaffeineWrapperProcessor;
-import com.lingframe.infra.cache.configuration.RedisWrapperProcessor;
-import com.lingframe.infra.cache.configuration.SpringCacheWrapperProcessor;
-import com.lingframe.infra.storage.configuration.DataSourceWrapperProcessor;
+import com.lingframe.infra.cache.spring.CaffeineWrapperProcessor;
+import com.lingframe.infra.cache.spring.RedisWrapperProcessor;
+import com.lingframe.infra.cache.spring.SpringCacheWrapperProcessor;
+import com.lingframe.infra.storage.spring.DataSourceWrapperProcessor;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
 import com.lingframe.starter.processor.LingCoreBeanGovernanceProcessor;
+import com.lingframe.starter.processor.LingCoreServiceRegistrarProcessor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -52,6 +55,7 @@ import java.util.List;
         CaffeineWrapperProcessor.class,
         RedisWrapperProcessor.class,
         LingCoreBeanGovernanceProcessor.class,
+        LingCoreServiceRegistrarProcessor.class,
         LingFrameRuntimeBeansConfiguration.class,
         LingFrameLifecycleBeansConfiguration.class,
         LingFrameWebSupportConfiguration.class
@@ -71,8 +75,18 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
-    public LocalGovernanceRegistry localGovernanceRegistry(EventBus eventBus) {
-        return new LocalGovernanceRegistry(eventBus);
+    public LocalGovernanceRegistry localGovernanceRegistry(EventBus eventBus,
+            LingFrameProperties properties) {
+        // 治理补丁路径可配置：默认 ./config/ling-governance-patch.yml，测试可指向不存在路径隔离补丁
+        return new LocalGovernanceRegistry(eventBus, properties.getGovernancePatchPath());
+    }
+
+    @Bean
+    public GovernanceAdminService governanceAdminService(
+            LingRepository lingRepository,
+            LocalGovernanceRegistry governanceRegistry,
+            PermissionService permissionService) {
+        return new GovernanceAdminService(lingRepository, governanceRegistry, permissionService);
     }
 
     @Bean
@@ -108,15 +122,14 @@ public class LingFrameCoreConfiguration {
 
     @Bean
     public EntryInvocationGovernanceResolver entryInvocationGovernanceResolver(
-            LingRepository lingRepository,
-            LocalGovernanceRegistry governanceRegistry) {
-        return new EntryInvocationGovernanceResolver(lingRepository, governanceRegistry);
+            GovernanceAdminService governanceAdmin) {
+        return new EntryInvocationGovernanceResolver(governanceAdmin);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public PermissionService permissionService(EventBus eventBus) {
-        return new DefaultPermissionService(eventBus);
+    public PermissionService permissionService(EventBus eventBus, LingFrameConfig lingFrameConfig) {
+        return new DefaultPermissionService(eventBus, lingFrameConfig);
     }
 
     @Bean
@@ -142,12 +155,27 @@ public class LingFrameCoreConfiguration {
         return new LabelMatchRouter();
     }
 
+    /**
+     * 可切换运行时模式（dev/prod），密码认证 + 失败锁定。
+     * <p>
+     * 由 {@link LingFrameProperties#getModeSwitchPassword()} 提供密码，
+     * 未配置时切换功能关闭（fail-closed）。
+     */
     @Bean
-    public LingFrameConfig lingFrameConfig(LingFrameProperties properties) {
+    public SwitchableRuntimeMode switchableRuntimeMode(LingFrameProperties properties) {
+        return new SwitchableRuntimeMode(properties.isDevMode(), properties.getModeSwitchPassword());
+    }
+
+    // destroyMethod = "clear"：Spring 上下文销毁时清理静态 INSTANCE，
+    // 避免同 JVM 内后续上下文创建时 init() 抛 IllegalStateException（测试场景级联失败）
+    @Bean(destroyMethod = "clear")
+    public LingFrameConfig lingFrameConfig(LingFrameProperties properties,
+                                           SwitchableRuntimeMode switchableRuntimeMode) {
         LingFrameProperties.RuntimeConfig runtimeProperties = properties.getRuntime();
         LingRuntimeConfig runtimeConfig = LingRuntimeConfig.builder()
                 .maxHistorySnapshots(runtimeProperties.getMaxHistorySnapshots())
                 .forceCleanupDelaySeconds((int) runtimeProperties.getForceCleanupDelay().getSeconds())
+                .forceDrainOnTimeout(runtimeProperties.isForceDrainOnTimeout())
                 .dyingCheckIntervalSeconds((int) runtimeProperties.getDyingCheckInterval().getSeconds())
                 .defaultTimeoutMs((int) runtimeProperties.getDefaultTimeout().toMillis())
                 .bulkheadMaxConcurrent(runtimeProperties.getBulkheadMaxConcurrent())
@@ -160,7 +188,7 @@ public class LingFrameCoreConfiguration {
         }
 
         LingFrameConfig lingFrameConfig = LingFrameConfig.builder()
-                .devMode(properties.isDevMode())
+                .runtimeMode(switchableRuntimeMode)
                 .autoScan(properties.isAutoScan())
                 .lingHome(properties.getLingHome())
                 .lingRoots(properties.getLingRoots())
@@ -171,6 +199,9 @@ public class LingFrameCoreConfiguration {
                 .lingCoreCheckPermissions(properties.getLingCoreGovernance().isCheckPermissions())
                 .preloadApiJars(properties.getPreloadApiJars())
                 .apiOverrideCheckEnabled(properties.isApiOverrideCheckEnabled())
+                .trustedLingIds(properties.getTrustedLingIds())
+                .strictSecurityMode(properties.getSecurity().isStrictMode())
+                .trustedLibPrefixes(properties.getSecurity().getTrustedLibPrefixes())
                 .build();
 
         LingFrameConfig.init(lingFrameConfig);

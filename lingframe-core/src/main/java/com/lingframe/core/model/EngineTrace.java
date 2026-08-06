@@ -21,17 +21,17 @@ public class EngineTrace implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
-     * 追踪来源，如：SecurityFilter, CanaryRouter, TerminalHandler
+     * 追踪来源，如：PermissionGovernanceFilter, ProviderWeightRouter, TerminalInvokerFilter
      */
     private String source;
 
     /**
-     * 发生的动作或判定结果，如："Auth passed", "Hit 10% canary strategy"
+     * 发生的动作或判定结果，如："Auth passed", "Selected provider user-ling:1.1.0"
      */
     private String action;
 
     /**
-     * 追踪层级/类型，如：IN, OUT, INFO, WARN, ERROR, OK, FAIL, CANARY
+     * 追踪层级/类型，如：IN, OUT, INFO, WARN, ERROR, OK, FAIL, GOVERNANCE
      */
     private String type;
 

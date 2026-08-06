@@ -12,6 +12,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.nio.file.Paths;
 import java.util.Collections;
 
 @Slf4j
@@ -26,7 +27,13 @@ public class DefaultLingDeployService implements LingDeployService {
         URI uri = new URI(uriString);
 
         File file;
-        if ("file".equalsIgnoreCase(uri.getScheme()) || uri.getScheme() == null) {
+        if ("file".equalsIgnoreCase(uri.getScheme())) {
+            // 🔥 Windows file:// URI 路径错误修复：
+            // 原 new File(uri.getPath()) 在 Windows 上对 file:/C:/a/b.jar 会丢失盘符前导符，
+            // 导致路径解析失败。改用 Paths.get(uri).toFile() 由 JDK 处理跨平台路径解析。
+            file = Paths.get(uri).toFile();
+        } else if (uri.getScheme() == null) {
+            // 无 scheme 的纯路径：直接当本地文件路径处理
             file = new File(uri.getPath());
         } else if ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme())) {
             file = downloadToTempFile(uri);

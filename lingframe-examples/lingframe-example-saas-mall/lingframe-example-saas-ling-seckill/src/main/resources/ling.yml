@@ -1,0 +1,9 @@
+id: saas-seckill-ling
+version: 1.0.0
+provider: "LingFrame"
+description: "SaaS商城秒杀灵元——拓展灵核 SeckillService，叠加 SaaS 多租户配额治理"
+mainClass: "com.lingframe.example.saas.seckill.SeckillLingApplication"
+
+governance:
+  permissions: []
+  capabilities: []

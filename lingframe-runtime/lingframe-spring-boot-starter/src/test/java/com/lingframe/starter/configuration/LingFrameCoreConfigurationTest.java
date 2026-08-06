@@ -7,14 +7,14 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.InOrder;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 
 import java.util.Collections;
+import java.util.Map;
 
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -40,9 +40,9 @@ class LingFrameCoreConfigurationTest {
                 .governancePermissionRestoreListener(registry, permissionService);
         listener.onApplicationEvent(null);
 
-        InOrder inOrder = inOrder(permissionService);
-        inOrder.verify(permissionService).removeLing("demo-ling");
-        inOrder.verify(permissionService).grant("demo-ling", Capabilities.STORAGE_SQL, AccessType.WRITE);
+        // P1-21 后 syncPolicy 改用 replacePermissions 原子替换，不再先 removeLing 再 grant
+        Map<String, AccessType> expected = Collections.singletonMap(Capabilities.STORAGE_SQL, AccessType.WRITE);
+        verify(permissionService).replacePermissions("demo-ling", expected);
         verifyNoMoreInteractions(permissionService);
     }
 }

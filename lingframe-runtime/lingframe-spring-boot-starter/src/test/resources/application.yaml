@@ -1,0 +1,33 @@
+spring:
+  # 修复 Spring Boot 2.6+ 与 SpringDoc 1.x 的兼容性问题
+  # 避免 "Expected lookupPath in request attribute" 错误
+  mvc:
+    path match:
+      matching-strategy: ant_path_matcher
+  web:
+    resources:
+      cache:
+        period: 0
+      chain:
+        cache: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    open-in-view: false
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:lingframe;DB_CLOSE_DELAY=-1;MODE=MySQL
+    username: sa
+    password:
+
+  # 演示用：使用简单的 ConcurrentMapCacheManager
+  cache:
+    type: simple
+
+
+logging:
+  level:
+    com.lingframe: INFO
+

@@ -1,16 +1,13 @@
 package com.lingframe.core.proxy;
 
-import com.lingframe.api.exception.ServiceUnavailableException;
-import com.lingframe.core.ling.LingInstance;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingRepository;
-import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
-
-import lombok.extern.slf4j.Slf4j;
-
+import com.lingframe.core.spi.RoutableTarget;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 全局服务路由代理。
@@ -26,20 +23,28 @@ import java.lang.reflect.Method;
  * - 通过 `LingRepository` 统一查询运行时，推进中心化路由。
  * - 复用 `SmartServiceProxy` 实例，避免每次调用都重复创建代理对象。
  * </p>
+ * <p>
+ * 路由路径：
+ * - 无显式 targetLingId 时 SmartServiceProxy 组装的 FQSID 直接为裸 contractId（接口全限定名），
+ *   由 {@code ContractProviderRoutingFilter} 在 L0 阶段按 provider 权重选中具体 provider。
+ *   此时 {@code ctx.getTargetLingId()} 保持 null，触发 L0 路由。
+ * - 显式 targetLingId 时走老格式 "lingId:contractId"，向后兼容精确 pinning 场景。
+ *   代理层此路径下预校验灵元在线状态，离线即抛 STATE_REJECTED。
+ * </p>
  */
 @Slf4j
 public class GlobalServiceRoutingProxy implements InvocationHandler {
 
-    private final String callerLingId; // 通常为 "lingcore-app"
+    private final String callerLingId; // 通常为 LingCoreConstants.LINGCORE_LING_ID
     private final String interfaceName; // 仅保存接口全限定名，不持有 Class 对象
-    private final String targetLingId; // 用户显式指定的灵元 ID（可选）
+    private final String targetLingId; // 用户显式指定的灵元 ID（可选；null 表示走 L0 默认路由）
     private final LingRepository lingRepository;
     private final InvocationPipelineEngine pipelineEngine;
-    private final LingServiceRegistry lingServiceRegistry;
 
     // 复用 SmartServiceProxy，避免每次调用都创建新实例
+    // cachedDelegateKey 区分两条路径：显式 lingId 走老格式拼装，null 走裸 contractId
     private volatile SmartServiceProxy cachedDelegate;
-    private volatile String cachedDelegateLingId;
+    private volatile String cachedDelegateKey;
 
     public GlobalServiceRoutingProxy(String callerLingId, String interfaceName,
                                      String targetLingId, LingRepository lingRepository,
@@ -47,85 +52,56 @@ public class GlobalServiceRoutingProxy implements InvocationHandler {
         this(callerLingId, interfaceName, targetLingId, lingRepository, pipelineEngine, null);
     }
 
+    /** 兼容旧 6 参构造点：lingServiceRegistry 参数已退役，忽略 */
     public GlobalServiceRoutingProxy(String callerLingId, String interfaceName,
                                      String targetLingId, LingRepository lingRepository,
                                      InvocationPipelineEngine pipelineEngine,
                                      LingServiceRegistry lingServiceRegistry) {
         this.callerLingId = callerLingId;
         this.interfaceName = interfaceName;
-        this.targetLingId = targetLingId;
+        this.targetLingId = (targetLingId != null && !targetLingId.isEmpty()) ? targetLingId : null;
         this.lingRepository = lingRepository;
         this.pipelineEngine = pipelineEngine;
-        this.lingServiceRegistry = lingServiceRegistry;
     }
 
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        // `Object` 基础方法直接处理
+        // Object 基础方法直接处理
         if (method.getDeclaringClass() == Object.class) {
             return method.invoke(this, args);
         }
 
-        // 实时解析目标灵元 ID
-        String finalId = resolveTargetLingId();
-
-        LingRuntime runtime = (finalId != null) ? lingRepository.getRuntime(finalId) : null;
-        if (runtime == null) {
-            throw new ServiceUnavailableException(interfaceName, "Service is currently offline");
+        // 显式 pinning 路径：保持老语义，预先校验目标在线状态，离线即抛 STATE_REJECTED
+        // 默认路由路径（targetLingId == null）：跳过预校验，交由 L0 路由过滤器统一决策
+        // 路由升维：用 getRoutableTarget 统一覆盖灵元（LingRuntime）与灵核（LingCoreRoutableTarget），
+        // 修复灵元 delegate 到灵核（@LingReference(lingId="lingcore-app")）时 getRuntime 返回 null 误判离线的问题
+        if (targetLingId != null) {
+            RoutableTarget target = lingRepository.getRoutableTarget(targetLingId);
+            if (target == null) {
+                throw new LingInvocationException(interfaceName,
+                        LingInvocationException.ErrorKind.STATE_REJECTED,
+                        "Service is currently offline");
+            }
         }
 
-        // 复用或创建 `SmartServiceProxy`
-        SmartServiceProxy delegate = getOrCreateDelegate(runtime.getLingId());
+        SmartServiceProxy delegate = getOrCreateDelegate();
         return delegate.invoke(proxy, method, args);
     }
 
-    private SmartServiceProxy getOrCreateDelegate(String lingId) {
-        // 快速路径：如果目标灵元 ID 未变化，直接复用已有代理
-        if (lingId.equals(cachedDelegateLingId) && cachedDelegate != null) {
+    private SmartServiceProxy getOrCreateDelegate() {
+        // 缓存键：显式 lingId 用 lingId 本身；null 走占位标记，避免 null 与空串混淆
+        String key = targetLingId != null ? targetLingId : "__default_route__";
+        if (key.equals(cachedDelegateKey) && cachedDelegate != null) {
             return cachedDelegate;
         }
         synchronized (this) {
-            if (lingId.equals(cachedDelegateLingId) && cachedDelegate != null) {
+            if (key.equals(cachedDelegateKey) && cachedDelegate != null) {
                 return cachedDelegate;
             }
-            cachedDelegate = new SmartServiceProxy(callerLingId, lingId, interfaceName, pipelineEngine,
-                    lingServiceRegistry);
-            cachedDelegateLingId = lingId;
+            // targetLingId 为 null 时 SmartServiceProxy 会组装裸 contractId 作为 FQSID
+            cachedDelegate = new SmartServiceProxy(callerLingId, targetLingId, interfaceName, pipelineEngine);
+            cachedDelegateKey = key;
             return cachedDelegate;
         }
-    }
-
-    private String resolveTargetLingId() {
-        // 如果注解已显式指定灵元 ID，直接使用
-        if (targetLingId != null && !targetLingId.isEmpty()) {
-            return targetLingId;
-        }
-
-        // 遍历所有灵元，寻找接口实现
-        for (LingRuntime runtime : lingRepository.getAllRuntimes()) {
-            if (!runtime.isAvailable())
-                continue;
-            try {
-                LingInstance instance = runtime.getInstancePool().getDefault();
-                if (instance != null && instance.getContainer() != null) {
-                    ClassLoader cl = instance.getClassLoader();
-                    if (cl == null) {
-                        continue;
-                    }
-                    try {
-                        Class<?> clazz = cl.loadClass(interfaceName);
-                        if (instance.getContainer().getBean(clazz) != null) {
-                            return runtime.getLingId();
-                        }
-                    } catch (ClassNotFoundException ignored) {
-                        // 该灵元不包含此接口，继续搜索
-                    }
-                }
-            } catch (Exception e) {
-                log.trace("Error checking bean for ling {}: {}", runtime.getLingId(), e.getMessage());
-            }
-        }
-
-        return null;
     }
 }

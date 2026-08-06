@@ -11,12 +11,17 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 灵元实例。
@@ -32,6 +37,11 @@ import java.util.concurrent.atomic.AtomicLong;
 @Slf4j
 public class LingInstance {
 
+    /**
+     * 进程内实例序号，保证同 version 并发部署时 instanceId 仍全局唯一。
+     */
+    private static final AtomicLong INSTANCE_SEQ = new AtomicLong();
+
     // 注意：非 final，destroy() 时需置 null 断开 ClassLoader 引用链
     @Getter
     private volatile LingContainer container;
@@ -41,6 +51,13 @@ public class LingInstance {
     @Getter
     private volatile LingDefinition definition;
 
+    /**
+     * 实例唯一身份。构造时固定，destroy 后仍可读，供快照键与事件关联使用。
+     * 格式：{lingId}@{version}#{seqHex}，不依赖对象 identityHashCode。
+     */
+    @Getter
+    private final String instanceId;
+
     // 实例固有标签（例如 {"env":"canary","tenant":"T1"}）
     private final Map<String, String> labels = new ConcurrentHashMap<>();
 
@@ -48,6 +65,14 @@ public class LingInstance {
     private final AtomicLong activeRequests = new AtomicLong(0);
     private final AtomicLong activeInvocationSequence = new AtomicLong(0);
     private final Map<Long, ActiveInvocationSnapshot> activeInvocations = new ConcurrentHashMap<>();
+
+    // 卸载 drain 等待机制：替代此前的 Thread.sleep 轮询。
+    // exit() 把引用计数归零时 signal，drain 线程 awaitIdle 阻塞等待，
+    // 既消除 CPU 轮询抖动，又能在请求结束的瞬间立即继续卸载，缩短卸载延迟。
+    // 使用 ReentrantLock + Condition 而非 synchronized + wait/notify，
+    // 以支持 await(timeout) 的精确超时控制，且 Condition 信号不会丢失（await 时已持有锁）。
+    private final ReentrantLock idleLock = new ReentrantLock();
+    private final Condition idleCondition = idleLock.newCondition();
 
     // 微观状态机仍然跟随实例对象存在：
     // 1. 它是单实例生命周期的 CAS 一致性载体；
@@ -61,6 +86,8 @@ public class LingInstance {
         this.definition = Objects.requireNonNull(definition, "definition cannot be null");
 
         String lingId = definition.getId();
+        String version = definition.getVersion();
+        this.instanceId = lingId + "@" + version + "#" + Long.toHexString(INSTANCE_SEQ.incrementAndGet());
         this.stateMachine = InstanceStatus.newMachine(lingId);
 
         definition.validate();
@@ -131,6 +158,13 @@ public class LingInstance {
         return currentStatus() == InstanceStatus.DEAD;
     }
 
+    /**
+     * 轻量进入守卫（仅计数活跃请求，不登记调用快照）。
+     * <p>
+     * 生产热路径统一走 {@link #beginInvocation(ActiveInvocationSnapshot)}（带快照可观测性）；
+     * 本方法保留为受测的轻量守卫入口，供外部只在需并发保护而不关心快照的场景使用，
+     * 与 {@link #beginInvocation} 共享同一 `activeRequests` 计数与存活校验。
+     */
     public boolean tryEnter() {
         if (isDying() || !isReady()) {
             return false;
@@ -148,18 +182,19 @@ public class LingInstance {
             return -1L;
         }
 
-        long invocationId = -1L;
-        if (snapshot != null) {
-            invocationId = activeInvocationSequence.incrementAndGet();
-            activeInvocations.put(invocationId, snapshot);
+        // 无快照不入队，也不递增计数器，直接返回失败
+        // 否则调用方收到 -1 不会调 completeInvocation，导致 activeRequests 永不归零
+        if (snapshot == null) {
+            return -1L;
         }
+
+        long invocationId = activeInvocationSequence.incrementAndGet();
+        activeInvocations.put(invocationId, snapshot);
 
         activeRequests.incrementAndGet();
         if (isDying()) {
             activeRequests.decrementAndGet();
-            if (invocationId > 0) {
-                activeInvocations.remove(invocationId);
-            }
+            activeInvocations.remove(invocationId);
             return -1L;
         }
         return invocationId;
@@ -170,6 +205,58 @@ public class LingInstance {
         if (count < 0) {
             activeRequests.compareAndSet(count, 0);
             log.warn("Unbalanced exit() call detected for ling instance: {}", getVersion());
+            count = 0;
+        }
+        // 引用计数归零时唤醒所有等待 idle 的 drain 线程，
+        // 使卸载流程无需轮询即可在请求结束瞬间继续推进。
+        if (count == 0) {
+            idleLock.lock();
+            try {
+                idleCondition.signalAll();
+            } finally {
+                idleLock.unlock();
+            }
+        }
+    }
+
+    /**
+     * 阻塞等待实例变为 idle（引用计数归零），最长等待 timeoutMillis 毫秒。
+     * <p>
+     * 替代卸载路径此前的 {@code Thread.sleep(50)} 轮询：
+     * <ul>
+     *   <li>消除 CPU 轮询抖动（低活跃场景不再周期性唤醒）；</li>
+     *   <li>请求结束的瞬间立即返回，缩短卸载延迟（高活跃场景响应及时）；</li>
+     *   <li>超时返回 false 由调用方决定是否强制继续，语义清晰。</li>
+     * </ul>
+     * 若调用时实例已经 idle，立即返回 true。
+     * <p>
+     * <b>瞬时快照语义</b>：本方法返回 true 仅代表调用瞬间引用计数为 0，
+     * 不保证返回后实例持续 idle——调用方可能在返回后立即有新请求进入。
+     * 卸载路径依赖此语义是安全的：drainInstances 已先把实例标记为 STOPPING，
+     * {@code isDying()} 为 true 时 {@code tryEnter} 会拒绝新请求，
+     * 因此 awaitIdle 返回 true 后实例不会再获得新请求，idle 状态稳定。
+     * 调用方在非卸载场景使用本方法时，必须自行处理「返回后又有新请求」的可能。
+     *
+     * @param timeoutMillis 最长等待毫秒数；<=0 时仅做一次 idle 检查后立即返回
+     * @return 实例已 idle 返回 true；超时仍非 idle 返回 false
+     * @throws InterruptedException 等待期间线程被中断（调用方应处理中断语义）
+     */
+    public boolean awaitIdle(long timeoutMillis) throws InterruptedException {
+        if (activeRequests.get() == 0) {
+            return true;
+        }
+        if (timeoutMillis <= 0) {
+            return false;
+        }
+        idleLock.lock();
+        try {
+            // 二次检查防止在获取锁期间实例已变 idle（避免漏信号）
+            if (activeRequests.get() == 0) {
+                return true;
+            }
+            return idleCondition.await(timeoutMillis, TimeUnit.MILLISECONDS);
+        } finally {
+            idleLock.unlock();
         }
     }
 
@@ -184,6 +271,45 @@ public class LingInstance {
         return activeRequests.get() == 0;
     }
 
+    // 记录此实例中实际注册的服务和方法元数据，防开发环境下类加载器穿透与 Spring 误扫
+    private final Map<String, Set<String>> serviceMethods = new ConcurrentHashMap<>();
+
+    public void registerServiceMethod(String fqsid, String methodName, String[] parameterTypes) {
+        if (fqsid != null && methodName != null) {
+            String signature = buildMethodSignature(methodName, parameterTypes);
+            serviceMethods.computeIfAbsent(fqsid, k -> ConcurrentHashMap.newKeySet()).add(signature);
+        }
+    }
+
+    public boolean hasServiceMethod(String fqsid, String methodName, List<String> parameterTypes) {
+        if (fqsid == null) {
+            return false;
+        }
+        Set<String> signatures = serviceMethods.get(fqsid);
+        if (signatures == null) {
+            return false;
+        }
+        String signature = buildMethodSignature(methodName, parameterTypes);
+        return signatures.contains(signature);
+    }
+
+    private String buildMethodSignature(String methodName, String[] parameterTypes) {
+        return buildMethodSignatureInternal(methodName,
+                parameterTypes != null ? Arrays.asList(parameterTypes) : null);
+    }
+
+    private String buildMethodSignature(String methodName, List<String> parameterTypes) {
+        return buildMethodSignatureInternal(methodName, parameterTypes);
+    }
+
+    private String buildMethodSignatureInternal(String methodName, List<String> parameterTypes) {
+        StringBuilder sb = new StringBuilder(methodName).append("(");
+        if (parameterTypes != null && !parameterTypes.isEmpty()) {
+            sb.append(String.join(",", parameterTypes));
+        }
+        return sb.append(")").toString();
+    }
+
     public List<ActiveInvocationSnapshot> snapshotActiveInvocations() {
         List<ActiveInvocationSnapshot> snapshots = new ArrayList<>(activeInvocations.values());
         snapshots.sort(Comparator.comparingLong(ActiveInvocationSnapshot::getStartTimeMillis));
@@ -194,6 +320,7 @@ public class LingInstance {
     synchronized void clearDetachedState() {
         labels.clear();
         activeInvocations.clear();
+        serviceMethods.clear();
         this.container = null;
         this.definition = null;
     }

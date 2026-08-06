@@ -3,6 +3,7 @@
 
 # Log file
 *.log
+**/log/*.gz
 
 # BlueJ files
 *.ctxt
@@ -37,6 +38,7 @@ docs/images/lingframe-cover.png
 /PR_DESCRIPTION.md
 /LingFrame V0.3.0.md
 /docs/development
+/docs/superpowers
 **/node_modules/
 **/dist/
 **/.vite/
@@ -44,3 +46,20 @@ docs/images/lingframe-cover.png
 /lingframe-dashboard-web
 .preferences
 .jlsp/**
+# Maven Shade Plugin 生成物
+dependency-reduced-pom.xml
+
+# Benchmark 产物
+lingframe-benchmark/develop
+# AtomCode local-scope configs (machine-specific)
+.atomcode/local/
+/.arts
+/.atomcode
+/.project-meta
+.mcp.json
+.codex/config.toml
+/docs/release
+/tools
+lingframe-dashboard/src/main/resources/static/update_css.bat
+lingframe-dashboard/src/main/resources/static/tailwindcss.exe
+lingframe-dashboard/src/main/resources/static/input.css

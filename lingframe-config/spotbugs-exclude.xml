@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- try-with-resources 模式产生的常见误报（Java 语言层面，与 Lombok 无关，全局抑制） -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE,RCN_REDUNDANT_NULLCHECK"/>
+    </Match>
+
+    <!-- Lombok 注解处理器生成的字段读写告警（仅限本项目代码，第三方库不抑制） -->
+    <Match>
+        <Package name="~com\.lingframe\..*"/>
+        <Bug pattern="UWF_UNWRITTEN_FIELD,URF_UNREAD_FIELD"/>
+    </Match>
+
+    <!-- 灵元 TraceId 生成有意使用 ThreadLocalRandom，单次调用是设计选择 -->
+    <Match>
+        <Class name="com.lingframe.api.context.LingCallContext"/>
+        <Bug pattern="DMI_RANDOM_USED_ONLY_ONCE"/>
+    </Match>
+
+    <!-- 测试代码放宽 -->
+    <Match>
+        <Source name="~.*Test\.java"/>
+        <Bug pattern="NP_NULL_PARAM_DEREF_ALL_TARGETS_DANGEROUS,RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT"/>
+    </Match>
+
+    <!-- 反射清理 URLClassPath 是有意为之 -->
+    <Match>
+        <Class name="com.lingframe.core.classloader.LingClassLoader"/>
+        <Bug pattern="REC_CATCH_EXCEPTION,DP_DO_INSIDE_DO_PRIVILEGED"/>
+    </Match>
+    <Match>
+        <Class name="com.lingframe.core.classloader.ClassLoaderCleanupUtil"/>
+        <Bug pattern="REC_CATCH_EXCEPTION,DP_DO_INSIDE_DO_PRIVILEGED"/>
+    </Match>
+    <Match>
+        <Class name="com.lingframe.core.classloader.SharedApiClassLoader"/>
+        <Bug pattern="REC_CATCH_EXCEPTION,DP_DO_INSIDE_DO_PRIVILEGED"/>
+    </Match>
+
+    <!-- 安全扫描器需要访问 ASM API -->
+    <Match>
+        <Class name="com.lingframe.core.security.AsmDangerousApiScanner"/>
+        <Bug pattern="DP_DO_INSIDE_DO_PRIVILEGED"/>
+    </Match>
+
+    <!-- 泄漏检测器强制 GC 是有意的设计，用于触发 Reference 队列清理 -->
+    <Match>
+        <Class name="com.lingframe.core.resource.DefaultLeakDetector"/>
+        <Bug pattern="DM_GC"/>
+    </Match>
+</FindBugsFilter>

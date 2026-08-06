@@ -20,7 +20,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -88,11 +87,71 @@ class ResilienceGovernanceFilterTest {
             assertEquals(expected, result);
             verify(filterChain).doFilter(context);
         }
+
+        @Test
+        @DisplayName("裸 contractId FQSID 应优先读 targetLingId 查限流器/熔断器")
+        void doFilter_WhenBareContractId_ShouldReadTargetLingIdForLimiter() throws Throwable {
+            // 模拟 ContractProviderRoutingFilter 已设置 targetLingId，FQSID 保持裸 contractId
+            context.setServiceFQSID("com.example.DemoService");
+            context.setTargetLingId("demo-ling");
+
+            LingRuntimeConfig config = LingRuntimeConfig.builder()
+                    .bulkheadMaxConcurrent(100)
+                    .defaultTimeoutMs(1000)
+                    .build();
+            when(lingRuntime.getConfig()).thenReturn(config);
+            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            Object result = filter.doFilter(context, filterChain);
+
+            assertEquals(expected, result);
+            // 关键断言：熔断器创建在 "demo-ling" 名下，说明用了 targetLingId 而非占位符
+            assertTrue(filter.hasBreaker("demo-ling"));
+        }
     }
 
     @Nested
     @DisplayName("限流与熔断")
     class RateLimitAndCircuitBreakerTests {
+
+        @Test
+        @DisplayName("SIMULATION 干跑不消费限流预算：即使限流阈值极低也应透传")
+        void doFilter_WhenSimulationMode_ShouldBypassRateLimiter() throws Throwable {
+            context.setServiceFQSID("demo-ling:com.example.DemoService");
+            context.execution().setMode(InvocationExecutionMode.SIMULATION);
+
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            for (int i = 0; i < 5; i++) {
+                Object result = filter.doFilter(context, filterChain);
+                assertEquals(expected, result);
+            }
+            // 模拟流量不应创建限流器/熔断器，避免污染真实弹性状态
+            assertFalse(filter.hasLimiter("demo-ling"));
+            assertFalse(filter.hasBreaker("demo-ling"));
+        }
+
+        @Test
+        @DisplayName("SIMULATION 干跑失败不应记入熔断器（模拟探针不污染真实故障统计）")
+        void doFilter_WhenSimulationMode_ShouldNotPolluteCircuitBreaker() throws Throwable {
+            context.setServiceFQSID("demo-ling:com.example.DemoService");
+            context.execution().setMode(InvocationExecutionMode.SIMULATION);
+
+            when(filterChain.doFilter(context)).thenThrow(new IllegalStateException("simulated failure"));
+
+            for (int i = 0; i < 10; i++) {
+                try {
+                    filter.doFilter(context, filterChain);
+                } catch (Throwable ignored) {
+                    // 模拟失败透传，但不应触发熔断统计
+                }
+            }
+            assertFalse(filter.hasBreaker("demo-ling"), "SIMULATION 失败不应创建/污染熔断器");
+        }
 
         @Test
         @DisplayName("并发或速率超过限制时应抛出限流异常")
@@ -157,6 +216,44 @@ class ResilienceGovernanceFilterTest {
             LingInvocationException rateLimitEx = assertThrows(LingInvocationException.class,
                     () -> filter.doFilter(context, filterChain));
             assertEquals(LingInvocationException.ErrorKind.RATE_LIMITED, rateLimitEx.getKind());
+        }
+
+        @Test
+        @DisplayName("治理 timeout 变化后应重建熔断器（新 breaker 为 CLOSED）")
+        void doFilter_WhenGovernedTimeoutChanges_ShouldRebuildBreaker() throws Throwable {
+            setupMocks(100, 1000);
+            RuntimeException businessEx = new RuntimeException("Business error");
+            when(filterChain.doFilter(context)).thenThrow(businessEx);
+
+            // 第一次：governedTimeout=1000，触发 10 次错误让 breaker OPEN
+            context.governance().setTimeoutMs(1000);
+            for (int i = 0; i < 10; i++) {
+                assertThrows(RuntimeException.class, () -> filter.doFilter(context, filterChain));
+            }
+            // breaker 已 OPEN，第 11 次请求被 CIRCUIT_OPEN 拒绝
+            LingInvocationException cbEx = assertThrows(LingInvocationException.class,
+                    () -> filter.doFilter(context, filterChain));
+            assertEquals(LingInvocationException.ErrorKind.CIRCUIT_OPEN, cbEx.getKind());
+
+            // 第二次：governedTimeout 变为 5000，breaker 应重建（新 breaker 为 CLOSED）
+            context.governance().setTimeoutMs(5000);
+            // 重建后 breaker 是 CLOSED，tryAcquirePermission 返回 true，请求进入 chain（抛 businessEx）
+            RuntimeException ex = assertThrows(RuntimeException.class, () -> filter.doFilter(context, filterChain));
+            assertEquals("Business error", ex.getMessage());
+        }
+
+        @Test
+        @DisplayName("ctx.governance().getTimeoutMs() 为 null 时回退 config 默认值构建熔断器")
+        void doFilter_WhenGovernedTimeoutNull_ShouldFallBackToConfig() throws Throwable {
+            setupMocks(100, 1000);
+            // 不设置 ctx.governance().setTimeoutMs（为 null），getBreaker 应回退 config.getDefaultTimeoutMs()
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            Object result = filter.doFilter(context, filterChain);
+
+            assertEquals(expected, result);
+            assertTrue(filter.hasBreaker("demo-ling"));
         }
 
         @Test

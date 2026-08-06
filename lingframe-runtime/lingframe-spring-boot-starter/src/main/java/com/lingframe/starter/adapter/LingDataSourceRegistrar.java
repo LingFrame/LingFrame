@@ -9,6 +9,7 @@ import org.springframework.jdbc.datasource.init.DataSourceInitializer;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 
 import javax.sql.DataSource;
+import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.function.Supplier;
@@ -79,6 +80,7 @@ public class LingDataSourceRegistrar {
         // 注册独立 DataSource（设为 Primary，覆盖可能从父容器继承的）
         Supplier<DataSource> dataSourceSupplier = () -> {
             DataSourceProperties props = context.getBean("lingDataSourceProperties", DataSourceProperties.class);
+            ensureParentDirectoryExists(props.getUrl());
             return props.initializeDataSourceBuilder().build();
         };
         context.registerBean("dataSource", DataSource.class, dataSourceSupplier, bd -> bd.setPrimary(true));
@@ -114,6 +116,28 @@ public class LingDataSourceRegistrar {
         } else {
             log.debug("[{}] {} not found in ling, skipping database initialization", lingId,
                     DEFAULT_SCHEMA_LOCATION);
+        }
+    }
+
+    private static void ensureParentDirectoryExists(String url) {
+        if (url == null) {
+            return;
+        }
+        String path = null;
+        if (url.startsWith("jdbc:sqlite:")) {
+            path = url.substring("jdbc:sqlite:".length());
+        }
+        if (path == null || path.isEmpty() || path.startsWith(":") || path.contains(":")) {
+            return;
+        }
+        File dbFile = new File(path);
+        File parentDir = dbFile.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            if (parentDir.mkdirs()) {
+                log.info("Created database directory: {}", parentDir.getAbsolutePath());
+            } else {
+                log.warn("Failed to create database directory: {}", parentDir.getAbsolutePath());
+            }
         }
     }
 }

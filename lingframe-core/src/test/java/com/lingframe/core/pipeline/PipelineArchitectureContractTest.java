@@ -5,6 +5,8 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.InvokableMethodCache;
+import com.lingframe.core.routing.ContractProviderRoutingFilter;
+import com.lingframe.core.routing.InstanceRoutingFilter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -23,17 +25,24 @@ class PipelineArchitectureContractTest {
     void shouldAssembleBuiltinFiltersInStablePhaseOrder() {
         EventBus eventBus = new EventBus();
         RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
-        FilterRegistry registry = new FilterRegistry(new InvokableMethodCache(), mock(PermissionService.class));
-        registry.initialize(new DefaultLingRepository(), null, eventBus, runtimeCoordinator);
+        FilterRegistry registry = new FilterRegistry(FilterRegistryConfig.builder()
+                .methodCache(new InvokableMethodCache())
+                .permissionService(mock(PermissionService.class))
+                .lingRepository(new DefaultLingRepository())
+                .eventBus(eventBus)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
 
         List<Class<?>> filterTypes = registry.getOrderedFilters().stream()
                 .map(Object::getClass)
                 .collect(Collectors.toList());
 
         assertEquals(Arrays.asList(
+                ContractProviderRoutingFilter.class,
                 TrafficMetricsFilter.class,
                 MacroStateGuardFilter.class,
-                CanaryRoutingFilter.class,
+                InstanceRoutingFilter.class,
+                InvocationPolicyPrefillFilter.class,
                 ResilienceGovernanceFilter.class,
                 ContextIsolationFilter.class,
                 GovernanceDecisionFilter.class,

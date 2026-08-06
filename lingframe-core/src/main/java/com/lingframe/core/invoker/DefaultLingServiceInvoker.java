@@ -2,8 +2,7 @@ package com.lingframe.core.invoker;
 
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.spi.LingServiceInvoker;
-import com.lingframe.api.exception.ServiceUnavailableException;
-import com.lingframe.api.exception.InvocationException;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.exception.InvalidArgumentException;
 import lombok.extern.slf4j.Slf4j;
 
@@ -18,11 +17,20 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
         // 引用计数保护
         long invocationId = instance.beginInvocation(ActiveInvocationSupport.capture(instance, method.getName()));
         if (invocationId < 0) {
-            throw new ServiceUnavailableException(instance.getLingId(),
+            throw new LingInvocationException(instance.getLingId(),
+                    LingInvocationException.ErrorKind.STATE_REJECTED,
                     "Ling instance is not ready or already destroyed");
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
         ClassLoader targetClassLoader = instance.getClassLoader();
+        // force-drain / tearDown 后 CL 可能已关闭或清空：给出确定性错误，避免难诊断 NPE
+        if (targetClassLoader == null) {
+            instance.completeInvocation(invocationId);
+            throw new LingInvocationException(instance.getLingId(),
+                    LingInvocationException.ErrorKind.STATE_REJECTED,
+                    "Ling instance classloader is unavailable (likely unloaded or force-drained): "
+                            + instance.getInstanceId());
+        }
 
         try {
             // 切换线程上下文类加载器（TCCL）
@@ -40,7 +48,7 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
             Throwable target = e.getTargetException();
             if (target instanceof Exception)
                 throw (Exception) target;
-            throw new InvocationException("Target exception", target);
+            throw new LingInvocationException(instance.getLingId(), LingInvocationException.ErrorKind.INTERNAL_ERROR, target);
         } finally {
             // 资源恢复
             Thread.currentThread().setContextClassLoader(originalClassLoader);

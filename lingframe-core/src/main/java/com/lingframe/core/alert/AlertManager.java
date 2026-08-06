@@ -1,5 +1,6 @@
 package com.lingframe.core.alert;
 
+import com.lingframe.core.spi.LingAlertManager;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -7,7 +8,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 @Slf4j
-public class AlertManager {
+public class AlertManager implements LingAlertManager {
     private final List<AlertChannel> channels = new CopyOnWriteArrayList<>();
     private final CircularBuffer<AlertEvent> alertHistory;
     

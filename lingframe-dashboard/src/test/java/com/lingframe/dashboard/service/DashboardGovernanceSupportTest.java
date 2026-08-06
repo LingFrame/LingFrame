@@ -1,11 +1,11 @@
 package com.lingframe.dashboard.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
-import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import org.junit.jupiter.api.DisplayName;
@@ -26,21 +26,24 @@ import static org.mockito.Mockito.when;
 @DisplayName("DashboardGovernanceSupport 测试")
 class DashboardGovernanceSupportTest {
 
+    // 测试类共享 ObjectMapper 单例，避免每个测试方法都 new 一个实例
+    private static final ObjectMapper SHARED_OBJECT_MAPPER = new ObjectMapper();
+
     @Test
-    @DisplayName("更新资源权限时应持久化 patch 并同步运行时权限")
-    void shouldPersistPatchAndSyncRuntimePermissionsWhenUpdatingPermissions() {
-        LingRepository lingRepository = mock(LingRepository.class);
-        LocalGovernanceRegistry governanceRegistry = mock(LocalGovernanceRegistry.class);
+    @DisplayName("更新资源权限时应委托 GovernanceAdminService 持久化并组装能力规则")
+    void shouldDelegatePersistAndAssembleCapabilitiesWhenUpdatingPermissions() {
+        GovernanceAdminService governanceAdmin = mock(GovernanceAdminService.class);
         PermissionService permissionService = mock(PermissionService.class);
         DashboardGovernanceSupport support =
-                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService);
+                new DashboardGovernanceSupport(governanceAdmin, permissionService, SHARED_OBJECT_MAPPER);
 
-        AtomicReference<GovernancePolicy> storedPatch = new AtomicReference<>();
-        when(governanceRegistry.getPatch("ling1")).thenAnswer(invocation -> storedPatch.get());
+        // getPatchForUpdate 返回空 patch，让 updatePermissions 从零组装能力规则
+        AtomicReference<GovernancePolicy> persistedPatch = new AtomicReference<>();
+        when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(new GovernancePolicy());
         doAnswer(invocation -> {
-            storedPatch.set(((GovernancePolicy) invocation.getArgument(1)).copy());
+            persistedPatch.set(((GovernancePolicy) invocation.getArgument(1)).copy());
             return null;
-        }).when(governanceRegistry).updatePatch(eq("ling1"), any(GovernancePolicy.class));
+        }).when(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
 
         ResourcePermissionDTO dto = new ResourcePermissionDTO();
         dto.setDbRead(true);
@@ -51,38 +54,41 @@ class DashboardGovernanceSupportTest {
 
         support.updatePermissions("ling1", dto);
 
-        assertNotNull(storedPatch.get());
-        assertEquals(5, storedPatch.get().getCapabilities().size());
-        verify(permissionService).removeLing("ling1");
-        verify(permissionService).grant("ling1", Capabilities.STORAGE_SQL, AccessType.READ);
-        verify(permissionService).grant("ling1", Capabilities.CACHE_LOCAL, AccessType.WRITE);
-        verify(permissionService).grant("ling1", Capabilities.Ling_ENABLE, AccessType.EXECUTE);
-        verify(permissionService).grant("ling1", "ipc:lingA", AccessType.EXECUTE);
-        verify(permissionService).grant("ling1", "ipc:lingB", AccessType.EXECUTE);
+        // 验证 Dashboard 特有的 DTO 镜像逻辑——5 条能力规则被组装
+        assertNotNull(persistedPatch.get());
+        assertEquals(5, persistedPatch.get().getCapabilities().size());
+        // 验证委托 GovernanceAdminService 持久化
+        verify(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
     }
 
     @Test
-    @DisplayName("更新调用治理时应保留已有 capabilities")
-    void shouldKeepCapabilitiesWhenUpdatingInvocationGovernance() {
-        LingRepository lingRepository = mock(LingRepository.class);
-        LocalGovernanceRegistry governanceRegistry = mock(LocalGovernanceRegistry.class);
+    @DisplayName("更新调用治理时应保留已有 capabilities 并委托 GovernanceAdminService")
+    void shouldKeepCapabilitiesAndDelegateWhenUpdatingInvocationGovernance() {
+        GovernanceAdminService governanceAdmin = mock(GovernanceAdminService.class);
         PermissionService permissionService = mock(PermissionService.class);
         DashboardGovernanceSupport support =
-                new DashboardGovernanceSupport(lingRepository, governanceRegistry, permissionService);
+                new DashboardGovernanceSupport(governanceAdmin, permissionService, SHARED_OBJECT_MAPPER);
 
+        // 已有 patch 带 1 条 capability，updateInvocationGovernance 应保留它
         GovernancePolicy existingPatch = new GovernancePolicy();
         existingPatch.setCapabilities(Arrays.asList(
                 GovernancePolicy.CapabilityRule.builder()
                         .capability(Capabilities.CACHE_LOCAL)
                         .accessType(AccessType.WRITE.name())
                         .build()));
+        when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(existingPatch);
 
-        AtomicReference<GovernancePolicy> storedPatch = new AtomicReference<>(existingPatch);
-        when(governanceRegistry.getPatch("ling1")).thenAnswer(invocation -> storedPatch.get());
-        doAnswer(invocation -> {
-            storedPatch.set(((GovernancePolicy) invocation.getArgument(1)).copy());
-            return null;
-        }).when(governanceRegistry).updatePatch(eq("ling1"), any(GovernancePolicy.class));
+        GovernancePolicy effective = new GovernancePolicy();
+        effective.setInvocation(GovernancePolicy.InvocationPolicy.builder()
+                .timeoutMs(1200)
+                .rateLimitPerSecond(9)
+                .maxConcurrentThreads(4)
+                .retryCount(2)
+                .fallbackValue("fallback-ok")
+                .cpuBudgetMsPerMinute(600)
+                .memoryBudgetMb(48)
+                .build());
+        when(governanceAdmin.getEffectivePolicy("ling1")).thenReturn(effective);
 
         InvocationGovernanceDTO dto = InvocationGovernanceDTO.builder()
                 .timeoutMs(1200)
@@ -96,11 +102,15 @@ class DashboardGovernanceSupportTest {
 
         InvocationGovernanceDTO result = support.updateInvocationGovernance("ling1", dto);
 
-        assertNotNull(storedPatch.get());
-        assertEquals(1, storedPatch.get().getCapabilities().size());
+        // 验证 DTO 镜像逻辑——从 effectivePolicy 正确组装返回 DTO
         assertEquals(Integer.valueOf(1200), result.getTimeoutMs());
         assertEquals(Integer.valueOf(9), result.getRateLimitPerSecond());
-        verify(permissionService).removeLing("ling1");
-        verify(permissionService).grant("ling1", Capabilities.CACHE_LOCAL, AccessType.WRITE);
+        assertEquals(Integer.valueOf(4), result.getMaxConcurrentThreads());
+        assertEquals(Integer.valueOf(2), result.getRetryCount());
+        assertEquals("fallback-ok", result.getFallbackValue());
+        assertEquals(Integer.valueOf(600), result.getCpuBudgetMsPerMinute());
+        assertEquals(Integer.valueOf(48), result.getMemoryBudgetMb());
+        // 验证委托 GovernanceAdminService 持久化
+        verify(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
     }
 }

@@ -26,6 +26,10 @@
 
 ## 一、ClassLoader 问题
 
+![ClassLoader 拓扑图](../images/classloader-topology.svg)
+
+> 灵珑的类加载拓扑：每个灵元有独立 `LingClassLoader`（Child-First），白名单类（`java.*`、`com.lingframe.api.*`、`org.slf4j.*` 等）强制父委派，使灵核与灵元看到同一 Class 对象。下方排查多数围绕「同名不同 ClassLoader」与「白名单边界误判」展开。
+
 ### 1.1 ClassNotFoundException / NoClassDefFoundError
 
 **症状：**
@@ -41,6 +45,7 @@ java.lang.NoClassDefFoundError: com/example/MyClass
 | 类不在灵元 JAR 中 | 检查 JAR 包内容 | 确保类被打包 |
 | 类在 Shared API 中但未注册 | 检查 `preload-api-jars` 配置 | 在配置中添加共享包 |
 | 类被错误委派到父加载器 | 检查类名是否匹配委派规则 | 调整委派包配置 |
+| SpringDoc 等反射库扫描冲突 | `NoClassDefFoundError` | 排除或延迟扫描，或将其设为 shared |
 | 灵元依赖缺失 | 检查 `ling.yml` 中的 dependencies | 添加缺失依赖 |
 
 **排查命令：**
@@ -103,6 +108,21 @@ grep "close ClassLoader" logs/lingframe.log
 lingframe:
   dev-mode: true  # 开发模式下通过 DEV_AGGRESSIVE 进行激进泄漏诊断
 ```
+
+### 1.4 第三方库反射扫描冲突 (SpringDoc / Swagger)
+
+**症状：** 在 Spring Boot 3 配合 JDK 17 及以上版本使用 SpringDoc 时，可能会抛出 `NoClassDefFoundError` 或类加载死锁。
+
+**原因：** SpringDoc 的 OpenAPI 扫描器会在容器启动或第一次请求时，通过反射深度遍历整个应用（甚至触及不同 ClassLoader 的类），如果灵元的内部类恰好暴露在控制器签名或属性中，扫描器会触发跨越 `LingClassLoader` 和 `AppClassLoader` 边界的连锁类加载，进而引发找不到类或链接错误。
+
+**解决方案：**
+1. **隐藏模型**：尽量不要在 Shared API 中暴露未定义的灵元私有模型到 Controller 签名。
+2. **包过滤**：在 `application.yml` 中配置 SpringDoc 的 `packages-to-scan`，明确只扫描主程序的包，**排除灵元的包**：
+```yaml
+springdoc:
+  packages-to-scan: com.my.core.app
+```
+3. **环境隔离**：将 SpringDoc 仅限在开发环境开启，生产环境禁用（推荐做法）。
 
 ---
 
@@ -212,7 +232,7 @@ grep "CircuitBreaker\|OPEN" logs/lingframe.log
 
 **症状：**
 ```
-CallNotPermittedException: Call rejected by governance
+LingInvocationException: Call rejected by governance
 ```
 
 **可能原因：**
@@ -230,23 +250,28 @@ CallNotPermittedException: Call rejected by governance
 
 **排查：**
 
-1. 检查灰度配置：
-```yaml
-# ling.yml 中
-governance:
-  canary:
-    enabled: true
-    weight: 30  # 30% 流量
+1. 检查权重路由配置——金丝雀已收敛为「按版本权重分流」，不再有 `governance.canary` yaml 配置。通过 Dashboard API 查询当前契约下 provider 权重：
+
+```bash
+curl http://localhost:8888/lingframe/dashboard/contract-routing/{contractId}
 ```
 
-2. 检查实例标签：
+若需调整，下发运行期权重覆盖：
+
 ```bash
-grep "labels\|canary" logs/lingframe.log
+curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/{contractId}/weight \
+  -H "Content-Type: application/json" \
+  -d '{"providerKey": "user-ling:1.1.0", "weight": 30}'
+```
+
+2. 检查实例标签（金丝雀标记应放在 `labels` / `properties`，不再进路由决策链）：
+```bash
+grep "labels\|ProviderWeightRouter" logs/lingframe.log
 ```
 
 3. 检查路由策略：
 ```bash
-grep "CanaryRouting\|LabelMatchRouter" logs/lingframe.log
+grep "ContractProviderRouting\|LabelMatchRouter\|ProviderWeightRouter" logs/lingframe.log
 ```
 
 ---

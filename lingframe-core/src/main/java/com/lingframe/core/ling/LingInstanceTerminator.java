@@ -7,7 +7,7 @@ import lombok.extern.slf4j.Slf4j;
  * 仅负责实例资源终止与强引用拆除，不负责实例状态迁移。
  */
 @Slf4j
-final class LingInstanceTerminator {
+class LingInstanceTerminator {
 
     public void terminate(LingInstance instance) {
         if (instance == null) {

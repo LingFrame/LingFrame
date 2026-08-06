@@ -46,6 +46,8 @@ class LingRuntimeTest {
     void setUp() {
         instanceCoordinator = new InstanceCoordinator(eventBus);
         runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        // #8 职责边界：LingRuntime 不再自动注册，由调用方（编排层/测试）显式注册
+        runtimeCoordinator.register(LING_ID);
         runtime = new LingRuntime(LING_ID, LingRuntimeConfig.defaults(), eventBus,
                 instanceCoordinator, runtimeCoordinator);
     }
@@ -67,8 +69,9 @@ class LingRuntimeTest {
         @Test
         @DisplayName("空配置构造时应自动回退默认配置")
         void shouldHandleNullConfig() {
-            LingRuntime nullConfigRuntime = new LingRuntime("null-id", null, eventBus,
-                    new RuntimeCoordinator(eventBus));
+            RuntimeCoordinator rc = new RuntimeCoordinator(eventBus);
+            rc.register("null-id");
+            LingRuntime nullConfigRuntime = new LingRuntime("null-id", null, eventBus, new InstanceCoordinator(eventBus), rc);
             assertNotNull(nullConfigRuntime.getConfig());
             assertEquals(RuntimeStatus.INACTIVE, nullConfigRuntime.currentStatus());
         }
@@ -101,34 +104,6 @@ class LingRuntimeTest {
 
             runtimeCoordinator.transition(LING_ID, RuntimeStatus.ACTIVE);
             assertTrue(runtime.isAvailable());
-        }
-    }
-
-    @Nested
-    @DisplayName("请求统计")
-    class RequestStatsTests {
-
-        @Test
-        @DisplayName("应正确累计总请求、稳定请求与金丝雀请求")
-        void shouldRecordTrafficStats() {
-            runtime.recordRequest(false);
-            runtime.recordRequest(false);
-            runtime.recordRequest(true);
-
-            assertEquals(3, runtime.getTotalRequests().get());
-            assertEquals(2, runtime.getStableRequests().get());
-            assertEquals(1, runtime.getCanaryRequests().get());
-        }
-
-        @Test
-        @DisplayName("应正确跟踪活跃请求数")
-        void shouldTrackActiveRequests() {
-            runtime.startRequest();
-            runtime.startRequest();
-            assertEquals(2, runtime.getActiveRequests().get());
-
-            runtime.endRequest();
-            assertEquals(1, runtime.getActiveRequests().get());
         }
     }
 

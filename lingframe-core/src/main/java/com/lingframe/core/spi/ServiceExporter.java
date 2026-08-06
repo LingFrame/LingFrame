@@ -1,11 +1,13 @@
 package com.lingframe.core.spi;
 
+import com.lingframe.api.event.lifecycle.LingStartedEvent;
+
 import java.util.List;
 
 /**
  * SPI: 轻量级的服务中心导出器。
  * <p>
- * 当触发 {@link com.lingframe.api.event.lifecycle.LingStartedEvent} 或在生命周期扫描结束后，
+ * 当触发 {@link LingStartedEvent} 或在生命周期扫描结束后，
  * 可将 Ling 中的 {@code @LingService} 元数据异步推送给例如 Nacos、注册中心等地。
  */
 public interface ServiceExporter {

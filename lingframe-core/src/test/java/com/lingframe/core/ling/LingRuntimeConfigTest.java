@@ -21,6 +21,7 @@ public class LingRuntimeConfigTest {
             assertEquals(5, config.getMaxHistorySnapshots());
             assertEquals(30, config.getForceCleanupDelaySeconds());
             assertEquals(5, config.getDyingCheckIntervalSeconds());
+            assertTrue(config.isForceDrainOnTimeout());
             assertEquals(3000, config.getDefaultTimeoutMs());
             assertEquals(10, config.getBulkheadMaxConcurrent());
             assertEquals(3000, config.getBulkheadAcquireTimeoutMs());
@@ -35,42 +36,7 @@ public class LingRuntimeConfigTest {
             assertEquals(fromDefaults.getMaxHistorySnapshots(), fromBuilder.getMaxHistorySnapshots());
             assertEquals(fromDefaults.getDefaultTimeoutMs(), fromBuilder.getDefaultTimeoutMs());
             assertEquals(fromDefaults.getBulkheadMaxConcurrent(), fromBuilder.getBulkheadMaxConcurrent());
-        }
-    }
-
-    @Nested
-    @DisplayName("预设配置")
-    class PresetConfigTests {
-
-        @Test
-        @DisplayName("highConcurrency() 应有更高的并发限制")
-        void highConcurrencyShouldHaveHigherLimits() {
-            LingRuntimeConfig config = LingRuntimeConfig.highConcurrency();
-
-            assertEquals(50, config.getBulkheadMaxConcurrent());
-            assertEquals(5000, config.getDefaultTimeoutMs());
-            assertTrue(config.getBulkheadMaxConcurrent() > LingRuntimeConfig.defaults().getBulkheadMaxConcurrent());
-        }
-
-        @Test
-        @DisplayName("lowLatency() 应有更短的超时")
-        void lowLatencyShouldHaveShorterTimeout() {
-            LingRuntimeConfig config = LingRuntimeConfig.lowLatency();
-
-            assertEquals(1000, config.getDefaultTimeoutMs());
-            assertEquals(500, config.getBulkheadAcquireTimeoutMs());
-            assertTrue(config.getDefaultTimeoutMs() < LingRuntimeConfig.defaults().getDefaultTimeoutMs());
-        }
-
-        @Test
-        @DisplayName("development() 应更宽松")
-        void developmentShouldBeMoreLenient() {
-            LingRuntimeConfig config = LingRuntimeConfig.development();
-
-            assertEquals(10, config.getMaxHistorySnapshots());
-            assertEquals(30000, config.getDefaultTimeoutMs());
-            assertEquals(100, config.getBulkheadMaxConcurrent());
-            assertEquals(5, config.getForceCleanupDelaySeconds());
+            assertEquals(fromDefaults.isForceDrainOnTimeout(), fromBuilder.isForceDrainOnTimeout());
         }
     }
 
@@ -88,6 +54,7 @@ public class LingRuntimeConfigTest {
                     .forceCleanupDelaySeconds(60)
                     .dyingCheckIntervalSeconds(10)
                     .bulkheadAcquireTimeoutMs(5000)
+                    .forceDrainOnTimeout(false)
                     .build();
 
             assertEquals(20, config.getMaxHistorySnapshots());
@@ -96,6 +63,7 @@ public class LingRuntimeConfigTest {
             assertEquals(60, config.getForceCleanupDelaySeconds());
             assertEquals(10, config.getDyingCheckIntervalSeconds());
             assertEquals(5000, config.getBulkheadAcquireTimeoutMs());
+            assertFalse(config.isForceDrainOnTimeout());
         }
 
         @Test

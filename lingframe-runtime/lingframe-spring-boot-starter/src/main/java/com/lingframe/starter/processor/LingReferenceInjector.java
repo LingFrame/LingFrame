@@ -2,7 +2,6 @@ package com.lingframe.starter.processor;
 
 import com.lingframe.api.annotation.LingReference;
 import com.lingframe.api.context.LingContext;
-import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.exception.LingRuntimeException;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
@@ -13,9 +12,20 @@ import org.springframework.context.ApplicationContextAware;
 import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
 
+/**
+ * 灵珑服务引用注入器。
+ * <p>
+ * 🔥 边界收敛：本类仅负责「按注解字段类型 + 路由锚点取代理」，
+ * 不再承载治理入参（超时/降级/重试已收敛到 YAML references 分区，
+ * 由 StandardGovernancePolicyProvider 在 P2 阶段覆到 GovernanceDecision）。
+ * <p>
+ * 删除项：原 L101-131 的「声明式 Fallback 包装代理」——降级语义归
+ * ResilienceGovernanceFilter + GovernancePolicy.references.fallbackValue。
+ * <p>
+ * BPP 二次扫：灵核级 BPP 在 Bean 初始化前 LingContext 可能未就绪，
+ * postProcessAfterInitialization 二次扫兜底确保注入不漏。
+ */
 @Slf4j
 public class LingReferenceInjector implements BeanPostProcessor, ApplicationContextAware {
 
@@ -27,7 +37,7 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
         this.currentLingId = currentLingId;
     }
 
-    // 兼容旧构造函数（灵元内部使用）
+    /** 携带预置 {@link LingContext} 的构造（灵元容器装配路径使用）；{@link #lingContext} 为空时按需解析 */
     public LingReferenceInjector(String currentLingId, LingContext lingContext) {
         this.currentLingId = currentLingId;
         this.lingContext = lingContext;
@@ -57,9 +67,25 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
      */
     @Override
     public Object postProcessBeforeInitialization(Object bean, @NonNull String beanName) throws BeansException {
+        return tryInject(bean);
+    }
+
+    /**
+     * 灵核级 BPP 二次扫兜底：LingContext 在 BeforeInitialization 阶段可能未就绪，
+     * AfterInitialization 阶段再扫一次确保注入不漏。
+     * <p>
+     * 注：灵元级 BPP（LingContext 已由子上下文注册）无需此兜底，
+     * 此方法对灵元级 BPP 调用是幂等的——字段非空时 injectService 自身会跳过。
+     */
+    @Override
+    public Object postProcessAfterInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
+        return tryInject(bean);
+    }
+
+    private Object tryInject(Object bean) {
         LingContext ctx = getLingContext();
         if (ctx == null) {
-            return bean; // LingContext 未准备好，跳过
+            return bean; // LingContext 未准备好，跳过；AfterInitialization 阶段会兜底
         }
 
         Class<?> clazz = bean.getClass();
@@ -75,64 +101,39 @@ public class LingReferenceInjector implements BeanPostProcessor, ApplicationCont
         return bean;
     }
 
-    // postProcessAfterInitialization 保持默认（直接返回 bean）即可，或者不重写
-    @Override
-    public Object postProcessAfterInitialization(@NonNull Object bean, @NonNull String beanName) throws BeansException {
-        return bean;
-    }
-
     private void injectService(Object bean, Field field, LingReference annotation, LingContext ctx) {
         try {
             field.setAccessible(true);
 
-            // 【防御】如果字段已经有值（比如被 XML 配置或 @Autowired 填充），则跳过
+            // 【防御】非 null 字段视为已满足——跳过注入。
+            // 此守卫双重作用：(1) 被 XML/@Autowired 预填的字段不被覆盖；
+            // (2) Before/After 二次扫幂等——首扫注入后 After 阶段读到非 null 即跳过。
+            // 语义代价：用户故意预置为非 null 哨兵的字段也会被跳过（契约同 Spring
+            // @Autowired(required=false)，以 null 为「未注入」标识）。
             if (field.get(bean) != null) {
                 log.debug("Field {} is already injected, skipping LingReference injection.", field.getName());
                 return;
             }
 
             Class<?> serviceType = field.getType();
-            // 目标路由交由底层 PipelineEngine 与 Context 内置的 GlobalServiceRoutingProxy
-            // 自动抉择
-            Object proxy = ctx.getService(serviceType).orElseThrow(() -> new LingRuntimeException(currentLingId,
-                    "Failed to resolve service reference for type: " + serviceType.getName()));
 
-            // 【增强】对 @LingReference 开启声明式 Fallback 包装支持
-            Class<?> fallbackClass = annotation.fallback();
-            if (fallbackClass != void.class) {
-                final Object originalProxy = proxy;
-                proxy = Proxy.newProxyInstance(
-                        serviceType.getClassLoader(),
-                        new Class<?>[] { serviceType },
-                        (p, method, methodArgs) -> {
-                            try {
-                                return method.invoke(originalProxy, methodArgs);
-                            } catch (InvocationTargetException e) {
-                                Throwable cause = e.getCause();
-                                // 如果捕获到底层抛出的跨组件熔断/超时异常
-                                if (cause instanceof LingInvocationException) {
-                                    if (applicationContext != null) {
-                                        try {
-                                            Object fallbackInstance = applicationContext.getBean(fallbackClass);
-                                            log.warn(
-                                                    "[Fallback] LingReference triggered fallback for target {} to instance {}",
-                                                    serviceType.getSimpleName(), fallbackClass.getSimpleName());
-                                            return method.invoke(fallbackInstance, methodArgs);
-                                        } catch (Exception fallbackEx) {
-                                            log.error("Failed to execute fallback logic or get fallback bean",
-                                                    fallbackEx);
-                                        }
-                                    }
-                                }
-                                // 若非异常降级场景或降级自身报错，继续向上抛出真实异常
-                                throw cause;
-                            }
-                        });
+            // 【接口类型校验】@LingReference 只能注入接口类型——路由代理基于 JDK Proxy，非接口无法代理
+            if (!serviceType.isInterface()) {
+                log.warn("[LingReference] field {}.{} type [{}] is not interface, skipping (JDK Proxy requires interface)",
+                        bean.getClass().getSimpleName(), field.getName(), serviceType.getName());
+                return;
             }
 
+            // 路由收敛：用带锚点重载的 getService，把 lingId/serviceId 锚心透到 GlobalServiceRoutingProxy
+            Object proxy = ctx.getService(serviceType, annotation.lingId(), annotation.serviceId())
+                    .orElseThrow(() -> new LingRuntimeException(currentLingId,
+                            "Failed to resolve service reference for type: " + serviceType.getName()
+                                    + " (lingId=" + annotation.lingId() + ", serviceId=" + annotation.serviceId() + ")"));
+
             field.set(bean, proxy);
-            log.info("Injected @LingReference for field: {}.{}",
-                    bean.getClass().getSimpleName(), field.getName());
+            log.info("Injected @LingReference for field: {}.{} (lingId={}, serviceId={})",
+                    bean.getClass().getSimpleName(), field.getName(),
+                    annotation.lingId(), annotation.serviceId());
         } catch (IllegalAccessException e) {
             log.error("Failed to inject @LingReference", e);
         }

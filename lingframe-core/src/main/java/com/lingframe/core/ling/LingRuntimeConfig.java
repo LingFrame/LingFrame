@@ -7,7 +7,7 @@ import lombok.Getter;
  * 灵元运行时配置
  */
 @Getter
-@Builder
+@Builder(toBuilder = true)
 public class LingRuntimeConfig {
 
     // ==================== 实例管理 ====================
@@ -31,6 +31,33 @@ public class LingRuntimeConfig {
      */
     @Builder.Default
     private int dyingCheckIntervalSeconds = 5;
+
+    /**
+     * 卸载前飞行中请求排空（drain）的 await 切片粒度（毫秒）。
+     * <p>
+     * drain 已改为事件驱动等待（{@link LingInstance#awaitIdle}），
+     * exit() 引用计数归零时主动 signal 唤醒 drain 线程，无需周期性轮询。
+     * 此配置作为 awaitIdle 的单次等待超时粒度，兼作 deadline 兜底检查间隔：
+     * <ul>
+     *   <li>生产环境可调大到 100~200ms，减少 deadline 检查开销；</li>
+     *   <li>测试或低延迟场景可调小到 10ms，加快 deadline 截止判定。</li>
+     * </ul>
+     * 实际请求结束的唤醒由 exit() 的 signal 触发，与此值无关。
+     */
+    @Builder.Default
+    private int drainPollIntervalMs = 50;
+
+    /**
+     * drain 超时后是否强制推进卸载（默认 true，保持既有行为）。
+     * <p>
+     * <ul>
+     *   <li>{@code true}：超时后打 {@code [FORCE_DRAIN]} 日志并继续 tearDown（可能打断在途请求）</li>
+     *   <li>{@code false}：超时后仍有飞行请求则<strong>拒绝卸载</strong>，抛异常，避免静默打断业务</li>
+     * </ul>
+     * 硬化生产可按业务容忍度设为 false，并配合更长的 {@link #forceCleanupDelaySeconds}。
+     */
+    @Builder.Default
+    private boolean forceDrainOnTimeout = true;
 
     // ==================== 调用控制 ====================
 
@@ -59,6 +86,41 @@ public class LingRuntimeConfig {
     @Builder.Default
     private int rateLimitPerSecond = 0;
 
+    // ==================== 熔断器 ====================
+
+    /**
+     * 熔断失败率阈值（百分比，0-100）。
+     * 滑动窗口内失败率达到此阈值时触发熔断。
+     */
+    @Builder.Default
+    private int circuitBreakerFailureRateThreshold = 50;
+
+    /**
+     * 熔断慢调用率阈值（百分比，0-100）。
+     * 滑动窗口内慢调用（超过 defaultTimeoutMs）率达到此阈值时触发熔断。
+     */
+    @Builder.Default
+    private int circuitBreakerSlowCallRateThreshold = 80;
+
+    /**
+     * 熔断滑动窗口大小（调用次数）。
+     */
+    @Builder.Default
+    private int circuitBreakerSlidingWindowSize = 20;
+
+    /**
+     * 熔断最小调用数。
+     * 滑动窗口内调用数未达到此值时不触发熔断判定，避免冷启动误熔断。
+     */
+    @Builder.Default
+    private int circuitBreakerMinimumNumberOfCalls = 10;
+
+    /**
+     * 熔断器开启后等待时间（毫秒），0 表示用 defaultTimeoutMs * 10。
+     */
+    @Builder.Default
+    private long circuitBreakerWaitDurationInOpenStateMs = 0;
+
     // ==================== 工厂方法 ====================
 
     /**
@@ -66,40 +128,6 @@ public class LingRuntimeConfig {
      */
     public static LingRuntimeConfig defaults() {
         return LingRuntimeConfig.builder().build();
-    }
-
-    /**
-     * 高并发场景配置
-     */
-    public static LingRuntimeConfig highConcurrency() {
-        return LingRuntimeConfig.builder()
-                .bulkheadMaxConcurrent(50)
-                .defaultTimeoutMs(5000)
-                .bulkheadAcquireTimeoutMs(5000)
-                .build();
-    }
-
-    /**
-     * 低延迟场景配置
-     */
-    public static LingRuntimeConfig lowLatency() {
-        return LingRuntimeConfig.builder()
-                .defaultTimeoutMs(1000)
-                .bulkheadAcquireTimeoutMs(500)
-                .bulkheadMaxConcurrent(20)
-                .build();
-    }
-
-    /**
-     * 开发模式配置（更宽松）
-     */
-    public static LingRuntimeConfig development() {
-        return LingRuntimeConfig.builder()
-                .maxHistorySnapshots(10)
-                .defaultTimeoutMs(30000) // 30秒，方便调试
-                .bulkheadMaxConcurrent(100)
-                .forceCleanupDelaySeconds(5) // 快速清理
-                .build();
     }
 
     @Override

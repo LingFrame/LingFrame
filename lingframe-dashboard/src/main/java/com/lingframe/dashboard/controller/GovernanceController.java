@@ -1,11 +1,11 @@
 package com.lingframe.dashboard.controller;
 
 import com.lingframe.api.config.GovernancePolicy;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.service.DashboardService;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -17,11 +17,10 @@ import java.util.Map;
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/lingframe/dashboard/governance")
-@CrossOrigin(origins = "*") // 开发阶段允许跨域
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class GovernanceController {
 
-    private final LocalGovernanceRegistry registry;
+    private final GovernanceAdminService governanceAdmin;
     private final DashboardService dashboardService;
 
     /**
@@ -30,7 +29,7 @@ public class GovernanceController {
     @GetMapping("/rules")
     public ApiResponse<Map<String, GovernancePolicy>> getRules() {
         try {
-            return ApiResponse.ok(registry.getAllPatches());
+            return ApiResponse.ok(governanceAdmin.getAllPatches());
         } catch (Exception e) {
             log.error("Failed to get rules", e);
             return ApiResponse.error("获取规则失败: " + e.getMessage());
@@ -43,7 +42,7 @@ public class GovernanceController {
     @GetMapping("/{lingId}")
     public ApiResponse<GovernancePolicy> getPatch(@PathVariable String lingId) {
         try {
-            GovernancePolicy policy = registry.getPatch(lingId);
+            GovernancePolicy policy = governanceAdmin.getPatchForUpdate(lingId);
             return ApiResponse.ok(policy);
         } catch (Exception e) {
             log.error("Failed to get patch for: {}", lingId, e);
@@ -60,7 +59,7 @@ public class GovernanceController {
             @RequestBody GovernancePolicy policy) {
         try {
             dashboardService.updateGovernancePolicy(lingId, policy);
-            return ApiResponse.ok("策略已更新", registry.getPatch(lingId));
+            return ApiResponse.ok("策略已更新", governanceAdmin.getPatchForUpdate(lingId));
         } catch (Exception e) {
             log.error("Failed to update patch for: {}", lingId, e);
             return ApiResponse.error("策略更新失败: " + e.getMessage());

@@ -5,7 +5,7 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * 灵元运行时状态变更事件
- * 当灵元状态在 StateMachine 中发生跃迁（如 ACTIVE -> INACTIVE）时触发
+ * 当灵元状态在 StateMachine 中发生跃迁（如 ACTIVE -&gt; INACTIVE）时触发
  */
 @Getter
 @RequiredArgsConstructor

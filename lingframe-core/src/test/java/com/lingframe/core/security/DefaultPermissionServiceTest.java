@@ -1,5 +1,6 @@
 package com.lingframe.core.security;
 
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionAuditRecord;
@@ -17,6 +18,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,12 +38,13 @@ class DefaultPermissionServiceTest {
     @BeforeEach
     void setUp() {
         eventBus = new EventBus();
-        permissionService = new DefaultPermissionService(eventBus);
+        // 配置已 immutable，直接通过 builder 构建局部实例，不依赖全局单例
+        permissionService = new DefaultPermissionService(eventBus,
+                LingFrameConfig.builder().devMode(false).build());
     }
 
     @AfterEach
     void tearDown() {
-        LingFrameConfig.current().setDevMode(false);
         LingCallContext.clear();
         InvocationContext.detach(null);
         eventBus.shutdown();
@@ -94,27 +98,29 @@ class DefaultPermissionServiceTest {
         @Test
         @DisplayName("开发模式下即使没有权限也应允许访问")
         void shouldAllowAllInDevMode() {
-            LingFrameConfig.current().setDevMode(true);
-            assertTrue(permissionService.isAllowed("test-ling", "test-capability", AccessType.WRITE));
+            DefaultPermissionService devModeService = new DefaultPermissionService(eventBus,
+                    LingFrameConfig.builder().devMode(true).build());
+            assertTrue(devModeService.isAllowed("test-ling", "test-capability", AccessType.WRITE));
         }
 
         @Test
-        @DisplayName("should publish dev-mode bypass alert")
+        @DisplayName("开发模式旁路应发布 DEV_PERMISSION_BYPASS 告警")
         void shouldPublishDevModeBypassAlert() {
-            AtomicReference<MonitoringEvents.AlertNotifyEvent> captured = new AtomicReference<>();
+            EventCapture<MonitoringEvents.AlertNotifyEvent> captured = new EventCapture<>();
             eventBus.subscribe("test-listener", MonitoringEvents.AlertNotifyEvent.class, captured::set);
             InvocationContext ctx = attachContext("trace-dev");
 
-            try {
-                LingFrameConfig.current().setDevMode(true);
+            DefaultPermissionService devModeService = new DefaultPermissionService(eventBus,
+                    LingFrameConfig.builder().devMode(true).build());
 
-                assertTrue(permissionService.isAllowed("test-ling", "test-capability", AccessType.WRITE));
+            try {
+                assertTrue(devModeService.isAllowed("test-ling", "test-capability", AccessType.WRITE));
             } finally {
                 InvocationContext.detach(null);
                 ctx.recycle();
             }
 
-            MonitoringEvents.AlertNotifyEvent event = awaitEvent(captured, Duration.ofSeconds(2));
+            MonitoringEvents.AlertNotifyEvent event = captured.await(Duration.ofSeconds(2));
             assertNotNull(event);
             assertEquals("trace-dev", event.getTraceId());
             assertEquals("WARNING", event.getLevel());
@@ -127,12 +133,84 @@ class DefaultPermissionServiceTest {
     }
 
     @Nested
+    @DisplayName("灵核身份豁免")
+    class LingCoreIdentityTests {
+        @Test
+        @DisplayName("灵核身份 + check-permissions=false（默认）时豁免灵元权限表（不是灵元、无 ling.yml 声明）")
+        void lingCoreIdentityBypassesWhenCheckPermissionsDisabled() {
+            // 默认配置：lingCoreCheckPermissions=false，灵核身份豁免灵元权限表
+            DefaultPermissionService defaultService = new DefaultPermissionService(eventBus,
+                    LingFrameConfig.builder()
+                            .devMode(false)
+                            .lingCoreCheckPermissions(false)
+                            .build());
+            assertTrue(defaultService.isAllowed(
+                    LingCoreConstants.LINGCORE_LING_ID, "lingcore:bean:read", AccessType.READ));
+        }
+
+        @Test
+        @DisplayName("灵核身份 + check-permissions=true 加固时仍走权限表 enforce（toggle 控基础设施代理表面）")
+        void lingCoreIdentityEnforcedWhenCheckPermissionsEnabled() {
+            // 加固 toggle 开启：模拟操作员设 ling-core-governance.check-permissions: true
+            // 基础设施代理（cache/SQL/Redis）直接调 isAllowed 不走 PermissionGovernanceFilter，
+            // toggle 必须在此 gate 才能控制这表面——灵核身份也走权限表 enforce。
+            DefaultPermissionService hardenedService = new DefaultPermissionService(eventBus,
+                    LingFrameConfig.builder()
+                            .devMode(false)
+                            .lingCoreCheckPermissions(true)
+                            .build());
+            // 灵核身份未声明此 capability → 加固 toggle 开启时应 enforce 拒绝
+            assertFalse(hardenedService.isAllowed(
+                    LingCoreConstants.LINGCORE_LING_ID, "lingcore:bean:read", AccessType.READ));
+        }
+
+        @Test
+        @DisplayName("灵核身份 + check-permissions=true 加固 + 显式 grant 后放行（加固路径可声明授权）")
+        void lingCoreIdentityAllowedAfterExplicitGrantWhenHardened() {
+            DefaultPermissionService hardenedService = new DefaultPermissionService(eventBus,
+                    LingFrameConfig.builder()
+                            .devMode(false)
+                            .lingCoreCheckPermissions(true)
+                            .build());
+            hardenedService.grant(LingCoreConstants.LINGCORE_LING_ID, "lingcore:bean:read", AccessType.READ);
+            assertTrue(hardenedService.isAllowed(
+                    LingCoreConstants.LINGCORE_LING_ID, "lingcore:bean:read", AccessType.READ));
+        }
+
+        @Test
+        @DisplayName("灵元 caller 调灵核 Bean 在 check-permissions=true 加固时仍走权限表 enforce")
+        void lingCallerEnforcedWhenCheckPermissionsEnabled() {
+            DefaultPermissionService hardenedService = new DefaultPermissionService(eventBus,
+                    LingFrameConfig.builder()
+                            .devMode(false)
+                            .lingCoreCheckPermissions(true)
+                            .build());
+            // 灵元 caller 没声明这个 capability → 加固 toggle 开启时应 enforce 拒绝
+            assertFalse(hardenedService.isAllowed(
+                    "caller-ling", "lingcore:bean:read", AccessType.READ));
+        }
+
+        @Test
+        @DisplayName("灵元 caller 调灵核 Bean 在 check-permissions=false 时 dev 模式放行 + 告警")
+        void lingCallerDevModeBypassWhenCheckPermissionsDisabled() {
+            DefaultPermissionService relaxedService = new DefaultPermissionService(eventBus,
+                    LingFrameConfig.builder()
+                            .devMode(true)
+                            .lingCoreCheckPermissions(false)
+                            .build());
+            // dev 模式 + 灵元 caller 未声明权限 → 放行 + 告警（DEV WARNING）
+            assertTrue(relaxedService.isAllowed(
+                    "caller-ling", "lingcore:bean:read", AccessType.READ));
+        }
+    }
+
+    @Nested
     @DisplayName("审计事件")
     class AuditTests {
         @Test
         @DisplayName("应发布结构化的三态审计事件")
         void publishesStructuredAuditEvent() {
-            AtomicReference<MonitoringEvents.AuditLogEvent> captured = new AtomicReference<>();
+            EventCapture<MonitoringEvents.AuditLogEvent> captured = new EventCapture<>();
             eventBus.subscribe("test-listener", MonitoringEvents.AuditLogEvent.class, captured::set);
             InvocationContext ctx = attachContext("trace-audit");
 
@@ -152,7 +230,7 @@ class DefaultPermissionServiceTest {
                 ctx.recycle();
             }
 
-            MonitoringEvents.AuditLogEvent event = awaitEvent(captured, Duration.ofSeconds(2));
+            MonitoringEvents.AuditLogEvent event = captured.await(Duration.ofSeconds(2));
             assertNotNull(event);
             assertEquals("trace-audit", event.getTraceId());
             assertEquals("ling-a", event.getLingId());
@@ -173,23 +251,30 @@ class DefaultPermissionServiceTest {
         ctx.setServiceFQSID("test-ling:test-service");
         ctx.setOperation("createOrder");
         ctx.setResourceId("POST /orders");
-        ctx.setRuleSource("AnnotationPolicy");
+        ctx.governance().setRuleSource("AnnotationPolicy");
         ctx.attach();
         return ctx;
     }
 
-    private <T> T awaitEvent(AtomicReference<T> captured, Duration timeout) {
-        long deadlineNanos = System.nanoTime() + timeout.toNanos();
-        T event = captured.get();
-        while (event == null && System.nanoTime() < deadlineNanos) {
+    /**
+     * 事件捕获器：基于 CountDownLatch 替代轮询等待，事件到达即唤醒，无需周期性 sleep。
+     */
+    static final class EventCapture<T> {
+        private final AtomicReference<T> ref = new AtomicReference<>();
+        private final CountDownLatch latch = new CountDownLatch(1);
+
+        void set(T event) {
+            ref.set(event);
+            latch.countDown();
+        }
+
+        T await(Duration timeout) {
             try {
-                Thread.sleep(10);
+                latch.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                break;
             }
-            event = captured.get();
+            return ref.get();
         }
-        return event;
     }
 }

@@ -4,7 +4,7 @@ package com.lingframe.api.security;
  * 访问类型枚举
  * 定义了权限检查时的操作类型，支持层级比较。
  * <p>
- * 权限层级：READ(1) < WRITE(2) < EXECUTE(3)
+ * 权限层级：READ(1) &lt; WRITE(2) &lt; EXECUTE(3)
  * </p>
  * <p>
  * 规则：高级别权限自动包含低级别权限。
@@ -58,7 +58,7 @@ public enum AccessType {
      * </p>
      *
      * @param required 所需的权限类型
-     * @return 如果当前权限级别 >= 所需权限级别，返回 true
+     * @return 如果当前权限级别 &gt;= 所需权限级别，返回 true
      */
     public boolean satisfies(AccessType required) {
         // NONE 不满足任何权限需求（包括 NONE 本身）
@@ -72,7 +72,7 @@ public enum AccessType {
      * 判断当前权限级别是否至少达到指定级别
      *
      * @param other 比较的权限类型
-     * @return 如果当前权限级别 >= 指定权限级别，返回 true
+     * @return 如果当前权限级别 &gt;= 指定权限级别，返回 true
      */
     public boolean isAtLeast(AccessType other) {
         return this.level >= other.level;

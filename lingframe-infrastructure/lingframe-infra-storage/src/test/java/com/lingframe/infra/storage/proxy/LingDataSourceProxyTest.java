@@ -9,8 +9,11 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.*;
+import java.io.PrintWriter;
+import java.util.logging.Logger;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,17 +39,55 @@ class LingDataSourceProxyTest {
         }
 
         @Test
-        @DisplayName("带用户名密码的 getConnection 应返回 LingConnectionProxy")
-        void shouldReturnConnectionProxyForCredentialPath() throws SQLException {
+        @DisplayName("带用户名密码的 getConnection 应被禁止——强制使用灵核配置的凭据")
+        void shouldRejectGetConnectionWithCredentials() throws SQLException {
             DataSource target = mock(DataSource.class);
-            Connection connection = mock(Connection.class);
             PermissionService permissionService = mock(PermissionService.class);
-            when(target.getConnection("user", "pwd")).thenReturn(connection);
 
             LingDataSourceProxy proxy = new LingDataSourceProxy(target, permissionService);
 
-            assertInstanceOf(LingConnectionProxy.class, proxy.getConnection("user", "pwd"));
-            verify(target).getConnection("user", "pwd");
+            assertThrows(SQLException.class, () -> proxy.getConnection("user", "pwd"));
+            verify(target, never()).getConnection("user", "pwd");
+        }
+    }
+
+    @Nested
+    @DisplayName("DataSource 委托转发测试")
+    class DataSourceDelegateTests {
+
+        @Test
+        @DisplayName("覆盖所有直接转发的接口方法")
+        void testAllForwardingMethods() throws Exception {
+            DataSource target = mock(DataSource.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            LingDataSourceProxy proxy = new LingDataSourceProxy(target, permissionService);
+
+            PrintWriter writer = mock(PrintWriter.class);
+            proxy.setLogWriter(writer);
+            verify(target).setLogWriter(writer);
+
+            when(target.getLogWriter()).thenReturn(writer);
+            assertSame(writer, proxy.getLogWriter());
+
+            proxy.setLoginTimeout(30);
+            verify(target).setLoginTimeout(30);
+
+            when(target.getLoginTimeout()).thenReturn(30);
+            assertEquals(30, proxy.getLoginTimeout());
+
+            Logger logger = Logger.getLogger("test");
+            when(target.getParentLogger()).thenReturn(logger);
+            assertSame(logger, proxy.getParentLogger());
+
+            // unwrap / isWrapperFor
+            assertSame(proxy, proxy.unwrap(LingDataSourceProxy.class));
+            assertSame(proxy, proxy.unwrap(DataSource.class));
+            // unwrap 到非代理接口时拒绝暴露原生实现，防止绕过治理
+            assertThrows(SQLException.class, () -> proxy.unwrap(String.class));
+
+            assertTrue(proxy.isWrapperFor(DataSource.class));
+            when(target.isWrapperFor(String.class)).thenReturn(false);
+            assertFalse(proxy.isWrapperFor(String.class));
         }
     }
 }

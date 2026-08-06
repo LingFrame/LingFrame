@@ -1,0 +1,271 @@
+# =============================================================================
+# 生产 profile 片段示例
+# =============================================================================
+#
+# 用途：作为生产环境 application-prod.yaml 的起点模板。
+# 激活：--spring.profiles.active=prod
+#
+# 编排原则：
+#   - 有默认值的配置项一律注释掉（# 前缀），按需放开
+#   - 只有必须显式配置、或生产关键安全姿态的项才放开
+#   - 每个分块上方有解释性注释，说明该组配置的语义与生产建议
+#
+# 占位符约定：
+#   <rotate-me-strong-token>   必须替换为足够长的随机串
+#   <https://ops.example.com>  必须替换为运维网络可达的源
+#   /var/lib/lingframe/...     必须替换为生产环境的可写目录
+#
+# 切勿把占位 token 原样上线。
+# 完整硬化建议：docs/zh-CN/production-hardening.md
+# =============================================================================
+
+lingframe:
+  # ---------------------------------------------------------------------------
+  # 顶层开关与运行模式
+  # ---------------------------------------------------------------------------
+  # enabled 总开关；dev-mode 生产必须 false，关闭热重载监听与调试旁路。
+  # mode-switch-password 留空则运行时模式切换关闭（fail-closed），生产建议留空。
+  enabled: true
+  dev-mode: false                  # 生产必须关闭
+  # mode-switch-password: "<switch-password>"   # 留空则运行时模式切换关闭（fail-closed）
+
+  # ---------------------------------------------------------------------------
+  # 灵元装载来源
+  # ---------------------------------------------------------------------------
+  # ling-home 已打包灵元根目录；ling-roots 额外扫描目录列表（开发期多模块并行加载常用）。
+  # auto-scan 启动时是否自动扫描并加载 home/roots 下的灵元。
+  # preload-api-jars 预加载的 Shared API JAR 路径列表，实现跨灵元 API 类共享。
+  #   重要：已进入共享边界的契约不支持热更新/热卸载，破坏性变更必须重启进程。
+  # api-override-check-enabled 灵元包内含 com.lingframe.api.* 时拒绝安装。
+  # service-excluded-packages 隐式接口服务注册时排除第三方框架接口（框架已内置 java.* 等）。
+  # trusted-ling-ids 信任灵元白名单，豁免危险 API 严格模式校验，生产慎用。
+  ling-home: "lings"
+  # ling-roots:
+  #   - /opt/lingframe/extra-lings
+  # auto-scan: true
+  # preload-api-jars:
+  #   - libs/order-api.jar
+  # api-override-check-enabled: true
+  # service-excluded-packages: []
+  # trusted-ling-ids: []
+
+  # ===========================================================================
+  # 危险 API 扫描配置（lingframe.security）
+  # ===========================================================================
+  # strict-mode 是否启用严格模式（默认 true，保持安全基线）。
+  #   true : WARN 级 API 调用也抛 LingSecurityException，部署被拦截。
+  #   false: WARN 级 API 调用仅记日志，不拦截部署（开发环境推荐）。
+  #   注意：危险 API 扫描是加载期信号，不是完整 JVM 沙箱。
+  # trusted-lib-prefixes 依赖库包前缀豁免列表（不区分灵元，全局生效）。
+  #   严格模式下，若依赖库内部触发 WARN 级 API 调用导致部署被拦截，可在此按包前缀豁免。
+  #   配置格式同时支持 ASM 内部路径（com/fasterxml/jackson/）与 Java 包名（com.fasterxml.jackson.）。
+  security:
+    strict-mode: true              # 生产保持严格模式
+    trusted-lib-prefixes:          # 严格模式下按包前缀豁免依赖库的 WARN 级 API
+      - com.fasterxml.jackson.
+      - org.springframework.
+      - io.jsonwebtoken.
+
+  # ===========================================================================
+  # 灵核治理（lingframe.ling-core-governance）
+  # ===========================================================================
+  # 控制灵核自身 Bean 是否纳入治理主链。默认全部关闭，避免影响灵元正常运行。
+  #   enabled              是否启用灵核 Bean 治理
+  #   govern-internal-calls 灵核自调用是否也治理
+  #   check-permissions    灵核应用是否走权限检查
+  ling-core-governance:
+    enabled: false                 # 灵核 Bean 治理；按需开启
+    # govern-internal-calls: false
+    # check-permissions: false
+
+  # ===========================================================================
+  # 审计（lingframe.audit）
+  # ===========================================================================
+  #   enabled       是否开启全局审计功能
+  #   log-console   是否将审计日志输出到控制台；生产建议关闭，对接 Logstash 或 DB
+  #   queue-size    异步审计线程池队列大小
+  audit:
+    enabled: true
+    log-console: false             # 生产关闭，对接 Logstash 或 DB
+    # queue-size: 1000
+
+  # ===========================================================================
+  # 治理规则（lingframe.rules）
+  # ===========================================================================
+  # 每条规则定义一个资源匹配模式与所需权限/审计策略。
+  #   pattern        资源标识符匹配模式 (AntPath 风格)，示例: "com.example.*Service#delete*"
+  #   permission     访问该资源所需的权限标识，示例: "order:delete"
+  #   access         访问类型 (READ / WRITE / EXECUTE)；不配置则内核按方法名推导
+  #   audit          是否强制开启审计（true/false/null 跟随全局）
+  #   audit-action   自定义审计动作名称，用于在审计日志中标记高危操作
+  #   timeout        执行超时时间；默认 -1 表示不限制
+  rules:
+    - pattern: "com.example.*Service#delete*"
+      permission: "order:delete"
+      access: WRITE
+      audit: true
+      audit-action: "DANGEROUS_DELETE"
+      timeout: 5s
+
+  # ===========================================================================
+  # 运行时配置（lingframe.runtime）
+  # ===========================================================================
+  # --- 实例管理 ---
+  #   max-history-snapshots      保留历史快照数量（默认 5）
+  #   force-cleanup-delay        drain 最长等待（默认 30s）
+  #   force-drain-on-timeout     true（默认）：超时后强制 tearDown，可能打断在途请求，日志 [FORCE_DRAIN]
+  #                              false：超时仍有飞行请求则卸载失败，不打断业务，日志 [DRAIN_TIMEOUT]
+  #   dying-check-interval       濒死队列检查间隔（默认 5s）
+  #
+  # --- 调用控制 ---
+  #   default-timeout            默认调用超时（默认 3000ms）
+  #   bulkhead-max-concurrent   舱壁最大并发（默认 10）
+  #   bulkhead-acquire-timeout  舱壁许可获取超时（默认 3000ms）
+  #   rate-limit-per-second      限流 QPS，0 表示不启用
+  #
+  # --- 熔断器 ---
+  #   circuit-breaker-failure-rate-threshold          熔断失败率阈值（百分比，默认 50）
+  #   circuit-breaker-slow-call-rate-threshold        熔断慢调用率阈值（百分比，默认 80）
+  #   circuit-breaker-sliding-window-size             熔断滑动窗口大小（调用次数，默认 20）
+  #   circuit-breaker-minimum-number-of-calls         熔断最小调用数（默认 10）
+  #   circuit-breaker-wait-duration-in-open-state     熔断开启后等待时间，0 表示 defaultTimeout * 10
+  #
+  # --- 灵元线程池预算 ---
+  #   global-max-ling-threads   全局灵元线程总预算（所有灵元共享，默认 CPU*4）
+  #   max-threads-per-ling      单个灵元线程池硬上限（默认 8）
+  #   default-threads-per-ling  单个灵元默认线程数（默认 2）
+  runtime:
+    # max-history-snapshots: 5
+    force-cleanup-delay: 60s       # drain 最长等待
+    force-drain-on-timeout: true   # true：超时强制 tearDown（可能打断在途）；false：超时则卸载失败
+    # dying-check-interval: 5s
+    # default-timeout: 3000ms
+    # bulkhead-max-concurrent: 10
+    # bulkhead-acquire-timeout: 3000ms
+    # rate-limit-per-second: 0
+    # circuit-breaker-failure-rate-threshold: 50
+    # circuit-breaker-slow-call-rate-threshold: 80
+    # circuit-breaker-sliding-window-size: 20
+    # circuit-breaker-minimum-number-of-calls: 10
+    # circuit-breaker-wait-duration-in-open-state: 0ms
+    # global-max-ling-threads: 16
+    # max-threads-per-ling: 8
+    # default-threads-per-ling: 2
+
+  # ===========================================================================
+  # Dashboard 控制面（lingframe.dashboard，选配）
+  # ===========================================================================
+  # 触发条件：仅引入 lingframe-dashboard 依赖不会自动启用，
+  #           必须显式设置 lingframe.dashboard.enabled: true 才会装配控制面。
+  #   enabled                              控制面总开关
+  #   install-enabled                      是否允许通过 Dashboard 上传安装灵元；生产建议 false
+  #   metaspace-estimate-bytes-per-class   单类 Metaspace 估算字节数（仅用于指标估算，默认 10240）
+  dashboard:
+    enabled: true
+    install-enabled: false         # 生产禁止通过 Dashboard 上传安装灵元
+    # metaspace-estimate-bytes-per-class: 10240
+
+    # --- 访问令牌鉴权（生产 fail-closed）---
+    #   enabled          启用令牌认证；关闭须显式 enabled=false
+    #   token            主访问令牌；enabled=true 时必填，否则启动失败
+    #   allow-weak       false 时弱口令启动失败；生产必须 false
+    #   secondary-tokens 备用令牌列表（用于轮换过渡期）
+    # Token 只走 Header：X-Access-Token。
+    access-token:
+      enabled: true                # 默认 fail-closed；关闭须显式 enabled=false
+      token: "<rotate-me-strong-token>"   # enabled=true 时必填，否则启动失败
+      allow-weak: false            # 生产必须 false：弱口令启动失败
+      # secondary-tokens:          # 备用令牌（轮换过渡期）
+      #   - "<secondary-token-during-rotation>"
+
+    # --- 跨域过滤（lingframe.dashboard.cors）---
+    #   enabled          设为 false 时整个 Filter 跳过（开发逃生口）
+    #   allowed-origins  允许的跨域源列表；空 + access-token 启用 = 仅同源
+    #   allowed-methods  CORS 允许的 HTTP 方法
+    #   allowed-headers  允许的请求头
+    #   max-age          预检请求缓存时间（秒）
+    cors:
+      enabled: true
+      allowed-origins:             # 空 + access-token 启用 = 仅同源；生产应显式列出
+        - "https://ops.example.com"
+      # allowed-methods: ["GET", "POST", "DELETE", "OPTIONS"]
+      # allowed-headers: ["Content-Type", "X-Access-Token", "X-Requested-With"]
+      # max-age: 3600
+
+    # --- 限流（lingframe.dashboard.rate-limit）---
+    #   trusted-proxy-ips       受信反向代理 IP 集合。仅当请求 TCP 直连 IP 在此集合中时，
+    #                          才解析 X-Forwarded-For 取原始客户端 IP。默认空集，不信任任何代理。
+    #                          避免攻击者伪造 X-Forwarded-For 绕过限流。
+    #   max-requests-per-second 每秒每 IP 最大请求数
+    #   ip-idle-threshold-ms    IP 不活跃超过此时间（毫秒）后清理
+    rate-limit:
+      # trusted-proxy-ips: []      # 默认不信任任何代理头，避免伪造 X-Forwarded-For
+      # max-requests-per-second: 30
+      # ip-idle-threshold-ms: 600000
+
+    # --- 只读模式（lingframe.dashboard.readonly）---
+    #   enabled        启用后所有写操作（POST/DELETE）被拒绝，仅允许 GET
+    #   allowed-paths  只读模式下允许的路径（前缀匹配），如健康检查等
+    readonly:
+      enabled: false               # 启用后拒绝所有 POST/DELETE
+      # allowed-paths: []
+
+    # --- SQLite 持久化存储（lingframe.dashboard.storage）---
+    # 默认启用。用于持久化治理配置、指标历史、审计日志。
+    # 生产应把 path 指向独立可写、有备份的目录；容器环境务必挂载持久卷。
+    #   enabled                       是否启用持久化存储
+    #   path                          SQLite 数据库文件路径
+    #   metrics-retention-days        指标数据保留天数
+    #   audit-retention-days          审计日志保留天数
+    #   metrics-collect-interval-seconds  指标采集间隔（秒）
+    #   backup-interval-hours         数据库备份间隔（小时），0 表示不备份
+    #   backup-retention-count        备份文件保留数量
+    storage:
+      enabled: true
+      path: "/var/lib/lingframe/dashboard.db"   # 生产应指向独立可写、有备份的目录
+      # metrics-retention-days: 7
+      # audit-retention-days: 30
+      # metrics-collect-interval-seconds: 30
+      # backup-interval-hours: 6
+      # backup-retention-count: 5
+
+# =============================================================================
+# Spring Boot 生产收紧项（非 lingframe 前缀，但生产必须配置）
+# =============================================================================
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 60MB
+
+# SpringDoc OpenAPI：生产环境建议关闭，或通过反向代理限制到内网。
+springdoc:
+  api-docs:
+    enabled: false                 # 生产关闭 OpenAPI
+  swagger-ui:
+    enabled: false
+
+# Actuator 端点收紧：生产仅暴露 health 与 info。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info       # 生产仅暴露 health 与 info
+  endpoint:
+    health:
+      show-details: never          # 不展示健康详情，避免泄露内部组件信息
+
+logging:
+  level:
+    com.lingframe: INFO
+
+# =============================================================================
+# 提醒
+# =============================================================================
+# - 切流/停流 → 二维路由权重 / 灰度。
+# - 启停授权 → LING_ENABLE 等 capability。
+# - 真下线回收 → 卸载（STOPPING → REMOVED）。
+# - 灵元访问 DB 只走注入的 DataSource Bean，禁止 DriverManager 私自建连
+#   （存储治理覆盖 Spring DataSource Bean 代理路径，手搓连接可绕过）。
+# - 完整硬化清单：docs/zh-CN/production-hardening.md

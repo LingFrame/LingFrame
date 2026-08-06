@@ -2,6 +2,7 @@ package com.lingframe.core.event.monitor;
 
 import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.security.PermissionAuditResult;
+import com.lingframe.core.event.AsyncLingEvent;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
@@ -12,7 +13,7 @@ public class MonitoringEvents {
 
     @Getter
     @RequiredArgsConstructor
-    public static class TraceLogEvent implements LingEvent {
+    public static class TraceLogEvent implements AsyncLingEvent {
         private final String traceId;
         private final String lingId;
         private final String action;
@@ -22,7 +23,7 @@ public class MonitoringEvents {
     }
 
     @Getter
-    public static class AuditLogEvent implements LingEvent {
+    public static class AuditLogEvent implements AsyncLingEvent {
         private final String traceId;
         private final String lingId;
         private final String principal;
@@ -86,7 +87,7 @@ public class MonitoringEvents {
 
     @Getter
     @RequiredArgsConstructor
-    public static class CircuitBreakerStateEvent implements LingEvent {
+    public static class CircuitBreakerStateEvent implements AsyncLingEvent {
         private final String resourceId;
         private final String oldState;
         private final String newState;
@@ -95,7 +96,7 @@ public class MonitoringEvents {
     }
 
     @Getter
-    public static class AlertNotifyEvent implements LingEvent {
+    public static class AlertNotifyEvent implements AsyncLingEvent {
         private final String traceId;
         private final String level;
         private final String type;
@@ -133,7 +134,7 @@ public class MonitoringEvents {
     }
 
     @Getter
-    public static class LeakDetectionEvent implements LingEvent {
+    public static class LeakDetectionEvent implements AsyncLingEvent {
         private final String lingId;
         private final String version;
         private final boolean collected;
@@ -163,7 +164,7 @@ public class MonitoringEvents {
     }
 
     @Getter
-    public static class ResourceCleanupCapabilityEvent implements LingEvent {
+    public static class ResourceCleanupCapabilityEvent implements AsyncLingEvent {
         private final String runtime;
         private final int jdkVersion;
         private final boolean threadTargetAccessible;

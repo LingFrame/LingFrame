@@ -4,19 +4,23 @@ import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.spi.LingContainer;
-import com.lingframe.core.fsm.RuntimeCoordinator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @DisplayName("DashboardLingSourceResolver 测试")
 class DashboardLingSourceResolverTest {
@@ -24,11 +28,12 @@ class DashboardLingSourceResolverTest {
     @Test
     @DisplayName("应基于现有实例生成下一个热重载版本号")
     void shouldBuildNextReloadVersion() {
-        EventBus eventBus = new EventBus();
-        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
-        LingRuntime runtime = new LingRuntime("ling1", LingRuntimeConfig.defaults(), eventBus, runtimeCoordinator);
-        runtime.getInstancePool().addInstance(instance("ling1", "1.0.0-reload-1"), false);
-        runtime.getInstancePool().addInstance(instance("ling1", "1.0.0-reload-3"), false);
+        LingRuntime runtime = mock(LingRuntime.class);
+        InstancePool pool = mock(InstancePool.class);
+        when(runtime.getInstancePool()).thenReturn(pool);
+        when(pool.getAllInstances()).thenReturn(Arrays.asList(
+                instance("ling1", "1.0.0-reload-1"),
+                instance("ling1", "1.0.0-reload-3")));
 
         DashboardLingSourceResolver resolver = new DashboardLingSourceResolver(
                 LingFrameConfig.builder().lingHome("lings").build());

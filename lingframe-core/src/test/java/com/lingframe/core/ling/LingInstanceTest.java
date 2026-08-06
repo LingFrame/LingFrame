@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -281,6 +282,42 @@ class LingInstanceTest {
             assertEquals(0, instance.getActiveRequestCount());
             assertTrue(instance.snapshotActiveInvocations().isEmpty());
         }
+
+        @Test
+        @DisplayName("snapshot 为 null 时应提前返回 -1，不递增活跃计数器")
+        void beginInvocationWithNullSnapshotShouldReturnFailWithoutIncrementing() {
+            prepareReady(instance);
+
+            long invocationId = instance.beginInvocation(null);
+
+            assertEquals(-1L, invocationId);
+            // 计数器不应被递增——否则调用方收到 -1 不会调 completeInvocation，导致永不归零
+            assertEquals(0, instance.getActiveRequestCount());
+            assertTrue(instance.snapshotActiveInvocations().isEmpty());
+        }
+
+        @Test
+        @DisplayName("snapshot 为 null 后正常调用应仍能正确登记")
+        void beginInvocationShouldWorkAfterNullSnapshotWasRejected() {
+            prepareReady(instance);
+
+            // 先传 null 被拒绝
+            assertEquals(-1L, instance.beginInvocation(null));
+            assertEquals(0, instance.getActiveRequestCount());
+
+            // 再传正常快照应成功
+            ActiveInvocationSnapshot snapshot = new ActiveInvocationSnapshot(
+                    "trace-1", "test-ling:demo.Service", "execute",
+                    "caller-a", "POST /demo", instance.getVersion(),
+                    100L, 11L, "worker-1");
+            long invocationId = instance.beginInvocation(snapshot);
+
+            assertTrue(invocationId > 0);
+            assertEquals(1, instance.getActiveRequestCount());
+
+            instance.completeInvocation(invocationId);
+            assertEquals(0, instance.getActiveRequestCount());
+        }
     }
 
     @Nested
@@ -412,6 +449,68 @@ class LingInstanceTest {
             assertTrue(completed);
             assertEquals(0, successAfterStopping.get());
             assertEquals(10, instance.getActiveRequestCount());
+        }
+    }
+
+    @Nested
+    @DisplayName("服务方法注册与查询")
+    class ServiceMethodTests {
+
+        @Test
+        @DisplayName("注册后应能查到对应方法")
+        void shouldFindRegisteredMethod() {
+            instance.registerServiceMethod("ling-a:orderService", "createOrder", new String[]{"java.lang.String", "int"});
+
+            assertTrue(instance.hasServiceMethod("ling-a:orderService", "createOrder",
+                    Arrays.asList("java.lang.String", "int")));
+        }
+
+        @Test
+        @DisplayName("参数类型不同应视为不同方法")
+        void differentParameterTypesShouldBeDifferent() {
+            instance.registerServiceMethod("ling-a:orderService", "createOrder", new String[]{"java.lang.String"});
+
+            assertFalse(instance.hasServiceMethod("ling-a:orderService", "createOrder",
+                    Arrays.asList("java.lang.String", "int")));
+        }
+
+        @Test
+        @DisplayName("未注册的服务应返回 false")
+        void unregisteredServiceShouldReturnFalse() {
+            assertFalse(instance.hasServiceMethod("ling-a:unknownService", "anyMethod",
+                    Arrays.asList()));
+        }
+
+        @Test
+        @DisplayName("同一服务可注册多个方法")
+        void multipleMethodsUnderSameService() {
+            instance.registerServiceMethod("ling-a:orderService", "createOrder", new String[]{"java.lang.String"});
+            instance.registerServiceMethod("ling-a:orderService", "cancelOrder", new String[]{"java.lang.String"});
+
+            assertTrue(instance.hasServiceMethod("ling-a:orderService", "createOrder",
+                    Arrays.asList("java.lang.String")));
+            assertTrue(instance.hasServiceMethod("ling-a:orderService", "cancelOrder",
+                    Arrays.asList("java.lang.String")));
+        }
+
+        @Test
+        @DisplayName("clearDetachedState 后所有服务方法应被清空")
+        void clearDetachedStateShouldEvictAllServiceMethods() {
+            instance.registerServiceMethod("ling-a:orderService", "createOrder", new String[]{"java.lang.String"});
+            instance.clearDetachedState();
+
+            assertFalse(instance.hasServiceMethod("ling-a:orderService", "createOrder",
+                    Arrays.asList("java.lang.String")));
+        }
+
+        @Test
+        @DisplayName("fqsid 或 methodName 为 null 时应安全忽略")
+        void nullArgumentsShouldBeIgnored() {
+            instance.registerServiceMethod(null, "createOrder", new String[]{"java.lang.String"});
+            instance.registerServiceMethod("ling-a:orderService", null, new String[]{"java.lang.String"});
+
+            assertFalse(instance.hasServiceMethod(null, "createOrder", Arrays.asList("java.lang.String")));
+            assertFalse(instance.hasServiceMethod("ling-a:orderService", null, Arrays.asList("java.lang.String")));
         }
     }
 

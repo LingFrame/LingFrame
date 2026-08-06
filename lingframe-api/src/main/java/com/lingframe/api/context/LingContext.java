@@ -85,4 +85,47 @@ public interface LingContext {
      * @param event 事件对象
      */
     void publishEvent(LingEvent event);
+
+    // ════════════════════════════════════════════════════════════════════
+    // 边界：以下 default 方法为便利 API，仅契约层占位；
+    // 真正实现在 DefaultLingContext 覆写。测试 LingContext 实现者若不覆写
+    // 会在调用时抛 UnsupportedOperationException，符合最小上下文语义。
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * 获取灵元提供的服务接口（带路由锚点重载）
+     * <p>
+     * 当同一接口被多个灵元/多实例实现时，用此重载显式定位。
+     * lingId 与 serviceId 均可传 null/空：传空等价于「不限」。
+     * <ul>
+     *   <li>仅按类型：{@code getService(UserService.class, null, null)}</li>
+     *   <li>限定灵元：{@code getService(UserService.class, "user-ling", null)}</li>
+     *   <li>限定完整 FQSID：{@code getService(AuthService.class, null, "lingcore-app:authService")}</li>
+     * </ul>
+     *
+     * @param serviceClass 服务接口类
+     * @param lingId       灵元 ID 锚点，可空
+     * @param serviceId    服务短 ID 或 FQSID 锚点，可空
+     * @return 服务实例；本实现未支持时返回 {@link Optional#empty()}
+     */
+    default <T> Optional<T> getService(Class<T> serviceClass, String lingId, String serviceId) {
+        return getService(serviceClass);
+    }
+
+    /**
+     * 程序化暴露服务（注解的动态平替）
+     * <p>
+     * 在 {@code Ling.onStart()} 等生命周期回调中调用，把一个 handler 对象的所有
+     * public 方法注册为一个服务。serviceId 为短 ID，灵核会拼为 FQSID。
+     * <p>
+     * 默认实现抛 {@link UnsupportedOperationException}——由
+     * {@code DefaultLingContext} 覆写为真实注册逻辑。
+     *
+     * @param serviceId 服务短 ID
+     * @param handler   服务实现对象
+     */
+    default void expose(String serviceId, Object handler) {
+        throw new UnsupportedOperationException(
+                "expose() not supported by this LingContext implementation");
+    }
 }
