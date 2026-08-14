@@ -346,6 +346,7 @@
                                     默认的 ${project.build.directory}/jacoco.exec 在中文路径下会写入失败。
                                 -->
                                 <destFile>${java.io.tmpdir}/jacoco/${jacoco.dest.folder}/${project.artifactId}.exec</destFile>
+                                <exclClassLoaders>*CloseAwareClassLoader*:*LingClassLoader*</exclClassLoaders>
                                 <!--
                                     按 ClassLoader 排除运行时动态加载的测试灵元类，不依赖灵元类包名。
                                     JaCoCo InjectedClassRuntime 对每个加载了被插桩类的 ClassLoader
@@ -356,7 +357,6 @@
                                     配置 (sample/ling/**) 不一致且 ** 非文档支持语法而失效；
                                     改用 exclClassLoaders 按 ClassLoader 类型排除，解除包名耦合。
                                 -->
-                                <exclClassLoaders>*CloseAwareClassLoader*:*LingClassLoader*</exclClassLoaders>
                             </configuration>
                         </execution>
                         <execution>

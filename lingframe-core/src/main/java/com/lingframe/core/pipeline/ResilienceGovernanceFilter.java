@@ -102,7 +102,12 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         // 1. 限流检查
         RateLimiter limiter = getLimiter(lingId, ctx);
         if (limiter != null && !limiter.tryAcquire()) {
-            log.debug("[Resilience:{}] Rate limited, rejecting request: {}", lingId, fqsid);
+            // WARN 而非 DEBUG：限流拒绝是业务可见的异常路径，必须可观测（限流值/目标版本/调用方），
+            // 否则生产报表里「频繁 RATE_LIMITED」时无日志可查，只能靠猜。
+            LingRuntime runtimeForLog = lingRepository.getRuntime(lingId);
+            int effectiveRateLimit = runtimeForLog != null ? resolveRateLimit(ctx, runtimeForLog.getConfig()) : -1;
+            log.warn("[Resilience:{}] Rate limited, rejecting request: {}, rateLimit={}/s, targetVersion={}",
+                    lingId, fqsid, effectiveRateLimit, ctx.getTargetVersion());
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordRateLimited(lingId, ctx.getTargetVersion());
             }
@@ -116,7 +121,8 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         // 2. 熔断检查
         CircuitBreaker breaker = getBreaker(lingId, ctx);
         if (breaker != null && !breaker.tryAcquirePermission()) {
-            log.debug("[Resilience:{}] Circuit breaker OPEN, rejecting request: {}", lingId, fqsid);
+            log.warn("[Resilience:{}] Circuit breaker OPEN, rejecting request: {}, targetVersion={}",
+                    lingId, fqsid, ctx.getTargetVersion());
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordCircuitOpenRejected(lingId, ctx.getTargetVersion());
             }
