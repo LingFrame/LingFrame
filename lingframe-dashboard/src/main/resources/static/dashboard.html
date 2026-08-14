@@ -11,7 +11,7 @@
     <script src="js/chart.umd.min.js" defer></script>
     <link rel="stylesheet" href="css/fontawesome.min.css">
     <link rel="stylesheet" href="css/jetbrains-mono.css">
-    <link rel="stylesheet" href="css/tailwindcss.css?v=1.0.1">
+    <link rel="stylesheet" href="css/tailwindcss.css?v=1.0.3">
     <!-- <link rel="stylesheet" href="css/dashboard.css"> -->
     <link rel="stylesheet" href="vendor/driver/driver.css">
     <script src="vendor/driver/driver.js.iife.js" defer></script>
@@ -449,30 +449,30 @@
         <main class="flex-grow flex flex-col overflow-hidden main-area">
 
             <!-- 顶部栏 -->
-            <header class="h-14 t-bg-faint border-b t-border flex items-center justify-between px-6 flex-shrink-0">
-                <div class="flex items-center gap-4">
-                    <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden t-text-sub hover:t-text">
+            <header class="app-topbar h-14 t-bg-faint border-b t-border flex items-center justify-between px-3 sm:px-6 flex-shrink-0">
+                <div class="topbar-left flex items-center gap-3 min-w-0 flex-1">
+                    <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden t-text-sub hover:t-text shrink-0">
                         <i class="fa-solid fa-bars"></i>
                     </button>
-                    <div class="flex items-center gap-3">
-                        <span class="text-base font-medium t-text">{{ t('sidebar.' + activeNav) }}</span>
-                        <i class="fa-solid fa-chevron-right t-text-muted text-sm" v-if="activeId"></i>
-                        <span class="text-base t-text-sub" v-if="activeId">{{ activeId }}</span>
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="text-base font-medium t-text whitespace-nowrap overflow-hidden text-ellipsis">{{ t('sidebar.' + activeNav) }}</span>
+                        <i class="fa-solid fa-chevron-right t-text-muted text-sm shrink-0" v-if="activeId"></i>
+                        <span class="text-base t-text-sub whitespace-nowrap overflow-hidden text-ellipsis" v-if="activeId">{{ activeId }}</span>
                     </div>
                 </div>
                 <!-- 顶部工具栏右侧 -->
-                <div class="flex items-center gap-4">
+                <div class="topbar-right flex items-center gap-2 sm:gap-3 shrink-0">
                     <!-- 时间线按钮 -->
                     <button @click="openTimelineModal"
                         class="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm transition-all shadow-lg hover:shadow-purple-500/20">
                         <i class="fa-solid fa-timeline"></i>
-                        <span>{{ t('header.timeline') }}</span>
+                        <span class="hidden md:inline">{{ t('header.timeline') }}</span>
                     </button>
                     <!-- 上传灵元按钮 -->
                     <button @click="openUploadModal"
                         class="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm transition-all shadow-lg hover:shadow-blue-500/20">
                         <i class="fa-solid fa-cloud-arrow-up"></i>
-                        <span>{{ t('header.upload') }}</span>
+                        <span class="hidden md:inline">{{ t('header.upload') }}</span>
                     </button>
 
                     <select v-model="locale" @change="switchLocale(locale)" class="lang-switch">
@@ -486,8 +486,8 @@
                             :class="currentTheme === 'light' ? 'fa-solid fa-moon text-amber-500' : 'fa-solid fa-sun text-yellow-400'"></i>
                     </button>
 
-                    <span :class="['env-badge', 'env-' + currentEnv]">{{ t('envLabels.' + currentEnv) }}</span>
-                    <div class="flex items-center gap-2 text-sm t-text-sub">
+                    <span :class="['env-badge', 'env-' + currentEnv, 'hidden sm:inline-flex']">{{ t('envLabels.' + currentEnv) }}</span>
+                    <div class="hidden lg:flex items-center gap-2 text-sm t-text-sub">
                         <i class="fa-solid fa-clock"></i>
                         <span>{{ currentTime }}</span>
                     </div>

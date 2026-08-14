@@ -2373,7 +2373,7 @@
     background: var(--text-muted);
   }
   @media (max-width: 1280px) {
-    :root {
+    :root, html.theme-dark {
       --sidebar-width: 200px;
     }
     .sidebar {
@@ -2384,7 +2384,8 @@
     display: none;
   }
   @media (max-width: 1023px) {
-    :root {
+    /* 与基础规则 :root, html.theme-dark 同权，确保暗色主题下侧边栏宽度变量归零，控制台通满全宽 */
+    :root, html.theme-dark {
       --sidebar-width: 0px;
     }
     .sidebar {
@@ -2519,43 +2520,6 @@
     background: var(--bg-hover);
     color: var(--text-primary);
     border-color: var(--primary-color);
-  }
-  .lingframe-tour-popover.driver-popover {
-    background-color: var(--bg-card);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-    box-shadow: 0 8px 32px var(--shadow-lg);
-  }
-  .lingframe-tour-popover .driver-popover-title {
-    color: var(--text-primary);
-  }
-  .lingframe-tour-popover .driver-popover-description {
-    color: var(--text-secondary);
-  }
-  .lingframe-tour-popover .driver-popover-progress-text {
-    color: var(--text-muted);
-  }
-  .lingframe-tour-popover .driver-popover-close-btn {
-    color: var(--text-muted);
-  }
-  .lingframe-tour-popover .driver-popover-close-btn:hover, .lingframe-tour-popover .driver-popover-close-btn:focus {
-    color: var(--text-primary);
-  }
-  .lingframe-tour-popover .driver-popover-footer button {
-    background-color: var(--bg-input);
-    color: var(--text-primary);
-    border-color: var(--border);
-  }
-  .lingframe-tour-popover .driver-popover-footer button:hover, .lingframe-tour-popover .driver-popover-footer button:focus {
-    background-color: var(--bg-hover);
-  }
-  .lingframe-tour-popover .driver-popover-arrow {
-    border-color: var(--bg-card);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .driver-fade .driver-overlay, .driver-fade .driver-popover {
-      animation: none;
-    }
   }
   .auth-submit {
     margin-top: 16px;
@@ -2960,6 +2924,48 @@
   .main-content-wrapper.console-expanded {
     padding-bottom: 280px;
   }
+  @media (max-width: 1023px) {
+    /* 控制台工具栏与标题栏在窄屏下收敛，允许横向滚动，避免溢出 */
+    .console-toolbar {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      gap: 8px;
+      flex-shrink: 1;
+      min-width: 0;
+    }
+    .console-title-area {
+      flex-shrink: 0;
+    }
+    .console-header {
+      padding: 0 8px;
+      gap: 6px;
+    }
+    .console-toolbar .console-toolbar-btn {
+      padding: 4px 6px;
+      white-space: nowrap;
+    }
+  }
+  @media (max-width: 639px) {
+    /* 底栏日志窗口：移动端贴满宽度，避免跟随侧边栏变量残留偏移 */
+    .global-console-drawer {
+      left: 0;
+    }
+    /* 控制台工具栏按钮在窄屏只留图标，节省横向空间 */
+    .console-toolbar .console-toolbar-btn span {
+      display: none;
+    }
+    /* 底栏日志文本：允许换行，杜绝长日志在窄屏横向溢出 */
+    .console-body {
+      padding: 8px;
+    }
+    .console-logs-wrapper {
+      overflow-x: hidden;
+    }
+    .console-logs-wrapper > div {
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+  }
   .fa-chevron-down, .fa-chevron-right {
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
@@ -3022,6 +3028,46 @@
     border-width: 0;
   }
 }
+
+/* 向导（driver.js）提示框：置于 @layer 之外，确保未分层样式覆盖 driver.css 默认白底 */
+.lingframe-tour-popover.driver-popover {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px var(--shadow-lg);
+}
+.lingframe-tour-popover .driver-popover-title {
+  color: var(--text-primary);
+}
+.lingframe-tour-popover .driver-popover-description {
+  color: var(--text-secondary);
+}
+.lingframe-tour-popover .driver-popover-progress-text {
+  color: var(--text-muted);
+}
+.lingframe-tour-popover .driver-popover-close-btn {
+  color: var(--text-muted);
+}
+.lingframe-tour-popover .driver-popover-close-btn:hover, .lingframe-tour-popover .driver-popover-close-btn:focus {
+  color: var(--text-primary);
+}
+.lingframe-tour-popover .driver-popover-footer button {
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+.lingframe-tour-popover .driver-popover-footer button:hover, .lingframe-tour-popover .driver-popover-footer button:focus {
+  background-color: var(--bg-hover);
+}
+.lingframe-tour-popover .driver-popover-arrow {
+  border-color: var(--bg-card);
+}
+@media (prefers-reduced-motion: reduce) {
+  .driver-fade .driver-overlay, .driver-fade .driver-popover {
+    animation: none;
+  }
+}
+
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;
