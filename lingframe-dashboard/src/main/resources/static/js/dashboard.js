@@ -2957,6 +2957,10 @@ createApp({
         // 监听导航切换，切换到监控页时重绘图表
         watch(activeNav, (val) => {
             localStorage.setItem('lingframe_nav', val);
+            // 移动端（<1024px）导航后自动收起侧边栏，避免遮挡主内容
+            if (window.innerWidth < 1024) {
+                sidebarOpen.value = false;
+            }
             if (val === 'monitor') {
                 destroyCharts();
                 nextTick(() => drawMonitorCharts());
