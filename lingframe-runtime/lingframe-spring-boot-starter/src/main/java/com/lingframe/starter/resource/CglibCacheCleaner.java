@@ -30,6 +30,12 @@ import lombok.extern.slf4j.Slf4j;
  * 必须在 remove 前从 ClassLoaderData 抽出生成类，清空 MethodProxy 的 createInfo/fastClassInfo
  *（并尽量把 static 字段置 null）。
  * <p>
+ * 清理边界（防误伤灵核，务必保持）：CGLIB 生成类命名确定（{@code Xxx$$SpringCGLIB$$0}），
+ * 共享边界（父委派的 starter/测试类）下灵元侧与灵核侧会复用同一个由灵核类加载器定义的增强类。
+ * 该共享类持有的是灵核自己的 beanFactory/策略，不是灵元泄漏源；清空其 createInfo 会让
+ * 灵核后续所有 Spring 上下文在 CGLIB {@code MethodProxy.init} 抛 NPE。因此只清理
+ * 「由灵元类加载器定义」的增强类，经父委派解析回灵核的类一律跳过。
+ * <p>
  * 命名标识：
  * <ul>
  *   <li>Spring 6：{@code $$SpringCGLIB$$} / {@code $$SpringCGLIB$$FastClass$$}</li>
@@ -144,6 +150,10 @@ final class CglibCacheCleaner {
                         if (generatedClass == null || !seen.add(generatedClass)) {
                             continue;
                         }
+                        // 灵核定义的共享增强类不属于本灵元泄漏源，跳过（见类注释「清理边界」）
+                        if (lingCl != null && generatedClass.getClassLoader() != lingCl) {
+                            continue;
+                        }
                         classCount++;
                         if (isSpringCglibGenerated(generatedClass.getName())) {
                             cleaned += clearMethodProxyStaticFields(lingId, generatedClass);
@@ -231,6 +241,15 @@ final class CglibCacheCleaner {
                 try {
                     Class<?> clazz = Class.forName(name, false, lingCl);
                     if (!seen.add(clazz)) {
+                        continue;
+                    }
+                    // 共享边界防误伤：CGLIB 命名确定，灵元侧与灵核侧会复用同名增强类；
+                    // forName 经父委派可能解析到灵核定义的共享类，它持有的是灵核自己的
+                    // beanFactory/策略，清掉其 createInfo 会令灵核后续上下文全部
+                    // MethodProxy.init NPE。只清灵元 CL 定义的类。
+                    if (clazz.getClassLoader() != lingCl) {
+                        log.debug("[{}] Skip shared core-side CGLIB class {}: defined by {}",
+                                lingId, name, clazz.getClassLoader());
                         continue;
                     }
                     resolved++;
