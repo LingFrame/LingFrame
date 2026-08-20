@@ -331,6 +331,26 @@ Provider 标识与版本化注册：
 
 以上语义均有归属（dashboard 安全组件）、有失败路径（fail-closed 启动失败/拒绝）、有测试与事件支撑，符合「治理语义必须可证明」。
 
+### 6.11 回收职责划分（四层）
+
+卸载后的资源回收按职责分层，**各层不得越权替代或互相覆盖**（依 2026-08-20 边界级 `AutoCloseable` 自动回收方案 v3.2 落地）：
+
+| 层 | 归属 | 负责 | 不负责 |
+| --- | --- | --- | --- |
+| ① 卫生层 | `LingUnloadHook`（spi） | 跨切面 JVM / 生态泄漏（JDBC 驱动、线程引用、ShutdownHook、日志框架、RMI 等） | 业务对象生命周期 |
+| ② 运行时层 | `LingResourceManager` 缓存清理 / 线程池回收 | 进程级通用缓存（Introspector）与按 lingId 共享的线程池 | 逐个资源 close |
+| ③ 孤儿层 | `LingResourceManager.closeableRegistry`（本次新增） | 只因"作者未交给 Spring"而游离的 `AutoCloseable` 资源，**逆注册序**关闭 | Spring 管理的 Bean（由容器自关，避免二次关闭） |
+| ④ 主入口层 | `Ling.onStop(LingContext)` | 有顺序 / 依赖关系的精细逻辑拆卸 | 物理句柄兜底 |
+
+**关键边界（硬约束）**：
+
+- **孤儿层只登记"非 Spring 管理"的资源**：Spring 灵元路径下 Bean 由 `closedContext.close()` 销毁，若把 Bean 也注册进来会造成二次关闭。作者只需 `ctx.registerCloseable(orphan)` 一行，对 Spring 管理的资源零灵珑 API 导入。
+- **版本粒度**：孤儿资源按 `(lingId, version)` 复合 key 登记。`LingUnloadCoordinator` 在 `onVersionUnload` 调 `closeResources(lingId, version)`，保证**多版本滚动更新时旧版本孤儿随版本卸载即时释放、不累积**；`onLingUnload` 调 `closeResources(lingId)` 兜底释放所有残留（含关闭期间迟到注册，有界留存不丢失）。
+- **安装失败回滚收敛**：`onFailureCleanup(lingId, version, ClassLoader)` 在钩子清理后追加版本级孤儿关闭，避免 `onStart` 阶段已注册的孤儿在安装失败时泄漏到整 Ling 卸载。
+- **并发策略**：注册表操作用类自有 `registryLock` 保证；`close()` 在锁外执行，单个资源 `close()` 阻塞或抛异常不扩散到其他灵元的注册 / 反注册。
+- **逆序是启发式近似，非依赖拓扑**：有顺序依赖的关闭必须在 `onStop` 手动编排，孤儿层定位是"物理句柄兜底"。
+- **只注册孤儿，不自动扫描全量 Bean**：真实价值是统一注册契约 + 兜底关闭机制。
+
 ---
 
 ## 7. 开发规范

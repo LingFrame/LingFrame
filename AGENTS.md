@@ -46,7 +46,9 @@ mvn test -pl lingframe-core -Dtest=RuntimeCoordinatorTest
 mvn test -pl lingframe-core -Dtest=RuntimeCoordinatorTest#registerInitialInactive
 
 # 与 CI 对齐：SB2 + 集成检查 profile（checkstyle / spotbugs 挂在 verify，不只在 test）
-mvn -B clean verify -Pintegration-check
+# 注意：须显式带上 -Pspring-boot2，单独 -Pintegration-check 会停用 activeByDefault 的 spring-boot2，
+# 导致 springdoc artifactId 解析失败（见 lingframe-example-lingcore-app/pom.xml profile 注释）
+mvn -B clean verify -Pspring-boot2,integration-check
 
 # Spring Boot 3 / JDK 17 矩阵
 mvn -B clean verify -Pspring-boot3

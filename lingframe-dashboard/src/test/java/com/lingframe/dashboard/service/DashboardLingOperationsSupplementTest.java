@@ -55,7 +55,7 @@ class DashboardLingOperationsSupplementTest {
 
     @BeforeEach
     void setUp() {
-        lifecycleEngine = mock(LingLifecycleEngine.class);
+        lifecycleEngine = mock(LingLifecycleEngine.class, org.mockito.Mockito.CALLS_REAL_METHODS);
         lingRepository = mock(LingRepository.class);
         lifecycleEventStore = mock(DashboardLifecycleEventStore.class);
         lingSourceResolver = new DashboardLingSourceResolver(

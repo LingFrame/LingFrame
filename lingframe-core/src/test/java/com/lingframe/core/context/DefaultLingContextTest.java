@@ -4,7 +4,9 @@ import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.exception.InvalidArgumentException;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.ling.LingResourceManager;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import java.lang.reflect.Method;
@@ -42,6 +44,44 @@ class DefaultLingContextTest {
     @DisplayName("getLingId 返回正确的 ID")
     void shouldReturnLingId() {
         assertEquals("test-ling", context.getLingId());
+    }
+
+    @Test
+    @DisplayName("资源托管上下文 registerCloseable 委托给 LingResourceManager")
+    void shouldDelegateRegisterCloseable() {
+        LingResourceManager resourceManager = mock(LingResourceManager.class);
+        LingInstance instance = mock(LingInstance.class);
+        when(instance.getLingId()).thenReturn("ling-1");
+        when(instance.getVersion()).thenReturn("v1");
+
+        DefaultLingContext instanceCtx = new DefaultLingContext(instance, lingRepository, registry,
+                pipelineEngine, permissionService, eventBus, resourceManager);
+        AutoCloseable res = mock(AutoCloseable.class);
+        instanceCtx.registerCloseable(res);
+
+        verify(resourceManager).registerCloseable("ling-1", "v1", res);
+    }
+
+    @Test
+    @DisplayName("资源托管上下文 unregisterCloseable 委托给 LingResourceManager")
+    void shouldDelegateUnregisterCloseable() {
+        LingResourceManager resourceManager = mock(LingResourceManager.class);
+        LingInstance instance = mock(LingInstance.class);
+        when(instance.getLingId()).thenReturn("ling-1");
+        when(instance.getVersion()).thenReturn("v1");
+
+        DefaultLingContext instanceCtx = new DefaultLingContext(instance, lingRepository, registry,
+                pipelineEngine, permissionService, eventBus, resourceManager);
+        AutoCloseable res = mock(AutoCloseable.class);
+        instanceCtx.unregisterCloseable(res);
+
+        verify(resourceManager).unregisterCloseable("ling-1", "v1", res);
+    }
+
+    @Test
+    @DisplayName("未托管资源管理器时 registerCloseable 不抛异常且不注册")
+    void shouldIgnoreRegisterCloseableWithoutManager() {
+        assertDoesNotThrow(() -> context.registerCloseable(mock(AutoCloseable.class)));
     }
 
     @Test

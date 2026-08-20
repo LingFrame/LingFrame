@@ -53,4 +53,15 @@ public class DashboardBoundaryArchUnitTest {
             noClasses().that().resideInAPackage("..dashboard..")
                     .and().haveSimpleNameNotContaining("Configuration")
                     .should().callMethod("com.lingframe.core.config.LingFrameConfig", "current");
+
+    /**
+     * 禁止私自维护生命周期并发锁：Dashboard 严禁依赖 ReentrantLock，
+     * 所有并发互斥必须统一委托 LingLifecycleEngine.withLifecycleLock。
+     */
+    @ArchTest
+    static final ArchRule noReentrantLockDeclaredInDashboard =
+            noClasses().that().resideInAPackage("..dashboard..")
+                    .and().haveSimpleNameNotContaining("Configuration")
+                    .should().dependOnClassesThat()
+                    .haveFullyQualifiedName("java.util.concurrent.locks.ReentrantLock");
 }
