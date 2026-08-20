@@ -7,13 +7,14 @@ import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.exception.PermissionDeniedException;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.ling.LingResourceManager;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.proxy.GlobalServiceRoutingProxy;
-import com.lingframe.core.ling.LingInstance;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
@@ -33,6 +34,12 @@ public class DefaultLingContext implements LingContext {
     private final PermissionService permissionService;
     private final EventBus eventBus;
 
+    // 注册写权限：孤儿 AutoCloseable 资源的唯一注册入口是 DefaultLingContext（持有实例）。
+    // closeableVersion 在构造时快照，规避 tearDown 过程中 instance.getVersion() 回归占位值
+    // 导致 register/unregister 落到错误版本键。
+    private final LingResourceManager resourceManager;
+    private final String closeableVersion;
+
     // 灵核上下文构造函数：灵核本身无 LingInstance，instance=null 表示不参与实例级服务方法注册
     public DefaultLingContext(String lingId, LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry, InvocationPipelineEngine pipelineEngine,
@@ -44,12 +51,21 @@ public class DefaultLingContext implements LingContext {
         this.pipelineEngine = pipelineEngine;
         this.permissionService = permissionService;
         this.eventBus = eventBus;
+        this.resourceManager = null;
+        this.closeableVersion = null;
     }
 
     // 灵元部署构造函数：绑定实例以支持实例级服务方法精准注册
     public DefaultLingContext(LingInstance instance, LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry, InvocationPipelineEngine pipelineEngine,
             PermissionService permissionService, EventBus eventBus) {
+        this(instance, lingRepository, lingServiceRegistry, pipelineEngine, permissionService, eventBus, null);
+    }
+
+    // 灵元部署构造函数（资源托管）：额外注入 LingResourceManager 以支持 registerCloseable/unregisterCloseable
+    public DefaultLingContext(LingInstance instance, LingRepository lingRepository,
+            LingServiceRegistry lingServiceRegistry, InvocationPipelineEngine pipelineEngine,
+            PermissionService permissionService, EventBus eventBus, LingResourceManager resourceManager) {
         this.instance = instance;
         this.lingId = instance != null ? instance.getLingId() : null;
         this.lingRepository = lingRepository;
@@ -57,6 +73,9 @@ public class DefaultLingContext implements LingContext {
         this.pipelineEngine = pipelineEngine;
         this.permissionService = permissionService;
         this.eventBus = eventBus;
+        this.resourceManager = resourceManager;
+        // 构造时快照版本，规避 tearDown 期间 getVersion() 回归占位值
+        this.closeableVersion = instance != null ? instance.getVersion() : null;
     }
 
     @Override
@@ -303,5 +322,28 @@ public class DefaultLingContext implements LingContext {
         }
         log.info("[Context] Programmatic service exposure: ling=[{}], serviceId=[{}], handler=[{}]",
                 lingId, serviceId, handler.getClass().getName());
+    }
+
+    @Override
+    public void registerCloseable(AutoCloseable closeable) {
+        if (closeable == null) {
+            log.warn("[{}] registerCloseable ignored: closeable must not be null", lingId);
+            return;
+        }
+        if (resourceManager == null || closeableVersion == null) {
+            // 灵核上下文（无实例/无资源管理器）不参与孤儿资源托管；warn 便于定位误用
+            log.warn("[{}] registerCloseable ignored: no resource manager bound "
+                    + "(ling core or unsupported context)", lingId);
+            return;
+        }
+        resourceManager.registerCloseable(lingId, closeableVersion, closeable);
+    }
+
+    @Override
+    public void unregisterCloseable(AutoCloseable closeable) {
+        if (closeable == null || resourceManager == null || closeableVersion == null) {
+            return;
+        }
+        resourceManager.unregisterCloseable(lingId, closeableVersion, closeable);
     }
 }

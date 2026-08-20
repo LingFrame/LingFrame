@@ -25,6 +25,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -599,12 +602,250 @@ class DefaultLingLifecycleEngineTest {
         m.invoke(engine, runtime, instance, isDefault);
     }
 
-    /**
-     * 创建一个安全的测试 ClassLoader——不实现 AutoCloseable，不会被 finalizeInstanceUnload.closeClassLoader 关闭。
-     * <p>
-     * 不能用 getClass().getClassLoader()：surefire 的 ClassLoader 通常是 URLClassLoader（AutoCloseable），
-     * 被 closeClassLoader 关闭后 forked VM 崩溃（NoClassDefFoundError）。
-     */
+    @Test
+    @DisplayName("withLifecycleLock 同一 lingId 的并发操作应被串行化")
+    void withLifecycleLock_sameLingId_shouldSerialize() throws Exception {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator coordinator = new RuntimeCoordinator(eventBus);
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, coordinator);
+        String lingId = "test-ling-lock";
+
+        java.util.concurrent.CountDownLatch thread1Running = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch allowThread1Finish = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicBoolean thread2Executed = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+        Thread t1 = new Thread(() -> {
+            engine.withLifecycleLock(lingId, () -> {
+                thread1Running.countDown();
+                try {
+                    allowThread1Finish.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                }
+                return null;
+            });
+        });
+
+        Thread t2 = new Thread(() -> {
+            try {
+                thread1Running.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException ignored) {
+            }
+            // 此时 t1 持有锁，t2 尝试获取锁应被阻塞
+            engine.withLifecycleLock(lingId, () -> {
+                thread2Executed.set(true);
+                return null;
+            });
+        });
+
+        t1.start();
+        t2.start();
+
+        assertTrue(thread1Running.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        // 给 t2 稍微一点时间尝试加锁
+        Thread.sleep(50);
+        // t1 还没结束，t2 一定还没执行
+        assertFalse(thread2Executed.get(), "Thread 2 should be blocked by Thread 1");
+
+        allowThread1Finish.countDown();
+        t1.join(5000);
+        t2.join(5000);
+
+        assertTrue(thread2Executed.get(), "Thread 2 should have completed after Thread 1 released lock");
+    }
+
+    @Test
+    @DisplayName("withLifecycleLock 不同 lingId 的操作应并行执行不阻塞")
+    void withLifecycleLock_differentLingId_shouldNotBlock() throws Exception {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator coordinator = new RuntimeCoordinator(eventBus);
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, coordinator);
+
+        java.util.concurrent.CountDownLatch t1InLock = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch releaseT1 = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicBoolean t2Finished = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+        Thread t1 = new Thread(() -> {
+            engine.withLifecycleLock("ling-a", () -> {
+                t1InLock.countDown();
+                try {
+                    releaseT1.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                }
+                return null;
+            });
+        });
+
+        Thread t2 = new Thread(() -> {
+            try {
+                t1InLock.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException ignored) {
+            }
+            engine.withLifecycleLock("ling-b", () -> {
+                t2Finished.set(true);
+                return null;
+            });
+        });
+
+        t1.start();
+        t2.start();
+
+        t2.join(3000);
+        assertTrue(t2Finished.get(), "Thread 2 for ling-b should finish even if ling-a is locked");
+
+        releaseT1.countDown();
+        t1.join(3000);
+    }
+
+    @Test
+    @DisplayName("withLifecycleLock 内部重入调用不应发生死锁")
+    void withLifecycleLock_reentrant_shouldNotDeadlock() {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator coordinator = new RuntimeCoordinator(eventBus);
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, coordinator);
+        String lingId = "reentrant-ling";
+
+        String result = engine.withLifecycleLock(lingId, () -> {
+            // 外层持锁，内层再次 withLifecycleLock
+            return engine.withLifecycleLock(lingId, () -> "success");
+        });
+
+        assertEquals("success", result);
+    }
+
+    @Test
+    @DisplayName("withLifecycleLock 抛出异常后应正确释放锁")
+    void withLifecycleLock_onException_shouldReleaseLock() {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator coordinator = new RuntimeCoordinator(eventBus);
+        DefaultLingLifecycleEngine engine = createMinimalEngine(eventBus, coordinator);
+        String lingId = "exception-ling";
+
+        assertThrows(RuntimeException.class, () -> {
+            engine.withLifecycleLock(lingId, () -> {
+                throw new IllegalStateException("simulated failure");
+            });
+        });
+
+        // 验证后续调用可以正常加锁，未产生锁泄漏
+        assertDoesNotThrow(() -> {
+            engine.withLifecycleLock(lingId, () -> "recovered");
+        });
+    }
+
+    @Test
+    @DisplayName("withLifecycleLock 获取锁超时应抛出 IllegalStateException")
+    void withLifecycleLock_timeout_shouldThrow() throws Exception {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator coordinator = new RuntimeCoordinator(eventBus);
+        ContainerFactory containerFactory = mock(ContainerFactory.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        LingLoaderFactory loaderFactory = mock(LingLoaderFactory.class);
+        LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
+
+        // 设置极短的锁超时 50ms
+        DefaultLingLifecycleEngine shortTimeoutEngine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(permissionService)
+                .lingLoaderFactory(loaderFactory)
+                .verifiers(Collections.emptyList())
+                .eventBus(eventBus)
+                .lingFrameConfig(LingFrameConfig.builder().build())
+                .lingRepository(new DefaultLingRepository())
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(mock(InvocationPipelineEngine.class))
+                .lingResourceManager(null)
+                .unloadCoordinator(mock(LingUnloadCoordinator.class))
+                .runtimeCoordinator(coordinator)
+                .lifecycleLockTimeoutMs(50L)
+                .build());
+
+        String lingId = "timeout-ling";
+        java.util.concurrent.CountDownLatch t1Holding = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch releaseT1 = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<Throwable> t2Error = new java.util.concurrent.atomic.AtomicReference<>();
+
+        Thread t1 = new Thread(() -> {
+            shortTimeoutEngine.withLifecycleLock(lingId, () -> {
+                t1Holding.countDown();
+                try {
+                    releaseT1.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                }
+                return null;
+            });
+        });
+
+        Thread t2 = new Thread(() -> {
+            try {
+                t1Holding.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                shortTimeoutEngine.withLifecycleLock(lingId, () -> null);
+            } catch (Throwable t) {
+                t2Error.set(t);
+            }
+        });
+
+        t1.start();
+        t2.start();
+
+        t2.join(3000);
+        releaseT1.countDown();
+        t1.join(3000);
+
+        assertNotNull(t2Error.get());
+        assertInstanceOf(IllegalStateException.class, t2Error.get());
+        assertTrue(t2Error.get().getMessage().contains("Acquire lifecycle lock timeout"));
+    }
+
+    @Test
+    @DisplayName("安装失败回滚应透传 lingId/version 触发身份版失败清理（孤儿资源随回滚释放）")
+    void installFailureShouldPassthroughIdentityToFailureCleanup() {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        LingUnloadCoordinator unloadCoordinator = mock(LingUnloadCoordinator.class);
+        ContainerFactory containerFactory = mock(ContainerFactory.class);
+        LingLoaderFactory loaderFactory = mock(LingLoaderFactory.class);
+        // 用独立 ClassLoader 模拟灵元 CL（生产由 cleanupOnFailure 关闭）
+        ClassLoader tracked = createSafeTestClassLoader();
+        when(loaderFactory.create(anyString(), any(), any())).thenReturn(tracked);
+
+        LingContainer container = mock(LingContainer.class);
+        when(container.getClassLoader()).thenReturn(tracked);
+        when(containerFactory.create(any(), any(), any())).thenReturn(container);
+        // 模拟 onStart 失败：容器启动抛异常，回滚路径被触发
+        doThrow(new IllegalStateException("simulated onStart failure")).when(container).start(any());
+
+        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(mock(PermissionService.class))
+                .lingLoaderFactory(loaderFactory)
+                .verifiers(Collections.emptyList())
+                .eventBus(eventBus)
+                .lingFrameConfig(LingFrameConfig.builder().build())
+                .lingRepository(new DefaultLingRepository())
+                .lingServiceRegistry(mock(LingServiceRegistry.class))
+                .pipelineEngine(mock(InvocationPipelineEngine.class))
+                .lingResourceManager(null)
+                .unloadCoordinator(unloadCoordinator)
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
+
+        LingDefinition definition = new LingDefinition();
+        definition.setId("ling-fail");
+        definition.setVersion("1.0.0");
+        definition.setMainClass("demo.Main");
+
+        assertThrows(RuntimeException.class, () -> engine.deploy(definition, null, true, null));
+
+        // 身份透传验证：onStart 内已注册的孤儿资源才能随回滚按 (lingId, version) 释放
+        verify(unloadCoordinator).onFailureCleanup("ling-fail", "1.0.0", tracked);
+        // 旧的无身份重载不再被编排层使用
+        verify(unloadCoordinator, never()).onFailureCleanup(any(ClassLoader.class));
+
+        runtimeCoordinator.stop();
+    }
+
     private ClassLoader createSafeTestClassLoader() {
         return new ClassLoader(getClass().getClassLoader()) {};
     }

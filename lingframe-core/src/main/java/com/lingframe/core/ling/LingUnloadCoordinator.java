@@ -90,6 +90,11 @@ public class LingUnloadCoordinator {
      */
     public void onVersionUnload(String lingId, String version, ClassLoader classLoader) {
         cleanupWithHooks(lingId, version, classLoader);
+        // 版本级孤儿资源关闭：多版本滚动更新时，旧版本注册的孤儿资源随本版本卸载即时释放，不累积。
+        // 依赖 classLoader 非 null：classLoader 是版本实体代表，无实例即无孤儿资源应关闭
+        if (classLoader != null && lingResourceManager != null && lingId != null && version != null) {
+            lingResourceManager.closeResources(lingId, version);
+        }
         // 同步驱逐该版本的方法句柄缓存，避免依赖 InstanceDestroyedEvent 异步触发
         // 异步事件到达前若 MethodHandle 仍持有目标 Class 的强引用，会推迟 ClassLoader 回收
         if (pipelineEngine != null && version != null) {
@@ -121,10 +126,24 @@ public class LingUnloadCoordinator {
     }
 
     /**
-     * 安装失败回滚清理。
+     * 安装失败回滚清理（身份缺失版，保留兼容：无 lingId/version 时不释放孤儿资源）。
      */
     public void onFailureCleanup(ClassLoader classLoader) {
         cleanupWithHooks("fault-cleanup", null, classLoader);
+    }
+
+    /**
+     * 安装失败回滚清理（身份透传版）。
+     * <p>
+     * 在钩子清理之后，释放 onStart 内已注册的孤儿资源（版本级），
+     * 避免安装失败时这些资源泄漏到整 Ling 卸载才被回收。
+     */
+    public void onFailureCleanup(String lingId, String version, ClassLoader classLoader) {
+        cleanupWithHooks(lingId, version, classLoader);
+        // 回滚收敛：释放 onStart 阶段已注册的孤儿资源（版本级）
+        if (lingResourceManager != null && lingId != null && version != null) {
+            lingResourceManager.closeResources(lingId, version);
+        }
     }
 
     public LeakRiskReport checkBeforeVersionUnload(String lingId, String version, ClassLoader classLoader) {

@@ -16,8 +16,6 @@ import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Dashboard 灵元生命周期操作编排器。
@@ -29,9 +27,6 @@ public class DashboardLingOperations {
     private final MigrationStateHolder migrationStateHolder;
     private final DashboardLifecycleEventStore lifecycleEventStore;
     private final DashboardLingSourceResolver lingSourceResolver;
-
-    // 每个 lingId 独立的重载锁，防止并发 reload 导致版本号竞态和实例残留
-    private final Map<String, ReentrantLock> reloadLocks = new ConcurrentHashMap<>();
 
     public DashboardLingOperations(LingLifecycleEngine lifecycleEngine,
             LingRepository lingRepository,
@@ -118,13 +113,7 @@ public class DashboardLingOperations {
         // 同一 lingId 的 reload 必须串行执行，避免：
         // 1. buildReloadVersion 并发竞态生成重复版本号
         // 2. target 实例在 deployForReload 期间被其他 reload tearDown，导致 undeploy 失败
-        ReentrantLock lock = reloadLocks.computeIfAbsent(lingId, k -> new ReentrantLock());
-        lock.lock();
-        try {
-            return doReloadLing(lingId, version);
-        } finally {
-            lock.unlock();
-        }
+        return lifecycleEngine.withLifecycleLock(lingId, () -> doReloadLing(lingId, version));
     }
 
     private String doReloadLing(String lingId, String version) {

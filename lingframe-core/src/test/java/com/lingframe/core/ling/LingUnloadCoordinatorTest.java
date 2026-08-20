@@ -69,6 +69,15 @@ class LingUnloadCoordinatorTest {
         }
 
         @Test
+        @DisplayName("版本级卸载触发版本级孤儿资源关闭")
+        void callsVersionScopedCloseResources() {
+            ClassLoader cl = mock(ClassLoader.class);
+            coordinator.onVersionUnload("ling-1", "v1", cl);
+
+            verify(resourceManager).closeResources("ling-1", "v1");
+        }
+
+        @Test
         @DisplayName("ClassLoader 为 null 时不执行清理")
         void nullClassLoaderSkipsCleanup() {
             coordinator.onVersionUnload("ling-1", "v1", null);
@@ -269,6 +278,25 @@ class LingUnloadCoordinatorTest {
             coordinator.onFailureCleanup(cl);
 
             verify(unloadHook).cleanup("fault-cleanup", cl);
+        }
+
+        @Test
+        @DisplayName("身份透传版回滚触发版本级孤儿资源关闭")
+        void failureCleanupClosesVersionResources() {
+            ClassLoader cl = mock(ClassLoader.class);
+            coordinator.onFailureCleanup("ling-1", "v1", cl);
+
+            verify(unloadHook).cleanup("ling-1", cl);
+            verify(resourceManager).closeResources("ling-1", "v1");
+        }
+
+        @Test
+        @DisplayName("身份透传版回滚缺版本时不触发版本级关闭")
+        void failureCleanupSkipsCloseWhenNoVersion() {
+            ClassLoader cl = mock(ClassLoader.class);
+            coordinator.onFailureCleanup("ling-1", null, cl);
+
+            verify(resourceManager, never()).closeResources(eq("ling-1"), any());
         }
 
         @Test

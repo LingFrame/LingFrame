@@ -128,4 +128,34 @@ public interface LingContext {
         throw new UnsupportedOperationException(
                 "expose() not supported by this LingContext implementation");
     }
+
+    /**
+     * 注册一个需在卸载时自动关闭的孤儿子资源。
+     * <p>
+     * 适用于灵元代码中手动 {@code new} 出的、Spring 容器管不到的 {@link AutoCloseable} 对象
+     * （如 {@code HikariDataSource}、{@code OkHttpClient}），以及 ling-native 路径的全部资源。
+     * Spring 容器已管理的 Bean 无需注册——容器关闭时会自动处理。
+     * <p>
+     * 默认实现抛 {@link UnsupportedOperationException}——由
+     * {@code DefaultLingContext} 覆写为真实注册逻辑。
+     *
+     * @param closeable 需在卸载时关闭的孤儿资源
+     */
+    default void registerCloseable(AutoCloseable closeable) {
+        throw new UnsupportedOperationException(
+                "registerCloseable() not supported by this LingContext implementation");
+    }
+
+    /**
+     * 反注册一个已注册的孤儿资源。
+     * <p>
+     * 作者在 {@code onStop} 中已手动关闭某资源时调用，避免框架重复关闭。
+     * 默认实现抛 {@link UnsupportedOperationException}——由 {@code DefaultLingContext} 覆写。
+     *
+     * @param closeable 待反注册的资源
+     */
+    default void unregisterCloseable(AutoCloseable closeable) {
+        throw new UnsupportedOperationException(
+                "unregisterCloseable() not supported by this LingContext implementation");
+    }
 }
