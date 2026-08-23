@@ -7,6 +7,7 @@ import com.lingframe.api.event.lifecycle.LingInstalledEvent;
 import com.lingframe.api.event.lifecycle.LingInstallingEvent;
 import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.api.event.lifecycle.LingUninstallingEvent;
+import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.api.exception.RoutingArchitectureViolationException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
@@ -89,6 +90,28 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     private final long lifecycleLockTimeoutMs;
     private final Map<String, LockWrapper> lifecycleLocks = new ConcurrentHashMap<>();
 
+    /**
+     * 全量卸载的「卸载完成」通知登记表：lingId → 待收的泄漏检测计数。
+     * <p>
+     * LingUninstalledEvent 不再在 doFullUndeploy 末尾同步发布，而是等泄漏检测
+     * （{@link MonitoringEvents.LeakDetectionEvent}，GC 回收验证结论）到齐后再由
+     * {@link #onLeakDetection} 发布 —— 保证前端列表刷新发生在 ClassLoader 回收验证之后。
+     * 热替换/版本卸载的检测事件（lingId 未登记）会被忽略，不会误发卸载完成事件。
+     */
+    private final Map<String, PendingUninstallNotification> pendingUninstallNotifications = new ConcurrentHashMap<>();
+
+    /** 卸载完成通知的兜底时限：异常场景（如 null ClassLoader 未触发检测）下超时仍发事件，保证列表刷新不丢失。 */
+    private static final long UNINSTALL_NOTIFY_FALLBACK_MS = 30_000L;
+
+    private static final class PendingUninstallNotification {
+        final AtomicInteger remaining;
+        volatile boolean leaked;
+
+        PendingUninstallNotification(int expectedDetections) {
+            this.remaining = new AtomicInteger(Math.max(1, expectedDetections));
+        }
+    }
+
     private static class LockWrapper {
         final ReentrantLock lock = new ReentrantLock();
         final AtomicInteger holdCount = new AtomicInteger(0);
@@ -131,6 +154,9 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         this.lifecycleLockTimeoutMs = config.getLifecycleLockTimeoutMs() > 0
                 ? config.getLifecycleLockTimeoutMs()
                 : 120_000L;
+
+        // 全局监听泄漏检测结论：全量卸载时据此在验证完成后发布 LingUninstalledEvent（事件换位置，公共契约零变更）
+        eventBus.subscribeGlobal(MonitoringEvents.LeakDetectionEvent.class, this::onLeakDetection);
     }
 
     @Override
@@ -852,6 +878,11 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         eventBus.publish(new LingUninstallingEvent(lingId));
         unregisterHotSwapWatcher(lingId);
         enterRuntimeStopping(lingId, runtime);
+        // 先登记「卸载完成」通知（按实例数等待泄漏检测事件到齐），再排空实例：
+        // 检测是异步延迟的，登记先于事件到达，保证不漏。
+        PendingUninstallNotification pending = new PendingUninstallNotification(
+                runtime.getInstancePool().getAllInstances().size());
+        pendingUninstallNotifications.put(lingId, pending);
         unloadAllInstances(lingId, runtime);
         clearServiceRegistry(lingId);
         finalizeLingRemoval(lingId);
@@ -859,7 +890,49 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         // （实例清空后 reevaluate 常落到 INACTIVE，旧 purge 会空操作留下 ghost）
         runtimeCoordinator.unregister(lingId);
         lingRepository.unregister(lingId);
-        eventBus.publish(new LingUninstalledEvent(lingId));
+        // 事件换位置：不再在此同步发 LingUninstalledEvent；等泄漏验证（LeakDetectionEvent 到齐）完成后
+        // 由 onLeakDetection 发布，保证前端列表刷新发生在 ClassLoader 回收验证之后；超时由兜底线程保证不丢失。
+        scheduleUninstallNotifyFallback(lingId, pending);
+    }
+
+    /**
+     * 泄漏检测结论处理：全量卸载登记的 ling 在检测到齐（GC 回收验证完成）后发布 {@link LingUninstalledEvent}。
+     * <p>
+     * 热替换（HotSwapWatcher）与版本卸载也会触发检测，但其 lingId 不在登记表内，直接忽略，不会误发。
+     */
+    private void onLeakDetection(MonitoringEvents.LeakDetectionEvent event) {
+        PendingUninstallNotification pending = pendingUninstallNotifications.get(event.getLingId());
+        if (pending == null) {
+            return;
+        }
+        if (!event.isCollected()) {
+            pending.leaked = true;
+        }
+        if (pending.remaining.decrementAndGet() <= 0) {
+            pendingUninstallNotifications.remove(event.getLingId());
+            eventBus.publish(new LingUninstalledEvent(event.getLingId(), pending.leaked));
+        }
+    }
+
+    /**
+     * 卸载完成通知的兜底：异常场景（如 null ClassLoader 未触发检测、检测被吞）下，
+     * 超时后仍发布事件，保证前端列表刷新不丢失。正常路径检测事件先到，兜底线程空转退出。
+     */
+    private void scheduleUninstallNotifyFallback(String lingId, PendingUninstallNotification pending) {
+        Thread fallback = new Thread(() -> {
+            try {
+                Thread.sleep(UNINSTALL_NOTIFY_FALLBACK_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (pendingUninstallNotifications.get(lingId) == pending) {
+                pendingUninstallNotifications.remove(lingId);
+                eventBus.publish(new LingUninstalledEvent(lingId, pending.leaked));
+            }
+        }, "ling-uninstall-notify-fallback");
+        fallback.setDaemon(true);
+        fallback.start();
     }
 
     private void unregisterHotSwapWatcher(String lingId) {
@@ -899,6 +972,11 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         unloadCoordinator.onLingUnload(lingId);
         eventBus.unsubscribeAll(lingId);
         permissionService.removeLing(lingId);
+    }
+
+    @Override
+    public boolean awaitUnloadCleanup(String lingId, long timeoutMs) {
+        return unloadCoordinator.awaitCleanup(lingId, timeoutMs);
     }
 
     private void closeClassLoader(String lingId, String version, ClassLoader classLoader) {

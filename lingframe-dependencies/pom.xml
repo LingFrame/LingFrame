@@ -83,7 +83,16 @@
                 <junit-jupiter.version>5.10.2</junit-jupiter.version>
                 <mockito.version>5.11.0</mockito.version>
                 <archunit.version>1.2.1</archunit.version>
+                <!-- 默认 target-boot3；脚本可用 -Dbc3.base.build.dir=target 覆盖
+                     （-D 用户属性优先级高于 POM 属性），让产物落在默认 target/，
+                     供 dev-mode 灵元发现写死扫描的 target/classes 命中。 -->
+                <bc3.base.build.dir>target-boot3</bc3.base.build.dir>
             </properties>
+            <!-- 隔离 boot3 构建产物目录（target-boot3），避免与默认(boot2)共享 target/ 导致
+                 测试字节码跨 profile 污染（javax/jakarta 构造器签名不匹配 NoSuchMethodError） -->
+            <build>
+                <directory>${project.basedir}/${bc3.base.build.dir}</directory>
+            </build>
         </profile>
         <!-- JDK 9+ JVM arguments profile to allow reflective access in tests -->
         <profile>
@@ -449,10 +458,12 @@
                         </dependency>
                     </dependencies>
                     <configuration>
-                        <!-- 通过 file: URL 引用 lingframe-config 下的规则文件，
+                        <!-- 引用 lingframe-config 下的规则文件。
                              ${maven.multiModuleProjectDirectory} 由 Maven 3.3.1+ 自动设置为多模块项目根目录，
-                             确保所有子模块都能正确定位配置文件。 -->
-                        <configLocation>file:///${maven.multiModuleProjectDirectory}/lingframe-config/checkstyle-rules.xml</configLocation>
+                             确保所有子模块都能正确定位配置文件。
+                             用普通文件路径而非 file:// URL：Windows 下根目录含反斜杠，
+                             file:///E:\... 是非法 URL，会导致 checkstyle-check 失败。 -->
+                        <configLocation>${maven.multiModuleProjectDirectory}/lingframe-config/checkstyle-rules.xml</configLocation>
                         <encoding>UTF-8</encoding>
                         <consoleOutput>true</consoleOutput>
                         <failsOnError>true</failsOnError>

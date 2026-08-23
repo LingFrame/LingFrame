@@ -156,6 +156,46 @@ class LingHealthMetricsTest {
     }
 
     @Test
+    @DisplayName("治理拒绝不计入失败，也不影响健康错误率（高并发限流不误杀健康实例）")
+    void governanceRejectionDoesNotAffectHealthErrorRate() {
+        // 模拟高并发限流场景：大量治理拒绝混入少量成功 + 1 次真实业务失败
+        for (int i = 0; i < 1000; i++) {
+            metrics.recordGovernanceRejection(5);
+        }
+        for (int i = 0; i < 10; i++) {
+            metrics.recordSuccess(5);
+        }
+        metrics.recordFailure(5, false);
+
+        MetricsSnapshot snapshot = metrics.snapshot();
+
+        assertEquals(1011, snapshot.getTotalRequests());
+        assertEquals(1000, snapshot.getGovernanceRejectedRequests());
+        assertEquals(1, snapshot.getFailedRequests());
+        // errorRate = 1/1011 ≈ 0.099%，远低于 5% 阈值 -> 仍为 HEALTHY（修复前会被限流打到 UNHEALTHY）
+        assertEquals(MetricsSnapshot.HealthStatus.HEALTHY, snapshot.getHealthStatus());
+        assertTrue(snapshot.getErrorRate() < 5.0);
+    }
+
+    @Test
+    @DisplayName("滑动窗口：窗口超时后快照自动重置计数（避免历史污染永久钉死健康状态）")
+    void slidingWindowRolloverResetsCounts() throws Exception {
+        metrics.recordSuccess(10);
+        metrics.recordFailure(10, false);
+        assertEquals(1, metrics.snapshot().getFailedRequests());
+
+        // 将窗口起点拨回 70s 前，触发 rollover 分支（HEALTH_WINDOW_MS=60s）
+        java.lang.reflect.Field f = LingHealthMetrics.class.getDeclaredField("windowStartTime");
+        f.setAccessible(true);
+        f.set(metrics, System.currentTimeMillis() - 70_000L);
+
+        MetricsSnapshot snapshot = metrics.snapshot();
+        assertEquals(0, snapshot.getTotalRequests());
+        assertEquals(0, snapshot.getFailedRequests());
+        assertEquals(0, snapshot.getSuccessRequests());
+    }
+
+    @Test
     @DisplayName("版本号设置")
     void shouldSetVersion() {
         metrics.setVersion("2.0.0");

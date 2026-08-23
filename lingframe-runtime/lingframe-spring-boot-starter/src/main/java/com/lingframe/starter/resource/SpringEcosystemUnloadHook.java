@@ -100,6 +100,10 @@ public class SpringEcosystemUnloadHook implements SpringAwareUnloadHook {
                 () -> dataSourceCleaner.close(lingId, lingContext.getBeanFactory()));
         safeCleanup(lingId, "preCleanup.propertyAnnotationCache",
                 () -> staticCacheCleaner.clearPropertyAnnotationCache(lingId, lingClassLoader, "pre"));
+        // 清理 LocalVariableTableParameterNameDiscoverer.parameterNamesCache（实例字段，MAT 证明是 CL 泄漏根因）
+        // 用 lingContext（grab 的 context）而非 mainContext——LVTPND 被 grab 的 Bean 定义间接持有
+        safeCleanup(lingId, "preCleanup.parameterNameDiscovererCache",
+                () -> staticCacheCleaner.clearParameterNameDiscovererCache(lingId, lingContext, lingClassLoader));
         safeCleanup(lingId, "preCleanup.jackson",
                 () -> jacksonCacheCleaner.clear(lingId, mainContext, lingClassLoader, "pre"));
         // 移除 Context 自身注册的 ShutdownHook（必须在 Context 关闭前完成，

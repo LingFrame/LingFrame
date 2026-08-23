@@ -9,7 +9,10 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -39,6 +42,16 @@ public class LingUnloadCoordinator {
     private final LingResourceManager lingResourceManager;
     private final LeakDetector leakDetector;
     private final ExecutorService parallelExecutor;
+
+    /**
+     * 进行中的清理信号表：lingId → 清理完成 Future。
+     * <p>
+     * 卸载/回滚的 JVM 级资源清理（JDBC 驱动注销、ThreadLocal、ClassLoader 引用、H2 文件锁）
+     * 虽在调用线程同步执行，但调用方（MCP deploy 工具）无法感知清理是否完成——
+     * 若在清理完成后立刻重部署同版本，可能与残留资源冲突导致健康检查失败（UNHEALTHY）。
+     * 该表让部署方可以通过 {@link #awaitCleanup} 确定性等待清理结束，而非盲目 sleep。
+     */
+    private final Map<String, CompletableFuture<Void>> cleanupFutures = new ConcurrentHashMap<>();
 
     /**
      * 全参数构造（两桶模式）。
@@ -113,15 +126,20 @@ public class LingUnloadCoordinator {
      * 本方法不做重复判断。
      */
     public void onLingUnload(String lingId) {
-        if (pipelineEngine != null) {
-            pipelineEngine.evictLingResources(lingId);
-            int evictedHandles = pipelineEngine.evictMethodCache(lingId);
-            if (evictedHandles > 0) {
-                log.info("[{}] Evicted {} method handles after unload", lingId, evictedHandles);
+        CompletableFuture<Void> future = beginCleanup(lingId);
+        try {
+            if (pipelineEngine != null) {
+                pipelineEngine.evictLingResources(lingId);
+                int evictedHandles = pipelineEngine.evictMethodCache(lingId);
+                if (evictedHandles > 0) {
+                    log.info("[{}] Evicted {} method handles after unload", lingId, evictedHandles);
+                }
             }
-        }
-        if (lingResourceManager != null) {
-            lingResourceManager.closeResources(lingId);
+            if (lingResourceManager != null) {
+                lingResourceManager.closeResources(lingId);
+            }
+        } finally {
+            finishCleanup(lingId, future);
         }
     }
 
@@ -139,10 +157,49 @@ public class LingUnloadCoordinator {
      * 避免安装失败时这些资源泄漏到整 Ling 卸载才被回收。
      */
     public void onFailureCleanup(String lingId, String version, ClassLoader classLoader) {
-        cleanupWithHooks(lingId, version, classLoader);
-        // 回滚收敛：释放 onStart 阶段已注册的孤儿资源（版本级）
-        if (lingResourceManager != null && lingId != null && version != null) {
-            lingResourceManager.closeResources(lingId, version);
+        CompletableFuture<Void> future = beginCleanup(lingId);
+        try {
+            cleanupWithHooks(lingId, version, classLoader);
+            // 回滚收敛：释放 onStart 阶段已注册的孤儿资源（版本级）
+            if (lingResourceManager != null && lingId != null && version != null) {
+                lingResourceManager.closeResources(lingId, version);
+            }
+        } finally {
+            finishCleanup(lingId, future);
+        }
+    }
+
+    /** 登记一次清理并返回其完成信号（同 ling 复用同一 Future）。 */
+    private CompletableFuture<Void> beginCleanup(String lingId) {
+        return cleanupFutures.computeIfAbsent(lingId, k -> new CompletableFuture<>());
+    }
+
+    /** 完成一次清理：置位 Future 并从信号表移除。 */
+    private void finishCleanup(String lingId, CompletableFuture<Void> future) {
+        future.complete(null);
+        cleanupFutures.remove(lingId);
+    }
+
+    /**
+     * 确定性等待指定灵元的卸载/回滚清理完成。
+     * <p>
+     * 供部署方在重部署前调用：若该 ling 正在进行 JVM 级资源清理（JDBC 注销、
+     * ClassLoader 引用、文件锁释放），阻塞等待其结束，避免新容器初始化与残留资源冲突。
+     *
+     * @param lingId    目标灵元
+     * @param timeoutMs 最大等待时长（毫秒）
+     * @return true=清理已完成（或从未进行）；false=等待超时且仍在清理
+     */
+    public boolean awaitCleanup(String lingId, long timeoutMs) {
+        CompletableFuture<Void> future = cleanupFutures.get(lingId);
+        if (future == null) {
+            return true;
+        }
+        try {
+            future.get(timeoutMs, TimeUnit.MILLISECONDS);
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 

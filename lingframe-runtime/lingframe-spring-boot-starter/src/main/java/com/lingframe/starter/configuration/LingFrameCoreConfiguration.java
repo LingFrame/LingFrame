@@ -200,6 +200,7 @@ public class LingFrameCoreConfiguration {
                 .preloadApiJars(properties.getPreloadApiJars())
                 .apiOverrideCheckEnabled(properties.isApiOverrideCheckEnabled())
                 .trustedLingIds(properties.getTrustedLingIds())
+                .prefixWithLingId(properties.isPrefixWithLingId())
                 .strictSecurityMode(properties.getSecurity().isStrictMode())
                 .trustedLibPrefixes(properties.getSecurity().getTrustedLibPrefixes())
                 .build();

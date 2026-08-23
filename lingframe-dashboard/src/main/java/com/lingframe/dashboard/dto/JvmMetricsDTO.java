@@ -48,6 +48,8 @@ public class JvmMetricsDTO {
     private long metaspaceMaxKB;
     /** Metaspace 使用率（0.0 ~ 1.0） */
     private double metaspaceUsage;
+    /** 压缩类空间已用 (KB)——类定义(Klass)元数据区，类加载器卸载后回落，是"元空间回收"的证明指标 */
+    private long compressedClassSpaceUsedKB;
 
     // ==================== 类加载 ====================
     /** 当前已加载类数量 */

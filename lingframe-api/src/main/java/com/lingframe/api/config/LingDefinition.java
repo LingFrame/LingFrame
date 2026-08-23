@@ -27,6 +27,7 @@ public class LingDefinition implements Serializable {
     // === 运行时配置 ===
     private String mainClass; // 灵元入口类全限定名
     private List<String> excludeAutoConfigurations = new ArrayList<>();
+    private List<String> includeAutoConfigurations = new ArrayList<>();
 
     // === 治理配置 ===
     private GovernancePolicy governance = new GovernancePolicy();
@@ -47,6 +48,10 @@ public class LingDefinition implements Serializable {
 
         if (this.excludeAutoConfigurations != null) {
             copy.excludeAutoConfigurations = new ArrayList<>(this.excludeAutoConfigurations);
+        }
+
+        if (this.includeAutoConfigurations != null) {
+            copy.includeAutoConfigurations = new ArrayList<>(this.includeAutoConfigurations);
         }
 
         if (this.governance != null) {

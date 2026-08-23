@@ -137,7 +137,9 @@ mvn -pl lingframe-benchmark package -Pbenchmark -DskipTests
 
 `InvocationPipelineEngine` 是治理主链；内置过滤器按序执行（以 `PipelineArchitectureContractTest` / `FilterRegistry` 为准）：
 
-`ContractProviderRoutingFilter` → `TrafficMetricsFilter` → `MacroStateGuardFilter` → `InvocationPolicyPrefillFilter` → `ResilienceGovernanceFilter` → `ContextIsolationFilter` → `GovernanceDecisionFilter` → `PermissionGovernanceFilter` → `ThreadIsolationGovernanceFilter` → `TerminalInvokerFilter`
+`ContractProviderRoutingFilter` → `TrafficMetricsFilter` → `MacroStateGuardFilter` → `InstanceRoutingFilter` → `InvocationPolicyPrefillFilter` → `ResilienceGovernanceFilter` → `ContextIsolationFilter` → `GovernanceDecisionFilter` → `PermissionGovernanceFilter` → `ThreadIsolationGovernanceFilter` → `TerminalInvokerFilter`
+
+L0 provider 路由 / L1 实例路由分层：`InstanceRoutingFilter` 承接 provider 路由已设置的 `ctx.runtime`，位于 `MacroStateGuardFilter` 之后、`InvocationPolicyPrefillFilter` 之前。
 
 **路由层去身份化**：路由层只认 `weight` 和方法资格，不引用实现方身份（灵核/灵元）。身份在注册时沉淀为 `weight` 数值（灵核默认 100，灵元默认 0），方法资格通过 `LingServiceRegistry.hasMethod` 判定——未声明被调用方法的 provider 被剔除，方法级 fallback 是路由的副产物。
 

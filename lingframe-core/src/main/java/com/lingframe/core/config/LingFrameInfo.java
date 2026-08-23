@@ -5,9 +5,6 @@ package com.lingframe.core.config;
  * <p>
  * 替代 {@code LingFrameConfig.current()} 静态穿透，让外围模块（dashboard / 灵核）
  * 通过构造器注入拿到只读配置视图，不再依赖静态单例——便于测试 mock、避免生产代码随处静态调用。
- * <p>
- * 设计补全理由：注入式配置访问是灵核自身需要的设计补全，
- * 非为外围模块定制（判断标准：没有外围模块，灵核自己也该有这个注入式接口）。
  *
  * @see LingFrameConfig
  */
@@ -49,4 +46,11 @@ public interface LingFrameInfo {
      * @return true 表示灵核身份调用也走权限表校验
      */
     boolean isLingCoreCheckPermissions();
+
+    /**
+     * 灵元 Web 路由是否自动添加 /{lingId} 前缀。
+     *
+     * @return true 表示添加前缀，false 表示保持原生路径（默认）
+     */
+    boolean isPrefixWithLingId();
 }

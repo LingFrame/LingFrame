@@ -18,6 +18,9 @@ public final class WebRequestKeys {
     /** 请求级强制目标版本键（灰度/指定版本路由） */
     public static final String TARGET_VERSION = "ling.target.version";
 
+    /** 治理拒绝指标已记录标记键（避免 finally 中重复记成功/失败） */
+    public static final String GOV_METRICS_RECORDED = "ling.web.gov.metrics.recorded";
+
     private WebRequestKeys() {
     }
 }

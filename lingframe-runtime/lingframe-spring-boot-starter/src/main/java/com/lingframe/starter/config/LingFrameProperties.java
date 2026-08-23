@@ -64,6 +64,12 @@ public class LingFrameProperties {
     private List<String> preloadApiJars = new ArrayList<>();
 
     /**
+     * 灵元 Web 路由是否自动添加 /{lingId} 前缀。
+     * 默认为 false（保持 Controller 原生声明路径，实现无感接入/替换）。
+     */
+    private boolean prefixWithLingId = false;
+
+    /**
      * 是否启用 API 包覆盖检测。
      * <p>
      * true: 如果灵元包内包含 com.lingframe.api.* 类则拒绝安装

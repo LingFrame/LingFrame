@@ -291,7 +291,8 @@ public class SpringLingContainer implements LingContainer {
             return;
         }
         String lingId = lingContext.getLingId();
-        LingWebMetadataExtractor extractor = new LingWebMetadataExtractor(version, classLoader, context);
+        boolean prefixWithLingId = lingFrameInfo != null && lingFrameInfo.isPrefixWithLingId();
+        LingWebMetadataExtractor extractor = new LingWebMetadataExtractor(version, classLoader, context, prefixWithLingId);
 
         Map<String, Object> controllers = context.getBeansWithAnnotation(RestController.class);
         for (Map.Entry<String, Object> entry : controllers.entrySet()) {
