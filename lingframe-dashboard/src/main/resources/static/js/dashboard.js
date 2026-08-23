@@ -9,7 +9,8 @@ createApp({
         const lings = ref([]);
         // 持久化视图与选中灵元：刷新后恢复上下文（选中灵元可能已卸载，refreshLings 时会校验清空）
         const activeId = ref(localStorage.getItem('lingframe_active_ling') || null);
-        const activeNav = ref(localStorage.getItem('lingframe_nav') || 'overview');
+        const initialNav = localStorage.getItem('lingframe_nav');
+        const activeNav = ref(initialNav === 'contract-routing' ? 'contractRouting' : (initialNav || 'overview'));
         const lingSearch = ref('');
         // 灰度滑块已废弃：迁移阶段由后端 MigrationStateHolder 推进
         const migrationPhase = ref('CORE_EXCLUSIVE');
@@ -323,9 +324,141 @@ createApp({
         };
 
         const selectContract = async (id) => {
+            if (contractStressActive.value) {
+                stopContractStress();
+            }
             selectedContractId.value = id;
+            resetContractStressStats();
             await fetchRoutingDetail(id);
             fetchMigrationPhase();
+        };
+
+        // ==================== 契约流量演练（生产级真实微内核实时步进） ====================
+        const contractStressMode = ref('DRY_RUN');
+        const contractStressRounds = ref(100);
+        const contractStressActive = ref(false);
+        const contractStressStats = reactive({
+            total: 0,
+            durationMs: 0,
+            avgLatencyMs: 0,
+            mode: 'DRY_RUN',
+            hits: {} // hitProviderKey -> count
+        });
+        let contractStressTimer = null;
+
+        const resetContractStressStats = () => {
+            contractStressStats.total = 0;
+            contractStressStats.durationMs = 0;
+            contractStressStats.avgLatencyMs = 0;
+            contractStressStats.mode = contractStressMode.value;
+            contractStressStats.hits = {};
+        };
+
+        const stopContractStress = () => {
+            if (contractStressTimer) {
+                clearInterval(contractStressTimer);
+                contractStressTimer = null;
+            }
+            contractStressActive.value = false;
+        };
+
+        const toggleContractStress = async () => {
+            if (!selectedContractId.value) {
+                showToast(t('contractRouting.selectContract') || '请先选择左侧契约', 'warn');
+                return;
+            }
+
+            if (contractStressActive.value) {
+                stopContractStress();
+                showToast(t('toast.stressStopped') || '已停止流量演练', 'info');
+                return;
+            }
+
+            resetContractStressStats();
+            contractStressActive.value = true;
+            const cid = selectedContractId.value;
+            const targetRounds = contractStressRounds.value || 100;
+            const currentMode = contractStressMode.value || 'DRY_RUN';
+            contractStressStats.mode = currentMode;
+
+            // 周期性发送真实微内核模拟演练请求（1000ms 一次）
+            contractStressTimer = setInterval(async () => {
+                if (contractStressStats.total >= targetRounds || selectedContractId.value !== cid) {
+                    stopContractStress();
+                    showToast(t('contractRouting.stressSuccess') || '流量演练完成', 'success');
+                    return;
+                }
+                try {
+                    const step = await api.post(
+                        '/contract-routing/' + encodeURIComponent(cid) + '/stress-step?mode=' + encodeURIComponent(currentMode)
+                    );
+                    contractStressStats.total++;
+                    contractStressStats.durationMs += (step.durationMs || 0);
+                    contractStressStats.avgLatencyMs = Math.round((contractStressStats.durationMs / contractStressStats.total) * 100) / 100;
+                    const hitKey = step.hitProviderKey;
+                    contractStressStats.hits[hitKey] = (contractStressStats.hits[hitKey] || 0) + 1;
+                } catch (e) {
+                    console.error('[ContractRouting] Drill step failed:', e);
+                    stopContractStress();
+                    showToast(t('toast.stressFailed', {msg: e.message}) || ('契约流量演练中断: ' + e.message), 'error');
+                }
+            }, 1000);
+        };
+
+        const contractStressResult = computed(() => {
+            if (!routingDetail.value || !routingDetail.value.providers) {
+                return null;
+            }
+            const providers = routingDetail.value.providers;
+            const total = contractStressStats.total;
+            const totalEffectiveWeight = providers.reduce((sum, p) => sum + (p.effectiveWeight || 0), 0);
+
+            const stats = providers.map(p => {
+                const pk = p.version ? `${p.lingId}:${p.version}` : p.lingId;
+                const hits = contractStressStats.hits[pk] || 0;
+                const actualPercent = total > 0 ? Math.round((hits * 1000.0 / total)) / 10.0 : 0;
+                const expectedPercent = totalEffectiveWeight > 0
+                    ? Math.round((p.effectiveWeight * 1000.0 / totalEffectiveWeight)) / 10.0
+                    : Math.round(1000.0 / providers.length) / 10.0;
+                const drift = Math.round((actualPercent - expectedPercent) * 10.0) / 10.0;
+                return {
+                    providerKey: pk,
+                    lingId: p.lingId,
+                    version: p.version,
+                    type: p.coreBaseline ? 'CORE' : 'LING',
+                    configuredWeight: p.effectiveWeight,
+                    hitCount: hits,
+                    actualPercent,
+                    expectedPercent,
+                    drift
+                };
+            });
+
+            return {
+                contractId: selectedContractId.value,
+                mode: contractStressStats.mode || contractStressMode.value,
+                totalRounds: total,
+                totalDurationMs: Math.round(contractStressStats.durationMs),
+                avgLatencyMs: contractStressStats.avgLatencyMs,
+                stats
+            };
+        });
+
+        const providerColorPalette = [
+            { bg: 'bg-emerald-500', text: 'text-emerald-400', border: 'border-emerald-500/30', badge: 'bg-emerald-500/20' },
+            { bg: 'bg-cyan-500', text: 'text-cyan-400', border: 'border-cyan-500/30', badge: 'bg-cyan-500/20' },
+            { bg: 'bg-indigo-500', text: 'text-indigo-400', border: 'border-indigo-500/30', badge: 'bg-indigo-500/20' },
+            { bg: 'bg-amber-500', text: 'text-amber-400', border: 'border-amber-500/30', badge: 'bg-amber-500/20' },
+            { bg: 'bg-rose-500', text: 'text-rose-400', border: 'border-rose-500/30', badge: 'bg-rose-500/20' },
+            { bg: 'bg-purple-500', text: 'text-purple-400', border: 'border-purple-500/30', badge: 'bg-purple-500/20' },
+            { bg: 'bg-blue-500', text: 'text-blue-400', border: 'border-blue-500/30', badge: 'bg-blue-500/20' }
+        ];
+
+        const getProviderColor = (index, type) => {
+            if (type === 'CORE') {
+                return providerColorPalette[0];
+            }
+            return providerColorPalette[(index + 1) % providerColorPalette.length];
         };
 
         // providerKey 即路由键：灵元恒为 lingId:version，灵核为 lingcore-app，与后端读路径键化一致
@@ -592,26 +725,26 @@ createApp({
         const startMigration = async () => {
             const contractId = selectedContractId.value;
             const lingId = routingLingId.value;
-            if (!contractId || !lingId) { showToast('请先选择包含灵元 provider 的契约,无法发起迁移', 'error'); return; }
+            if (!contractId || !lingId) { showToast(t('toast.selectContractForMigration'), 'error'); return; }
             // 迁移=灵核→灵元，无灵核契约只能做版本迭代
-            if (!routingHasCore.value) { showToast('该契约无灵核 provider,不支持迁移,请走版本迭代', 'error'); return; }
+            if (!routingHasCore.value) { showToast(t('toast.noCoreForMigration'), 'error'); return; }
             try {
                 await api.post(`/lings/${lingId}/migration/start`, {
                     contractId,
                     oldCandidate: 'lingcore-app',
                     newCandidate: lingId
                 });
-                showToast('迁移已发起', 'success');
+                showToast(t('toast.migrationStarted'), 'success');
                 await fetchMigrationPhase();
             } catch (e) {
-                showToast('发起迁移失败: ' + e.message, 'error');
+                showToast(t('toast.migrationStartFailed') + ': ' + e.message, 'error');
             }
         };
 
         const startIteration = async () => {
             const contractId = selectedContractId.value;
             const lingId = routingLingId.value;
-            if (!contractId || !lingId) { showToast('请先选择包含灵元 provider 的契约,无法发起迭代', 'error'); return; }
+            if (!contractId || !lingId) { showToast(t('toast.selectContractForIteration'), 'error'); return; }
             try {
                 const newVer = routingLingVersion.value;
                 await api.post(`/lings/${lingId}/iteration/start`, {
@@ -619,33 +752,33 @@ createApp({
                     oldCandidate: lingId,
                     newCandidate: `${lingId}:${newVer || ''}`
                 });
-                showToast('迭代已发起', 'success');
+                showToast(t('toast.iterationStarted'), 'success');
                 await fetchMigrationPhase();
             } catch (e) {
-                showToast('发起迭代失败: ' + e.message, 'error');
+                showToast(t('toast.iterationStartFailed') + ': ' + e.message, 'error');
             }
         };
 
         const confirmTransition = async () => {
             const contractId = selectedContractId.value;
-            if (!contractId) { showToast('请先选择契约,无法确认相变', 'error'); return; }
+            if (!contractId) { showToast(t('toast.selectContractForTransition'), 'error'); return; }
             // 排空校验前置:从退出方候选活跃请求数判定 drainOk
             // 退出方候选由 migrationRecord.oldCandidate 携带(MIGRATING 时为灵核,ITERATING 时为旧灵元)
             const exitingCandidate = migrationRecord.value?.oldCandidate;
             // exitingCandidate 漏 c 会让排空校验永久绕过（strict 模式 ReferenceError / sloppy 模式 undefined 致短路）
             const drainOk = !exitingCandidate || await checkDrainOk(exitingCandidate);
             if (!drainOk) {
-                showToast('退出方候选仍有活跃请求,无法确认相变(排空校验未通过)', 'error');
+                showToast(t('toast.drainingPending'), 'error');
                 return;
             }
             try {
                 await api.post(`/lings/${encodeURIComponent(contractId)}/migration/confirm`, null, {
                     params: { drainOk: true }
                 });
-                showToast('相变已确认', 'success');
+                showToast(t('toast.transitionConfirmed'), 'success');
                 await fetchMigrationPhase();
             } catch (e) {
-                showToast('确认相变失败: ' + e.message, 'error');
+                showToast(t('toast.transitionConfirmFailed') + ': ' + e.message, 'error');
             }
         };
 
@@ -671,13 +804,13 @@ createApp({
 
         const rollbackTransition = async () => {
             const contractId = selectedContractId.value;
-            if (!contractId) { showToast('请先选择契约,无法回滚相变', 'error'); return; }
+            if (!contractId) { showToast(t('toast.selectContractForRollback'), 'error'); return; }
             try {
                 await api.post(`/lings/${encodeURIComponent(contractId)}/migration/rollback`);
-                showToast('相变已回滚', 'success');
+                showToast(t('toast.transitionRolledBack'), 'success');
                 await fetchMigrationPhase();
             } catch (e) {
-                showToast('回滚相变失败: ' + e.message, 'error');
+                showToast(t('toast.transitionRollbackFailed') + ': ' + e.message, 'error');
             }
         };
         // 生命周期启停不通过 RuntimeStatus 按钮操作；流量编排见「契约路由」与「服务验证」
@@ -2978,7 +3111,7 @@ createApp({
                 nextTick(() => drawMonitorCharts());
             } else if (val === 'lings') {
                 fetchPackages();
-            } else if (val === 'contract-routing') {
+            } else if (val === 'contractRouting') {
                 // 进入契约路由页时拉取契约列表，详情按需懒加载
                 fetchContracts();
             } else if (val === 'migration') {
@@ -3209,6 +3342,7 @@ createApp({
         onUnmounted(() => {
             if (timeTimer) clearInterval(timeTimer);
             if (stressTimer) clearInterval(stressTimer);
+            if (contractStressTimer) clearInterval(contractStressTimer);
             if (perfTimer) clearInterval(perfTimer);
             if (summaryTimer) clearInterval(summaryTimer);
             if (lingDetailTimer) clearInterval(lingDetailTimer);
@@ -3234,6 +3368,7 @@ createApp({
             governanceMatrix, matrixSortKey, matrixSortAsc, fetchGovernanceMatrix, sortedMatrix, sortMatrix,
             contractsList, selectedContractId, routingDetail, weightEditForm, savingWeight,
             fetchContracts, fetchRoutingDetail, selectContract, saveProviderWeight,
+            contractStressMode, contractStressRounds, contractStressActive, contractStressStats, contractStressResult, toggleContractStress, resetContractStressStats, getProviderColor,
             routingHasCore, routingHasLing, routingLingId, routingLingVersion, effectivePhase,
             migrationList, fetchMigrationProgress, staleCount, totalCoreInv, totalLingInv, formatRatio,
             fetchMigrationPhase, startMigration, startIteration, confirmTransition, rollbackTransition,

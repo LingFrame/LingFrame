@@ -193,11 +193,11 @@ body {
 
 /* 灵元列表项 - 增强交互 */
 .ling-item {
-    padding: 18px 24px;
+    padding: 8px 10px;
     margin-bottom: 4px;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
 }
@@ -226,7 +226,7 @@ body {
 .ling-item.active {
     background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, var(--bg-card) 60%, transparent 100%);
     border-left: 3px solid var(--primary-color);
-    padding-left: 9px;
+    padding-left: 7px;
 }
 
 .ling-item.active::before {

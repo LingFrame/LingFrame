@@ -45,8 +45,11 @@
     --color-pink-400: oklch(71.8% 0.202 349.761);
     --color-pink-500: oklch(65.6% 0.241 354.308);
     --color-rose-300: oklch(81% 0.117 11.638);
+    --color-rose-400: oklch(71.2% 0.194 13.428);
+    --color-rose-500: oklch(64.5% 0.246 16.439);
     --color-slate-400: oklch(70.4% 0.04 256.788);
     --color-slate-500: oklch(55.4% 0.046 257.417);
+    --color-gray-700: oklch(37.3% 0.034 259.733);
     --color-white: #fff;
     --spacing: 0.25rem;
     --text-xs: 0.75rem;
@@ -382,6 +385,9 @@
   .inline {
     display: inline;
   }
+  .inline-block {
+    display: inline-block;
+  }
   .h-1\.5 {
     height: calc(var(--spacing) * 1.5);
   }
@@ -519,9 +525,6 @@
   .transform {
     transform: var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,);
   }
-  .animate-pulse {
-    animation: var(--animate-pulse);
-  }
   .animate-spin {
     animation: var(--animate-spin);
   }
@@ -644,6 +647,9 @@
   .rounded-lg {
     border-radius: var(--radius-lg);
   }
+  .rounded-xl {
+    border-radius: var(--radius-xl);
+  }
   .rounded-t-xl {
     border-top-left-radius: var(--radius-xl);
     border-top-right-radius: var(--radius-xl);
@@ -696,12 +702,6 @@
   .border-blue-500 {
     border-color: var(--color-blue-500);
   }
-  .border-blue-500\/20 {
-    border-color: color-mix(in srgb, oklch(62.3% 0.214 259.815) 20%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-blue-500) 20%, transparent);
-    }
-  }
   .border-blue-500\/30 {
     border-color: color-mix(in srgb, oklch(62.3% 0.214 259.815) 30%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -716,6 +716,12 @@
   }
   .border-cyan-500 {
     border-color: var(--color-cyan-500);
+  }
+  .border-cyan-500\/30 {
+    border-color: color-mix(in srgb, oklch(71.5% 0.143 215.221) 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-cyan-500) 30%, transparent);
+    }
   }
   .border-emerald-500\/30 {
     border-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 30%, transparent);
@@ -736,6 +742,12 @@
     border-color: color-mix(in srgb, oklch(72.3% 0.219 149.579) 50%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-green-500) 50%, transparent);
+    }
+  }
+  .border-indigo-500\/30 {
+    border-color: color-mix(in srgb, oklch(58.5% 0.233 277.117) 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-indigo-500) 30%, transparent);
     }
   }
   .border-pink-500 {
@@ -775,6 +787,12 @@
     border-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 50%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-red-500) 50%, transparent);
+    }
+  }
+  .border-rose-500\/30 {
+    border-color: color-mix(in srgb, oklch(64.5% 0.246 16.439) 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-rose-500) 30%, transparent);
     }
   }
   .border-sky-500\/30 {
@@ -858,6 +876,9 @@
       background-color: color-mix(in oklab, var(--color-blue-600) 30%, transparent);
     }
   }
+  .bg-cyan-500 {
+    background-color: var(--color-cyan-500);
+  }
   .bg-cyan-500\/20 {
     background-color: color-mix(in srgb, oklch(71.5% 0.143 215.221) 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -867,10 +888,25 @@
   .bg-cyan-600 {
     background-color: var(--color-cyan-600);
   }
+  .bg-emerald-500 {
+    background-color: var(--color-emerald-500);
+  }
   .bg-emerald-500\/10 {
     background-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-emerald-500) 10%, transparent);
+    }
+  }
+  .bg-emerald-500\/20 {
+    background-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-emerald-500) 20%, transparent);
+    }
+  }
+  .bg-gray-700\/30 {
+    background-color: color-mix(in srgb, oklch(37.3% 0.034 259.733) 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-gray-700) 30%, transparent);
     }
   }
   .bg-green-400 {
@@ -878,12 +914,6 @@
   }
   .bg-green-500 {
     background-color: var(--color-green-500);
-  }
-  .bg-green-500\/10 {
-    background-color: color-mix(in srgb, oklch(72.3% 0.219 149.579) 10%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-green-500) 10%, transparent);
-    }
   }
   .bg-green-500\/20 {
     background-color: color-mix(in srgb, oklch(72.3% 0.219 149.579) 20%, transparent);
@@ -906,6 +936,15 @@
       background-color: color-mix(in oklab, var(--color-green-600) 20%, transparent);
     }
   }
+  .bg-indigo-500 {
+    background-color: var(--color-indigo-500);
+  }
+  .bg-indigo-500\/20 {
+    background-color: color-mix(in srgb, oklch(58.5% 0.233 277.117) 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-indigo-500) 20%, transparent);
+    }
+  }
   .bg-indigo-600 {
     background-color: var(--color-indigo-600);
   }
@@ -914,6 +953,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-pink-500) 20%, transparent);
     }
+  }
+  .bg-purple-500 {
+    background-color: var(--color-purple-500);
   }
   .bg-purple-500\/10 {
     background-color: color-mix(in srgb, oklch(62.7% 0.265 303.9) 10%, transparent);
@@ -975,6 +1017,15 @@
       background-color: color-mix(in oklab, var(--color-red-600) 20%, transparent);
     }
   }
+  .bg-rose-500 {
+    background-color: var(--color-rose-500);
+  }
+  .bg-rose-500\/20 {
+    background-color: color-mix(in srgb, oklch(64.5% 0.246 16.439) 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-rose-500) 20%, transparent);
+    }
+  }
   .bg-sky-500\/10 {
     background-color: color-mix(in srgb, oklch(68.5% 0.169 237.323) 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1020,6 +1071,9 @@
   .p-2 {
     padding: calc(var(--spacing) * 2);
   }
+  .p-2\.5 {
+    padding: calc(var(--spacing) * 2.5);
+  }
   .p-3 {
     padding: calc(var(--spacing) * 3);
   }
@@ -1058,9 +1112,6 @@
   }
   .px-5 {
     padding-inline: calc(var(--spacing) * 5);
-  }
-  .px-6 {
-    padding-inline: calc(var(--spacing) * 6);
   }
   .py-0\.5 {
     padding-block: calc(var(--spacing) * 0.5);
@@ -1226,6 +1277,9 @@
   .break-all {
     word-break: break-all;
   }
+  .text-ellipsis {
+    text-overflow: ellipsis;
+  }
   .whitespace-nowrap {
     white-space: nowrap;
   }
@@ -1274,9 +1328,6 @@
   .text-emerald-400 {
     color: var(--color-emerald-400);
   }
-  .text-green-300 {
-    color: var(--color-green-300);
-  }
   .text-green-400 {
     color: var(--color-green-400);
   }
@@ -1316,9 +1367,6 @@
       color: color-mix(in oklab, var(--color-purple-400) 80%, transparent);
     }
   }
-  .text-red-300 {
-    color: var(--color-red-300);
-  }
   .text-red-400 {
     color: var(--color-red-400);
   }
@@ -1327,6 +1375,9 @@
   }
   .text-rose-300 {
     color: var(--color-rose-300);
+  }
+  .text-rose-400 {
+    color: var(--color-rose-400);
   }
   .text-sky-300 {
     color: var(--color-sky-300);
@@ -1364,8 +1415,16 @@
   .opacity-80 {
     opacity: 80%;
   }
+  .shadow-inner {
+    --tw-shadow: inset 0 2px 4px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.05));
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  }
   .shadow-lg {
     --tw-shadow: 0 10px 15px -3px var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--tw-shadow-color, rgb(0 0 0 / 0.1));
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  }
+  .shadow-sm {
+    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
   .filter {
@@ -1534,14 +1593,26 @@
     .sm\:inline {
       display: inline;
     }
+    .sm\:inline-flex {
+      display: inline-flex;
+    }
     .sm\:grid-cols-2 {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .sm\:grid-cols-3 {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+    .sm\:gap-3 {
+      gap: calc(var(--spacing) * 3);
+    }
+    .sm\:px-6 {
+      padding-inline: calc(var(--spacing) * 6);
+    }
   }
   @media (width >= 48rem) {
+    .md\:inline {
+      display: inline;
+    }
     .md\:grid-cols-2 {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -1550,9 +1621,6 @@
     }
     .md\:grid-cols-4 {
       grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-    .md\:grid-cols-5 {
-      grid-template-columns: repeat(5, minmax(0, 1fr));
     }
   }
   @media (width >= 64rem) {
@@ -1567,6 +1635,9 @@
     }
     .lg\:col-span-8 {
       grid-column: span 8 / span 8;
+    }
+    .lg\:flex {
+      display: flex;
     }
     .lg\:hidden {
       display: none;
@@ -1750,11 +1821,11 @@
     transition: background 0.3s, border 0.3s;
   }
   .ling-item {
-    padding: 18px 24px;
+    padding: 8px 10px;
     margin-bottom: 4px;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
   }
@@ -1779,7 +1850,7 @@
   .ling-item.active {
     background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, var(--bg-card) 60%, transparent 100%);
     border-left: 3px solid var(--primary-color);
-    padding-left: 9px;
+    padding-left: 7px;
   }
   .ling-item.active::before {
     transform: scaleY(1);
@@ -2384,7 +2455,6 @@
     display: none;
   }
   @media (max-width: 1023px) {
-    /* 与基础规则 :root, html.theme-dark 同权，确保暗色主题下侧边栏宽度变量归零，控制台通满全宽 */
     :root, html.theme-dark {
       --sidebar-width: 0px;
     }
@@ -2520,6 +2590,43 @@
     background: var(--bg-hover);
     color: var(--text-primary);
     border-color: var(--primary-color);
+  }
+  .lingframe-tour-popover.driver-popover {
+    background-color: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 32px var(--shadow-lg);
+  }
+  .lingframe-tour-popover .driver-popover-title {
+    color: var(--text-primary);
+  }
+  .lingframe-tour-popover .driver-popover-description {
+    color: var(--text-secondary);
+  }
+  .lingframe-tour-popover .driver-popover-progress-text {
+    color: var(--text-muted);
+  }
+  .lingframe-tour-popover .driver-popover-close-btn {
+    color: var(--text-muted);
+  }
+  .lingframe-tour-popover .driver-popover-close-btn:hover, .lingframe-tour-popover .driver-popover-close-btn:focus {
+    color: var(--text-primary);
+  }
+  .lingframe-tour-popover .driver-popover-footer button {
+    background-color: var(--bg-input);
+    color: var(--text-primary);
+    border-color: var(--border);
+  }
+  .lingframe-tour-popover .driver-popover-footer button:hover, .lingframe-tour-popover .driver-popover-footer button:focus {
+    background-color: var(--bg-hover);
+  }
+  .lingframe-tour-popover .driver-popover-arrow {
+    border-color: var(--bg-card);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .driver-fade .driver-overlay, .driver-fade .driver-popover {
+      animation: none;
+    }
   }
   .auth-submit {
     margin-top: 16px;
@@ -2924,48 +3031,6 @@
   .main-content-wrapper.console-expanded {
     padding-bottom: 280px;
   }
-  @media (max-width: 1023px) {
-    /* 控制台工具栏与标题栏在窄屏下收敛，允许横向滚动，避免溢出 */
-    .console-toolbar {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      gap: 8px;
-      flex-shrink: 1;
-      min-width: 0;
-    }
-    .console-title-area {
-      flex-shrink: 0;
-    }
-    .console-header {
-      padding: 0 8px;
-      gap: 6px;
-    }
-    .console-toolbar .console-toolbar-btn {
-      padding: 4px 6px;
-      white-space: nowrap;
-    }
-  }
-  @media (max-width: 639px) {
-    /* 底栏日志窗口：移动端贴满宽度，避免跟随侧边栏变量残留偏移 */
-    .global-console-drawer {
-      left: 0;
-    }
-    /* 控制台工具栏按钮在窄屏只留图标，节省横向空间 */
-    .console-toolbar .console-toolbar-btn span {
-      display: none;
-    }
-    /* 底栏日志文本：允许换行，杜绝长日志在窄屏横向溢出 */
-    .console-body {
-      padding: 8px;
-    }
-    .console-logs-wrapper {
-      overflow-x: hidden;
-    }
-    .console-logs-wrapper > div {
-      word-break: break-word;
-      overflow-wrap: anywhere;
-    }
-  }
   .fa-chevron-down, .fa-chevron-right {
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
@@ -3017,6 +3082,94 @@
       box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3) !important;
     }
   }
+  @media (max-width: 1023px) {
+    .main-area header {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+    .main-area header .gap-4 {
+      gap: 8px;
+    }
+    .main-area header .font-medium {
+      max-width: 40vw;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+  @media (max-width: 639px) {
+    .main-area header button {
+      padding: 6px;
+    }
+    .main-area header .px-3 {
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+    .lang-switch {
+      max-width: 72px;
+    }
+    table {
+      font-size: 11px;
+    }
+    table th, table td {
+      padding: 6px 8px !important;
+    }
+    .health-metric {
+      min-width: 0;
+    }
+    .grid-cols-4 {
+      grid-template-columns: repeat(2, 1fr) !important;
+    }
+    .lg\:grid-cols-6 {
+      grid-template-columns: repeat(2, 1fr) !important;
+    }
+    .modal-content {
+      max-width: 96vw !important;
+      max-height: 90vh;
+      overflow-y: auto;
+      margin: 0 8px;
+    }
+    .main-area .p-6 {
+      padding: 12px;
+    }
+    .sidebar {
+      width: 240px;
+    }
+    .console-toolbar {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      gap: 8px;
+      flex-shrink: 1;
+      min-width: 0;
+    }
+    .console-title-area {
+      flex-shrink: 0;
+    }
+    .console-header {
+      padding: 0 8px;
+      gap: 6px;
+    }
+    .console-toolbar .console-toolbar-btn {
+      padding: 4px 6px;
+      white-space: nowrap;
+    }
+    .console-toolbar .console-toolbar-btn span {
+      display: none;
+    }
+    .global-console-drawer {
+      left: 0;
+    }
+    .console-body {
+      padding: 8px;
+    }
+    .console-logs-wrapper {
+      overflow-x: hidden;
+    }
+    .console-logs-wrapper > div {
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+  }
 }
 @layer base {
   *, ::before, ::after {
@@ -3028,46 +3181,6 @@
     border-width: 0;
   }
 }
-
-/* 向导（driver.js）提示框：置于 @layer 之外，确保未分层样式覆盖 driver.css 默认白底 */
-.lingframe-tour-popover.driver-popover {
-  background-color: var(--bg-card);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-  box-shadow: 0 8px 32px var(--shadow-lg);
-}
-.lingframe-tour-popover .driver-popover-title {
-  color: var(--text-primary);
-}
-.lingframe-tour-popover .driver-popover-description {
-  color: var(--text-secondary);
-}
-.lingframe-tour-popover .driver-popover-progress-text {
-  color: var(--text-muted);
-}
-.lingframe-tour-popover .driver-popover-close-btn {
-  color: var(--text-muted);
-}
-.lingframe-tour-popover .driver-popover-close-btn:hover, .lingframe-tour-popover .driver-popover-close-btn:focus {
-  color: var(--text-primary);
-}
-.lingframe-tour-popover .driver-popover-footer button {
-  background-color: var(--bg-input);
-  color: var(--text-primary);
-  border-color: var(--border);
-}
-.lingframe-tour-popover .driver-popover-footer button:hover, .lingframe-tour-popover .driver-popover-footer button:focus {
-  background-color: var(--bg-hover);
-}
-.lingframe-tour-popover .driver-popover-arrow {
-  border-color: var(--bg-card);
-}
-@media (prefers-reduced-motion: reduce) {
-  .driver-fade .driver-overlay, .driver-fade .driver-popover {
-    animation: none;
-  }
-}
-
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;

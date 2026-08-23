@@ -39,14 +39,14 @@ class SpringLingContainerControllerRegistrationTest {
                 .map(metadata -> metadata.getHttpMethod() + " " + metadata.getUrlPattern())
                 .collect(Collectors.toSet());
         assertEquals(new HashSet<>(Arrays.asList(
-                "GET /ling-a/api/v1",
-                "POST /ling-a/api/v1",
-                "GET /ling-a/api/v2",
-                "POST /ling-a/api/v2",
-                "GET /ling-a/alt/v1",
-                "POST /ling-a/alt/v1",
-                "GET /ling-a/alt/v2",
-                "POST /ling-a/alt/v2")), routes);
+                "GET /api/v1",
+                "POST /api/v1",
+                "GET /api/v2",
+                "POST /api/v2",
+                "GET /alt/v1",
+                "POST /alt/v1",
+                "GET /alt/v2",
+                "POST /alt/v2")), routes);
 
         for (WebInterfaceMetadata metadata : captured) {
             assertEquals("multiMappingController", metadata.getTargetBeanName());
@@ -62,7 +62,8 @@ class SpringLingContainerControllerRegistrationTest {
             assertNotNull(metadata.getRequestMappingInfo());
             if ("POST".equals(metadata.getHttpMethod())) {
                 assertTrue(metadata.isShouldAudit());
-                assertTrue(metadata.getAuditAction().startsWith("POST /ling-a/"));
+                assertEquals("POST " + metadata.getUrlPattern(), metadata.getAuditAction(),
+                        "审计动作应与「HTTP 方法 + 原生路由路径」一致");
             } else {
                 assertFalse(metadata.isShouldAudit());
             }

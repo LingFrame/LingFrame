@@ -47,4 +47,14 @@ public interface LingContainer {
      * 获取灵元专用的类加载器 (用于 TCCL 劫持)
      */
     ClassLoader getClassLoader();
+
+    /**
+     * 执行标准健康与流量探测。
+     *
+     * @param contractId 关联契约 ID（可选）
+     * @return 探测响应状态（默认 "OK"）
+     */
+    default String probe(String contractId) {
+        return "OK";
+    }
 }

@@ -1,10 +1,12 @@
 package com.lingframe.dashboard.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.routing.ProviderDescriptor;
 import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
 import com.lingframe.dashboard.dto.ProviderWeightDTO;
+import com.lingframe.dashboard.storage.GovernanceStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -225,6 +227,18 @@ class ContractRoutingServiceTest {
             service.setProviderWeight("svc-a", "user-ling", -10);
             assertEquals(0, providerWeightRouter.getOverrideWeight("svc-a", "user-ling"));
         }
+
+        @Test
+        @DisplayName("设置权重时如果配置了 GovernanceStorage 则自动持久化")
+        void weightIsPersistedWhenStorageAvailable() {
+            GovernanceStorage storage = mock(GovernanceStorage.class);
+            service.setGovernanceStorage(storage);
+            service.setObjectMapper(new ObjectMapper());
+
+            service.setProviderWeight("svc-a", "user-ling", 50);
+
+            verify(storage).saveRoutingWeightConfig(eq("svc-a"), contains("\"user-ling\":50"));
+        }
     }
 
     // ==================== 一键回滚 ====================
@@ -273,5 +287,23 @@ class ContractRoutingServiceTest {
             assertEquals(0, dto.getCoreEffectiveWeight());
             assertEquals(0, dto.getLingEffectiveWeight());
         }
+
+        @Test
+        @DisplayName("回滚到灵核时自动持久化覆盖后的权重")
+        void rollbackIsPersistedWhenStorageAvailable() {
+            GovernanceStorage storage = mock(GovernanceStorage.class);
+            service.setGovernanceStorage(storage);
+            service.setObjectMapper(new ObjectMapper());
+
+            when(lingServiceRegistry.getProvidersByContractId("svc-a"))
+                    .thenReturn(Arrays.asList(
+                            new ProviderDescriptor("svc-a", "lingcore-app", 100),
+                            new ProviderDescriptor("svc-a", "user-ling", 0)));
+
+            service.rollbackToCore("svc-a");
+
+            verify(storage).saveRoutingWeightConfig(eq("svc-a"), anyString());
+        }
     }
 }
+

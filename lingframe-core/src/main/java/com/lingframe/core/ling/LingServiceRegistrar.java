@@ -1,6 +1,7 @@
 package com.lingframe.core.ling;
 
 import com.lingframe.api.annotation.LingService;
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.core.context.DefaultLingContext;
 import lombok.extern.slf4j.Slf4j;
 
@@ -321,8 +322,9 @@ public class LingServiceRegistrar {
         String contractId = extractContractIdFromFqsid(fqsid);
         if (lingId != null && contractId != null) {
             // 版本真源：从绑定实例的上下文派生——同一灵元多版本并存时以 lingId:version 区分候选；
-            // 灵核上下文（instance=null）无版本概念，注册键保持裸 lingId
-            String version = context != null ? context.getVersion() : null;
+            // 灵核上下文（lingcore-app）无版本概念，注册键保持裸 lingId
+            String version = LingCoreConstants.LINGCORE_LING_ID.equals(lingId) ? null
+                    : (context != null ? context.getVersion() : null);
             registry.registerProvider(contractId, lingId, version, defaultWeight);
         }
     }

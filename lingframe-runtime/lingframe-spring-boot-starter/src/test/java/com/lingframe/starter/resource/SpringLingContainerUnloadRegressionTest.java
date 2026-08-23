@@ -144,7 +144,8 @@ class SpringLingContainerUnloadRegressionTest {
                 + "mainClass: \"" + APP_CLASS_NAME + "\"\n";
         Files.write(classesDir.resolve("ling.yml"), lingYml.getBytes(StandardCharsets.UTF_8));
 
-        String routePath = "/" + LING_ID + "/demo/ping";
+        // 默认 prefixWithLingId=false：灵元 Controller 保持原生路径 /demo/ping（无感接入/替换）
+        String routePath = "/demo/ping";
         try {
             // ========== 生产部署路径（一比一照搬 Dashboard.installLing） ==========
             // Dashboard: parseDefinition(file) -> lifecycleEngine.deploy(definition, file,
@@ -163,7 +164,7 @@ class SpringLingContainerUnloadRegressionTest {
                         "ClassLoader 在 undeploy 前不应被回收");
 
                 // ========== 请求接口（完整请求流程）==========
-                // deploy 后实际调用 /test-ling/demo/ping，验证灵元 Controller 能正常处理请求
+                // deploy 后实际调用 /demo/ping，验证灵元 Controller 能正常处理请求
                 // ServletWebRequest 须按 javax/jakarta 反射构造（SB2/SB3 双栈），见 createServletWebRequest
                 MockHttpServletResponse pingResponse = new MockHttpServletResponse();
                 ServletWebRequest pingWebRequest = createServletWebRequest(routeRequest, pingResponse);
