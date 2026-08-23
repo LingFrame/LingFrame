@@ -102,6 +102,20 @@ public class GovernanceStorage implements MigrationStateStore {
         return loadConfig(lingId, GovernanceConfigTypes.PERMISSION);
     }
 
+    // ==================== 契约路由权重配置 ====================
+
+    public void saveRoutingWeightConfig(String contractId, String configJson) {
+        saveConfig(contractId, GovernanceConfigTypes.ROUTING_WEIGHT, configJson);
+    }
+
+    public String loadRoutingWeightConfig(String contractId) {
+        return loadConfig(contractId, GovernanceConfigTypes.ROUTING_WEIGHT);
+    }
+
+    public void deleteRoutingWeightConfig(String contractId) {
+        deleteConfig(contractId, GovernanceConfigTypes.ROUTING_WEIGHT);
+    }
+
     // ==================== 通用读写 ====================
 
     private void saveConfig(String lingId, String configType, String configJson) {

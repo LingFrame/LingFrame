@@ -7,6 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -136,6 +138,20 @@ public class ProviderWeightRouter {
     public Integer getOverrideWeight(String contractId, String providerKey) {
         Map<String, Integer> contractMap = providerWeights.get(contractId);
         return contractMap != null ? contractMap.get(providerKey) : null;
+    }
+
+    /**
+     * 查询指定契约下所有 provider 的运行期覆盖权重。
+     *
+     * @param contractId 契约 ID
+     * @return 权重覆盖 Map，未配置返回空 Map
+     */
+    public Map<String, Integer> getOverrideWeights(String contractId) {
+        if (contractId == null) {
+            return Collections.emptyMap();
+        }
+        Map<String, Integer> contractMap = providerWeights.get(contractId);
+        return contractMap != null ? new HashMap<>(contractMap) : Collections.emptyMap();
     }
 
     /**

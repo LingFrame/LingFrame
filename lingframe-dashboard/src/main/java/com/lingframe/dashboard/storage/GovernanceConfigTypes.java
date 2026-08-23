@@ -17,6 +17,9 @@ public final class GovernanceConfigTypes {
     /** 权限配置（GovernancePolicy，JSON） */
     public static final String PERMISSION = "permission";
 
+    /** 契约路由权重覆盖配置（Map<String, Integer>，JSON） */
+    public static final String ROUTING_WEIGHT = "routing_weight";
+
     private GovernanceConfigTypes() {
     }
 }

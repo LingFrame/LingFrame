@@ -1,5 +1,6 @@
 package com.lingframe.dashboard.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.exception.RoutingArchitectureViolationException;
 import com.lingframe.core.ling.LingServiceRegistry;
@@ -9,10 +10,13 @@ import com.lingframe.core.routing.ProviderDescriptor;
 import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
 import com.lingframe.dashboard.dto.ProviderWeightDTO;
+import com.lingframe.dashboard.storage.GovernanceStorage;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -45,6 +49,13 @@ public class ContractRoutingService {
     private final ProviderWeightRouter providerWeightRouter;
     /** 迁移状态机持有者；null 时降级为纯权重下发（native/test 场景） */
     private final MigrationStateHolder migrationStateHolder;
+
+    /** 治理配置存储（可选，用于持久化权重到 SQLite） */
+    @Setter
+    private GovernanceStorage governanceStorage;
+
+    @Setter
+    private ObjectMapper objectMapper;
 
     public ContractRoutingService(LingServiceRegistry lingServiceRegistry,
             ProviderWeightRouter providerWeightRouter) {
@@ -139,6 +150,7 @@ public class ContractRoutingService {
         providerWeightRouter.setProviderWeight(contractId, providerKey, weight);
         log.info("[ContractRouting] Weight updated: contract=[{}], provider=[{}], weight=[{}]",
                 contractId, providerKey, weight);
+        persistWeights(contractId);
     }
 
     /**
@@ -168,6 +180,27 @@ public class ContractRoutingService {
         }
         log.info("[ContractRouting] Rollback to core 100%: contract=[{}], providers=[{}]",
                 contractId, providers.size());
+        persistWeights(contractId);
+    }
+
+    /**
+     * 持久化指定契约的权重覆盖配置到 GovernanceStorage。
+     */
+    private void persistWeights(String contractId) {
+        if (governanceStorage == null || contractId == null) {
+            return;
+        }
+        try {
+            Map<String, Integer> weights = providerWeightRouter.getOverrideWeights(contractId);
+            if (weights == null || weights.isEmpty()) {
+                governanceStorage.deleteRoutingWeightConfig(contractId);
+            } else {
+                ObjectMapper mapper = objectMapper != null ? objectMapper : new ObjectMapper();
+                governanceStorage.saveRoutingWeightConfig(contractId, mapper.writeValueAsString(weights));
+            }
+        } catch (Exception e) {
+            log.warn("Failed to persist routing weights for contract {}: {}", contractId, e.getMessage());
+        }
     }
 
     // ==================== 相变控制（与 MigrationStateHolder 联动） ====================
@@ -266,3 +299,4 @@ public class ContractRoutingService {
         return LingCoreConstants.LINGCORE_LING_ID.equals(lingId);
     }
 }
+

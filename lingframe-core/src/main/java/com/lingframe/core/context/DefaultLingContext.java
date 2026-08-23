@@ -1,5 +1,6 @@
 package com.lingframe.core.context;
 
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.exception.InvalidArgumentException;
@@ -318,7 +319,8 @@ public class DefaultLingContext implements LingContext {
         int sep = fqsid.indexOf(':');
         if (sep > 0 && sep < fqsid.length() - 1) {
             String contractId = fqsid.substring(sep + 1);
-            lingServiceRegistry.registerProvider(contractId, lingId, getVersion(), 0);
+            String version = LingCoreConstants.LINGCORE_LING_ID.equals(lingId) ? null : getVersion();
+            lingServiceRegistry.registerProvider(contractId, lingId, version, 0);
         }
         log.info("[Context] Programmatic service exposure: ling=[{}], serviceId=[{}], handler=[{}]",
                 lingId, serviceId, handler.getClass().getName());
