@@ -47,13 +47,22 @@ public final class LingWebMetadataExtractor {
     private final String version;
     private final ClassLoader lingClassLoader;
     private final ApplicationContext lingApplicationContext;
+    private final boolean prefixWithLingId;
 
     public LingWebMetadataExtractor(String version,
                                     ClassLoader lingClassLoader,
                                     ApplicationContext lingApplicationContext) {
+        this(version, lingClassLoader, lingApplicationContext, false);
+    }
+
+    public LingWebMetadataExtractor(String version,
+                                    ClassLoader lingClassLoader,
+                                    ApplicationContext lingApplicationContext,
+                                    boolean prefixWithLingId) {
         this.version = version;
         this.lingClassLoader = lingClassLoader;
         this.lingApplicationContext = lingApplicationContext;
+        this.prefixWithLingId = prefixWithLingId;
     }
 
     /**
@@ -232,9 +241,10 @@ public final class LingWebMetadataExtractor {
         String[] classPaths = resolvePaths(classMapping);
         String[] methodPaths = resolvePaths(methodMapping);
         LinkedHashSet<String> fullPaths = new LinkedHashSet<>();
+        String prefix = prefixWithLingId ? "/" + lingId : "";
         for (String classPath : classPaths) {
             for (String methodPath : methodPaths) {
-                fullPaths.add(normalizePath("/" + lingId + "/" + classPath + "/" + methodPath));
+                fullPaths.add(normalizePath(prefix + "/" + classPath + "/" + methodPath));
             }
         }
         return fullPaths;

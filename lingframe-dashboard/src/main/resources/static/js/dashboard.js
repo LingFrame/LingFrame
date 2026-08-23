@@ -119,9 +119,9 @@ createApp({
             heapUsed: 0,
             heapMax: 0,
             heapUsage: 0,
-            metaspaceUsed: 0,
             metaspaceMax: 0,
             metaspaceUsage: 0,
+            classSpaceUsed: 0,
             loadedClassCount: 0,
             totalLoadedClassCount: 0,
             unloadedClassCount: 0,
@@ -417,7 +417,7 @@ createApp({
                     perfHistory.timestamps = data.map(d => d.bucket || d.timestamp);
                     perfHistory.cpu = data.map(d => d.cpu_usage);
                     perfHistory.heapUsed = data.map(d => d.heap_used_mb);
-                    perfHistory.metaspaceUsed = data.map(d => d.metaspace_used_kb);
+                    perfHistory.classSpaceUsed = data.map(d => d.compressed_class_space_used_kb);
                     perfHistory.threads = data.map(d => d.thread_count);
                     perfHistory.gcCount = data.map(d => d.delta_gc_count || d.gc_count);
                     perfHistory.gcTimeMs = data.map(d => d.delta_gc_time_ms || d.gc_time_ms);
@@ -435,7 +435,7 @@ createApp({
             timestamps: [],
             cpu: [],
             heapUsed: [],
-            metaspaceUsed: [],
+            classSpaceUsed: [],
             threads: [],
             gcCount: [],
             gcTimeMs: [],
@@ -451,7 +451,7 @@ createApp({
         const monitorCharts = computed(() => [
             { key: 'cpu', label: t('performance.cpu'), color: '#22c55e', isPercent: true },
             { key: 'heapUsed', label: t('performance.heap'), color: '#a855f7', isPercent: false, unit: 'MB' },
-            { key: 'metaspaceUsed', label: t('performance.metaspace'), color: '#10b981', isPercent: false, unit: 'KB' },
+            { key: 'classSpaceUsed', label: t('performance.classSpace'), color: '#10b981', isPercent: false, unit: 'KB' },
             { key: 'threads', label: t('performance.threads'), color: '#06b6d4', isPercent: false, integerTicks: true },
             { key: 'gcCount', label: t('performance.gc'), color: '#ec4899', isPercent: false, integerTicks: true },
             { key: 'gcTimeMs', label: t('monitor.gcTime'), color: '#f97316', isPercent: false, integerTicks: true },
@@ -499,7 +499,9 @@ createApp({
         let lingDetailTimer = null;
         let logIdCounter = 0;
         let toastIdCounter = 0;
-        let pendingUninstallToastResult = null;
+        let pendingUninstallLingId = null;
+        let pendingUninstallTimer = null;
+        const UNINSTALL_VERIFY_TIMEOUT_MS = 30000;
 
         // 日志筛选和聚合相关
         const logAggregationMode = ref(false);
@@ -781,15 +783,8 @@ createApp({
 
         // ==================== Toast 通知 ====================
         const showToast = (message, type = 'info') => {
-            const toastMessage = pendingUninstallToastResult && type === 'success'
-                ? buildUninstallToastMessage(pendingUninstallToastResult, message)
-                : message;
-            const toastType = pendingUninstallToastResult && type === 'success'
-                ? getUninstallToastType(pendingUninstallToastResult)
-                : type;
-            pendingUninstallToastResult = null;
             const id = ++toastIdCounter;
-            toasts.value.push({ id, message: toastMessage, type: toastType });
+            toasts.value.push({ id, message, type });
             setTimeout(() => {
                 toasts.value = toasts.value.filter(t => t.id !== id);
             }, 3000);
@@ -805,13 +800,6 @@ createApp({
                 return `${scope}: ${report.summary}`;
             })
             .join('; ');
-
-        const getUninstallToastType = (result) => {
-            if (!result || !result.uninstallTriggered) {
-                return 'info';
-            }
-            return result.overallRiskLevel === 'NO_RISK' ? 'success' : 'info';
-        };
 
         const translateOrFallback = (key, fallback, params = {}) => {
             const translated = t(key, params);
@@ -1124,6 +1112,28 @@ createApp({
         // 流量切分 / 停流只走路由权重（灰度滑块 / 契约权重），不要用 RuntimeStatus 冒充停流。
         // 生命周期对外入口：部署 deployPackage、卸载 requestUnload*、恢复可走 recover API（若需要）。
 
+        // 卸载 API 仅触发异步卸载并进入 GC 回收验证，最终结论（成功回收 / 泄漏）由服务端在验证完成后
+        // 通过 SSE ling-changed 事件推送。这里不立即从列表移除灵元，避免"未等验证结果就刷新"导致
+        // 无论成功失败都更新的问题；同时注册兜底定时器，SSE 断连时超时后主动刷新列表反映真实状态。
+        const onUninstallTriggered = (lingId, result, fallbackTitle) => {
+            openUninstallResultModal(result, fallbackTitle);
+            if (result && result.uninstallTriggered === false) {
+                // 预检未触发实际卸载：无需等待 GC 验证，直接刷新反映真实状态
+                refreshLings();
+                return;
+            }
+            pendingUninstallLingId = lingId;
+            showToast(t('toast.lingUnloadingPending'), 'info');
+            if (pendingUninstallTimer) {
+                clearTimeout(pendingUninstallTimer);
+            }
+            pendingUninstallTimer = setTimeout(() => {
+                pendingUninstallLingId = null;
+                pendingUninstallTimer = null;
+                refreshLings();
+            }, UNINSTALL_VERIFY_TIMEOUT_MS);
+        };
+
         const requestUnload = () => {
             if (!activeLing.value) return;
             modal.isDanger = true;
@@ -1148,7 +1158,6 @@ createApp({
                         }
 
                         const result = await api.delete(url);
-                        pendingUninstallToastResult = result;
 
                         if (modal.selectedVersion && modal.versions.length > 1) {
                             // 仅仅是删除了某个版本，刷新部分信息即可
@@ -1156,12 +1165,8 @@ createApp({
                             openUninstallResultModal(result, t('toast.lingVersionUnloaded', { version: modal.selectedVersion }));
                             refreshLings(); // 简单起见，重新拉取最新状态
                         } else {
-                            // 全量删除 或 最后一个版本被删除
-                            lings.value = lings.value.filter(p => p.lingId !== activeId.value);
-                            activeId.value = null;
-                            Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
-                            showToast(t('toast.lingUnloaded'), 'success');
-                            openUninstallResultModal(result, t('toast.lingUnloaded'));
+                            // 全量删除 或 最后一个版本被删除：等待 GC 回收验证（SSE ling-changed）后再刷新
+                            onUninstallTriggered(activeId.value, result, t('toast.lingUnloaded'));
                         }
                     } catch (e) {
                         showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
@@ -1181,12 +1186,7 @@ createApp({
                 modal.loading = true;
                 try {
                     const result = await api.delete(`/lings/uninstall/${activeId.value}`);
-                    pendingUninstallToastResult = result;
-                    lings.value = lings.value.filter(p => p.lingId !== activeId.value);
-                    activeId.value = null;
-                    Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 });
-                    showToast(t('toast.lingUnloaded'), 'success');
-                    openUninstallResultModal(result, t('toast.lingUnloaded'));
+                    onUninstallTriggered(activeId.value, result, t('toast.lingUnloaded'));
                 } catch (e) {
                     showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
                 } finally {
@@ -1478,7 +1478,6 @@ createApp({
                         url += `?deleteFile=${modal.deleteFile}`;
 
                         const result = await api.delete(url);
-                        pendingUninstallToastResult = result;
 
                         if (modal.selectedVersion && modal.versions.length > 1) {
                             showToast(t('toast.lingVersionUnloaded', { version: modal.selectedVersion }), 'success');
@@ -1486,14 +1485,8 @@ createApp({
                             refreshLings();
                             fetchPackages();
                         } else {
-                            lings.value = lings.value.filter(p => p.lingId !== lingId);
-                            if (activeId.value === lingId) {
-                                activeId.value = null;
-                                Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 }); // Reset stats
-                            }
-                            showToast(t('toast.lingUnloaded'), 'success');
-                            openUninstallResultModal(result, t('toast.lingUnloaded'));
-                            refreshLings();
+                            // 全量卸载：等待 GC 回收验证结论（SSE ling-changed）后再刷新列表
+                            onUninstallTriggered(lingId, result, t('toast.lingUnloaded'));
                             fetchPackages();
                         }
                     } catch (e) {
@@ -1514,15 +1507,7 @@ createApp({
                 modal.loading = true;
                 try {
                     const result = await api.delete(`/lings/uninstall/${lingId}?deleteFile=${modal.deleteFile}`);
-                    pendingUninstallToastResult = result;
-                    lings.value = lings.value.filter(p => p.lingId !== lingId);
-                    if (activeId.value === lingId) {
-                        activeId.value = null;
-                        Object.assign(stats, { total: 0, v1: 0, v2: 0, v1Pct: 0, v2Pct: 0 }); // Reset stats
-                    }
-                    showToast(t('toast.lingUnloaded'), 'success');
-                    openUninstallResultModal(result, t('toast.lingUnloaded'));
-                    refreshLings();
+                    onUninstallTriggered(lingId, result, t('toast.lingUnloaded'));
                     fetchPackages();
                 } catch (e) {
                     showToast(t('toast.unloadFailed') + ': ' + e.message, 'error');
@@ -1549,7 +1534,6 @@ createApp({
                 modal.loading = true;
                 try {
                     const result = await api.delete(`/lings/uninstall/${lingId}/${version}?deleteFile=${modal.deleteFile}`);
-                    pendingUninstallToastResult = result;
                     showToast(t('toast.lingVersionUnloaded', { version }), 'success');
                     openUninstallResultModal(result, t('toast.lingVersionUnloaded', { version }));
                     refreshLings();
@@ -2218,6 +2202,34 @@ createApp({
                 // 心跳
             });
 
+            // 灵元安装/卸载完成（含 GC 验证、注册表已移除）后服务端推送，主动刷新列表，取代轮询。
+            // 卸载事件在泄漏验证（ClassLoader GC 回收确认）通过后才推送；若验证失败（leakDetected=true），
+            // 提示卸载完成但类加载器未回收，不再一律报干净成功。
+            eventSource.addEventListener('ling-changed', (e) => {
+                let data = null;
+                try {
+                    data = JSON.parse(e.data);
+                } catch (err) {
+                    // 忽略解析失败
+                }
+                if (data && data.action === 'uninstalled') {
+                    // 卸载验证已出结论（成功回收 / 泄漏）：清除待验证状态，按结论提示
+                    if (pendingUninstallLingId) {
+                        pendingUninstallLingId = null;
+                        if (pendingUninstallTimer) {
+                            clearTimeout(pendingUninstallTimer);
+                            pendingUninstallTimer = null;
+                        }
+                    }
+                    if (data.leakDetected) {
+                        showToast(t('toast.lingUnloadedLeakWarning'), 'warning');
+                    } else {
+                        showToast(t('toast.lingUnloadedVerified'), 'success');
+                    }
+                }
+                refreshLings();
+            });
+
             eventSource.addEventListener('auth-error', () => {
                 // SSE 认证失败，关闭连接并引导重新登录
                 eventSource.close();
@@ -2670,7 +2682,7 @@ createApp({
                     perfMetrics.heapUsed = data.heapUsedMB || 0;
                     perfMetrics.heapMax = data.heapMaxMB || 0;
                     perfMetrics.heapUsage = data.heapUsage || 0;
-                    perfMetrics.metaspaceUsed = data.metaspaceUsedKB || 0;
+                    perfMetrics.classSpaceUsed = data.compressedClassSpaceUsedKB || 0;
                     perfMetrics.metaspaceMax = data.metaspaceMaxKB || 0;
                     perfMetrics.metaspaceUsage = data.metaspaceUsage || 0;
                     perfMetrics.loadedClassCount = data.loadedClassCount || 0;
@@ -2701,7 +2713,7 @@ createApp({
                     perfHistory.timestamps.push(now);
                     perfHistory.cpu.push(perfMetrics.cpu);
                     perfHistory.heapUsed.push(perfMetrics.heapUsed);
-                    perfHistory.metaspaceUsed.push(perfMetrics.metaspaceUsed);
+                    perfHistory.classSpaceUsed.push(perfMetrics.classSpaceUsed);
                     perfHistory.threads.push(perfMetrics.threads);
                     // GC 改为区间增量，与历史图表一致
                     const gcCountDelta = Math.max(0, perfMetrics.gcCount - (prevMetrics.gcCount || 0));
@@ -2717,7 +2729,7 @@ createApp({
                         perfHistory.timestamps.splice(0, excess);
                         perfHistory.cpu.splice(0, excess);
                         perfHistory.heapUsed.splice(0, excess);
-                        perfHistory.metaspaceUsed.splice(0, excess);
+                        perfHistory.classSpaceUsed.splice(0, excess);
                         perfHistory.threads.splice(0, excess);
                         perfHistory.gcCount.splice(0, excess);
                         perfHistory.gcTimeMs.splice(0, excess);

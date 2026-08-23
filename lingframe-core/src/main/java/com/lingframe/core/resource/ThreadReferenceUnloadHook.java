@@ -595,14 +595,22 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
     // =========================================================================
 
     /**
-     * 扫描所有活动线程，通过反射追溯到 ThreadPoolExecutor 并 shutdownNow()。
+     * 扫描所有活动线程，通过反射追溯到线程池并关闭。
      * <p>
-     * 覆盖灵元代码自建的非 Bean 线程池（如 Executors.newFixedThreadPool()）。
+     * 覆盖灵元代码自建的非 Bean 线程池：
+     * <ul>
+     *   <li>JDK ThreadPoolExecutor（Executors.newFixedThreadPool() 等）→ shutdownNow()</li>
+     *   <li>非 JDK 线程池（如 Quartz SimpleThreadPool）→ 反射调用 shutdown(boolean)</li>
+     * </ul>
      * ExecutorCleaner 只能清理 BeanFactory 中的 ExecutorService Bean，
-     * 此方法作为兜底，扫描线程的 target 字段找到 Worker → ThreadPoolExecutor。
+     * 此方法作为兜底，扫描线程的 target 字段找到 Worker → 线程池。
+     * Quartz 的 WorkerThread（线程类由灵元 CL 加载、非守护）若不关闭，
+     * 会持续持有灵元 ClassLoader 引用，导致卸载后 CL 无法回收。
      */
     private void shutdownOrphanThreadPools(String lingId, ClassLoader classLoader) {
         Set<ThreadPoolExecutor> pools = Collections.newSetFromMap(
+                new IdentityHashMap<>());
+        Set<Object> legacyPools = Collections.newSetFromMap(
                 new IdentityHashMap<>());
 
         for (Thread t : JvmCleanupSupport.getActiveThreads()) {
@@ -615,10 +623,12 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
                 continue;
             }
 
-            // 通过反射追溯 target → Worker → outer ThreadPoolExecutor
-            ThreadPoolExecutor pool = extractThreadPoolExecutor(t);
-            if (pool != null) {
-                pools.add(pool);
+            // 通过反射追溯 target → Worker → outer 线程池
+            Object pool = extractThreadPool(t);
+            if (pool instanceof ThreadPoolExecutor) {
+                pools.add((ThreadPoolExecutor) pool);
+            } else if (pool != null) {
+                legacyPools.add(pool);
             }
         }
 
@@ -638,46 +648,111 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
                 log.debug("[{}] Failed to shutdown ThreadPoolExecutor: {}", lingId, e.getMessage());
             }
         }
-        if (!pools.isEmpty()) {
-            log.info("[{}] Shutdown {} orphan ThreadPoolExecutor(s)", lingId, pools.size());
+
+        for (Object pool : legacyPools) {
+            try {
+                // Quartz SimpleThreadPool 等：shutdown(false) 立即停止空闲 worker，避免阻塞卸载线程
+                Method shutdown = pool.getClass().getMethod("shutdown", boolean.class);
+                shutdown.invoke(pool, Boolean.FALSE);
+                log.info("[{}] Shutdown legacy thread pool: {}", lingId, pool);
+            } catch (Exception e) {
+                log.debug("[{}] Failed to shutdown legacy pool: {}", lingId, e.getMessage());
+            }
+        }
+        // 遗留池关闭后兜底：对仍绑定灵元 CL 且处于等待态的非守护工作线程补发中断，
+        // 促其退出等待循环（Quartz shutdown 通常已中断，此处覆盖未中断的第三方线程池）
+        for (Thread t : JvmCleanupSupport.getActiveThreads()) {
+            if (t == null || t == Thread.currentThread()) continue;
+            if (JvmCleanupSupport.isVirtualThread(t)) continue;
+            if (t.getContextClassLoader() != classLoader) continue;
+            Thread.State state = t.getState();
+            if (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING) {
+                try {
+                    t.interrupt();
+                    log.info("[{}] Interrupt waiting worker thread still bound to ling CL: {}", lingId, t.getName());
+                } catch (SecurityException ignored) {
+                    log.debug("[{}] Cannot interrupt thread {}", lingId, t.getName());
+                }
+            }
+        }
+        if (!pools.isEmpty() || !legacyPools.isEmpty()) {
+            log.info("[{}] Shutdown {} orphan ThreadPoolExecutor(s), {} legacy pool(s)",
+                    lingId, pools.size(), legacyPools.size());
         }
     }
 
-    /** 通过反射从线程的 target 字段追溯到 ThreadPoolExecutor */
-    private ThreadPoolExecutor extractThreadPoolExecutor(Thread t) {
+    /**
+     * 通过反射从线程的 target 字段追溯到线程池实例。
+     * <p>
+     * JDK ThreadPoolExecutor：Worker 持有 this$0 = ThreadPoolExecutor；
+     * Quartz SimpleThreadPool：WorkerThread 直接继承 Thread，target 为 null，
+     * 外层池引用 tp 定义在 Thread 子类自身字段上。
+     * 统一沿字段链查找，命中可关闭的线程池即返回。
+     */
+    private Object extractThreadPool(Thread t) {
         try {
             Field targetField = Thread.class.getDeclaredField("target");
             targetField.setAccessible(true);
             Object target = targetField.get(t);
-            if (target == null) return null;
 
-            // ThreadPoolExecutor$Worker 持有 this$0 = ThreadPoolExecutor
+            // 直接继承 Thread 的工作线程（如 SimpleThreadPool$WorkerThread）target 为 null，
+            // 需直接扫描 Thread 子类自身字段寻找外层池引用
+            if (target == null) {
+                // 仅处理 Worker 形态的线程，避免误扫普通 Thread 子类
+                if (!t.getClass().getName().contains("Worker")) return null;
+                for (String fieldName : new String[]{"tp", "pool", "scheduler", "this$0"}) {
+                    Object outer = readOuterField(t, fieldName);
+                    if (outer == null) continue;
+                    if (outer instanceof ThreadPoolExecutor || isShutdownable(outer)) {
+                        return outer;
+                    }
+                }
+                return null;
+            }
+
+            // 仅处理 Worker 形态的线程（ThreadPoolExecutor$Worker / SimpleThreadPool$WorkerThread）
             Class<?> targetClass = target.getClass();
             if (!targetClass.getName().contains("Worker")) return null;
 
-            // 反射获取 this$0
-            Field outerField = null;
-            Class<?> clazz = targetClass;
-            while (clazz != null && outerField == null) {
-                for (Field f : clazz.getDeclaredFields()) {
-                    if (f.getName().equals("this$0")) {
-                        outerField = f;
-                        break;
-                    }
+            // 候选外层引用字段名：JDK 用 this$0，Quartz 用 tp
+            for (String fieldName : new String[]{"this$0", "tp", "pool"}) {
+                Object outer = readOuterField(target, fieldName);
+                if (outer == null) continue;
+                if (outer instanceof ThreadPoolExecutor || isShutdownable(outer)) {
+                    return outer;
                 }
-                clazz = clazz.getSuperclass();
-            }
-            if (outerField == null) return null;
-
-            outerField.setAccessible(true);
-            Object outer = outerField.get(target);
-            if (outer instanceof ThreadPoolExecutor) {
-                return (ThreadPoolExecutor) outer;
             }
         } catch (Exception e) {
-            log.debug("Failed to extract ThreadPoolExecutor from thread {}: {}", t.getName(), e.getMessage());
+            log.debug("Failed to extract thread pool from thread {}: {}", t.getName(), e.getMessage());
         }
         return null;
+    }
+
+    /** 沿类层级查找并读取指定名称的字段值 */
+    private Object readOuterField(Object target, String fieldName) {
+        Class<?> clazz = target.getClass();
+        while (clazz != null) {
+            try {
+                Field f = clazz.getDeclaredField(fieldName);
+                f.setAccessible(true);
+                return f.get(target);
+            } catch (NoSuchFieldException e) {
+                clazz = clazz.getSuperclass();
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /** 判断对象是否为可关闭的非 JDK 线程池（如 Quartz SimpleThreadPool） */
+    private boolean isShutdownable(Object pool) {
+        try {
+            pool.getClass().getMethod("shutdown", boolean.class);
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
     }
 
     /** 判断 ClassLoader cl 是否由 target 加载（或就是 target） */
@@ -939,3 +1014,4 @@ public class ThreadReferenceUnloadHook implements LingUnloadHook {
         return "key=" + keyType + ", val=" + valType;
     }
 }
+

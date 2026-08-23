@@ -40,8 +40,8 @@ class LingInstanceTerminatorTest {
         }
 
         @Test
-        @DisplayName("非活跃容器不调用 stop()")
-        void inactiveContainerNotStopped() {
+        @DisplayName("非活跃容器也调用 stop()（stop 幂等兜底，保证卸载 hook 必达）")
+        void inactiveContainerStillStopped() {
             LingContainer container = mock(LingContainer.class);
             when(container.isActive()).thenReturn(false);
 
@@ -52,7 +52,10 @@ class LingInstanceTerminatorTest {
 
             terminator.terminate(instance);
 
-            verify(container, never()).stop();
+            // 去掉 isActive 守卫，container 非 null 即无条件 stop()。
+            // SpringLingContainer.stop() 是 CAS 幂等，重复/提前停止都安全，
+            // 但跳过 stop() 会导致 Spring context 不关、HikariCP 连接池不关 → ClassLoader 永久泄漏。
+            verify(container).stop();
         }
 
         @Test

@@ -454,6 +454,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                 .timestamp(event.getTimestamp())
                 .build();
         broadcast(logStreamDTO);
+        broadcastLingChanged(event.getLingId(), "installed", false);
     }
 
     /**
@@ -479,8 +480,11 @@ public class LogStreamService implements InitializingBean, DisposableBean {
      * 处理灵元卸载完成事件
      */
     private void handleLingUninstalled(LingUninstalledEvent event) {
-        String content = String.format("Ling [%s] uninstalled successfully",
-                event.getLingId());
+        boolean leaked = event.isClassLoaderLeaked();
+        String content = leaked
+                ? String.format("Ling [%s] uninstalled with ClassLoader leak warning (verification failed)",
+                        event.getLingId())
+                : String.format("Ling [%s] uninstalled successfully (ClassLoader reclaimed)", event.getLingId());
 
         LogStreamDTO logStreamDTO = LogStreamDTO.builder()
                 .type("ALERT")
@@ -488,10 +492,11 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                 .version(event.getVersion())
                 .content(content)
                 .tag("LING_UNINSTALLED")
-                .level("INFO")
+                .level(leaked ? "WARNING" : "INFO")
                 .timestamp(event.getTimestamp())
                 .build();
         broadcast(logStreamDTO);
+        broadcastLingChanged(event.getLingId(), "uninstalled", leaked);
     }
 
     /**
@@ -542,6 +547,42 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                         emitter.send(SseEmitter.event().name("ping").data("pong"));
                     } catch (Exception e) {
                         // send 失败视为连接已死，统一通过 releaseEmitter 释放许可并移除
+                        releaseEmitter(emitter);
+                    }
+                }));
+            }
+        } catch (RejectedExecutionException e) {
+            // 关闭过程中拒绝提交任务属于正常现象，直接忽略
+        }
+    }
+
+    /**
+     * 广播灵元列表变更事件给所有 SSE 连接，触发前端刷新灵元列表。
+     * <p>
+     * 在灵元安装完成、或卸载验证（GC 回收确认）通过后调用，替代前端轮询，
+     * 保证外部（如 MCP ling_unload 工具）触发的卸载能即时从前端列表消失/出现。
+     * 卸载事件携带 leakDetected，前端据此对「卸载完成但 ClassLoader 未回收」给出警告。
+     *
+     * @param lingId      变更的灵元 id
+     * @param action      "installed" 或 "uninstalled"
+     * @param leakDetected 卸载验证结论：true 表示 ClassLoader 未回收（仅卸载场景有意义）
+     */
+    public void broadcastLingChanged(String lingId, String action, boolean leakDetected) {
+        if (emitters.isEmpty())
+            return;
+        if (dispatcher.isShutdown()) {
+            return;
+        }
+        String payload = "{\"lingId\":\"" + lingId + "\",\"action\":\"" + action
+                + "\",\"leakDetected\":" + leakDetected + "}";
+        try {
+            for (SseEmitter emitter : emitters) {
+                dispatcher.submit(withCoreClassLoader(() -> {
+                    try {
+                        emitter.send(SseEmitter.event()
+                                .name("ling-changed")
+                                .data(payload, MediaType.APPLICATION_JSON));
+                    } catch (Exception e) {
                         releaseEmitter(emitter);
                     }
                 }));

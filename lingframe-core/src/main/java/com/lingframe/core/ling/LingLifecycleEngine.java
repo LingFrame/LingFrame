@@ -77,6 +77,22 @@ public interface LingLifecycleEngine {
     }
 
     /**
+     * 确定性等待指定灵元的卸载/回滚清理完成（等待队列语义）。
+     * <p>
+     * 卸载后的 JVM 级资源清理（JDBC 驱动注销、ClassLoader 引用、文件锁释放）完成前，
+     * 立即重部署同版本可能与残留资源冲突导致健康检查失败。部署方应在重部署前调用本方法
+     * 阻塞等待，而不是盲目 sleep。默认实现返回 true（无清理机制时视为立即可部署），
+     * 实际等待由 {@link DefaultLingLifecycleEngine} 覆盖。
+     *
+     * @param lingId    目标灵元
+     * @param timeoutMs 最大等待时长（毫秒）
+     * @return true=清理已完成（或从未进行）；false=等待超时且仍在清理
+     */
+    default boolean awaitUnloadCleanup(String lingId, long timeoutMs) {
+        return true;
+    }
+
+    /**
      * 卸载某个具体实例对象。
      * 默认实现按版本路由，只有在实现类确实需要实例级特化逻辑时才需要覆盖。
      */

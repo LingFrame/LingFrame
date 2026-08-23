@@ -70,11 +70,26 @@ public class SpringContainerFactory implements ContainerFactory {
             excludes.add("org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration");
             excludes.add("org.springframework.boot.actuate.autoconfigure.endpoint.jmx.JmxEndpointAutoConfiguration");
 
+            // 默认排除调度类自动配置：宿主引入 Quartz/任务调度时，灵元子容器会自动装配出
+            // 常驻线程（QuartzScheduler、ThreadPoolTaskScheduler），线程捕获灵元 ClassLoader，
+            // 卸载后无法回收导致泄漏。灵元确需调度时，可在 ling.yml 用 includeAutoConfigurations 显式放行。
+            excludes.add("org.springframework.boot.autoconfigure.quartz.QuartzAutoConfiguration");
+            excludes.add("org.springframework.boot.autoconfigure.task.TaskSchedulingAutoConfiguration");
+
             // 合并灵元 ling.yml 声明的自定义排除自动配置类
             if (definition != null && definition.getExcludeAutoConfigurations() != null) {
                 for (String autoConfig : definition.getExcludeAutoConfigurations()) {
                     if (autoConfig != null && !autoConfig.trim().isEmpty() && !excludes.contains(autoConfig)) {
                         excludes.add(autoConfig.trim());
+                    }
+                }
+            }
+
+            // 逃生通道：ling.yml 显式要求开启的自动配置从默认排除中移除
+            if (definition != null && definition.getIncludeAutoConfigurations() != null) {
+                for (String autoConfig : definition.getIncludeAutoConfigurations()) {
+                    if (autoConfig != null && !autoConfig.trim().isEmpty()) {
+                        excludes.remove(autoConfig.trim());
                     }
                 }
             }

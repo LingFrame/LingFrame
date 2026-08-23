@@ -220,10 +220,18 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
                 versionMetrics.recordSuccess(costMs);
             }
         } else {
-            boolean isTimeout = isTimeoutError(error);
-            metrics.recordFailure(costMs, isTimeout);
-            if (versionMetrics != metrics) {
-                versionMetrics.recordFailure(costMs, isTimeout);
+            if (isGovernanceRejection(error)) {
+                // 治理/准入拒绝（限流、熔断、舱壁、状态拒绝、权限拒绝、路由失败）不计入健康错误率
+                metrics.recordGovernanceRejection(costMs);
+                if (versionMetrics != metrics) {
+                    versionMetrics.recordGovernanceRejection(costMs);
+                }
+            } else {
+                boolean isTimeout = isTimeoutError(error);
+                metrics.recordFailure(costMs, isTimeout);
+                if (versionMetrics != metrics) {
+                    versionMetrics.recordFailure(costMs, isTimeout);
+                }
             }
         }
     }
@@ -275,6 +283,18 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
             return message.contains("timeout") || message.contains("timed out");
         }
         return isTimeoutError(error.getCause());
+    }
+
+    /**
+     * 判断异常是否为「治理/准入拒绝」。仅 {@link LingInvocationException} 且
+     * {@link LingInvocationException.ErrorKind#isGovernanceRejection()} 为真才算；
+     * 其它异常（业务 RuntimeException、桥接层 JDBC 异常等）一律视为真实失败。
+     */
+    private boolean isGovernanceRejection(Throwable error) {
+        if (error instanceof LingInvocationException) {
+            return ((LingInvocationException) error).getKind().isGovernanceRejection();
+        }
+        return false;
     }
     
     /**

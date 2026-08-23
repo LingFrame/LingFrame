@@ -61,8 +61,48 @@ final class CglibCacheCleaner {
 
     private final int springMajorVersion;
 
+    /** sun.misc.Unsafe 实例（反射获取；启动需 --add-opens java.base/sun.misc=ALL-UNNAMED） */
+    private static final Object UNSAFE = resolveUnsafe();
+
     CglibCacheCleaner(int springMajorVersion) {
         this.springMajorVersion = springMajorVersion;
+    }
+
+    private static Object resolveUnsafe() {
+        try {
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            Field f = unsafeClass.getDeclaredField("theUnsafe");
+            f.setAccessible(true);
+            return f.get(null);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * 将静态字段置 null：普通字段直接反射；final 字段反射失败时用 Unsafe 兜底
+     *（JDK 17 下 final static 字段反射 set 会抛 IllegalAccessException，必须走 Unsafe.putObject）。
+     */
+    private static void setStaticFieldNull(Field f, Object targetClass, String fieldDesc) {
+        try {
+            f.setAccessible(true);
+            f.set(null, null);
+        } catch (Throwable reflectFailed) {
+            if (UNSAFE != null) {
+                try {
+                    // static 字段必须用 staticFieldOffset（objectFieldOffset 对 static 字段是错误偏移）
+                    Method offsetM = UNSAFE.getClass().getMethod("staticFieldOffset", Field.class);
+                    long offset = (Long) offsetM.invoke(UNSAFE, f);
+                    Method putM = UNSAFE.getClass().getMethod("putObject", Object.class, long.class, Object.class);
+                    // static 字段首参为声明类 Class 对象
+                    putM.invoke(UNSAFE, targetClass, offset, (Object) null);
+                } catch (Throwable unsafeFailed) {
+                    log.trace("[cglib-cleaner] Unsafe nullify failed for {}: {}", fieldDesc, unsafeFailed.getMessage());
+                }
+            } else {
+                log.trace("[cglib-cleaner] Cannot nullify {}: {}", fieldDesc, reflectFailed.getMessage());
+            }
+        }
     }
 
     void clear(String lingId, ClassLoader lingClassLoader) {
@@ -399,37 +439,37 @@ final class CglibCacheCleaner {
                 if (!Modifier.isStatic(f.getModifiers())) {
                     continue;
                 }
-                if (!METHOD_PROXY_CLASS_NAME.equals(f.getType().getName())) {
+                Class<?> ft = f.getType();
+                boolean isMethodProxy = METHOD_PROXY_CLASS_NAME.equals(ft.getName());
+                // 引用类型静态字段全量清理（清 MethodProxy 之外漏掉的泄漏源）：
+                //   - CGLIB$THREAD_CALLBACKS（静态 ThreadLocal 持 Callback[] → Enhancer → beanFactory → 灵元CL）
+                //   - CGLIB$FACTORY_DATA / CGLIB$CALLBACK_* 等 CGLIB 内部引用
+                // 只跳过基本类型与 String（无对象引用链）。
+                if (!isMethodProxy && (ft.isPrimitive() || ft == String.class)) {
                     continue;
                 }
                 try {
                     f.setAccessible(true);
-                    Object proxy = f.get(null);
-                    if (proxy != null) {
-                        if (clearMethodProxyInternals(proxy)) {
+                    Object val = f.get(null);
+                    if (isMethodProxy && val != null) {
+                        if (clearMethodProxyInternals(val)) {
                             internalsCleared++;
                         }
                     }
-                    // 尽量把 static 字段置 null；JDK 17 final 可能失败，内部字段清理已足够断链
-                    stripFinalModifierQuietly(f);
-                    try {
-                        f.set(null, null);
-                        nulled++;
-                    } catch (IllegalAccessException setFailed) {
-                        log.trace("[{}] Cannot nullify final MethodProxy field {} on {}: {}",
-                                lingId, f.getName(), enhancedClass.getName(), setFailed.getMessage());
-                    }
+                    // 尽量把 static 字段置 null：普通字段反射设，final 字段 Unsafe 兜底（JDK 17 关键）
+                    setStaticFieldNull(f, enhancedClass, enhancedClass.getName() + "." + f.getName());
+                    nulled++;
                 } catch (Exception e) {
-                    log.debug("[{}] Failed to clear MethodProxy field {} on {}: {}",
+                    log.debug("[{}] Failed to clear static field {} on {}: {}",
                             lingId, f.getName(), enhancedClass.getName(), e.getMessage());
                 }
             }
             if (nulled > 0 || internalsCleared > 0) {
-                log.info("[{}] {}: MethodProxy static nulled={}, internalsCleared={}",
+                log.info("[{}] {}: CGLIB static nulled={}, MethodProxyInternalsCleared={}",
                         lingId, enhancedClass.getName(), nulled, internalsCleared);
             }
         } catch (Exception e) {
-            log.debug("[{}] Failed to scan MethodProxy fields on {}: {}",
+            log.debug("[{}] Failed to scan static fields on {}: {}",
                     lingId, enhancedClass.getName(), e.getMessage());
         }
         return nulled;

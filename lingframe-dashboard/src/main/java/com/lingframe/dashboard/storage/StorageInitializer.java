@@ -5,6 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.util.List;
+
 /**
  * 数据库初始化器：建表 + 过期数据清理
  * <p>
@@ -55,6 +57,7 @@ public class StorageInitializer implements InitializingBean {
             "  metaspace_used_kb BIGINT," +
             "  metaspace_max_kb BIGINT," +
             "  metaspace_usage DOUBLE," +
+            "  compressed_class_space_used_kb BIGINT," +
             "  loaded_class_count INT," +
             "  total_loaded_class_count BIGINT," +
             "  unloaded_class_count BIGINT," +
@@ -109,6 +112,30 @@ public class StorageInitializer implements InitializingBean {
         jdbcTemplate.execute(
             "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)"
         );
+
+        // 幂等迁移：为已部署的旧库补新列（CREATE TABLE IF NOT EXISTS 不会给旧表加列）
+        migrateMetricsSnapshotColumns();
+    }
+
+    /**
+     * 幂等 ALTER TABLE：检查列是否存在，缺失则补列。
+     * 兼容已部署的旧库（CREATE TABLE IF NOT EXISTS 不会给旧表加新列）。
+     */
+    private void migrateMetricsSnapshotColumns() {
+        try {
+            List<String> columns = jdbcTemplate.queryForList(
+                    "SELECT name FROM pragma_table_info('metrics_snapshot')",
+                    String.class
+            );
+            if (!columns.contains("compressed_class_space_used_kb")) {
+                jdbcTemplate.execute(
+                    "ALTER TABLE metrics_snapshot ADD COLUMN compressed_class_space_used_kb BIGINT"
+                );
+                log.info("Migrated metrics_snapshot: added compressed_class_space_used_kb column");
+            }
+        } catch (Exception e) {
+            log.warn("metrics_snapshot column migration skipped: {}", e.getMessage());
+        }
     }
 
     private void cleanupExpiredData() {

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 执行灵珑（LingFrame）双栈（Spring Boot 2 和 Spring Boot 3）并发集成测试。
 
@@ -82,7 +82,9 @@ if (Test-Path $logSb2) { Remove-Item $logSb2 }
 if (Test-Path $logSb3) { Remove-Item $logSb3 }
 
 $mvnArgs = "clean verify -Pspring-boot2,integration-check -Djacoco.dest.folder=sb2"
-$mvnArgsSb3 = "clean verify -Pspring-boot3,integration-check -Djacoco.dest.folder=sb3"
+# sb3 在独立沙箱构建，dev-mode 灵元发现写死扫 target/classes，
+# 故用 -Dbc3.base.build.dir=target 让产物落在默认 target/，避免 target-boot3 导致加载不到。
+$mvnArgsSb3 = "clean verify -Pspring-boot3,integration-check -Dbc3.base.build.dir=target -Djacoco.dest.folder=sb3"
 
 if (-not $FailFast) {
     $mvnArgs += " --fail-at-end"
