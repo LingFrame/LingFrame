@@ -23,7 +23,7 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
         }
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
         ClassLoader targetClassLoader = instance.getClassLoader();
-        // force-drain / tearDown 后 CL 可能已关闭或清空：给出确定性错误，避免难诊断 NPE
+        // force-drain / tearDown 时 CL 可能已关闭或清空：给出确定性错误，避免难诊断 NPE
         if (targetClassLoader == null) {
             instance.completeInvocation(invocationId);
             throw new LingInvocationException(instance.getLingId(),
@@ -32,16 +32,20 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
                             + instance.getInstanceId());
         }
 
+        Object[] finalArgs = args;
         try {
             // 切换线程上下文类加载器（TCCL）
             Thread.currentThread().setContextClassLoader(targetClassLoader);
 
+            // 生产级自适应入参转换（阻抗失配自适应绑定，零强引用滞留）
+            finalArgs = ArgumentTypeAdapter.adapt(method, args, targetClassLoader);
+
             // 反射调用
-            return method.invoke(bean, args);
+            return method.invoke(bean, finalArgs);
 
         } catch (IllegalArgumentException e) {
             // 核心改动：捕获参数异常，进行详细分析并重新抛出
-            handleArgumentMismatch(method, args, e);
+            handleArgumentMismatch(method, finalArgs, e);
             throw e; // 理论上 handle 里面会抛出新异常，这里是为了过编译检查
         } catch (InvocationTargetException e) {
             // 透传业务异常
@@ -79,20 +83,20 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
             Class<?> expectedType = parameterTypes[i];
             Object actualArg = args[i];
 
-            // 检查类型是否兼容 (注意处理基本类型和包装类的自动装箱逻辑)
+            // 检查类型是否兼容(注意处理基本类型和包装类的自动装箱逻辑)
             if (!isCompatible(expectedType, actualArg)) {
                 foundMismatch = true;
                 String hint = analyzeMismatchCause(expectedType, actualArg);
 
                 errorReport.append("\n")
-                        .append("  ❌ 第 ").append(i + 1).append(" 个参数不匹配:\n")
+                        .append("  👉 第 ").append(i + 1).append(" 个参数不匹配:\n")
                         .append("\n")
                         .append("     - 期望类型: ").append(expectedType.getSimpleName()).append("\n")
                         .append("\n")
                         .append("     - 实际类型: ")
                         .append(actualArg == null ? "null" : actualArg.getClass().getSimpleName()).append("\n")
                         .append("\n")
-                        .append("     - 实际传值: ").append(actualArg).append("\n")
+                        .append("     - 实际传入: ").append(actualArg).append("\n")
                         .append("\n")
                         .append("     - 诊断提示: ").append(hint).append("\n");
             }
@@ -100,7 +104,7 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
 
         if (foundMismatch) {
             throw new InvalidArgumentException("args", String.format(
-                    "调用灵元服务 [%s] 失败，参数类型不匹配！%s",
+                    "调用灵元服务 [%s] 失败，参数类型不匹配：%s",
                     method.getName(), errorReport), e);
         }
     }
@@ -109,7 +113,7 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
      * 💡 核心逻辑：分析不匹配的具体原因
      */
     private String analyzeMismatchCause(Class<?> expected, Object actual) {
-        // 情况 A: 传了 null 给基本类型 (int, boolean, double...)
+        // 情况 A: 传了 null 给基本类型(int, boolean, double...)
         if (actual == null) {
             if (expected.isPrimitive()) {
                 return "基本数据类型 [" + expected.getSimpleName() + "] 不能接受 null 值";
@@ -119,7 +123,7 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
 
         Class<?> actualType = actual.getClass();
 
-        // 情况 B: 数字类型不匹配 (最常见)
+        // 情况 B: 数字类型不匹配(最常见)
         if (Number.class.isAssignableFrom(wrap(expected)) && Number.class.isAssignableFrom(actualType)) {
             return "数字类型精度不一致 (请检查 Integer/Long/Double 混用)";
         }
