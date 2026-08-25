@@ -835,6 +835,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             return;
         }
         if (runtime.getInstancePool().getAllInstances().isEmpty()) {
+            // 最后一版由全量卸载路径 finalizeRuntimeRemovalIfEmpty -> doFullUndeploy -> clearServiceRegistry 接管执行 evict
             return;
         }
         lingServiceRegistry.evictProvider(lingId, version);
