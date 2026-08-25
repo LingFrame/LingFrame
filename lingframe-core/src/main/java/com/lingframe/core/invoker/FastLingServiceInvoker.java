@@ -34,7 +34,8 @@ public class FastLingServiceInvoker implements LingServiceInvoker {
 
         try {
             Thread.currentThread().setContextClassLoader(targetClassLoader);
-            return method.invoke(bean, args);
+            Object[] finalArgs = ArgumentTypeAdapter.adapt(method, args, targetClassLoader);
+            return method.invoke(bean, finalArgs);
         } finally {
             Thread.currentThread().setContextClassLoader(originalClassLoader);
             instance.completeInvocation(invocationId);
@@ -64,8 +65,11 @@ public class FastLingServiceInvoker implements LingServiceInvoker {
         try {
             Thread.currentThread().setContextClassLoader(targetClassLoader);
 
-            // `MethodHandle.invokeWithArguments` 会自动处理装箱、拆箱和参数数组展开
-            return methodHandle.invokeWithArguments(args);
+            // 自适应强类型入参转换（零强引用残留）
+            Object[] finalArgs = ArgumentTypeAdapter.adapt(methodHandle.type(), args, targetClassLoader);
+
+            // MethodHandle.invokeWithArguments 会自动处理装箱、拆箱和参数数组展开
+            return methodHandle.invokeWithArguments(finalArgs);
 
         } catch (Throwable e) {
             // `MethodHandle` 抛出的是 `Throwable`，这里保持向上透传
