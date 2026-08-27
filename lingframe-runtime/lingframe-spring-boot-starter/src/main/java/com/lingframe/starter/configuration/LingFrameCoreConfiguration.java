@@ -47,7 +47,7 @@ import java.util.List;
  * 灵珑公共核心配置入口，聚合运行时、生命周期与 Web 装配切片。
  */
 @Slf4j
-@Configuration
+@Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(LingFrameProperties.class)
 @Import({
         DataSourceWrapperProcessor.class,

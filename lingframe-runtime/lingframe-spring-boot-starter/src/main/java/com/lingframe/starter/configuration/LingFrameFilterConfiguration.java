@@ -19,7 +19,7 @@ import java.util.List;
  * 和 Spring 生态中动态声明的扩展 Filter。
  */
 @Slf4j
-@Configuration
+@Configuration(proxyBeanMethods = false)
 @ConditionalOnBean(FilterRegistry.class)
 public class LingFrameFilterConfiguration {
 
