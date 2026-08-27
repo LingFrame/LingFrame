@@ -30,18 +30,28 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      # 显式带上 spring-boot2：只开 integration-check 会停用 activeByDefault 的 boot2 profile
-      # ^^ JDK8 forked VM 跑完全部 core 测试后偶发 NoClassDefFoundError（surefire StringUtils）：
-      # 单 fork 复用（default reuseForks=true）跑全部 ~1166 个 core 测试 + 大量自定义 ClassLoader
-      # （LingClassLoader/CloseAwareClassLoader/动态编译类）累积，JDK8 下测试收尾阶段引导类解析失败。
-      # 修复：lingframe-core 单独以 reuseForks=false 跑（每个测试类一个新 JVM，消除累积），
-      # 其余模块保持默认复用。仅 CI 隔离，pom.xml 不动，本地构建不受影响。
-      - name: Build & Test (core, isolated forks)
-        run: mvn -B clean install -Pspring-boot2,integration-check -pl lingframe-core -am -Dsurefire.reuseForks=false -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+      # reuseForks=false 统一作用于整个 reactor：
+      # 1) core（~1166 测试 + 大量自定义 ClassLoader）在单 fork 复用下跑完后偶发 NoClassDefFoundError，
+      #    每个测试类一个新 JVM 可消除类加载器累积（JDK8 收尾阶段引导类解析失败）；
+      # 2) lingframe-spring-boot-starter 同样存在“共享 @Configuration 类 LingTestSpringConfiguration
+      #    被 CGLIB 二次增强”导致的 LinkageError: attempted duplicate class definition 问题，
+      #    同样依赖 reuseForks=false（每个类独立 JVM / 独立 AppClassLoader）规避。
+      # 单条 verify reactor 自洽解析全部模块，无需 install 进 ~/.m2；仅 CI 隔离、pom.xml 不动、本地不受影响。
+      # 注意：示例级集成测试（ObservabilityClosedLoopIntegrationTest）已拆到独立 job example-it-sb2，
+      # 本步骤只跑单元测试 + 质量门（verify 阶段的 checkstyle/spotbugs），与 SB3 拓扑对齐。
+      - name: Build & Test (SB2 / JDK 8)
+        run: mvn -B -T 1C clean verify -Pspring-boot2 -Dsurefire.reuseForks=false -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
 
-      # core 已 install 进本地仓库，其余模块正常构建测试（默认 fork 复用）
-      - name: Build & Test (rest)
-        run: mvn -B verify -Pspring-boot2,integration-check -pl '!lingframe-core' -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+      # 覆盖率门控复用：把本步生成的 jacoco exec（位于 ${java.io.tmpdir}/jacoco/default/，见父 POM jacoco 配置）
+      # 上传为 artifact，供 coverage-check-sb2 下载后直接 jacoco:check@check，避免 PR 上重跑全量测试。
+      # SB2 主构建后无单模块 smoke 步骤，exec 保持完整，可安全在末尾上传。
+      - name: Upload JaCoCo Exec Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-exec-sb2
+          path: /tmp/jacoco/default/
+          retention-days: 14
 
       # 失败时打印 surefire dump 文件，暴露原始异常（NoClassDefFoundError 是 dump 路径的二次错误）
       - name: Print surefire dump on failure
@@ -67,6 +77,43 @@ jobs:
           retention-days: 7
 
   # ──────────────────────────────────────────────
+  # SB2 示例级 IT 冒烟（独立 job，失败不影响主构建矩阵结论时可后续收紧 needs）
+  # 与 example-it-sb3 对齐：把示例 IT 从 build-and-test 内联拆出，隔离 flaky / 重的集成测试
+  # ──────────────────────────────────────────────
+  example-it-sb2:
+    name: Example IT Smoke (SB2 / JDK 8)
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Observability closed-loop IT (SB2)
+        run: >
+          mvn -B -T 1C -pl lingframe-examples/lingframe-example-lingcore-app -am
+          -Pspring-boot2,integration-check
+          verify
+          -Dit.test=ObservabilityClosedLoopIntegrationTest
+          -Dsurefire.failIfNoSpecifiedTests=false
+
+      - name: Upload IT Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-it-results-sb2
+          path: '**/target/failsafe-reports/'
+          retention-days: 7
+
+  # ──────────────────────────────────────────────
   # JDK 17 + Spring Boot 3.x：编译、测试、覆盖率
   # ──────────────────────────────────────────────
   build-and-test-sb3:
@@ -86,9 +133,22 @@ jobs:
           cache: 'maven'
 
       # 用 install 而非 verify：把 reactor 产物（含公共 starter jar）装入本地仓库，
-      # 供后续 SB3 gateway mapping smoke 的 -pl 单模块步骤解析依赖
+      # 供后续 SB3 gateway mapping smoke 的 -pl 单模块步骤解析依赖。
+      # 与 SB2 同理：lingframe-spring-boot3-starter 同样存在“共享 @Configuration 类被 CGLIB 二次增强”
+      # 导致的 LinkageError: attempted duplicate class definition，必须 reuseForks=false（每个类独立 JVM）。
       - name: Build & Test (Spring Boot 3)
-        run: mvn -B clean install -Pspring-boot3
+        run: mvn -B -T 1C clean install -Pspring-boot3 -Dsurefire.reuseForks=false -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+
+      # 覆盖率门控复用：上传 jacoco exec（${java.io.tmpdir}/jacoco/default/）供 coverage-check-sb3 复用。
+      # 必须在下方 SB3 gateway mapping smoke 之前上传——该 smoke 是独立 mvn -pl 单模块 test，
+      # 会以自己的运行覆盖 /tmp/jacoco/default/lingframe-spring-boot3-starter.exec，导致门控数据失真。
+      - name: Upload JaCoCo Exec Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-exec-sb3
+          path: /tmp/jacoco/default/
+          retention-days: 14
 
       # 双栈冒烟：显式再跑 SB3 网关映射单测，防止 AutoConfig 与映射类漂移被全量日志淹没
       # 依赖上一步 install 装入本地仓库的公共 starter jar；-pl 单模块无需 -am
@@ -134,7 +194,7 @@ jobs:
 
       - name: Observability closed-loop IT (SB3)
         run: >
-          mvn -B -pl lingframe-examples/lingframe-example-lingcore-app -am
+          mvn -B -T 1C -pl lingframe-examples/lingframe-example-lingcore-app -am
           -Pspring-boot3,integration-check
           verify
           -Dit.test=ObservabilityClosedLoopIntegrationTest
@@ -169,11 +229,18 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Generate Coverage (core, isolated forks)
-        run: mvn -B clean install -pl lingframe-core -am -Dsurefire.reuseForks=false -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+      # 复用 build-and-test 已上传的 jacoco exec，直接做覆盖率门控，避免 PR 上重跑全量测试。
+      # jacoco dataFile 由父 POM 定为 ${java.io.tmpdir}/jacoco/default/<artifactId>.exec，
+      # 故下载回同一绝对路径即可被 jacoco:check@check 读取（无需重跑测试生成）。
+      - name: Download JaCoCo Exec Data
+        uses: actions/download-artifact@v4
+        with:
+          name: jacoco-exec-sb2
+          path: /tmp/jacoco/default
 
-      - name: Generate Coverage (rest)
-        run: mvn -B verify -pl '!lingframe-core' -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+      # 仅重编译（不跑测试）以恢复 target/classes 供 jacoco:check 比对覆盖率规则
+      - name: Compile (no tests) for coverage analysis
+        run: mvn -B -T 1C -pl lingframe-core,lingframe-dashboard,lingframe-runtime/lingframe-spring-boot-starter -am -Pspring-boot2 -DskipTests compile
 
       - name: Check Coverage Threshold
         run: |
@@ -199,8 +266,15 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Generate Coverage
-        run: mvn -B clean verify -Pspring-boot3
+      # 复用 build-and-test-sb3 已上传的 jacoco exec，直接做覆盖率门控，避免 PR 上重跑全量测试。
+      - name: Download JaCoCo Exec Data
+        uses: actions/download-artifact@v4
+        with:
+          name: jacoco-exec-sb3
+          path: /tmp/jacoco/default
+
+      - name: Compile (no tests) for coverage analysis
+        run: mvn -B -T 1C -pl lingframe-core,lingframe-dashboard,lingframe-runtime/lingframe-spring-boot-starter -am -Pspring-boot3 -DskipTests compile
 
       - name: Check Coverage Threshold
         run: |
@@ -215,6 +289,7 @@ jobs:
     name: Performance Baseline (JDK 8)
     runs-on: ubuntu-latest
     needs: build-and-test
+    if: github.event_name == 'push'
     timeout-minutes: 120
 
     steps:
@@ -229,11 +304,11 @@ jobs:
           cache: 'maven'
 
       - name: Install dependencies
-        run: mvn -B install -DskipTests -pl lingframe-bom,lingframe-api,lingframe-core -am
+        run: mvn -B -T 1C install -DskipTests -pl lingframe-bom,lingframe-api,lingframe-core -am
 
       - name: Build & Run JMH Benchmarks
         run: |
-          mvn -B package -DskipTests -pl lingframe-benchmark -Pbenchmark -am
+          mvn -B -T 1C package -DskipTests -pl lingframe-benchmark -Pbenchmark -am
           java -jar lingframe-benchmark/target/lingframe-benchmarks.jar \
             -rf json -rff benchmark-results-jdk8.json \
             -wi 3 -i 5 -f 1
@@ -250,6 +325,7 @@ jobs:
     name: Performance Baseline (JDK 17)
     runs-on: ubuntu-latest
     needs: build-and-test-sb3
+    if: github.event_name == 'push'
     timeout-minutes: 120
 
     steps:
@@ -264,11 +340,11 @@ jobs:
           cache: 'maven'
 
       - name: Install dependencies
-        run: mvn -B install -DskipTests -pl lingframe-bom,lingframe-api,lingframe-core -am
+        run: mvn -B -T 1C install -DskipTests -pl lingframe-bom,lingframe-api,lingframe-core -am
 
       - name: Build & Run JMH Benchmarks
         run: |
-          mvn -B package -DskipTests -pl lingframe-benchmark -Pbenchmark -am
+          mvn -B -T 1C package -DskipTests -pl lingframe-benchmark -Pbenchmark -am
           java -jar lingframe-benchmark/target/lingframe-benchmarks.jar \
             -rf json -rff benchmark-results-jdk17.json \
             -wi 3 -i 5 -f 1
