@@ -65,11 +65,15 @@ public class LingDiscoveryService {
         if (roots != null && !roots.isEmpty()) {
             log.info("Starting ling discovery from {}, count: {}", roots, roots.size());
             for (String root : roots) {
-                String realPath = root;
+                File realFile;
                 if (config.isDevMode()) {
-                    realPath += File.separator + "/target/classes";
+                    // dev-mode：探测 Maven 模块构建产物 classes 目录。
+                    // 双栈产物目录隔离：默认 target/classes，spring-boot3 profile 为 target-boot3/classes
+                    // （见 lingframe-dependencies spring-boot3 profile 的 bc3.base.build.dir）。
+                    realFile = PathUtils.resolveMavenClassesDir(root, new File(config.getLingHome()));
+                } else {
+                    realFile = PathUtils.resolvePath(root, new File(config.getLingHome()));
                 }
-                File realFile = PathUtils.resolvePath(realPath, new File(config.getLingHome()));
                 try {
                     // 🔥 单个 root 失败不中断整体扫描：坏灵元只打日志，不抛出
                     installSingle(loadedLingIds, realFile);
