@@ -134,7 +134,10 @@ public class DashboardLingSourceResolver {
             if (rootDir == null) {
                 continue;
             }
-            File candidate = new File(rootDir, "target/classes");
+            // dev-mode：探测 Maven 模块构建产物 classes 目录。
+            // 双栈产物目录隔离：默认 target/classes，spring-boot3 profile 为 target-boot3/classes
+            // （见 lingframe-dependencies spring-boot3 profile 的 bc3.base.build.dir）。
+            File candidate = PathUtils.resolveMavenClassesDir(rootDir);
             if (!candidate.exists()) {
                 continue;
             }

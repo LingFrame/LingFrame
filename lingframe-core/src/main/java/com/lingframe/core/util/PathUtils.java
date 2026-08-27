@@ -106,4 +106,39 @@ public class PathUtils {
             return file.getAbsoluteFile();
         }
     }
+
+    /**
+     * 解析 Maven 模块的构建产物 classes 目录（dev-mode 灵元发现专用）。
+     * <p>
+     * 双栈构建目录隔离：默认（spring-boot2）产物在 {@code target/classes}；
+     * spring-boot3 profile 经 {@code bc3.base.build.dir=target-boot3} 隔离到
+     * {@code target-boot3/classes}（避免 javax/jakarta 字节码跨 profile 污染，
+     * 见 lingframe-dependencies spring-boot3 profile）。依次探测两个候选目录，
+     * 返回第一个存在的；全部不存在时返回默认 {@code target/classes} 路径
+     * （由调用方 exists 校验并告警）。
+     *
+     * @param root       灵元源码根目录（相对路径经 resolvePath 祖先链解析）
+     * @param lingHomeDir 灵珑主目录（路径解析兜底基准）
+     * @return 存在的构建 classes 目录；不存在时返回默认 target/classes 候选
+     */
+    public static File resolveMavenClassesDir(String root, File lingHomeDir) {
+        File rootDir = resolvePath(root, lingHomeDir);
+        return resolveMavenClassesDir(rootDir);
+    }
+
+    /**
+     * 基于已解析的源码根目录探测构建产物 classes 目录。
+     *
+     * @see #resolveMavenClassesDir(String, File)
+     */
+    public static File resolveMavenClassesDir(File rootDir) {
+        String[] buildDirs = {"target", "target-boot3"};
+        for (String buildDir : buildDirs) {
+            File candidate = new File(rootDir, buildDir + File.separator + "classes");
+            if (candidate.isDirectory()) {
+                return getTypeSafeFile(candidate);
+            }
+        }
+        return getTypeSafeFile(new File(rootDir, "target" + File.separator + "classes"));
+    }
 }
