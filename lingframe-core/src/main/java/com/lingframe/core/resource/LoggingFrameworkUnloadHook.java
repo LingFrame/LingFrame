@@ -25,8 +25,8 @@ import java.util.logging.Logger;
  * <p>
  * <b>核心安全与兜底约束</b>：
  * <ul>
- *   <li>无论日志工厂是由灵元 CL 还是宿主 CL 加载，均深入其并发缓存容器，精准逐出由灵元类名或由灵元 CL 加载的 Logger/Appender 条目；</li>
- *   <li>绝不对宿主全局 LoggerContext / LogManager 执行 shutdown()/reset()，保证宿主全局日志体系绝对安全；</li>
+ *   <li>无论日志工厂是由灵元 CL 还是灵核 CL 加载，均深入其并发缓存容器，精准逐出由灵元类名或由灵元 CL 加载的 Logger/Appender 条目；</li>
+ *   <li>绝不对灵核全局 LoggerContext / LogManager 执行 shutdown()/reset()，保证灵核全局日志体系绝对安全；</li>
  * </ul>
  */
 @Slf4j
@@ -57,7 +57,7 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
      * 清理 logback LoggerContext。
      * <p>
      * 1. 若 LoggerContext 由灵元自身加载：执行 shutdown/reset。
-     * 2. 若 LoggerContext 属于宿主（常见场景）：精准清理其内部 loggerCache 中属于该灵元的条目与 Appender。
+     * 2. 若 LoggerContext 属于灵核（常见场景）：精准清理其内部 loggerCache 中属于该灵元的条目与 Appender。
      */
     private void cleanupLogback(String lingId, ClassLoader classLoader, Set<String> loadedClassNames) {
         try {
@@ -89,7 +89,7 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
                 }
             }
 
-            // 宿主共享的 LoggerContext：精准剔除灵元关联的 Logger 条目
+            // 灵核共享的 LoggerContext：精准剔除灵元关联的 Logger 条目
             int cleared = clearLoggerFactoryMapEntries(lingId, factory, classLoader, loadedClassNames);
             if (cleared > 0) {
                 log.info("[{}] Cleared {} logback logger cache entry/entries for ling", lingId, cleared);
@@ -117,7 +117,7 @@ public class LoggingFrameworkUnloadHook implements LingUnloadHook {
                 } catch (Exception ignored) {
                 }
             }
-            // 宿主共享模式暂无需特殊额外处理
+            // 灵核共享模式暂无需特殊额外处理
         } catch (ClassNotFoundException e) {
             log.debug("[{}] log4j2 not available, skip", lingId);
         } catch (Exception e) {

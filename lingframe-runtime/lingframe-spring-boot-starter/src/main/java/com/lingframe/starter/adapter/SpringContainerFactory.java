@@ -70,7 +70,7 @@ public class SpringContainerFactory implements ContainerFactory {
             excludes.add("org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration");
             excludes.add("org.springframework.boot.actuate.autoconfigure.endpoint.jmx.JmxEndpointAutoConfiguration");
 
-            // 默认排除调度类自动配置：宿主引入 Quartz/任务调度时，灵元子容器会自动装配出
+            // 默认排除调度类自动配置：灵核引入 Quartz/任务调度时，灵元子容器会自动装配出
             // 常驻线程（QuartzScheduler、ThreadPoolTaskScheduler），线程捕获灵元 ClassLoader，
             // 卸载后无法回收导致泄漏。灵元确需调度时，可在 ling.yml 用 includeAutoConfigurations 显式放行。
             excludes.add("org.springframework.boot.autoconfigure.quartz.QuartzAutoConfiguration");

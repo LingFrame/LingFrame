@@ -1,6 +1,6 @@
 # lingframe-example-ling-native
 
-> 原生（非 Spring）灵元加载演示的**孤儿灵元**（有意不接入宿主）。
+> 原生（非 Spring）灵元加载演示的**孤儿灵元**（有意不接入灵核）。
 
 本模块演示灵珑对**非 Spring Boot 原生灵元**的加载能力：`NativeLing` 不是 `@SpringBootApplication`，而是通过原生容器（`lingframe-runtime` 的 native adapter）被加载的轻量灵元实现。
 

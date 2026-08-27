@@ -19,7 +19,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,7 +33,7 @@ import java.util.Set;
  *
  * <p>安全与防泄漏原则：
  * <ul>
- *   <li>1. <b>零宿主强引用</b>：所有反射与类型装配均为调用栈局部变量，严禁全局静态缓存灵元 Class，彻底杜绝类加载器泄漏；</li>
+ *   <li>1. <b>零灵核强引用</b>：所有反射与类型装配均为调用栈局部变量，严禁全局静态缓存灵元 Class，彻底杜绝类加载器泄漏；</li>
  *   <li>2. <b>隔离环境优先</b>：优先使用灵元自身 ClassLoader 上下文下的 Jackson 进行精准反序列化；</li>
  *   <li>3. <b>纯 JDK 递归兜底</b>：环境无 Jackson 时，由原生全功能 BeanPopulator 支持复杂嵌套、泛型 List、枚举与日期时间装配；</li>
  *   <li>4. <b>零回归与 Fast-Path</b>：类型已兼容时走快速通道直接透传，性能零损耗。</li>
@@ -168,7 +167,7 @@ public class ArgumentTypeAdapter {
 
     /**
      * 引擎 A：在灵元自身 ClassLoader 中反射使用 Jackson ObjectMapper。
-     * 该实例由灵元类加载器加载，灵元卸载时随 ClassLoader 一并回收，不滞留宿主。
+     * 该实例由灵元类加载器加载，灵元卸载时随 ClassLoader 一并回收，不滞留灵核。
      */
     private static Object tryConvertViaIsolatedJackson(Object source, Class<?> targetType, ClassLoader targetClassLoader) {
         if (targetClassLoader == null) {
