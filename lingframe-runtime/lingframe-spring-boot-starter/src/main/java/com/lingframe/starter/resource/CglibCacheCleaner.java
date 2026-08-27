@@ -109,6 +109,18 @@ final class CglibCacheCleaner {
         if (lingClassLoader == null) {
             return;
         }
+        // 共享加载器保护（防误伤灵核，务必保持）：
+        // 灵元卸载时传入的 CL 是灵元自定义子加载器（LingClassLoader 等），其上的 CGLIB 增强类
+        // 才是灵元泄漏源。若误传/误用系统、平台、扩展等共享加载器，删除其 CACHE 条目或清空
+        // ClassLoaderData 会让灵核后续创建 Spring 上下文时重新 defineClass 同名增强类，
+        // 触发 LinkageError: attempted duplicate class definition（同一 JVM 复用场景，如
+        // surefire 默认 reuseForks=true 下测试类共享 AppClassLoader，见 CI 回归）。
+        // 共享加载器一律跳过；灵元子加载器继续走完整清理（卸载后可证 GC）。
+        if (isSharedClassLoader(lingClassLoader)) {
+            log.debug("[{}] Skip CGLIB cleanup for shared classloader: {}",
+                    lingId, lingClassLoader.getClass().getName());
+            return;
+        }
         // 5.x / 6.x 结构相同：先从 ClassLoaderData 抽生成类清 MethodProxy，再 remove CACHE
         boolean removed = clearCglibCacheByClassLoaderData(lingId, lingClassLoader);
         if (!removed) {
@@ -120,11 +132,60 @@ final class CglibCacheCleaner {
     }
 
     /**
+     * 判定是否为共享（灵核侧）类加载器。
+     * <p>
+     * 清理边界（防误伤灵核，务必保持）：CGLIB 生成类命名确定，共享边界（父委派的
+     * starter/测试类）下灵元侧与灵核侧会复用同一个由灵核类加载器定义的增强类。
+     * 对共享加载器执行 CACHE remove / LoadingCache clear / ClassLoader.classes 扫描，
+     * 会让灵核后续所有 Spring 上下文在重建时重新 defineClass 同名增强类，
+     * 触发 {@code LinkageError: attempted duplicate class definition}。
+     * <p>
+     * 共享加载器识别：系统类加载器（AppClassLoader）、扩展/平台类加载器，
+     * 以及任何 {@code getParent() == null} 的顶层加载器。灵元自定义子加载器
+     * （{@code LingClassLoader} 等，parent 为系统加载器）不属于共享加载器。
+     *
+     * @param cl 待判定类加载器
+     * @return true 表示共享加载器，应跳过清理
+     */
+    private static boolean isSharedClassLoader(ClassLoader cl) {
+        if (cl == null) {
+            return true;
+        }
+        ClassLoader systemCl = ClassLoader.getSystemClassLoader();
+        if (cl == systemCl) {
+            return true;
+        }
+        // JDK 9+：平台加载器（parent 为 null）；JDK 8：扩展加载器（parent 为 null）
+        if (cl.getParent() == null) {
+            return true;
+        }
+        // 显式识别平台/扩展加载器（JDK 9+ 平台加载器 parent 可能非 null 的边界场景兜底；
+        // 反射调用以兼容 JDK 8 编译——JDK 8 无 getPlatformClassLoader 方法）
+        try {
+            Method getPlatform = ClassLoader.class.getMethod("getPlatformClassLoader");
+            Object platform = getPlatform.invoke(null);
+            if (platform == cl) {
+                return true;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // JDK 8 无 getPlatformClassLoader（NoSuchMethodException 为其子类），忽略
+        }
+        return false;
+    }
+
+    /**
      * 主路径：CACHE → ClassLoaderData → LoadingCache.map → 生成 Class → 清 MethodProxy → remove。
      *
      * @return true 表示 CACHE 字段存在且处理完成（无论是否有该 CL 的条目）
      */
     private boolean clearCglibCacheByClassLoaderData(String lingId, ClassLoader lingClassLoader) {
+        // 纵深防御：入口 clear() 已守卫共享加载器；此处再校验一次，防止未来新增
+        // 其他调用路径时误删灵核共享 CACHE 条目（返回 true 表示无需处理，避免触发 generic 兜底）
+        if (isSharedClassLoader(lingClassLoader)) {
+            log.debug("[{}] Skip CGLIB CACHE remove for shared classloader: {}",
+                    lingId, lingClassLoader.getClass().getName());
+            return true;
+        }
         try {
             Class<?> generatorClass = Class.forName(ABSTRACT_CLASS_GENERATOR);
             Field cacheField = generatorClass.getDeclaredField("CACHE");
@@ -171,6 +232,14 @@ final class CglibCacheCleaner {
     private void clearMethodProxyFromClassLoaderData(String lingId, Object classLoaderData) {
         try {
             ClassLoader lingCl = resolveClassLoaderFromData(classLoaderData);
+            // 纵深防御：入口 clear() 已保证只传入灵元 CL 的 ClassLoaderData；此处再校验一次，
+            // 防止未来新增调用路径时对共享加载器执行 map.clear()（清空共享 generatedClasses
+            // 缓存会令灵核后续上下文重建时重新 defineClass 同名增强类，触发 LinkageError）。
+            if (isSharedClassLoader(lingCl)) {
+                log.debug("[{}] Skip MethodProxy cleanup for shared classloader ClassLoaderData: {}",
+                        lingId, lingCl == null ? "null" : lingCl.getClass().getName());
+                return;
+            }
             int classCount = 0;
             int cleaned = 0;
             Set<Class<?>> seen = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -349,6 +418,13 @@ final class CglibCacheCleaner {
 
     /** 通用兜底：扫描 AbstractClassGenerator 所有静态 Map 字段并 remove CL key */
     private void clearCglibCacheGeneric(String lingId, ClassLoader lingClassLoader) {
+        // 纵深防御：入口 clear() 已守卫共享加载器；此处再校验一次，防止未来新增
+        // 其他调用路径时误删灵核共享 CGLIB 缓存条目
+        if (isSharedClassLoader(lingClassLoader)) {
+            log.debug("[{}] Skip generic CGLIB cache cleanup for shared classloader: {}",
+                    lingId, lingClassLoader.getClass().getName());
+            return;
+        }
         try {
             Class<?> c = Class.forName(ABSTRACT_CLASS_GENERATOR);
             for (Field f : c.getDeclaredFields()) {
@@ -389,6 +465,13 @@ final class CglibCacheCleaner {
      */
     @SuppressWarnings("unchecked")
     private void clearMethodProxyViaClassLoaderClasses(String lingId, ClassLoader lingClassLoader) {
+        // 纵深防御：入口 clear() 已守卫共享加载器；此处再校验一次，防止未来新增调用路径时
+        // 对系统/平台加载器的 classes 向量扫描并清空灵核共享增强类静态字段
+        if (isSharedClassLoader(lingClassLoader)) {
+            log.debug("[{}] Skip ClassLoader.classes scan for shared classloader: {}",
+                    lingId, lingClassLoader.getClass().getName());
+            return;
+        }
         try {
             Field classesField = ClassLoader.class.getDeclaredField("classes");
             classesField.setAccessible(true);
