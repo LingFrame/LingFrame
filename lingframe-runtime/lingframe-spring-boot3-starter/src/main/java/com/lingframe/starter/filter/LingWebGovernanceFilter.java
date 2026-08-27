@@ -109,6 +109,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
                     log.info("[Governance] Request blocked: {} -> {}",
                             GOVERNANCE_SUPPORT.resolveGovernanceResourceId(ctx, requestFacade), e.getMessage());
                 }
+                recordGovernanceRejectionMetrics(request, ctx, lingId, startNanos);
                 handleGovernanceFailure(response, e, ctx);
                 return;
             }
@@ -165,6 +166,10 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             boolean isLingRequest,
             long startNanos,
             Throwable error) {
+        // 治理拒绝已在内部 catch 块单独记为治理拒绝指标，避免被误判为成功或业务失败
+        if (request.getAttribute(WebRequestKeys.GOV_METRICS_RECORDED) != null) {
+            return;
+        }
         if (!isLingRequest && !LingCoreConstants.LINGCORE_LING_ID.equals(lingId)) {
             return;
         }
@@ -190,6 +195,25 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         if (versionMetrics != metrics) {
             versionMetrics.recordFailure(costMs, isTimeout);
         }
+    }
+
+    private void recordGovernanceRejectionMetrics(HttpServletRequest request,
+            InvocationContext ctx, String lingId, long startNanos) {
+        MetricsCollector metricsCollector =
+                metricsCollectorProvider != null ? metricsCollectorProvider.getIfAvailable() : null;
+        if (metricsCollector == null || lingId == null || lingId.isEmpty()) {
+            return;
+        }
+        long costMs = (System.nanoTime() - startNanos) / 1_000_000;
+        String version = resolveVersion(request, ctx);
+        LingHealthMetrics metrics = metricsCollector.getOrCreate(lingId);
+        metrics.recordGovernanceRejection(costMs);
+        LingHealthMetrics versionMetrics = metricsCollector.getOrCreate(lingId, version);
+        if (versionMetrics != metrics) {
+            versionMetrics.recordGovernanceRejection(costMs);
+        }
+        // 标记已记录，避免 finally 中的 recordWebMetrics 再次把治理拒绝误判为成功/失败
+        request.setAttribute(WebRequestKeys.GOV_METRICS_RECORDED, Boolean.TRUE);
     }
 
     private String resolveVersion(HttpServletRequest request, InvocationContext ctx) {

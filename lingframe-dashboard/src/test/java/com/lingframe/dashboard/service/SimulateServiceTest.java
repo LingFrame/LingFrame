@@ -15,6 +15,8 @@ import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.routing.ProviderDescriptor;
+import com.lingframe.dashboard.dto.ContractStressStepDTO;
 import com.lingframe.dashboard.dto.SimulateResultDTO;
 import com.lingframe.dashboard.dto.StressResultDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,7 +24,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -456,6 +461,68 @@ class SimulateServiceTest {
             assertEquals(1, result.getV1Requests());
             assertEquals(0, result.getV2Requests());
         }
+
+        @Test
+        @DisplayName("stressContractStep: 契约单步微内核模拟演练（干跑模式）")
+        void stressContractStep_dryRun_success() {
+            when(lingServiceRegistry.getProvidersByContractId("com.example.UserService"))
+                    .thenReturn(Collections.singletonList(
+                            new ProviderDescriptor("com.example.UserService", "ling1", "1.0.0", 100)));
+
+            doAnswer(invocation -> {
+                InvocationContext c = invocation.getArgument(0);
+                c.setTargetLingId("ling1");
+                c.setTargetVersion("1.0.0");
+                return null;
+            }).when(pipelineEngine).invoke(any());
+
+            ContractStressStepDTO step = service.stressContractStep("com.example.UserService", "DRY_RUN");
+
+            assertNotNull(step);
+            assertEquals("com.example.UserService", step.getContractId());
+            assertEquals("ling1:1.0.0", step.getHitProviderKey());
+            assertEquals("ling1", step.getLingId());
+            assertEquals("1.0.0", step.getVersion());
+            assertEquals("LING", step.getType());
+            assertEquals("DRY_RUN", step.getMode());
+        }
+
+        @Test
+        @DisplayName("stressContractStep: 契约单步真实穿透演练（穿透模式）")
+        void stressContractStep_penetration_success() {
+            when(lingServiceRegistry.getProvidersByContractId("com.example.UserService"))
+                    .thenReturn(Collections.singletonList(
+                            new ProviderDescriptor("com.example.UserService", "ling1", "1.0.0", 100)));
+
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool pool = mock(InstancePool.class);
+            LingInstance instance = mock(LingInstance.class);
+            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
+            when(runtime.isAvailable()).thenReturn(true);
+            when(runtime.getInstancePool()).thenReturn(pool);
+            when(pool.getDefault()).thenReturn(instance);
+            when(instance.isReady()).thenReturn(true);
+            when(instance.getVersion()).thenReturn("1.0.0");
+            when(instance.getClassLoader()).thenReturn(getClass().getClassLoader());
+
+            doAnswer(invocation -> {
+                InvocationContext c = invocation.getArgument(0);
+                c.setTargetLingId("ling1");
+                c.setTargetVersion("1.0.0");
+                return null;
+            }).when(pipelineEngine).invoke(any());
+
+            ContractStressStepDTO step = service.stressContractStep("com.example.UserService", "PENETRATION");
+
+            assertNotNull(step);
+            assertEquals("com.example.UserService", step.getContractId());
+            assertEquals("ling1:1.0.0", step.getHitProviderKey());
+            assertEquals("ling1", step.getLingId());
+            assertEquals("1.0.0", step.getVersion());
+            assertEquals("LING", step.getType());
+            assertEquals("PENETRATION", step.getMode());
+            verify(instance).probe("com.example.UserService");
+        }
     }
 
     // ==================== simulateMethod ====================
@@ -581,7 +648,7 @@ class SimulateServiceTest {
 
     /** 向当前线程的对象池预热 n 个可回收上下文，返回预热后的池大小 */
     private static int primeInvocationContextPool(int n) throws Exception {
-        List<InvocationContext> tmp = new java.util.ArrayList<>();
+        List<InvocationContext> tmp = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             tmp.add(InvocationContext.obtain());
         }
@@ -591,10 +658,10 @@ class SimulateServiceTest {
 
     @SuppressWarnings("unchecked")
     private static int invocationContextPoolSize() throws Exception {
-        java.lang.reflect.Field stackField = InvocationContext.class.getDeclaredField("STACK");
+        Field stackField = InvocationContext.class.getDeclaredField("STACK");
         stackField.setAccessible(true);
-        ThreadLocal<java.util.Deque<InvocationContext>> tl =
-                (ThreadLocal<java.util.Deque<InvocationContext>>) stackField.get(null);
+        ThreadLocal<Deque<InvocationContext>> tl =
+                (ThreadLocal<Deque<InvocationContext>>) stackField.get(null);
         return tl.get().size();
     }
 }

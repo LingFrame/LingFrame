@@ -2,6 +2,8 @@ package com.lingframe.starter.resource;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.CachedIntrospectionResults;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.ResolvableType;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.core.io.support.SpringFactoriesLoader;
@@ -9,10 +11,14 @@ import org.springframework.util.ReflectionUtils;
 
 import java.beans.Introspector;
 import java.lang.reflect.Field;
+import java.lang.reflect.Member;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Method;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.ResourceBundle;
+import java.util.Set;
 
 /**
  * 清理 Spring 框架公开 API 的静态缓存。
@@ -240,6 +246,195 @@ final class SpringStaticCacheCleaner {
             // version / optional module
         } catch (Exception e) {
             log.debug("[{}] {} cleanup failed: {}", lingId, className, e.getMessage());
+        }
+    }
+
+    // ======================== ParameterNameDiscoverer（实例字段缓存） ========================
+
+    /**
+     * 清理 {@code LocalVariableTableParameterNameDiscoverer.parameterNamesCache}。
+     * <p>
+     * <b>这是 ClassLoader 泄漏的主要根因之一</b>：该缓存是实例字段（非 static），
+     * key 是灵元加载的 {@code Class<?>}，被全局共享的
+     * {@code DefaultParameterNameDiscoverer} 实例间接持有。
+     * 卸载时不清理 → grab 的 Class 被 map key 持有 → ClassLoader 泄漏。
+     * <p>
+     * 因为是实例字段，{@code removeStaticMapEntries} 扫不到，必须通过 Spring context
+     * 的 BeanFactory 遍历 singleton 深度查找。
+     * <p>
+     * MAT 实测引用链（Spring 5.3.31）：
+     * <pre>
+     * LingClassLoader ← GrabServiceImpl Class (parameterNamesCache map key)
+     *   ← LocalVariableTableParameterNameDiscoverer.parameterNamesCache
+     *     ← DefaultParameterNameDiscoverer.parameterNameDiscoverers (List)
+     *       ← Spring BeanFactory singleton 图
+     * </pre>
+     */
+    void clearParameterNameDiscovererCache(String lingId, ApplicationContext mainContext, ClassLoader lingClassLoader) {
+        if (mainContext == null || lingClassLoader == null) {
+            return;
+        }
+        int totalRemoved = 0;
+        try {
+            ConfigurableApplicationContext cac;
+            try {
+                cac = (ConfigurableApplicationContext) mainContext;
+            } catch (ClassCastException e) {
+                return;
+            }
+            org.springframework.beans.factory.config.ConfigurableListableBeanFactory bf = cac.getBeanFactory();
+            // 遍历所有 singleton，深度查找 LVTPND 实例
+            for (String name : bf.getSingletonNames()) {
+                Object singleton;
+                try {
+                    singleton = bf.getSingleton(name);
+                } catch (Exception ignored) {
+                    continue;
+                }
+                if (singleton == null) continue;
+                totalRemoved += findAndClearPNDInstance(lingId, singleton, lingClassLoader, new HashSet<>(), 0);
+            }
+            // 遍历 mergedBeanDefinitions（Bean 定义）——LVTPND 被 Bean 定义的 preparedConstructorArguments
+            // → ConstructorDependencyDescriptor → ResolvableType → ... → MethodParameter
+            // → DefaultParameterNameDiscoverer → parameterNameDiscoverers (List) → LVTPND 间接持有（15+ 层）
+            try {
+                Field mergedField = SpringCleanupSupport.findFieldInHierarchy(bf.getClass(), "mergedBeanDefinitions");
+                if (mergedField != null) {
+                    mergedField.setAccessible(true);
+                    Object mergedObj = mergedField.get(bf);
+                    if (mergedObj instanceof Map<?, ?>) {
+                        for (Object bd : ((Map<?, ?>) mergedObj).values()) {
+                            totalRemoved += findAndClearPNDInstance(lingId, bd, lingClassLoader, new HashSet<>(), 0);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("[{}] Failed to scan mergedBeanDefinitions for PND: {}", lingId, e.getMessage());
+            }
+            // BeanFactory 自身也扫一遍
+            totalRemoved += findAndClearPNDInstance(lingId, bf, lingClassLoader, new HashSet<>(), 0);
+        } catch (Exception e) {
+            log.debug("[{}] ParameterNameDiscoverer cache cleanup failed: {}", lingId, e.getMessage());
+        }
+        if (totalRemoved > 0) {
+            log.info("[{}] LocalVariableTableParameterNameDiscoverer.parameterNamesCache: removed {} entries total",
+                    lingId, totalRemoved);
+        }
+    }
+
+    /**
+     * 深度遍历对象图，找 {@code LocalVariableTableParameterNameDiscoverer} 实例并清理其
+     * {@code parameterNamesCache} 中 key 属于 {@code lingClassLoader} 的条目。
+     */
+    private int findAndClearPNDInstance(String lingId, Object obj, ClassLoader lingClassLoader,
+                                        Set<Integer> seen, int depth) {
+        if (obj == null || depth > 15) {
+            return 0;
+        }
+        int h = System.identityHashCode(obj);
+        if (seen.contains(h)) {
+            return 0;
+        }
+        seen.add(h);
+
+        String className = obj.getClass().getName();
+        // 目标：LocalVariableTableParameterNameDiscoverer
+        if ("org.springframework.core.LocalVariableTableParameterNameDiscoverer".equals(className)) {
+            return clearParameterNamesCacheField(lingId, obj, lingClassLoader);
+        }
+
+        // 跳过已知的大/不相关类型，避免深度递归
+        if (obj instanceof String || obj instanceof Number || obj instanceof Boolean
+                || obj instanceof Character || obj instanceof Class
+                || obj instanceof Thread || obj instanceof ClassLoader) {
+            return 0;
+        }
+        // 跳过 Spring context 自身（已通过 singleton 遍历覆盖）
+        if (obj instanceof org.springframework.context.ApplicationContext) {
+            return 0;
+        }
+
+        int removed = 0;
+        // Map/Collection 浅扫 key（DefaultParameterNameDiscoverer 在 List 里）
+        if (obj instanceof List) {
+            for (Object e : (List<?>) obj) {
+                removed += findAndClearPNDInstance(lingId, e, lingClassLoader, seen, depth + 1);
+                if (removed > 0) break;
+            }
+            return removed;
+        }
+        if (obj instanceof Map) {
+            for (Object v : ((Map<?, ?>) obj).values()) {
+                removed += findAndClearPNDInstance(lingId, v, lingClassLoader, seen, depth + 1);
+                if (removed > 0) break;
+            }
+            return removed;
+        }
+
+        // 普通对象字段
+        Class<?> walk = obj.getClass();
+        while (walk != null && walk != Object.class) {
+            Field[] fields;
+            try {
+                fields = walk.getDeclaredFields();
+            } catch (Throwable t) {
+                break;
+            }
+            for (Field f : fields) {
+                if (f.getType().isPrimitive() || Modifier.isStatic(f.getModifiers())) {
+                    continue;
+                }
+                try {
+                    f.setAccessible(true);
+                    Object fv = f.get(obj);
+                    removed += findAndClearPNDInstance(lingId, fv, lingClassLoader, seen, depth + 1);
+                    if (removed > 0) break;
+                } catch (Throwable ignored) {
+                }
+            }
+            if (removed > 0) break;
+            walk = walk.getSuperclass();
+        }
+        return removed;
+    }
+
+    /**
+     * 清理 LocalVariableTableParameterNameDiscoverer.parameterNamesCache 实例字段。
+     * key 是 {@code Class<?>}（灵元加载的类），value 是 {@code Map<Executable, String[]>}。
+     */
+    @SuppressWarnings("unchecked")
+    private int clearParameterNamesCacheField(String lingId, Object pndInstance, ClassLoader lingClassLoader) {
+        try {
+            Field cacheField = SpringCleanupSupport.findFieldInHierarchy(pndInstance.getClass(), "parameterNamesCache");
+            if (cacheField == null) {
+                return 0;
+            }
+            cacheField.setAccessible(true);
+            Object cacheObj = cacheField.get(pndInstance);
+            if (!(cacheObj instanceof Map<?, ?>)) {
+                return 0;
+            }
+            Map<Class<?>, ?> cache = (Map<Class<?>, ?>) cacheObj;
+            int before = cache.size();
+            cache.entrySet().removeIf(entry -> {
+                Object key = entry.getKey();
+                if (key instanceof Class<?>) {
+                    return ((Class<?>) key).getClassLoader() == lingClassLoader;
+                }
+                if (key instanceof Member) {
+                    return ((Member) key).getDeclaringClass().getClassLoader() == lingClassLoader;
+                }
+                return false;
+            });
+            int removed = before - cache.size();
+            if (removed > 0) {
+                log.info("[{}] LocalVariableTableParameterNameDiscoverer.parameterNamesCache: removed {} entries (was {} entries)",
+                        lingId, removed, before);
+            }
+            return removed;
+        } catch (Exception e) {
+            log.debug("[{}] Failed to clear parameterNamesCache field: {}", lingId, e.getMessage());
+            return 0;
         }
     }
 

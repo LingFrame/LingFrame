@@ -1,5 +1,6 @@
 package com.lingframe.core.routing;
 
+import com.lingframe.api.constant.LingCoreConstants;
 import lombok.Getter;
 
 /**
@@ -64,9 +65,11 @@ public class ProviderDescriptor {
      * <p>
      * 路由层使用此键在 {@code providerIndex} 中区分不同候选。
      *
-     * @return 路由键；version 为 null 时返回裸 lingId
+     * @return 路由键；version 为 null 或灵核时返回裸 lingId
      */
     public String providerKey() {
-        return version == null ? lingId : lingId + ":" + version;
+        return (version == null || LingCoreConstants.LINGCORE_LING_ID.equals(lingId))
+                ? lingId
+                : lingId + ":" + version;
     }
 }

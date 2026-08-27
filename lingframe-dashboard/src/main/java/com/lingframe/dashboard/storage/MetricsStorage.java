@@ -26,15 +26,16 @@ public class MetricsStorage {
         jdbcTemplate.update(
             "INSERT INTO metrics_snapshot (" +
             "  timestamp, cpu_usage, process_cpu_load, heap_used_mb, heap_max_mb, heap_usage," +
-            "  metaspace_used_kb, metaspace_max_kb, metaspace_usage," +
+            "  metaspace_used_kb, metaspace_max_kb, metaspace_usage, compressed_class_space_used_kb," +
             "  loaded_class_count, total_loaded_class_count, unloaded_class_count," +
             "  thread_count, daemon_thread_count, peak_thread_count," +
             "  gc_count, gc_time_ms, memory_used_mb, memory_total_mb, memory_usage," +
             "  available_processors, system_load_average" +
-            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             m.getTimestamp(), m.getCpuUsage(), m.getProcessCpuLoad(),
             m.getHeapUsedMB(), m.getHeapMaxMB(), m.getHeapUsagePercent(),
             m.getMetaspaceUsedKB(), m.getMetaspaceMaxKB(), m.getMetaspaceUsagePercent(),
+            m.getCompressedClassSpaceUsedKB(),
             m.getLoadedClassCount(), m.getTotalLoadedClassCount(), m.getUnloadedClassCount(),
             m.getThreadCount(), m.getDaemonThreadCount(), m.getPeakThreadCount(),
             m.getGcCount(), m.getGcTimeMs(),
@@ -81,6 +82,7 @@ public class MetricsStorage {
             "  AVG(metaspace_used_kb) AS metaspace_used_kb," +
             "  AVG(metaspace_max_kb) AS metaspace_max_kb," +
             "  AVG(metaspace_usage) AS metaspace_usage," +
+            "  AVG(compressed_class_space_used_kb) AS compressed_class_space_used_kb," +
             "  AVG(loaded_class_count) AS loaded_class_count," +
             "  AVG(total_loaded_class_count) AS total_loaded_class_count," +
             "  AVG(unloaded_class_count) AS unloaded_class_count," +

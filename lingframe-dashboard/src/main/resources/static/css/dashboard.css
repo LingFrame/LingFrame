@@ -193,11 +193,11 @@ body {
 
 /* 灵元列表项 - 增强交互 */
 .ling-item {
-    padding: 18px 24px;
+    padding: 8px 10px;
     margin-bottom: 4px;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
 }
@@ -226,7 +226,7 @@ body {
 .ling-item.active {
     background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, var(--bg-card) 60%, transparent 100%);
     border-left: 3px solid var(--primary-color);
-    padding-left: 9px;
+    padding-left: 7px;
 }
 
 .ling-item.active::before {
@@ -905,7 +905,8 @@ html.theme-light .toast-info {
 
 /* 响应式 */
 @media (max-width: 1280px) {
-    :root { --sidebar-width: 200px; }
+    /* 需与基础规则 :root, html.theme-dark 同权，否则暗色主题下 html.theme-dark 会覆盖本断点值 */
+    :root, html.theme-dark { --sidebar-width: 200px; }
     .sidebar {
         width: 200px;
     }
@@ -917,7 +918,8 @@ html.theme-light .toast-info {
 }
 
 @media (max-width: 1023px) {
-    :root { --sidebar-width: 0px; }
+    /* 与 :root, html.theme-dark 同权，确保暗色主题下侧边栏宽度变量归零，控制台通满全宽 */
+    :root, html.theme-dark { --sidebar-width: 0px; }
     .sidebar {
         position: fixed;
         left: -240px;
@@ -1597,5 +1599,112 @@ html.theme-light .card-header {
     .slider-custom::-webkit-slider-thumb:active {
         transform: none !important;
         box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3) !important;
+    }
+}
+
+/* ==================== 移动端适配 ==================== */
+/* 平板与小屏（<1024px）：主内容边距收紧、侧边栏抽屉化（基础规则见上方 1023 断点） */
+@media (max-width: 1023px) {
+    /* 顶部栏紧凑化：间距与字号收敛 */
+    .main-area header {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+    .main-area header .gap-4 {
+        gap: 8px;
+    }
+    /* 顶部标题截断防溢出 */
+    .main-area header .font-medium {
+        max-width: 40vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+/* 手机竖屏（<640px）：全面降级布局 */
+@media (max-width: 639px) {
+    /* 顶部栏按钮最小化——只留图标可点区域 */
+    .main-area header button {
+        padding: 6px;
+    }
+    .main-area header .px-3 {
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+    /* 语言切换最小化 */
+    .lang-switch {
+        max-width: 72px;
+    }
+    /* 表格收紧：字号与 padding 下调，横向滚动保留 */
+    table {
+        font-size: 11px;
+    }
+    table th, table td {
+        padding: 6px 8px !important;
+    }
+    /* 健康指标四列卡降级为两列 */
+    .health-metric {
+        min-width: 0;
+    }
+    .grid-cols-4 {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+    /* 监控页六列网格降级 */
+    .lg\:grid-cols-6 {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+    /* 模态框贴边、限制高度防溢出 */
+    .modal-content {
+        max-width: 96vw !important;
+        max-height: 90vh;
+        overflow-y: auto;
+        margin: 0 8px;
+    }
+    /* 内容区 padding 收紧 */
+    .main-area .p-6 {
+        padding: 12px;
+    }
+    /* 侧边栏抽屉宽度固定 */
+    .sidebar {
+        width: 240px;
+    }
+    /* 控制台工具栏：允许横向滚动，避免在窄屏溢出 */
+    .console-toolbar {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        gap: 8px;
+        flex-shrink: 1;
+        min-width: 0;
+    }
+    .console-title-area {
+        flex-shrink: 0;
+    }
+    .console-header {
+        padding: 0 8px;
+        gap: 6px;
+    }
+    /* 控制台工具栏控件在窄屏收紧，避免挤压 */
+    .console-toolbar .console-toolbar-btn {
+        padding: 4px 6px;
+        white-space: nowrap;
+    }
+    .console-toolbar .console-toolbar-btn span {
+        display: none;
+    }
+    /* 底栏日志窗口：移动端贴满宽度，避免跟随侧边栏变量残留偏移 */
+    .global-console-drawer {
+        left: 0;
+    }
+    /* 底栏日志文本：允许换行，杜绝长日志在窄屏横向溢出 */
+    .console-body {
+        padding: 8px;
+    }
+    .console-logs-wrapper {
+        overflow-x: hidden;
+    }
+    .console-logs-wrapper > div {
+        word-break: break-word;
+        overflow-wrap: anywhere;
     }
 }

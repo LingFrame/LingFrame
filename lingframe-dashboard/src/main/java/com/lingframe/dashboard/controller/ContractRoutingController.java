@@ -2,7 +2,9 @@ package com.lingframe.dashboard.controller;
 
 import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
+import com.lingframe.dashboard.dto.ContractStressStepDTO;
 import com.lingframe.dashboard.service.ContractRoutingService;
+import com.lingframe.dashboard.service.SimulateService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -20,6 +22,7 @@ import java.util.Map;
  *   <li>查询某契约的 provider 列表 + 权重</li>
  *   <li>设置单个 provider 权重</li>
  *   <li>一键回滚到灵核 100%</li>
+ *   <li>契约级真实微内核流量演练步进</li>
  * </ul>
  * 路径前缀遵循 Dashboard 模块约定：{@code /lingframe/dashboard/contract-routing}。
  */
@@ -31,6 +34,7 @@ import java.util.Map;
 public class ContractRoutingController {
 
     private final ContractRoutingService contractRoutingService;
+    private final SimulateService simulateService;
 
     /**
      * 列出所有有多 provider 的契约。
@@ -50,7 +54,7 @@ public class ContractRoutingController {
     /**
      * 查询某契约的 provider 列表 + 权重配置。
      */
-    @GetMapping("/{contractId}")
+    @GetMapping("/{contractId:.+}")
     public ApiResponse<ContractRoutingDTO> getContractRouting(@PathVariable String contractId) {
         try {
             return ApiResponse.ok(contractRoutingService.getContractRouting(contractId));
@@ -67,7 +71,7 @@ public class ContractRoutingController {
      * {@code providerKey} 即路由键——灵元恒为 {@code lingId:version}（版本真源来自绑定实例上下文），
      * 灵核为裸 {@code lingcore-app}，与路由读路径键化一致；传错形会致权重落键错位、读路径静默丢失。
      */
-    @PostMapping("/{contractId}/weight")
+    @PostMapping("/{contractId:.+}/weight")
     public ApiResponse<ContractRoutingDTO> setProviderWeight(
             @PathVariable String contractId,
             @RequestBody Map<String, Object> body) {
@@ -81,8 +85,6 @@ public class ContractRoutingController {
                 return ApiResponse.error("weight 不能为空");
             }
             int weight = Integer.parseInt(String.valueOf(weightObj));
-            // Controller 层显式校验范围：避免依赖 Service 静默 clamp 导致调用方困惑
-            // （前端 saveProviderWeight 已做同样校验，此处为 API 契约防御）
             if (weight < 0 || weight > 100) {
                 return ApiResponse.error("weight 必须是 0-100 的整数");
             }
@@ -101,7 +103,7 @@ public class ContractRoutingController {
      * <p>
      * 将该契约下所有 CORE provider 权重设为 100，所有 LING provider 权重设为 0。
      */
-    @PostMapping("/{contractId}/rollback")
+    @PostMapping("/{contractId:.+}/rollback")
     public ApiResponse<ContractRoutingDTO> rollbackToCore(@PathVariable String contractId) {
         try {
             contractRoutingService.rollbackToCore(contractId);
@@ -109,6 +111,26 @@ public class ContractRoutingController {
         } catch (Exception e) {
             log.error("Failed to rollback to core for: {}", contractId, e);
             return ApiResponse.error("回滚失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 对指定契约执行单次真实微内核流量演练步进（穿透真实 Pipeline + 实时推送 Trace 日志）。
+     *
+     * @param contractId 契约 ID
+     * @param mode 演练模式（DRY_RUN: 路由干跑 / PENETRATION: 真实穿透）
+     */
+    @PostMapping("/{contractId:.+}/stress-step")
+    public ApiResponse<ContractStressStepDTO> stressContractStep(
+            @PathVariable String contractId,
+            @RequestParam(name = "mode", defaultValue = "DRY_RUN") String mode) {
+        try {
+            log.info("[Contract Routing] Received drill step request: contractId={}, mode={}", contractId, mode);
+            ContractStressStepDTO result = simulateService.stressContractStep(contractId, mode);
+            return ApiResponse.ok(result);
+        } catch (Exception e) {
+            log.error("Failed to stress contract step: contractId={}, mode={}", contractId, mode, e);
+            return ApiResponse.error("契约流量演练单步失败: " + e.getMessage());
         }
     }
 }

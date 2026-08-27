@@ -4,6 +4,7 @@ import com.lingframe.api.config.LingDefinition;
 
 import java.io.File;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 /**
  * 面向部署与卸载的顶层生命周期编排入口。
@@ -13,6 +14,31 @@ import java.util.Map;
  * 它负责装配与编排，但状态写入仍然委托给专门的协调器。
  */
 public interface LingLifecycleEngine {
+
+    /**
+     * 在指定灵元的生命周期互斥锁保护下执行复合操作。
+     * <p>
+     * 适用于需要跨多次 deploy/undeploy 调用保持原子性的编排场景
+     * （如灰度提升、热重载等）。单次调用已由引擎内部自动加锁，
+     * 无需显式使用本方法。
+     * <p>
+     * 锁为 ReentrantLock，action 内部调用的 deploy/undeploy/recover
+     * 走同一把锁，天然可重入，不会死锁。
+     *
+     * @param lingId 灵元 ID
+     * @param action 需要原子执行的操作
+     * @param <T>    返回值类型
+     * @return action 的返回值
+     */
+    default <T> T withLifecycleLock(String lingId, Callable<T> action) {
+        try {
+            return action.call();
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     /**
      * 执行一次从制品源到可用实例的完整部署。
@@ -48,6 +74,22 @@ public interface LingLifecycleEngine {
     default LingUninstallResult undeployWithReport(String lingId, String version) {
         undeploy(lingId, version);
         return LingUninstallResult.triggered(lingId, version, null);
+    }
+
+    /**
+     * 确定性等待指定灵元的卸载/回滚清理完成（等待队列语义）。
+     * <p>
+     * 卸载后的 JVM 级资源清理（JDBC 驱动注销、ClassLoader 引用、文件锁释放）完成前，
+     * 立即重部署同版本可能与残留资源冲突导致健康检查失败。部署方应在重部署前调用本方法
+     * 阻塞等待，而不是盲目 sleep。默认实现返回 true（无清理机制时视为立即可部署），
+     * 实际等待由 {@link DefaultLingLifecycleEngine} 覆盖。
+     *
+     * @param lingId    目标灵元
+     * @param timeoutMs 最大等待时长（毫秒）
+     * @return true=清理已完成（或从未进行）；false=等待超时且仍在清理
+     */
+    default boolean awaitUnloadCleanup(String lingId, long timeoutMs) {
+        return true;
     }
 
     /**

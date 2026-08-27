@@ -47,7 +47,7 @@ import java.util.List;
  * 灵珑公共核心配置入口，聚合运行时、生命周期与 Web 装配切片。
  */
 @Slf4j
-@Configuration
+@Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(LingFrameProperties.class)
 @Import({
         DataSourceWrapperProcessor.class,
@@ -200,6 +200,7 @@ public class LingFrameCoreConfiguration {
                 .preloadApiJars(properties.getPreloadApiJars())
                 .apiOverrideCheckEnabled(properties.isApiOverrideCheckEnabled())
                 .trustedLingIds(properties.getTrustedLingIds())
+                .prefixWithLingId(properties.isPrefixWithLingId())
                 .strictSecurityMode(properties.getSecurity().isStrictMode())
                 .trustedLibPrefixes(properties.getSecurity().getTrustedLibPrefixes())
                 .build();

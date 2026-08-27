@@ -30,6 +30,12 @@ import lombok.extern.slf4j.Slf4j;
  * 必须在 remove 前从 ClassLoaderData 抽出生成类，清空 MethodProxy 的 createInfo/fastClassInfo
  *（并尽量把 static 字段置 null）。
  * <p>
+ * 清理边界（防误伤灵核，务必保持）：CGLIB 生成类命名确定（{@code Xxx$$SpringCGLIB$$0}），
+ * 共享边界（父委派的 starter/测试类）下灵元侧与灵核侧会复用同一个由灵核类加载器定义的增强类。
+ * 该共享类持有的是灵核自己的 beanFactory/策略，不是灵元泄漏源；清空其 createInfo 会让
+ * 灵核后续所有 Spring 上下文在 CGLIB {@code MethodProxy.init} 抛 NPE。因此只清理
+ * 「由灵元类加载器定义」的增强类，经父委派解析回灵核的类一律跳过。
+ * <p>
  * 命名标识：
  * <ul>
  *   <li>Spring 6：{@code $$SpringCGLIB$$} / {@code $$SpringCGLIB$$FastClass$$}</li>
@@ -55,12 +61,64 @@ final class CglibCacheCleaner {
 
     private final int springMajorVersion;
 
+    /** sun.misc.Unsafe 实例（反射获取；启动需 --add-opens java.base/sun.misc=ALL-UNNAMED） */
+    private static final Object UNSAFE = resolveUnsafe();
+
     CglibCacheCleaner(int springMajorVersion) {
         this.springMajorVersion = springMajorVersion;
     }
 
+    private static Object resolveUnsafe() {
+        try {
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            Field f = unsafeClass.getDeclaredField("theUnsafe");
+            f.setAccessible(true);
+            return f.get(null);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * 将静态字段置 null：普通字段直接反射；final 字段反射失败时用 Unsafe 兜底
+     *（JDK 17 下 final static 字段反射 set 会抛 IllegalAccessException，必须走 Unsafe.putObject）。
+     */
+    private static void setStaticFieldNull(Field f, Object targetClass, String fieldDesc) {
+        try {
+            f.setAccessible(true);
+            f.set(null, null);
+        } catch (Throwable reflectFailed) {
+            if (UNSAFE != null) {
+                try {
+                    // static 字段必须用 staticFieldOffset（objectFieldOffset 对 static 字段是错误偏移）
+                    Method offsetM = UNSAFE.getClass().getMethod("staticFieldOffset", Field.class);
+                    long offset = (Long) offsetM.invoke(UNSAFE, f);
+                    Method putM = UNSAFE.getClass().getMethod("putObject", Object.class, long.class, Object.class);
+                    // static 字段首参为声明类 Class 对象
+                    putM.invoke(UNSAFE, targetClass, offset, (Object) null);
+                } catch (Throwable unsafeFailed) {
+                    log.trace("[cglib-cleaner] Unsafe nullify failed for {}: {}", fieldDesc, unsafeFailed.getMessage());
+                }
+            } else {
+                log.trace("[cglib-cleaner] Cannot nullify {}: {}", fieldDesc, reflectFailed.getMessage());
+            }
+        }
+    }
+
     void clear(String lingId, ClassLoader lingClassLoader) {
         if (lingClassLoader == null) {
+            return;
+        }
+        // 共享加载器保护（防误伤灵核，务必保持）：
+        // 灵元卸载时传入的 CL 是灵元自定义子加载器（LingClassLoader 等），其上的 CGLIB 增强类
+        // 才是灵元泄漏源。若误传/误用系统、平台、扩展等共享加载器，删除其 CACHE 条目或清空
+        // ClassLoaderData 会让灵核后续创建 Spring 上下文时重新 defineClass 同名增强类，
+        // 触发 LinkageError: attempted duplicate class definition（同一 JVM 复用场景，如
+        // surefire 默认 reuseForks=true 下测试类共享 AppClassLoader，见 CI 回归）。
+        // 共享加载器一律跳过；灵元子加载器继续走完整清理（卸载后可证 GC）。
+        if (isSharedClassLoader(lingClassLoader)) {
+            log.debug("[{}] Skip CGLIB cleanup for shared classloader: {}",
+                    lingId, lingClassLoader.getClass().getName());
             return;
         }
         // 5.x / 6.x 结构相同：先从 ClassLoaderData 抽生成类清 MethodProxy，再 remove CACHE
@@ -74,11 +132,60 @@ final class CglibCacheCleaner {
     }
 
     /**
+     * 判定是否为共享（灵核侧）类加载器。
+     * <p>
+     * 清理边界（防误伤灵核，务必保持）：CGLIB 生成类命名确定，共享边界（父委派的
+     * starter/测试类）下灵元侧与灵核侧会复用同一个由灵核类加载器定义的增强类。
+     * 对共享加载器执行 CACHE remove / LoadingCache clear / ClassLoader.classes 扫描，
+     * 会让灵核后续所有 Spring 上下文在重建时重新 defineClass 同名增强类，
+     * 触发 {@code LinkageError: attempted duplicate class definition}。
+     * <p>
+     * 共享加载器识别：系统类加载器（AppClassLoader）、扩展/平台类加载器，
+     * 以及任何 {@code getParent() == null} 的顶层加载器。灵元自定义子加载器
+     * （{@code LingClassLoader} 等，parent 为系统加载器）不属于共享加载器。
+     *
+     * @param cl 待判定类加载器
+     * @return true 表示共享加载器，应跳过清理
+     */
+    private static boolean isSharedClassLoader(ClassLoader cl) {
+        if (cl == null) {
+            return true;
+        }
+        ClassLoader systemCl = ClassLoader.getSystemClassLoader();
+        if (cl == systemCl) {
+            return true;
+        }
+        // JDK 9+：平台加载器（parent 为 null）；JDK 8：扩展加载器（parent 为 null）
+        if (cl.getParent() == null) {
+            return true;
+        }
+        // 显式识别平台/扩展加载器（JDK 9+ 平台加载器 parent 可能非 null 的边界场景兜底；
+        // 反射调用以兼容 JDK 8 编译——JDK 8 无 getPlatformClassLoader 方法）
+        try {
+            Method getPlatform = ClassLoader.class.getMethod("getPlatformClassLoader");
+            Object platform = getPlatform.invoke(null);
+            if (platform == cl) {
+                return true;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // JDK 8 无 getPlatformClassLoader（NoSuchMethodException 为其子类），忽略
+        }
+        return false;
+    }
+
+    /**
      * 主路径：CACHE → ClassLoaderData → LoadingCache.map → 生成 Class → 清 MethodProxy → remove。
      *
      * @return true 表示 CACHE 字段存在且处理完成（无论是否有该 CL 的条目）
      */
     private boolean clearCglibCacheByClassLoaderData(String lingId, ClassLoader lingClassLoader) {
+        // 纵深防御：入口 clear() 已守卫共享加载器；此处再校验一次，防止未来新增
+        // 其他调用路径时误删灵核共享 CACHE 条目（返回 true 表示无需处理，避免触发 generic 兜底）
+        if (isSharedClassLoader(lingClassLoader)) {
+            log.debug("[{}] Skip CGLIB CACHE remove for shared classloader: {}",
+                    lingId, lingClassLoader.getClass().getName());
+            return true;
+        }
         try {
             Class<?> generatorClass = Class.forName(ABSTRACT_CLASS_GENERATOR);
             Field cacheField = generatorClass.getDeclaredField("CACHE");
@@ -125,6 +232,14 @@ final class CglibCacheCleaner {
     private void clearMethodProxyFromClassLoaderData(String lingId, Object classLoaderData) {
         try {
             ClassLoader lingCl = resolveClassLoaderFromData(classLoaderData);
+            // 纵深防御：入口 clear() 已保证只传入灵元 CL 的 ClassLoaderData；此处再校验一次，
+            // 防止未来新增调用路径时对共享加载器执行 map.clear()（清空共享 generatedClasses
+            // 缓存会令灵核后续上下文重建时重新 defineClass 同名增强类，触发 LinkageError）。
+            if (isSharedClassLoader(lingCl)) {
+                log.debug("[{}] Skip MethodProxy cleanup for shared classloader ClassLoaderData: {}",
+                        lingId, lingCl == null ? "null" : lingCl.getClass().getName());
+                return;
+            }
             int classCount = 0;
             int cleaned = 0;
             Set<Class<?>> seen = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -142,6 +257,10 @@ final class CglibCacheCleaner {
                     for (Object value : map.values()) {
                         Class<?> generatedClass = unwrapGeneratedClass(value);
                         if (generatedClass == null || !seen.add(generatedClass)) {
+                            continue;
+                        }
+                        // 灵核定义的共享增强类不属于本灵元泄漏源，跳过（见类注释「清理边界」）
+                        if (lingCl != null && generatedClass.getClassLoader() != lingCl) {
                             continue;
                         }
                         classCount++;
@@ -233,6 +352,15 @@ final class CglibCacheCleaner {
                     if (!seen.add(clazz)) {
                         continue;
                     }
+                    // 共享边界防误伤：CGLIB 命名确定，灵元侧与灵核侧会复用同名增强类；
+                    // forName 经父委派可能解析到灵核定义的共享类，它持有的是灵核自己的
+                    // beanFactory/策略，清掉其 createInfo 会令灵核后续上下文全部
+                    // MethodProxy.init NPE。只清灵元 CL 定义的类。
+                    if (clazz.getClassLoader() != lingCl) {
+                        log.debug("[{}] Skip shared core-side CGLIB class {}: defined by {}",
+                                lingId, name, clazz.getClassLoader());
+                        continue;
+                    }
                     resolved++;
                     cleaned += clearMethodProxyStaticFields(lingId, clazz);
                 } catch (ClassNotFoundException ignored) {
@@ -290,6 +418,13 @@ final class CglibCacheCleaner {
 
     /** 通用兜底：扫描 AbstractClassGenerator 所有静态 Map 字段并 remove CL key */
     private void clearCglibCacheGeneric(String lingId, ClassLoader lingClassLoader) {
+        // 纵深防御：入口 clear() 已守卫共享加载器；此处再校验一次，防止未来新增
+        // 其他调用路径时误删灵核共享 CGLIB 缓存条目
+        if (isSharedClassLoader(lingClassLoader)) {
+            log.debug("[{}] Skip generic CGLIB cache cleanup for shared classloader: {}",
+                    lingId, lingClassLoader.getClass().getName());
+            return;
+        }
         try {
             Class<?> c = Class.forName(ABSTRACT_CLASS_GENERATOR);
             for (Field f : c.getDeclaredFields()) {
@@ -330,6 +465,13 @@ final class CglibCacheCleaner {
      */
     @SuppressWarnings("unchecked")
     private void clearMethodProxyViaClassLoaderClasses(String lingId, ClassLoader lingClassLoader) {
+        // 纵深防御：入口 clear() 已守卫共享加载器；此处再校验一次，防止未来新增调用路径时
+        // 对系统/平台加载器的 classes 向量扫描并清空灵核共享增强类静态字段
+        if (isSharedClassLoader(lingClassLoader)) {
+            log.debug("[{}] Skip ClassLoader.classes scan for shared classloader: {}",
+                    lingId, lingClassLoader.getClass().getName());
+            return;
+        }
         try {
             Field classesField = ClassLoader.class.getDeclaredField("classes");
             classesField.setAccessible(true);
@@ -380,37 +522,37 @@ final class CglibCacheCleaner {
                 if (!Modifier.isStatic(f.getModifiers())) {
                     continue;
                 }
-                if (!METHOD_PROXY_CLASS_NAME.equals(f.getType().getName())) {
+                Class<?> ft = f.getType();
+                boolean isMethodProxy = METHOD_PROXY_CLASS_NAME.equals(ft.getName());
+                // 引用类型静态字段全量清理（清 MethodProxy 之外漏掉的泄漏源）：
+                //   - CGLIB$THREAD_CALLBACKS（静态 ThreadLocal 持 Callback[] → Enhancer → beanFactory → 灵元CL）
+                //   - CGLIB$FACTORY_DATA / CGLIB$CALLBACK_* 等 CGLIB 内部引用
+                // 只跳过基本类型与 String（无对象引用链）。
+                if (!isMethodProxy && (ft.isPrimitive() || ft == String.class)) {
                     continue;
                 }
                 try {
                     f.setAccessible(true);
-                    Object proxy = f.get(null);
-                    if (proxy != null) {
-                        if (clearMethodProxyInternals(proxy)) {
+                    Object val = f.get(null);
+                    if (isMethodProxy && val != null) {
+                        if (clearMethodProxyInternals(val)) {
                             internalsCleared++;
                         }
                     }
-                    // 尽量把 static 字段置 null；JDK 17 final 可能失败，内部字段清理已足够断链
-                    stripFinalModifierQuietly(f);
-                    try {
-                        f.set(null, null);
-                        nulled++;
-                    } catch (IllegalAccessException setFailed) {
-                        log.trace("[{}] Cannot nullify final MethodProxy field {} on {}: {}",
-                                lingId, f.getName(), enhancedClass.getName(), setFailed.getMessage());
-                    }
+                    // 尽量把 static 字段置 null：普通字段反射设，final 字段 Unsafe 兜底（JDK 17 关键）
+                    setStaticFieldNull(f, enhancedClass, enhancedClass.getName() + "." + f.getName());
+                    nulled++;
                 } catch (Exception e) {
-                    log.debug("[{}] Failed to clear MethodProxy field {} on {}: {}",
+                    log.debug("[{}] Failed to clear static field {} on {}: {}",
                             lingId, f.getName(), enhancedClass.getName(), e.getMessage());
                 }
             }
             if (nulled > 0 || internalsCleared > 0) {
-                log.info("[{}] {}: MethodProxy static nulled={}, internalsCleared={}",
+                log.info("[{}] {}: CGLIB static nulled={}, MethodProxyInternalsCleared={}",
                         lingId, enhancedClass.getName(), nulled, internalsCleared);
             }
         } catch (Exception e) {
-            log.debug("[{}] Failed to scan MethodProxy fields on {}: {}",
+            log.debug("[{}] Failed to scan static fields on {}: {}",
                     lingId, enhancedClass.getName(), e.getMessage());
         }
         return nulled;

@@ -191,11 +191,18 @@ public class DashboardAutoConfiguration {
     public ContractRoutingService contractRoutingService(
             LingServiceRegistry lingServiceRegistry,
             @Autowired(required = false) ProviderWeightRouter providerWeightRouter,
-            @Autowired(required = false) MigrationStateHolder migrationStateHolder) {
+            @Autowired(required = false) MigrationStateHolder migrationStateHolder,
+            @Autowired(required = false) GovernanceStorage governanceStorage,
+            ObjectMapper objectMapper) {
         // ProviderWeightRouter 由 LingFrameLifecycleBeansConfiguration 装配；
         // dashboard 独立运行（无 starter 依赖）时 fallback 到新建实例，保证不空指针
         ProviderWeightRouter router = providerWeightRouter != null ? providerWeightRouter : new ProviderWeightRouter();
-        return new ContractRoutingService(lingServiceRegistry, router, migrationStateHolder);
+        ContractRoutingService service = new ContractRoutingService(lingServiceRegistry, router, migrationStateHolder);
+        if (governanceStorage != null) {
+            service.setGovernanceStorage(governanceStorage);
+            service.setObjectMapper(objectMapper);
+        }
+        return service;
     }
 
     @Bean
@@ -304,11 +311,12 @@ public class DashboardAutoConfiguration {
             GovernanceStorage governanceStorage,
             GovernanceAdminService governanceAdmin,
             @Autowired(required = false) MigrationStateHolder migrationStateHolder,
+            @Autowired(required = false) ProviderWeightRouter providerWeightRouter,
             ObjectMapper objectMapper) {
-        // MigrationStateHolder 由 starter 装配；dashboard 独立运行时 fallback 到 null，
-        // 迁移阶段重建恢复流程自动降级跳过
+        // MigrationStateHolder / ProviderWeightRouter 由 starter 装配；dashboard 独立运行时 fallback 到 null，
+        // 迁移阶段重建与权重恢复流程自动降级跳过
         return new GovernanceConfigRestorer(governanceStorage, governanceAdmin,
-                migrationStateHolder, objectMapper);
+                migrationStateHolder, providerWeightRouter, objectMapper);
     }
 
     @Bean

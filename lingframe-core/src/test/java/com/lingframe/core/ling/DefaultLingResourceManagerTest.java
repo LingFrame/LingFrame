@@ -9,9 +9,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -183,6 +188,178 @@ class DefaultLingResourceManagerTest {
         DefaultLingResourceManager manager = new DefaultLingResourceManager(eventBus, null);
         manager.shutdown();
         verify(eventBus).unsubscribeAll(anyString());
+    }
+
+    @Nested
+    @DisplayName("孤儿 AutoCloseable 注册与关闭")
+    class OrphanCloseableTests {
+
+        private final String lingId = "ling-a";
+        private final String version = "1.0.0";
+
+        private DefaultLingResourceManager newManager() {
+            return new DefaultLingResourceManager(null, null, null);
+        }
+
+        @Test
+        @DisplayName("版本级关闭按逆注册序 close")
+        void shouldCloseInReverseOrder() {
+            List<String> closeOrder = new ArrayList<>();
+            DefaultLingResourceManager manager = newManager();
+            manager.registerCloseable(lingId, version, tracking("a", closeOrder));
+            manager.registerCloseable(lingId, version, tracking("b", closeOrder));
+            manager.registerCloseable(lingId, version, tracking("c", closeOrder));
+
+            manager.closeResources(lingId, version);
+
+            assertEquals(Arrays.asList("c", "b", "a"), closeOrder);
+        }
+
+        @Test
+        @DisplayName("单一 close 抛异常不阻断其余且继续关闭")
+        void shouldContinueOnSingleCloseFailure() {
+            List<String> closeOrder = new ArrayList<>();
+            DefaultLingResourceManager manager = newManager();
+            manager.registerCloseable(lingId, version, failing("first", closeOrder));
+            manager.registerCloseable(lingId, version, tracking("second", closeOrder));
+            manager.registerCloseable(lingId, version, tracking("third", closeOrder));
+
+            assertDoesNotThrow(() -> manager.closeResources(lingId, version));
+
+            // 逆序：third → second → first(抛异常)，全部被触发
+            assertTrue(closeOrder.contains("second"));
+            assertTrue(closeOrder.contains("third"));
+        }
+
+        @Test
+        @DisplayName("同一实例重复注册只关闭一次")
+        void shouldDeduplicateSameInstance() {
+            List<String> closeOrder = new ArrayList<>();
+            DefaultLingResourceManager manager = newManager();
+            AutoCloseable res = tracking("dup", closeOrder);
+            manager.registerCloseable(lingId, version, res);
+            manager.registerCloseable(lingId, version, res);
+
+            manager.closeResources(lingId, version);
+
+            // 去重后只 close 一次
+            assertEquals(Collections.singletonList("dup"), closeOrder);
+        }
+
+        @Test
+        @DisplayName("不同版本独立隔离，版本级关闭不串扰他人")
+        void shouldIsolateByVersion() {
+            List<String> closeOrder = new ArrayList<>();
+            DefaultLingResourceManager manager = newManager();
+            manager.registerCloseable(lingId, "1.0.0", tracking("v1r", closeOrder));
+            manager.registerCloseable(lingId, "1.0.0", tracking("v1s", closeOrder));
+            manager.registerCloseable(lingId, "1.1.0", tracking("v2xcde", closeOrder));
+
+            manager.closeResources(lingId, "1.0.0");
+
+            // 仅 1.0.0 的逆序关闭；1.1.0 不受影响
+            assertEquals(Arrays.asList("v1s", "v1r"), closeOrder);
+        }
+
+        @Test
+        @DisplayName("版本级关闭后同版本残留为空，再注册由整 Ling 级兜底释放（有界留存不丢失）")
+        void shouldRetainLateRegistrationAndFallbackOnLingClose() {
+            List<String> closeOrder = new ArrayList<>();
+            DefaultLingResourceManager manager = newManager();
+            manager.registerCloseable(lingId, version, tracking("early", closeOrder));
+            manager.closeResources(lingId, version);
+            // 模拟 close 执行期间"迟到"的同版本注册
+            manager.registerCloseable(lingId, version, tracking("late", closeOrder));
+
+            // 版本级再关闭：只关 late（此前的 early 已被摘除）
+            manager.closeResources(lingId, version);
+            // 整 Ling 级兜底：清空所有残留（此时已无）
+            manager.closeResources(lingId);
+
+            // late 无论走版本级还是兜底都必须被关闭
+            assertTrue(closeOrder.contains("early"));
+            assertTrue(closeOrder.contains("late"));
+        }
+
+        @Test
+        @DisplayName("并发：版本级关闭进行中迟到注册有界留存，由整 Ling 兜底释放")
+        void shouldBoundConcurrentLateRegistration() throws Exception {
+            CountDownLatch closeStarted = new CountDownLatch(1);
+            CountDownLatch proceed = new CountDownLatch(1);
+            List<String> closed = new ArrayList<>();
+            DefaultLingResourceManager manager = newManager();
+
+            AutoCloseable blocker = () -> {
+                closeStarted.countDown();
+                proceed.await(5, TimeUnit.SECONDS);
+                closed.add("blocker");
+            };
+            manager.registerCloseable(lingId, version, blocker);
+
+            Thread closer = new Thread(() -> manager.closeResources(lingId, version));
+            closer.start();
+            // 等待 close 已从锁内摘除 blocker 并开始阻塞 close()
+            assertTrue(closeStarted.await(5, TimeUnit.SECONDS));
+
+            // 此刻版本条目已摘除，新的注册在锁内新建条目留存
+            manager.registerCloseable(lingId, version, () -> closed.add("late"));
+            proceed.countDown();
+            closer.join(5000);
+
+            // blocker 已被版本级关闭
+            assertEquals(Collections.singletonList("blocker"), closed);
+
+            // 迟到注册未被版本级关闭误处理，由整 Ling 兜底释放
+            manager.closeResources(lingId);
+            assertEquals(Arrays.asList("blocker", "late"), closed);
+        }
+
+        @Test
+        @DisplayName("提前反注册后不再关闭")
+        void shouldNotCloseAfterUnregister() {
+            List<String> closeOrder = new ArrayList<>();
+            DefaultLingResourceManager manager = newManager();
+            AutoCloseable res = tracking("res", closeOrder);
+            manager.registerCloseable(lingId, version, res);
+            manager.unregisterCloseable(lingId, version, res);
+            manager.closeResources(lingId, version);
+
+            assertTrue(closeOrder.isEmpty());
+        }
+
+        @Test
+        @DisplayName("反注册后残留为空时清理版本与 lingId 条目")
+        void shouldCleanupEmptyEntriesAfterUnregister() {
+            List<String> closeOrder = new ArrayList<>();
+            DefaultLingResourceManager manager = newManager();
+            manager.registerCloseable(lingId, version, tracking("res", closeOrder));
+            manager.unregisterCloseable(lingId, version,
+                    new AutoCloseable() { @Override public void close() { } });
+            // 版本列表只剩"res"仍保留；关空条目不抛错
+            manager.closeResources(lingId, version);
+            assertTrue(closeOrder.contains("res"));
+        }
+
+        @Test
+        @DisplayName("null 参数注册被拒绝不报错")
+        void shouldRejectNullRegistration() {
+            DefaultLingResourceManager manager = newManager();
+            assertDoesNotThrow(() -> manager.registerCloseable(null, version, () -> { }));
+            assertDoesNotThrow(() -> manager.registerCloseable(lingId, null, () -> { }));
+            assertDoesNotThrow(() -> manager.registerCloseable(lingId, version, null));
+            manager.shutdown();
+        }
+
+        private AutoCloseable tracking(String name, List<String> order) {
+            return () -> order.add(name);
+        }
+
+        private AutoCloseable failing(String name, List<String> order) {
+            return () -> {
+                order.add(name);
+                throw new IllegalStateException("boom: " + name);
+            };
+        }
     }
 
     @SuppressWarnings("unchecked")

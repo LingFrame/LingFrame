@@ -271,6 +271,32 @@ public class LingInstance {
         return activeRequests.get() == 0;
     }
 
+    /**
+     * 执行灵元/灵核统一标准探测。
+     * 自动切换当前线程类加载器并在容器上下文内执行探测。
+     *
+     * @param contractId 关联契约 ID（可选）
+     * @return 探测响应状态
+     */
+    public String probe(String contractId) {
+        LingContainer c = container;
+        if (c != null && isReady()) {
+            ClassLoader oldCl = Thread.currentThread().getContextClassLoader();
+            try {
+                ClassLoader cl = getClassLoader();
+                if (cl != null) {
+                    Thread.currentThread().setContextClassLoader(cl);
+                }
+                return c.probe(contractId);
+            } finally {
+                Thread.currentThread().setContextClassLoader(oldCl);
+            }
+        }
+        log.info("[{}] [LingProbe] Health probe ping received, status: {}",
+                instanceId != null ? instanceId : getLingId(), currentStatus());
+        return "OK";
+    }
+
     // 记录此实例中实际注册的服务和方法元数据，防开发环境下类加载器穿透与 Spring 误扫
     private final Map<String, Set<String>> serviceMethods = new ConcurrentHashMap<>();
 

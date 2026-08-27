@@ -4,6 +4,7 @@ import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.routing.MigrationPhase;
 import com.lingframe.core.routing.MigrationStateHolder;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.dashboard.storage.GovernanceConfigRestorer;
 import com.lingframe.dashboard.storage.GovernanceStorage;
 import com.lingframe.dashboard.storage.StorageInitializer;
@@ -16,6 +17,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -137,5 +140,29 @@ class GovernanceConfigRestoreTest {
         assertNotNull(policy.getCapabilities());
         assertNotNull(policy.getAudits());
         assertNotNull(policy.getInvocation());
+    }
+
+    @Test
+    @DisplayName("恢复契约路由权重应写入 ProviderWeightRouter")
+    void restoreRoutingWeights_success() throws Exception {
+        String contractId = "com.example.UserService";
+        Map<String, Integer> weights = new LinkedHashMap<>();
+        weights.put("lingcore-app", 1);
+        weights.put("user-ling:1.0.0", 2);
+        weights.put("user-ling:2.0.0", 1);
+
+        // 准备：写入结构化路由权重配置
+        governanceStorage.saveRoutingWeightConfig(contractId, objectMapper.writeValueAsString(weights));
+
+        ProviderWeightRouter router = new ProviderWeightRouter();
+        GovernanceAdminService mockRegistry = mock(GovernanceAdminService.class);
+        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(
+                governanceStorage, mockRegistry, null, router, objectMapper);
+        restorer.restore();
+
+        // 验证：权重成功恢复到 ProviderWeightRouter
+        assertEquals(1, router.getOverrideWeight(contractId, "lingcore-app"));
+        assertEquals(2, router.getOverrideWeight(contractId, "user-ling:1.0.0"));
+        assertEquals(1, router.getOverrideWeight(contractId, "user-ling:2.0.0"));
     }
 }

@@ -36,6 +36,8 @@ spring:
 lingframe:
   enabled: true
   dev-mode: true
+  # 灵元 Web 路由自动加 /{lingId} 前缀（隔离命名空间，防多灵元路径冲突）
+  prefix-with-ling-id: true
   preload-api-jars:
     - ../lingframe-example-order-api
   ling-home: lings

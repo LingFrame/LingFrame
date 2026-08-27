@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
@@ -44,6 +45,14 @@ import java.util.Map;
  * <p>
  * 测试顺序：卸载测试放最后（{@link #testUnloadLingFallbackToCore}），卸载后灵元不可恢复，
  * 用 {@link TestMethodOrder} 保证卸载在切流验证之后执行。
+ * <p>
+ * <b>共享上下文隔离（务必保持）</b>：本类与 {@code SaasMallGovernanceObservabilityTest}
+ * 使用相同的 {@code @SpringBootTest(classes)} + TestPropertySource，Spring 会缓存并共享同一个
+ * ApplicationContext；而本类的卸载用例（{@code undeploy}）会把灵元从共享上下文的
+ * ServiceRegistry 中移除（REMOVED）。若不加 {@code @DirtiesContext(AFTER_CLASS)}，
+ * 卸载副作用会泄漏给后续测试类（如 GovernanceObservabilityTest 断言「灵核 + 灵元两个 provider」
+ * 会退化为只剩灵核 1 个），且该失败依赖 surefire 的测试执行顺序（CI filesystem 顺序与本地不同），
+ * 表现为「本地通过、CI 偶发失败」。AFTER_CLASS 销毁上下文后，后续测试类重建上下文并重新扫描灵元。
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestPropertySource(properties = {
@@ -51,6 +60,7 @@ import java.util.Map;
         "lingframe.governance-patch-path=${java.io.tmpdir}/lingframe-mall-test-patch.yml"
 })
 @SpringBootTest(classes = SaasMallApplication.class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Slf4j
 @DisplayName("SaaS 商城灵核 + 多灵元契约级切流集成测试")
 public class SaasMallIntegrationTest {
@@ -61,7 +71,7 @@ public class SaasMallIntegrationTest {
     private static final String SECKILL_LING_ID = "saas-seckill-ling";
     private static final String INVENTORY_LING_ID = "saas-inventory-hold-ling";
     // 路由重构后 provider 键恒为 lingId:version：灵核为 lingcore-app:permanent，灵元为 lingId:1.0.0
-    private static final String CORE_ID = LingCoreConstants.LINGCORE_LING_ID + ":" + LingCoreConstants.LINGCORE_VERSION;
+    private static final String CORE_ID = LingCoreConstants.LINGCORE_LING_ID;
     // 灵元 provider 键的版本段
     private static final String LING_VERSION = "1.0.0";
 

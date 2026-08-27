@@ -218,6 +218,7 @@ public class MetricsController {
                 .metaspaceUsedKB(jvm.getMetaspaceUsedKB())
                 .metaspaceMaxKB(jvm.getMetaspaceMaxKB())
                 .metaspaceUsage(jvm.getMetaspaceUsagePercent())
+                .compressedClassSpaceUsedKB(jvm.getCompressedClassSpaceUsedKB())
                 // 类加载
                 .loadedClassCount(jvm.getLoadedClassCount())
                 .totalLoadedClassCount(jvm.getTotalLoadedClassCount())

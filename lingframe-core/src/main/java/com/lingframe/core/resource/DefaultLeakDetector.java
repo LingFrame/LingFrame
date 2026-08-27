@@ -10,6 +10,7 @@ import com.lingframe.core.spi.LingUnloadHook;
 import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
+import java.lang.ref.PhantomReference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -154,7 +155,7 @@ public class DefaultLeakDetector implements LeakDetector {
     }
 
     private void detectLeakAggressive(String lingId, String version, ClassLoader classLoader, long triggerTimeMillis) {
-        WeakReference<ClassLoader> reference = new WeakReference<>(classLoader);
+        LeakReference reference = new LeakReference(lingId, version, MODE_DEV_AGGRESSIVE, triggerTimeMillis, classLoader, referenceQueue);
         if (!tryAcquireAggressiveSlot()) {
             log.debug("[{}-{}] Aggressive leak detection throttled, using bounded confirmation", lingId, version);
             scheduleBoundedConfirmation(lingId, version, reference, triggerTimeMillis);
@@ -171,7 +172,9 @@ public class DefaultLeakDetector implements LeakDetector {
                         if (!sleepQuietly(aggressiveGcIntervalMillis)) {
                             return;
                         }
-                        if (reference.get() == null) {
+                        // 用 isEnqueued() 判定回收：referent 被 GC 且 JVM 完成 reference-processing 入队后才 true，
+                        // 比 reference.get()==null 可靠（后者可能被 JVM 提前清空造成假阳性）
+                        if (reference.isCollected()) {
                             publishLeakDetection(
                                     lingId,
                                     version,
@@ -203,7 +206,7 @@ public class DefaultLeakDetector implements LeakDetector {
 
     private void scheduleBoundedConfirmation(String lingId,
                                              String version,
-                                             WeakReference<ClassLoader> reference,
+                                             LeakReference reference,
                                              long triggerTimeMillis) {
         scheduler.schedule(() -> scheduleFinalConfirmation(
                         lingId,
@@ -219,7 +222,7 @@ public class DefaultLeakDetector implements LeakDetector {
 
     private void scheduleFinalConfirmation(String lingId,
                                            String version,
-                                           WeakReference<ClassLoader> reference,
+                                           LeakReference reference,
                                            long triggerTimeMillis,
                                            String detectionMode,
                                            boolean triggerGc,
@@ -230,7 +233,7 @@ public class DefaultLeakDetector implements LeakDetector {
                 runPreGcCleaners(lingId, reference);
                 System.gc();
             }
-            if (reference.get() == null) {
+            if (reference.isCollected()) {
                 publishLeakDetection(
                         lingId,
                         version,
@@ -395,6 +398,7 @@ public class DefaultLeakDetector implements LeakDetector {
     }
 
     private static final class LeakReference extends WeakReference<ClassLoader> {
+        final PhantomReference<ClassLoader> phantom;
         private final String lingId;
         private final String version;
         private final String detectionMode;
@@ -407,11 +411,16 @@ public class DefaultLeakDetector implements LeakDetector {
                               long triggerTimeMillis,
                               ClassLoader referent,
                               ReferenceQueue<? super ClassLoader> queue) {
-            super(referent, queue);
+            super(referent);
+            this.phantom = new PhantomReference<>(referent, queue);
             this.lingId = lingId;
             this.version = version;
             this.detectionMode = detectionMode;
             this.triggerTimeMillis = triggerTimeMillis;
+        }
+
+        boolean isCollected() {
+            return phantom.isEnqueued();
         }
 
         private boolean tryReport() {

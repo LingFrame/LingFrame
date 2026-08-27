@@ -240,6 +240,12 @@ public class LingFrameConfig implements LingFrameInfo {
     @Builder.Default
     private final int defaultThreadsPerLing = 2;
 
+    /**
+     * 灵元 Web 路由是否自动添加 /{lingId} 前缀，默认为 false（保持 Controller 原生路径）
+     */
+    @Builder.Default
+    private final boolean prefixWithLingId = false;
+
     // ================= 灵核治理配置 =================
 
     /**

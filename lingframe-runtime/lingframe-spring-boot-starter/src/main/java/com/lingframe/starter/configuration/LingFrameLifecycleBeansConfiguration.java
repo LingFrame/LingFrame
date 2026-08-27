@@ -74,7 +74,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * 生命周期与治理主链装配切片。
  */
-@Configuration
+@Configuration(proxyBeanMethods = false)
 public class LingFrameLifecycleBeansConfiguration {
 
     private static final AtomicBoolean BOOTSTRAP_DONE = new AtomicBoolean(false);

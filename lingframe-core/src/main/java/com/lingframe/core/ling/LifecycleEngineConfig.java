@@ -50,7 +50,11 @@ public class LifecycleEngineConfig {
     private final LingUnloadCoordinator unloadCoordinator;
     private final RuntimeCoordinator runtimeCoordinator;
 
-    // ==================== 可选依赖（默认 null，装配层按需注入） ====================
+    // ==================== 可选依赖（默认 null / 默认值，装配层按需注入） ====================
+
+    /** 生命周期互斥锁获取超时（毫秒），默认 120s，应大于最大 forceCleanupDelaySeconds */
+    @Builder.Default
+    private final long lifecycleLockTimeoutMs = 120_000L;
 
     @Builder.Default
     private final LingHotSwapWatcher hotSwapWatcher = null;

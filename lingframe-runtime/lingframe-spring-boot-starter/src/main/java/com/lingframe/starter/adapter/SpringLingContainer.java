@@ -3,6 +3,7 @@ package com.lingframe.starter.adapter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
+import com.lingframe.api.ling.LingProbe;
 import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.ling.BusinessInterfaceFilter;
 import com.lingframe.core.ling.LingServiceRegistrar;
@@ -291,7 +292,8 @@ public class SpringLingContainer implements LingContainer {
             return;
         }
         String lingId = lingContext.getLingId();
-        LingWebMetadataExtractor extractor = new LingWebMetadataExtractor(version, classLoader, context);
+        boolean prefixWithLingId = lingFrameInfo != null && lingFrameInfo.isPrefixWithLingId();
+        LingWebMetadataExtractor extractor = new LingWebMetadataExtractor(version, classLoader, context, prefixWithLingId);
 
         Map<String, Object> controllers = context.getBeansWithAnnotation(RestController.class);
         for (Map.Entry<String, Object> entry : controllers.entrySet()) {
@@ -454,6 +456,30 @@ public class SpringLingContainer implements LingContainer {
     @Override
     public ClassLoader getClassLoader() {
         return this.classLoader;
+    }
+
+    @Override
+    public String probe(String contractId) {
+        String lingInfo = (lingContext != null && lingContext.getLingId() != null)
+                ? (lingContext.getLingId() + (version != null ? ("@" + version) : ""))
+                : (version != null ? version : "ling-container");
+
+        // 1. 若灵元内部注册了自定义 LingProbe Bean，优先委托其执行
+        if (context != null && context.isActive()) {
+            try {
+                LingProbe customProbe = context.getBean(LingProbe.class);
+                if (customProbe != null) {
+                    return customProbe.probe(contractId);
+                }
+            } catch (Exception ignored) {
+                // 未注册自定义 LingProbe，走默认标准探针
+            }
+        }
+
+        // 2. 默认标准探针：在灵元自身容器中输出标准健康探测日志
+        log.info("[{}] [LingProbe] Health probe ping received, container is ACTIVE, contract: {}",
+                lingInfo, contractId);
+        return "OK";
     }
 
     /**

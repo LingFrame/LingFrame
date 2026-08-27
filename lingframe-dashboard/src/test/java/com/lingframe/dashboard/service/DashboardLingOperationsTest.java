@@ -39,7 +39,7 @@ class DashboardLingOperationsTest {
     @Test
     @DisplayName("卸载灵元时应移除灰度配置并写入时间线")
     void shouldRemoveCanaryConfigAndRecordTimelineWhenUninstallingLing() {
-        LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
+        LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class, org.mockito.Mockito.CALLS_REAL_METHODS);
         LingRepository lingRepository = mock(LingRepository.class);
         DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
         DashboardLingSourceResolver sourceResolver = mock(DashboardLingSourceResolver.class);
@@ -59,7 +59,7 @@ class DashboardLingOperationsTest {
     @Test
     @DisplayName("热重载时应部署新版本、卸载旧版本并写入时间线")
     void shouldReloadLingThroughSourceResolverAndLifecycleEngine() {
-        LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
+        LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class, org.mockito.Mockito.CALLS_REAL_METHODS);
         LingRepository lingRepository = mock(LingRepository.class);
         DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
         DashboardLingSourceResolver sourceResolver = mock(DashboardLingSourceResolver.class);
@@ -98,7 +98,7 @@ class DashboardLingOperationsTest {
     @Test
     @DisplayName("默认实例重载后已被替换流程回收时不再重复卸载旧实例")
     void shouldSkipUninstallWhenOldDefaultAlreadyReclaimed() {
-        LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
+        LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class, org.mockito.Mockito.CALLS_REAL_METHODS);
         LingRepository lingRepository = mock(LingRepository.class);
         DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
         DashboardLingSourceResolver sourceResolver = mock(DashboardLingSourceResolver.class);
@@ -137,7 +137,7 @@ class DashboardLingOperationsTest {
     @Test
     @DisplayName("当源码无法定位时热重载应失败")
     void shouldFailReloadWhenSourceCannotBeResolved() {
-        LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class);
+        LingLifecycleEngine lifecycleEngine = mock(LingLifecycleEngine.class, org.mockito.Mockito.CALLS_REAL_METHODS);
         LingRepository lingRepository = mock(LingRepository.class);
         DashboardLifecycleEventStore eventStore = new DashboardLifecycleEventStore();
         DashboardLingSourceResolver sourceResolver = mock(DashboardLingSourceResolver.class);

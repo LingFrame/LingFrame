@@ -83,4 +83,10 @@ public class LingCoreContainerAdapter implements LingContainer {
     public ClassLoader getClassLoader() {
         return coreClassLoader;
     }
+
+    @Override
+    public String probe(String contractId) {
+        log.info("[lingcore-app] [LingProbe] Health probe ping received, Core baseline is ACTIVE, contract: {}", contractId);
+        return "OK";
+    }
 }

@@ -10,6 +10,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -197,6 +198,69 @@ class ThreadReferenceUnloadHookSupplementTest {
         } finally {
             t.interrupt();
             t.join(2000);
+        }
+    }
+
+    @Test
+    @DisplayName("cleanup 应关闭直接继承 Thread 的工作线程外层遗留池（Quartz 模式）")
+    void shouldShutdownLegacyPoolViaThreadFields() throws Exception {
+        // 从 Worker 追溯遗留池依赖反射读取 Thread.target（target 为 null 时走自身字段分支）
+        assumeTrue(JvmCleanupSupport.THREAD_TARGET_FIELD != null,
+                "需要 --add-opens java.base/java.lang=ALL-UNNAMED 以反射读取 Thread.target");
+
+        ClassLoader customCL = new ClassLoader() {
+        };
+        AtomicBoolean shutdownFlag = new AtomicBoolean(false);
+        WorkerWithPool worker = new WorkerWithPool(customCL, shutdownFlag);
+        try {
+            worker.start();
+            assertTrue(worker.awaitStarted(2, TimeUnit.SECONDS), "工作线程应已启动");
+
+            // 执行清理：应识别到 Thread 自身字段持有的遗留池并调用 shutdown(false)
+            assertDoesNotThrow(() -> hook.cleanup("ling-legacy", customCL));
+            assertTrue(shutdownFlag.get(), "外层遗留线程池应被 shutdown");
+        } finally {
+            worker.interrupt();
+            worker.join(2000);
+        }
+    }
+
+    /** 模拟直接继承 Thread 的工作线程（如 Quartz SimpleThreadPool$WorkerThread）：外层池引用定义在自身字段 */
+    private static class WorkerWithPool extends Thread {
+        private final LegacyPool pool;
+        private final CountDownLatch started = new CountDownLatch(1);
+
+        WorkerWithPool(ClassLoader cl, AtomicBoolean shutdownFlag) {
+            super("worker-legacy-test");
+            this.pool = new LegacyPool(shutdownFlag);
+            setContextClassLoader(cl);
+        }
+
+        @Override
+        public void run() {
+            started.countDown();
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        boolean awaitStarted(long timeout, TimeUnit unit) throws InterruptedException {
+            return started.await(timeout, unit);
+        }
+    }
+
+    /** 模拟 Quartz SimpleThreadPool：仅暴露 shutdown(boolean)，供反射调用 */
+    private static class LegacyPool {
+        private final AtomicBoolean shutdownFlag;
+
+        LegacyPool(AtomicBoolean shutdownFlag) {
+            this.shutdownFlag = shutdownFlag;
+        }
+
+        public void shutdown(boolean waitForJobsToComplete) {
+            shutdownFlag.set(true);
         }
     }
 }

@@ -7,6 +7,7 @@ import com.lingframe.api.event.lifecycle.LingInstalledEvent;
 import com.lingframe.api.event.lifecycle.LingInstallingEvent;
 import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.api.event.lifecycle.LingUninstallingEvent;
+import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.api.exception.RoutingArchitectureViolationException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionService;
@@ -41,6 +42,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 
 /**
@@ -69,6 +75,10 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     private LingHotSwapWatcher hotSwapWatcher;
     private MigrationStateHolder migrationStateHolder;
 
+    // 资源托管：注入 LingResourceManager 供 createLingContext 装配 registerCloseable，
+    // 并用于安装失败回滚收敛孤儿资源清理。可为 null（老装配/测试缺失时降级为不托管）。
+    private final LingResourceManager lingResourceManager;
+
     private final InstanceCoordinator instanceCoordinator;
     private final RuntimeCoordinator runtimeCoordinator;
 
@@ -76,6 +86,36 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     private LingGovernanceMetricsCollector governanceMetricsCollector;
     private LingAlertManager alertManager;
     private LeakDetector leakDetector;
+
+    private final long lifecycleLockTimeoutMs;
+    private final Map<String, LockWrapper> lifecycleLocks = new ConcurrentHashMap<>();
+
+    /**
+     * 全量卸载的「卸载完成」通知登记表：lingId → 待收的泄漏检测计数。
+     * <p>
+     * LingUninstalledEvent 不再在 doFullUndeploy 末尾同步发布，而是等泄漏检测
+     * （{@link MonitoringEvents.LeakDetectionEvent}，GC 回收验证结论）到齐后再由
+     * {@link #onLeakDetection} 发布 —— 保证前端列表刷新发生在 ClassLoader 回收验证之后。
+     * 热替换/版本卸载的检测事件（lingId 未登记）会被忽略，不会误发卸载完成事件。
+     */
+    private final Map<String, PendingUninstallNotification> pendingUninstallNotifications = new ConcurrentHashMap<>();
+
+    /** 卸载完成通知的兜底时限：异常场景（如 null ClassLoader 未触发检测）下超时仍发事件，保证列表刷新不丢失。 */
+    private static final long UNINSTALL_NOTIFY_FALLBACK_MS = 30_000L;
+
+    private static final class PendingUninstallNotification {
+        final AtomicInteger remaining;
+        volatile boolean leaked;
+
+        PendingUninstallNotification(int expectedDetections) {
+            this.remaining = new AtomicInteger(Math.max(1, expectedDetections));
+        }
+    }
+
+    private static class LockWrapper {
+        final ReentrantLock lock = new ReentrantLock();
+        final AtomicInteger holdCount = new AtomicInteger(0);
+    }
 
     public DefaultLingLifecycleEngine(LifecycleEngineConfig config) {
         Objects.requireNonNull(config, "LifecycleEngineConfig is required");
@@ -97,6 +137,9 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         this.unloadCoordinator = Objects.requireNonNull(config.getUnloadCoordinator(),
                 "unloadCoordinator is required (assemble a complete LingUnloadCoordinator at the wiring layer)");
 
+        // 资源管理器为可选依赖（老装配可缺失），缺失时 createLingContext 降级为不托管孤儿资源
+        this.lingResourceManager = config.getLingResourceManager();
+
         this.hotSwapWatcher = config.getHotSwapWatcher();
         this.migrationStateHolder = config.getMigrationStateHolder();
         this.metricsCollector = config.getMetricsCollector();
@@ -107,6 +150,73 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         // leakDetector：优先用 Builder 显式注入的，否则从 unloadCoordinator 派生
         LeakDetector explicitLeakDetector = config.getLeakDetector();
         this.leakDetector = explicitLeakDetector != null ? explicitLeakDetector : this.unloadCoordinator.getLeakDetector();
+
+        this.lifecycleLockTimeoutMs = config.getLifecycleLockTimeoutMs() > 0
+                ? config.getLifecycleLockTimeoutMs()
+                : 120_000L;
+
+        // 全局监听泄漏检测结论：全量卸载时据此在验证完成后发布 LingUninstalledEvent（事件换位置，公共契约零变更）
+        eventBus.subscribeGlobal(MonitoringEvents.LeakDetectionEvent.class, this::onLeakDetection);
+    }
+
+    @Override
+    public <T> T withLifecycleLock(String lingId, Callable<T> action) {
+        if (lingId == null || lingId.trim().isEmpty()) {
+            throw new IllegalArgumentException("lingId must not be null or blank");
+        }
+        Objects.requireNonNull(action, "action must not be null");
+        ReentrantLock lock = acquireLifecycleLock(lingId);
+        try {
+            return action.call();
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            lock.unlock();
+            releaseLifecycleLock(lingId);
+        }
+    }
+
+    private ReentrantLock acquireLifecycleLock(String lingId) {
+        LockWrapper wrapper = lifecycleLocks.compute(lingId, (k, oldVal) -> {
+            if (oldVal == null) {
+                oldVal = new LockWrapper();
+            }
+            oldVal.holdCount.incrementAndGet();
+            return oldVal;
+        });
+        try {
+            if (!wrapper.lock.tryLock(lifecycleLockTimeoutMs, TimeUnit.MILLISECONDS)) {
+                lifecycleLocks.computeIfPresent(lingId, (k, val) -> {
+                    if (val.holdCount.decrementAndGet() <= 0) {
+                        return null;
+                    }
+                    return val;
+                });
+                throw new IllegalStateException("Acquire lifecycle lock timeout: lingId=" + lingId
+                        + ", timeout=" + lifecycleLockTimeoutMs + "ms");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            lifecycleLocks.computeIfPresent(lingId, (k, val) -> {
+                if (val.holdCount.decrementAndGet() <= 0) {
+                    return null;
+                }
+                return val;
+            });
+            throw new IllegalStateException("Acquire lifecycle lock interrupted: lingId=" + lingId, e);
+        }
+        return wrapper.lock;
+    }
+
+    private void releaseLifecycleLock(String lingId) {
+        lifecycleLocks.computeIfPresent(lingId, (k, val) -> {
+            if (val.holdCount.decrementAndGet() <= 0) {
+                return null;
+            }
+            return val;
+        });
     }
 
     @Override
@@ -172,7 +282,17 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
     private void deployInternal(LingDefinition lingDefinition, File sourceFile, boolean isDefault,
                                 Map<String, String> labels, boolean allowSameVersion) {
+        Objects.requireNonNull(lingDefinition, "lingDefinition is required");
         lingDefinition.validate();
+        String lingId = lingDefinition.getId();
+        withLifecycleLock(lingId, () -> {
+            doDeployInternal(lingDefinition, sourceFile, isDefault, labels, allowSameVersion);
+            return null;
+        });
+    }
+
+    private void doDeployInternal(LingDefinition lingDefinition, File sourceFile, boolean isDefault,
+                                  Map<String, String> labels, boolean allowSameVersion) {
         String lingId = lingDefinition.getId();
         String version = lingDefinition.getVersion();
         eventBus.publish(new LingInstallingEvent(lingId, version, sourceFile));
@@ -210,7 +330,8 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         } catch (Throwable t) {
             log.error("Failed to install ling: {} v{}", lingId, version, t);
             rollbackNewRuntimeRegistration(lingId, isNewRuntime);
-            cleanupOnFailure(lingClassLoader, container);
+            // 透传 lingId/version：onStart 内已注册的孤儿资源随回滚释放，避免泄漏
+            cleanupOnFailure(lingId, version, lingClassLoader, container);
             throw t;
         }
     }
@@ -222,6 +343,16 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
     @Override
     public void recover(String lingId, String version) {
+        if (lingId == null || lingId.trim().isEmpty()) {
+            throw new IllegalArgumentException("lingId must not be null or blank");
+        }
+        withLifecycleLock(lingId, () -> {
+            doRecover(lingId, version);
+            return null;
+        });
+    }
+
+    private void doRecover(String lingId, String version) {
         LingRuntime runtime = findRuntimeOrWarn(lingId);
         if (runtime == null) {
             throw new IllegalStateException("Ling not found: " + lingId);
@@ -256,6 +387,13 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
     @Override
     public LingUninstallResult undeployWithReport(String lingId) {
+        if (lingId == null || lingId.trim().isEmpty()) {
+            return LingUninstallResult.notTriggered(lingId, null, Collections.emptyList());
+        }
+        return withLifecycleLock(lingId, () -> doUndeployWithReport(lingId));
+    }
+
+    private LingUninstallResult doUndeployWithReport(String lingId) {
         // 灵核判断改为类型判断：灵核不是 LingRuntime（是 LingCoreRoutableTarget），
         // getRuntime 返回 null，因此「不是 LingRuntime」即「不可卸载」。
         // 灵核不进 RuntimeCoordinator.machines，shutdown/transition 在 fsm == null 时直接拒绝。
@@ -305,6 +443,13 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
     @Override
     public LingUninstallResult undeployWithReport(String lingId, String version) {
+        if (lingId == null || lingId.trim().isEmpty()) {
+            return LingUninstallResult.notTriggered(lingId, version, Collections.emptyList());
+        }
+        return withLifecycleLock(lingId, () -> doUndeployWithReport(lingId, version));
+    }
+
+    private LingUninstallResult doUndeployWithReport(String lingId, String version) {
         // 灵核判断改为类型判断（同无版本重载）
         if (lingRepository.getRuntime(lingId) == null) {
             if (lingRepository.getRoutableTarget(lingId) != null) {
@@ -334,10 +479,16 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
     @Override
     public void undeploy(String lingId, LingInstance instance) {
-        if (instance == null) {
+        if (instance == null || lingId == null || lingId.trim().isEmpty()) {
             return;
         }
+        withLifecycleLock(lingId, () -> {
+            doUndeploy(lingId, instance);
+            return null;
+        });
+    }
 
+    private void doUndeploy(String lingId, LingInstance instance) {
         LingRuntime runtime = findRuntimeOrWarn(lingId);
         if (runtime == null) {
             return;
@@ -420,6 +571,13 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
      * @return 创建好的 LingInstance
      */
     public LingInstance bootstrapLingCoreInstance(String lingId, LingContainer container, String version) {
+        if (lingId == null || lingId.trim().isEmpty()) {
+            throw new IllegalArgumentException("lingId must not be null or blank");
+        }
+        return withLifecycleLock(lingId, () -> doBootstrapLingCoreInstance(lingId, container, version));
+    }
+
+    private LingInstance doBootstrapLingCoreInstance(String lingId, LingContainer container, String version) {
         log.info("Bootstrapping ling core instance: lingId={}, version={}", lingId, version);
 
         // 1. 构造 LingDefinition + LingInstance(与灵元 deploy 路径对称)
@@ -457,7 +615,8 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
                 lingServiceRegistry,
                 pipelineEngine,
                 permissionService,
-                eventBus);
+                eventBus,
+                lingResourceManager);
     }
 
     private void startPreparedInstance(LingInstance instance, LingContext context) {
@@ -676,6 +835,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             return;
         }
         if (runtime.getInstancePool().getAllInstances().isEmpty()) {
+            // 最后一版由全量卸载路径 finalizeRuntimeRemovalIfEmpty -> doFullUndeploy -> clearServiceRegistry 接管执行 evict
             return;
         }
         lingServiceRegistry.evictProvider(lingId, version);
@@ -719,6 +879,11 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         eventBus.publish(new LingUninstallingEvent(lingId));
         unregisterHotSwapWatcher(lingId);
         enterRuntimeStopping(lingId, runtime);
+        // 先登记「卸载完成」通知（按实例数等待泄漏检测事件到齐），再排空实例：
+        // 检测是异步延迟的，登记先于事件到达，保证不漏。
+        PendingUninstallNotification pending = new PendingUninstallNotification(
+                runtime.getInstancePool().getAllInstances().size());
+        pendingUninstallNotifications.put(lingId, pending);
         unloadAllInstances(lingId, runtime);
         clearServiceRegistry(lingId);
         finalizeLingRemoval(lingId);
@@ -726,7 +891,49 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         // （实例清空后 reevaluate 常落到 INACTIVE，旧 purge 会空操作留下 ghost）
         runtimeCoordinator.unregister(lingId);
         lingRepository.unregister(lingId);
-        eventBus.publish(new LingUninstalledEvent(lingId));
+        // 事件换位置：不再在此同步发 LingUninstalledEvent；等泄漏验证（LeakDetectionEvent 到齐）完成后
+        // 由 onLeakDetection 发布，保证前端列表刷新发生在 ClassLoader 回收验证之后；超时由兜底线程保证不丢失。
+        scheduleUninstallNotifyFallback(lingId, pending);
+    }
+
+    /**
+     * 泄漏检测结论处理：全量卸载登记的 ling 在检测到齐（GC 回收验证完成）后发布 {@link LingUninstalledEvent}。
+     * <p>
+     * 热替换（HotSwapWatcher）与版本卸载也会触发检测，但其 lingId 不在登记表内，直接忽略，不会误发。
+     */
+    private void onLeakDetection(MonitoringEvents.LeakDetectionEvent event) {
+        PendingUninstallNotification pending = pendingUninstallNotifications.get(event.getLingId());
+        if (pending == null) {
+            return;
+        }
+        if (!event.isCollected()) {
+            pending.leaked = true;
+        }
+        if (pending.remaining.decrementAndGet() <= 0) {
+            pendingUninstallNotifications.remove(event.getLingId());
+            eventBus.publish(new LingUninstalledEvent(event.getLingId(), pending.leaked));
+        }
+    }
+
+    /**
+     * 卸载完成通知的兜底：异常场景（如 null ClassLoader 未触发检测、检测被吞）下，
+     * 超时后仍发布事件，保证前端列表刷新不丢失。正常路径检测事件先到，兜底线程空转退出。
+     */
+    private void scheduleUninstallNotifyFallback(String lingId, PendingUninstallNotification pending) {
+        Thread fallback = new Thread(() -> {
+            try {
+                Thread.sleep(UNINSTALL_NOTIFY_FALLBACK_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (pendingUninstallNotifications.get(lingId) == pending) {
+                pendingUninstallNotifications.remove(lingId);
+                eventBus.publish(new LingUninstalledEvent(lingId, pending.leaked));
+            }
+        }, "ling-uninstall-notify-fallback");
+        fallback.setDaemon(true);
+        fallback.start();
     }
 
     private void unregisterHotSwapWatcher(String lingId) {
@@ -768,6 +975,11 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         permissionService.removeLing(lingId);
     }
 
+    @Override
+    public boolean awaitUnloadCleanup(String lingId, long timeoutMs) {
+        return unloadCoordinator.awaitCleanup(lingId, timeoutMs);
+    }
+
     private void closeClassLoader(String lingId, String version, ClassLoader classLoader) {
         if (classLoader instanceof AutoCloseable) {
             try {
@@ -778,7 +990,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         }
     }
 
-    private void cleanupOnFailure(ClassLoader classLoader, LingContainer container) {
+    private void cleanupOnFailure(String lingId, String version, ClassLoader classLoader, LingContainer container) {
         if (container != null) {
             try {
                 container.stop();
@@ -787,7 +999,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             }
         }
 
-        unloadCoordinator.onFailureCleanup(classLoader);
+        unloadCoordinator.onFailureCleanup(lingId, version, classLoader);
 
         if (classLoader instanceof AutoCloseable) {
             try {

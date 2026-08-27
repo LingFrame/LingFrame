@@ -276,8 +276,8 @@ class TrafficMetricsFilterTest {
         }
 
         @Test
-        @DisplayName("非超时类型化错误即使消息含 timeout 字样也不应判为超时（类型化信号优先）")
-        void nonTimeoutTypedErrorNotCountedAsTimeout() throws Throwable {
+        @DisplayName("治理拒绝（如 RATE_LIMITED）应记为治理拒绝指标，而非业务失败（不污染健康错误率）")
+        void governanceRejectionRecordedAsGovernanceRejectionNotFailure() throws Throwable {
             MetricsCollector collector = mock(MetricsCollector.class);
             LingHealthMetrics healthMetrics = mock(LingHealthMetrics.class);
             when(collector.getOrCreate(anyString())).thenReturn(healthMetrics);
@@ -296,7 +296,31 @@ class TrafficMetricsFilterTest {
             } catch (LingInvocationException ignored) {
             }
 
-            verify(healthMetrics).recordFailure(anyLong(), eq(false));
+            verify(healthMetrics).recordGovernanceRejection(anyLong());
+            verify(healthMetrics, never()).recordFailure(anyLong(), anyBoolean());
+        }
+
+        @Test
+        @DisplayName("真实业务异常（RuntimeException）仍计为业务失败")
+        void businessExceptionStillCountsAsFailure() throws Throwable {
+            MetricsCollector collector = mock(MetricsCollector.class);
+            LingHealthMetrics healthMetrics = mock(LingHealthMetrics.class);
+            when(collector.getOrCreate(anyString())).thenReturn(healthMetrics);
+            when(collector.getOrCreate(anyString(), any())).thenReturn(healthMetrics);
+
+            TrafficMetricsFilter filter = new TrafficMetricsFilter(null, collector);
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setServiceFQSID("ling-1:Service");
+
+            try {
+                filter.doFilter(ctx, (c) -> {
+                    throw new RuntimeException("real biz error");
+                });
+            } catch (RuntimeException ignored) {
+            }
+
+            verify(healthMetrics).recordFailure(anyLong(), anyBoolean());
+            verify(healthMetrics, never()).recordGovernanceRejection(anyLong());
         }
     }
 

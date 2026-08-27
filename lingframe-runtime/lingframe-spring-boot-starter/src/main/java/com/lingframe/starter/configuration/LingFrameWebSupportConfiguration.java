@@ -23,7 +23,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
  * 可重复读 Filter 由 boot2/boot3 starter 类型化注册（单一注册点）。
  */
 @Slf4j
-@Configuration
+@Configuration(proxyBeanMethods = false)
 public class LingFrameWebSupportConfiguration {
 
     @Bean
@@ -60,7 +60,7 @@ public class LingFrameWebSupportConfiguration {
         };
     }
 
-    @Configuration
+    @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(io.swagger.v3.oas.models.OpenAPI.class)
     static class SpringDocIntegrationConfiguration {
 

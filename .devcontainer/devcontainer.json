@@ -4,18 +4,11 @@
     "dockerfile": "Dockerfile",
     "context": "."
   },
-  "features": {
-    "ghcr.io/devcontainers/features/java:1": {
-      "version": "17",
-      "installMaven": "true"
-    }
-  },
   "customizations": {
     "vscode": {
       "extensions": [
         "vscjava.vscode-java-pack",
         "vscjava.vscode-spring-boot-dashboard",
-        "redhat.fabric8-analytics",
         "sonarsource.sonarlint-vscode",
         "github.copilot",
         "eamodio.gitlens"
@@ -36,7 +29,7 @@
       }
     }
   },
-  "postCreateCommand": "sudo update-alternatives --set java /usr/lib/jvm/java-8-openjdk-amd64/bin/java && mvn clean install -DskipTests -q && echo '✅ LingFrame环境就绪！默认JDK8 已激活' && java -version",
+  "postCreateCommand": "bash -lc 'source /usr/local/sdkman/bin/sdkman-init.sh && mvn -q -DskipTests -Dcheckstyle.skip -Dspotbugs.skip -Djacoco.skip=true install && echo \"✅ LingFrame 环境就绪！默认JDK8 已激活\" && java -version'",
   "forwardPorts": [8080],
   "hostRequirements": {
     "cpus": 4,
