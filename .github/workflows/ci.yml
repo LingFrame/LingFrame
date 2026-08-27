@@ -30,17 +30,14 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      # reuseForks=false 统一作用于整个 reactor：
-      # 1) core（~1166 测试 + 大量自定义 ClassLoader）在单 fork 复用下跑完后偶发 NoClassDefFoundError，
-      #    每个测试类一个新 JVM 可消除类加载器累积（JDK8 收尾阶段引导类解析失败）；
-      # 2) lingframe-spring-boot-starter 同样存在“共享 @Configuration 类 LingTestSpringConfiguration
-      #    被 CGLIB 二次增强”导致的 LinkageError: attempted duplicate class definition 问题，
-      #    同样依赖 reuseForks=false（每个类独立 JVM / 独立 AppClassLoader）规避。
-      # 单条 verify reactor 自洽解析全部模块，无需 install 进 ~/.m2；仅 CI 隔离、pom.xml 不动、本地不受影响。
-      # 注意：示例级集成测试（ObservabilityClosedLoopIntegrationTest）已拆到独立 job example-it-sb2，
+      # 单条 verify reactor 自洽解析全部模块，无需 install 进 ~/.m2。
+      # 默认 reuseForks=true（同一 forked JVM 顺序跑各测试类）即可：
+      # starter 原先“共享 @Configuration 类被 CGLIB 二次增强”的 LinkageError 已在测试代码层通过
+      # proxyBeanMethods=false 根因修复（见 LingTestSpringConfiguration），core 亦无需隔离 fork。
+      # 示例级集成测试（ObservabilityClosedLoopIntegrationTest）已拆到独立 job example-it-sb2，
       # 本步骤只跑单元测试 + 质量门（verify 阶段的 checkstyle/spotbugs），与 SB3 拓扑对齐。
       - name: Build & Test (SB2 / JDK 8)
-        run: mvn -B -T 1C clean verify -Pspring-boot2 -Dsurefire.reuseForks=false -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+        run: mvn -B -T 1C clean verify -Pspring-boot2 -DargLine="-Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
 
       # 覆盖率门控复用：把本步生成的 jacoco exec（位于 ${java.io.tmpdir}/jacoco/default/，见父 POM jacoco 配置）
       # 上传为 artifact，供 coverage-check-sb2 下载后直接 jacoco:check@check，避免 PR 上重跑全量测试。
@@ -134,10 +131,10 @@ jobs:
 
       # 用 install 而非 verify：把 reactor 产物（含公共 starter jar）装入本地仓库，
       # 供后续 SB3 gateway mapping smoke 的 -pl 单模块步骤解析依赖。
-      # 与 SB2 同理：lingframe-spring-boot3-starter 同样存在“共享 @Configuration 类被 CGLIB 二次增强”
-      # 导致的 LinkageError: attempted duplicate class definition，必须 reuseForks=false（每个类独立 JVM）。
+      # 默认 reuseForks=true 即可：SB3 starter 同属“共享 @Configuration 被 CGLIB 二次增强”问题，
+      # 已随 proxyBeanMethods=false 根因修复一并消除，无需 reuseForks=false。
       - name: Build & Test (Spring Boot 3)
-        run: mvn -B -T 1C clean install -Pspring-boot3 -Dsurefire.reuseForks=false -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+        run: mvn -B -T 1C clean install -Pspring-boot3 -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
 
       # 覆盖率门控复用：上传 jacoco exec（${java.io.tmpdir}/jacoco/default/）供 coverage-check-sb3 复用。
       # 必须在下方 SB3 gateway mapping smoke 之前上传——该 smoke 是独立 mvn -pl 单模块 test，
