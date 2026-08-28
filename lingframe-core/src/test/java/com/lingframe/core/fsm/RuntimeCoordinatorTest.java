@@ -689,8 +689,8 @@ class RuntimeCoordinatorTest {
         }
 
         @Test
-        @DisplayName("RECOVERING 下 transition(ACTIVE) 优先于 reevaluate")
-        void recoveringTransitionActiveOverridesReevaluate() {
+        @DisplayName("RECOVERING 意图态压制 reevaluate 并由显式 transition 收口")
+        void recoveringIntentSuppressesReevaluationUntilExplicitTransition() {
             coordinator.register("ling-1");
 
             // READY → ACTIVE
@@ -701,14 +701,36 @@ class RuntimeCoordinatorTest {
                     InstanceStatus.READY, InstanceStatus.ERROR));
             assertEquals(RuntimeStatus.DEGRADED, coordinator.getStatus("ling-1"));
 
-            // 运维触发 RECOVERING
+            // 运维触发 RECOVERING 意图态
             coordinator.transition("ling-1", RuntimeStatus.RECOVERING);
             assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-1"));
 
-            // 实例恢复 READY → reevaluate 推到 ACTIVE
+            // 实例恢复 READY，但 RECOVERING 作为意图态压制普通聚合，宏观状态保持 RECOVERING，不被抢跑
             eventBus.publish(new InstanceStateChangedEvent("ling-1", "v1", "v1",
                     InstanceStatus.ERROR, InstanceStatus.READY));
+            assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-1"));
+
+            // 运维或生命周期引擎显式收口为 ACTIVE
+            TransitionResult<RuntimeStatus> result = coordinator.transition("ling-1", RuntimeStatus.ACTIVE);
+            assertTrue(result.isSuccess());
             assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-1"));
+        }
+
+        @Test
+        @DisplayName("策略评估违背契约输出非 FACT 状态时应被安全拦截且不改变状态")
+        void policyViolatingContractShouldBeSafelyIgnored() {
+            // 构造一个违背契约的策略，试图在聚合中返回意图态 STOPPING
+            RuntimeEvaluationPolicy badPolicy = (current, instances) -> RuntimeStatus.STOPPING;
+            RuntimeCoordinator customCoordinator = new RuntimeCoordinator(eventBus, badPolicy);
+            customCoordinator.register("ling-bad");
+            assertEquals(RuntimeStatus.INACTIVE, customCoordinator.getStatus("ling-bad"));
+
+            // 发布 READY 触发 reevaluate
+            eventBus.publish(new InstanceStateChangedEvent("ling-bad", "v1", "v1",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+
+            // 由于 badPolicy 返回的 STOPPING.kind() != Kind.FACT，被防御拦截，状态保持 INACTIVE
+            assertEquals(RuntimeStatus.INACTIVE, customCoordinator.getStatus("ling-bad"));
         }
     }
 

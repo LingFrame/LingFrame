@@ -340,13 +340,11 @@ public class SimulateService {
     }
 
     /**
-     * 对指定契约执行单次真实微内核模拟演练调用。
+     * 对指定契约执行单次真实微内核模拟演练调用（默认干跑模式）。
      * <p>
-     * 穿透真实的 {@link InvocationPipelineEngine} 流水线与治理拦截器，
-    /**
-     * 执行单步契约微内核路由演练（默认干跑模式）。
+     * 穿透真实的 {@link InvocationPipelineEngine} 流水线与治理拦截器。
      *
-     * @param contractId 契约 ID（如 com.lingframe.ruoyi.contract.ISysStorageService）
+     * @param contractId 契约 ID（如 com.lingframe.example.OrderService）
      * @return 单次演练步进结果
      */
     public ContractStressStepDTO stressContractStep(String contractId) {

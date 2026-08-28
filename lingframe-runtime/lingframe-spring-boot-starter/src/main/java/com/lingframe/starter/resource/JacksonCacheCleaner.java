@@ -39,24 +39,31 @@ final class JacksonCacheCleaner {
                         mappers.add(converter.getObjectMapper());
                     }
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.debug("Failed to resolve MappingJackson2HttpMessageConverter beans: {}", e.getMessage());
             }
             int totalRemoved = 0;
             for (ObjectMapper mapper : mappers) {
-                totalRemoved += clearObjectMapperCaches(mapper, lingClassLoader);
+                if (mapper != null) {
+                    totalRemoved += clearObjectMapper(mapper, lingClassLoader);
+                }
             }
-            log.debug("[{}] Jackson cache cleanup ({}): removed {} entries", lingId, phase, totalRemoved);
+            if (totalRemoved > 0) {
+                log.info("[{}] Jackson cache cleared: {} entries removed (phase: {})",
+                        lingId, totalRemoved, phase);
+            }
         } catch (Exception e) {
-            log.debug("[{}] Jackson cache cleanup failed ({}): {}", lingId, phase, e.getMessage());
+            log.warn("[{}] Failed to clear Jackson cache (phase: {}): {}",
+                    lingId, phase, e.getMessage());
         }
     }
 
-    private int clearObjectMapperCaches(ObjectMapper mapper, ClassLoader lingClassLoader) {
+    private int clearObjectMapper(ObjectMapper mapper, ClassLoader lingClassLoader) {
         int removed = 0;
-        try { removed += clearTypeFactoryCache(mapper.getTypeFactory(), lingClassLoader); } catch (Exception e) { log.trace("TypeFactory cache cleanup failed: {}", e.getMessage()); }
-        try { removed += clearObjectMapperRootDeserializers(mapper, lingClassLoader); } catch (Exception e) { log.trace("RootDeserializers cleanup failed: {}", e.getMessage()); }
-        try { removed += clearDeserializerCache(mapper, lingClassLoader); } catch (Exception e) { log.trace("DeserializerCache cleanup failed: {}", e.getMessage()); }
-        try { removed += clearSerializerCache(mapper, lingClassLoader); } catch (Exception e) { log.trace("SerializerCache cleanup failed: {}", e.getMessage()); }
+        removed += clearTypeFactoryCache(mapper.getTypeFactory(), lingClassLoader);
+        removed += clearObjectMapperRootDeserializers(mapper, lingClassLoader);
+        removed += clearDeserializerCache(mapper, lingClassLoader);
+        removed += clearSerializerCache(mapper, lingClassLoader);
         return removed;
     }
 
@@ -73,7 +80,9 @@ final class JacksonCacheCleaner {
             if (cacheObj instanceof Map<?, ?>) {
                 return removeJacksonMapEntries((Map<?, ?>) cacheObj, lingClassLoader);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.debug("Failed to access Jackson typeCache: {}", e.getMessage());
+        }
         return 0;
     }
 
@@ -86,7 +95,9 @@ final class JacksonCacheCleaner {
             if (cacheObj instanceof Map<?, ?>) {
                 return removeJacksonMapEntries((Map<?, ?>) cacheObj, lingClassLoader);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.debug("Failed to access Jackson _rootDeserializers: {}", e.getMessage());
+        }
         return 0;
     }
 
@@ -106,7 +117,9 @@ final class JacksonCacheCleaner {
             Object cache = cacheField.get(ctx);
             if (cache == null) return 0;
             return clearDeserializerCacheInternal(cache, lingClassLoader);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.debug("Failed to access Jackson _deserializationContext: {}", e.getMessage());
+        }
         return 0;
     }
 
@@ -121,7 +134,9 @@ final class JacksonCacheCleaner {
                 if (mapObj instanceof Map<?, ?>) {
                     removed += removeJacksonMapEntries((Map<?, ?>) mapObj, lingClassLoader);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.debug("Failed to clean Jackson deserializer cache field: {}", e.getMessage());
+            }
         }
         return removed;
     }
@@ -139,7 +154,9 @@ final class JacksonCacheCleaner {
             Object cache = cacheField.get(provider);
             if (cache == null) return 0;
             return clearSerializerCacheInternal(cache, lingClassLoader);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.debug("Failed to access Jackson _serializerCache: {}", e.getMessage());
+        }
         return 0;
     }
 
@@ -154,7 +171,9 @@ final class JacksonCacheCleaner {
                 if (mapObj instanceof Map<?, ?>) {
                     removed += removeJacksonMapEntries((Map<?, ?>) mapObj, lingClassLoader);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.debug("Failed to clean Jackson serializer cache field: {}", e.getMessage());
+            }
         }
         return removed;
     }
@@ -178,7 +197,9 @@ final class JacksonCacheCleaner {
                         it.remove();
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ex) {
+                log.debug("Failed to remove Jackson map entries fallback: {}", ex.getMessage());
+            }
         }
         return before - map.size();
     }
@@ -200,7 +221,9 @@ final class JacksonCacheCleaner {
                 if (raw instanceof Class<?>) {
                     return ((Class<?>) raw).getClassLoader() == cl;
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.debug("Failed to invoke getRawClass on Jackson JavaType: {}", e.getMessage());
+            }
             try {
                 Field f = SpringCleanupSupport.findFieldInHierarchy(obj.getClass(), "_class");
                 if (f == null) {
@@ -213,7 +236,9 @@ final class JacksonCacheCleaner {
                         return ((Class<?>) raw).getClassLoader() == cl;
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.debug("Failed to inspect Jackson _class field: {}", e.getMessage());
+            }
         }
         if (cn.contains("TypeKey")) {
             try {
@@ -233,7 +258,9 @@ final class JacksonCacheCleaner {
                         return true;
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.debug("Failed to inspect Jackson TypeKey fields: {}", e.getMessage());
+            }
         }
         if (cn.contains("ClassKey")) {
             try {
@@ -248,7 +275,9 @@ final class JacksonCacheCleaner {
                         return ((Class<?>) raw).getClassLoader() == cl;
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                log.debug("Failed to inspect Jackson ClassKey clazz field: {}", e.getMessage());
+            }
         }
         return false;
     }

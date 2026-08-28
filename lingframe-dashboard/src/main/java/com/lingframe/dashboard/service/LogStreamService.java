@@ -19,7 +19,9 @@ import org.springframework.http.MediaType;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.*;
@@ -573,8 +575,10 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         if (dispatcher.isShutdown()) {
             return;
         }
-        String payload = "{\"lingId\":\"" + lingId + "\",\"action\":\"" + action
-                + "\",\"leakDetected\":" + leakDetected + "}";
+        Map<String, Object> payload = new HashMap<>(4);
+        payload.put("lingId", lingId);
+        payload.put("action", action);
+        payload.put("leakDetected", leakDetected);
         try {
             for (SseEmitter emitter : emitters) {
                 dispatcher.submit(withCoreClassLoader(() -> {

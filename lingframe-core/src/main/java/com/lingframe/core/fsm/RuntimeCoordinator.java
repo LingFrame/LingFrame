@@ -6,6 +6,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.InstanceDestroyedEvent;
 import com.lingframe.core.event.RuntimeStateChangedEvent;
 import com.lingframe.core.event.InstanceStateChangedEvent;
+import com.lingframe.core.fsm.RuntimeStatus.Kind;
 import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
@@ -427,14 +428,11 @@ public class RuntimeCoordinator {
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             RuntimeStatus current = fsm.current();
 
-            // `STOPPING` 是硬下线运维意图态：只允许推进到 REMOVED，不可被实例事实拉回 ACTIVE。
-            if (current == RuntimeStatus.STOPPING) {
-                tryFinishShutdown(lingId, fsm);
-                return;
-            }
-
-            // 终态不再评估
-            if (current == RuntimeStatus.REMOVED) {
+            // 通用压制规则：运维意图态与终态不可被实例微观事实反向覆盖
+            if (current.suppressesEvaluation()) {
+                if (current == RuntimeStatus.STOPPING) {
+                    tryFinishShutdown(lingId, fsm);
+                }
                 return;
             }
 
@@ -449,6 +447,13 @@ public class RuntimeCoordinator {
 
             // 调用策略评估
             RuntimeStatus suggested = policy.evaluate(current, stateValues);
+
+            // 策略契约守护：策略评估必须只输出事实态（Kind.FACT）
+            if (suggested != null && suggested.kind() != Kind.FACT) {
+                log.error("Policy [{}] violated contract: suggested non-fact status [{}] (kind={}) for ling [{}]",
+                        policy.getClass().getSimpleName(), suggested, suggested.kind(), lingId);
+                return;
+            }
 
             // 评估结果与当前相同，无需跃迁
             if (suggested == current) {

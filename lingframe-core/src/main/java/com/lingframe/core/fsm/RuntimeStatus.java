@@ -1,6 +1,10 @@
 package com.lingframe.core.fsm;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 运行时级服务可用性状态。
@@ -8,39 +12,84 @@ import java.util.*;
  * 描述一个 Ling 在运行时维度的宏观健康度，
  * 由底层多个 {@link InstanceStatus} 的聚合评估驱动（见 RuntimeCoordinator）。
  * <p>
- * 注意：当前版本里它同时承担了两类语义：
- * 1. 宏观可用性事实：INACTIVE / ACTIVE / DEGRADED
- * 2. 运维恢复意图：RECOVERING
- * 3. 运维生命周期意图：STOPPING / REMOVED
- * 因此 RECOVERING / STOPPING / REMOVED 在实现里具有更高优先级，会压制后续聚合评估。
+ * 状态基于 {@link Kind} 进行类型自描述：
+ * <ul>
+ *   <li>{@link Kind#FACT}：宏观可用性事实（INACTIVE / ACTIVE / DEGRADED），由实例健康度事实聚合推算</li>
+ *   <li>{@link Kind#INTENT}：运维受控意图（RECOVERING / STOPPING），由外部控制面显式发起，压制微观聚合评估</li>
+ *   <li>{@link Kind#TERMINAL}：终态（REMOVED），资源释放完毕</li>
+ * </ul>
+ * 意图态与终态可通过 {@link #suppressesEvaluation()} 统一判定，阻止微观事件对宏观受控状态的反向覆盖。
  */
 public enum RuntimeStatus {
 
     /**
      * 已注册但无可用实例
      */
-    INACTIVE,
+    INACTIVE(Kind.FACT),
     /**
      * 正常服役（含灰度期间）
      */
-    ACTIVE,
+    ACTIVE(Kind.FACT),
     /**
      * 降级：健康检查失败 / 熔断触发，可自愈回 ACTIVE
      */
-    DEGRADED,
+    DEGRADED(Kind.FACT),
     /**
      * 受控恢复中。
      * 表示运维已触发恢复链路，实例层或治理层正在收敛回稳定态。
      */
-    RECOVERING,
+    RECOVERING(Kind.INTENT),
     /**
      * 优雅关闭中，排空存量请求
      */
-    STOPPING,
+    STOPPING(Kind.INTENT),
     /**
      * 已移除，不可恢复（终态）
      */
-    REMOVED;
+    REMOVED(Kind.TERMINAL);
+
+    /**
+     * 状态性质分类
+     */
+    public enum Kind {
+        /**
+         * 宏观聚合事实：由底层实例健康度聚合计算驱动
+         */
+        FACT,
+        /**
+         * 运维意图态：由控制面/运维显式触发受控过程，压制微观聚合评估
+         */
+        INTENT,
+        /**
+         * 终态：资源已释放，不可逆
+         */
+        TERMINAL
+    }
+
+    private final Kind kind;
+
+    RuntimeStatus(Kind kind) {
+        this.kind = kind;
+    }
+
+    /**
+     * 获取状态性质分类
+     *
+     * @return 状态性质
+     */
+    public Kind kind() {
+        return this.kind;
+    }
+
+    /**
+     * 是否压制微观聚合评估。
+     * 当灵元处于运维意图态或终态时，禁止微观实例事实变动覆盖宏观状态。
+     *
+     * @return 若为非 FACT 类状态返回 true
+     */
+    public boolean suppressesEvaluation() {
+        return this.kind != Kind.FACT;
+    }
 
     /**
      * 合法转换表（不可变）
@@ -67,3 +116,4 @@ public enum RuntimeStatus {
         return new StateMachine<>(lingId, INACTIVE, TRANSITIONS);
     }
 }
+

@@ -5,18 +5,21 @@ import java.util.Collection;
 /**
  * 默认运行时评估策略。
  * <p>
+ * 将底层活跃实例的健康度聚合为宏观事实状态（{@link RuntimeStatus.Kind#FACT}）。
+ * 运维意图态（如 {@link RuntimeStatus#RECOVERING}、{@link RuntimeStatus#STOPPING}）
+ * 属于受控运维过程，不属于事实聚合范畴，由控制面显式驱动与收口。
+ * <p>
  * 聚合规则：
  * <pre>
- * ┌──────────────────────────────────────┬──────────────┐
- * │ 实例聚合条件                          │ 建议状态      │
- * ├──────────────────────────────────────┼──────────────┤
- * │ 无活跃实例（全部 DEAD 或集合为空）      │ INACTIVE     │
- * │ RECOVERING 进行中                     │ RECOVERING   │
- * │ 有 READY 且错误率 < 阈值              │ ACTIVE       │
- * │ 有 READY 但错误率 ≥ 阈值              │ DEGRADED     │
- * │ 无 READY，但有 ERROR                 │ DEGRADED     │
- * │ 无 READY，全在 LOADING/STARTING      │ 保持 current │
- * └──────────────────────────────────────┴──────────────┘
+ * ┌──────────────────────────────────────────────┬──────────────┐
+ * │ 实例聚合条件                                  │ 建议状态      │
+ * ├──────────────────────────────────────────────┼──────────────┤
+ * │ 无活跃实例（全部 DEAD 或集合为空）              │ INACTIVE     │
+ * │ 有 READY 且错误率 < 阈值                      │ ACTIVE       │
+ * │ 有 READY 但错误率 ≥ 阈值                      │ DEGRADED     │
+ * │ 无 READY，但有 ERROR                         │ DEGRADED     │
+ * │ 无 READY 且无 ERROR，全在启动或恢复过渡中       │ 保持 current │
+ * └──────────────────────────────────────────────┴──────────────┘
  * </pre>
  */
 public class DefaultRuntimeEvaluationPolicy implements RuntimeEvaluationPolicy {
@@ -50,17 +53,10 @@ public class DefaultRuntimeEvaluationPolicy implements RuntimeEvaluationPolicy {
         long total = instanceStates.size();
         long ready = 0;
         long error = 0;
-        long recovering = 0;
 
         for (InstanceStatus s : instanceStates) {
             if (s == InstanceStatus.READY) ready++;
             if (s == InstanceStatus.ERROR) error++;
-            if (s == InstanceStatus.RECOVERING) recovering++;
-        }
-
-        // 恢复态优先：只要当前仍有实例处于受控恢复，就让控制面明确看到过程态。
-        if (recovering > 0) {
-            return RuntimeStatus.RECOVERING;
         }
 
         // 有可用实例，根据错误率判断健康度
@@ -76,8 +72,9 @@ public class DefaultRuntimeEvaluationPolicy implements RuntimeEvaluationPolicy {
             return RuntimeStatus.DEGRADED;
         }
 
-        // 所有实例都在启动中（CREATED / LOADING / STARTING），保持当前状态
-        // 避免在启动瞬间抖动为 INACTIVE
+        // 所有实例都在启动或受控恢复中（CREATED / LOADING / STARTING / RECOVERING），保持当前状态
+        // 避免在过渡瞬间抖动为 INACTIVE
         return current;
     }
 }
+
