@@ -73,7 +73,7 @@ public class LingController {
             return ApiResponse.ok(dashboardService.getAllLingInfos());
         } catch (Exception e) {
             log.error("Failed to list Lings", e);
-            return ApiResponse.error("获取灵元列表失败: " + e.getMessage());
+            return ApiResponse.error("获取灵元列表失败", e);
         }
     }
 
@@ -90,7 +90,7 @@ public class LingController {
             return ApiResponse.ok(info);
         } catch (Exception e) {
             log.error("Failed to get ling: {}", lingId, e);
-            return ApiResponse.error("获取灵元失败: " + e.getMessage());
+            return ApiResponse.error("获取灵元失败", e);
         }
     }
 
@@ -106,7 +106,7 @@ public class LingController {
             return ApiResponse.ok("状态已更新", info);
         } catch (Exception e) {
             log.error("Failed to update status: {}", lingId, e);
-            return ApiResponse.error("状态更新失败: " + e.getMessage());
+            return ApiResponse.error("状态更新失败", e);
         }
     }
 
@@ -158,7 +158,7 @@ public class LingController {
             return ApiResponse.ok("安装成功", info);
         } catch (Exception e) {
             log.error("Install failed", e);
-            return ApiResponse.error("安装失败: " + e.getMessage());
+            return ApiResponse.error("安装失败", e);
         }
     }
 
@@ -171,7 +171,7 @@ public class LingController {
             return ApiResponse.ok("卸载成功", result);
         } catch (Exception e) {
             log.error("Uninstall failed: {}", lingId, e);
-            return ApiResponse.error("卸载失败: " + e.getMessage());
+            return ApiResponse.error("卸载失败", e);
         }
     }
 
@@ -188,7 +188,7 @@ public class LingController {
             return ApiResponse.ok("版本 " + version + " 卸载成功", result);
         } catch (Exception e) {
             log.error("Uninstall failed for: {}:{}", lingId, version, e);
-            return ApiResponse.error("卸载特定版本失败: " + e.getMessage());
+            return ApiResponse.error("卸载特定版本失败", e);
         }
     }
 
@@ -210,7 +210,7 @@ public class LingController {
             return ApiResponse.ok("重载成功", info);
         } catch (Exception e) {
             log.error("Reload failed: {}", lingId, e);
-            return ApiResponse.error("重载失败: " + e.getMessage());
+            return ApiResponse.error("重载失败", e);
         }
     }
 
@@ -229,7 +229,7 @@ public class LingController {
             return ApiResponse.ok("迁移已发起", null);
         } catch (Exception e) {
             log.error("Failed to start migration: {}", lingId, e);
-            return ApiResponse.error("发起迁移失败: " + e.getMessage());
+            return ApiResponse.error("发起迁移失败", e);
         }
     }
 
@@ -248,7 +248,7 @@ public class LingController {
             return ApiResponse.ok("迭代已发起", null);
         } catch (Exception e) {
             log.error("Failed to start iteration: {}", lingId, e);
-            return ApiResponse.error("发起迭代失败: " + e.getMessage());
+            return ApiResponse.error("发起迭代失败", e);
         }
     }
 
@@ -264,7 +264,7 @@ public class LingController {
             return ApiResponse.ok("相变已确认", null);
         } catch (Exception e) {
             log.error("Failed to confirm phase transition: {}", contractId, e);
-            return ApiResponse.error("确认相变失败: " + e.getMessage());
+            return ApiResponse.error("确认相变失败", e);
         }
     }
 
@@ -303,7 +303,7 @@ public class LingController {
             return ApiResponse.ok(new DrainCheckDTO(drained, active));
         } catch (Exception e) {
             log.error("Failed to check drain: contract={} candidate={}", contractId, candidate, e);
-            return ApiResponse.error("排空校验失败: " + e.getMessage());
+            return ApiResponse.error("排空校验失败", e);
         }
     }
 
@@ -317,7 +317,7 @@ public class LingController {
             return ApiResponse.ok("相变已回滚", null);
         } catch (Exception e) {
             log.error("Failed to rollback phase transition: {}", contractId, e);
-            return ApiResponse.error("回滚相变失败: " + e.getMessage());
+            return ApiResponse.error("回滚相变失败", e);
         }
     }
 
@@ -346,7 +346,7 @@ public class LingController {
             return ApiResponse.ok(dashboardService.getTrafficStats(lingId));
         } catch (Exception e) {
             log.error("Failed to get stats: {}", lingId, e);
-            return ApiResponse.error("获取统计失败: " + e.getMessage());
+            return ApiResponse.error("获取统计失败", e);
         }
     }
 
@@ -357,7 +357,7 @@ public class LingController {
             return ApiResponse.ok("统计已重置", null);
         } catch (Exception e) {
             log.error("Failed to reset stats: {}", lingId, e);
-            return ApiResponse.error("重置失败: " + e.getMessage());
+            return ApiResponse.error("重置失败", e);
         }
     }
 
@@ -395,7 +395,7 @@ public class LingController {
             return ApiResponse.ok(rows);
         } catch (Exception e) {
             log.error("Failed to get governance matrix", e);
-            return ApiResponse.error("获取治理规则矩阵失败: " + e.getMessage());
+            return ApiResponse.error("获取治理规则矩阵失败", e);
         }
     }
 
@@ -426,7 +426,7 @@ public class LingController {
                     .build());
         } catch (Exception e) {
             log.error("Failed to get dashboard summary", e);
-            return ApiResponse.error("获取概览数据失败: " + e.getMessage());
+            return ApiResponse.error("获取概览数据失败", e);
         }
     }
     
@@ -439,7 +439,7 @@ public class LingController {
             return ApiResponse.ok(dashboardService.getLifecycleEvents(lingId));
         } catch (Exception e) {
             log.error("Failed to get timeline events", e);
-            return ApiResponse.error("获取时间线事件失败: " + e.getMessage());
+            return ApiResponse.error("获取时间线事件失败", e);
         }
     }
 
@@ -454,7 +454,7 @@ public class LingController {
             return ApiResponse.ok(dashboardService.getTransitionHistory(lingId));
         } catch (Exception e) {
             log.error("Failed to get transition history for ling: {}", lingId, e);
-            return ApiResponse.error("获取状态转换历史失败: " + e.getMessage());
+            return ApiResponse.error("获取状态转换历史失败", e);
         }
     }
 

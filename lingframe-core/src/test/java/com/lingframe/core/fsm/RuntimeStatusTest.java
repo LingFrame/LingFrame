@@ -9,7 +9,10 @@ import org.junit.jupiter.params.provider.EnumSource;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Collections;
 
 /**
  * RuntimeStatus 枚举与状态机初始化测试。
@@ -58,9 +61,18 @@ class RuntimeStatusTest {
     }
 
     @Test
-    @DisplayName("合法转换表不为 null 且不可修改")
+    @DisplayName("合法转换表不可修改：外层 Map 与每个 value Set 均拒绝变更")
     void transitionsShouldBeImmutable() {
         assertNotNull(RuntimeStatus.TRANSITIONS);
         assertFalse(RuntimeStatus.TRANSITIONS.isEmpty());
+        // 外层 Map 拒绝新增条目
+        assertThrows(UnsupportedOperationException.class,
+                () -> RuntimeStatus.TRANSITIONS.put(RuntimeStatus.ACTIVE,
+                        Collections.singleton(RuntimeStatus.REMOVED)));
+        // 每个 value Set 拒绝增删元素（防止运行期静默篡改合法转换表）
+        assertThrows(UnsupportedOperationException.class,
+                () -> RuntimeStatus.TRANSITIONS.get(RuntimeStatus.ACTIVE).add(RuntimeStatus.REMOVED));
+        assertThrows(UnsupportedOperationException.class,
+                () -> RuntimeStatus.TRANSITIONS.get(RuntimeStatus.ACTIVE).remove(RuntimeStatus.DEGRADED));
     }
 }

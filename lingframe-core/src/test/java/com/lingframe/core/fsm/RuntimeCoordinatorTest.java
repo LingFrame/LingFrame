@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -722,15 +723,120 @@ class RuntimeCoordinatorTest {
             // 构造一个违背契约的策略，试图在聚合中返回意图态 STOPPING
             RuntimeEvaluationPolicy badPolicy = (current, instances) -> RuntimeStatus.STOPPING;
             RuntimeCoordinator customCoordinator = new RuntimeCoordinator(eventBus, badPolicy);
+            customCoordinator.start();
             customCoordinator.register("ling-bad");
             assertEquals(RuntimeStatus.INACTIVE, customCoordinator.getStatus("ling-bad"));
 
-            // 发布 READY 触发 reevaluate
+            // 发布 READY 触发 reevaluate（start() 订阅事件后，事件才会到达 customCoordinator 的评估路径）
             eventBus.publish(new InstanceStateChangedEvent("ling-bad", "v1", "v1",
                     InstanceStatus.STARTING, InstanceStatus.READY));
 
             // 由于 badPolicy 返回的 STOPPING.kind() != Kind.FACT，被防御拦截，状态保持 INACTIVE
             assertEquals(RuntimeStatus.INACTIVE, customCoordinator.getStatus("ling-bad"));
+            customCoordinator.stop();
+        }
+    }
+
+    // ==================== RECOVERING 健康检查兜底 ====================
+
+    @Nested
+    @DisplayName("RECOVERING 健康检查兜底")
+    class RecoveringHealthCheckFallback {
+
+        @Test
+        @DisplayName("快照为空：RECOVERING 灵元收口为 DEGRADED")
+        void emptySnapshotConvergesToDegraded() throws Exception {
+            StateMachine<RuntimeStatus> fsm = coordinator.register("ling-hc");
+            coordinator.transition("ling-hc", RuntimeStatus.RECOVERING);
+            assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-hc"));
+
+            invokeRecoverStuckRecoveringLing("ling-hc", fsm);
+
+            assertEquals(RuntimeStatus.DEGRADED, coordinator.getStatus("ling-hc"));
+        }
+
+        @Test
+        @DisplayName("存在 READY 实例且无过渡中：RECOVERING 收口为 ACTIVE")
+        void readyInstanceConvergesToActive() throws Exception {
+            StateMachine<RuntimeStatus> fsm = coordinator.register("ling-hc");
+            // 先构造实例事实快照（READY），再进入 RECOVERING 意图态
+            eventBus.publish(new InstanceStateChangedEvent("ling-hc", "hc-v1", "1.0.0",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            coordinator.transition("ling-hc", RuntimeStatus.RECOVERING);
+            assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-hc"));
+
+            invokeRecoverStuckRecoveringLing("ling-hc", fsm);
+
+            assertEquals(RuntimeStatus.ACTIVE, coordinator.getStatus("ling-hc"));
+        }
+
+        @Test
+        @DisplayName("存在 ERROR 实例且无过渡中：RECOVERING 收口为 DEGRADED")
+        void errorInstanceConvergesToDegraded() throws Exception {
+            StateMachine<RuntimeStatus> fsm = coordinator.register("ling-hc");
+            eventBus.publish(new InstanceStateChangedEvent("ling-hc", "hc-v1", "1.0.0",
+                    InstanceStatus.READY, InstanceStatus.ERROR));
+            coordinator.transition("ling-hc", RuntimeStatus.RECOVERING);
+            assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-hc"));
+
+            invokeRecoverStuckRecoveringLing("ling-hc", fsm);
+
+            assertEquals(RuntimeStatus.DEGRADED, coordinator.getStatus("ling-hc"));
+        }
+
+        @Test
+        @DisplayName("实例仍处于 RECOVERING 过渡中：保持 RECOVERING 不动")
+        void instanceRecoveringKeepsRecovering() throws Exception {
+            StateMachine<RuntimeStatus> fsm = coordinator.register("ling-hc");
+            eventBus.publish(new InstanceStateChangedEvent("ling-hc", "hc-v1", "1.0.0",
+                    InstanceStatus.ERROR, InstanceStatus.RECOVERING));
+            coordinator.transition("ling-hc", RuntimeStatus.RECOVERING);
+            assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-hc"));
+
+            invokeRecoverStuckRecoveringLing("ling-hc", fsm);
+
+            assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-hc"));
+        }
+
+        @Test
+        @DisplayName("实例处于 STARTING 慢启动窗口：保持 RECOVERING 不动")
+        void instanceStartingKeepsRecovering() throws Exception {
+            StateMachine<RuntimeStatus> fsm = coordinator.register("ling-hc");
+            eventBus.publish(new InstanceStateChangedEvent("ling-hc", "hc-v1", "1.0.0",
+                    InstanceStatus.ERROR, InstanceStatus.STARTING));
+            coordinator.transition("ling-hc", RuntimeStatus.RECOVERING);
+            assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-hc"));
+
+            invokeRecoverStuckRecoveringLing("ling-hc", fsm);
+
+            assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-hc"));
+        }
+
+        @Test
+        @DisplayName("混合快照（READY + RECOVERING 实例）：仍处于恢复中，保持 RECOVERING 不动")
+        void mixedReadyAndRecoveringKeepsRecovering() throws Exception {
+            StateMachine<RuntimeStatus> fsm = coordinator.register("ling-hc");
+            eventBus.publish(new InstanceStateChangedEvent("ling-hc", "hc-v1", "1.0.0",
+                    InstanceStatus.STARTING, InstanceStatus.READY));
+            eventBus.publish(new InstanceStateChangedEvent("ling-hc", "hc-v2", "1.0.0",
+                    InstanceStatus.ERROR, InstanceStatus.RECOVERING));
+            coordinator.transition("ling-hc", RuntimeStatus.RECOVERING);
+            assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-hc"));
+
+            invokeRecoverStuckRecoveringLing("ling-hc", fsm);
+
+            assertEquals(RuntimeStatus.RECOVERING, coordinator.getStatus("ling-hc"));
+        }
+
+        /**
+         * 通过反射驱动私有方法 {@code recoverStuckRecoveringLing}，验证健康检查兜底路径。
+         */
+        private void invokeRecoverStuckRecoveringLing(String lingId, StateMachine<RuntimeStatus> fsm)
+                throws Exception {
+            Method method = RuntimeCoordinator.class.getDeclaredMethod(
+                    "recoverStuckRecoveringLing", String.class, StateMachine.class);
+            method.setAccessible(true);
+            method.invoke(coordinator, lingId, fsm);
         }
     }
 

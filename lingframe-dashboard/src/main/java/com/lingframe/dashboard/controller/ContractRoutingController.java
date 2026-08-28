@@ -47,7 +47,7 @@ public class ContractRoutingController {
             return ApiResponse.ok(contractRoutingService.listMultiProviderContracts());
         } catch (Exception e) {
             log.error("Failed to list multi-provider contracts", e);
-            return ApiResponse.error("获取契约列表失败: " + e.getMessage());
+            return ApiResponse.error("获取契约列表失败", e);
         }
     }
 
@@ -60,7 +60,7 @@ public class ContractRoutingController {
             return ApiResponse.ok(contractRoutingService.getContractRouting(contractId));
         } catch (Exception e) {
             log.error("Failed to get contract routing for: {}", contractId, e);
-            return ApiResponse.error("获取契约路由失败: " + e.getMessage());
+            return ApiResponse.error("获取契约路由失败", e);
         }
     }
 
@@ -94,7 +94,7 @@ public class ContractRoutingController {
             return ApiResponse.error("weight 必须是 0-100 的整数");
         } catch (Exception e) {
             log.error("Failed to set provider weight for: {}", contractId, e);
-            return ApiResponse.error("权重更新失败: " + e.getMessage());
+            return ApiResponse.error("权重更新失败", e);
         }
     }
 
@@ -110,7 +110,7 @@ public class ContractRoutingController {
             return ApiResponse.ok("已回滚到灵核 100%", contractRoutingService.getContractRouting(contractId));
         } catch (Exception e) {
             log.error("Failed to rollback to core for: {}", contractId, e);
-            return ApiResponse.error("回滚失败: " + e.getMessage());
+            return ApiResponse.error("回滚失败", e);
         }
     }
 
@@ -130,7 +130,7 @@ public class ContractRoutingController {
             return ApiResponse.ok(result);
         } catch (Exception e) {
             log.error("Failed to stress contract step: contractId={}, mode={}", contractId, mode, e);
-            return ApiResponse.error("契约流量演练单步失败: " + e.getMessage());
+            return ApiResponse.error("契约流量演练单步失败", e);
         }
     }
 }

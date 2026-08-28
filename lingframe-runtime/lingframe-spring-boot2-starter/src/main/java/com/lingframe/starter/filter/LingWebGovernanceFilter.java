@@ -104,10 +104,10 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
                 }
             } catch (LingInvocationException e) {
                 if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
-                    log.warn("[Governance] Security rejected (SB2): {} -> {}",
+                    log.warn("[Governance] Security rejected: {} -> {}",
                             GOVERNANCE_SUPPORT.resolveGovernanceResourceId(ctx, requestFacade), e.getMessage());
                 } else {
-                    log.info("[Governance] Request blocked (SB2): {} -> {}",
+                    log.info("[Governance] Request blocked: {} -> {}",
                             GOVERNANCE_SUPPORT.resolveGovernanceResourceId(ctx, requestFacade), e.getMessage());
                 }
                 recordGovernanceRejectionMetrics(request, ctx, lingId, startNanos);

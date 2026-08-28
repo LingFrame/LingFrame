@@ -101,11 +101,36 @@ class DualStackConsistencyContractTest {
                 "RepeatableReadFilterFactory has drifted between Boot 2 and Boot 3 implementations!");
     }
 
+    @Test
+    @DisplayName("契约比对：RepeatableReadInputStream 在 Boot 2 与 Boot 3 下必须保持完全对齐")
+    void testRepeatableReadInputStreamConsistency() throws IOException {
+        Path sb2Path = RUNTIME_ROOT.resolve(
+                "lingframe-spring-boot2-starter/src/main/java/com/lingframe/starter/web/adapter/JavaxRepeatableReadInputStream.java");
+        Path sb3Path = RUNTIME_ROOT.resolve(
+                "lingframe-spring-boot3-starter/src/main/java/com/lingframe/starter/web/adapter/JakartaRepeatableReadInputStream.java");
+
+        Assertions.assertTrue(Files.exists(sb2Path), "SB2 repeatable input stream must exist: " + sb2Path);
+        Assertions.assertTrue(Files.exists(sb3Path), "SB3 repeatable input stream must exist: " + sb3Path);
+
+        String sb2Source = new String(Files.readAllBytes(sb2Path), StandardCharsets.UTF_8);
+        String sb3Source = new String(Files.readAllBytes(sb3Path), StandardCharsets.UTF_8);
+
+        String normalizedSb2 = normalizeSource(sb2Source, true);
+        String normalizedSb3 = normalizeSource(sb3Source, true);
+
+        Assertions.assertEquals(normalizedSb3, normalizedSb2,
+                "RepeatableReadInputStream has drifted between Boot 2 (Javax) and Boot 3 (Jakarta) implementations!");
+    }
+
     private String normalizeSource(String source, boolean isRepeatableRead) {
         String normalized = source;
         if (isRepeatableRead) {
             normalized = normalized.replace("JavaxRepeatableReadFilter", "PlaceholderRepeatableReadFilter")
-                    .replace("JakartaRepeatableReadFilter", "PlaceholderRepeatableReadFilter");
+                    .replace("JakartaRepeatableReadFilter", "PlaceholderRepeatableReadFilter")
+                    .replace("JavaxRepeatableReadInputStream", "PlaceholderRepeatableReadInputStream")
+                    .replace("JakartaRepeatableReadInputStream", "PlaceholderRepeatableReadInputStream")
+                    .replace("Javax Servlet", "Placeholder Servlet")
+                    .replace("Jakarta Servlet", "Placeholder Servlet");
         }
 
         normalized = normalized.replace("javax.servlet", "placeholder.servlet")

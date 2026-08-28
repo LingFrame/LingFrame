@@ -222,6 +222,71 @@ class DefaultLingLifecycleEngineTest {
     }
 
     @Test
+    @DisplayName("recover 治理重置失败时收口 DEGRADED 并重抛异常，runtime 不卡死 RECOVERING")
+    void recoverGovernanceResetFailureConvergesToDegraded() {
+        EventBus eventBus = new EventBus();
+        RuntimeCoordinator runtimeCoordinator = new RuntimeCoordinator(eventBus);
+        runtimeCoordinator.start();
+
+        ContainerFactory containerFactory = mock(ContainerFactory.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        LingLoaderFactory loaderFactory = mock(LingLoaderFactory.class);
+        LingServiceRegistry serviceRegistry = mock(LingServiceRegistry.class);
+        InvocationPipelineEngine pipelineEngine = mock(InvocationPipelineEngine.class);
+        doThrow(new RuntimeException("governance reset failed"))
+                .when(pipelineEngine).recoverLingGovernance("ling1");
+
+        DefaultLingRepository repository = new DefaultLingRepository();
+        DefaultLingLifecycleEngine engine = new DefaultLingLifecycleEngine(LifecycleEngineConfig.builder()
+                .containerFactory(containerFactory)
+                .permissionService(permissionService)
+                .lingLoaderFactory(loaderFactory)
+                .verifiers(Collections.emptyList())
+                .eventBus(eventBus)
+                .lingFrameConfig(LingFrameConfig.builder().build())
+                .lingRepository(repository)
+                .lingServiceRegistry(serviceRegistry)
+                .pipelineEngine(pipelineEngine)
+                .lingResourceManager(null)
+                .unloadCoordinator(mock(LingUnloadCoordinator.class))
+                .runtimeCoordinator(runtimeCoordinator)
+                .build());
+
+        LingContainer container = mock(LingContainer.class);
+        when(container.isActive()).thenReturn(true);
+        when(container.getClassLoader()).thenReturn(createSafeTestClassLoader());
+
+        LingDefinition definition = new LingDefinition();
+        definition.setId("ling1");
+        definition.setVersion("1.0.0");
+        definition.setMainClass("demo.Main");
+
+        // 先 register，再推进实例状态：与生产 ensureRuntimeForDeployment 顺序一致
+        runtimeCoordinator.register("ling1");
+
+        LingInstance instance = new LingInstance(container, definition, eventBus);
+        InstanceCoordinator coordinator = new InstanceCoordinator(eventBus);
+        coordinator.prepare(instance);
+        coordinator.start(instance);
+        coordinator.error(instance);
+
+        LingRuntime runtime = new LingRuntime("ling1", LingRuntimeConfig.defaults(), eventBus, coordinator, runtimeCoordinator);
+        runtime.getInstancePool().addInstance(instance, true);
+        repository.register(runtime);
+
+        try {
+            RuntimeException ex = assertThrows(RuntimeException.class,
+                    () -> engine.recover("ling1", "1.0.0"));
+            assertEquals("governance reset failed", ex.getMessage());
+            // 失败路径显式收口：runtime 不再卡在 RECOVERING 意图态（否则 MacroStateGuardFilter 永久拒绝流量）
+            assertEquals(RuntimeStatus.DEGRADED, runtimeCoordinator.getStatus("ling1"));
+            verify(pipelineEngine).recoverLingGovernance("ling1");
+        } finally {
+            runtimeCoordinator.stop();
+        }
+    }
+
+    @Test
     @DisplayName("getter 方法返回正确值")
     void shouldReturnGetters() {
         EventBus eventBus = new EventBus();

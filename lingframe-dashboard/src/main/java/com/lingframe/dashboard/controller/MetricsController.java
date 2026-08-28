@@ -56,7 +56,7 @@ public class MetricsController {
             return ApiResponse.ok(assembleJvmMetrics());
         } catch (Exception e) {
             log.error("Failed to get JVM metrics", e);
-            return ApiResponse.error("获取性能指标失败: " + e.getMessage());
+            return ApiResponse.error("获取性能指标失败", e);
         }
     }
 
@@ -69,7 +69,7 @@ public class MetricsController {
             return ApiResponse.ok(metricsCollector.getSnapshot(lingId));
         } catch (Exception e) {
             log.error("Failed to get health metrics for ling: {}", lingId, e);
-            return ApiResponse.error("获取健康指标失败: " + e.getMessage());
+            return ApiResponse.error("获取健康指标失败", e);
         }
     }
 
@@ -82,7 +82,7 @@ public class MetricsController {
             return ApiResponse.ok(metricsAggregationService.getAllHealthView());
         } catch (Exception e) {
             log.error("Failed to get all health metrics", e);
-            return ApiResponse.error("获取健康指标失败: " + e.getMessage());
+            return ApiResponse.error("获取健康指标失败", e);
         }
     }
 
@@ -95,7 +95,7 @@ public class MetricsController {
             return ApiResponse.ok(metricsAggregationService.getAllGovernanceView());
         } catch (Exception e) {
             log.error("Failed to get governance metrics", e);
-            return ApiResponse.error("获取治理指标失败: " + e.getMessage());
+            return ApiResponse.error("获取治理指标失败", e);
         }
     }
 
@@ -108,7 +108,7 @@ public class MetricsController {
             return ApiResponse.ok(runtimeDiagnosticsService.getCleanupCapabilities());
         } catch (Exception e) {
             log.error("Failed to get runtime diagnostics", e);
-            return ApiResponse.error("获取运行时诊断失败: " + e.getMessage());
+            return ApiResponse.error("获取运行时诊断失败", e);
         }
     }
 
@@ -121,7 +121,7 @@ public class MetricsController {
             return ApiResponse.ok(runtimeDiagnosticsService.getGovernanceReadiness());
         } catch (Exception e) {
             log.error("Failed to get runtime governance readiness", e);
-            return ApiResponse.error("获取运行时治理就绪度失败: " + e.getMessage());
+            return ApiResponse.error("获取运行时治理就绪度失败", e);
         }
     }
 
@@ -177,7 +177,7 @@ public class MetricsController {
             return ApiResponse.ok(metrics);
         } catch (Exception e) {
             log.error("Failed to get event pipeline metrics", e);
-            return ApiResponse.error("获取事件管道指标失败: " + e.getMessage());
+            return ApiResponse.error("获取事件管道指标失败", e);
         }
     }
 
@@ -193,7 +193,7 @@ public class MetricsController {
             return ApiResponse.ok(UnifiedMetrics.create(metricsCollector));
         } catch (Exception e) {
             log.error("Failed to get unified metrics", e);
-            return ApiResponse.error("获取整体健康快照失败: " + e.getMessage());
+            return ApiResponse.error("获取整体健康快照失败", e);
         }
     }
 

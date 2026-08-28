@@ -32,7 +32,7 @@ public class GovernanceController {
             return ApiResponse.ok(governanceAdmin.getAllPatches());
         } catch (Exception e) {
             log.error("Failed to get rules", e);
-            return ApiResponse.error("获取规则失败: " + e.getMessage());
+            return ApiResponse.error("获取规则失败", e);
         }
     }
 
@@ -46,7 +46,7 @@ public class GovernanceController {
             return ApiResponse.ok(policy);
         } catch (Exception e) {
             log.error("Failed to get patch for: {}", lingId, e);
-            return ApiResponse.error("获取策略失败: " + e.getMessage());
+            return ApiResponse.error("获取策略失败", e);
         }
     }
 
@@ -62,7 +62,7 @@ public class GovernanceController {
             return ApiResponse.ok("策略已更新", governanceAdmin.getPatchForUpdate(lingId));
         } catch (Exception e) {
             log.error("Failed to update patch for: {}", lingId, e);
-            return ApiResponse.error("策略更新失败: " + e.getMessage());
+            return ApiResponse.error("策略更新失败", e);
         }
     }
 
@@ -75,7 +75,7 @@ public class GovernanceController {
             return ApiResponse.ok(dashboardService.getInvocationGovernance(lingId));
         } catch (Exception e) {
             log.error("Failed to get invocation governance for: {}", lingId, e);
-            return ApiResponse.error("获取调用治理失败: " + e.getMessage());
+            return ApiResponse.error("获取调用治理失败", e);
         }
     }
 
@@ -92,7 +92,7 @@ public class GovernanceController {
             return ApiResponse.ok("调用治理已更新", updated);
         } catch (Exception e) {
             log.error("Failed to update invocation governance for: {}", lingId, e);
-            return ApiResponse.error("调用治理更新失败: " + e.getMessage());
+            return ApiResponse.error("调用治理更新失败", e);
         }
     }
 
@@ -109,7 +109,7 @@ public class GovernanceController {
             return ApiResponse.ok("权限已更新", dto);
         } catch (Exception e) {
             log.error("Failed to update permissions for: {}", lingId, e);
-            return ApiResponse.error("权限更新失败: " + e.getMessage());
+            return ApiResponse.error("权限更新失败", e);
         }
     }
 }

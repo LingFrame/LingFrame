@@ -195,10 +195,10 @@ public class ArgumentTypeAdapter {
                 return map;
             }
 
-            // 扫描 Setter 方法
-            Map<String, Method> setterMap = findSetters(targetType);
+            // 扫描 Setter 方法（exact + normalized 双索引，见 PropertyIndex）
+            PropertyIndex<Method> setterIndex = findSetters(targetType);
             // 扫描 Field
-            Map<String, Field> fieldMap = findFields(targetType);
+            PropertyIndex<Field> fieldIndex = findFields(targetType);
 
             for (Map.Entry<?, ?> entry : map.entrySet()) {
                 if (entry.getKey() == null) {
@@ -208,7 +208,7 @@ public class ArgumentTypeAdapter {
                 Object value = entry.getValue();
 
                 String normalizedKey = normalizePropertyName(key);
-                Method setter = findMatchingMethod(setterMap, normalizedKey);
+                Method setter = findMatchingMethod(setterIndex, normalizedKey, key);
                 if (setter != null) {
                     try {
                         setter.setAccessible(true);
@@ -220,7 +220,7 @@ public class ArgumentTypeAdapter {
                     } catch (Throwable ignored) {}
                 }
 
-                Field field = findMatchingField(fieldMap, normalizedKey);
+                Field field = findMatchingField(fieldIndex, normalizedKey, key);
                 if (field != null) {
                     try {
                         field.setAccessible(true);
@@ -260,8 +260,23 @@ public class ArgumentTypeAdapter {
         }
     }
 
-    private static Map<String, Method> findSetters(Class<?> clazz) {
-        Map<String, Method> setters = new HashMap<>();
+    /**
+     * 属性索引：exact（保留分隔符、统一小写）与 normalized（去分隔符小写）分离。
+     * <p>
+     * ⚠️ 必须分两张 map：若把 rawLower 与 normalized 混入同一张 {@code putIfAbsent} map，
+     * 无分隔符属性（如 {@code username}）的 rawLower 与其 normalized key 相同，
+     * 会被先声明的分隔符变体（如 {@code user_name} → normalized "username"）抢占同一 key 槽，
+     * 导致 {@code username} 属性完全丢失注册（声明顺序决定结果，非确定性错配）。
+     */
+    private static final class PropertyIndex<T> {
+        /** 精确索引：key = 属性名统一小写（保留 _ / -），如 user_name / username / userName → username */
+        final Map<String, T> exact = new HashMap<>();
+        /** 宽松索引：key = 去分隔符小写，如 user_name / username / user-name → username */
+        final Map<String, T> normalized = new HashMap<>();
+    }
+
+    private static PropertyIndex<Method> findSetters(Class<?> clazz) {
+        PropertyIndex<Method> index = new PropertyIndex<>();
         Class<?> current = clazz;
         while (current != null && !Object.class.equals(current)) {
             for (Method m : current.getDeclaredMethods()) {
@@ -269,29 +284,34 @@ public class ArgumentTypeAdapter {
                     if (Modifier.isStatic(m.getModifiers())) {
                         continue;
                     }
-                    String propName = normalizePropertyName(m.getName().substring(3));
-                    setters.putIfAbsent(propName, m);
+                    // exact：原始属性名统一小写（保留分隔符），user_name / userName 均可精确命中；
+                    // normalized：去分隔符小写，作为跨命名风格（如 user-name）的宽松兜底。
+                    // 两者分 map 存储，normalized 冲突（user_name vs username）不影响 exact 精确匹配。
+                    String propName = m.getName().substring(3);
+                    index.exact.put(propName.toLowerCase(), m);
+                    index.normalized.putIfAbsent(normalizePropertyName(propName), m);
                 }
             }
             current = current.getSuperclass();
         }
-        return setters;
+        return index;
     }
 
-    private static Map<String, Field> findFields(Class<?> clazz) {
-        Map<String, Field> fields = new HashMap<>();
+    private static PropertyIndex<Field> findFields(Class<?> clazz) {
+        PropertyIndex<Field> index = new PropertyIndex<>();
         Class<?> current = clazz;
         while (current != null && !Object.class.equals(current)) {
             for (Field f : current.getDeclaredFields()) {
                 if (Modifier.isStatic(f.getModifiers()) || Modifier.isFinal(f.getModifiers())) {
                     continue;
                 }
-                String propName = normalizePropertyName(f.getName());
-                fields.putIfAbsent(propName, f);
+                String fieldName = f.getName();
+                index.exact.put(fieldName.toLowerCase(), f);
+                index.normalized.putIfAbsent(normalizePropertyName(fieldName), f);
             }
             current = current.getSuperclass();
         }
-        return fields;
+        return index;
     }
 
     private static String normalizePropertyName(String name) {
@@ -299,12 +319,28 @@ public class ArgumentTypeAdapter {
         return name.replace("_", "").replace("-", "").toLowerCase();
     }
 
-    private static Method findMatchingMethod(Map<String, Method> setters, String normalizedKey) {
-        return setters.get(normalizedKey);
+    /**
+     * 匹配 setter：精确索引优先（user_name 与 username 互不干扰），
+     * 未命中时回退到归一化索引的宽松匹配（兼容 customer_id → customerId 等跨命名风格）。
+     */
+    private static Method findMatchingMethod(PropertyIndex<Method> index, String normalizedKey, String rawKey) {
+        if (rawKey != null) {
+            Method exact = index.exact.get(rawKey.toLowerCase());
+            if (exact != null) {
+                return exact;
+            }
+        }
+        return index.normalized.get(normalizedKey);
     }
 
-    private static Field findMatchingField(Map<String, Field> fields, String normalizedKey) {
-        return fields.get(normalizedKey);
+    private static Field findMatchingField(PropertyIndex<Field> index, String normalizedKey, String rawKey) {
+        if (rawKey != null) {
+            Field exact = index.exact.get(rawKey.toLowerCase());
+            if (exact != null) {
+                return exact;
+            }
+        }
+        return index.normalized.get(normalizedKey);
     }
 
     private static boolean needsCollectionElementConversion(Type genericType, Object actualArg) {

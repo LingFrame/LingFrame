@@ -92,18 +92,18 @@ public enum RuntimeStatus {
     }
 
     /**
-     * 合法转换表（不可变）
+     * 合法转换表（不可变：外层 Map 与每个 value Set 均不可变，防止运行期篡改状态机）。
      */
     public static final Map<RuntimeStatus, Set<RuntimeStatus>> TRANSITIONS;
 
     static {
         Map<RuntimeStatus, Set<RuntimeStatus>> m = new EnumMap<>(RuntimeStatus.class);
-        m.put(INACTIVE, EnumSet.of(ACTIVE, DEGRADED, RECOVERING, REMOVED));
-        m.put(ACTIVE, EnumSet.of(DEGRADED, RECOVERING, STOPPING, INACTIVE));
-        m.put(DEGRADED, EnumSet.of(ACTIVE, RECOVERING, STOPPING, INACTIVE));
-        m.put(RECOVERING, EnumSet.of(ACTIVE, DEGRADED, INACTIVE, STOPPING));
-        m.put(STOPPING, EnumSet.of(REMOVED));
-        m.put(REMOVED, Collections.emptySet());       // 终态
+        m.put(INACTIVE, Collections.unmodifiableSet(EnumSet.of(ACTIVE, DEGRADED, RECOVERING, REMOVED)));
+        m.put(ACTIVE, Collections.unmodifiableSet(EnumSet.of(DEGRADED, RECOVERING, STOPPING, INACTIVE)));
+        m.put(DEGRADED, Collections.unmodifiableSet(EnumSet.of(ACTIVE, RECOVERING, STOPPING, INACTIVE)));
+        m.put(RECOVERING, Collections.unmodifiableSet(EnumSet.of(ACTIVE, DEGRADED, INACTIVE, STOPPING)));
+        m.put(STOPPING, Collections.unmodifiableSet(EnumSet.of(REMOVED)));
+        m.put(REMOVED, Collections.unmodifiableSet(Collections.emptySet()));       // 终态
         TRANSITIONS = Collections.unmodifiableMap(m);
     }
 

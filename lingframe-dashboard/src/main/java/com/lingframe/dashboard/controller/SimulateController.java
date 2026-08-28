@@ -30,7 +30,7 @@ public class SimulateController {
             return ApiResponse.ok(result);
         } catch (Exception e) {
             log.error("Simulate resource failed", e);
-            return ApiResponse.error("模拟失败: " + e.getMessage());
+            return ApiResponse.error("模拟失败", e);
         }
     }
 
@@ -44,7 +44,7 @@ public class SimulateController {
             return ApiResponse.ok(result);
         } catch (Exception e) {
             log.error("Simulate IPC failed", e);
-            return ApiResponse.error("IPC 模拟失败: " + e.getMessage());
+            return ApiResponse.error("IPC 模拟失败", e);
         }
     }
 
@@ -56,10 +56,10 @@ public class SimulateController {
             return ApiResponse.ok(result);
         } catch (LingNotFoundException | LingInvocationException e) {
             log.info("Stress test stopped: {}", e.getMessage());
-            return ApiResponse.error("灵元已缺失或不可用: " + e.getMessage());
+            return ApiResponse.error("灵元已缺失或不可用", e);
         } catch (Exception e) {
             log.error("Stress test failed", e);
-            return ApiResponse.error("压测失败: " + e.getMessage());
+            return ApiResponse.error("压测失败", e);
         }
     }
 
@@ -80,7 +80,7 @@ public class SimulateController {
             return ApiResponse.error(e.getMessage());
         } catch (Exception e) {
             log.error("Failed to switch mode", e);
-            return ApiResponse.error("切换模式失败: " + e.getMessage());
+            return ApiResponse.error("切换模式失败", e);
         }
     }
 

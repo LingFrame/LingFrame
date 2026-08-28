@@ -79,6 +79,25 @@ public class ApiResponse<T> {
         return error("服务内部错误，请稍后重试");
     }
 
+    /**
+     * 带业务前缀的异常错误响应。
+     * <p>
+     * 保留调用点的业务语义前缀（如"获取契约列表失败"），同时：
+     * <ul>
+     *   <li>可预期的业务异常（IllegalArgumentException / IllegalStateException）返回「前缀 + 消息」，消息经 {@link #sanitize} 脱敏；</li>
+     *   <li>其余异常统一返回「前缀 + 通用提示」，不泄漏内部细节/堆栈。</li>
+     * </ul>
+     * 用于替代控制器中手工拼接 {@code "前缀: " + e.getMessage()} 的写法，
+     * 避免把异常原文（可能含堆栈线索或注入载荷）直接回显给前端。
+     */
+    public static <T> ApiResponse<T> error(String prefix, Throwable throwable) {
+        if (throwable instanceof IllegalArgumentException
+                || throwable instanceof IllegalStateException) {
+            return error(prefix + ": " + throwable.getMessage());
+        }
+        return error(prefix + "，请稍后重试");
+    }
+
     private static String sanitize(String message) {
         if (message == null) {
             return null;

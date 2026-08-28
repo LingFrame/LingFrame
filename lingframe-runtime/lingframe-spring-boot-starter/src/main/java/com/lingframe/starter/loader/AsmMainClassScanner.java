@@ -105,6 +105,9 @@ public class AsmMainClassScanner {
                 return false;
             }
         }
+        // 运行时不可达（循环内所有路径均 return），但 JLS 可达性规则要求保留：
+        // while 条件（retries > 0）非常量 true，javac 认为循环可能正常完成，
+        // 删除本行将报 "missing return statement" 编译错误。
         return false;
     }
 

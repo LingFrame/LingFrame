@@ -41,7 +41,7 @@ public class MigrationProgressController {
             return ApiResponse.ok(migrationProgressService.getAllProgress());
         } catch (Exception e) {
             log.error("Failed to get migration progress", e);
-            return ApiResponse.error("获取迁移进度失败: " + e.getMessage());
+            return ApiResponse.error("获取迁移进度失败", e);
         }
     }
 
@@ -54,7 +54,7 @@ public class MigrationProgressController {
             return ApiResponse.ok(migrationProgressService.getProgress(contractId));
         } catch (Exception e) {
             log.error("Failed to get progress for: {}", contractId, e);
-            return ApiResponse.error("获取契约迁移进度失败: " + e.getMessage());
+            return ApiResponse.error("获取契约迁移进度失败", e);
         }
     }
 
@@ -69,7 +69,7 @@ public class MigrationProgressController {
             return ApiResponse.ok(migrationProgressService.getStaleCoreContracts());
         } catch (Exception e) {
             log.error("Failed to get stale core contracts", e);
-            return ApiResponse.error("获取可下线契约失败: " + e.getMessage());
+            return ApiResponse.error("获取可下线契约失败", e);
         }
     }
 }

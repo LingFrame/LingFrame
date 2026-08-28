@@ -44,6 +44,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -102,6 +104,34 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
 
     /** 卸载完成通知的兜底时限：异常场景（如 null ClassLoader 未触发检测）下超时仍发事件，保证列表刷新不丢失。 */
     private static final long UNINSTALL_NOTIFY_FALLBACK_MS = 30_000L;
+
+    /**
+     * 卸载完成通知兜底的共享调度器。
+     * <p>
+     * 使用单线程调度器而非每次卸载 new Thread：全量卸载频率低、任务有 30s 固定延时，
+     * 共享调度器避免高频卸载场景下反复创建线程的开销。
+     * <p>
+     * ⚠️ 线程生命周期：必须允许核心线程空闲超时回收（{@code allowCoreThreadTimeOut} + keepAlive 60s）。
+     * 本引擎是 core 内核类、无显式 close/destroy 生命周期入口，若核心线程常驻，
+     * 调度器会通过任务闭包长期持有引擎实例与 eventBus 引用链，导致引擎无法被 GC
+     * （每新建一个引擎实例就泄漏一个常驻线程）。空闲 60s 后线程自动退出，
+     * 引擎被回收后调度器随之消亡，无长生命周期持有。
+     */
+    private final ScheduledExecutorService uninstallNotifyScheduler = createUninstallNotifyScheduler();
+
+    private static ScheduledExecutorService createUninstallNotifyScheduler() {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, r -> {
+            Thread t = new Thread(r, "ling-uninstall-notify-fallback");
+            t.setDaemon(true);
+            return t;
+        });
+        // 核心线程空闲 60s 自动退出，避免常驻线程泄漏（见字段注释）
+        executor.setKeepAliveTime(60, TimeUnit.SECONDS);
+        executor.allowCoreThreadTimeOut(true);
+        // 已取消的延迟任务立即出队，不残留
+        executor.setRemoveOnCancelPolicy(true);
+        return executor;
+    }
 
     private static final class PendingUninstallNotification {
         final AtomicInteger remaining;
@@ -188,28 +218,22 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         });
         try {
             if (!wrapper.lock.tryLock(lifecycleLockTimeoutMs, TimeUnit.MILLISECONDS)) {
-                lifecycleLocks.computeIfPresent(lingId, (k, val) -> {
-                    if (val.holdCount.decrementAndGet() <= 0) {
-                        return null;
-                    }
-                    return val;
-                });
+                releaseLifecycleLock(lingId);
                 throw new IllegalStateException("Acquire lifecycle lock timeout: lingId=" + lingId
                         + ", timeout=" + lifecycleLockTimeoutMs + "ms");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            lifecycleLocks.computeIfPresent(lingId, (k, val) -> {
-                if (val.holdCount.decrementAndGet() <= 0) {
-                    return null;
-                }
-                return val;
-            });
+            releaseLifecycleLock(lingId);
             throw new IllegalStateException("Acquire lifecycle lock interrupted: lingId=" + lingId, e);
         }
         return wrapper.lock;
     }
 
+    /**
+     * 释放一次锁持有计数；计数归零时移除该 ling 的锁条目，防止 LockWrapper 内存残留。
+     * 幂等：条目不存在（已移除）时为 no-op。
+     */
     private void releaseLifecycleLock(String lingId) {
         lifecycleLocks.computeIfPresent(lingId, (k, val) -> {
             if (val.holdCount.decrementAndGet() <= 0) {
@@ -366,23 +390,40 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         }
 
         runtimeCoordinator.transition(lingId, RuntimeStatus.RECOVERING);
-        if (pipelineEngine != null) {
-            pipelineEngine.recoverLingGovernance(lingId);
-        }
+        try {
+            if (pipelineEngine != null) {
+                pipelineEngine.recoverLingGovernance(lingId);
+            }
 
-        if (targetInstance.currentStatus() == InstanceStatus.ERROR) {
-            recoverErroredInstance(lingId, targetInstance);
-            return;
-        }
+            if (targetInstance.currentStatus() == InstanceStatus.ERROR) {
+                recoverErroredInstance(lingId, targetInstance);
+                return;
+            }
 
-        if (runtime.getInstancePool().hasAvailableInstance()) {
-            runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
-            log.info("[{}] Runtime governance state recovered without instance restart", lingId);
-            return;
-        }
+            if (runtime.getInstancePool().hasAvailableInstance()) {
+                runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
+                log.info("[{}] Runtime governance state recovered without instance restart", lingId);
+                return;
+            }
 
-        runtimeCoordinator.transition(lingId, RuntimeStatus.DEGRADED);
-        throw new IllegalStateException("Runtime recovery did not find any READY instance for ling " + lingId);
+            runtimeCoordinator.transition(lingId, RuntimeStatus.DEGRADED);
+            throw new IllegalStateException("Runtime recovery did not find any READY instance for ling " + lingId);
+        } catch (Error e) {
+            // Error（OOM / StackOverflow）跳过状态降级副作用直接透传，
+            // 避免在 JVM 即将崩溃时再触发协调器调用导致二次错误（与 recoverErroredInstance 的设计一致）。
+            log.error("[{}] Recovery failed (Error)", lingId, e);
+            throw e;
+        } catch (RuntimeException e) {
+            // 恢复失败兜底：显式收口到 DEGRADED，避免 runtime 卡死在 RECOVERING 意图态。
+            // RECOVERING 压制聚合评估（suppressesEvaluation），MacroStateGuardFilter 会拒绝其全部流量，
+            // 若失败路径不收口，灵元将永久流量阻断直到人工干预。
+            // 幂等：recoverErroredInstance 内部失败时已收口 DEGRADED，此处仅在仍处于 RECOVERING 时再收口。
+            if (runtimeCoordinator.getStatus(lingId) == RuntimeStatus.RECOVERING) {
+                runtimeCoordinator.transition(lingId, RuntimeStatus.DEGRADED);
+                log.warn("[{}] Recovery failed, runtime state forced to DEGRADED (was RECOVERING)", lingId);
+            }
+            throw e;
+        }
     }
 
     @Override
@@ -920,20 +961,12 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
      * 超时后仍发布事件，保证前端列表刷新不丢失。正常路径检测事件先到，兜底线程空转退出。
      */
     private void scheduleUninstallNotifyFallback(String lingId, PendingUninstallNotification pending) {
-        Thread fallback = new Thread(() -> {
-            try {
-                Thread.sleep(UNINSTALL_NOTIFY_FALLBACK_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
+        uninstallNotifyScheduler.schedule(() -> {
             if (pendingUninstallNotifications.get(lingId) == pending) {
                 pendingUninstallNotifications.remove(lingId);
                 eventBus.publish(new LingUninstalledEvent(lingId, pending.leaked));
             }
-        }, "ling-uninstall-notify-fallback");
-        fallback.setDaemon(true);
-        fallback.start();
+        }, UNINSTALL_NOTIFY_FALLBACK_MS, TimeUnit.MILLISECONDS);
     }
 
     private void unregisterHotSwapWatcher(String lingId) {

@@ -155,6 +155,75 @@ class ArgumentTypeAdapterTest {
         assertEquals(404, adapted[2]);
     }
 
+    @Data
+    public static class NamingCollisionDTO {
+        private String user_name;
+        private String username;
+        private String userType;
+    }
+
+    public static class NamingCollisionService {
+        public String handleNaming(NamingCollisionDTO dto) {
+            return dto.getUser_name() + "|" + dto.getUsername() + "|" + dto.getUserType();
+        }
+    }
+
+    @Test
+    @DisplayName("归一化冲突（user_name vs username）时精确命中各自字段，不互相错配")
+    void testNamingCollisionPreciseMatch() throws Exception {
+        Method method = NamingCollisionService.class.getMethod("handleNaming", NamingCollisionDTO.class);
+
+        // 同一次装配同时传入两个冲突 key + 驼峰 key，验证各 key 命中各自字段
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("user_name", "snake");
+        map.put("username", "flat");
+        map.put("userType", "camel");
+
+        Object[] adapted = ArgumentTypeAdapter.adapt(method, new Object[]{map}, getClass().getClassLoader());
+
+        assertNotNull(adapted);
+        assertEquals(1, adapted.length);
+        assertTrue(adapted[0] instanceof NamingCollisionDTO, "入参应转换为 NamingCollisionDTO 实例");
+        NamingCollisionDTO dto = (NamingCollisionDTO) adapted[0];
+        assertEquals("snake", dto.getUser_name(), "user_name 必须命中 user_name 字段");
+        assertEquals("flat", dto.getUsername(), "username 必须命中 username 字段（不被 user_name 抢占）");
+        assertEquals("camel", dto.getUserType(), "userType 必须命中 userType 字段");
+    }
+
+    @Data
+    public static class NamingCollisionReversedDTO {
+        private String username;
+        private String user_name;
+        private String userType;
+    }
+
+    public static class NamingCollisionReversedService {
+        public String handleNaming(NamingCollisionReversedDTO dto) {
+            return dto.getUsername() + "|" + dto.getUser_name() + "|" + dto.getUserType();
+        }
+    }
+
+    @Test
+    @DisplayName("归一化冲突在反序声明时行为一致：精确匹配不依赖字段声明顺序")
+    void testNamingCollisionReversedDeclaration() throws Exception {
+        Method method = NamingCollisionReversedService.class.getMethod("handleNaming", NamingCollisionReversedDTO.class);
+
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("username", "flat");
+        map.put("user_name", "snake");
+        map.put("userType", "camel");
+
+        Object[] adapted = ArgumentTypeAdapter.adapt(method, new Object[]{map}, getClass().getClassLoader());
+
+        assertNotNull(adapted);
+        assertEquals(1, adapted.length);
+        assertTrue(adapted[0] instanceof NamingCollisionReversedDTO);
+        NamingCollisionReversedDTO dto = (NamingCollisionReversedDTO) adapted[0];
+        assertEquals("flat", dto.getUsername());
+        assertEquals("snake", dto.getUser_name());
+        assertEquals("camel", dto.getUserType());
+    }
+
     @Test
     @DisplayName("顶级泛型 List<ItemDTO> 转换测试")
     void testTopLevelGenericList() throws Exception {
