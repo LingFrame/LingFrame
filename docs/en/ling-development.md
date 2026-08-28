@@ -249,7 +249,7 @@ Ling code may use Spring AOP, spawn standalone threads, and hold static variable
 | Static collections | **Not cleared automatically** — static references hold Ling class objects | Actively clear them in the unload hook |
 | ThreadLocal | **Not removed automatically** | Call `remove()` in the stop callback |
 
-**Positive example**: `lingframe-example-saas-mall`'s `InventoryHoldServiceImpl` explicitly implements `DisposableBean.destroy()` to shut down the TTL scheduler and clear hold records — this is the required posture when a Ling holds thread resources.
+**Positive example**: Business lings holding thread resources explicitly implement `DisposableBean.destroy()` or annotate `@PreDestroy` to shut down schedulers and clear hold records (e.g. in companion migration project `LingFrame-RuoYi`) — this is the required posture when a Ling holds thread resources.
 
 ### DB governance boundary: covers the Spring DataSource Bean proxy path, not a full sandbox
 
@@ -264,13 +264,13 @@ This is a **model boundary**, not a full-path sandbox — the docs do not advert
 
 ### Ling dependency discipline: `provided` dependency on LingCore interfaces; mis-declaring it as `compile` causes Class identity corruption
 
-When a Ling `implements` a LingCore-native interface (e.g. in the saas-mall example, a Ling implements ling-mall's `UserService`), the pom must depend on the LingCore module with `<scope>provided</scope>`:
+When a Ling `implements` a LingCore-native interface (e.g. business lings implementing LingCore services), the pom must depend on the LingCore module with `<scope>provided</scope>`:
 
 ```xml
 <!-- Correct: provided; resolved at runtime by the LingCore ClassLoader via parent-first fallback -->
 <dependency>
-    <groupId>com.lingframe</groupId>
-    <artifactId>lingframe-example-ling-mall</artifactId>
+    <groupId>com.example</groupId>
+    <artifactId>example-app-lingcore</artifactId>
     <scope>provided</scope>
 </dependency>
 ```

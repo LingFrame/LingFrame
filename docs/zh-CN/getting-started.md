@@ -989,5 +989,5 @@ Shared API 当前应该只放：
 而是这条运行时链路在 reload / unload / cleanup 场景下能否继续保持有序。
 
 接下来如果你想直接开始写灵元，去 [业务灵元开发指南](ling-development.md)。
-示例两条路径总览：[lingframe-examples/README.md](../../lingframe-examples/zh-CN/README.md)（入门用法 / 商城演进 `saas-mall`）。
+示例总览：[lingframe-examples/README.md](../../lingframe-examples/README.md)（入门用法与单体改造独立项目 LingFrame-RuoYi 指引）。
 配置对照可看 [生产硬化配置清单](production-hardening.md)。

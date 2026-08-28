@@ -973,5 +973,5 @@ If you continue and complete the Dashboard / governance / unload validations abo
 The next thing most worth verifying is not just "can we load another ling," but whether this runtime chain can stay orderly under reload / unload / cleanup scenarios.
 
 Next, if you want to dive straight into writing lings, jump to [Ling Development Guide](ling-development.md).
-Example tracks overview: [lingframe-examples/README.en.md](../../lingframe-examples/README.en.md) (starter usage / legacy migration `saas-mall`).
+Example tracks overview: [lingframe-examples/README.en.md](../../lingframe-examples/README.en.md) (starter usage and real-world legacy migration companion project LingFrame-RuoYi).
 For config cross-reference, see the [Production Hardening Checklist](production-hardening.md).

@@ -95,6 +95,20 @@ Key points:
 
 ---
 
+## Three Business Evolution Patterns
+
+Within the LingFrame microkernel architecture, business capabilities evolve through three standard patterns:
+
+| Dimension | Pattern 1: Transparent Strangler Pattern | Pattern 2: Contract Facade Pattern | Pattern 3: Self-Contained Endpoint Pattern |
+| :--- | :--- | :--- | :--- |
+| **Scenario** | Legacy system incremental takeover & performance upgrade | Enterprise core new capabilities & platform extensions | Completely independent modular extensions |
+| **Controller** | **Stays in LingCore (zero modifications)** | **LingCore provides thin Facade (unified auth/validation)** | **Self-contained inside Ling (dynamically mounted)** |
+| **Routing & Governance** | LingCore AOP / `@LingReference` dynamic proxy | LingCore `@LingReference` dynamic contract routing | LingFrame microkernel dynamic Spring MVC endpoint registration |
+| **Fallback Guarantee** | LingCore default provider provides 100% automatic fallback | LingCore unified circuit breaking & fallback response | Endpoints unregister immediately upon unload (zero memory leak) |
+| **Core Value** | Zero frontend changes; extreme high availability | Unified audit/security with multi-version dynamic canary | Zero-touch plug-and-play without pre-declared LingCore contracts |
+
+---
+
 ## What you get
 
 | Capability | What it is | What problem it solves |
@@ -175,7 +189,7 @@ Two example tracks (see [lingframe-examples/README.en.md](lingframe-examples/REA
 | Track | Entry |
 | --- | --- |
 | Getting started | `lingframe-example-lingcore-app` + user / order |
-| Legacy gradual migration | `ling-mall` → `saas-mall` |
+| Real-world legacy migration | **LingFrame-RuoYi** (Companion project: Gradual modularization on production RuoYi monolith) |
 
 ---
 

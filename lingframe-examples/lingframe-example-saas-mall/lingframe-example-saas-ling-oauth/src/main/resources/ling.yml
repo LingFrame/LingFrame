@@ -1,9 +1,0 @@
-id: saas-oauth-ling
-version: 1.0.0
-provider: "LingFrame"
-description: "SaaS商城社交登录灵元——覆盖灵核 UserService.socialLogin，叠加 SaaS 多租户治理"
-mainClass: "com.lingframe.example.saas.oauth.OAuthLingApplication"
-
-governance:
-  permissions: []
-  capabilities: []

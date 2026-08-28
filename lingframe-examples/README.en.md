@@ -7,13 +7,9 @@ Examples are organized in **two tracks**.
 | You want to | Read this example |
 | --- | --- |
 | Shortest path to run a Ling | `lingcore-app` + `ling-user` / `ling-order` |
-| Adopt LingFrame without touching a line of the legacy system | `saas-mall` (LingCore = `ling-mall` reused as-is as the base) |
-| Override a legacy impl for strangle-migration | `saas-ling-oauth` (overrides `UserService.socialLogin`, adds SaaS multi-tenant governance) |
-| Extend a legacy impl with extra governance | `saas-ling-seckill` (extends `SeckillService`, adds tenant-level quota pre-check) |
-| Add a capability the legacy system lacks | `saas-ling-inventory` (TTL inventory hold; LingCore has no such contract → sole provider) |
 | Canary release demo | `ling-order-canary` / `ling-user-canary` (dual versions + weight-based traffic shift) |
-| Ling delegates to LingCore IService | `saas-ling-oauth` + `lingframe-infra-mybatis-plus` (`DelegatingIServiceSupport` removes IService boilerplate) |
 | Cross-Ling invocation | `lingcore-app` where `ling-order` calls `ling-user` via `@LingReference` |
+| Real-world legacy monolith migration | **LingFrame-RuoYi** (Companion project: Best practices for modularizing a production monolith) |
 
 Fit + shortest run: root [README.md](../README.md).  
 Public docs map: [docs/en/README.md](../docs/en/README.md).
@@ -39,14 +35,12 @@ mvn spring-boot:run
 - App: `http://localhost:8888`
 - Dashboard: `http://localhost:8888/dashboard.html`
 
-## 2. Legacy system: simple adoption and gradual migration
+## 2. Real-world Legacy Migration Example
 
-| Module | Role |
-| --- | --- |
-| `lingframe-example-ling-mall` | Monolith mall base (“existing system”) |
-| `lingframe-example-saas-mall` | Gradual split: LingCore reuses mall + business lings (oauth / refund / seckill) |
+The full reference for non-disruptive, gradual strangle-migration of a legacy monolith (e.g. RuoYi enterprise management system) is maintained in our companion repository:
 
-Details: `lingframe-example-saas-mall/README.md`
+- **Companion project**: `LingFrame-RuoYi` (independent repository alongside LingFrame)
+- **Key scenarios**: LingCore as untouched base, business lings overriding legacy implementations, contract hot-plugging, and dual-provider traffic shifting.
 
 ## 3. Config notes
 

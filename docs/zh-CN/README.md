@@ -48,7 +48,7 @@
 | [业务灵元开发](ling-development.md) | 怎么写一个灵元 |
 | [Shared API 规范](shared-api-guidelines.md) | 共用接口契约怎么放、怎么演进 |
 | [基础设施开发](infrastructure-development.md) | 数据库 / 缓存等代理路径 |
-| [saas-mall 说明](../../lingframe-examples/lingframe-example-saas-mall/README.md) | 商城演进对照 |
+| [真实系统改造示范（LingFrame-RuoYi）](../../lingframe-examples/README.md#2-既有系统改造真实范例) | 独立项目：既有单体系统渐进式改造最佳实践 |
 | [生产配置清单](production-hardening.md) | 上线前配置 |
 
 ---
