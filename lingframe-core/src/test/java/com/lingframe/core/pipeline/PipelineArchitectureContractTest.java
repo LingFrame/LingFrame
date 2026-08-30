@@ -43,6 +43,7 @@ class PipelineArchitectureContractTest {
                 MacroStateGuardFilter.class,
                 InstanceRoutingFilter.class,
                 InvocationPolicyPrefillFilter.class,
+                TransactionPropagationFilter.class,
                 ResilienceGovernanceFilter.class,
                 ContextIsolationFilter.class,
                 GovernanceDecisionFilter.class,

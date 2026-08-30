@@ -18,6 +18,7 @@ import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.LingServiceInvoker;
 import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.core.spi.TrafficRouter;
+import com.lingframe.core.spi.TransactionBindingHook;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -77,7 +78,9 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
                 config.getGovernanceMetricsCollector(),
                 config.getLingFrameInfo(),
                 config.getGovernanceRegistry(),
-                config.getProviderWeightRouter());
+                config.getProviderWeightRouter(),
+                config.getTransactionBindingHook(),
+                config.isPropagationEnabled());
     }
 
     /**
@@ -90,7 +93,9 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
             MetricsCollector metricsCollector,
             RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector,
             LingFrameInfo lingFrameInfo, LocalGovernanceRegistry governanceRegistry,
-            ProviderWeightRouter providerWeightRouter) {
+            ProviderWeightRouter providerWeightRouter,
+            TransactionBindingHook transactionBindingHook,
+            boolean propagationEnabled) {
         builtinFilters.clear();
 
         // L0 provider 级路由：未注入 weightRouter 时创建默认实例（默认权重 CORE=100/LING=0，无 Dashboard 覆盖）
@@ -105,6 +110,11 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         // 预填充 filter：在 RESILIENCE 之前把灵元级 effective policy 预填到 ctx.governance()，
         // 守护"ctx 为唯一通行证"原则，让弹性组件通过 ctx 读取治理意图
         InvocationPolicyPrefillFilter policyPrefill = new InvocationPolicyPrefillFilter(lingRepository, governanceRegistry);
+        // 事务穿透过滤器：在 ROUTING 之后、TCCL 切换之前把活跃事务连接推入穿透上下文；
+        // hook 为 null（纯 core/native）时降级为「无事务穿透」，不压栈不抛错；
+        // propagationEnabled=false 时直接放行（总开关，应急降级路径）
+        TransactionPropagationFilter transactionPropagation =
+                new TransactionPropagationFilter(transactionBindingHook, propagationEnabled);
         ResilienceGovernanceFilter resilience = new ResilienceGovernanceFilter(
                 lingRepository, eventBus, runtimeCoordinator, governanceMetricsCollector);
         ContextIsolationFilter resolution = new ContextIsolationFilter(serviceRegistry);
@@ -121,6 +131,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         builtinFilters.add(stateGuard);
         builtinFilters.add(instanceRouting);
         builtinFilters.add(policyPrefill);
+        builtinFilters.add(transactionPropagation);
         builtinFilters.add(resilience);
         builtinFilters.add(resolution);
         builtinFilters.add(governance);
@@ -197,6 +208,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
                     FilterPhase.STATE_GUARD,
                     FilterPhase.ROUTING,
                     FilterPhase.POLICY_PREFILL,
+                    FilterPhase.TRANSACTION_PROPAGATION,
                     FilterPhase.RESILIENCE,
                     FilterPhase.RESOLUTION,
                     FilterPhase.GOVERNANCE,
@@ -233,6 +245,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         assertOrder(orders, MacroStateGuardFilter.class, FilterPhase.STATE_GUARD);
         assertOrder(orders, InstanceRoutingFilter.class, FilterPhase.ROUTING);
         assertOrder(orders, InvocationPolicyPrefillFilter.class, FilterPhase.POLICY_PREFILL);
+        assertOrder(orders, TransactionPropagationFilter.class, FilterPhase.TRANSACTION_PROPAGATION);
         assertOrder(orders, ResilienceGovernanceFilter.class, FilterPhase.RESILIENCE);
         assertOrder(orders, ContextIsolationFilter.class, FilterPhase.RESOLUTION);
         assertOrder(orders, GovernanceDecisionFilter.class, FilterPhase.GOVERNANCE);
@@ -258,6 +271,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
                 || filter instanceof MacroStateGuardFilter
                 || filter instanceof InstanceRoutingFilter
                 || filter instanceof InvocationPolicyPrefillFilter
+                || filter instanceof TransactionPropagationFilter
                 || filter instanceof ResilienceGovernanceFilter
                 || filter instanceof ContextIsolationFilter
                 || filter instanceof GovernanceDecisionFilter

@@ -10,6 +10,7 @@
 | [ADR-0002](0002-microkernel-neutrality-and-spi.md) | 保持微内核纯粹性与 SPI 容器扩展（拒绝内核强绑定多容器） | **Accepted** | 2026-08-20 |
 | [ADR-0003](0003-lingcore-baseline-and-governed-pipeline.md) | 灵核永久基线与灵元动态生命周期的非对称统一管道路由 | **Accepted** | 2026-08-20 |
 | [ADR-0004](0004-defensive-unload-and-leak-detection.md) | 动态类加载防御性排空（Drain）、濒死队列与弱引用泄漏检测机制 | **Accepted** | 2026-08-20 |
+| [ADR-0005](0005-managed-datasource-and-transaction-propagation.md) | 灵珑多模数据源引渡与跨灵元双轨制事务一致性治理架构 | **Accepted** | 2026-08-29 |
 
 ---
 

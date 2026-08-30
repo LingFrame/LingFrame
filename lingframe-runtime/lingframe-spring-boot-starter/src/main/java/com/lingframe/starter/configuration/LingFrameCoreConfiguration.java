@@ -180,6 +180,7 @@ public class LingFrameCoreConfiguration {
                 .defaultTimeoutMs((int) runtimeProperties.getDefaultTimeout().toMillis())
                 .bulkheadMaxConcurrent(runtimeProperties.getBulkheadMaxConcurrent())
                 .bulkheadAcquireTimeoutMs((int) runtimeProperties.getBulkheadAcquireTimeout().toMillis())
+                .abandonedJoinTimeoutMs((int) runtimeProperties.getAbandonedJoinTimeout().toMillis())
                 .rateLimitPerSecond(runtimeProperties.getRateLimitPerSecond())
                 .build();
 

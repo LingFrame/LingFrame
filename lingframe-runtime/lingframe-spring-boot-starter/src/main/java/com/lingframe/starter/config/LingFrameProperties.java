@@ -78,6 +78,40 @@ public class LingFrameProperties {
     private boolean apiOverrideCheckEnabled = true;
 
     /**
+     * 事务穿透配置（跨灵元共享连接 + 强一致的穿透链路）。
+     */
+    private Tx tx = new Tx();
+
+    /**
+     * 事务穿透子配置。
+     */
+    @Data
+    public static class Tx {
+
+        /**
+         * 穿透子配置（总开关：{@code lingframe.tx.propagation.enabled}，默认开启）。
+         */
+        private Propagation propagation = new Propagation();
+
+        /**
+         * 穿透链路配置。
+         */
+        @Data
+        public static class Propagation {
+
+            /**
+             * 事务穿透总开关（默认 true）。
+             * <p>
+             * false 时穿透链路整体不激活（应急降级）：core 侧
+             * {@code TransactionPropagationFilter} 直接放行（不压栈），灵元侧不注册受管
+             * 事务管理器——业务退回「独立连接心智」，跨灵元原子回滚不可用。
+             * 总开关是「应急逃生门」而非「常规配置」，关闭期间一致性语义显式降级。
+             */
+            private boolean enabled = true;
+        }
+    }
+
+    /**
      * 灵元额外目录
      */
     private List<String> lingRoots = new ArrayList<>();
@@ -243,6 +277,13 @@ public class LingFrameProperties {
 
         @DurationUnit(ChronoUnit.MILLIS)
         private Duration bulkheadAcquireTimeout = Duration.ofMillis(3000);
+
+        /**
+         * 穿透连接宽限期：超时/放弃执行后等待 worker 退出临界区的有界 join 时间。
+         * 超宽限期后连接标记 poisoned（跳过 rollback 直接 close 废弃），0 表示立即废弃。
+         */
+        @DurationUnit(ChronoUnit.MILLIS)
+        private Duration abandonedJoinTimeout = Duration.ofMillis(2000);
 
         /**
          * 限流 QPS（每秒令牌数），0 表示不启用

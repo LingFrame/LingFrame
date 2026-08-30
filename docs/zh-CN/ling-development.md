@@ -274,6 +274,14 @@ Shared API 是进程级公共契约边界。灵元加载前预加载并冻结后
 
 这是**模型边界**，不是全路径沙箱——文档里不会把它吹成「全路径沙箱」。如果你的灵元需要严格存储治理，请通过灵核 Spring DataSource 路径访问数据库。
 
+### 灵元侧引入 Spring Data JPA / Hibernate 的硬边界（实测结论）
+
+灵元侧引入 `spring-boot-starter-data-jpa` 属于未经完整官方适配的高级场景，真实运行已通过 `ManagedJpaBoundaryTest` 实证三条硬边界：
+
+1. **必须显式配置方言**：受管代理在元数据安全脱敏时将 URL 替换为 `jdbc:lingframe:masked`，导致 Hibernate 无法基于 URL 自动解析方言，启动报 `Access to DialectResolutionInfo cannot be null`。**灵元必须显式配置 `spring.jpa.database-platform`（如 `org.hibernate.dialect.MySQLDialect`），否则 EntityManagerFactory 启动即失败**；
+2. **双事务管理器自动抑制，无注入歧义**：Spring Boot 的 `JpaBaseConfiguration` 带有 `@ConditionalOnMissingBean`。灵珑注入受管事务管理器 `lingTransactionManager`（`LingManagedTransactionManager`）后，JPA 自带的 `JpaTransactionManager` 会被自动抑制，容器仅有唯一事务管理器，无 `NoUniqueBeanDefinitionException`；
+3. **穿透连接提交权降级**：事务穿透命中时，受管代理返回不可物理关闭的代理连接（`NonCloseableLingConnectionProxy`），Hibernate 的 `setAutoCommit(false)`、`commit()`、`close()` 全部被拦截为 safe no-op，`rollback()` 仅置回滚信号上行，底层物理连接提交权安全收敛至灵核根事务。
+
 ### 灵元依赖纪律：provided 依赖灵核接口，误打成 compile 会导致 Class 身份错乱
 
 灵元 `implements` 灵核原生接口时（如业务灵元实现灵核已有服务接口），pom 必须用 `<scope>provided</scope>` 依赖灵核模块：

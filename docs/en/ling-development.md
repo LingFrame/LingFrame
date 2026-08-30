@@ -262,6 +262,14 @@ LingFrame's storage-permission governance **primarily covers the Spring `DataSou
 
 This is a **model boundary**, not a full-path sandbox — the docs do not advertise it as a "full-path sandbox." If your Ling needs strict storage governance, access the database via the LingCore's Spring DataSource path.
 
+### Spring Data JPA / Hibernate Boundaries inside a Ling (Verified Conclusions)
+
+Introducing `spring-boot-starter-data-jpa` inside a Ling is an advanced scenario without complete official adaptations. The test `ManagedJpaBoundaryTest` established three hard operational boundaries:
+
+1. **Explicit Dialect Configuration Required**: Due to URL masking (`jdbc:lingframe:masked`) in `LingDatabaseMetaDataProxy` for security isolation, Hibernate fails to detect the dialect from the URL, crashing with `Access to DialectResolutionInfo cannot be null when 'hibernate.dialect' not set`. **Lings using JPA must explicitly configure `spring.jpa.database-platform` (e.g. `org.hibernate.dialect.MySQLDialect`)**;
+2. **Dual Transaction Manager Mutual Exclusion (No Ambiguity)**: Spring Boot's `JpaBaseConfiguration` has `@ConditionalOnMissingBean`. When LingFrame registers the managed transaction manager `lingTransactionManager` (`LingManagedTransactionManager`), the default `JpaTransactionManager` is suppressed automatically. The container retains a single `PlatformTransactionManager`, preventing `NoUniqueBeanDefinitionException`;
+3. **Hibernate Physical Commit Rights Safely Degraded**: When transaction propagation is active, the managed DataSource returns a `NonCloseableLingConnectionProxy`. Hibernate's calls to `setAutoCommit(false)`, `commit()`, and `close()` are suppressed as safe no-ops, while `rollback()` only marks rollback signals upward. Root transaction coordination remains strictly with LingCore.
+
 ### Ling dependency discipline: `provided` dependency on LingCore interfaces; mis-declaring it as `compile` causes Class identity corruption
 
 When a Ling `implements` a LingCore-native interface (e.g. business lings implementing LingCore services), the pom must depend on the LingCore module with `<scope>provided</scope>`:

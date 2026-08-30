@@ -21,7 +21,7 @@ For the current public implementation, this is not just a demonstration of "gett
 
 **What you are about to run**: In the example project, you will start a LingCore application and tell it to load two example lings (`user-ling`, `order-ling`). In this single run, you will simultaneously see three things: lings can be loaded within the same process; LingCore can invoke ling services via shared contracts; the invocation process still passes through the governance kernel.
 
-**Environment requirements**: JDK 17+ (as the main example path); Maven 3.8+. The current runtime simultaneously supports both JDK 8 and Spring Boot 2.x, but the example project remains the easiest entry point for beginners.
+**Environment requirements**: JDK 8 + Spring Boot 2.7 as the example and primary verification path (default Maven profile); JDK 17 + Spring Boot 3.x as the optional support line (`-Pspring-boot3`); Maven 3.8+. The two-stack structure (dual runtime starters + dashboard single-GAV matrix source sets) is covered in [Production Hardening Checklist](production-hardening.md) section 6, with details in the [Development Manual](development-manual.md) section 5.2.
 
 ### 1. Clone the Repository
 

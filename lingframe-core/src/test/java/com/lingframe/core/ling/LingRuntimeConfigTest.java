@@ -25,6 +25,8 @@ public class LingRuntimeConfigTest {
             assertEquals(3000, config.getDefaultTimeoutMs());
             assertEquals(10, config.getBulkheadMaxConcurrent());
             assertEquals(3000, config.getBulkheadAcquireTimeoutMs());
+            // 穿透连接宽限期默认 2s（超时/放弃执行后等待 worker 退出临界区的有界 join 时间）
+            assertEquals(2000, config.getAbandonedJoinTimeoutMs());
         }
 
         @Test
@@ -37,6 +39,7 @@ public class LingRuntimeConfigTest {
             assertEquals(fromDefaults.getDefaultTimeoutMs(), fromBuilder.getDefaultTimeoutMs());
             assertEquals(fromDefaults.getBulkheadMaxConcurrent(), fromBuilder.getBulkheadMaxConcurrent());
             assertEquals(fromDefaults.isForceDrainOnTimeout(), fromBuilder.isForceDrainOnTimeout());
+            assertEquals(fromDefaults.getAbandonedJoinTimeoutMs(), fromBuilder.getAbandonedJoinTimeoutMs());
         }
     }
 

@@ -1,6 +1,8 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
+import com.lingframe.api.storage.LingTransactionContext;
+import com.lingframe.api.storage.LingTransactionContext.TransactionSnapshot;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
@@ -74,12 +76,24 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
         ExecutorService executor = executorHolder.executor;
         recordThreadBudgetSnapshot(lingId, ctx, executorHolder);
         LingCallContextSnapshot snapshot = LingCallContextSnapshot.capture();
+        // 事务上下文跨线程搬运（传播器按调用实例化，杜绝共享状态并发串扰）：
+        // 主线程捕获快照（下行携带连接、上行携带 rollbackOnly 信号）
+        TransactionContextPropagator txPropagator = new TransactionContextPropagator();
+        TransactionSnapshot txSnapshot = txPropagator.capture();
         int inheritedTraceCount = traceCount(ctx);
+
+        // worker 已退出标志：isolatedTask 的 finally 置位（无论正常/异常/中断响应）。
+        // 用于超时路径的有界 join——cancel(true) 后 FutureTask 立即进入 INTERRUPTED 状态，
+        // future.get() 抛 CancellationException 无法区分「已退出」与「仍在临界区」，
+        // 只有任务自身的 finally 才能给出「真正退出」的可信信号
+        CountDownLatch workerFinished = new CountDownLatch(1);
 
         Callable<Object> isolatedTask = () -> {
             InvocationContext child = InvocationContext.obtain();
             InvocationContext previous = child.attach();
             LingCallContextSnapshot previousSnapshot = LingCallContextSnapshot.apply(snapshot);
+            // worker 线程重放事务快照：下行连接进入 worker 线程的穿透上下文
+            txPropagator.replay(txSnapshot);
             ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
             long beforeCpuTimeNs = currentThreadCpuTime();
             long beforeHeapBytes = usedHeapBytes();
@@ -102,9 +116,14 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
                         Math.max(0L, usedHeapBytes() - beforeHeapBytes));
                 mergeNewTraces(ctx, child, inheritedTraceCount);
                 Thread.currentThread().setContextClassLoader(originalClassLoader);
+                // worker finally 恢复：合并语义（worker 期间置位的 rollbackOnly 并入快照上行，
+                // 再恢复 worker 线程穿透上下文为执行前状态）——擦除资源、保留信号
+                txPropagator.restore(txSnapshot);
                 LingCallContextSnapshot.restore(previousSnapshot);
                 InvocationContext.detach(previous);
                 child.recycle();
+                // 置位退出标志（finally 末尾：临界区清理完成后才视为退出）
+                workerFinished.countDown();
             }
         };
 
@@ -124,6 +143,14 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             future.cancel(true);
+            // 有界 join：宽限期等待 worker 退出临界区（cancel 后响应中断的驱动会级联 Statement.cancel）。
+            // 宽限期超时 → 连接标记 poisoned：跳过 rollback 直接 close 废弃该池连接
+            // （未提交写随 close 丢弃，连接池感知废弃后重建）——避免并发 rollback 的未定义行为。
+            // ⚠️ 残余风险：宽限期是概率性缓解而非硬保证——worker 阻塞在不可中断 I/O 时，
+            // close 与 worker 并发访问同一连接仍属未定义行为，本机制不声称「超时后连接已安全」。
+            if (!awaitWorkerExit(workerFinished, config.getAbandonedJoinTimeoutMs())) {
+                poisonAbandonedConnections(lingId, ctx);
+            }
             log.error("[Isolation:{}] Execution timed out after {} ms for {}", lingId, timeoutMs, ctx.getServiceFQSID());
             if (governanceMetricsCollector != null) {
                 governanceMetricsCollector.recordTimeout(lingId, ctx.getTargetVersion());
@@ -139,6 +166,11 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
             Thread.currentThread().interrupt();
             throw new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
         } finally {
+            // 信号上行：worker 经快照合并回传的 rollbackOnly OR 进主线程穿透上下文
+            // （正常返回与异常路径都执行，保证下游回滚意图不丢）
+            if (txSnapshot.isRollbackOnly()) {
+                LingTransactionContext.setRollbackOnly();
+            }
             recordThreadBudgetSnapshot(lingId, ctx, executorHolder);
         }
     }
@@ -162,6 +194,46 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
             current = current.getCause();
         }
         return current == null ? cause : current;
+    }
+
+    /**
+     * 有界 join：宽限期等待被取消的 worker 退出临界区。
+     * <p>
+     * 基于 isolatedTask finally 置位的 {@code workerFinished} 标志：cancel(true) 后
+     * FutureTask 立即进入 INTERRUPTED 状态，{@code future.get()} 抛 CancellationException
+     * 无法区分「已退出」与「仍在临界区」；只有任务自身的 finally 才能给出「真正退出」的可信信号。
+     * 宽限期内未置位 → 判定 worker 阻塞在不可中断 I/O，仍在临界区。
+     *
+     * @param workerFinished worker 退出标志（isolatedTask finally 置位）
+     * @param graceMs        宽限期（毫秒）
+     * @return true=宽限期内退出；false=宽限期超时，worker 仍在临界区
+     */
+    private boolean awaitWorkerExit(CountDownLatch workerFinished, int graceMs) {
+        try {
+            return workerFinished.await(graceMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            // 主线程被中断：视为宽限期超时（宁可 poisoned 也不冒险并发访问）
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /**
+     * poisoned 废弃：宽限期超时后跳过 rollback，直接 close 废弃穿透连接。
+     * <p>
+     * 被放弃的 worker 可能仍占用同一物理连接——直接 close 让连接池感知废弃后重建，
+     * 未提交写随 close 丢弃（不会半提交）；残余风险见超时路径注释，不声称「已安全」。
+     */
+    private void poisonAbandonedConnections(String lingId, InvocationContext ctx) {
+        int poisoned = LingTransactionContext.closeAllConnections();
+        if (poisoned > 0) {
+            log.error("[Isolation:{}] Abandoned worker still in critical section after grace period, "
+                    + "poisoned {} penetration connection(s) for {} (residual writes discarded with close)",
+                    lingId, poisoned, ctx.getServiceFQSID());
+            if (governanceMetricsCollector != null) {
+                governanceMetricsCollector.recordConnectionPoisoned(lingId, ctx.getTargetVersion());
+            }
+        }
     }
 
     private int resolveTimeout(InvocationContext ctx, LingRuntimeConfig config) {

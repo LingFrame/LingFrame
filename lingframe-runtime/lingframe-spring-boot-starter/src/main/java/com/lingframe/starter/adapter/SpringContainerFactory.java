@@ -1,6 +1,7 @@
 package com.lingframe.starter.adapter;
 
 import com.lingframe.api.config.LingDefinition;
+import com.lingframe.api.storage.ManagedDataSourceRegistry;
 import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.spi.ContainerFactory;
@@ -30,12 +31,15 @@ public class SpringContainerFactory implements ContainerFactory {
     private final List<LingContextCustomizer> customizers; // 新增定制器列表
     private final ApplicationContext mainContext; // 🔥 主容器引用
     private final List<LingUnloadHook> unloadHooks; // 🔥 卸载钩子列表
+    /** 事务穿透总开关（灵核配置），create 灵元容器时以默认属性下发 */
+    private final boolean txPropagationEnabled;
 
     public SpringContainerFactory(ApplicationContext parentContext, WebInterfaceManager webInterfaceManager,
             List<LingContextCustomizer> customizers, List<LingUnloadHook> unloadHooks) {
         LingFrameProperties props = parentContext.getBean(LingFrameProperties.class);
         this.devMode = props.isDevMode();
         this.serviceExcludedPackages = props.getServiceExcludedPackages();
+        this.txPropagationEnabled = props.getTx().getPropagation().isEnabled();
         this.webInterfaceManager = webInterfaceManager;
         this.customizers = customizers != null ? customizers : Collections.emptyList();
         this.mainContext = parentContext; // 🔥 保存主容器
@@ -111,7 +115,11 @@ public class SpringContainerFactory implements ContainerFactory {
                     .properties("spring.application.name=Ling-" + lingId) // 独立应用名
                     .properties("spring.sql.init.mode=never") // 禁用 Spring Boot 自动 SQL 初始化
                     // 动态设置排除的自动配置类列表
-                    .properties("spring.autoconfigure.exclude=" + excludeStr);
+                    .properties("spring.autoconfigure.exclude=" + excludeStr)
+                    // 【事务穿透总开关传播】灵核级 lingframe.tx.propagation.enabled 以默认属性下发到灵元
+                    // 容器（defaultProperties 优先级最低，灵元自身配置可覆盖）；灵元侧
+                    // LingDataSourceRegistrar 据此决定是否注册受管事务管理器——总开关两端口径一致
+                    .properties("lingframe.tx.propagation.enabled=" + txPropagationEnabled);
 
             SpringLingContainer container = new SpringLingContainer(
                     builder,
@@ -129,6 +137,13 @@ public class SpringContainerFactory implements ContainerFactory {
             } catch (Exception e) {
                 // 灵核未装 LingFrameInfo bean 时兜底默认值，保持向后兼容
                 log.debug("[{}] LingFrameInfo bean not available, fallback to default implicit registration", lingId);
+            }
+            // 注入受管数据源独立总线（分支 B 拉取受管数据源用；灵核 0 存储/native 场景无此 Bean 时为 null）
+            try {
+                container.setManagedDataSourceRegistry(mainContext.getBean(ManagedDataSourceRegistry.class));
+            } catch (Exception e) {
+                log.debug("[{}] ManagedDataSourceRegistry bean not available, managed datasource injection disabled",
+                        lingId);
             }
             return container;
 

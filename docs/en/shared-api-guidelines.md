@@ -101,34 +101,6 @@ That is part of the architecture boundary.
 
 ---
 
-## Security Boundary (Not A JVM Sandbox)
-
-`Shared API` and load-time scanners improve **contract isolation** and **deploy-time risk signaling**. They are **not** a full JVM security sandbox.
-
-| Layer | What it does | What it does not do |
-| --- | --- | --- |
-| Child-first `LingClassLoader` + forced parent packages | Prefer / exclusive parent types for JDK & `com.lingframe.api.*` | Block every reflective escape or native call at runtime |
-| `DangerousApiVerifier` (ASM) | Fail or warn on known dangerous bytecode at **install/load** | Intercept every runtime call after the ling is loaded |
-| `strictSecurityMode` | Makes more WARN-level findings hard-fail at scan time | Replace a SecurityManager / module deny-list |
-| Permission + infra proxies | Govern storage/cache/IPC when traffic goes through proxies | Catch unproxied `DriverManager` / raw sockets created off the path |
-| Shared Spring static caches (`AnnotatedElementUtils` / `BridgeMethodResolver.cache` etc.) | At unload, each cleaner under `resource/` **synchronously drains** them (including Soft), ensuring ClassLoader is GC-able | Architecturally guarantee LingCore never holds ling Class references at runtime (physical consequence of shared heap + parent delegation, not implementation laziness) |
-
-### Proxy and CGLIB (ling-side recommendation)
-
-- **Preferred**: expose **interface** contracts so Spring uses **JDK dynamic proxy** (`java.lang.reflect.Proxy`). JDK `WeakCache` is friendlier to ClassLoader unload semantics, reducing dependence on CGLIB / Spring in-house caches.
-- **Second-best**: when proxying concrete classes without interfaces, **CGLIB** must be used; unload depends on evidence-driven cleanup like `CglibCacheCleaner`; cost is higher under multi-version hot-swap.
-- **Do not** expect "forking a few Spring cache classes into the ling CL" to isolate static — the parent loader still resolves to the LingCore copy for callers using parent delegation.
-- The framework does **not** disable CGLIB by default (would break interface-less Beans); this is a contract and implementation recommendation.
-
-Operational guidance:
-
-- Treat untrusted third-party lings as **high risk** even with scanners enabled.
-- Prefer `strictSecurityMode=true` in production hardening; use trusted ling IDs / lib prefixes sparingly and auditably.
-- Runtime escapes (reflection, process, network) remain possible for code already loaded; mitigate with permissions, proxies, and process-level isolation when needed.
-- **Storage**: SQL permission mainly governs the **Spring DataSource Bean proxy chain**; `DriverManager` / non-Bean pools can bypass it (see production hardening checklist section 9).
-
----
-
 ## DTO Design Rules
 
 Good DTOs are boring on purpose.
@@ -161,6 +133,34 @@ Unsafe changes:
 - assuming shared contract hot-update is safe
 
 For incompatible changes, prefer versioned packages.
+
+---
+
+## Security Boundary (Not A JVM Sandbox)
+
+`Shared API` and load-time scanners improve **contract isolation** and **deploy-time risk signaling**. They are **not** a full JVM security sandbox.
+
+| Layer | What it does | What it does not do |
+| --- | --- | --- |
+| Child-first `LingClassLoader` + forced parent packages | Prefer / exclusive parent types for JDK & `com.lingframe.api.*` | Block every reflective escape or native call at runtime |
+| `DangerousApiVerifier` (ASM) | Fail or warn on known dangerous bytecode at **install/load** | Intercept every runtime call after the ling is loaded |
+| `strictSecurityMode` | Makes more WARN-level findings hard-fail at scan time | Replace a SecurityManager / module deny-list |
+| Permission + infra proxies | Govern storage/cache/IPC when traffic goes through proxies | Catch unproxied `DriverManager` / raw sockets created off the path |
+| Shared Spring static caches (`AnnotatedElementUtils` / `BridgeMethodResolver.cache` etc.) | At unload, each cleaner under `resource/` **synchronously drains** them (including Soft), ensuring ClassLoader is GC-able | Architecturally guarantee LingCore never holds ling Class references at runtime (physical consequence of shared heap + parent delegation, not implementation laziness) |
+
+### Proxy and CGLIB (ling-side recommendation)
+
+- **Preferred**: expose **interface** contracts so Spring uses **JDK dynamic proxy** (`java.lang.reflect.Proxy`). JDK `WeakCache` is friendlier to ClassLoader unload semantics, reducing dependence on CGLIB / Spring in-house caches.
+- **Second-best**: when proxying concrete classes without interfaces, **CGLIB** must be used; unload depends on evidence-driven cleanup like `CglibCacheCleaner`; cost is higher under multi-version hot-swap.
+- **Do not** expect "forking a few Spring cache classes into the ling CL" to isolate static — the parent loader still resolves to the LingCore copy for callers using parent delegation.
+- The framework does **not** disable CGLIB by default (would break interface-less Beans); this is a contract and implementation recommendation.
+
+Operational guidance:
+
+- Treat untrusted third-party lings as **high risk** even with scanners enabled.
+- Prefer `strictSecurityMode=true` in production hardening; use trusted ling IDs / lib prefixes sparingly and auditably.
+- Runtime escapes (reflection, process, network) remain possible for code already loaded; mitigate with permissions, proxies, and process-level isolation when needed.
+- **Storage**: SQL permission mainly governs the **Spring DataSource Bean proxy chain**; `DriverManager` / non-Bean pools can bypass it (see production hardening checklist section 9).
 
 ---
 

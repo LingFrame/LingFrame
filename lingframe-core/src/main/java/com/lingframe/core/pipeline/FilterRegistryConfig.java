@@ -14,6 +14,7 @@ import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.routing.ContractProviderRoutingFilter;
 import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.core.spi.LingServiceInvoker;
+import com.lingframe.core.spi.TransactionBindingHook;
 import com.lingframe.core.spi.TrafficRouter;
 import lombok.Builder;
 import lombok.Getter;
@@ -82,4 +83,22 @@ public class FilterRegistryConfig {
      */
     @Builder.Default
     private final ProviderWeightRouter providerWeightRouter = null;
+
+    /**
+     * 事务状态提取 SPI，供 {@link TransactionPropagationFilter} 在 TCCL 切换前判断活跃事务并提取连接。
+     * 可为 null（无 Spring 生态的纯 core/native 场景未注入时，过滤器降级为「无事务穿透」，
+     * isTransactionActive 恒 false，不压栈不抛错）。
+     */
+    @Builder.Default
+    private final TransactionBindingHook transactionBindingHook = null;
+
+    /**
+     * 事务穿透总开关（默认 true）。
+     * <p>
+     * false 时 {@link TransactionPropagationFilter} 直接放行（不压栈），穿透链路整体不激活
+     * （应急降级路径）；配套的灵元侧受管事务管理器亦不注册。由 runtime starter 从
+     * {@code lingframe.tx.propagation.enabled} 映射注入；纯 core/native 场景不注入时保持默认开启。
+     */
+    @Builder.Default
+    private final boolean propagationEnabled = true;
 }

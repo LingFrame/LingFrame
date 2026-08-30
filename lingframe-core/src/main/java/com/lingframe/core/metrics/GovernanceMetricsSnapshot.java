@@ -14,6 +14,7 @@ public class GovernanceMetricsSnapshot {
     private long forceDrainCount;
     private long drainTimeoutAbortCount;
     private long recoveryCount;
+    private long connectionPoisonedCount;
     private int activeIsolatedThreads;
     private int maxConcurrentThreadsBudget;
     private long threadBudgetExceededCount;
