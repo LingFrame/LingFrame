@@ -1,11 +1,16 @@
-# 灵珑多模数据源架构与跨灵元双轨制事务一致性设计方案（修订版 v5）
+# 灵珑多模数据源架构与跨灵元双轨制事务一致性设计方案（修订版 v6）
 
 > **文件归档**：LingFrame 核心架构演进规范
 > **关联决策**：[ADR-0005: 灵珑多模数据源引渡与跨灵元双轨制事务一致性治理架构](../../adr/0005-managed-datasource-and-transaction-propagation.md)
 > **适用版本**：LingFrame 0.5.0+
 >
 > **修订记录**
-> - v5（本版）：按架构演进决策修订，新增一项生命周期策略决策：
+> - v6（本版）：新增灵元侧引入 JPA 运行期硬边界决策（**D18**），经真实子容器测试 `ManagedJpaBoundaryTest`（5 用例全绿）实证确认：
+>   1. **方言强制显式配置**：`LingDatabaseMetaDataProxy` 的 URL 脱敏（`jdbc:lingframe:masked`）导致 Hibernate 方言自动检测失败，灵元必须显式配置 `spring.jpa.database-platform`，否则 `EntityManagerFactory` 启动即崩溃；
+>   2. **双事务管理器自动抑制**：`JpaBaseConfiguration.transactionManager` 带 `@ConditionalOnMissingBean`，`lingTransactionManager` 注入后 `JpaTransactionManager` 自动被抑制，无歧义；
+>   3. **物理提交权安全降级**：穿透命中时 Hibernate 的 `commit/close/setAutoCommit` 降级为 safe no-op，底层连接生命周期由根事务统一协调；
+>   并在决策表追加 D18。
+> - v5：按架构演进决策修订，新增一项生命周期策略决策：
 >   1. **基础设施灵元只增不减（D17）**：模式 3 存储灵元**本期不提供热卸载**——只允许热挂载，卸载入口禁用，即使闲置也保留（宁可放着不用，也不冒卸载的级联失效与 ClassLoader/驱动回收风险）；`ManagedDataSourceRegistry.unregister` 保留为 API 但基础设施路径不触发；
 >   2. **业务灵元卸载不受影响**：模式 2 私有库灵元维持既有热卸载能力，驱动反注册仍走既有 `LingUnloadHook` 四层回收（决策 D14）；
 >   并同步：§1.3/§1.4 模式 3 定义与对比表、决策表 D5/D14/D17、§3.1 资产表、§3.2 断点图、§6 防线（第 3/5 道与 §6.3 卸载语义）、约束 2、Roadmap Phase 6/7 全部改为「基础设施只增不减」口径。
@@ -174,6 +179,7 @@
 | **D17 基础设施只增不减（热卸载延后）** | 基础设施灵元（模式 3 存储灵元）**本期不提供热卸载**——只允许热挂载，禁用卸载入口；即使闲置也保留（宁可放着不用，也不冒卸载的级联失效与 ClassLoader 回收风险）。`ManagedDataSourceRegistry.unregister` 保留为 API 但基础设施路径不触发；业务灵元（模式 2）卸载不受影响，仍走既有四层回收 | 新增决策：承载型基础设施的卸载级联风险（依赖它的业务灵元连接池失效）与回收复杂度，比「闲置占用」的成本高——卸载延后 |
 | **D15 TSM 共享启动期自检** | 穿透地基 = 灵核与灵元共享同一份 `TransactionSynchronizationManager`（spring-tx 父委派）。灵核 starter 装配时用 `Class.forName(TSM, false, 各 ClassLoader)` 做 **Class 身份比较**，不一致（父委派配置错误、两栈分叉）→ 输出 WARN：穿透不激活，受管灵元 SQL 独立提交——与 D11 同手法，把「静默失效」提升为「启动期可见」 | 修复：TSM 跨 ClassLoader 共享只是契约声明，无运行时自检；父委派出错时穿透静默失效且无任何报错 |
 | **D16 穿透总开关与降级路径** | 新增配置键 `lingframe.tx.propagation.enabled`（默认 `true`）。`false` 时：`TransactionPropagationFilter` 直接放行（不 push）、`LingManagedTransactionManager` 不注册（灵元退回独立连接心智）——提供明确的应急降级路径：「线上出现穿透机制自身引发的疑难时，先关总开关，业务退回模式 2 + EventBus 最终一致兜底，再排查」 | 修复：复杂度高但无「整体关闭穿透」的运行层开关，应急只能改代码排查 |
+| **D18 灵元侧 JPA 运行期硬边界** | 灵元引入 `spring-boot-starter-data-jpa` 时：① URL 脱敏（`jdbc:lingframe:masked`）导致 Hibernate 方言自动推导失效，必须显式配置 `spring.jpa.database-platform`；② JPA 自动装配的 `JpaTransactionManager` 被灵珑 `@Primary` 的 `lingTransactionManager` 自动抑制，无注入歧义；③ 穿透命中时返回 `NonCloseableLingConnectionProxy`，Hibernate 提交/关闭权降级为 no-op，由根事务统一提交回滚 | 补全：消除灵元侧引入 JPA 的空白区，实测（`ManagedJpaBoundaryTest` 5 用例全绿）确立硬约束 |
 
 ---
 

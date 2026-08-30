@@ -17,6 +17,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -42,6 +43,18 @@ public class LingUnloadCoordinator {
     private final LingResourceManager lingResourceManager;
     private final LeakDetector leakDetector;
     private final ExecutorService parallelExecutor;
+
+    /** 最近一次版本级卸载清理耗时（毫秒），供监控指标读取；0 = 尚无版本级卸载发生 */
+    private final AtomicLong lastVersionUnloadDurationMs = new AtomicLong();
+
+    /** 累计版本级卸载清理次数，供监控指标读取 */
+    private final AtomicLong versionUnloadCount = new AtomicLong();
+
+    /** 最近一次整灵元卸载清理耗时（毫秒），供监控指标读取；0 = 尚无整灵元卸载发生 */
+    private final AtomicLong lastLingUnloadDurationMs = new AtomicLong();
+
+    /** 累计整灵元卸载清理次数，供监控指标读取 */
+    private final AtomicLong lingUnloadCount = new AtomicLong();
 
     /**
      * 进行中的清理信号表：lingId → 清理完成 Future。
@@ -102,19 +115,24 @@ public class LingUnloadCoordinator {
      * 如果删掉这里仍安全,说明收口成功。
      */
     public void onVersionUnload(String lingId, String version, ClassLoader classLoader) {
-        cleanupWithHooks(lingId, version, classLoader);
-        // 版本级孤儿资源关闭：多版本滚动更新时，旧版本注册的孤儿资源随本版本卸载即时释放，不累积。
-        // 依赖 classLoader 非 null：classLoader 是版本实体代表，无实例即无孤儿资源应关闭
-        if (classLoader != null && lingResourceManager != null && lingId != null && version != null) {
-            lingResourceManager.closeResources(lingId, version);
-        }
-        // 同步驱逐该版本的方法句柄缓存，避免依赖 InstanceDestroyedEvent 异步触发
-        // 异步事件到达前若 MethodHandle 仍持有目标 Class 的强引用，会推迟 ClassLoader 回收
-        if (pipelineEngine != null && version != null) {
-            int evicted = pipelineEngine.evictMethodCacheByPrefix(lingId + ":" + version + "@");
-            if (evicted > 0) {
-                log.info("[{}] Evicted {} method handles for version {}", lingId, evicted, version);
+        long startNanos = System.nanoTime();
+        try {
+            cleanupWithHooks(lingId, version, classLoader);
+            // 版本级孤儿资源关闭：多版本滚动更新时，旧版本注册的孤儿资源随本版本卸载即时释放，不累积。
+            // 依赖 classLoader 非 null：classLoader 是版本实体代表，无实例即无孤儿资源应关闭
+            if (classLoader != null && lingResourceManager != null && lingId != null && version != null) {
+                lingResourceManager.closeResources(lingId, version);
             }
+            // 同步驱逐该版本的方法句柄缓存，避免依赖 InstanceDestroyedEvent 异步触发
+            // 异步事件到达前若 MethodHandle 仍持有目标 Class 的强引用，会推迟 ClassLoader 回收
+            if (pipelineEngine != null && version != null) {
+                int evicted = pipelineEngine.evictMethodCacheByPrefix(lingId + ":" + version + "@");
+                if (evicted > 0) {
+                    log.info("[{}] Evicted {} method handles for version {}", lingId, evicted, version);
+                }
+            }
+        } finally {
+            recordVersionUnloadDuration(startNanos);
         }
     }
 
@@ -126,20 +144,25 @@ public class LingUnloadCoordinator {
      * 本方法不做重复判断。
      */
     public void onLingUnload(String lingId) {
-        CompletableFuture<Void> future = beginCleanup(lingId);
+        long startNanos = System.nanoTime();
         try {
-            if (pipelineEngine != null) {
-                pipelineEngine.evictLingResources(lingId);
-                int evictedHandles = pipelineEngine.evictMethodCache(lingId);
-                if (evictedHandles > 0) {
-                    log.info("[{}] Evicted {} method handles after unload", lingId, evictedHandles);
+            CompletableFuture<Void> future = beginCleanup(lingId);
+            try {
+                if (pipelineEngine != null) {
+                    pipelineEngine.evictLingResources(lingId);
+                    int evictedHandles = pipelineEngine.evictMethodCache(lingId);
+                    if (evictedHandles > 0) {
+                        log.info("[{}] Evicted {} method handles after unload", lingId, evictedHandles);
+                    }
                 }
-            }
-            if (lingResourceManager != null) {
-                lingResourceManager.closeResources(lingId);
+                if (lingResourceManager != null) {
+                    lingResourceManager.closeResources(lingId);
+                }
+            } finally {
+                finishCleanup(lingId, future);
             }
         } finally {
-            finishCleanup(lingId, future);
+            recordLingUnloadDuration(startNanos);
         }
     }
 
@@ -172,6 +195,67 @@ public class LingUnloadCoordinator {
     /** 登记一次清理并返回其完成信号（同 ling 复用同一 Future）。 */
     private CompletableFuture<Void> beginCleanup(String lingId) {
         return cleanupFutures.computeIfAbsent(lingId, k -> new CompletableFuture<>());
+    }
+
+    /**
+     * 记录一次版本级卸载清理耗时（最近一次 + 累计次数），供监控指标读取。
+     * <p>
+     * 与整灵元卸载分开统计：版本级卸载（滚动更新旧版本）频率高、单次耗时短，
+     * 混在一起会稀释整灵元卸载（低频、清理范围更大）的耗时信号。
+     *
+     * @param startNanos 版本级卸载入口的 System.nanoTime()
+     */
+    private void recordVersionUnloadDuration(long startNanos) {
+        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000L;
+        lastVersionUnloadDurationMs.set(Math.max(0L, elapsedMs));
+        versionUnloadCount.incrementAndGet();
+    }
+
+    /**
+     * 记录一次整灵元卸载清理耗时（最近一次 + 累计次数），供监控指标读取。
+     *
+     * @param startNanos 整灵元卸载入口的 System.nanoTime()
+     */
+    private void recordLingUnloadDuration(long startNanos) {
+        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000L;
+        lastLingUnloadDurationMs.set(Math.max(0L, elapsedMs));
+        lingUnloadCount.incrementAndGet();
+    }
+
+    /**
+     * 最近一次版本级卸载清理耗时（毫秒）。
+     *
+     * @return 毫秒耗时；尚无版本级卸载发生时为 0
+     */
+    public long getLastVersionUnloadDurationMs() {
+        return lastVersionUnloadDurationMs.get();
+    }
+
+    /**
+     * 累计版本级卸载清理次数。
+     *
+     * @return 版本级卸载清理调用次数
+     */
+    public long getVersionUnloadCount() {
+        return versionUnloadCount.get();
+    }
+
+    /**
+     * 最近一次整灵元卸载清理耗时（毫秒）。
+     *
+     * @return 毫秒耗时；尚无整灵元卸载发生时为 0
+     */
+    public long getLastLingUnloadDurationMs() {
+        return lastLingUnloadDurationMs.get();
+    }
+
+    /**
+     * 累计整灵元卸载清理次数。
+     *
+     * @return 整灵元卸载清理调用次数
+     */
+    public long getLingUnloadCount() {
+        return lingUnloadCount.get();
     }
 
     /** 完成一次清理：置位 Future 并从信号表移除。 */

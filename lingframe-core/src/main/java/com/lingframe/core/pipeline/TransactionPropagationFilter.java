@@ -2,6 +2,8 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.api.storage.LingTransactionContext;
 import com.lingframe.api.storage.LingTransactionRollbackException;
+import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.TransactionBindingHook;
@@ -32,14 +34,29 @@ public class TransactionPropagationFilter implements LingInvocationFilter {
 
     private final TransactionBindingHook transactionBindingHook;
     private final boolean propagationEnabled;
+    private final GovernanceMetricsCollector governanceMetricsCollector;
 
     public TransactionPropagationFilter(TransactionBindingHook transactionBindingHook) {
-        this(transactionBindingHook, true);
+        this(transactionBindingHook, true, null);
     }
 
     public TransactionPropagationFilter(TransactionBindingHook transactionBindingHook, boolean propagationEnabled) {
+        this(transactionBindingHook, propagationEnabled, null);
+    }
+
+    /**
+     * 全参数构造。
+     *
+     * @param transactionBindingHook    事务状态提取 SPI（可为 null：纯 core/native 场景降级为无穿透）
+     * @param propagationEnabled        穿透总开关
+     * @param governanceMetricsCollector 治理指标采集器（可为 null：未装配时不记录穿透成功/失败）
+     */
+    public TransactionPropagationFilter(TransactionBindingHook transactionBindingHook,
+                                        boolean propagationEnabled,
+                                        GovernanceMetricsCollector governanceMetricsCollector) {
         this.transactionBindingHook = transactionBindingHook;
         this.propagationEnabled = propagationEnabled;
+        this.governanceMetricsCollector = governanceMetricsCollector;
     }
 
     @Override
@@ -81,9 +98,11 @@ public class TransactionPropagationFilter implements LingInvocationFilter {
             // 栈非空或标志置位即检查，宁可误抛（触发回滚）不可漏判（静默提交）
             if (pushed > 0 || LingTransactionContext.hasAnyConnection()) {
                 if (LingTransactionContext.isRollbackOnly()) {
+                    recordPropagation(ctx, false);
                     throw new LingTransactionRollbackException(
                             "Downstream ling marked transaction as rollbackOnly, triggering upstream rollback");
                 }
+                recordPropagation(ctx, true);
             }
 
             return result;
@@ -94,5 +113,24 @@ public class TransactionPropagationFilter implements LingInvocationFilter {
             }
             LingTransactionContext.cleanIfEmpty();
         }
+    }
+
+    /**
+     * 上报一次穿透结果（仅穿透实际参与时调用：栈非空或本层压过栈）。
+     * 指标按当前调用的目标灵元记录；未装配采集器或无法解析目标时不记录。
+     *
+     * @param ctx     调用上下文（取路由目标）
+     * @param success 穿透是否成功（成功 = 无 rollbackOnly 信号，失败 = 信号上行触发回滚）
+     */
+    private void recordPropagation(InvocationContext ctx, boolean success) {
+        if (governanceMetricsCollector == null) {
+            return;
+        }
+        LingInstance target = ctx.routing() == null ? null : ctx.routing().getTargetInstance();
+        if (target == null) {
+            return;
+        }
+        governanceMetricsCollector.recordTransactionPropagation(
+                target.getLingId(), target.getVersion(), success);
     }
 }

@@ -29,6 +29,11 @@
             <groupId>com.lingframe</groupId>
             <artifactId>lingframe-api</artifactId>
         </dependency>
+        <!-- 事务穿透基准：NonCloseable 视图修正（受管数据源代理） -->
+        <dependency>
+            <groupId>com.lingframe</groupId>
+            <artifactId>lingframe-infra-storage</artifactId>
+        </dependency>
 
         <!-- JMH -->
         <dependency>

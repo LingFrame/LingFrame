@@ -6,6 +6,11 @@
 ---
 
 > **修订记录**
+> - **v6**：新增灵元侧 JPA 运行期硬边界决策（**决策 D18**，经 `ManagedJpaBoundaryTest` 5 用例全绿实证）：
+>   1. **方言强制显式配置**：受管代理元数据 URL 安全脱敏（`jdbc:lingframe:masked`）导致 Hibernate 方言自动检测失败，灵元必须显式配置 `spring.jpa.database-platform`，否则 EMF 启动崩溃；
+>   2. **双事务管理器自动抑制**：`JpaBaseConfiguration` 的 `@ConditionalOnMissingBean` 生效，`LingManagedTransactionManager` 成为灵元容器唯一 PTM，无歧义；
+>   3. **物理提交权安全降级**：穿透命中时 Hibernate 的 `commit/close/setAutoCommit` 降级为 safe no-op，底层连接生命周期与提交权由根事务统一协调。
+>
 > - **v5**：对齐 [design v5](../zh-CN/design/managed-datasource-and-transaction-propagation.md)（D17 新增）。本 ADR 决策方向不变，新增一项生命周期策略决策：
 >   1. **基础设施灵元只增不减（D17）**：模式 3 存储灵元**本期不提供热卸载**——只允许热挂载，卸载入口禁用；即使闲置也保留（宁可放着不用，也不冒卸载的级联失效与 ClassLoader/驱动回收风险）。`ManagedDataSourceRegistry.unregister` 保留为 API 但基础设施路径不触发；**业务灵元（模式 2）卸载不受影响**，仍走既有四层回收（驱动反注册经既有 `LingUnloadHook`，决策 D14）。
 >
@@ -132,6 +137,12 @@ public interface ManagedDataSourceRegistry {
 3. **全链路幂等追踪**：通过 `LingCallContext.getTraceId()` 携带全局唯一幂等流水号，下游灵元据此实现防重插入与幂等处理；
 4. **弹性补偿（Saga Fallback）**：结合 `ResilienceGovernanceFilter` 的熔断降级能力，当下游处理失败时回掷补偿事件，上游执行反向冲正。
 
+### 3.7 灵元侧引入 JPA 运行期硬边界（决策 D18）
+针对灵元内部引入 `spring-boot-starter-data-jpa` 的场景，经 `ManagedJpaBoundaryTest`（5 用例全绿）实证确立三项硬边界：
+1. **方言自动检测失败（必须显式配置方言）**：`LingDatabaseMetaDataProxy` 的 URL 脱敏（`jdbc:lingframe:masked`）导致 Hibernate 拿不到完整的 `DialectResolutionInfo`，启动报 `Access to DialectResolutionInfo cannot be null when 'hibernate.dialect' not set`。灵元必须显式配置 `spring.jpa.database-platform`，否则 `EntityManagerFactory` 启动即失败；
+2. **双事务管理器自动抑制（无歧义）**：Spring Boot 的 `JpaBaseConfiguration` 带 `@ConditionalOnMissingBean`。灵元注入 `lingTransactionManager`（`LingManagedTransactionManager`）后，`JpaTransactionManager` 自动被抑制，容器仅保留唯一的 PTM，按类型解析无歧义；
+3. **穿透命中时 Hibernate 物理提交权降级**：穿透栈非空时返回 `NonCloseableLingConnectionProxy`，Hibernate 发起的 `setAutoCommit(false)` / `commit()` / `close()` 全部安全降级为 safe no-op，`rollback()` 仅置回滚信号上行，物理提交权由根事务统一协调；栈空时返回普通代理连接，维持独立连接心智。
+
 ---
 
 ## 4. 后果与影响 (Consequences)
@@ -152,4 +163,5 @@ public interface ManagedDataSourceRegistry {
 - **穿透总开关的权衡（决策 D16）**：总开关 `lingframe.tx.propagation.enabled=false` 提供应急降级自由度（先关穿透、退回模式 2 + EventBus 兜底），但代价是**一致性语义显式降级**——关闭期间受管灵元 SQL 独立提交（autoCommit 即提交），跨灵元原子回滚不再可用。运维必须清楚：总开关是「应急逃生门」而非「常规配置」，开启后需在业务低峰恢复并验证穿透链路（Phase 8 契约自检）；
 - **事务根类型边界（决策 D11）**：穿透仅对 `DataSourceTransactionManager` 根生效；JPA 根场景穿透不激活、受管灵元 SQL 独立提交——灵核若混用 JPA 与受管灵元，需明确该场景无跨灵元强一致保障（启动期 WARN 可见）；
 - **模式 2 最终一致性研发约束**：放弃了单机事务，业务层必须基于状态机、幂等与 Saga 进行补偿设计，心智负担高于单体模式；纯内存 EventBus 进程崩溃时未消费事件丢失（crash-safe 场景需演进 Transactional Outbox）；
-- **模式 3 生命周期策略约束（决策 D17）**：基础设施灵元（存储灵元）**本期不提供热卸载**——只允许热挂载，卸载入口禁用，即使闲置也保留。取舍：以「闲置占用」（连接池/驱动常驻、资源不回收）换取「零级联卸载风险」（依赖它的业务灵元连接池永不失效）与「零 ClassLoader/驱动回收复杂度」；若未来业务确需释放基础设施资源，再评估「依赖反压检查 → 总线 `unregister()` → 停供新连接 → `deregisterDriver()` → 关池」的卸载路径（该路径机制已由 D14 四层回收预留，本期不启用）。
+- **模式 3 生命周期策略约束（决策 D17）**：基础设施灵元（存储灵元）**本期不提供热卸载**——只允许热挂载，卸载入口禁用，即使闲置也保留。取舍：以「闲置占用」（连接池/驱动常驻、资源不回收）换取「零级联卸载风险」（依赖它的业务灵元连接池永不失效）与「零 ClassLoader/驱动回收复杂度」；若未来业务确需释放基础设施资源，再评估「依赖反压检查 → 总线 `unregister()` → 停供新连接 → `deregisterDriver()` → 关池」的卸载路径（该路径机制已由 D14 四层回收预留，本期不启用）；
+- **灵元侧引入 JPA 的约束与要求（决策 D18）**：官方推荐路径始终为受管代理 + JDBC / MyBatis。若灵元引入 JPA，必须接受「显式配置方言」「穿透命中时 Hibernate 物理提交权降级」的物理硬约束；且长链路下需警惕 Hibernate 实体一级缓存延迟 Flush 与跨 ClassLoader 卸载泄漏的潜在风险。

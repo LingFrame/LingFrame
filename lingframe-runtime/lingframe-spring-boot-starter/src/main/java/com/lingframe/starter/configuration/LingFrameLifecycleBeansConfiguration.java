@@ -135,6 +135,29 @@ public class LingFrameLifecycleBeansConfiguration {
         return registry;
     }
 
+    /**
+     * 卸载清理协调器独立暴露为 Bean：供 Dashboard 等观测方读取卸载耗时指标
+     * （最近一次卸载耗时 / 累计卸载次数），并统一提供卸载编排与清理完成信号（awaitCleanup）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public LingUnloadCoordinator lingUnloadCoordinator(InvocationPipelineEngine pipelineEngine,
+            List<LingUnloadHook> unloadHooks,
+            LingResourceManager lingResourceManager,
+            LeakDetector leakDetector) {
+        // 生态桶：Spring 生态清理 Hook（由 Spring Bean 注入）
+        // JVM 桶：JVM 级 Hook，桶内并行执行
+        // 涵盖：JDBC Driver、线程引用/H2/Timer/线程池、ShutdownHook、RMI Target、日志框架、IDE 调试器缓存
+        List<LingUnloadHook> jvmHooks = Arrays.asList(
+                new JdbcDriverUnloadHook(),
+                new ThreadReferenceUnloadHook(),
+                new JvmShutdownHookUnloadHook(),
+                new RmiTargetUnloadHook(),
+                new LoggingFrameworkUnloadHook(),
+                new DebuggerCaptureUnloadHook());
+        return new LingUnloadCoordinator(pipelineEngine, unloadHooks, jvmHooks, lingResourceManager, leakDetector);
+    }
+
     @Bean
     @ConditionalOnMissingBean
     public LingLifecycleEngine lingLifecycleEngine(ContainerFactory containerFactory,
@@ -146,9 +169,8 @@ public class LingFrameLifecycleBeansConfiguration {
             LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry,
             InvocationPipelineEngine pipelineEngine,
-            List<LingUnloadHook> unloadHooks,
+            LingUnloadCoordinator unloadCoordinator,
             LingResourceManager lingResourceManager,
-            LeakDetector leakDetector,
             RuntimeCoordinator runtimeCoordinator,
             ObjectProvider<MetricsCollector> metricsCollectorProvider,
             ObjectProvider<GovernanceMetricsCollector> governanceMetricsCollectorProvider) {
@@ -167,18 +189,6 @@ public class LingFrameLifecycleBeansConfiguration {
                     lingFrameConfig != null ? lingFrameConfig.getTrustedLingIds() : Collections.emptyList(),
                     lingFrameConfig != null ? lingFrameConfig.getTrustedLibPrefixes() : Collections.emptyList()));
         }
-        // 生态桶：Spring 生态清理 Hook（由 Spring Bean 注入）
-        // JVM 桶：JVM 级 Hook，桶内并行执行
-        // 涵盖：JDBC Driver、线程引用/H2/Timer/线程池、ShutdownHook、RMI Target、日志框架、IDE 调试器缓存
-        List<LingUnloadHook> jvmHooks = Arrays.asList(
-                new JdbcDriverUnloadHook(),
-                new ThreadReferenceUnloadHook(),
-                new JvmShutdownHookUnloadHook(),
-                new RmiTargetUnloadHook(),
-                new LoggingFrameworkUnloadHook(),
-                new DebuggerCaptureUnloadHook());
-        LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
-                pipelineEngine, unloadHooks, jvmHooks, lingResourceManager, leakDetector);
 
         // 微内核解耦：指标/告警由组装层注入，内核不直接构造
         MetricsCollector mc = metricsCollectorProvider.getIfAvailable();

@@ -99,10 +99,15 @@ class LingFrameLifecycleBeansConfigurationTest {
         LeakDetector leakDetector = mock(LeakDetector.class);
         RuntimeCoordinator runtimeCoordinator = mock(RuntimeCoordinator.class);
 
+        LingUnloadCoordinator unloadCoordinator = config.lingUnloadCoordinator(
+                pipelineEngine, unloadHooks, lingResourceManager, leakDetector);
+        assertNotNull(unloadCoordinator);
+
         LingLifecycleEngine lifecycleEngine = config.lingLifecycleEngine(
                 containerFactory, permissionService, lingLoaderFactory, verifiersProvider, eventBus,
-                lingFrameConfig, lingRepository, lingServiceRegistry, pipelineEngine, unloadHooks,
-                lingResourceManager, leakDetector, runtimeCoordinator,
+                lingFrameConfig, lingRepository, lingServiceRegistry, pipelineEngine,
+                unloadCoordinator,
+                lingResourceManager, runtimeCoordinator,
                 mock(ObjectProvider.class),
                 mock(ObjectProvider.class)
         );
