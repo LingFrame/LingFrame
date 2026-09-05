@@ -317,7 +317,8 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
                 if (runtime != null && runtime.currentStatus() == RuntimeStatus.DEGRADED) {
                     runtimeCoordinator.transition(lingId, RuntimeStatus.ACTIVE);
                     if (governanceMetricsCollector != null) {
-                        governanceMetricsCollector.recordRecovered(lingId, runtime.getInstancePool().getVersion());
+                        String version = runtime.getInstancePool() != null ? runtime.getInstancePool().getVersion() : "virtual";
+                        governanceMetricsCollector.recordRecovered(lingId, version);
                     }
                     log.info("[Resilience:{}] Circuit breaker recovered, runtime transitioned back to ACTIVE", lingId);
                 }

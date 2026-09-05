@@ -8,6 +8,7 @@ import com.lingframe.core.spi.RoutableTarget;
 import lombok.Getter;
 import lombok.ToString;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -61,6 +62,38 @@ public class LingRuntime implements RoutableTarget {
         }
     }
 
+    /**
+     * 面向纯治理虚拟灵元的包级私有构造方法。
+     * <p>
+     * 虚拟灵元不持有物理实例池（{@link #instancePool} 为 null），仅作为微内核治理流水线的路由切点与配置载体。
+     * 架构约束：本构造方法受包级保护，必须由 {@link VirtualLingManager} 独占编排组装，外部无法脱离生命周期随意 new。
+     *
+     * @param lingId 灵元唯一标识
+     * @param config 运行时治理配置
+     * @param eventBus 事件总线，若提供则监听运行时状态变更
+     * @param runtimeCoordinator 运行时状态协调器（状态真源）
+     */
+    LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
+                RuntimeCoordinator runtimeCoordinator) {
+        this.lingId = Objects.requireNonNull(lingId, "lingId cannot be null");
+        this.config = config != null ? config : LingRuntimeConfig.defaults();
+        this.instancePool = null;
+        this.runtimeCoordinator = Objects.requireNonNull(runtimeCoordinator, "RuntimeCoordinator is required");
+
+        if (eventBus != null) {
+            eventBus.subscribe(lingId, RuntimeStateChangedEvent.class, this::handleStateChanged);
+        }
+    }
+
+    /**
+     * 判断当前灵元是否为无物理实例池的虚拟灵元。
+     *
+     * @return 若为虚拟灵元返回 true，否则返回 false
+     */
+    public boolean isVirtual() {
+        return instancePool == null;
+    }
+
     private void handleStateChanged(RuntimeStateChangedEvent event) {
         if (event == null || event.getLingId() == null || !event.getLingId().equals(lingId)) {
             return;
@@ -70,13 +103,15 @@ public class LingRuntime implements RoutableTarget {
         // 宏观运行时进入 STOPPING/REMOVED 后，灵核只需要同步收紧成员池写入。
         // 这里不反向写 RuntimeStatus，避免对象之间互相改写状态。
         if (newStatus == RuntimeStatus.STOPPING || newStatus == RuntimeStatus.REMOVED) {
-            instancePool.shutdown();
+            if (instancePool != null) {
+                instancePool.shutdown();
+            }
         }
     }
 
     public boolean isAvailable() {
         return currentStatus() == RuntimeStatus.ACTIVE &&
-                instancePool.hasAvailableInstance();
+                (instancePool == null || instancePool.hasAvailableInstance());
     }
 
     /**
@@ -104,6 +139,9 @@ public class LingRuntime implements RoutableTarget {
      */
     @Override
     public List<LingInstance> getReadyInstances() {
+        if (instancePool == null) {
+            return Collections.emptyList();
+        }
         return instancePool.getActiveInstances().stream()
                 .filter(LingInstance::isReady)
                 .collect(Collectors.toList());

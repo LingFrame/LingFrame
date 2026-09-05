@@ -99,7 +99,7 @@ public class InvocationPolicyPrefillFilter implements LingInvocationFilter {
      */
     private GovernancePolicy.InvocationPolicy readStaticInvocation(String lingId) {
         LingRuntime runtime = lingRepository.getRuntime(lingId);
-        if (runtime == null) {
+        if (runtime == null || runtime.getInstancePool() == null) {
             return null;
         }
         LingInstance instance = runtime.getInstancePool().getDefault();

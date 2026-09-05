@@ -150,12 +150,14 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
             RoutableTarget rt = lingRepository != null ? lingRepository.getRoutableTarget(desc.getLingId()) : null;
             if (rt instanceof LingRuntime) {
                 LingRuntime runtime = (LingRuntime) rt;
-                for (LingInstance instance : runtime.getInstancePool().getActiveInstances()) {
-                    if (!versionMatches(desc, instance)) {
-                        continue;
-                    }
-                    if (matchLabels(instance.getLabels(), reqLabels)) {
-                        return desc;
+                if (runtime.getInstancePool() != null) {
+                    for (LingInstance instance : runtime.getInstancePool().getActiveInstances()) {
+                        if (!versionMatches(desc, instance)) {
+                            continue;
+                        }
+                        if (matchLabels(instance.getLabels(), reqLabels)) {
+                            return desc;
+                        }
                     }
                 }
             }
