@@ -80,6 +80,12 @@ public class SpringContainerFactory implements ContainerFactory {
             excludes.add("org.springframework.boot.autoconfigure.quartz.QuartzAutoConfiguration");
             excludes.add("org.springframework.boot.autoconfigure.task.TaskSchedulingAutoConfiguration");
 
+            // 默认排除 JPA 与 Hibernate 自动配置：当类路径存在 JPA starter 时，灵元子容器
+            // 默认不应静默拉起重量级 Hibernate 引擎与静态元数据（避免其跨生命周期引用灵元 ClassLoader
+            // 阻碍安全卸载）。灵元确需 JPA 时，可在 ling.yml 用 includeAutoConfigurations 显式放行。
+            excludes.add("org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration");
+            excludes.add("org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration");
+
             // 合并灵元 ling.yml 声明的自定义排除自动配置类
             if (definition != null && definition.getExcludeAutoConfigurations() != null) {
                 for (String autoConfig : definition.getExcludeAutoConfigurations()) {

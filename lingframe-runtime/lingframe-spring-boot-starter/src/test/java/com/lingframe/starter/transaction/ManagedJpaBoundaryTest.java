@@ -21,11 +21,10 @@ import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import javax.persistence.EntityManager;
-import javax.persistence.EntityManagerFactory;
-import javax.sql.DataSource;
+import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.util.Map;
+import javax.sql.DataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -66,9 +65,6 @@ class ManagedJpaBoundaryTest {
 
     @Autowired
     private ApplicationContext applicationContext;
-
-    @Autowired
-    private EntityManagerFactory entityManagerFactory;
 
     @AfterEach
     void tearDown() {
@@ -145,7 +141,8 @@ class ManagedJpaBoundaryTest {
 
         @Test
         @DisplayName("JPA 自动配置装配出 EntityManagerFactory，其数据源为受管代理（穿透可命中）")
-        void entityManagerFactoryUsesManagedProxy() {
+        void entityManagerFactoryUsesManagedProxy() throws Exception {
+            Object entityManagerFactory = applicationContext.getBean("entityManagerFactory");
             assertThat(entityManagerFactory).isNotNull();
 
             // LocalContainerEntityManagerFactoryBean 的 DataSource 就是 @Primary 受管代理
@@ -154,11 +151,15 @@ class ManagedJpaBoundaryTest {
             assertThat(emfBean.getDataSource()).isInstanceOf(LingDataSourceProxy.class);
 
             // EntityManager 可创建（Hibernate 方言基于 H2 正常初始化）
-            EntityManager em = entityManagerFactory.createEntityManager();
+            // 双栈解耦：通过反射调用原生 EntityManagerFactory/EntityManager，兼容 SB2 (javax) 与 SB3 (jakarta)
+            Method createEntityManagerMethod = entityManagerFactory.getClass().getMethod("createEntityManager");
+            Object em = createEntityManagerMethod.invoke(entityManagerFactory);
             try {
-                assertThat(em.isOpen()).isTrue();
+                Method isOpenMethod = em.getClass().getMethod("isOpen");
+                assertThat((Boolean) isOpenMethod.invoke(em)).isTrue();
             } finally {
-                em.close();
+                Method closeMethod = em.getClass().getMethod("close");
+                closeMethod.invoke(em);
             }
         }
     }
