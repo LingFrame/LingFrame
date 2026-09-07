@@ -5,6 +5,7 @@ import com.lingframe.api.storage.ManagedDataSourceRegistry;
 
 import javax.sql.DataSource;
 import java.util.Collections;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -36,6 +37,8 @@ public class DefaultManagedDataSourceRegistry implements ManagedDataSourceRegist
 
     @Override
     public void unregister(String dataSourceId) {
+        // null 直接作为 ConcurrentHashMap.remove 键会抛 NPE，入口处显式拒绝以固化契约边界
+        Objects.requireNonNull(dataSourceId, "dataSourceId must not be null");
         providers.remove(dataSourceId);
     }
 

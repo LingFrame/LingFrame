@@ -150,6 +150,14 @@ class DefaultManagedDataSourceRegistryTest {
         }
 
         @Test
+        @DisplayName("unregister null dataSourceId 拒绝（ConcurrentHashMap.remove(null) 会 NPE）")
+        void nullIdIsRejectedOnUnregister() {
+            assertThatThrownBy(() -> registry.unregister(null))
+                    .isInstanceOf(NullPointerException.class)
+                    .hasMessageContaining("dataSourceId must not be null");
+        }
+
+        @Test
         @DisplayName("lookup null 返回 null（不抛异常）")
         void lookupNullReturnsNull() {
             assertThat(registry.lookup(null)).isNull();

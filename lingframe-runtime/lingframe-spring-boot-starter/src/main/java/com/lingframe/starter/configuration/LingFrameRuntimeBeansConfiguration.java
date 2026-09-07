@@ -32,7 +32,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * 运行时通用 Bean 腐配切片。
+ * 运行时通用 Bean 装配切片。
  */
 @Configuration(proxyBeanMethods = false)
 public class LingFrameRuntimeBeansConfiguration {

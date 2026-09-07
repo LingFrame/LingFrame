@@ -134,6 +134,34 @@ class HotSwapWatcherTest {
     }
 
     @Test
+    @DisplayName("lifecycleEngine 未绑定（native 延迟注入窗口内）触发热重载不抛 NPE")
+    void shouldSkipReloadWhenEngineNotBound() throws Exception {
+        // native 装配：先传 null 构造，engine 创建后再 setLifecycleEngine 绑定；
+        // 此窗口内文件变动触发 doReload 应经由判空安全跳过，而非 NPE
+        HotSwapWatcher w = new HotSwapWatcher(null, lingRepository, eventBus, leakDetector);
+        try {
+            File classesDir = new File(tempDir, "not-bound-ling");
+            classesDir.mkdirs();
+            // 放入真实 .class 文件，使 hasCompilationErrors 为 false——否则空目录会提前 return，
+            // 无法命中「engine 未绑定」的判空分支（在判空之前）
+            File classFile = new File(classesDir, "Fake.class");
+            classFile.createNewFile();
+            LingDefinition def = mock(LingDefinition.class);
+            when(def.getId()).thenReturn("not-bound-ling");
+            when(def.getVersion()).thenReturn("1.0.0");
+            w.register("not-bound-ling", classesDir, def);
+
+            Method method = HotSwapWatcher.class.getDeclaredMethod("doReload", String.class);
+            method.setAccessible(true);
+            assertDoesNotThrow(() -> method.invoke(w, "not-bound-ling"));
+            // 未绑定 engine：不应触发任何卸载/重部署
+            verifyNoMoreInteractions(leakDetector);
+        } finally {
+            w.shutdown();
+        }
+    }
+
+    @Test
     @DisplayName("register 带子目录的 classes 目录")
     void shouldRegisterWithSubDirectories() throws IOException {
         File classesDir = new File(tempDir, "classes");

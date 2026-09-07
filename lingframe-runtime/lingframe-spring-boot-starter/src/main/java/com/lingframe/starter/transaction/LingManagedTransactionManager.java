@@ -87,6 +87,7 @@ public class LingManagedTransactionManager implements PlatformTransactionManager
         if (current == null) {
             // ===== 根路径（灵元为事务根：无灵核事务、也无更早的灵元事务）=====
             Connection conn = null;
+            boolean handoverSuccess = false;
             try {
                 conn = managedDataSource.getConnection();   // 普通借出（治理代理，走语句治理）
                 // 隔离级别 / readOnly 仅根路径生效（借出时设置；非根场景由根事务决定，下游篡改已被拦截）
@@ -98,12 +99,17 @@ public class LingManagedTransactionManager implements PlatformTransactionManager
                 }
                 conn.setAutoCommit(false);
                 LingTransactionContext.pushConnection(dataSourceId, conn);
-                conn = null;   // 入栈成功，所有权移交穿透上下文，归还由 commit/rollback 负责
+                // 接管标志：置位即表示所有权已移交穿透上下文，归还由 commit/rollback 负责
+                handoverSuccess = true;
             } catch (Exception e) {
-                // 借出后设置失败（如无事务权限、驱动异常）：必须归还已借连接，防止池连接泄漏
-                closeQuietly(conn);
                 throw new CannotCreateTransactionException(
                         "Failed to create root transaction on managed datasource '" + dataSourceId + "'", e);
+            } finally {
+                // 仅在连接尚未被穿透上下文接管时归还（防池连接泄漏）；避免「已入栈但标志未置位」
+                // 的窄窗口内误关已移交准备提交的连接，破坏事务上下文一致性
+                if (!handoverSuccess) {
+                    closeQuietly(conn);
+                }
             }
         }
         // 非根：status 保持 non-new（加入），不 bind TSM、不碰连接

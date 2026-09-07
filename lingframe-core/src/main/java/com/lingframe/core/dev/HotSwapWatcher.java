@@ -113,6 +113,14 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent>, 
      * ✅ 抽取热加载核心逻辑，增加 TCCL 保护和 GC 验证
      */
     private void doReload(String lingId) {
+        // 热重载时 lifecycleEngine 可能尚未经延迟绑定注入（native 装配先传 null 构造、engine 创建后
+        // 再 setLifecycleEngine 绑定），此窗口内无从卸载/重部署，判空直接跳过，避免 NPE。
+        LingLifecycleEngine engine = this.lifecycleEngine;
+        if (engine == null) {
+            log.warn("[HotSwap] Cannot reload ling '{}': lifecycleEngine not initialized", lingId);
+            return;
+        }
+
         log.info("=================================================");
         log.info("[HotSwap] Source change detected, hot reloading: {}", lingId);
 
@@ -145,13 +153,13 @@ public class HotSwapWatcher implements LingEventListener<LingUninstalledEvent>, 
             Map<String, ClassLoader> oldLoaders = snapshotClassLoaders(lingId);
 
             // 2. 执行卸载与重部署
-            lifecycleEngine.undeploy(lingId);
+            engine.undeploy(lingId);
 
             // ✅ 强制恢复 TCCL（防止 undeploy 过程中被改变）
             currentThread.setContextClassLoader(originalTCCL);
 
             boolean setAsDefault = true;
-            lifecycleEngine.deploy(lingDefinition, source, setAsDefault, Collections.emptyMap());
+            engine.deploy(lingDefinition, source, setAsDefault, Collections.emptyMap());
             // ✅ 再次恢复 TCCL（防止 deploy/start 过程中被改变）
             currentThread.setContextClassLoader(originalTCCL);
 
