@@ -187,10 +187,10 @@ class GovernanceMetricsCollectorTest {
     @Test
     @DisplayName("多版本聚合并预算上限应取最大值而非求和")
     void aggregateBudgetFieldsShouldTakeMaxAcrossVersions() {
-        // v1.0 设 CPU 预算 500ms/min、内存预算 16MB
+        // 旧版本设 CPU 预算 500ms/min、内存预算 16MB
         collector.recordCpuBudgetObservation("ling-a", "1.0", 100, 500);
         collector.recordMemoryBudgetObservation("ling-a", "1.0", 1 * 1024 * 1024L, 16);
-        // v2.0 设 CPU 预算 800ms/min、内存预算 32MB
+        // 新版本设 CPU 预算 800ms/min、内存预算 32MB
         collector.recordCpuBudgetObservation("ling-a", "2.0", 100, 800);
         collector.recordMemoryBudgetObservation("ling-a", "2.0", 1 * 1024 * 1024L, 32);
 

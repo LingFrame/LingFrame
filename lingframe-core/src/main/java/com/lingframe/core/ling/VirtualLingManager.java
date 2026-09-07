@@ -3,7 +3,6 @@ package com.lingframe.core.ling;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
-import com.lingframe.core.spi.RoutableTarget;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Objects;

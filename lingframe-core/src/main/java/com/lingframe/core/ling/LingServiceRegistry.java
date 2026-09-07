@@ -1,6 +1,5 @@
 package com.lingframe.core.ling;
 
-import com.lingframe.api.exception.RoutingArchitectureViolationException;
 import com.lingframe.core.routing.ProviderDescriptor;
 
 import java.util.List;

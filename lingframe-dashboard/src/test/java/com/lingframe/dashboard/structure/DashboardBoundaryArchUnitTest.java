@@ -5,13 +5,12 @@ import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
 
-import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
  * Dashboard 架构守护测试。
  * <p>
- * 守住 Phase B 边界收敛契约：dashboard 业务类不得直接依赖 core 内部实现，
+ * 守住边界收敛契约：dashboard 业务类不得直接依赖 core 内部实现，
  * 只能通过已公开的治理内核 API（{@code GovernanceAdminService}、{@code InvocationContextBuilder}、
  * {@code RuntimeCoordinator}、{@code LingFrameInfo} 等）与内核交互。
  * <p>

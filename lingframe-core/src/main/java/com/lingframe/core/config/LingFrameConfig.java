@@ -3,7 +3,6 @@ package com.lingframe.core.config;
 import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.runtime.FixedRuntimeMode;
 import com.lingframe.core.runtime.RuntimeMode;
-import com.lingframe.core.runtime.SwitchableRuntimeMode;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.ToString;

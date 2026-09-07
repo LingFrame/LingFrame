@@ -287,14 +287,6 @@ class DashboardLingSourceResolverSupplementTest {
 
     // ==================== 辅助方法 ====================
 
-    private LingDefinition newDefinitionWithCanary(Object canaryValue) {
-        LingDefinition def = new LingDefinition();
-        Map<String, Object> props = new HashMap<String, Object>();
-        props.put("canary", canaryValue);
-        def.setProperties(props);
-        return def;
-    }
-
     private LingInstance instance(String lingId, String version, boolean canary) {
         LingDefinition definition = new LingDefinition();
         definition.setId(lingId);

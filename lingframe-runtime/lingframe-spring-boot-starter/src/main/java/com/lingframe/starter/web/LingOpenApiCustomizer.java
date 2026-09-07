@@ -341,10 +341,6 @@ public class LingOpenApiCustomizer implements LingOpenApiCustomizerAdapter {
         return Pattern.matches(toRegex(pattern), path);
     }
 
-    private boolean isGroupedApiDocRequest() {
-        return resolveRequestedGroup() != null;
-    }
-
     private String resolveRequestedGroup() {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
         if (attributes == null) {

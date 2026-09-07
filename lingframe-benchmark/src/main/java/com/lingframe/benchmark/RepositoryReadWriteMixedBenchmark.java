@@ -2,7 +2,6 @@ package com.lingframe.benchmark;
 
 import com.lingframe.core.ling.DefaultLingRepository;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.ling.LingRuntimeConfig;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 

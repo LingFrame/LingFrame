@@ -102,7 +102,7 @@ class LocalGovernanceRegistryTest {
     }
 
     @Nested
-    @DisplayName("临时文件清理测试（P2.2）")
+    @DisplayName("临时文件清理测试")
     class TmpFileCleanupTests {
 
         @Test

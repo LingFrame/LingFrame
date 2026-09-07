@@ -343,6 +343,15 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         return resilienceFilter;
     }
 
+    /**
+     * 回灌一次真实调用结果到灵元的熔断器（见 {@link ResilienceGovernanceFilter#reportOutcome}）。
+     */
+    public void reportOutcome(String lingId, boolean success, long durationNanos, Throwable error) {
+        if (resilienceFilter != null) {
+            resilienceFilter.reportOutcome(lingId, success, durationNanos, error);
+        }
+    }
+
     ThreadIsolationGovernanceFilter getIsolationFilter() {
         return isolationFilter;
     }

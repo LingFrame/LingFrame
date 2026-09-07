@@ -3,7 +3,6 @@ package com.lingframe.runtime.adapter;
 import com.lingframe.api.annotation.LingService;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.exception.InvalidArgumentException;
-import com.lingframe.api.exception.LingRuntimeException;
 import com.lingframe.api.ling.Ling;
 import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.context.DefaultLingContext;
@@ -315,4 +314,3 @@ public class NativeLingContainer implements LingContainer {
         return classLoader;
     }
 }
-

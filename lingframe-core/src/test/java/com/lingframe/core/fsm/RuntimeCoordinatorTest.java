@@ -396,7 +396,7 @@ class RuntimeCoordinatorTest {
         }
     }
 
-    // ==================== NPE 防御（P2-1/P2-2）====================
+    // ==================== NPE 防御 ====================
 
     @Nested
     @DisplayName("NPE 防御")

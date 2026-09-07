@@ -46,7 +46,7 @@ class LingFrameCoreConfigurationTest {
                 .governancePermissionRestoreListener(registry, permissionService);
         listener.onApplicationEvent(null);
 
-        // P1-21 后 syncPolicy 改用 replacePermissions 原子替换，不再先 removeLing 再 grant
+        // syncPolicy 改用 replacePermissions 原子替换，不再先 removeLing 再 grant
         Map<String, AccessType> expected = Collections.singletonMap(Capabilities.STORAGE_SQL, AccessType.WRITE);
         verify(permissionService).replacePermissions("demo-ling", expected);
         verifyNoMoreInteractions(permissionService);

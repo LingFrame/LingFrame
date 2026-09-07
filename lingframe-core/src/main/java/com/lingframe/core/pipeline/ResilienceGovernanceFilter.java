@@ -154,7 +154,15 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             // 避免在 JVM 即将崩溃时再触发 breaker.onError 导致二次错误。
             throw e;
         } catch (Throwable t) {
-            if (breaker != null) {
+            // 倒挂修复：治理拒绝不得计入熔断失败率。
+            // 下游 Filter（如 ThreadIsolationGovernanceFilter 舱满 BULKHEAD_FULL、权限
+            // SECURITY_REJECTED）抛出的 LingInvocationException 是平台层准入拦截，不是下游
+            // 实例故障——若喂 breaker.onError，舱满/权限误配会累计失败率、误开熔断器，
+            // 形成「治理拒绝反噬治理」的倒挂。判定复用 ErrorKind.isGovernanceRejection()：
+            // 仅治理拒绝被排除喂料，INVOKE_ERROR / TIMEOUT / CLASSLOADER_ERROR 等真实下游
+            // 故障仍正常计入失败率，熔断判定准确性不受影响。
+            if (breaker != null && !(t instanceof LingInvocationException
+                    && ((LingInvocationException) t).getKind().isGovernanceRejection())) {
                 long durationNanos = System.nanoTime() - startNanos;
                 breaker.onError(durationNanos, TimeUnit.NANOSECONDS, t);
             }
@@ -167,24 +175,13 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
      * <p>
      * 慢调用阈值（timeoutMs）优先读 ctx.governance()（由 InvocationPolicyPrefillFilter
      * 在 RESILIENCE 之前预填充），回退 LingRuntimeConfig 静态默认值。
-     * 当 timeoutMs 变化时（治理下发后预填充值改变），用 compute 原子重建熔断器实例，
-     * 与 {@link #getLimiter} 的 LimiterHolder 模式对称。
      * <p>
-     * B 类熔断参数（failureRate/slowCallRate/slidingWindowSize/minimumCalls/waitDuration）
-     * 仍读 config 静态默认值，这些参数没有"双写"问题，不进入治理下发链路。
+     * 配置指纹 = A 类 timeoutMs + B 类（failureRate/slowCallRate/slidingWindow/minimumCalls/
+     * waitDuration）。任一指纹变化即用 compute 原子重建熔断器实例——包括配置中心热刷
+     * {@code LingRuntime.updateConfig} 导致的引用替换（B 类参数此前仅在 timeoutMs 变化时
+     * 被顺带消费，单独热刷阈值/窗口会静默失效）。
      */
     private CircuitBreaker getBreaker(String lingId, InvocationContext ctx) {
-        // 快速路径：缓存命中且未治理下发 timeout 时直接返回，避免每次请求都读 runtime/config。
-        // 与 {@link #getLimiter} 的快速路径对称：governedTimeout 为 null 表示无治理下发，
-        // 此时 effectiveTimeout 会回退到 config 静态默认值，与 holder 创建时的 timeoutMs 一致，缓存有效。
-        BreakerHolder holder = breakers.get(lingId);
-        if (holder != null) {
-            Integer governedTimeout = ctx.governance().getTimeoutMs();
-            if (governedTimeout == null) {
-                return holder.breaker;
-            }
-        }
-
         LingRuntime runtime = lingRepository.getRuntime(lingId);
         if (runtime == null) {
             return null;
@@ -193,17 +190,21 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         // 读 ctx.governance()（预填充后有值），回退 config 静态默认值
         Integer governedTimeout = ctx.governance().getTimeoutMs();
         int effectiveTimeout = governedTimeout != null ? governedTimeout : config.getDefaultTimeoutMs();
+        long effectiveWaitDurationMs = config.getCircuitBreakerWaitDurationInOpenStateMs() > 0
+                ? config.getCircuitBreakerWaitDurationInOpenStateMs()
+                : effectiveTimeout * 10L;
 
-        if (holder != null && holder.timeoutMs == effectiveTimeout) {
+        // 指纹命中（A/B 类参数均未变化）直接复用，避免每次请求重建；
+        // 任一参数变化即重建，使热刷后的新参数真实生效。
+        BreakerHolder holder = breakers.get(lingId);
+        if (holder != null && holder.matches(effectiveTimeout, config, effectiveWaitDurationMs)) {
             return holder.breaker;
         }
+
         holder = breakers.compute(lingId, (id, existing) -> {
-            if (existing != null && existing.timeoutMs == effectiveTimeout) {
+            if (existing != null && existing.matches(effectiveTimeout, config, effectiveWaitDurationMs)) {
                 return existing;
             }
-            long waitDuration = config.getCircuitBreakerWaitDurationInOpenStateMs() > 0
-                    ? config.getCircuitBreakerWaitDurationInOpenStateMs()
-                    : effectiveTimeout * 10L;
             CircuitBreaker breaker = new SlidingWindowCircuitBreaker(
                     id,
                     config.getCircuitBreakerFailureRateThreshold(),
@@ -211,9 +212,16 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
                     effectiveTimeout,
                     config.getCircuitBreakerSlidingWindowSize(),
                     config.getCircuitBreakerMinimumNumberOfCalls(),
-                    waitDuration,
+                    effectiveWaitDurationMs,
                     eventBus);
-            return new BreakerHolder(effectiveTimeout, breaker);
+            return new BreakerHolder(
+                    effectiveTimeout,
+                    config.getCircuitBreakerFailureRateThreshold(),
+                    config.getCircuitBreakerSlowCallRateThreshold(),
+                    config.getCircuitBreakerSlidingWindowSize(),
+                    config.getCircuitBreakerMinimumNumberOfCalls(),
+                    effectiveWaitDurationMs,
+                    breaker);
         });
         return holder == null ? null : holder.breaker;
     }
@@ -277,6 +285,32 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
 
     boolean hasBreaker(String lingId) {
         return breakers.containsKey(lingId);
+    }
+
+    /**
+     * 回灌一次真实调用结果到灵元的熔断器（非治理路径）。
+     * <p>
+     * agent / 外部调用方在 GOVERN_ONLY 模式下无法让 {@link #doFilter} 内部走完
+     * `chain.doFilter(ctx)` 的失败回灌（TerminalInvokerFilter 恒 return null、不抛异常），
+     * 导致真实业务失败喂不进熔断器统计、熔断永不 OPEN。本方法提供补救入口：
+     * 由调用方在真实执行返回后显式上报成败。
+     * <p>
+     * 只上报已存在的熔断器（不存在则忽略），不在此触发病态创建；
+     * 行败判定（是否为下游可用性失败）由调用方裁决，本方法照单全收。
+     */
+    void reportOutcome(String lingId, boolean success, long durationNanos, Throwable error) {
+        if (lingId == null || lingId.isEmpty()) {
+            return;
+        }
+        BreakerHolder holder = breakers.get(lingId);
+        if (holder == null) {
+            return;
+        }
+        if (success) {
+            holder.breaker.onSuccess(durationNanos, TimeUnit.NANOSECONDS);
+        } else {
+            holder.breaker.onError(durationNanos, TimeUnit.NANOSECONDS, error);
+        }
     }
 
     boolean hasLimiter(String lingId) {
@@ -361,16 +395,40 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
     }
 
     /**
-     * 熔断器 holder：缓存 timeoutMs（慢调用阈值），用于检测治理下发后是否需要重建实例。
-     * 与 LimiterHolder 模式对称，只跟踪会动态变化的 A 类字段（timeoutMs）。
+     * 熔断器 holder：缓存完整配置指纹（A 类 timeoutMs + B 类 failureRate/slowCallRate/
+     * slidingWindow/minimumCalls/waitDuration），任一变化即失配触发重建。
+     * <p>
+     * 重建的副作用：新熔断器以全新 CLOSED 状态启动（放弃旧 OPEN/半开/窗口统计），
+     * 语义等价于运维主动调整参数 → 治理器以新参数重新收敛，与限流器重建行为一致。
      */
     private static final class BreakerHolder {
         private final int timeoutMs;
+        private final int failureRateThreshold;
+        private final int slowCallRateThreshold;
+        private final int slidingWindowSize;
+        private final int minimumNumberOfCalls;
+        private final long effectiveWaitDurationMs;
         private final CircuitBreaker breaker;
 
-        private BreakerHolder(int timeoutMs, CircuitBreaker breaker) {
+        private BreakerHolder(int timeoutMs, int failureRateThreshold, int slowCallRateThreshold,
+                              int slidingWindowSize, int minimumNumberOfCalls,
+                              long effectiveWaitDurationMs, CircuitBreaker breaker) {
             this.timeoutMs = timeoutMs;
+            this.failureRateThreshold = failureRateThreshold;
+            this.slowCallRateThreshold = slowCallRateThreshold;
+            this.slidingWindowSize = slidingWindowSize;
+            this.minimumNumberOfCalls = minimumNumberOfCalls;
+            this.effectiveWaitDurationMs = effectiveWaitDurationMs;
             this.breaker = breaker;
+        }
+
+        private boolean matches(int timeoutMs, LingRuntimeConfig config, long effectiveWaitDurationMs) {
+            return this.timeoutMs == timeoutMs
+                    && this.failureRateThreshold == config.getCircuitBreakerFailureRateThreshold()
+                    && this.slowCallRateThreshold == config.getCircuitBreakerSlowCallRateThreshold()
+                    && this.slidingWindowSize == config.getCircuitBreakerSlidingWindowSize()
+                    && this.minimumNumberOfCalls == config.getCircuitBreakerMinimumNumberOfCalls()
+                    && this.effectiveWaitDurationMs == effectiveWaitDurationMs;
         }
     }
 }

@@ -84,7 +84,7 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
             return routeByLingId(ctx, chain, fqsid);
         }
 
-        // 识别 v0.4 新格式裸 contractId（无 lingId: 前缀）
+        // 识别新格式裸 contractId（无 lingId: 前缀）
         // 入口放行条件用 targetLingId（与原版 ContractProviderRoutingFilter 一致）：
         // 调用方已锁定灵元时本过滤器不覆盖入口意图
         if (ctx.getTargetLingId() != null) {

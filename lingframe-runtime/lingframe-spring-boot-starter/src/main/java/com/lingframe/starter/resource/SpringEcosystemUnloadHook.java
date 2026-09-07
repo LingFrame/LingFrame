@@ -1,6 +1,5 @@
 package com.lingframe.starter.resource;
 
-import com.lingframe.core.spi.LingUnloadHook;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;

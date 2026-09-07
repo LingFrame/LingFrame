@@ -1,6 +1,5 @@
 package com.lingframe.core.util;
 
-import java.util.Comparator;
 
 /**
  * 语义版本号比较工具。

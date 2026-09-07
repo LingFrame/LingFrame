@@ -1,6 +1,5 @@
 package com.lingframe.dashboard.service;
 
-import com.lingframe.api.event.LingEventListener;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.dashboard.dto.LeakDetectionRecordDTO;
@@ -91,4 +90,3 @@ class LeakDetectionCacheServiceTest {
         assertTrue(service.getRecords().isEmpty(), "销毁后不应再缓存事件");
     }
 }
-

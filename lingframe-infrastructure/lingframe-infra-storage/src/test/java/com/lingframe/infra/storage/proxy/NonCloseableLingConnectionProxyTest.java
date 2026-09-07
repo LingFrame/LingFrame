@@ -49,10 +49,6 @@ class NonCloseableLingConnectionProxyTest {
         LingTransactionContext.clear();
     }
 
-    private void grantPermission() {
-        when(permissionService.isAllowed(LING_ID, "storage:sql:transaction", null)).thenReturn(true);
-    }
-
     @Nested
     @DisplayName("审计不降级：物理行为 no-op，权限门与审计保留")
     class AuditNotDegraded {

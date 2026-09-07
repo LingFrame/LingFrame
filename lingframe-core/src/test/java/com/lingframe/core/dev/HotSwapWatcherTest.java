@@ -226,7 +226,7 @@ class HotSwapWatcherTest {
     }
 
     @Nested
-    @DisplayName("debounce 竞态修复测试（P1.2）")
+    @DisplayName("debounce 竞态修复测试")
     class DebounceRaceConditionTests {
 
         /**

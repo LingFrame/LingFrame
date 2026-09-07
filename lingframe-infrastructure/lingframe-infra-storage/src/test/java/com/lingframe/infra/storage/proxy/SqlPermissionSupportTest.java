@@ -22,13 +22,13 @@ import static org.mockito.Mockito.when;
 
 /**
  * {@link SqlPermissionSupport} 关键语义测试。
- * 覆盖 P2-12 读写表区分、P2-13 表名归一化、P0-4 fail-closed。
+ * 覆盖读写表区分、表名归一化、fail-closed 语义。
  */
 @DisplayName("SqlPermissionSupport 测试")
 class SqlPermissionSupportTest {
 
     @Nested
-    @DisplayName("读写表区分（P2-12）")
+    @DisplayName("读写表区分")
     class ReadWriteTableTests {
 
         @Test
@@ -191,7 +191,7 @@ class SqlPermissionSupportTest {
     }
 
     @Nested
-    @DisplayName("表名归一化（P2-13）")
+    @DisplayName("表名归一化")
     class TableNameNormalizationTests {
 
         @Test
@@ -214,7 +214,7 @@ class SqlPermissionSupportTest {
     }
 
     @Nested
-    @DisplayName("权限解析（P2-12 + P0-4）")
+    @DisplayName("权限解析")
     class ResolveCapabilityTests {
 
         @Test

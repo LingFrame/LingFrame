@@ -140,7 +140,7 @@ public class EventBusTest {
         }
     }
 
-    // ==================== unsubscribe 原子性（P2-3）====================
+    // ==================== unsubscribe 原子性 ====================
 
     @Nested
     @DisplayName("unsubscribe 原子性")

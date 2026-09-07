@@ -25,7 +25,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 受管数据源装配链契约测试（P0 回归锚点）。
+ * 受管数据源装配链契约测试（回归锚点）。
  * <p>
  * 覆盖「灵核 BPP 包装 → 受管总线注册 → 灵元 getConnection 复用穿透连接」的完整装配链——
  * 任一环节断裂（如代理身份丢失、TSM 资源键失配）都会让本契约红。

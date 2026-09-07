@@ -52,7 +52,6 @@ class MybatisPlusInterceptorProxyCompatibilityTest {
 
     private static final String TENANT_COLUMN = "tenant_id";
     private static final long TENANT_ONE = 1L;
-    private static final long TENANT_TWO = 2L;
 
     private DataSource rawDataSource;
     private LingDataSourceProxy managedProxy;

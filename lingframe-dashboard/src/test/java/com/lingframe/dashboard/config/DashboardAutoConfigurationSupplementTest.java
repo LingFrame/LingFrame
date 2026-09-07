@@ -1,21 +1,14 @@
 package com.lingframe.dashboard.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceAdminService;
-import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
-import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.ling.LingUnloadCoordinator;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
-import com.lingframe.core.pipeline.InvocationPipelineEngine;
-import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.metrics.LingMetricsMeterBridge;
 import com.lingframe.dashboard.scheduler.MetricsCollectorScheduler;
-import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.storage.AuditStorage;
 import com.lingframe.dashboard.storage.DashboardDataSource;
 import com.lingframe.dashboard.storage.GovernanceConfigRestorer;
@@ -33,12 +26,10 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-import java.io.File;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 

@@ -1,7 +1,6 @@
 package com.lingframe.core.event;
 
 import com.lingframe.api.event.LingEvent;
-import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 
 /**

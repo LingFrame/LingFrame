@@ -6,7 +6,6 @@ import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.api.storage.LingTransactionContext;
 import com.lingframe.api.storage.LingTransactionContext.TransactionSnapshot;
-import com.lingframe.core.pipeline.TransactionPropagationFilter;
 import com.lingframe.infra.storage.proxy.LingDataSourceProxy;
 import com.lingframe.infra.storage.proxy.NonCloseableLingConnectionProxy;
 import org.openjdk.jmh.annotations.Benchmark;

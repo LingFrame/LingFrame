@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@code RuntimeCoordinator} 订阅实例事件并维护运行时快照</li>
  *   <li>它再基于快照聚合出宏观 {@link RuntimeStatus}</li>
  * </ul>
- * 这种事件联动机制中存在**写优先级锁死设计**（解决 P2-1）：
+ * 这种事件联动机制中存在**写优先级锁死设计**：
  * 如果运维主动将状态转换为 {@link RuntimeStatus#STOPPING}（下线意图），
  * 任何来自实例健康状态好转的重新评估（如实例从 ERROR 恢复为 READY）、或者定时的 DEGRADED 健康检查，
  * 甚至外部强制 {@code transition(DEGRADED/ACTIVE)}，都会因为 FSM 规则物理拒绝而被压制。
