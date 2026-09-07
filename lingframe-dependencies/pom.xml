@@ -28,7 +28,11 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- 添加编译参数 -->
         <maven.compiler.parameters>true</maven.compiler.parameters>
-        <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+        <!-- 内存调优并入 argLine，避免 CI 侧用 -DargLine 覆盖时丢字段授权参数；
+             注意：命令行 -DargLine 是用户属性、优先级最高，会整体替换该属性。
+             因此 JDK9+ 的 add-opens 必须与本 base 值一起落在被 surefire 引用的 argLine 上，
+             详见下方 jdk9-plus-surefire profile。 -->
+        <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m</argLine>
 
         <!-- 工具库 - 通用版本 -->
         <mysql.version>8.0.33</mysql.version>
@@ -103,7 +107,11 @@
                 <jdk>[9,)</jdk>
             </activation>
             <properties>
-                <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.ref=ALL-UNNAMED --add-opens java.base/java.net=ALL-UNNAMED --add-opens java.base/java.security=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.util.concurrent=ALL-UNNAMED --add-opens java.base/jdk.internal.loader=ALL-UNNAMED --add-opens java.sql/java.sql=ALL-UNNAMED --add-opens java.rmi/sun.rmi.transport=ALL-UNNAMED</argLine>
+                <!-- 该 profile 为 JDK9+ 注入全部 add-opens，是测试反射访问 JDK 内部包（如
+                     java.util.concurrent.atomic 的 AtomicInteger.value）所需的真正授权来源。
+                     必须携带与 base argLine 一致的 -Xmx 内存调优，这样 CI 无需（也不应）用
+                     -DargLine 覆盖本属性，从而保留这些授权参数。 -->
+                <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.ref=ALL-UNNAMED --add-opens java.base/java.net=ALL-UNNAMED --add-opens java.base/java.security=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.util.concurrent=ALL-UNNAMED --add-opens java.base/jdk.internal.loader=ALL-UNNAMED --add-opens java.sql/java.sql=ALL-UNNAMED --add-opens java.rmi/sun.rmi.transport=ALL-UNNAMED</argLine>
             </properties>
         </profile>
     </profiles>

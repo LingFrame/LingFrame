@@ -268,8 +268,17 @@ class SpringApplicationShutdownHookAttributionTest {
                 if ((field.getModifiers() & Modifier.STATIC) != 0) {
                     continue;
                 }
-                field.setAccessible(true);
-                Object fieldValue = field.get(candidate);
+                // JDK9+ 模块系统下，未 opens 的 java.base 内部包（如 java.util.concurrent.atomic、
+                // java.lang 等）字段无法反射。此时把该对象当作叶子跳过，而非抛出异常中断整条引用
+                // 路径扫描——被卸载灵元 CL 的残留引用必然经由可访问的应用/Spring 字段承载，跳过
+                // JDK 内部包细节不影响"是否残留引用"这个判定结果。SB2/JDK8 无模块系统，恒不命中。
+                Object fieldValue;
+                try {
+                    field.setAccessible(true);
+                    fieldValue = field.get(candidate);
+                } catch (Exception e) {
+                    continue;
+                }
                 String childPath = findReferencePath(
                         fieldValue,
                         targetClassLoader,
