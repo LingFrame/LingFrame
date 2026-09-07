@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 执行灵珑（LingFrame）双栈（Spring Boot 2 和 Spring Boot 3）并发集成测试。
 

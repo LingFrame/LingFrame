@@ -133,4 +133,24 @@ public class ContractRoutingController {
             return ApiResponse.error("契约流量演练单步失败", e);
         }
     }
+
+    /**
+     * 对指定契约执行单次真实微内核流量演练步进（穿透真实 Pipeline + 实时推送 Trace 日志）。
+     *
+     * @param contractId 契约 ID
+     * @param mode 演练模式（DRY_RUN: 路由干跑 / PENETRATION: 真实穿透）
+     */
+    @PostMapping("/{contractId:.+}/stress-step")
+    public ApiResponse<ContractStressStepDTO> stressContractStep(
+            @PathVariable String contractId,
+            @RequestParam(name = "mode", defaultValue = "DRY_RUN") String mode) {
+        try {
+            log.info("[Contract Routing] Received drill step request: contractId={}, mode={}", contractId, mode);
+            ContractStressStepDTO result = simulateService.stressContractStep(contractId, mode);
+            return ApiResponse.ok(result);
+        } catch (Exception e) {
+            log.error("Failed to stress contract step: contractId={}, mode={}", contractId, mode, e);
+            return ApiResponse.error("契约流量演练单步失败: " + e.getMessage());
+        }
+    }
 }
