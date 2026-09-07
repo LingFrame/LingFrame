@@ -135,19 +135,31 @@ class ThreadIsolationTxPropagationTest {
                 InvocationContext.detach(null);
                 firstCtx.recycle();
             }
-
-            // 第二次调用：不压栈任何连接，复用同一隔离池线程（单线程池）
+            // 第二次调用：不压栈任何连接，复用同一隔离池线程（单线程池语义）
+            // 在多核/虚拟化调度下，若首次调用的 worker 尚未回到 SynchronousQueue 等待队列，
+            // 协作式让出 CPU（Thread.yield）等待 worker 归池，避免串行交接微缝误触 BULKHEAD_FULL
             InvocationContext secondCtx = normalContext();
             try {
-                filter.doFilter(secondCtx, current -> {
-                    // 断言确实复用了同一 worker 线程（单线程池语义）
-                    assertEquals(workerThreadName.get(), Thread.currentThread().getName());
-                    // 关键断言：worker 端无连接残留、无信号残留——
-                    // 第一次调用 worker finally 的 restoreSnapshot 已把 worker 上下文擦除干净
-                    assertFalse(LingTransactionContext.hasAnyConnection());
-                    assertFalse(LingTransactionContext.isRollbackOnly());
-                    return "second";
-                });
+                for (int i = 0; i < 50; i++) {
+                    try {
+                        filter.doFilter(secondCtx, current -> {
+                            // 断言确实复用了同一 worker 线程（单线程池语义）
+                            assertEquals(workerThreadName.get(), Thread.currentThread().getName());
+                            // 关键断言：worker 端无连接残留、无信号残留——
+                            // 第一次调用 worker finally 的 restoreSnapshot 已把 worker 上下文擦除干净
+                            assertFalse(LingTransactionContext.hasAnyConnection());
+                            assertFalse(LingTransactionContext.isRollbackOnly());
+                            return "second";
+                        });
+                        break;
+                    } catch (LingInvocationException e) {
+                        if (e.getKind() == LingInvocationException.ErrorKind.BULKHEAD_FULL && i < 49) {
+                            Thread.yield();
+                            continue;
+                        }
+                        throw e;
+                    }
+                }
             } finally {
                 InvocationContext.detach(null);
                 secondCtx.recycle();

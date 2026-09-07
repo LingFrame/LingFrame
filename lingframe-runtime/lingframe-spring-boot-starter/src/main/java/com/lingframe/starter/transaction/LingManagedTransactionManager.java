@@ -187,7 +187,8 @@ public class LingManagedTransactionManager implements PlatformTransactionManager
             // 归还池（池自身 reset autoCommit/isolation，不依赖手动复位）
             conn.close();
         } catch (Exception e) {
-            log.warn("Failed to close connection on managed datasource '{}': {}", dataSourceId, e.getMessage());
+            // 归还池异常多为连接池层面问题（驱动/校验失败），记录完整堆栈便于定位根因
+            log.warn("Failed to close connection on managed datasource '{}'", dataSourceId, e);
         }
     }
 }

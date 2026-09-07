@@ -282,6 +282,11 @@ public class LingUnloadCoordinator {
         try {
             future.get(timeoutMs, TimeUnit.MILLISECONDS);
             return true;
+        } catch (InterruptedException e) {
+            // 等待被中断：恢复中断状态，让调用方/线程池优雅关闭流程感知本次阻塞被中断，
+            // 而不是静默吞掉中断位
+            Thread.currentThread().interrupt();
+            return false;
         } catch (Exception e) {
             return false;
         }

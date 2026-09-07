@@ -30,12 +30,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.test.context.TestExecutionListeners;
+
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @DisplayName("SpringApplicationShutdownHook 归因回归测试")
+@TestExecutionListeners(listeners = LingFrameConfigResetListener.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class SpringApplicationShutdownHookAttributionTest {
 
     @AfterEach

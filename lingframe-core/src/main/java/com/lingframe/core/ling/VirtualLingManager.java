@@ -108,7 +108,9 @@ public class VirtualLingManager {
 
         try {
             RuntimeStatus current = runtimeCoordinator.getStatus(lingId);
-            if (current == RuntimeStatus.ACTIVE || current == RuntimeStatus.DEGRADED) {
+            // getStatus 契约：未注册返回 null（见 RuntimeCoordinator#getStatus）；
+            // 显式判空以免隐式依赖「null 枚举比较恒 false」的写法降低可读性
+            if (current != null && (current == RuntimeStatus.ACTIVE || current == RuntimeStatus.DEGRADED)) {
                 runtimeCoordinator.transition(lingId, RuntimeStatus.STOPPING);
             }
         } catch (Exception e) {
