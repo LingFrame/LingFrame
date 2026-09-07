@@ -13,6 +13,13 @@ import java.sql.SQLException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -184,6 +191,59 @@ class LingDataSourceProxyTest {
             assertInstanceOf(LingConnectionProxy.class, explicit.getConnection());
             assertInstanceOf(LingConnectionProxy.class, legacy.getConnection());
             verify(target, org.mockito.Mockito.times(2)).getConnection();
+        }
+    }
+
+    @Nested
+    @DisplayName("身份提升（promoteToManaged）")
+    class PromoteTests {
+
+        @Test
+        @DisplayName("提升设置身份；同身份重复提升幂等无副作用")
+        void promoteIsIdempotentForSameId() {
+            LingDataSourceProxy proxy = new LingDataSourceProxy(mock(DataSource.class), mock(PermissionService.class));
+
+            proxy.promoteToManaged("default");
+            // 幂等：同身份再次提升不抛
+            assertDoesNotThrow(() -> proxy.promoteToManaged("default"));
+        }
+
+        @Test
+        @DisplayName("已提升后以不同身份再提升 → 拒绝（防御连接串用）")
+        void promoteConflictingIdRejected() {
+            LingDataSourceProxy proxy = new LingDataSourceProxy(
+                    mock(DataSource.class), mock(PermissionService.class), "default");
+
+            assertThrows(IllegalStateException.class, () -> proxy.promoteToManaged("order-ds"));
+        }
+
+        @Test
+        @DisplayName("并发以不同身份提升：恰一个成功，另一个被拒绝（synchronized 保证读-判-写原子，不静默覆盖）")
+        void concurrentPromoteHasExactlyOneWinner() throws Exception {
+            LingDataSourceProxy proxy = new LingDataSourceProxy(mock(DataSource.class), mock(PermissionService.class));
+            ExecutorService pool = Executors.newFixedThreadPool(2);
+            try {
+                List<Future<?>> futures = new ArrayList<>(2);
+                AtomicInteger success = new AtomicInteger();
+                AtomicInteger rejected = new AtomicInteger();
+                for (String id : new String[]{"ds-a", "ds-b"}) {
+                    futures.add(pool.submit(() -> {
+                        try {
+                            proxy.promoteToManaged(id);
+                            success.incrementAndGet();
+                        } catch (IllegalStateException e) {
+                            rejected.incrementAndGet();
+                        }
+                    }));
+                }
+                for (Future<?> f : futures) {
+                    f.get(3, TimeUnit.SECONDS);
+                }
+                assertEquals(1, success.get(), "恰有一个身份提升成功");
+                assertEquals(1, rejected.get(), "另一个身份被拒绝，不得静默覆盖先写者");
+            } finally {
+                pool.shutdownNow();
+            }
         }
     }
 

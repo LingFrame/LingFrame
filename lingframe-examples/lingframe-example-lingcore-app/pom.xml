@@ -2,7 +2,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.lingframe</groupId>
+        <groupId>cn.lingframe</groupId>
         <artifactId>lingframe-examples</artifactId>
         <version>${revision}</version>
     </parent>
@@ -20,12 +20,12 @@
     <dependencies>
 
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-spring-boot-starter</artifactId>
         </dependency>
 
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-dashboard</artifactId>
         </dependency>
 
@@ -62,19 +62,19 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-example-ling-user</artifactId>
             <version>${revision}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-example-ling-user-canary</artifactId>
             <version>${revision}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-example-ling-order</artifactId>
             <version>${revision}</version>
             <scope>test</scope>
@@ -112,7 +112,7 @@
             </activation>
             <dependencies>
                 <dependency>
-                    <groupId>com.lingframe</groupId>
+                    <groupId>cn.lingframe</groupId>
                     <artifactId>lingframe-spring-boot2-starter</artifactId>
                 </dependency>
                 <!-- SpringDoc for Boot 2 -->
@@ -130,7 +130,7 @@
             </properties>
             <dependencies>
                 <dependency>
-                    <groupId>com.lingframe</groupId>
+                    <groupId>cn.lingframe</groupId>
                     <artifactId>lingframe-spring-boot3-starter</artifactId>
                 </dependency>
                 <!-- SpringDoc for Boot 3：与 dependencies 父 POM SB3 profile 对齐 -->

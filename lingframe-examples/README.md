@@ -14,6 +14,10 @@
 判用与最短跑通：仓库根 [README.md](../README.md)。  
 公开文档地图：[docs/zh-CN/README.md](../docs/zh-CN/README.md)。
 
+> **示例下线说明**：原 `lingframe-example-ling-mall` 与 `lingframe-example-saas-mall` 已下线，
+> 托管数据源与事务传播示例请参考 [docs/zh-CN/managed-datasource-and-transaction.md](../docs/zh-CN/managed-datasource-and-transaction.md)，
+> 非 Spring 灵元入口参考可用 `lingframe-example-ling-native`。
+
 ## 1. 入门：怎么开发、怎么用
 
 | 模块 | 作用 |

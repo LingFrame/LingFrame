@@ -1,5 +1,6 @@
 package com.lingframe.core.ling;
 
+import com.lingframe.core.invoker.ArgumentTypeAdapter;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LeakRiskReport;
@@ -131,6 +132,9 @@ public class LingUnloadCoordinator {
                     log.info("[{}] Evicted {} method handles for version {}", lingId, evicted, version);
                 }
             }
+            // 驱逐跨 ClassLoader Jackson ObjectMapper 缓存（按 ClassLoader 键），
+            // 版本卸载即清出，避免对灵元 ClassLoader 的强引用滞留
+            ArgumentTypeAdapter.evict(classLoader);
         } finally {
             recordVersionUnloadDuration(startNanos);
         }

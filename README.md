@@ -5,7 +5,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-0.4.0-blue" alt="Version">
+  <a href="https://central.sonatype.com/artifact/cn.lingframe/lingframe-bom">
+    <img src="https://img.shields.io/maven-central/v/cn.lingframe/lingframe-bom.svg?color=blue" alt="Maven Central">
+  </a>
+  <img src="https://img.shields.io/badge/Version-0.4.5-blue" alt="Version">
   <img src="https://img.shields.io/badge/Stage-Pre--1.0-yellow" alt="Stage">
   <img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License">
   <img src="https://img.shields.io/badge/Java-8_(默认)_%7C_17-orange" alt="Java">
@@ -191,6 +194,10 @@ curl http://localhost:8888/user-ling/user/listUsers
 | 入门用法 | `lingframe-example-lingcore-app` + user / order |
 | 真实单体改造示范 | **LingFrame-RuoYi**（独立项目仓库：基于真实 RuoYi 既有单体系统的渐进式灵元化改造示范） |
 
+> **示例迁徙提示**：原 `lingframe-example-ling-mall` 与 `lingframe-example-saas-mall` 示例已下线，
+> 托管数据源与事务传播示例请参考 [docs/zh-CN/managed-datasource-and-transaction.md](docs/zh-CN/managed-datasource-and-transaction.md)，
+> 非 Spring 灵元入口参考可用 `lingframe-example-ling-native`。
+
 ---
 
 ## 它适合什么，不适合什么
@@ -229,17 +236,13 @@ curl http://localhost:8888/user-ling/user/listUsers
 - 存储治理主要覆盖 Spring 注入的 `DataSource`，手写的原生 JDBC 连接无法拦截；
 - 危险 API 扫描是加载阶段的提醒信号，并不是 JVM 级别的完整安全沙箱；
 - 验证主路径为 **Spring Boot 2.7 + JDK 8**（示例默认）；Spring Boot 3 + JDK 17 为支持线；
-- **0.4.0 版本仍处于 Pre-1.0 阶段**：建议上线前先在测试环境充分评估，并对照 [生产配置清单](docs/zh-CN/production-hardening.md) 进行核验。
+- **0.4.5 版本仍处于 Pre-1.0 阶段**：建议上线前先在测试环境充分评估，并对照 [生产配置清单](docs/zh-CN/production-hardening.md) 进行核验。
 
 ---
 
 ## 最小接入（接到自己的灵核）
 
-构件以本仓库为准（若无私服，请先本地安装）：
-
-```powershell
-mvn -pl lingframe-bom,lingframe-runtime/lingframe-spring-boot2-starter,lingframe-dashboard -am install -DskipTests
-```
+LingFrame 已正式发布至 **Maven Central** 全球中央仓库，无需拉取或本地编译框架源码，在项目中直接声明 BOM 即可开箱即用：
 
 **Spring Boot 2.7 / JDK 8（默认路径）：**
 
@@ -247,9 +250,9 @@ mvn -pl lingframe-bom,lingframe-runtime/lingframe-spring-boot2-starter,lingframe
 <dependencyManagement>
   <dependencies>
     <dependency>
-      <groupId>com.lingframe</groupId>
+      <groupId>cn.lingframe</groupId>
       <artifactId>lingframe-bom</artifactId>
-      <version>0.4.0</version>
+      <version>0.4.5</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -258,12 +261,12 @@ mvn -pl lingframe-bom,lingframe-runtime/lingframe-spring-boot2-starter,lingframe
 
 <dependencies>
   <dependency>
-    <groupId>com.lingframe</groupId>
+    <groupId>cn.lingframe</groupId>
     <artifactId>lingframe-spring-boot2-starter</artifactId>
   </dependency>
   <!-- 可选控制面 -->
   <dependency>
-    <groupId>com.lingframe</groupId>
+    <groupId>cn.lingframe</groupId>
     <artifactId>lingframe-dashboard</artifactId>
   </dependency>
 </dependencies>

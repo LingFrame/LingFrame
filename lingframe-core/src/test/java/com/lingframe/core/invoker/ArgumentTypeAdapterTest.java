@@ -155,6 +155,17 @@ class ArgumentTypeAdapterTest {
         assertEquals(404, adapted[2]);
     }
 
+    @Test
+    @DisplayName("BigDecimal 转换保精度：大整数不经过 double 降级（避免超 2^53 精度丢失）")
+    void bigDecimalPreservesPrecisionForLargeInteger() {
+        // 2^53 + 1：BigDecimal.valueOf(doubleValue()) 会把 Long 转为 double 再回构，丢失 1 精度
+        long bigAmount = 9007199254740993L;
+        Object converted = ArgumentTypeAdapter.tryConvert(
+                bigAmount, BigDecimal.class, BigDecimal.class, getClass().getClassLoader());
+
+        assertEquals(new BigDecimal("9007199254740993"), converted);
+    }
+
     @Data
     public static class NamingCollisionDTO {
         private String user_name;

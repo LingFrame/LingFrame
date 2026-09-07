@@ -3,6 +3,7 @@ package com.lingframe.api.storage;
 import java.sql.Connection;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -69,8 +70,18 @@ public final class LingTransactionContext {
             stack = new ArrayDeque<Connection>();
             stacks.put(dataSourceId, stack);
         }
+        // 先改连接栈、再登记压入顺序：若顺序登记抛异常，回滚栈变更，保证两个 ThreadLocal
+        // 结构始终一致——否则 pop 时按 pushOrder 配对会找不到对应的连接栈条目
         stack.push(conn);
-        PUSH_ORDER.get().push(dataSourceId);
+        try {
+            PUSH_ORDER.get().push(dataSourceId);
+        } catch (RuntimeException e) {
+            stack.pop();
+            if (stack.isEmpty()) {
+                stacks.remove(dataSourceId);
+            }
+            throw e;
+        }
     }
 
     /**
@@ -214,6 +225,50 @@ public final class LingTransactionContext {
     }
 
     /**
+     * 按 dataSourceId 集合精确废弃连接（poisoned close），用于超时路径只废弃本次调用
+     * 涉及的穿透连接，避免误伤本线程父事务或其他无关灵元的连接。
+     * <p>
+     * 与 {@link #closeAllConnections()} 不同：只关闭入参指定的数据源连接栈，其余源保持不动；
+     * 仅当全部栈清空时才清理 ThreadLocal（委托 {@link #cleanIfEmpty()}）。
+     *
+     * @param dataSourceIds 本次调用涉及的数据源 ID 集合（可为空）
+     * @return 实际废弃（close 成功）的连接数
+     */
+    public static int closeConnectionsByDataSource(Collection<String> dataSourceIds) {
+        if (dataSourceIds == null || dataSourceIds.isEmpty()) {
+            return 0;
+        }
+        Map<String, Deque<Connection>> stacks = CONNECTION_STACKS.get();
+        int closed = 0;
+        for (String dataSourceId : dataSourceIds) {
+            if (dataSourceId == null) {
+                continue;
+            }
+            Deque<Connection> stack = stacks.get(dataSourceId);
+            if (stack == null) {
+                continue;
+            }
+            while (!stack.isEmpty()) {
+                Connection conn = stack.pop();
+                if (conn == null) {
+                    continue;
+                }
+                try {
+                    conn.close();
+                    closed++;
+                } catch (Exception e) {
+                    // 单个连接废弃失败不阻断整体流程，由连接池重建机制兜底
+                }
+            }
+            stacks.remove(dataSourceId);
+        }
+        // 仅当全部栈已清空时才移除 ThreadLocal，避免遗留 rollbackOnly 脏信号或连接强引用；
+        // 若仍有其他源（如父事务）占用，则保留其状态不被误破
+        cleanIfEmpty();
+        return closed;
+    }
+
+    /**
      * 捕获当前线程的事务上下文快照（跨线程搬运的下行载体）。
      *
      * @return 快照（含各源栈顶连接引用、压入顺序与当前 rollbackOnly）
@@ -326,6 +381,16 @@ public final class LingTransactionContext {
          */
         public boolean isRollbackOnly() {
             return rollbackOnly;
+        }
+
+        /**
+         * 快照承载的数据源 ID 集合（本次调用继承的穿透连接所属源），
+         * 供超时路径按源精确废弃连接，避免误伤其他上下文。
+         *
+         * @return 数据源 ID 列表
+         */
+        public List<String> getDataSourceIds() {
+            return new ArrayList<String>(stacks.keySet());
         }
     }
 }

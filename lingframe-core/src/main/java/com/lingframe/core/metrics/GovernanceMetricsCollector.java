@@ -302,7 +302,7 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
             touch();
         }
 
-        private void recordMemoryBudgetObservation(long heapDeltaBytes, Integer budgetMb) {
+        private synchronized void recordMemoryBudgetObservation(long heapDeltaBytes, Integer budgetMb) {
             estimatedHeapDeltaBytes = Math.max(estimatedHeapDeltaBytes, Math.max(0L, heapDeltaBytes));
             memoryBudgetMb = budgetMb;
             boolean exceeded = budgetMb != null && budgetMb > 0 && estimatedHeapDeltaBytes > budgetMb * 1024L * 1024L;

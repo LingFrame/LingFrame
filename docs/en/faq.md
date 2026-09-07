@@ -223,7 +223,7 @@ lingframe:
 Also, add the dependency to your LingCore pom:
 ```xml
 <dependency>
-    <groupId>com.lingframe</groupId>
+    <groupId>cn.lingframe</groupId>
     <artifactId>lingframe-dashboard</artifactId>
 </dependency>
 ```

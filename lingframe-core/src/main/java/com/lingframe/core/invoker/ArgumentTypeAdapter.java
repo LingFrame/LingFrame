@@ -25,6 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 生产级入参类型自适应绑定引擎。
@@ -33,7 +34,9 @@ import java.util.Set;
  *
  * <p>安全与防泄漏原则：
  * <ul>
- *   <li>1. <b>零灵核强引用</b>：所有反射与类型装配均为调用栈局部变量，严禁全局静态缓存灵元 Class，彻底杜绝类加载器泄漏；</li>
+ *   <li>1. <b>零灵核强引用</b>：所有反射与类型装配均为调用栈局部变量，严禁全局静态缓存灵元 Class，彻底杜绝类加载器泄漏；
+ *       唯一的持久缓存是引擎 A 的 {@link #MAPPER_CACHE}，它以 ClassLoader 为键缓存 ObjectMapper，
+ *       且灵元卸载时由 LingUnloadCoordinator 显式 {@link #evict(ClassLoader)}——有配套清理，不滞留；</li>
  *   <li>2. <b>隔离环境优先</b>：优先使用灵元自身 ClassLoader 上下文下的 Jackson 进行精准反序列化；</li>
  *   <li>3. <b>纯 JDK 递归兜底</b>：环境无 Jackson 时，由原生全功能 BeanPopulator 支持复杂嵌套、泛型 List、枚举与日期时间装配；</li>
  *   <li>4. <b>零回归与 Fast-Path</b>：类型已兼容时走快速通道直接透传，性能零损耗。</li>
@@ -44,6 +47,16 @@ public class ArgumentTypeAdapter {
 
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_DATE_TIME;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_DATE;
+
+    /**
+     * 按目标 ClassLoader 缓存跨 ClassLoader Jackson 转换所用的 ObjectMapper。
+     * <p>
+     * 热点优化：引擎 A 每次调用都反射新建 ObjectMapper 会触达模块发现与内省缓存构建（5–10ms），
+     * 高 QPS 下单参数 Map→DTO 转换会成为挂钩点。缓存以 ClassLoader 为键，实例由灵元自身加载，
+     * 灵元卸载时经 {@link #evict(ClassLoader)} 清理对应条目，避免对灵元 Class / ClassLoader 的
+     * 强引用滞留（与类文档"禁止全局静态缓存灵元 Class"原则不冲突——该原则针对无配套清理的持久缓存）。
+     */
+    private static final ConcurrentHashMap<ClassLoader, Object> MAPPER_CACHE = new ConcurrentHashMap<ClassLoader, Object>();
 
     /**
      * 对传入的方法反射参数数组进行自适应类型转换。
@@ -167,20 +180,50 @@ public class ArgumentTypeAdapter {
 
     /**
      * 引擎 A：在灵元自身 ClassLoader 中反射使用 Jackson ObjectMapper。
-     * 该实例由灵元类加载器加载，灵元卸载时随 ClassLoader 一并回收，不滞留灵核。
+     * <p>
+     * ObjectMapper 按 ClassLoader 缓存复用（{@link #MAPPER_CACHE}），避免每参数反射新建；
+     * 实例由灵元类加载器加载，灵元卸载时经 {@link #evict(ClassLoader)} 清出，不滞留灵核。
      */
     private static Object tryConvertViaIsolatedJackson(Object source, Class<?> targetType, ClassLoader targetClassLoader) {
         if (targetClassLoader == null) {
             return null;
         }
-        try {
-            Class<?> mapperClass = Class.forName("com.fasterxml.jackson.databind.ObjectMapper", true, targetClassLoader);
-            Object mapper = mapperClass.getDeclaredConstructor().newInstance();
-            Method convertMethod = mapperClass.getMethod("convertValue", Object.class, Class.class);
-            return convertMethod.invoke(mapper, source, targetType);
-        } catch (Throwable ignored) {
-            // 目标环境无 Jackson 或反射转换异常，平滑降级至引擎 B
+        Object mapper = MAPPER_CACHE.computeIfAbsent(targetClassLoader, cl -> {
+            try {
+                Class<?> mapperClass = Class.forName("com.fasterxml.jackson.databind.ObjectMapper", true, cl);
+                return mapperClass.getDeclaredConstructor().newInstance();
+            } catch (Exception e) {
+                // 目标环境无 Jackson：设计内降级，返回 null 交给引擎 B；ConcurrentHashMap 不缓存 null
+                return null;
+            }
+        });
+        if (mapper == null) {
             return null;
+        }
+        try {
+            Method convertMethod = mapper.getClass().getMethod("convertValue", Object.class, Class.class);
+            return convertMethod.invoke(mapper, source, targetType);
+        } catch (NoClassDefFoundError e) {
+            // 目标环境 Jackson 存在但待链接依赖缺失：与「无 Jackson」同属设计内降级，走引擎 B
+            return null;
+        } catch (Exception e) {
+            // 只捕 Exception：转换失败仅影响单个参数，记录并降级；OOM/StackOverflow 等 Error 上抛，
+            // 避免被静默吞掉掩盖致命错误
+            log.warn("Isolated Jackson Map->{} conversion failed for CL {}, fallback to native populators: {}",
+                    targetType.getName(), targetClassLoader, e.toString());
+            return null;
+        }
+    }
+
+    /**
+     * 灵元卸载时清掉其 ClassLoader 对应的 ObjectMapper 缓存条目，
+     * 释放对灵元类 / ClassLoader 的强引用，防止滞留导致的回收延迟。
+     *
+     * @param targetClassLoader 被卸载灵元的 ClassLoader
+     */
+    public static void evict(ClassLoader targetClassLoader) {
+        if (targetClassLoader != null) {
+            MAPPER_CACHE.remove(targetClassLoader);
         }
     }
 
@@ -478,7 +521,12 @@ public class ArgumentTypeAdapter {
         }
         if (targetType == BigDecimal.class) {
             if (source instanceof BigDecimal) return source;
-            if (source instanceof Number) return BigDecimal.valueOf(((Number) source).doubleValue());
+            if (source instanceof Number) {
+                // 用字符串构造而非 doubleValue()：BigDecimal.valueOf(doubleValue()) 会先把
+                // long/BigInteger 等整型降为 double，超 52 位精度即丢失（金额/计数类字段风险）；
+                // toString 保留原对象精确数字表示
+                return new BigDecimal(source.toString());
+            }
             return strVal.isEmpty() ? BigDecimal.ZERO : new BigDecimal(strVal);
         }
         if (targetType == BigInteger.class) {

@@ -8,6 +8,9 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -425,6 +428,71 @@ class LingTransactionContextTest {
             // 压入顺序已清空：无参 pop 不再弹任何源（幂等安全）
             LingTransactionContext.popConnection();
             assertFalse(LingTransactionContext.hasAnyConnection());
+        }
+    }
+
+    @Nested
+    @DisplayName("按源精确废弃（closeConnectionsByDataSource）")
+    class ScopedPoisonClose {
+
+        @Test
+        @DisplayName("只关闭入参指定的源，其余源连接保留（不误伤父事务/无关源）")
+        void closesOnlySpecifiedSources() {
+            AtomicInteger poisonedCloses = new AtomicInteger();
+            AtomicInteger keptCloses = new AtomicInteger();
+            Connection toPoison = trackedConnection("to-poison", poisonedCloses, false);
+            Connection kept = trackedConnection("kept", keptCloses, false);
+            LingTransactionContext.pushConnection("order", kept);
+            LingTransactionContext.pushConnection("default", toPoison);
+
+            List<String> scope = Collections.singletonList("default");
+            int closed = LingTransactionContext.closeConnectionsByDataSource(scope);
+
+            assertEquals(1, closed, "只废弃本次调用涉及的源");
+            assertEquals(1, poisonedCloses.get());
+            assertEquals(0, keptCloses.get(), "其他源不得被关闭");
+            assertNull(LingTransactionContext.getCurrentConnection("default"));
+            assertSame(kept, LingTransactionContext.getCurrentConnection("order"), "父事务/无关源连接保留");
+            LingTransactionContext.popConnection("order");
+        }
+
+        @Test
+        @DisplayName("null / 空集合返回 0，不抛异常")
+        void nullOrEmptyScopeReturnsZero() {
+            LingTransactionContext.pushConnection("default", mockConnection("a"));
+            assertEquals(0, LingTransactionContext.closeConnectionsByDataSource(null));
+            assertEquals(0, LingTransactionContext.closeConnectionsByDataSource(Collections.emptyList()));
+            assertTrue(LingTransactionContext.hasAnyConnection());
+            LingTransactionContext.popConnection();
+        }
+
+        @Test
+        @DisplayName("指定的源全部废弃后清空上下文（cleanIfEmpty 语义）")
+        void allPoisonedEmptiesContextWhenOnlySource() {
+            AtomicInteger closes = new AtomicInteger();
+            LingTransactionContext.pushConnection("default", trackedConnection("a", closes, false));
+            LingTransactionContext.setRollbackOnly();
+
+            int closed = LingTransactionContext.closeConnectionsByDataSource(Collections.singletonList("default"));
+
+            assertEquals(1, closed);
+            assertFalse(LingTransactionContext.hasAnyConnection());
+            assertFalse(LingTransactionContext.isRollbackOnly(), "全部源废弃后连信号一并清空");
+        }
+
+        @Test
+        @DisplayName("快照暴露本次调用继承的数据源 ID（供按源精确废弃）")
+        void snapshotExposesCarriedSourceIds() {
+            Connection defaultConn = mockConnection("default");
+            Connection orderConn = mockConnection("order");
+            LingTransactionContext.pushConnection("default", defaultConn);
+            LingTransactionContext.pushConnection("order", orderConn);
+
+            LingTransactionContext.TransactionSnapshot snapshot = LingTransactionContext.captureSnapshot();
+
+            assertTrue(snapshot.getDataSourceIds().containsAll(Arrays.asList("default", "order")));
+            LingTransactionContext.popConnection("order");
+            LingTransactionContext.popConnection("default");
         }
     }
 }

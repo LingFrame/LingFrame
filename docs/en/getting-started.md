@@ -260,7 +260,7 @@ Parent POM:
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>com.lingframe</groupId>
+                <groupId>cn.lingframe</groupId>
                 <artifactId>lingframe-bom</artifactId>
                 <version>${lingframe.version}</version>
                 <type>pom</type>
@@ -289,7 +289,7 @@ Parent POM:
 
     <dependencies>
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-api</artifactId>
         </dependency>
     </dependencies>
@@ -357,13 +357,13 @@ public class UserDTO implements Serializable {
     <dependencies>
         <!-- LingFrame Spring Boot Starter (main path: Boot 2.7 / JDK 8). For Boot 3, swap to lingframe-spring-boot3-starter -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-spring-boot2-starter</artifactId>
         </dependency>
 
         <!-- Dashboard (optional) -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-dashboard</artifactId>
         </dependency>
 
@@ -487,7 +487,7 @@ public class LingCoreApplication {
 
         <!-- LingFrame API -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-api</artifactId>
             <scope>provided</scope>
         </dependency>

@@ -83,7 +83,7 @@ public class LingInvocationException extends LingRuntimeException {
          * <p>这类错误是平台层在请求到达业务执行前主动拦截（限流、熔断、舱壁、宏观状态拒绝、
          * 权限拒绝、路由失败），并非实例自身执行故障。它们不应计入健康错误率
          * （{@code errorRate}）——否则高并发限流/熔断场景下会错误地把健康实例判为
-         * {@code UNHEALTHY}（详见 {@link LingHealthMetrics} 的健康判定）。
+         * {@code UNHEALTHY}（详见 {@code LingHealthMetrics} 的健康判定）。
          *
          * <p>反之，CLASSLOADER_ERROR / INVOKE_ERROR / TIMEOUT / INTERNAL_ERROR 才是实例真实故障，
          * 应当计入健康错误率。

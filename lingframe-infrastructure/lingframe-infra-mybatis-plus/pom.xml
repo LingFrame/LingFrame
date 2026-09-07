@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.lingframe</groupId>
+        <groupId>cn.lingframe</groupId>
         <artifactId>lingframe-infrastructure</artifactId>
         <version>${revision}</version>
     </parent>
@@ -18,7 +18,7 @@
     <dependencies>
         <!-- 灵珑契约层（@LingReference 注解） -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-api</artifactId>
         </dependency>
 
@@ -47,7 +47,7 @@
 
         <!-- 拦截器兼容测试：受管代理（LingDataSourceProxy） -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-infra-storage</artifactId>
             <scope>test</scope>
         </dependency>

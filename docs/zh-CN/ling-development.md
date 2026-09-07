@@ -40,7 +40,7 @@
 ```xml
 <dependencies>
     <dependency>
-        <groupId>com.lingframe</groupId>
+        <groupId>cn.lingframe</groupId>
         <artifactId>lingframe-api</artifactId>
         <version>${lingframe.version}</version>
     </dependency>

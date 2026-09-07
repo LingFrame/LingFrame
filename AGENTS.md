@@ -8,7 +8,7 @@ This file provides unified guidance to AI coding assistants when working with co
 
 灵珑（LingFrame）是一个面向长期运行系统的 JVM 运行时治理框架。核心能力：单进程内灵元隔离、热加载/规范热卸载、运行时治理（权限、审计、限流、熔断、N元路由）、Dashboard 控制面。
 
-当前版本：`0.4.0`（`lingframe-dependencies` 的 `revision`）。默认构建矩阵为 **Spring Boot 2.7 / JDK 8**；**Spring Boot 3.5 / JDK 17** 通过 `-Pspring-boot3` 切换。
+当前版本：`0.4.5`（`lingframe-dependencies` 的 `revision`）。默认构建矩阵为 **Spring Boot 2.7 / JDK 8**；**Spring Boot 3.5 / JDK 17** 通过 `-Pspring-boot3` 切换。
 
 ### 规范权威链
 

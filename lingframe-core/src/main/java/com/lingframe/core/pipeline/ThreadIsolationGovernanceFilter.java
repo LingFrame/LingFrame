@@ -149,7 +149,7 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
             // ⚠️ 残余风险：宽限期是概率性缓解而非硬保证——worker 阻塞在不可中断 I/O 时，
             // close 与 worker 并发访问同一连接仍属未定义行为，本机制不声称「超时后连接已安全」。
             if (!awaitWorkerExit(workerFinished, config.getAbandonedJoinTimeoutMs())) {
-                poisonAbandonedConnections(lingId, ctx);
+                poisonAbandonedConnections(lingId, ctx, txSnapshot.getDataSourceIds());
             }
             log.error("[Isolation:{}] Execution timed out after {} ms for {}", lingId, timeoutMs, ctx.getServiceFQSID());
             if (governanceMetricsCollector != null) {
@@ -223,9 +223,16 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
      * <p>
      * 被放弃的 worker 可能仍占用同一物理连接——直接 close 让连接池感知废弃后重建，
      * 未提交写随 close 丢弃（不会半提交）；残余风险见超时路径注释，不声称「已安全」。
+     * <p>
+     * 废弃范围限制为本调用继承的穿透连接（snapshot 携带的 dataSourceIds），而非当前线程
+     * 全部连接——避免误关父事务或其他无关灵元在同一线程上下文中的连接（级联破坏）。
+     *
+     * @param lingId           灵元 ID
+     * @param ctx              调用上下文
+     * @param scopeDataSourceIds 本调用涉及的穿透连接数据源 ID（快照捕获）
      */
-    private void poisonAbandonedConnections(String lingId, InvocationContext ctx) {
-        int poisoned = LingTransactionContext.closeAllConnections();
+    private void poisonAbandonedConnections(String lingId, InvocationContext ctx, List<String> scopeDataSourceIds) {
+        int poisoned = LingTransactionContext.closeConnectionsByDataSource(scopeDataSourceIds);
         if (poisoned > 0) {
             log.error("[Isolation:{}] Abandoned worker still in critical section after grace period, "
                     + "poisoned {} penetration connection(s) for {} (residual writes discarded with close)",

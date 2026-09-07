@@ -65,11 +65,16 @@ public class LingDataSourceProxy implements DataSource {
      * {@code ManagedDataSourceRegistry} 时调用——BPP 已包装的代理先以 null 身份存在，
      * 注册即提升。已具备相同身份时 no-op；已具备不同身份（复用同一代理供给多源）属装配错误，
      * 抛 {@link IllegalStateException} 防御——同一物理池以两个身份供给会造成连接串用。
+     * <p>
+     * 方法以 {@code synchronized} 保证「读-判-写」三步原子：身份提升是启动期装配动作，
+     * 正常情况下单线程调用，但防御并发场景（两个线程以不同身份同时提升）免于后写覆盖先写
+     * 导致 {@code volatile dataSourceId} 被静默改写。读侧 {@link #getConnection()} 走 volatile
+     * 无锁读，不与该同步写互斥。
      *
      * @param dataSourceId 受管数据源身份
      * @throws IllegalStateException 该代理已具备不同身份时抛出
      */
-    public void promoteToManaged(String dataSourceId) {
+    public synchronized void promoteToManaged(String dataSourceId) {
         String current = this.dataSourceId;
         if (current != null) {
             if (current.equals(dataSourceId)) {
