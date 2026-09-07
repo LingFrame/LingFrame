@@ -1,6 +1,7 @@
 package com.lingframe.starter.resource;
 
 import com.lingframe.api.context.LingContext;
+import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.starter.adapter.SpringLingContainer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -42,6 +43,7 @@ class SpringApplicationShutdownHookAttributionTest {
         Method resetMethod = bootShutdownHook().getClass().getDeclaredMethod("reset");
         resetMethod.setAccessible(true);
         resetMethod.invoke(bootShutdownHook());
+        LingFrameConfig.clear();
     }
 
     @Test
@@ -285,11 +287,11 @@ class SpringApplicationShutdownHookAttributionTest {
         return field.get(null);
     }
 
-    @SpringBootApplication
+    @SpringBootApplication(scanBasePackageClasses = {})
     static class PlainApp {
     }
 
-    @SpringBootApplication
+    @SpringBootApplication(scanBasePackageClasses = {})
     static class ReadyListenerApp {
         @Bean
         ApplicationListener<ApplicationReadyEvent> readyListener() {
@@ -298,7 +300,7 @@ class SpringApplicationShutdownHookAttributionTest {
         }
     }
 
-    @SpringBootApplication
+    @SpringBootApplication(scanBasePackageClasses = {})
     static class ContainerApp {
     }
 

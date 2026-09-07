@@ -75,10 +75,11 @@ class EventDrivenArchitectureTest {
         void asyncEventConvergesToSubscriber() throws Exception {
             CountDownLatch received = new CountDownLatch(1);
             AtomicReference<OrderCreatedEvent> seen = new AtomicReference<>();
-            // 库存灵元订阅下单事件（灵元级订阅）
-            eventBus.subscribe("stock-ling", OrderCreatedEvent.class, seen::set);
-            // 完成 latch：订阅回调后放行
-            eventBus.subscribe("stock-ling", OrderCreatedEvent.class, e -> received.countDown());
+            // 库存灵元订阅下单事件（原子回调：先赋值后放行，消除并发调度竞态）
+            eventBus.subscribe("stock-ling", OrderCreatedEvent.class, e -> {
+                seen.set(e);
+                received.countDown();
+            });
 
             // 下单灵元发布异步领域事件
             eventBus.publish(new OrderCreatedEvent("trace-001", "order-001"));

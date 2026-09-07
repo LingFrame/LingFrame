@@ -14,6 +14,7 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.util.Objects;
 
 /**
  * 受管模式灵元容器专用事务管理器（双路径）。
@@ -43,8 +44,9 @@ public class LingManagedTransactionManager implements PlatformTransactionManager
     private final String dataSourceId;
 
     public LingManagedTransactionManager(DataSource managedDataSource, String dataSourceId) {
-        this.managedDataSource = managedDataSource;
-        this.dataSourceId = dataSourceId;
+        // 入口固化契约边界：null 依赖在装配期显式失败，而非延迟到运行时难定位
+        this.managedDataSource = Objects.requireNonNull(managedDataSource, "managedDataSource must not be null");
+        this.dataSourceId = Objects.requireNonNull(dataSourceId, "dataSourceId must not be null");
     }
 
     /**

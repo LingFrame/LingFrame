@@ -328,6 +328,25 @@ class LingManagedTransactionManagerTest {
     }
 
     @Nested
+    @DisplayName("构造参数防御")
+    class ConstructorGuards {
+
+        @Test
+        @DisplayName("null managedDataSource 拒绝装配")
+        void nullDataSourceRejected() {
+            assertThrows(NullPointerException.class,
+                    () -> new LingManagedTransactionManager(null, DATA_SOURCE_ID));
+        }
+
+        @Test
+        @DisplayName("null dataSourceId 拒绝装配")
+        void nullDataSourceIdRejected() {
+            assertThrows(NullPointerException.class,
+                    () -> new LingManagedTransactionManager(mock(DataSource.class), null));
+        }
+    }
+
+    @Nested
     @DisplayName("根路径属性设置（隔离级别/readOnly 借出时生效）")
     class RootAttributes {
 
