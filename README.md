@@ -5,7 +5,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-0.4.0-blue" alt="Version">
+  <a href="https://central.sonatype.com/artifact/cn.lingframe/lingframe-bom">
+    <img src="https://img.shields.io/maven-central/v/cn.lingframe/lingframe-bom.svg?color=blue" alt="Maven Central">
+  </a>
+  <img src="https://img.shields.io/badge/Version-0.4.5-blue" alt="Version">
   <img src="https://img.shields.io/badge/Stage-Pre--1.0-yellow" alt="Stage">
   <img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License">
   <img src="https://img.shields.io/badge/Java-8_(默认)_%7C_17-orange" alt="Java">
@@ -95,6 +98,20 @@
 
 ---
 
+## 业务演进三大模式
+
+在灵珑微内核架构体系中，业务落地与开发分为三大标准模式：
+
+| 维度 | 模式 1：存量业务透明接管模式 | 模式 2：新业务契约门面模式 | 模式 3：新业务自包含独立端点模式 |
+| :--- | :--- | :--- | :--- |
+| **业务场景** | 存量老系统平滑改造、渐进式绞杀与性能增强 | 企业核心新业务、平台中台能力扩展 | 完全独立即插即用扩展能力包 |
+| **Controller 归属** | **灵核底座（原样复用，零修改）** | **灵核提供薄门面（统一鉴权与入参校验）** | **灵元内部自包含（动态挂载端点）** |
+| **路由与治理机制** | 灵核 AOP / `@LingReference` 动态代理 | 灵核注入 `@LingReference` 动态契约路由 | 灵珑微内核动态注册/注销 Spring MVC 端点 |
+| **容灾兜底机制** | 灵核默认实现 100% 自动兜底（永不 404） | 灵核统一熔断降级与默认保底策略 | 卸载后端点即时注销，零内存残留 |
+| **核心优势** | 前端 0 感知，系统具备极限容灾兜底 | 统一安全审计与 API 规范，业务灵活多态 | 零侵入即插即用，灵核无需提前声明契约 |
+
+---
+
 ## 你能得到什么
 
 | 能力 | 是什么 | 解决什么问题 |
@@ -175,7 +192,11 @@ curl http://localhost:8888/user-ling/user/listUsers
 | 路径 | 入口 |
 | --- | --- |
 | 入门用法 | `lingframe-example-lingcore-app` + user / order |
-| 商城演进示例 | `ling-mall` → `saas-mall` |
+| 真实单体改造示范 | **LingFrame-RuoYi**（独立项目仓库：基于真实 RuoYi 既有单体系统的渐进式灵元化改造示范） |
+
+> **示例迁徙提示**：原 `lingframe-example-ling-mall` 与 `lingframe-example-saas-mall` 示例已下线，
+> 托管数据源与事务传播示例请参考 [docs/zh-CN/managed-datasource-and-transaction.md](docs/zh-CN/managed-datasource-and-transaction.md)，
+> 非 Spring 灵元入口参考可用 `lingframe-example-ling-native`。
 
 ---
 
@@ -215,17 +236,13 @@ curl http://localhost:8888/user-ling/user/listUsers
 - 存储治理主要覆盖 Spring 注入的 `DataSource`，手写的原生 JDBC 连接无法拦截；
 - 危险 API 扫描是加载阶段的提醒信号，并不是 JVM 级别的完整安全沙箱；
 - 验证主路径为 **Spring Boot 2.7 + JDK 8**（示例默认）；Spring Boot 3 + JDK 17 为支持线；
-- **0.4.0 版本仍处于 Pre-1.0 阶段**：建议上线前先在测试环境充分评估，并对照 [生产配置清单](docs/zh-CN/production-hardening.md) 进行核验。
+- **0.4.5 版本仍处于 Pre-1.0 阶段**：建议上线前先在测试环境充分评估，并对照 [生产配置清单](docs/zh-CN/production-hardening.md) 进行核验。
 
 ---
 
 ## 最小接入（接到自己的灵核）
 
-构件以本仓库为准（若无私服，请先本地安装）：
-
-```powershell
-mvn -pl lingframe-bom,lingframe-runtime/lingframe-spring-boot2-starter,lingframe-dashboard -am install -DskipTests
-```
+LingFrame 已正式发布至 **Maven Central** 全球中央仓库，无需拉取或本地编译框架源码，在项目中直接声明 BOM 即可开箱即用：
 
 **Spring Boot 2.7 / JDK 8（默认路径）：**
 
@@ -233,9 +250,9 @@ mvn -pl lingframe-bom,lingframe-runtime/lingframe-spring-boot2-starter,lingframe
 <dependencyManagement>
   <dependencies>
     <dependency>
-      <groupId>com.lingframe</groupId>
+      <groupId>cn.lingframe</groupId>
       <artifactId>lingframe-bom</artifactId>
-      <version>0.4.0</version>
+      <version>0.4.5</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -244,12 +261,12 @@ mvn -pl lingframe-bom,lingframe-runtime/lingframe-spring-boot2-starter,lingframe
 
 <dependencies>
   <dependency>
-    <groupId>com.lingframe</groupId>
+    <groupId>cn.lingframe</groupId>
     <artifactId>lingframe-spring-boot2-starter</artifactId>
   </dependency>
   <!-- 可选控制面 -->
   <dependency>
-    <groupId>com.lingframe</groupId>
+    <groupId>cn.lingframe</groupId>
     <artifactId>lingframe-dashboard</artifactId>
   </dependency>
 </dependencies>

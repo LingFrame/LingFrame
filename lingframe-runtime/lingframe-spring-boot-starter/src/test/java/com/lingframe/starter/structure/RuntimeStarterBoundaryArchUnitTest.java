@@ -10,7 +10,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 /**
  * Runtime starter 架构守护测试。
  * <p>
- * 守住 Phase C 边界收敛契约：runtime 业务类不得直接持有 {@code LocalGovernanceRegistry}
+ * 守住边界收敛契约：runtime 业务类不得直接持有 {@code LocalGovernanceRegistry}
  * 或调 {@code LingFrameConfig.current()} 静态穿透——治理读写必须经 {@link GovernanceAdminService} 委托，
  * 配置只读必须经注入的 {@code LingFrameInfo} 接口。
  * <p>

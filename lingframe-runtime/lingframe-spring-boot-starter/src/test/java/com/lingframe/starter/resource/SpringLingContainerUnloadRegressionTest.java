@@ -20,6 +20,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.web.context.request.ServletWebRequest;
 
@@ -59,6 +60,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "lingframe.dev-mode=true"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
+@TestExecutionListeners(listeners = LingFrameConfigResetListener.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 @DisplayName("SpringLingContainer 卸载回归测试")
 class SpringLingContainerUnloadRegressionTest {
 

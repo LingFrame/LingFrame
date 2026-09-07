@@ -2,18 +2,55 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.lingframe</groupId>
+    <groupId>cn.lingframe</groupId>
     <artifactId>lingframe-dependencies</artifactId>
     <version>${revision}</version>
     <packaging>pom</packaging>
 
     <name>LingFrame :: Dependencies</name>
     <description>LingFrame 依赖版本统一管理</description>
+    <url>https://github.com/LingFrame/LingFrame</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <name>LingFrame Team</name>
+            <email>dev@lingframe.cn</email>
+            <organization>LingFrame</organization>
+            <organizationUrl>https://lingframe.cn</organizationUrl>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/LingFrame/LingFrame.git</connection>
+        <developerConnection>scm:git:ssh://github.com:LingFrame/LingFrame.git</developerConnection>
+        <url>https://github.com/LingFrame/LingFrame</url>
+    </scm>
+
+    <issueManagement>
+        <system>GitHub Issues</system>
+        <url>https://github.com/LingFrame/LingFrame/issues</url>
+    </issueManagement>
+
+    <distributionManagement>
+        <repository>
+            <id>central</id>
+            <name>Central Portal</name>
+            <url>https://central.sonatype.com</url>
+        </repository>
+    </distributionManagement>
 
     <properties>
         <!-- LingFrame 版本 -->
         <!-- 使用 Maven CI Friendly 变量 -->
-        <revision>0.4.0</revision>
+        <revision>0.4.5</revision>
 
         <!-- Java Defaults (Spring Boot 2 / Java 8) -->
         <java.version>1.8</java.version>
@@ -28,11 +65,17 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- 添加编译参数 -->
         <maven.compiler.parameters>true</maven.compiler.parameters>
-        <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+        <!-- 内存调优并入 argLine，避免 CI 侧用 -DargLine 覆盖时丢字段授权参数；
+             注意：命令行 -DargLine 是用户属性、优先级最高，会整体替换该属性。
+             因此 JDK9+ 的 add-opens 必须与本 base 值一起落在被 surefire 引用的 argLine 上，
+             详见下方 jdk9-plus-surefire profile。 -->
+        <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m</argLine>
 
         <!-- 工具库 - 通用版本 -->
         <mysql.version>8.0.33</mysql.version>
         <mybatis-flex.version>1.8.7</mybatis-flex.version>
+        <mybatis-plus.version>3.5.3.1</mybatis-plus.version>
+        <druid.version>1.2.20</druid.version>
         <jsqlparser.version>4.6</jsqlparser.version>
         <guava.version>32.1.3-jre</guava.version>
         <hikaricp.version>5.0.1</hikaricp.version>
@@ -50,6 +93,12 @@
 
         <!-- Jacoco 测试覆盖率输出目录变量，支持外部注入以避免并行构建冲突 -->
         <jacoco.dest.folder>default</jacoco.dest.folder>
+
+        <!-- Maven Central 发布插件 -->
+        <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
+        <maven-source-plugin.version>3.3.0</maven-source-plugin.version>
+        <maven-gpg-plugin.version>3.2.4</maven-gpg-plugin.version>
+        <gpg.executable>gpg</gpg.executable>
     </properties>
 
     <profiles>
@@ -101,8 +150,23 @@
                 <jdk>[9,)</jdk>
             </activation>
             <properties>
-                <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.ref=ALL-UNNAMED --add-opens java.base/java.net=ALL-UNNAMED --add-opens java.base/java.security=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.util.concurrent=ALL-UNNAMED --add-opens java.base/jdk.internal.loader=ALL-UNNAMED --add-opens java.sql/java.sql=ALL-UNNAMED --add-opens java.rmi/sun.rmi.transport=ALL-UNNAMED</argLine>
+                <!-- 该 profile 为 JDK9+ 注入全部 add-opens，是测试反射访问 JDK 内部包（如
+                     java.util.concurrent.atomic 的 AtomicInteger.value）所需的真正授权来源。
+                     必须携带与 base argLine 一致的 -Xmx 内存调优，这样 CI 无需（也不应）用
+                     -DargLine 覆盖本属性，从而保留这些授权参数。 -->
+                <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.ref=ALL-UNNAMED --add-opens java.base/java.net=ALL-UNNAMED --add-opens java.base/java.security=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.util.concurrent=ALL-UNNAMED --add-opens java.base/jdk.internal.loader=ALL-UNNAMED --add-opens java.sql/java.sql=ALL-UNNAMED --add-opens java.rmi/sun.rmi.transport=ALL-UNNAMED</argLine>
             </properties>
+        </profile>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
     </profiles>
 
@@ -138,7 +202,7 @@
         <dependencies>
             <!-- 导入 LingFrame BOM，统一管理 LingFrame 灵元版本 -->
             <dependency>
-                <groupId>com.lingframe</groupId>
+                <groupId>cn.lingframe</groupId>
                 <artifactId>lingframe-bom</artifactId>
                 <version>${revision}</version>
                 <type>pom</type>
@@ -181,6 +245,25 @@
                 <artifactId>mybatis-flex-processor</artifactId>
                 <version>${mybatis-flex.version}</version>
                 <scope>provided</scope>
+            </dependency>
+
+            <!-- MyBatis-Plus（生态兼容测试用，灵元侧主流 ORM） -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-boot-starter</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-extension</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
+            <!-- Druid 连接池（生态兼容测试用，主流国产池） -->
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>druid</artifactId>
+                <version>${druid.version}</version>
             </dependency>
 
             <!-- MySQL -->
@@ -481,7 +564,22 @@
                     </executions>
                 </plugin>
 
-                <!-- Javadoc API 参考 -->
+                <!-- 源码打包插件 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>${maven-source-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <id>attach-sources</id>
+                            <goals>
+                                <goal>jar-no-fork</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Javadoc API 文档插件 -->
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-javadoc-plugin</artifactId>
@@ -493,6 +591,52 @@
                         <doclint>all,-missing,-html</doclint>
                         <quiet>true</quiet>
                         <failOnError>false</failOnError>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>attach-javadocs</id>
+                            <goals>
+                                <goal>jar</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- GPG 签名插件 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-gpg-plugin</artifactId>
+                    <version>${maven-gpg-plugin.version}</version>
+                    <configuration>
+                        <executable>${gpg.executable}</executable>
+                        <keyname>${gpg.keyname}</keyname>
+                        <passphrase>${gpg.passphrase}</passphrase>
+                        <gpgArguments>
+                            <arg>--pinentry-mode</arg>
+                            <arg>loopback</arg>
+                        </gpgArguments>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>sign-artifacts</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>sign</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Sonatype Central Portal 发布插件 -->
+                <plugin>
+                    <groupId>org.sonatype.central</groupId>
+                    <artifactId>central-publishing-maven-plugin</artifactId>
+                    <version>${central-publishing-maven-plugin.version}</version>
+                    <extensions>true</extensions>
+                    <configuration>
+                        <publishingServerId>central</publishingServerId>
+                        <autoPublish>true</autoPublish>
+                        <waitUntil>published</waitUntil>
                     </configuration>
                 </plugin>
 
@@ -547,6 +691,11 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <extensions>true</extensions>
             </plugin>
         </plugins>
     </build>

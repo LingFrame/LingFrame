@@ -2,6 +2,8 @@ package com.lingframe.starter.resource;
 
 import com.lingframe.starter.configuration.LingFrameCoreConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration;
+import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
@@ -12,7 +14,10 @@ import org.springframework.context.annotation.Import;
 // LinkageError: attempted duplicate class definition。
 // 关闭代理即跳过 CGLIB 增强，从根本上消除该冲突（reuseForks 可回到默认 true）。
 @Configuration(proxyBeanMethods = false)
-@EnableAutoConfiguration
+@EnableAutoConfiguration(exclude = {
+        HibernateJpaAutoConfiguration.class,
+        JpaRepositoriesAutoConfiguration.class
+})
 @Import(LingFrameCoreConfiguration.class)
 public class LingTestSpringConfiguration {
 }

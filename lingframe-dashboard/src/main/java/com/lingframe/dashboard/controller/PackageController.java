@@ -47,7 +47,7 @@ public class PackageController {
             return ApiResponse.ok(dashboardService.scanPackages());
         } catch (Exception e) {
             log.error("Failed to scan packages", e);
-            return ApiResponse.error("扫描磁盘包失败: " + e.getMessage());
+            return ApiResponse.error("扫描磁盘包失败", e);
         }
     }
 
@@ -80,7 +80,7 @@ public class PackageController {
             return ApiResponse.ok("部署成功", info);
         } catch (Exception e) {
             log.error("Failed to deploy package: {}:{}", lingId, version, e);
-            return ApiResponse.error("部署失败: " + e.getMessage());
+            return ApiResponse.error("部署失败", e);
         }
     }
 

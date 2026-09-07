@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -347,6 +349,51 @@ class LingUnloadCoordinatorTest {
             doThrow(new RuntimeException("detection error")).when(leakDetector).detectLeak(any(), any(), any());
 
             assertDoesNotThrow(() -> coordinator.detectLeak("ling-1", "v1", cl));
+        }
+    }
+
+    @Nested
+    @DisplayName("确定性等待 awaitCleanup")
+    class AwaitCleanup {
+
+        @Test
+        @DisplayName("无进行中的清理时直接返回 true")
+        void returnsTrueWhenNoCleanupInFlight() {
+            assertTrue(coordinator.awaitCleanup("ling-x", 100));
+        }
+
+        @Test
+        @DisplayName("被中断时返回 false 并恢复中断状态")
+        void restoresInterruptFlagWhenInterrupted() throws Exception {
+            LingUnloadHook blockingHook = mock(LingUnloadHook.class);
+            CountDownLatch started = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            doAnswer(inv -> {
+                started.countDown();
+                release.await();
+                return null;
+            }).when(blockingHook).cleanup(eq("ling-b"), any());
+
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    pipelineEngine, Collections.emptyList(), Collections.singletonList(blockingHook),
+                    resourceManager, leakDetector);
+
+            // 回滚清理在独立线程执行，钩子阻塞使其清理进行中（cleanupFutures 保留 future）
+            Thread unload = new Thread(() -> {
+                coord.onFailureCleanup("ling-b", "v1", mock(ClassLoader.class));
+            }, "unload-interrupt-test");
+            unload.start();
+            assertTrue(started.await(2, TimeUnit.SECONDS));
+
+            // 置中断位后等待——future.get 随即抛 InterruptedException
+            Thread.currentThread().interrupt();
+            boolean result = coord.awaitCleanup("ling-b", 5_000);
+
+            assertFalse(result);
+            assertTrue(Thread.interrupted(), "中断状态应被恢复（Thread.interrupted 会清除读取）");
+
+            release.countDown();
+            unload.join(2_000);
         }
     }
 

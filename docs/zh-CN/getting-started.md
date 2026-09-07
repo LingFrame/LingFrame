@@ -216,7 +216,7 @@ mkdir -p lings/order-ling
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>com.lingframe</groupId>
+                <groupId>cn.lingframe</groupId>
                 <artifactId>lingframe-bom</artifactId>
                 <version>${lingframe.version}</version>
                 <type>pom</type>
@@ -245,7 +245,7 @@ mkdir -p lings/order-ling
 
     <dependencies>
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-api</artifactId>
         </dependency>
     </dependencies>
@@ -313,13 +313,13 @@ public class UserDTO implements Serializable {
     <dependencies>
         <!-- LingFrame Spring Boot Starter（主路径：Boot 2.7 / JDK 8）。Boot 3 请改为 lingframe-spring-boot3-starter -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-spring-boot2-starter</artifactId>
         </dependency>
         
         <!-- Dashboard（可选） -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-dashboard</artifactId>
         </dependency>
         
@@ -443,7 +443,7 @@ public class LingCoreApplication {
         
         <!-- LingFrame API -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-api</artifactId>
             <scope>provided</scope>
         </dependency>
@@ -989,5 +989,9 @@ Shared API 当前应该只放：
 而是这条运行时链路在 reload / unload / cleanup 场景下能否继续保持有序。
 
 接下来如果你想直接开始写灵元，去 [业务灵元开发指南](ling-development.md)。
-示例两条路径总览：[lingframe-examples/README.md](../../lingframe-examples/zh-CN/README.md)（入门用法 / 商城演进 `saas-mall`）。
+示例总览：[lingframe-examples/README.md](../../lingframe-examples/README.md)（入门用法与单体改造独立项目 LingFrame-RuoYi 指引）。
 配置对照可看 [生产硬化配置清单](production-hardening.md)。
+
+> **示例迁徙提示**：原 `lingframe-example-ling-mall` 与 `lingframe-example-saas-mall` 示例已下线，
+> 托管数据源与事务传播示例请参考 [managed-datasource-and-transaction.md](managed-datasource-and-transaction.md)，
+> 非 Spring 灵元入口参考可用 `lingframe-example-ling-native`。

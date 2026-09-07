@@ -19,7 +19,9 @@ import org.springframework.http.MediaType;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.*;
@@ -94,18 +96,23 @@ public class LogStreamService implements InitializingBean, DisposableBean {
      * 的 send 只占用一个 worker，不拖累其余连接的广播（避免 head-of-line 阻塞）；
      * 同时维持「不抢占业务线程池」。
      * <p>
-     * 内存权衡说明：每 emitter 独立任务意味着高峰事件率 × 慢客户端时，无界队列积压的任务数
-     * 从「每事件 1 个」放大为「每事件 N 个」（N=活跃 emitter 数）。积压上限由
-     * {@link #MAX_CONNECTIONS}（连接数上限）间接封顶，不会失控，但内存压力曲线比旧实现陡。
-     * 若后续出现高 emitter 数 × 高事件率场景，需考虑有界队列 + 丢弃/背压策略。
+     * 内存权衡：每 emitter 独立任务意味着高峰事件率 × 慢客户端时队列会积压，
+     * 因此使用<b>有界队列</b>（1024）配合 {@link ThreadPoolExecutor.AbortPolicy}：
+     * 队列满时提交抛出 {@link RejectedExecutionException}，由调用方（broadcast 系列）
+     * 捕获忽略——SSE 日志是尽力而为的观测通道，宁可丢弃本次广播也不允许无界积压 OOM。
+     * 队列大小 × 每事件 N 个 emitter 任务的上限由 {@link #MAX_CONNECTIONS}（100）间接封顶。
      */
-    private final ExecutorService dispatcher = Executors.newFixedThreadPool(4, r -> {
-        Thread t = new Thread(r, "ling-sse-dispatcher");
-        t.setDaemon(true);
-        t.setContextClassLoader(CORE_CLASSLOADER);
-        t.setUncaughtExceptionHandler((thread, ex) -> log.error("SSE dispatcher thread error", ex));
-        return t;
-    });
+    private final ExecutorService dispatcher = new ThreadPoolExecutor(
+            4, 4, 0L, TimeUnit.MILLISECONDS,
+            new LinkedBlockingQueue<>(1024),
+            r -> {
+                Thread t = new Thread(r, "ling-sse-dispatcher");
+                t.setDaemon(true);
+                t.setContextClassLoader(CORE_CLASSLOADER);
+                t.setUncaughtExceptionHandler((thread, ex) -> log.error("SSE dispatcher thread error", ex));
+                return t;
+            },
+            new ThreadPoolExecutor.AbortPolicy());
 
     /**
      * 心跳调度器，每 15 秒发送一次心跳
@@ -573,8 +580,10 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         if (dispatcher.isShutdown()) {
             return;
         }
-        String payload = "{\"lingId\":\"" + lingId + "\",\"action\":\"" + action
-                + "\",\"leakDetected\":" + leakDetected + "}";
+        Map<String, Object> payload = new HashMap<>(4);
+        payload.put("lingId", lingId);
+        payload.put("action", action);
+        payload.put("leakDetected", leakDetected);
         try {
             for (SseEmitter emitter : emitters) {
                 dispatcher.submit(withCoreClassLoader(() -> {

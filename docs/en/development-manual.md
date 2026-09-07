@@ -258,6 +258,14 @@ The governance Pipeline is a core defense line strictly validated and protected 
 
 The N-way weight split is not "theoretically should be so" but a system capability backed by API, logs, and tests. The `MigrationPhase` state machine expresses the macro phases of functional (contract) traffic governance—CORE_EXCLUSIVE / MIGRATING / LING_EXCLUSIVE / ITERATING; the binary phase (N=2) is a special case, and N≥3 is the multi-version coexistence / multi-tenancy scenario natively supported by the router.
 
+**Transaction Propagation Phase (`TransactionPropagationFilter`, order=250, between `POLICY_PREFILL`(240) and `RESILIENCE`(300))**: after routing is resolved and before the TCCL switch, the physical connection of the upstream active transaction is pushed into `LingTransactionContext` by dataSourceId, for the downstream Ling to reuse through the managed data source proxy (cross-Ling single-machine ACID; see ADR-0005 for details):
+
+- **SPI-ized (hard constraint)**: core only depends on `core.spi.TransactionBindingHook` (`isTransactionActive` / `getActiveBoundDataSourceIds` / `getBoundConnection`); the Spring implementation (bridging `TransactionSynchronizationManager`) sinks into the runtime starter—core's zero-Spring module boundary must not be broken by the propagation feature.
+- **Execution-mode gating**: only the NORMAL mode propagates; SIMULATION / GOVERN_ONLY pass through directly (neither has a real terminal execution, so pushed connections would have no consumer).
+- **Master switch**: `lingframe.tx.propagation.enabled` (default `true`)—when off the filter passes through directly and the Ling side does not register the managed transaction manager. This is an emergency degradation path: during the off period cross-Ling atomic rollback is unavailable. It is an "escape hatch", not a routine config; after recovery the propagation chain must be re-verified.
+- **Thread boundary (dual-end collaboration)**: main-thread side (this filter pushes / rollBackOnly signal callback / finally pops + `cleanIfEmpty`) and worker-thread side (`ThreadIsolationGovernanceFilter` carries snapshots via `ThreadLocalPropagator`, restore uses **merge semantics**—`carrier.rollbackOnly |= set during worker`) are both indispensable; missing either end causes a strong connection reference leak or a lost rollback signal (silent partial commit).
+- **Timeout / abandon execution**: the propagated connection monopolizes the entire cross-Ling call chain; after timeout `cancel(true)` + bounded join (`lingframe.runtime.abandoned-join-timeout`, default 2s) + grace-period timeout then poisoned discard (skip rollback and directly close, uncommitted writes are dropped with the close, governance metric `connectionPoisonedCount` counts)—the grace period is a probabilistic mitigation, not a hard guarantee; **do not claim "the connection is safe after timeout"**.
+
 ### 6.8 Migration State Machine (`MigrationPhase`)
 
 The routing layer and functional management layer (migration state machine) are completely split, establishing a clear two-layer architecture:
@@ -307,12 +315,56 @@ Persistence and restart consistency:
 - `MigrationPhase` state and candidate metadata (`lingId`, `phase`, `oldCandidate`, `newCandidate`) are uniformly persisted to `GovernanceStorage` (`config_type = 'migration'`).
 - `GovernanceConfigRestorer` during startup recovery first restores the state machine phase, then restores `ProviderWeightRouter`'s weight overrides, ensuring complete state consistency across restarts.
 
-### 6.9 Non-Bean DataSource Proxy Boundary
+### 6.9 DataSource Proxy Boundary And Managed DataSource Bus
+
+**SQL governance proxy boundary**:
 
 - LingFrame's SQL governance depends on proxying `DataSource`.
-- If managed by the Spring container as a Bean, `LingFrameBeanPostProcessor` auto-intercepts and wraps it.
+- If managed by the Spring container as a Bean, `DataSourceWrapperProcessor` auto-intercepts and wraps it.
 - **Red line**: if business code or third-party libs directly create a data source via `DriverManager`, static blocks, or self-`new HikariDataSource()`, it escapes the governance network.
 - **Requirement**: developers must explicitly call `LingConnectionProxyFactory.wrap(...)` to manually wrap such wild data sources, otherwise their DB access bypasses all isolation and auth rules.
+
+**Managed DataSource Bus (`ManagedDataSourceRegistry` / `ManagedDataSourceProvider`, `api.storage` package)**: an independent bus separated in responsibility from `LingServiceRegistry` (FQSID service contract catalog), carrying the "dataSourceId → managed DataSource" infrastructure handover, without polluting the business service catalog:
+
+- **Three modes**: mode 1 LingCore static hosting (dataSourceId is always `default`, the out-of-the-box recommended state, statically configured in LingCore `application.yml` and immutable at runtime); mode 2 Ling private library (Ling self-configures `spring.datasource.url` to build its own connection pool, physical isolation state); mode 3 storage-Ling dynamic external mount (Ling configures `lingframe.ling.datasource-id` to declare its supplier identity, builds its own data source and registers it to the bus under that id, business Lings pull the shared one via `lingframe.ling.datasource-ref`—default `default`). Mode 3 is **add-only**: the infrastructure Ling does not provide hot-unload this release, the unload entry is disabled; business Ling unload (mode 2) is unaffected.
+- **Identity gating (hard constraint)**: the managed proxy carries a `dataSourceId`; `getConnection()` only looks up the propagation context connection stack precisely by its own id; the mode-2 private-pool proxy id is null and **never looks up the stack**—under a mixed chain it never misuses a managed connection (the cross-database path is physically cut).
+- **Same-instance promotion (assembly contract, P0-level red line)**: the proxy produced by `DataSourceWrapperProcessor` wrapping first exists with a null identity, and must be **promoted on the same instance** via `promoteToManaged(dataSourceId)` when registered to the bus—TSM resources are keyed by instance; "replacing with a new id-carrying proxy instead of same-instance promotion" would cause the LingCore transaction manager and the bus lookup key to mismatch, silently breaking propagation. This contract is guarded by `ManagedAssemblyChainContractTest` (calling the real assembly methods directly, not replicating logic).
+- **NonCloseable semantics**: on a propagation hit it returns `NonCloseableLingConnectionProxy`—`close` / `commit` / `setAutoCommit` and root-connection properties (isolation level / read-only / holdability) degrade to no-op, `rollback` only sets the rollbackOnly signal (carried upward via snapshot merge semantics); **audit is not degraded**: the transaction permission gate and the `transaction:*-suppressed` audit event are fully retained, no-op does not exempt the governance gate. The Statement factory passes straight through to the inner (already-governed) proxy, the thin proxy only corrects the `getConnection()` view—**do not** wrap another layer of Statement around the inner proxy, otherwise every SQL execution gets two permission checks and two audits (inflated audit counts).
+- **Managed transaction manager (`LingManagedTransactionManager`, dual path)**: root determination truth source = whether the propagation-context connection stack (by dataSourceId) is empty at `getTransaction()` time. Root path borrows a connection → sets isolation level / readOnly → `setAutoCommit(false)` → push, commit / rollback physically execute + pop + close returning to pool; join path does not bind TSM and does not touch the connection, and before a non-root commit checks rollbackOnly (if set, throws `LingTransactionRollbackException`, aligning with Spring `UnexpectedRollbackException` semantics). Propagation boundaries: `REQUIRES_NEW` / `NESTED` are physically unreachable, explicitly degraded to join (REQUIRED) with a warning; `NEVER` / `NOT_SUPPORTED` are explicitly rejected (silent degradation would invert developer intent—writes outside a transaction get pulled into the root transaction); `MANDATORY` rejects when the stack is empty. On a missing connection in the root path commit / rollback, throw `TransactionSystemException` (with dataSourceId and phase info), **no bare NPE**.
+- **Startup visibility (raise silent failure to a startup WARN)**: when the LingCore root transaction manager is non-JDBC (e.g. JPA root, cannot extract a connection), or the LingCore and Ling TSM class identities are inconsistent (spring-tx not parent-delegated, two stacks diverge), output a startup WARN—if propagation does not activate it must be visible, "silent degradation" is forbidden.
+- **Propagation context (`LingTransactionContext`, `api.storage` package)**: a thread-local store separating resources (connections, stacked by dataSourceId, passed downward) and signals (rollbackOnly, passed upward); cross-thread carry is done by snapshots (`TransactionSnapshot`, including `pushOrder` push sequence), `restoreSnapshot` must use merge semantics. Cleanup guardrails: main-thread side finally pops + `cleanIfEmpty`, worker-thread side `restoreSnapshot`, `closeAllConnections` (poisoned path) clears all three ThreadLocals together—any incomplete cleanup residue pollutes subsequent calls on thread-pool reuse.
+
+### 6.10 Dashboard Control-Plane Authentication Rules
+
+The control plane (Dashboard) is a governance read/operation area; its security defaults must be provable and regression-testable:
+
+- **Fail-closed authentication assembly**: `lingframe.dashboard.access-token.enabled` defaults to `true` (the POJO default enforces authentication), and the Bean assembly condition must stay consistent with it—`@ConditionalOnProperty(..., matchIfMissing = true)`, i.e. when operators only configure `token` and omit `enabled`, the authentication interceptor must still be registered. The inconsistency "POJO default true / Bean condition not registered by default" is forbidden (2026-08-03 review A1, fixed and guarded by a reflection test).
+- **Constant-time token comparison**: `isValidToken` must use `MessageDigest.isEqual` constant-time comparison; `List.contains` is forbidden (timing side channel, A3 fixed).
+- **Playground permission discipline**: the temporary `grant` used by simulation calls must be paired with a `revoke` in `finally`; permanent accumulation is forbidden (A2); `resolveClass` must not trigger class initialization (`Class.forName(name, false, cl)`).
+- **Forwarded-header whitelist**: `X-Forwarded-Prefix / X-Forwarded-Path` are only trusted when within the configured whitelist `lingframe.trusted-forwarded-prefixes`; an empty list means no client forwarded headers are trusted (C10).
+- **Scheduled tasks**: cleanup/sampling tasks relying on `@Scheduled` (tickets, rate-limit buckets, metric sampling, backups) must explicitly enable scheduling in the assembly class (B2).
+
+All of the above semantics have ownership (Dashboard security components), failure paths (fail-closed startup failure / rejection), and tests and events backing them, consistent with "governance semantics must be provable".
+
+### 6.11 Four-Layer Cleanup Responsibility Split
+
+After unload, resource cleanup is split into layers by responsibility; **each layer must not overreach, substitute for, or overlap another** (per the boundary-level `AutoCloseable` automatic recycle plan v3.2 landed on 2026-08-20):
+
+| Layer | Owner | Responsible for | Not responsible for |
+| --- | --- | --- | --- |
+| ① Hygiene layer | `LingUnloadHook` (spi) | Cross-cutting JVM / ecosystem leaks (JDBC drivers, thread references, ShutdownHook, logging frameworks, RMI, etc.) | Business object lifecycle |
+| ② Runtime layer | `LingResourceManager` cache cleanup / thread-pool recycle | Process-level generic caches (Introspector) and per-lingId shared thread pools | Closing resources one by one |
+| ③ Orphan layer | `LingResourceManager.closeableRegistry` (new in this change) | `AutoCloseable` resources that are orphaned only because "the author never handed them to Spring", closed in **reverse registration order** | Spring-managed Beans (closed by the container itself, avoiding double close) |
+| ④ Main entry layer | `Ling.onStop(LingContext)` | Fine-grained, order- / dependency-aware teardown | Physical handle fallback |
+
+**Key boundaries (hard constraints)**:
+
+- **The orphan layer only registers "non-Spring-managed" resources**: under the Spring Ling path, Beans are destroyed by `closedContext.close()`; registering Beans here too would cause double close. The author only needs one line `ctx.registerCloseable(orphan)`—zero LingFrame API imports for Spring-managed resources.
+- **Version granularity**: orphan resources are registered under the composite key `(lingId, version)`. `LingUnloadCoordinator` calls `closeResources(lingId, version)` in `onVersionUnload`, ensuring that during multi-version rolling updates the old version's orphans are released immediately with the version unload without accumulation; `onLingUnload` calls `closeResources(lingId)` as a fallback to release all residue (including late registrations during close, bounded retention without loss).
+- **Install-failure rollback convergence**: `onFailureCleanup(lingId, version, ClassLoader)` appends version-level orphan closing after hook cleanup, preventing orphans registered during `onStart` from leaking into the whole-Ling unload when installation fails.
+- **Concurrency strategy**: registry operations are guarded by the class-owned `registryLock`; `close()` runs outside the lock, so a single resource's blocking or throwing `close()` does not spread to other Lings' registration / deregistration.
+- **Reverse order is a heuristic approximation, not a dependency topology**: order-dependent teardown must be manually orchestrated in `onStop`; the orphan layer's positioning is "physical handle fallback".
+- **Only register orphans, never auto-scan all Beans**: the real value is a unified registration contract plus a fallback close mechanism.
 
 ---
 
@@ -395,6 +447,7 @@ When a change touches the following, tests should be added first:
 - shared API freeze semantics
 - concurrency safety
 - post-unload resource cleanup
+- transaction propagation (cross-thread snapshot carry / rollbackOnly signal merge / assembly-chain contract / ThreadLocal dual-end erase)
 
 ### 8.3 Testing Red Lines
 

@@ -193,8 +193,14 @@ class ThreadReferenceUnloadHookSupplementTest {
         try {
             assertSame(customCL, t.getContextClassLoader());
             assertDoesNotThrow(() -> hook.cleanup("ling-ctx", customCL));
-            // contextClassLoader 应被清理（不再指向被卸载的灵元 ClassLoader）
-            assertNotSame(customCL, t.getContextClassLoader());
+            // contextClassLoader 引用应被释放：cleanup 对绑定该灵元 CL 的残留线程，要么清空其
+            // TCCL，要么中断并终止线程（ThreadReferenceUnloadHook 第 4 步会中断 TIMED_WAITING 的
+            // 相关线程）。二者任一均使灵元 CL 不再被该线程强引用、可被 GC。
+            // 注意：残留线程若先被中断退出，已终止线程对象上的 TCCL 字段会残留指向旧 CL——此时
+            // 线程已不可达，CL 同样可回收，故不得用 assertNotSame 强求字段被清空，否则在 CI
+            // 反射扫描较慢的时序下会因线程先于 TCCL 清理步退出而偶发失败。
+            assertTrue(!t.isAlive() || t.getContextClassLoader() != customCL,
+                    "cleanup 应释放线程对灵元 CL 的引用（清空 TCCL 或终止线程）");
         } finally {
             t.interrupt();
             t.join(2000);

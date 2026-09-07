@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.lingframe</groupId>
+        <groupId>cn.lingframe</groupId>
         <artifactId>lingframe-dependencies</artifactId>
         <version>${revision}</version>
         <relativePath>lingframe-dependencies</relativePath>
@@ -16,7 +16,7 @@
 
     <name>LingFrame</name>
     <description>现代 JVM 微内核运行时治理框架</description>
-    <url>https://github.com/lingframe/lingframe</url>
+    <url>https://github.com/LingFrame/LingFrame</url>
 
     <modules>
         <module>lingframe-dependencies</module>
@@ -41,6 +41,41 @@
             <modules>
                 <module>lingframe-benchmark</module>
             </modules>
+        </profile>
+        <!--
+            中央仓库发布 Profile
+            通过 -Prelease 激活：
+              mvn clean deploy -Prelease -DskipTests
+            自动生成 sources.jar, javadoc.jar, 执行 GPG 签名并推送到 Sonatype Central Portal
+        -->
+        <profile>
+            <id>release</id>
+            <properties>
+                <skipTests>true</skipTests>
+                <jacoco.skip>true</jacoco.skip>
+                <spotbugs.skip>true</spotbugs.skip>
+                <checkstyle.skip>true</checkstyle.skip>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
     </profiles>
 
@@ -73,6 +108,11 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-checkstyle-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <extensions>true</extensions>
             </plugin>
         </plugins>
     </build>

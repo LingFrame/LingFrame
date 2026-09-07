@@ -9,7 +9,9 @@ import org.springframework.validation.annotation.Validated;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 灵珑框架主配置属性
@@ -76,6 +78,40 @@ public class LingFrameProperties {
      * false: 允许灵元包内包含同名 API（不建议）
      */
     private boolean apiOverrideCheckEnabled = true;
+
+    /**
+     * 事务穿透配置（跨灵元共享连接 + 强一致的穿透链路）。
+     */
+    private Tx tx = new Tx();
+
+    /**
+     * 事务穿透子配置。
+     */
+    @Data
+    public static class Tx {
+
+        /**
+         * 穿透子配置（总开关：{@code lingframe.tx.propagation.enabled}，默认开启）。
+         */
+        private Propagation propagation = new Propagation();
+
+        /**
+         * 穿透链路配置。
+         */
+        @Data
+        public static class Propagation {
+
+            /**
+             * 事务穿透总开关（默认 true）。
+             * <p>
+             * false 时穿透链路整体不激活（应急降级）：core 侧
+             * {@code TransactionPropagationFilter} 直接放行（不压栈），灵元侧不注册受管
+             * 事务管理器——业务退回「独立连接心智」，跨灵元原子回滚不可用。
+             * 总开关是「应急逃生门」而非「常规配置」，关闭期间一致性语义显式降级。
+             */
+            private boolean enabled = true;
+        }
+    }
 
     /**
      * 灵元额外目录
@@ -154,6 +190,45 @@ public class LingFrameProperties {
      * 路由解析才采信该头做前缀剥离；空列表（默认）表示不信任任何客户端转发头（C10 安全默认）。
      */
     private List<String> trustedForwardedPrefixes = new ArrayList<>();
+
+    /**
+     * 虚拟灵元声明配置表（lingId -> 虚拟灵元配置）。
+     * <p>
+     * 支持在 application.yml 中声明虚拟切点（如 SeaTunnel、Flink、Dubbo 网关），
+     * 框架启动时将自动由 {@code VirtualLingManager} 注册并激活。
+     */
+    private Map<String, VirtualLingConfig> virtualLings = new LinkedHashMap<>();
+
+    /**
+     * 虚拟灵元治理参数配置。
+     */
+    @Data
+    public static class VirtualLingConfig {
+        /**
+         * 限流 QPS，默认 0（不限流）
+         */
+        private int rateLimitPerSecond = 0;
+
+        /**
+         * 熔断失败率阈值（百分比 0-100），默认 50
+         */
+        private int circuitBreakerFailureRateThreshold = 50;
+
+        /**
+         * 熔断滑动窗口大小，默认 20
+         */
+        private int circuitBreakerSlidingWindowSize = 20;
+
+        /**
+         * 默认超时时间（毫秒），默认 3000
+         */
+        private int defaultTimeoutMs = 3000;
+
+        /**
+         * 舱壁最大并发数，默认 10
+         */
+        private int bulkheadMaxConcurrent = 10;
+    }
 
     @Data
     public static class Audit {
@@ -243,6 +318,13 @@ public class LingFrameProperties {
 
         @DurationUnit(ChronoUnit.MILLIS)
         private Duration bulkheadAcquireTimeout = Duration.ofMillis(3000);
+
+        /**
+         * 穿透连接宽限期：超时/放弃执行后等待 worker 退出临界区的有界 join 时间。
+         * 超宽限期后连接标记 poisoned（跳过 rollback 直接 close 废弃），0 表示立即废弃。
+         */
+        @DurationUnit(ChronoUnit.MILLIS)
+        private Duration abandonedJoinTimeout = Duration.ofMillis(2000);
 
         /**
          * 限流 QPS（每秒令牌数），0 表示不启用

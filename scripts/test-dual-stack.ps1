@@ -78,12 +78,11 @@ $logDir = Join-Path $currentDir ".test-logs"
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
 $logSb2 = Join-Path $logDir "sb2-build.log"
 $logSb3 = Join-Path $logDir "sb3-build.log"
-if (Test-Path $logSb2) { Remove-Item $logSb2 }
-if (Test-Path $logSb3) { Remove-Item $logSb3 }
+if (Test-Path $logSb2) { Remove-Item $logSb2 -Force -ErrorAction SilentlyContinue }
+if (Test-Path $logSb3) { Remove-Item $logSb3 -Force -ErrorAction SilentlyContinue }
 
 $mvnArgs = "clean verify -Pspring-boot2,integration-check -Djacoco.dest.folder=sb2"
-# sb3 在独立沙箱构建，dev-mode 灵元发现写死扫 target/classes，
-# 故用 -Dbc3.base.build.dir=target 让产物落在默认 target/，避免 target-boot3 导致加载不到。
+# SB3 在独立沙箱构建，需指定 target 产物目录
 $mvnArgsSb3 = "clean verify -Pspring-boot3,integration-check -Dbc3.base.build.dir=target -Djacoco.dest.folder=sb3"
 
 if (-not $FailFast) {
@@ -189,7 +188,7 @@ function Print-TestStats {
                 $modules[$currentModule] = @{ Run=0; Fail=0; Error=0; Skip=0; Time=0.0 }
             }
         }
-        elseif ($_ -match "(?:\[INFO\]|\[ERROR\])\s*Tests run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)\s*$") {
+        elseif ($_ -match "(?:\[INFO\]|\[ERROR\]|\[WARNING\])\s*Tests run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)\s*$") {
             if ($modules.Contains($currentModule)) {
                 $modules[$currentModule].Run += [int]$matches[1]
                 $modules[$currentModule].Fail += [int]$matches[2]

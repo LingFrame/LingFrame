@@ -94,7 +94,7 @@ public class StandardGovernancePolicyProvider implements GovernancePolicyProvide
 
         // === P2: 灵元定义 (ling.yml) ===
         GovernancePolicy lingPolicy = null;
-        if (runtime != null) {
+        if (runtime != null && runtime.getInstancePool() != null) {
             LingInstance instance = runtime.getInstancePool().getDefault();
             if (instance != null && instance.getDefinition() != null) {
                 lingPolicy = instance.getDefinition().getGovernance();

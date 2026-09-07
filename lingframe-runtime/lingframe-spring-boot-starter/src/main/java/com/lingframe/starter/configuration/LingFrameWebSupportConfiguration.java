@@ -78,12 +78,21 @@ public class LingFrameWebSupportConfiguration {
 
         @Bean
         public static BeanPostProcessor lingSpringDocGroupedOpenApiPostProcessor(
-                LingOpenApiCustomizer lingOpenApiCustomizer) {
+                ObjectProvider<LingOpenApiCustomizer> customizerProvider) {
             return new BeanPostProcessor() {
                 @Override
                 public Object postProcessAfterInitialization(Object bean, String beanName) {
-                    LingSpringDocCustomizerBridge.attachToGroupedOpenApi(
-                            bean.getClass().getClassLoader(), lingOpenApiCustomizer, bean);
+                    if (bean != null) {
+                        String typeName = bean.getClass().getName();
+                        if ("org.springdoc.core.GroupedOpenApi".equals(typeName)
+                                || "org.springdoc.core.models.GroupedOpenApi".equals(typeName)) {
+                            LingOpenApiCustomizer customizer = customizerProvider.getIfAvailable();
+                            if (customizer != null) {
+                                LingSpringDocCustomizerBridge.attachToGroupedOpenApi(
+                                        bean.getClass().getClassLoader(), customizer, bean);
+                            }
+                        }
+                    }
                     return bean;
                 }
             };

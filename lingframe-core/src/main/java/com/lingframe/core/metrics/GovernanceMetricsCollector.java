@@ -49,6 +49,28 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
         mutate(lingId, version, GovernanceMetricBucket::incrementRecoveryCount);
     }
 
+    /**
+     * 记录穿透连接被废弃（poisoned）次数：超时/放弃执行后宽限期未退出，
+     * 跳过 rollback 直接 close 废弃该池连接（未提交写随 close 丢弃）。
+     *
+     * @param lingId  灵元 ID
+     * @param version 目标版本（可为 null，仅计入汇总桶）
+     */
+    public void recordConnectionPoisoned(String lingId, String version) {
+        mutate(lingId, version, GovernanceMetricBucket::incrementConnectionPoisonedCount);
+    }
+
+    /**
+     * 记录一次事务穿透结果（成功 = 根事务正常提交/回滚链完整，失败 = rollbackOnly 信号上行触发回滚）。
+     *
+     * @param lingId  灵元 ID
+     * @param version 版本
+     * @param success 穿透是否成功
+     */
+    public void recordTransactionPropagation(String lingId, String version, boolean success) {
+        mutate(lingId, version, bucket -> bucket.recordTransactionPropagation(success));
+    }
+
     public void recordThreadBudgetSnapshot(String lingId, String version, int activeThreads, int maxThreads) {
         mutate(lingId, version, bucket -> bucket.recordThreadBudgetSnapshot(activeThreads, maxThreads));
     }
@@ -124,6 +146,9 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
             snapshot.setForceDrainCount(snapshot.getForceDrainCount() + versionSnapshot.getForceDrainCount());
             snapshot.setDrainTimeoutAbortCount(snapshot.getDrainTimeoutAbortCount() + versionSnapshot.getDrainTimeoutAbortCount());
             snapshot.setRecoveryCount(snapshot.getRecoveryCount() + versionSnapshot.getRecoveryCount());
+            snapshot.setConnectionPoisonedCount(snapshot.getConnectionPoisonedCount() + versionSnapshot.getConnectionPoisonedCount());
+            snapshot.setTransactionPropagationSuccessCount(snapshot.getTransactionPropagationSuccessCount() + versionSnapshot.getTransactionPropagationSuccessCount());
+            snapshot.setTransactionPropagationFailureCount(snapshot.getTransactionPropagationFailureCount() + versionSnapshot.getTransactionPropagationFailureCount());
             snapshot.setActiveIsolatedThreads(snapshot.getActiveIsolatedThreads() + versionSnapshot.getActiveIsolatedThreads());
             snapshot.setMaxConcurrentThreadsBudget(snapshot.getMaxConcurrentThreadsBudget() + versionSnapshot.getMaxConcurrentThreadsBudget());
             snapshot.setThreadBudgetExceededCount(snapshot.getThreadBudgetExceededCount() + versionSnapshot.getThreadBudgetExceededCount());
@@ -173,6 +198,9 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
         private final LongAdder forceDrainCount = new LongAdder();
         private final LongAdder drainTimeoutAbortCount = new LongAdder();
         private final LongAdder recoveryCount = new LongAdder();
+        private final LongAdder connectionPoisonedCount = new LongAdder();
+        private final LongAdder transactionPropagationSuccessCount = new LongAdder();
+        private final LongAdder transactionPropagationFailureCount = new LongAdder();
         private final LongAdder threadBudgetExceededCount = new LongAdder();
         private final LongAdder cpuBudgetExceededCount = new LongAdder();
         private final LongAdder memoryBudgetExceededCount = new LongAdder();
@@ -237,6 +265,20 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
             touch();
         }
 
+        private void incrementConnectionPoisonedCount() {
+            connectionPoisonedCount.increment();
+            touch();
+        }
+
+        private void recordTransactionPropagation(boolean success) {
+            if (success) {
+                transactionPropagationSuccessCount.increment();
+            } else {
+                transactionPropagationFailureCount.increment();
+            }
+            touch();
+        }
+
         private void recordThreadBudgetSnapshot(int activeThreads, int maxThreads) {
             this.activeIsolatedThreads = Math.max(0, activeThreads);
             this.maxConcurrentThreadsBudget = Math.max(0, maxThreads);
@@ -260,7 +302,7 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
             touch();
         }
 
-        private void recordMemoryBudgetObservation(long heapDeltaBytes, Integer budgetMb) {
+        private synchronized void recordMemoryBudgetObservation(long heapDeltaBytes, Integer budgetMb) {
             estimatedHeapDeltaBytes = Math.max(estimatedHeapDeltaBytes, Math.max(0L, heapDeltaBytes));
             memoryBudgetMb = budgetMb;
             boolean exceeded = budgetMb != null && budgetMb > 0 && estimatedHeapDeltaBytes > budgetMb * 1024L * 1024L;
@@ -287,6 +329,9 @@ public class GovernanceMetricsCollector implements LingGovernanceMetricsCollecto
             snapshot.setForceDrainCount(forceDrainCount.sum());
             snapshot.setDrainTimeoutAbortCount(drainTimeoutAbortCount.sum());
             snapshot.setRecoveryCount(recoveryCount.sum());
+            snapshot.setConnectionPoisonedCount(connectionPoisonedCount.sum());
+            snapshot.setTransactionPropagationSuccessCount(transactionPropagationSuccessCount.sum());
+            snapshot.setTransactionPropagationFailureCount(transactionPropagationFailureCount.sum());
             snapshot.setActiveIsolatedThreads(activeIsolatedThreads);
             snapshot.setMaxConcurrentThreadsBudget(maxConcurrentThreadsBudget);
             snapshot.setThreadBudgetExceededCount(threadBudgetExceededCount.sum());

@@ -5,7 +5,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-0.4.0-blue" alt="Version">
+  <a href="https://central.sonatype.com/artifact/cn.lingframe/lingframe-bom">
+    <img src="https://img.shields.io/maven-central/v/cn.lingframe/lingframe-bom.svg?color=blue" alt="Maven Central">
+  </a>
+  <img src="https://img.shields.io/badge/Version-0.4.5-blue" alt="Version">
   <img src="https://img.shields.io/badge/Stage-Pre--1.0-yellow" alt="Stage">
   <img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License">
   <img src="https://img.shields.io/badge/Java-8_(default)_%7C_17-orange" alt="Java">
@@ -95,6 +98,20 @@ Key points:
 
 ---
 
+## Three Business Evolution Patterns
+
+Within the LingFrame microkernel architecture, business capabilities evolve through three standard patterns:
+
+| Dimension | Pattern 1: Transparent Strangler Pattern | Pattern 2: Contract Facade Pattern | Pattern 3: Self-Contained Endpoint Pattern |
+| :--- | :--- | :--- | :--- |
+| **Scenario** | Legacy system incremental takeover & performance upgrade | Enterprise core new capabilities & platform extensions | Completely independent modular extensions |
+| **Controller** | **Stays in LingCore (zero modifications)** | **LingCore provides thin Facade (unified auth/validation)** | **Self-contained inside Ling (dynamically mounted)** |
+| **Routing & Governance** | LingCore AOP / `@LingReference` dynamic proxy | LingCore `@LingReference` dynamic contract routing | LingFrame microkernel dynamic Spring MVC endpoint registration |
+| **Fallback Guarantee** | LingCore default provider provides 100% automatic fallback | LingCore unified circuit breaking & fallback response | Endpoints unregister immediately upon unload (zero memory leak) |
+| **Core Value** | Zero frontend changes; extreme high availability | Unified audit/security with multi-version dynamic canary | Zero-touch plug-and-play without pre-declared LingCore contracts |
+
+---
+
 ## What you get
 
 | Capability | What it is | What problem it solves |
@@ -175,7 +192,7 @@ Two example tracks (see [lingframe-examples/README.en.md](lingframe-examples/REA
 | Track | Entry |
 | --- | --- |
 | Getting started | `lingframe-example-lingcore-app` + user / order |
-| Legacy gradual migration | `ling-mall` → `saas-mall` |
+| Real-world legacy migration | **LingFrame-RuoYi** (Companion project: Gradual modularization on production RuoYi monolith) |
 
 ---
 
@@ -215,19 +232,29 @@ Two example tracks (see [lingframe-examples/README.en.md](lingframe-examples/REA
 - Storage governance mainly covers Spring-injected DataSources, not every hand-rolled JDBC path;
 - Dangerous-API scanning is load-time signaling, not a full JVM security sandbox;
 - Primary verification path (**examples default**): Spring Boot 2.7 + JDK 8; Spring Boot 3 + JDK 17 is the support line (runtime dual starters + dashboard single-GAV matrix sources; see [DEVELOPMENT_MANUAL](docs/en/development-manual.md) §5.2);
-- **0.4.0 is Pre-1.0**: evaluate with examples and [production hardening](docs/en/production-hardening.md) before production.
+- **0.4.5 is Pre-1.0**: evaluate with examples and [production hardening](docs/en/production-hardening.md) before production.
 
 ---
 
 ## Minimal adopt (into your LingCore)
 
-Artifacts ship from this repository (install locally first if you do not already have them on a private registry):
+LingFrame is officially published on **Maven Central**. You can directly import the BOM into your project without cloning or compiling the repository locally:
 
-```powershell
-mvn -pl lingframe-bom,lingframe-runtime/lingframe-spring-boot2-starter,lingframe-dashboard -am install -DskipTests
+```xml
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>cn.lingframe</groupId>
+      <artifactId>lingframe-bom</artifactId>
+      <version>0.4.5</version>
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
 ```
 
-In your LingCore, pull in `lingframe-bom` (dependencyManagement) + `lingframe-spring-boot2-starter` (Spring Boot 2.7 / JDK 8 default); for Spring Boot 3 / JDK 17 use `lingframe-spring-boot3-starter` instead (and build this repo with `-Pspring-boot3`). Optionally add `lingframe-dashboard` for the control plane. Full coordinates in getting-started.
+In your LingCore, declare `lingframe-spring-boot2-starter` (Spring Boot 2.7 / JDK 8 default); for Spring Boot 3 / JDK 17 use `lingframe-spring-boot3-starter` instead. Optionally add `lingframe-dashboard` for the control plane. Full coordinates in getting-started.
 
 **LingCore `application.yml` (skeleton):**
 

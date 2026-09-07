@@ -93,7 +93,7 @@ class LingControllerSupplementTest {
         }
 
         @Test
-        @DisplayName("service 抛出异常时返回失败")
+        @DisplayName("service 抛出通用未受检异常时返回脱敏失败提示")
         void shouldReturnErrorOnException() {
             ControllerFixture fixture = new ControllerFixture(false);
             when(fixture.dashboardService.getAllLingInfos())
@@ -103,7 +103,21 @@ class LingControllerSupplementTest {
 
             assertFalse(response.isSuccess());
             assertTrue(response.getMessage().contains("获取灵元列表失败"));
-            assertTrue(response.getMessage().contains("db down"));
+            assertTrue(response.getMessage().contains("请稍后重试"));
+        }
+
+        @Test
+        @DisplayName("service 抛出可预期的业务异常时返回具体错误信息")
+        void shouldReturnExpectedErrorMessageOnBusinessException() {
+            ControllerFixture fixture = new ControllerFixture(false);
+            when(fixture.dashboardService.getAllLingInfos())
+                    .thenThrow(new IllegalStateException("system busy"));
+
+            ApiResponse<List<LingInfoDTO>> response = fixture.controller.listLings();
+
+            assertFalse(response.isSuccess());
+            assertTrue(response.getMessage().contains("获取灵元列表失败"));
+            assertTrue(response.getMessage().contains("system busy"));
         }
     }
 

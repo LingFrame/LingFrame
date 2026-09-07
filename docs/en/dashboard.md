@@ -72,7 +72,7 @@ Corresponding tests have also been implemented, ensuring this round of factoring
 
 ```xml
 <dependency>
-    <groupId>com.lingframe</groupId>
+    <groupId>cn.lingframe</groupId>
     <artifactId>lingframe-dashboard</artifactId>
     <version>${lingframe.version}</version>
 </dependency>

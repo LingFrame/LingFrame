@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.lingframe</groupId>
+        <groupId>cn.lingframe</groupId>
         <artifactId>lingframe-infrastructure</artifactId>
         <version>${revision}</version>
     </parent>
@@ -18,7 +18,7 @@
     <dependencies>
         <!-- 灵珑契约层（@LingReference 注解） -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-api</artifactId>
         </dependency>
 
@@ -26,7 +26,6 @@
         <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-extension</artifactId>
-            <version>3.5.3.1</version>
             <scope>provided</scope>
         </dependency>
 
@@ -43,6 +42,25 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- 拦截器兼容测试：受管代理（LingDataSourceProxy） -->
+        <dependency>
+            <groupId>cn.lingframe</groupId>
+            <artifactId>lingframe-infra-storage</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- 拦截器兼容测试：MyBatis-Plus 完整运行期（拦截器/分页/多租户） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-boot-starter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- 拦截器兼容测试：底层数据库（内存库） -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

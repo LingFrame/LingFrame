@@ -44,9 +44,12 @@ public class DefaultLingServiceInvoker implements LingServiceInvoker {
             return method.invoke(bean, finalArgs);
 
         } catch (IllegalArgumentException e) {
-            // 核心改动：捕获参数异常，进行详细分析并重新抛出
+            // 捕获参数异常，进行详细分析并重新抛出。
+            // handleArgumentMismatch 在参数数量/类型不匹配时抛出带完整诊断的 InvalidArgumentException；
+            // 若其未判定出 mismatch（isCompatible 与反射校验的边界差异等理论场景），
+            // 此处兜底抛出原始异常，避免静默吞掉失败——两条路径都保证调用方拿到失败信息。
             handleArgumentMismatch(method, finalArgs, e);
-            throw e; // 理论上 handle 里面会抛出新异常，这里是为了过编译检查
+            throw e;
         } catch (InvocationTargetException e) {
             // 透传业务异常
             Throwable target = e.getTargetException();

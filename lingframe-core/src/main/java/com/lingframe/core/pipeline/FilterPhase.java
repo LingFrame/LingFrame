@@ -54,6 +54,19 @@ public final class FilterPhase {
     public static final int POLICY_PREFILL = 240;
 
     /**
+     * 事务上下文穿透阶段。
+     * <p>
+     * 位置：ROUTING 之后、RESOLUTION（ContextIsolationFilter 类加载器切换）之前，
+     * 即 POLICY_PREFILL 与 RESILIENCE 之间——路由确定之后（能拿到 lingId）、
+     * TCCL 切换之前（连接尚在同线程）的交汇点。
+     * <p>
+     * 职责：把上游活跃事务的物理连接按 dataSourceId 推入 {@code LingTransactionContext}，
+     * 供下游灵元经受管数据源代理复用；调用返回后回传 rollbackOnly 信号并擦除上下文。
+     * 仅 NORMAL 模式穿透；SIMULATION / GOVERN_ONLY 直接放行。
+     */
+    public static final int TRANSACTION_PROPAGATION = ROUTING + 50;
+
+    /**
      * 弹性治理阶段。
      */
     public static final int RESILIENCE = 300;

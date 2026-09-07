@@ -259,6 +259,14 @@
 
 N 元权重分流不是"理论上应该如此"，而是有 API、日志、测试支撑的系统能力。`MigrationPhase` 状态机表达功能（契约）流量治理的宏观阶段——CORE_EXCLUSIVE / MIGRATING / LING_EXCLUSIVE / ITERATING，二元态（N=2）是特例，N≥3 时即多版本共存/多租户场景，路由器天然支持。
 
+**事务穿透阶段（`TransactionPropagationFilter`，order=250，位于 `POLICY_PREFILL`(240) 与 `RESILIENCE`(300) 之间）**：路由确定之后、TCCL 切换之前，把上游活跃事务的物理连接按 dataSourceId 推入 `LingTransactionContext`，供下游灵元经受管数据源代理复用（跨灵元单机 ACID，细则见 ADR-0005）：
+
+- **SPI 化（硬约束）**：core 只面向 `core.spi.TransactionBindingHook`（`isTransactionActive` / `getActiveBoundDataSourceIds` / `getBoundConnection`），Spring 实现（对接 `TransactionSynchronizationManager`）下沉 runtime starter——core 零 Spring 的模块边界不可因穿透功能破坏。
+- **执行模式门控**：仅 NORMAL 模式穿透；SIMULATION / GOVERN_ONLY 直接放行（二者无真实终端执行，压栈的连接无消费者）。
+- **总开关**：`lingframe.tx.propagation.enabled`（默认 `true`）关闭时过滤器直接放行、灵元侧不注册受管事务管理器——应急降级路径，关闭期间跨灵元原子回滚不可用；它是「逃生门」而非常规配置，恢复后需验证穿透链路。
+- **线程边界（双端协同）**：主线程端（本过滤器 push / rollbackOnly 信号回传 / finally 弹栈 + `cleanIfEmpty`）与 worker 线程端（`ThreadIsolationGovernanceFilter` 经 `ThreadLocalPropagator` 快照搬运，restore 采用**合并语义**——`carrier.rollbackOnly |= worker 期间置位`——回传信号）缺一不可；任何一端遗漏都会造成连接强引用残留或回滚信号丢失（静默部分提交）。
+- **超时/放弃执行**：穿透连接独占整条跨灵元调用链；超时后 `cancel(true)` + 有界 join（`lingframe.runtime.abandoned-join-timeout`，默认 2s）+ 宽限期超时则 poisoned 废弃（跳过 rollback 直接 close，未提交写随 close 丢弃，治理指标 `connectionPoisonedCount` 计数）——宽限期是概率性缓解而非硬保证，**不得声称「超时后连接已安全」**。
+
 ### 6.8 迁移状态机（`MigrationPhase`）
 
 路由层与功能管理层（迁移状态机）彻底拆分，建立双层清晰架构：
@@ -312,12 +320,24 @@ Provider 标识与版本化注册：
 - `GovernanceConfigRestorer` 在启动恢复时重建 `MigrationStateHolder` 阶段（含候选元数据），保障重启后迁移/迭代阶段语义一致；旧灰度 `percent` 格式向后兼容映射。
 - **诚实边界**：`ProviderWeightRouter` 的权重覆盖为运行期下发、**不持久化**。重启后切流比例回到注册默认权重，需要运维重新下发；不能声称「重启前后状态完全一致」。
 
-### 6.9 非 Bean 数据源（DataSource）代理边界
+### 6.9 数据源代理边界与受管数据源总线
+
+**SQL 治理代理边界**：
 
 - 灵珑的 SQL 治理依赖对 `DataSource` 的代理。
-- 如果是由 Spring 容器管理的 Bean，`LingFrameBeanPostProcessor` 会自动进行拦截与包装。
+- 如果是由 Spring 容器管理的 Bean，`DataSourceWrapperProcessor` 会自动进行拦截与包装。
 - **红线**：如果业务代码或三方件直接通过 `DriverManager`、静态代码块、或自行 `new HikariDataSource()` 创建了不归 Spring 容器管辖的数据源，它们将脱离治理网络。
 - **要求**：开发者必须显式调用 `LingConnectionProxyFactory.wrap(...)` 手动包装此类野生数据源，否则其数据库访问将绕过所有隔离和鉴权规则。
+
+**受管数据源总线（`ManagedDataSourceRegistry` / `ManagedDataSourceProvider`，`api.storage` 包）**：与 `LingServiceRegistry`（FQSID 服务契约目录）职责分离的独立总线，承载「dataSourceId → 受管 DataSource」的基础设施引渡，不污染业务服务目录：
+
+- **三模式**：模式 1 灵核静态托管（dataSourceId 恒为 `default`，开箱即用推荐态，灵核 `application.yml` 静态配置运行期不可变）；模式 2 灵元独立库（灵元自配 `spring.datasource.url` 自建连接池，物理隔离态）；模式 3 存储灵元动态外挂（灵元配置 `lingframe.ling.datasource-id` 声明供给身份，自建数据源以该 id 注册到总线，业务灵元经 `lingframe.ling.datasource-ref` 拉取共享——默认 `default`）。模式 3 **只增不减**：基础设施灵元本期不提供热卸载，卸载入口禁用；业务灵元（模式 2）卸载不受影响。
+- **身份门控（硬约束）**：受管代理携带 `dataSourceId`，`getConnection()` 只按自身 id 精确查穿透上下文连接栈；模式 2 私有池代理 id 为 null、**永不查栈**——混合链路下绝不误用受管连接（串库路径物理切断）。
+- **同实例提升（装配契约，P0 级红线）**：`DataSourceWrapperProcessor` 包装产生的代理先以 null 身份存在，注册到总线时必须经 `promoteToManaged(dataSourceId)` **同实例**提升——TSM 资源键以实例为键，「新建带 id 代理替代同实例提升」会导致灵核事务管理器与总线查找键失配、穿透静默失效。该契约由 `ManagedAssemblyChainContractTest`（直接调用真实装配方法，非复刻逻辑）守护。
+- **NonCloseable 语义**：穿透命中时返回 `NonCloseableLingConnectionProxy`——`close` / `commit` / `setAutoCommit` 及根连接属性（隔离级别 / 只读 / 保持性）降级为 no-op，`rollback` 仅置 rollbackOnly 信号（经快照合并语义上行回传）；**审计不降级**：事务权限门与 `transaction:*-suppressed` 审计事件全保留，no-op 不豁免治理门。Statement 工厂直通内层（已治理）代理、薄代理只修正 `getConnection()` 视图——**禁止**对内层代理再包一层 Statement，否则每次 SQL 执行两遍权限检查与两遍审计（审计计数虚高）。
+- **受管事务管理器（`LingManagedTransactionManager`，双路径）**：判根真源 = `getTransaction()` 时刻穿透上下文连接栈（按 dataSourceId）空与否。根路径借连接 → 设置隔离级别/readOnly → `setAutoCommit(false)` → push，commit/rollback 物理执行 + pop + close 归还池；加入路径不 bind TSM、不碰连接，非根 commit 前检测 rollbackOnly（置位则抛 `LingTransactionRollbackException`，对齐 Spring `UnexpectedRollbackException` 语义）。传播边界：`REQUIRES_NEW` / `NESTED` 物理不可达，显式降级为加入（REQUIRED）并告警；`NEVER` / `NOT_SUPPORTED` 显式拒绝（静默降级会反转开发者意图——事务外写被纳入根事务）；`MANDATORY` 栈空拒绝。根路径 commit/rollback 连接缺失时抛 `TransactionSystemException`（含 dataSourceId 与阶段信息），**禁止裸 NPE**。
+- **启动期可见性（把静默失效提升为启动期 WARN）**：灵核根事务管理器非 JDBC 型（如 JPA 根，无法提取连接）、灵核与灵元 TSM 类身份不一致（spring-tx 未父委派、两栈分叉）时输出启动期 WARN——穿透不激活必须可见，禁止「悄悄退化」。
+- **穿透上下文（`LingTransactionContext`，`api.storage` 包）**：资源（连接，按 dataSourceId 分栈、向下传递）与信号（rollbackOnly，向上回传）分离的线程局部存储；跨线程搬运由快照（`TransactionSnapshot`，含 pushOrder 压入顺序）完成，`restoreSnapshot` 必须采用合并语义。清理护栏：主线程端 finally 弹栈 + `cleanIfEmpty`，worker 线程端 `restoreSnapshot`，`closeAllConnections`（poisoned 路径）三个 ThreadLocal 一并清空——任何清理不完整的残留都会在线程池复用时污染后续调用。
 
 ### 6.10 Dashboard 控制面鉴权规范
 
@@ -432,6 +452,7 @@ Provider 标识与版本化注册：
 - shared API 冻结语义
 - 并发安全
 - 卸载后的资源清理
+- 事务穿透（跨线程快照搬运 / rollbackOnly 信号合并 / 装配链契约 / ThreadLocal 双端擦除）
 
 ### 8.3 测试红线
 

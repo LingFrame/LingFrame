@@ -46,9 +46,10 @@ After boot: ling list → one real request → skim monitor/governance.
 | Doc | For |
 | --- | --- |
 | [Ling development](ling-development.md) | Write a business ling |
+| [Managed DataSource & Transactions](managed-datasource-and-transaction.md) | Three paradigms, configuration guide, and transaction propagation boundaries |
 | [Shared API guidelines](shared-api-guidelines.md) | Shared contracts |
 | [Infrastructure development](infrastructure-development.md) | DB / cache proxy paths |
-| [saas-mall README](../../lingframe-examples/lingframe-example-saas-mall/README.md) | Legacy gradual migration |
+| [Real-world Migration (LingFrame-RuoYi)](../../lingframe-examples/README.en.md#2-real-world-legacy-migration-example) | Companion project: Production monolith migration best practices |
 | [Production hardening](production-hardening.md) | Before production |
 
 ---

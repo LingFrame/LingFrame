@@ -24,14 +24,21 @@ public class LingConnectionProxy implements Connection {
 
     private static final String TRANSACTION_CAPABILITY = "storage:sql:transaction";
 
-    private final Connection target;
+    /**
+     * 底层目标连接（protected：{@link NonCloseableLingConnectionProxy} 需要直通其
+     * Statement 工厂——避免对已包装的连接再包一层 Statement，造成权限检查与审计重复执行）。
+     */
+    protected final Connection target;
     private final PermissionService permissionService;
 
     /**
      * 事务操作的治理检查。
      * 与 SQL 执行检查对齐：无 LingContext 时按灵核治理开关决定放行/拒绝。
+     * <p>
+     * protected 而非 private：{@link NonCloseableLingConnectionProxy}（穿透连接的非关闭变体）
+     * 需要复用本权限门——no-op 降级的只是物理行为，权限检查与审计必须保留。
      */
-    private void checkTransactionPermission(String operation) throws SQLException {
+    protected void checkTransactionPermission(String operation) throws SQLException {
         String callerLingId = LingCallContext.getLingId();
         if (callerLingId == null) {
             if (!SqlPermissionSupport.checkLingCoreGovernance(permissionService, "transaction:" + operation)) {
@@ -45,6 +52,23 @@ public class LingConnectionProxy implements Connection {
         if (!allowed) {
             throw new SQLException(new PermissionDeniedException(callerLingId, TRANSACTION_CAPABILITY));
         }
+    }
+
+    /**
+     * 记录「下游越权尝试被抑制」的审计事件（审计不降级）。
+     * <p>
+     * 穿透连接的共享语义下，下游灵元的 commit/rollback/setAutoCommit/隔离级别/只读/保持性
+     * 等物理操作被降级为 no-op，但每一次尝试都必须可观测、可审计——本方法记录
+     * {@code downstream-<operation>-suppressed} 审计事件，供治理语义证明与
+     * {@code lingframe.tx.suppressed.attempts} 指标统计。
+     */
+    protected void auditSuppressed(String operation) {
+        String callerLingId = LingCallContext.getLingId();
+        if (callerLingId == null) {
+            log.debug("downstream-{}-suppressed (no ling context)", operation);
+            return;
+        }
+        permissionService.audit(callerLingId, TRANSACTION_CAPABILITY, "transaction:" + operation + "-suppressed", false);
     }
 
     @Override

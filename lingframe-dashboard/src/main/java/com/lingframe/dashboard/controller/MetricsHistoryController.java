@@ -43,7 +43,7 @@ public class MetricsHistoryController {
             return ApiResponse.ok(data);
         } catch (Exception e) {
             log.error("Failed to query historical metrics", e);
-            return ApiResponse.error("查询历史指标失败: " + e.getMessage());
+            return ApiResponse.error("查询历史指标失败", e);
         }
     }
 }

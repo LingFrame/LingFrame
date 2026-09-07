@@ -14,12 +14,12 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * LingUnloadCoordinator → DefaultLingResourceManager 编排缝的真实对象集成测试（非 mock 串联）。
  *
- * <p>覆盖本方案 P3 的核心验收：N 个孤儿资源卸载后全部 close 且逆注册序、多版本滚动更新时
+ * <p>覆盖本方案的核心验收：N 个孤儿资源卸载后全部 close 且逆注册序、多版本滚动更新时
  * 旧版本孤儿随版本卸载即时释放不累积。用例均使用真实 {@link DefaultLingResourceManager}
  * 与真实 {@link LingUnloadCoordinator}，不引入 Spring，守住 core 分层纪律。
  *
  * <p>说明：Spring 管理的 AutoCloseable Bean 由 Spring 容器负责关闭，本层仅注册“孤儿资源”
- * （非 Spring 管理的对象），架构上不存在二次关闭——该职责分界见 ling-autocloseable-recycle-plan.md §7，
+ * （非 Spring 管理的对象），架构上不存在二次关闭——该职责分界见 ling-autocloseable-recycle-plan.md，
  * 无需在本 core 测试引入 Spring。
  */
 @DisplayName("资源回收编排缝集成测试")

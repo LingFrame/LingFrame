@@ -72,7 +72,7 @@ Dashboard 的意义不只是“有一个后台页面”，而是它已经开始�
 
 ```xml
 <dependency>
-    <groupId>com.lingframe</groupId>
+    <groupId>cn.lingframe</groupId>
     <artifactId>lingframe-dashboard</artifactId>
     <version>${lingframe.version}</version>
 </dependency>

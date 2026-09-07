@@ -106,22 +106,29 @@ public class SimulateService {
             message = "Execution Failed: " + e.getMessage();
         }
 
-        SimulateResultDTO dto = SimulateResultDTO.builder()
-                .traceId(traceId)
-                .lingId(lingId)
-                .resourceType(resourceType)
-                .allowed(allowed)
-                .message(message)
-                .ruleSource(ctx.governance().getRuleSource())
-                .devModeBypass(devBypass)
-                .timestamp(System.currentTimeMillis())
-                // 暴露 Core 在干跑期间攒下的宝贵探针数据
-                .traces(ctx.execution().getTraces() != null ? new ArrayList<>(ctx.execution().getTraces()) : null)
-                .build();
-        // InvocationContext.obtain() 必须配对 recycle()，否则对象池会泄漏上下文，
-        // 残留的 WeakReference 与 attachments 会跨调用污染后续请求
-        ctx.recycle();
-        return dto;
+        SimulateResultDTO dto;
+        try {
+            dto = SimulateResultDTO.builder()
+                    .traceId(traceId)
+                    .lingId(lingId)
+                    .resourceType(resourceType)
+                    .allowed(allowed)
+                    .message(message)
+                    .ruleSource(ctx.governance().getRuleSource())
+                    .devModeBypass(devBypass)
+                    .timestamp(System.currentTimeMillis())
+                    // 暴露 Core 在干跑期间攒下的宝贵探针数据
+                    .traces(ctx.execution().getTraces() != null ? new ArrayList<>(ctx.execution().getTraces()) : null)
+                    .build();
+            return dto;
+        } finally {
+            // InvocationContext.obtain() 必须配对 recycle()，否则对象池会泄漏上下文，
+            // 残留的 WeakReference 与 attachments 会跨调用污染后续请求。
+            // 判空防御：ctx 在 try 块之前构建，build 抛异常时不会进入本 finally。
+            if (ctx != null) {
+                ctx.recycle();
+            }
+        }
     }
 
     /**
@@ -340,13 +347,11 @@ public class SimulateService {
     }
 
     /**
-     * 对指定契约执行单次真实微内核模拟演练调用。
+     * 对指定契约执行单次真实微内核模拟演练调用（默认干跑模式）。
      * <p>
-     * 穿透真实的 {@link InvocationPipelineEngine} 流水线与治理拦截器，
-    /**
-     * 执行单步契约微内核路由演练（默认干跑模式）。
+     * 穿透真实的 {@link InvocationPipelineEngine} 流水线与治理拦截器。
      *
-     * @param contractId 契约 ID（如 com.lingframe.ruoyi.contract.ISysStorageService）
+     * @param contractId 契约 ID（如 com.lingframe.example.OrderService）
      * @return 单次演练步进结果
      */
     public ContractStressStepDTO stressContractStep(String contractId) {

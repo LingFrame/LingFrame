@@ -58,7 +58,7 @@ LingFrame does not answer "how many services a system should be split into"; it 
 
 ## 2. Architecture and Design
 
-### Q6: Why adopt a dual-layer state machine design?
+### Q7: Why adopt a dual-layer state machine design?
 
 **A:** The design goals of the dual-layer state machine (`InstanceStatus` + `RuntimeStatus`) are:
 
@@ -68,7 +68,7 @@ LingFrame does not answer "how many services a system should be split into"; it 
 
 See [Architecture Design](architecture.md) §1 for more details.
 
-### Q7: Why can't the Shared API be hot-updated?
+### Q8: Why can't the Shared API be hot-updated?
 
 **A:** The Shared API serves as the process-level common contract boundary. If we allowed hot updates, it would cause:
 
@@ -80,7 +80,7 @@ Therefore, the Shared API is preloaded and frozen prior to loading Lings. Changi
 
 See [Shared API Guidelines](shared-api-guidelines.md) for details.
 
-### Q8: Why is the Pipeline divided into so many phases?
+### Q9: Why is the Pipeline divided into so many phases?
 
 **A:** The Pipeline phases are divided to ensure:
 
@@ -88,7 +88,7 @@ See [Shared API Guidelines](shared-api-guidelines.md) for details.
 2. **Strict Dependencies**: Start-up checks validate phase sequences to prevent late runtime failures.
 3. **Extendability**: Custom Filters can be inserted safely at intentional points.
 
-### Q9: What are the risks of a Child-First ClassLoader?
+### Q10: What are the risks of a Child-First ClassLoader?
 
 **A:** Child-First means the Ling prioritizes loading its own classes first, which can cause:
 
@@ -103,7 +103,7 @@ Solutions:
 
 ## 3. Usage Issues
 
-### Q10: How do I debug Ling code?
+### Q11: How do I debug Ling code?
 
 **A:** Several ways:
 
@@ -111,7 +111,7 @@ Solutions:
 2. **Dev Mode**: Set `dev-mode: true` to enable streamlined hot updates.
 3. **Log Debugging**: Increase the log level for related packages to DEBUG or TRACE.
 
-### Q11: How do Lings communicate with each other?
+### Q12: How do Lings communicate with each other?
 
 **A:** Lings communicate through service interfaces:
 
@@ -122,7 +122,7 @@ Solutions:
 private UserService userService;
 ```
 
-### Q12: How do I execute a Gray Release?
+### Q13: How do I execute a Gray Release?
 
 **A:** Through the Dashboard contract weight routing API—multiple providers under the same contract split traffic by weight; binary is just the N=2 special case:
 
@@ -134,7 +134,7 @@ curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/order-li
 
 > `providerKey` is the routing key—always `lingId:version` for a Ling (version sourced from the bound instance context), bare `lingcore-app` for LingCore, consistent across registration and routing read-path keying. `weight` is an integer 0-100; once the Dashboard pushes it, the runtime weight in `ProviderWeightRouter` is overridden immediately and takes effect on both IPC and Web governance chains. See [Dashboard Docs](dashboard.md) for details.
 
-### Q13: How are Ling dependencies handled?
+### Q14: How are Ling dependencies handled?
 
 **A:** Declare dependencies directly inside `ling.yml`:
 
@@ -146,7 +146,7 @@ dependencies:
 
 LingFrame will sequence the boots so depending Lings are loaded last.
 
-### Q14: Which Spring features can a Ling use?
+### Q15: Which Spring features can a Ling use?
 
 **A:** Lings can use most Spring features normally:
 
@@ -161,7 +161,7 @@ LingFrame will sequence the boots so depending Lings are loaded last.
 
 ## 4. Troubleshooting
 
-### Q15: What if my Ling fails to load?
+### Q16: What if my Ling fails to load?
 
 **A:** Check these vectors:
 
@@ -172,7 +172,7 @@ LingFrame will sequence the boots so depending Lings are loaded last.
 
 For a detailed walkthrough, see the [Troubleshooting Manual](troubleshooting.md).
 
-### Q16: What if memory usage keeps growing?
+### Q17: What if memory usage keeps growing?
 
 **A:** Likely causes:
 
@@ -186,7 +186,7 @@ lingframe:
   dev-mode: true  # Automatically enables aggressive leak diagnostics
 ```
 
-### Q17: What if the circuit breaker remains OPEN continuously?
+### Q18: What if the circuit breaker remains OPEN continuously?
 
 **A:**
 
@@ -194,7 +194,7 @@ lingframe:
 2. Tune the circuit breaker thresholds (via governance configuration).
 3. Observe the circuit breaker state directly from the Dashboard.
 
-### Q18: How can I check a Ling's status?
+### Q19: How can I check a Ling's status?
 
 **A:** Via the Dashboard APIs:
 
@@ -210,7 +210,7 @@ curl http://localhost:8888/lingframe/dashboard/lings/{lingId}
 
 ## 5. Dashboard Specifics
 
-### Q19: How do I turn on the Dashboard?
+### Q20: How do I turn on the Dashboard?
 
 **A:**
 
@@ -223,12 +223,12 @@ lingframe:
 Also, add the dependency to your LingCore pom:
 ```xml
 <dependency>
-    <groupId>com.lingframe</groupId>
+    <groupId>cn.lingframe</groupId>
     <artifactId>lingframe-dashboard</artifactId>
 </dependency>
 ```
 
-### Q20: Why can't I use the installation endpoint on the Dashboard?
+### Q21: Why can't I use the installation endpoint on the Dashboard?
 
 **A:** The install endpoint is turned off by default for security, requiring explicit enablement:
 
@@ -238,7 +238,7 @@ lingframe:
     install-enabled: true
 ```
 
-### Q21: Why does the hot-reload endpoint return a 403?
+### Q22: Why does the hot-reload endpoint return a 403?
 
 **A:** Hot-reload capabilities are rigidly confined to developer mode:
 
@@ -251,7 +251,7 @@ lingframe:
 
 ## 6. Other Questions
 
-### Q22: Which JDK versions does LingFrame support?
+### Q23: Which JDK versions does LingFrame support?
 
 **A:** Build/CI matrices in this repo:
 
@@ -262,7 +262,7 @@ lingframe:
 
 Other LTS JDKs may work for applications, but published verification is the two matrices above. Always `clean` when switching matrices (SB3 class files fail on JDK 8).
 
-### Q23: Which Spring Boot versions does LingFrame support?
+### Q24: Which Spring Boot versions does LingFrame support?
 
 **A:**
 
@@ -273,7 +273,7 @@ Other LTS JDKs may work for applications, but published verification is the two 
 
 Do not put Servlet types in shared code or invent dual dashboard GAVs. See [production-hardening](production-hardening.md) section 6 and the development manual section 5.2.
 
-### Q24: How can I contribute to LingFrame?
+### Q25: How can I contribute to LingFrame?
 
 **A:**
 
@@ -281,14 +281,14 @@ Do not put Servlet types in shared code or invent dual dashboard GAVs. See [prod
 2. Read the contributing guidelines
 3. Submit a Pull Request
 
-### Q25: Where can I get help?
+### Q26: Where can I get help?
 
 **A:**
 
 - **Documentation**: All documents in this directory.
 - **Issues**: Submit an issue request.
 
-### Q26: What is LingFrame's open source license?
+### Q27: What is LingFrame's open source license?
 
 **A:** Apache License 2.0. It can be freely used in commercial projects.
 
@@ -296,11 +296,11 @@ Do not put Servlet types in shared code or invent dual dashboard GAVs. See [prod
 
 ## 7. Roadmap Associated
 
-### Q27: When will Prometheus/Grafana integrations be supported?
+### Q28: When will Prometheus/Grafana integrations be supported?
 
 **A:** We already support Micrometer metric bridging today. If the LingCore application supplies a `MeterRegistry`, LingFrame will automatically register Ling health and governance signal metrics. If LingCore then introduces `micrometer-registry-prometheus` and exposes `/actuator/prometheus`, those metrics can be scraped directly by Prometheus. See the `lingframe-example-lingcore-app` for a demonstration.
 
-### Q28: When will Messaging Proxies (Kafka/RabbitMQ) be supported?
+### Q29: When will Messaging Proxies (Kafka/RabbitMQ) be supported?
 
 **A:** This is planned during the Phase 5 Ecosystem Expansion phase. See the [Roadmap](roadmap.md) for details.
 

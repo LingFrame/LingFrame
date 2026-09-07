@@ -1,6 +1,5 @@
 package com.lingframe.core.ling;
 
-import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.spi.RoutableTarget;
 
@@ -59,4 +58,3 @@ public class LingCoreRoutableTarget implements RoutableTarget {
         return true;
     }
 }
-

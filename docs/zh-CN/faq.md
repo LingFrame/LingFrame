@@ -223,7 +223,7 @@ lingframe:
 添加依赖：
 ```xml
 <dependency>
-    <groupId>com.lingframe</groupId>
+    <groupId>cn.lingframe</groupId>
     <artifactId>lingframe-dashboard</artifactId>
 </dependency>
 ```

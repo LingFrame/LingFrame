@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.ling.Ling;
 import com.lingframe.api.ling.LingProbe;
+import com.lingframe.api.storage.ManagedDataSourceRegistry;
 import com.lingframe.core.context.DefaultLingContext;
 import com.lingframe.core.ling.BusinessInterfaceFilter;
 import com.lingframe.core.ling.LingServiceRegistrar;
@@ -85,10 +86,27 @@ public class SpringLingContainer implements LingContainer {
     private LingFrameInfo lingFrameInfo;
 
     /**
+     * 受管数据源独立总线（灵核 starter 装配的灵核级单例，分支 B 拉取受管数据源用）。
+     * <p>
+     * 经 {@code SpringContainerFactory.create} 从灵核主容器注入；纯 core / native 场景
+     * 无该 Bean 时为 null，分支 B 走不到注入（与现状一致）。
+     */
+    private volatile ManagedDataSourceRegistry managedDataSourceRegistry;
+
+    /**
      * 注入灵核只读配置门面，替代静态穿透。
      */
     public void setLingFrameInfo(LingFrameInfo lingFrameInfo) {
         this.lingFrameInfo = lingFrameInfo;
+    }
+
+    /**
+     * 注入受管数据源独立总线（灵核侧装配）。
+     *
+     * @param managedDataSourceRegistry 受管数据源总线（可为 null：灵核 0 存储/native 场景）
+     */
+    public void setManagedDataSourceRegistry(ManagedDataSourceRegistry managedDataSourceRegistry) {
+        this.managedDataSourceRegistry = managedDataSourceRegistry;
     }
 
     // 保留原构造函数，向后兼容测试用例
@@ -189,10 +207,18 @@ public class SpringLingContainer implements LingContainer {
             // 注册灵元专用的 LingReferenceInjector，传给它是 context
             context.registerBean(LingReferenceInjector.class, () -> new LingReferenceInjector(lingId, coreCtx));
 
+            // 受管数据源总线注入灵元容器（灵核级单例实例）：
+            // 模式 3 存储灵元（供给端）可经 @Autowired/@Resource 拿到本 Bean，把自建数据源
+            // 以 dataSourceId 注册到总线供其他业务灵元共享；灵核 0 存储/native 场景为 null 不注册
+            if (managedDataSourceRegistry != null) {
+                context.registerBean("lingManagedDataSourceRegistry", ManagedDataSourceRegistry.class,
+                        () -> managedDataSourceRegistry, bd -> bd.setPrimary(true));
+            }
+
             log.info("Injecting core beans for ling [{}]: LingContext, LingReferenceInjector", lingId);
 
-            // 自动配置灵元独立数据源
-            LingDataSourceRegistrar.register(context, lingClassLoader, lingId);
+            // 自动配置灵元数据源（分支 A 独立库 / 分支 B 受管共享；存储灵元经 datasource-id 供给总线）
+            LingDataSourceRegistrar.register(context, lingClassLoader, lingId, managedDataSourceRegistry);
 
             // 🔥 注入灵元私有的 HandlerAdapter，防止 DTO 等类污染灵核缓存
             context.registerBean(RequestMappingHandlerAdapter.class, () -> {

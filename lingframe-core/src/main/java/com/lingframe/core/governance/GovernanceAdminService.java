@@ -6,8 +6,6 @@ import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.pipeline.InvocationPolicyPrefillFilter;
-import com.lingframe.core.pipeline.ResilienceGovernanceFilter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
@@ -141,7 +139,7 @@ public class GovernanceAdminService {
             return null;
         }
         LingRuntime runtime = lingRepository.getRuntime(lingId);
-        if (runtime == null) {
+        if (runtime == null || runtime.getInstancePool() == null) {
             return null;
         }
         LingInstance instance = runtime.getInstancePool().getDefault();
@@ -185,10 +183,12 @@ public class GovernanceAdminService {
             log.warn("[Governance] Cannot update invocation config: ling {} not loaded", lingId);
             return;
         }
-        LingInstance instance = runtime.getInstancePool().getDefault();
-        if (instance == null || instance.getDefinition() == null) {
-            log.warn("[Governance] Cannot update invocation config: ling {} has no default instance definition", lingId);
-            return;
+        if (runtime.getInstancePool() != null) {
+            LingInstance instance = runtime.getInstancePool().getDefault();
+            if (instance == null || instance.getDefinition() == null) {
+                log.warn("[Governance] Cannot update invocation config: ling {} has no default instance definition", lingId);
+                return;
+            }
         }
 
         // 写入补丁层（治理策略动态修改的唯一真源），而非静态 definition。

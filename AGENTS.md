@@ -8,7 +8,7 @@ This file provides unified guidance to AI coding assistants when working with co
 
 灵珑（LingFrame）是一个面向长期运行系统的 JVM 运行时治理框架。核心能力：单进程内灵元隔离、热加载/规范热卸载、运行时治理（权限、审计、限流、熔断、N元路由）、Dashboard 控制面。
 
-当前版本：`0.4.0`（`lingframe-dependencies` 的 `revision`）。默认构建矩阵为 **Spring Boot 2.7 / JDK 8**；**Spring Boot 3.5 / JDK 17** 通过 `-Pspring-boot3` 切换。
+当前版本：`0.4.5`（`lingframe-dependencies` 的 `revision`）。默认构建矩阵为 **Spring Boot 2.7 / JDK 8**；**Spring Boot 3.5 / JDK 17** 通过 `-Pspring-boot3` 切换。
 
 ### 规范权威链
 
@@ -137,9 +137,11 @@ mvn -pl lingframe-benchmark package -Pbenchmark -DskipTests
 
 `InvocationPipelineEngine` 是治理主链；内置过滤器按序执行（以 `PipelineArchitectureContractTest` / `FilterRegistry` 为准）：
 
-`ContractProviderRoutingFilter` → `TrafficMetricsFilter` → `MacroStateGuardFilter` → `InstanceRoutingFilter` → `InvocationPolicyPrefillFilter` → `ResilienceGovernanceFilter` → `ContextIsolationFilter` → `GovernanceDecisionFilter` → `PermissionGovernanceFilter` → `ThreadIsolationGovernanceFilter` → `TerminalInvokerFilter`
+`ContractProviderRoutingFilter` → `TrafficMetricsFilter` → `MacroStateGuardFilter` → `InstanceRoutingFilter` → `InvocationPolicyPrefillFilter` → `TransactionPropagationFilter` → `ResilienceGovernanceFilter` → `ContextIsolationFilter` → `GovernanceDecisionFilter` → `PermissionGovernanceFilter` → `ThreadIsolationGovernanceFilter` → `TerminalInvokerFilter`
 
 L0 provider 路由 / L1 实例路由分层：`InstanceRoutingFilter` 承接 provider 路由已设置的 `ctx.runtime`，位于 `MacroStateGuardFilter` 之后、`InvocationPolicyPrefillFilter` 之前。
+
+**事务穿透（`TransactionPropagationFilter`，order=250，POLICY_PREFILL 与 RESILIENCE 之间）**：路由确定之后、TCCL 切换之前，把活跃事务连接按 dataSourceId 推入 `LingTransactionContext`（core 零 Spring，经 `TransactionBindingHook` SPI 提取）；仅 NORMAL 模式激活；`lingframe.tx.propagation.enabled=false` 时直接放行（应急降级，见 `docs/adr/0005-managed-datasource-and-transaction-propagation.md`）。
 
 **路由层去身份化**：路由层只认 `weight` 和方法资格，不引用实现方身份（灵核/灵元）。身份在注册时沉淀为 `weight` 数值（灵核默认 100，灵元默认 0），方法资格通过 `LingServiceRegistry.hasMethod` 判定——未声明被调用方法的 provider 被剔除，方法级 fallback 是路由的副产物。
 
@@ -188,6 +190,7 @@ SPI/动态过滤器不得占用内置 order 保留位。
 - 代码注释：**中文**
 - 日志输出：**英文**
 - 测试展示名（`@DisplayName`）：**中文**；优先 `@Nested + @DisplayName`
+- **代码注释禁止携带问题标号 / 决策编号 / 章节引用 / 版本号**：注释（含 Javadoc、行内注释、测试注释）一律不得写 `（D7）`、`（D10）`、`P0/P1/P2`、`Phase 2`、`§4.3.4`、`design v5` 等标号——决策编号属于设计文档的索引体系（决策表、ADR），溯源交回设计文档；注释只应承载「这段代码为什么这样做」的语义描述，不引用外部文档的编号索引
 
 ### 架构硬约束
 
@@ -227,6 +230,7 @@ SPI/动态过滤器不得占用内置 order 保留位。
 - 测试展示名统一中文，优先使用 `@Nested + @DisplayName`
 - 关键语义必须有测试，不只是流程 / happy path
 - 测试类命名：`{ClassName}Test.java`
+- **一次写齐测试覆盖（硬规则）**：新增代码（新类型 / 新方法 / 新语义分支）必须在**同一轮提交前**完成对应测试——正常路径、失败/拒绝路径、边界/异常路径一次写全，禁止把「测试补漏」拖到后续轮次、禁止依赖后续评审提醒才补测试。每新增一个生产类型，交付物 = 实现 + 该类型的直接单测（正常/拒绝/边界）+ 关键语义的端到端或组合链测试；测试未补齐不得宣告该功能完成
 
 涉及以下内容时优先补测试：状态机迁移、生命周期编排顺序、多版本切换、濒死队列/排空/回收、timeout、permission/audit、routing、pipeline 顺序、classloader 边界、Shared API 冻结语义、并发安全、卸载后资源清理。
 

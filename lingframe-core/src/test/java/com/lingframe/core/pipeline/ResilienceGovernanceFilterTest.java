@@ -15,6 +15,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.IOException;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -287,6 +289,75 @@ class ResilienceGovernanceFilterTest {
             assertTrue(filter.recover("demo-ling"));
             assertTrue(filter.hasLimiter("demo-ling"));
             assertFalse(filter.hasBreaker("demo-ling"));
+        }
+
+        @Test
+        @DisplayName("reportOutcome 喂失败累积到阈值后应使熔断器 OPEN（补 GOVERN_ONLY 回灌缺口）")
+        void reportOutcome_WhenFailuresReachThreshold_ShouldOpenBreaker() throws Throwable {
+            setupMocks(100, 1000);
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            // 先经 doFilter 创建熔断器（正常走一次）
+            assertEquals(expected, filter.doFilter(context, filterChain));
+            assertTrue(filter.hasBreaker("demo-ling"));
+
+            // 回灌失败：达到 minimumCalls 且失败率超阈值后熔断器应 OPEN
+            Exception fault = new IOException("downstream unavailable");
+            for (int i = 0; i < 10; i++) {
+                filter.reportOutcome("demo-ling", false, 1_000_000L, fault);
+            }
+
+            // 熔断器已 OPEN，下次 doFilter 应被 CIRCUIT_OPEN 拒绝
+            LingInvocationException cbEx = assertThrows(LingInvocationException.class,
+                    () -> filter.doFilter(context, filterChain));
+            assertEquals(LingInvocationException.ErrorKind.CIRCUIT_OPEN, cbEx.getKind());
+        }
+
+        @Test
+        @DisplayName("下游治理拒绝（BULKHEAD_FULL）不得计入熔断失败率（倒挂修复回归）")
+        void doFilter_WhenDownstreamGovernanceRejection_ShouldNotOpenBreaker() throws Throwable {
+            setupMocks(100, 1000);
+
+            // 模拟隔离阶段（ThreadIsolationGovernanceFilter 舱满）抛出的治理拒绝
+            LingInvocationException bulkheadEx = new LingInvocationException(
+                    "demo-ling:com.example.DemoService", LingInvocationException.ErrorKind.BULKHEAD_FULL);
+            when(filterChain.doFilter(context)).thenThrow(bulkheadEx);
+
+            for (int i = 0; i < 10; i++) {
+                LingInvocationException ex = assertThrows(LingInvocationException.class,
+                        () -> filter.doFilter(context, filterChain));
+                assertEquals(LingInvocationException.ErrorKind.BULKHEAD_FULL, ex.getKind());
+            }
+
+            // 10 次治理拒绝后熔断器不应 OPEN：第 11 次仍应进入 chain（仍抛 BULKHEAD_FULL，
+            // 而非被 CIRCUIT_OPEN 拒绝）——若倒挂未修复，此处会误抛 CIRCUIT_OPEN 使断言失败
+            LingInvocationException ex = assertThrows(LingInvocationException.class,
+                    () -> filter.doFilter(context, filterChain));
+            assertEquals(LingInvocationException.ErrorKind.BULKHEAD_FULL, ex.getKind());
+            verify(filterChain, times(11)).doFilter(context);
+        }
+
+        @Test
+        @DisplayName("下游真实故障（INVOKE_ERROR）仍应计入熔断失败率（倒挂修复不误伤）")
+        void doFilter_WhenDownstreamInvokeError_ShouldOpenBreaker() throws Throwable {
+            setupMocks(100, 1000);
+
+            // 业务执行报错（真实下游故障，governanceRejection=false）必须继续喂熔断器
+            LingInvocationException invokeError = new LingInvocationException(
+                    "demo-ling:com.example.DemoService", LingInvocationException.ErrorKind.INVOKE_ERROR);
+            when(filterChain.doFilter(context)).thenThrow(invokeError);
+
+            for (int i = 0; i < 10; i++) {
+                LingInvocationException ex = assertThrows(LingInvocationException.class,
+                        () -> filter.doFilter(context, filterChain));
+                assertEquals(LingInvocationException.ErrorKind.INVOKE_ERROR, ex.getKind());
+            }
+
+            // 10 次真实故障后熔断器应 OPEN：第 11 次被 CIRCUIT_OPEN 拒绝
+            LingInvocationException cbEx = assertThrows(LingInvocationException.class,
+                    () -> filter.doFilter(context, filterChain));
+            assertEquals(LingInvocationException.ErrorKind.CIRCUIT_OPEN, cbEx.getKind());
         }
     }
 

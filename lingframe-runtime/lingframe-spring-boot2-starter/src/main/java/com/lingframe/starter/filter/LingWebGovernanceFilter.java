@@ -3,6 +3,7 @@ package com.lingframe.starter.filter;
 import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.exception.LingInvocationException;
+import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.metrics.LingHealthMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationContext;
@@ -16,6 +17,7 @@ import com.lingframe.starter.web.WebGovernanceSupport;
 import com.lingframe.starter.web.WebRequestFacade;
 import com.lingframe.starter.web.WebRouteResolution;
 import com.lingframe.starter.web.WebRouteResolver;
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -24,15 +26,18 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerExecutionChain;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
-import java.security.Principal;
-
 import javax.servlet.FilterChain;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.security.Principal;
 
+/**
+ * 面向 Spring Boot 2.x 的统一 Web 治理过滤器。
+ */
 @Slf4j
 @RequiredArgsConstructor
 public class LingWebGovernanceFilter extends OncePerRequestFilter {
@@ -47,9 +52,9 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
     private final EntryInvocationGovernanceResolver invocationGovernanceResolver;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain)
+    protected void doFilterInternal(@NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull FilterChain filterChain)
             throws ServletException, IOException {
 
         WebRouteResolution lingRoute = webRouteResolver.resolveRoute(request);
@@ -86,19 +91,23 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         try {
             try {
                 Method method = GOVERNANCE_SUPPORT.resolveGovernedMethod(isLingRequest, lingMeta, handlerMethod, lingId);
-                ctx = GOVERNANCE_SUPPORT.buildInvocationContext(requestFacade, method, lingId, lingMeta,
-                        invocationGovernanceResolver);
+                ctx = GOVERNANCE_SUPPORT.buildInvocationContext(
+                        requestFacade, method, lingId, lingMeta, invocationGovernanceResolver);
                 ctx.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
-                if (isLingRequest && lingRoute != null) {
+                if (lingRoute != null) {
                     GOVERNANCE_SUPPORT.preResolveLingTarget(ctx, lingRoute);
                 }
                 pipelineEngine.invoke(ctx);
+                LingInstance routed = ctx.routing().getTargetInstance();
+                if (routed != null) {
+                    request.setAttribute(WebRequestKeys.TARGET_VERSION, routed.getVersion());
+                }
             } catch (LingInvocationException e) {
                 if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
-                    log.warn("[Governance] Security rejected (SB2): {} -> {}",
+                    log.warn("[Governance] Security rejected: {} -> {}",
                             GOVERNANCE_SUPPORT.resolveGovernanceResourceId(ctx, requestFacade), e.getMessage());
                 } else {
-                    log.info("[Governance] Request blocked (SB2): {} -> {}",
+                    log.info("[Governance] Request blocked: {} -> {}",
                             GOVERNANCE_SUPPORT.resolveGovernanceResourceId(ctx, requestFacade), e.getMessage());
                 }
                 recordGovernanceRejectionMetrics(request, ctx, lingId, startNanos);
@@ -165,17 +174,15 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         if (!isLingRequest && !LingCoreConstants.LINGCORE_LING_ID.equals(lingId)) {
             return;
         }
-
-        MetricsCollector metricsCollector = metricsCollectorProvider != null ? metricsCollectorProvider.getIfAvailable() : null;
+        MetricsCollector metricsCollector =
+                metricsCollectorProvider != null ? metricsCollectorProvider.getIfAvailable() : null;
         if (metricsCollector == null || lingId == null || lingId.isEmpty()) {
             return;
         }
-
         long costMs = (System.nanoTime() - startNanos) / 1_000_000;
         String version = resolveVersion(request, ctx);
         LingHealthMetrics metrics = metricsCollector.getOrCreate(lingId);
         LingHealthMetrics versionMetrics = metricsCollector.getOrCreate(lingId, version);
-
         boolean success = error == null && response.getStatus() < 500;
         if (success) {
             metrics.recordSuccess(costMs);
@@ -184,7 +191,6 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             }
             return;
         }
-
         boolean isTimeout = response.getStatus() == HttpServletResponse.SC_GATEWAY_TIMEOUT || isTimeoutError(error);
         metrics.recordFailure(costMs, isTimeout);
         if (versionMetrics != metrics) {

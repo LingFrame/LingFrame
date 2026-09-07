@@ -21,7 +21,7 @@ For the current public implementation, this is not just a demonstration of "gett
 
 **What you are about to run**: In the example project, you will start a LingCore application and tell it to load two example lings (`user-ling`, `order-ling`). In this single run, you will simultaneously see three things: lings can be loaded within the same process; LingCore can invoke ling services via shared contracts; the invocation process still passes through the governance kernel.
 
-**Environment requirements**: JDK 17+ (as the main example path); Maven 3.8+. The current runtime simultaneously supports both JDK 8 and Spring Boot 2.x, but the example project remains the easiest entry point for beginners.
+**Environment requirements**: JDK 8 + Spring Boot 2.7 as the example and primary verification path (default Maven profile); JDK 17 + Spring Boot 3.x as the optional support line (`-Pspring-boot3`); Maven 3.8+. The two-stack structure (dual runtime starters + dashboard single-GAV matrix source sets) is covered in [Production Hardening Checklist](production-hardening.md) section 6, with details in the [Development Manual](development-manual.md) section 5.2.
 
 ### 1. Clone the Repository
 
@@ -260,7 +260,7 @@ Parent POM:
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>com.lingframe</groupId>
+                <groupId>cn.lingframe</groupId>
                 <artifactId>lingframe-bom</artifactId>
                 <version>${lingframe.version}</version>
                 <type>pom</type>
@@ -289,7 +289,7 @@ Parent POM:
 
     <dependencies>
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-api</artifactId>
         </dependency>
     </dependencies>
@@ -357,13 +357,13 @@ public class UserDTO implements Serializable {
     <dependencies>
         <!-- LingFrame Spring Boot Starter (main path: Boot 2.7 / JDK 8). For Boot 3, swap to lingframe-spring-boot3-starter -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-spring-boot2-starter</artifactId>
         </dependency>
 
         <!-- Dashboard (optional) -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-dashboard</artifactId>
         </dependency>
 
@@ -487,7 +487,7 @@ public class LingCoreApplication {
 
         <!-- LingFrame API -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-api</artifactId>
             <scope>provided</scope>
         </dependency>
@@ -973,5 +973,5 @@ If you continue and complete the Dashboard / governance / unload validations abo
 The next thing most worth verifying is not just "can we load another ling," but whether this runtime chain can stay orderly under reload / unload / cleanup scenarios.
 
 Next, if you want to dive straight into writing lings, jump to [Ling Development Guide](ling-development.md).
-Example tracks overview: [lingframe-examples/README.en.md](../../lingframe-examples/README.en.md) (starter usage / legacy migration `saas-mall`).
+Example tracks overview: [lingframe-examples/README.en.md](../../lingframe-examples/README.en.md) (starter usage and real-world legacy migration companion project LingFrame-RuoYi).
 For config cross-reference, see the [Production Hardening Checklist](production-hardening.md).

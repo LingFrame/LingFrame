@@ -6,6 +6,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.InstanceDestroyedEvent;
 import com.lingframe.core.event.RuntimeStateChangedEvent;
 import com.lingframe.core.event.InstanceStateChangedEvent;
+import com.lingframe.core.fsm.RuntimeStatus.Kind;
 import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,7 +29,7 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@code RuntimeCoordinator} 订阅实例事件并维护运行时快照</li>
  *   <li>它再基于快照聚合出宏观 {@link RuntimeStatus}</li>
  * </ul>
- * 这种事件联动机制中存在**写优先级锁死设计**（解决 P2-1）：
+ * 这种事件联动机制中存在**写优先级锁死设计**：
  * 如果运维主动将状态转换为 {@link RuntimeStatus#STOPPING}（下线意图），
  * 任何来自实例健康状态好转的重新评估（如实例从 ERROR 恢复为 READY）、或者定时的 DEGRADED 健康检查，
  * 甚至外部强制 {@code transition(DEGRADED/ACTIVE)}，都会因为 FSM 规则物理拒绝而被压制。
@@ -427,14 +428,11 @@ public class RuntimeCoordinator {
         for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
             RuntimeStatus current = fsm.current();
 
-            // `STOPPING` 是硬下线运维意图态：只允许推进到 REMOVED，不可被实例事实拉回 ACTIVE。
-            if (current == RuntimeStatus.STOPPING) {
-                tryFinishShutdown(lingId, fsm);
-                return;
-            }
-
-            // 终态不再评估
-            if (current == RuntimeStatus.REMOVED) {
+            // 通用压制规则：运维意图态与终态不可被实例微观事实反向覆盖
+            if (current.suppressesEvaluation()) {
+                if (current == RuntimeStatus.STOPPING) {
+                    tryFinishShutdown(lingId, fsm);
+                }
                 return;
             }
 
@@ -449,6 +447,13 @@ public class RuntimeCoordinator {
 
             // 调用策略评估
             RuntimeStatus suggested = policy.evaluate(current, stateValues);
+
+            // 策略契约守护：策略评估必须只输出事实态（Kind.FACT）
+            if (suggested != null && suggested.kind() != Kind.FACT) {
+                log.error("Policy [{}] violated contract: suggested non-fact status [{}] (kind={}) for ling [{}]",
+                        policy.getClass().getSimpleName(), suggested, suggested.kind(), lingId);
+                return;
+            }
 
             // 评估结果与当前相同，无需跃迁
             if (suggested == current) {
@@ -557,23 +562,95 @@ public class RuntimeCoordinator {
     }
 
     /**
-     * 扫描所有 DEGRADED 灵元，触发 reevaluate。
+     * 周期性健康检查：DEGRADED 兜底重评 + RECOVERING 卡死兜底收口。
      * <p>
-     * 这是事件驱动路径的兜底：当灵元因熔断打开进入 DEGRADED，
-     * 但没有新请求经过 Pipeline 触发 {@code tryRecoverFromDegraded} 时，
-     * 此定时任务确保 DEGRADED 灵元最终能被重新评估。
+     * 事件驱动路径的兜底：
+     * <ul>
+     *   <li><b>DEGRADED</b>：当灵元因熔断打开进入 DEGRADED，但没有新请求经过 Pipeline
+     *       触发 {@code tryRecoverFromDegraded} 时，此定时任务确保 DEGRADED 灵元最终能被重新评估。</li>
+     *   <li><b>RECOVERING</b>：RECOVERING 压制聚合评估（见 {@link #reevaluate}），
+     *       若恢复流程失败且未显式收口，灵元会永久卡在 RECOVERING（MacroStateGuardFilter
+     *       拒绝其流量）。此处根据实例快照事实兜底收口，防止"失败恢复导致永久流量阻断"。</li>
+     * </ul>
      */
     private void checkDegradedLings() {
         try {
             for (String lingId : machines.keySet()) {
                 StateMachine<RuntimeStatus> fsm = machines.get(lingId);
-                if (fsm != null && fsm.current() == RuntimeStatus.DEGRADED) {
+                if (fsm == null) {
+                    continue;
+                }
+                RuntimeStatus current = fsm.current();
+                if (current == RuntimeStatus.DEGRADED) {
                     log.debug("Health check: reevaluating DEGRADED ling [{}]", lingId);
                     reevaluate(lingId);
+                } else if (current == RuntimeStatus.RECOVERING) {
+                    recoverStuckRecoveringLing(lingId, fsm);
                 }
             }
         } catch (Exception e) {
             log.warn("DEGRADED health check failed: {}", e.getMessage());
         }
+    }
+
+    /**
+     * RECOVERING 意图态兜底收口。
+     * <p>
+     * 依据实例快照事实判断恢复进展（与 {@link DefaultRuntimeEvaluationPolicy} 的过渡语义对齐）：
+     * <ul>
+     *   <li>快照为空（实例全部 DEAD 已移除）→ 恢复意图已无事实支撑，收口 DEGRADED；</li>
+     *   <li>存在过渡中实例（CREATED/LOADING/STARTING/RECOVERING）→ 恢复仍在进行，
+     *       保持 RECOVERING 不动（避免慢启动期间被误收口造成状态抖动）；</li>
+     *   <li>无过渡中实例且存在 READY → 恢复实际已完成，收口 ACTIVE；</li>
+     *   <li>无过渡中实例且无 READY → 恢复失败/中断，收口 DEGRADED（事实态，可再自愈）。</li>
+     * </ul>
+     */
+    private void recoverStuckRecoveringLing(String lingId, StateMachine<RuntimeStatus> fsm) {
+        ConcurrentMap<String, InstanceStatus> states = snapshots.get(lingId);
+        if (states == null || states.isEmpty()) {
+            // 空快照 = 无任何实例事实（全部 DEAD 已从快照移除）：
+            // 恢复意图无支撑，收口 DEGRADED（FACT 态，后续事件/reevaluate 可再驱动）。
+            log.warn("Health check: RECOVERING ling [{}] has no instances, converging to DEGRADED", lingId);
+            forceTransition(lingId, fsm, RuntimeStatus.DEGRADED);
+            return;
+        }
+        boolean hasReady = false;
+        boolean transitionInProgress = false;
+        for (InstanceStatus status : states.values()) {
+            if (status == InstanceStatus.READY) {
+                hasReady = true;
+            } else if (isTransitionInProgress(status)) {
+                transitionInProgress = true;
+            }
+        }
+        if (transitionInProgress) {
+            // 仍有实例处于恢复/启动过渡中（如 Spring 上下文启动耗时长于健康检查间隔），
+            // 保持 RECOVERING，防止把进行中的恢复误收口为 DEGRADED/ACTIVE 造成状态抖动。
+            log.debug("Health check: RECOVERING ling [{}] still has instances in transition, keep RECOVERING", lingId);
+            return;
+        }
+        if (hasReady) {
+            log.info("Health check: RECOVERING ling [{}] has READY instances and no transition in progress, "
+                    + "converging to ACTIVE", lingId);
+            forceTransition(lingId, fsm, RuntimeStatus.ACTIVE);
+        } else {
+            log.warn("Health check: RECOVERING ling [{}] has no ready or transitioning instances, "
+                    + "converging to DEGRADED", lingId);
+            forceTransition(lingId, fsm, RuntimeStatus.DEGRADED);
+        }
+    }
+
+    /**
+     * 实例状态是否属于"恢复/启动过渡中"。
+     * <p>
+     * 与 {@link DefaultRuntimeEvaluationPolicy} 的过渡语义保持一致：
+     * CREATED/LOADING/STARTING/RECOVERING 均视为恢复尚未收敛，
+     * 健康检查不得在此窗口内把 RECOVERING 运行时收口为其他状态。
+     */
+    private static boolean isTransitionInProgress(InstanceStatus status) {
+        return status == InstanceStatus.RECOVERING
+                || status == InstanceStatus.CREATED
+                || status == InstanceStatus.LOADING
+                || status == InstanceStatus.STARTING;
     }
 }

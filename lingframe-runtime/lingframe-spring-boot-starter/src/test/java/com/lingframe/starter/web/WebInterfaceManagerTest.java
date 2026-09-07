@@ -453,7 +453,7 @@ class WebInterfaceManagerTest {
 
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder().build();
 
-        // 🔥 P1-29 修复后：registerSync/unregisterSync 直接走 synchronized(registryLock)，
+        // 修复后：registerSync/unregisterSync 直接走 synchronized(registryLock)，
         // 不再调用 executor.submit().get()，executor 异常不会影响同步路径。
         // coreWebSupport 未初始化时 registerInternal/unregisterInternal 安全跳过，不抛异常。
         manager.registerSync(metadata);

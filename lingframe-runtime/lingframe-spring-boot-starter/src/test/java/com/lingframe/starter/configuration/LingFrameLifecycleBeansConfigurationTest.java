@@ -3,6 +3,7 @@ package com.lingframe.starter.configuration;
 import com.lingframe.api.config.LingDefinition;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.api.storage.ManagedDataSourceRegistry;
 import com.lingframe.core.classloader.SharedApiManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.deploy.LingDeployService;
@@ -25,6 +26,7 @@ import com.lingframe.starter.event.ServiceExporterListener;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.starter.web.WebInterfaceManager;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
@@ -97,10 +99,15 @@ class LingFrameLifecycleBeansConfigurationTest {
         LeakDetector leakDetector = mock(LeakDetector.class);
         RuntimeCoordinator runtimeCoordinator = mock(RuntimeCoordinator.class);
 
+        LingUnloadCoordinator unloadCoordinator = config.lingUnloadCoordinator(
+                pipelineEngine, unloadHooks, lingResourceManager, leakDetector);
+        assertNotNull(unloadCoordinator);
+
         LingLifecycleEngine lifecycleEngine = config.lingLifecycleEngine(
                 containerFactory, permissionService, lingLoaderFactory, verifiersProvider, eventBus,
-                lingFrameConfig, lingRepository, lingServiceRegistry, pipelineEngine, unloadHooks,
-                lingResourceManager, leakDetector, runtimeCoordinator,
+                lingFrameConfig, lingRepository, lingServiceRegistry, pipelineEngine,
+                unloadCoordinator,
+                lingResourceManager, runtimeCoordinator,
                 mock(ObjectProvider.class),
                 mock(ObjectProvider.class)
         );
@@ -118,9 +125,20 @@ class LingFrameLifecycleBeansConfigurationTest {
                 lingRepository, methodCache, permissionService, invokerProvider, arbitratorProvider,
                 metricsCollectorProvider, governanceMetricsCollectorProvider, trafficRouter, eventBus, runtimeCoordinator,
                 lingServiceRegistry, lingFrameConfig, mock(LocalGovernanceRegistry.class),
-                new ProviderWeightRouter()
+                new ProviderWeightRouter(),
+                mock(ManagedDataSourceRegistry.class),
+                properties
         );
         assertNotNull(filterRegistry);
+
+        // 3.1 rootTransactionManagerChecker (SmartInitializingSingleton)
+        // 内部用 ApplicationContext.getBeanProvider 反射检测事务管理器类型，
+        // 测试环境无 spring-tx：stub 返回空 ObjectProvider，让检测静默跳过
+        ApplicationContext applicationContext = mock(ApplicationContext.class);
+        when(applicationContext.getBeanProvider(any(Class.class))).thenReturn(mock(ObjectProvider.class));
+        SmartInitializingSingleton checker = config.rootTransactionManagerChecker(applicationContext);
+        assertNotNull(checker);
+        checker.afterSingletonsInstantiated();
 
         // 4. invocationPipelineEngine
         InvocationPipelineEngine invocationPipelineEngine = config.invocationPipelineEngine(
@@ -207,5 +225,14 @@ class LingFrameLifecycleBeansConfigurationTest {
         // 14. webInterfaceManager
         WebInterfaceManager webInterfaceManagerBean = config.webInterfaceManager(lingRepository, trafficRouter, properties);
         assertNotNull(webInterfaceManagerBean);
+    }
+
+    @Test
+    @DisplayName("事务穿透总开关 lingframe.tx.propagation.enabled 默认开启，可配置关闭（应急降级）")
+    void txPropagationSwitchDefaultsEnabled() {
+        LingFrameProperties props = new LingFrameProperties();
+        assertTrue(props.getTx().getPropagation().isEnabled());
+        props.getTx().getPropagation().setEnabled(false);
+        assertFalse(props.getTx().getPropagation().isEnabled());
     }
 }

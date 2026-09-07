@@ -93,6 +93,19 @@ public class InvocationPipelineEngine {
     }
 
     /**
+     * 回灌一次真实调用结果到灵元的熔断器（非治理路径）。
+     * <p>
+     * 供 agent / 外部调用方在 GOVERN_ONLY 模式下，真实业务执行返回后显式上报成败，
+     * 弥补「TerminalInvokerFilter 恒 return null、失败喂不进熔断器统计」的链路缺口
+     * （见 {@link ResilienceGovernanceFilter#reportOutcome}）。
+     */
+    public void reportOutcome(String lingId, boolean success, long durationNanos, Throwable error) {
+        if (registry != null) {
+            registry.reportOutcome(lingId, success, durationNanos, error);
+        }
+    }
+
+    /**
      * 受控恢复时重置与该灵元绑定的治理状态。
      */
     public boolean recoverLingGovernance(String lingId) {

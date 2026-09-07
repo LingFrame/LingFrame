@@ -11,6 +11,7 @@ import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
+import com.lingframe.core.ling.LingUnloadCoordinator;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.metrics.ProviderMetricsCollector;
@@ -45,6 +46,7 @@ import com.lingframe.dashboard.storage.StorageInitializer;
 import com.lingframe.dashboard.storage.StorageProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -245,8 +247,12 @@ public class DashboardAutoConfiguration {
     public LingMetricsMeterBridge lingMetricsMeterBridge(
             MeterRegistry meterRegistry,
             MetricsCollector metricsCollector,
-            GovernanceMetricsCollector governanceMetricsCollector) {
-        return new LingMetricsMeterBridge(meterRegistry, metricsCollector, governanceMetricsCollector);
+            GovernanceMetricsCollector governanceMetricsCollector,
+            LingRepository lingRepository,
+            ObjectProvider<LingUnloadCoordinator> unloadCoordinatorProvider,
+            EventBus eventBus) {
+        return new LingMetricsMeterBridge(meterRegistry, metricsCollector, governanceMetricsCollector,
+                lingRepository, unloadCoordinatorProvider.getIfAvailable(), eventBus);
     }
 
     // ==================== SQLite 持久化（条件注册） ====================

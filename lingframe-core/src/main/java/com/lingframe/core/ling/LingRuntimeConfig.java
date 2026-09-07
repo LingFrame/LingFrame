@@ -81,6 +81,15 @@ public class LingRuntimeConfig {
     private int bulkheadAcquireTimeoutMs = 3000;
 
     /**
+     * 穿透连接宽限期（毫秒）：超时/放弃执行后等待 worker 退出临界区的有界 join 时间。
+     * <p>
+     * 默认 2000ms：覆盖常规 SQL 执行 + 池排队的合理上界；0 表示立即废弃（激进）。
+     * 超宽限期后连接标记 poisoned——跳过 rollback 直接 close 废弃（未提交写随 close 丢弃）。
+     */
+    @Builder.Default
+    private int abandonedJoinTimeoutMs = 2000;
+
+    /**
      * 限流 QPS（每秒令牌数），0 表示不启用
      */
     @Builder.Default

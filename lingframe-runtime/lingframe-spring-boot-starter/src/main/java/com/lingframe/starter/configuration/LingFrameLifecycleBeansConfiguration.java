@@ -3,6 +3,7 @@ package com.lingframe.starter.configuration;
 import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.context.LingContext;
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.api.storage.ManagedDataSourceRegistry;
 import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.classloader.SharedApiManager;
 import com.lingframe.core.classloader.LingClassLoader;
@@ -41,6 +42,7 @@ import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LingLoaderFactory;
 import com.lingframe.core.spi.LingSecurityVerifier;
+import com.lingframe.core.spi.TransactionBindingHook;
 import com.lingframe.core.resource.JdbcDriverUnloadHook;
 import com.lingframe.core.resource.ThreadReferenceUnloadHook;
 import com.lingframe.core.resource.JvmShutdownHookUnloadHook;
@@ -57,9 +59,14 @@ import com.lingframe.starter.adapter.SpringContainerFactory;
 import com.lingframe.starter.event.ServiceExporterListener;
 import com.lingframe.starter.processor.LingReferenceInjector;
 import com.lingframe.starter.spi.LingContextCustomizer;
+import com.lingframe.starter.storage.DefaultManagedDataSourceRegistry;
+import com.lingframe.starter.transaction.SpringTransactionBindingHook;
+import com.lingframe.infra.storage.proxy.LingDataSourceProxy;
 import com.lingframe.starter.web.WebInterfaceManager;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -67,6 +74,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import javax.sql.DataSource;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -75,6 +83,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 生命周期与治理主链装配切片。
  */
 @Configuration(proxyBeanMethods = false)
+@Slf4j
 public class LingFrameLifecycleBeansConfiguration {
 
     private static final AtomicBoolean BOOTSTRAP_DONE = new AtomicBoolean(false);
@@ -88,6 +97,67 @@ public class LingFrameLifecycleBeansConfiguration {
         return new SpringContainerFactory(parentContext, webInterfaceManager, customizers, unloadHooks);
     }
 
+    /**
+     * 受管数据源独立总线（模式 1 供给端装配）。
+     * <p>
+     * 灵核侧静态托管数据源（若有）经 {@code DataSourceWrapperProcessor} 包装为
+     * {@code LingDataSourceProxy} 后，以 {@code dataSourceId="default"} 注册到总线；
+     * 灵核 0 存储场景（无 DataSource Bean）时总线保持空，由模式 3 存储灵元后续注册。
+     * <p>
+     * 懒解析：总线 Bean 创建时灵核 DataSource 可能尚未初始化，故在注册 lambda 内
+     * 经 {@link ObjectProvider} 延迟获取——Bean 创建顺序无关。
+     */
+    @Bean
+    public ManagedDataSourceRegistry managedDataSourceRegistry(
+            ObjectProvider<DataSource> coreDataSourceProvider,
+            PermissionService permissionService) {
+        DefaultManagedDataSourceRegistry registry = new DefaultManagedDataSourceRegistry();
+        registry.register("default", () -> {
+            DataSource core = coreDataSourceProvider.getIfAvailable();
+            if (core == null) {
+                // 灵核 0 存储：lookup("default") 返回 null，灵元分支 B 走不到注入
+                return null;
+            }
+            // DataSourceWrapperProcessor 已把灵核 DataSource 包装为 LingDataSourceProxy
+            // （该实例即灵核 DataSourceTransactionManager 持有的 TSM 资源键）。
+            // 【关键】必须【同实例】提升身份后返回——TSM 以实例为键，若在此复刻新代理，
+            // 灵核事务管理器与总线查找将各持一份实例，穿透提取不到连接而静默失效。
+            // 未包装时（BPP 未生效的兜底）才新建带身份的受管代理。
+            if (core instanceof LingDataSourceProxy) {
+                ((LingDataSourceProxy) core).promoteToManaged("default");
+                return core;
+            }
+            log.warn("[LingFrame] Core DataSource is not wrapped by DataSourceWrapperProcessor ({}), "
+                    + "creating fallback proxy. Transaction propagation will NOT match TSM key!",
+                    core.getClass().getName());
+            return new LingDataSourceProxy(core, permissionService, "default");
+        });
+        return registry;
+    }
+
+    /**
+     * 卸载清理协调器独立暴露为 Bean：供 Dashboard 等观测方读取卸载耗时指标
+     * （最近一次卸载耗时 / 累计卸载次数），并统一提供卸载编排与清理完成信号（awaitCleanup）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public LingUnloadCoordinator lingUnloadCoordinator(InvocationPipelineEngine pipelineEngine,
+            List<LingUnloadHook> unloadHooks,
+            LingResourceManager lingResourceManager,
+            LeakDetector leakDetector) {
+        // 生态桶：Spring 生态清理 Hook（由 Spring Bean 注入）
+        // JVM 桶：JVM 级 Hook，桶内并行执行
+        // 涵盖：JDBC Driver、线程引用/H2/Timer/线程池、ShutdownHook、RMI Target、日志框架、IDE 调试器缓存
+        List<LingUnloadHook> jvmHooks = Arrays.asList(
+                new JdbcDriverUnloadHook(),
+                new ThreadReferenceUnloadHook(),
+                new JvmShutdownHookUnloadHook(),
+                new RmiTargetUnloadHook(),
+                new LoggingFrameworkUnloadHook(),
+                new DebuggerCaptureUnloadHook());
+        return new LingUnloadCoordinator(pipelineEngine, unloadHooks, jvmHooks, lingResourceManager, leakDetector);
+    }
+
     @Bean
     @ConditionalOnMissingBean
     public LingLifecycleEngine lingLifecycleEngine(ContainerFactory containerFactory,
@@ -99,9 +169,8 @@ public class LingFrameLifecycleBeansConfiguration {
             LingRepository lingRepository,
             LingServiceRegistry lingServiceRegistry,
             InvocationPipelineEngine pipelineEngine,
-            List<LingUnloadHook> unloadHooks,
+            LingUnloadCoordinator unloadCoordinator,
             LingResourceManager lingResourceManager,
-            LeakDetector leakDetector,
             RuntimeCoordinator runtimeCoordinator,
             ObjectProvider<MetricsCollector> metricsCollectorProvider,
             ObjectProvider<GovernanceMetricsCollector> governanceMetricsCollectorProvider) {
@@ -120,18 +189,6 @@ public class LingFrameLifecycleBeansConfiguration {
                     lingFrameConfig != null ? lingFrameConfig.getTrustedLingIds() : Collections.emptyList(),
                     lingFrameConfig != null ? lingFrameConfig.getTrustedLibPrefixes() : Collections.emptyList()));
         }
-        // 生态桶：Spring 生态清理 Hook（由 Spring Bean 注入）
-        // JVM 桶：JVM 级 Hook，桶内并行执行
-        // 涵盖：JDBC Driver、线程引用/H2/Timer/线程池、ShutdownHook、RMI Target、日志框架、IDE 调试器缓存
-        List<LingUnloadHook> jvmHooks = Arrays.asList(
-                new JdbcDriverUnloadHook(),
-                new ThreadReferenceUnloadHook(),
-                new JvmShutdownHookUnloadHook(),
-                new RmiTargetUnloadHook(),
-                new LoggingFrameworkUnloadHook(),
-                new DebuggerCaptureUnloadHook());
-        LingUnloadCoordinator unloadCoordinator = new LingUnloadCoordinator(
-                pipelineEngine, unloadHooks, jvmHooks, lingResourceManager, leakDetector);
 
         // 微内核解耦：指标/告警由组装层注入，内核不直接构造
         MetricsCollector mc = metricsCollectorProvider.getIfAvailable();
@@ -178,11 +235,23 @@ public class LingFrameLifecycleBeansConfiguration {
             LingServiceRegistry lingServiceRegistry,
             LingFrameConfig lingFrameConfig,
             LocalGovernanceRegistry governanceRegistry,
-            ProviderWeightRouter providerWeightRouter) {
+            ProviderWeightRouter providerWeightRouter,
+            ManagedDataSourceRegistry managedDataSourceRegistry,
+            LingFrameProperties lingFrameProperties) {
         LingServiceInvoker invoker = invokerProvider.getIfAvailable();
         GovernanceArbitrator arbitrator = arbitratorProvider.getIfAvailable();
         MetricsCollector metricsCollector = metricsCollectorProvider.getIfAvailable();
         GovernanceMetricsCollector governanceMetricsCollector = governanceMetricsCollectorProvider.getIfAvailable();
+
+        // 事务状态提取 hook：受管数据源总线存在时构造 Spring 实现并注入穿透过滤器；
+        // 灵核 0 存储/纯 core 场景总线为 null，hook 为 null -> TransactionPropagationFilter 降级为无穿透
+        TransactionBindingHook transactionBindingHook =
+                managedDataSourceRegistry != null ? new SpringTransactionBindingHook(managedDataSourceRegistry) : null;
+
+        // 事务穿透总开关：映射 lingframe.tx.propagation.enabled（默认 true）。
+        // 关闭时 core 侧过滤器直接放行、灵元侧不注册受管事务管理器——应急降级路径
+        boolean propagationEnabled = lingFrameProperties.getTx().getPropagation().isEnabled();
+
         FilterRegistry registry = new FilterRegistry(FilterRegistryConfig.builder()
                 .methodCache(methodCache)
                 .permissionService(permissionService)
@@ -198,6 +267,8 @@ public class LingFrameLifecycleBeansConfiguration {
                 .lingFrameInfo(lingFrameConfig)
                 .governanceRegistry(governanceRegistry)
                 .providerWeightRouter(providerWeightRouter)
+                .transactionBindingHook(transactionBindingHook)
+                .propagationEnabled(propagationEnabled)
                 .build());
         registry.loadSpiFilters(Thread.currentThread().getContextClassLoader());
         return registry;
@@ -208,6 +279,42 @@ public class LingFrameLifecycleBeansConfiguration {
     public ProviderMetricsCollector providerMetricsCollector() {
         // Provider 维度调用指标收集器，InvocationPipelineEngine 在每次调用后写入
         return new ProviderMetricsCollector();
+    }
+
+    /**
+     * 检测灵核根事务管理器类型，非 JDBC 型时输出启动期 WARN（穿透不激活）。
+     * <p>
+     * 反射实现：装配类可能运行在无 spring-tx 的 classpath（springdoc / 纯 Web 测试场景），
+     * 方法签名若直接引用 {@code PlatformTransactionManager} 会在容器解析 Bean 方法参数类型时
+     * 抛 {@code TypeNotPresentException}——用反射 + 判空在类缺失时静默跳过检测。
+     *
+     * @param applicationContext 灵核主容器（用于按类型查找事务管理器 Bean）
+     */
+    private void warnIfRootTransactionManagerNotJdbc(ApplicationContext applicationContext) {
+        try {
+            Class<?> ptmType = Class.forName("org.springframework.transaction.PlatformTransactionManager");
+            Class<?> jdbcTxType = Class.forName("org.springframework.jdbc.datasource.DataSourceTransactionManager");
+            Object txManager = applicationContext.getBeanProvider(ptmType).getIfAvailable();
+            if (txManager != null && !jdbcTxType.isInstance(txManager)) {
+                log.warn("[LingFrame] Core PlatformTransactionManager is not DataSourceTransactionManager ({}), "
+                        + "transaction propagation will NOT be active: managed ling SQL runs on independent connections. "
+                        + "Configure a JDBC transaction manager to enable cross-ling strong consistency.",
+                        txManager.getClass().getName());
+            }
+        } catch (ClassNotFoundException e) {
+            // spring-tx 不在 classpath（springdoc / 纯 Web 测试场景）：跳过 DTM 类型检测，不抛错
+            log.debug("[LingFrame] spring-tx not on classpath, skip transaction manager type detection");
+        }
+    }
+
+    /**
+     * 根事务管理器类型检测：在所有单例初始化完成后（SmartInitializingSingleton）执行检测，
+     * 避免在 Bean 装配阶段（如 filterRegistry @Bean 方法内）过早触发 transactionManager
+     * 和 dataSource 实例化，造成 BeanPostProcessor 脱靶。
+     */
+    @Bean
+    public SmartInitializingSingleton rootTransactionManagerChecker(ApplicationContext applicationContext) {
+        return () -> warnIfRootTransactionManagerNotJdbc(applicationContext);
     }
 
     @Bean

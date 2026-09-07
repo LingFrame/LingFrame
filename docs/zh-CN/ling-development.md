@@ -17,6 +17,18 @@
 
 ---
 
+## 业务演进与灵元开发三大模式
+
+在灵珑微内核架构体系中，业务落地与开发分为三大标准模式：
+
+| 模式 | 适用场景 | Controller 归属 | 核心机制 | 兜底保障 |
+| :--- | :--- | :--- | :--- | :--- |
+| **模式 1：存量业务透明接管** | 存量老系统平滑改造、老功能绞杀与增强 | **灵核底座（0 修改）** | 灵核 AOP 桥接 / `@LingReference` 动态代理 | 灵核默认实现 100% 自动兜底（永不 404） |
+| **模式 2：新业务契约门面** | 企业核心新业务、平台中台能力扩展 | **灵核提供薄门面（统一鉴权/审计）** | 灵核注入 `@LingReference` 动态契约路由 | 灵核统一熔断降级与默认保底策略 |
+| **模式 3：新业务自包含端点** | 完全独立的新业务功能、第三方能力包 | **灵元内部自包含** | 灵珑微内核动态注册/注销 Spring MVC 端点 | 卸载后端点即时注销，零内存残留 |
+
+---
+
 ## 一个最小可用灵元需要什么
 
 - 一个 Maven 模块
@@ -28,7 +40,7 @@
 ```xml
 <dependencies>
     <dependency>
-        <groupId>com.lingframe</groupId>
+        <groupId>cn.lingframe</groupId>
         <artifactId>lingframe-api</artifactId>
         <version>${lingframe.version}</version>
     </dependency>
@@ -249,7 +261,7 @@ Shared API 是进程级公共契约边界。灵元加载前预加载并冻结后
 | 静态集合 | **不会自动清**——静态引用持有灵元类对象 | 在卸载钩子里主动清空 |
 | ThreadLocal | **不会自动移除** | 在停止回调里 `remove()` |
 
-**正例**：`lingframe-example-saas-mall` 的 `InventoryHoldServiceImpl` 显式实现 `DisposableBean.destroy()`，关闭 TTL 调度器并清空预占记录——这是灵元里持有线程资源时的必须姿势。
+**正例**：业务灵元在持有独立线程资源时显式实现 `DisposableBean.destroy()` 或标注 `@PreDestroy`，关闭调度器并清空驻留数据（如在单体改造项目 `LingFrame-RuoYi` 中扩展灵元的退出逻辑）——这是灵元持有线程资源时的必须姿势。
 
 ### DB 治理边界：覆盖 Spring DataSource Bean 代理路径，不是全沙箱
 
@@ -262,15 +274,23 @@ Shared API 是进程级公共契约边界。灵元加载前预加载并冻结后
 
 这是**模型边界**，不是全路径沙箱——文档里不会把它吹成「全路径沙箱」。如果你的灵元需要严格存储治理，请通过灵核 Spring DataSource 路径访问数据库。
 
+### 灵元侧引入 Spring Data JPA / Hibernate 的硬边界（实测结论）
+
+灵元侧引入 `spring-boot-starter-data-jpa` 属于未经完整官方适配的高级场景，真实运行已通过 `ManagedJpaBoundaryTest` 实证三条硬边界：
+
+1. **必须显式配置方言**：受管代理在元数据安全脱敏时将 URL 替换为 `jdbc:lingframe:masked`，导致 Hibernate 无法基于 URL 自动解析方言，启动报 `Access to DialectResolutionInfo cannot be null`。**灵元必须显式配置 `spring.jpa.database-platform`（如 `org.hibernate.dialect.MySQLDialect`），否则 EntityManagerFactory 启动即失败**；
+2. **双事务管理器自动抑制，无注入歧义**：Spring Boot 的 `JpaBaseConfiguration` 带有 `@ConditionalOnMissingBean`。灵珑注入受管事务管理器 `lingTransactionManager`（`LingManagedTransactionManager`）后，JPA 自带的 `JpaTransactionManager` 会被自动抑制，容器仅有唯一事务管理器，无 `NoUniqueBeanDefinitionException`；
+3. **穿透连接提交权降级**：事务穿透命中时，受管代理返回不可物理关闭的代理连接（`NonCloseableLingConnectionProxy`），Hibernate 的 `setAutoCommit(false)`、`commit()`、`close()` 全部被拦截为 safe no-op，`rollback()` 仅置回滚信号上行，底层物理连接提交权安全收敛至灵核根事务。
+
 ### 灵元依赖纪律：provided 依赖灵核接口，误打成 compile 会导致 Class 身份错乱
 
-灵元 `implements` 灵核原生接口时（如 saas-mall 示例里灵元 implements ling-mall 的 `UserService`），pom 必须用 `<scope>provided</scope>` 依赖灵核模块：
+灵元 `implements` 灵核原生接口时（如业务灵元实现灵核已有服务接口），pom 必须用 `<scope>provided</scope>` 依赖灵核模块：
 
 ```xml
 <!-- 正确：provided，运行期由灵核 ClassLoader 父回退解析 -->
 <dependency>
-    <groupId>com.lingframe</groupId>
-    <artifactId>lingframe-example-ling-mall</artifactId>
+    <groupId>com.example</groupId>
+    <artifactId>example-app-lingcore</artifactId>
     <scope>provided</scope>
 </dependency>
 ```

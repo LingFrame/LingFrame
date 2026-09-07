@@ -1,6 +1,8 @@
 package com.lingframe.infra.storage.proxy;
 
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.api.storage.LingTransactionContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -11,6 +13,13 @@ import java.sql.SQLException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -19,6 +28,12 @@ import static org.mockito.Mockito.when;
 
 @DisplayName("LingDataSourceProxy 测试")
 class LingDataSourceProxyTest {
+
+    @AfterEach
+    void tearDown() {
+        // 每个用例后清空穿透上下文，防止 ThreadLocal 跨用例残留污染
+        LingTransactionContext.clear();
+    }
 
     @Nested
     @DisplayName("代理链穿透")
@@ -48,6 +63,187 @@ class LingDataSourceProxyTest {
 
             assertThrows(SQLException.class, () -> proxy.getConnection("user", "pwd"));
             verify(target, never()).getConnection("user", "pwd");
+        }
+    }
+
+    @Nested
+    @DisplayName("身份门控：受管代理穿透复用")
+    class ManagedIdentityGateTests {
+
+        @Test
+        @DisplayName("受管代理（dataSourceId 非 null）栈中有同 id 连接 → 复用并返回 NonCloseable，不向池借新连接")
+        void managedProxyReusesStackConnection() throws SQLException {
+            DataSource target = mock(DataSource.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            LingDataSourceProxy proxy = new LingDataSourceProxy(target, permissionService, "default");
+
+            // 穿透上下文栈中有同 id 连接（模拟 TransactionPropagationFilter 已压栈）
+            Connection txConnection = mock(Connection.class);
+            when(txConnection.isClosed()).thenReturn(false);
+            LingTransactionContext.pushConnection("default", txConnection);
+
+            Connection result = proxy.getConnection();
+
+            assertInstanceOf(NonCloseableLingConnectionProxy.class, result);
+            // 复用穿透连接，绝不向底层池借新连接
+            verify(target, never()).getConnection();
+            LingTransactionContext.popConnection();
+        }
+
+        @Test
+        @DisplayName("受管代理栈中无同 id 连接 → 从池借出并返回 LingConnectionProxy")
+        void managedProxyFallsBackToPoolWhenStackEmpty() throws SQLException {
+            DataSource target = mock(DataSource.class);
+            Connection poolConnection = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(target.getConnection()).thenReturn(poolConnection);
+
+            LingDataSourceProxy proxy = new LingDataSourceProxy(target, permissionService, "order-ds");
+
+            Connection result = proxy.getConnection();
+
+            assertInstanceOf(LingConnectionProxy.class, result);
+            verify(target).getConnection();
+        }
+
+        @Test
+        @DisplayName("受管代理按自身 id 精确查栈：其他源的连接不误用（防串库）")
+        void managedProxyIgnoresOtherSourceConnections() throws SQLException {
+            DataSource target = mock(DataSource.class);
+            Connection poolConnection = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(target.getConnection()).thenReturn(poolConnection);
+
+            LingDataSourceProxy proxy = new LingDataSourceProxy(target, permissionService, "order-ds");
+
+            // 栈中只有 "default" 源的连接，order-ds 代理必须无视它（防串库）
+            Connection defaultConn = mock(Connection.class);
+            LingTransactionContext.pushConnection("default", defaultConn);
+
+            Connection result = proxy.getConnection();
+
+            assertInstanceOf(LingConnectionProxy.class, result);
+            verify(target).getConnection();
+            LingTransactionContext.popConnection();
+        }
+
+        @Test
+        @DisplayName("受管代理命中栈连接但连接已关闭 → 回退池借出")
+        void managedProxyFallsBackWhenStackConnectionClosed() throws SQLException {
+            DataSource target = mock(DataSource.class);
+            Connection poolConnection = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(target.getConnection()).thenReturn(poolConnection);
+
+            LingDataSourceProxy proxy = new LingDataSourceProxy(target, permissionService, "default");
+
+            Connection closedTx = mock(Connection.class);
+            when(closedTx.isClosed()).thenReturn(true);
+            LingTransactionContext.pushConnection("default", closedTx);
+
+            Connection result = proxy.getConnection();
+
+            assertInstanceOf(LingConnectionProxy.class, result);
+            verify(target).getConnection();
+            LingTransactionContext.popConnection();
+        }
+    }
+
+    @Nested
+    @DisplayName("身份门控：私有池代理永不查栈")
+    class PrivatePoolGateTests {
+
+        @Test
+        @DisplayName("私有池代理（dataSourceId null）即使栈中有受管连接也永不复用（混合链路防串库）")
+        void privateProxyNeverQueriesStack() throws SQLException {
+            DataSource target = mock(DataSource.class);
+            Connection poolConnection = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(target.getConnection()).thenReturn(poolConnection);
+
+            // 旧构造器 = dataSourceId null（模式 2 私有池路径）
+            LingDataSourceProxy proxy = new LingDataSourceProxy(target, permissionService);
+
+            // 栈中已有受管穿透连接（混合链路：受管事务中调用私有库灵元）
+            Connection txConnection = mock(Connection.class);
+            when(txConnection.isClosed()).thenReturn(false);
+            LingTransactionContext.pushConnection("default", txConnection);
+
+            Connection result = proxy.getConnection();
+
+            // 私有代理永不查栈：即使栈非空也借自身池连接，串库路径被物理切断
+            assertInstanceOf(LingConnectionProxy.class, result);
+            verify(target).getConnection();
+            LingTransactionContext.popConnection();
+        }
+
+        @Test
+        @DisplayName("显式 null dataSourceId 构造器与旧构造器行为一致")
+        void explicitNullIdBehavesLikeLegacyConstructor() throws SQLException {
+            DataSource target = mock(DataSource.class);
+            Connection poolConnection = mock(Connection.class);
+            PermissionService permissionService = mock(PermissionService.class);
+            when(target.getConnection()).thenReturn(poolConnection);
+
+            LingDataSourceProxy explicit = new LingDataSourceProxy(target, permissionService, null);
+            LingDataSourceProxy legacy = new LingDataSourceProxy(target, permissionService);
+
+            assertInstanceOf(LingConnectionProxy.class, explicit.getConnection());
+            assertInstanceOf(LingConnectionProxy.class, legacy.getConnection());
+            verify(target, org.mockito.Mockito.times(2)).getConnection();
+        }
+    }
+
+    @Nested
+    @DisplayName("身份提升（promoteToManaged）")
+    class PromoteTests {
+
+        @Test
+        @DisplayName("提升设置身份；同身份重复提升幂等无副作用")
+        void promoteIsIdempotentForSameId() {
+            LingDataSourceProxy proxy = new LingDataSourceProxy(mock(DataSource.class), mock(PermissionService.class));
+
+            proxy.promoteToManaged("default");
+            // 幂等：同身份再次提升不抛
+            assertDoesNotThrow(() -> proxy.promoteToManaged("default"));
+        }
+
+        @Test
+        @DisplayName("已提升后以不同身份再提升 → 拒绝（防御连接串用）")
+        void promoteConflictingIdRejected() {
+            LingDataSourceProxy proxy = new LingDataSourceProxy(
+                    mock(DataSource.class), mock(PermissionService.class), "default");
+
+            assertThrows(IllegalStateException.class, () -> proxy.promoteToManaged("order-ds"));
+        }
+
+        @Test
+        @DisplayName("并发以不同身份提升：恰一个成功，另一个被拒绝（synchronized 保证读-判-写原子，不静默覆盖）")
+        void concurrentPromoteHasExactlyOneWinner() throws Exception {
+            LingDataSourceProxy proxy = new LingDataSourceProxy(mock(DataSource.class), mock(PermissionService.class));
+            ExecutorService pool = Executors.newFixedThreadPool(2);
+            try {
+                List<Future<?>> futures = new ArrayList<>(2);
+                AtomicInteger success = new AtomicInteger();
+                AtomicInteger rejected = new AtomicInteger();
+                for (String id : new String[]{"ds-a", "ds-b"}) {
+                    futures.add(pool.submit(() -> {
+                        try {
+                            proxy.promoteToManaged(id);
+                            success.incrementAndGet();
+                        } catch (IllegalStateException e) {
+                            rejected.incrementAndGet();
+                        }
+                    }));
+                }
+                for (Future<?> f : futures) {
+                    f.get(3, TimeUnit.SECONDS);
+                }
+                assertEquals(1, success.get(), "恰有一个身份提升成功");
+                assertEquals(1, rejected.get(), "另一个身份被拒绝，不得静默覆盖先写者");
+            } finally {
+                pool.shutdownNow();
+            }
         }
     }
 

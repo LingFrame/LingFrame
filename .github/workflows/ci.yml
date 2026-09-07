@@ -36,8 +36,11 @@ jobs:
       # proxyBeanMethods=false 根因修复（见 LingTestSpringConfiguration），core 亦无需隔离 fork。
       # 示例级集成测试（ObservabilityClosedLoopIntegrationTest）已拆到独立 job example-it-sb2，
       # 本步骤只跑单元测试 + 质量门（verify 阶段的 checkstyle/spotbugs），与 SB3 拓扑对齐。
+      # 不要用 -DargLine 覆盖内存参数：-D 用户属性优先级高于 POM 属性/profile，整体替换 argLine，
+      # 会把 jdk9-plus-surefire 注入的 --add-opens 一并丢弃（SB3 在 JDK17 上反射 JDK 内部包会
+      # 抛 InaccessibleObjectException）。内存调优已并入 lingframe-dependencies 的 argLine 属性。
       - name: Build & Test (SB2 / JDK 8)
-        run: mvn -B -T 1C clean verify -Pspring-boot2 -DargLine="-Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+        run: mvn -B -T 1C clean verify -Pspring-boot2
 
       # 覆盖率门控复用：把本步生成的 jacoco exec（位于 ${java.io.tmpdir}/jacoco/default/，见父 POM jacoco 配置）
       # 上传为 artifact，供 coverage-check-sb2 下载后直接 jacoco:check@check，避免 PR 上重跑全量测试。
@@ -134,7 +137,7 @@ jobs:
       # 默认 reuseForks=true 即可：SB3 starter 同属“共享 @Configuration 被 CGLIB 二次增强”问题，
       # 已随 proxyBeanMethods=false 根因修复一并消除，无需 reuseForks=false。
       - name: Build & Test (Spring Boot 3)
-        run: mvn -B -T 1C clean install -Pspring-boot3 -DargLine="-Djdk.net.URLClassPath.disableURLClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m"
+        run: mvn -B -T 1C clean install -Pspring-boot3
 
       # 覆盖率门控复用：上传 jacoco exec（${java.io.tmpdir}/jacoco/default/）供 coverage-check-sb3 复用。
       # 必须在下方 SB3 gateway mapping smoke 之前上传——该 smoke 是独立 mvn -pl 单模块 test，
