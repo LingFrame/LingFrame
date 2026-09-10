@@ -354,3 +354,8 @@ mainClass: "com.example.UserLing"
 
 本项目是 **AtomGit G-Star 孵化项目**。  
 感谢 [AtomGit](https://atomgit.com) 平台对开源项目的支持与推广。
+
+---
+
+感谢技术社区 [linux.do](https://linux.do) 社区的佬友们提供的宝贵讨论环境与技术反馈。
+这里是目前国内最具极客精神的纯粹技术社区之一，非常推荐开发者朋友们加入交流。
