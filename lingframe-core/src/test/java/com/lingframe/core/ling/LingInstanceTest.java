@@ -38,6 +38,58 @@ import static org.mockito.Mockito.when;
 @DisplayName("LingInstance 测试")
 class LingInstanceTest {
 
+    @Test
+    @DisplayName("空闲等待校验实际计数，零预算和超时不误报完成")
+    void awaitIdleChecksCountAndBudget() throws Exception {
+        assertTrue(instance.awaitIdle(0));
+        prepareReady(instance);
+        assertTrue(instance.tryEnter());
+        assertFalse(instance.awaitIdle(0));
+        assertFalse(instance.awaitIdle(-1));
+        assertFalse(instance.awaitIdle(1));
+        instance.exit();
+        assertTrue(instance.awaitIdle(0));
+    }
+
+    @Test
+    @DisplayName("虚假空闲信号不会在仍有调用时返回成功")
+    void spuriousSignalDoesNotMeanIdle() throws Exception {
+        prepareReady(instance);
+        assertTrue(instance.tryEnter());
+        java.lang.reflect.Field lockField = LingInstance.class.getDeclaredField("idleLock");
+        java.lang.reflect.Field conditionField = LingInstance.class.getDeclaredField("idleCondition");
+        lockField.setAccessible(true);
+        conditionField.setAccessible(true);
+        java.util.concurrent.locks.ReentrantLock lock =
+                (java.util.concurrent.locks.ReentrantLock) lockField.get(instance);
+        java.util.concurrent.locks.Condition condition =
+                (java.util.concurrent.locks.Condition) conditionField.get(instance);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            java.util.concurrent.Future<Boolean> result = executor.submit(() -> instance.awaitIdle(500));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            boolean signalled = false;
+            while (System.nanoTime() < deadline && !signalled) {
+                lock.lock();
+                try {
+                    if (lock.hasWaiters(condition)) {
+                        condition.signalAll();
+                        signalled = true;
+                    }
+                } finally {
+                    lock.unlock();
+                }
+                Thread.yield();
+            }
+            assertTrue(signalled);
+            assertFalse(result.get(5, TimeUnit.SECONDS));
+        } finally {
+            instance.exit();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
     @Mock
     private LingContainer container;
 

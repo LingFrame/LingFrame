@@ -8,8 +8,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.Arrays;
+import java.util.Iterator;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -17,6 +22,8 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -28,6 +35,87 @@ import static org.mockito.Mockito.when;
  */
 @DisplayName("TransactionPropagationFilter 事务穿透过滤器")
 class TransactionPropagationFilterTest {
+
+    @Nested
+    @DisplayName("准备失败的资源作用域")
+    class PreparationFailure {
+
+        @ParameterizedTest
+        @CsvSource({"active,false", "sources,false", "iterator,false", "lookup,false", "closed,false",
+                "downstream,false", "active,true", "sources,true", "iterator,true", "lookup,true",
+                "closed,true", "downstream,true"})
+        @DisplayName("各阶段失败只撤销本层压栈并保留父事务，线程可继续复用")
+        void failurePreservesParentAndReleasesLocalFrames(String stage, boolean nested) throws Throwable {
+            Connection parent = mock(Connection.class);
+            Connection first = mock(Connection.class);
+            Connection second = mock(Connection.class);
+            if (nested) {
+                LingTransactionContext.pushConnection("first", parent);
+                LingTransactionContext.setRollbackOnly();
+            }
+            TransactionBindingHook hook = mock(TransactionBindingHook.class);
+            when(hook.isTransactionActive()).thenReturn(true);
+            Set<String> sources = new LinkedHashSet<>(Arrays.asList("first", "second"));
+            when(hook.getActiveBoundDataSourceIds()).thenReturn(sources);
+            when(hook.getBoundConnection("first")).thenReturn(first);
+            when(hook.getBoundConnection("second")).thenReturn(second);
+            RuntimeException failure = new IllegalStateException("injected preparation failure");
+            Throwable expected = failure;
+            if ("active".equals(stage)) {
+                when(hook.isTransactionActive()).thenThrow(failure);
+            } else if ("sources".equals(stage)) {
+                when(hook.getActiveBoundDataSourceIds()).thenThrow(failure);
+            } else if ("iterator".equals(stage)) {
+                @SuppressWarnings("unchecked")
+                Set<String> brokenSources = mock(Set.class);
+                @SuppressWarnings("unchecked")
+                Iterator<String> iterator = mock(Iterator.class);
+                when(brokenSources.iterator()).thenReturn(iterator);
+                when(iterator.hasNext()).thenReturn(true).thenThrow(failure);
+                when(iterator.next()).thenReturn("first");
+                when(hook.getActiveBoundDataSourceIds()).thenReturn(brokenSources);
+            } else if ("lookup".equals(stage)) {
+                when(hook.getBoundConnection("second")).thenThrow(failure);
+            } else if ("closed".equals(stage)) {
+                SQLException sqlFailure = new SQLException("injected connection inspection failure");
+                when(second.isClosed()).thenThrow(sqlFailure);
+                expected = sqlFailure;
+            }
+            InvocationContext ctx = normalContext();
+            try {
+                LingFilterChain chain = mock(LingFilterChain.class);
+                when(chain.doFilter(ctx)).thenThrow(failure);
+                assertSame(expected, assertThrows(Throwable.class,
+                        () -> new TransactionPropagationFilter(hook).doFilter(ctx, chain)));
+                if (!"downstream".equals(stage)) {
+                    verify(chain, never()).doFilter(ctx);
+                }
+                assertNull(LingTransactionContext.getCurrentConnection("second"));
+                if (nested) {
+                    assertSame(parent, LingTransactionContext.getCurrentConnection("first"));
+                    assertTrue(LingTransactionContext.isRollbackOnly());
+                    LingTransactionContext.popConnection();
+                    LingTransactionContext.cleanIfEmpty();
+                }
+                assertFalse(LingTransactionContext.hasAnyConnection());
+                assertFalse(LingTransactionContext.isRollbackOnly());
+                // 不经过测试清理，直接在当前线程发起下一次调用，验证失败帧没有残留。
+                new TransactionPropagationFilter(activeHook(first)).doFilter(ctx, current -> {
+                    assertSame(first, LingTransactionContext.getCurrentConnection(DATA_SOURCE_ID));
+                    assertNull(LingTransactionContext.getCurrentConnection("first"));
+                    return "ok";
+                });
+                assertFalse(LingTransactionContext.hasAnyConnection());
+                for (Connection connection : Arrays.asList(parent, first, second)) {
+                    verify(connection, never()).close();
+                    verify(connection, never()).commit();
+                    verify(connection, never()).rollback();
+                }
+            } finally {
+                InvocationContext.detach(null);
+            }
+        }
+    }
 
     private static final String DATA_SOURCE_ID = "default";
 

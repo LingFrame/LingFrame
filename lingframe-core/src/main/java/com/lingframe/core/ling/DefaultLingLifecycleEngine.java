@@ -38,6 +38,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -453,14 +454,14 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             return LingUninstallResult.notTriggered(lingId, null, Collections.emptyList());
         }
 
-        List<LeakRiskReport> reports = unloadCoordinator.checkBeforeLingUnload(
-                lingId,
-                new ArrayList<>(runtime.getInstancePool().getAllInstances()));
+        List<LingInstance> instances = new ArrayList<>(
+                new LinkedHashSet<>(runtime.getInstancePool().getAllInstances()));
+        List<LeakRiskReport> reports = unloadCoordinator.checkBeforeLingUnload(lingId, instances);
 
         // 先将所有活跃实例移入 dying 队列，移出 activePool。
         // 这样 STOPPING 实例不再影响 hasAvailableInstance，且剩余版本（如有）仍可服务。
-        List<LingInstance> activeInstances = new ArrayList<>(runtime.getInstancePool().getActiveInstances());
-        for (LingInstance instance : activeInstances) {
+        // 同一快照包含此前超时留下的濒死实例，重试仍须等待其在途调用。
+        for (LingInstance instance : instances) {
             runtime.getInstancePool().moveToDying(instance);
         }
 
@@ -469,11 +470,11 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         // 后续 doFullUndeploy 内的 enterRuntimeStopping 幂等（已是 STOPPING 则跳过）。
         enterRuntimeStopping(lingId, runtime);
 
-        drainInstances(lingId, activeInstances,
+        drainInstances(lingId, instances,
                 runtime.getConfig().getForceCleanupDelaySeconds(),
                 runtime.getConfig().getDrainPollIntervalMs(),
                 runtime.getConfig().isForceDrainOnTimeout());
-        doFullUndeploy(lingId, runtime);
+        doFullUndeploy(lingId, runtime, instances);
         return LingUninstallResult.triggered(lingId, null, reports);
     }
 
@@ -505,17 +506,30 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             return LingUninstallResult.notTriggered(lingId, version, Collections.emptyList());
         }
 
-        LingInstance targetInstance = findActiveInstanceOrWarn(lingId, runtime, version);
-        if (targetInstance == null) {
+        List<LingInstance> instances = new ArrayList<>();
+        for (LingInstance instance : new LinkedHashSet<>(runtime.getInstancePool().getAllInstances())) {
+            if (Objects.equals(version, instance.getVersion())) {
+                instances.add(instance);
+            }
+        }
+        if (instances.isEmpty()) {
             return LingUninstallResult.notTriggered(lingId, version, Collections.emptyList());
         }
 
-        LeakRiskReport report = unloadCoordinator.checkBeforeVersionUnload(
-                lingId,
-                targetInstance.getVersion(),
-                targetInstance.getClassLoader());
-        undeploySelectedInstance(lingId, runtime, targetInstance);
-        return LingUninstallResult.triggered(lingId, version, Collections.singletonList(report));
+        List<LeakRiskReport> reports = new ArrayList<>();
+        for (LingInstance instance : instances) {
+            reports.add(unloadCoordinator.checkBeforeVersionUnload(
+                    lingId, version, instance.getClassLoader()));
+            runtime.getInstancePool().moveToDying(instance);
+        }
+        // 同版本可存在多个代次，全部通过排空后才开始回收，避免部分卸载。
+        drainInstances(lingId, instances, runtime.getConfig().getForceCleanupDelaySeconds(),
+                runtime.getConfig().getDrainPollIntervalMs(), runtime.getConfig().isForceDrainOnTimeout());
+        for (LingInstance instance : instances) {
+            unloadSingleInstance(lingId, runtime, instance);
+        }
+        finalizeRuntimeRemovalIfEmpty(lingId, runtime, version);
+        return LingUninstallResult.triggered(lingId, version, reports);
     }
 
     @Override
@@ -844,6 +858,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
     }
 
     private void undeploySelectedInstance(String lingId, LingRuntime runtime, LingInstance targetInstance) {
+        String version = targetInstance.getVersion();
         // 先将实例移入 dyingQueue，确保 drain 期间 activePool 不再包含该实例。
         // 这样并发查询（如 /lings 接口）不会看到正在卸载的旧版本，避免 reload 时出现"多版本"假象。
         // moveToDying 内部会调用 instanceCoordinator.stop() 将状态置为 STOPPING。
@@ -854,7 +869,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
                 runtime.getConfig().getDrainPollIntervalMs(),
                 runtime.getConfig().isForceDrainOnTimeout());
         unloadSingleInstance(lingId, runtime, targetInstance);
-        finalizeRuntimeRemovalIfEmpty(lingId, runtime, targetInstance.getVersion());
+        finalizeRuntimeRemovalIfEmpty(lingId, runtime, version);
     }
 
     private void unloadSingleInstance(String lingId, LingRuntime runtime, LingInstance instance) {
@@ -877,6 +892,10 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         }
         if (runtime.getInstancePool().getAllInstances().isEmpty()) {
             // 最后一版由全量卸载路径 finalizeRuntimeRemovalIfEmpty -> doFullUndeploy -> clearServiceRegistry 接管执行 evict
+            return;
+        }
+        if (runtime.getInstancePool().getAllInstances().stream()
+                .anyMatch(instance -> Objects.equals(version, instance.getVersion()))) {
             return;
         }
         lingServiceRegistry.evictProvider(lingId, version);
@@ -910,22 +929,25 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         if (remaining.isEmpty()) {
             log.info("[{}] No instances remaining after version {} unloaded. Cleaning up runtime.",
                     lingId, version);
-            doFullUndeploy(lingId, runtime);
+            doFullUndeploy(lingId, runtime, Collections.emptyList());
         } else {
             log.info("[{}] Ling has {} instances remaining, skipping runtime cleanup.", lingId, remaining.size());
         }
     }
 
-    private void doFullUndeploy(String lingId, LingRuntime runtime) {
+    private void doFullUndeploy(String lingId, LingRuntime runtime, List<LingInstance> drainedInstances) {
         eventBus.publish(new LingUninstallingEvent(lingId));
         unregisterHotSwapWatcher(lingId);
         enterRuntimeStopping(lingId, runtime);
         // 先登记「卸载完成」通知（按实例数等待泄漏检测事件到齐），再排空实例：
         // 检测是异步延迟的，登记先于事件到达，保证不漏。
         PendingUninstallNotification pending = new PendingUninstallNotification(
-                runtime.getInstancePool().getAllInstances().size());
+                drainedInstances.size());
         pendingUninstallNotifications.put(lingId, pending);
-        unloadAllInstances(lingId, runtime);
+        // 只回收本次已经通过排空的快照，不重新取得未经检查的成员集合。
+        for (LingInstance instance : drainedInstances) {
+            unloadSingleInstance(lingId, runtime, instance);
+        }
         clearServiceRegistry(lingId);
         finalizeLingRemoval(lingId);
         // 全量卸载必须确定性注销 coordinator：不得依赖“恰好已是 REMOVED”才能 purge
@@ -982,13 +1004,6 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
                 && current != RuntimeStatus.INACTIVE
                 && current != RuntimeStatus.REMOVED) {
             runtimeCoordinator.shutdown(lingId);
-        }
-    }
-
-    private void unloadAllInstances(String lingId, LingRuntime runtime) {
-        List<LingInstance> instances = new ArrayList<>(runtime.getInstancePool().getAllInstances());
-        for (LingInstance instance : instances) {
-            unloadSingleInstance(lingId, runtime, instance);
         }
     }
 
@@ -1091,12 +1106,15 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         log.info("[{}] Draining {} instances, timeout={}s, awaitSlice={}ms, forceOnTimeout={}",
                 lingId, instances.size(), timeoutSeconds, awaitSliceMs, forceDrainOnTimeout);
 
-        long deadlineMs = System.currentTimeMillis() + (long) timeoutSeconds * 1000;
+        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(Math.max(0, timeoutSeconds));
         boolean allIdle = false;
 
         // 事件驱动 drain：每轮对非 idle 实例调用 awaitIdle 阻塞等待 signal，
         // 任一实例被唤醒后重新扫描全部实例状态，全部 idle 则退出。
-        while (System.currentTimeMillis() < deadlineMs) {
+        while (true) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new IllegalStateException("Drain interrupted for ling [" + lingId + "]");
+            }
             LingInstance pending = findPendingInstance(lingId, instances);
             if (pending == null) {
                 allIdle = true;
@@ -1105,21 +1123,21 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
             // 对首个非 idle 实例做事件驱动等待：exit() 归零时会 signal 唤醒此处，
             // 唤醒后回到 while 顶部重新扫描，可能其他实例也已 idle。
             // 剩余时间作为 awaitIdle 的单次超时，但不短于 awaitSliceMs 以保证语义粒度。
-            long remaining = deadlineMs - System.currentTimeMillis();
-            long waitMs = Math.min(awaitSliceMs, remaining);
-            if (waitMs <= 0) {
+            long remaining = deadlineNanos - System.nanoTime();
+            if (remaining <= 0) {
                 break;
             }
+            long waitMs = Math.min(awaitSliceMs, Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining)));
             try {
                 pending.awaitIdle(waitMs);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.warn("[{}] Drain interrupted", lingId);
-                break;
+                throw new IllegalStateException("Drain interrupted for ling [" + lingId + "]", e);
             }
         }
 
-        if (allIdle) {
+        if (allIdle || findPendingInstance(lingId, instances) == null) {
             log.info("[{}] All instances drained successfully", lingId);
             return;
         }

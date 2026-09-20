@@ -65,6 +65,58 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DisplayName("真实容器端到端：根事务 + 灵元 Mapper 回滚链路")
 class ManagedTransactionEndToEndTest {
 
+    @Test
+    @DisplayName("第二数据源准备失败时根事务真实回滚，线程随后可正常提交")
+    void preparationFailureRollsBackRootTransaction() {
+        ensureTable(coreDataSource);
+        SpringTransactionBindingHook delegate = new SpringTransactionBindingHook(managedDataSourceRegistry);
+        com.lingframe.core.spi.TransactionBindingHook failingHook =
+                new com.lingframe.core.spi.TransactionBindingHook() {
+                    @Override
+                    public boolean isTransactionActive() {
+                        return delegate.isTransactionActive();
+                    }
+
+                    @Override
+                    public java.util.Set<String> getActiveBoundDataSourceIds() {
+                        return new java.util.LinkedHashSet<>(java.util.Arrays.asList("default", "broken"));
+                    }
+
+                    @Override
+                    public Connection getBoundConnection(String dataSourceId) {
+                        if ("broken".equals(dataSourceId)) {
+                            throw new IllegalStateException("injected second source failure");
+                        }
+                        return delegate.getBoundConnection(dataSourceId);
+                    }
+                };
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        assertThatThrownBy(() -> template.executeWithoutResult(status -> {
+            jdbc(coreDataSource).update("INSERT INTO " + E2E_TABLE + " VALUES (41, 'prepare-failed')");
+            InvocationContext ctx = normalContext();
+            try {
+                new TransactionPropagationFilter(failingHook).doFilter(ctx, current -> {
+                    throw new AssertionError("business must not run after preparation failure");
+                });
+            } catch (RuntimeException failure) {
+                throw failure;
+            } catch (Throwable failure) {
+                throw new AssertionError(failure);
+            } finally {
+                InvocationContext.detach(null);
+            }
+        })).isInstanceOf(IllegalStateException.class).hasMessage("injected second source failure");
+        assertThat(LingTransactionContext.hasAnyConnection()).isFalse();
+        assertThat(org.springframework.transaction.support.TransactionSynchronizationManager
+                .hasResource(coreDataSource)).isFalse();
+        assertThat(jdbc(coreDataSource).queryForObject(
+                "SELECT COUNT(*) FROM " + E2E_TABLE + " WHERE id = 41", Integer.class)).isZero();
+        template.executeWithoutResult(status ->
+                jdbc(coreDataSource).update("INSERT INTO " + E2E_TABLE + " VALUES (42, 'next-transaction')"));
+        assertThat(jdbc(coreDataSource).queryForObject(
+                "SELECT COUNT(*) FROM " + E2E_TABLE + " WHERE id = 42", Integer.class)).isEqualTo(1);
+    }
+
     private static final String E2E_TABLE = "e2e_tx_propagation";
 
     @Autowired

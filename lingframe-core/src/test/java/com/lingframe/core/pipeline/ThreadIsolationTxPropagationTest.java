@@ -39,6 +39,41 @@ import static org.mockito.Mockito.when;
 @DisplayName("ThreadIsolationGovernanceFilter 跨线程事务穿透")
 class ThreadIsolationTxPropagationTest {
 
+    @Test
+    @DisplayName("准备失败后同线程重试，worker 仅获得本次有效连接")
+    void preparationFailureDoesNotLeakIntoNextWorker() throws Throwable {
+        Connection connection = mock(Connection.class);
+        TransactionBindingHook hook = mock(TransactionBindingHook.class);
+        when(hook.isTransactionActive()).thenReturn(true);
+        when(hook.getActiveBoundDataSourceIds()).thenReturn(
+                new java.util.LinkedHashSet<>(java.util.Arrays.asList("default", "broken")));
+        when(hook.getBoundConnection("default")).thenReturn(connection);
+        when(hook.getBoundConnection("broken")).thenThrow(new IllegalStateException("prepare failed"))
+                .thenReturn(null);
+        TransactionPropagationFilter propagation = new TransactionPropagationFilter(hook);
+        ThreadIsolationGovernanceFilter isolation = filterWith(LingRuntimeConfig.builder()
+                .defaultTimeoutMs(2000).bulkheadMaxConcurrent(1).build());
+        InvocationContext ctx = normalContext();
+        try {
+            LingFilterChain chain = current -> isolation.doFilter(current, worker -> {
+                assertSame(connection, LingTransactionContext.getCurrentConnection("default"));
+                assertFalse(LingTransactionContext.isRollbackOnly());
+                return "ok";
+            });
+            assertThrows(IllegalStateException.class, () -> propagation.doFilter(ctx, chain));
+            assertFalse(LingTransactionContext.hasAnyConnection());
+            assertEquals("ok", propagation.doFilter(ctx, chain));
+            assertFalse(LingTransactionContext.hasAnyConnection());
+            isolation.doFilter(ctx, worker -> {
+                assertFalse(LingTransactionContext.hasAnyConnection());
+                return null;
+            });
+        } finally {
+            isolation.evict(LING_ID);
+            InvocationContext.detach(null);
+        }
+    }
+
     private static final String LING_ID = "ling1";
 
     @AfterEach

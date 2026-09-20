@@ -77,19 +77,18 @@ public class TransactionPropagationFilter implements LingInvocationFilter {
 
         int pushed = 0;
 
-        // 通过 SPI 检查当前线程是否有活跃事务（core 不直接触碰 Spring）；
-        // 按 hook 报告的活跃绑定源集合逐源压栈（模式 1 恒为 {"default"}）
-        if (transactionBindingHook != null && transactionBindingHook.isTransactionActive()) {
-            for (String dataSourceId : transactionBindingHook.getActiveBoundDataSourceIds()) {
-                Connection conn = transactionBindingHook.getBoundConnection(dataSourceId);
-                if (conn != null && !conn.isClosed()) {
-                    LingTransactionContext.pushConnection(dataSourceId, conn);
-                    pushed++;
+        try {
+            // 准备阶段也可能在部分压栈后失败，必须与下游执行共享同一个清理作用域。
+            // 通过 SPI 逐源提取连接，core 不直接触碰 Spring。
+            if (transactionBindingHook != null && transactionBindingHook.isTransactionActive()) {
+                for (String dataSourceId : transactionBindingHook.getActiveBoundDataSourceIds()) {
+                    Connection conn = transactionBindingHook.getBoundConnection(dataSourceId);
+                    if (conn != null && !conn.isClosed()) {
+                        LingTransactionContext.pushConnection(dataSourceId, conn);
+                        pushed++;
+                    }
                 }
             }
-        }
-
-        try {
             // 跨边界执行调用（TCCL 切换 / worker 搬运 -> 灵元执行 Mapper SQL，复用该 Connection）
             Object result = chain.doFilter(ctx);
 

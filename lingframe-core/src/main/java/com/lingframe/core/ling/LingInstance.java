@@ -171,7 +171,7 @@ public class LingInstance {
         }
         activeRequests.incrementAndGet();
         if (isDying()) {
-            activeRequests.decrementAndGet();
+            exit();
             return false;
         }
         return true;
@@ -193,8 +193,8 @@ public class LingInstance {
 
         activeRequests.incrementAndGet();
         if (isDying()) {
-            activeRequests.decrementAndGet();
             activeInvocations.remove(invocationId);
+            exit();
             return -1L;
         }
         return invocationId;
@@ -250,11 +250,15 @@ public class LingInstance {
         }
         idleLock.lock();
         try {
-            // 二次检查防止在获取锁期间实例已变 idle（避免漏信号）
-            if (activeRequests.get() == 0) {
-                return true;
+            // 唤醒可能是虚假的，返回值只表达在途计数事实，并使用剩余预算继续等待。
+            long remainingNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+            while (activeRequests.get() != 0) {
+                if (remainingNanos <= 0) {
+                    return false;
+                }
+                remainingNanos = idleCondition.awaitNanos(remainingNanos);
             }
-            return idleCondition.await(timeoutMillis, TimeUnit.MILLISECONDS);
+            return true;
         } finally {
             idleLock.unlock();
         }

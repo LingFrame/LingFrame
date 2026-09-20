@@ -15,6 +15,9 @@ import com.lingframe.core.spi.LingLoaderFactory;
 import com.lingframe.core.spi.LingSecurityVerifier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import com.lingframe.core.invoker.DefaultLingServiceInvoker;
 
 import javax.tools.JavaCompiler;
 import javax.tools.StandardJavaFileManager;
@@ -28,12 +31,20 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -54,6 +65,112 @@ class UnloadBackpressureTest {
     private static final String VERSION = "1.0.0";
     private static final String SERVICE_CLASS_NAME = "sample.ling.PrivateDbService";
     private static final String REQUIRED_PERMISSION = "biz:execute";
+
+    @ParameterizedTest
+    @ValueSource(strings = {"all", "version", "instance"})
+    @DisplayName("真实调用未退出时连续卸载重试均拒绝，退出后精确回收一次")
+    void retriesMustDrainDyingInstances(String mode) throws Throwable {
+        TestRuntime runtime = createTestRuntime();
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            LingInstance instance = deployAndHoldInvocation(runtime);
+            instance.exit();
+            ReflectiveLingContainer container = (ReflectiveLingContainer) instance.getContainer();
+            CloseAwareClassLoader loader = (CloseAwareClassLoader) instance.getClassLoader();
+            Object bean = container.getBean(SERVICE_CLASS_NAME);
+            java.lang.reflect.Method method = bean.getClass().getMethod("hold", CountDownLatch.class,
+                    CountDownLatch.class);
+            Future<Object> call = worker.submit(() -> new DefaultLingServiceInvoker().invoke(instance, bean,
+                    method, new Object[]{entered, release}));
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            for (int attempt = 0; attempt < 4; attempt++) {
+                assertThrows(IllegalStateException.class, () -> unload(runtime, instance, mode));
+                assertTrue(container.isActive());
+                assertFalse(loader.closed.get());
+                assertEquals(0, container.stopCount);
+                assertEquals(0, loader.closeCount);
+                assertTrue(runtime.repository.getRuntime(LING_ID).getInstancePool()
+                        .getAllInstances().contains(instance));
+            }
+            release.countDown();
+            assertEquals("done", call.get(5, TimeUnit.SECONDS));
+            unload(runtime, instance, mode);
+            assertNull(runtime.repository.getRuntime(LING_ID));
+            assertEquals(1, container.stopCount);
+            assertEquals(1, loader.closeCount);
+        } finally {
+            release.countDown();
+            worker.shutdownNow();
+            assertTrue(worker.awaitTermination(5, TimeUnit.SECONDS));
+            runtime.shutdown();
+        }
+    }
+
+    private void unload(TestRuntime runtime, LingInstance instance, String mode) {
+        if ("version".equals(mode)) {
+            runtime.lifecycleEngine.undeploy(LING_ID, VERSION);
+        } else if ("instance".equals(mode)) {
+            runtime.lifecycleEngine.undeploy(LING_ID, instance);
+        } else {
+            runtime.lifecycleEngine.undeploy(LING_ID);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"all", "version", "instance"})
+    @DisplayName("同版本新旧代次混合时排空不遗漏濒死实例，实例卸载不误删新代次")
+    void mixedGenerationsRespectUnloadScope(String mode) throws Throwable {
+        TestRuntime runtime = createTestRuntime(0, false);
+        try {
+            LingInstance old = deployAndHoldInvocation(runtime);
+            CloseAwareClassLoader oldLoader = (CloseAwareClassLoader) old.getClassLoader();
+            LingRuntime lingRuntime = runtime.repository.getRuntime(LING_ID);
+            lingRuntime.getInstancePool().moveToDying(old);
+            LingDefinition definition = new LingDefinition();
+            definition.setId(LING_ID);
+            definition.setVersion(VERSION);
+            definition.setMainClass(SERVICE_CLASS_NAME);
+            runtime.lifecycleEngine.deployForReload(definition, runtime.classesDir.toFile(), true,
+                    Collections.emptyMap());
+            LingInstance replacement = lingRuntime.getInstancePool().getDefault();
+            CloseAwareClassLoader replacementLoader = (CloseAwareClassLoader) replacement.getClassLoader();
+            assertThrows(IllegalStateException.class, () -> unload(runtime, old, mode));
+            assertEquals(0, oldLoader.closeCount);
+            assertEquals(0, replacementLoader.closeCount);
+            assertEquals(2, lingRuntime.getInstancePool().getAllInstances().size());
+            old.exit();
+            unload(runtime, old, mode);
+            assertEquals(1, oldLoader.closeCount);
+            if ("instance".equals(mode)) {
+                assertTrue(replacement.isReady());
+                assertEquals(0, replacementLoader.closeCount);
+                org.mockito.Mockito.verify(runtime.lifecycleEngine.getServiceRegistry(),
+                        org.mockito.Mockito.never()).evictProvider(LING_ID, VERSION);
+                runtime.lifecycleEngine.undeploy(LING_ID);
+            }
+            assertEquals(1, replacementLoader.closeCount);
+            assertNull(runtime.repository.getRuntime(LING_ID));
+        } finally {
+            runtime.shutdown();
+        }
+    }
+
+    @Test
+    @DisplayName("零等待预算下显式强制策略仍可回收忙碌实例")
+    void explicitForceStillUnloadsBusyInstance() throws Throwable {
+        TestRuntime runtime = createTestRuntime(0, true);
+        try {
+            LingInstance instance = deployAndHoldInvocation(runtime);
+            CloseAwareClassLoader loader = (CloseAwareClassLoader) instance.getClassLoader();
+            runtime.lifecycleEngine.undeploy(LING_ID);
+            assertEquals(1, loader.closeCount);
+            assertNull(runtime.repository.getRuntime(LING_ID));
+        } finally {
+            runtime.shutdown();
+        }
+    }
 
     @Test
     @DisplayName("引用存在（在途请求）时卸载被拒绝：forceDrainOnTimeout=false 抛 IllegalStateException")
@@ -123,6 +240,49 @@ class UnloadBackpressureTest {
     }
 
     private TestRuntime createTestRuntime() throws Exception {
+        return createTestRuntime(1, false);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("排空等待被中断时保留中断位且不因强制超时策略销毁实例")
+    void interruptedDrainNeverForcesUnload(boolean force) throws Throwable {
+        TestRuntime runtime = createTestRuntime(30, force);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        CountDownLatch waiting = new CountDownLatch(1);
+        AtomicReference<Thread> waiter = new AtomicReference<>();
+        try {
+            LingInstance original = deployAndHoldInvocation(runtime);
+            LingInstance instance = org.mockito.Mockito.spy(original);
+            InstancePool pool = runtime.repository.getRuntime(LING_ID).getInstancePool();
+            pool.removeInstance(original);
+            pool.addInstance(instance, true);
+            CloseAwareClassLoader loader = (CloseAwareClassLoader) instance.getClassLoader();
+            org.mockito.Mockito.doAnswer(invocation -> {
+                waiter.set(Thread.currentThread());
+                waiting.countDown();
+                return invocation.callRealMethod();
+            }).when(instance).awaitIdle(org.mockito.ArgumentMatchers.anyLong());
+            Future<Boolean> result = executor.submit(() -> {
+                assertThrows(IllegalStateException.class, () -> runtime.lifecycleEngine.undeploy(LING_ID));
+                return Thread.currentThread().isInterrupted();
+            });
+            assertTrue(waiting.await(5, TimeUnit.SECONDS));
+            waiter.get().interrupt();
+            assertTrue(result.get(5, TimeUnit.SECONDS));
+            assertEquals(0, loader.closeCount);
+            assertTrue(instance.getContainer().isActive());
+            instance.exit();
+            runtime.lifecycleEngine.undeploy(LING_ID);
+            assertEquals(1, loader.closeCount);
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+            runtime.shutdown();
+        }
+    }
+
+    private TestRuntime createTestRuntime(int timeoutSeconds, boolean force) throws Exception {
         Path workspace = Files.createTempDirectory("ling-unload-backpressure");
         Path sourceDir = workspace.resolve("src");
         Path classesDir = workspace.resolve("classes");
@@ -163,9 +323,9 @@ class UnloadBackpressureTest {
                 .apiOverrideCheckEnabled(false)
                 .runtimeConfig(LingRuntimeConfig.builder()
                         // wait-only：drain 超时后拒绝卸载（不静默打断在途请求）
-                        .forceDrainOnTimeout(false)
+                        .forceDrainOnTimeout(force)
                         // 短宽限期让 drain 快速超时，测试不悬挂
-                        .forceCleanupDelaySeconds(1)
+                        .forceCleanupDelaySeconds(timeoutSeconds)
                         .build())
                 .build();
         List<LingSecurityVerifier> verifiers = Collections.singletonList(
@@ -202,6 +362,13 @@ class UnloadBackpressureTest {
         String source = ""
                 + "package sample.ling;\n"
                 + "public class PrivateDbService {\n"
+                + "    public String hold(java.util.concurrent.CountDownLatch entered, "
+                + "java.util.concurrent.CountDownLatch release) throws InterruptedException {\n"
+                + "        entered.countDown();\n"
+                + "        if (!release.await(30, java.util.concurrent.TimeUnit.SECONDS)) "
+                + "throw new IllegalStateException(\"release timeout\");\n"
+                + "        return \"done\";\n"
+                + "    }\n"
                 + "    public String execute(String input) {\n"
                 + "        return \"private:\" + input;\n"
                 + "    }\n"
@@ -224,6 +391,7 @@ class UnloadBackpressureTest {
         private final String mainClassName;
         private volatile boolean active;
         private volatile Object bean;
+        private int stopCount;
 
         private ReflectiveLingContainer(ClassLoader classLoader, String mainClassName) {
             this.classLoader = classLoader;
@@ -242,6 +410,7 @@ class UnloadBackpressureTest {
 
         @Override
         public void stop() {
+            stopCount++;
             this.active = false;
             this.bean = null;
         }
@@ -274,6 +443,7 @@ class UnloadBackpressureTest {
 
     private static final class CloseAwareClassLoader extends URLClassLoader {
         private final AtomicBoolean closed;
+        private int closeCount;
 
         private CloseAwareClassLoader(URL[] urls, ClassLoader parent, AtomicBoolean closed) {
             super(urls, parent);
@@ -282,6 +452,7 @@ class UnloadBackpressureTest {
 
         @Override
         public void close() throws IOException {
+            closeCount++;
             closed.set(true);
             super.close();
         }

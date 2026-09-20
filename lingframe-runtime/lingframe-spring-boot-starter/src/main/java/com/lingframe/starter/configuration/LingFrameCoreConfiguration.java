@@ -151,6 +151,7 @@ public class LingFrameCoreConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(TrafficRouter.class)
     public TrafficRouter trafficRouter() {
         return new LabelMatchRouter();
     }

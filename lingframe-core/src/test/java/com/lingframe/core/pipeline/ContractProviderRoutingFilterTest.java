@@ -16,6 +16,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import com.lingframe.core.routing.InstanceRoutingFilter;
+import com.lingframe.core.spi.TrafficRouter;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -46,6 +50,120 @@ import static org.mockito.Mockito.verifyNoInteractions;
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ContractProviderRoutingFilter 测试")
 class ContractProviderRoutingFilterTest {
+
+    @Nested
+    @DisplayName("两级路由的显式目标契约")
+    class ExplicitTargetContract {
+
+        private LingInstance prepare(String entry, boolean versionAvailable) {
+            LingInstance stable = mock(LingInstance.class);
+            LingInstance candidate = mock(LingInstance.class);
+            lenient().when(stable.getLingId()).thenReturn("ling-a");
+            lenient().when(stable.getVersion()).thenReturn("v1");
+            lenient().when(candidate.getLingId()).thenReturn("ling-a");
+            lenient().when(candidate.getVersion()).thenReturn("v2");
+            LingRuntime runtime = mock(LingRuntime.class);
+            InstancePool pool = mock(InstancePool.class);
+            lenient().when(runtime.getLingId()).thenReturn("ling-a");
+            lenient().when(runtime.getInstancePool()).thenReturn(pool);
+            lenient().when(pool.getDefault()).thenReturn(stable);
+            lenient().when(runtime.getReadyInstances()).thenReturn(versionAvailable
+                    ? Arrays.asList(stable, candidate) : Collections.singletonList(stable));
+            lenient().when(lingRepository.getRoutableTarget("ling-a")).thenReturn(runtime);
+            context.setServiceFQSID("legacy".equals(entry) ? "ling-a:execute" : "execute");
+            if ("scoped".equals(entry)) {
+                context.setTargetLingId("ling-a");
+            }
+            context.setTargetVersion("v2");
+            lenient().when(lingServiceRegistry.getProvidersByContractId("execute")).thenReturn(Arrays.asList(
+                    new ProviderDescriptor("execute", "ling-a", "v1", 100),
+                    new ProviderDescriptor("execute", "ling-a", "v2", 0)));
+            return candidate;
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"legacy", "scoped", "global"})
+        @DisplayName("显式版本跨两级路由保持不变，默认稳定版不能覆盖指定版本")
+        void explicitVersionIsPreserved(String entry) throws Throwable {
+            LingInstance expected = prepare(entry, true);
+            Object result = filter.doFilter(context, current ->
+                    new InstanceRoutingFilter(null).doFilter(current, resolved -> resolved.routing().getTargetInstance()));
+            assertSame(expected, result);
+            assertEquals("v2", context.getTargetVersion());
+            assertEquals("ling-a", context.getTargetLingId());
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"legacy", "scoped", "global"})
+        @DisplayName("指定版本无就绪实例时明确失败且不进入业务")
+        void unavailableVersionCannotFallback(String entry) {
+            prepare(entry, false);
+            assertThrows(LingInvocationException.class, () -> filter.doFilter(context, current ->
+                    new InstanceRoutingFilter(null).doFilter(current, filterChain)));
+            verifyNoInteractions(filterChain);
+            assertEquals("v2", context.getTargetVersion());
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"legacy", "scoped"})
+        @DisplayName("自定义路由器不得返回指定灵元候选集之外的实例")
+        void customRouterCannotCrossLingBoundary(String entry) {
+            prepare(entry, true);
+            LingInstance foreign = mock(LingInstance.class);
+            TrafficRouter router = (candidates, ctx) -> foreign;
+            ContractProviderRoutingFilter customized = new ContractProviderRoutingFilter(
+                    lingServiceRegistry, lingRepository, new ProviderWeightRouter(), router);
+            assertThrows(LingInvocationException.class, () -> customized.doFilter(context, current ->
+                    new InstanceRoutingFilter(router).doFilter(current, filterChain)));
+            verifyNoInteractions(filterChain);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"legacy", "scoped", "global"})
+        @DisplayName("预解析实例不能覆盖显式版本约束")
+        void preResolvedInstanceMustMatch(String entry) {
+            prepare(entry, true);
+            LingInstance wrong = mock(LingInstance.class);
+            lenient().when(wrong.getLingId()).thenReturn("ling-a");
+            when(wrong.getVersion()).thenReturn("v1");
+            context.routing().setTargetInstance(wrong);
+            assertThrows(LingInvocationException.class, () -> filter.doFilter(context, filterChain));
+            verifyNoInteractions(filterChain);
+        }
+
+        @Test
+        @DisplayName("旧格式灵元与显式目标冲突时拒绝")
+        void conflictingLingIdsAreRejected() {
+            prepare("legacy", true);
+            context.setTargetLingId("ling-b");
+            assertThrows(LingInvocationException.class, () -> filter.doFilter(context, filterChain));
+            verifyNoInteractions(filterChain);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"legacy", "global"})
+        @DisplayName("匹配的预解析实例保留并补齐治理所需的归属")
+        void matchingPreResolvedTargetRetainsIdentity(String entry) throws Throwable {
+            LingInstance expected = prepare(entry, true);
+            context.routing().setTargetInstance(expected);
+            Object result = filter.doFilter(context, current ->
+                    new InstanceRoutingFilter(null).doFilter(current, resolved -> resolved.routing().getTargetInstance()));
+            assertSame(expected, result);
+            assertEquals("ling-a", context.getTargetLingId());
+            assertEquals("v2", context.getTargetVersion());
+            org.junit.jupiter.api.Assertions.assertNotNull(context.getRuntime());
+            verifyNoInteractions(lingServiceRegistry);
+        }
+
+        @Test
+        @DisplayName("裸契约显式版本不在提供方索引中时拒绝")
+        void missingProviderVersionIsRejected() {
+            prepare("global", true);
+            context.setTargetVersion("missing");
+            assertThrows(LingInvocationException.class, () -> filter.doFilter(context, filterChain));
+            verifyNoInteractions(filterChain);
+        }
+    }
 
     @Mock
     private LingServiceRegistry lingServiceRegistry;
@@ -102,7 +220,8 @@ class ContractProviderRoutingFilterTest {
 
             assertSame(expected, result);
             verify(filterChain).doFilter(context);
-            verifyNoInteractions(lingServiceRegistry, lingRepository);
+            verifyNoInteractions(lingServiceRegistry);
+            verify(lingRepository).getRoutableTarget("ling-a");
         }
 
         @Test

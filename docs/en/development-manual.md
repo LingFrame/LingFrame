@@ -244,6 +244,14 @@ If reflection or JVM patching is necessary:
 
 ### 6.7 Governance Pipeline And SPI Filter Rules
 
+**Explicit routing targets**: `lingId:service` and a bare contract with `targetLingId` stay within that ling. An explicit `targetVersion` narrows candidates before selection; an unavailable version fails routing instead of silently falling back. Contract-level provider selection also respects the version constraint. Pre-resolved instances must match the declared target, and a custom `TrafficRouter` must return a member of the candidate set. The common starter backs off when a user router exists; both instance-routing entries use that injected implementation.
+
+This correction does not merge weight scopes: global contracts still use provider weights, while ling-scoped entries use instance routing. Existing zero-weight, label and fallback rules are not a reliable admission ban. Atomic multi-candidate policies and a separate admission gate are not delivered by this change. During upgrade, migrate callers that previously relied on silent fallback from an explicit version to handle routing failure.
+
+**Unload draining and retry**: the default lifecycle engine checks one snapshot containing active and dying instances. In wait-only mode it reclaims only drained instances; explicit `forceDrainOnTimeout` retains the forced timeout behavior. Version unload covers all generations of that version; this engine's specific-instance unload targets only that object and preserves provider registration while another instance of the same version remains. A wait-only timeout retains pending instances, and retries must check their in-flight calls again. Drain uses a monotonic clock; interruption preserves the interrupt flag and aborts even when force-on-timeout is enabled. A zero wait budget still checks whether instances are already idle.
+
+**Transaction preparation scope**: transaction checks, source enumeration, connection extraction/inspection and downstream execution share one cleanup scope. On failure, remove only frames successfully pushed by this invocation, preserving parent connections and rollback signals. Do not close, commit or roll back upstream connections; propagate the failure to the root transaction owner.
+
 The governance Pipeline is a core defense line strictly validated and protected by `FilterRegistry` at startup:
 - **Builtin reserved slots**: specific orders in the `[100, 1000]` range are occupied by builtin foundation, routing, permission, and isolation filters.
 - **Sandbox constraint**: externally injected `LingInvocationFilter` via SPI or dynamic registration must avoid these builtin reserved orders (recommended: use `order < 100` for preprocessing, or gaps between specific reserved ranges).

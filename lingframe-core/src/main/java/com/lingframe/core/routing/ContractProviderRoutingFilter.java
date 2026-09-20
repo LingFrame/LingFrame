@@ -45,7 +45,7 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
     private final LingRepository lingRepository;
     private final ProviderWeightRouter providerWeightRouter;
     /** 灵元级路由器（负责旧格式 FQSID 的灵元级路由） */
-    private final TrafficRouter trafficRouter;
+    private final InstanceRoutingFilter instanceRoutingFilter;
 
     public ContractProviderRoutingFilter(LingServiceRegistry lingServiceRegistry,
             LingRepository lingRepository, ProviderWeightRouter providerWeightRouter) {
@@ -58,7 +58,7 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
         this.lingServiceRegistry = lingServiceRegistry;
         this.lingRepository = lingRepository;
         this.providerWeightRouter = providerWeightRouter;
-        this.trafficRouter = trafficRouter;
+        this.instanceRoutingFilter = new InstanceRoutingFilter(trafficRouter);
     }
 
     @Override
@@ -72,15 +72,22 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
         if (fqsid == null || fqsid.isEmpty()) {
             return chain.doFilter(ctx);
         }
+        InstanceRoutingFilter.validateScope(ctx);
+        if (ctx.routing().getTargetInstance() != null) {
+            LingInstance target = ctx.routing().getTargetInstance();
+            InstanceRoutingFilter.validateTarget(ctx, target);
+            // 裸契约预解析入口也需要补齐归属，供后续状态守卫与治理使用。
+            ctx.setTargetLingId(target.getLingId());
+            ctx.setTargetVersion(target.getVersion());
+            resolveRuntime(ctx, target.getLingId());
+            ctx.routing().setPreResolved(true);
+            return chain.doFilter(ctx);
+        }
 
         // 旧格式 FQSID（lingId:serviceName）走灵元级路由接管分支
         // 入口放行条件用 targetInstance（与原版 CanaryRoutingFilter 一致）：
         // 只锁 lingId 不锁 instance 时仍需本过滤器解析具体实例
         if (fqsid.indexOf(':') >= 0) {
-            if (ctx.routing().getTargetInstance() != null) {
-                ctx.routing().setPreResolved(true);
-                return chain.doFilter(ctx);
-            }
             return routeByLingId(ctx, chain, fqsid);
         }
 
@@ -88,6 +95,10 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
         // 入口放行条件用 targetLingId（与原版 ContractProviderRoutingFilter 一致）：
         // 调用方已锁定灵元时本过滤器不覆盖入口意图
         if (ctx.getTargetLingId() != null) {
+            RoutableTarget target = resolveRuntime(ctx, ctx.getTargetLingId());
+            if (target == null && ctx.getTargetVersion() != null) {
+                throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
+            }
             return chain.doFilter(ctx);
         }
 
@@ -99,6 +110,9 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
         }
         List<ProviderDescriptor> providers = lingServiceRegistry.getProvidersByContractId(contractId);
         if (providers == null || providers.isEmpty()) {
+            if (ctx.getTargetVersion() != null) {
+                throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
+            }
             // 容错：契约未注册到 provider 索引，放行让后续过滤器处理
             return chain.doFilter(ctx);
         }
@@ -107,6 +121,19 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
         List<ProviderDescriptor> qualified = filterByMethod(providers, contractId, ctx);
         // 过滤后为空时 fallback 到全集（兼容灵元方法注册不全但权重仍需生效的场景）
         List<ProviderDescriptor> candidates = !qualified.isEmpty() ? qualified : providers;
+        if (ctx.getTargetVersion() != null) {
+            List<ProviderDescriptor> versionCandidates = new ArrayList<>();
+            // 显式锁版本时不得因方法资格为空退回全集，更不能覆盖为另一版本。
+            for (ProviderDescriptor candidate : qualified) {
+                if (Objects.equals(ctx.getTargetVersion(), candidate.getVersion())) {
+                    versionCandidates.add(candidate);
+                }
+            }
+            candidates = versionCandidates;
+            if (candidates.isEmpty()) {
+                throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
+            }
+        }
 
         // 标签优先匹配：若 ctx 带有请求标签（如 tenant/role/env），优先精确匹配候选 Provider
         ProviderDescriptor selected = selectByLabels(candidates, ctx);
@@ -231,16 +258,10 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
      * @throws LingInvocationException 路由失败（runtime/实例缺失）
      */
     private Object routeByLingId(InvocationContext ctx, LingFilterChain chain, String fqsid) throws Throwable {
-        // 入口已显式指定目标实例时不覆盖
-        if (ctx.routing().getTargetInstance() != null) {
-            ctx.routing().setPreResolved(true);
-            return chain.doFilter(ctx);
-        }
-
         String lingId = extractLingId(fqsid);
         RoutableTarget runtime = resolveRuntime(ctx, lingId);
         if (runtime == null) {
-            if (ctx.execution().getMode().isGovernOnly()) {
+            if (ctx.getTargetVersion() == null && ctx.execution().getMode().isGovernOnly()) {
                 // GOVERN_ONLY 允许灵核入口只借道治理，不强依赖真实灵元路由结果
                 return chain.doFilter(ctx);
             }
@@ -255,38 +276,13 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
             return chain.doFilter(ctx);
         }
 
-        LingRuntime lingRuntime = (LingRuntime) runtime;
-        List<LingInstance> candidates = lingRuntime.getReadyInstances();
-        if (candidates.isEmpty()) {
-            if (ctx.execution().getMode().isGovernOnly()) {
-                return chain.doFilter(ctx);
-            }
+        ctx.setRuntime(runtime);
+        if (ctx.execution().getMode().isSimulation() && ctx.getTargetVersion() == null
+                && runtime.getReadyInstances().isEmpty()) {
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
         }
-
-        if (trafficRouter == null) {
-            // 无 TrafficRouter（native/test 场景）：兜底选默认实例
-            LingInstance target = lingRuntime.getInstancePool().getDefault();
-            if (target == null && !candidates.isEmpty()) {
-                target = candidates.get(0);
-            }
-            if (target == null) {
-                throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
-            }
-            ctx.routing().setTargetInstance(target);
-            ctx.setTargetLingId(target.getLingId());
-            ctx.setTargetVersion(target.getVersion());
-        } else {
-            LingInstance target = trafficRouter.route(candidates, ctx);
-            if (target == null) {
-                throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE);
-            }
-            ctx.routing().setTargetInstance(target);
-            ctx.setTargetLingId(target.getLingId());
-            ctx.setTargetVersion(target.getVersion());
-        }
-
-        return chain.doFilter(ctx);
+        // 旧格式仍局限于指定灵元，复用同一个实例选路实现，避免版本约束分叉。
+        return instanceRoutingFilter.doFilter(ctx, chain);
     }
 
     private RoutableTarget resolveRuntime(InvocationContext ctx, String lingId) {

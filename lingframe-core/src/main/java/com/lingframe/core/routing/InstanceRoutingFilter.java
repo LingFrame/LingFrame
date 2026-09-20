@@ -57,8 +57,10 @@ public class InstanceRoutingFilter implements LingInvocationFilter {
 
     @Override
     public Object doFilter(InvocationContext ctx, LingFilterChain chain) throws Throwable {
+        validateScope(ctx);
         // 1. 已选实例（入口预解析 / 旧格式 FQSID / preResolved）→ 短路放行，零重复执行
         if (ctx.routing().getTargetInstance() != null) {
+            validateTarget(ctx, ctx.routing().getTargetInstance());
             return chain.doFilter(ctx);
         }
 
@@ -84,8 +86,8 @@ public class InstanceRoutingFilter implements LingInvocationFilter {
 
         // 4. 候选空：SIMULATION/GOVERN_ONLY 放行（借道治理），NORMAL 抛 ROUTE_FAILURE
         if (candidates.isEmpty()) {
-            if (ctx.execution().getMode().isSimulation()
-                    || ctx.execution().getMode().isGovernOnly()) {
+            if (targetVersion == null && (ctx.execution().getMode().isSimulation()
+                    || ctx.execution().getMode().isGovernOnly())) {
                 return chain.doFilter(ctx);
             }
             throw new LingInvocationException(ctx.getServiceFQSID(),
@@ -95,8 +97,9 @@ public class InstanceRoutingFilter implements LingInvocationFilter {
         // 5. 选实例：TrafficRouter 优先，无则兜底默认实例（与 routeByLingId 对称）
         LingInstance target;
         if (trafficRouter != null) {
-            target = trafficRouter.route(candidates, ctx);
-            if (target == null) {
+            // 路由器可对副本排序，但不能借修改列表扩大框架认可的候选范围。
+            target = trafficRouter.route(new ArrayList<>(candidates), ctx);
+            if (target == null || !candidates.contains(target)) {
                 throw new LingInvocationException(ctx.getServiceFQSID(),
                         LingInvocationException.ErrorKind.ROUTE_FAILURE);
             }
@@ -111,10 +114,36 @@ public class InstanceRoutingFilter implements LingInvocationFilter {
         }
 
         // 6. 回填实例路由结果（与 routeByLingId 对称：set targetInstance + targetLingId + targetVersion）
+        validateTarget(ctx, target);
         ctx.routing().setTargetInstance(target);
         ctx.setTargetLingId(target.getLingId());
         ctx.setTargetVersion(target.getVersion());
         return chain.doFilter(ctx);
+    }
+
+    /** 校验入口声明的灵元与已有运行时没有互相冲突。 */
+    static void validateScope(InvocationContext ctx) {
+        String declaredLingId = ctx.getLingIdFromFqsid();
+        String targetLingId = ctx.getTargetLingId();
+        if (declaredLingId != null && targetLingId != null && !declaredLingId.equals(targetLingId)) {
+            throw new LingInvocationException(ctx.getServiceFQSID(),
+                    LingInvocationException.ErrorKind.ROUTE_FAILURE, "Conflicting target ling constraints");
+        }
+        RoutableTarget runtime = ctx.getRuntime();
+        if (runtime != null && runtime.getLingId() != null && ctx.getEffectiveLingId() != null
+                && !runtime.getLingId().equals(ctx.getEffectiveLingId())) {
+            throw new LingInvocationException(ctx.getServiceFQSID(),
+                    LingInvocationException.ErrorKind.ROUTE_FAILURE, "Runtime does not match target ling");
+        }
+    }
+
+    /** 预解析与自定义选路都必须保留调用者声明的灵元和版本约束。 */
+    static void validateTarget(InvocationContext ctx, LingInstance target) {
+        if ((ctx.getEffectiveLingId() != null && !Objects.equals(ctx.getEffectiveLingId(), target.getLingId()))
+                || (ctx.getTargetVersion() != null && !Objects.equals(ctx.getTargetVersion(), target.getVersion()))) {
+            throw new LingInvocationException(ctx.getServiceFQSID(),
+                    LingInvocationException.ErrorKind.ROUTE_FAILURE, "Instance does not match target constraints");
+        }
     }
 
     /**
@@ -136,12 +165,16 @@ public class InstanceRoutingFilter implements LingInvocationFilter {
     private Object routeCoreTarget(InvocationContext ctx, LingFilterChain chain) throws Throwable {
         RoutableTarget runtime = ctx.getRuntime();
         if (runtime == null) {
+            if (ctx.getTargetVersion() != null) {
+                throw new LingInvocationException(ctx.getServiceFQSID(),
+                        LingInvocationException.ErrorKind.ROUTE_FAILURE, "Version target has no runtime");
+            }
             // runtime 未设 → 放行（交下游 ContextIsolationFilter 处理）
             return chain.doFilter(ctx);
         }
         // SIMULATION/GOVERN_ONLY 借道治理不要求真实目标实例，放行
-        if (ctx.execution().getMode().isSimulation()
-                || ctx.execution().getMode().isGovernOnly()) {
+        if (ctx.getTargetVersion() == null && (ctx.execution().getMode().isSimulation()
+                || ctx.execution().getMode().isGovernOnly())) {
             return chain.doFilter(ctx);
         }
         // NORMAL 模式：从灵核单例实例池取实例设为 targetInstance
@@ -151,6 +184,7 @@ public class InstanceRoutingFilter implements LingInvocationFilter {
                     LingInvocationException.ErrorKind.ROUTE_FAILURE);
         }
         LingInstance coreTarget = coreInstances.get(0);
+        validateTarget(ctx, coreTarget);
         ctx.routing().setTargetInstance(coreTarget);
         ctx.setTargetLingId(coreTarget.getLingId());
         // 灵核无版本概念，targetVersion 保持原值（通常为 null，不覆盖）
