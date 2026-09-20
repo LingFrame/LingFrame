@@ -13,11 +13,15 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.ConcurrentModificationException;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * ProviderWeightRouter 测试。
@@ -225,6 +229,158 @@ class ProviderWeightRouterTest {
             eventBus.publish(new LingUninstalledEvent("ling-a"));
 
             assertNull(eventRouter.getOverrideWeight("svc", "ling-a"));
+        }
+    }
+
+    @Nested
+    @DisplayName("按修订原子替换权重覆盖")
+    class AtomicReplacement {
+
+        @Test
+        @DisplayName("整表替换删除旧键并保持旧快照不变")
+        void replacesWholeMap() {
+            router.setProviderWeight("svc", "obsolete", 10);
+            ProviderWeightSnapshot old = router.getWeightSnapshot("svc");
+            Map<String, Integer> weights = weights(90, 10);
+            ProviderWeightSnapshot applied = router.replaceProviderWeights("svc", old.getRevision(), weights);
+            weights.clear();
+            assertEquals(weights(90, 10), applied.getWeights());
+            assertEquals(Collections.singletonMap("obsolete", 10), old.getWeights());
+            assertNull(router.getOverrideWeight("svc", "obsolete"));
+            assertSame(applied, router.getWeightSnapshot("svc"));
+            assertNotEquals(old.getRevision(), applied.getRevision());
+            Map<String, Integer> legacyCopy = router.getOverrideWeights("svc");
+            legacyCopy.clear();
+            assertEquals(2, applied.getWeights().size());
+        }
+
+        @Test
+        @DisplayName("旧修订和不同路由器或作用域的修订均拒绝且不改变状态")
+        void rejectsForeignAndStaleRevisions() {
+            String initial = router.getWeightSnapshot("svc").getRevision();
+            ProviderWeightSnapshot applied = router.replaceProviderWeights("svc", initial, weights(10, 90));
+            for (String revision : Arrays.asList(initial,
+                    new ProviderWeightRouter().getWeightSnapshot("svc").getRevision(),
+                    router.getWeightSnapshot("other").getRevision())) {
+                ConcurrentModificationException error = assertThrows(ConcurrentModificationException.class,
+                        () -> router.replaceProviderWeights("svc", revision, weights(90, 10)));
+                assertTrue(error.getMessage().contains(applied.getRevision()));
+                assertSame(applied, router.getWeightSnapshot("svc"));
+            }
+        }
+
+        @Test
+        @DisplayName("非法整表不产生部分发布或新修订")
+        void invalidReplacementLeavesStateUntouched() {
+            router.setProviderWeight("svc", "a", 10);
+            ProviderWeightSnapshot current = router.getWeightSnapshot("svc");
+            assertThrows(IllegalArgumentException.class,
+                    () -> router.replaceProviderWeights("svc", current.getRevision(), weights(90, 101)));
+            assertThrows(NullPointerException.class,
+                    () -> router.replaceProviderWeights("svc", current.getRevision(), null));
+            assertSame(current, router.getWeightSnapshot("svc"));
+        }
+
+        @Test
+        @DisplayName("清除后不能复用空作用域旧修订且注册默认权重恢复")
+        void clearDoesNotReuseRevision() {
+            String absent = router.getWeightSnapshot("svc").getRevision();
+            router.setProviderWeight("svc", "a", 0);
+            ProviderWeightSnapshot before = router.getWeightSnapshot("svc");
+            ProviderWeightSnapshot empty = router.replaceProviderWeights("svc", before.getRevision(), Collections.emptyMap());
+            assertEquals(empty.getRevision(), router.getWeightSnapshot("svc").getRevision());
+            assertThrows(ConcurrentModificationException.class,
+                    () -> router.replaceProviderWeights("svc", absent, weights(100, 0)));
+            ProviderDescriptor a = new ProviderDescriptor("svc", "a", 100);
+            assertSame(a, router.selectProvider(Arrays.asList(a, new ProviderDescriptor("svc", "b", 0)), ctx));
+            router.setProviderWeight("other", "c", 1);
+            assertNotEquals(empty.getRevision(), router.getWeightSnapshot("svc").getRevision());
+        }
+
+        @Test
+        @DisplayName("旧设置清除和卸载均使对应契约的修订失效")
+        void legacyWritesInvalidateRevision() {
+            router.setProviderWeight("svc", "a", 50);
+            String beforeSet = router.getWeightSnapshot("svc").getRevision();
+            router.setProviderWeight("svc", "b", 50);
+            assertThrows(ConcurrentModificationException.class,
+                    () -> router.replaceProviderWeights("svc", beforeSet, weights(10, 90)));
+            ProviderWeightSnapshot beforeClear = router.getWeightSnapshot("svc");
+            router.clearProviderWeight("svc", "a");
+            assertEquals(2, beforeClear.getWeights().size());
+            String beforeEvict = router.getWeightSnapshot("svc").getRevision();
+            assertNotEquals(beforeClear.getRevision(), beforeEvict);
+            router.evictProvider("b");
+            assertThrows(ConcurrentModificationException.class,
+                    () -> router.replaceProviderWeights("svc", beforeEvict, weights(10, 90)));
+            assertTrue(router.getOverrideWeights("svc").isEmpty());
+        }
+
+        @Test
+        @DisplayName("不相关写入不使已有非空契约修订失效")
+        void independentPopulatedScopes() {
+            router.setProviderWeight("svc", "a", 50);
+            ProviderWeightSnapshot current = router.getWeightSnapshot("svc");
+            router.setProviderWeight("other", "b", 50);
+            router.evictProvider("b");
+            router.clearProviderWeight("svc", "missing");
+            assertSame(current, router.getWeightSnapshot("svc"));
+            assertDoesNotThrow(() -> router.replaceProviderWeights("svc", current.getRevision(), weights(90, 10)));
+        }
+
+        @Test
+        @DisplayName("两个控制端使用同一修订时恰好一个发布成功")
+        void concurrentWritersHaveOneWinner() throws Exception {
+            String revision = router.getWeightSnapshot("svc").getRevision();
+            CyclicBarrier barrier = new CyclicBarrier(2);
+            ExecutorService executor = Executors.newFixedThreadPool(2);
+            try {
+                Future<Boolean> first = executor.submit(() -> replaceAfterBarrier(barrier, revision, weights(100, 0)));
+                Future<Boolean> second = executor.submit(() -> replaceAfterBarrier(barrier, revision, weights(0, 100)));
+                assertNotEquals(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS));
+                Map<String, Integer> actual = router.getWeightSnapshot("svc").getWeights();
+                assertTrue(actual.equals(weights(100, 0)) || actual.equals(weights(0, 100)));
+            } finally {
+                executor.shutdownNow();
+                assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+            }
+        }
+
+        private boolean replaceAfterBarrier(CyclicBarrier barrier, String revision, Map<String, Integer> weights)
+                throws Exception {
+            barrier.await(5, TimeUnit.SECONDS);
+            try {
+                router.replaceProviderWeights("svc", revision, weights);
+                return true;
+            } catch (ConcurrentModificationException expected) {
+                return false;
+            }
+        }
+
+        @Test
+        @DisplayName("选路中途发布新策略时只消费完整旧覆盖表")
+        void selectionPinsOneSnapshot() {
+            router.replaceProviderWeights("svc", router.getWeightSnapshot("svc").getRevision(), weights(0, 100));
+            AtomicBoolean switched = new AtomicBoolean();
+            ProviderDescriptor a = new ProviderDescriptor("svc", "a", 0) {
+                @Override
+                public String providerKey() {
+                    if (switched.compareAndSet(false, true)) {
+                        router.replaceProviderWeights("svc", router.getWeightSnapshot("svc").getRevision(), weights(100, 0));
+                    }
+                    return "a";
+                }
+            };
+            ProviderDescriptor b = new ProviderDescriptor("svc", "b", 0);
+            assertSame(b, router.selectProvider(Arrays.asList(a, b), ctx));
+            assertSame(a, router.selectProvider(Arrays.asList(a, b), ctx));
+        }
+
+        private Map<String, Integer> weights(int a, int b) {
+            Map<String, Integer> weights = new HashMap<>();
+            weights.put("a", a);
+            weights.put("b", b);
+            return weights;
         }
     }
 

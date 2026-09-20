@@ -16,6 +16,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.ConcurrentModificationException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -248,6 +251,53 @@ class ContractRoutingServiceTest {
     class RollbackToCore {
 
         @Test
+        @DisplayName("回滚一次发布整表并删除已注销提供方的覆盖")
+        void rollbackPublishesOnce() {
+            providerWeightRouter.setProviderWeight("svc-a", "obsolete:v1", 30);
+            ProviderWeightRouter observed = spy(providerWeightRouter);
+            service = new ContractRoutingService(lingServiceRegistry, observed);
+            assertEquals(30, observed.getOverrideWeight("svc-a", "obsolete:v1"));
+            when(lingServiceRegistry.getProvidersByContractId("svc-a")).thenReturn(Arrays.asList(
+                    new ProviderDescriptor("svc-a", "lingcore-app", 100),
+                    new ProviderDescriptor("svc-a", "a", "v1", 0)));
+            service.rollbackToCore("svc-a");
+            verify(observed, times(1)).replaceProviderWeights(eq("svc-a"), anyString(), anyMap());
+            verify(observed, never()).setProviderWeight(anyString(), anyString(), anyInt());
+            assertNull(observed.getOverrideWeight("svc-a", "obsolete:v1"));
+            assertEquals(100, observed.getOverrideWeight("svc-a", "lingcore-app"));
+            assertEquals(0, observed.getOverrideWeight("svc-a", "a:v1"));
+        }
+
+        @Test
+        @DisplayName("回滚准备期间有并发更新时拒绝且不推进阶段或持久化")
+        void rollbackConflictStopsSideEffects() {
+            com.lingframe.core.routing.MigrationStateHolder phases =
+                    mock(com.lingframe.core.routing.MigrationStateHolder.class);
+            service = new ContractRoutingService(lingServiceRegistry, providerWeightRouter, phases);
+            GovernanceStorage storage = mock(GovernanceStorage.class);
+            service.setGovernanceStorage(storage);
+            when(lingServiceRegistry.getProvidersByContractId("svc-a")).thenAnswer(invocation -> {
+                providerWeightRouter.setProviderWeight("svc-a", "a:v1", 37);
+                return Collections.singletonList(new ProviderDescriptor("svc-a", "lingcore-app", 100));
+            });
+            assertThrows(ConcurrentModificationException.class, () -> service.rollbackToCore("svc-a"));
+            assertEquals(Collections.singletonMap("a:v1", 37), providerWeightRouter.getOverrideWeights("svc-a"));
+            verifyNoInteractions(phases, storage);
+        }
+
+        @Test
+        @DisplayName("空契约回滚清除旧覆盖且存储删除配置")
+        void emptyRollbackClearsStaleWeights() {
+            GovernanceStorage storage = mock(GovernanceStorage.class);
+            service.setGovernanceStorage(storage);
+            providerWeightRouter.setProviderWeight("svc-a", "old:v1", 100);
+            when(lingServiceRegistry.getProvidersByContractId("svc-a")).thenReturn(Collections.emptyList());
+            service.rollbackToCore("svc-a");
+            assertTrue(providerWeightRouter.getOverrideWeights("svc-a").isEmpty());
+            verify(storage).deleteRoutingWeightConfig("svc-a");
+        }
+
+        @Test
         @DisplayName("回滚后灵核 baseline=100 灵元=0")
         void rollbackSetsCore100Ling0() {
             when(lingServiceRegistry.getProvidersByContractId("svc-a"))
@@ -304,6 +354,32 @@ class ContractRoutingServiceTest {
 
             verify(storage).saveRoutingWeightConfig(eq("svc-a"), anyString());
         }
+    }
+
+    @Test
+    @DisplayName("查询中途权重更新时各行来自同一个覆盖快照")
+    void queryPinsOneSnapshot() {
+        Map<String, Integer> weights = new HashMap<>();
+        weights.put("lingcore-app", 0);
+        weights.put("a:v1", 100);
+        providerWeightRouter.replaceProviderWeights("svc-a",
+                providerWeightRouter.getWeightSnapshot("svc-a").getRevision(), weights);
+        ProviderDescriptor core = new ProviderDescriptor("svc-a", "lingcore-app", 100) {
+            @Override
+            public String providerKey() {
+                Map<String, Integer> next = new HashMap<>();
+                next.put("lingcore-app", 100);
+                next.put("a:v1", 0);
+                providerWeightRouter.replaceProviderWeights("svc-a",
+                        providerWeightRouter.getWeightSnapshot("svc-a").getRevision(), next);
+                return super.providerKey();
+            }
+        };
+        when(lingServiceRegistry.getProvidersByContractId("svc-a")).thenReturn(Arrays.asList(
+                core, new ProviderDescriptor("svc-a", "a", "v1", 0)));
+        ContractRoutingDTO view = service.getContractRouting("svc-a");
+        assertEquals(0, view.getCoreEffectiveWeight());
+        assertEquals(100, view.getLingEffectiveWeight());
     }
 }
 

@@ -155,6 +155,7 @@ class GovernanceConfigRestoreTest {
         governanceStorage.saveRoutingWeightConfig(contractId, objectMapper.writeValueAsString(weights));
 
         ProviderWeightRouter router = new ProviderWeightRouter();
+        router.setProviderWeight(contractId, "obsolete:v1", 100);
         GovernanceAdminService mockRegistry = mock(GovernanceAdminService.class);
         GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(
                 governanceStorage, mockRegistry, null, router, objectMapper);
@@ -164,5 +165,35 @@ class GovernanceConfigRestoreTest {
         assertEquals(1, router.getOverrideWeight(contractId, "lingcore-app"));
         assertEquals(2, router.getOverrideWeight(contractId, "user-ling:1.0.0"));
         assertEquals(1, router.getOverrideWeight(contractId, "user-ling:2.0.0"));
+        assertNull(router.getOverrideWeight(contractId, "obsolete:v1"));
+    }
+
+    @Test
+    @DisplayName("权重配置后半段损坏时整份恢复不改变运行期覆盖")
+    void malformedWeightsDoNotPartiallyRestore() {
+        governanceStorage.saveRoutingWeightConfig("svc", "{\"a:v1\":90,\"b:v1\":\"invalid\"}");
+        ProviderWeightRouter router = new ProviderWeightRouter();
+        router.setProviderWeight("svc", "a:v1", 20);
+        String revision = router.getWeightSnapshot("svc").getRevision();
+        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage,
+                mock(GovernanceAdminService.class), null, router, objectMapper);
+        assertDoesNotThrow(restorer::restore);
+        assertEquals(revision, router.getWeightSnapshot("svc").getRevision());
+        assertEquals(20, router.getOverrideWeight("svc", "a:v1"));
+    }
+
+    @Test
+    @DisplayName("空权重配置清除旧覆盖且历史越界数值仍截断")
+    void emptyAndLegacyWeights() {
+        governanceStorage.saveRoutingWeightConfig("empty", "{}");
+        governanceStorage.saveRoutingWeightConfig("legacy", "{\"a:v1\":150,\"b:v1\":-1}");
+        ProviderWeightRouter router = new ProviderWeightRouter();
+        router.setProviderWeight("empty", "a:v1", 20);
+        GovernanceConfigRestorer restorer = new GovernanceConfigRestorer(governanceStorage,
+                mock(GovernanceAdminService.class), null, router, objectMapper);
+        restorer.restore();
+        assertTrue(router.getOverrideWeights("empty").isEmpty());
+        assertEquals(100, router.getOverrideWeight("legacy", "a:v1"));
+        assertEquals(0, router.getOverrideWeight("legacy", "b:v1"));
     }
 }

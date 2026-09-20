@@ -8,6 +8,7 @@ import com.lingframe.core.routing.MigrationPhase;
 import com.lingframe.core.routing.MigrationStateHolder;
 import com.lingframe.core.routing.ProviderDescriptor;
 import com.lingframe.core.routing.ProviderWeightRouter;
+import com.lingframe.core.routing.ProviderWeightSnapshot;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
 import com.lingframe.dashboard.dto.ProviderWeightDTO;
 import com.lingframe.dashboard.storage.GovernanceStorage;
@@ -15,6 +16,7 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -92,13 +94,14 @@ public class ContractRoutingService {
     public ContractRoutingDTO getContractRouting(String contractId) {
         List<ProviderDescriptor> providers = lingServiceRegistry.getProvidersByContractId(contractId);
         List<ProviderWeightDTO> providerDtos = new ArrayList<>(providers.size());
+        Map<String, Integer> overrides = providerWeightRouter.getWeightSnapshot(contractId).getWeights();
 
         int coreEffective = 0;
         int lingEffective = 0;
 
         for (ProviderDescriptor desc : providers) {
             // providerKey 与写侧注册键一致（灵元 lingId:version / 灵核 lingcore-app），裸 lingId 会导致权重覆盖命中
-            Integer override = providerWeightRouter.getOverrideWeight(contractId, desc.providerKey());
+            Integer override = overrides.get(desc.providerKey());
             int effective = computeEffectiveWeight(desc, override);
             boolean isCore = isCoreBaseline(desc.getLingId());
             providerDtos.add(ProviderWeightDTO.builder()
@@ -166,11 +169,15 @@ public class ContractRoutingService {
      * @param contractId 契约 ID
      */
     public void rollbackToCore(String contractId) {
+        ProviderWeightSnapshot current = providerWeightRouter.getWeightSnapshot(contractId);
         List<ProviderDescriptor> providers = lingServiceRegistry.getProvidersByContractId(contractId);
+        Map<String, Integer> weights = new HashMap<>();
         for (ProviderDescriptor desc : providers) {
             int targetWeight = isCoreBaseline(desc.getLingId()) ? 100 : 0;
-            providerWeightRouter.setProviderWeight(contractId, desc.providerKey(), targetWeight);
+            weights.put(desc.providerKey(), targetWeight);
         }
+        // 并发改动时拒绝整次权重回滚，不覆盖其他控制端的新决策。
+        providerWeightRouter.replaceProviderWeights(contractId, current.getRevision(), weights);
         // 状态机联动：MIGRATING 回滚到 CORE_EXCLUSIVE；ITERATING 不由此入口处理（迭代回滚走 rollbackTransition）
         if (migrationStateHolder != null) {
             MigrationPhase phase = migrationStateHolder.getPhase(contractId);

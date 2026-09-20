@@ -93,6 +93,34 @@ class ContractProviderRoutingFilterTest {
             assertEquals("ling-a", context.getTargetLingId());
         }
 
+        @Test
+        @DisplayName("整表版本权重切换经契约和实例两级路由命中对应版本")
+        void atomicWeightsReachInstanceRouting() throws Throwable {
+            LingInstance candidate = prepare("global", true);
+            context.setTargetVersion(null);
+            ProviderWeightRouter weights = new ProviderWeightRouter();
+            filter = new ContractProviderRoutingFilter(lingServiceRegistry, lingRepository, weights);
+            Map<String, Integer> table = new HashMap<>();
+            table.put("ling-a:v1", 0);
+            table.put("ling-a:v2", 100);
+            weights.replaceProviderWeights("execute", weights.getWeightSnapshot("execute").getRevision(), table);
+            Object selected = filter.doFilter(context, current -> new InstanceRoutingFilter(null)
+                    .doFilter(current, resolved -> resolved.routing().getTargetInstance()));
+            assertSame(candidate, selected);
+            assertEquals("v2", context.getTargetVersion());
+
+            context.recycle();
+            context = InvocationContext.obtain();
+            context.setServiceFQSID("execute");
+            table.put("ling-a:v1", 100);
+            table.put("ling-a:v2", 0);
+            weights.replaceProviderWeights("execute", weights.getWeightSnapshot("execute").getRevision(), table);
+            LingInstance stable = (LingInstance) filter.doFilter(context, current -> new InstanceRoutingFilter(null)
+                    .doFilter(current, resolved -> resolved.routing().getTargetInstance()));
+            assertEquals("v1", stable.getVersion());
+            assertEquals("v1", context.getTargetVersion());
+        }
+
         @ParameterizedTest
         @ValueSource(strings = {"legacy", "scoped", "global"})
         @DisplayName("指定版本无就绪实例时明确失败且不进入业务")

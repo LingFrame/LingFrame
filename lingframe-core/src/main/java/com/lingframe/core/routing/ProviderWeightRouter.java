@@ -8,9 +8,11 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -27,7 +29,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * </ol>
  * 路由层不引用实现方身份（灵核/灵元），身份在注册时沉淀为 weight 数值。
  * <p>
- * 线程安全：权重覆盖表使用 {@link ConcurrentHashMap}，支持 Dashboard 并发下发。
+ * 线程安全：写入串行发布不可变快照，选路只读取一次覆盖表，不持有写锁。
  * <p>
  * 支持 N 元多候选按权重分流：支持任意 N 个候选 provider 概率分配。
  */
@@ -35,8 +37,25 @@ public class ProviderWeightRouter {
 
     private static final Logger log = LoggerFactory.getLogger(ProviderWeightRouter.class);
 
-    /** contractId → (providerKey → 权重)，Dashboard 运行期覆盖 */
-    private final Map<String, Map<String, Integer>> providerWeights = new ConcurrentHashMap<>();
+    /** 写侧唯一协调锁；锁内不调用业务、持久化或事件回调。 */
+    private final Object weightWriteLock = new Object();
+
+    /** 路由器代次防止重建后接受旧修订。 */
+    private final String epoch = UUID.randomUUID().toString();
+
+    /** 一次发布覆盖索引与空作用域修订，避免删除后重建造成修订复用。 */
+    private volatile WeightState weightState = new WeightState(0, Collections.emptyMap());
+
+    /** 只保留有覆盖的契约；空契约使用全局发布序号，不积累墓碑记录。 */
+    private static final class WeightState {
+        private final long sequence;
+        private final Map<String, ProviderWeightSnapshot> contracts;
+
+        private WeightState(long sequence, Map<String, ProviderWeightSnapshot> contracts) {
+            this.sequence = sequence;
+            this.contracts = Collections.unmodifiableMap(new HashMap<>(contracts));
+        }
+    }
 
     /** 记录上一次候选节点数量，仅在候选数量发生变化时打印 warn 告警，避免热路径日志打满 */
     private final Map<String, Integer> lastCandidateCount = new ConcurrentHashMap<>();
@@ -69,20 +88,91 @@ public class ProviderWeightRouter {
      * @param weight      新权重 0-100
      */
     public void setProviderWeight(String contractId, String providerKey, int weight) {
+        ProviderWeightSnapshot.requireKey(contractId, "contractId");
+        ProviderWeightSnapshot.requireKey(providerKey, "providerKey");
         int clamped = Math.max(0, Math.min(100, weight));
-        providerWeights.computeIfAbsent(contractId, k -> new ConcurrentHashMap<>())
-                .put(providerKey, clamped);
+        synchronized (weightWriteLock) {
+            Map<String, Integer> weights = new HashMap<>(getOverrideWeights(contractId));
+            weights.put(providerKey, clamped);
+            publish(contractId, weights);
+        }
+    }
+
+    /**
+     * 查询一个契约的完整覆盖快照。
+     * <p>
+     * 空作用域不保留历史条目，其修订会随其他契约写入而失效；调用方须重读后决策。
+     *
+     * @param contractId 契约标识
+     * @return 不可变快照，未配置时覆盖表为空
+     * @throws IllegalArgumentException 契约标识为空
+     */
+    public ProviderWeightSnapshot getWeightSnapshot(String contractId) {
+        ProviderWeightSnapshot.requireKey(contractId, "contractId");
+        WeightState state = weightState;
+        ProviderWeightSnapshot snapshot = state.contracts.get(contractId);
+        return snapshot != null ? snapshot : new ProviderWeightSnapshot(contractId,
+                revision(state.sequence, contractId), Collections.emptyMap());
+    }
+
+    /**
+     * 校验修订后一次替换整个契约的覆盖表。
+     * <p>
+     * 未列出的键恢复注册默认值，空表清除全部覆盖；这不是接流白名单。
+     * 权重必须在零到一百之间，不要求总和为一百。键须由注册描述符取得，
+     * 本层不验证提供方是否已注册。多次旧 setter 调用仍是多次独立发布。
+     *
+     * @param contractId 契约标识
+     * @param expectedRevision 最近查询到的修订标识
+     * @param weights 完整覆盖表，调用期间不得并发修改
+     * @return 已发布的快照
+     * @throws IllegalArgumentException 标识或权重非法
+     * @throws NullPointerException 覆盖表为空引用
+     * @throws ConcurrentModificationException 修订失配，消息包含当前修订；不自动重试
+     */
+    public ProviderWeightSnapshot replaceProviderWeights(String contractId, String expectedRevision,
+            Map<String, Integer> weights) {
+        ProviderWeightSnapshot validated = new ProviderWeightSnapshot(contractId, expectedRevision, weights);
+        synchronized (weightWriteLock) {
+            ProviderWeightSnapshot current = getWeightSnapshot(contractId);
+            if (!current.getRevision().equals(expectedRevision)) {
+                throw new ConcurrentModificationException("Weight revision conflict for " + contractId
+                        + "; current revision=" + current.getRevision());
+            }
+            return publish(contractId, validated.getWeights());
+        }
+    }
+
+    /** 调用方必须持有写锁；快照构造完成后才切换读侧引用。 */
+    private ProviderWeightSnapshot publish(String contractId, Map<String, Integer> weights) {
+        WeightState current = weightState;
+        long sequence = Math.incrementExact(current.sequence);
+        ProviderWeightSnapshot snapshot = new ProviderWeightSnapshot(contractId, revision(sequence, contractId), weights);
+        Map<String, ProviderWeightSnapshot> contracts = new HashMap<>(current.contracts);
+        if (weights.isEmpty()) {
+            contracts.remove(contractId);
+        } else {
+            contracts.put(contractId, snapshot);
+        }
+        weightState = new WeightState(sequence, contracts);
+        return snapshot;
+    }
+
+    /** 不透明标识包含代次、发布序号与作用域，不能跨契约复用。 */
+    private String revision(long sequence, String contractId) {
+        return epoch + ":" + sequence + ":" + contractId;
     }
 
     /**
      * 清除指定契约下某个 provider 的权重覆盖，回退到默认值。
      */
     public void clearProviderWeight(String contractId, String providerKey) {
-        Map<String, Integer> contractMap = providerWeights.get(contractId);
-        if (contractMap != null) {
-            contractMap.remove(providerKey);
-            if (contractMap.isEmpty()) {
-                providerWeights.remove(contractId);
+        ProviderWeightSnapshot.requireKey(contractId, "contractId");
+        ProviderWeightSnapshot.requireKey(providerKey, "providerKey");
+        synchronized (weightWriteLock) {
+            Map<String, Integer> weights = new HashMap<>(getOverrideWeights(contractId));
+            if (weights.remove(providerKey) != null) {
+                publish(contractId, weights);
             }
         }
     }
@@ -103,17 +193,16 @@ public class ProviderWeightRouter {
             return;
         }
         String versionSeparator = lingId + ":";
-        for (String contractId : providerWeights.keySet()) {
-            // compute 原子操作：与并发 setProviderWeight/clearProviderWeight 安全
-            providerWeights.compute(contractId, (key, contractMap) -> {
-                if (contractMap == null) {
-                    return null;
-                }
-                contractMap.keySet().removeIf(providerKey ->
+        synchronized (weightWriteLock) {
+            // 固定索引遍历，单个契约只发布一次；跨契约不承诺事务。
+            for (String contractId : weightState.contracts.keySet()) {
+                Map<String, Integer> weights = new HashMap<>(getOverrideWeights(contractId));
+                boolean changed = weights.keySet().removeIf(providerKey ->
                         lingId.equals(providerKey) || providerKey.startsWith(versionSeparator));
-                // 空 map 回收 entry，防内存泄漏（与 DefaultLingServiceRegistry.evictProvider 一致）
-                return contractMap.isEmpty() ? null : contractMap;
-            });
+                if (changed) {
+                    publish(contractId, weights);
+                }
+            }
         }
         // 同步清理 lastCandidateCount，防止卸载后长时间无请求导致 entry 内存残留
         // 采用保守策略，卸载灵元时直接清空所有 contractId 告警状态，下次有请求时会重新计数。
@@ -136,8 +225,8 @@ public class ProviderWeightRouter {
      * @return 覆盖权重；未配置返回 null（表示走注册时初始 weight）
      */
     public Integer getOverrideWeight(String contractId, String providerKey) {
-        Map<String, Integer> contractMap = providerWeights.get(contractId);
-        return contractMap != null ? contractMap.get(providerKey) : null;
+        ProviderWeightSnapshot snapshot = weightState.contracts.get(contractId);
+        return snapshot != null ? snapshot.getWeights().get(providerKey) : null;
     }
 
     /**
@@ -150,8 +239,8 @@ public class ProviderWeightRouter {
         if (contractId == null) {
             return Collections.emptyMap();
         }
-        Map<String, Integer> contractMap = providerWeights.get(contractId);
-        return contractMap != null ? new HashMap<>(contractMap) : Collections.emptyMap();
+        ProviderWeightSnapshot snapshot = weightState.contracts.get(contractId);
+        return snapshot != null ? new HashMap<>(snapshot.getWeights()) : Collections.emptyMap();
     }
 
     /**
@@ -212,7 +301,9 @@ public class ProviderWeightRouter {
             return validCandidates.get(0);
         }
 
-        Map<String, Integer> overrides = providerWeights.get(contractId);
+        // 本次选路只消费一个不可变覆盖表，即使控制面在循环中途发布也不混读。
+        ProviderWeightSnapshot snapshot = weightState.contracts.get(contractId);
+        Map<String, Integer> overrides = snapshot != null ? snapshot.getWeights() : null;
 
         // 计算有效权重：Dashboard 覆盖 > 注册时初始 weight
         int totalWeight = 0;

@@ -6,10 +6,12 @@ import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.routing.MigrationPhase;
 import com.lingframe.core.routing.MigrationStateHolder;
 import com.lingframe.core.routing.ProviderWeightRouter;
+import com.lingframe.core.routing.ProviderWeightSnapshot;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.InitializingBean;
 
 import java.util.Map;
+import java.util.HashMap;
 
 /**
  * 启动时从 SQLite 恢复治理配置到治理注册表、MigrationStateHolder 及 ProviderWeightRouter。
@@ -105,12 +107,16 @@ public class GovernanceConfigRestorer implements InitializingBean {
                 String routingWeightJson = configs.get(GovernanceConfigTypes.ROUTING_WEIGHT);
                 if (routingWeightJson != null && providerWeightRouter != null) {
                     try {
+                        ProviderWeightSnapshot current = providerWeightRouter.getWeightSnapshot(targetKey);
                         Map<?, ?> weightData = objectMapper.readValue(routingWeightJson, Map.class);
+                        Map<String, Integer> weights = new HashMap<>();
                         for (Map.Entry<?, ?> we : weightData.entrySet()) {
                             String providerKey = String.valueOf(we.getKey());
                             int weight = ((Number) we.getValue()).intValue();
-                            providerWeightRouter.setProviderWeight(targetKey, providerKey, weight);
+                            // 保留历史存储的截断语义，完整解析成功后才能发布。
+                            weights.put(providerKey, Math.max(0, Math.min(100, weight)));
                         }
+                        providerWeightRouter.replaceProviderWeights(targetKey, current.getRevision(), weights);
                         log.info("Restored routing weights for contract {}: {}", targetKey, routingWeightJson);
                         restoredWeights++;
                     } catch (Exception e) {
