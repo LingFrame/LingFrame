@@ -7,6 +7,7 @@ import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.FilterPhase;
 import com.lingframe.core.pipeline.InvocationContext;
+import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.RoutableTarget;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * L0 provider 级路由过滤器。
@@ -73,6 +75,7 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
             return chain.doFilter(ctx);
         }
         InstanceRoutingFilter.validateScope(ctx);
+        applyLingVersionPolicy(ctx);
         if (ctx.routing().getTargetInstance() != null) {
             LingInstance target = ctx.routing().getTargetInstance();
             InstanceRoutingFilter.validateTarget(ctx, target);
@@ -162,6 +165,132 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
     }
 
     /**
+     * 仅显式限定灵元的入口消费局部策略。服务名必须直接命中注册契约，不猜测别名。
+     * 同一次调用固定策略快照，后续实例路由只在已选版本内选择具体代次。
+     */
+    private void applyLingVersionPolicy(InvocationContext ctx) {
+        if (providerWeightRouter == null) {
+            return;
+        }
+        LingInstance pinned = ctx.routing().getTargetInstance();
+        String lingId = ctx.getEffectiveLingId();
+        if (lingId == null && pinned != null) {
+            lingId = pinned.getLingId();
+        }
+        if (lingId == null) {
+            return;
+        }
+        String fqsid = ctx.getServiceFQSID();
+        int separator = fqsid.indexOf(':');
+        String contractId = separator >= 0 ? fqsid.substring(separator + 1) : fqsid;
+        // 旧的不完整入口保持原有失败路径，不能凭不完整名称绑定策略。
+        if (contractId.isEmpty() || contractId.indexOf(':') >= 0) {
+            return;
+        }
+        LingRoutingScope scope = new LingRoutingScope(lingId, contractId);
+        LingVersionPolicy policy = providerWeightRouter.getLingVersionPolicy(scope);
+        if (!policy.isConfigured()) {
+            return;
+        }
+        ctx.routing().setLingVersionPolicy(policy);
+        RoutableTarget runtime = resolveRuntime(ctx, lingId);
+        if (runtime == null || lingServiceRegistry == null) {
+            throw scopedRouteFailure(ctx);
+        }
+        List<LingInstance> ready = new ArrayList<>(runtime.getReadyInstances());
+        ready.removeIf(LingInstance::isAdmissionDisabled);
+        ready.removeIf(instance -> !InstanceRoutingFilter.hasScopedMethod(ctx, instance));
+        if (pinned != null) {
+            InstanceRoutingFilter.validateTarget(ctx, pinned);
+            if (!ready.contains(pinned)) {
+                throw scopedRouteFailure(ctx);
+            }
+        }
+        String requestedVersion = ctx.getTargetVersion();
+        if (requestedVersion == null && pinned != null) {
+            requestedVersion = pinned.getVersion();
+        }
+        List<ProviderDescriptor> providers = lingServiceRegistry.getProvidersByContractId(contractId);
+        List<ProviderDescriptor> candidates = new ArrayList<>();
+        if (providers != null) {
+            for (ProviderDescriptor provider : filterByMethod(providers, contractId, ctx)) {
+                String version = provider.getVersion();
+                if (!lingId.equals(provider.getLingId()) || version == null
+                        || !policy.getVersionWeights().containsKey(version)
+                        || (requestedVersion != null && !requestedVersion.equals(version))) {
+                    continue;
+                }
+                for (LingInstance instance : ready) {
+                    if (lingId.equals(instance.getLingId()) && version.equals(instance.getVersion())) {
+                        candidates.add(provider);
+                        break;
+                    }
+                }
+            }
+        }
+        ProviderDescriptor selected = null;
+        String reason = "explicit-version";
+        if (requestedVersion != null && !candidates.isEmpty()) {
+            selected = candidates.get(0);
+        } else if (requestedVersion == null) {
+            reason = "labels";
+            selected = selectScopedByLabels(candidates, ready, ctx);
+            if (selected == null) {
+                reason = "weights";
+                selected = selectScopedByWeight(candidates, policy);
+            }
+        }
+        if (selected == null) {
+            throw scopedRouteFailure(ctx);
+        }
+        ctx.setTargetLingId(lingId);
+        ctx.setTargetVersion(selected.getVersion());
+        ctx.execution().addTrace(EngineTrace.builder().source("ContractProviderRoutingFilter")
+                .action("Scoped version policy " + policy.getRevision() + " selected "
+                        + selected.getVersion() + " by " + reason).type("OK").depth(0).build());
+    }
+
+    private ProviderDescriptor selectScopedByLabels(List<ProviderDescriptor> candidates,
+            List<LingInstance> ready, InvocationContext ctx) {
+        if (ctx.getLabels() == null || ctx.getLabels().isEmpty()) {
+            return null;
+        }
+        for (ProviderDescriptor candidate : candidates) {
+            for (LingInstance instance : ready) {
+                if (candidate.getLingId().equals(instance.getLingId())
+                        && candidate.getVersion().equals(instance.getVersion())
+                        && matchLabels(instance.getLabels(), ctx.getLabels())) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
+    }
+
+    private ProviderDescriptor selectScopedByWeight(List<ProviderDescriptor> candidates, LingVersionPolicy policy) {
+        long total = 0;
+        for (ProviderDescriptor candidate : candidates) {
+            total += policy.getVersionWeights().get(candidate.getVersion());
+        }
+        if (total == 0) {
+            return null;
+        }
+        long choice = ThreadLocalRandom.current().nextLong(total);
+        for (ProviderDescriptor candidate : candidates) {
+            choice -= policy.getVersionWeights().get(candidate.getVersion());
+            if (choice < 0) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private LingInvocationException scopedRouteFailure(InvocationContext ctx) {
+        return new LingInvocationException(ctx.getServiceFQSID(), LingInvocationException.ErrorKind.ROUTE_FAILURE,
+                "No eligible version in scoped routing policy");
+    }
+
+    /**
      * 标签优先匹配：当 InvocationContext 携带标签时，尝试在候选 Provider 中寻找完全兼容匹配的 Provider。
      * <p>
      * 版本对齐：命中实例的 version 必须与描述符的 version 一致；描述符 version 为 null（迁移期灵元）
@@ -179,7 +308,7 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
                 LingRuntime runtime = (LingRuntime) rt;
                 if (runtime.getInstancePool() != null) {
                     for (LingInstance instance : runtime.getInstancePool().getActiveInstances()) {
-                        if (!versionMatches(desc, instance)) {
+                        if (instance.isAdmissionDisabled() || !versionMatches(desc, instance)) {
                             continue;
                         }
                         if (matchLabels(instance.getLabels(), reqLabels)) {

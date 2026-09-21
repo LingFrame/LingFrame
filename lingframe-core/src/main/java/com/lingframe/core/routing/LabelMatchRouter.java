@@ -30,7 +30,7 @@ public class LabelMatchRouter implements TrafficRouter {
         // 防御性快照：过滤掉 definition 为 null 的实例，避免后续 getWeight/calculateScore 触发 NPE
         List<LingInstance> validCandidates = new ArrayList<>(candidates.size());
         for (LingInstance inst : candidates) {
-            if (inst != null && inst.getDefinition() != null) {
+            if (inst != null && !inst.isAdmissionDisabled() && inst.getDefinition() != null) {
                 validCandidates.add(inst);
             }
         }

@@ -4,6 +4,7 @@ import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.invoker.InvocationAdmission;
 import com.lingframe.core.metrics.LingHealthMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.pipeline.InvocationContext;
@@ -86,6 +87,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
         LingCallContext.setLingId(lingId);
 
         InvocationContext ctx = null;
+        ServletInvocationAdmission admission = null;
         long startNanos = System.nanoTime();
         Throwable downstreamError = null;
         try {
@@ -102,6 +104,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
                 if (routed != null) {
                     request.setAttribute(WebRequestKeys.TARGET_VERSION, routed.getVersion());
                 }
+                admission = new ServletInvocationAdmission(InvocationAdmission.acquire(ctx));
             } catch (LingInvocationException e) {
                 if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
                     log.warn("[Governance] Security rejected: {} -> {}",
@@ -115,11 +118,14 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
                 return;
             }
 
-            filterChain.doFilter(request, response);
+            filterChain.doFilter(admission.wrap(request, response), response);
         } catch (Throwable t) {
             downstreamError = t;
             throw t;
         } finally {
+            if (admission != null) {
+                admission.close();
+            }
             recordWebMetrics(request, response, ctx, lingId, isLingRequest, startNanos, downstreamError);
             if (ctx != null) {
                 ctx.recycle();

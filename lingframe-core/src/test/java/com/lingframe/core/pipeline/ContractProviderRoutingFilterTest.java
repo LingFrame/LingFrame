@@ -9,6 +9,8 @@ import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.routing.ContractProviderRoutingFilter;
 import com.lingframe.core.routing.ProviderDescriptor;
 import com.lingframe.core.routing.ProviderWeightRouter;
+import com.lingframe.core.routing.LingRoutingScope;
+import com.lingframe.core.routing.LingVersionPolicy;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.RoutableTarget;
 import org.junit.jupiter.api.AfterEach;
@@ -33,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
@@ -54,6 +57,183 @@ class ContractProviderRoutingFilterTest {
     @Nested
     @DisplayName("两级路由的显式目标契约")
     class ExplicitTargetContract {
+
+        private final LingRoutingScope scope = new LingRoutingScope("ling-a", "execute");
+        private ProviderWeightRouter policyRouter;
+
+        private LingInstance configureScoped(String entry, Map<String, Integer> weights) {
+            LingInstance candidate = prepare(entry, true);
+            context.setTargetVersion(null);
+            policyRouter = new ProviderWeightRouter();
+            policyRouter.replaceLingVersionPolicy(scope, policyRouter.getLingVersionPolicy(scope).getRevision(), weights);
+            filter = new ContractProviderRoutingFilter(lingServiceRegistry, lingRepository, policyRouter);
+            return candidate;
+        }
+
+        private Object invokeScoped() throws Throwable {
+            return filter.doFilter(context, current -> new InstanceRoutingFilter(null)
+                    .doFilter(current, resolved -> resolved.routing().getTargetInstance()));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"legacy", "scoped"})
+        @DisplayName("局部策略作用于两种灵元入口且忽略全局和实例权重")
+        void scopedPolicyReachesBothEntries(String entry) throws Throwable {
+            LingInstance expected = configureScoped(entry, Collections.singletonMap("v2", 100));
+            policyRouter.setProviderWeight("execute", "ling-a:v1", 100);
+            policyRouter.setProviderWeight("execute", "ling-a:v2", 0);
+            assertSame(expected, invokeScoped());
+            assertEquals("v2", context.getTargetVersion());
+            assertSame(policyRouter.getLingVersionPolicy(scope), context.routing().getLingVersionPolicy());
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"legacy", "scoped"})
+        @DisplayName("已配置的空表或全部零权重拒绝普通分流而不回退")
+        void emptyAndZeroPolicyFail(String entry) {
+            configureScoped(entry, Collections.emptyMap());
+            assertThrows(LingInvocationException.class, this::invokeScoped);
+            policyRouter.replaceLingVersionPolicy(scope, policyRouter.getLingVersionPolicy(scope).getRevision(),
+                    Collections.singletonMap("v2", 0));
+            assertThrows(LingInvocationException.class, this::invokeScoped);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"legacy", "scoped"})
+        @DisplayName("明确版本允许零权重但不能绕过完整版本表")
+        void explicitVersionDoesNotMeanPositiveWeight(String entry) throws Throwable {
+            LingInstance expected = configureScoped(entry, Collections.singletonMap("v2", 0));
+            context.setTargetVersion("v2");
+            assertSame(expected, invokeScoped());
+            context.routing().setTargetInstance(null);
+            context.setTargetVersion("v1");
+            assertThrows(LingInvocationException.class, this::invokeScoped);
+        }
+
+        @Test
+        @DisplayName("标签可命中已列出的零权重版本但未列出的标签版本不能入选")
+        void labelsRespectVersionMembership() throws Throwable {
+            LingInstance expected = configureScoped("legacy", Collections.singletonMap("v2", 0));
+            context.setLabels(Collections.singletonMap("env", "canary"));
+            when(expected.getLabels()).thenReturn(Collections.singletonMap("env", "canary"));
+            assertSame(expected, invokeScoped());
+            context.routing().setTargetInstance(null);
+            context.setTargetVersion(null);
+            policyRouter.replaceLingVersionPolicy(scope, policyRouter.getLingVersionPolicy(scope).getRevision(),
+                    Collections.singletonMap("v1", 0));
+            assertThrows(LingInvocationException.class, this::invokeScoped);
+        }
+
+        @Test
+        @DisplayName("局部策略不改变未限定灵元的全局入口")
+        void globalEntryRemainsIndependent() throws Throwable {
+            configureScoped("global", Collections.singletonMap("v2", 100));
+            LingInstance result = (LingInstance) invokeScoped();
+            assertEquals("v1", result.getVersion());
+            assertNull(context.routing().getLingVersionPolicy());
+        }
+
+        @Test
+        @DisplayName("相同契约的其他灵元不能混入局部策略")
+        void foreignProviderCannotEnterScope() {
+            configureScoped("legacy", Collections.singletonMap("v2", 100));
+            when(lingServiceRegistry.getProvidersByContractId("execute")).thenReturn(
+                    Collections.singletonList(new ProviderDescriptor("execute", "ling-b", "v2", 100)));
+            assertThrows(LingInvocationException.class, this::invokeScoped);
+        }
+
+        @Test
+        @DisplayName("局部策略不因方法资格为空或版本未注册而回退")
+        void requiresRegisteredMethod() {
+            configureScoped("legacy", Collections.singletonMap("v2", 100));
+            context.setMethodName("execute");
+            context.setParameterTypeNames(new String[0]);
+            assertThrows(LingInvocationException.class, this::invokeScoped);
+            context.setMethodName(null);
+            when(lingServiceRegistry.getProvidersByContractId("execute")).thenReturn(Collections.emptyList());
+            assertThrows(LingInvocationException.class, this::invokeScoped);
+        }
+
+        @Test
+        @DisplayName("预解析实例也必须属于已配置策略的就绪版本")
+        void preResolvedTargetCannotBypassPolicy() throws Throwable {
+            LingInstance pinned = configureScoped("global", Collections.singletonMap("v2", 0));
+            context.routing().setTargetInstance(pinned);
+            assertSame(pinned, invokeScoped());
+            policyRouter.replaceLingVersionPolicy(scope, policyRouter.getLingVersionPolicy(scope).getRevision(),
+                    Collections.singletonMap("v1", 100));
+            assertThrows(LingInvocationException.class, this::invokeScoped);
+        }
+
+        @Test
+        @DisplayName("查询就绪实例期间更新策略不会改变本次固定的修订")
+        void policyIsPinnedAcrossRoutingStages() throws Throwable {
+            LingInstance expected = configureScoped("legacy", Collections.singletonMap("v2", 100));
+            LingVersionPolicy old = policyRouter.getLingVersionPolicy(scope);
+            RoutableTarget runtime = lingRepository.getRoutableTarget("ling-a");
+            java.util.List<LingInstance> ready = runtime.getReadyInstances();
+            java.util.concurrent.atomic.AtomicBoolean updated = new java.util.concurrent.atomic.AtomicBoolean();
+            when(runtime.getReadyInstances()).thenAnswer(call -> {
+                if (updated.compareAndSet(false, true)) {
+                    policyRouter.replaceLingVersionPolicy(scope, old.getRevision(), Collections.singletonMap("v1", 100));
+                }
+                return ready;
+            });
+            assertSame(expected, invokeScoped());
+            assertSame(old, context.routing().getLingVersionPolicy());
+            assertTrue(updated.get());
+        }
+
+        @Test
+        @DisplayName("显式清除局部策略后恢复既有实例默认路由")
+        void clearingPolicyRestoresLegacySelection() throws Throwable {
+            configureScoped("legacy", Collections.singletonMap("v2", 100));
+            policyRouter.clearLingVersionPolicy(scope, policyRouter.getLingVersionPolicy(scope).getRevision());
+            LingInstance result = (LingInstance) invokeScoped();
+            assertEquals("v1", result.getVersion());
+            assertNull(context.routing().getLingVersionPolicy());
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"legacy", "scoped"})
+        @DisplayName("共享方法索引不能让未声明方法的同版本代次接流")
+        void scopedMethodBelongsToExactGeneration(String entry) throws Throwable {
+            LingInstance eligible = configureScoped(entry, Collections.singletonMap("v2", 100));
+            context.setMethodName("execute");
+            context.setParameterTypeNames(new String[0]);
+            when(lingServiceRegistry.hasMethod("ling-a:execute", "execute", new String[0])).thenReturn(true);
+            assertThrows(LingInvocationException.class, this::invokeScoped);
+            when(eligible.hasServiceMethod("ling-a:execute", "execute", Collections.emptyList())).thenReturn(true);
+            LingInstance other = mock(LingInstance.class);
+            lenient().when(other.getLingId()).thenReturn("ling-a");
+            lenient().when(other.getVersion()).thenReturn("v2");
+            RoutableTarget runtime = lingRepository.getRoutableTarget("ling-a");
+            when(runtime.getReadyInstances()).thenReturn(Arrays.asList(other, eligible));
+            assertSame(eligible, invokeScoped());
+            context.routing().setTargetInstance(other);
+            assertThrows(LingInvocationException.class, this::invokeScoped);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"legacy", "scoped"})
+        @DisplayName("两种业务入口按局部版本比例分配真实选路结果")
+        void scopedWeightsDistributeAcrossVersions(String entry) throws Throwable {
+            Map<String, Integer> weights = new HashMap<>();
+            weights.put("v1", 90);
+            weights.put("v2", 10);
+            configureScoped(entry, weights);
+            int candidateCount = 0;
+            for (int i = 0; i < 5000; i++) {
+                context.setTargetVersion(null);
+                context.routing().setTargetInstance(null);
+                LingInstance selected = (LingInstance) invokeScoped();
+                if ("v2".equals(selected.getVersion())) {
+                    candidateCount++;
+                }
+            }
+            assertTrue(candidateCount >= 250 && candidateCount <= 750,
+                    "灰度命中比例应在宽容差范围内接近配置值，实际次数=" + candidateCount);
+        }
 
         private LingInstance prepare(String entry, boolean versionAvailable) {
             LingInstance stable = mock(LingInstance.class);

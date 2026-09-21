@@ -384,6 +384,94 @@ class ProviderWeightRouterTest {
         }
     }
 
+    @Nested
+    @DisplayName("限定灵元的版本策略发布")
+    class LingPolicies {
+        private final LingRoutingScope scope = new LingRoutingScope("a", "execute");
+
+        @Test
+        @DisplayName("完整替换版本表且全局覆盖不影响局部修订")
+        void scopedReplacementAndIndependence() {
+            LingVersionPolicy initial = router.getLingVersionPolicy(scope);
+            assertFalse(initial.isConfigured());
+            Map<String, Integer> weights = new HashMap<>();
+            weights.put("v1", 90);
+            weights.put("v2", 10);
+            LingVersionPolicy applied = router.replaceLingVersionPolicy(scope, initial.getRevision(), weights);
+            weights.clear();
+            router.setProviderWeight("execute", "a:v1", 0);
+            assertSame(applied, router.getLingVersionPolicy(new LingRoutingScope("a", "execute")));
+            assertEquals(2, applied.getVersionWeights().size());
+            LingVersionPolicy empty = router.replaceLingVersionPolicy(scope, applied.getRevision(), Collections.emptyMap());
+            assertTrue(empty.isConfigured());
+            assertTrue(empty.getVersionWeights().isEmpty());
+            assertEquals(0, router.getOverrideWeight("execute", "a:v1"));
+        }
+
+        @Test
+        @DisplayName("清除与卸载删除策略并使旧修订失效")
+        void clearAndEvict() {
+            String initial = router.getLingVersionPolicy(scope).getRevision();
+            LingVersionPolicy applied = router.replaceLingVersionPolicy(scope, initial, Collections.singletonMap("v1", 100));
+            LingVersionPolicy cleared = router.clearLingVersionPolicy(scope, applied.getRevision());
+            assertFalse(cleared.isConfigured());
+            assertEquals(cleared.getRevision(), router.getLingVersionPolicy(scope).getRevision());
+            assertThrows(ConcurrentModificationException.class,
+                    () -> router.replaceLingVersionPolicy(scope, initial, Collections.emptyMap()));
+            LingVersionPolicy restored = router.replaceLingVersionPolicy(scope, cleared.getRevision(), Collections.emptyMap());
+            LingRoutingScope other = new LingRoutingScope("a-other", "execute");
+            LingVersionPolicy unrelated = router.replaceLingVersionPolicy(other,
+                    router.getLingVersionPolicy(other).getRevision(), Collections.emptyMap());
+            router.evictProvider("a");
+            assertFalse(router.getLingVersionPolicy(scope).isConfigured());
+            assertSame(unrelated, router.getLingVersionPolicy(other));
+            assertThrows(ConcurrentModificationException.class,
+                    () -> router.clearLingVersionPolicy(scope, restored.getRevision()));
+        }
+
+        @Test
+        @DisplayName("异域过期和非法更新均不改变当前策略")
+        void rejectsInvalidUpdates() {
+            LingVersionPolicy current = router.getLingVersionPolicy(scope);
+            for (String revision : Arrays.asList(router.getWeightSnapshot("execute").getRevision(),
+                    new ProviderWeightRouter().getLingVersionPolicy(scope).getRevision(),
+                    router.getLingVersionPolicy(new LingRoutingScope("b", "execute")).getRevision())) {
+                assertThrows(ConcurrentModificationException.class,
+                        () -> router.replaceLingVersionPolicy(scope, revision, Collections.emptyMap()));
+            }
+            assertThrows(IllegalArgumentException.class, () -> router.replaceLingVersionPolicy(scope,
+                    current.getRevision(), Collections.singletonMap("v1", 101)));
+            assertEquals(current.getRevision(), router.getLingVersionPolicy(scope).getRevision());
+            assertThrows(NullPointerException.class, () -> router.getLingVersionPolicy(null));
+            assertThrows(IllegalArgumentException.class, () -> router.clearLingVersionPolicy(scope, ""));
+        }
+
+        @Test
+        @DisplayName("局部策略并发更新只允许同修订的一个写入者成功")
+        void concurrentScopedWriters() throws Exception {
+            String revision = router.getLingVersionPolicy(scope).getRevision();
+            CyclicBarrier barrier = new CyclicBarrier(2);
+            ExecutorService executor = Executors.newFixedThreadPool(2);
+            java.util.concurrent.Callable<Boolean> replace = () -> {
+                barrier.await(5, TimeUnit.SECONDS);
+                try {
+                    router.replaceLingVersionPolicy(scope, revision, Collections.singletonMap("v1", 100));
+                    return true;
+                } catch (ConcurrentModificationException expected) {
+                    return false;
+                }
+            };
+            try {
+                Future<Boolean> first = executor.submit(replace);
+                Future<Boolean> second = executor.submit(replace);
+                assertNotEquals(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS));
+            } finally {
+                executor.shutdownNow();
+                assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+            }
+        }
+    }
+
     private static void assertWithinTolerance(int expected, int actual, int tolerance, String message) {
         int diff = Math.abs(expected - actual);
         if (diff > tolerance) {

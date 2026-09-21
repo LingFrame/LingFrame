@@ -9,6 +9,7 @@ import com.lingframe.api.security.AccessType;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationExecutionMode;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.invoker.InvocationAdmission;
 import com.lingframe.core.governance.GovernanceStrategy;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.starter.governance.EntryInvocationGovernanceResolver;
@@ -85,7 +86,9 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
             pipelineEngine.invoke(ctx);
 
             // 治理通过，执行业务方法
-            return invocation.proceed();
+            try (InvocationAdmission admission = InvocationAdmission.acquire(ctx)) {
+                return invocation.proceed();
+            }
         } catch (LingInvocationException e) {
             // 治理拒绝：卸载/停机/限流期间降级为 info 避免压测日志风暴，权限错误保持 warn
             if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {

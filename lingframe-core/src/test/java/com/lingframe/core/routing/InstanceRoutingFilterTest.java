@@ -52,6 +52,40 @@ class InstanceRoutingFilterTest {
 
     private InvocationContext context;
 
+    @Test
+    @DisplayName("全部禁用时真实治理和模拟入口都明确失败")
+    void allDisabledFailInEveryMode() {
+        LingInstance disabled = mockInstance("a", "v1");
+        when(disabled.isAdmissionDisabled()).thenReturn(true);
+        context.setRuntime(mockLingRuntime(Collections.singletonList(disabled)));
+        for (InvocationExecutionMode mode : InvocationExecutionMode.values()) {
+            context.execution().setMode(mode);
+            assertThrows(LingInvocationException.class,
+                    () -> new InstanceRoutingFilter(null).doFilter(context, filterChain));
+        }
+        verifyNoInteractions(filterChain);
+    }
+
+    @Test
+    @DisplayName("预解析和自定义路由返回不能绕过禁用")
+    void pinnedAndCustomTargetsCannotBypassAdmission() {
+        LingInstance disabled = mockInstance("a", "v1");
+        when(disabled.isAdmissionDisabled()).thenReturn(true);
+        context.routing().setTargetInstance(disabled);
+        assertThrows(LingInvocationException.class,
+                () -> new InstanceRoutingFilter(null).doFilter(context, filterChain));
+        context.routing().setTargetInstance(null);
+        LingInstance allowed = mockInstance("a", "v2");
+        context.setRuntime(mockLingRuntime(Arrays.asList(disabled, allowed)));
+        TrafficRouter router = (candidates, ctx) -> {
+            assertEquals(Collections.singletonList(allowed), candidates);
+            return disabled;
+        };
+        assertThrows(LingInvocationException.class,
+                () -> new InstanceRoutingFilter(router).doFilter(context, filterChain));
+        verifyNoInteractions(filterChain);
+    }
+
     @BeforeEach
     void setUp() {
         context = InvocationContext.obtain();

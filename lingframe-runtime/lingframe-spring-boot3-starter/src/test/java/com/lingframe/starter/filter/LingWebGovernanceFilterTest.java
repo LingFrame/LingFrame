@@ -20,12 +20,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import static org.mockito.ArgumentMatchers.any;
 import org.mockito.Mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -38,6 +42,77 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 @ExtendWith(MockitoExtension.class)
 @DisplayName("LingWebGovernanceFilter 测试")
 class LingWebGovernanceFilterTest {
+
+    @Test
+    @DisplayName("治理通过后实例禁用则返回路由失败且不进入业务")
+    void disabledAfterGovernanceCannotEnterWebBusiness() throws Exception {
+        LingInstance instance = admissionInstance();
+        LingWebGovernanceFilter filter = admissionFilter(instance, true);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilterInternal(request, response, (req, res) -> fail("Disabled instance entered business"));
+        assertEquals(503, response.getStatus());
+        assertEquals(0, instance.getActiveRequestCount());
+    }
+
+    @Test
+    @DisplayName("同步业务在禁用后继续完成并在返回时释放准入")
+    void admittedWebBusinessCanFinish() throws Exception {
+        LingInstance instance = admissionInstance();
+        LingWebGovernanceFilter filter = admissionFilter(instance, false);
+        filter.doFilterInternal(new MockHttpServletRequest("GET", "/ling-a/demo/detail"),
+                new MockHttpServletResponse(), (req, res) -> {
+                    assertEquals(1, instance.getActiveRequestCount());
+                    instance.setAcceptNewRequests(false);
+                    assertEquals(1, instance.getActiveRequestCount());
+                });
+        assertEquals(0, instance.getActiveRequestCount());
+    }
+
+    @Test
+    @DisplayName("异步请求初次返回不释放准入，完成后才释放")
+    void asynchronousWebCompletionRetainsAdmission() throws Exception {
+        LingInstance instance = admissionInstance();
+        LingWebGovernanceFilter filter = admissionFilter(instance, false);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/ling-a/demo/detail");
+        request.setAsyncSupported(true);
+        filter.doFilterInternal(request, new MockHttpServletResponse(), (req, res) -> {
+            req.startAsync();
+            instance.setAcceptNewRequests(false);
+        });
+        assertEquals(1, instance.getActiveRequestCount());
+        request.getAsyncContext().complete();
+        assertEquals(0, instance.getActiveRequestCount());
+    }
+
+    private LingInstance admissionInstance() {
+        com.lingframe.api.config.LingDefinition definition = new com.lingframe.api.config.LingDefinition();
+        definition.setId("ling-a");
+        definition.setVersion("v1");
+        com.lingframe.core.spi.LingContainer container = mock(com.lingframe.core.spi.LingContainer.class);
+        LingInstance instance = spy(new LingInstance(container, definition, null));
+        lenient().doReturn(true).when(instance).isReady();
+        return instance;
+    }
+
+    private LingWebGovernanceFilter admissionFilter(LingInstance instance, boolean disableAfterGovernance)
+            throws Exception {
+        WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
+                .lingId("ling-a").version("v1").targetBean(new DemoController())
+                .targetMethod(DemoController.class.getMethod("detail"))
+                .classLoader(DemoController.class.getClassLoader())
+                .urlPattern("/ling-a/demo/detail").httpMethod("GET").build();
+        WebRouteResolution resolution = new WebRouteResolution("GET#/ling-a/demo/detail", metadata, runtime, instance);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
+        when(pipelineEngine.invoke(any(InvocationContext.class))).thenAnswer(call -> {
+            if (disableAfterGovernance) {
+                instance.setAcceptNewRequests(false);
+            }
+            return null;
+        });
+        return new LingWebGovernanceFilter(webRouteResolver, pipelineEngine, new LingFrameProperties(),
+                requestMappingHandlerMapping, null, invocationGovernanceResolver);
+    }
 
     // 重新编译，用于验证 boot3 servlet 路径上的元数据透传。
 

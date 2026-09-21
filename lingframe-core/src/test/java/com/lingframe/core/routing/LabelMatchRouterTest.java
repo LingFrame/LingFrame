@@ -27,6 +27,27 @@ class LabelMatchRouterTest {
 
     private LabelMatchRouter router;
 
+    @Test
+    @DisplayName("显式禁用优先于单候选全零回退和标签命中")
+    void admissionDenialPrecedesEverySelection() {
+        LingInstance disabled = createInstance("v1", Collections.singletonMap("env", "canary"),
+                Collections.singletonMap("trafficWeight", 0));
+        LingInstance allowed = createInstance("v2", Collections.emptyMap(),
+                Collections.singletonMap("trafficWeight", 0));
+        disabled.setAcceptNewRequests(false);
+        InvocationContext context = InvocationContext.obtain();
+        try {
+            assertNull(router.route(Collections.singletonList(disabled), context));
+            assertEquals(allowed, router.route(Arrays.asList(disabled, allowed), context));
+            context.setLabels(Collections.singletonMap("env", "canary"));
+            assertEquals(allowed, router.route(Arrays.asList(disabled, allowed), context));
+            allowed.setAcceptNewRequests(false);
+            assertNull(router.route(Arrays.asList(disabled, allowed), context));
+        } finally {
+            context.recycle();
+        }
+    }
+
     @BeforeEach
     void setUp() {
         router = new LabelMatchRouter();

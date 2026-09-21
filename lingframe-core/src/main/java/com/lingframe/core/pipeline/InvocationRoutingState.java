@@ -1,6 +1,7 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.routing.LingVersionPolicy;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -24,9 +25,13 @@ public class InvocationRoutingState {
      */
     private boolean preResolved;
 
+    /** 本次局部版本选路固定使用的策略，不在后续阶段重新读取最新修订。 */
+    private LingVersionPolicy lingVersionPolicy;
+
     void reset() {
         this.targetInstance = null;
         this.preResolved = false;
+        this.lingVersionPolicy = null;
     }
 
     void copyFrom(InvocationRoutingState source) {
@@ -35,5 +40,6 @@ public class InvocationRoutingState {
         }
         this.targetInstance = source.targetInstance;
         this.preResolved = source.preResolved;
+        this.lingVersionPolicy = source.lingVersionPolicy;
     }
 }

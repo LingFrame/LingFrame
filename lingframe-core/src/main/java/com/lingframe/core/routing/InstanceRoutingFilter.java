@@ -71,7 +71,14 @@ public class InstanceRoutingFilter implements LingInvocationFilter {
         }
 
         // 3. 从 READY 实例池选候选，按迭代期版本锁定过滤
-        List<LingInstance> candidates = lingRuntime.getReadyInstances();
+        List<LingInstance> ready = lingRuntime.getReadyInstances();
+        List<LingInstance> candidates = new ArrayList<>(ready);
+        candidates.removeIf(LingInstance::isAdmissionDisabled);
+        candidates.removeIf(instance -> !hasScopedMethod(ctx, instance));
+        if (!ready.isEmpty() && candidates.isEmpty()) {
+            throw new LingInvocationException(ctx.getServiceFQSID(),
+                    LingInvocationException.ErrorKind.ROUTE_FAILURE, "All ready instances reject new requests");
+        }
         String targetVersion = ctx.getTargetVersion();
         if (targetVersion != null) {
             // 迭代期锁版本：只保留 version 严格相等的实例，避免误选旧版本破坏灰度语义
@@ -139,11 +146,29 @@ public class InstanceRoutingFilter implements LingInvocationFilter {
 
     /** 预解析与自定义选路都必须保留调用者声明的灵元和版本约束。 */
     static void validateTarget(InvocationContext ctx, LingInstance target) {
+        if (!hasScopedMethod(ctx, target)) {
+            throw new LingInvocationException(ctx.getServiceFQSID(),
+                    LingInvocationException.ErrorKind.ROUTE_FAILURE, "Instance does not declare requested method");
+        }
+        if (target.isAdmissionDisabled()) {
+            throw new LingInvocationException(ctx.getServiceFQSID(),
+                    LingInvocationException.ErrorKind.ROUTE_FAILURE, "Instance rejects new requests");
+        }
         if ((ctx.getEffectiveLingId() != null && !Objects.equals(ctx.getEffectiveLingId(), target.getLingId()))
                 || (ctx.getTargetVersion() != null && !Objects.equals(ctx.getTargetVersion(), target.getVersion()))) {
             throw new LingInvocationException(ctx.getServiceFQSID(),
                     LingInvocationException.ErrorKind.ROUTE_FAILURE, "Instance does not match target constraints");
         }
+    }
+
+    /** 局部策略使用实例方法目录，避免共享注册索引把旧代次的方法资格带给新代次。 */
+    static boolean hasScopedMethod(InvocationContext ctx, LingInstance instance) {
+        LingVersionPolicy policy = ctx.routing().getLingVersionPolicy();
+        if (policy == null || ctx.getMethodName() == null || ctx.getParameterTypeNames() == null) {
+            return true;
+        }
+        return instance.hasServiceMethod(policy.getScope().toString(), ctx.getMethodName(),
+                java.util.Arrays.asList(ctx.getParameterTypeNames()));
     }
 
     /**

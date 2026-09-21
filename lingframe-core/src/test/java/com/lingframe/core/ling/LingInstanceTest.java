@@ -38,6 +38,67 @@ import static org.mockito.Mockito.when;
 @DisplayName("LingInstance 测试")
 class LingInstanceTest {
 
+
+    @Test
+    @DisplayName("禁用接流不改变就绪状态且已准入调用仍参与排空")
+    void admissionIsIndependentOfLifecycle() throws Exception {
+        prepareReady(instance);
+        assertTrue(instance.tryEnter());
+        instance.setAcceptNewRequests(false);
+        assertTrue(instance.isReady());
+        assertTrue(instance.isAdmissionDisabled());
+        assertFalse(instance.tryEnter());
+        assertEquals(-1, instance.beginInvocation(admissionSnapshot()));
+        assertEquals(1, instance.getActiveRequestCount());
+        assertFalse(instance.awaitIdle(0));
+        instance.exit();
+        assertTrue(instance.awaitIdle(0));
+        instance.setAcceptNewRequests(true);
+        assertFalse(instance.isAdmissionDisabled());
+        long id = instance.beginInvocation(admissionSnapshot());
+        assertTrue(id > 0);
+        instance.completeInvocation(id);
+        assertEquals(0, instance.getActiveRequestCount());
+    }
+
+    @Test
+    @DisplayName("请求通过就绪预检查后迟到时不能穿透已确认禁用")
+    void disableLinearizesBeforeLateAdmission() throws Exception {
+        prepareReady(instance);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            for (boolean tracked : new boolean[] {false, true}) {
+                instance.setAcceptNewRequests(true);
+                CountDownLatch checking = new CountDownLatch(1);
+                CountDownLatch resume = new CountDownLatch(1);
+                when(container.isActive()).thenAnswer(call -> {
+                    checking.countDown();
+                    assertTrue(resume.await(5, TimeUnit.SECONDS));
+                    return true;
+                });
+                java.util.concurrent.Future<Boolean> admitted = executor.submit(() -> tracked
+                        ? instance.beginInvocation(admissionSnapshot()) >= 0 : instance.tryEnter());
+                try {
+                    assertTrue(checking.await(5, TimeUnit.SECONDS));
+                    instance.setAcceptNewRequests(false);
+                } finally {
+                    resume.countDown();
+                }
+                assertFalse(admitted.get(5, TimeUnit.SECONDS));
+                assertEquals(0, instance.getActiveRequestCount());
+                assertTrue(instance.snapshotActiveInvocations().isEmpty());
+            }
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    private ActiveInvocationSnapshot admissionSnapshot() {
+        return new ActiveInvocationSnapshot("trace", "test-ling:execute", "execute", "caller", "resource",
+                "1.0.0", System.currentTimeMillis(), Thread.currentThread().getId(), Thread.currentThread().getName());
+    }
+
     @Test
     @DisplayName("空闲等待校验实际计数，零预算和超时不误报完成")
     void awaitIdleChecksCountAndBudget() throws Exception {

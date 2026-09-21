@@ -66,6 +66,10 @@ public class LingInstance {
     private final AtomicLong activeInvocationSequence = new AtomicLong(0);
     private final Map<Long, ActiveInvocationSnapshot> activeInvocations = new ConcurrentHashMap<>();
 
+    /** 接流许可与在途登记共用此锁；不在锁内调用容器或业务代码。 */
+    private final Object admissionLock = new Object();
+    private volatile boolean admissionDisabled;
+
     // 卸载 drain 等待机制：替代此前的 Thread.sleep 轮询。
     // exit() 把引用计数归零时 signal，drain 线程 awaitIdle 阻塞等待，
     // 既消除 CPU 轮询抖动，又能在请求结束的瞬间立即继续卸载，缩短卸载延迟。
@@ -135,6 +139,24 @@ public class LingInstance {
         return activeRequests.get();
     }
 
+    /**
+     * 设置是否允许该具体实例接收新的受管请求，不改变生命周期状态。
+     * <p>
+     * 禁用返回后，尚未完成准入登记的调用会被拒绝；此前已登记调用继续执行并参与排空。
+     * 此许可不随权重、标签或默认实例选举变化，也不强制中断在途业务。
+     * @param acceptNewRequests 是否允许新请求准入
+     */
+    public void setAcceptNewRequests(boolean acceptNewRequests) {
+        synchronized (admissionLock) {
+            admissionDisabled = !acceptNewRequests;
+        }
+    }
+
+    /** @return 是否已明确禁止该实例接收新请求；不代表实例不再就绪 */
+    public boolean isAdmissionDisabled() {
+        return admissionDisabled;
+    }
+
     public boolean isReady() {
         LingContainer c = container;
         return currentStatus() == InstanceStatus.READY && c != null && c.isActive();
@@ -166,19 +188,24 @@ public class LingInstance {
      * 与 {@link #beginInvocation} 共享同一 `activeRequests` 计数与存活校验。
      */
     public boolean tryEnter() {
-        if (isDying() || !isReady()) {
+        if (admissionDisabled || isDying() || !isReady()) {
             return false;
         }
-        activeRequests.incrementAndGet();
-        if (isDying()) {
-            exit();
-            return false;
+        synchronized (admissionLock) {
+            if (admissionDisabled || isDying()) {
+                return false;
+            }
+            activeRequests.incrementAndGet();
+            if (isDying()) {
+                exit();
+                return false;
+            }
+            return true;
         }
-        return true;
     }
 
     public long beginInvocation(ActiveInvocationSnapshot snapshot) {
-        if (isDying() || !isReady()) {
+        if (admissionDisabled || isDying() || !isReady()) {
             return -1L;
         }
 
@@ -188,16 +215,20 @@ public class LingInstance {
             return -1L;
         }
 
-        long invocationId = activeInvocationSequence.incrementAndGet();
-        activeInvocations.put(invocationId, snapshot);
-
-        activeRequests.incrementAndGet();
-        if (isDying()) {
-            activeInvocations.remove(invocationId);
-            exit();
-            return -1L;
+        synchronized (admissionLock) {
+            if (admissionDisabled || isDying()) {
+                return -1L;
+            }
+            long invocationId = activeInvocationSequence.incrementAndGet();
+            activeInvocations.put(invocationId, snapshot);
+            activeRequests.incrementAndGet();
+            if (isDying()) {
+                activeInvocations.remove(invocationId);
+                exit();
+                return -1L;
+            }
+            return invocationId;
         }
-        return invocationId;
     }
 
     public void exit() {

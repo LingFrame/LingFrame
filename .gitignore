@@ -64,3 +64,5 @@ lingframe-dashboard/src/main/resources/static/update_css.bat
 lingframe-dashboard/src/main/resources/static/tailwindcss.exe
 lingframe-dashboard/src/main/resources/static/input.css
 .workbuddy
+/.codegraph
+**/*.pdf

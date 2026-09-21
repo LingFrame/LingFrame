@@ -44,16 +44,19 @@ public class ProviderWeightRouter {
     private final String epoch = UUID.randomUUID().toString();
 
     /** 一次发布覆盖索引与空作用域修订，避免删除后重建造成修订复用。 */
-    private volatile WeightState weightState = new WeightState(0, Collections.emptyMap());
+    private volatile WeightState weightState = new WeightState(0, Collections.emptyMap(), Collections.emptyMap());
 
     /** 只保留有覆盖的契约；空契约使用全局发布序号，不积累墓碑记录。 */
     private static final class WeightState {
         private final long sequence;
         private final Map<String, ProviderWeightSnapshot> contracts;
+        private final Map<LingRoutingScope, LingVersionPolicy> lingPolicies;
 
-        private WeightState(long sequence, Map<String, ProviderWeightSnapshot> contracts) {
+        private WeightState(long sequence, Map<String, ProviderWeightSnapshot> contracts,
+                Map<LingRoutingScope, LingVersionPolicy> lingPolicies) {
             this.sequence = sequence;
             this.contracts = Collections.unmodifiableMap(new HashMap<>(contracts));
+            this.lingPolicies = Collections.unmodifiableMap(new HashMap<>(lingPolicies));
         }
     }
 
@@ -154,8 +157,88 @@ public class ProviderWeightRouter {
         } else {
             contracts.put(contractId, snapshot);
         }
-        weightState = new WeightState(sequence, contracts);
+        weightState = new WeightState(sequence, contracts, current.lingPolicies);
         return snapshot;
+    }
+
+    /**
+     * 查询指定灵元与契约的局部策略。
+     * @param scope 精确作用域
+     * @return 不可变快照；未配置时返回 configured 为 false 的空表
+     * @throws NullPointerException 作用域为空
+     */
+    public LingVersionPolicy getLingVersionPolicy(LingRoutingScope scope) {
+        java.util.Objects.requireNonNull(scope, "scope");
+        WeightState state = weightState;
+        LingVersionPolicy policy = state.lingPolicies.get(scope);
+        return policy != null ? policy : new LingVersionPolicy(scope,
+                lingRevision(state.sequence, scope), false, Collections.emptyMap());
+    }
+
+    /**
+     * 按修订一次替换局部策略的完整版本权重。
+     * <p>
+     * 空表代表已启用且没有可选版本，不等于清除策略。注册与就绪资格在调用时校验，
+     * 未列出的新版本不会自动获得流量。全局覆盖与注册权重不与本表叠乘。
+     *
+     * @param scope 精确作用域，来自注册契约而非服务别名推断
+     * @param expectedRevision 当前修订
+     * @param versionWeights 以版本为键的完整权重表，值必须在零到一百之间
+     * @return 已发布策略
+     * @throws ConcurrentModificationException 修订已失效
+     * @throws IllegalArgumentException 标识或权重非法
+     * @throws NullPointerException 作用域或权重表为空
+     */
+    public LingVersionPolicy replaceLingVersionPolicy(LingRoutingScope scope, String expectedRevision,
+            Map<String, Integer> versionWeights) {
+        LingVersionPolicy validated = new LingVersionPolicy(scope, expectedRevision, true, versionWeights);
+        synchronized (weightWriteLock) {
+            checkLingRevision(scope, expectedRevision);
+            return publishLingPolicy(scope, true, validated.getVersionWeights());
+        }
+    }
+
+    /**
+     * 显式清除局部策略，后续新调用恢复旧实例路由。
+     * @param scope 精确作用域
+     * @param expectedRevision 当前修订
+     * @return 未配置快照；旧调用仍可持有所读取的策略
+     * @throws ConcurrentModificationException 修订已失效
+     */
+    public LingVersionPolicy clearLingVersionPolicy(LingRoutingScope scope, String expectedRevision) {
+        synchronized (weightWriteLock) {
+            checkLingRevision(scope, expectedRevision);
+            return publishLingPolicy(scope, false, Collections.emptyMap());
+        }
+    }
+
+    private void checkLingRevision(LingRoutingScope scope, String expectedRevision) {
+        ProviderWeightSnapshot.requireKey(expectedRevision, "expectedRevision");
+        LingVersionPolicy current = getLingVersionPolicy(scope);
+        if (!current.getRevision().equals(expectedRevision)) {
+            throw new ConcurrentModificationException("Version policy revision conflict for " + scope
+                    + "; current revision=" + current.getRevision());
+        }
+    }
+
+    /** 调用者持有权重写锁；策略与全局覆盖共用一个发布真源。 */
+    private LingVersionPolicy publishLingPolicy(LingRoutingScope scope, boolean configured,
+            Map<String, Integer> weights) {
+        WeightState current = weightState;
+        long sequence = Math.incrementExact(current.sequence);
+        LingVersionPolicy policy = new LingVersionPolicy(scope, lingRevision(sequence, scope), configured, weights);
+        Map<LingRoutingScope, LingVersionPolicy> policies = new HashMap<>(current.lingPolicies);
+        if (configured) {
+            policies.put(scope, policy);
+        } else {
+            policies.remove(scope);
+        }
+        weightState = new WeightState(sequence, current.contracts, policies);
+        return policy;
+    }
+
+    private String lingRevision(long sequence, LingRoutingScope scope) {
+        return epoch + ":ling:" + sequence + ":" + scope;
     }
 
     /** 不透明标识包含代次、发布序号与作用域，不能跨契约复用。 */
@@ -194,6 +277,11 @@ public class ProviderWeightRouter {
         }
         String versionSeparator = lingId + ":";
         synchronized (weightWriteLock) {
+            for (LingRoutingScope scope : weightState.lingPolicies.keySet()) {
+                if (lingId.equals(scope.getLingId())) {
+                    publishLingPolicy(scope, false, Collections.emptyMap());
+                }
+            }
             // 固定索引遍历，单个契约只发布一次；跨契约不承诺事务。
             for (String contractId : weightState.contracts.keySet()) {
                 Map<String, Integer> weights = new HashMap<>(getOverrideWeights(contractId));
