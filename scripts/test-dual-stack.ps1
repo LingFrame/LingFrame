@@ -83,7 +83,8 @@ if (Test-Path $logSb3) { Remove-Item $logSb3 -Force -ErrorAction SilentlyContinu
 
 $mvnArgs = "clean verify -Pspring-boot2,integration-check -Djacoco.dest.folder=sb2"
 # SB3 在独立沙箱构建，需指定 target 产物目录
-$mvnArgsSb3 = "clean verify -Pspring-boot3,integration-check -Dbc3.base.build.dir=target -Djacoco.dest.folder=sb3"
+# SB3 使用仓库默认的 target-boot3，避免主类输出目录与测试类路径不一致
+$mvnArgsSb3 = "clean verify -Pspring-boot3,integration-check -Djacoco.dest.folder=sb3"
 
 if (-not $FailFast) {
     $mvnArgs += " --fail-at-end"
@@ -133,6 +134,9 @@ while (($procSb2 -and !$procSb2.HasExited) -or ($procSb3 -and !$procSb3.HasExite
 }
 $stopwatch.Stop()
 
+# HasExited 只保证进程已结束，读取 ExitCode 前刷新进程对象，避免并行 cmd 退出状态缓存导致成功构建被误报为失败。
+if ($procSb2) { $procSb2.Refresh() }
+if ($procSb3) { $procSb3.Refresh() }
 
 
 
