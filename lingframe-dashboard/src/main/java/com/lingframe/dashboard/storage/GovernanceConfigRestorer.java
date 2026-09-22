@@ -32,18 +32,19 @@ public class GovernanceConfigRestorer implements InitializingBean {
     private final ProviderWeightRouter providerWeightRouter;
     // 复用 Spring 容器中的单例 ObjectMapper，避免每次恢复都创建新实例
     private final ObjectMapper objectMapper;
+    private final DashboardPersistenceStatus persistenceStatus;
 
     public GovernanceConfigRestorer(GovernanceStorage governanceStorage,
                                     GovernanceAdminService governanceAdmin,
                                     ObjectMapper objectMapper) {
-        this(governanceStorage, governanceAdmin, null, null, objectMapper);
+        this(governanceStorage, governanceAdmin, null, null, objectMapper, null);
     }
 
     public GovernanceConfigRestorer(GovernanceStorage governanceStorage,
                                     GovernanceAdminService governanceAdmin,
                                     MigrationStateHolder migrationStateHolder,
                                     ObjectMapper objectMapper) {
-        this(governanceStorage, governanceAdmin, migrationStateHolder, null, objectMapper);
+        this(governanceStorage, governanceAdmin, migrationStateHolder, null, objectMapper, null);
     }
 
     public GovernanceConfigRestorer(GovernanceStorage governanceStorage,
@@ -51,11 +52,21 @@ public class GovernanceConfigRestorer implements InitializingBean {
                                     MigrationStateHolder migrationStateHolder,
                                     ProviderWeightRouter providerWeightRouter,
                                     ObjectMapper objectMapper) {
+        this(governanceStorage, governanceAdmin, migrationStateHolder, providerWeightRouter, objectMapper, null);
+    }
+
+    public GovernanceConfigRestorer(GovernanceStorage governanceStorage,
+                                    GovernanceAdminService governanceAdmin,
+                                    MigrationStateHolder migrationStateHolder,
+                                    ProviderWeightRouter providerWeightRouter,
+                                    ObjectMapper objectMapper,
+                                    DashboardPersistenceStatus persistenceStatus) {
         this.governanceStorage = governanceStorage;
         this.governanceAdmin = governanceAdmin;
         this.migrationStateHolder = migrationStateHolder;
         this.providerWeightRouter = providerWeightRouter;
         this.objectMapper = objectMapper;
+        this.persistenceStatus = persistenceStatus;
     }
 
     @Override
@@ -68,6 +79,9 @@ public class GovernanceConfigRestorer implements InitializingBean {
             Map<String, Map<String, String>> allConfigs = governanceStorage.loadAllConfigs();
             if (allConfigs.isEmpty()) {
                 log.info("No persisted governance configurations to restore");
+                if (persistenceStatus != null) {
+                    persistenceStatus.recordRecoverySuccess();
+                }
                 return;
             }
 
@@ -150,8 +164,14 @@ public class GovernanceConfigRestorer implements InitializingBean {
             }
             log.info("Governance configuration restoration completed: {} ling policies, {} migration phases, {} contract routing weights",
                     restoredPolicies, restoredPhases, restoredWeights);
+            if (persistenceStatus != null) {
+                persistenceStatus.recordRecoverySuccess();
+            }
         } catch (Exception e) {
             log.warn("Failed to restore governance configuration (does not affect startup)", e);
+            if (persistenceStatus != null) {
+                persistenceStatus.recordRecoveryFailure("治理配置启动恢复失败");
+            }
         }
     }
 

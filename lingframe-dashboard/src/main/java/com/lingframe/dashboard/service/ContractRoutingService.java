@@ -14,6 +14,7 @@ import com.lingframe.dashboard.dto.DashboardMutationResult;
 import com.lingframe.dashboard.dto.DashboardOperationOutcomeDTO;
 import com.lingframe.dashboard.dto.ProviderWeightDTO;
 import com.lingframe.dashboard.storage.GovernanceStorage;
+import com.lingframe.dashboard.storage.DashboardPersistenceStatus;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -61,6 +62,10 @@ public class ContractRoutingService {
 
     @Setter
     private ObjectMapper objectMapper;
+
+    /** Dashboard 运行期持久化/恢复/备份事实（可选，独立构造时为空）。 */
+    @Setter
+    private DashboardPersistenceStatus persistenceStatus;
 
     public ContractRoutingService(LingServiceRegistry lingServiceRegistry,
             ProviderWeightRouter providerWeightRouter) {
@@ -266,6 +271,10 @@ public class ContractRoutingService {
      */
     private DashboardOperationOutcomeDTO persistWeights(String contractId, boolean runtimeApplied) {
         if (governanceStorage == null || contractId == null) {
+            if (persistenceStatus != null) {
+                persistenceStatus.recordPersistenceFailure("治理存储未配置，重启后无法恢复该路由策略");
+                return persistenceStatus.operationOutcome(runtimeApplied, null);
+            }
             return DashboardOperationOutcomeDTO.builder()
                     .runtimeApplied(runtimeApplied)
                     .persisted(false)
@@ -282,6 +291,10 @@ public class ContractRoutingService {
                 ObjectMapper mapper = objectMapper != null ? objectMapper : new ObjectMapper();
                 governanceStorage.saveRoutingWeightConfig(contractId, mapper.writeValueAsString(weights));
             }
+            if (persistenceStatus != null) {
+                persistenceStatus.recordPersistenceSuccess();
+                return persistenceStatus.operationOutcome(runtimeApplied, null);
+            }
             return DashboardOperationOutcomeDTO.builder()
                     .runtimeApplied(runtimeApplied)
                     .persisted(true)
@@ -290,6 +303,10 @@ public class ContractRoutingService {
                     .build();
         } catch (Exception e) {
             log.warn("Failed to persist routing weights for contract {}: {}", contractId, e.getMessage());
+            if (persistenceStatus != null) {
+                persistenceStatus.recordPersistenceFailure("路由策略已在运行时生效，但持久化失败");
+                return persistenceStatus.operationOutcome(runtimeApplied, null);
+            }
             return DashboardOperationOutcomeDTO.builder()
                     .runtimeApplied(runtimeApplied)
                     .persisted(false)

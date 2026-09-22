@@ -43,6 +43,7 @@ import com.lingframe.dashboard.storage.AuditStorage;
 import com.lingframe.dashboard.storage.DashboardDataSource;
 import com.lingframe.dashboard.storage.GovernanceConfigRestorer;
 import com.lingframe.dashboard.storage.GovernanceStorage;
+import com.lingframe.dashboard.storage.DashboardPersistenceStatus;
 import com.lingframe.dashboard.storage.MetricsStorage;
 import com.lingframe.dashboard.storage.StorageInitializer;
 import com.lingframe.dashboard.storage.StorageProperties;
@@ -98,6 +99,12 @@ public class DashboardAutoConfiguration {
     }
 
     // ==================== 基础组件 ====================
+
+    @Bean
+    @ConditionalOnMissingBean
+    public DashboardPersistenceStatus dashboardPersistenceStatus() {
+        return new DashboardPersistenceStatus();
+    }
 
     @Bean
     public LingInfoConverter lingInfoConverter(
@@ -204,7 +211,8 @@ public class DashboardAutoConfiguration {
             @Autowired(required = false) ProviderWeightRouter providerWeightRouter,
             @Autowired(required = false) MigrationStateHolder migrationStateHolder,
             @Autowired(required = false) GovernanceStorage governanceStorage,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            DashboardPersistenceStatus persistenceStatus) {
         // ProviderWeightRouter 由 LingFrameLifecycleBeansConfiguration 装配；
         // dashboard 独立运行（无 starter 依赖）时 fallback 到新建实例，保证不空指针
         ProviderWeightRouter router = providerWeightRouter != null ? providerWeightRouter : new ProviderWeightRouter();
@@ -213,6 +221,7 @@ public class DashboardAutoConfiguration {
             service.setGovernanceStorage(governanceStorage);
             service.setObjectMapper(objectMapper);
         }
+        service.setPersistenceStatus(persistenceStatus);
         return service;
     }
 
@@ -317,8 +326,15 @@ public class DashboardAutoConfiguration {
 
     @Bean
     @ConditionalOnBean(name = "dashboardDataSource")
-    public GovernanceStorage governanceStorage(DashboardDataSource dashboardDataSource, ObjectMapper objectMapper) {
+    public GovernanceStorage governanceStorage(DashboardDataSource dashboardDataSource, ObjectMapper objectMapper,
+            DashboardPersistenceStatus persistenceStatus) {
+        persistenceStatus.markStorageConfigured(true);
         return new GovernanceStorage(new JdbcTemplate(dashboardDataSource.getDataSource()), objectMapper);
+    }
+
+    /** 兼容独立构造测试与扩展代码的旧签名。 */
+    public GovernanceStorage governanceStorage(DashboardDataSource dashboardDataSource, ObjectMapper objectMapper) {
+        return governanceStorage(dashboardDataSource, objectMapper, new DashboardPersistenceStatus());
     }
 
     @Bean
@@ -334,11 +350,23 @@ public class DashboardAutoConfiguration {
             GovernanceAdminService governanceAdmin,
             @Autowired(required = false) MigrationStateHolder migrationStateHolder,
             @Autowired(required = false) ProviderWeightRouter providerWeightRouter,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            DashboardPersistenceStatus persistenceStatus) {
         // MigrationStateHolder / ProviderWeightRouter 由 starter 装配；dashboard 独立运行时 fallback 到 null，
         // 迁移阶段重建与权重恢复流程自动降级跳过
         return new GovernanceConfigRestorer(governanceStorage, governanceAdmin,
-                migrationStateHolder, providerWeightRouter, objectMapper);
+                migrationStateHolder, providerWeightRouter, objectMapper, persistenceStatus);
+    }
+
+    /** 兼容独立构造测试与扩展代码的旧签名。 */
+    public GovernanceConfigRestorer governanceConfigRestorer(
+            GovernanceStorage governanceStorage,
+            GovernanceAdminService governanceAdmin,
+            MigrationStateHolder migrationStateHolder,
+            ProviderWeightRouter providerWeightRouter,
+            ObjectMapper objectMapper) {
+        return new GovernanceConfigRestorer(governanceStorage, governanceAdmin,
+                migrationStateHolder, providerWeightRouter, objectMapper, null);
     }
 
     @Bean

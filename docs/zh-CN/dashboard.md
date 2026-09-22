@@ -184,6 +184,7 @@ Token 只走 Header：`X-Access-Token`。
 | POST | `/lingframe/dashboard/lings/{lingId}/status` | 更新灵元运行时状态 |
 | GET | `/lingframe/dashboard/lings/{lingId}/instances` | 查询实例代次、接流资格和在途请求数 |
 | GET | `/lingframe/dashboard/lings/operations/{operationId}` | 查询本进程内保留的卸载结果 |
+| GET | `/lingframe/dashboard/storage/status` | 查询持久化、启动恢复和数据库备份事实 |
 
 ### 权重路由
 

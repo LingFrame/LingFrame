@@ -31,17 +31,26 @@ public class DatabaseBackupScheduler {
 
     private final StorageProperties storageProperties;
     private final JdbcTemplate jdbcTemplate;
+    private final DashboardPersistenceStatus persistenceStatus;
 
     // 生产中供 Spring 自动装配
-    public DatabaseBackupScheduler(StorageProperties storageProperties, DashboardDataSource dashboardDataSource) {
+    public DatabaseBackupScheduler(StorageProperties storageProperties, DashboardDataSource dashboardDataSource,
+            DashboardPersistenceStatus persistenceStatus) {
         this.storageProperties = storageProperties;
         this.jdbcTemplate = new JdbcTemplate(dashboardDataSource.getDataSource());
+        this.persistenceStatus = persistenceStatus;
     }
 
     // 仅供单元测试直接构造使用
     DatabaseBackupScheduler(StorageProperties storageProperties, JdbcTemplate jdbcTemplate) {
+        this(storageProperties, jdbcTemplate, null);
+    }
+
+    DatabaseBackupScheduler(StorageProperties storageProperties, JdbcTemplate jdbcTemplate,
+            DashboardPersistenceStatus persistenceStatus) {
         this.storageProperties = storageProperties;
         this.jdbcTemplate = jdbcTemplate;
+        this.persistenceStatus = persistenceStatus;
     }
 
     /**
@@ -57,9 +66,11 @@ public class DatabaseBackupScheduler {
         String dbPath = storageProperties.getPath();
         File dbFile = new File(dbPath);
         if (!dbFile.exists()) {
+            recordBackupFailure("Dashboard 数据库文件不存在");
             return;
         }
 
+        boolean checkpointFailed = false;
         try {
             Path backupDir = Paths.get(dbFile.getParent(), "backups");
             Files.createDirectories(backupDir);
@@ -68,6 +79,7 @@ public class DatabaseBackupScheduler {
             try {
                 jdbcTemplate.execute("PRAGMA wal_checkpoint(TRUNCATE)");
             } catch (Exception e) {
+                checkpointFailed = true;
                 log.warn("WAL checkpoint failed, backup may be incomplete: {}", e.getMessage());
             }
 
@@ -77,12 +89,30 @@ public class DatabaseBackupScheduler {
             Files.copy(dbFile.toPath(), backupPath, StandardCopyOption.REPLACE_EXISTING);
 
             log.info("Database backup completed: {}", backupPath);
+            if (checkpointFailed) {
+                recordBackupFailure("WAL checkpoint 失败，备份完整性未确认");
+            } else {
+                recordBackupSuccess();
+            }
 
             // 清理过期备份
             cleanupOldBackups(backupDir);
 
         } catch (Exception e) {
             log.warn("Database backup exception (does not affect operation)", e);
+            recordBackupFailure("Dashboard 数据库备份失败");
+        }
+    }
+
+    private void recordBackupSuccess() {
+        if (persistenceStatus != null) {
+            persistenceStatus.recordBackupSuccess();
+        }
+    }
+
+    private void recordBackupFailure(String reason) {
+        if (persistenceStatus != null) {
+            persistenceStatus.recordBackupFailure(reason);
         }
     }
 

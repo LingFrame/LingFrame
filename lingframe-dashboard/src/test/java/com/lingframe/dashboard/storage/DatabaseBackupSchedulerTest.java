@@ -82,6 +82,22 @@ class DatabaseBackupSchedulerTest {
     }
 
     @Test
+    @DisplayName("成功备份应更新备份就绪事实")
+    void shouldRecordBackupSuccess(@TempDir Path tempDir) throws IOException {
+        DashboardPersistenceStatus status = new DashboardPersistenceStatus();
+        scheduler = new DatabaseBackupScheduler(properties, jdbcTemplate, status);
+        Path dbFile = tempDir.resolve("dashboard.db");
+        Files.createFile(dbFile);
+        when(properties.getBackupIntervalHours()).thenReturn(6);
+        when(properties.getPath()).thenReturn(dbFile.toString());
+        when(properties.getBackupRetentionCount()).thenReturn(5);
+
+        scheduler.backup();
+
+        assertTrue(status.snapshot().isBackupReady());
+    }
+
+    @Test
     @DisplayName("WAL checkpoint 异常不应阻断备份流程")
     void shouldContinueBackupWhenCheckpointFails(@TempDir Path tempDir) throws IOException {
         Path dbFile = tempDir.resolve("dashboard.db");
@@ -99,6 +115,20 @@ class DatabaseBackupSchedulerTest {
         try (Stream<Path> files = Files.list(backupDir)) {
             assertEquals(1, files.count());
         }
+    }
+
+    @Test
+    @DisplayName("备份文件不存在时应记录失败事实")
+    void shouldRecordMissingDatabaseFailure(@TempDir Path tempDir) {
+        DashboardPersistenceStatus status = new DashboardPersistenceStatus();
+        scheduler = new DatabaseBackupScheduler(properties, jdbcTemplate, status);
+        when(properties.getBackupIntervalHours()).thenReturn(6);
+        when(properties.getPath()).thenReturn(tempDir.resolve("missing.db").toString());
+
+        scheduler.backup();
+
+        assertTrue(status.snapshot().getLastBackupError().contains("不存在"));
+        org.junit.jupiter.api.Assertions.assertFalse(status.snapshot().isBackupReady());
     }
 
     @Test
