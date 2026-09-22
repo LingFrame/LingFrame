@@ -3,6 +3,7 @@ package com.lingframe.core.ling;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.RuntimeStateChangedEvent;
 import com.lingframe.core.fsm.RuntimeCoordinator;
+import com.lingframe.core.fsm.RuntimeStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -22,12 +23,12 @@ class LingRuntimeStateEventTest {
         @DisplayName("停止事件应触发实例池清空")
         void shouldShutdownPoolOnStoppingState() {
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus,
+            LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus, new InstanceCoordinator(eventBus),
                     new RuntimeCoordinator(eventBus));
 
             eventBus.publish(new RuntimeStateChangedEvent("ling-a",
-                    com.lingframe.core.fsm.RuntimeStatus.ACTIVE,
-                    com.lingframe.core.fsm.RuntimeStatus.STOPPING));
+                    RuntimeStatus.ACTIVE,
+                    RuntimeStatus.STOPPING));
 
             LingInstance instance = mock(LingInstance.class);
             when(instance.getVersion()).thenReturn("v1");
@@ -40,12 +41,12 @@ class LingRuntimeStateEventTest {
         @DisplayName("其他灵元的状态事件不应影响当前实例池")
         void shouldIgnoreOtherLingState() {
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus,
+            LingRuntime runtime = new LingRuntime("ling-a", LingRuntimeConfig.defaults(), eventBus, new InstanceCoordinator(eventBus),
                     new RuntimeCoordinator(eventBus));
 
             eventBus.publish(new RuntimeStateChangedEvent("ling-b",
-                    com.lingframe.core.fsm.RuntimeStatus.ACTIVE,
-                    com.lingframe.core.fsm.RuntimeStatus.STOPPING));
+                    RuntimeStatus.ACTIVE,
+                    RuntimeStatus.STOPPING));
 
             LingInstance instance = mock(LingInstance.class);
             when(instance.getVersion()).thenReturn("v1");

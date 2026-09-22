@@ -14,10 +14,12 @@ public class MetricsSnapshot {
     private long successRequests;
     private long failedRequests;
     private long timeoutRequests;
-    
+    private long governanceRejectedRequests;
+
     private double successRate;
     private double errorRate;
     private double timeoutRate;
+    private double governanceRejectedRate;
     
     private double avgLatencyMs;
     private long p50LatencyMs;

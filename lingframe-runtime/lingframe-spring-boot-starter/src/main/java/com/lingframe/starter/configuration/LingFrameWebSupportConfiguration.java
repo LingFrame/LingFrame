@@ -1,7 +1,6 @@
 package com.lingframe.starter.configuration;
 
 import com.lingframe.starter.web.LingOpenApiCustomizer;
-import com.lingframe.starter.web.LingRepeatableReadFilter;
 import com.lingframe.starter.web.LingSpringDocCustomizerBridge;
 import com.lingframe.starter.web.WebInterfaceManager;
 import lombok.extern.slf4j.Slf4j;
@@ -9,47 +8,23 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.context.event.ApplicationStartedEvent;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.Ordered;
 import org.springframework.core.env.Environment;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
-import java.lang.reflect.Method;
-
 /**
  * Web 相关装配切片。
+ * <p>
+ * 可重复读 Filter 由 boot2/boot3 starter 类型化注册（单一注册点）。
  */
 @Slf4j
-@Configuration
+@Configuration(proxyBeanMethods = false)
 public class LingFrameWebSupportConfiguration {
-
-    @Bean
-    public FilterRegistrationBean<?> lingRepeatableReadFilter() {
-        Object filter = LingRepeatableReadFilter.createProxy();
-        if (filter == null) {
-            return null;
-        }
-
-        FilterRegistrationBean<?> registration = new FilterRegistrationBean<>();
-        try {
-            Class<?> filterInterface = filter.getClass().getInterfaces()[0];
-            Method setFilter = registration.getClass().getMethod("setFilter", filterInterface);
-            setFilter.invoke(registration, filter);
-        } catch (Exception e) {
-            log.error("Failed to register LingRepeatableReadFilter: {}", e.getMessage());
-        }
-
-        registration.addUrlPatterns("/*");
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
-        registration.setName("lingRepeatableReadFilter");
-        return registration;
-    }
 
     @Bean
     public ApplicationListener<ApplicationStartedEvent> webInterfaceManagerInitializer(
@@ -78,14 +53,14 @@ public class LingFrameWebSupportConfiguration {
 
             if (mapping != null && adapter != null) {
                 webInterfaceManager.init(mapping, adapter, (ConfigurableApplicationContext) context);
-                log.info("[LingFrame Web] WebInterfaceManager initialized with host Spring MVC components");
+                log.info("[LingFrame Web] WebInterfaceManager initialized with lingcore Spring MVC components");
             } else {
                 log.warn("[LingFrame Web] Standard Spring MVC components not found, skipping WebInterfaceManager initialization");
             }
         };
     }
 
-    @Configuration
+    @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(io.swagger.v3.oas.models.OpenAPI.class)
     static class SpringDocIntegrationConfiguration {
 
@@ -103,12 +78,21 @@ public class LingFrameWebSupportConfiguration {
 
         @Bean
         public static BeanPostProcessor lingSpringDocGroupedOpenApiPostProcessor(
-                LingOpenApiCustomizer lingOpenApiCustomizer) {
+                ObjectProvider<LingOpenApiCustomizer> customizerProvider) {
             return new BeanPostProcessor() {
                 @Override
                 public Object postProcessAfterInitialization(Object bean, String beanName) {
-                    LingSpringDocCustomizerBridge.attachToGroupedOpenApi(
-                            bean.getClass().getClassLoader(), lingOpenApiCustomizer, bean);
+                    if (bean != null) {
+                        String typeName = bean.getClass().getName();
+                        if ("org.springdoc.core.GroupedOpenApi".equals(typeName)
+                                || "org.springdoc.core.models.GroupedOpenApi".equals(typeName)) {
+                            LingOpenApiCustomizer customizer = customizerProvider.getIfAvailable();
+                            if (customizer != null) {
+                                LingSpringDocCustomizerBridge.attachToGroupedOpenApi(
+                                        bean.getClass().getClassLoader(), customizer, bean);
+                            }
+                        }
+                    }
                     return bean;
                 }
             };

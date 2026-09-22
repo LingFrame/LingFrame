@@ -8,8 +8,7 @@ import java.util.function.Function;
 
 /**
  * 纯方法级执行句柄缓存。
- * 替代原先庞大的 ServiceRegistry，不再持有 Proxy、Class 或相关监听逻辑。
- * 纯粹退化为 { FQSID -> MethodHandle } 的不可变映射存放所。
+ * 不持有 Proxy、Class 或相关监听逻辑，纯粹退化为 { FQSID -> MethodHandle } 的不可变映射存放所。
  */
 public class InvokableMethodCache {
     private final Map<String, MethodHandle> cache = new ConcurrentHashMap<>();

@@ -72,7 +72,7 @@ Dashboard 的意义不只是“有一个后台页面”，而是它已经开始�
 
 ```xml
 <dependency>
-    <groupId>com.lingframe</groupId>
+    <groupId>cn.lingframe</groupId>
     <artifactId>lingframe-dashboard</artifactId>
     <version>${lingframe.version}</version>
 </dependency>
@@ -98,8 +98,76 @@ Dashboard 后端控制面默认暴露在：
 - 安装接口需要额外启用：`lingframe.dashboard.install-enabled=true`
 - 热重载接口只在 `lingframe.dev-mode=true` 时可用
 
-![LingFrame Dashboard 示例](./../images/dashboard.zh-CN.png)
+[![LingFrame Dashboard 示例](./../images/dashboard.0.4.0.png)](https://dashboard.lingframe.cn)
+
+> 点击截图即可进入在线体验。
+> 在线演示访问令牌：`lingframe`。
 *图示：Dashboard 可以是治理控制面的一个 UI 消费者。*
+
+## 配置项
+
+Dashboard 的所有配置项前缀为 `lingframe.dashboard`。生产全量模板见
+[`application-prod.yaml.example`](../../lingframe-examples/lingframe-example-lingcore-app/src/main/resources/application-prod.yaml.example)。
+
+### 顶层开关
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `lingframe.dashboard.enabled` | `false` | 控制面总开关。**仅引入依赖不会启用**，必须显式 `true` 才装配 |
+| `lingframe.dashboard.install-enabled` | `false` | 是否允许通过 Dashboard 上传安装灵元 |
+| `lingframe.dashboard.tools.real-invocation-enabled` | `false` | 是否允许 Playground 发起真实业务调用 |
+| `lingframe.dashboard.tools.simulation-enabled` | `false` | 是否允许资源和 IPC 模拟 |
+| `lingframe.dashboard.tools.stress-test-enabled` | `false` | 是否允许压力路由和契约穿透演练 |
+| `lingframe.dashboard.tools.mode-switch-enabled` | `false` | 是否允许通过 Dashboard 切换运行时模式 |
+| `lingframe.dashboard.metaspace-estimate-bytes-per-class` | `10240` | 单类 Metaspace 估算字节数（仅用于指标估算） |
+
+### 访问令牌鉴权（`access-token`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `enabled` | `true` | 启用令牌认证；关闭须显式 `enabled=false` |
+| `token` | `""` | 主访问令牌；`enabled=true` 时必填，否则启动失败（fail-closed） |
+| `allow-weak` | `true` | `false` 时弱口令启动失败；生产必须 `false` |
+| `secondary-tokens` | `[]` | 备用令牌列表（用于轮换过渡期） |
+
+Token 只走 Header：`X-Access-Token`。
+
+### 跨域过滤（`cors`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `enabled` | `true` | 设为 `false` 时整个 Filter 跳过（开发逃生口） |
+| `allowed-origins` | `[]` | 允许的跨域源列表；空 + `access-token` 启用 = 仅同源 |
+| `allowed-methods` | `["GET","POST","DELETE","OPTIONS"]` | CORS 允许的 HTTP 方法 |
+| `allowed-headers` | `["Content-Type","X-Access-Token","X-Requested-With"]` | 允许的请求头 |
+| `max-age` | `3600` | 预检请求缓存时间（秒） |
+
+### 限流（`rate-limit`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `trusted-proxy-ips` | `[]` | 受信反向代理 IP 集合；仅直连 IP 在此集合中时才解析 `X-Forwarded-For`，避免伪造绕过限流 |
+| `max-requests-per-second` | `30` | 每秒每 IP 最大请求数 |
+| `ip-idle-threshold-ms` | `600000` | IP 不活跃超过此时间（毫秒）后清理 |
+
+### 只读模式（`readonly`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `enabled` | `false` | 启用后所有写操作（POST/DELETE）被拒绝，仅允许 GET |
+| `allowed-paths` | `[]` | 只读模式下允许的路径（前缀匹配），如健康检查等 |
+
+### SQLite 持久化存储（`storage`）
+
+| 配置项 | 默认 | 说明 |
+| :-- | :-- | :-- |
+| `enabled` | `true` | 是否启用持久化存储 |
+| `path` | `${user.home}/.lingframe/dashboard.db` | SQLite 数据库文件路径；容器环境务必挂载持久卷 |
+| `metrics-retention-days` | `7` | 指标数据保留天数 |
+| `audit-retention-days` | `30` | 审计日志保留天数 |
+| `metrics-collect-interval-seconds` | `30` | 指标采集间隔（秒） |
+| `backup-interval-hours` | `6` | 数据库备份间隔（小时），`0` 表示不备份 |
+| `backup-retention-count` | `5` | 备份文件保留数量 |
 
 ## API 端点
 
@@ -114,21 +182,49 @@ Dashboard 后端控制面默认暴露在：
 | DELETE | `/lingframe/dashboard/lings/uninstall/{lingId}/{version}` | 卸载指定版本 |
 | POST | `/lingframe/dashboard/lings/{lingId}/reload` | 开发态热重载 |
 | POST | `/lingframe/dashboard/lings/{lingId}/status` | 更新灵元运行时状态 |
+| GET | `/lingframe/dashboard/lings/{lingId}/instances` | 查询实例代次、接流资格和在途请求数 |
+| GET | `/lingframe/dashboard/lings/operations/{operationId}` | 查询本进程内保留的卸载结果 |
+| GET | `/lingframe/dashboard/storage/status` | 查询持久化、启动恢复和数据库备份事实 |
+| GET | `/lingframe/dashboard/audit/logs` | 查询权限审计日志（不包含令牌和业务参数） |
 
-### 灰度发布
+### 权重路由
 
 | 方法 | 端点 | 说明 |
 | :-- | :-- | :-- |
-| POST | `/lingframe/dashboard/lings/{lingId}/canary` | 更新灰度比例与灰度版本 |
+| POST | `/lingframe/dashboard/contract-routing/{contractId}/weight` | 设置某契约下指定 provider 的权重 |
+| PUT | `/lingframe/dashboard/contract-routing/{contractId}/weights` | 按完整策略快照原子替换权重 |
+| GET | `/lingframe/dashboard/contract-routing/{contractId}/evidence` | 查询生效策略与真实命中事实 |
 
 请求体示例：
 
 ```json
 {
-  "percent": 10,
-  "canaryVersion": "2.0.0"
+  "providerKey": "order-ling:1.1.0",
+  "weight": 20
 }
 ```
+
+> `providerKey` 即路由键——灵元恒为 `lingId:version`（版本真源来自绑定实例上下文），灵核为裸 `lingcore-app`，写侧注册与路由读路径键化一致。`weight` 为 0-100 整数；Dashboard 下发后立即覆盖 `ProviderWeightRouter` 内的运行期权重，IPC 与 Web 治理链同时生效。
+
+生产灰度应使用整策略发布接口，避免逐项更新产生中间策略：
+
+```json
+{
+  "expectedRevision": "7",
+  "weights": {
+    "order-ling:1.0.0": 90,
+    "order-ling:1.1.0": 10
+  }
+}
+```
+
+`expectedRevision` 不匹配时发布会被拒绝；成功响应返回新的策略修订号和完整生效快照。单项接口保留用于兼容和低风险调整。
+
+权重写操作响应顶层的 `operationOutcome` 会分别表达 `runtimeApplied`、`persisted`、`recoveryReady` 和 `backupReady`。运行时已生效不代表重启后一定可恢复；持久化或备份失败时会返回明确的 `failureReason`。
+
+路由和治理变更会写入安全审计，记录操作者标识、操作类型、目标、策略修订号和结果；访问令牌及业务参数不会写入审计详情。
+
+命中事实来自运行时真实调用，包含版本、实例代次、策略修订号、选路原因、成功/失败次数和实际占比。它与策略快照分别读取，不能当作跨两者的事务视图。
 
 ### 治理规则
 
@@ -187,12 +283,12 @@ curl http://localhost:8888/lingframe/dashboard/lings
 curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/reload
 ```
 
-### 配置灰度发布
+### 配置权重路由
 
 ```bash
-curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
+curl -X POST http://localhost:8888/lingframe/dashboard/contract-routing/order-ling/weight \
   -H "Content-Type: application/json" \
-  -d '{"percent": 20, "canaryVersion": "2.0.0"}'
+  -d '{"providerKey": "order-ling:1.1.0", "weight": 20}'
 ```
 
 ## 注意事项
@@ -200,6 +296,13 @@ curl -X POST http://localhost:8888/lingframe/dashboard/lings/order-ling/canary \
 1. Dashboard 是可选模块，只有在 `lingframe.dashboard.enabled=true` 时才会启用。
 2. 安装接口默认关闭，需要显式设置 `lingframe.dashboard.install-enabled=true`。
 3. 热重载能力只属于开发态，`lingframe.dev-mode=false` 时会被拒绝。
-4. 当前实现默认开放 CORS，生产环境应在 Dashboard 前增加鉴权与访问控制。
+4. CORS 由集中式 `DashboardCorsFilter` 统一管控。当 access-token 认证已启用且未配置 `lingframe.dashboard.cors.allowed-origins` 时，仅允许同源请求。跨域部署场景需显式配置：
+   ```yaml
+   lingframe:
+     dashboard:
+       cors:
+         allowed-origins:
+           - "https://admin.example.com"
+   ```
 5. 真实后端 API 面才是文档应对齐的事实来源，UI 打包与前端壳层不是当前阶段重点。
 6. Dashboard 更适合被理解为运行时治理的观察与操作入口，而不是独立于内核之外的另一个系统。

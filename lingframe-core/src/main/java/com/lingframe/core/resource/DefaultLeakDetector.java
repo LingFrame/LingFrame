@@ -2,17 +2,22 @@ package com.lingframe.core.resource;
 
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.runtime.RuntimeMode;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.core.spi.LeakDetector;
 import com.lingframe.core.spi.LeakRiskReport;
+import com.lingframe.core.spi.LingUnloadHook;
+import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
+import java.lang.ref.PhantomReference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -32,7 +37,7 @@ public class DefaultLeakDetector implements LeakDetector {
     private final ReferenceQueue<ClassLoader> referenceQueue = new ReferenceQueue<>();
     private final AtomicInteger aggressiveChecksInFlight = new AtomicInteger();
 
-    private final boolean devMode;
+    private final RuntimeMode runtimeMode;
     private final EventBus eventBus;
     private final int maxConcurrentAggressiveChecks;
     private final int devStartDelayMillis;
@@ -42,14 +47,28 @@ public class DefaultLeakDetector implements LeakDetector {
     private final int finalConfirmationDelayMillis;
     private final int queuePollMillis;
 
-    public DefaultLeakDetector() {
-        this(null, LingFrameConfig.current());
-    }
+    /**
+     * GC 前清理钩子列表。
+     * <p>
+     * IDE 调试模式下，debugger-agent 会持续拦截 Throwable 创建并记录到 CaptureStorage，
+     * 卸载清理后至 GC 窗口期间新捕获的异常 backtrace 仍会强引用灵元 CL 加载的 Class，
+     * 阻止 ClassLoader 被 GC 回收。在每轮 GC 前重新执行这些钩子，清除新捕获的条目，
+     * 确保 GC 时引用链已断开。
+     * <p>
+     * 通过 {@link WeakReference#get()} 获取 ClassLoader，避免闭包长期持有强引用。
+     */
+    private final List<LingUnloadHook> preGcCleaners;
 
     public DefaultLeakDetector(EventBus eventBus, LingFrameConfig config) {
-        LingFrameConfig effectiveConfig = config == null ? LingFrameConfig.current() : config;
+        this(eventBus, config, Collections.emptyList());
+    }
+
+    public DefaultLeakDetector(EventBus eventBus, LingFrameConfig config, List<LingUnloadHook> preGcCleaners) {
+        LingFrameConfig effectiveConfig = Objects.requireNonNull(config,
+                "LingFrameConfig is required for DefaultLeakDetector");
         this.eventBus = eventBus;
-        this.devMode = effectiveConfig.isDevMode();
+        // 持有 RuntimeMode 引用而非拍平为 boolean：运行时切换 dev/prod 后能实时感知
+        this.runtimeMode = effectiveConfig.getRuntimeMode();
         this.maxConcurrentAggressiveChecks = Math.max(1, effectiveConfig.getLeakDetectionMaxConcurrentAggressiveChecks());
         this.devStartDelayMillis = Math.max(0, effectiveConfig.getLeakDetectionDevStartDelayMillis());
         this.aggressiveGcRounds = Math.max(0, effectiveConfig.getLeakDetectionAggressiveGcRounds());
@@ -59,14 +78,13 @@ public class DefaultLeakDetector implements LeakDetector {
         this.queuePollMillis = Math.max(100, effectiveConfig.getLeakDetectionQueuePollMillis());
         this.scheduler = new ScheduledThreadPoolExecutor(
                 Math.max(1, this.maxConcurrentAggressiveChecks),
-                runnable -> {
-                    Thread thread = new Thread(runnable, "lingframe-leak-detector");
-                    thread.setDaemon(true);
-                    return thread;
-                });
+                NamedThreadFactory.daemon("lingframe-leak-detector"));
         this.scheduler.setRemoveOnCancelPolicy(true);
+        this.preGcCleaners = preGcCleaners != null
+                ? Collections.unmodifiableList(new ArrayList<>(preGcCleaners))
+                : Collections.emptyList();
 
-        if (!devMode) {
+        if (!runtimeMode.isDev()) {
             startQueueListener();
         }
     }
@@ -78,7 +96,7 @@ public class DefaultLeakDetector implements LeakDetector {
         }
 
         long triggerTimeMillis = System.currentTimeMillis();
-        if (devMode) {
+        if (runtimeMode.isDev()) {
             detectLeakAggressive(lingId, version, classLoader, triggerTimeMillis);
         } else {
             detectLeakPassive(lingId, version, classLoader, triggerTimeMillis);
@@ -137,7 +155,7 @@ public class DefaultLeakDetector implements LeakDetector {
     }
 
     private void detectLeakAggressive(String lingId, String version, ClassLoader classLoader, long triggerTimeMillis) {
-        WeakReference<ClassLoader> reference = new WeakReference<>(classLoader);
+        LeakReference reference = new LeakReference(lingId, version, MODE_DEV_AGGRESSIVE, triggerTimeMillis, classLoader, referenceQueue);
         if (!tryAcquireAggressiveSlot()) {
             log.debug("[{}-{}] Aggressive leak detection throttled, using bounded confirmation", lingId, version);
             scheduleBoundedConfirmation(lingId, version, reference, triggerTimeMillis);
@@ -148,11 +166,15 @@ public class DefaultLeakDetector implements LeakDetector {
             scheduler.schedule(() -> {
                 try {
                     for (int round = 1; round <= aggressiveGcRounds; round++) {
+                        // GC 前清理 debugger-agent 新捕获的异常缓存，防止 backtrace 引用阻止 GC
+                        runPreGcCleaners(lingId, reference);
                         System.gc();
                         if (!sleepQuietly(aggressiveGcIntervalMillis)) {
                             return;
                         }
-                        if (reference.get() == null) {
+                        // 用 isEnqueued() 判定回收：referent 被 GC 且 JVM 完成 reference-processing 入队后才 true，
+                        // 比 reference.get()==null 可靠（后者可能被 JVM 提前清空造成假阳性）
+                        if (reference.isCollected()) {
                             publishLeakDetection(
                                     lingId,
                                     version,
@@ -184,7 +206,7 @@ public class DefaultLeakDetector implements LeakDetector {
 
     private void scheduleBoundedConfirmation(String lingId,
                                              String version,
-                                             WeakReference<ClassLoader> reference,
+                                             LeakReference reference,
                                              long triggerTimeMillis) {
         scheduler.schedule(() -> scheduleFinalConfirmation(
                         lingId,
@@ -200,16 +222,18 @@ public class DefaultLeakDetector implements LeakDetector {
 
     private void scheduleFinalConfirmation(String lingId,
                                            String version,
-                                           WeakReference<ClassLoader> reference,
+                                           LeakReference reference,
                                            long triggerTimeMillis,
                                            String detectionMode,
                                            boolean triggerGc,
                                            String pendingFailureMessage) {
         scheduler.schedule(() -> {
             if (triggerGc) {
+                // 最终确认 GC 前再次清理，防止确认窗口期间新捕获的异常引用阻止 GC
+                runPreGcCleaners(lingId, reference);
                 System.gc();
             }
-            if (reference.get() == null) {
+            if (reference.isCollected()) {
                 publishLeakDetection(
                         lingId,
                         version,
@@ -298,6 +322,37 @@ public class DefaultLeakDetector implements LeakDetector {
         scheduler.shutdownNow();
     }
 
+    /**
+     * 在每轮 GC 前执行清理钩子，清除卸载后至 GC 窗口期间新累积的引用。
+     * <p>
+     * 通过 {@link WeakReference#get()} 获取 ClassLoader：若已回收则跳过清理，
+     * 否则短暂持有强引用执行清理。清理完成后显式置 null 释放强引用，
+     * 防止 JIT 内联后局部变量跨 System.gc() 存活导致 GC 失效。
+     * 单个钩子抛出的异常被捕获并忽略，避免阻塞 GC 流程。
+     */
+    private void runPreGcCleaners(String lingId, WeakReference<ClassLoader> reference) {
+        if (preGcCleaners.isEmpty()) {
+            return;
+        }
+        ClassLoader classLoader = reference.get();
+        if (classLoader == null) {
+            return;
+        }
+        try {
+            for (LingUnloadHook cleaner : preGcCleaners) {
+                try {
+                    cleaner.cleanup(lingId, classLoader);
+                } catch (Throwable t) {
+                    log.debug("[{}] Pre-GC cleaner {} failed: {}", lingId, cleaner.getClass().getSimpleName(), t.getMessage());
+                }
+            }
+        } finally {
+            // 显式释放强引用：JIT 内联本方法时，局部变量可能跨 System.gc() 存活，
+            // 导致 ClassLoader 在 GC 窗口期间被线程栈持有而无法回收。
+            classLoader = null;
+        }
+    }
+
     private boolean tryAcquireAggressiveSlot() {
         while (true) {
             int current = aggressiveChecksInFlight.get();
@@ -343,6 +398,7 @@ public class DefaultLeakDetector implements LeakDetector {
     }
 
     private static final class LeakReference extends WeakReference<ClassLoader> {
+        final PhantomReference<ClassLoader> phantom;
         private final String lingId;
         private final String version;
         private final String detectionMode;
@@ -355,11 +411,16 @@ public class DefaultLeakDetector implements LeakDetector {
                               long triggerTimeMillis,
                               ClassLoader referent,
                               ReferenceQueue<? super ClassLoader> queue) {
-            super(referent, queue);
+            super(referent);
+            this.phantom = new PhantomReference<>(referent, queue);
             this.lingId = lingId;
             this.version = version;
             this.detectionMode = detectionMode;
             this.triggerTimeMillis = triggerTimeMillis;
+        }
+
+        boolean isCollected() {
+            return phantom.isEnqueued();
         }
 
         private boolean tryReport() {

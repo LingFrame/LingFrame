@@ -2,7 +2,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.lingframe</groupId>
+        <groupId>cn.lingframe</groupId>
         <artifactId>lingframe-runtime</artifactId>
         <version>${revision}</version>
     </parent>
@@ -22,7 +22,7 @@
     <dependencies>
         <!-- 公共核心 (所有 Bean 定义、工具类、适配器等通过此传递) -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-spring-boot-starter</artifactId>
         </dependency>
 
@@ -50,4 +50,24 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>check</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

@@ -1,8 +1,7 @@
 package com.lingframe.core.pipeline;
 
-import com.lingframe.api.security.AccessType;
 import com.lingframe.core.ling.LingRuntime;
-import com.lingframe.core.model.EngineTrace;
+import com.lingframe.core.spi.RoutableTarget;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -10,7 +9,6 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
@@ -57,10 +55,24 @@ public class InvocationContext {
     private String targetVersion;
 
     /**
+     * FQSID 解析缓存：lingId 部分。
+     * <p>
+     * 多个 Filter（MacroStateGuard/Resilience/ContextIsolation/ThreadIsolation）
+     * 都需要从 fqsid 提取 lingId，缓存避免重复 split。
+     */
+    private transient String cachedLingId;
+    /** FQSID 解析缓存：serviceName 部分 */
+    private transient String cachedServiceName;
+
+    /**
      * 运行时对象必须走弱引用。
      * 否则对象池里的 InvocationContext 会把 Runtime 与其背后的灵元 ClassLoader 长期挂住。
+     * <p>
+     * 路由升维：字段类型从 {@code LingRuntime} 升级为 {@link RoutableTarget}，
+     * 使灵核（{@code LingCoreRoutableTarget}）和灵元（{@code LingRuntime}）都能存入。
+     * 旧调用方通过 {@code instanceof LingRuntime} 转型获取灵元独有方法。
      */
-    private WeakReference<LingRuntime> runtimeRef;
+    private WeakReference<RoutableTarget> runtimeRef;
 
     // ════════════════════════════════════════════
     // 第二部分：链路身份与治理入参
@@ -175,144 +187,103 @@ public class InvocationContext {
     }
 
     /**
-     * 运行时对象使用弱引用，避免上下文池把 Runtime 长时间挂住。
+     * 从 FQSID 中提取 lingId，结果缓存避免重复 split。
+     * <p>
+     * FQSID 格式为 {@code lingId:serviceName}，多个 Filter 都需要提取 lingId，
+     * 缓存后同一次调用只需 split 一次。
+     *
+     * @return lingId，如果 FQSID 为 null 则返回 null
      */
-    public void setRuntime(LingRuntime runtime) {
+    public void setServiceFQSID(String serviceFQSID) {
+        this.serviceFQSID = serviceFQSID;
+        if (serviceFQSID == null) {
+            this.cachedLingId = null;
+            this.cachedServiceName = null;
+        } else {
+            int colonIndex = serviceFQSID.indexOf(':');
+            if (colonIndex != -1) {
+                this.cachedLingId = serviceFQSID.substring(0, colonIndex);
+                this.cachedServiceName = serviceFQSID.substring(colonIndex + 1);
+            } else {
+                // 裸契约名（无冒号）场景：不把 contractId 误当 lingId。
+                // 见 getLingIdFromFqsid() 契约——裸 FQSID 下 lingId 为 null，
+                // 调用方须优先读 getTargetLingId()（L0 阶段已解析）。
+                this.cachedLingId = null;
+                this.cachedServiceName = serviceFQSID;
+            }
+        }
+    }
+
+    /**
+     * 从 FQSID 中提取 lingId 部分。
+     * <p>
+     * 旧格式（{@code lingId:serviceName}）返回真实 lingId。
+     * 裸契约名（无冒号）场景返回 null——调用方如需「当前调用的真实目标 lingId」，
+     * 应优先使用 {@link #getEffectiveLingId()}，L0 阶段已解析出 targetLingId。
+     *
+     * @return FQSID 中的 lingId 部分；如果 FQSID 为 null 或不含冒号则返回 null
+     */
+    public String getLingIdFromFqsid() {
+        return cachedLingId;
+    }
+
+    /**
+     * 获取当前调用的有效目标 lingId。
+     * <p>
+     * 读路径优先级：
+     * <ol>
+     *   <li>{@link #getTargetLingId()}——ContractProviderRoutingFilter 在 L0 阶段已解析出真实 lingId</li>
+     *   <li>{@link #getLingIdFromFqsid()}——fallback 兼容旧格式 FQSID（{@code lingId:serviceName}）</li>
+     * </ol>
+     * 裸契约名 FQSID 下 {@link #getLingIdFromFqsid()} 返回 null，
+     * 必须优先读 {@link #getTargetLingId()}。
+     *
+     * @return 真实目标 lingId；如果都为 null 则返回 null
+     */
+    public String getEffectiveLingId() {
+        return targetLingId != null ? targetLingId : cachedLingId;
+    }
+
+    /**
+     * 从 FQSID 中提取 serviceName 部分，结果缓存避免重复 split。
+     *
+     * @return serviceName，如果 FQSID 为 null 则返回 null
+     */
+    public String getServiceNameFromFqsid() {
+        return cachedServiceName;
+    }
+
+    /**
+     * 运行时对象使用弱引用，避免上下文池把 Runtime 长时间挂住。
+     * <p>
+     * 路由升维：参数类型从 {@code LingRuntime} 升级为 {@link RoutableTarget}。
+     * 灵元调用方传 {@code LingRuntime}（实现 RoutableTarget），灵核调用方传 {@code LingCoreRoutableTarget}。
+     */
+    public void setRuntime(RoutableTarget runtime) {
         this.runtimeRef = runtime == null ? null : new WeakReference<>(runtime);
     }
 
-    public LingRuntime getRuntime() {
+    /**
+     * 获取运行时目标。
+     * <p>
+     * 路由升维：返回类型从 {@code LingRuntime} 升级为 {@link RoutableTarget}。
+     * 调用方如需灵元独有方法（如 {@code getConfig}），用 {@code instanceof LingRuntime} 转型。
+     */
+    public RoutableTarget getRuntime() {
         return runtimeRef == null ? null : runtimeRef.get();
     }
 
     /**
-     * 治理字段的聚合访问器，统一委派到治理分区。
+     * 获取灵元运行时（LingRuntime）。
+     * <p>
+     * 路由升维：灵核（{@code LingCoreRoutableTarget}）不是 LingRuntime，返回 null。
+     * 治理类 Filter 调用此方法：灵核走 null 分支跳过治理。
+     *
+     * @return 灵元运行时；如果目标为灵核或未设置，返回 null
      */
-    public String getRequiredPermission() {
-        return governanceState.getRequiredPermission();
-    }
-
-    public void setRequiredPermission(String requiredPermission) {
-        governanceState.setRequiredPermission(requiredPermission);
-    }
-
-    public AccessType getAccessType() {
-        return governanceState.getAccessType();
-    }
-
-    public void setAccessType(AccessType accessType) {
-        governanceState.setAccessType(accessType);
-    }
-
-    public boolean isShouldAudit() {
-        return governanceState.isShouldAudit();
-    }
-
-    public void setShouldAudit(boolean shouldAudit) {
-        governanceState.setShouldAudit(shouldAudit);
-    }
-
-    public String getAuditAction() {
-        return governanceState.getAuditAction();
-    }
-
-    public void setAuditAction(String auditAction) {
-        governanceState.setAuditAction(auditAction);
-    }
-
-    public String getRuleSource() {
-        return governanceState.getRuleSource();
-    }
-
-    public void setRuleSource(String ruleSource) {
-        governanceState.setRuleSource(ruleSource);
-    }
-
-    public Integer getTimeout() {
-        return governanceState.getTimeoutMs();
-    }
-
-    public void setTimeout(Integer timeoutMs) {
-        governanceState.setTimeoutMs(timeoutMs);
-    }
-
-    public Integer getRateLimitPerSecond() {
-        return governanceState.getRateLimitPerSecond();
-    }
-
-    public void setRateLimitPerSecond(Integer rateLimitPerSecond) {
-        governanceState.setRateLimitPerSecond(rateLimitPerSecond);
-    }
-
-    public Integer getMaxConcurrentThreads() {
-        return governanceState.getMaxConcurrentThreads();
-    }
-
-    public void setMaxConcurrentThreads(Integer maxConcurrentThreads) {
-        governanceState.setMaxConcurrentThreads(maxConcurrentThreads);
-    }
-
-    public Integer getRetryCount() {
-        return governanceState.getRetryCount();
-    }
-
-    public void setRetryCount(Integer retryCount) {
-        governanceState.setRetryCount(retryCount);
-    }
-
-    public String getFallbackValue() {
-        return governanceState.getFallbackValue();
-    }
-
-    public void setFallbackValue(String fallbackValue) {
-        governanceState.setFallbackValue(fallbackValue);
-    }
-
-    public Integer getCpuBudgetMsPerMinute() {
-        return governanceState.getCpuBudgetMsPerMinute();
-    }
-
-    public void setCpuBudgetMsPerMinute(Integer cpuBudgetMsPerMinute) {
-        governanceState.setCpuBudgetMsPerMinute(cpuBudgetMsPerMinute);
-    }
-
-    public Integer getMemoryBudgetMb() {
-        return governanceState.getMemoryBudgetMb();
-    }
-
-    public void setMemoryBudgetMb(Integer memoryBudgetMb) {
-        governanceState.setMemoryBudgetMb(memoryBudgetMb);
-    }
-
-    /**
-     * 执行模式访问器。
-     */
-    public InvocationExecutionMode getExecutionMode() {
-        return executionState.getMode();
-    }
-
-    public void setExecutionMode(InvocationExecutionMode executionMode) {
-        executionState.setMode(executionMode == null ? InvocationExecutionMode.NORMAL : executionMode);
-    }
-
-    public boolean isSimulation() {
-        return getExecutionMode().isSimulation();
-    }
-
-    public boolean isGovernOnly() {
-        return getExecutionMode().isGovernOnly();
-    }
-
-    public boolean shouldInvokeTerminal() {
-        return getExecutionMode().shouldInvokeTerminal();
-    }
-
-    public List<EngineTrace> getTraces() {
-        return executionState.getTraces();
-    }
-
-    public void addTrace(EngineTrace trace) {
-        executionState.addTrace(trace);
+    public LingRuntime getLingRuntime() {
+        RoutableTarget target = getRuntime();
+        return target instanceof LingRuntime ? (LingRuntime) target : null;
     }
 
     /**
@@ -325,6 +296,8 @@ public class InvocationContext {
         this.args = null;
         this.targetLingId = null;
         this.targetVersion = null;
+        this.cachedLingId = null;
+        this.cachedServiceName = null;
         this.runtimeRef = null; // ⚠️ 物理清空 WeakReference 容器本身，而不只是等待 referent 自己失效
 
         this.traceId = null;
@@ -361,6 +334,8 @@ public class InvocationContext {
         this.args = source.args;
         this.targetLingId = source.targetLingId;
         this.targetVersion = source.targetVersion;
+        this.cachedLingId = source.cachedLingId;
+        this.cachedServiceName = source.cachedServiceName;
         this.runtimeRef = source.runtimeRef;
 
         this.traceId = source.traceId;

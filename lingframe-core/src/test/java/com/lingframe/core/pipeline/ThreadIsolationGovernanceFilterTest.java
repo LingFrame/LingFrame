@@ -2,33 +2,34 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.event.EventBus;
-import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.ling.DefaultLingRepository;
+import com.lingframe.core.ling.InstancePool;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
+import com.lingframe.core.metrics.GovernanceMetricsSnapshot;
 import com.lingframe.core.model.EngineTrace;
 import com.lingframe.core.spi.LingFilterChain;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
-
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @DisplayName("ThreadIsolationGovernanceFilter 测试")
 class ThreadIsolationGovernanceFilterTest {
@@ -46,7 +47,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(2000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
@@ -77,7 +78,7 @@ class ThreadIsolationGovernanceFilterTest {
 
                 LingInvocationException exception = assertThrows(LingInvocationException.class,
                         () -> filter.doFilter(secondContext, blockingChain));
-                assertEquals(LingInvocationException.ErrorKind.RATE_LIMITED, exception.getKind());
+                assertEquals(LingInvocationException.ErrorKind.BULKHEAD_FULL, exception.getKind());
             } finally {
                 release.countDown();
                 caller.shutdownNow();
@@ -96,13 +97,13 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(1000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
             InvocationContext context = InvocationContext.obtain();
             context.setServiceFQSID("ling1:TestService");
-            context.addTrace(EngineTrace.builder()
+            context.execution().addTrace(EngineTrace.builder()
                     .source("parent")
                     .action("existing")
                     .type("INFO")
@@ -112,7 +113,7 @@ class ThreadIsolationGovernanceFilterTest {
             AtomicReference<InvocationContext> seen = new AtomicReference<>();
             LingFilterChain chain = current -> {
                 seen.set(current);
-                current.addTrace(EngineTrace.builder()
+                current.execution().addTrace(EngineTrace.builder()
                         .source("child")
                         .action("isolated")
                         .type("INFO")
@@ -124,8 +125,8 @@ class ThreadIsolationGovernanceFilterTest {
             try {
                 assertEquals("ok", filter.doFilter(context, chain));
                 assertNotSame(context, seen.get());
-                assertEquals(2, context.getTraces().size());
-                assertEquals("child", context.getTraces().get(1).getSource());
+                assertEquals(2, context.execution().getTraces().size());
+                assertEquals("child", context.execution().getTraces().get(1).getSource());
             } finally {
                 filter.evict("ling1");
                 context.recycle();
@@ -141,7 +142,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(2000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
@@ -215,7 +216,7 @@ class ThreadIsolationGovernanceFilterTest {
 
                 LingInvocationException exception = assertThrows(LingInvocationException.class,
                         () -> filter.doFilter(fourthContext, secondChain));
-                assertEquals(LingInvocationException.ErrorKind.RATE_LIMITED, exception.getKind());
+                assertEquals(LingInvocationException.ErrorKind.BULKHEAD_FULL, exception.getKind());
             } finally {
                 secondRelease.countDown();
                 caller.shutdownNow();
@@ -236,7 +237,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(1000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
@@ -273,7 +274,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(1000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
@@ -307,7 +308,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(1000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
 
             ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
@@ -339,7 +340,7 @@ class ThreadIsolationGovernanceFilterTest {
                     .defaultTimeoutMs(1000)
                     .build();
             EventBus eventBus = new EventBus();
-            LingRuntime runtime = new LingRuntime("ling1", config, eventBus, new RuntimeCoordinator(eventBus));
+            LingRuntime runtime = mockRuntime("ling1", config);
             repository.register(runtime);
             GovernanceMetricsCollector collector = new GovernanceMetricsCollector();
 
@@ -357,13 +358,54 @@ class ThreadIsolationGovernanceFilterTest {
                     return buffer.length > 0 ? "ok" : "fail";
                 }));
 
-                com.lingframe.core.metrics.GovernanceMetricsSnapshot snapshot = collector.getSummary("ling1");
+                GovernanceMetricsSnapshot snapshot = collector.getSummary("ling1");
                 assertEquals(2, snapshot.getMaxConcurrentThreadsBudget());
                 assertEquals(500, snapshot.getCpuBudgetMsPerMinute());
                 assertEquals(8, snapshot.getMemoryBudgetMb());
                 assertTrue(snapshot.getCpuTimeMsLastMinute() >= 0);
                 assertTrue(snapshot.getEstimatedHeapDeltaBytes() >= 0);
                 assertNotEquals(0L, snapshot.getTimestamp());
+            } finally {
+                filter.evict("ling1");
+                context.recycle();
+            }
+        }
+    }
+
+    private static LingRuntime mockRuntime(String lingId, LingRuntimeConfig config) {
+        LingRuntime runtime = mock(LingRuntime.class);
+        InstancePool pool = mock(InstancePool.class);
+        when(runtime.getInstancePool()).thenReturn(pool);
+        when(runtime.getLingId()).thenReturn(lingId);
+        when(runtime.getConfig()).thenReturn(config);
+        return runtime;
+    }
+
+    @Nested
+    @DisplayName("裸 contractId FQSID 读路径")
+    class BareContractIdTests {
+
+        @Test
+        @DisplayName("裸 contractId FQSID 应优先读 targetLingId 查 runtime，线程隔离正常生效")
+        void shouldReadTargetLingIdWhenBareContractId() throws Throwable {
+            LingRepository repository = new DefaultLingRepository();
+            LingRuntimeConfig config = LingRuntimeConfig.builder()
+                    .bulkheadMaxConcurrent(1)
+                    .defaultTimeoutMs(2000)
+                    .build();
+            LingRuntime runtime = mockRuntime("ling1", config);
+            repository.register(runtime);
+
+            ThreadIsolationGovernanceFilter filter = new ThreadIsolationGovernanceFilter(repository);
+            InvocationContext context = InvocationContext.obtain();
+            // 模拟 ContractProviderRoutingFilter 已设置 targetLingId，FQSID 保持裸 contractId
+            context.setServiceFQSID("TestService");
+            context.setTargetLingId("ling1");
+
+            try {
+                assertEquals("ok", filter.doFilter(context, current -> "ok"));
+                // 关键断言：线程隔离池创建在 "ling1" 名下，说明用了 targetLingId 而非占位符
+                assertTrue(filter.hasExecutor("ling1"));
             } finally {
                 filter.evict("ling1");
                 context.recycle();

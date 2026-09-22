@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+    <!--
+        OWASP Dependency Check 误报抑制文件。
+        仅当确认漏洞不影响 LingFrame 运行时（如：仅影响未使用的可选功能、
+        已通过其他方式缓解、或漏洞评估为误报）时才添加抑制条目。
+        每条抑制必须包含：
+        1. 明确的 CVE 编号或漏洞标识
+        2. 抑制原因说明
+        3. 过期日期（强制定期复审）
+    -->
+
+    <!-- 示例：如确认某 CVE 为误报，按以下格式添加 -->
+    <!--
+    <suppress>
+        <packageUrl regex="true">^pkg:maven/com\.google\.guava/guava@.*$</packageUrl>
+        <cve>CVE-2023-XXXXX</cve>
+        <cve>CVE-2020-XXXXX</cve>
+        <reason>Guava 的该漏洞仅影响 netty DNS 模块，LingFrame 不使用此功能</reason>
+        <expires>2026-09-01</expires>
+    </suppress>
+    -->
+</suppressions>

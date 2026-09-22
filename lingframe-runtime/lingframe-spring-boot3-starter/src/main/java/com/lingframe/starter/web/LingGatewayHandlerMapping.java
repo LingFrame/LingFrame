@@ -8,18 +8,28 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.handler.AbstractHandlerMapping;
 
 import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 /**
  * Spring Boot 3.x 上 Ling Web 路由的单入口 HandlerMapping。
+ * <p>
+ * 转发前缀剥离（C10）必须显式携带 {@code trustedForwardedPrefixes} 白名单：
+ * 空白名单表示不采信任何客户端转发头，路径属性与 {@code DefaultWebRouteResolver} 保持同一判定。
  */
 public class LingGatewayHandlerMapping extends AbstractHandlerMapping {
 
     private final WebRouteResolver webRouteResolver;
     private final HandlerMethod gatewayHandlerMethod;
+    private final List<String> trustedForwardedPrefixes;
 
-    public LingGatewayHandlerMapping(WebRouteResolver webRouteResolver, WebInterfaceManager webInterfaceManager) {
+    public LingGatewayHandlerMapping(WebRouteResolver webRouteResolver, WebInterfaceManager webInterfaceManager,
+            List<String> trustedForwardedPrefixes) {
         this.webRouteResolver = webRouteResolver;
+        this.trustedForwardedPrefixes = trustedForwardedPrefixes != null
+                ? trustedForwardedPrefixes
+                : Collections.<String>emptyList();
         Method dispatchMethod = ReflectionUtils.findMethod(WebInterfaceManager.LingGatewayHandler.class, "dispatch",
                 ServletWebRequest.class);
         if (dispatchMethod == null) {
@@ -37,7 +47,7 @@ public class LingGatewayHandlerMapping extends AbstractHandlerMapping {
         }
 
         WebInterfaceMetadata metadata = resolution.getMetadata();
-        String lookupPath = WebRequestPathSupport.resolveLookupPath(request);
+        String lookupPath = WebRequestPathSupport.resolveLookupPath(request, trustedForwardedPrefixes);
         request.setAttribute(BEST_MATCHING_HANDLER_ATTRIBUTE, gatewayHandlerMethod);
         request.setAttribute(BEST_MATCHING_PATTERN_ATTRIBUTE, metadata.getUrlPattern());
         request.setAttribute(PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE, lookupPath);

@@ -32,6 +32,9 @@ class DashboardUninstallResultMapperTest {
         assertEquals("ling1", dto.getLingId());
         assertEquals("1.0.0", dto.getVersion());
         assertTrue(dto.isUninstallTriggered());
+        assertEquals(result.getOperationId(), dto.getOperationId());
+        assertTrue(dto.isCleanupCompleted());
+        assertTrue(!dto.isClassLoaderGcConfirmed());
         assertEquals(LeakRiskLevel.RISK_DETECTED, dto.getOverallRiskLevel());
         assertEquals(1, dto.getReports().size());
         assertEquals("thread=worker-1", dto.getReports().get(0).getDetails().get(0));

@@ -10,16 +10,21 @@ import com.lingframe.api.event.lifecycle.LingInstallingEvent;
 import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.api.event.lifecycle.LingUninstallingEvent;
 import com.lingframe.dashboard.dto.LogStreamDTO;
+import com.lingframe.dashboard.storage.AuditStorage;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.*;
 
 /**
@@ -50,12 +55,50 @@ import java.util.concurrent.*;
  * </ul>
  */
 @Slf4j
-@RequiredArgsConstructor
 public class LogStreamService implements InitializingBean, DisposableBean {
 
     // 仪表盘自行维护格式化逻辑，避免新增事件字段反向污染核心事件模型。
     private final EventBus eventBus;
+    private final AuditStorage auditStorage;
+    private final ObjectMapper objectMapper;
     private static final ClassLoader CORE_CLASSLOADER = LogStreamService.class.getClassLoader();
+
+    public LogStreamService(EventBus eventBus) {
+        this(eventBus, null, new ObjectMapper());
+    }
+
+    public LogStreamService(EventBus eventBus, AuditStorage auditStorage) {
+        this(eventBus, auditStorage, new ObjectMapper());
+    }
+
+    public LogStreamService(EventBus eventBus, AuditStorage auditStorage, ObjectMapper objectMapper) {
+        this.eventBus = eventBus;
+        this.auditStorage = auditStorage;
+        this.objectMapper = objectMapper == null ? new ObjectMapper() : objectMapper;
+    }
+
+    /** 最大 SSE 连接数，防止恶意/异常场景 OOM */
+    private static final int MAX_CONNECTIONS = 100;
+
+    /** SSE 连接超时时间：30 分钟，避免死连接永久驻留 */
+    private static final long SSE_TIMEOUT_MS = 30 * 60 * 1000L;
+
+    /**
+     * 连接许可信号量：原子获取/释放，避免 check-then-act 竞态导致超限。
+     * 公平模式（true）避免线程饥饿。
+     */
+    private final Semaphore connectionSemaphore = new Semaphore(MAX_CONNECTIONS, true);
+
+    /**
+     * 已释放许可的 emitter 标记集合：保证每个 emitter 的许可只 release 一次，
+     * 避免 onCompletion/onTimeout/onError/broadcast 清理多路径触发导致许可超发。
+     * <p>
+     * 使用 WeakHashMap 支撑：emitter 从 {@link #emitters} 移除后失去强引用，
+     * GC 时自动清除标记条目，避免长期累积导致内存泄漏。
+     * 外层 {@link Collections#synchronizedSet(Set)} 保证并发安全。
+     */
+    private final Set<SseEmitter> released = Collections.synchronizedSet(
+            Collections.newSetFromMap(new WeakHashMap<>()));
 
     /**
      * 维护所有活跃的 SSE 连接。
@@ -63,15 +106,29 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
 
     /**
-     * 单线程分发器，避免抢占业务线程池
+     * 事件分发线程池（固定小规模并行）。
+     * <p>
+     * 用固定 4 线程的小池代替单线程 dispatcher 顺序广播：单个慢/阻塞 emitter
+     * 的 send 只占用一个 worker，不拖累其余连接的广播（避免 head-of-line 阻塞）；
+     * 同时维持「不抢占业务线程池」。
+     * <p>
+     * 内存权衡：每 emitter 独立任务意味着高峰事件率 × 慢客户端时队列会积压，
+     * 因此使用<b>有界队列</b>（1024）配合 {@link ThreadPoolExecutor.AbortPolicy}：
+     * 队列满时提交抛出 {@link RejectedExecutionException}，由调用方（broadcast 系列）
+     * 捕获忽略——SSE 日志是尽力而为的观测通道，宁可丢弃本次广播也不允许无界积压 OOM。
+     * 队列大小 × 每事件 N 个 emitter 任务的上限由 {@link #MAX_CONNECTIONS}（100）间接封顶。
      */
-    private final ExecutorService dispatcher = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "ling-sse-dispatcher");
-        t.setDaemon(true);
-        t.setContextClassLoader(CORE_CLASSLOADER);
-        t.setUncaughtExceptionHandler((thread, ex) -> log.error("SSE dispatcher thread error", ex));
-        return t;
-    });
+    private final ExecutorService dispatcher = new ThreadPoolExecutor(
+            4, 4, 0L, TimeUnit.MILLISECONDS,
+            new LinkedBlockingQueue<>(1024),
+            r -> {
+                Thread t = new Thread(r, "ling-sse-dispatcher");
+                t.setDaemon(true);
+                t.setContextClassLoader(CORE_CLASSLOADER);
+                t.setUncaughtExceptionHandler((thread, ex) -> log.error("SSE dispatcher thread error", ex));
+                return t;
+            },
+            new ThreadPoolExecutor.AbortPolicy());
 
     /**
      * 心跳调度器，每 15 秒发送一次心跳
@@ -116,14 +173,37 @@ public class LogStreamService implements InitializingBean, DisposableBean {
     /**
      * 创建新的 SSE 连接。
      *
+     * <p>并发安全：用 {@link Semaphore#tryAcquire(long, TimeUnit)} 原子获取许可，
+     * 避免 check-then-act 竞态导致超限。三个回调（onCompletion/onTimeout/onError）
+     * 都会释放许可，防止连接泄漏。
+     *
      * @return SSE 发射器实例
+     * @throws IllegalStateException 连接数达到上限
      */
     public SseEmitter createEmitter() {
-        SseEmitter emitter = new SseEmitter(0L);
+        // 原子获取许可，避免 if(size >= MAX) + add 的竞态超限
+        boolean acquired;
+        try {
+            acquired = connectionSemaphore.tryAcquire(1, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while acquiring SSE connection permit");
+        }
+        if (!acquired) {
+            log.warn("SSE connection rejected: max connections ({}) reached", MAX_CONNECTIONS);
+            throw new IllegalStateException("Max SSE connections reached: " + MAX_CONNECTIONS);
+        }
 
-        emitter.onCompletion(() -> removeEmitter(emitter));
-        emitter.onTimeout(() -> removeEmitter(emitter));
-        emitter.onError((e) -> removeEmitter(emitter));
+        // 设有限超时，避免死连接永久驻留
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+
+        // 三个回调都 release 许可并移除 emitter，避免泄漏
+        emitter.onCompletion(() -> releaseEmitter(emitter));
+        emitter.onTimeout(() -> {
+            releaseEmitter(emitter);
+            emitter.complete();
+        });
+        emitter.onError((e) -> releaseEmitter(emitter));
 
         emitters.add(emitter);
 
@@ -131,7 +211,11 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         try {
             emitter.send(SseEmitter.event().name("connected").data("ok"));
         } catch (Exception e) {
-            log.warn("Failed to send initial SSE event", e);
+            // 首次 send 失败说明连接已死：立即释放许可并完成，避免该连接永久占用许可
+            log.warn("Failed to send initial SSE event, releasing permit", e);
+            releaseEmitter(emitter);
+            emitter.complete();
+            throw new IllegalStateException("Failed to establish SSE connection", e);
         }
 
         log.info("New SSE connection. Active: {}", emitters.size());
@@ -158,6 +242,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
      * 处理内核 Audit 日志事件（权限审计）
      */
     private void handleAudit(MonitoringEvents.AuditLogEvent event) {
+        persistAudit(event);
         StringBuilder content = new StringBuilder();
         content.append(event.getAction()).append(" on ").append(event.getResource())
                 .append(" - ").append(event.getResult())
@@ -188,6 +273,39 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                 .timestamp(event.getTimestamp())
                 .build();
         broadcast(logStreamDTO);
+    }
+
+    /**
+     * 将权限审计事件落入 Dashboard SQLite；只写审计元数据，不写令牌或业务参数。
+     */
+    private void persistAudit(MonitoringEvents.AuditLogEvent event) {
+        if (auditStorage == null) {
+            return;
+        }
+        try {
+            Map<String, Object> detail = new HashMap<>();
+            detail.put("traceId", event.getTraceId());
+            detail.put("principal", event.getPrincipal());
+            detail.put("resource", event.getResource());
+            detail.put("capability", event.getCapability());
+            detail.put("source", event.getSource());
+            detail.put("ruleSource", event.getRuleSource());
+            detail.put("failureReason", truncate(event.getFailureReason(), 256));
+            detail.put("costNanos", event.getCostNanos());
+            detail.put("timestamp", event.getTimestamp());
+            auditStorage.saveAuditLog(event.getLingId(), event.getAction(),
+                    objectMapper.writeValueAsString(detail),
+                    event.getResult() == null ? "UNKNOWN" : event.getResult().name());
+        } catch (Exception e) {
+            log.warn("Failed to persist dashboard audit event: lingId={}", event.getLingId(), e);
+        }
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 
     /**
@@ -393,6 +511,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                 .timestamp(event.getTimestamp())
                 .build();
         broadcast(logStreamDTO);
+        broadcastLingChanged(event.getLingId(), "installed", false);
     }
 
     /**
@@ -418,8 +537,11 @@ public class LogStreamService implements InitializingBean, DisposableBean {
      * 处理灵元卸载完成事件
      */
     private void handleLingUninstalled(LingUninstalledEvent event) {
-        String content = String.format("Ling [%s] uninstalled successfully",
-                event.getLingId());
+        boolean leaked = event.isClassLoaderLeaked();
+        String content = leaked
+                ? String.format("Ling [%s] uninstalled with ClassLoader leak warning (verification failed)",
+                        event.getLingId())
+                : String.format("Ling [%s] uninstalled successfully (ClassLoader reclaimed)", event.getLingId());
 
         LogStreamDTO logStreamDTO = LogStreamDTO.builder()
                 .type("ALERT")
@@ -427,10 +549,11 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                 .version(event.getVersion())
                 .content(content)
                 .tag("LING_UNINSTALLED")
-                .level("INFO")
+                .level(leaked ? "WARNING" : "INFO")
                 .timestamp(event.getTimestamp())
                 .build();
         broadcast(logStreamDTO);
+        broadcastLingChanged(event.getLingId(), "uninstalled", leaked);
     }
 
     /**
@@ -445,21 +568,21 @@ public class LogStreamService implements InitializingBean, DisposableBean {
             return;
         }
 
-        // 异步提交给分发线程，不阻塞当前业务线程 (Core Kernel)
+        // 异步提交给分发线程池，不阻塞当前业务线程 (Core Kernel)。
+        // 每个 emitter 独立提交任务，避免单个慢 emitter 拖累其余连接（head-of-line 阻塞）。
         try {
-            dispatcher.submit(withCoreClassLoader(() -> {
-                List<SseEmitter> dead = new ArrayList<>();
-                for (SseEmitter emitter : emitters) {
+            for (SseEmitter emitter : emitters) {
+                dispatcher.submit(withCoreClassLoader(() -> {
                     try {
                         emitter.send(SseEmitter.event()
                                 .name("log-event")
                                 .data(logStreamDTO, MediaType.APPLICATION_JSON));
                     } catch (Exception e) {
-                        dead.add(emitter);
+                        // send 失败视为连接已死，统一通过 releaseEmitter 释放许可并移除
+                        releaseEmitter(emitter);
                     }
-                }
-                emitters.removeAll(dead);
-            }));
+                }));
+            }
         } catch (RejectedExecutionException e) {
             // 关闭过程中拒绝提交任务属于正常现象，直接忽略
         }
@@ -475,26 +598,70 @@ public class LogStreamService implements InitializingBean, DisposableBean {
             return;
         }
         try {
-            dispatcher.submit(withCoreClassLoader(() -> {
-                List<SseEmitter> dead = new ArrayList<>();
-                for (SseEmitter emitter : emitters) {
+            for (SseEmitter emitter : emitters) {
+                dispatcher.submit(withCoreClassLoader(() -> {
                     try {
                         emitter.send(SseEmitter.event().name("ping").data("pong"));
                     } catch (Exception e) {
-                        dead.add(emitter);
+                        // send 失败视为连接已死，统一通过 releaseEmitter 释放许可并移除
+                        releaseEmitter(emitter);
                     }
-                }
-                emitters.removeAll(dead);
-            }));
+                }));
+            }
         } catch (RejectedExecutionException e) {
             // 关闭过程中拒绝提交任务属于正常现象，直接忽略
         }
     }
 
     /**
-     * 移除已关闭的连接
+     * 广播灵元列表变更事件给所有 SSE 连接，触发前端刷新灵元列表。
+     * <p>
+     * 在灵元安装完成、或卸载验证（GC 回收确认）通过后调用，替代前端轮询，
+     * 保证外部（如 MCP ling_unload 工具）触发的卸载能即时从前端列表消失/出现。
+     * 卸载事件携带 leakDetected，前端据此对「卸载完成但 ClassLoader 未回收」给出警告。
+     *
+     * @param lingId      变更的灵元 id
+     * @param action      "installed" 或 "uninstalled"
+     * @param leakDetected 卸载验证结论：true 表示 ClassLoader 未回收（仅卸载场景有意义）
      */
-    private void removeEmitter(SseEmitter emitter) {
+    public void broadcastLingChanged(String lingId, String action, boolean leakDetected) {
+        if (emitters.isEmpty())
+            return;
+        if (dispatcher.isShutdown()) {
+            return;
+        }
+        Map<String, Object> payload = new HashMap<>(4);
+        payload.put("lingId", lingId);
+        payload.put("action", action);
+        payload.put("leakDetected", leakDetected);
+        try {
+            for (SseEmitter emitter : emitters) {
+                dispatcher.submit(withCoreClassLoader(() -> {
+                    try {
+                        emitter.send(SseEmitter.event()
+                                .name("ling-changed")
+                                .data(payload, MediaType.APPLICATION_JSON));
+                    } catch (Exception e) {
+                        releaseEmitter(emitter);
+                    }
+                }));
+            }
+        } catch (RejectedExecutionException e) {
+            // 关闭过程中拒绝提交任务属于正常现象，直接忽略
+        }
+    }
+
+    /**
+     * 释放 SSE 连接：归还许可并从活跃列表移除。
+     *
+     * <p>用 {@link Set#add(Object)} 的返回值保证每个 emitter 的许可只 release 一次，
+     * 避免 onCompletion/onTimeout/onError 以及 broadcast 清理多路径触发导致许可超发。
+     * emitter 失去强引用后由 WeakHashMap 自动清除，无需手动移除标记。
+     */
+    private void releaseEmitter(SseEmitter emitter) {
+        if (released.add(emitter)) {
+            connectionSemaphore.release();
+        }
         emitters.remove(emitter);
         log.debug("SSE connection closed. Active: {}", emitters.size());
     }
@@ -507,6 +674,16 @@ public class LogStreamService implements InitializingBean, DisposableBean {
         eventBus.unsubscribeAll("lingframe-dashboard");
         dispatcher.shutdownNow();
         scheduler.shutdownNow();
+        try {
+            if (!dispatcher.awaitTermination(5, TimeUnit.SECONDS)) {
+                log.warn("SSE dispatcher did not terminate within 5s");
+            }
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                log.warn("SSE scheduler did not terminate within 5s");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         emitters.forEach(SseEmitter::complete);
     }
 

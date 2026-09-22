@@ -8,7 +8,9 @@ import com.lingframe.core.pipeline.InvocationContext;
  */
 public interface LingInvocationFilter {
     /** 获取拦截器执行顺序，值越小优先级越高 */
-    int getOrder();
+    default int getOrder() {
+        return 0;
+    }
 
     /**
      * 执行过滤逻辑

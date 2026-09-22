@@ -2,16 +2,17 @@ package com.lingframe.core.event;
 
 import com.lingframe.api.event.LingEvent;
 import com.lingframe.api.event.LingEventListener;
+import com.lingframe.core.util.NamedThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -26,12 +27,41 @@ import java.util.concurrent.atomic.AtomicLong;
  * </ul>
  * <p>
  * publish 时两类监听器都会被分发，灵元级优先、全局其次（顺序不保证业务语义，仅为确定性调试）。
+ * <p>
+ * 异步溢出策略：
+ * <ul>
+ *   <li>{@link OverflowPolicy#DISCARD}（默认）：满队列时丢弃任务并计数</li>
+ *   <li>{@link OverflowPolicy#BLOCK}：满队列时阻塞调用线程直到有空间</li>
+ * </ul>
  */
 @Slf4j
 public class EventBus {
 
+    /**
+     * 异步队列溢出策略
+     */
+    public enum OverflowPolicy {
+        /** 满队列时丢弃任务并计数 */
+        DISCARD,
+        /** 满队列时阻塞调用线程直到有空间 */
+        BLOCK
+    }
+
     private static final int DEFAULT_ASYNC_THREADS = 2;
     private static final int DEFAULT_ASYNC_QUEUE_CAPACITY = 1024;
+    /** dispatcher 线程名前缀，仅用于 NamedThreadFactory 命名（线程 dump 诊断），不作为线程身份判定依据 */
+    private static final String DISPATCHER_THREAD_PREFIX = "ling-eventbus-async";
+
+    /**
+     * dispatcher 线程身份标记。
+     * <p>
+     * 在 dispatcher 线程执行异步任务期间 set(true)，任务结束后 remove。
+     * 用于 {@link OverflowHandler#isDispatcherThread()} 精确判定当前线程是否为
+     * dispatcher 线程池中的工作线程，避免线程名前缀匹配的脆弱性
+     * （外部线程池若复用同名前缀会误判；且线程名可被业务代码修改）。
+     */
+    private static final ThreadLocal<Boolean> DISPATCHER_THREAD =
+            ThreadLocal.withInitial(() -> Boolean.FALSE);
 
     /**
      * 监听器包装器。
@@ -70,14 +100,24 @@ public class EventBus {
      */
     private final Map<Class<? extends LingEvent>, List<ListenerWrapper>> listeners = new ConcurrentHashMap<>();
     private final ThreadPoolExecutor asyncDispatcher;
+    private final OverflowPolicy overflowPolicy;
     private final AtomicLong droppedAsyncEvents = new AtomicLong(0);
     private final AtomicLong submittedAsyncEvents = new AtomicLong(0);
 
     public EventBus() {
-        this(DEFAULT_ASYNC_THREADS, DEFAULT_ASYNC_QUEUE_CAPACITY);
+        this(DEFAULT_ASYNC_THREADS, DEFAULT_ASYNC_QUEUE_CAPACITY, OverflowPolicy.DISCARD);
     }
 
     public EventBus(int asyncThreads, int asyncQueueCapacity) {
+        this(asyncThreads, asyncQueueCapacity, OverflowPolicy.DISCARD);
+    }
+
+    public EventBus(OverflowPolicy overflowPolicy) {
+        this(DEFAULT_ASYNC_THREADS, DEFAULT_ASYNC_QUEUE_CAPACITY, overflowPolicy);
+    }
+
+    public EventBus(int asyncThreads, int asyncQueueCapacity, OverflowPolicy overflowPolicy) {
+        this.overflowPolicy = overflowPolicy != null ? overflowPolicy : OverflowPolicy.DISCARD;
         BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(Math.max(1, asyncQueueCapacity));
         this.asyncDispatcher = new ThreadPoolExecutor(
                 Math.max(1, asyncThreads),
@@ -85,12 +125,8 @@ public class EventBus {
                 30L,
                 TimeUnit.SECONDS,
                 queue,
-                new EventBusThreadFactory(),
-                (r, executor) -> {
-                    droppedAsyncEvents.incrementAndGet();
-                    log.warn("Dropping async event task because EventBus async queue is full (queueSize={}, activeThreads={})",
-                            executor.getQueue().size(), executor.getActiveCount());
-                });
+                NamedThreadFactory.daemon(DISPATCHER_THREAD_PREFIX, EventBus.class.getClassLoader()),
+                new OverflowHandler(overflowPolicy, droppedAsyncEvents));
         this.asyncDispatcher.allowCoreThreadTimeOut(true);
     }
 
@@ -114,21 +150,23 @@ public class EventBus {
 
     /**
      * 取消灵元级监听器
+     * <p>
+     * 用 {@code compute} 原子操作完成「移除监听器 + 空列表清理 entry」，
+     * 避免 removeIf + isEmpty + remove 三步非原子在竞态下丢监听器或重复 remove。
      */
     public <E extends LingEvent> void unsubscribe(String lingId, Class<E> eventType,
                                                   LingEventListener<E> listener) {
         if (lingId == null || eventType == null || listener == null) {
             return;
         }
-        List<ListenerWrapper> list = listeners.get(eventType);
-        if (list == null) {
-            return;
-        }
-        list.removeIf(w -> lingId.equals(w.lingId()) && w.listener() == listener);
-        // 列表为空时清理 key，避免内存泄漏
-        if (list.isEmpty()) {
-            listeners.remove(eventType, list);
-        }
+        listeners.compute(eventType, (k, list) -> {
+            if (list == null) {
+                return null;
+            }
+            list.removeIf(w -> lingId.equals(w.lingId()) && w.listener() == listener);
+            // 列表为空时移除 entry，避免内存泄漏；非空则保留
+            return list.isEmpty() ? null : list;
+        });
     }
 
     /**
@@ -171,20 +209,23 @@ public class EventBus {
 
     /**
      * 取消全局监听器
+     * <p>
+     * 用 {@code compute} 原子操作完成「移除监听器 + 空列表清理 entry」，
+     * 避免 removeIf + isEmpty + remove 三步非原子在竞态下丢监听器或重复 remove。
      */
     public <E extends LingEvent> void unsubscribeGlobal(Class<E> eventType,
                                                         LingEventListener<E> listener) {
         if (eventType == null || listener == null) {
             return;
         }
-        List<ListenerWrapper> list = listeners.get(eventType);
-        if (list == null) {
-            return;
-        }
-        list.removeIf(w -> w.isGlobal() && w.listener() == listener);
-        if (list.isEmpty()) {
-            listeners.remove(eventType, list);
-        }
+        listeners.compute(eventType, (k, list) -> {
+            if (list == null) {
+                return null;
+            }
+            list.removeIf(w -> w.isGlobal() && w.listener() == listener);
+            // 列表为空时移除 entry，避免内存泄漏；非空则保留
+            return list.isEmpty() ? null : list;
+        });
     }
 
     /* ==================== 事件分发 ==================== */
@@ -214,12 +255,19 @@ public class EventBus {
         return submittedAsyncEvents.get();
     }
 
-    public int getAsyncQueueDepth() {
-        return asyncDispatcher.getQueue().size();
-    }
-
     public void shutdown() {
-        asyncDispatcher.shutdownNow();
+        // 优雅关闭：先停止接受新任务，给正在执行的异步监听器 5 秒正常完成；
+        // 超时后再强制中断，避免灵元卸载时监听器处于不一致状态。
+        asyncDispatcher.shutdown();
+        try {
+            if (!asyncDispatcher.awaitTermination(5, TimeUnit.SECONDS)) {
+                log.warn("EventBus async dispatcher did not terminate within 5 seconds, forcing shutdown");
+                asyncDispatcher.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            asyncDispatcher.shutdownNow();
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -244,7 +292,11 @@ public class EventBus {
         for (ListenerWrapper wrapper : wrappers) {
             try {
                 submittedAsyncEvents.incrementAndGet();
-                asyncDispatcher.execute(() -> {
+                Runnable task = () -> {
+                    // 标记当前线程为 dispatcher 线程，供 OverflowHandler 死锁防御判定。
+                    // 若 listener 内部再次 publish 异步事件触发 rejectedExecution，
+                    // 当前线程（dispatcher）会被识别为 dispatcher 线程并降级为 DROP，避免自我阻塞死锁。
+                    DISPATCHER_THREAD.set(Boolean.TRUE);
                     try {
                         LingEventListener<E> castListener = (LingEventListener<E>) wrapper.listener();
                         castListener.onEvent(event);
@@ -254,8 +306,13 @@ public class EventBus {
                                 wrapper.listener().getClass().getName(),
                                 wrapper.isGlobal() ? "GLOBAL" : wrapper.lingId(),
                                 e.getMessage(), e);
+                    } finally {
+                        // 线程池线程会被复用，必须清理标记避免下一次非 dispatcher 任务被误判
+                        DISPATCHER_THREAD.remove();
                     }
-                });
+                };
+                // 统一走 execute()，溢出策略由 OverflowHandler 处理
+                asyncDispatcher.execute(task);
             } catch (RejectedExecutionException e) {
                 droppedAsyncEvents.incrementAndGet();
                 log.warn("Rejected async event [{}] for listener [{}]",
@@ -265,19 +322,78 @@ public class EventBus {
     }
 
     private boolean isAsyncEvent(LingEvent event) {
-        return event != null
-                && event.getClass().getName().startsWith("com.lingframe.core.event.monitor.");
+        return event instanceof AsyncLingEvent;
     }
 
-    private static final class EventBusThreadFactory implements ThreadFactory {
-        private int counter = 0;
+    // ==================== 指标暴露 ====================
+
+    public int getQueueSize() {
+        return asyncDispatcher.getQueue().size();
+    }
+
+    public int getQueueRemainingCapacity() {
+        return asyncDispatcher.getQueue().remainingCapacity();
+    }
+
+    public OverflowPolicy getOverflowPolicy() {
+        return overflowPolicy;
+    }
+
+    /**
+     * 异步队列溢出处理器。
+     * <ul>
+     *   <li>DISCARD：丢弃任务并计数</li>
+     *   <li>BLOCK：阻塞调用线程直到队列有空间</li>
+     * </ul>
+     * <p>
+     * 死锁防御：BLOCK 策略下若当前线程是 dispatcher 线程，则降级为 DROP。
+     * 否则所有 dispatcher 线程都会阻塞在 {@code queue.put()} 上等待消费，
+     * 但消费线程正是这些被阻塞的 dispatcher，形成死锁。
+     */
+    private static class OverflowHandler implements RejectedExecutionHandler {
+        private final OverflowPolicy policy;
+        private final AtomicLong dropCounter;
+
+        OverflowHandler(OverflowPolicy policy, AtomicLong dropCounter) {
+            this.policy = policy;
+            this.dropCounter = dropCounter;
+        }
 
         @Override
-        public Thread newThread(Runnable runnable) {
-            Thread thread = new Thread(runnable, "ling-eventbus-async-" + (++counter));
-            thread.setDaemon(true);
-            thread.setContextClassLoader(EventBus.class.getClassLoader());
-            return thread;
+        public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
+            if (policy == OverflowPolicy.BLOCK && !isDispatcherThread()) {
+                try {
+                    // 阻塞调用线程直到队列有空间
+                    executor.getQueue().put(r);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    dropCounter.incrementAndGet();
+                    log.warn("Interrupted while blocking on async event task");
+                }
+            } else {
+                // DISCARD 策略，或 BLOCK 策略下的 dispatcher 线程（避免死锁降级为 DROP）
+                dropCounter.incrementAndGet();
+                if (policy == OverflowPolicy.BLOCK) {
+                    log.warn("BLOCK policy downgraded to DROP on dispatcher thread to avoid deadlock (queueSize={}, activeThreads={})",
+                            executor.getQueue().size(), executor.getActiveCount());
+                } else {
+                    log.warn("Dropping async event task because EventBus async queue is full (queueSize={}, activeThreads={})",
+                            executor.getQueue().size(), executor.getActiveCount());
+                }
+            }
+        }
+
+        /**
+         * 判断当前线程是否为 EventBus 的 dispatcher 线程。
+         * <p>
+         * 通过 {@link #DISPATCHER_THREAD} ThreadLocal 标记识别，避免在 BLOCK 策略下
+         * dispatcher 线程自我阻塞导致死锁。
+         * <p>
+         * 相比线程名前缀匹配，ThreadLocal 标记更精确：不受外部线程池复用同名前缀影响，
+         * 也不受业务代码修改线程名的影响。标记在 dispatcher 线程执行异步任务期间被 set(true)。
+         */
+        private static boolean isDispatcherThread() {
+            return Boolean.TRUE.equals(DISPATCHER_THREAD.get());
         }
     }
 }

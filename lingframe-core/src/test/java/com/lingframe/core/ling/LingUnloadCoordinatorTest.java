@@ -1,0 +1,432 @@
+package com.lingframe.core.ling;
+
+import com.lingframe.core.pipeline.InvocationPipelineEngine;
+import com.lingframe.core.spi.LeakDetector;
+import com.lingframe.core.spi.LeakRiskReport;
+import com.lingframe.core.spi.LeakRiskLevel;
+import com.lingframe.core.spi.LingUnloadHook;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+/**
+ * LingUnloadCoordinator 测试。
+ * 覆盖：版本卸载、整Ling卸载、泄漏预检、失败回滚、异常容错。
+ */
+@DisplayName("LingUnloadCoordinator 测试")
+class LingUnloadCoordinatorTest {
+
+    private InvocationPipelineEngine pipelineEngine;
+    private LingUnloadHook unloadHook;
+    private LingResourceManager resourceManager;
+    private LeakDetector leakDetector;
+    private LingUnloadCoordinator coordinator;
+
+    @BeforeEach
+    void setUp() {
+        pipelineEngine = mock(InvocationPipelineEngine.class);
+        unloadHook = mock(LingUnloadHook.class);
+        resourceManager = mock(LingResourceManager.class);
+        leakDetector = mock(LeakDetector.class);
+        coordinator = new LingUnloadCoordinator(
+                pipelineEngine,
+                Collections.emptyList(),
+                Collections.singletonList(unloadHook),
+                resourceManager,
+                leakDetector);
+    }
+
+    // ==================== 版本级卸载 ====================
+
+    @Nested
+    @DisplayName("版本级卸载 onVersionUnload")
+    class VersionUnload {
+
+        @Test
+        @DisplayName("调用 LingUnloadHook.cleanup 清理指定 ClassLoader")
+        void callsLingUnloadHookCleanup() {
+            ClassLoader cl = mock(ClassLoader.class);
+            coordinator.onVersionUnload("ling-1", "v1", cl);
+
+            verify(unloadHook).cleanup("ling-1", cl);
+        }
+
+        @Test
+        @DisplayName("调用 LingResourceManager.cleanupCaches")
+        void callsResourceManagerCleanupCaches() {
+            ClassLoader cl = mock(ClassLoader.class);
+            coordinator.onVersionUnload("ling-1", "v1", cl);
+
+            verify(resourceManager).cleanupCaches("ling-1", cl);
+        }
+
+        @Test
+        @DisplayName("版本级卸载触发版本级孤儿资源关闭")
+        void callsVersionScopedCloseResources() {
+            ClassLoader cl = mock(ClassLoader.class);
+            coordinator.onVersionUnload("ling-1", "v1", cl);
+
+            verify(resourceManager).closeResources("ling-1", "v1");
+        }
+
+        @Test
+        @DisplayName("ClassLoader 为 null 时不执行清理")
+        void nullClassLoaderSkipsCleanup() {
+            coordinator.onVersionUnload("ling-1", "v1", null);
+
+            verifyNoInteractions(unloadHook);
+            verifyNoInteractions(resourceManager);
+        }
+
+        @Test
+        @DisplayName("LingUnloadHook 抛异常不影响后续 Hook")
+        void hookExceptionDoesNotBlockOthers() {
+            LingUnloadHook failingHook = mock(LingUnloadHook.class);
+            LingUnloadHook normalHook = mock(LingUnloadHook.class);
+            doThrow(new RuntimeException("test error")).when(failingHook).cleanup(any(), any());
+
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    pipelineEngine,
+                    Collections.emptyList(),
+                    Arrays.asList(failingHook, normalHook),
+                    resourceManager,
+                    leakDetector);
+
+            ClassLoader cl = mock(ClassLoader.class);
+            coord.onVersionUnload("ling-1", "v1", cl);
+
+            verify(failingHook).cleanup("ling-1", cl);
+            verify(normalHook).cleanup("ling-1", cl);
+        }
+
+        @Test
+        @DisplayName("Hook 抛 Error 时应被重抛而非被吞掉")
+        void hookErrorShouldBeRethrownNotSwallowed() {
+            LingUnloadHook errorHook = mock(LingUnloadHook.class);
+            doThrow(new StackOverflowError("simulated JVM error"))
+                    .when(errorHook).cleanup(any(), any());
+
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    pipelineEngine,
+                    Collections.emptyList(),
+                    Collections.singletonList(errorHook),
+                    resourceManager,
+                    leakDetector);
+
+            ClassLoader cl = mock(ClassLoader.class);
+            // Error 代表 JVM 致命问题，必须向上传播
+            assertThrows(StackOverflowError.class,
+                    () -> coord.onVersionUnload("ling-1", "v1", cl));
+        }
+
+        @Test
+        @DisplayName("Error 与 Exception 混合时 Error 被重抛、Exception 被隔离")
+        void errorShouldBeRethrownWhileExceptionIsIsolated() {
+            LingUnloadHook exceptionHook = mock(LingUnloadHook.class);
+            LingUnloadHook errorHook = mock(LingUnloadHook.class);
+            LingUnloadHook normalHook = mock(LingUnloadHook.class);
+            doThrow(new RuntimeException("isolated exception"))
+                    .when(exceptionHook).cleanup(any(), any());
+            doThrow(new OutOfMemoryError("simulated OOM"))
+                    .when(errorHook).cleanup(any(), any());
+
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    pipelineEngine,
+                    Collections.emptyList(),
+                    Arrays.asList(exceptionHook, errorHook, normalHook),
+                    resourceManager,
+                    leakDetector);
+
+            ClassLoader cl = mock(ClassLoader.class);
+            // Error 必须被重抛
+            assertThrows(OutOfMemoryError.class,
+                    () -> coord.onVersionUnload("ling-1", "v1", cl));
+
+            // Exception 被隔离，不阻塞后续 Hook
+            verify(exceptionHook).cleanup("ling-1", cl);
+            verify(errorHook).cleanup("ling-1", cl);
+            verify(normalHook).cleanup("ling-1", cl);
+        }
+    }
+
+    // ==================== 整 Ling 卸载 ====================
+
+    @Nested
+    @DisplayName("整 Ling 卸载 onLingUnload")
+    class LingUnload {
+
+        @Test
+        @DisplayName("驱逐 Pipeline 资源和方法缓存")
+        void evictsPipelineResources() {
+            when(pipelineEngine.evictMethodCache("ling-1")).thenReturn(5);
+
+            coordinator.onLingUnload("ling-1");
+
+            verify(pipelineEngine).evictLingResources("ling-1");
+            verify(pipelineEngine).evictMethodCache("ling-1");
+            verify(resourceManager).closeResources("ling-1");
+        }
+
+        @Test
+        @DisplayName("pipelineEngine 为 null 时不抛异常")
+        void nullPipelineEngineSafe() {
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    null, Collections.emptyList(), Collections.emptyList(), resourceManager, leakDetector);
+            assertDoesNotThrow(() -> coord.onLingUnload("ling-1"));
+        }
+
+        @Test
+        @DisplayName("resourceManager 为 null 时不抛异常")
+        void nullResourceManagerSafe() {
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    pipelineEngine, Collections.emptyList(), Collections.emptyList(), null, leakDetector);
+            assertDoesNotThrow(() -> coord.onLingUnload("ling-1"));
+        }
+    }
+
+    // ==================== 泄漏预检 ====================
+
+    @Nested
+    @DisplayName("泄漏预检 checkBeforeVersionUnload")
+    class LeakPrecheck {
+
+        @Test
+        @DisplayName("正常预检返回检测结果")
+        void normalPrecheck() {
+            ClassLoader cl = mock(ClassLoader.class);
+            LeakRiskReport report = LeakRiskReport.noRisk("ling-1", "v1", "OK", null, "TestDetector");
+            when(leakDetector.checkBefore("ling-1", "v1", cl)).thenReturn(report);
+
+            LeakRiskReport result = coordinator.checkBeforeVersionUnload("ling-1", "v1", cl);
+
+            assertEquals(LeakRiskLevel.NO_RISK, result.getLevel());
+        }
+
+        @Test
+        @DisplayName("ClassLoader 为 null 返回 CHECK_FAILED")
+        void nullClassLoaderReturnsCheckFailed() {
+            LeakRiskReport result = coordinator.checkBeforeVersionUnload("ling-1", "v1", null);
+
+            assertEquals(LeakRiskLevel.CHECK_FAILED, result.getLevel());
+        }
+
+        @Test
+        @DisplayName("LeakDetector 为 null 返回 CHECK_FAILED")
+        void nullLeakDetectorReturnsCheckFailed() {
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    pipelineEngine, Collections.emptyList(), Collections.emptyList(), resourceManager, null);
+
+            ClassLoader cl = mock(ClassLoader.class);
+            LeakRiskReport result = coord.checkBeforeVersionUnload("ling-1", "v1", cl);
+
+            assertEquals(LeakRiskLevel.CHECK_FAILED, result.getLevel());
+        }
+
+        @Test
+        @DisplayName("LeakDetector 抛异常返回 CHECK_FAILED")
+        void leakDetectorExceptionReturnsCheckFailed() {
+            ClassLoader cl = mock(ClassLoader.class);
+            when(leakDetector.checkBefore("ling-1", "v1", cl))
+                    .thenThrow(new RuntimeException("detector error"));
+
+            LeakRiskReport result = coordinator.checkBeforeVersionUnload("ling-1", "v1", cl);
+
+            assertEquals(LeakRiskLevel.CHECK_FAILED, result.getLevel());
+            assertTrue(result.getSummary().contains("detector error"));
+        }
+    }
+
+    // ==================== 整 Ling 泄漏预检 ====================
+
+    @Nested
+    @DisplayName("整 Ling 泄漏预检 checkBeforeLingUnload")
+    class LingLeakPrecheck {
+
+        @Test
+        @DisplayName("空实例列表返回空报告")
+        void emptyInstancesReturnsEmpty() {
+            List<LeakRiskReport> reports = coordinator.checkBeforeLingUnload("ling-1", Collections.emptyList());
+            assertTrue(reports.isEmpty());
+        }
+
+        @Test
+        @DisplayName("null 实例列表返回空报告")
+        void nullInstancesReturnsEmpty() {
+            List<LeakRiskReport> reports = coordinator.checkBeforeLingUnload("ling-1", null);
+            assertTrue(reports.isEmpty());
+        }
+    }
+
+    // ==================== 失败回滚 ====================
+
+    @Nested
+    @DisplayName("失败回滚 onFailureCleanup")
+    class FailureCleanup {
+
+        @Test
+        @DisplayName("安装失败时调用 LingUnloadHook 清理")
+        void failureCleanupCallsHooks() {
+            ClassLoader cl = mock(ClassLoader.class);
+            coordinator.onFailureCleanup(cl);
+
+            verify(unloadHook).cleanup("fault-cleanup", cl);
+        }
+
+        @Test
+        @DisplayName("身份透传版回滚触发版本级孤儿资源关闭")
+        void failureCleanupClosesVersionResources() {
+            ClassLoader cl = mock(ClassLoader.class);
+            coordinator.onFailureCleanup("ling-1", "v1", cl);
+
+            verify(unloadHook).cleanup("ling-1", cl);
+            verify(resourceManager).closeResources("ling-1", "v1");
+        }
+
+        @Test
+        @DisplayName("身份透传版回滚缺版本时不触发版本级关闭")
+        void failureCleanupSkipsCloseWhenNoVersion() {
+            ClassLoader cl = mock(ClassLoader.class);
+            coordinator.onFailureCleanup("ling-1", null, cl);
+
+            verify(resourceManager, never()).closeResources(eq("ling-1"), any());
+        }
+
+        @Test
+        @DisplayName("null ClassLoader 不执行清理")
+        void nullClassLoaderSkipsCleanup() {
+            coordinator.onFailureCleanup(null);
+            verifyNoInteractions(unloadHook);
+        }
+    }
+
+    // ==================== 卸载后泄漏检测 ====================
+
+    @Nested
+    @DisplayName("卸载后泄漏检测 detectLeak")
+    class DetectLeak {
+
+        @Test
+        @DisplayName("正常调用 LeakDetector.detectLeak")
+        void callsDetectLeak() {
+            ClassLoader cl = mock(ClassLoader.class);
+            coordinator.detectLeak("ling-1", "v1", cl);
+
+            verify(leakDetector).detectLeak("ling-1", "v1", cl);
+        }
+
+        @Test
+        @DisplayName("null ClassLoader 不调用检测")
+        void nullClassLoaderSkipsDetection() {
+            coordinator.detectLeak("ling-1", "v1", null);
+            verifyNoInteractions(leakDetector);
+        }
+
+        @Test
+        @DisplayName("null LeakDetector 不调用检测")
+        void nullLeakDetectorSkipsDetection() {
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    pipelineEngine, Collections.emptyList(), Collections.emptyList(), resourceManager, null);
+
+            ClassLoader cl = mock(ClassLoader.class);
+            coord.detectLeak("ling-1", "v1", cl);
+            // 不抛异常即可
+        }
+
+        @Test
+        @DisplayName("LeakDetector 抛异常不传播")
+        void leakDetectorExceptionSwallowed() {
+            ClassLoader cl = mock(ClassLoader.class);
+            doThrow(new RuntimeException("detection error")).when(leakDetector).detectLeak(any(), any(), any());
+
+            assertDoesNotThrow(() -> coordinator.detectLeak("ling-1", "v1", cl));
+        }
+    }
+
+    @Nested
+    @DisplayName("确定性等待 awaitCleanup")
+    class AwaitCleanup {
+
+        @Test
+        @DisplayName("实例代次清理等待不与同版本其他代次混用")
+        void awaitsExactInstanceGeneration() throws Exception {
+            LingUnloadHook blockingHook = mock(LingUnloadHook.class);
+            CountDownLatch started = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            doAnswer(inv -> {
+                started.countDown();
+                release.await();
+                return null;
+            }).when(blockingHook).cleanup(eq("ling-a"), any());
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    pipelineEngine, Collections.emptyList(), Collections.singletonList(blockingHook),
+                    resourceManager, leakDetector);
+            Thread unload = new Thread(() -> coord.onVersionUnload("ling-a", "v1", "ling-a@v1#1",
+                    mock(ClassLoader.class)));
+            unload.start();
+            assertTrue(started.await(2, TimeUnit.SECONDS));
+            assertFalse(coord.awaitCleanupForInstance("ling-a@v1#1", 10));
+            assertTrue(coord.awaitCleanupForInstance("ling-a@v1#2", 10));
+            release.countDown();
+            unload.join(2_000);
+            assertTrue(coord.awaitCleanupForInstance("ling-a@v1#1", 100));
+        }
+
+        @Test
+        @DisplayName("无进行中的清理时直接返回 true")
+        void returnsTrueWhenNoCleanupInFlight() {
+            assertTrue(coordinator.awaitCleanup("ling-x", 100));
+        }
+
+        @Test
+        @DisplayName("被中断时返回 false 并恢复中断状态")
+        void restoresInterruptFlagWhenInterrupted() throws Exception {
+            LingUnloadHook blockingHook = mock(LingUnloadHook.class);
+            CountDownLatch started = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            doAnswer(inv -> {
+                started.countDown();
+                release.await();
+                return null;
+            }).when(blockingHook).cleanup(eq("ling-b"), any());
+
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    pipelineEngine, Collections.emptyList(), Collections.singletonList(blockingHook),
+                    resourceManager, leakDetector);
+
+            // 回滚清理在独立线程执行，钩子阻塞使其清理进行中（cleanupFutures 保留 future）
+            Thread unload = new Thread(() -> {
+                coord.onFailureCleanup("ling-b", "v1", mock(ClassLoader.class));
+            }, "unload-interrupt-test");
+            unload.start();
+            assertTrue(started.await(2, TimeUnit.SECONDS));
+
+            // 置中断位后等待——future.get 随即抛 InterruptedException
+            Thread.currentThread().interrupt();
+            boolean result = coord.awaitCleanup("ling-b", 5_000);
+
+            assertFalse(result);
+            assertTrue(Thread.interrupted(), "中断状态应被恢复（Thread.interrupted 会清除读取）");
+
+            release.countDown();
+            unload.join(2_000);
+        }
+    }
+
+    // ==================== getLeakDetector ====================
+
+    @Test
+    @DisplayName("getLeakDetector 返回注入的检测器")
+    void getLeakDetectorReturnsInjected() {
+        assertSame(leakDetector, coordinator.getLeakDetector());
+    }
+}

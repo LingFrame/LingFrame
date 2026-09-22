@@ -14,6 +14,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p>
  * 使用固定大小的 RingBuffer 统计最近 N 次请求的失败率。
  * 避免引入 Resilience4j 依赖。
+ * <p>
+ * <b>并发设计说明 (Rationale)</b>: 
+ * 在 {@link #checkThresholds()} 中对 {@code failureCount} 和 {@code totalCallsInWindow}
+ * 的读取采用了分离的近似读取（非原子快照）。在低/中等并发场景下，这最多引起阈值计算的极小抖动
+ * （推迟或提前一两次请求触发熔断）。这属于为避免加重锁（提升核心路由性能）而做出的有意取舍。
+ * 若未来此熔断器被应用于极高并发场景（如单实例每秒百万级突发调用），此并发读写的近似"抖动"
+ * 可能会放大，届时可考虑通过高低位组合打包至单个 AtomicLong 的方式实现完全原子快照。
  */
 @Slf4j
 public class SlidingWindowCircuitBreaker implements CircuitBreaker {
@@ -33,14 +40,17 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
     // 统计 (环形缓冲区)
     private final boolean[] failureWindow;
     private final boolean[] slowWindow;
-    private final AtomicInteger currentIndex = new AtomicInteger(0);
+    // 使用 AtomicLong 避免长期运行后索引溢出导致 AIOOBE（AtomicInteger 在 ~21 亿次调用后会回绕为负数）
+    private final AtomicLong currentIndex = new AtomicLong(0);
     private final AtomicInteger totalCallsInWindow = new AtomicInteger(0);
     private final AtomicInteger failureCount = new AtomicInteger(0);
     private final AtomicInteger slowCount = new AtomicInteger(0);
 
-    // 半开状态下的试探计数
-    private final AtomicInteger permittedNumberOfCallsInHalfOpenState = new AtomicInteger(10);
+    // 半开状态下的试探参数（构造后不可变）
+    private final int permittedNumberOfCallsInHalfOpenState;
     private final AtomicInteger successfulCallsInHalfOpenState = new AtomicInteger(0);
+    /** 当前 HALF_OPEN 状态下已放行的试探请求数 */
+    private final AtomicInteger halfOpenTrialCount = new AtomicInteger(0);
 
     private final EventBus eventBus;
 
@@ -54,6 +64,27 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
     public SlidingWindowCircuitBreaker(String name, int failureRateThreshold, int slowCallRateThreshold,
                                        long slowCallDurationThresholdMs, int slidingWindowSize, int minimumNumberOfCalls,
                                        long waitDurationInOpenStateMs, EventBus eventBus) {
+        // 构造器参数校验：防止非法配置导致运行时异常
+        if (slidingWindowSize <= 0) {
+            throw new IllegalArgumentException("slidingWindowSize must be > 0, got: " + slidingWindowSize);
+        }
+        if (minimumNumberOfCalls <= 0 || minimumNumberOfCalls > slidingWindowSize) {
+            throw new IllegalArgumentException(
+                    "minimumNumberOfCalls must be in (0, slidingWindowSize], got: " + minimumNumberOfCalls);
+        }
+        if (failureRateThreshold < 0 || failureRateThreshold > 100) {
+            throw new IllegalArgumentException(
+                    "failureRateThreshold must be in [0, 100], got: " + failureRateThreshold);
+        }
+        if (slowCallRateThreshold < 0 || slowCallRateThreshold > 100) {
+            throw new IllegalArgumentException(
+                    "slowCallRateThreshold must be in [0, 100], got: " + slowCallRateThreshold);
+        }
+        if (slowCallDurationThresholdMs < 0) {
+            throw new IllegalArgumentException(
+                    "slowCallDurationThresholdMs must be >= 0, got: " + slowCallDurationThresholdMs);
+        }
+
         this.name = name;
         this.failureRateThreshold = failureRateThreshold;
         this.slowCallRateThreshold = slowCallRateThreshold;
@@ -61,6 +92,7 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
         this.slidingWindowSize = slidingWindowSize;
         this.minimumNumberOfCalls = minimumNumberOfCalls;
         this.waitDurationInOpenStateMs = waitDurationInOpenStateMs;
+        this.permittedNumberOfCallsInHalfOpenState = 10;
 
         this.failureWindow = new boolean[slidingWindowSize];
         this.slowWindow = new boolean[slidingWindowSize];
@@ -82,6 +114,7 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
                 if (state.compareAndSet(State.OPEN, State.HALF_OPEN)) {
                     stateTransitionTime.set(now);
                     successfulCallsInHalfOpenState.set(0);
+                    halfOpenTrialCount.set(0);
                     log.info("[Breaker:{}] State changed: OPEN -> HALF_OPEN (Trial starts)", name);
                     return true;
                 }
@@ -90,8 +123,16 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
         }
 
         if (currentState == State.HALF_OPEN) {
-            // 这里可以做简单并发控制，暂略
-            return true;
+            // CAS 循环精确限制试探数，避免 incrementAndGet + 条件检查的竞态窗口
+            while (true) {
+                int current = halfOpenTrialCount.get();
+                if (current >= permittedNumberOfCallsInHalfOpenState) {
+                    return false;
+                }
+                if (halfOpenTrialCount.compareAndSet(current, current + 1)) {
+                    return true;
+                }
+            }
         }
 
         return true;
@@ -121,7 +162,7 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
                 transitionToOpen();
             } else {
                 int successes = successfulCallsInHalfOpenState.incrementAndGet();
-                if (successes >= permittedNumberOfCallsInHalfOpenState.get()) {
+                if (successes >= permittedNumberOfCallsInHalfOpenState) {
                     transitionToClosed();
                 }
             }
@@ -129,7 +170,11 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
         }
 
         // 关闭状态下更新滑动窗口
-        int idx = currentIndex.getAndIncrement() % slidingWindowSize;
+        // 防御性计算索引，即使序号异常为负也不会越界
+        // 注意：Math.floorMod(long, int) 是 JDK 9+ API，这里用兼容 JDK 8 的实现
+        long seq = currentIndex.getAndIncrement();
+        int rem = (int) (seq % slidingWindowSize);
+        int idx = (rem >= 0) ? rem : rem + slidingWindowSize;
 
         // 移除旧值
         if (failureWindow[idx])

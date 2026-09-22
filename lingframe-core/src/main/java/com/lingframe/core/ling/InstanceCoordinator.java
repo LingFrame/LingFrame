@@ -115,6 +115,12 @@ final class InstanceCoordinator {
             }
             log.error("Failed to tear down instance [{}]", instance.getLingId(), e);
             tryTransitionToError(instance);
+            // 销毁失败后成员关系通常已被调用方（如 InstancePool.cleanupIdleInstances）移除，
+            // 实例无法再被正常销毁路径触及。必须补发 InstanceDestroyedEvent，
+            // 否则 RuntimeCoordinator 快照会残留 ERROR 实例，宏观状态永不收敛（僵尸 ERROR）。
+            // 事件语义为「实例生命周期终结，可做快照收口和资源回收」，不保证 Bean 物理资源
+            // 已完全释放；下游 ResourceManager 的清理操作（线程池/缓存驱逐）对失败场景同样安全。
+            publishDestroyed(identity);
         }
     }
 
@@ -125,6 +131,11 @@ final class InstanceCoordinator {
         try {
             doTransition(instance, InstanceStatus.STOPPING);
         } catch (IllegalStateTransitionException e) {
+            // ⚠️ 注意瞬态：
+            // LOADING 等状态不能直达 STOPPING，必须路由经由 ERROR。
+            // 这会产生两次状态事件（→ERROR 和 →STOPPING），导致 RuntimeCoordinator 触发两次 reevaluate。
+            // 第一次评估可能短暂将 RuntimeStatus 降级为 DEGRADED，但第二次事件会立即将其修正。
+            // 这种瞬态是正确且无害的，无需额外复杂化状态机转换表。
             log.info("Cannot reach STOPPING directly from {}, routing through ERROR", instance.currentStatus());
             doTransition(instance, InstanceStatus.ERROR);
             doTransition(instance, InstanceStatus.STOPPING);
@@ -148,29 +159,32 @@ final class InstanceCoordinator {
         if (eventBus == null) {
             return;
         }
-        log.debug("Instance [{}] v{} state changed: {} -> {}",
-                identity.lingId, identity.version, from, to);
-        eventBus.publish(new InstanceStateChangedEvent(identity.lingId, identity.version, from, to));
+        log.debug("Instance [{}] id={} v{} state changed: {} -> {}",
+                identity.lingId, identity.instanceId, identity.version, from, to);
+        eventBus.publish(new InstanceStateChangedEvent(
+                identity.lingId, identity.instanceId, identity.version, from, to));
     }
 
     private void publishDestroyed(InstanceIdentity identity) {
         if (eventBus == null) {
             return;
         }
-        log.info("Instance [{}] v{} destroyed", identity.lingId, identity.version);
-        eventBus.publish(new InstanceDestroyedEvent(identity.lingId, identity.version));
+        log.info("Instance [{}] id={} v{} destroyed", identity.lingId, identity.instanceId, identity.version);
+        eventBus.publish(new InstanceDestroyedEvent(identity.lingId, identity.instanceId, identity.version));
     }
 
     private InstanceIdentity snapshotIdentity(LingInstance instance) {
-        return new InstanceIdentity(instance.getLingId(), instance.getVersion());
+        return new InstanceIdentity(instance.getLingId(), instance.getInstanceId(), instance.getVersion());
     }
 
     private static final class InstanceIdentity {
         private final String lingId;
+        private final String instanceId;
         private final String version;
 
-        private InstanceIdentity(String lingId, String version) {
+        private InstanceIdentity(String lingId, String instanceId, String version) {
             this.lingId = lingId;
+            this.instanceId = instanceId;
             this.version = version;
         }
     }

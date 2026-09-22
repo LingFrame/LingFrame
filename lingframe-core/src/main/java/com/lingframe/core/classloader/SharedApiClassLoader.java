@@ -5,15 +5,16 @@ import com.lingframe.core.exception.ClassLoaderException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.zip.ZipException;
 
 /**
  * 共享 API ClassLoader。
@@ -43,6 +44,9 @@ public class SharedApiClassLoader extends URLClassLoader {
 
     // 🔒 边界冻结后不允许继续向共享层塞入新契约
     private static volatile boolean BOUNDARY_FROZEN;
+
+    // 关闭标记，防止重复关闭
+    private volatile boolean closed = false;
 
     // 已加载的 JAR / classes 目录路径，用于幂等去重
     private final Set<String> loadedJars = ConcurrentHashMap.newKeySet();
@@ -120,6 +124,13 @@ public class SharedApiClassLoader extends URLClassLoader {
         // 共享 API 一旦发生同名契约冲突，强行替换比显式暴露问题更危险。
         try {
             checkClassConflicts(apiJar);
+        } catch (ZipException e) {
+            // JAR 文件损坏或为空，给出明确错误而非误导性的"冲突检测失败"
+            throw new ClassLoaderException(null, jarPath,
+                    "API JAR is corrupted or empty: " + e.getMessage(), e);
+        } catch (ClassLoaderException e) {
+            // 真正的类冲突，直接抛出
+            throw e;
         } catch (Exception e) {
             throw new ClassLoaderException(null, jarPath, "API JAR conflict detection failed", e);
         }
@@ -239,17 +250,22 @@ public class SharedApiClassLoader extends URLClassLoader {
     }
 
     /**
-     * 提取所有共享类的包前缀，供 LingClassLoader 建立强制委派白名单。
+     * 覆写 close()：释放 JAR 文件句柄并清理 URLClassPath 内部缓存。
+     * <p>
+     * 与 {@link LingClassLoader#close()} 对齐，确保 resetInstance 场景下
+     * 文件句柄被彻底释放，避免 Windows 下 JAR 文件锁定。
      */
-    public Set<String> getSharedPackagePrefixes() {
-        Set<String> packages = new HashSet<>();
-        for (String className : classSourceMap.keySet()) {
-            int lastDot = className.lastIndexOf('.');
-            if (lastDot > 0) {
-                packages.add(className.substring(0, lastDot + 1));
-            }
+    @Override
+    public void close() throws IOException {
+        if (closed) {
+            log.debug("[SharedApi] ClassLoader already closed");
+            return;
         }
-        return packages;
+
+        closed = true;
+        super.close();
+        ClassLoaderCleanupUtil.cleanupUrlClassPath(this, "[SharedApi]");
+        log.info("[SharedApi] ClassLoader closed and internal caches cleared");
     }
 
     @Override

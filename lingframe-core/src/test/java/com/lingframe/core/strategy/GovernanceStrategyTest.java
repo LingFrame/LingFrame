@@ -1,6 +1,7 @@
 package com.lingframe.core.strategy;
 
 import com.lingframe.api.security.AccessType;
+import com.lingframe.core.governance.GovernanceStrategy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;

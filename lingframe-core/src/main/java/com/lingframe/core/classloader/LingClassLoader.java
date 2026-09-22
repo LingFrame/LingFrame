@@ -4,15 +4,13 @@ import com.lingframe.core.exception.ClassLoaderException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.net.URLConnection;
 import java.util.*;
-import java.util.jar.JarFile;
-import java.util.zip.ZipFile;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 灵元类加载器。
@@ -22,28 +20,45 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 3. 资源加载 Child-First（防止误读到灵核配置）
  * 4. 安全关闭（防止关闭后继续被误用）
  * <p>
- * ⚠️ 这里的共享 API 包前缀和额外父委派包，不是“普通运行时配置”，而是类加载边界本身。
+ * ⚠️ 这里的共享 API ClassLoader 绑定和额外父委派包，不是"普通运行时配置"，而是类加载边界本身。
  * 一旦灵元开始装载实现类，就必须冻结这条边界；否则同名类可能在不同时间走出不同的委派路径，
  * 最终演变成最难排查的 ClassCastException / LinkageError。
+ * <p>
+ * <b>JDK 17+ 卸载前提条件</b>：
+ * <ul>
+ *   <li>JDK 17 默认强封装内部 API，灵元卸载时 {@code ThreadReferenceUnloadHook} 通过反射清理
+ *       {@code ThreadLocal}/{@code ResourceBundle} 等持有灵元 ClassLoader 引用的内部缓存，
+ *       需要以下 JVM 参数开放访问：
+ *       <pre>
+ *       --add-opens java.base/java.lang=ALL-UNNAMED
+ *       --add-opens java.base/java.lang.reflect=ALL-UNNAMED
+ *       --add-opens java.base/java.util=ALL-UNNAMED
+ *       --add-opens java.base/sun.nio.ch=ALL-UNNAMED
+ *       </pre>
+ *   </li>
+ *   <li>缺少上述参数时，卸载仍可执行但反射清理会静默失败，
+ *       可能导致灵元 ClassLoader 无法被 GC 回收（Metaspace 泄漏）</li>
+ *   <li>JDK 8 无需任何额外参数</li>
+ * </ul>
  */
 @Slf4j
 public class LingClassLoader extends URLClassLoader {
 
-    // 必须强制走父加载器的包（契约包 + JDK + 共享 API）
+    // 必须强制走父加载器的包（JDK 基础 + 灵珑自身依赖 + 契约包）
+    // 边界约束：core 只持「灵珑自身必须委派」的包——JDK 基础、灵珑 API 契约、
+    // 灵珑自身用的门面（slf4j/lombok/snakeyaml）。生态环境包（Spring/Jackson/Logback/Log4j2）
+    // 不应在此，由 runtime 适配层经 addParentDelegatePackages 注入，避免 core 替灵核决策。
     private static final List<String> FORCE_PARENT_PACKAGES = Arrays.asList(
             "java.", "javax.", "jakarta.", "jdk.", "sun.", "com.sun.", "org.w3c.", "org.xml.",
             "com.lingframe.api.", // API 契约必须共享
-            "lombok.", // Lombok 相关类
-            "org.slf4j.", // 日志门面通常共享
-            "org.apache.logging.log4j.", // Log4j2
-            "ch.qos.logback.", // Logback
-            "org.springframework.", // Spring框架相关类
-            "com.fasterxml.jackson.", // Jackson JSON处理
-            "org.yaml.snakeyaml." // SnakeYAML
+            "lombok.", // 灵珑自身用 Lombok @Slf4j 等注解，门面共享
+            "org.slf4j.", // 灵珑自身日志门面，门面共享
+            "org.yaml.snakeyaml." // 灵珑自身用 snakeyaml 解析 ling.yml，门面共享
     );
 
-    // 共享 API 包前缀（可动态添加，最终委派给 SharedApiClassLoader）
-    private static final List<String> sharedApiPackages = new CopyOnWriteArrayList<>();
+    // 共享 API ClassLoader 引用：启动期由 SharedApiManager 绑定，按完整类名精确判定是否为公共契约
+    // ⚠️ 不再用包前缀 startsWith，避免同包的灵元内部类被误判为公共契约
+    private static volatile SharedApiClassLoader sharedApiClassLoader;
 
     // 可配置的额外委派包列表
     private static final List<String> additionalParentPackages = new CopyOnWriteArrayList<>();
@@ -56,6 +71,16 @@ public class LingClassLoader extends URLClassLoader {
     private final String lingId;
     private volatile boolean closed = false;
 
+    // 存活实例计数器（构造时递增，close时递减），用于监控对照卸载真实情况
+    private static final AtomicLong ALIVE_COUNT = new AtomicLong(0);
+
+    /**
+     * 获取当前存活的 LingClassLoader 数量
+     */
+    public static long getAliveCount() {
+        return ALIVE_COUNT.get();
+    }
+
     public LingClassLoader(URL[] urls, ClassLoader parent) {
         this("unknown", urls, parent);
     }
@@ -67,6 +92,9 @@ public class LingClassLoader extends URLClassLoader {
         // 🔥 关键修复：关闭 URLConnection 的缓存机制
         // 在 Windows 平台上，如果底层 JarURLConnection 启用了缓存，
         // 即便调用了 URLClassLoader.close()，文件句柄依然可能被 JVM 占用，导致无法覆盖重装。
+        // ⚠️ 注意副作用：此设置会修改 JVM 全局的 jar 协议缓存默认值。
+        // 如果灵核自身或其他组件（如某些 Web 容器）强依赖 JAR URL 缓存来提升性能，
+        // 可能会受到轻微影响。但为保证灵元的热重装能力，关闭缓存是必需的折衷。
         try {
             // 为兼容 JDK 8：该版本没有 setDefaultUseCaches(String protocol, boolean defaultVal)
             // 必须创建一个真实的 jar URL 连接实例来关闭整个 JVM 级别的 jar 缓存默认值
@@ -77,6 +105,7 @@ public class LingClassLoader extends URLClassLoader {
         }
 
         log.debug("[{}] ClassLoader created with {} URLs", lingId, urls.length);
+        ALIVE_COUNT.incrementAndGet();
     }
 
     /**
@@ -103,24 +132,29 @@ public class LingClassLoader extends URLClassLoader {
     }
 
     /**
-     * 添加共享 API 包前缀（这些包的类将委派给 SharedApiClassLoader 加载）
+     * 绑定共享 API ClassLoader。
+     * 绑定后，LingClassLoader 通过 isSharedClass 按完整类名精确判定是否为公共契约，
+     * 不再使用包前缀推断，避免同包的灵元内部类被误判为公共契约。
      *
-     * @param packages 共享 API 包名前缀列表
+     * @param sharedApiClassLoader 共享 API ClassLoader 实例
      */
-    public static void addSharedApiPackages(Collection<String> packages) {
-        if (packages != null) {
-            ensureSharedBoundaryMutable("add shared API packages");
-            sharedApiPackages.addAll(packages);
-            log.info("📦 [SharedApi] Added shared API packages {}", packages);
+    public static void bindSharedApiClassLoader(SharedApiClassLoader sharedApiClassLoader) {
+        ensureSharedBoundaryMutable("bind SharedApiClassLoader");
+        SharedApiClassLoader old = LingClassLoader.sharedApiClassLoader;
+        LingClassLoader.sharedApiClassLoader = sharedApiClassLoader;
+        // 仅在引用真正变化时打日志，避免 addApi 重复调用时刷屏
+        if (sharedApiClassLoader != null && sharedApiClassLoader != old) {
+            log.info("📦 [SharedApi] Bound SharedApiClassLoader, shared classes: {}",
+                    sharedApiClassLoader.getSharedClassCount());
         }
     }
 
     /**
-     * 清空共享 API 包列表
+     * 解绑共享 API ClassLoader。仅用于关闭阶段或测试重置。
      */
-    public static void clearSharedApiPackages() {
-        ensureSharedBoundaryMutable("clear shared API packages");
-        sharedApiPackages.clear();
+    public static void unbindSharedApiClassLoader() {
+        ensureSharedBoundaryMutable("unbind SharedApiClassLoader");
+        sharedApiClassLoader = null;
     }
 
     /**
@@ -138,12 +172,12 @@ public class LingClassLoader extends URLClassLoader {
      */
     public static void resetSharedApiBoundary() {
         SHARED_API_BOUNDARY_FROZEN.set(false);
-        sharedApiPackages.clear();
+        sharedApiClassLoader = null;
         additionalParentPackages.clear();
     }
 
     private static void ensureSharedBoundaryMutable(String action) {
-        // ⚠️ 如果允许在运行期继续改委派包前缀，同一个 ClassLoader 里的“已加载类”和“未加载类”
+        // ⚠️ 如果允许在运行期继续改委派规则，同一个 ClassLoader 里的“已加载类”和“未加载类”
         // 可能从此走不同的解析路径，最后不是功能错，而是类型系统整体失真。
         if (SHARED_API_BOUNDARY_FROZEN.get()) {
             throw new IllegalStateException("Shared API boundary already frozen, cannot " + action);
@@ -165,18 +199,29 @@ public class LingClassLoader extends URLClassLoader {
             if (c != null)
                 return c;
 
-            // 白名单强制委派给父加载器 (防止 ClassCastException)
+            // 强制父委派包：独占委派，父未找到则确定性失败，禁止子加载器定义同名类型
+            // （避免 com.lingframe.api.* / java.* 等被灵元 JAR 伪造导致类型分裂）
             if (shouldDelegateToParent(name)) {
                 try {
-                    c = getParent().loadClass(name);
-                    if (c != null) {
-                        if (resolve)
-                            resolveClass(c);
-                        return c;
+                    ClassLoader parent = getParent();
+                    if (parent != null) {
+                        c = parent.loadClass(name);
+                    } else {
+                        // parent==null 表示仅 bootstrap 链路：必须从 bootstrap 解析
+                        c = Class.forName(name, false, null);
                     }
-                } catch (ClassNotFoundException ignored) {
-                    // 父加载器没找到，继续尝试自己加载
+                } catch (ClassNotFoundException e) {
+                    throw new ClassNotFoundException(
+                            "Forced parent-delegate class not found in parent loader: " + name, e);
                 }
+                if (c == null) {
+                    throw new ClassNotFoundException(
+                            "Forced parent-delegate class resolved to null: " + name);
+                }
+                if (resolve) {
+                    resolveClass(c);
+                }
+                return c;
             }
 
             // 子优先：优先从当前类加载器加载
@@ -242,116 +287,36 @@ public class LingClassLoader extends URLClassLoader {
         }
 
         closed = true;
+        ALIVE_COUNT.decrementAndGet();
         log.info("[{}] Closing ClassLoader...", lingId);
 
+        // super.close() 可能抛异常，但缓存清理必须执行，用 try-finally 保证
         try {
             // 调用父类的 close() 释放 JAR 文件句柄
             super.close();
-
-            // 🔥 清理 URLClassPath 内部缓存（loaders、path 等）
-            // `super.close()` 已关闭文件句柄，但某些 JVM 实现可能在 `URLClassPath` 中残留引用
-            cleanupInternalCaches();
-
             log.info("[{}] ClassLoader closed successfully", lingId);
-            // 💡 不再在此处调用 System.gc()
-            // 垃圾回收提示由 `BasicResourceGuard` 在所有清理完成后统一触发，
-            // 此处调用没有实际效果（引用链尚未完全切断）
         } catch (IOException e) {
             log.error("[{}] Error closing ClassLoader", lingId, e);
             throw e;
+        } finally {
+            // 🔥 清理 URLClassPath 内部缓存（loaders、path 等）
+            // `super.close()` 已关闭文件句柄，但某些 JVM 实现可能在 `URLClassPath` 中残留引用。
+            // 无论 super.close() 是否异常，都需清理，避免缓存残留导致泄漏。
+            cleanupInternalCaches();
         }
+        // 💡 不再在此处调用 System.gc()
+        // 垃圾回收提示由 `ThreadReferenceUnloadHook` 在所有清理完成后统一触发，
+        // 此处调用没有实际效果（引用链尚未完全切断）
     }
 
     /**
      * 清理 URLClassLoader 内部缓存
      * <p>
-     * `URLClassLoader` 内部的 `URLClassPath` 可能持有已打开的 `JarFile` 引用和 URL 列表。
-     * `super.close()` 会关闭文件句柄，但不一定清空集合引用，在 Windows 下会导致无法删除 JAR。
-     * 此方法通过反射确保内部引用被彻底清理并强制关闭 JarFile。
-     * </p>
+     * 委托给 {@link ClassLoaderCleanupUtil} 统一处理，
+     * 避免与 {@link SharedApiClassLoader} 维护两份相同的反射逻辑。
      */
     private void cleanupInternalCaches() {
-        try {
-            // 获取 URLClassLoader.ucp (URLClassPath) 字段
-            Field ucpField = URLClassLoader.class.getDeclaredField("ucp");
-            ucpField.setAccessible(true);
-            Object ucp = ucpField.get(this);
-
-            if (ucp != null) {
-
-                // 强制关闭所有 Loader
-                try {
-                    Field loadersField = ucp.getClass().getDeclaredField("loaders");
-                    loadersField.setAccessible(true);
-                    Object loaders = loadersField.get(ucp);
-                    if (loaders instanceof List<?>) {
-                        for (Object loader : (List<?>) loaders) {
-                            try {
-                                if (loader != null) {
-                                    // 尝试获取 Loader 内部的 jar/JarFile 并关闭 (主要针对 JarLoader)
-                                    try {
-                                        Field jarField = loader.getClass().getDeclaredField("jar");
-                                        jarField.setAccessible(true);
-                                        Object jarFile = jarField.get(loader);
-                                        if (jarFile instanceof JarFile) {
-                                            ((JarFile) jarFile).close();
-                                            log.debug("[{}] Closed JarFile via reflection", lingId);
-                                        } else if (jarFile instanceof ZipFile) {
-                                            ((ZipFile) jarFile).close();
-                                            log.debug("[{}] Closed ZipFile via reflection", lingId);
-                                        }
-                                    } catch (NoSuchFieldException e) {
-                                        // 忽略
-                                    }
-                                }
-                            } catch (Exception e) {
-                                log.trace("Failed to close loader internal jar", e);
-                            }
-                        }
-                        // 清空 loaders
-                        ((List<?>) loaders).clear();
-                    }
-                } catch (NoSuchFieldException ignored) {
-                    // 不同 JVM 版本的字段布局可能不同
-                }
-
-                // 清理 URLClassPath.path (ArrayList<URL>)
-                try {
-                    Field pathField = ucp.getClass().getDeclaredField("path");
-                    pathField.setAccessible(true);
-                    Object path = pathField.get(ucp);
-                    if (path instanceof List<?>) {
-                        ((List<?>) path).clear();
-                    }
-                } catch (NoSuchFieldException ignored) {
-                    // 不同 JVM 版本中该字段可能不存在
-                }
-
-                // 清理 URLClassPath.lmap (HashMap<String, Loader>)
-                try {
-                    Field lmapField = ucp.getClass().getDeclaredField("lmap");
-                    lmapField.setAccessible(true);
-                    Object lmap = lmapField.get(ucp);
-                    if (lmap instanceof Map<?, ?>) {
-                        ((Map<?, ?>) lmap).clear();
-                    }
-                } catch (NoSuchFieldException ignored) {
-                    // 不同 JVM 版本的字段布局可能不同
-                }
-
-                // 清理 closed (如果有这个字段的话，在一些高版本 JDK 中防止再用)
-                try {
-                    Field closedField = ucp.getClass().getDeclaredField("closed");
-                    closedField.setAccessible(true);
-                    closedField.set(ucp, true);
-                } catch (NoSuchFieldException ignored) {
-                }
-
-                log.debug("[{}] URLClassPath internal caches and JAR handles cleared", lingId);
-            }
-        } catch (Exception e) {
-            log.debug("[{}] Failed to cleanup URLClassPath: {}", lingId, e.getMessage());
-        }
+        ClassLoaderCleanupUtil.cleanupUrlClassPath(this, "[" + lingId + "]");
     }
 
     /**
@@ -376,11 +341,11 @@ public class LingClassLoader extends URLClassLoader {
             }
         }
 
-        // 检查共享 API 包（委派给 SharedApiClassLoader）
-        for (String pkg : sharedApiPackages) {
-            if (name.startsWith(pkg)) {
-                return true;
-            }
+        // 检查共享 API（按完整类名精确判定：只有 SharedApiClassLoader 实际登记的类才是公共契约）
+        // ⚠️ 不再用包前缀 startsWith，避免同包的灵元内部类（如 OrderDTO）被误判为公共契约
+        SharedApiClassLoader sac = sharedApiClassLoader;
+        if (sac != null && sac.isSharedClass(name)) {
+            return true;
         }
 
         // 检查动态添加的白名单

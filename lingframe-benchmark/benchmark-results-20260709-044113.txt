@@ -1,0 +1,1147 @@
+Benchmark                                                                            (jarCount)  (lingCount)    Mode      Cnt       Score       Error   Units
+EndToEndBenchmark.steadyStateInvoke_1Thread                                                 N/A          N/A   thrpt       15       0.053 ±     0.005  ops/us
+EndToEndBenchmark.steadyStateInvoke_1Thread:gc.alloc.rate                                   N/A          N/A   thrpt       15       0.010 ±     0.001  MB/sec
+EndToEndBenchmark.steadyStateInvoke_1Thread:gc.alloc.rate.norm                              N/A          N/A   thrpt       15       0.197 ±     0.019    B/op
+EndToEndBenchmark.steadyStateInvoke_1Thread:gc.count                                        N/A          N/A   thrpt       15       7.000              counts
+EndToEndBenchmark.steadyStateInvoke_1Thread:gc.time                                         N/A          N/A   thrpt       15      19.000                  ms
+EndToEndBenchmark.steadyStateInvoke_4Threads                                                N/A          N/A   thrpt       15       0.200 ±     0.012  ops/us
+EndToEndBenchmark.steadyStateInvoke_4Threads:gc.alloc.rate                                  N/A          N/A   thrpt       15       0.019 ±     0.001  MB/sec
+EndToEndBenchmark.steadyStateInvoke_4Threads:gc.alloc.rate.norm                             N/A          N/A   thrpt       15       0.099 ±     0.006    B/op
+EndToEndBenchmark.steadyStateInvoke_4Threads:gc.count                                       N/A          N/A   thrpt       15      25.000              counts
+EndToEndBenchmark.steadyStateInvoke_4Threads:gc.time                                        N/A          N/A   thrpt       15      71.000                  ms
+EndToEndBenchmark.steadyStateInvoke_8Threads                                                N/A          N/A   thrpt       15       0.362 ±     0.010  ops/us
+EndToEndBenchmark.steadyStateInvoke_8Threads:gc.alloc.rate                                  N/A          N/A   thrpt       15       0.209 ±     0.733  MB/sec
+EndToEndBenchmark.steadyStateInvoke_8Threads:gc.alloc.rate.norm                             N/A          N/A   thrpt       15       0.621 ±     2.181    B/op
+EndToEndBenchmark.steadyStateInvoke_8Threads:gc.count                                       N/A          N/A   thrpt       15      46.000              counts
+EndToEndBenchmark.steadyStateInvoke_8Threads:gc.time                                        N/A          N/A   thrpt       15     110.000                  ms
+EventBusBenchmark.publishNoListeners                                                        N/A          N/A   thrpt       15     243.466 ±    12.541  ops/us
+EventBusBenchmark.publishNoListeners:gc.alloc.rate                                          N/A          N/A   thrpt       15       0.012 ±     0.001  MB/sec
+EventBusBenchmark.publishNoListeners:gc.alloc.rate.norm                                     N/A          N/A   thrpt       15      ≈ 10⁻⁴                B/op
+EventBusBenchmark.publishNoListeners:gc.count                                               N/A          N/A   thrpt       15      92.000              counts
+EventBusBenchmark.publishNoListeners:gc.time                                                N/A          N/A   thrpt       15     159.000                  ms
+EventBusBenchmark.publishToGlobalListener                                                   N/A          N/A   thrpt       15      46.571 ±     4.672  ops/us
+EventBusBenchmark.publishToGlobalListener:gc.alloc.rate                                     N/A          N/A   thrpt       15       0.012 ±     0.001  MB/sec
+EventBusBenchmark.publishToGlobalListener:gc.alloc.rate.norm                                N/A          N/A   thrpt       15      ≈ 10⁻⁴                B/op
+EventBusBenchmark.publishToGlobalListener:gc.count                                          N/A          N/A   thrpt       15      33.000              counts
+EventBusBenchmark.publishToGlobalListener:gc.time                                           N/A          N/A   thrpt       15      73.000                  ms
+EventBusBenchmark.publishToLingListeners                                                    N/A          N/A   thrpt       15      34.549 ±     6.610  ops/us
+EventBusBenchmark.publishToLingListeners:gc.alloc.rate                                      N/A          N/A   thrpt       15       0.012 ±     0.001  MB/sec
+EventBusBenchmark.publishToLingListeners:gc.alloc.rate.norm                                 N/A          N/A   thrpt       15      ≈ 10⁻³                B/op
+EventBusBenchmark.publishToLingListeners:gc.count                                           N/A          N/A   thrpt       15      25.000              counts
+EventBusBenchmark.publishToLingListeners:gc.time                                            N/A          N/A   thrpt       15      60.000                  ms
+EventBusConcurrentBenchmark.publish_1Thread                                                 N/A          N/A   thrpt       15      14.485 ±     0.186  ops/us
+EventBusConcurrentBenchmark.publish_1Thread:gc.alloc.rate                                   N/A          N/A   thrpt       15       0.012 ±     0.001  MB/sec
+EventBusConcurrentBenchmark.publish_1Thread:gc.alloc.rate.norm                              N/A          N/A   thrpt       15       0.001 ±     0.001    B/op
+EventBusConcurrentBenchmark.publish_1Thread:gc.count                                        N/A          N/A   thrpt       15      24.000              counts
+EventBusConcurrentBenchmark.publish_1Thread:gc.time                                         N/A          N/A   thrpt       15      57.000                  ms
+EventBusConcurrentBenchmark.publish_4Threads                                                N/A          N/A   thrpt       15      43.586 ±     9.642  ops/us
+EventBusConcurrentBenchmark.publish_4Threads:gc.alloc.rate                                  N/A          N/A   thrpt       15       0.020 ±     0.002  MB/sec
+EventBusConcurrentBenchmark.publish_4Threads:gc.alloc.rate.norm                             N/A          N/A   thrpt       15       0.001 ±     0.001    B/op
+EventBusConcurrentBenchmark.publish_4Threads:gc.count                                       N/A          N/A   thrpt       15      55.000              counts
+EventBusConcurrentBenchmark.publish_4Threads:gc.time                                        N/A          N/A   thrpt       15     103.000                  ms
+EventBusConcurrentBenchmark.publish_8Threads                                                N/A          N/A   thrpt       15     103.919 ±     1.275  ops/us
+EventBusConcurrentBenchmark.publish_8Threads:gc.alloc.rate                                  N/A          N/A   thrpt       15       0.033 ±     0.003  MB/sec
+EventBusConcurrentBenchmark.publish_8Threads:gc.alloc.rate.norm                             N/A          N/A   thrpt       15      ≈ 10⁻³                B/op
+EventBusConcurrentBenchmark.publish_8Threads:gc.count                                       N/A          N/A   thrpt       15     117.000              counts
+EventBusConcurrentBenchmark.publish_8Threads:gc.time                                        N/A          N/A   thrpt       15     183.000                  ms
+FilterRegistryBenchmark.getCachedFilterList                                                 N/A          N/A   thrpt       15     200.248 ±     0.949  ops/us
+FilterRegistryBenchmark.getCachedFilterList:gc.alloc.rate                                   N/A          N/A   thrpt       15       0.012 ±     0.001  MB/sec
+FilterRegistryBenchmark.getCachedFilterList:gc.alloc.rate.norm                              N/A          N/A   thrpt       15      ≈ 10⁻⁴                B/op
+FilterRegistryBenchmark.getCachedFilterList:gc.count                                        N/A          N/A   thrpt       15         ≈ 0              counts
+FilterRegistryBenchmark.reassembleAfterInvalidation                                         N/A          N/A   thrpt       15       2.437 ±     0.027  ops/us
+FilterRegistryBenchmark.reassembleAfterInvalidation:gc.alloc.rate                           N/A          N/A   thrpt       15       0.012 ±     0.001  MB/sec
+FilterRegistryBenchmark.reassembleAfterInvalidation:gc.alloc.rate.norm                      N/A          N/A   thrpt       15       0.005 ±     0.001    B/op
+FilterRegistryBenchmark.reassembleAfterInvalidation:gc.count                                N/A          N/A   thrpt       15      34.000              counts
+FilterRegistryBenchmark.reassembleAfterInvalidation:gc.time                                 N/A          N/A   thrpt       15      79.000                  ms
+PipelineConcurrentBenchmark.governOnly_1Thread                                              N/A          N/A   thrpt       15       1.235 ±     0.051  ops/us
+PipelineConcurrentBenchmark.governOnly_1Thread:gc.alloc.rate                                N/A          N/A   thrpt       15       0.014 ±     0.001  MB/sec
+PipelineConcurrentBenchmark.governOnly_1Thread:gc.alloc.rate.norm                           N/A          N/A   thrpt       15       0.012 ±     0.001    B/op
+PipelineConcurrentBenchmark.governOnly_1Thread:gc.count                                     N/A          N/A   thrpt       15      53.000              counts
+PipelineConcurrentBenchmark.governOnly_1Thread:gc.time                                      N/A          N/A   thrpt       15     114.000                  ms
+PipelineConcurrentBenchmark.governOnly_4Threads                                             N/A          N/A   thrpt       15       2.936 ±     0.049  ops/us
+PipelineConcurrentBenchmark.governOnly_4Threads:gc.alloc.rate                               N/A          N/A   thrpt       15       0.023 ±     0.001  MB/sec
+PipelineConcurrentBenchmark.governOnly_4Threads:gc.alloc.rate.norm                          N/A          N/A   thrpt       15       0.008 ±     0.001    B/op
+PipelineConcurrentBenchmark.governOnly_4Threads:gc.count                                    N/A          N/A   thrpt       15     127.000              counts
+PipelineConcurrentBenchmark.governOnly_4Threads:gc.time                                     N/A          N/A   thrpt       15     200.000                  ms
+PipelineConcurrentBenchmark.governOnly_8Threads                                             N/A          N/A   thrpt       15       5.023 ±     0.113  ops/us
+PipelineConcurrentBenchmark.governOnly_8Threads:gc.alloc.rate                               N/A          N/A   thrpt       15       0.036 ±     0.001  MB/sec
+PipelineConcurrentBenchmark.governOnly_8Threads:gc.alloc.rate.norm                          N/A          N/A   thrpt       15       0.008 ±     0.001    B/op
+PipelineConcurrentBenchmark.governOnly_8Threads:gc.count                                    N/A          N/A   thrpt       15     218.000              counts
+PipelineConcurrentBenchmark.governOnly_8Threads:gc.time                                     N/A          N/A   thrpt       15     349.000                  ms
+PipelineConcurrentBenchmark.normal_1Thread                                                  N/A          N/A   thrpt       15       0.053 ±     0.001  ops/us
+PipelineConcurrentBenchmark.normal_1Thread:gc.alloc.rate                                    N/A          N/A   thrpt       15       0.015 ±     0.001  MB/sec
+PipelineConcurrentBenchmark.normal_1Thread:gc.alloc.rate.norm                               N/A          N/A   thrpt       15       0.294 ±     0.010    B/op
+PipelineConcurrentBenchmark.normal_1Thread:gc.count                                         N/A          N/A   thrpt       15       3.000              counts
+PipelineConcurrentBenchmark.normal_1Thread:gc.time                                          N/A          N/A   thrpt       15       9.000                  ms
+PipelineConcurrentBenchmark.normal_4Threads                                                 N/A          N/A   thrpt       15       0.187 ±     0.001  ops/us
+PipelineConcurrentBenchmark.normal_4Threads:gc.alloc.rate                                   N/A          N/A   thrpt       15       0.292 ±     1.096  MB/sec
+PipelineConcurrentBenchmark.normal_4Threads:gc.alloc.rate.norm                              N/A          N/A   thrpt       15       1.650 ±     6.190    B/op
+PipelineConcurrentBenchmark.normal_4Threads:gc.count                                        N/A          N/A   thrpt       15      15.000              counts
+PipelineConcurrentBenchmark.normal_4Threads:gc.time                                         N/A          N/A   thrpt       15      42.000                  ms
+PipelineConcurrentBenchmark.normal_8Threads                                                 N/A          N/A   thrpt       15       0.368 ±     0.003  ops/us
+PipelineConcurrentBenchmark.normal_8Threads:gc.alloc.rate                                   N/A          N/A   thrpt       15       0.049 ±     0.001  MB/sec
+PipelineConcurrentBenchmark.normal_8Threads:gc.alloc.rate.norm                              N/A          N/A   thrpt       15       0.140 ±     0.002    B/op
+PipelineConcurrentBenchmark.normal_8Threads:gc.count                                        N/A          N/A   thrpt       15      32.000              counts
+PipelineConcurrentBenchmark.normal_8Threads:gc.time                                         N/A          N/A   thrpt       15      90.000                  ms
+PipelineConcurrentBenchmark.simulation_1Thread                                              N/A          N/A   thrpt       15       0.054 ±     0.001  ops/us
+PipelineConcurrentBenchmark.simulation_1Thread:gc.alloc.rate                                N/A          N/A   thrpt       15       0.015 ±     0.001  MB/sec
+PipelineConcurrentBenchmark.simulation_1Thread:gc.alloc.rate.norm                           N/A          N/A   thrpt       15       0.291 ±     0.012    B/op
+PipelineConcurrentBenchmark.simulation_1Thread:gc.count                                     N/A          N/A   thrpt       15       6.000              counts
+PipelineConcurrentBenchmark.simulation_1Thread:gc.time                                      N/A          N/A   thrpt       15      18.000                  ms
+PipelineConcurrentBenchmark.simulation_4Threads                                             N/A          N/A   thrpt       15       0.193 ±     0.001  ops/us
+PipelineConcurrentBenchmark.simulation_4Threads:gc.alloc.rate                               N/A          N/A   thrpt       15       0.559 ±     1.500  MB/sec
+PipelineConcurrentBenchmark.simulation_4Threads:gc.alloc.rate.norm                          N/A          N/A   thrpt       15       3.049 ±     8.183    B/op
+PipelineConcurrentBenchmark.simulation_4Threads:gc.count                                    N/A          N/A   thrpt       15      18.000              counts
+PipelineConcurrentBenchmark.simulation_4Threads:gc.time                                     N/A          N/A   thrpt       15      48.000                  ms
+PipelineConcurrentBenchmark.simulation_8Threads                                             N/A          N/A   thrpt       15       0.376 ±     0.002  ops/us
+PipelineConcurrentBenchmark.simulation_8Threads:gc.alloc.rate                               N/A          N/A   thrpt       15       0.315 ±     1.100  MB/sec
+PipelineConcurrentBenchmark.simulation_8Threads:gc.alloc.rate.norm                          N/A          N/A   thrpt       15       0.879 ±     3.068    B/op
+PipelineConcurrentBenchmark.simulation_8Threads:gc.count                                    N/A          N/A   thrpt       15      39.000              counts
+PipelineConcurrentBenchmark.simulation_8Threads:gc.time                                     N/A          N/A   thrpt       15     103.000                  ms
+RepositoryBenchmark.getRuntime_1Thread                                                      N/A            1   thrpt       15     141.985 ±     1.609  ops/us
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate                                        N/A            1   thrpt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate.norm                                   N/A            1   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_1Thread:gc.count                                             N/A            1   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_1Thread                                                      N/A           50   thrpt       15     139.261 ±     5.116  ops/us
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate                                        N/A           50   thrpt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate.norm                                   N/A           50   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_1Thread:gc.count                                             N/A           50   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_1Thread                                                      N/A          500   thrpt       15     137.931 ±     1.076  ops/us
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate                                        N/A          500   thrpt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate.norm                                   N/A          500   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_1Thread:gc.count                                             N/A          500   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_1Thread                                                      N/A         2000   thrpt       15     125.253 ±    18.385  ops/us
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate                                        N/A         2000   thrpt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate.norm                                   N/A         2000   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_1Thread:gc.count                                             N/A         2000   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_4Threads                                                     N/A            1   thrpt       15     355.594 ±     6.468  ops/us
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate                                       N/A            1   thrpt       15       0.022 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate.norm                                  N/A            1   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_4Threads:gc.count                                            N/A            1   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_4Threads                                                     N/A           50   thrpt       15     371.626 ±     5.514  ops/us
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate                                       N/A           50   thrpt       15       0.022 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate.norm                                  N/A           50   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_4Threads:gc.count                                            N/A           50   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_4Threads                                                     N/A          500   thrpt       15     332.081 ±     8.170  ops/us
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate                                       N/A          500   thrpt       15       0.022 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate.norm                                  N/A          500   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_4Threads:gc.count                                            N/A          500   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_4Threads                                                     N/A         2000   thrpt       15     331.330 ±     8.342  ops/us
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate                                       N/A         2000   thrpt       15       0.022 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate.norm                                  N/A         2000   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_4Threads:gc.count                                            N/A         2000   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads                                                     N/A            1   thrpt       15     685.198 ±    15.801  ops/us
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate                                       N/A            1   thrpt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate.norm                                  N/A            1   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads:gc.count                                            N/A            1   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads                                                     N/A           50   thrpt       15     703.405 ±     6.146  ops/us
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate                                       N/A           50   thrpt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate.norm                                  N/A           50   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads:gc.count                                            N/A           50   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads                                                     N/A          500   thrpt       15     625.260 ±     5.225  ops/us
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate                                       N/A          500   thrpt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate.norm                                  N/A          500   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads:gc.count                                            N/A          500   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads                                                     N/A         2000   thrpt       15     631.439 ±    18.574  ops/us
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate                                       N/A         2000   thrpt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate.norm                                  N/A         2000   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads:gc.count                                            N/A         2000   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads_Distributed                                         N/A            1   thrpt       15     633.098 ±     5.604  ops/us
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate                           N/A            1   thrpt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate.norm                      N/A            1   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.count                                N/A            1   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads_Distributed                                         N/A           50   thrpt       15     642.760 ±     5.679  ops/us
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate                           N/A           50   thrpt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate.norm                      N/A           50   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.count                                N/A           50   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads_Distributed                                         N/A          500   thrpt       15     612.568 ±     9.885  ops/us
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate                           N/A          500   thrpt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate.norm                      N/A          500   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.count                                N/A          500   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads_Distributed                                         N/A         2000   thrpt       15     613.972 ±     6.941  ops/us
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate                           N/A         2000   thrpt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate.norm                      N/A         2000   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.count                                N/A         2000   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_1Thread                                                      N/A            1   thrpt       15     150.407 ±     0.916  ops/us
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate                                        N/A            1   thrpt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate.norm                                   N/A            1   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_1Thread:gc.count                                             N/A            1   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_1Thread                                                      N/A           50   thrpt       15     150.346 ±     3.388  ops/us
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate                                        N/A           50   thrpt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate.norm                                   N/A           50   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_1Thread:gc.count                                             N/A           50   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_1Thread                                                      N/A          500   thrpt       15     141.095 ±     6.813  ops/us
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate                                        N/A          500   thrpt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate.norm                                   N/A          500   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_1Thread:gc.count                                             N/A          500   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_1Thread                                                      N/A         2000   thrpt       15     146.113 ±     1.426  ops/us
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate                                        N/A         2000   thrpt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate.norm                                   N/A         2000   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_1Thread:gc.count                                             N/A         2000   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_8Threads                                                     N/A            1   thrpt       15     742.671 ±    14.004  ops/us
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate                                       N/A            1   thrpt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate.norm                                  N/A            1   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_8Threads:gc.count                                            N/A            1   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_8Threads                                                     N/A           50   thrpt       15     725.922 ±     8.430  ops/us
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate                                       N/A           50   thrpt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate.norm                                  N/A           50   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_8Threads:gc.count                                            N/A           50   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_8Threads                                                     N/A          500   thrpt       15     718.877 ±     6.194  ops/us
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate                                       N/A          500   thrpt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate.norm                                  N/A          500   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_8Threads:gc.count                                            N/A          500   thrpt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_8Threads                                                     N/A         2000   thrpt       15     714.710 ±     9.543  ops/us
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate                                       N/A         2000   thrpt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate.norm                                  N/A         2000   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_8Threads:gc.count                                            N/A         2000   thrpt       15         ≈ 0              counts
+RepositoryReadWriteMixedBenchmark.balanced                                                  N/A          N/A   thrpt       15     260.243 ±    96.175  ops/us
+RepositoryReadWriteMixedBenchmark.balanced:balanced_reader                                  N/A          N/A   thrpt       15     225.491 ±    89.701  ops/us
+RepositoryReadWriteMixedBenchmark.balanced:balanced_writer                                  N/A          N/A   thrpt       15      34.752 ±     8.794  ops/us
+RepositoryReadWriteMixedBenchmark.balanced:gc.alloc.rate                                    N/A          N/A   thrpt       15       0.043 ±     0.001  MB/sec
+RepositoryReadWriteMixedBenchmark.balanced:gc.alloc.rate.norm                               N/A          N/A   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryReadWriteMixedBenchmark.balanced:gc.count                                         N/A          N/A   thrpt       15      12.000              counts
+RepositoryReadWriteMixedBenchmark.balanced:gc.time                                          N/A          N/A   thrpt       15      30.000                  ms
+RepositoryReadWriteMixedBenchmark.readHeavy                                                 N/A          N/A   thrpt       15     301.064 ±    29.039  ops/us
+RepositoryReadWriteMixedBenchmark.readHeavy:gc.alloc.rate                                   N/A          N/A   thrpt       15       0.042 ±     0.001  MB/sec
+RepositoryReadWriteMixedBenchmark.readHeavy:gc.alloc.rate.norm                              N/A          N/A   thrpt       15      ≈ 10⁻⁴                B/op
+RepositoryReadWriteMixedBenchmark.readHeavy:gc.count                                        N/A          N/A   thrpt       15       1.000              counts
+RepositoryReadWriteMixedBenchmark.readHeavy:gc.time                                         N/A          N/A   thrpt       15       2.000                  ms
+RepositoryReadWriteMixedBenchmark.readHeavy:readHeavy_reader                                N/A          N/A   thrpt       15     294.769 ±    27.514  ops/us
+RepositoryReadWriteMixedBenchmark.readHeavy:readHeavy_writer                                N/A          N/A   thrpt       15       6.295 ±     1.581  ops/us
+StateMachineBenchmark.idempotentTransition                                                  N/A          N/A   thrpt       15     201.107 ±     3.406  ops/us
+StateMachineBenchmark.idempotentTransition:gc.alloc.rate                                    N/A          N/A   thrpt       15       0.012 ±     0.001  MB/sec
+StateMachineBenchmark.idempotentTransition:gc.alloc.rate.norm                               N/A          N/A   thrpt       15      ≈ 10⁻⁴                B/op
+StateMachineBenchmark.idempotentTransition:gc.count                                         N/A          N/A   thrpt       15     113.000              counts
+StateMachineBenchmark.idempotentTransition:gc.time                                          N/A          N/A   thrpt       15     184.000                  ms
+StateMachineBenchmark.readCurrentState                                                      N/A          N/A   thrpt       15     394.558 ±     0.920  ops/us
+StateMachineBenchmark.readCurrentState:gc.alloc.rate                                        N/A          N/A   thrpt       15       0.012 ±     0.001  MB/sec
+StateMachineBenchmark.readCurrentState:gc.alloc.rate.norm                                   N/A          N/A   thrpt       15      ≈ 10⁻⁵                B/op
+StateMachineBenchmark.readCurrentState:gc.count                                             N/A          N/A   thrpt       15         ≈ 0              counts
+StateMachineBenchmark.singleRoundTrip                                                       N/A          N/A   thrpt       15      31.798 ±     0.408  ops/us
+StateMachineBenchmark.singleRoundTrip:gc.alloc.rate                                         N/A          N/A   thrpt       15       0.012 ±     0.001  MB/sec
+StateMachineBenchmark.singleRoundTrip:gc.alloc.rate.norm                                    N/A          N/A   thrpt       15      ≈ 10⁻³                B/op
+StateMachineBenchmark.singleRoundTrip:gc.count                                              N/A          N/A   thrpt       15      84.000              counts
+StateMachineBenchmark.singleRoundTrip:gc.time                                               N/A          N/A   thrpt       15     144.000                  ms
+StateMachineConcurrentBenchmark.concurrentCasTransition_4Threads                            N/A          N/A   thrpt       15      31.846 ±     6.087  ops/us
+StateMachineConcurrentBenchmark.concurrentCasTransition_4Threads:gc.alloc.rate              N/A          N/A   thrpt       15       0.021 ±     0.001  MB/sec
+StateMachineConcurrentBenchmark.concurrentCasTransition_4Threads:gc.alloc.rate.norm         N/A          N/A   thrpt       15       0.001 ±     0.001    B/op
+StateMachineConcurrentBenchmark.concurrentCasTransition_4Threads:gc.count                   N/A          N/A   thrpt       15      26.000              counts
+StateMachineConcurrentBenchmark.concurrentCasTransition_4Threads:gc.time                    N/A          N/A   thrpt       15      59.000                  ms
+StateMachineConcurrentBenchmark.concurrentCasTransition_8Threads                            N/A          N/A   thrpt       15      36.001 ±     5.674  ops/us
+StateMachineConcurrentBenchmark.concurrentCasTransition_8Threads:gc.alloc.rate              N/A          N/A   thrpt       15       0.034 ±     0.001  MB/sec
+StateMachineConcurrentBenchmark.concurrentCasTransition_8Threads:gc.alloc.rate.norm         N/A          N/A   thrpt       15       0.001 ±     0.001    B/op
+StateMachineConcurrentBenchmark.concurrentCasTransition_8Threads:gc.count                   N/A          N/A   thrpt       15      25.000              counts
+StateMachineConcurrentBenchmark.concurrentCasTransition_8Threads:gc.time                    N/A          N/A   thrpt       15      59.000                  ms
+StateMachineConcurrentBenchmark.concurrentReadWrite                                         N/A          N/A   thrpt       15      31.083 ±     2.283  ops/us
+StateMachineConcurrentBenchmark.concurrentReadWrite:gc.alloc.rate                           N/A          N/A   thrpt       15       0.021 ±     0.001  MB/sec
+StateMachineConcurrentBenchmark.concurrentReadWrite:gc.alloc.rate.norm                      N/A          N/A   thrpt       15       0.001 ±     0.001    B/op
+StateMachineConcurrentBenchmark.concurrentReadWrite:gc.count                                N/A          N/A   thrpt       15      25.000              counts
+StateMachineConcurrentBenchmark.concurrentReadWrite:gc.time                                 N/A          N/A   thrpt       15      57.000                  ms
+StateMachineConcurrentBenchmark.concurrentRead_4Threads                                     N/A          N/A   thrpt       15    1179.987 ±    16.787  ops/us
+StateMachineConcurrentBenchmark.concurrentRead_4Threads:gc.alloc.rate                       N/A          N/A   thrpt       15       0.020 ±     0.001  MB/sec
+StateMachineConcurrentBenchmark.concurrentRead_4Threads:gc.alloc.rate.norm                  N/A          N/A   thrpt       15      ≈ 10⁻⁵                B/op
+StateMachineConcurrentBenchmark.concurrentRead_4Threads:gc.count                            N/A          N/A   thrpt       15         ≈ 0              counts
+StateMachineConcurrentBenchmark.concurrentRead_8Threads                                     N/A          N/A   thrpt       15    2284.550 ±    17.398  ops/us
+StateMachineConcurrentBenchmark.concurrentRead_8Threads:gc.alloc.rate                       N/A          N/A   thrpt       15       0.033 ±     0.001  MB/sec
+StateMachineConcurrentBenchmark.concurrentRead_8Threads:gc.alloc.rate.norm                  N/A          N/A   thrpt       15      ≈ 10⁻⁵                B/op
+StateMachineConcurrentBenchmark.concurrentRead_8Threads:gc.count                            N/A          N/A   thrpt       15         ≈ 0              counts
+StateMachineConcurrentBenchmark.concurrentRejectedTransition                                N/A          N/A   thrpt       15     481.052 ±     5.266  ops/us
+StateMachineConcurrentBenchmark.concurrentRejectedTransition:gc.alloc.rate                  N/A          N/A   thrpt       15       0.021 ±     0.001  MB/sec
+StateMachineConcurrentBenchmark.concurrentRejectedTransition:gc.alloc.rate.norm             N/A          N/A   thrpt       15      ≈ 10⁻⁴                B/op
+StateMachineConcurrentBenchmark.concurrentRejectedTransition:gc.count                       N/A          N/A   thrpt       15     271.000              counts
+StateMachineConcurrentBenchmark.concurrentRejectedTransition:gc.time                        N/A          N/A   thrpt       15     422.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads                                      1          N/A    avgt       15     135.609 ±     3.116   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate                        1          N/A    avgt       15       0.013 ±     0.001  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate.norm                   1          N/A    avgt       15       0.463 ±     0.016    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.count                             1          N/A    avgt       15       3.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.time                              1          N/A    avgt       15       9.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads                                     10          N/A    avgt       15     134.441 ±     3.816   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate                       10          N/A    avgt       15       0.013 ±     0.001  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate.norm                  10          N/A    avgt       15       0.460 ±     0.008    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.count                            10          N/A    avgt       15       3.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.time                             10          N/A    avgt       15       7.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads                                    100          N/A    avgt       15     133.636 ±     2.753   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate                      100          N/A    avgt       15       0.013 ±     0.001  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate.norm                 100          N/A    avgt       15       0.469 ±     0.009    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.count                           100          N/A    avgt       15       6.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.time                            100          N/A    avgt       15      16.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads                                   1000          N/A    avgt       15     141.719 ±     0.758   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate                     1000          N/A    avgt       15       0.013 ±     0.001  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate.norm                1000          N/A    avgt       15       0.516 ±     0.007    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.count                          1000          N/A    avgt       15      30.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.time                           1000          N/A    avgt       15      80.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads                                      1          N/A    avgt       15     271.972 ±     6.139   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate                        1          N/A    avgt       15       0.021 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate.norm                   1          N/A    avgt       15       0.749 ±     0.010    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.count                             1          N/A    avgt       15       3.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.time                              1          N/A    avgt       15       8.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads                                     10          N/A    avgt       15     275.259 ±     7.858   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate                       10          N/A    avgt       15       0.021 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate.norm                  10          N/A    avgt       15       0.751 ±     0.015    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.count                            10          N/A    avgt       15       3.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.time                             10          N/A    avgt       15       7.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads                                    100          N/A    avgt       15     271.701 ±     6.102   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate                      100          N/A    avgt       15       0.021 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate.norm                 100          N/A    avgt       15       0.756 ±     0.012    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.count                           100          N/A    avgt       15       6.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.time                            100          N/A    avgt       15      16.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads                                   1000          N/A    avgt       15     281.795 ±     2.719   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate                     1000          N/A    avgt       15       0.021 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate.norm                1000          N/A    avgt       15       0.824 ±     0.008    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.count                          1000          N/A    avgt       15      30.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.time                           1000          N/A    avgt       15      80.000                  ms
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads                                  1          N/A    avgt       15    2179.689 ±   114.743   us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate                    1          N/A    avgt       15       0.022 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate.norm               1          N/A    avgt       15       6.375 ±     0.350    B/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.count                         1          N/A    avgt       15      18.000              counts
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.time                          1          N/A    avgt       15    1486.000                  ms
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads                                 10          N/A    avgt       15    2643.113 ±   121.403   us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate                   10          N/A    avgt       15       0.021 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate.norm              10          N/A    avgt       15       7.764 ±     0.417    B/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.count                        10          N/A    avgt       15      22.000              counts
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.time                         10          N/A    avgt       15    2980.000                  ms
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads                                100          N/A    avgt       15   56535.011 ±  1187.138   us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate                  100          N/A    avgt       15       0.020 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate.norm             100          N/A    avgt       15     159.676 ±     4.901    B/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.count                       100          N/A    avgt       15       5.000              counts
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.time                        100          N/A    avgt       15     270.000                  ms
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads                               1000          N/A    avgt       15  808250.576 ± 17546.652   us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate                 1000          N/A    avgt       15       0.016 ±     0.001  MB/sec
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate.norm            1000          N/A    avgt       15    1775.631 ±    30.422    B/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.count                      1000          N/A    avgt       15       6.000              counts
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.time                       1000          N/A    avgt       15     732.000                  ms
+ClassLoaderBenchmark.createAndDestroy                                                         1          N/A    avgt       15      16.957 ±     0.236   us/op
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate                                           1          N/A    avgt       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate.norm                                      1          N/A    avgt       15       0.143 ±     0.004    B/op
+ClassLoaderBenchmark.createAndDestroy:gc.count                                                1          N/A    avgt       15       6.000              counts
+ClassLoaderBenchmark.createAndDestroy:gc.time                                                 1          N/A    avgt       15      17.000                  ms
+ClassLoaderBenchmark.createAndDestroy                                                        10          N/A    avgt       15      17.104 ±     0.272   us/op
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate                                          10          N/A    avgt       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate.norm                                     10          N/A    avgt       15       0.145 ±     0.004    B/op
+ClassLoaderBenchmark.createAndDestroy:gc.count                                               10          N/A    avgt       15       6.000              counts
+ClassLoaderBenchmark.createAndDestroy:gc.time                                                10          N/A    avgt       15      15.000                  ms
+ClassLoaderBenchmark.createAndDestroy                                                       100          N/A    avgt       15      18.091 ±     0.135   us/op
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate                                         100          N/A    avgt       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate.norm                                    100          N/A    avgt       15       0.155 ±     0.003    B/op
+ClassLoaderBenchmark.createAndDestroy:gc.count                                              100          N/A    avgt       15       9.000              counts
+ClassLoaderBenchmark.createAndDestroy:gc.time                                               100          N/A    avgt       15      24.000                  ms
+ClassLoaderBenchmark.createAndDestroy                                                      1000          N/A    avgt       15      25.510 ±     0.859   us/op
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate                                        1000          N/A    avgt       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate.norm                                   1000          N/A    avgt       15       0.222 ±     0.008    B/op
+ClassLoaderBenchmark.createAndDestroy:gc.count                                             1000          N/A    avgt       15      40.000              counts
+ClassLoaderBenchmark.createAndDestroy:gc.time                                              1000          N/A    avgt       15      95.000                  ms
+ClassLoaderBenchmark.createLoadAndDestroy                                                     1          N/A    avgt       15     441.278 ±    28.380   us/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate                                       1          N/A    avgt       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate.norm                                  1          N/A    avgt       15       3.781 ±     0.307    B/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.count                                            1          N/A    avgt       15      12.000              counts
+ClassLoaderBenchmark.createLoadAndDestroy:gc.time                                             1          N/A    avgt       15     775.000                  ms
+ClassLoaderBenchmark.createLoadAndDestroy                                                    10          N/A    avgt       15    1496.606 ±    40.602   us/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate                                      10          N/A    avgt       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate.norm                                 10          N/A    avgt       15      12.780 ±     0.624    B/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.count                                           10          N/A    avgt       15       9.000              counts
+ClassLoaderBenchmark.createLoadAndDestroy:gc.time                                            10          N/A    avgt       15     432.000                  ms
+ClassLoaderBenchmark.createLoadAndDestroy                                                   100          N/A    avgt       15   12370.237 ±   320.906   us/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate                                     100          N/A    avgt       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate.norm                                100          N/A    avgt       15     109.766 ±    16.235    B/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.count                                          100          N/A    avgt       15      16.000              counts
+ClassLoaderBenchmark.createLoadAndDestroy:gc.time                                           100          N/A    avgt       15     475.000                  ms
+ClassLoaderBenchmark.createLoadAndDestroy                                                  1000          N/A    avgt       15  132229.409 ±  2112.361   us/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate                                    1000          N/A    avgt       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate.norm                               1000          N/A    avgt       15    1097.855 ±    33.379    B/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.count                                         1000          N/A    avgt       15       8.000              counts
+ClassLoaderBenchmark.createLoadAndDestroy:gc.time                                          1000          N/A    avgt       15     222.000                  ms
+ClassLoaderBenchmark.createOnly                                                               1          N/A    avgt       15      21.345 ±     4.594   us/op
+ClassLoaderBenchmark.createOnly:gc.alloc.rate                                                 1          N/A    avgt       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createOnly:gc.alloc.rate.norm                                            1          N/A    avgt       15       0.191 ±     0.042    B/op
+ClassLoaderBenchmark.createOnly:gc.count                                                      1          N/A    avgt       15       5.000              counts
+ClassLoaderBenchmark.createOnly:gc.time                                                       1          N/A    avgt       15      13.000                  ms
+ClassLoaderBenchmark.createOnly                                                              10          N/A    avgt       15      16.529 ±     0.407   us/op
+ClassLoaderBenchmark.createOnly:gc.alloc.rate                                                10          N/A    avgt       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createOnly:gc.alloc.rate.norm                                           10          N/A    avgt       15       0.148 ±     0.004    B/op
+ClassLoaderBenchmark.createOnly:gc.count                                                     10          N/A    avgt       15       6.000              counts
+ClassLoaderBenchmark.createOnly:gc.time                                                      10          N/A    avgt       15      15.000                  ms
+ClassLoaderBenchmark.createOnly                                                             100          N/A    avgt       15      17.366 ±     0.194   us/op
+ClassLoaderBenchmark.createOnly:gc.alloc.rate                                               100          N/A    avgt       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createOnly:gc.alloc.rate.norm                                          100          N/A    avgt       15       0.156 ±     0.004    B/op
+ClassLoaderBenchmark.createOnly:gc.count                                                    100          N/A    avgt       15       9.000              counts
+ClassLoaderBenchmark.createOnly:gc.time                                                     100          N/A    avgt       15      23.000                  ms
+ClassLoaderBenchmark.createOnly                                                            1000          N/A    avgt       15      23.984 ±     0.390   us/op
+ClassLoaderBenchmark.createOnly:gc.alloc.rate                                              1000          N/A    avgt       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createOnly:gc.alloc.rate.norm                                         1000          N/A    avgt       15       0.220 ±     0.004    B/op
+ClassLoaderBenchmark.createOnly:gc.count                                                   1000          N/A    avgt       15      41.000              counts
+ClassLoaderBenchmark.createOnly:gc.time                                                    1000          N/A    avgt       15      98.000                  ms
+EndToEndBenchmark.steadyStateInvoke_1Thread                                                 N/A          N/A    avgt       15      18.866 ±     0.176   us/op
+EndToEndBenchmark.steadyStateInvoke_1Thread:gc.alloc.rate                                   N/A          N/A    avgt       15       0.010 ±     0.001  MB/sec
+EndToEndBenchmark.steadyStateInvoke_1Thread:gc.alloc.rate.norm                              N/A          N/A    avgt       15       0.197 ±     0.006    B/op
+EndToEndBenchmark.steadyStateInvoke_1Thread:gc.count                                        N/A          N/A    avgt       15       6.000              counts
+EndToEndBenchmark.steadyStateInvoke_1Thread:gc.time                                         N/A          N/A    avgt       15      17.000                  ms
+EndToEndBenchmark.steadyStateInvoke_4Threads                                                N/A          N/A    avgt       15      21.257 ±     0.173   us/op
+EndToEndBenchmark.steadyStateInvoke_4Threads:gc.alloc.rate                                  N/A          N/A    avgt       15       0.196 ±     0.732  MB/sec
+EndToEndBenchmark.steadyStateInvoke_4Threads:gc.alloc.rate.norm                             N/A          N/A    avgt       15       1.100 ±     4.117    B/op
+EndToEndBenchmark.steadyStateInvoke_4Threads:gc.count                                       N/A          N/A    avgt       15      24.000              counts
+EndToEndBenchmark.steadyStateInvoke_4Threads:gc.time                                        N/A          N/A    avgt       15      65.000                  ms
+EndToEndBenchmark.steadyStateInvoke_8Threads                                                N/A          N/A    avgt       15      21.981 ±     0.133   us/op
+EndToEndBenchmark.steadyStateInvoke_8Threads:gc.alloc.rate                                  N/A          N/A    avgt       15       0.385 ±     0.996  MB/sec
+EndToEndBenchmark.steadyStateInvoke_8Threads:gc.alloc.rate.norm                             N/A          N/A    avgt       15       1.108 ±     2.864    B/op
+EndToEndBenchmark.steadyStateInvoke_8Threads:gc.count                                       N/A          N/A    avgt       15      45.000              counts
+EndToEndBenchmark.steadyStateInvoke_8Threads:gc.time                                        N/A          N/A    avgt       15     105.000                  ms
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread                                        N/A          N/A    avgt       15     114.198 ±     1.728   us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:gc.alloc.rate                          N/A          N/A    avgt       15       0.010 ±     0.001  MB/sec
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:gc.alloc.rate.norm                     N/A          N/A    avgt       15       1.162 ±     0.034    B/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:gc.count                               N/A          N/A    avgt       15       6.000              counts
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:gc.time                                N/A          N/A    avgt       15      56.000                  ms
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads                                       N/A          N/A    avgt       15     416.810 ±     6.268   us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:gc.alloc.rate                         N/A          N/A    avgt       15       0.016 ±     0.001  MB/sec
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:gc.alloc.rate.norm                    N/A          N/A    avgt       15       1.760 ±     0.049    B/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:gc.count                              N/A          N/A    avgt       15       6.000              counts
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:gc.time                               N/A          N/A    avgt       15      74.000                  ms
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread                               N/A          N/A    avgt       15     255.823 ±     5.041   us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:gc.alloc.rate                 N/A          N/A    avgt       15       0.012 ±     0.001  MB/sec
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:gc.alloc.rate.norm            N/A          N/A    avgt       15       3.096 ±     0.082    B/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:gc.count                      N/A          N/A    avgt       15      16.000              counts
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:gc.time                       N/A          N/A    avgt       15    1019.000                  ms
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads                              N/A          N/A    avgt       15     951.607 ±    19.092   us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:gc.alloc.rate                N/A          N/A    avgt       15       0.019 ±     0.001  MB/sec
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:gc.alloc.rate.norm           N/A          N/A    avgt       15       4.693 ±     0.101    B/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:gc.count                     N/A          N/A    avgt       15      18.000              counts
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:gc.time                      N/A          N/A    avgt       15    1282.000                  ms
+EventBusBenchmark.publishNoListeners                                                        N/A          N/A    avgt       15       0.004 ±     0.001   us/op
+EventBusBenchmark.publishNoListeners:gc.alloc.rate                                          N/A          N/A    avgt       15       0.012 ±     0.001  MB/sec
+EventBusBenchmark.publishNoListeners:gc.alloc.rate.norm                                     N/A          N/A    avgt       15      ≈ 10⁻⁴                B/op
+EventBusBenchmark.publishNoListeners:gc.count                                               N/A          N/A    avgt       15      96.000              counts
+EventBusBenchmark.publishNoListeners:gc.time                                                N/A          N/A    avgt       15     161.000                  ms
+EventBusBenchmark.publishToGlobalListener                                                   N/A          N/A    avgt       15       0.022 ±     0.001   us/op
+EventBusBenchmark.publishToGlobalListener:gc.alloc.rate                                     N/A          N/A    avgt       15       0.012 ±     0.001  MB/sec
+EventBusBenchmark.publishToGlobalListener:gc.alloc.rate.norm                                N/A          N/A    avgt       15      ≈ 10⁻⁴                B/op
+EventBusBenchmark.publishToGlobalListener:gc.count                                          N/A          N/A    avgt       15      41.000              counts
+EventBusBenchmark.publishToGlobalListener:gc.time                                           N/A          N/A    avgt       15      87.000                  ms
+EventBusBenchmark.publishToLingListeners                                                    N/A          N/A    avgt       15       0.023 ±     0.001   us/op
+EventBusBenchmark.publishToLingListeners:gc.alloc.rate                                      N/A          N/A    avgt       15       0.012 ±     0.001  MB/sec
+EventBusBenchmark.publishToLingListeners:gc.alloc.rate.norm                                 N/A          N/A    avgt       15      ≈ 10⁻⁴                B/op
+EventBusBenchmark.publishToLingListeners:gc.count                                           N/A          N/A    avgt       15      15.000              counts
+EventBusBenchmark.publishToLingListeners:gc.time                                            N/A          N/A    avgt       15      35.000                  ms
+EventBusConcurrentBenchmark.publish_1Thread                                                 N/A          N/A    avgt       15       0.070 ±     0.008   us/op
+EventBusConcurrentBenchmark.publish_1Thread:gc.alloc.rate                                   N/A          N/A    avgt       15       0.012 ±     0.001  MB/sec
+EventBusConcurrentBenchmark.publish_1Thread:gc.alloc.rate.norm                              N/A          N/A    avgt       15       0.001 ±     0.001    B/op
+EventBusConcurrentBenchmark.publish_1Thread:gc.count                                        N/A          N/A    avgt       15      24.000              counts
+EventBusConcurrentBenchmark.publish_1Thread:gc.time                                         N/A          N/A    avgt       15      57.000                  ms
+EventBusConcurrentBenchmark.publish_4Threads                                                N/A          N/A    avgt       15       0.081 ±     0.003   us/op
+EventBusConcurrentBenchmark.publish_4Threads:gc.alloc.rate                                  N/A          N/A    avgt       15       0.020 ±     0.003  MB/sec
+EventBusConcurrentBenchmark.publish_4Threads:gc.alloc.rate.norm                             N/A          N/A    avgt       15      ≈ 10⁻³                B/op
+EventBusConcurrentBenchmark.publish_4Threads:gc.count                                       N/A          N/A    avgt       15      74.000              counts
+EventBusConcurrentBenchmark.publish_4Threads:gc.time                                        N/A          N/A    avgt       15     129.000                  ms
+EventBusConcurrentBenchmark.publish_8Threads                                                N/A          N/A    avgt       15       0.079 ±     0.003   us/op
+EventBusConcurrentBenchmark.publish_8Threads:gc.alloc.rate                                  N/A          N/A    avgt       15       0.033 ±     0.003  MB/sec
+EventBusConcurrentBenchmark.publish_8Threads:gc.alloc.rate.norm                             N/A          N/A    avgt       15      ≈ 10⁻³                B/op
+EventBusConcurrentBenchmark.publish_8Threads:gc.count                                       N/A          N/A    avgt       15     132.000              counts
+EventBusConcurrentBenchmark.publish_8Threads:gc.time                                        N/A          N/A    avgt       15     207.000                  ms
+FilterRegistryBenchmark.getCachedFilterList                                                 N/A          N/A    avgt       15       0.005 ±     0.001   us/op
+FilterRegistryBenchmark.getCachedFilterList:gc.alloc.rate                                   N/A          N/A    avgt       15       0.012 ±     0.001  MB/sec
+FilterRegistryBenchmark.getCachedFilterList:gc.alloc.rate.norm                              N/A          N/A    avgt       15      ≈ 10⁻⁴                B/op
+FilterRegistryBenchmark.getCachedFilterList:gc.count                                        N/A          N/A    avgt       15         ≈ 0              counts
+FilterRegistryBenchmark.reassembleAfterInvalidation                                         N/A          N/A    avgt       15       0.429 ±     0.013   us/op
+FilterRegistryBenchmark.reassembleAfterInvalidation:gc.alloc.rate                           N/A          N/A    avgt       15       0.012 ±     0.001  MB/sec
+FilterRegistryBenchmark.reassembleAfterInvalidation:gc.alloc.rate.norm                      N/A          N/A    avgt       15       0.006 ±     0.001    B/op
+FilterRegistryBenchmark.reassembleAfterInvalidation:gc.count                                N/A          N/A    avgt       15      33.000              counts
+FilterRegistryBenchmark.reassembleAfterInvalidation:gc.time                                 N/A          N/A    avgt       15      77.000                  ms
+PipelineBenchmark.contextObtainAndRecycle                                                   N/A          N/A    avgt       15       0.031 ±     0.001   us/op
+PipelineBenchmark.contextObtainAndRecycle:gc.alloc.rate                                     N/A          N/A    avgt       15       0.009 ±     0.001  MB/sec
+PipelineBenchmark.contextObtainAndRecycle:gc.alloc.rate.norm                                N/A          N/A    avgt       15      ≈ 10⁻⁴                B/op
+PipelineBenchmark.contextObtainAndRecycle:gc.count                                          N/A          N/A    avgt       15         ≈ 0              counts
+PipelineBenchmark.filterChainOverhead                                                       N/A          N/A    avgt       15       0.067 ±     0.001   us/op
+PipelineBenchmark.filterChainOverhead:gc.alloc.rate                                         N/A          N/A    avgt       15       0.009 ±     0.001  MB/sec
+PipelineBenchmark.filterChainOverhead:gc.alloc.rate.norm                                    N/A          N/A    avgt       15       0.001 ±     0.001    B/op
+PipelineBenchmark.filterChainOverhead:gc.count                                              N/A          N/A    avgt       15      50.000              counts
+PipelineBenchmark.filterChainOverhead:gc.time                                               N/A          N/A    avgt       15     100.000                  ms
+PipelineBenchmark.governOnlyPipeline                                                        N/A          N/A    avgt       15       0.800 ±     0.010   us/op
+PipelineBenchmark.governOnlyPipeline:gc.alloc.rate                                          N/A          N/A    avgt       15       0.009 ±     0.001  MB/sec
+PipelineBenchmark.governOnlyPipeline:gc.alloc.rate.norm                                     N/A          N/A    avgt       15       0.008 ±     0.001    B/op
+PipelineBenchmark.governOnlyPipeline:gc.count                                               N/A          N/A    avgt       15      81.000              counts
+PipelineBenchmark.governOnlyPipeline:gc.time                                                N/A          N/A    avgt       15     138.000                  ms
+PipelineBenchmark.happyPathPipeline                                                         N/A          N/A    avgt       15      18.800 ±     0.127   us/op
+PipelineBenchmark.happyPathPipeline:gc.alloc.rate                                           N/A          N/A    avgt       15       0.187 ±     0.731  MB/sec
+PipelineBenchmark.happyPathPipeline:gc.alloc.rate.norm                                      N/A          N/A    avgt       15       3.728 ±    14.610    B/op
+PipelineBenchmark.happyPathPipeline:gc.count                                                N/A          N/A    avgt       15       7.000              counts
+PipelineBenchmark.happyPathPipeline:gc.time                                                 N/A          N/A    avgt       15      19.000                  ms
+PipelineBenchmark.simulationPipeline                                                        N/A          N/A    avgt       15      18.644 ±     0.161   us/op
+PipelineBenchmark.simulationPipeline:gc.alloc.rate                                          N/A          N/A    avgt       15       0.186 ±     0.730  MB/sec
+PipelineBenchmark.simulationPipeline:gc.alloc.rate.norm                                     N/A          N/A    avgt       15       3.661 ±    14.336    B/op
+PipelineBenchmark.simulationPipeline:gc.count                                               N/A          N/A    avgt       15       9.000              counts
+PipelineBenchmark.simulationPipeline:gc.time                                                N/A          N/A    avgt       15      24.000                  ms
+PipelineConcurrentBenchmark.governOnly_1Thread                                              N/A          N/A    avgt       15       0.790 ±     0.008   us/op
+PipelineConcurrentBenchmark.governOnly_1Thread:gc.alloc.rate                                N/A          N/A    avgt       15       0.014 ±     0.001  MB/sec
+PipelineConcurrentBenchmark.governOnly_1Thread:gc.alloc.rate.norm                           N/A          N/A    avgt       15       0.011 ±     0.001    B/op
+PipelineConcurrentBenchmark.governOnly_1Thread:gc.count                                     N/A          N/A    avgt       15      55.000              counts
+PipelineConcurrentBenchmark.governOnly_1Thread:gc.time                                      N/A          N/A    avgt       15     116.000                  ms
+PipelineConcurrentBenchmark.governOnly_4Threads                                             N/A          N/A    avgt       15       1.411 ±     0.009   us/op
+PipelineConcurrentBenchmark.governOnly_4Threads:gc.alloc.rate                               N/A          N/A    avgt       15       0.023 ±     0.001  MB/sec
+PipelineConcurrentBenchmark.governOnly_4Threads:gc.alloc.rate.norm                          N/A          N/A    avgt       15       0.008 ±     0.001    B/op
+PipelineConcurrentBenchmark.governOnly_4Threads:gc.count                                    N/A          N/A    avgt       15     124.000              counts
+PipelineConcurrentBenchmark.governOnly_4Threads:gc.time                                     N/A          N/A    avgt       15     194.000                  ms
+PipelineConcurrentBenchmark.governOnly_8Threads                                             N/A          N/A    avgt       15       1.553 ±     0.035   us/op
+PipelineConcurrentBenchmark.governOnly_8Threads:gc.alloc.rate                               N/A          N/A    avgt       15       0.036 ±     0.001  MB/sec
+PipelineConcurrentBenchmark.governOnly_8Threads:gc.alloc.rate.norm                          N/A          N/A    avgt       15       0.007 ±     0.001    B/op
+PipelineConcurrentBenchmark.governOnly_8Threads:gc.count                                    N/A          N/A    avgt       15     224.000              counts
+PipelineConcurrentBenchmark.governOnly_8Threads:gc.time                                     N/A          N/A    avgt       15     349.000                  ms
+PipelineConcurrentBenchmark.normal_1Thread                                                  N/A          N/A    avgt       15      18.766 ±     0.250   us/op
+PipelineConcurrentBenchmark.normal_1Thread:gc.alloc.rate                                    N/A          N/A    avgt       15       0.015 ±     0.001  MB/sec
+PipelineConcurrentBenchmark.normal_1Thread:gc.alloc.rate.norm                               N/A          N/A    avgt       15       0.291 ±     0.011    B/op
+PipelineConcurrentBenchmark.normal_1Thread:gc.count                                         N/A          N/A    avgt       15       3.000              counts
+PipelineConcurrentBenchmark.normal_1Thread:gc.time                                          N/A          N/A    avgt       15       9.000                  ms
+PipelineConcurrentBenchmark.normal_4Threads                                                 N/A          N/A    avgt       15      21.324 ±     0.134   us/op
+PipelineConcurrentBenchmark.normal_4Threads:gc.alloc.rate                                   N/A          N/A    avgt       15       0.028 ±     0.001  MB/sec
+PipelineConcurrentBenchmark.normal_4Threads:gc.alloc.rate.norm                              N/A          N/A    avgt       15       0.157 ±     0.002    B/op
+PipelineConcurrentBenchmark.normal_4Threads:gc.count                                        N/A          N/A    avgt       15      15.000              counts
+PipelineConcurrentBenchmark.normal_4Threads:gc.time                                         N/A          N/A    avgt       15      40.000                  ms
+PipelineConcurrentBenchmark.normal_8Threads                                                 N/A          N/A    avgt       15      21.944 ±     0.240   us/op
+PipelineConcurrentBenchmark.normal_8Threads:gc.alloc.rate                                   N/A          N/A    avgt       15       0.313 ±     1.095  MB/sec
+PipelineConcurrentBenchmark.normal_8Threads:gc.alloc.rate.norm                              N/A          N/A    avgt       15       0.899 ±     3.142    B/op
+PipelineConcurrentBenchmark.normal_8Threads:gc.count                                        N/A          N/A    avgt       15      33.000              counts
+PipelineConcurrentBenchmark.normal_8Threads:gc.time                                         N/A          N/A    avgt       15      92.000                  ms
+PipelineConcurrentBenchmark.simulation_1Thread                                              N/A          N/A    avgt       15      18.590 ±     0.266   us/op
+PipelineConcurrentBenchmark.simulation_1Thread:gc.alloc.rate                                N/A          N/A    avgt       15       0.278 ±     1.091  MB/sec
+PipelineConcurrentBenchmark.simulation_1Thread:gc.alloc.rate.norm                           N/A          N/A    avgt       15       5.465 ±    21.421    B/op
+PipelineConcurrentBenchmark.simulation_1Thread:gc.count                                     N/A          N/A    avgt       15       6.000              counts
+PipelineConcurrentBenchmark.simulation_1Thread:gc.time                                      N/A          N/A    avgt       15      18.000                  ms
+PipelineConcurrentBenchmark.simulation_4Threads                                             N/A          N/A    avgt       15      21.027 ±     0.066   us/op
+PipelineConcurrentBenchmark.simulation_4Threads:gc.alloc.rate                               N/A          N/A    avgt       15       0.028 ±     0.001  MB/sec
+PipelineConcurrentBenchmark.simulation_4Threads:gc.alloc.rate.norm                          N/A          N/A    avgt       15       0.153 ±     0.004    B/op
+PipelineConcurrentBenchmark.simulation_4Threads:gc.count                                    N/A          N/A    avgt       15      18.000              counts
+PipelineConcurrentBenchmark.simulation_4Threads:gc.time                                     N/A          N/A    avgt       15      48.000                  ms
+PipelineConcurrentBenchmark.simulation_8Threads                                             N/A          N/A    avgt       15      21.597 ±     0.180   us/op
+PipelineConcurrentBenchmark.simulation_8Threads:gc.alloc.rate                               N/A          N/A    avgt       15       0.313 ±     1.095  MB/sec
+PipelineConcurrentBenchmark.simulation_8Threads:gc.alloc.rate.norm                          N/A          N/A    avgt       15       0.889 ±     3.113    B/op
+PipelineConcurrentBenchmark.simulation_8Threads:gc.count                                    N/A          N/A    avgt       15      38.000              counts
+PipelineConcurrentBenchmark.simulation_8Threads:gc.time                                     N/A          N/A    avgt       15     103.000                  ms
+PipelineExceptionBenchmark.baselineNormalException                                          N/A          N/A    avgt       15       0.734 ±     0.013   us/op
+PipelineExceptionBenchmark.baselineNormalException:gc.alloc.rate                            N/A          N/A    avgt       15       0.009 ±     0.001  MB/sec
+PipelineExceptionBenchmark.baselineNormalException:gc.alloc.rate.norm                       N/A          N/A    avgt       15       0.007 ±     0.001    B/op
+PipelineExceptionBenchmark.baselineNormalException:gc.count                                 N/A          N/A    avgt       15      24.000              counts
+PipelineExceptionBenchmark.baselineNormalException:gc.time                                  N/A          N/A    avgt       15      57.000                  ms
+PipelineExceptionBenchmark.baselinePreAllocated                                             N/A          N/A    avgt       15       0.002 ±     0.001   us/op
+PipelineExceptionBenchmark.baselinePreAllocated:gc.alloc.rate                               N/A          N/A    avgt       15       0.009 ±     0.001  MB/sec
+PipelineExceptionBenchmark.baselinePreAllocated:gc.alloc.rate.norm                          N/A          N/A    avgt       15      ≈ 10⁻⁵                B/op
+PipelineExceptionBenchmark.baselinePreAllocated:gc.count                                    N/A          N/A    avgt       15         ≈ 0              counts
+PipelineExceptionBenchmark.pipelinePessimisticException                                     N/A          N/A    avgt       15       2.244 ±     0.038   us/op
+PipelineExceptionBenchmark.pipelinePessimisticException:gc.alloc.rate                       N/A          N/A    avgt       15       0.009 ±     0.001  MB/sec
+PipelineExceptionBenchmark.pipelinePessimisticException:gc.alloc.rate.norm                  N/A          N/A    avgt       15       0.021 ±     0.001    B/op
+PipelineExceptionBenchmark.pipelinePessimisticException:gc.count                            N/A          N/A    avgt       15      37.000              counts
+PipelineExceptionBenchmark.pipelinePessimisticException:gc.time                             N/A          N/A    avgt       15      92.000                  ms
+RepositoryBenchmark.getRuntime_1Thread                                                      N/A            1    avgt       15       0.007 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate                                        N/A            1    avgt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate.norm                                   N/A            1    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_1Thread:gc.count                                             N/A            1    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_1Thread                                                      N/A           50    avgt       15       0.007 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate                                        N/A           50    avgt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate.norm                                   N/A           50    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_1Thread:gc.count                                             N/A           50    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_1Thread                                                      N/A          500    avgt       15       0.007 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate                                        N/A          500    avgt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate.norm                                   N/A          500    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_1Thread:gc.count                                             N/A          500    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_1Thread                                                      N/A         2000    avgt       15       0.009 ±     0.002   us/op
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate                                        N/A         2000    avgt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_1Thread:gc.alloc.rate.norm                                   N/A         2000    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_1Thread:gc.count                                             N/A         2000    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_4Threads                                                     N/A            1    avgt       15       0.011 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate                                       N/A            1    avgt       15       0.022 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate.norm                                  N/A            1    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_4Threads:gc.count                                            N/A            1    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_4Threads                                                     N/A           50    avgt       15       0.011 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate                                       N/A           50    avgt       15       0.022 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate.norm                                  N/A           50    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_4Threads:gc.count                                            N/A           50    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_4Threads                                                     N/A          500    avgt       15       0.012 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate                                       N/A          500    avgt       15       0.022 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate.norm                                  N/A          500    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_4Threads:gc.count                                            N/A          500    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_4Threads                                                     N/A         2000    avgt       15       0.012 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate                                       N/A         2000    avgt       15       0.022 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_4Threads:gc.alloc.rate.norm                                  N/A         2000    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_4Threads:gc.count                                            N/A         2000    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads                                                     N/A            1    avgt       15       0.012 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate                                       N/A            1    avgt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate.norm                                  N/A            1    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads:gc.count                                            N/A            1    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads                                                     N/A           50    avgt       15       0.011 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate                                       N/A           50    avgt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate.norm                                  N/A           50    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads:gc.count                                            N/A           50    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads                                                     N/A          500    avgt       15       0.013 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate                                       N/A          500    avgt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate.norm                                  N/A          500    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads:gc.count                                            N/A          500    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads                                                     N/A         2000    avgt       15       0.013 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate                                       N/A         2000    avgt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads:gc.alloc.rate.norm                                  N/A         2000    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads:gc.count                                            N/A         2000    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads_Distributed                                         N/A            1    avgt       15       0.013 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate                           N/A            1    avgt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate.norm                      N/A            1    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.count                                N/A            1    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads_Distributed                                         N/A           50    avgt       15       0.012 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate                           N/A           50    avgt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate.norm                      N/A           50    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.count                                N/A           50    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads_Distributed                                         N/A          500    avgt       15       0.013 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate                           N/A          500    avgt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate.norm                      N/A          500    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.count                                N/A          500    avgt       15         ≈ 0              counts
+RepositoryBenchmark.getRuntime_8Threads_Distributed                                         N/A         2000    avgt       15       0.013 ±     0.001   us/op
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate                           N/A         2000    avgt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.alloc.rate.norm                      N/A         2000    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.getRuntime_8Threads_Distributed:gc.count                                N/A         2000    avgt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_1Thread                                                      N/A            1    avgt       15       0.007 ±     0.001   us/op
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate                                        N/A            1    avgt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate.norm                                   N/A            1    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_1Thread:gc.count                                             N/A            1    avgt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_1Thread                                                      N/A           50    avgt       15       0.007 ±     0.001   us/op
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate                                        N/A           50    avgt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate.norm                                   N/A           50    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_1Thread:gc.count                                             N/A           50    avgt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_1Thread                                                      N/A          500    avgt       15       0.007 ±     0.001   us/op
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate                                        N/A          500    avgt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate.norm                                   N/A          500    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_1Thread:gc.count                                             N/A          500    avgt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_1Thread                                                      N/A         2000    avgt       15       0.007 ±     0.001   us/op
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate                                        N/A         2000    avgt       15       0.013 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_1Thread:gc.alloc.rate.norm                                   N/A         2000    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_1Thread:gc.count                                             N/A         2000    avgt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_8Threads                                                     N/A            1    avgt       15       0.011 ±     0.001   us/op
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate                                       N/A            1    avgt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate.norm                                  N/A            1    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_8Threads:gc.count                                            N/A            1    avgt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_8Threads                                                     N/A           50    avgt       15       0.011 ±     0.001   us/op
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate                                       N/A           50    avgt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate.norm                                  N/A           50    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_8Threads:gc.count                                            N/A           50    avgt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_8Threads                                                     N/A          500    avgt       15       0.011 ±     0.001   us/op
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate                                       N/A          500    avgt       15       0.036 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate.norm                                  N/A          500    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_8Threads:gc.count                                            N/A          500    avgt       15         ≈ 0              counts
+RepositoryBenchmark.hasRuntime_8Threads                                                     N/A         2000    avgt       15       0.012 ±     0.001   us/op
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate                                       N/A         2000    avgt       15       0.035 ±     0.001  MB/sec
+RepositoryBenchmark.hasRuntime_8Threads:gc.alloc.rate.norm                                  N/A         2000    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryBenchmark.hasRuntime_8Threads:gc.count                                            N/A         2000    avgt       15         ≈ 0              counts
+RepositoryReadWriteMixedBenchmark.balanced                                                  N/A          N/A    avgt       15       0.076 ±     0.018   us/op
+RepositoryReadWriteMixedBenchmark.balanced:balanced_reader                                  N/A          N/A    avgt       15       0.031 ±     0.008   us/op
+RepositoryReadWriteMixedBenchmark.balanced:balanced_writer                                  N/A          N/A    avgt       15       0.121 ±     0.031   us/op
+RepositoryReadWriteMixedBenchmark.balanced:gc.alloc.rate                                    N/A          N/A    avgt       15       0.043 ±     0.001  MB/sec
+RepositoryReadWriteMixedBenchmark.balanced:gc.alloc.rate.norm                               N/A          N/A    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryReadWriteMixedBenchmark.balanced:gc.count                                         N/A          N/A    avgt       15      13.000              counts
+RepositoryReadWriteMixedBenchmark.balanced:gc.time                                          N/A          N/A    avgt       15      32.000                  ms
+RepositoryReadWriteMixedBenchmark.readHeavy                                                 N/A          N/A    avgt       15       0.049 ±     0.012   us/op
+RepositoryReadWriteMixedBenchmark.readHeavy:gc.alloc.rate                                   N/A          N/A    avgt       15       0.042 ±     0.001  MB/sec
+RepositoryReadWriteMixedBenchmark.readHeavy:gc.alloc.rate.norm                              N/A          N/A    avgt       15      ≈ 10⁻⁴                B/op
+RepositoryReadWriteMixedBenchmark.readHeavy:gc.count                                        N/A          N/A    avgt       15       1.000              counts
+RepositoryReadWriteMixedBenchmark.readHeavy:gc.time                                         N/A          N/A    avgt       15       3.000                  ms
+RepositoryReadWriteMixedBenchmark.readHeavy:readHeavy_reader                                N/A          N/A    avgt       15       0.030 ±     0.006   us/op
+RepositoryReadWriteMixedBenchmark.readHeavy:readHeavy_writer                                N/A          N/A    avgt       15       0.181 ±     0.054   us/op
+StateMachineBenchmark.idempotentTransition                                                  N/A          N/A    avgt       15       0.005 ±     0.001   us/op
+StateMachineBenchmark.idempotentTransition:gc.alloc.rate                                    N/A          N/A    avgt       15       0.012 ±     0.001  MB/sec
+StateMachineBenchmark.idempotentTransition:gc.alloc.rate.norm                               N/A          N/A    avgt       15      ≈ 10⁻⁴                B/op
+StateMachineBenchmark.idempotentTransition:gc.count                                         N/A          N/A    avgt       15     113.000              counts
+StateMachineBenchmark.idempotentTransition:gc.time                                          N/A          N/A    avgt       15     183.000                  ms
+StateMachineBenchmark.readCurrentState                                                      N/A          N/A    avgt       15       0.003 ±     0.001   us/op
+StateMachineBenchmark.readCurrentState:gc.alloc.rate                                        N/A          N/A    avgt       15       0.012 ±     0.001  MB/sec
+StateMachineBenchmark.readCurrentState:gc.alloc.rate.norm                                   N/A          N/A    avgt       15      ≈ 10⁻⁵                B/op
+StateMachineBenchmark.readCurrentState:gc.count                                             N/A          N/A    avgt       15         ≈ 0              counts
+StateMachineBenchmark.singleRoundTrip                                                       N/A          N/A    avgt       15       0.032 ±     0.001   us/op
+StateMachineBenchmark.singleRoundTrip:gc.alloc.rate                                         N/A          N/A    avgt       15       0.012 ±     0.001  MB/sec
+StateMachineBenchmark.singleRoundTrip:gc.alloc.rate.norm                                    N/A          N/A    avgt       15      ≈ 10⁻³                B/op
+StateMachineBenchmark.singleRoundTrip:gc.count                                              N/A          N/A    avgt       15      83.000              counts
+StateMachineBenchmark.singleRoundTrip:gc.time                                               N/A          N/A    avgt       15     142.000                  ms
+StateMachineConcurrentBenchmark.concurrentCasTransition_4Threads                            N/A          N/A    avgt       15       0.129 ±     0.016   us/op
+StateMachineConcurrentBenchmark.concurrentCasTransition_4Threads:gc.alloc.rate              N/A          N/A    avgt       15       0.021 ±     0.001  MB/sec
+StateMachineConcurrentBenchmark.concurrentCasTransition_4Threads:gc.alloc.rate.norm         N/A          N/A    avgt       15       0.001 ±     0.001    B/op
+StateMachineConcurrentBenchmark.concurrentCasTransition_4Threads:gc.count                   N/A          N/A    avgt       15      26.000              counts
+StateMachineConcurrentBenchmark.concurrentCasTransition_4Threads:gc.time                    N/A          N/A    avgt       15      60.000                  ms
+StateMachineConcurrentBenchmark.concurrentCasTransition_8Threads                            N/A          N/A    avgt       15       0.243 ±     0.042   us/op
+StateMachineConcurrentBenchmark.concurrentCasTransition_8Threads:gc.alloc.rate              N/A          N/A    avgt       15       0.034 ±     0.001  MB/sec
+StateMachineConcurrentBenchmark.concurrentCasTransition_8Threads:gc.alloc.rate.norm         N/A          N/A    avgt       15       0.001 ±     0.001    B/op
+StateMachineConcurrentBenchmark.concurrentCasTransition_8Threads:gc.count                   N/A          N/A    avgt       15      24.000              counts
+StateMachineConcurrentBenchmark.concurrentCasTransition_8Threads:gc.time                    N/A          N/A    avgt       15      56.000                  ms
+StateMachineConcurrentBenchmark.concurrentReadWrite                                         N/A          N/A    avgt       15       0.138 ±     0.017   us/op
+StateMachineConcurrentBenchmark.concurrentReadWrite:gc.alloc.rate                           N/A          N/A    avgt       15       0.021 ±     0.001  MB/sec
+StateMachineConcurrentBenchmark.concurrentReadWrite:gc.alloc.rate.norm                      N/A          N/A    avgt       15       0.001 ±     0.001    B/op
+StateMachineConcurrentBenchmark.concurrentReadWrite:gc.count                                N/A          N/A    avgt       15      25.000              counts
+StateMachineConcurrentBenchmark.concurrentReadWrite:gc.time                                 N/A          N/A    avgt       15      58.000                  ms
+StateMachineConcurrentBenchmark.concurrentRead_4Threads                                     N/A          N/A    avgt       15       0.003 ±     0.001   us/op
+StateMachineConcurrentBenchmark.concurrentRead_4Threads:gc.alloc.rate                       N/A          N/A    avgt       15       0.020 ±     0.001  MB/sec
+StateMachineConcurrentBenchmark.concurrentRead_4Threads:gc.alloc.rate.norm                  N/A          N/A    avgt       15      ≈ 10⁻⁵                B/op
+StateMachineConcurrentBenchmark.concurrentRead_4Threads:gc.count                            N/A          N/A    avgt       15         ≈ 0              counts
+StateMachineConcurrentBenchmark.concurrentRead_8Threads                                     N/A          N/A    avgt       15       0.003 ±     0.001   us/op
+StateMachineConcurrentBenchmark.concurrentRead_8Threads:gc.alloc.rate                       N/A          N/A    avgt       15       0.033 ±     0.001  MB/sec
+StateMachineConcurrentBenchmark.concurrentRead_8Threads:gc.alloc.rate.norm                  N/A          N/A    avgt       15      ≈ 10⁻⁵                B/op
+StateMachineConcurrentBenchmark.concurrentRead_8Threads:gc.count                            N/A          N/A    avgt       15         ≈ 0              counts
+StateMachineConcurrentBenchmark.concurrentRejectedTransition                                N/A          N/A    avgt       15       0.008 ±     0.001   us/op
+StateMachineConcurrentBenchmark.concurrentRejectedTransition:gc.alloc.rate                  N/A          N/A    avgt       15       0.021 ±     0.001  MB/sec
+StateMachineConcurrentBenchmark.concurrentRejectedTransition:gc.alloc.rate.norm             N/A          N/A    avgt       15      ≈ 10⁻⁴                B/op
+StateMachineConcurrentBenchmark.concurrentRejectedTransition:gc.count                       N/A          N/A    avgt       15     272.000              counts
+StateMachineConcurrentBenchmark.concurrentRejectedTransition:gc.time                        N/A          N/A    avgt       15     417.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads                                      1          N/A  sample  1391110     129.628 ±     0.160   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate                        1          N/A  sample       15       0.014 ±     0.001  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate.norm                   1          N/A  sample       15       0.478 ±     0.011    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.count                             1          N/A  sample       15       3.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.time                              1          N/A  sample       15       8.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.00                                1          N/A  sample               16.288               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.50                                1          N/A  sample              122.240               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.90                                1          N/A  sample              195.328               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.95                                1          N/A  sample              216.576               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.99                                1          N/A  sample              257.280               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.999                               1          N/A  sample              318.976               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.9999                              1          N/A  sample              535.438               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p1.00                                1          N/A  sample             3162.112               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads                                     10          N/A  sample  1397004     129.040 ±     0.157   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate                       10          N/A  sample       15       0.013 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate.norm                  10          N/A  sample       15       0.474 ±     0.009    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.count                            10          N/A  sample       15       3.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.time                             10          N/A  sample       15       9.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.00                               10          N/A  sample               17.280               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.50                               10          N/A  sample              121.856               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.90                               10          N/A  sample              194.304               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.95                               10          N/A  sample              215.040               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.99                               10          N/A  sample              254.720               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.999                              10          N/A  sample              301.056               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.9999                             10          N/A  sample              376.832               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p1.00                               10          N/A  sample             2854.912               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads                                    100          N/A  sample  1375353     131.015 ±     0.163   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate                      100          N/A  sample       15       0.013 ±     0.001  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate.norm                 100          N/A  sample       15       0.485 ±     0.011    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.count                           100          N/A  sample       15       6.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.time                            100          N/A  sample       15      18.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.00                              100          N/A  sample               18.400               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.50                              100          N/A  sample              123.648               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.90                              100          N/A  sample              197.120               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.95                              100          N/A  sample              217.600               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.99                              100          N/A  sample              256.512               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.999                             100          N/A  sample              303.104               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.9999                            100          N/A  sample              376.558               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p1.00                              100          N/A  sample             4546.560               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads                                   1000          N/A  sample  1279292     140.984 ±     0.193   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate                     1000          N/A  sample       15       0.014 ±     0.001  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.alloc.rate.norm                1000          N/A  sample       15       0.530 ±     0.009    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.count                          1000          N/A  sample       15      27.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:gc.time                           1000          N/A  sample       15      77.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.00                             1000          N/A  sample               25.600               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.50                             1000          N/A  sample              134.400               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.90                             1000          N/A  sample              212.736               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.95                             1000          N/A  sample              230.656               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.99                             1000          N/A  sample              264.192               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.999                            1000          N/A  sample              316.266               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p0.9999                           1000          N/A  sample              796.123               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_4Threads:p1.00                             1000          N/A  sample             4546.560               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads                                      1          N/A  sample  1334791     270.337 ±     0.492   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate                        1          N/A  sample       15       0.022 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate.norm                   1          N/A  sample       15       0.818 ±     0.043    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.count                             1          N/A  sample       15       4.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.time                              1          N/A  sample       15      12.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.00                                1          N/A  sample               17.600               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.50                                1          N/A  sample              260.096               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.90                                1          N/A  sample              492.544               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.95                                1          N/A  sample              549.888               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.99                                1          N/A  sample              671.744               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.999                               1          N/A  sample              975.872               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.9999                              1          N/A  sample             1782.016               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p1.00                                1          N/A  sample             6152.192               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads                                     10          N/A  sample  1390816     259.324 ±     0.379   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate                       10          N/A  sample       15       0.022 ±     0.003  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate.norm                  10          N/A  sample       15       0.779 ±     0.016    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.count                            10          N/A  sample       15       3.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.time                             10          N/A  sample       15       8.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.00                               10          N/A  sample               16.000               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.50                               10          N/A  sample              248.064               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.90                               10          N/A  sample              433.152               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.95                               10          N/A  sample              462.336               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.99                               10          N/A  sample              551.936               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.999                              10          N/A  sample              667.648               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.9999                             10          N/A  sample             1122.137               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p1.00                               10          N/A  sample             3448.832               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads                                    100          N/A  sample  1364317     264.271 ±     0.386   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate                      100          N/A  sample       15       0.022 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate.norm                 100          N/A  sample       15       0.795 ±     0.024    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.count                           100          N/A  sample       15       6.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.time                            100          N/A  sample       15      18.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.00                              100          N/A  sample               17.280               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.50                              100          N/A  sample              253.440               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.90                              100          N/A  sample              441.856               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.95                              100          N/A  sample              468.992               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.99                              100          N/A  sample              551.936               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.999                             100          N/A  sample              633.856               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.9999                            100          N/A  sample              824.460               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p1.00                              100          N/A  sample             3813.376               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads                                   1000          N/A  sample  1270755     283.713 ±     0.445   us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate                     1000          N/A  sample       15       0.022 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.alloc.rate.norm                1000          N/A  sample       15       0.849 ±     0.025    B/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.count                          1000          N/A  sample       15      29.000              counts
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:gc.time                           1000          N/A  sample       15      91.000                  ms
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.00                             1000          N/A  sample               28.000               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.50                             1000          N/A  sample              272.896               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.90                             1000          N/A  sample              476.672               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.95                             1000          N/A  sample              502.272               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.99                             1000          N/A  sample              572.416               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.999                            1000          N/A  sample              698.618               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p0.9999                           1000          N/A  sample             3555.328               us/op
+ClassLoaderBenchmark.concurrentCreateAndDestroy_8Threads:p1.00                             1000          N/A  sample             4358.144               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads                                  1          N/A  sample   166451    2165.269 ±    25.867   us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate                    1          N/A  sample       15       0.022 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate.norm               1          N/A  sample       15       6.486 ±     0.342    B/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.count                         1          N/A  sample       15      18.000              counts
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.time                          1          N/A  sample       15    1554.000                  ms
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.00                            1          N/A  sample              467.968               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.50                            1          N/A  sample             2031.616               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.90                            1          N/A  sample             2711.552               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.95                            1          N/A  sample             2932.736               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.99                            1          N/A  sample             3391.488               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.999                           1          N/A  sample            42699.850               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.9999                          1          N/A  sample           144524.653               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p1.00                            1          N/A  sample           210763.776               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads                                 10          N/A  sample   136292    2643.409 ±    48.383   us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate                   10          N/A  sample       15       0.022 ±     0.003  MB/sec
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate.norm              10          N/A  sample       15       8.044 ±     0.583    B/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.count                        10          N/A  sample       15      21.000              counts
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.time                         10          N/A  sample       15    2746.000                  ms
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.00                           10          N/A  sample             1187.840               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.50                           10          N/A  sample             2387.968               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.90                           10          N/A  sample             3092.480               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.95                           10          N/A  sample             3371.008               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.99                           10          N/A  sample             4308.992               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.999                          10          N/A  sample            72182.268               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.9999                         10          N/A  sample           234094.592               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p1.00                           10          N/A  sample           242483.200               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads                                100          N/A  sample     6351   56393.986 ±   302.521   us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate                  100          N/A  sample       15       0.021 ±     0.002  MB/sec
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate.norm             100          N/A  sample       15     161.939 ±     4.571    B/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.count                       100          N/A  sample       15       6.000              counts
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.time                        100          N/A  sample       15     278.000                  ms
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.00                          100          N/A  sample            17170.432               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.50                          100          N/A  sample            57802.752               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.90                          100          N/A  sample            62193.664               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.95                          100          N/A  sample            63373.312               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.99                          100          N/A  sample            78443.971               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.999                         100          N/A  sample           119275.520               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.9999                        100          N/A  sample           119799.808               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p1.00                          100          N/A  sample           119799.808               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads                               1000          N/A  sample      375  832670.007 ±  6527.884   us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate                 1000          N/A  sample       15       0.015 ±     0.001  MB/sec
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.alloc.rate.norm            1000          N/A  sample       15    1788.923 ±    36.362    B/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.count                      1000          N/A  sample       15       6.000              counts
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:gc.time                       1000          N/A  sample       15     729.000                  ms
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.00                         1000          N/A  sample           732954.624               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.50                         1000          N/A  sample           830472.192               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.90                         1000          N/A  sample           881852.416               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.95                         1000          N/A  sample           900936.499               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.99                         1000          N/A  sample           951519.805               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.999                        1000          N/A  sample           968884.224               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p0.9999                       1000          N/A  sample           968884.224               us/op
+ClassLoaderBenchmark.concurrentCreateLoadAndDestroy_8Threads:p1.00                         1000          N/A  sample           968884.224               us/op
+ClassLoaderBenchmark.createAndDestroy                                                         1          N/A  sample  1276227      17.071 ±     0.022   us/op
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate                                           1          N/A  sample       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate.norm                                      1          N/A  sample       15       0.145 ±     0.004    B/op
+ClassLoaderBenchmark.createAndDestroy:gc.count                                                1          N/A  sample       15       6.000              counts
+ClassLoaderBenchmark.createAndDestroy:gc.time                                                 1          N/A  sample       15      16.000                  ms
+ClassLoaderBenchmark.createAndDestroy:p0.00                                                   1          N/A  sample               14.192               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.50                                                   1          N/A  sample               15.200               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.90                                                   1          N/A  sample               23.392               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.95                                                   1          N/A  sample               28.576               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.99                                                   1          N/A  sample               35.264               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.999                                                  1          N/A  sample               58.048               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.9999                                                 1          N/A  sample               89.216               us/op
+ClassLoaderBenchmark.createAndDestroy:p1.00                                                   1          N/A  sample             3125.248               us/op
+ClassLoaderBenchmark.createAndDestroy                                                        10          N/A  sample  1306462      17.235 ±     0.022   us/op
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate                                          10          N/A  sample       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate.norm                                     10          N/A  sample       15       0.146 ±     0.005    B/op
+ClassLoaderBenchmark.createAndDestroy:gc.count                                               10          N/A  sample       15       6.000              counts
+ClassLoaderBenchmark.createAndDestroy:gc.time                                                10          N/A  sample       15      18.000                  ms
+ClassLoaderBenchmark.createAndDestroy:p0.00                                                  10          N/A  sample               14.288               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.50                                                  10          N/A  sample               15.392               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.90                                                  10          N/A  sample               23.296               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.95                                                  10          N/A  sample               28.480               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.99                                                  10          N/A  sample               35.200               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.999                                                 10          N/A  sample               54.656               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.9999                                                10          N/A  sample               84.096               us/op
+ClassLoaderBenchmark.createAndDestroy:p1.00                                                  10          N/A  sample             3276.800               us/op
+ClassLoaderBenchmark.createAndDestroy                                                       100          N/A  sample  1238283      18.142 ±     0.026   us/op
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate                                         100          N/A  sample       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate.norm                                    100          N/A  sample       15       0.156 ±     0.005    B/op
+ClassLoaderBenchmark.createAndDestroy:gc.count                                              100          N/A  sample       15       9.000              counts
+ClassLoaderBenchmark.createAndDestroy:gc.time                                               100          N/A  sample       15      25.000                  ms
+ClassLoaderBenchmark.createAndDestroy:p0.00                                                 100          N/A  sample               15.200               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.50                                                 100          N/A  sample               16.192               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.90                                                 100          N/A  sample               24.480               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.95                                                 100          N/A  sample               29.984               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.99                                                 100          N/A  sample               36.992               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.999                                                100          N/A  sample               57.088               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.9999                                               100          N/A  sample               91.052               us/op
+ClassLoaderBenchmark.createAndDestroy:p1.00                                                 100          N/A  sample             4161.536               us/op
+ClassLoaderBenchmark.createAndDestroy                                                      1000          N/A  sample   896056      25.150 ±     0.057   us/op
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate                                        1000          N/A  sample       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createAndDestroy:gc.alloc.rate.norm                                   1000          N/A  sample       15       0.219 ±     0.003    B/op
+ClassLoaderBenchmark.createAndDestroy:gc.count                                             1000          N/A  sample       15      42.000              counts
+ClassLoaderBenchmark.createAndDestroy:gc.time                                              1000          N/A  sample       15     100.000                  ms
+ClassLoaderBenchmark.createAndDestroy:p0.00                                                1000          N/A  sample               21.088               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.50                                                1000          N/A  sample               22.496               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.90                                                1000          N/A  sample               34.240               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.95                                                1000          N/A  sample               40.064               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.99                                                1000          N/A  sample               47.680               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.999                                               1000          N/A  sample               74.496               us/op
+ClassLoaderBenchmark.createAndDestroy:p0.9999                                              1000          N/A  sample              115.506               us/op
+ClassLoaderBenchmark.createAndDestroy:p1.00                                                1000          N/A  sample             3088.384               us/op
+ClassLoaderBenchmark.createLoadAndDestroy                                                     1          N/A  sample   102666     438.487 ±     8.022   us/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate                                       1          N/A  sample       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate.norm                                  1          N/A  sample       15       3.784 ±     0.292    B/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.count                                            1          N/A  sample       15      11.000              counts
+ClassLoaderBenchmark.createLoadAndDestroy:gc.time                                             1          N/A  sample       15     694.000                  ms
+ClassLoaderBenchmark.createLoadAndDestroy:p0.00                                               1          N/A  sample              336.384               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.50                                               1          N/A  sample              408.576               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.90                                               1          N/A  sample              534.835               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.95                                               1          N/A  sample              578.560               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.99                                               1          N/A  sample              648.192               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.999                                              1          N/A  sample              757.760               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.9999                                             1          N/A  sample            44686.698               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p1.00                                               1          N/A  sample           122028.032               us/op
+ClassLoaderBenchmark.createLoadAndDestroy                                                    10          N/A  sample    30547    1476.329 ±    17.489   us/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate                                      10          N/A  sample       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate.norm                                 10          N/A  sample       15      12.646 ±     0.625    B/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.count                                           10          N/A  sample       15       9.000              counts
+ClassLoaderBenchmark.createLoadAndDestroy:gc.time                                            10          N/A  sample       15     425.000                  ms
+ClassLoaderBenchmark.createLoadAndDestroy:p0.00                                              10          N/A  sample             1234.944               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.50                                              10          N/A  sample             1394.688               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.90                                              10          N/A  sample             1761.280               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.95                                              10          N/A  sample             1880.064               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.99                                              10          N/A  sample             2125.824               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.999                                             10          N/A  sample             3260.416               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.9999                                            10          N/A  sample            74861.642               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p1.00                                              10          N/A  sample            81133.568               us/op
+ClassLoaderBenchmark.createLoadAndDestroy                                                   100          N/A  sample     3637   12421.888 ±   143.197   us/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate                                     100          N/A  sample       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate.norm                                100          N/A  sample       15     110.685 ±    15.231    B/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.count                                          100          N/A  sample       15      16.000              counts
+ClassLoaderBenchmark.createLoadAndDestroy:gc.time                                           100          N/A  sample       15     459.000                  ms
+ClassLoaderBenchmark.createLoadAndDestroy:p0.00                                             100          N/A  sample            10665.984               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.50                                             100          N/A  sample            11976.704               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.90                                             100          N/A  sample            13697.024               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.95                                             100          N/A  sample            14893.056               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.99                                             100          N/A  sample            17846.108               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.999                                            100          N/A  sample            53917.254               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.9999                                           100          N/A  sample            91881.472               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p1.00                                             100          N/A  sample            91881.472               us/op
+ClassLoaderBenchmark.createLoadAndDestroy                                                  1000          N/A  sample      354  130997.578 ±  1072.866   us/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate                                    1000          N/A  sample       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createLoadAndDestroy:gc.alloc.rate.norm                               1000          N/A  sample       15    1087.787 ±    44.465    B/op
+ClassLoaderBenchmark.createLoadAndDestroy:gc.count                                         1000          N/A  sample       15      11.000              counts
+ClassLoaderBenchmark.createLoadAndDestroy:gc.time                                          1000          N/A  sample       15     246.000                  ms
+ClassLoaderBenchmark.createLoadAndDestroy:p0.00                                            1000          N/A  sample           123600.896               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.50                                            1000          N/A  sample           129499.136               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.90                                            1000          N/A  sample           135659.520               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.95                                            1000          N/A  sample           140181.504               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.99                                            1000          N/A  sample           159619.482               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.999                                           1000          N/A  sample           183500.800               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p0.9999                                          1000          N/A  sample           183500.800               us/op
+ClassLoaderBenchmark.createLoadAndDestroy:p1.00                                            1000          N/A  sample           183500.800               us/op
+ClassLoaderBenchmark.createOnly                                                               1          N/A  sample  1306126      16.313 ±     0.018   us/op
+ClassLoaderBenchmark.createOnly:gc.alloc.rate                                                 1          N/A  sample       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createOnly:gc.alloc.rate.norm                                            1          N/A  sample       15       0.146 ±     0.005    B/op
+ClassLoaderBenchmark.createOnly:gc.count                                                      1          N/A  sample       15       6.000              counts
+ClassLoaderBenchmark.createOnly:gc.time                                                       1          N/A  sample       15      17.000                  ms
+ClassLoaderBenchmark.createOnly:p0.00                                                         1          N/A  sample               13.392               us/op
+ClassLoaderBenchmark.createOnly:p0.50                                                         1          N/A  sample               14.592               us/op
+ClassLoaderBenchmark.createOnly:p0.90                                                         1          N/A  sample               22.272               us/op
+ClassLoaderBenchmark.createOnly:p0.95                                                         1          N/A  sample               26.784               us/op
+ClassLoaderBenchmark.createOnly:p0.99                                                         1          N/A  sample               33.344               us/op
+ClassLoaderBenchmark.createOnly:p0.999                                                        1          N/A  sample               54.592               us/op
+ClassLoaderBenchmark.createOnly:p0.9999                                                       1          N/A  sample               83.584               us/op
+ClassLoaderBenchmark.createOnly:p1.00                                                         1          N/A  sample             2887.680               us/op
+ClassLoaderBenchmark.createOnly                                                              10          N/A  sample  1287621      16.569 ±     0.021   us/op
+ClassLoaderBenchmark.createOnly:gc.alloc.rate                                                10          N/A  sample       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createOnly:gc.alloc.rate.norm                                           10          N/A  sample       15       0.149 ±     0.004    B/op
+ClassLoaderBenchmark.createOnly:gc.count                                                     10          N/A  sample       15       6.000              counts
+ClassLoaderBenchmark.createOnly:gc.time                                                      10          N/A  sample       15      16.000                  ms
+ClassLoaderBenchmark.createOnly:p0.00                                                        10          N/A  sample               13.792               us/op
+ClassLoaderBenchmark.createOnly:p0.50                                                        10          N/A  sample               14.800               us/op
+ClassLoaderBenchmark.createOnly:p0.90                                                        10          N/A  sample               22.592               us/op
+ClassLoaderBenchmark.createOnly:p0.95                                                        10          N/A  sample               27.392               us/op
+ClassLoaderBenchmark.createOnly:p0.99                                                        10          N/A  sample               33.792               us/op
+ClassLoaderBenchmark.createOnly:p0.999                                                       10          N/A  sample               55.168               us/op
+ClassLoaderBenchmark.createOnly:p0.9999                                                      10          N/A  sample               85.278               us/op
+ClassLoaderBenchmark.createOnly:p1.00                                                        10          N/A  sample             2846.720               us/op
+ClassLoaderBenchmark.createOnly                                                             100          N/A  sample  1212373      17.613 ±     0.025   us/op
+ClassLoaderBenchmark.createOnly:gc.alloc.rate                                               100          N/A  sample       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createOnly:gc.alloc.rate.norm                                          100          N/A  sample       15       0.159 ±     0.005    B/op
+ClassLoaderBenchmark.createOnly:gc.count                                                    100          N/A  sample       15       9.000              counts
+ClassLoaderBenchmark.createOnly:gc.time                                                     100          N/A  sample       15      25.000                  ms
+ClassLoaderBenchmark.createOnly:p0.00                                                       100          N/A  sample               14.592               us/op
+ClassLoaderBenchmark.createOnly:p0.50                                                       100          N/A  sample               15.696               us/op
+ClassLoaderBenchmark.createOnly:p0.90                                                       100          N/A  sample               24.000               us/op
+ClassLoaderBenchmark.createOnly:p0.95                                                       100          N/A  sample               28.992               us/op
+ClassLoaderBenchmark.createOnly:p0.99                                                       100          N/A  sample               35.584               us/op
+ClassLoaderBenchmark.createOnly:p0.999                                                      100          N/A  sample               59.200               us/op
+ClassLoaderBenchmark.createOnly:p0.9999                                                     100          N/A  sample               94.178               us/op
+ClassLoaderBenchmark.createOnly:p1.00                                                       100          N/A  sample             2920.448               us/op
+ClassLoaderBenchmark.createOnly                                                            1000          N/A  sample   878774      24.313 ±     0.060   us/op
+ClassLoaderBenchmark.createOnly:gc.alloc.rate                                              1000          N/A  sample       15       0.008 ±     0.001  MB/sec
+ClassLoaderBenchmark.createOnly:gc.alloc.rate.norm                                         1000          N/A  sample       15       0.223 ±     0.004    B/op
+ClassLoaderBenchmark.createOnly:gc.count                                                   1000          N/A  sample       15      39.000              counts
+ClassLoaderBenchmark.createOnly:gc.time                                                    1000          N/A  sample       15      96.000                  ms
+ClassLoaderBenchmark.createOnly:p0.00                                                      1000          N/A  sample               20.288               us/op
+ClassLoaderBenchmark.createOnly:p0.50                                                      1000          N/A  sample               21.792               us/op
+ClassLoaderBenchmark.createOnly:p0.90                                                      1000          N/A  sample               32.960               us/op
+ClassLoaderBenchmark.createOnly:p0.95                                                      1000          N/A  sample               38.272               us/op
+ClassLoaderBenchmark.createOnly:p0.99                                                      1000          N/A  sample               45.760               us/op
+ClassLoaderBenchmark.createOnly:p0.999                                                     1000          N/A  sample               75.008               us/op
+ClassLoaderBenchmark.createOnly:p0.9999                                                    1000          N/A  sample              121.391               us/op
+ClassLoaderBenchmark.createOnly:p1.00                                                      1000          N/A  sample             3010.560               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread                                        N/A          N/A  sample   393244     114.600 ±     0.268   us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:gc.alloc.rate                          N/A          N/A  sample       15       0.010 ±     0.001  MB/sec
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:gc.alloc.rate.norm                     N/A          N/A  sample       15       1.175 ±     0.040    B/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:gc.count                               N/A          N/A  sample       15       8.000              counts
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:gc.time                                N/A          N/A  sample       15      80.000                  ms
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:p0.00                                  N/A          N/A  sample               99.456               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:p0.50                                  N/A          N/A  sample              108.288               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:p0.90                                  N/A          N/A  sample              138.240               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:p0.95                                  N/A          N/A  sample              152.320               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:p0.99                                  N/A          N/A  sample              169.984               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:p0.999                                 N/A          N/A  sample              242.881               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:p0.9999                                N/A          N/A  sample              340.327               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_1Thread:p1.00                                  N/A          N/A  sample            13680.640               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads                                       N/A          N/A  sample   423394     425.473 ±     0.578   us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:gc.alloc.rate                         N/A          N/A  sample       15       0.016 ±     0.001  MB/sec
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:gc.alloc.rate.norm                    N/A          N/A  sample       15       1.827 ±     0.069    B/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:gc.count                              N/A          N/A  sample       15       6.000              counts
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:gc.time                               N/A          N/A  sample       15      71.000                  ms
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:p0.00                                 N/A          N/A  sample              192.000               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:p0.50                                 N/A          N/A  sample              407.040               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:p0.90                                 N/A          N/A  sample              507.392               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:p0.95                                 N/A          N/A  sample              550.912               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:p0.99                                 N/A          N/A  sample              660.480               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:p0.999                                N/A          N/A  sample              808.556               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:p0.9999                               N/A          N/A  sample             1133.897               us/op
+EndToEndLifecycleBenchmark.deployAndUndeploy_4Threads:p1.00                                 N/A          N/A  sample            16105.472               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread                               N/A          N/A  sample   175798     256.170 ±     5.977   us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:gc.alloc.rate                 N/A          N/A  sample       15       0.012 ±     0.001  MB/sec
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:gc.alloc.rate.norm            N/A          N/A  sample       15       3.128 ±     0.059    B/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:gc.count                      N/A          N/A  sample       15      18.000              counts
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:gc.time                       N/A          N/A  sample       15    1333.000                  ms
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:p0.00                         N/A          N/A  sample              221.952               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:p0.50                         N/A          N/A  sample              238.080               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:p0.90                         N/A          N/A  sample              287.744               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:p0.95                         N/A          N/A  sample              307.200               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:p0.99                         N/A          N/A  sample              341.504               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:p0.999                        N/A          N/A  sample              496.640               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:p0.9999                       N/A          N/A  sample            53528.553               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_1Thread:p1.00                         N/A          N/A  sample            98435.072               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads                              N/A          N/A  sample   189628     950.637 ±    11.772   us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:gc.alloc.rate                N/A          N/A  sample       15       0.019 ±     0.001  MB/sec
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:gc.alloc.rate.norm           N/A          N/A  sample       15       4.828 ±     0.116    B/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:gc.count                     N/A          N/A  sample       15      18.000              counts
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:gc.time                      N/A          N/A  sample       15    1398.000                  ms
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:p0.00                        N/A          N/A  sample              409.088               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:p0.50                        N/A          N/A  sample              936.960               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:p0.90                        N/A          N/A  sample             1126.400               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:p0.95                        N/A          N/A  sample             1185.792               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:p0.99                        N/A          N/A  sample             1316.864               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:p0.999                       N/A          N/A  sample             1491.704               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:p0.9999                      N/A          N/A  sample            93852.415               us/op
+EndToEndLifecycleWithHooksBenchmark.deployAndUndeploy_4Threads:p1.00                        N/A          N/A  sample           114032.640               us/op
+PipelineBenchmark.contextObtainAndRecycle                                                   N/A          N/A  sample  1257859       0.054 ±     0.001   us/op
+PipelineBenchmark.contextObtainAndRecycle:gc.alloc.rate                                     N/A          N/A  sample       15       0.009 ±     0.001  MB/sec
+PipelineBenchmark.contextObtainAndRecycle:gc.alloc.rate.norm                                N/A          N/A  sample       15      ≈ 10⁻³                B/op
+PipelineBenchmark.contextObtainAndRecycle:gc.count                                          N/A          N/A  sample       15         ≈ 0              counts
+PipelineBenchmark.contextObtainAndRecycle:p0.00                                             N/A          N/A  sample                  ≈ 0               us/op
+PipelineBenchmark.contextObtainAndRecycle:p0.50                                             N/A          N/A  sample                0.100               us/op
+PipelineBenchmark.contextObtainAndRecycle:p0.90                                             N/A          N/A  sample                0.100               us/op
+PipelineBenchmark.contextObtainAndRecycle:p0.95                                             N/A          N/A  sample                0.100               us/op
+PipelineBenchmark.contextObtainAndRecycle:p0.99                                             N/A          N/A  sample                0.100               us/op
+PipelineBenchmark.contextObtainAndRecycle:p0.999                                            N/A          N/A  sample                0.200               us/op
+PipelineBenchmark.contextObtainAndRecycle:p0.9999                                           N/A          N/A  sample                4.118               us/op
+PipelineBenchmark.contextObtainAndRecycle:p1.00                                             N/A          N/A  sample               25.184               us/op
+PipelineBenchmark.filterChainOverhead                                                       N/A          N/A  sample  1215415       0.092 ±     0.001   us/op
+PipelineBenchmark.filterChainOverhead:gc.alloc.rate                                         N/A          N/A  sample       15       0.009 ±     0.001  MB/sec
+PipelineBenchmark.filterChainOverhead:gc.alloc.rate.norm                                    N/A          N/A  sample       15       0.001 ±     0.001    B/op
+PipelineBenchmark.filterChainOverhead:gc.count                                              N/A          N/A  sample       15      48.000              counts
+PipelineBenchmark.filterChainOverhead:gc.time                                               N/A          N/A  sample       15      99.000                  ms
+PipelineBenchmark.filterChainOverhead:p0.00                                                 N/A          N/A  sample                  ≈ 0               us/op
+PipelineBenchmark.filterChainOverhead:p0.50                                                 N/A          N/A  sample                0.100               us/op
+PipelineBenchmark.filterChainOverhead:p0.90                                                 N/A          N/A  sample                0.100               us/op
+PipelineBenchmark.filterChainOverhead:p0.95                                                 N/A          N/A  sample                0.100               us/op
+PipelineBenchmark.filterChainOverhead:p0.99                                                 N/A          N/A  sample                0.200               us/op
+PipelineBenchmark.filterChainOverhead:p0.999                                                N/A          N/A  sample                0.400               us/op
+PipelineBenchmark.filterChainOverhead:p0.9999                                               N/A          N/A  sample                6.696               us/op
+PipelineBenchmark.filterChainOverhead:p1.00                                                 N/A          N/A  sample               78.336               us/op
+PipelineBenchmark.governOnlyPipeline                                                        N/A          N/A  sample  1726927       0.835 ±     0.009   us/op
+PipelineBenchmark.governOnlyPipeline:gc.alloc.rate                                          N/A          N/A  sample       15       0.009 ±     0.001  MB/sec
+PipelineBenchmark.governOnlyPipeline:gc.alloc.rate.norm                                     N/A          N/A  sample       15       0.008 ±     0.001    B/op
+PipelineBenchmark.governOnlyPipeline:gc.count                                               N/A          N/A  sample       15      81.000              counts
+PipelineBenchmark.governOnlyPipeline:gc.time                                                N/A          N/A  sample       15     140.000                  ms
+PipelineBenchmark.governOnlyPipeline:p0.00                                                  N/A          N/A  sample                0.700               us/op
+PipelineBenchmark.governOnlyPipeline:p0.50                                                  N/A          N/A  sample                0.800               us/op
+PipelineBenchmark.governOnlyPipeline:p0.90                                                  N/A          N/A  sample                0.800               us/op
+PipelineBenchmark.governOnlyPipeline:p0.95                                                  N/A          N/A  sample                1.300               us/op
+PipelineBenchmark.governOnlyPipeline:p0.99                                                  N/A          N/A  sample                1.700               us/op
+PipelineBenchmark.governOnlyPipeline:p0.999                                                 N/A          N/A  sample                3.500               us/op
+PipelineBenchmark.governOnlyPipeline:p0.9999                                                N/A          N/A  sample               17.600               us/op
+PipelineBenchmark.governOnlyPipeline:p1.00                                                  N/A          N/A  sample             2809.856               us/op
+PipelineBenchmark.happyPathPipeline                                                         N/A          N/A  sample  1196106      18.780 ±     0.020   us/op
+PipelineBenchmark.happyPathPipeline:gc.alloc.rate                                           N/A          N/A  sample       15       0.010 ±     0.001  MB/sec
+PipelineBenchmark.happyPathPipeline:gc.alloc.rate.norm                                      N/A          N/A  sample       15       0.198 ±     0.006    B/op
+PipelineBenchmark.happyPathPipeline:gc.count                                                N/A          N/A  sample       15       7.000              counts
+PipelineBenchmark.happyPathPipeline:gc.time                                                 N/A          N/A  sample       15      21.000                  ms
+PipelineBenchmark.happyPathPipeline:p0.00                                                   N/A          N/A  sample                9.392               us/op
+PipelineBenchmark.happyPathPipeline:p0.50                                                   N/A          N/A  sample               17.888               us/op
+PipelineBenchmark.happyPathPipeline:p0.90                                                   N/A          N/A  sample               21.280               us/op
+PipelineBenchmark.happyPathPipeline:p0.95                                                   N/A          N/A  sample               24.672               us/op
+PipelineBenchmark.happyPathPipeline:p0.99                                                   N/A          N/A  sample               30.272               us/op
+PipelineBenchmark.happyPathPipeline:p0.999                                                  N/A          N/A  sample               40.960               us/op
+PipelineBenchmark.happyPathPipeline:p0.9999                                                 N/A          N/A  sample               96.356               us/op
+PipelineBenchmark.happyPathPipeline:p1.00                                                   N/A          N/A  sample             3051.520               us/op
+PipelineBenchmark.simulationPipeline                                                        N/A          N/A  sample  1213576      18.553 ±     0.023   us/op
+PipelineBenchmark.simulationPipeline:gc.alloc.rate                                          N/A          N/A  sample       15       0.010 ±     0.001  MB/sec
+PipelineBenchmark.simulationPipeline:gc.alloc.rate.norm                                     N/A          N/A  sample       15       0.193 ±     0.009    B/op
+PipelineBenchmark.simulationPipeline:gc.count                                               N/A          N/A  sample       15       8.000              counts
+PipelineBenchmark.simulationPipeline:gc.time                                                N/A          N/A  sample       15      21.000                  ms
+PipelineBenchmark.simulationPipeline:p0.00                                                  N/A          N/A  sample                9.600               us/op
+PipelineBenchmark.simulationPipeline:p0.50                                                  N/A          N/A  sample               17.792               us/op
+PipelineBenchmark.simulationPipeline:p0.90                                                  N/A          N/A  sample               21.088               us/op
+PipelineBenchmark.simulationPipeline:p0.95                                                  N/A          N/A  sample               24.288               us/op
+PipelineBenchmark.simulationPipeline:p0.99                                                  N/A          N/A  sample               29.696               us/op
+PipelineBenchmark.simulationPipeline:p0.999                                                 N/A          N/A  sample               40.640               us/op
+PipelineBenchmark.simulationPipeline:p0.9999                                                N/A          N/A  sample               97.856               us/op
+PipelineBenchmark.simulationPipeline:p1.00                                                  N/A          N/A  sample             3055.616               us/op
+PipelineExceptionBenchmark.baselineNormalException                                          N/A          N/A  sample   957204       0.766 ±     0.009   us/op
+PipelineExceptionBenchmark.baselineNormalException:gc.alloc.rate                            N/A          N/A  sample       15       0.009 ±     0.001  MB/sec
+PipelineExceptionBenchmark.baselineNormalException:gc.alloc.rate.norm                       N/A          N/A  sample       15       0.007 ±     0.001    B/op
+PipelineExceptionBenchmark.baselineNormalException:gc.count                                 N/A          N/A  sample       15      24.000              counts
+PipelineExceptionBenchmark.baselineNormalException:gc.time                                  N/A          N/A  sample       15      61.000                  ms
+PipelineExceptionBenchmark.baselineNormalException:p0.00                                    N/A          N/A  sample                0.600               us/op
+PipelineExceptionBenchmark.baselineNormalException:p0.50                                    N/A          N/A  sample                0.700               us/op
+PipelineExceptionBenchmark.baselineNormalException:p0.90                                    N/A          N/A  sample                0.800               us/op
+PipelineExceptionBenchmark.baselineNormalException:p0.95                                    N/A          N/A  sample                1.200               us/op
+PipelineExceptionBenchmark.baselineNormalException:p0.99                                    N/A          N/A  sample                1.400               us/op
+PipelineExceptionBenchmark.baselineNormalException:p0.999                                   N/A          N/A  sample                4.696               us/op
+PipelineExceptionBenchmark.baselineNormalException:p0.9999                                  N/A          N/A  sample               19.584               us/op
+PipelineExceptionBenchmark.baselineNormalException:p1.00                                    N/A          N/A  sample             2691.072               us/op
+PipelineExceptionBenchmark.baselinePreAllocated                                             N/A          N/A  sample  1115169       0.032 ±     0.001   us/op
+PipelineExceptionBenchmark.baselinePreAllocated:gc.alloc.rate                               N/A          N/A  sample       15       0.009 ±     0.001  MB/sec
+PipelineExceptionBenchmark.baselinePreAllocated:gc.alloc.rate.norm                          N/A          N/A  sample       15      ≈ 10⁻⁴                B/op
+PipelineExceptionBenchmark.baselinePreAllocated:gc.count                                    N/A          N/A  sample       15         ≈ 0              counts
+PipelineExceptionBenchmark.baselinePreAllocated:p0.00                                       N/A          N/A  sample                  ≈ 0               us/op
+PipelineExceptionBenchmark.baselinePreAllocated:p0.50                                       N/A          N/A  sample                  ≈ 0               us/op
+PipelineExceptionBenchmark.baselinePreAllocated:p0.90                                       N/A          N/A  sample                0.100               us/op
+PipelineExceptionBenchmark.baselinePreAllocated:p0.95                                       N/A          N/A  sample                0.100               us/op
+PipelineExceptionBenchmark.baselinePreAllocated:p0.99                                       N/A          N/A  sample                0.100               us/op
+PipelineExceptionBenchmark.baselinePreAllocated:p0.999                                      N/A          N/A  sample                0.100               us/op
+PipelineExceptionBenchmark.baselinePreAllocated:p0.9999                                     N/A          N/A  sample                4.146               us/op
+PipelineExceptionBenchmark.baselinePreAllocated:p1.00                                       N/A          N/A  sample               35.968               us/op
+PipelineExceptionBenchmark.pipelinePessimisticException                                     N/A          N/A  sample  1246591       2.287 ±     0.019   us/op
+PipelineExceptionBenchmark.pipelinePessimisticException:gc.alloc.rate                       N/A          N/A  sample       15       0.009 ±     0.001  MB/sec
+PipelineExceptionBenchmark.pipelinePessimisticException:gc.alloc.rate.norm                  N/A          N/A  sample       15       0.022 ±     0.001    B/op
+PipelineExceptionBenchmark.pipelinePessimisticException:gc.count                            N/A          N/A  sample       15      39.000              counts
+PipelineExceptionBenchmark.pipelinePessimisticException:gc.time                             N/A          N/A  sample       15      95.000                  ms
+PipelineExceptionBenchmark.pipelinePessimisticException:p0.00                               N/A          N/A  sample                2.000               us/op
+PipelineExceptionBenchmark.pipelinePessimisticException:p0.50                               N/A          N/A  sample                2.100               us/op
+PipelineExceptionBenchmark.pipelinePessimisticException:p0.90                               N/A          N/A  sample                2.200               us/op
+PipelineExceptionBenchmark.pipelinePessimisticException:p0.95                               N/A          N/A  sample                3.800               us/op
+PipelineExceptionBenchmark.pipelinePessimisticException:p0.99                               N/A          N/A  sample                4.400               us/op
+PipelineExceptionBenchmark.pipelinePessimisticException:p0.999                              N/A          N/A  sample                9.792               us/op
+PipelineExceptionBenchmark.pipelinePessimisticException:p0.9999                             N/A          N/A  sample               28.513               us/op
+PipelineExceptionBenchmark.pipelinePessimisticException:p1.00                               N/A          N/A  sample             2949.120               us/op

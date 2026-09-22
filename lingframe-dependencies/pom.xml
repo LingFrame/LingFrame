@@ -2,41 +2,103 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.lingframe</groupId>
+    <groupId>cn.lingframe</groupId>
     <artifactId>lingframe-dependencies</artifactId>
     <version>${revision}</version>
     <packaging>pom</packaging>
 
     <name>LingFrame :: Dependencies</name>
     <description>LingFrame 依赖版本统一管理</description>
+    <url>https://github.com/LingFrame/LingFrame</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <name>LingFrame Team</name>
+            <email>dev@lingframe.cn</email>
+            <organization>LingFrame</organization>
+            <organizationUrl>https://lingframe.cn</organizationUrl>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/LingFrame/LingFrame.git</connection>
+        <developerConnection>scm:git:ssh://github.com:LingFrame/LingFrame.git</developerConnection>
+        <url>https://github.com/LingFrame/LingFrame</url>
+    </scm>
+
+    <issueManagement>
+        <system>GitHub Issues</system>
+        <url>https://github.com/LingFrame/LingFrame/issues</url>
+    </issueManagement>
+
+    <distributionManagement>
+        <repository>
+            <id>central</id>
+            <name>Central Portal</name>
+            <url>https://central.sonatype.com</url>
+        </repository>
+    </distributionManagement>
 
     <properties>
         <!-- LingFrame 版本 -->
         <!-- 使用 Maven CI Friendly 变量 -->
-        <revision>0.3.0</revision>
+        <revision>0.4.6</revision>
 
-        <!-- Java -->
+        <!-- Java Defaults (Spring Boot 2 / Java 8) -->
+        <java.version>1.8</java.version>
+        <spring-boot.version>2.7.18</spring-boot.version>
+        <snakeyaml.version>1.33</snakeyaml.version>
+        <slf4j.version>1.7.36</slf4j.version>
+        <caffeine.version>2.9.3</caffeine.version>
+
+        <!-- Java Compiler -->
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- 添加编译参数 -->
         <maven.compiler.parameters>true</maven.compiler.parameters>
+        <!-- 内存调优并入 argLine，避免 CI 侧用 -DargLine 覆盖时丢字段授权参数；
+             注意：命令行 -DargLine 是用户属性、优先级最高，会整体替换该属性。
+             因此 JDK9+ 的 add-opens 必须与本 base 值一起落在被 surefire 引用的 argLine 上，
+             详见下方 jdk9-plus-surefire profile。 -->
+        <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m</argLine>
 
         <!-- 工具库 - 通用版本 -->
         <mysql.version>8.0.33</mysql.version>
         <mybatis-flex.version>1.8.7</mybatis-flex.version>
-        <jsqlparser.version>1.4</jsqlparser.version>
-        <guava.version>31.1-jre</guava.version>
+        <mybatis-plus.version>3.5.3.1</mybatis-plus.version>
+        <druid.version>1.2.20</druid.version>
+        <jsqlparser.version>4.6</jsqlparser.version>
+        <guava.version>32.1.3-jre</guava.version>
         <hikaricp.version>5.0.1</hikaricp.version>
         <lombok.version>1.18.42</lombok.version>
         <asm.version>9.6</asm.version>
         <springdoc.version>1.7.0</springdoc.version>
         <springdoc.artifactId>springdoc-openapi-ui</springdoc.artifactId>
         <knife4j.version>4.3.0</knife4j.version>
+        <sqlite-jdbc.version>3.45.1.0</sqlite-jdbc.version>
 
         <!-- 测试 -->
         <junit-jupiter.version>5.9.3</junit-jupiter.version>
         <mockito.version>4.11.0</mockito.version>
+        <archunit.version>0.23.1</archunit.version>
+
+        <!-- Jacoco 测试覆盖率输出目录变量，支持外部注入以避免并行构建冲突 -->
+        <jacoco.dest.folder>default</jacoco.dest.folder>
+
+        <!-- Maven Central 发布插件 -->
+        <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
+        <maven-source-plugin.version>3.3.0</maven-source-plugin.version>
+        <maven-gpg-plugin.version>3.2.4</maven-gpg-plugin.version>
+        <gpg.executable>gpg</gpg.executable>
     </properties>
 
     <profiles>
@@ -67,9 +129,44 @@
                 <springdoc.version>2.8.5</springdoc.version>
                 <springdoc.artifactId>springdoc-openapi-starter-webmvc-ui</springdoc.artifactId>
 
-                <junit-jupiter.version>5.9.3</junit-jupiter.version>
-                <mockito.version>5.3.1</mockito.version>
+                <junit-jupiter.version>5.10.2</junit-jupiter.version>
+                <mockito.version>5.11.0</mockito.version>
+                <archunit.version>1.2.1</archunit.version>
+                <!-- 默认 target-boot3；脚本可用 -Dbc3.base.build.dir=target 覆盖
+                     （-D 用户属性优先级高于 POM 属性），让产物落在默认 target/，
+                     供 dev-mode 灵元发现写死扫描的 target/classes 命中。 -->
+                <bc3.base.build.dir>target-boot3</bc3.base.build.dir>
             </properties>
+            <!-- 隔离 boot3 构建产物目录（target-boot3），避免与默认(boot2)共享 target/ 导致
+                 测试字节码跨 profile 污染（javax/jakarta 构造器签名不匹配 NoSuchMethodError） -->
+            <build>
+                <directory>${project.basedir}/${bc3.base.build.dir}</directory>
+            </build>
+        </profile>
+        <!-- JDK 9+ JVM arguments profile to allow reflective access in tests -->
+        <profile>
+            <id>jdk9-plus-surefire</id>
+            <activation>
+                <jdk>[9,)</jdk>
+            </activation>
+            <properties>
+                <!-- 该 profile 为 JDK9+ 注入全部 add-opens，是测试反射访问 JDK 内部包（如
+                     java.util.concurrent.atomic 的 AtomicInteger.value）所需的真正授权来源。
+                     必须携带与 base argLine 一致的 -Xmx 内存调优，这样 CI 无需（也不应）用
+                     -DargLine 覆盖本属性，从而保留这些授权参数。 -->
+                <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true -Xmx2g -XX:MaxMetaspaceSize=1g -XX:MetaspaceSize=256m --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.ref=ALL-UNNAMED --add-opens java.base/java.net=ALL-UNNAMED --add-opens java.base/java.security=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.util.concurrent=ALL-UNNAMED --add-opens java.base/jdk.internal.loader=ALL-UNNAMED --add-opens java.sql/java.sql=ALL-UNNAMED --add-opens java.rmi/sun.rmi.transport=ALL-UNNAMED</argLine>
+            </properties>
+        </profile>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
     </profiles>
 
@@ -105,7 +202,7 @@
         <dependencies>
             <!-- 导入 LingFrame BOM，统一管理 LingFrame 灵元版本 -->
             <dependency>
-                <groupId>com.lingframe</groupId>
+                <groupId>cn.lingframe</groupId>
                 <artifactId>lingframe-bom</artifactId>
                 <version>${revision}</version>
                 <type>pom</type>
@@ -148,6 +245,25 @@
                 <artifactId>mybatis-flex-processor</artifactId>
                 <version>${mybatis-flex.version}</version>
                 <scope>provided</scope>
+            </dependency>
+
+            <!-- MyBatis-Plus（生态兼容测试用，灵元侧主流 ORM） -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-boot-starter</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-extension</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
+            <!-- Druid 连接池（生态兼容测试用，主流国产池） -->
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>druid</artifactId>
+                <version>${druid.version}</version>
             </dependency>
 
             <!-- MySQL -->
@@ -201,10 +317,26 @@
                 <scope>provided</scope> <!-- 明确为provided -->
             </dependency>
 
+            <!-- SQLite -->
+            <dependency>
+                <groupId>org.xerial</groupId>
+                <artifactId>sqlite-jdbc</artifactId>
+                <version>${sqlite-jdbc.version}</version>
+            </dependency>
+
             <dependency>
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-api</artifactId>
                 <version>${slf4j.version}</version>
+            </dependency>
+
+            <!-- JUnit BOM -->
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>${junit-jupiter.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
 
             <!-- 测试 -->
@@ -218,6 +350,13 @@
                 <groupId>org.mockito</groupId>
                 <artifactId>mockito-core</artifactId>
                 <version>${mockito.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <!-- ArchUnit 架构守护（Java 8 兼容，ASM relocate 不冲突） -->
+            <dependency>
+                <groupId>com.tngtech.archunit</groupId>
+                <artifactId>archunit-junit5</artifactId>
+                <version>${archunit.version}</version>
                 <scope>test</scope>
             </dependency>
         </dependencies>
@@ -270,7 +409,7 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.2.5</version>
                     <configuration>
-                        <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+                        <argLine>@{argLine} -Dfile.encoding=UTF-8</argLine>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -278,7 +417,251 @@
                     <artifactId>maven-failsafe-plugin</artifactId>
                     <version>3.2.5</version>
                     <configuration>
-                        <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+                        <argLine>@{argLine} -Dfile.encoding=UTF-8</argLine>
+                    </configuration>
+                </plugin>
+
+                <!-- JaCoCo 覆盖率 -->
+                <plugin>
+                    <groupId>org.jacoco</groupId>
+                    <artifactId>jacoco-maven-plugin</artifactId>
+                    <version>0.8.12</version>
+                    <executions>
+                        <execution>
+                            <id>prepare-agent</id>
+                            <goals>
+                                <goal>prepare-agent</goal>
+                            </goals>
+                            <configuration>
+                                <!--
+                                    使用 java.io.tmpdir 避免 Windows 中文路径导致 agent 无法写入 exec 文件。
+                                    默认的 ${project.build.directory}/jacoco.exec 在中文路径下会写入失败。
+                                -->
+                                <destFile>${java.io.tmpdir}/jacoco/${jacoco.dest.folder}/${project.artifactId}.exec</destFile>
+                                <exclClassLoaders>*CloseAwareClassLoader*:*LingClassLoader*</exclClassLoaders>
+                                <!--
+                                    按 ClassLoader 排除运行时动态加载的测试灵元类，不依赖灵元类包名。
+                                    JaCoCo InjectedClassRuntime 对每个加载了被插桩类的 ClassLoader
+                                    维持 ConcurrentHashMap<ClassLoader, Accessor> 强引用，
+                                    导致自定义 ClassLoader 无法被 GC 回收，
+                                    进而使 LingUnloadCollectabilityRegressionTest 的零泄漏断言失败。
+                                    此前用 <excludes> 按包名排除，因灵元包名 (sample.springling) 与
+                                    配置 (sample/ling/**) 不一致且 ** 非文档支持语法而失效；
+                                    改用 exclClassLoaders 按 ClassLoader 类型排除，解除包名耦合。
+                                -->
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>report</id>
+                            <phase>test</phase>
+                            <goals>
+                                <goal>report</goal>
+                            </goals>
+                            <configuration>
+                                <dataFile>${java.io.tmpdir}/jacoco/${jacoco.dest.folder}/${project.artifactId}.exec</dataFile>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>check</id>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                            <configuration>
+                                <dataFile>${java.io.tmpdir}/jacoco/${jacoco.dest.folder}/${project.artifactId}.exec</dataFile>
+                                <rules>
+                                    <rule>
+                                        <element>BUNDLE</element>
+                                        <limits>
+                                            <limit>
+                                                <counter>LINE</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <!-- 当前 0.60，逐步提升 -->
+                                                <minimum>0.60</minimum>
+                                            </limit>
+                                            <limit>
+                                                <counter>BRANCH</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <!-- 当前 0.46，逐步提升；微内核解耦移除构造函数直接创建后略降，待补测后回升 -->
+                                                <minimum>0.50</minimum>
+                                            </limit>
+                                        </limits>
+                                    </rule>
+                                </rules>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- SpotBugs 静态分析 -->
+                <!--
+                    注意：多模块构建时 SpotBugs 可能报 "classes needed for analysis were missing" 警告。
+                    这是因为跨模块引用的类（如 lingframe-api 中的契约类）在 SpotBugs 运行时
+                    不一定在 auxClasspath 上。该警告不影响构建结果，仅降低部分类的分析精度。
+                    核心模块（lingframe-core）的分析不受影响，适配层缺失可接受。
+                -->
+                <plugin>
+                    <groupId>com.github.spotbugs</groupId>
+                    <artifactId>spotbugs-maven-plugin</artifactId>
+                    <version>4.8.3.0</version>
+                    <dependencies>
+                        <dependency>
+                            <groupId>com.github.spotbugs</groupId>
+                            <artifactId>spotbugs</artifactId>
+                            <version>4.8.3</version>
+                        </dependency>
+                    </dependencies>
+                    <configuration>
+                        <effort>Max</effort>
+                        <threshold>High</threshold>
+                        <failOnError>true</failOnError>
+                        <excludeFilterFile>${maven.multiModuleProjectDirectory}/lingframe-config/spotbugs-exclude.xml</excludeFilterFile>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>spotbugs-check</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Checkstyle 代码风格检查 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-checkstyle-plugin</artifactId>
+                    <version>3.3.1</version>
+                    <dependencies>
+                        <dependency>
+                            <groupId>com.puppycrawl.tools</groupId>
+                            <artifactId>checkstyle</artifactId>
+                            <!-- 8.45.1 是最后一个官方支持 JDK8 运行的版本 -->
+                            <version>8.45.1</version>
+                        </dependency>
+                    </dependencies>
+                    <configuration>
+                        <!-- 引用 lingframe-config 下的规则文件。
+                             ${maven.multiModuleProjectDirectory} 由 Maven 3.3.1+ 自动设置为多模块项目根目录，
+                             确保所有子模块都能正确定位配置文件。
+                             用普通文件路径而非 file:// URL：Windows 下根目录含反斜杠，
+                             file:///E:\... 是非法 URL，会导致 checkstyle-check 失败。 -->
+                        <configLocation>${maven.multiModuleProjectDirectory}/lingframe-config/checkstyle-rules.xml</configLocation>
+                        <encoding>UTF-8</encoding>
+                        <consoleOutput>true</consoleOutput>
+                        <failsOnError>true</failsOnError>
+                        <linkXRef>false</linkXRef>
+                        <skip>${checkstyle.skip}</skip>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>checkstyle-check</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- 源码打包插件 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>${maven-source-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <id>attach-sources</id>
+                            <goals>
+                                <goal>jar-no-fork</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Javadoc API 文档插件 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>3.4.1</version>
+                    <configuration>
+                        <encoding>UTF-8</encoding>
+                        <charset>UTF-8</charset>
+                        <docencoding>UTF-8</docencoding>
+                        <doclint>all,-missing,-html</doclint>
+                        <quiet>true</quiet>
+                        <failOnError>false</failOnError>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>attach-javadocs</id>
+                            <goals>
+                                <goal>jar</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- GPG 签名插件 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-gpg-plugin</artifactId>
+                    <version>${maven-gpg-plugin.version}</version>
+                    <configuration>
+                        <executable>${gpg.executable}</executable>
+                        <keyname>${gpg.keyname}</keyname>
+                        <passphrase>${gpg.passphrase}</passphrase>
+                        <gpgArguments>
+                            <arg>--pinentry-mode</arg>
+                            <arg>loopback</arg>
+                        </gpgArguments>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>sign-artifacts</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>sign</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Sonatype Central Portal 发布插件 -->
+                <plugin>
+                    <groupId>org.sonatype.central</groupId>
+                    <artifactId>central-publishing-maven-plugin</artifactId>
+                    <version>${central-publishing-maven-plugin.version}</version>
+                    <extensions>true</extensions>
+                    <configuration>
+                        <publishingServerId>central</publishingServerId>
+                        <autoPublish>true</autoPublish>
+                        <waitUntil>published</waitUntil>
+                    </configuration>
+                </plugin>
+
+                <!-- OWASP 依赖漏洞扫描 -->
+                <plugin>
+                    <groupId>org.owasp</groupId>
+                    <artifactId>dependency-check-maven</artifactId>
+                    <version>10.0.4</version>
+                    <configuration>
+                        <!-- CVSS 评分阈值：HIGH(7.0+) 和 CRITICAL 导致构建失败 -->
+                        <failBuildOnCVSS>7.0</failBuildOnCVSS>
+                        <!-- 抑制文件：处理误报 -->
+                        <suppressionFile>${maven.multiModuleProjectDirectory}/lingframe-config/dependency-check-suppressions.xml</suppressionFile>
+                        <!-- 输出格式 -->
+                        <formats>
+                            <format>HTML</format>
+                            <format>JSON</format>
+                        </formats>
+                        <!-- 跳过 provided 和 test 作用域的依赖 -->
+                        <skipProvidedScope>true</skipProvidedScope>
+                        <skipTestScope>true</skipTestScope>
+                        <!-- NVD API 密钥（可选，提升速率限制） -->
+                        <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+                        <!-- 数据缓存目录，避免每次全量下载 -->
+                        <dataDirectory>${java.io.tmpdir}/dependency-check-data</dataDirectory>
                     </configuration>
                 </plugin>
             </plugins>
@@ -308,6 +691,11 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <extensions>true</extensions>
             </plugin>
         </plugins>
     </build>

@@ -1,25 +1,26 @@
 package com.lingframe.starter.adapter;
 
 import com.lingframe.api.config.LingDefinition;
+import com.lingframe.api.storage.ManagedDataSourceRegistry;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.exception.LingInstallException;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
-import com.lingframe.core.spi.ResourceGuard;
+import com.lingframe.core.spi.LingUnloadHook;
 import com.lingframe.starter.config.LingFrameProperties;
 import com.lingframe.starter.loader.AsmMainClassScanner;
+import com.lingframe.starter.spi.LingContextCustomizer;
 import com.lingframe.starter.web.WebInterfaceManager;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.Banner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.io.DefaultResourceLoader;
-
-import java.io.File;
-import java.util.List;
-import java.util.Collections;
-
-import com.lingframe.starter.spi.LingContextCustomizer;
 
 @Slf4j
 public class SpringContainerFactory implements ContainerFactory {
@@ -29,17 +30,20 @@ public class SpringContainerFactory implements ContainerFactory {
     private final List<String> serviceExcludedPackages;
     private final List<LingContextCustomizer> customizers; // 新增定制器列表
     private final ApplicationContext mainContext; // 🔥 主容器引用
-    private final List<ResourceGuard> resourceGuards; // 🔥 资源守卫列表
+    private final List<LingUnloadHook> unloadHooks; // 🔥 卸载钩子列表
+    /** 事务穿透总开关（灵核配置），create 灵元容器时以默认属性下发 */
+    private final boolean txPropagationEnabled;
 
     public SpringContainerFactory(ApplicationContext parentContext, WebInterfaceManager webInterfaceManager,
-            List<LingContextCustomizer> customizers, List<ResourceGuard> resourceGuards) {
+            List<LingContextCustomizer> customizers, List<LingUnloadHook> unloadHooks) {
         LingFrameProperties props = parentContext.getBean(LingFrameProperties.class);
         this.devMode = props.isDevMode();
         this.serviceExcludedPackages = props.getServiceExcludedPackages();
+        this.txPropagationEnabled = props.getTx().getPropagation().isEnabled();
         this.webInterfaceManager = webInterfaceManager;
         this.customizers = customizers != null ? customizers : Collections.emptyList();
         this.mainContext = parentContext; // 🔥 保存主容器
-        this.resourceGuards = resourceGuards != null ? resourceGuards : Collections.emptyList(); // 🔥 保存资源守卫
+        this.unloadHooks = unloadHooks != null ? unloadHooks : Collections.emptyList(); // 🔥 保存卸载钩子
     }
 
     @Override
@@ -52,12 +56,62 @@ public class SpringContainerFactory implements ContainerFactory {
 
             Class<?> sourceClass = classLoader.loadClass(mainClass);
 
+            // 校验 Servlet API 版本一致性，避免 boot2/boot3 Filter 接口错位。
+            String coreServletApi = detectServletApiPackage(SpringContainerFactory.class.getClassLoader());
+            String lingServletApi = detectServletApiPackage(classLoader);
+            if (coreServletApi != null && lingServletApi != null
+                    && !coreServletApi.equals(lingServletApi)) {
+                throw new LingInstallException(lingId,
+                        "Servlet API 版本错位：灵核使用 " + coreServletApi
+                                + ".servlet.Filter，灵元使用 " + lingServletApi
+                                + ".servlet.Filter。请确保灵元与灵核使用相同的 Spring Boot 主版本"
+                                + "（2.x → javax.servlet，3.x → jakarta.servlet）。");
+            }
+
+            List<String> excludes = new ArrayList<>();
+            // 显式排除 JMX 相关自动配置，防止 MBean 名称冲突
+            excludes.add("org.springframework.boot.autoconfigure.admin.SpringApplicationAdminJmxAutoConfiguration");
+            excludes.add("org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration");
+            excludes.add("org.springframework.boot.actuate.autoconfigure.endpoint.jmx.JmxEndpointAutoConfiguration");
+
+            // 默认排除调度类自动配置：灵核引入 Quartz/任务调度时，灵元子容器会自动装配出
+            // 常驻线程（QuartzScheduler、ThreadPoolTaskScheduler），线程捕获灵元 ClassLoader，
+            // 卸载后无法回收导致泄漏。灵元确需调度时，可在 ling.yml 用 includeAutoConfigurations 显式放行。
+            excludes.add("org.springframework.boot.autoconfigure.quartz.QuartzAutoConfiguration");
+            excludes.add("org.springframework.boot.autoconfigure.task.TaskSchedulingAutoConfiguration");
+
+            // 默认排除 JPA 与 Hibernate 自动配置：当类路径存在 JPA starter 时，灵元子容器
+            // 默认不应静默拉起重量级 Hibernate 引擎与静态元数据（避免其跨生命周期引用灵元 ClassLoader
+            // 阻碍安全卸载）。灵元确需 JPA 时，可在 ling.yml 用 includeAutoConfigurations 显式放行。
+            excludes.add("org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration");
+            excludes.add("org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration");
+
+            // 合并灵元 ling.yml 声明的自定义排除自动配置类
+            if (definition != null && definition.getExcludeAutoConfigurations() != null) {
+                for (String autoConfig : definition.getExcludeAutoConfigurations()) {
+                    if (autoConfig != null && !autoConfig.trim().isEmpty() && !excludes.contains(autoConfig)) {
+                        excludes.add(autoConfig.trim());
+                    }
+                }
+            }
+
+            // 逃生通道：ling.yml 显式要求开启的自动配置从默认排除中移除
+            if (definition != null && definition.getIncludeAutoConfigurations() != null) {
+                for (String autoConfig : definition.getIncludeAutoConfigurations()) {
+                    if (autoConfig != null && !autoConfig.trim().isEmpty()) {
+                        excludes.remove(autoConfig.trim());
+                    }
+                }
+            }
+            String excludeStr = String.join(",", excludes);
+
             SpringApplicationBuilder builder = new SpringApplicationBuilder()
-                    // 🔥 不设置父容器，实现完全隔离
-                    // 原因：
-                    // 1. 父子容器关系导致灵核 BeanFactory 持有子容器引用，造成 ClassLoader 泄漏
-                    // 2. 零信任设计：灵元不应直接访问灵核 Bean，应通过 LingContext
-                    // 3. 核心 Bean (LingManager, LingContext) 已在 registerBeans() 中手动注入
+                    // 🔥 不设置父容器，避免灵核 BeanFactory 持有子容器引用造成 ClassLoader 泄漏
+                    // 这是 BeanFactory 层隔离，不是「运行期与灵核 Spring 静态宇宙正交」：
+                    // 共享 Spring 下，AnnotatedElementUtils / BridgeMethodResolver.cache 等
+                    // 进程级静态缓存仍会写入灵元 Class，需由卸载 cleaner（见 resource/ 包）覆盖。
+                    // 零信任设计：灵元不应直接访问灵核 Bean，应通过 LingContext。
+                    // 核心 Bean 已在 registerBeans() 中手动注入。
                     .resourceLoader(new DefaultResourceLoader(classLoader)) // 使用隔离加载器
                     .sources(sourceClass)
                     .bannerMode(Banner.Mode.OFF)
@@ -66,11 +120,12 @@ public class SpringContainerFactory implements ContainerFactory {
                     .properties("spring.main.allow-bean-definition-overriding=true") // 允许覆盖 Bean
                     .properties("spring.application.name=Ling-" + lingId) // 独立应用名
                     .properties("spring.sql.init.mode=never") // 禁用 Spring Boot 自动 SQL 初始化
-                    // 显式排除 JMX 相关自动配置，防止 MBean 名称冲突
-                    .properties("spring.autoconfigure.exclude=" +
-                            "org.springframework.boot.autoconfigure.admin.SpringApplicationAdminJmxAutoConfiguration," +
-                            "org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration," +
-                            "org.springframework.boot.actuate.autoconfigure.endpoint.jmx.JmxEndpointAutoConfiguration");
+                    // 动态设置排除的自动配置类列表
+                    .properties("spring.autoconfigure.exclude=" + excludeStr)
+                    // 【事务穿透总开关传播】灵核级 lingframe.tx.propagation.enabled 以默认属性下发到灵元
+                    // 容器（defaultProperties 优先级最低，灵元自身配置可覆盖）；灵元侧
+                    // LingDataSourceRegistrar 据此决定是否注册受管事务管理器——总开关两端口径一致
+                    .properties("lingframe.tx.propagation.enabled=" + txPropagationEnabled);
 
             SpringLingContainer container = new SpringLingContainer(
                     builder,
@@ -79,9 +134,23 @@ public class SpringContainerFactory implements ContainerFactory {
                     serviceExcludedPackages,
                     customizers, // 🔥 传入定制器
                     mainContext,
-                    resourceGuards,
-                    version
-            );
+                    unloadHooks,
+                    version,
+                    sourceFile);
+            // 注入灵核只读配置门面，替代静态穿透 LingFrameConfig.current()
+            try {
+                container.setLingFrameInfo(mainContext.getBean(LingFrameInfo.class));
+            } catch (Exception e) {
+                // 灵核未装 LingFrameInfo bean 时兜底默认值，保持向后兼容
+                log.debug("[{}] LingFrameInfo bean not available, fallback to default implicit registration", lingId);
+            }
+            // 注入受管数据源独立总线（分支 B 拉取受管数据源用；灵核 0 存储/native 场景无此 Bean 时为 null）
+            try {
+                container.setManagedDataSourceRegistry(mainContext.getBean(ManagedDataSourceRegistry.class));
+            } catch (Exception e) {
+                log.debug("[{}] ManagedDataSourceRegistry bean not available, managed datasource injection disabled",
+                        lingId);
+            }
             return container;
 
         } catch (Exception e) {
@@ -89,6 +158,29 @@ public class SpringContainerFactory implements ContainerFactory {
             if (devMode) {
                 throw new LingInstallException(lingId, "Failed to create Spring container", e);
             }
+            return null;
+        }
+    }
+
+    /**
+     * 检测 ClassLoader 能看到的 Servlet API 包名前缀。
+     *
+     * @return "javax" / "jakarta" / null
+     */
+    private static String detectServletApiPackage(ClassLoader cl) {
+        if (cl == null) {
+            return null;
+        }
+        try {
+            cl.loadClass("javax.servlet.Filter");
+            return "javax";
+        } catch (ClassNotFoundException ignored) {
+            // continue
+        }
+        try {
+            cl.loadClass("jakarta.servlet.Filter");
+            return "jakarta";
+        } catch (ClassNotFoundException ignored) {
             return null;
         }
     }

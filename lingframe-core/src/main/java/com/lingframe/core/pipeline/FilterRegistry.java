@@ -1,24 +1,38 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.security.PermissionService;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
+import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.ResilienceGovernanceSwitch;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
+import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.metrics.GovernanceMetricsCollector;
 import com.lingframe.core.metrics.MetricsCollector;
+import com.lingframe.core.routing.ContractProviderRoutingFilter;
+import com.lingframe.core.routing.InstanceRoutingFilter;
+import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.core.spi.LingInvocationFilter;
 import com.lingframe.core.spi.LingServiceInvoker;
+import com.lingframe.core.spi.ThreadPoolStatsProvider;
 import com.lingframe.core.spi.TrafficRouter;
+import com.lingframe.core.spi.TransactionBindingHook;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.ServiceLoader;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 过滤器注册表。
@@ -29,78 +43,103 @@ import java.util.ServiceLoader;
  * 哪个阶段能读什么、能写什么、依赖谁先完成，必须在启动时 fail-fast 校验出来，
  * 不能等线上流量进来再靠异常堆栈反推是哪个过滤器越界了。
  */
-public class FilterRegistry {
+public class FilterRegistry implements ThreadPoolStatsProvider {
 
     private final List<LingInvocationFilter> builtinFilters = new ArrayList<>();
-    private final List<LingInvocationFilter> spiFilters = new ArrayList<>();
+    // spiFilters 可能被灵元加载/卸载线程并发 add/remove，用 CopyOnWriteArrayList 保证遍历安全
+    private final List<LingInvocationFilter> spiFilters = new CopyOnWriteArrayList<>();
     private final InvokableMethodCache methodCache;
     private final PermissionService permissionService;
     private final LingServiceInvoker serviceInvoker;
     private final GovernanceArbitrator governanceArbitrator;
+    private ResilienceGovernanceSwitch resilienceSwitch;
 
     private ResilienceGovernanceFilter resilienceFilter;
     private ThreadIsolationGovernanceFilter isolationFilter;
     private volatile List<LingInvocationFilter> orderedCache;
 
-    public FilterRegistry(InvokableMethodCache methodCache, PermissionService permissionService) {
-        this(methodCache, permissionService, null, null);
-    }
+    /**
+     * 单一构造入口：一次性完成构建与初始化，phase 契约在构造器内 fail-fast 校验。
+     * <p>
+     * 杜绝原"构造器 + initialize 两阶段"导致的半初始化状态。
+     */
+    public FilterRegistry(FilterRegistryConfig config) {
+        Objects.requireNonNull(config, "FilterRegistryConfig is required");
+        this.methodCache = Objects.requireNonNull(config.getMethodCache(), "methodCache is required");
+        this.permissionService = Objects.requireNonNull(config.getPermissionService(), "permissionService is required");
+        this.serviceInvoker = config.getServiceInvoker();
+        this.governanceArbitrator = config.getGovernanceArbitrator();
+        final ResilienceGovernanceSwitch resilienceSwitch = config.getResilienceSwitch() != null
+                ? config.getResilienceSwitch() : new ResilienceGovernanceSwitch();
 
-    public FilterRegistry(InvokableMethodCache methodCache, PermissionService permissionService,
-            LingServiceInvoker serviceInvoker) {
-        this(methodCache, permissionService, serviceInvoker, null);
-    }
-
-    public FilterRegistry(InvokableMethodCache methodCache, PermissionService permissionService,
-            LingServiceInvoker serviceInvoker, GovernanceArbitrator governanceArbitrator) {
-        this.methodCache = methodCache;
-        this.permissionService = permissionService;
-        this.serviceInvoker = serviceInvoker;
-        this.governanceArbitrator = governanceArbitrator;
-    }
-
-    public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus) {
-        initialize(lingRepository, trafficRouter, eventBus, null, null, null);
-    }
-
-    public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
-            MetricsCollector metricsCollector,
-            RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector) {
-        initializeInternal(lingRepository, trafficRouter, eventBus, metricsCollector, runtimeCoordinator, governanceMetricsCollector);
+        initializeInternal(
+                config.getLingRepository(),
+                config.getServiceRegistry(),
+                config.getTrafficRouter(),
+                config.getEventBus(),
+                config.getMetricsCollector(),
+                config.getRuntimeCoordinator(),
+                config.getGovernanceMetricsCollector(),
+                config.getLingFrameInfo(),
+                config.getGovernanceRegistry(),
+                resilienceSwitch,
+                config.getProviderWeightRouter(),
+                config.getTransactionBindingHook(),
+                config.isPropagationEnabled());
     }
 
     /**
      * 初始化内建过滤器。
+     * <p>
+     * ⚠️ 内建过滤器的顺序不是偶然结果，而是"事实 -> 决策 -> 执行"的固定协议。
      */
-    public void initialize(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
-            RuntimeCoordinator runtimeCoordinator) {
-        initializeInternal(lingRepository, trafficRouter, eventBus, null, runtimeCoordinator, null);
-    }
-
-    private void initializeInternal(LingRepository lingRepository, TrafficRouter trafficRouter, EventBus eventBus,
+    private void initializeInternal(LingRepository lingRepository, LingServiceRegistry serviceRegistry,
+            TrafficRouter trafficRouter, EventBus eventBus,
             MetricsCollector metricsCollector,
-            RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector) {
-        // ⚠️ 内建过滤器的顺序不是偶然结果，而是“事实 -> 决策 -> 执行”的固定协议。
+            RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector,
+            LingFrameInfo lingFrameInfo, LocalGovernanceRegistry governanceRegistry,
+            ResilienceGovernanceSwitch resilienceSwitch,
+            ProviderWeightRouter providerWeightRouter,
+            TransactionBindingHook transactionBindingHook,
+            boolean propagationEnabled) {
         builtinFilters.clear();
 
+        // L0 provider 级路由：未注入 weightRouter 时创建默认实例（默认权重 CORE=100/LING=0，无 Dashboard 覆盖）
+        ProviderWeightRouter weightRouter = providerWeightRouter != null ? providerWeightRouter : new ProviderWeightRouter();
+        ContractProviderRoutingFilter providerRouting = new ContractProviderRoutingFilter(
+                serviceRegistry, lingRepository, weightRouter, trafficRouter);
+
         MacroStateGuardFilter stateGuard = new MacroStateGuardFilter(lingRepository);
-        CanaryRoutingFilter routing = new CanaryRoutingFilter(
-                lingRepository,
-                trafficRouter != null ? trafficRouter : new LatestVersionPolicy());
+        // L1 实例级路由：承接 L0 provider 路由已设置的 ctx.runtime，从 READY 实例池选出具体实例；
+        // 补全 ROUTING 阶段，与 ContractProviderRoutingFilter 分层独立（provider 策略 / instance 策略）
+        InstanceRoutingFilter instanceRouting = new InstanceRoutingFilter(trafficRouter);
+        // 预填充 filter：在 RESILIENCE 之前把灵元级 effective policy 预填到 ctx.governance()，
+        // 守护"ctx 为唯一通行证"原则，让弹性组件通过 ctx 读取治理意图
+        InvocationPolicyPrefillFilter policyPrefill = new InvocationPolicyPrefillFilter(lingRepository, governanceRegistry);
+        // 事务穿透过滤器：在 ROUTING 之后、TCCL 切换之前把活跃事务连接推入穿透上下文；
+        // hook 为 null（纯 core/native）时降级为「无事务穿透」，不压栈不抛错；
+        // propagationEnabled=false 时直接放行（总开关，应急降级路径）
+        TransactionPropagationFilter transactionPropagation =
+                new TransactionPropagationFilter(transactionBindingHook, propagationEnabled);
         ResilienceGovernanceFilter resilience = new ResilienceGovernanceFilter(
-                lingRepository, eventBus, runtimeCoordinator, governanceMetricsCollector);
-        ContextIsolationFilter resolution = new ContextIsolationFilter();
+                lingRepository, eventBus, runtimeCoordinator, governanceMetricsCollector, resilienceSwitch);
+        ContextIsolationFilter resolution = new ContextIsolationFilter(serviceRegistry);
         GovernanceDecisionFilter governance = new GovernanceDecisionFilter(lingRepository, governanceArbitrator);
-        PermissionGovernanceFilter permission = new PermissionGovernanceFilter(permissionService);
-        ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(lingRepository, governanceMetricsCollector);
+        PermissionGovernanceFilter permission = new PermissionGovernanceFilter(permissionService, lingFrameInfo);
+        ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(
+                lingRepository, governanceMetricsCollector, resilienceSwitch);
         TerminalInvokerFilter terminal = new TerminalInvokerFilter(methodCache, serviceInvoker);
 
         this.resilienceFilter = resilience;
         this.isolationFilter = threadIsolation;
+        this.resilienceSwitch = resilienceSwitch;
 
+        builtinFilters.add(providerRouting);
         builtinFilters.add(new TrafficMetricsFilter(lingRepository, metricsCollector, eventBus));
         builtinFilters.add(stateGuard);
-        builtinFilters.add(routing);
+        builtinFilters.add(instanceRouting);
+        builtinFilters.add(policyPrefill);
+        builtinFilters.add(transactionPropagation);
         builtinFilters.add(resilience);
         builtinFilters.add(resolution);
         builtinFilters.add(governance);
@@ -129,6 +168,21 @@ public class FilterRegistry {
         invalidateCache();
     }
 
+    /**
+     * 移除之前动态注入的过滤器。
+     * <p>
+     * 灵元卸载或 benchmark 循环中使用，移除后缓存自动失效。
+     *
+     * @return 是否成功移除
+     */
+    public boolean removeDynamicFilter(LingInvocationFilter filter) {
+        boolean removed = this.spiFilters.remove(filter);
+        if (removed) {
+            invalidateCache();
+        }
+        return removed;
+    }
+
     public List<LingInvocationFilter> getOrderedFilters() {
         List<LingInvocationFilter> cached = orderedCache;
         if (cached != null) {
@@ -142,10 +196,46 @@ public class FilterRegistry {
             List<LingInvocationFilter> all = new ArrayList<>(builtinFilters.size() + spiFilters.size());
             all.addAll(builtinFilters);
             all.addAll(spiFilters);
-            all.sort(Comparator.comparingInt(LingInvocationFilter::getOrder));
+            all.sort(Comparator.comparingInt(LingInvocationFilter::getOrder)
+                    .thenComparing(f -> f.getClass().getName()));
             validatePhaseContracts(all);
+            validateSpiPlacement(all);
             orderedCache = Collections.unmodifiableList(all);
             return orderedCache;
+        }
+    }
+
+    /**
+     * 内置过滤器占用的 order 为保留位；SPI/动态过滤器不得占用，
+     * 也不得成为 TERMINAL，防止插队绕过权限/隔离。
+     */
+    private static final Set<Integer> RESERVED_BUILTIN_ORDERS = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList(
+                    FilterPhase.PROVIDER_ROUTING,
+                    FilterPhase.METRICS,
+                    FilterPhase.STATE_GUARD,
+                    FilterPhase.ROUTING,
+                    FilterPhase.POLICY_PREFILL,
+                    FilterPhase.TRANSACTION_PROPAGATION,
+                    FilterPhase.RESILIENCE,
+                    FilterPhase.RESOLUTION,
+                    FilterPhase.GOVERNANCE,
+                    FilterPhase.GOVERNANCE + 50,
+                    FilterPhase.EXECUTION_ISOLATION,
+                    FilterPhase.TERMINAL)));
+
+    private void validateSpiPlacement(List<LingInvocationFilter> filters) {
+        for (LingInvocationFilter filter : filters) {
+            if (isBuiltin(filter)) {
+                continue;
+            }
+            int order = filter.getOrder();
+            if (RESERVED_BUILTIN_ORDERS.contains(order)) {
+                throw new IllegalStateException(
+                        "SPI/dynamic filter " + filter.getClass().getName()
+                                + " uses reserved pipeline order " + order
+                                + "; choose a non-reserved order between core phases");
+            }
         }
     }
 
@@ -158,9 +248,12 @@ public class FilterRegistry {
             }
         }
 
+        assertOrder(orders, ContractProviderRoutingFilter.class, FilterPhase.PROVIDER_ROUTING);
         assertOrder(orders, TrafficMetricsFilter.class, FilterPhase.METRICS);
         assertOrder(orders, MacroStateGuardFilter.class, FilterPhase.STATE_GUARD);
-        assertOrder(orders, CanaryRoutingFilter.class, FilterPhase.ROUTING);
+        assertOrder(orders, InstanceRoutingFilter.class, FilterPhase.ROUTING);
+        assertOrder(orders, InvocationPolicyPrefillFilter.class, FilterPhase.POLICY_PREFILL);
+        assertOrder(orders, TransactionPropagationFilter.class, FilterPhase.TRANSACTION_PROPAGATION);
         assertOrder(orders, ResilienceGovernanceFilter.class, FilterPhase.RESILIENCE);
         assertOrder(orders, ContextIsolationFilter.class, FilterPhase.RESOLUTION);
         assertOrder(orders, GovernanceDecisionFilter.class, FilterPhase.GOVERNANCE);
@@ -168,9 +261,11 @@ public class FilterRegistry {
         assertOrder(orders, ThreadIsolationGovernanceFilter.class, FilterPhase.EXECUTION_ISOLATION);
         assertOrder(orders, TerminalInvokerFilter.class, FilterPhase.TERMINAL);
 
+        assertBefore(orders, ContractProviderRoutingFilter.class, TrafficMetricsFilter.class);
         assertBefore(orders, TrafficMetricsFilter.class, MacroStateGuardFilter.class);
-        assertBefore(orders, MacroStateGuardFilter.class, CanaryRoutingFilter.class);
-        assertBefore(orders, CanaryRoutingFilter.class, ResilienceGovernanceFilter.class);
+        assertBefore(orders, MacroStateGuardFilter.class, InstanceRoutingFilter.class);
+        assertBefore(orders, InstanceRoutingFilter.class, InvocationPolicyPrefillFilter.class);
+        assertBefore(orders, InvocationPolicyPrefillFilter.class, ResilienceGovernanceFilter.class);
         assertBefore(orders, ResilienceGovernanceFilter.class, ContextIsolationFilter.class);
         assertBefore(orders, ContextIsolationFilter.class, GovernanceDecisionFilter.class);
         assertBefore(orders, GovernanceDecisionFilter.class, PermissionGovernanceFilter.class);
@@ -179,9 +274,12 @@ public class FilterRegistry {
     }
 
     private boolean isBuiltin(LingInvocationFilter filter) {
-        return filter instanceof TrafficMetricsFilter
+        return filter instanceof ContractProviderRoutingFilter
+                || filter instanceof TrafficMetricsFilter
                 || filter instanceof MacroStateGuardFilter
-                || filter instanceof CanaryRoutingFilter
+                || filter instanceof InstanceRoutingFilter
+                || filter instanceof InvocationPolicyPrefillFilter
+                || filter instanceof TransactionPropagationFilter
                 || filter instanceof ResilienceGovernanceFilter
                 || filter instanceof ContextIsolationFilter
                 || filter instanceof GovernanceDecisionFilter
@@ -214,7 +312,7 @@ public class FilterRegistry {
         }
     }
 
-    private void invalidateCache() {
+    private synchronized void invalidateCache() {
         this.orderedCache = null;
     }
 
@@ -230,6 +328,21 @@ public class FilterRegistry {
         }
     }
 
+    /**
+     * 切换弹性治理总开关。
+     * 关闭时清空已有的限流器与熔断器状态，重新开启后从干净状态重新建立。
+     */
+    public void setResilienceEnabled(boolean enabled) {
+        resilienceSwitch.setEnabled(enabled);
+        if (!enabled && resilienceFilter != null) {
+            resilienceFilter.resetAll();
+        }
+    }
+
+    public boolean isResilienceEnabled() {
+        return resilienceSwitch.isEnabled();
+    }
+
     public boolean recoverLingGovernance(String lingId) {
         if (resilienceFilter == null) {
             return false;
@@ -237,12 +350,41 @@ public class FilterRegistry {
         return resilienceFilter.recover(lingId);
     }
 
+    /**
+     * 暴露弹性治理过滤器引用。
+     * <p>
+     * 供 {@link #evictLingResources(String)} / {@link #recoverLingGovernance(String)} 等内部治理操作
+     * 调用 {@link ResilienceGovernanceFilter#evict(String)} / {@link ResilienceGovernanceFilter#recover(String)}
+     * 实现灵元卸载/受控恢复时的弹性组件清理。暴露引用仅限 evict/recover 等动态治理操作，
+     * 不暴露注册表、线程池等内核状态。
+     * <p>
+     * 注意：治理下发（{@code GovernanceAdminService.updateInvocationConfig}）不再需要调用 evict——
+     * 治理策略唯一真源是 patch registry，{@link InvocationPolicyPrefillFilter} 会在每次请求时
+     * 读取最新 effective policy 预填到 ctx，弹性组件通过 ctx 读取，无需驱逐缓存。
+     */
     ResilienceGovernanceFilter getResilienceFilter() {
         return resilienceFilter;
     }
 
+    /**
+     * 回灌一次真实调用结果到灵元的熔断器（见 {@link ResilienceGovernanceFilter#reportOutcome}）。
+     */
+    public void reportOutcome(String lingId, boolean success, long durationNanos, Throwable error) {
+        if (resilienceFilter != null) {
+            resilienceFilter.reportOutcome(lingId, success, durationNanos, error);
+        }
+    }
+
     ThreadIsolationGovernanceFilter getIsolationFilter() {
         return isolationFilter;
+    }
+
+    @Override
+    public List<ThreadPoolStats> getThreadPoolStats() {
+        if (isolationFilter == null) {
+            return Collections.emptyList();
+        }
+        return isolationFilter.getThreadPoolStats();
     }
 
     public int evictMethodCache(String lingId) {
@@ -250,5 +392,15 @@ public class FilterRegistry {
             return 0;
         }
         return methodCache.evictByPrefix(lingId + ":");
+    }
+
+    /**
+     * 按完整前缀驱逐方法句柄缓存，用于版本级精确清理。
+     */
+    public int evictMethodCacheByPrefix(String prefix) {
+        if (methodCache == null || prefix == null || prefix.isEmpty()) {
+            return 0;
+        }
+        return methodCache.evictByPrefix(prefix);
     }
 }

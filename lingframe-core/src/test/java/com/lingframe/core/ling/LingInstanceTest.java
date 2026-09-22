@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,119 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("LingInstance 测试")
 class LingInstanceTest {
+
+
+    @Test
+    @DisplayName("禁用接流不改变就绪状态且已准入调用仍参与排空")
+    void admissionIsIndependentOfLifecycle() throws Exception {
+        prepareReady(instance);
+        assertTrue(instance.tryEnter());
+        instance.setAcceptNewRequests(false);
+        assertTrue(instance.isReady());
+        assertTrue(instance.isAdmissionDisabled());
+        assertFalse(instance.tryEnter());
+        assertEquals(-1, instance.beginInvocation(admissionSnapshot()));
+        assertEquals(1, instance.getActiveRequestCount());
+        assertFalse(instance.awaitIdle(0));
+        instance.exit();
+        assertTrue(instance.awaitIdle(0));
+        instance.setAcceptNewRequests(true);
+        assertFalse(instance.isAdmissionDisabled());
+        long id = instance.beginInvocation(admissionSnapshot());
+        assertTrue(id > 0);
+        instance.completeInvocation(id);
+        assertEquals(0, instance.getActiveRequestCount());
+    }
+
+    @Test
+    @DisplayName("请求通过就绪预检查后迟到时不能穿透已确认禁用")
+    void disableLinearizesBeforeLateAdmission() throws Exception {
+        prepareReady(instance);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            for (boolean tracked : new boolean[] {false, true}) {
+                instance.setAcceptNewRequests(true);
+                CountDownLatch checking = new CountDownLatch(1);
+                CountDownLatch resume = new CountDownLatch(1);
+                when(container.isActive()).thenAnswer(call -> {
+                    checking.countDown();
+                    assertTrue(resume.await(5, TimeUnit.SECONDS));
+                    return true;
+                });
+                java.util.concurrent.Future<Boolean> admitted = executor.submit(() -> tracked
+                        ? instance.beginInvocation(admissionSnapshot()) >= 0 : instance.tryEnter());
+                try {
+                    assertTrue(checking.await(5, TimeUnit.SECONDS));
+                    instance.setAcceptNewRequests(false);
+                } finally {
+                    resume.countDown();
+                }
+                assertFalse(admitted.get(5, TimeUnit.SECONDS));
+                assertEquals(0, instance.getActiveRequestCount());
+                assertTrue(instance.snapshotActiveInvocations().isEmpty());
+            }
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    private ActiveInvocationSnapshot admissionSnapshot() {
+        return new ActiveInvocationSnapshot("trace", "test-ling:execute", "execute", "caller", "resource",
+                "1.0.0", System.currentTimeMillis(), Thread.currentThread().getId(), Thread.currentThread().getName());
+    }
+
+    @Test
+    @DisplayName("空闲等待校验实际计数，零预算和超时不误报完成")
+    void awaitIdleChecksCountAndBudget() throws Exception {
+        assertTrue(instance.awaitIdle(0));
+        prepareReady(instance);
+        assertTrue(instance.tryEnter());
+        assertFalse(instance.awaitIdle(0));
+        assertFalse(instance.awaitIdle(-1));
+        assertFalse(instance.awaitIdle(1));
+        instance.exit();
+        assertTrue(instance.awaitIdle(0));
+    }
+
+    @Test
+    @DisplayName("虚假空闲信号不会在仍有调用时返回成功")
+    void spuriousSignalDoesNotMeanIdle() throws Exception {
+        prepareReady(instance);
+        assertTrue(instance.tryEnter());
+        java.lang.reflect.Field lockField = LingInstance.class.getDeclaredField("idleLock");
+        java.lang.reflect.Field conditionField = LingInstance.class.getDeclaredField("idleCondition");
+        lockField.setAccessible(true);
+        conditionField.setAccessible(true);
+        java.util.concurrent.locks.ReentrantLock lock =
+                (java.util.concurrent.locks.ReentrantLock) lockField.get(instance);
+        java.util.concurrent.locks.Condition condition =
+                (java.util.concurrent.locks.Condition) conditionField.get(instance);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            java.util.concurrent.Future<Boolean> result = executor.submit(() -> instance.awaitIdle(500));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            boolean signalled = false;
+            while (System.nanoTime() < deadline && !signalled) {
+                lock.lock();
+                try {
+                    if (lock.hasWaiters(condition)) {
+                        condition.signalAll();
+                        signalled = true;
+                    }
+                } finally {
+                    lock.unlock();
+                }
+                Thread.yield();
+            }
+            assertTrue(signalled);
+            assertFalse(result.get(5, TimeUnit.SECONDS));
+        } finally {
+            instance.exit();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
 
     @Mock
     private LingContainer container;
@@ -281,6 +395,42 @@ class LingInstanceTest {
             assertEquals(0, instance.getActiveRequestCount());
             assertTrue(instance.snapshotActiveInvocations().isEmpty());
         }
+
+        @Test
+        @DisplayName("snapshot 为 null 时应提前返回 -1，不递增活跃计数器")
+        void beginInvocationWithNullSnapshotShouldReturnFailWithoutIncrementing() {
+            prepareReady(instance);
+
+            long invocationId = instance.beginInvocation(null);
+
+            assertEquals(-1L, invocationId);
+            // 计数器不应被递增——否则调用方收到 -1 不会调 completeInvocation，导致永不归零
+            assertEquals(0, instance.getActiveRequestCount());
+            assertTrue(instance.snapshotActiveInvocations().isEmpty());
+        }
+
+        @Test
+        @DisplayName("snapshot 为 null 后正常调用应仍能正确登记")
+        void beginInvocationShouldWorkAfterNullSnapshotWasRejected() {
+            prepareReady(instance);
+
+            // 先传 null 被拒绝
+            assertEquals(-1L, instance.beginInvocation(null));
+            assertEquals(0, instance.getActiveRequestCount());
+
+            // 再传正常快照应成功
+            ActiveInvocationSnapshot snapshot = new ActiveInvocationSnapshot(
+                    "trace-1", "test-ling:demo.Service", "execute",
+                    "caller-a", "POST /demo", instance.getVersion(),
+                    100L, 11L, "worker-1");
+            long invocationId = instance.beginInvocation(snapshot);
+
+            assertTrue(invocationId > 0);
+            assertEquals(1, instance.getActiveRequestCount());
+
+            instance.completeInvocation(invocationId);
+            assertEquals(0, instance.getActiveRequestCount());
+        }
     }
 
     @Nested
@@ -412,6 +562,68 @@ class LingInstanceTest {
             assertTrue(completed);
             assertEquals(0, successAfterStopping.get());
             assertEquals(10, instance.getActiveRequestCount());
+        }
+    }
+
+    @Nested
+    @DisplayName("服务方法注册与查询")
+    class ServiceMethodTests {
+
+        @Test
+        @DisplayName("注册后应能查到对应方法")
+        void shouldFindRegisteredMethod() {
+            instance.registerServiceMethod("ling-a:orderService", "createOrder", new String[]{"java.lang.String", "int"});
+
+            assertTrue(instance.hasServiceMethod("ling-a:orderService", "createOrder",
+                    Arrays.asList("java.lang.String", "int")));
+        }
+
+        @Test
+        @DisplayName("参数类型不同应视为不同方法")
+        void differentParameterTypesShouldBeDifferent() {
+            instance.registerServiceMethod("ling-a:orderService", "createOrder", new String[]{"java.lang.String"});
+
+            assertFalse(instance.hasServiceMethod("ling-a:orderService", "createOrder",
+                    Arrays.asList("java.lang.String", "int")));
+        }
+
+        @Test
+        @DisplayName("未注册的服务应返回 false")
+        void unregisteredServiceShouldReturnFalse() {
+            assertFalse(instance.hasServiceMethod("ling-a:unknownService", "anyMethod",
+                    Arrays.asList()));
+        }
+
+        @Test
+        @DisplayName("同一服务可注册多个方法")
+        void multipleMethodsUnderSameService() {
+            instance.registerServiceMethod("ling-a:orderService", "createOrder", new String[]{"java.lang.String"});
+            instance.registerServiceMethod("ling-a:orderService", "cancelOrder", new String[]{"java.lang.String"});
+
+            assertTrue(instance.hasServiceMethod("ling-a:orderService", "createOrder",
+                    Arrays.asList("java.lang.String")));
+            assertTrue(instance.hasServiceMethod("ling-a:orderService", "cancelOrder",
+                    Arrays.asList("java.lang.String")));
+        }
+
+        @Test
+        @DisplayName("clearDetachedState 后所有服务方法应被清空")
+        void clearDetachedStateShouldEvictAllServiceMethods() {
+            instance.registerServiceMethod("ling-a:orderService", "createOrder", new String[]{"java.lang.String"});
+            instance.clearDetachedState();
+
+            assertFalse(instance.hasServiceMethod("ling-a:orderService", "createOrder",
+                    Arrays.asList("java.lang.String")));
+        }
+
+        @Test
+        @DisplayName("fqsid 或 methodName 为 null 时应安全忽略")
+        void nullArgumentsShouldBeIgnored() {
+            instance.registerServiceMethod(null, "createOrder", new String[]{"java.lang.String"});
+            instance.registerServiceMethod("ling-a:orderService", null, new String[]{"java.lang.String"});
+
+            assertFalse(instance.hasServiceMethod(null, "createOrder", Arrays.asList("java.lang.String")));
+            assertFalse(instance.hasServiceMethod("ling-a:orderService", null, Arrays.asList("java.lang.String")));
         }
     }
 

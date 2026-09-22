@@ -1,6 +1,7 @@
 package com.lingframe.core.classloader;
 
 import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.util.PathUtils;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -8,7 +9,6 @@ import java.nio.file.FileSystems;
 import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.Set;
 
 /**
  * 共享 API 管理器。
@@ -62,25 +62,26 @@ public class SharedApiManager {
     public void preloadFromConfig() {
         ensureMutable("preload shared APIs");
 
-        List<String> apiPaths = config.getPreloadApiJars();
-        if (apiPaths == null || apiPaths.isEmpty()) {
-            log.debug("[SharedApi] No preload paths configured, skipping initialization");
-            return;
-        }
-
         SharedApiClassLoader sharedApiClassLoader = getSharedApiClassLoader();
-        File lingHomeDir = new File(config.getLingHome());
 
-        for (String path : apiPaths) {
-            try {
-                log.info("🔍 [SharedApi] Preloading path {}", new File(path).getAbsolutePath());
-                loadPath(path, lingHomeDir, sharedApiClassLoader);
-            } catch (Exception e) {
-                log.error("❌ [SharedApi] Failed to load path {}", path, e);
+        List<String> apiPaths = config.getPreloadApiJars();
+        if (apiPaths != null && !apiPaths.isEmpty()) {
+            File lingHomeDir = new File(config.getLingHome());
+            for (String path : apiPaths) {
+                try {
+                    log.info("🔍 [SharedApi] Preloading path {}", new File(path).getAbsolutePath());
+                    loadPath(path, lingHomeDir, sharedApiClassLoader);
+                } catch (Exception e) {
+                    log.error("❌ [SharedApi] Failed to load path {}", path, e);
+                }
             }
+        } else {
+            log.debug("[SharedApi] No preload paths configured, skipping path scan");
         }
 
-        registerSharedPackages(sharedApiClassLoader);
+        // 绑定 SharedApiClassLoader 到 LingClassLoader（无论是否有预加载路径）
+        // 绑定后 addApi 加的新类会自动被 LingClassLoader 通过 isSharedClass 识别
+        bindSharedApiClassLoader(sharedApiClassLoader);
         log.info("📦 [SharedApi] Bootstrap load complete: jars={}, classes={}",
                 sharedApiClassLoader.getLoadedJarCount(),
                 sharedApiClassLoader.getSharedClassCount());
@@ -88,7 +89,7 @@ public class SharedApiManager {
 
     /**
      * 冻结共享 API 边界。
-     * 冻结后不再允许新增共享 API JAR、classes 目录和共享包前缀。
+     * 冻结后不再允许新增共享 API JAR、classes 目录和绑定 SharedApiClassLoader。
      * ⚠️ 这是“共享契约定版”动作，不是普通的状态切换。
      */
     public synchronized void freezeSharedBoundary() {
@@ -105,13 +106,11 @@ public class SharedApiManager {
         return frozen;
     }
 
-    private void registerSharedPackages(SharedApiClassLoader sharedApiClassLoader) {
-        Set<String> sharedPackages = sharedApiClassLoader.getSharedPackagePrefixes();
-        if (!sharedPackages.isEmpty()) {
-            // ⚠️ SharedApiClassLoader 负责真正持有类，LingClassLoader 这里只维护“必须委派”的包前缀视图
-            LingClassLoader.addSharedApiPackages(sharedPackages);
-            log.info("📦 [SharedApi] Registered shared package prefixes: {}", sharedPackages);
-        }
+    private void bindSharedApiClassLoader(SharedApiClassLoader sharedApiClassLoader) {
+        // ⚠️ 绑定引用而非前缀：LingClassLoader 通过 isSharedClass 按完整类名精确判定是否为公共契约。
+        // 绑定后 SharedApiClassLoader 内部 classSourceMap 持续增长（addApi 时），
+        // LingClassLoader 通过引用实时读取，无需再次同步。
+        LingClassLoader.bindSharedApiClassLoader(sharedApiClassLoader);
     }
 
     /**
@@ -232,7 +231,7 @@ public class SharedApiManager {
             } else {
                 sharedApiClassLoader.addApiJar(file);
             }
-            registerSharedPackages(sharedApiClassLoader);
+            bindSharedApiClassLoader(sharedApiClassLoader);
             log.info("📦 [SharedApi] Added shared API {}", file.getName());
             return true;
         } catch (Exception e) {
@@ -277,41 +276,10 @@ public class SharedApiManager {
     }
 
     /**
-     * 解析路径（支持绝对路径、相对当前工作目录、相对 lingHome 路径）。
+     * 解析路径（支持绝对路径、相对当前工作目录、相对 lingHome 路径，支持祖先链向上检索）。
      * 始终返回规范化后的绝对路径。
      */
     private File resolvePath(String path, File lingHomeDir) {
-        if (path == null || path.trim().isEmpty()) {
-            return null;
-        }
-
-        File file = new File(path);
-
-        // 1. 如果已经是绝对路径，直接使用
-        if (file.isAbsolute()) {
-            return getTypeSafeFile(file);
-        }
-
-        // 2. 优先尝试相对当前工作目录，开发模式下最常见
-        if (file.exists()) {
-            return getTypeSafeFile(file);
-        }
-
-        // 3. 再尝试相对 lingHome
-        File lingFile = new File(lingHomeDir, path);
-        if (lingFile.exists()) {
-            return getTypeSafeFile(lingFile);
-        }
-
-        // 4. 即便不存在，也返回标准化后的目标路径，方便上层统一输出错误信息
-        return getTypeSafeFile(lingFile);
-    }
-
-    private File getTypeSafeFile(File file) {
-        try {
-            return file.getCanonicalFile();
-        } catch (Exception e) {
-            return file.getAbsoluteFile();
-        }
+        return PathUtils.resolvePath(path, lingHomeDir);
     }
 }

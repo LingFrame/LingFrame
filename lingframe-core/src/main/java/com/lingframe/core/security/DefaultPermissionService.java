@@ -1,12 +1,12 @@
 package com.lingframe.core.security;
 
 import com.lingframe.api.context.LingCallContext;
+import com.lingframe.api.constant.LingCoreConstants;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.PermissionAuditRecord;
 import com.lingframe.api.security.PermissionAuditResult;
 import com.lingframe.api.security.PermissionInfo;
 import com.lingframe.api.security.PermissionService;
-import com.lingframe.core.audit.AuditManager;
 import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -24,13 +25,14 @@ import java.util.concurrent.ConcurrentHashMap;
 public class DefaultPermissionService implements PermissionService {
 
     private static final String GLOBAL_WHITELIST_PREFIX = "com.lingframe.api.";
-    private static final String LING_CORE_ID = "lingcore-app";
-
     private final EventBus eventBus;
+    private final LingFrameConfig config;
     private final Map<String, Map<String, AccessType>> permissions = new ConcurrentHashMap<>();
 
-    public DefaultPermissionService(EventBus eventBus) {
+    public DefaultPermissionService(EventBus eventBus, LingFrameConfig config) {
         this.eventBus = eventBus;
+        this.config = Objects.requireNonNull(config,
+                "LingFrameConfig is required for DefaultPermissionService");
     }
 
     @Override
@@ -42,20 +44,41 @@ public class DefaultPermissionService implements PermissionService {
             return false;
         }
 
-        if (LING_CORE_ID.equals(lingId) && !LingFrameConfig.current().isLingCoreCheckPermissions()) {
-            log.debug("[Auth] LINGCORE application bypassed");
+        // 灵元 API 契约包，明确放行（与调用方身份无关）
+        if (capability.startsWith(GLOBAL_WHITELIST_PREFIX)) {
+            log.debug("[Auth] Whitelist bypassed");
             return true;
         }
 
-        if (lingId == null || capability.startsWith(GLOBAL_WHITELIST_PREFIX)) {
-            log.debug("[Auth] Whitelist bypassed");
+        // 显式灵核身份 + 未开启灵核权限检查：灵核不是灵元、永无 ling.yml 权限声明，
+        // 把灵核 ID 当灵元查权限表语义本身就错——会必报 unauthorized access。
+        // gate 在 !config.isLingCoreCheckPermissions() 上：基础设施代理（cache/SQL/Redis）
+        // 直接调 isAllowed 不走 PermissionGovernanceFilter，加固 toggle 必须在此 gate 才能控制这表面。
+        // 加固 toggle lingCoreCheckPermissions=true 时灵核身份也走权限表 enforce（按需声明）。
+        if (LingCoreConstants.LINGCORE_LING_ID.equals(lingId) && !config.isLingCoreCheckPermissions()) {
+            log.debug("[Auth] LINGCORE identity bypassed ling permission table (not a ling, check-permissions disabled)");
+            return true;
+        }
+
+        // lingId==null：未知调用方（无 LingCallContext），区分灵核治理开关
+        // 避免无身份请求直接 fail-open 绕过权限边界，与 SQL proxy 行为对齐
+        if (lingId == null) {
+            if (config.isLingCoreGovernanceEnabled()) {
+                log.warn("[Auth] Access rejected: no LingContext but LINGCORE governance is enabled. capability={}",
+                        capability);
+                return false;
+            }
+            // 灵核治理关闭：视为灵核内部调用，默认放行
+            log.debug("[Auth] No LingContext (LINGCORE governance disabled), allowed. capability={}", capability);
             return true;
         }
 
         boolean allowed = checkInternal(lingId, capability, accessType);
         log.debug("[Auth] Permission table check result: {}", allowed);
 
-        if (!allowed && LingFrameConfig.current().isDevMode()) {
+        // 开发模式：未声明权限仍放行，便于本地联调；同时告警 + 事件，提醒补 ling.yml
+        // 生产（非 dev）绝不放行——安全与 DX 分层，不混为一谈
+        if (!allowed && config.isDevMode()) {
             log.warn("==========================================================================");
             log.warn("[DEV WARNING] ling [{}] unauthorized access [{}] ({}). Please declare in ling.yml: {}",
                     lingId, capability, accessType, capability);
@@ -151,16 +174,8 @@ public class DefaultPermissionService implements PermissionService {
                     callerLingId, capability, action, source, ruleSource, failureReason);
         }
 
-        AuditManager.asyncRecord(
-                traceId,
-                callerLingId,
-                principal,
-                record.getResult(),
-                capability,
-                action,
-                resource,
-                failureReason,
-                record.getCostNanos());
+        // 微内核解耦：审计记录通过 EventBus 异步分发，
+        // audit 扩展包订阅 AuditLogEvent 自行持久化，security 不直接依赖 audit 包。
 
         if (eventBus != null) {
             // MonitoringEvents.* 由 EventBus 异步分发。
@@ -188,8 +203,33 @@ public class DefaultPermissionService implements PermissionService {
     }
 
     @Override
+    public void replacePermissions(String lingId, Map<String, AccessType> newPermissions) {
+        // 使用 compute 原子替换，避免「先 removeLing 再逐条 grant」造成的权限真空窗口。
+        // compute 返回 null 时自动移除 entry，等价于清空。
+        permissions.compute(lingId, (k, existing) ->
+                (newPermissions == null || newPermissions.isEmpty())
+                        ? null
+                        : new ConcurrentHashMap<>(newPermissions));
+        log.info("[PermissionService] Atomically replaced permissions for lingId={}, capabilityCount={}",
+                lingId, newPermissions == null ? 0 : newPermissions.size());
+    }
+
+    @Override
     public boolean isLingCoreGovernanceEnabled() {
-        return LingFrameConfig.current().isLingCoreGovernanceEnabled();
+        return config.isLingCoreGovernanceEnabled();
+    }
+
+    @Override
+    public boolean hasCapabilityPrefix(String lingId, String capabilityPrefix) {
+        if (lingId == null || capabilityPrefix == null) {
+            return false;
+        }
+        Map<String, AccessType> lingPerms = permissions.get(lingId);
+        if (lingPerms == null) {
+            return false;
+        }
+        return lingPerms.keySet().stream()
+                .anyMatch(cap -> cap != null && cap.startsWith(capabilityPrefix));
     }
 
     private String normalize(String value) {
@@ -206,6 +246,9 @@ public class DefaultPermissionService implements PermissionService {
         return value.substring(0, maxLength) + "...";
     }
 
+    /**
+     * 开发模式权限旁路告警：不阻断访问，但要让监控/Dashboard 能看见。
+     */
     private void publishDevModeBypassAlert(String lingId, String capability, AccessType accessType) {
         if (eventBus == null) {
             return;
@@ -219,7 +262,6 @@ public class DefaultPermissionService implements PermissionService {
                 lingId,
                 capability,
                 accessType);
-        // Dev 模式告警同样通过异步监控事件投递，适合监控与 Dashboard 消费。
         eventBus.publish(new MonitoringEvents.AlertNotifyEvent(
                 traceId,
                 "WARNING",
@@ -264,6 +306,6 @@ public class DefaultPermissionService implements PermissionService {
 
     private String resolveRuleSource() {
         InvocationContext ctx = InvocationContext.current();
-        return ctx == null ? null : normalize(ctx.getRuleSource());
+        return ctx == null ? null : normalize(ctx.governance().getRuleSource());
     }
 }

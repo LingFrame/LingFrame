@@ -71,7 +71,7 @@ class MacroStateGuardFilterTest {
         @DisplayName("运行时为 ACTIVE 时应直接透传")
         void doFilter_WhenStatusIsActive_ShouldPassThrough() throws Throwable {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
-            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+            when(lingRepository.getRoutableTarget("demo-ling")).thenReturn(lingRuntime);
             when(lingRuntime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
 
             Object expectedResult = new Object();
@@ -87,7 +87,7 @@ class MacroStateGuardFilterTest {
         @DisplayName("运行时为 DEGRADED 时应直接透传")
         void doFilter_WhenStatusIsDegraded_ShouldPassThrough() throws Throwable {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
-            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+            when(lingRepository.getRoutableTarget("demo-ling")).thenReturn(lingRuntime);
             when(lingRuntime.currentStatus()).thenReturn(RuntimeStatus.DEGRADED);
 
             Object expectedResult = new Object();
@@ -96,6 +96,29 @@ class MacroStateGuardFilterTest {
             Object result = filter.doFilter(context, filterChain);
 
             assertEquals(expectedResult, result);
+            verify(filterChain).doFilter(context);
+        }
+
+        @Test
+        @DisplayName("裸 contractId FQSID 应优先读 targetLingId 而非从 FQSID 提取")
+        void doFilter_WhenBareContractId_ShouldReadTargetLingIdNotExtractFromFqsid() throws Throwable {
+            // 模拟 ContractProviderRoutingFilter 在 L0 阶段已解析出真实 lingId 并设置 targetLingId
+            // FQSID 保持裸 contractId（L0 不改写 FQSID）
+            context.setServiceFQSID("com.example.UserService");
+            context.setTargetLingId("ling-a");
+
+            // 应该用 "ling-a" 查询，而不是从 FQSID 提取
+            when(lingRepository.getRoutableTarget("ling-a")).thenReturn(lingRuntime);
+            when(lingRuntime.currentStatus()).thenReturn(RuntimeStatus.ACTIVE);
+
+            Object expectedResult = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expectedResult);
+
+            Object result = filter.doFilter(context, filterChain);
+
+            assertEquals(expectedResult, result);
+            // 关键断言：用真实 lingId 查询，绝不从裸 contractId FQSID 提取
+            verify(lingRepository).getRoutableTarget("ling-a");
             verify(filterChain).doFilter(context);
         }
     }
@@ -108,7 +131,7 @@ class MacroStateGuardFilterTest {
         @DisplayName("运行时不存在时应抛出路由失败")
         void doFilter_WhenRuntimeNotFound_ShouldThrowRouteFailure() {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
-            when(lingRepository.getRuntime("demo-ling")).thenReturn(null);
+            when(lingRepository.getRoutableTarget("demo-ling")).thenReturn(null);
 
             LingInvocationException ex = assertThrows(LingInvocationException.class,
                     () -> filter.doFilter(context, filterChain));
@@ -121,7 +144,7 @@ class MacroStateGuardFilterTest {
         @DisplayName("运行时为 INACTIVE 时应抛出路由失败")
         void doFilter_WhenStatusIsInactive_ShouldThrowRouteFailure() {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
-            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+            when(lingRepository.getRoutableTarget("demo-ling")).thenReturn(lingRuntime);
             when(lingRuntime.currentStatus()).thenReturn(RuntimeStatus.INACTIVE);
 
             LingInvocationException ex = assertThrows(LingInvocationException.class,
@@ -135,7 +158,7 @@ class MacroStateGuardFilterTest {
         @DisplayName("运行时为 STOPPING 时应抛出状态拒绝")
         void doFilter_WhenStatusIsStopping_ShouldThrowStateRejected() {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
-            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+            when(lingRepository.getRoutableTarget("demo-ling")).thenReturn(lingRuntime);
             when(lingRuntime.currentStatus()).thenReturn(RuntimeStatus.STOPPING);
 
             LingInvocationException ex = assertThrows(LingInvocationException.class,
@@ -149,7 +172,7 @@ class MacroStateGuardFilterTest {
         @DisplayName("运行时为 RECOVERING 时应抛出状态拒绝")
         void doFilter_WhenStatusIsRecovering_ShouldThrowStateRejected() {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
-            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+            when(lingRepository.getRoutableTarget("demo-ling")).thenReturn(lingRuntime);
             when(lingRuntime.currentStatus()).thenReturn(RuntimeStatus.RECOVERING);
 
             LingInvocationException ex = assertThrows(LingInvocationException.class,
@@ -163,7 +186,7 @@ class MacroStateGuardFilterTest {
         @DisplayName("运行时为 REMOVED 时应抛出路由失败")
         void doFilter_WhenStatusIsRemoved_ShouldThrowRouteFailure() {
             context.setServiceFQSID("demo-ling:com.example.DemoService");
-            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+            when(lingRepository.getRoutableTarget("demo-ling")).thenReturn(lingRuntime);
             when(lingRuntime.currentStatus()).thenReturn(RuntimeStatus.REMOVED);
 
             LingInvocationException ex = assertThrows(LingInvocationException.class,

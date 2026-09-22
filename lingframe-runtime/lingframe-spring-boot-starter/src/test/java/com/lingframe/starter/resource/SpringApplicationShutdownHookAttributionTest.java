@@ -1,6 +1,7 @@
 package com.lingframe.starter.resource;
 
 import com.lingframe.api.context.LingContext;
+import com.lingframe.core.config.LingFrameConfig;
 import com.lingframe.starter.adapter.SpringLingContainer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -19,13 +20,17 @@ import org.springframework.core.io.DefaultResourceLoader;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import org.springframework.test.context.TestExecutionListeners;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -33,6 +38,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @DisplayName("SpringApplicationShutdownHook 归因回归测试")
+@TestExecutionListeners(listeners = LingFrameConfigResetListener.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class SpringApplicationShutdownHookAttributionTest {
 
     @AfterEach
@@ -40,6 +47,7 @@ class SpringApplicationShutdownHookAttributionTest {
         Method resetMethod = bootShutdownHook().getClass().getDeclaredMethod("reset");
         resetMethod.setAccessible(true);
         resetMethod.invoke(bootShutdownHook());
+        LingFrameConfig.clear();
     }
 
     @Test
@@ -82,10 +90,10 @@ class SpringApplicationShutdownHookAttributionTest {
                 builder,
                 getClass().getClassLoader(),
                 null,
-                java.util.Collections.emptyList(),
-                java.util.Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
                 mock(ApplicationContext.class),
-                java.util.Collections.emptyList(),
+                Collections.emptyList(),
                 "v1");
 
         LingContext lingContext = mock(LingContext.class);
@@ -116,10 +124,10 @@ class SpringApplicationShutdownHookAttributionTest {
                     builder,
                     lingClassLoader,
                     null,
-                    java.util.Collections.emptyList(),
-                    java.util.Collections.emptyList(),
+                    Collections.emptyList(),
+                    Collections.emptyList(),
                     mock(ApplicationContext.class),
-                    java.util.Collections.emptyList(),
+                    Collections.emptyList(),
                     "v1");
 
             LingContext lingContext = mock(LingContext.class);
@@ -257,11 +265,20 @@ class SpringApplicationShutdownHookAttributionTest {
         Class<?> type = candidate.getClass();
         while (type != null && type != Object.class) {
             for (Field field : type.getDeclaredFields()) {
-                if ((field.getModifiers() & java.lang.reflect.Modifier.STATIC) != 0) {
+                if ((field.getModifiers() & Modifier.STATIC) != 0) {
                     continue;
                 }
-                field.setAccessible(true);
-                Object fieldValue = field.get(candidate);
+                // JDK9+ 模块系统下，未 opens 的 java.base 内部包（如 java.util.concurrent.atomic、
+                // java.lang 等）字段无法反射。此时把该对象当作叶子跳过，而非抛出异常中断整条引用
+                // 路径扫描——被卸载灵元 CL 的残留引用必然经由可访问的应用/Spring 字段承载，跳过
+                // JDK 内部包细节不影响"是否残留引用"这个判定结果。SB2/JDK8 无模块系统，恒不命中。
+                Object fieldValue;
+                try {
+                    field.setAccessible(true);
+                    fieldValue = field.get(candidate);
+                } catch (Exception e) {
+                    continue;
+                }
                 String childPath = findReferencePath(
                         fieldValue,
                         targetClassLoader,
@@ -283,11 +300,11 @@ class SpringApplicationShutdownHookAttributionTest {
         return field.get(null);
     }
 
-    @SpringBootApplication
+    @SpringBootApplication(scanBasePackageClasses = {})
     static class PlainApp {
     }
 
-    @SpringBootApplication
+    @SpringBootApplication(scanBasePackageClasses = {})
     static class ReadyListenerApp {
         @Bean
         ApplicationListener<ApplicationReadyEvent> readyListener() {
@@ -296,7 +313,7 @@ class SpringApplicationShutdownHookAttributionTest {
         }
     }
 
-    @SpringBootApplication
+    @SpringBootApplication(scanBasePackageClasses = {})
     static class ContainerApp {
     }
 

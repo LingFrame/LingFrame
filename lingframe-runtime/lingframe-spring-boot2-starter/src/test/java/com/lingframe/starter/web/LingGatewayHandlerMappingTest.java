@@ -10,12 +10,14 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerMapping;
 
 import java.lang.reflect.Method;
+import java.util.Collections;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -48,9 +50,10 @@ class LingGatewayHandlerMappingTest {
         request.setServletPath("/gateway");
         when(webInterfaceManager.gatewayHandler())
                 .thenReturn(new WebInterfaceManager.LingGatewayHandler(webInterfaceManager));
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
-        LingGatewayHandlerMapping mapping = new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager);
+        LingGatewayHandlerMapping mapping = new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager,
+                Collections.<String>emptyList());
 
         Object handler = mapping.getHandler(request).getHandler();
         assertInstanceOf(HandlerMethod.class, handler);
@@ -65,7 +68,7 @@ class LingGatewayHandlerMappingTest {
     }
 
     @Test
-    @DisplayName("暴露路径变量前应去除 forwarded prefix")
+    @DisplayName("暴露路径变量前应去除白名单命中的 forwarded prefix")
     void shouldStripForwardedPrefixBeforeExposingPathVariables() throws Exception {
         Method targetMethod = DemoController.class.getMethod("detail", String.class);
         WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
@@ -84,9 +87,10 @@ class LingGatewayHandlerMappingTest {
         request.addHeader("X-Forwarded-Prefix", "/proxy");
         when(webInterfaceManager.gatewayHandler())
                 .thenReturn(new WebInterfaceManager.LingGatewayHandler(webInterfaceManager));
-        when(webRouteResolver.resolveRoute(request)).thenReturn(resolution);
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
 
-        LingGatewayHandlerMapping mapping = new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager);
+        LingGatewayHandlerMapping mapping = new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager,
+                Collections.singletonList("/proxy"));
 
         Object handler = mapping.getHandler(request).getHandler();
         assertInstanceOf(HandlerMethod.class, handler);
@@ -98,6 +102,37 @@ class LingGatewayHandlerMappingTest {
         @SuppressWarnings("unchecked")
         Map<String, String> uriVariables = (Map<String, String>) attr;
         assertEquals("42", uriVariables.get("id"));
+    }
+
+    @Test
+    @DisplayName("空白名单时不采信转发前缀（C10 安全默认）")
+    void shouldNotTrustForwardedPrefixWithoutWhitelist() throws Exception {
+        Method targetMethod = DemoController.class.getMethod("detail", String.class);
+        WebInterfaceMetadata metadata = WebInterfaceMetadata.builder()
+                .lingId("ling-a")
+                .version("v1")
+                .targetBean(new DemoController())
+                .targetMethod(targetMethod)
+                .classLoader(DemoController.class.getClassLoader())
+                .urlPattern("/ling-a/demo/{id}")
+                .httpMethod("GET")
+                .requiredPermission("demo:read")
+                .build();
+        WebRouteResolution resolution = new WebRouteResolution("GET#/ling-a/demo/{id}", metadata, null, null);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/proxy/ling-a/demo/42");
+        request.addHeader("X-Forwarded-Prefix", "/proxy");
+        when(webInterfaceManager.gatewayHandler())
+                .thenReturn(new WebInterfaceManager.LingGatewayHandler(webInterfaceManager));
+        when(webRouteResolver.resolveRoute(any())).thenReturn(resolution);
+
+        LingGatewayHandlerMapping mapping = new LingGatewayHandlerMapping(webRouteResolver, webInterfaceManager,
+                Collections.<String>emptyList());
+
+        Object handler = mapping.getHandler(request).getHandler();
+        assertInstanceOf(HandlerMethod.class, handler);
+        assertEquals("/proxy/ling-a/demo/42",
+                request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE));
     }
 
     static class DemoController {

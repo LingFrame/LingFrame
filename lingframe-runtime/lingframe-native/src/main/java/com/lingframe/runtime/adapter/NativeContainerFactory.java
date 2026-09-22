@@ -1,6 +1,7 @@
 package com.lingframe.runtime.adapter;
 
 import com.lingframe.api.config.LingDefinition;
+import com.lingframe.core.config.LingFrameInfo;
 import com.lingframe.core.spi.ContainerFactory;
 import com.lingframe.core.spi.LingContainer;
 import com.lingframe.api.exception.InvalidArgumentException;
@@ -11,6 +12,16 @@ import java.io.File;
 
 @Slf4j
 public class NativeContainerFactory implements ContainerFactory {
+
+    private final LingFrameInfo lingFrameInfo;
+
+    public NativeContainerFactory() {
+        this(null);
+    }
+
+    public NativeContainerFactory(LingFrameInfo lingFrameInfo) {
+        this.lingFrameInfo = lingFrameInfo;
+    }
 
     @Override
     public LingContainer create(LingDefinition definition, File sourceFile, ClassLoader classLoader) {
@@ -29,7 +40,7 @@ public class NativeContainerFactory implements ContainerFactory {
 
         try {
             Class<?> mainClass = classLoader.loadClass(mainClassName);
-            return new NativeLingContainer(lingId, mainClass, classLoader, sourceFile);
+            return new NativeLingContainer(lingId, mainClass, classLoader, sourceFile, lingFrameInfo);
         } catch (ClassNotFoundException e) {
             log.error("[{}] Main-Class {} not found in classpath", lingId, mainClassName);
             throw new LingInstallException(lingId, "Invalid Main-Class: " + mainClassName, e);

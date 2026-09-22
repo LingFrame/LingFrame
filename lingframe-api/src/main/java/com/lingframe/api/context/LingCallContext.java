@@ -1,5 +1,7 @@
 package com.lingframe.api.context;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -25,11 +27,14 @@ public final class LingCallContext {
     }
 
     public static void setLabels(Map<String, String> labels) {
-        LABELS.set(labels);
+        // 防御性拷贝：隔离调用方对 Map 的后续修改，避免外部突变影响上下文一致性
+        LABELS.set(labels == null ? null : new HashMap<>(labels));
     }
 
     public static Map<String, String> getLabels() {
-        return LABELS.get();
+        Map<String, String> labels = LABELS.get();
+        // 返回不可变视图，防止外部直接修改 ThreadLocal 中的 Map
+        return labels == null ? Collections.emptyMap() : Collections.unmodifiableMap(labels);
     }
 
     public static String startTrace() {

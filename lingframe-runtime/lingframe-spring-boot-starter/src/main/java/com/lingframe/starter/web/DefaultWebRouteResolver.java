@@ -5,8 +5,8 @@ import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.spi.TrafficRouter;
-import org.springframework.util.ReflectionUtils;
 import org.springframework.util.AntPathMatcher;
+import org.springframework.util.ReflectionUtils;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.method.HandlerMethod;
 
@@ -27,16 +27,29 @@ public final class DefaultWebRouteResolver implements WebRouteResolver {
     private final Map<String, Set<String>> routePatternsByMethod;
     private final LingRepository lingRepository;
     private final TrafficRouter trafficRouter;
+    private final List<String> trustedForwardedPrefixes;
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
 
     public DefaultWebRouteResolver(Map<String, List<WebInterfaceMetadata>> metadataMap,
                                    Map<String, Set<String>> routePatternsByMethod,
                                    LingRepository lingRepository,
                                    TrafficRouter trafficRouter) {
+        this(metadataMap, routePatternsByMethod, lingRepository, trafficRouter,
+                Collections.<String>emptyList());
+    }
+
+    public DefaultWebRouteResolver(Map<String, List<WebInterfaceMetadata>> metadataMap,
+                                   Map<String, Set<String>> routePatternsByMethod,
+                                   LingRepository lingRepository,
+                                   TrafficRouter trafficRouter,
+                                   List<String> trustedForwardedPrefixes) {
         this.metadataMap = metadataMap;
         this.routePatternsByMethod = routePatternsByMethod;
         this.lingRepository = lingRepository;
         this.trafficRouter = trafficRouter;
+        this.trustedForwardedPrefixes = trustedForwardedPrefixes != null
+                ? trustedForwardedPrefixes
+                : Collections.<String>emptyList();
     }
 
     @Override
@@ -47,7 +60,7 @@ public final class DefaultWebRouteResolver implements WebRouteResolver {
         }
 
         String httpMethod = resolveHttpMethod(request);
-        String lookupPath = WebRequestPathSupport.resolveLookupPath(request);
+        String lookupPath = WebRequestPathSupport.resolveLookupPath(request, trustedForwardedPrefixes);
         if (httpMethod == null || lookupPath == null) {
             return null;
         }
@@ -127,7 +140,7 @@ public final class DefaultWebRouteResolver implements WebRouteResolver {
             return cacheResolution(request, buildResolution(routeKey, sample, runtime, null));
         }
 
-        String forcedVersion = readRequestAttribute(request, WebInterfaceManager.REQUEST_TARGET_VERSION_KEY, String.class);
+        String forcedVersion = readRequestAttribute(request, WebRequestKeys.TARGET_VERSION, String.class);
         if (forcedVersion != null) {
             WebInterfaceMetadata forcedMeta = resolveByVersion(routeKey, forcedVersion);
             if (forcedMeta != null) {
@@ -263,6 +276,13 @@ public final class DefaultWebRouteResolver implements WebRouteResolver {
     private List<String> findMatchingRouteKeys(String httpMethod, String lookupPath, Object request) {
         List<RouteCandidate> candidates = new ArrayList<>();
         List<String> candidateMethods = resolveCandidateHttpMethods(httpMethod);
+
+        // 遍历 metadataMap 按 method 过滤，再对每个样本做 pathMatcher.match。
+        // routePatternsByMethod 与 metadataMap 由 WebInterfaceManager 同步维护（register/rebuild），
+        // 任何通过 method 过滤的样本的 urlPattern 注定在 routePatternsByMethod 中，
+        // 故无法用 routePatternsByMethod 做第二道预过滤来跳过 pathMatcher.match。
+        // 真正的优化需按 lookupPath 反向索引候选 patterns，但 AntPathMatcher 不支持反向匹配，
+        // 需引入前缀树等数据结构，超出本次收敛范围；当前路由规模下 O(n) 扫描可接受。
         for (Map.Entry<String, List<WebInterfaceMetadata>> entry : metadataMap.entrySet()) {
             List<WebInterfaceMetadata> metas = entry.getValue();
             if (metas == null || metas.isEmpty()) {
@@ -348,19 +368,19 @@ public final class DefaultWebRouteResolver implements WebRouteResolver {
         if (request == null || resolution == null) {
             return resolution;
         }
-        writeRequestAttribute(request, WebInterfaceManager.REQUEST_ROUTE_RESOLUTION_KEY, resolution);
+        writeRequestAttribute(request, WebRequestKeys.ROUTE_RESOLUTION, resolution);
         WebInterfaceMetadata metadata = resolution.getMetadata();
         if (metadata != null) {
-            writeRequestAttribute(request, WebInterfaceManager.REQUEST_METADATA_KEY, metadata);
+            writeRequestAttribute(request, WebRequestKeys.METADATA, metadata);
             if (metadata.getVersion() != null) {
-                writeRequestAttribute(request, WebInterfaceManager.REQUEST_TARGET_VERSION_KEY, metadata.getVersion());
+                writeRequestAttribute(request, WebRequestKeys.TARGET_VERSION, metadata.getVersion());
             }
         }
         return resolution;
     }
 
     private WebRouteResolution readCachedResolution(String routeKey, Object request) {
-        Object cached = readRequestAttribute(request, WebInterfaceManager.REQUEST_ROUTE_RESOLUTION_KEY);
+        Object cached = readRequestAttribute(request, WebRequestKeys.ROUTE_RESOLUTION);
         if (!(cached instanceof WebRouteResolution)) {
             return null;
         }

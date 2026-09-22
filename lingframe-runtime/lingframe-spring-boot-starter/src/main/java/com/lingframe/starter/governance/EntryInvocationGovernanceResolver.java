@@ -1,21 +1,25 @@
 package com.lingframe.starter.governance;
 
 import com.lingframe.api.config.GovernancePolicy;
-import com.lingframe.core.governance.LocalGovernanceRegistry;
-import com.lingframe.core.ling.LingInstance;
-import com.lingframe.core.ling.LingRepository;
-import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.pipeline.InvocationContext;
 
+/**
+ * 入口调用治理参数下发器。
+ * <p>
+ * 解析灵元生效策略（静态 + 补丁合并）并把 timeout / rateLimit / maxConcurrentThreads
+ * 下发到 {@link InvocationContext#governance()} 分区。
+ * <p>
+ * 策略解析委托 {@link GovernanceAdminService#getEffectivePolicy}，
+ * 不再直接持有 {@code LocalGovernanceRegistry} 或重写 merge 同构代码——
+ * 那是治理内核的正式职责，适配层只负责把内核已算出的策略下发到调用上下文。
+ */
 public class EntryInvocationGovernanceResolver {
 
-    private final LingRepository lingRepository;
-    private final LocalGovernanceRegistry governanceRegistry;
+    private final GovernanceAdminService governanceAdmin;
 
-    public EntryInvocationGovernanceResolver(LingRepository lingRepository,
-            LocalGovernanceRegistry governanceRegistry) {
-        this.lingRepository = lingRepository;
-        this.governanceRegistry = governanceRegistry;
+    public EntryInvocationGovernanceResolver(GovernanceAdminService governanceAdmin) {
+        this.governanceAdmin = governanceAdmin;
     }
 
     public void applyTo(InvocationContext context, String lingId) {
@@ -23,44 +27,20 @@ public class EntryInvocationGovernanceResolver {
             return;
         }
 
-        GovernancePolicy effectivePolicy = resolveEffectivePolicy(lingId);
+        GovernancePolicy effectivePolicy = governanceAdmin == null ? null : governanceAdmin.getEffectivePolicy(lingId);
         if (effectivePolicy == null || effectivePolicy.getInvocation() == null) {
             return;
         }
 
         GovernancePolicy.InvocationPolicy invocation = effectivePolicy.getInvocation();
         if (invocation.getTimeoutMs() != null) {
-            context.setTimeout(invocation.getTimeoutMs());
+            context.governance().setTimeoutMs(invocation.getTimeoutMs());
         }
         if (invocation.getRateLimitPerSecond() != null) {
-            context.setRateLimitPerSecond(invocation.getRateLimitPerSecond());
+            context.governance().setRateLimitPerSecond(invocation.getRateLimitPerSecond());
         }
         if (invocation.getMaxConcurrentThreads() != null) {
-            context.setMaxConcurrentThreads(invocation.getMaxConcurrentThreads());
+            context.governance().setMaxConcurrentThreads(invocation.getMaxConcurrentThreads());
         }
-    }
-
-    private GovernancePolicy resolveEffectivePolicy(String lingId) {
-        GovernancePolicy base = resolveStaticPolicy(lingId);
-        GovernancePolicy patch = governanceRegistry == null ? null : governanceRegistry.getPatch(lingId);
-        if (base == null && patch == null) {
-            return null;
-        }
-        return GovernancePolicy.merge(base, patch);
-    }
-
-    private GovernancePolicy resolveStaticPolicy(String lingId) {
-        if (lingRepository == null) {
-            return null;
-        }
-        LingRuntime runtime = lingRepository.getRuntime(lingId);
-        if (runtime == null || runtime.getInstancePool() == null) {
-            return null;
-        }
-        LingInstance instance = runtime.getInstancePool().getDefault();
-        if (instance == null || instance.getDefinition() == null || instance.getDefinition().getGovernance() == null) {
-            return null;
-        }
-        return instance.getDefinition().getGovernance().copy();
     }
 }

@@ -1,11 +1,12 @@
 package com.lingframe.core.pipeline;
 
-import com.lingframe.core.ling.LingRuntime;
+import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.metrics.LingHealthMetrics;
 import com.lingframe.core.metrics.MetricsCollector;
 import com.lingframe.core.spi.LingFilterChain;
 import com.lingframe.core.spi.LingInvocationFilter;
+import com.lingframe.core.spi.RoutableTarget;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.monitor.MonitoringEvents;
 import com.lingframe.api.context.LingCallContext;
@@ -115,7 +116,7 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
         }
 
         // 缓存运行时引用，减少重复查找压力 (复用逻辑遵循铁律 2.0，已在 reset 中处理清理)
-        LingRuntime runtime = ctx.getRuntime();
+        RoutableTarget runtime = ctx.getRuntime();
         if (runtime == null && repository != null) {
             String lingId = ctx.getTargetLingId();
             if (lingId == null && ctx.getServiceFQSID() != null) {
@@ -127,43 +128,60 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
                 }
             }
             if (lingId != null) {
-                runtime = repository.getRuntime(lingId);
+                runtime = repository.getRoutableTarget(lingId);
                 ctx.setRuntime(runtime);
             }
         }
 
-        if (runtime != null) {
-            runtime.startRequest();
+        // 活跃请求计数下沉到 LingHealthMetrics（独立于 LingRuntime）
+        // 请求计数仅对灵元（LingRuntime）生效；灵核无状态机，跳过
+        String lingIdForActive = ctx.getTargetLingId();
+        if (lingIdForActive == null && ctx.getServiceFQSID() != null) {
+            String fqsid = ctx.getServiceFQSID();
+            int idx = fqsid.indexOf(':');
+            if (idx > 0) {
+                lingIdForActive = fqsid.substring(0, idx);
+            }
         }
+        LingHealthMetrics activeMetrics = (metricsCollector != null && lingIdForActive != null)
+                ? metricsCollector.getOrCreate(lingIdForActive) : null;
+        if (activeMetrics != null) {
+            activeMetrics.startRequest();
+        }
+        // lingRuntime 不再持有流量统计，删 startRequest/endRequest 直写
 
         String lingId = ctx.getTargetLingId();
         String serviceFQSID = ctx.getServiceFQSID();
         String operation = ctx.getOperation();
         int depth = LingCallContext.getDepth();
-        
+
         LingCallContext.increaseDepth();
-        
+
         publishTrace(traceId, lingId, "→ " + (operation != null ? operation : serviceFQSID), "IN", depth);
 
         try {
             Object result = chain.doFilter(ctx);
             long costMs = (System.nanoTime() - start) / 1_000_000;
-            publishTrace(traceId, lingId, 
-                "← " + (operation != null ? operation : serviceFQSID) + " (" + costMs + "ms)", 
-                "OUT", depth);
+            publishTrace(traceId, lingId,
+                    "← " + (operation != null ? operation : serviceFQSID) + " (" + costMs + "ms)",
+                    "OUT", depth);
             recordMetrics(ctx, start, true, null);
             return result;
+        } catch (Error e) {
+            // Error（OOM / StackOverflow）跳过指标记录副作用直接透传，
+            // 避免在 JVM 即将崩溃时再触发 publishTrace 导致二次错误。
+            throw e;
         } catch (Throwable t) {
             long costMs = (System.nanoTime() - start) / 1_000_000;
-            publishTrace(traceId, lingId, 
-                "✗ " + (operation != null ? operation : serviceFQSID) + " (" + costMs + "ms) - " + t.getClass().getSimpleName(), 
-                "ERROR", depth);
+            publishTrace(traceId, lingId,
+                    "✗ " + (operation != null ? operation : serviceFQSID) + " (" + costMs + "ms) - " + t.getClass().getSimpleName(),
+                    "ERROR", depth);
             recordMetrics(ctx, start, false, t);
             throw t;
         } finally {
             LingCallContext.decreaseDepth();
-            if (runtime != null) {
-                runtime.endRequest();
+            if (activeMetrics != null) {
+                activeMetrics.endRequest();
             }
         }
     }
@@ -202,10 +220,18 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
                 versionMetrics.recordSuccess(costMs);
             }
         } else {
-            boolean isTimeout = isTimeoutError(error);
-            metrics.recordFailure(costMs, isTimeout);
-            if (versionMetrics != metrics) {
-                versionMetrics.recordFailure(costMs, isTimeout);
+            if (isGovernanceRejection(error)) {
+                // 治理/准入拒绝（限流、熔断、舱壁、状态拒绝、权限拒绝、路由失败）不计入健康错误率
+                metrics.recordGovernanceRejection(costMs);
+                if (versionMetrics != metrics) {
+                    versionMetrics.recordGovernanceRejection(costMs);
+                }
+            } else {
+                boolean isTimeout = isTimeoutError(error);
+                metrics.recordFailure(costMs, isTimeout);
+                if (versionMetrics != metrics) {
+                    versionMetrics.recordFailure(costMs, isTimeout);
+                }
             }
         }
     }
@@ -231,25 +257,44 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
         if (ctx.getTargetVersion() != null && !ctx.getTargetVersion().isEmpty()) {
             return ctx.getTargetVersion();
         }
-        LingRuntime runtime = ctx.getRuntime();
-        return runtime != null ? runtime.getInstancePool().getVersion() : null;
+        // 版本号优先从 InvocationContext 获取，删除对 LingRuntime 的依赖
+        // 灵核无版本概念，灵元版本由上游路由过滤器填充到 ctx
+        return null;
     }
     
     /**
-     * 判断是否为超时异常
+     * 判断是否为超时异常。
+     * <p>
+     * 类型化信号优先：{@link LingInvocationException} 自带 {@link ErrorKind}，
+     * {@code ErrorKind.TIMEOUT} 直接判定为超时，非 TIMEOUT 类型化错误直接判定为否——
+     * 不再落入消息文本兜底（业务透传消息可能误含 "timeout" 字样）。
+     * 仅对非 {@link LingInvocationException}（如桥接层包装的 JDBC 超时等）保留 cause 链消息兜底。
      */
     private boolean isTimeoutError(Throwable error) {
         if (error == null) {
             return false;
         }
-        
+        if (error instanceof LingInvocationException) {
+            return ((LingInvocationException) error).getKind() == LingInvocationException.ErrorKind.TIMEOUT;
+        }
         String message = error.getMessage();
         if (message != null) {
             message = message.toLowerCase();
             return message.contains("timeout") || message.contains("timed out");
         }
-        
         return isTimeoutError(error.getCause());
+    }
+
+    /**
+     * 判断异常是否为「治理/准入拒绝」。仅 {@link LingInvocationException} 且
+     * {@link LingInvocationException.ErrorKind#isGovernanceRejection()} 为真才算；
+     * 其它异常（业务 RuntimeException、桥接层 JDBC 异常等）一律视为真实失败。
+     */
+    private boolean isGovernanceRejection(Throwable error) {
+        if (error instanceof LingInvocationException) {
+            return ((LingInvocationException) error).getKind().isGovernanceRejection();
+        }
+        return false;
     }
     
     /**

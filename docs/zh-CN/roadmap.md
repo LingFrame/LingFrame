@@ -1,4 +1,4 @@
-﻿# 路线图
+# 路线图
 
 本文档描述 LingFrame 的演进路线。
 
@@ -53,15 +53,18 @@
 - ✅ 权限控制（@RequiresPermission）
 - ✅ 安全审计（@Auditable）
 - ✅ 全链路追踪（LingCallContext）
-- ✅ 灰度发布（CanaryRouter）
+- ✅ Provider 权重路由（`ProviderWeightRouter`，去身份化 N 元权重路由）
 - ✅ 熔断机制（SlidingWindowCircuitBreaker）
 - ✅ 限流机制（TokenBucketRateLimiter）
 - ✅ 超时控制与降级兜底（整合于 SmartServiceProxy）
 - ✅ 重试机制（基于 GovernanceKernel 的 retryCount）
 - ✅ 复杂路由分发（基于 LabelMatchRouter 的标签与权重路由）
-- ✅ 统一调用治理主链（`InvocationPipelineEngine` + `FilterRegistry`）
+- ✅ 统一调用**治理**主链（`InvocationPipelineEngine` + `FilterRegistry`）
 - ✅ 三种执行模式：`NORMAL` / `SIMULATION` / `GOVERN_ONLY`
-- ✅ Web 请求、灵核 Bean、Dashboard 模拟共用同一条治理内核
+- ✅ 多入口共用**治理内核**（终端执行不必同一条路径）：
+  - 灵元 IPC / 服务调用 → `NORMAL` 全链（含 Terminal）
+  - Spring Web / 灵核 Bean AOP → `GOVERN_ONLY` 后由灵核侧 Web/AOP 框架路径继续业务执行
+  - Dashboard 模拟 → `SIMULATION`
 - ✅ 双层运行时状态模型（`InstanceStatus` / `RuntimeStatus`）
 - ✅ 状态写入权收束到 `InstanceCoordinator` / `RuntimeCoordinator`
 - ✅ 生命周期编排收束到 `DefaultLingLifecycleEngine`
@@ -117,3 +120,4 @@
 - ⏳ 搜索代理（Elasticsearch）
 - ⏳ 更多基础设施代理
 - ⏳ 完整示例和教程
+

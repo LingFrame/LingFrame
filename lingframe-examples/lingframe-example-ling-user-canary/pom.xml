@@ -2,7 +2,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.lingframe</groupId>
+        <groupId>cn.lingframe</groupId>
         <artifactId>lingframe-examples</artifactId>
         <version>${revision}</version>
     </parent>
@@ -16,12 +16,12 @@
     <dependencies>
         <!-- 仅依赖 API -->
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-api</artifactId>
         </dependency>
 
         <dependency>
-            <groupId>com.lingframe</groupId>
+            <groupId>cn.lingframe</groupId>
             <artifactId>lingframe-example-order-api</artifactId>
         </dependency>
 

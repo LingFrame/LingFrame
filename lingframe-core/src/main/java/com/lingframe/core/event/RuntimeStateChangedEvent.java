@@ -6,7 +6,7 @@ import com.lingframe.core.fsm.RuntimeStatus;
 /**
  * 运行时状态变更事件。
  * <p>
- * 由 {@link com.lingframe.core.fsm.RuntimeCoordinator} 在宏观状态跃迁成功后发布，
+ * 由 {@link RuntimeCoordinator} 在宏观状态跃迁成功后发布，
  * 供 Dashboard、告警、审计等下游系统消费。
  */
 public class RuntimeStateChangedEvent implements LingEvent {

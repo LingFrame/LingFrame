@@ -2,7 +2,6 @@ package com.lingframe.core.proxy;
 
 import com.lingframe.api.context.LingCallContext;
 import com.lingframe.api.security.AccessType;
-import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.pipeline.InvocationContext;
 import com.lingframe.core.pipeline.InvocationPipelineEngine;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +26,6 @@ public class SmartServiceProxy implements InvocationHandler {
 
     // 全局流水线引擎 (复用单例实例引用，无状态，不涉猎特定组件 ClassLoader)
     private final InvocationPipelineEngine pipelineEngine;
-    private final LingServiceRegistry lingServiceRegistry;
 
     // 🔥 获取服务 FQSID 等的临时缓存（Method 实例作为 Key 仍会持有类引用，但这是调用方自己定义的接口，因此与被调用方无关）
     private final Map<Method, String> resourceIdCache = new ConcurrentHashMap<>();
@@ -35,19 +33,17 @@ public class SmartServiceProxy implements InvocationHandler {
     public SmartServiceProxy(String callerLingId,
             String targetLingId,
             InvocationPipelineEngine pipelineEngine) {
-        this(callerLingId, targetLingId, null, pipelineEngine, null);
+        this(callerLingId, targetLingId, null, pipelineEngine);
     }
 
     public SmartServiceProxy(String callerLingId,
             String targetLingId,
             String interfaceName,
-            InvocationPipelineEngine pipelineEngine,
-            LingServiceRegistry lingServiceRegistry) {
+            InvocationPipelineEngine pipelineEngine) {
         this.callerLingId = callerLingId;
         this.targetLingId = targetLingId;
         this.interfaceName = interfaceName;
         this.pipelineEngine = pipelineEngine;
-        this.lingServiceRegistry = lingServiceRegistry;
     }
 
     @Override
@@ -83,14 +79,18 @@ public class SmartServiceProxy implements InvocationHandler {
                     m -> m.getDeclaringClass().getName() + ":" + m.getName());
             ctx.setResourceId(resourceId);
 
-            // 组装最终的目标服务寻址标： `targetLingId:interfaceFQCN`
+            // 组装目标服务寻址标：
+            // - targetLingId 非空（显式 pinning）→ 老格式 "lingId:contractId"
+            // - targetLingId 为 null（默认路由）→ 裸 contractId，由 L0 ContractProviderRoutingFilter
+            //   按 provider 权重选具体 provider 并补设 ctx.targetLingId
             String serviceInterfaceName = interfaceName != null ? interfaceName : method.getDeclaringClass().getName();
-            String serviceFQSID = targetLingId + ":" + serviceInterfaceName;
+            String serviceFQSID = targetLingId != null && !targetLingId.isEmpty()
+                    ? targetLingId + ":" + serviceInterfaceName
+                    : serviceInterfaceName;
             ctx.setServiceFQSID(serviceFQSID);
-            populateTargetResolution(ctx, serviceFQSID);
 
-            ctx.setAccessType(AccessType.EXECUTE);
-            ctx.setAuditAction(resourceId);
+            ctx.governance().setAccessType(AccessType.EXECUTE);
+            ctx.governance().setAuditAction(resourceId);
             ctx.setMetadata(null);
 
             // 委托全局的 PipelineEngine 执行
@@ -100,38 +100,9 @@ public class SmartServiceProxy implements InvocationHandler {
                 throw new IllegalStateException("PipelineEngine is not initialized for proxy.");
             }
 
-        } catch (ProxyExecutionException e) {
-            // 解包并抛出原始异常，对调用者透明
-            throw e.getCause();
         } finally {
             // 彻底重置 ThreadLocal 池化上下文，归还到对象栈中
             ctx.recycle();
-        }
-    }
-
-    private void populateTargetResolution(InvocationContext ctx, String serviceFQSID) {
-        if (lingServiceRegistry == null || serviceFQSID == null) {
-            return;
-        }
-        String targetClassName = lingServiceRegistry.getServiceClassName(serviceFQSID);
-        if (targetClassName != null && !targetClassName.isEmpty()) {
-            ctx.resolution().setTargetClassName(targetClassName);
-        }
-    }
-
-    /**
-     * 内部异常包装器 (用于穿透 Lambda，Kernel 捕获后会透传回来)
-     */
-    private static class ProxyExecutionException extends RuntimeException {
-        public ProxyExecutionException(Throwable cause) {
-            super(cause);
-        }
-
-        @Override
-        public synchronized Throwable fillInStackTrace() {
-            // 优化：禁用异常栈收集。这个异常仅仅是作为穿透 Callable/Lambda 的载体，
-            // 收集当前代理层的栈没有业务意义，禁用以获得极致性能。
-            return this;
         }
     }
 

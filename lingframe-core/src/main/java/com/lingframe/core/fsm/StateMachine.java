@@ -1,6 +1,7 @@
 package com.lingframe.core.fsm;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -10,10 +11,17 @@ import java.util.concurrent.atomic.AtomicReference;
  * <p>
  * 基于声明式转换表 + {@link AtomicReference#compareAndSet CAS} 实现无锁线程安全的状态流转。
  * <b>职责单一</b>：只做状态管理，不包含事件发布、日志等领域逻辑，保持纯粹可测试。
+ * <p>
+ * 内置环形缓冲区记录成功转换历史，供故障回溯和 Dashboard 时间线查询。
  *
  * @param <S> 状态枚举类型
  */
 public class StateMachine<S extends Enum<S>> {
+
+    /**
+     * 默认历史记录容量
+     */
+    private static final int DEFAULT_HISTORY_CAPACITY = 64;
 
     /**
      * 当前状态（原子引用，支持无锁 CAS）
@@ -31,14 +39,30 @@ public class StateMachine<S extends Enum<S>> {
     private final String contextId;
 
     /**
+     * 转换历史环形缓冲区
+     */
+    private final TransitionRingBuffer<S> history;
+
+    /**
      * @param contextId        上下文标识
      * @param initial          初始状态
      * @param legalTransitions 合法转换表（应为不可变 Map）
      */
     public StateMachine(String contextId, S initial, Map<S, Set<S>> legalTransitions) {
+        this(contextId, initial, legalTransitions, DEFAULT_HISTORY_CAPACITY);
+    }
+
+    /**
+     * @param contextId        上下文标识
+     * @param initial          初始状态
+     * @param legalTransitions 合法转换表（应为不可变 Map）
+     * @param historyCapacity  转换历史容量（满时覆盖最旧记录）
+     */
+    public StateMachine(String contextId, S initial, Map<S, Set<S>> legalTransitions, int historyCapacity) {
         this.contextId = contextId;
         this.current = new AtomicReference<>(initial);
         this.legalTransitions = legalTransitions;
+        this.history = new TransitionRingBuffer<>(historyCapacity);
     }
 
     /**
@@ -66,9 +90,11 @@ public class StateMachine<S extends Enum<S>> {
 
         // CAS 写入，失败说明另一线程已抢先修改
         boolean ok = current.compareAndSet(snapshot, target);
-        return ok
-                ? TransitionResult.success(snapshot, target)
-                : TransitionResult.conflict(snapshot, target);
+        if (ok) {
+            recordTransition(snapshot, target);
+            return TransitionResult.success(snapshot, target);
+        }
+        return TransitionResult.conflict(snapshot, target);
     }
 
     /**
@@ -89,9 +115,11 @@ public class StateMachine<S extends Enum<S>> {
         }
 
         boolean ok = current.compareAndSet(expected, target);
-        return ok
-                ? TransitionResult.success(expected, target)
-                : TransitionResult.conflict(expected, target);
+        if (ok) {
+            recordTransition(expected, target);
+            return TransitionResult.success(expected, target);
+        }
+        return TransitionResult.conflict(expected, target);
     }
 
     /**
@@ -106,6 +134,30 @@ public class StateMachine<S extends Enum<S>> {
      */
     public String contextId() {
         return contextId;
+    }
+
+    /**
+     * 返回从旧到新的转换历史快照（不可变列表）。
+     * <p>
+     * 供 Dashboard 时间线展示和故障回溯查询。
+     * 容量满时最旧记录会被覆盖。
+     */
+    public List<TransitionRecord<S>> history() {
+        return history.snapshot();
+    }
+
+    /**
+     * 返回最近一条成功转换记录，无记录时返回 null。
+     */
+    public TransitionRecord<S> lastTransition() {
+        return history.latest();
+    }
+
+    /**
+     * 记录一次成功转换到环形缓冲区
+     */
+    private void recordTransition(S from, S to) {
+        history.append(new TransitionRecord<>(contextId, from, to, System.currentTimeMillis()));
     }
 
     @Override

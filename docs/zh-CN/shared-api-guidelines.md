@@ -87,7 +87,7 @@ public class UserQueryServiceImpl implements UserQueryService {
 在当前运行时里，`Shared API` 的启动顺序已经是显式规则：
 
 1. preload 共享 JAR 或 classes 目录
-2. 注册共享包前缀
+2. 绑定 SharedApiClassLoader 到 LingClassLoader
 3. freeze 共享边界
 4. 然后再加载灵元
 
@@ -129,6 +129,34 @@ public class OrderDTO implements Serializable {
 - 原地修改已有方法签名
 - 不兼容变更还继续复用原包名
 - 误以为共享契约可以安全热更新
+
+---
+
+## 安全边界（不是 JVM 沙箱）
+
+`Shared API` 与加载期扫描提升的是**契约隔离**与**安装时风险提示**，**不是**完整的 JVM 安全沙箱。
+
+| 层 | 能做什么 | 不能做什么 |
+| --- | --- | --- |
+| Child-First `LingClassLoader` + 强制父委派 | 对 JDK / `com.lingframe.api.*` 等优先/独占父类型 | 运行时挡住一切反射/本地调用逃逸 |
+| `DangerousApiVerifier`（ASM） | 在**安装/加载**时对已知危险字节码失败或告警 | 灵元已加载后拦截每一次运行时调用 |
+| `strictSecurityMode` | 扫描期把更多 WARN 提升为硬失败 | 替代 SecurityManager / 模块级拒绝列表 |
+| 权限 + 基础设施代理 | 流量走代理时治理 DB/Cache/IPC | 拦不住未代理的 `DriverManager`/裸 Socket |
+| 共享 Spring 静态缓存（`AnnotatedElementUtils` / `BridgeMethodResolver.cache` 等） | 卸载时由 `resource/` 下各 cleaner **同步排空**（含 Soft），保证 ClassLoader 可 GC | 架构上保证运行期灵核永不持有灵元 Class 引用（共享堆 + 父委派的物理结果，非实现偷懒） |
+
+### 代理与 CGLIB（灵元侧建议）
+
+- **优先**：对外暴露**接口**契约，让 Spring 使用 **JDK 动态代理**（`java.lang.reflect.Proxy`）。JDK `WeakCache` 对 ClassLoader 卸载语义更友好，减少对 CGLIB / Spring 自研缓存的依赖。
+- **次优**：无接口的具体类代理必须走 **CGLIB** 时，卸载依赖 `CglibCacheCleaner` 等证据驱动清理；多版本热插拔下成本更高。
+- **不要**指望“只 fork 几个 Spring 缓存类到灵元 CL”来隔离 static——父加载调用方的 defining ClassLoader 仍会解析到灵核那份类。
+- 框架**不**默认禁用 CGLIB（会破坏无接口 Bean）；此条为契约与实现建议。
+
+运维建议：
+
+- 即使开启扫描，也要把不可信第三方灵元当作**高风险**。
+- 生产硬化优先 `strictSecurityMode=true`；可信灵元 ID / 库前缀应少用且可审计。
+- 已加载代码仍可能通过反射、进程、网络逃逸；必要时叠加权限、代理与进程级隔离。
+- **存储**：SQL 权限主要在 **Spring DataSource Bean 代理链**上生效；`DriverManager` / 非 Bean 池可绕过（见生产硬化清单第 9 节）。
 
 ---
 

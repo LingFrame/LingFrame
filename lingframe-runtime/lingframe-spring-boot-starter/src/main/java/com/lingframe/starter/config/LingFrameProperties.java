@@ -9,7 +9,9 @@ import org.springframework.validation.annotation.Validated;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 灵珑框架主配置属性
@@ -31,6 +33,14 @@ public class LingFrameProperties {
      * 开启后将启用热重载监听器，并输出更多调试日志。
      */
     private boolean devMode = false;
+
+    /**
+     * 运行时模式切换密码。
+     * <p>
+     * 配置后允许通过 Dashboard 在运行时切换 dev/prod 模式，切换需密码二次认证。
+     * 未配置（null/空）时运行时切换关闭（fail-closed），模式由 devMode 配置基线决定。
+     */
+    private String modeSwitchPassword = null;
 
     /**
      * 启动时是否自动扫描并加载 home 目录下的灵元。
@@ -56,12 +66,52 @@ public class LingFrameProperties {
     private List<String> preloadApiJars = new ArrayList<>();
 
     /**
+     * 灵元 Web 路由是否自动添加 /{lingId} 前缀。
+     * 默认为 false（保持 Controller 原生声明路径，实现无感接入/替换）。
+     */
+    private boolean prefixWithLingId = false;
+
+    /**
      * 是否启用 API 包覆盖检测。
      * <p>
      * true: 如果灵元包内包含 com.lingframe.api.* 类则拒绝安装
      * false: 允许灵元包内包含同名 API（不建议）
      */
     private boolean apiOverrideCheckEnabled = true;
+
+    /**
+     * 事务穿透配置（跨灵元共享连接 + 强一致的穿透链路）。
+     */
+    private Tx tx = new Tx();
+
+    /**
+     * 事务穿透子配置。
+     */
+    @Data
+    public static class Tx {
+
+        /**
+         * 穿透子配置（总开关：{@code lingframe.tx.propagation.enabled}，默认开启）。
+         */
+        private Propagation propagation = new Propagation();
+
+        /**
+         * 穿透链路配置。
+         */
+        @Data
+        public static class Propagation {
+
+            /**
+             * 事务穿透总开关（默认 true）。
+             * <p>
+             * false 时穿透链路整体不激活（应急降级）：core 侧
+             * {@code TransactionPropagationFilter} 直接放行（不压栈），灵元侧不注册受管
+             * 事务管理器——业务退回「独立连接心智」，跨灵元原子回滚不可用。
+             * 总开关是「应急逃生门」而非「常规配置」，关闭期间一致性语义显式降级。
+             */
+            private boolean enabled = true;
+        }
+    }
 
     /**
      * 灵元额外目录
@@ -92,6 +142,32 @@ public class LingFrameProperties {
     private LingCoreGovernance lingCoreGovernance = new LingCoreGovernance();
 
     /**
+     * 本地治理补丁文件路径（{@link LocalGovernanceRegistry} 加载与落盘位置）。
+     * <p>
+     * 支持绝对路径与相对路径（相对进程工作目录）。默认 {@code ./config/ling-governance-patch.yml}，
+     * 文件不存在时视为无补丁，治理策略走框架默认值。
+     * <p>
+     * 测试场景可指向不存在的路径以隔离治理补丁干扰（如禁用 demo 限流配置）。
+     */
+    private String governancePatchPath = "./config/ling-governance-patch.yml";
+
+    /**
+     * 可信灵元 ID 白名单，豁免危险 API 严格模式校验。
+     * <p>
+     * 白名单中的灵元在严格模式下也使用非严格模式进行 API 安全扫描，
+     * 允许其使用反射、Native、进程操控等危险 API。
+     */
+    private List<String> trustedLingIds = new ArrayList<>();
+
+    /**
+     * 危险 API 扫描配置。
+     * <p>
+     * 用于在严格模式过严（依赖库触发 WARN）时，按包前缀豁免已知安全的依赖库，
+     * 或在开发环境整体关闭严格模式。
+     */
+    private Security security = new Security();
+
+    /**
      * 审计相关配置。
      */
     private Audit audit = new Audit();
@@ -106,6 +182,68 @@ public class LingFrameProperties {
      * 统一管理内核运行时配置
      */
     private RuntimeConfig runtime = new RuntimeConfig();
+
+    /**
+     * 可信转发前缀白名单（反代部署）。
+     * <p>
+     * 仅当转发头（X-Forwarded-Prefix / X-Forwarded-Path）声明的前缀与此白名单完全匹配时，
+     * 路由解析才采信该头做前缀剥离；空列表（默认）表示不信任任何客户端转发头（C10 安全默认）。
+     */
+    private List<String> trustedForwardedPrefixes = new ArrayList<>();
+
+    /**
+     * 虚拟灵元声明配置表（lingId -> 虚拟灵元配置）。
+     * <p>
+     * 支持在 application.yml 中声明虚拟切点（如 SeaTunnel、Flink、Dubbo 网关），
+     * 框架启动时将自动由 {@code VirtualLingManager} 注册并激活。
+     */
+    private Map<String, VirtualLingConfig> virtualLings = new LinkedHashMap<>();
+
+    /**
+     * 虚拟灵元治理参数配置。
+     */
+    @Data
+    public static class VirtualLingConfig {
+        /** 弹性治理总开关，默认开启；关闭不影响 ClassLoader 与生命周期清理。 */
+        private boolean resilienceEnabled = true;
+
+        /** 限流组件开关，默认开启。 */
+        private boolean rateLimiterEnabled = true;
+
+        /** 熔断组件开关，默认开启。 */
+        private boolean circuitBreakerEnabled = true;
+
+        /** 舱壁隔离组件开关，默认开启。 */
+        private boolean bulkheadEnabled = true;
+
+        /** 超时控制组件开关，默认开启。 */
+        private boolean timeoutEnabled = true;
+
+        /**
+         * 限流 QPS，默认 0（不限流）
+         */
+        private int rateLimitPerSecond = 0;
+
+        /**
+         * 熔断失败率阈值（百分比 0-100），默认 50
+         */
+        private int circuitBreakerFailureRateThreshold = 50;
+
+        /**
+         * 熔断滑动窗口大小，默认 20
+         */
+        private int circuitBreakerSlidingWindowSize = 20;
+
+        /**
+         * 默认超时时间（毫秒），默认 3000
+         */
+        private int defaultTimeoutMs = 3000;
+
+        /**
+         * 舱壁最大并发数，默认 10
+         */
+        private int bulkheadMaxConcurrent = 10;
+    }
 
     @Data
     public static class Audit {
@@ -178,10 +316,31 @@ public class LingFrameProperties {
         @DurationUnit(ChronoUnit.SECONDS)
         private Duration forceCleanupDelay = Duration.ofSeconds(30);
 
+        /**
+         * drain 超时后是否强制推进卸载（默认 true）。
+         * false：超时仍有飞行请求时卸载失败，不打断业务。
+         */
+        private boolean forceDrainOnTimeout = true;
+
         @DurationUnit(ChronoUnit.SECONDS)
         private Duration dyingCheckInterval = Duration.ofSeconds(5);
 
         // --- 调用控制 ---
+        /** 弹性治理总开关，默认开启；关闭不影响 ClassLoader 与生命周期清理。 */
+        private boolean resilienceEnabled = true;
+
+        /** 限流组件开关，默认开启。 */
+        private boolean rateLimiterEnabled = true;
+
+        /** 熔断组件开关，默认开启。 */
+        private boolean circuitBreakerEnabled = true;
+
+        /** 舱壁隔离组件开关，默认开启。 */
+        private boolean bulkheadEnabled = true;
+
+        /** 超时控制组件开关，默认开启。 */
+        private boolean timeoutEnabled = true;
+
         @DurationUnit(ChronoUnit.MILLIS)
         private Duration defaultTimeout = Duration.ofMillis(3000);
 
@@ -191,9 +350,44 @@ public class LingFrameProperties {
         private Duration bulkheadAcquireTimeout = Duration.ofMillis(3000);
 
         /**
+         * 穿透连接宽限期：超时/放弃执行后等待 worker 退出临界区的有界 join 时间。
+         * 超宽限期后连接标记 poisoned（跳过 rollback 直接 close 废弃），0 表示立即废弃。
+         */
+        @DurationUnit(ChronoUnit.MILLIS)
+        private Duration abandonedJoinTimeout = Duration.ofMillis(2000);
+
+        /**
          * 限流 QPS（每秒令牌数），0 表示不启用
          */
         private int rateLimitPerSecond = 0;
+
+        // --- 熔断器 ---
+
+        /**
+         * 熔断失败率阈值（百分比，0-100）
+         */
+        private int circuitBreakerFailureRateThreshold = 50;
+
+        /**
+         * 熔断慢调用率阈值（百分比，0-100）
+         */
+        private int circuitBreakerSlowCallRateThreshold = 80;
+
+        /**
+         * 熔断滑动窗口大小（调用次数）
+         */
+        private int circuitBreakerSlidingWindowSize = 20;
+
+        /**
+         * 熔断最小调用数
+         */
+        private int circuitBreakerMinimumNumberOfCalls = 10;
+
+        /**
+         * 熔断器开启后等待时间，0 表示用 defaultTimeout * 10
+         */
+        @DurationUnit(ChronoUnit.MILLIS)
+        private Duration circuitBreakerWaitDurationInOpenState = Duration.ZERO;
 
         // --- 灵元线程池预算 ---
 
@@ -247,6 +441,59 @@ public class LingFrameProperties {
          * 注意：开启后可能会影响灵元的正常运行，建议仅在必要时开启
          */
         private boolean checkPermissions = false;
+
+        /**
+         * Bean 治理失败时是否放行，默认关闭（fail-closed）
+         * <p>
+         * false（默认，fail-closed）：需治理的 Bean 因依赖缺失或代理创建失败时，直接抛错终止启动，
+         * 杜绝「声称治理却绕过治理」的静默裸 Bean。
+         * <p>
+         * true（fail-open）：恢复到降级语义，仅记录告警日志并返回裸 Bean，供既有应用平滑过渡。
+         */
+        private boolean failOpen = false;
+    }
+
+    /**
+     * 危险 API 扫描配置。
+     * <p>
+     * 严格模式默认开启（保持历史行为）。当依赖库（如 Jackson/Hibernate/jjwt）内部
+     * 触发 WARN 级 API 调用导致部署被拦截时，可通过 trusted-lib-prefixes 按包前缀豁免，
+     * 或在开发环境直接 strict-mode=false 关闭严格校验。
+     */
+    @Data
+    public static class Security {
+        /**
+         * 是否启用严格模式（默认 true，保持现有安全基线）。
+         * <p>
+         * true: WARN 级 API 调用也抛 LingSecurityException，部署被拦截。
+         * false: WARN 级 API 调用仅记日志，不拦截部署（开发环境推荐）。
+         */
+        private boolean strictMode = true;
+
+        /**
+         * 依赖库包前缀豁免列表（不区分灵元，全局生效）。
+         * <p>
+         * 匹配这些前缀的类（按 ASM 内部路径，斜杠分隔）会被扫描器跳过，
+         * 不再检查其字节码中的危险 API 调用。
+         * <p>
+         * 配置格式同时支持两种写法（内部归一化为斜杠形式）：
+         * <ul>
+         *   <li>ASM 内部路径：{@code com/fasterxml/jackson/}</li>
+         *   <li>Java 包名：{@code com.fasterxml.jackson.}（末尾点号或省略均可）</li>
+         * </ul>
+         * <p>
+         * 示例 application.yaml：
+         * <pre>
+         * lingframe:
+         *   security:
+         *     strict-mode: true
+         *     trusted-lib-prefixes:
+         *       - com.fasterxml.jackson.
+         *       - org.springframework.
+         *       - io.jsonwebtoken.
+         * </pre>
+         */
+        private List<String> trustedLibPrefixes = new ArrayList<>();
     }
 
 }

@@ -11,6 +11,7 @@ import java.lang.management.MemoryPoolMXBean;
 import java.lang.management.MemoryUsage;
 import java.lang.management.OperatingSystemMXBean;
 import java.lang.management.ThreadMXBean;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -30,7 +31,7 @@ import java.util.List;
 public class JVMMetrics {
     private long timestamp;
     
-    private int cpuUsage;
+    private double cpuUsage;
     private double processCpuLoad;
     
     private long heapUsedMB;
@@ -46,6 +47,8 @@ public class JVMMetrics {
     private long metaspaceMaxKB;
     private long metaspaceCommittedKB;
     private double metaspaceUsagePercent;
+    // Compressed Class Space 单独统计，避免与 Metaspace 混算导致数据偏大
+    private long compressedClassSpaceUsedKB;
     
     private int loadedClassCount;
     private long totalLoadedClassCount;
@@ -57,6 +60,8 @@ public class JVMMetrics {
     
     private long gcCount;
     private long gcTimeMs;
+    // 按 GC 收集器分离的统计详情
+    private List<GcDetail> gcDetails;
     
     private long totalMemoryMB;
     private long freeMemoryMB;
@@ -123,35 +128,42 @@ public class JVMMetrics {
         try {
             List<MemoryPoolMXBean> beans = ManagementFactory.getMemoryPoolMXBeans();
 
-            long used = 0L;
-            long committed = 0L;
-            long max = 0L;
+            long metaspaceUsed = 0L;
+            long metaspaceCommitted = 0L;
+            long metaspaceMax = 0L;
+            long compressedClassUsed = 0L;
 
             for (MemoryPoolMXBean bean : beans) {
                 String name = bean.getName().toLowerCase();
+                MemoryUsage usage = bean.getUsage();
+                if (usage == null) continue;
 
-                if (name.contains("metaspace") || name.contains("compressed class")) {
-                    MemoryUsage usage = bean.getUsage();
-                    if (usage == null) continue;
-
-                    used += usage.getUsed();
-                    committed += usage.getCommitted();
-
-                    if (usage.getMax() > 0) {
-                        max += usage.getMax();
+                // Metaspace 和 Compressed Class Space 分开统计，
+                // 与 JConsole 对齐：JConsole 的 Metaspace 不含 Compressed Class Space
+                if (name.contains("metaspace") && !name.contains("compressed class")) {
+                    metaspaceUsed += usage.getUsed();
+                    metaspaceCommitted += usage.getCommitted();
+                    long max = usage.getMax();
+                    // 未设置 -XX:MaxMetaspaceSize 时 getMax() 返回 -1，此时用 committed 兜底，
+                    // 与 JConsole 在 max 缺省时按 committed 绘制上限的行为一致
+                    if (max > 0) {
+                        metaspaceMax += max;
                     }
+                } else if (name.contains("compressed class")) {
+                    compressedClassUsed = usage.getUsed();
                 }
             }
 
-            metrics.setMetaspaceUsedKB(used / 1024);
-            metrics.setMetaspaceCommittedKB(committed / 1024);
-            metrics.setMetaspaceMaxKB(max > 0 ? max / 1024 : -1);
+            metrics.setMetaspaceUsedKB(metaspaceUsed / 1024);
+            metrics.setMetaspaceCommittedKB(metaspaceCommitted / 1024);
+            // max 缺省时退化为 committed，避免前端展示 -1
+            long effectiveMax = metaspaceMax > 0 ? metaspaceMax : metaspaceCommitted;
+            metrics.setMetaspaceMaxKB(effectiveMax / 1024);
+            metrics.setCompressedClassSpaceUsedKB(compressedClassUsed / 1024);
 
             double percent;
-            if (max > 0) {
-                percent = used * 100.0 / max;
-            } else if (committed > 0) {
-                percent = used * 100.0 / committed;
+            if (effectiveMax > 0) {
+                percent = metaspaceUsed * 100.0 / effectiveMax;
             } else {
                 percent = 0.0;
             }
@@ -165,8 +177,9 @@ public class JVMMetrics {
 
             metrics.setMetaspaceUsedKB(0);
             metrics.setMetaspaceCommittedKB(0);
-            metrics.setMetaspaceMaxKB(-1);
+            metrics.setMetaspaceMaxKB(0);
             metrics.setMetaspaceUsagePercent(0.0);
+            metrics.setCompressedClassSpaceUsedKB(0);
         }
     }
 
@@ -195,18 +208,21 @@ public class JVMMetrics {
     private static void collectGCMetrics(JVMMetrics metrics) {
         long count = 0;
         long time = 0;
+        List<GcDetail> details = new ArrayList<>();
 
         for (GarbageCollectorMXBean gc : ManagementFactory.getGarbageCollectorMXBeans()) {
-            if (gc.getCollectionCount() >= 0) {
-                count += gc.getCollectionCount();
-            }
-            if (gc.getCollectionTime() >= 0) {
-                time += gc.getCollectionTime();
-            }
+            long gcCount = gc.getCollectionCount() >= 0 ? gc.getCollectionCount() : 0;
+            long gcTime = gc.getCollectionTime() >= 0 ? gc.getCollectionTime() : 0;
+
+            count += gcCount;
+            time += gcTime;
+
+            details.add(new GcDetail(gc.getName(), gcCount, gcTime));
         }
 
         metrics.setGcCount(count);
         metrics.setGcTimeMs(time);
+        metrics.setGcDetails(details);
     }
 
     // ================== CPU ==================
@@ -228,16 +244,17 @@ public class JVMMetrics {
 
                 if (cpu >= 0) {
                     metrics.setProcessCpuLoad(cpu);
-                    metrics.setCpuUsage((int) Math.round(cpu * 100));
+                    // 保留一位小数，与 JConsole 精度对齐
+                    metrics.setCpuUsage(Math.round(cpu * 1000) / 10.0);
                 } else {
                     metrics.setProcessCpuLoad(0.0);
-                    metrics.setCpuUsage(0);
+                    metrics.setCpuUsage(0.0);
                 }
 
             } catch (Exception e) {
                 log.debug("Failed to collect CPU metrics", e);
                 metrics.setProcessCpuLoad(0.0);
-                metrics.setCpuUsage(0);
+                metrics.setCpuUsage(0.0);
             }
         }
     }

@@ -4,12 +4,13 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.event.RuntimeStateChangedEvent;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.spi.RoutableTarget;
 import lombok.Getter;
 import lombok.ToString;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -24,15 +25,18 @@ import java.util.stream.Collectors;
  * 生命周期编排、实例切换、运行时联动分别由
  * {@link DefaultLingLifecycleEngine}、{@link InstancePool}、
  * {@link RuntimeCoordinator} 完成。
+ * <p>
+ * 路由升维：实现 {@link RoutableTarget} 窄接口，使 Pipeline 不再直接依赖本具体类，
+ * 灵核和灵元都能通过 {@code RoutableTarget} 类型统一表达。
  */
 @ToString
-public class LingRuntime {
+public class LingRuntime implements RoutableTarget {
 
     @Getter
     private final String lingId;
 
     @Getter
-    private final LingRuntimeConfig config;
+    private volatile LingRuntimeConfig config;
 
     @Getter
     private final InstancePool instancePool;
@@ -41,39 +45,53 @@ public class LingRuntime {
     // 这里保留的是一个只读访问点，用于查询宏观运行时状态。
     private final RuntimeCoordinator runtimeCoordinator;
 
-    // 流量统计
-    @Getter
-    private final AtomicLong totalRequests = new AtomicLong(0);
-    @Getter
-    private final AtomicLong stableRequests = new AtomicLong(0);
-    @Getter
-    private final AtomicLong canaryRequests = new AtomicLong(0);
-    @Getter
-    private final AtomicLong activeRequests = new AtomicLong(0);
-    @Getter
-    private volatile long statsWindowStart = System.currentTimeMillis();
-
     @Getter
     private final long installedAt = System.currentTimeMillis();
 
     public LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
-            RuntimeCoordinator runtimeCoordinator) {
-        this(lingId, config, eventBus, null, runtimeCoordinator);
-    }
-
-    LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
                 InstanceCoordinator instanceCoordinator, RuntimeCoordinator runtimeCoordinator) {
         this.lingId = lingId;
         this.config = config != null ? config : LingRuntimeConfig.defaults();
-        this.instancePool = new InstancePool(lingId, this.config.getMaxHistorySnapshots());
-        this.instancePool.setInstanceCoordinator(instanceCoordinator);
+        this.instancePool = new InstancePool(lingId, this.config.getMaxHistorySnapshots(), instanceCoordinator);
         this.runtimeCoordinator = Objects.requireNonNull(runtimeCoordinator, "RuntimeCoordinator is required");
 
-        // 灵核创建时立即注册运行时聚合器，保证首个实例事件到来前已有宏观状态落点。
-        this.runtimeCoordinator.register(lingId);
+        // ⚠️ 职责边界：运行时聚合器注册由编排层（DefaultLingLifecycleEngine.ensureRuntimeForDeployment）单次调用，
+        // LingRuntime 自身不注册，消除原双重注册的时序耦合。
         if (eventBus != null) {
             eventBus.subscribe(lingId, RuntimeStateChangedEvent.class, this::handleStateChanged);
         }
+    }
+
+    /**
+     * 面向纯治理虚拟灵元的包级私有构造方法。
+     * <p>
+     * 虚拟灵元不持有物理实例池（{@link #instancePool} 为 null），仅作为微内核治理流水线的路由切点与配置载体。
+     * 架构约束：本构造方法受包级保护，必须由 {@link VirtualLingManager} 独占编排组装，外部无法脱离生命周期随意 new。
+     *
+     * @param lingId 灵元唯一标识
+     * @param config 运行时治理配置
+     * @param eventBus 事件总线，若提供则监听运行时状态变更
+     * @param runtimeCoordinator 运行时状态协调器（状态真源）
+     */
+    LingRuntime(String lingId, LingRuntimeConfig config, EventBus eventBus,
+                RuntimeCoordinator runtimeCoordinator) {
+        this.lingId = Objects.requireNonNull(lingId, "lingId cannot be null");
+        this.config = config != null ? config : LingRuntimeConfig.defaults();
+        this.instancePool = null;
+        this.runtimeCoordinator = Objects.requireNonNull(runtimeCoordinator, "RuntimeCoordinator is required");
+
+        if (eventBus != null) {
+            eventBus.subscribe(lingId, RuntimeStateChangedEvent.class, this::handleStateChanged);
+        }
+    }
+
+    /**
+     * 判断当前灵元是否为无物理实例池的虚拟灵元。
+     *
+     * @return 若为虚拟灵元返回 true，否则返回 false
+     */
+    public boolean isVirtual() {
+        return instancePool == null;
     }
 
     private void handleStateChanged(RuntimeStateChangedEvent event) {
@@ -85,38 +103,35 @@ public class LingRuntime {
         // 宏观运行时进入 STOPPING/REMOVED 后，灵核只需要同步收紧成员池写入。
         // 这里不反向写 RuntimeStatus，避免对象之间互相改写状态。
         if (newStatus == RuntimeStatus.STOPPING || newStatus == RuntimeStatus.REMOVED) {
-            instancePool.shutdown();
+            if (instancePool != null) {
+                instancePool.shutdown();
+            }
         }
-    }
-
-    public void recordRequest(boolean isCanary) {
-        totalRequests.incrementAndGet();
-        if (isCanary) {
-            canaryRequests.incrementAndGet();
-        } else {
-            stableRequests.incrementAndGet();
-        }
-    }
-
-    public void resetTrafficStats() {
-        totalRequests.set(0);
-        stableRequests.set(0);
-        canaryRequests.set(0);
-        activeRequests.set(0);
-        statsWindowStart = System.currentTimeMillis();
-    }
-
-    public void startRequest() {
-        activeRequests.incrementAndGet();
-    }
-
-    public void endRequest() {
-        activeRequests.decrementAndGet();
     }
 
     public boolean isAvailable() {
         return currentStatus() == RuntimeStatus.ACTIVE &&
-                instancePool.hasAvailableInstance();
+                (instancePool == null || instancePool.hasAvailableInstance());
+    }
+
+    /** 返回当前运行时所有实例代次的只读状态事实。 */
+    public List<LingInstanceSnapshot> getInstanceSnapshots() {
+        if (instancePool == null) {
+            return Collections.emptyList();
+        }
+        return instancePool.getInstanceSnapshots();
+    }
+
+    /**
+     * 替换运行时配置。
+     * <p>
+     * 由治理配置变更链路调用，将 GovernancePolicy 中的调用治理参数
+     * 合并到 LingRuntimeConfig，使 Pipeline Filter 下次调用自然读到新值。
+     * <p>
+     * ⚠️ 此方法是引用替换（volatile 写），不是字段修改，线程安全。
+     */
+    public void updateConfig(LingRuntimeConfig newConfig) {
+        this.config = newConfig != null ? newConfig : LingRuntimeConfig.defaults();
     }
 
     /**
@@ -130,9 +145,14 @@ public class LingRuntime {
     /**
      * 获取所有 READY 状态实例（用于路由选择）
      */
+    @Override
     public List<LingInstance> getReadyInstances() {
+        if (instancePool == null) {
+            return Collections.emptyList();
+        }
         return instancePool.getActiveInstances().stream()
                 .filter(LingInstance::isReady)
                 .collect(Collectors.toList());
     }
 }
+

@@ -1,0 +1,162 @@
+package com.lingframe.dashboard.controller;
+
+import com.lingframe.dashboard.dto.ApiResponse;
+import com.lingframe.dashboard.dto.ContractRoutingDTO;
+import com.lingframe.dashboard.dto.ContractRoutingPublishRequest;
+import com.lingframe.dashboard.dto.ContractStressStepDTO;
+import com.lingframe.dashboard.dto.DashboardMutationResult;
+import com.lingframe.dashboard.dto.DashboardOperationOutcomeDTO;
+import com.lingframe.dashboard.security.DashboardToolProperties;
+import com.lingframe.dashboard.service.ContractRoutingService;
+import com.lingframe.dashboard.service.SimulateService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.util.*;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@DisplayName("ContractRoutingController 单元测试")
+class ContractRoutingControllerTest {
+
+    private ContractRoutingService service;
+    private SimulateService simulateService;
+    private ContractRoutingController controller;
+
+    @BeforeEach
+    void setUp() {
+        service = mock(ContractRoutingService.class);
+        simulateService = mock(SimulateService.class);
+        controller = new ContractRoutingController(service, simulateService);
+    }
+
+    @Test
+    @DisplayName("列出多 Provider 契约")
+    void listMultiProviderContracts() {
+        when(service.listMultiProviderContracts()).thenReturn(Arrays.asList("svc-a", "svc-b"));
+
+        ApiResponse<List<String>> resp = controller.listMultiProviderContracts();
+        assertTrue(resp.isSuccess());
+        assertEquals(2, resp.getData().size());
+    }
+
+    @Test
+    @DisplayName("查询契约路由配置")
+    void getContractRouting() {
+        ContractRoutingDTO dto = ContractRoutingDTO.builder().contractId("svc-a").build();
+        when(service.getContractRouting("svc-a")).thenReturn(dto);
+
+        ApiResponse<ContractRoutingDTO> resp = controller.getContractRouting("svc-a");
+        assertTrue(resp.isSuccess());
+        assertEquals("svc-a", resp.getData().getContractId());
+    }
+
+    @Test
+    @DisplayName("设置权重")
+    void setProviderWeight() {
+        ContractRoutingDTO dto = ContractRoutingDTO.builder().contractId("svc-a").build();
+        when(service.setProviderWeightWithOutcome("svc-a", "user-ling:1.0.0", 60))
+                .thenReturn(DashboardMutationResult.<ContractRoutingDTO>builder()
+                        .data(dto).outcome(successfulOutcome()).build());
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("providerKey", "user-ling:1.0.0");
+        body.put("weight", 60);
+
+        ApiResponse<ContractRoutingDTO> resp = controller.setProviderWeight("svc-a", body);
+        assertTrue(resp.isSuccess());
+        assertTrue(resp.getOperationOutcome().isRuntimeApplied());
+        verify(service).setProviderWeightWithOutcome("svc-a", "user-ling:1.0.0", 60);
+    }
+
+    @Test
+    @DisplayName("按修订号原子发布完整权重策略")
+    void replaceProviderWeights() {
+        ContractRoutingDTO dto = ContractRoutingDTO.builder()
+                .contractId("svc-a")
+                .policyRevision("epoch:2:svc-a")
+                .build();
+        when(service.replaceProviderWeightsWithOutcome(eq("svc-a"), eq("epoch:1:svc-a"), anyMap()))
+                .thenReturn(DashboardMutationResult.<ContractRoutingDTO>builder()
+                        .data(dto).outcome(successfulOutcome()).build());
+
+        Map<String, Integer> weights = new LinkedHashMap<>();
+        weights.put("lingcore-app", 90);
+        weights.put("user-ling:2.0.0", 10);
+        ApiResponse<ContractRoutingDTO> response = controller.replaceProviderWeights(
+                "svc-a", new ContractRoutingPublishRequest("epoch:1:svc-a", weights));
+
+        assertTrue(response.isSuccess());
+        assertEquals("epoch:2:svc-a", response.getData().getPolicyRevision());
+        assertTrue(response.getOperationOutcome().isPersisted());
+        verify(service).replaceProviderWeightsWithOutcome("svc-a", "epoch:1:svc-a", weights);
+    }
+
+    @Test
+    @DisplayName("修订号过期时拒绝整次权重发布")
+    void replaceProviderWeightsRejectsStaleRevision() {
+        when(service.replaceProviderWeightsWithOutcome(anyString(), anyString(), anyMap()))
+                .thenThrow(new ConcurrentModificationException("stale"));
+
+        ApiResponse<ContractRoutingDTO> response = controller.replaceProviderWeights(
+                "svc-a", new ContractRoutingPublishRequest("old", Collections.emptyMap()));
+
+        assertFalse(response.isSuccess());
+        assertTrue(response.getMessage().contains("修订已过期"));
+    }
+
+    @Test
+    @DisplayName("一键回滚到灵核")
+    void rollbackToCore() {
+        ContractRoutingDTO dto = ContractRoutingDTO.builder().contractId("svc-a").build();
+        when(service.rollbackToCoreWithOutcome("svc-a"))
+                .thenReturn(DashboardMutationResult.<ContractRoutingDTO>builder()
+                        .data(dto).outcome(successfulOutcome()).build());
+
+        ApiResponse<ContractRoutingDTO> resp = controller.rollbackToCore("svc-a");
+        assertTrue(resp.isSuccess());
+        verify(service).rollbackToCoreWithOutcome("svc-a");
+    }
+
+    @Test
+    @DisplayName("契约流量演练单步")
+    void stressContractStep() {
+        ContractStressStepDTO result = ContractStressStepDTO.builder()
+                .contractId("svc-a")
+                .hitProviderKey("user-ling:1.0.0")
+                .type("LING")
+                .mode("PENETRATION")
+                .durationMs(1.5)
+                .build();
+        when(simulateService.stressContractStep("svc-a", "PENETRATION")).thenReturn(result);
+
+        ApiResponse<ContractStressStepDTO> resp = controller.stressContractStep("svc-a", "PENETRATION");
+        assertTrue(resp.isSuccess());
+        assertEquals("svc-a", resp.getData().getContractId());
+        assertEquals("user-ling:1.0.0", resp.getData().getHitProviderKey());
+        assertEquals("PENETRATION", resp.getData().getMode());
+    }
+
+    @Test
+    @DisplayName("生产能力开关关闭时应拒绝契约演练")
+    void stressContractStepShouldBeRejectedWhenDisabled() {
+        ContractRoutingController closedController = new ContractRoutingController(
+                service, simulateService, new DashboardToolProperties());
+
+        ApiResponse<ContractStressStepDTO> resp = closedController.stressContractStep("svc-a", "DRY_RUN");
+
+        assertFalse(resp.isSuccess());
+        assertTrue(resp.getMessage().contains("压测能力未启用"));
+    }
+
+    private DashboardOperationOutcomeDTO successfulOutcome() {
+        return DashboardOperationOutcomeDTO.builder()
+                .runtimeApplied(true)
+                .persisted(true)
+                .recoveryReady(true)
+                .backupReady(false)
+                .build();
+    }
+}
