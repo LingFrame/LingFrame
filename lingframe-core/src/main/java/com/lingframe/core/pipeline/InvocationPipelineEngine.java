@@ -114,6 +114,17 @@ public class InvocationPipelineEngine {
     }
 
     /**
+     * 切换全局弹性治理。关闭不影响 ClassLoader、卸载和生命周期清理。
+     */
+    public void setResilienceEnabled(boolean enabled) {
+        registry.setResilienceEnabled(enabled);
+    }
+
+    public boolean isResilienceEnabled() {
+        return registry.isResilienceEnabled();
+    }
+
+    /**
      * 受控恢复时重置与该灵元绑定的治理状态。
      */
     public boolean recoverLingGovernance(String lingId) {

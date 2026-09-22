@@ -6,6 +6,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.ResilienceGovernanceSwitch;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
@@ -51,6 +52,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
     private final PermissionService permissionService;
     private final LingServiceInvoker serviceInvoker;
     private final GovernanceArbitrator governanceArbitrator;
+    private ResilienceGovernanceSwitch resilienceSwitch;
 
     private ResilienceGovernanceFilter resilienceFilter;
     private ThreadIsolationGovernanceFilter isolationFilter;
@@ -67,6 +69,8 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         this.permissionService = Objects.requireNonNull(config.getPermissionService(), "permissionService is required");
         this.serviceInvoker = config.getServiceInvoker();
         this.governanceArbitrator = config.getGovernanceArbitrator();
+        final ResilienceGovernanceSwitch resilienceSwitch = config.getResilienceSwitch() != null
+                ? config.getResilienceSwitch() : new ResilienceGovernanceSwitch();
 
         initializeInternal(
                 config.getLingRepository(),
@@ -78,6 +82,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
                 config.getGovernanceMetricsCollector(),
                 config.getLingFrameInfo(),
                 config.getGovernanceRegistry(),
+                resilienceSwitch,
                 config.getProviderWeightRouter(),
                 config.getTransactionBindingHook(),
                 config.isPropagationEnabled());
@@ -93,6 +98,7 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
             MetricsCollector metricsCollector,
             RuntimeCoordinator runtimeCoordinator, GovernanceMetricsCollector governanceMetricsCollector,
             LingFrameInfo lingFrameInfo, LocalGovernanceRegistry governanceRegistry,
+            ResilienceGovernanceSwitch resilienceSwitch,
             ProviderWeightRouter providerWeightRouter,
             TransactionBindingHook transactionBindingHook,
             boolean propagationEnabled) {
@@ -116,15 +122,17 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         TransactionPropagationFilter transactionPropagation =
                 new TransactionPropagationFilter(transactionBindingHook, propagationEnabled);
         ResilienceGovernanceFilter resilience = new ResilienceGovernanceFilter(
-                lingRepository, eventBus, runtimeCoordinator, governanceMetricsCollector);
+                lingRepository, eventBus, runtimeCoordinator, governanceMetricsCollector, resilienceSwitch);
         ContextIsolationFilter resolution = new ContextIsolationFilter(serviceRegistry);
         GovernanceDecisionFilter governance = new GovernanceDecisionFilter(lingRepository, governanceArbitrator);
         PermissionGovernanceFilter permission = new PermissionGovernanceFilter(permissionService, lingFrameInfo);
-        ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(lingRepository, governanceMetricsCollector);
+        ThreadIsolationGovernanceFilter threadIsolation = new ThreadIsolationGovernanceFilter(
+                lingRepository, governanceMetricsCollector, resilienceSwitch);
         TerminalInvokerFilter terminal = new TerminalInvokerFilter(methodCache, serviceInvoker);
 
         this.resilienceFilter = resilience;
         this.isolationFilter = threadIsolation;
+        this.resilienceSwitch = resilienceSwitch;
 
         builtinFilters.add(providerRouting);
         builtinFilters.add(new TrafficMetricsFilter(lingRepository, metricsCollector, eventBus));
@@ -318,6 +326,21 @@ public class FilterRegistry implements ThreadPoolStatsProvider {
         if (isolationFilter != null) {
             isolationFilter.evict(lingId);
         }
+    }
+
+    /**
+     * 切换弹性治理总开关。
+     * 关闭时清空已有的限流器与熔断器状态，重新开启后从干净状态重新建立。
+     */
+    public void setResilienceEnabled(boolean enabled) {
+        resilienceSwitch.setEnabled(enabled);
+        if (!enabled && resilienceFilter != null) {
+            resilienceFilter.resetAll();
+        }
+    }
+
+    public boolean isResilienceEnabled() {
+        return resilienceSwitch.isEnabled();
     }
 
     public boolean recoverLingGovernance(String lingId) {

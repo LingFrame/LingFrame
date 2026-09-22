@@ -6,6 +6,7 @@ import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.governance.GovernanceArbitrator;
 import com.lingframe.core.governance.LocalGovernanceRegistry;
+import com.lingframe.core.governance.ResilienceGovernanceSwitch;
 import com.lingframe.core.ling.InvokableMethodCache;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingServiceRegistry;
@@ -68,6 +69,13 @@ public class FilterRegistryConfig {
      */
     @Builder.Default
     private final LocalGovernanceRegistry governanceRegistry = null;
+
+    /**
+     * 弹性治理总开关，未注入时默认开启。
+     * ClassLoader 与生命周期清理不受该开关影响。
+     */
+    @Builder.Default
+    private final ResilienceGovernanceSwitch resilienceSwitch = new ResilienceGovernanceSwitch();
 
     /**
      * 灵核全局配置只读门面，供 {@link PermissionGovernanceFilter} 判断 dev/prod 模式。

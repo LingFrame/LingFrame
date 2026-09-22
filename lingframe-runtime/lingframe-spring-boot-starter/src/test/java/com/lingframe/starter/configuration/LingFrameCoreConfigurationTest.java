@@ -29,6 +29,7 @@ import java.util.Collections;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -165,5 +166,25 @@ class LingFrameCoreConfigurationTest {
 
         assertEquals(500, config.getRuntimeConfig().getAbandonedJoinTimeoutMs());
         assertTrue(properties.getRuntime().getAbandonedJoinTimeout() != null);
+    }
+
+    @Test
+    @DisplayName("lingFrameConfig 应映射弹性治理总开关与组件开关")
+    void lingFrameConfigShouldMapResilienceSwitches() {
+        LingFrameProperties properties = new LingFrameProperties();
+        properties.getRuntime().setResilienceEnabled(false);
+        properties.getRuntime().setCircuitBreakerEnabled(false);
+        properties.getRuntime().setRateLimiterEnabled(false);
+        properties.getRuntime().setBulkheadEnabled(false);
+        properties.getRuntime().setTimeoutEnabled(false);
+
+        LingFrameConfig config = new LingFrameCoreConfiguration()
+                .lingFrameConfig(properties, new SwitchableRuntimeMode(false, null));
+
+        assertFalse(config.getRuntimeConfig().isResilienceEnabled());
+        assertFalse(config.getRuntimeConfig().isCircuitBreakerEnabled());
+        assertFalse(config.getRuntimeConfig().isRateLimiterEnabled());
+        assertFalse(config.getRuntimeConfig().isBulkheadEnabled());
+        assertFalse(config.getRuntimeConfig().isTimeoutEnabled());
     }
 }

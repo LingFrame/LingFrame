@@ -72,6 +72,11 @@ class VirtualLingSpringBootIntegrationTest {
     void shouldBootstrapFromProperties() {
         LingFrameProperties properties = new LingFrameProperties();
         LingFrameProperties.VirtualLingConfig cfg = new LingFrameProperties.VirtualLingConfig();
+        cfg.setResilienceEnabled(false);
+        cfg.setCircuitBreakerEnabled(false);
+        cfg.setRateLimiterEnabled(false);
+        cfg.setBulkheadEnabled(false);
+        cfg.setTimeoutEnabled(false);
         cfg.setRateLimitPerSecond(800);
         cfg.setCircuitBreakerFailureRateThreshold(35);
         properties.getVirtualLings().put("seatunnel-yaml", cfg);
@@ -89,6 +94,11 @@ class VirtualLingSpringBootIntegrationTest {
         assertEquals(RuntimeStatus.ACTIVE, runtime.currentStatus());
         assertEquals(800, runtime.getConfig().getRateLimitPerSecond());
         assertEquals(35, runtime.getConfig().getCircuitBreakerFailureRateThreshold());
+        assertFalse(runtime.getConfig().isResilienceEnabled());
+        assertFalse(runtime.getConfig().isCircuitBreakerEnabled());
+        assertFalse(runtime.getConfig().isRateLimiterEnabled());
+        assertFalse(runtime.getConfig().isBulkheadEnabled());
+        assertFalse(runtime.getConfig().isTimeoutEnabled());
     }
 
     @Test

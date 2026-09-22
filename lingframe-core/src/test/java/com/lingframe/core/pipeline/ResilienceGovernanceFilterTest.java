@@ -2,6 +2,7 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.event.EventBus;
+import com.lingframe.core.governance.ResilienceGovernanceSwitch;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
@@ -62,6 +63,64 @@ class ResilienceGovernanceFilterTest {
     @Nested
     @DisplayName("透传场景")
     class PassThroughTests {
+
+        @Test
+        @DisplayName("灵元关闭弹性治理时应直接透传并清理既有状态")
+        void doFilter_WhenRuntimeResilienceDisabled_ShouldPassThrough() throws Throwable {
+            context.setServiceFQSID("demo-ling:com.example.DemoService");
+            LingRuntimeConfig config = LingRuntimeConfig.builder()
+                    .resilienceEnabled(false)
+                    .build();
+            when(lingRuntime.getConfig()).thenReturn(config);
+            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            Object result = filter.doFilter(context, filterChain);
+
+            assertEquals(expected, result);
+            assertFalse(filter.hasLimiter("demo-ling"));
+            assertFalse(filter.hasBreaker("demo-ling"));
+            verify(filterChain).doFilter(context);
+        }
+
+        @Test
+        @DisplayName("全局应急开关关闭时应透传且不创建弹性状态")
+        void doFilter_WhenGlobalSwitchDisabled_ShouldPassThrough() throws Throwable {
+            ResilienceGovernanceSwitch resilienceSwitch = new ResilienceGovernanceSwitch();
+            resilienceSwitch.setEnabled(false);
+            filter = new ResilienceGovernanceFilter(lingRepository, eventBus, null, null, resilienceSwitch);
+            setupMocks(100, 1000);
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            Object result = filter.doFilter(context, filterChain);
+
+            assertEquals(expected, result);
+            assertFalse(filter.hasLimiter("demo-ling"));
+            assertFalse(filter.hasBreaker("demo-ling"));
+            verify(filterChain).doFilter(context);
+        }
+
+        @Test
+        @DisplayName("单独关闭熔断时仍应保留限流治理")
+        void doFilter_WhenCircuitBreakerDisabled_ShouldKeepRateLimiter() throws Throwable {
+            context.setServiceFQSID("demo-ling:com.example.DemoService");
+            LingRuntimeConfig config = LingRuntimeConfig.builder()
+                    .circuitBreakerEnabled(false)
+                    .rateLimiterEnabled(true)
+                    .bulkheadMaxConcurrent(100)
+                    .build();
+            when(lingRuntime.getConfig()).thenReturn(config);
+            when(lingRepository.getRuntime("demo-ling")).thenReturn(lingRuntime);
+            Object expected = new Object();
+            when(filterChain.doFilter(context)).thenReturn(expected);
+
+            assertEquals(expected, filter.doFilter(context, filterChain));
+
+            assertFalse(filter.hasBreaker("demo-ling"));
+            assertTrue(filter.hasLimiter("demo-ling"));
+        }
 
         @Test
         @DisplayName("缺失服务标识时应直接透传")

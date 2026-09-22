@@ -27,6 +27,11 @@ public class LingRuntimeConfigTest {
             assertEquals(3000, config.getBulkheadAcquireTimeoutMs());
             // 穿透连接宽限期默认 2s（超时/放弃执行后等待 worker 退出临界区的有界 join 时间）
             assertEquals(2000, config.getAbandonedJoinTimeoutMs());
+            assertTrue(config.isResilienceEnabled());
+            assertTrue(config.isCircuitBreakerEnabled());
+            assertTrue(config.isRateLimiterEnabled());
+            assertTrue(config.isBulkheadEnabled());
+            assertTrue(config.isTimeoutEnabled());
         }
 
         @Test
@@ -40,6 +45,11 @@ public class LingRuntimeConfigTest {
             assertEquals(fromDefaults.getBulkheadMaxConcurrent(), fromBuilder.getBulkheadMaxConcurrent());
             assertEquals(fromDefaults.isForceDrainOnTimeout(), fromBuilder.isForceDrainOnTimeout());
             assertEquals(fromDefaults.getAbandonedJoinTimeoutMs(), fromBuilder.getAbandonedJoinTimeoutMs());
+            assertEquals(fromDefaults.isResilienceEnabled(), fromBuilder.isResilienceEnabled());
+            assertEquals(fromDefaults.isCircuitBreakerEnabled(), fromBuilder.isCircuitBreakerEnabled());
+            assertEquals(fromDefaults.isRateLimiterEnabled(), fromBuilder.isRateLimiterEnabled());
+            assertEquals(fromDefaults.isBulkheadEnabled(), fromBuilder.isBulkheadEnabled());
+            assertEquals(fromDefaults.isTimeoutEnabled(), fromBuilder.isTimeoutEnabled());
         }
     }
 
@@ -58,6 +68,11 @@ public class LingRuntimeConfigTest {
                     .dyingCheckIntervalSeconds(10)
                     .bulkheadAcquireTimeoutMs(5000)
                     .forceDrainOnTimeout(false)
+                    .resilienceEnabled(false)
+                    .circuitBreakerEnabled(false)
+                    .rateLimiterEnabled(false)
+                    .bulkheadEnabled(false)
+                    .timeoutEnabled(false)
                     .build();
 
             assertEquals(20, config.getMaxHistorySnapshots());
@@ -67,6 +82,11 @@ public class LingRuntimeConfigTest {
             assertEquals(10, config.getDyingCheckIntervalSeconds());
             assertEquals(5000, config.getBulkheadAcquireTimeoutMs());
             assertFalse(config.isForceDrainOnTimeout());
+            assertFalse(config.isResilienceEnabled());
+            assertFalse(config.isCircuitBreakerEnabled());
+            assertFalse(config.isRateLimiterEnabled());
+            assertFalse(config.isBulkheadEnabled());
+            assertFalse(config.isTimeoutEnabled());
         }
 
         @Test

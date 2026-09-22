@@ -3,6 +3,7 @@ package com.lingframe.core.pipeline;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.storage.LingTransactionContext;
 import com.lingframe.api.storage.LingTransactionContext.TransactionSnapshot;
+import com.lingframe.core.governance.ResilienceGovernanceSwitch;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingRuntimeConfig;
@@ -36,15 +37,23 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
 
     private final LingRepository lingRepository;
     private final GovernanceMetricsCollector governanceMetricsCollector;
+    private final ResilienceGovernanceSwitch resilienceSwitch;
     private final Map<String, ExecutorHolder> executors = new ConcurrentHashMap<>();
 
     public ThreadIsolationGovernanceFilter(LingRepository lingRepository) {
-        this(lingRepository, null);
+        this(lingRepository, null, new ResilienceGovernanceSwitch());
     }
 
     public ThreadIsolationGovernanceFilter(LingRepository lingRepository, GovernanceMetricsCollector governanceMetricsCollector) {
+        this(lingRepository, governanceMetricsCollector, new ResilienceGovernanceSwitch());
+    }
+
+    public ThreadIsolationGovernanceFilter(LingRepository lingRepository,
+                                           GovernanceMetricsCollector governanceMetricsCollector,
+                                           ResilienceGovernanceSwitch resilienceSwitch) {
         this.lingRepository = lingRepository;
         this.governanceMetricsCollector = governanceMetricsCollector;
+        this.resilienceSwitch = resilienceSwitch != null ? resilienceSwitch : new ResilienceGovernanceSwitch();
     }
 
     @Override
@@ -70,8 +79,15 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
         }
 
         LingRuntimeConfig config = runtime.getConfig();
-        int timeoutMs = resolveTimeout(ctx, config);
-        int maxThreads = resolveMaxThreads(ctx, config);
+        if (!resilienceSwitch.isEnabled() || !config.isResilienceEnabled()) {
+            return chain.doFilter(ctx);
+        }
+        boolean isolationRequired = config.isBulkheadEnabled() || config.isTimeoutEnabled();
+        if (!isolationRequired) {
+            return chain.doFilter(ctx);
+        }
+        int timeoutMs = config.isTimeoutEnabled() ? resolveTimeout(ctx, config) : 0;
+        int maxThreads = config.isBulkheadEnabled() ? resolveMaxThreads(ctx, config) : Integer.MAX_VALUE;
         ExecutorHolder executorHolder = getExecutorHolder(lingId, maxThreads);
         ExecutorService executor = executorHolder.executor;
         recordThreadBudgetSnapshot(lingId, ctx, executorHolder);
@@ -140,7 +156,9 @@ public class ThreadIsolationGovernanceFilter implements LingInvocationFilter, Th
         }
 
         try {
-            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+            return config.isTimeoutEnabled()
+                    ? future.get(timeoutMs, TimeUnit.MILLISECONDS)
+                    : future.get();
         } catch (TimeoutException e) {
             future.cancel(true);
             // 有界 join：宽限期等待 worker 退出临界区（cancel 后响应中断的驱动会级联 Statement.cancel）。

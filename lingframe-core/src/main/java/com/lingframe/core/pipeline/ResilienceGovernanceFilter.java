@@ -5,6 +5,7 @@ import com.lingframe.api.resilience.FallbackProvider;
 import com.lingframe.core.event.EventBus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
+import com.lingframe.core.governance.ResilienceGovernanceSwitch;
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
@@ -38,6 +39,7 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
     private final EventBus eventBus;
     private final RuntimeCoordinator runtimeCoordinator;
     private final GovernanceMetricsCollector governanceMetricsCollector;
+    private final ResilienceGovernanceSwitch resilienceSwitch;
 
     /** 可插拔的降级策略，为 null 时直接抛异常 */
     private volatile FallbackProvider fallbackProvider;
@@ -48,24 +50,31 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
     private final ConcurrentHashMap<String, LimiterHolder> limiters = new ConcurrentHashMap<>();
 
     public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus, RuntimeCoordinator runtimeCoordinator) {
-        this(lingRepository, eventBus, runtimeCoordinator, null);
+        this(lingRepository, eventBus, runtimeCoordinator, null, new ResilienceGovernanceSwitch());
     }
 
     public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus, RuntimeCoordinator runtimeCoordinator,
                                       GovernanceMetricsCollector governanceMetricsCollector) {
+        this(lingRepository, eventBus, runtimeCoordinator, governanceMetricsCollector, new ResilienceGovernanceSwitch());
+    }
+
+    public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus, RuntimeCoordinator runtimeCoordinator,
+                                      GovernanceMetricsCollector governanceMetricsCollector,
+                                      ResilienceGovernanceSwitch resilienceSwitch) {
         this.lingRepository = lingRepository;
         this.eventBus = eventBus;
         this.runtimeCoordinator = runtimeCoordinator;
         this.governanceMetricsCollector = governanceMetricsCollector;
+        this.resilienceSwitch = resilienceSwitch != null ? resilienceSwitch : new ResilienceGovernanceSwitch();
     }
 
     public ResilienceGovernanceFilter(LingRepository lingRepository, EventBus eventBus) {
-        this(lingRepository, eventBus, null, null);
+        this(lingRepository, eventBus, null, null, new ResilienceGovernanceSwitch());
     }
 
     /** 无参构造保持向后兼容（弹性治理不生效，仅透传） */
     public ResilienceGovernanceFilter() {
-        this(null, null, null, null);
+        this(null, null, null, null, new ResilienceGovernanceSwitch());
     }
 
     /**
@@ -98,6 +107,15 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         }
 
         String lingId = ctx.getEffectiveLingId();
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
+        if (runtime == null) {
+            return chain.doFilter(ctx);
+        }
+        LingRuntimeConfig runtimeConfig = runtime.getConfig();
+        if (!resilienceSwitch.isEnabled() || !runtimeConfig.isResilienceEnabled()) {
+            evict(lingId);
+            return chain.doFilter(ctx);
+        }
 
         // 1. 限流检查
         RateLimiter limiter = getLimiter(lingId, ctx);
@@ -187,6 +205,10 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             return null;
         }
         LingRuntimeConfig config = runtime.getConfig();
+        if (!config.isCircuitBreakerEnabled()) {
+            breakers.remove(lingId);
+            return null;
+        }
         // 读 ctx.governance()（预填充后有值），回退 config 静态默认值
         Integer governedTimeout = ctx.governance().getTimeoutMs();
         int effectiveTimeout = governedTimeout != null ? governedTimeout : config.getDefaultTimeoutMs();
@@ -227,17 +249,17 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
     }
 
     private RateLimiter getLimiter(String lingId, InvocationContext ctx) {
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
+        if (runtime == null || !runtime.getConfig().isRateLimiterEnabled()) {
+            limiters.remove(lingId);
+            return null;
+        }
         LimiterHolder holder = limiters.get(lingId);
         if (holder != null) {
             Integer governedRateLimit = ctx.governance().getRateLimitPerSecond();
             if (governedRateLimit == null || governedRateLimit <= 0) {
                 return holder.limiter;
             }
-        }
-
-        LingRuntime runtime = lingRepository.getRuntime(lingId);
-        if (runtime == null) {
-            return null;
         }
 
         int rateLimit = resolveRateLimit(ctx, runtime.getConfig());
@@ -273,6 +295,12 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
     public void evict(String lingId) {
         breakers.remove(lingId);
         limiters.remove(lingId);
+    }
+
+    /** 清空所有运行时弹性状态，供全局开关关闭时使用。 */
+    public void resetAll() {
+        breakers.clear();
+        limiters.clear();
     }
 
     /**

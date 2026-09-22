@@ -109,6 +109,11 @@ public class LingFrameRuntimeBeansConfiguration {
             if (properties.getVirtualLings() != null) {
                 properties.getVirtualLings().forEach((lingId, cfg) -> {
                     LingRuntimeConfig runtimeConfig = LingRuntimeConfig.builder()
+                            .resilienceEnabled(cfg.isResilienceEnabled())
+                            .circuitBreakerEnabled(cfg.isCircuitBreakerEnabled())
+                            .rateLimiterEnabled(cfg.isRateLimiterEnabled())
+                            .bulkheadEnabled(cfg.isBulkheadEnabled())
+                            .timeoutEnabled(cfg.isTimeoutEnabled())
                             .rateLimitPerSecond(cfg.getRateLimitPerSecond())
                             .circuitBreakerFailureRateThreshold(cfg.getCircuitBreakerFailureRateThreshold())
                             .circuitBreakerSlidingWindowSize(cfg.getCircuitBreakerSlidingWindowSize())

@@ -8,7 +8,7 @@
   <a href="https://central.sonatype.com/artifact/cn.lingframe/lingframe-bom">
     <img src="https://img.shields.io/maven-central/v/cn.lingframe/lingframe-bom.svg?color=blue" alt="Maven Central">
   </a>
-  <img src="https://img.shields.io/badge/Version-0.4.5-blue" alt="Version">
+    <img src="https://img.shields.io/badge/Version-0.4.6-blue" alt="Version">
   <img src="https://img.shields.io/badge/Stage-Pre--1.0-yellow" alt="Stage">
   <img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License">
   <img src="https://img.shields.io/badge/Java-8_(默认)_%7C_17-orange" alt="Java">
@@ -194,6 +194,12 @@ curl http://localhost:8888/user-ling/user/listUsers
 | 入门用法 | `lingframe-example-lingcore-app` + user / order |
 | 真实单体改造示范 | **LingFrame-RuoYi**（独立项目仓库：基于真实 RuoYi 既有单体系统的渐进式灵元化改造示范） |
 
+### 生态实践：Apache SeaTunnel ClassLoader 卸载治理
+
+[lingframe-seatunnel-agent](https://github.com/LingFrame/LingFrame-Seatunnel-Agent) 是基于 LingFrame 构建的独立开源 Java Agent，为 SeaTunnel 提供 ClassLoader 生命周期清理和可观测治理能力。业务代码无需修改，但需要挂载 Java Agent 并配置 SeaTunnel。
+
+在 `classloader-cache-mode=false` 的测试前提下，CI 使用 Fake / MySQL / Kafka × Console / MySQL / Kafka 的 3×3 矩阵，并发交错运行 144 个 Job。Agent 组 Metaspace 增长 **14.06 MB**，观测到的 `SeaTunnelChildFirstClassLoader` 残留为 **0**，Class 元数据卸载率为 **96.3%**；无 Agent 对照组分别为 **391.16 MB**、**384 个残留**和 **0.14%**。完整复现流程与原始数据见[验证报告](https://github.com/LingFrame/LingFrame-Seatunnel-Agent/blob/main/docs/classloader-unload-verification.md)。
+
 > **示例迁徙提示**：原 `lingframe-example-ling-mall` 与 `lingframe-example-saas-mall` 示例已下线，
 > 托管数据源与事务传播示例请参考 [docs/zh-CN/managed-datasource-and-transaction.md](docs/zh-CN/managed-datasource-and-transaction.md)，
 > 非 Spring 灵元入口参考可用 `lingframe-example-ling-native`。
@@ -236,7 +242,7 @@ curl http://localhost:8888/user-ling/user/listUsers
 - 存储治理主要覆盖 Spring 注入的 `DataSource`，手写的原生 JDBC 连接无法拦截；
 - 危险 API 扫描是加载阶段的提醒信号，并不是 JVM 级别的完整安全沙箱；
 - 验证主路径为 **Spring Boot 2.7 + JDK 8**（示例默认）；Spring Boot 3 + JDK 17 为支持线；
-- **0.4.5 版本仍处于 Pre-1.0 阶段**：建议上线前先在测试环境充分评估，并对照 [生产配置清单](docs/zh-CN/production-hardening.md) 进行核验。
+- **0.4.6 版本仍处于 Pre-1.0 阶段**：建议上线前先在测试环境充分评估，并对照 [生产配置清单](docs/zh-CN/production-hardening.md) 进行核验。
 
 ---
 
@@ -252,7 +258,7 @@ LingFrame 已正式发布至 **Maven Central** 全球中央仓库，无需拉取
     <dependency>
       <groupId>cn.lingframe</groupId>
       <artifactId>lingframe-bom</artifactId>
-      <version>0.4.5</version>
+      <version>0.4.6</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>

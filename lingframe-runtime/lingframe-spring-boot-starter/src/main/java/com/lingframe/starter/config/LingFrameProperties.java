@@ -204,6 +204,21 @@ public class LingFrameProperties {
      */
     @Data
     public static class VirtualLingConfig {
+        /** 弹性治理总开关，默认开启；关闭不影响 ClassLoader 与生命周期清理。 */
+        private boolean resilienceEnabled = true;
+
+        /** 限流组件开关，默认开启。 */
+        private boolean rateLimiterEnabled = true;
+
+        /** 熔断组件开关，默认开启。 */
+        private boolean circuitBreakerEnabled = true;
+
+        /** 舱壁隔离组件开关，默认开启。 */
+        private boolean bulkheadEnabled = true;
+
+        /** 超时控制组件开关，默认开启。 */
+        private boolean timeoutEnabled = true;
+
         /**
          * 限流 QPS，默认 0（不限流）
          */
@@ -311,6 +326,21 @@ public class LingFrameProperties {
         private Duration dyingCheckInterval = Duration.ofSeconds(5);
 
         // --- 调用控制 ---
+        /** 弹性治理总开关，默认开启；关闭不影响 ClassLoader 与生命周期清理。 */
+        private boolean resilienceEnabled = true;
+
+        /** 限流组件开关，默认开启。 */
+        private boolean rateLimiterEnabled = true;
+
+        /** 熔断组件开关，默认开启。 */
+        private boolean circuitBreakerEnabled = true;
+
+        /** 舱壁隔离组件开关，默认开启。 */
+        private boolean bulkheadEnabled = true;
+
+        /** 超时控制组件开关，默认开启。 */
+        private boolean timeoutEnabled = true;
+
         @DurationUnit(ChronoUnit.MILLIS)
         private Duration defaultTimeout = Duration.ofMillis(3000);
 

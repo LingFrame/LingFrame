@@ -1,0 +1,104 @@
+name: Release and Mirror
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: ['release/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lingframe-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.repository == 'LingFrame/LingFrame' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'release/') &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check release intent and extract changelog
+        id: prepare
+        run: python3 scripts/release/prepare.py
+      - name: Create immutable release
+        if: steps.prepare.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.prepare.outputs.tag }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git show-ref --verify --quiet "refs/tags/$TAG"; then
+            test "$(git rev-list -n 1 "$TAG")" = "$RELEASE_SHA" || {
+              echo 'Release tag points to another commit'; exit 1;
+            }
+          else
+            gh api "repos/$GH_REPO/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$RELEASE_SHA"
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo 'Release already exists; preserving its notes and assets.'
+          else
+            gh release create "$TAG" --verify-tag --title "灵珑·${{ steps.prepare.outputs.codename }}-$TAG" --generate-notes --notes-file release-notes.md
+          fi
+
+  mirror:
+    needs: release
+    if: needs.release.outputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: mirrors
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [gitee, gitcode]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Synchronize main and release tag
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+          RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          MIRROR_KEY: ${{ matrix.platform == 'gitee' && secrets.GITEE_SSH_KEY || secrets.GITCODE_SSH_KEY }}
+          MIRROR_HOST_KEYS: ${{ secrets.MIRROR_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$MIRROR_KEY" && test -n "$MIRROR_HOST_KEYS"
+          key_dir=$(mktemp -d)
+          trap 'rm -rf "$key_dir"' EXIT
+          printf '%s\n' "$MIRROR_KEY" > "$key_dir/key"
+          printf '%s\n' "$MIRROR_HOST_KEYS" > "$key_dir/known_hosts"
+          chmod 600 "$key_dir/key"
+          export GIT_SSH_COMMAND="ssh -i $key_dir/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$key_dir/known_hosts"
+          case "$PLATFORM" in
+            gitee) remote='git@gitee.com:LingFrame/LingFrame.git' ;;
+            gitcode) remote='git@gitcode.com:lingframe/LingFrame.git' ;;
+          esac
+          git push "$remote" HEAD:refs/heads/main
+          git push "$remote" "HEAD:refs/heads/$RELEASE_BRANCH"
+          if [ -n "$RELEASE_TAG" ]; then
+            git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            git push "$remote" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          fi

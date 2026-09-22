@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V0.4.6] - 2026-09-22
+
+Version: `lingframe-dependencies` → `revision=0.4.6`.
+Codename: **Hanzhang** (a minor update on the 0.4 line; the existing codename is retained).
+
+Full release notes: [0.4.6 release notes](docs/release/0.4.6-release-notes.en.md).
+
+### Routing and runtime governance
+
+- Added atomic contract-weight overrides, revision validation, and batched control-plane publication, together with an atomic route-publish entry point and structured route-hit facts.
+- Added instance-level traffic admission control, local version routing, and instance-generation runtime snapshots; route hits, unloads, and governance-operation results now carry instance-generation context and can be persisted.
+- Reject globally registered Providers that cannot accept traffic, enforce explicit version-routing constraints, and fix transaction cleanup and unload retries.
+- Extend asynchronous admission through task termination and support unload cleanup scoped to an instance generation.
+- Resilience components are enabled by default and can now be disabled globally or individually for timeout, bulkhead, rate limiting, and circuit breaking. Disabling them clears their runtime state without changing class-loader or lifecycle governance.
+- Spring Boot `LingFrameProperties` and virtual-Ling configuration expose the same switches and map them into the governance kernel.
+
+### Dashboard and observability
+
+- Expose real route-hit facts, instance generations, unload cleanup, persistence recovery, backups, audit facts, and governance-operation results.
+- Persist and query control-plane audit facts, and connect frontend operations to atomic routing and real runtime evidence.
+- Disable high-risk rehearsal capabilities by default and correct the Spring Boot 3 output directory in the dual-stack build scripts.
+- Dashboard version labels are updated to `V0.4.6` in both locales.
+
 ## [V0.4.0] - 2026-08-05
 
 Version: `lingframe-dependencies` → `revision=0.4.0`.  

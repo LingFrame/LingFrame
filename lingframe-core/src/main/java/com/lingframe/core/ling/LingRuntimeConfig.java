@@ -62,6 +62,30 @@ public class LingRuntimeConfig {
     // ==================== 调用控制 ====================
 
     /**
+     * 运行时弹性治理总开关，默认开启。
+     * <p>
+     * 关闭后跳过限流、熔断、舱壁和超时治理，但不影响 ClassLoader 与生命周期清理。
+     */
+    @Builder.Default
+    private boolean resilienceEnabled = true;
+
+    /** 限流组件开关，默认开启。 */
+    @Builder.Default
+    private boolean rateLimiterEnabled = true;
+
+    /** 熔断组件开关，默认开启。 */
+    @Builder.Default
+    private boolean circuitBreakerEnabled = true;
+
+    /** 舱壁隔离组件开关，默认开启。 */
+    @Builder.Default
+    private boolean bulkheadEnabled = true;
+
+    /** 超时控制组件开关，默认开启。 */
+    @Builder.Default
+    private boolean timeoutEnabled = true;
+
+    /**
      * 默认超时时间（毫秒）
      */
     @Builder.Default
