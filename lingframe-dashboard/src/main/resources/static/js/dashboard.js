@@ -1237,6 +1237,9 @@ createApp({
                 return data.data !== undefined ? data.data : data;
             },
             async post(path, body = {}) {
+                return (await this.postEnvelope(path, body)).data;
+            },
+            async postEnvelope(path, body = {}) {
                 const res = await fetch(API_BASE + path, {
                     method: 'POST',
                     headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
@@ -1247,7 +1250,10 @@ createApp({
                 if (res.status === 403) { appState.readonly = true; throw new Error(t('toast.readonlyMode', '当前为只读模式')); }
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
-                return data.data;
+                return {
+                    data: data.data !== undefined ? data.data : data,
+                    operationOutcome: data.operationOutcome
+                };
             },
             async put(path, body = {}) {
                 const res = await fetch(API_BASE + path, {
@@ -1810,12 +1816,20 @@ createApp({
             invocationForm.memoryBudgetMb = current.memoryBudgetMb ?? '';
         };
 
+        const notifyMutationOutcome = (outcome, successMessage) => {
+            if (outcome && !outcome.persisted) {
+                showToast(outcome.failureReason || t('toast.runtimeOnlyPersistencePending'), 'warn');
+            } else {
+                showToast(successMessage, 'success');
+            }
+        };
+
         const saveInvocationGovernance = async () => {
             if (!activeId.value) return;
 
             loading.invocation = true;
             try {
-                const updated = await api.post(`/governance/${activeId.value}/invocation`, {
+                const response = await api.postEnvelope(`/governance/${activeId.value}/invocation`, {
                     timeoutMs: normalizeNullableInt(invocationForm.timeoutMs),
                     rateLimitPerSecond: normalizeNullableInt(invocationForm.rateLimitPerSecond),
                     maxConcurrentThreads: normalizeNullableInt(invocationForm.maxConcurrentThreads),
@@ -1824,13 +1838,14 @@ createApp({
                     cpuBudgetMsPerMinute: normalizeNullableInt(invocationForm.cpuBudgetMsPerMinute),
                     memoryBudgetMb: normalizeNullableInt(invocationForm.memoryBudgetMb)
                 });
+                const updated = response.data;
 
                 const idx = lings.value.findIndex(p => p.lingId === activeId.value);
                 if (idx !== -1) {
                     lings.value[idx].invocationGovernance = updated;
                 }
                 syncInvocationForm();
-                showToast(t('toast.invocationUpdated'), 'success');
+                notifyMutationOutcome(response.operationOutcome, t('toast.invocationUpdated'));
             } catch (e) {
                 showToast(t('toast.invocationUpdateFailed') + ': ' + e.message, 'error');
             } finally {
@@ -1881,7 +1896,7 @@ createApp({
 
             loading.permissions = true;
             try {
-                await api.post(`/governance/${activeId.value}/permissions`, newPerms);
+                const response = await api.postEnvelope(`/governance/${activeId.value}/permissions`, newPerms);
                 const idx = lings.value.findIndex(p => p.lingId === activeId.value);
                 if (idx !== -1) {
                     lings.value[idx].permissions = newPerms;
@@ -1911,7 +1926,7 @@ createApp({
                     message += t('toast.alsoDisabled', { perm: 'cacheWrite' });
                 }
 
-                showToast(message, 'success');
+                notifyMutationOutcome(response.operationOutcome, message);
                 await fetchDashboardSummary();
             } catch (e) {
                 showToast(t('toast.permUpdateFailed') + ': ' + e.message, 'error');
@@ -1960,7 +1975,7 @@ createApp({
 
             loading.permissions = true;
             try {
-                await api.post(`/governance/${activeId.value}/permissions`, newPerms);
+                const response = await api.postEnvelope(`/governance/${activeId.value}/permissions`, newPerms);
 
                 // 更新本地状态
                 const idx = lings.value.findIndex(p => p.lingId === activeId.value);
@@ -1969,7 +1984,8 @@ createApp({
                 }
                 ipcEnabled.value = newValue; // 更新开关视觉
 
-                showToast(newValue ? t('toast.ipcEnabled') : t('toast.ipcDisabled'), 'success');
+                notifyMutationOutcome(response.operationOutcome,
+                    newValue ? t('toast.ipcEnabled') : t('toast.ipcDisabled'));
             } catch (e) {
                 showToast(t('toast.ipcUpdateFailed') + ': ' + e.message, 'error');
             } finally {

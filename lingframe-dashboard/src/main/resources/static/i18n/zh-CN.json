@@ -270,6 +270,7 @@
     "weightSaveFailed": "权重更新失败",
     "weightSavedRuntimeOnly": "运行时已更新，但持久化未完成",
     "operationRefreshFailed": "刷新卸载操作失败",
+    "runtimeOnlyPersistencePending": "运行时已生效，但持久化结果未确认",
     "fetchContractsFailed": "获取契约列表失败",
     "fetchRoutingFailed": "获取契约路由失败",
     "fetchMigrationFailed": "获取迁移进度失败",

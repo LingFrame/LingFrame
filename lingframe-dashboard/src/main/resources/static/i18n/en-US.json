@@ -270,6 +270,7 @@
     "weightSaveFailed": "Weight update failed",
     "weightSavedRuntimeOnly": "Runtime updated, but persistence was not completed",
     "operationRefreshFailed": "Failed to refresh uninstall operation",
+    "runtimeOnlyPersistencePending": "Runtime applied, but persistence was not confirmed",
     "fetchContractsFailed": "Failed to fetch contract list",
     "fetchRoutingFailed": "Failed to fetch contract routing",
     "fetchMigrationFailed": "Failed to fetch migration progress",
