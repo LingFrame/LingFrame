@@ -481,6 +481,24 @@ class ContractProviderRoutingFilterTest {
         }
 
         @Test
+        @DisplayName("provider 没有可接流实例时明确路由失败")
+        void unavailableProviderFailsRouting() {
+            context.setServiceFQSID("com.example.UserService");
+            ProviderDescriptor provider = new ProviderDescriptor(
+                    "com.example.UserService", "ling-a", 100);
+            when(lingServiceRegistry.getProvidersByContractId("com.example.UserService"))
+                    .thenReturn(Collections.singletonList(provider));
+            LingRuntime runtime = mock(LingRuntime.class);
+            when(lingRepository.getRoutableTarget("ling-a")).thenReturn(runtime);
+            when(runtime.getReadyInstances()).thenReturn(Collections.emptyList());
+
+            LingInvocationException failure = assertThrows(LingInvocationException.class,
+                    () -> filter.doFilter(context, filterChain));
+            assertEquals(LingInvocationException.ErrorKind.ROUTE_FAILURE, failure.getKind());
+            verifyNoInteractions(filterChain);
+        }
+
+        @Test
         @DisplayName("多 provider 无 Dashboard 配置时按注册 weight 决策")
         void multipleProvidersWeightDecision() throws Throwable {
             context.setServiceFQSID("com.example.UserService");
@@ -629,6 +647,7 @@ class ContractProviderRoutingFilterTest {
             labels.put("tenant", "Tenant-A");
 
             when(tenantInstance.getLabels()).thenReturn(labels);
+            when(tenantRuntime.getReadyInstances()).thenReturn(Collections.singletonList(tenantInstance));
             when(tenantPool.getActiveInstances()).thenReturn(Collections.singletonList(tenantInstance));
             when(tenantRuntime.getInstancePool()).thenReturn(tenantPool);
 
@@ -701,6 +720,7 @@ class ContractProviderRoutingFilterTest {
         // 堆返回顺序：v1 在前，v2 在后——v1 因标签不匹配被跳过，v2 命中
         when(pool.getActiveInstances()).thenReturn(Arrays.asList(v1Instance, v2Instance));
         when(runtime.getInstancePool()).thenReturn(pool);
+        when(runtime.getReadyInstances()).thenReturn(Arrays.asList(v1Instance, v2Instance));
 
         when(lingServiceRegistry.getProvidersByContractId("com.example.UserService"))
                 .thenReturn(Arrays.asList(v1Provider, v2Provider));

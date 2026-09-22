@@ -2,6 +2,7 @@ package com.lingframe.core.routing;
 
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.ling.LingInstance;
+import com.lingframe.core.ling.LingCoreRoutableTarget;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingServiceRegistry;
@@ -124,6 +125,11 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
         List<ProviderDescriptor> qualified = filterByMethod(providers, contractId, ctx);
         // 过滤后为空时 fallback 到全集（兼容灵元方法注册不全但权重仍需生效的场景）
         List<ProviderDescriptor> candidates = !qualified.isEmpty() ? qualified : providers;
+        candidates = filterUnavailableProviders(candidates);
+        if (candidates.isEmpty()) {
+            throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.ROUTE_FAILURE,
+                    "No provider instance is eligible to receive requests");
+        }
         if (ctx.getTargetVersion() != null) {
             List<ProviderDescriptor> versionCandidates = new ArrayList<>();
             // 显式锁版本时不得因方法资格为空退回全集，更不能覆盖为另一版本。
@@ -374,6 +380,46 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
             }
         }
         return qualified;
+    }
+
+    /**
+     * 全局 provider 路由只允许存在明确无可接流实例的 provider 被剔除。
+     * <p>
+     * 测试或 native 路径可能只提供抽象 RoutableTarget 而不暴露成员列表，
+     * 此时保留描述符并交由后续运行时解析，避免把未知状态误判为不可用。
+     */
+    private List<ProviderDescriptor> filterUnavailableProviders(List<ProviderDescriptor> providers) {
+        if (lingRepository == null) {
+            return providers;
+        }
+        List<ProviderDescriptor> eligible = new ArrayList<>();
+        for (ProviderDescriptor provider : providers) {
+            RoutableTarget target = lingRepository.getRoutableTarget(provider.getLingId());
+            if (target == null) {
+                continue;
+            }
+            if (!(target instanceof LingRuntime) && !(target instanceof LingCoreRoutableTarget)) {
+                eligible.add(provider);
+                continue;
+            }
+            List<LingInstance> ready = target.getReadyInstances();
+            if (ready == null) {
+                eligible.add(provider);
+                continue;
+            }
+            boolean canReceive = false;
+            for (LingInstance instance : ready) {
+                if (instance != null && !instance.isAdmissionDisabled()
+                        && versionMatches(provider, instance)) {
+                    canReceive = true;
+                    break;
+                }
+            }
+            if (canReceive) {
+                eligible.add(provider);
+            }
+        }
+        return eligible;
     }
 
     /**
