@@ -86,8 +86,12 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
             pipelineEngine.invoke(ctx);
 
             // 治理通过，执行业务方法
-            try (InvocationAdmission admission = InvocationAdmission.acquire(ctx)) {
-                return invocation.proceed();
+            InvocationAdmission admission = InvocationAdmission.acquire(ctx);
+            try {
+                return InvocationAdmission.bindAsync(invocation.proceed(), admission);
+            } catch (Throwable failure) {
+                admission.close();
+                throw failure;
             }
         } catch (LingInvocationException e) {
             // 治理拒绝：卸载/停机/限流期间降级为 info 避免压测日志风暴，权限错误保持 warn

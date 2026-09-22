@@ -15,6 +15,10 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 
 /** AOP 治理完成后的最终准入及释放测试。 */
 @DisplayName("灵核 Bean 入口的最终准入")
@@ -76,6 +80,59 @@ class LingCoreBeanGovernanceInterceptorTest {
         assertThrows(IllegalStateException.class, () -> interceptor.invoke(invocation));
         assertEquals(0, instance.getActiveRequestCount());
         assertTrue(instance.snapshotActiveInvocations().isEmpty());
+    }
+
+    @Test
+    @DisplayName("CompletionStage 完成前保持实例在途，完成后释放")
+    void tracksCompletionStageUntilTerminal() throws Throwable {
+        when(engine.invoke(any())).thenAnswer(call -> {
+            InvocationContext ctx = call.getArgument(0);
+            ctx.routing().setTargetInstance(instance);
+            return null;
+        });
+        CompletableFuture<String> future = new CompletableFuture<>();
+        when(invocation.proceed()).thenReturn(future);
+        assertSame(future, interceptor.invoke(invocation));
+        assertEquals(1, instance.getActiveRequestCount());
+        future.complete("ok");
+        assertEquals(0, instance.getActiveRequestCount());
+    }
+
+    @Test
+    @DisplayName("Future 取消后释放准入且保留 Future 接口")
+    void tracksFutureCancellation() throws Throwable {
+        when(engine.invoke(any())).thenAnswer(call -> {
+            InvocationContext ctx = call.getArgument(0);
+            ctx.routing().setTargetInstance(instance);
+            return null;
+        });
+        Future<String> future = new CompletableFuture<>();
+        when(invocation.proceed()).thenReturn(future);
+        Object result = interceptor.invoke(invocation);
+        assertTrue(result instanceof Future);
+        assertEquals(1, instance.getActiveRequestCount());
+        assertTrue(((Future<?>) result).cancel(true));
+        assertEquals(0, instance.getActiveRequestCount());
+    }
+
+    @Test
+    @DisplayName("普通 Future 未被调用方观察时也在终态释放准入")
+    void tracksGenericFutureWithoutConsumerObservation() throws Throwable {
+        when(engine.invoke(any())).thenAnswer(call -> {
+            InvocationContext ctx = call.getArgument(0);
+            ctx.routing().setTargetInstance(instance);
+            return null;
+        });
+        FutureTask<String> future = new FutureTask<>(() -> "ok");
+        when(invocation.proceed()).thenReturn(future);
+        Object result = interceptor.invoke(invocation);
+        assertTrue(result instanceof Future);
+        assertEquals(1, instance.getActiveRequestCount());
+        future.run();
+        for (int i = 0; i < 20 && instance.getActiveRequestCount() != 0; i++) {
+            TimeUnit.MILLISECONDS.sleep(25);
+        }
+        assertEquals(0, instance.getActiveRequestCount());
     }
 
     /** 用于入口方法元数据解析的业务类型。 */
