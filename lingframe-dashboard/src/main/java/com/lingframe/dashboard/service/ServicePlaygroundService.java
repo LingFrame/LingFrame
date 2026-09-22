@@ -59,9 +59,17 @@ public class ServicePlaygroundService {
      */
     private ProviderWeightRouter providerWeightRouter;
 
+    /** 生产装配默认关闭 NORMAL 真实业务调用。 */
+    private volatile boolean realInvocationEnabled = true;
+
     /** 注入权重路由器（可选装配；装配层有 router 时调用，null 时保持 50/50 兜底） */
     public void setProviderWeightRouter(ProviderWeightRouter providerWeightRouter) {
         this.providerWeightRouter = providerWeightRouter;
+    }
+
+    /** 设置是否允许 Playground 执行真实业务调用；SIMULATION 不受此开关影响。 */
+    public void setRealInvocationEnabled(boolean realInvocationEnabled) {
+        this.realInvocationEnabled = realInvocationEnabled;
     }
 
     /**
@@ -295,6 +303,9 @@ public class ServicePlaygroundService {
     public InvokeResultDTO invokeService(String lingId, String fqsid, String methodName,
             String[] parameterTypes, Object[] args, String version, String routingMode,
             boolean simulation) {
+        if (!simulation && !realInvocationEnabled) {
+            throw new IllegalStateException("Dashboard 真实调用能力未启用");
+        }
         long start = System.currentTimeMillis();
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
         boolean classLoaderChanged = false;

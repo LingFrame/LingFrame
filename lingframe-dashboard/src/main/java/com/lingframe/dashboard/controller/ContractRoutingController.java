@@ -4,10 +4,11 @@ import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
 import com.lingframe.dashboard.dto.ContractRoutingPublishRequest;
 import com.lingframe.dashboard.dto.ContractStressStepDTO;
+import com.lingframe.dashboard.security.DashboardToolProperties;
 import com.lingframe.dashboard.service.ContractRoutingService;
 import com.lingframe.dashboard.service.SimulateService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 
@@ -29,7 +30,6 @@ import java.util.ConcurrentModificationException;
  * 路径前缀遵循 Dashboard 模块约定：{@code /lingframe/dashboard/contract-routing}。
  */
 @Slf4j
-@RequiredArgsConstructor
 @RestController
 @RequestMapping("/lingframe/dashboard/contract-routing")
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
@@ -37,6 +37,20 @@ public class ContractRoutingController {
 
     private final ContractRoutingService contractRoutingService;
     private final SimulateService simulateService;
+    private final DashboardToolProperties toolProperties;
+
+    public ContractRoutingController(ContractRoutingService contractRoutingService,
+            SimulateService simulateService) {
+        this(contractRoutingService, simulateService, DashboardToolProperties.directUseDefaults());
+    }
+
+    @Autowired
+    public ContractRoutingController(ContractRoutingService contractRoutingService,
+            SimulateService simulateService, DashboardToolProperties toolProperties) {
+        this.contractRoutingService = contractRoutingService;
+        this.simulateService = simulateService;
+        this.toolProperties = toolProperties;
+    }
 
     /**
      * 列出所有有多 provider 的契约。
@@ -154,6 +168,9 @@ public class ContractRoutingController {
             @PathVariable String contractId,
             @RequestParam(name = "mode", defaultValue = "DRY_RUN") String mode) {
         try {
+            if (!toolProperties.isStressTestEnabled()) {
+                return ApiResponse.error("压测能力未启用，请设置 lingframe.dashboard.tools.stress-test-enabled=true");
+            }
             log.info("[Contract Routing] Received drill step request: contractId={}, mode={}", contractId, mode);
             ContractStressStepDTO result = simulateService.stressContractStep(contractId, mode);
             return ApiResponse.ok(result);

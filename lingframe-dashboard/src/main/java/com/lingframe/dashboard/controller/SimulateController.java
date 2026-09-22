@@ -4,28 +4,44 @@ import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.core.runtime.SwitchableRuntimeMode;
 import com.lingframe.dashboard.dto.*;
+import com.lingframe.dashboard.security.DashboardToolProperties;
 import com.lingframe.dashboard.service.SimulateService;
 import lombok.Data;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 
 @Slf4j
 @RestController
 @RequestMapping("/lingframe/dashboard/simulate")
-@RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class SimulateController {
 
     private final SimulateService simulateService;
     private final SwitchableRuntimeMode runtimeMode;
+    private final DashboardToolProperties toolProperties;
+
+    public SimulateController(SimulateService simulateService, SwitchableRuntimeMode runtimeMode) {
+        this(simulateService, runtimeMode, DashboardToolProperties.directUseDefaults());
+    }
+
+    @Autowired
+    public SimulateController(SimulateService simulateService, SwitchableRuntimeMode runtimeMode,
+            DashboardToolProperties toolProperties) {
+        this.simulateService = simulateService;
+        this.runtimeMode = runtimeMode;
+        this.toolProperties = toolProperties;
+    }
 
     @PostMapping("/lings/{lingId}/resource")
     public ApiResponse<SimulateResultDTO> simulateResource(
             @PathVariable String lingId,
             @RequestBody ResourceRequest request) {
         try {
+            if (!toolProperties.isSimulationEnabled()) {
+                return ApiResponse.error("模拟能力未启用，请设置 lingframe.dashboard.tools.simulation-enabled=true");
+            }
             SimulateResultDTO result = simulateService.simulateResource(lingId, request.getResourceType());
             return ApiResponse.ok(result);
         } catch (Exception e) {
@@ -39,6 +55,9 @@ public class SimulateController {
             @PathVariable String lingId,
             @RequestBody IpcRequest request) {
         try {
+            if (!toolProperties.isSimulationEnabled()) {
+                return ApiResponse.error("模拟能力未启用，请设置 lingframe.dashboard.tools.simulation-enabled=true");
+            }
             SimulateResultDTO result = simulateService.simulateIpc(
                     lingId, request.getTargetLingId(), request.isIpcEnabled());
             return ApiResponse.ok(result);
@@ -52,6 +71,9 @@ public class SimulateController {
     public ApiResponse<StressResultDTO> stressTest(
             @PathVariable String lingId) {
         try {
+            if (!toolProperties.isStressTestEnabled()) {
+                return ApiResponse.error("压测能力未启用，请设置 lingframe.dashboard.tools.stress-test-enabled=true");
+            }
             StressResultDTO result = simulateService.stressTest(lingId);
             return ApiResponse.ok(result);
         } catch (LingNotFoundException | LingInvocationException e) {
@@ -71,6 +93,9 @@ public class SimulateController {
     @PostMapping("/config/mode")
     public ApiResponse<Boolean> updateMode(@RequestBody ModeRequest request) {
         try {
+            if (!toolProperties.isModeSwitchEnabled()) {
+                return ApiResponse.error("运行时模式切换未启用，请设置 lingframe.dashboard.tools.mode-switch-enabled=true");
+            }
             boolean isDev = "dev".equalsIgnoreCase(request.getTestEnv());
             runtimeMode.switchMode(isDev, request.getPassword());
             log.info("Security Mode switched to: {} (authenticated)", isDev ? "DEV" : "PROD");

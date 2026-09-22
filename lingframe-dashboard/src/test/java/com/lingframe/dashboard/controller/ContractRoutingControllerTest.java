@@ -4,6 +4,7 @@ import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
 import com.lingframe.dashboard.dto.ContractRoutingPublishRequest;
 import com.lingframe.dashboard.dto.ContractStressStepDTO;
+import com.lingframe.dashboard.security.DashboardToolProperties;
 import com.lingframe.dashboard.service.ContractRoutingService;
 import com.lingframe.dashboard.service.SimulateService;
 import org.junit.jupiter.api.BeforeEach;
@@ -127,5 +128,17 @@ class ContractRoutingControllerTest {
         assertEquals("svc-a", resp.getData().getContractId());
         assertEquals("user-ling:1.0.0", resp.getData().getHitProviderKey());
         assertEquals("PENETRATION", resp.getData().getMode());
+    }
+
+    @Test
+    @DisplayName("生产能力开关关闭时应拒绝契约演练")
+    void stressContractStepShouldBeRejectedWhenDisabled() {
+        ContractRoutingController closedController = new ContractRoutingController(
+                service, simulateService, new DashboardToolProperties());
+
+        ApiResponse<ContractStressStepDTO> resp = closedController.stressContractStep("svc-a", "DRY_RUN");
+
+        assertFalse(resp.isSuccess());
+        assertTrue(resp.getMessage().contains("压测能力未启用"));
     }
 }

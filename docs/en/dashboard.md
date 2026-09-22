@@ -115,6 +115,10 @@ All Dashboard config keys live under the `lingframe.dashboard` prefix. For a ful
 | :-- | :-- | :-- |
 | `lingframe.dashboard.enabled` | `false` | Master switch. **Adding the dependency alone does not enable it** — must be explicitly `true` |
 | `lingframe.dashboard.install-enabled` | `false` | Whether uploading and installing lings via the Dashboard is allowed |
+| `lingframe.dashboard.tools.real-invocation-enabled` | `false` | Whether Playground may execute real business calls |
+| `lingframe.dashboard.tools.simulation-enabled` | `false` | Whether resource and IPC simulations are allowed |
+| `lingframe.dashboard.tools.stress-test-enabled` | `false` | Whether stress routing and penetration drills are allowed |
+| `lingframe.dashboard.tools.mode-switch-enabled` | `false` | Whether Dashboard may switch the runtime mode |
 | `lingframe.dashboard.metaspace-estimate-bytes-per-class` | `10240` | Estimated Metaspace bytes per class (metrics estimation only) |
 
 ### Access token auth (`access-token`)

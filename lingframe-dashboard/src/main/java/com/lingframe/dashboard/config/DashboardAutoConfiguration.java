@@ -24,6 +24,7 @@ import com.lingframe.dashboard.scheduler.MetricsCollectorScheduler;
 import com.lingframe.dashboard.security.AccessTokenInterceptor;
 import com.lingframe.dashboard.security.AccessTokenProperties;
 import com.lingframe.dashboard.security.CorsProperties;
+import com.lingframe.dashboard.security.DashboardToolProperties;
 import com.lingframe.dashboard.security.RateLimitProperties;
 import com.lingframe.dashboard.security.ReadOnlyInterceptor;
 import com.lingframe.dashboard.security.ReadOnlyProperties;
@@ -78,7 +79,8 @@ import java.util.Properties;
 @EnableScheduling
 @ConditionalOnWebApplication
 @ConditionalOnProperty(prefix = "lingframe.dashboard", name = "enabled", havingValue = "true", matchIfMissing = false)
-@EnableConfigurationProperties({StorageProperties.class, AccessTokenProperties.class, ReadOnlyProperties.class, CorsProperties.class, RateLimitProperties.class})
+@EnableConfigurationProperties({StorageProperties.class, AccessTokenProperties.class, ReadOnlyProperties.class,
+        CorsProperties.class, RateLimitProperties.class, DashboardToolProperties.class})
 // Filter/Interceptor 实现由矩阵源码集 java-javax / java-jakarta 编译进同一坐标
 @ComponentScan(basePackages = {
         "com.lingframe.dashboard.controller",
@@ -86,6 +88,9 @@ import java.util.Properties;
         "com.lingframe.dashboard.storage"
 })
 public class DashboardAutoConfiguration {
+
+    @Autowired(required = false)
+    private DashboardToolProperties dashboardToolProperties;
 
     public DashboardAutoConfiguration() {
         log.info("[LingFrame] Dashboard unit initializing...");
@@ -176,6 +181,9 @@ public class DashboardAutoConfiguration {
                 objectMapper, governanceArbitrator, permissionService);
         // PROPORTIONAL 模式按真实权重分流；无 router 时保持 50/50 兜底
         service.setProviderWeightRouter(providerWeightRouter);
+        DashboardToolProperties properties = dashboardToolProperties != null
+                ? dashboardToolProperties : new DashboardToolProperties();
+        service.setRealInvocationEnabled(properties.isRealInvocationEnabled());
         return service;
     }
 

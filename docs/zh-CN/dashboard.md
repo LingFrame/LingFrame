@@ -115,6 +115,10 @@ Dashboard 的所有配置项前缀为 `lingframe.dashboard`。生产全量模板
 | :-- | :-- | :-- |
 | `lingframe.dashboard.enabled` | `false` | 控制面总开关。**仅引入依赖不会启用**，必须显式 `true` 才装配 |
 | `lingframe.dashboard.install-enabled` | `false` | 是否允许通过 Dashboard 上传安装灵元 |
+| `lingframe.dashboard.tools.real-invocation-enabled` | `false` | 是否允许 Playground 发起真实业务调用 |
+| `lingframe.dashboard.tools.simulation-enabled` | `false` | 是否允许资源和 IPC 模拟 |
+| `lingframe.dashboard.tools.stress-test-enabled` | `false` | 是否允许压力路由和契约穿透演练 |
+| `lingframe.dashboard.tools.mode-switch-enabled` | `false` | 是否允许通过 Dashboard 切换运行时模式 |
 | `lingframe.dashboard.metaspace-estimate-bytes-per-class` | `10240` | 单类 Metaspace 估算字节数（仅用于指标估算） |
 
 ### 访问令牌鉴权（`access-token`）

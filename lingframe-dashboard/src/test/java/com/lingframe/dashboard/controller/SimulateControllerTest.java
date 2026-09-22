@@ -6,6 +6,7 @@ import com.lingframe.core.runtime.SwitchableRuntimeMode;
 import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.SimulateResultDTO;
 import com.lingframe.dashboard.dto.StressResultDTO;
+import com.lingframe.dashboard.security.DashboardToolProperties;
 import com.lingframe.dashboard.service.SimulateService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -269,5 +270,20 @@ class SimulateControllerTest {
             assertFalse(response.getData());
             assertFalse(runtimeMode.isDev());
         }
+    }
+
+    @Test
+    @DisplayName("生产能力开关关闭时应拒绝模拟请求")
+    void shouldRejectSimulationWhenDisabled() {
+        DashboardToolProperties properties = new DashboardToolProperties();
+        SimulateController closedController = new SimulateController(
+                simulateService, new SwitchableRuntimeMode(false, null), properties);
+        SimulateController.ResourceRequest request = new SimulateController.ResourceRequest();
+        request.setResourceType("dbRead");
+
+        ApiResponse<SimulateResultDTO> response = closedController.simulateResource("ling1", request);
+
+        assertFalse(response.isSuccess());
+        assertTrue(response.getMessage().contains("模拟能力未启用"));
     }
 }
