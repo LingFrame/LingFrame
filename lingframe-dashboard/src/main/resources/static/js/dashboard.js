@@ -161,6 +161,9 @@ createApp({
 
         // 灵元资源下钻指标
         const lingResourceMetrics = ref([]);
+        const storageStatus = ref(null);
+        const auditLogs = ref([]);
+        const auditLoading = ref(false);
         // 灵元资源按 lingId 分组，版本作为子行
         const lingResourceMetricsGrouped = computed(() => {
             const groups = {};
@@ -746,6 +749,28 @@ createApp({
                 console.warn('Failed to fetch migration phase:', e.message);
                 migrationPhase.value = 'CORE_EXCLUSIVE';
                 migrationRecord.value = null;
+            }
+        };
+
+        const fetchStorageStatus = async () => {
+            try {
+                storageStatus.value = await api.get('/storage/status');
+            } catch (e) {
+                storageStatus.value = null;
+                console.warn('Failed to fetch dashboard storage status:', e.message);
+            }
+        };
+
+        const fetchAuditLogs = async () => {
+            auditLoading.value = true;
+            try {
+                const data = await api.get('/audit/logs?limit=50');
+                auditLogs.value = Array.isArray(data) ? data : [];
+            } catch (e) {
+                auditLogs.value = [];
+                console.warn('Failed to fetch dashboard audit logs:', e.message);
+            } finally {
+                auditLoading.value = false;
             }
         };
 
@@ -3123,6 +3148,10 @@ createApp({
             fetchThreadPoolStats();
             fetchGovernanceMatrix();
             fetchMigrationPhase();
+            if (activeNav.value === 'monitor') {
+                fetchStorageStatus();
+                fetchAuditLogs();
+            }
             lingDetailTimer = setInterval(() => {
                 if (!document.hidden) {
                     fetchLingResourceMetrics();
@@ -3193,6 +3222,8 @@ createApp({
             if (val === 'monitor') {
                 destroyCharts();
                 nextTick(() => drawMonitorCharts());
+                fetchStorageStatus();
+                fetchAuditLogs();
             } else if (val === 'lings') {
                 fetchPackages();
             } else if (val === 'contractRouting') {
@@ -3447,7 +3478,8 @@ createApp({
             consoleHeight, autoScrollLogs, startConsoleResize,
 
             perfMetrics, jvmInfo, chartTimeRange, monitorCharts,
-            lingResourceMetrics, lingResourceMetricsGrouped, leakDetections, threadPoolStats, gcDetails, gcTotal,
+            lingResourceMetrics, lingResourceMetricsGrouped, storageStatus, auditLogs, auditLoading,
+            fetchStorageStatus, fetchAuditLogs, leakDetections, threadPoolStats, gcDetails, gcTotal,
             governanceTabs, activeGovernanceTab, switchGovernanceTab, jumpToGovernanceConfig,
             GOVERNANCE_PRESETS, selectedPreset, applyPreset,
             governanceMatrix, matrixSortKey, matrixSortAsc, fetchGovernanceMatrix, sortedMatrix, sortMatrix,

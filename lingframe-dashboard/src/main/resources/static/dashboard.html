@@ -1476,6 +1476,63 @@
                         </div>
                     </div>
 
+                    <!-- 控制面持久化与审计事实 -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                        <div class="card lg:col-span-1">
+                            <div class="card-header">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-database text-amber-400"></i>
+                                    <h3 class="font-bold text-base t-text">{{ t('monitor.storageTitle') }}</h3>
+                                </div>
+                                <button @click="fetchStorageStatus" class="text-xs t-text-sub hover:t-text">
+                                    <i class="fa-solid fa-rotate-right"></i>
+                                </button>
+                            </div>
+                            <div v-if="storageStatus" class="p-4 space-y-2 text-xs">
+                                <div class="flex justify-between"><span class="t-text-muted">{{ t('monitor.storageConfigured') }}</span><span :class="storageStatus.storageConfigured ? 'text-green-400' : 'text-amber-400'">{{ storageStatus.storageConfigured ? t('monitor.yes') : t('monitor.no') }}</span></div>
+                                <div class="flex justify-between"><span class="t-text-muted">{{ t('monitor.persisted') }}</span><span :class="storageStatus.persisted ? 'text-green-400' : 'text-amber-400'">{{ storageStatus.persisted ? t('monitor.ready') : t('monitor.notReady') }}</span></div>
+                                <div class="flex justify-between"><span class="t-text-muted">{{ t('monitor.recoveryReady') }}</span><span :class="storageStatus.recoveryReady ? 'text-green-400' : 'text-amber-400'">{{ storageStatus.recoveryReady ? t('monitor.ready') : t('monitor.notReady') }}</span></div>
+                                <div class="flex justify-between"><span class="t-text-muted">{{ t('monitor.backupReady') }}</span><span :class="storageStatus.backupReady ? 'text-green-400' : 'text-amber-400'">{{ storageStatus.backupReady ? t('monitor.ready') : t('monitor.notReady') }}</span></div>
+                                <p v-if="storageStatus.lastPersistenceError || storageStatus.lastRecoveryError || storageStatus.lastBackupError" class="mt-3 text-amber-400 break-words">
+                                    {{ storageStatus.lastPersistenceError || storageStatus.lastRecoveryError || storageStatus.lastBackupError }}
+                                </p>
+                            </div>
+                            <p v-else class="p-4 text-xs t-text-muted">{{ t('monitor.storageUnavailable') }}</p>
+                        </div>
+                        <div class="card lg:col-span-2">
+                            <div class="card-header">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-solid fa-shield-halved text-cyan-400"></i>
+                                    <h3 class="font-bold text-base t-text">{{ t('monitor.auditTitle') }}</h3>
+                                </div>
+                                <button @click="fetchAuditLogs" :disabled="auditLoading" class="text-xs t-text-sub hover:t-text disabled:opacity-40">
+                                    <i class="fa-solid fa-rotate-right" :class="auditLoading ? 'fa-spin' : ''"></i>
+                                </button>
+                            </div>
+                            <div class="overflow-x-auto max-h-48 overflow-y-auto">
+                                <table class="w-full text-xs">
+                                    <thead class="sticky top-0 t-bg-card">
+                                    <tr class="t-text-muted border-b t-border">
+                                        <th class="text-left p-2">{{ t('monitor.auditTime') }}</th>
+                                        <th class="text-left p-2">{{ t('monitor.auditAction') }}</th>
+                                        <th class="text-left p-2">{{ t('monitor.auditTarget') }}</th>
+                                        <th class="text-left p-2">{{ t('monitor.auditResult') }}</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    <tr v-if="!auditLogs.length"><td colspan="4" class="text-center t-text-muted p-4">{{ t('monitor.auditEmpty') }}</td></tr>
+                                    <tr v-for="entry in auditLogs" :key="entry.timestamp + ':' + entry.action + ':' + (entry.lingId || '')" class="border-b t-border hover:t-bg-hover">
+                                        <td class="p-2 font-mono t-text-muted">{{ formatTime(entry.timestamp) }}</td>
+                                        <td class="p-2 font-mono t-text">{{ entry.action || '-' }}</td>
+                                        <td class="p-2 font-mono t-text-sub">{{ entry.lingId || '-' }}</td>
+                                        <td class="p-2" :class="entry.result === 'SUCCESS' ? 'text-green-400' : 'text-red-400'">{{ entry.result || '-' }}</td>
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
 
                 <!-- ==================== 治理中心视图 ==================== -->
