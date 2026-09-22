@@ -185,6 +185,7 @@ Token 只走 Header：`X-Access-Token`。
 | GET | `/lingframe/dashboard/lings/{lingId}/instances` | 查询实例代次、接流资格和在途请求数 |
 | GET | `/lingframe/dashboard/lings/operations/{operationId}` | 查询本进程内保留的卸载结果 |
 | GET | `/lingframe/dashboard/storage/status` | 查询持久化、启动恢复和数据库备份事实 |
+| GET | `/lingframe/dashboard/audit/logs` | 查询权限审计日志（不包含令牌和业务参数） |
 
 ### 权重路由
 

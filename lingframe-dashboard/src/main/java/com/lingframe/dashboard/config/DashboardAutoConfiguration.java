@@ -215,6 +215,13 @@ public class DashboardAutoConfiguration {
     }
 
     @Bean
+    public LogStreamService logStreamService(EventBus eventBus,
+            @Autowired(required = false) AuditStorage auditStorage,
+            ObjectMapper objectMapper) {
+        return new LogStreamService(eventBus, auditStorage, objectMapper);
+    }
+
+    /** 兼容独立构造测试与扩展代码的旧签名。 */
     public LogStreamService logStreamService(EventBus eventBus) {
         return new LogStreamService(eventBus);
     }

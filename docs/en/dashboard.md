@@ -185,6 +185,7 @@ Token is sent via the `X-Access-Token` header only.
 | GET | `/lingframe/dashboard/lings/{lingId}/instances` | Query instance generations, admission eligibility, and in-flight requests |
 | GET | `/lingframe/dashboard/lings/operations/{operationId}` | Query an uninstall result retained in this process |
 | GET | `/lingframe/dashboard/storage/status` | Query persistence, startup recovery, and database backup facts |
+| GET | `/lingframe/dashboard/audit/logs` | Query permission audit logs without tokens or business arguments |
 
 ### Weight Routing
 

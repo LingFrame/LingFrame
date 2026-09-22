@@ -10,8 +10,9 @@ import com.lingframe.api.event.lifecycle.LingInstallingEvent;
 import com.lingframe.api.event.lifecycle.LingUninstalledEvent;
 import com.lingframe.api.event.lifecycle.LingUninstallingEvent;
 import com.lingframe.dashboard.dto.LogStreamDTO;
+import com.lingframe.dashboard.storage.AuditStorage;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
@@ -54,12 +55,27 @@ import java.util.concurrent.*;
  * </ul>
  */
 @Slf4j
-@RequiredArgsConstructor
 public class LogStreamService implements InitializingBean, DisposableBean {
 
     // 仪表盘自行维护格式化逻辑，避免新增事件字段反向污染核心事件模型。
     private final EventBus eventBus;
+    private final AuditStorage auditStorage;
+    private final ObjectMapper objectMapper;
     private static final ClassLoader CORE_CLASSLOADER = LogStreamService.class.getClassLoader();
+
+    public LogStreamService(EventBus eventBus) {
+        this(eventBus, null, new ObjectMapper());
+    }
+
+    public LogStreamService(EventBus eventBus, AuditStorage auditStorage) {
+        this(eventBus, auditStorage, new ObjectMapper());
+    }
+
+    public LogStreamService(EventBus eventBus, AuditStorage auditStorage, ObjectMapper objectMapper) {
+        this.eventBus = eventBus;
+        this.auditStorage = auditStorage;
+        this.objectMapper = objectMapper == null ? new ObjectMapper() : objectMapper;
+    }
 
     /** 最大 SSE 连接数，防止恶意/异常场景 OOM */
     private static final int MAX_CONNECTIONS = 100;
@@ -226,6 +242,7 @@ public class LogStreamService implements InitializingBean, DisposableBean {
      * 处理内核 Audit 日志事件（权限审计）
      */
     private void handleAudit(MonitoringEvents.AuditLogEvent event) {
+        persistAudit(event);
         StringBuilder content = new StringBuilder();
         content.append(event.getAction()).append(" on ").append(event.getResource())
                 .append(" - ").append(event.getResult())
@@ -256,6 +273,39 @@ public class LogStreamService implements InitializingBean, DisposableBean {
                 .timestamp(event.getTimestamp())
                 .build();
         broadcast(logStreamDTO);
+    }
+
+    /**
+     * 将权限审计事件落入 Dashboard SQLite；只写审计元数据，不写令牌或业务参数。
+     */
+    private void persistAudit(MonitoringEvents.AuditLogEvent event) {
+        if (auditStorage == null) {
+            return;
+        }
+        try {
+            Map<String, Object> detail = new HashMap<>();
+            detail.put("traceId", event.getTraceId());
+            detail.put("principal", event.getPrincipal());
+            detail.put("resource", event.getResource());
+            detail.put("capability", event.getCapability());
+            detail.put("source", event.getSource());
+            detail.put("ruleSource", event.getRuleSource());
+            detail.put("failureReason", truncate(event.getFailureReason(), 256));
+            detail.put("costNanos", event.getCostNanos());
+            detail.put("timestamp", event.getTimestamp());
+            auditStorage.saveAuditLog(event.getLingId(), event.getAction(),
+                    objectMapper.writeValueAsString(detail),
+                    event.getResult() == null ? "UNKNOWN" : event.getResult().name());
+        } catch (Exception e) {
+            log.warn("Failed to persist dashboard audit event: lingId={}", event.getLingId(), e);
+        }
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 
     /**
