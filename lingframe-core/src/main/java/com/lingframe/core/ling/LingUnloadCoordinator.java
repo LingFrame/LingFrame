@@ -116,7 +116,16 @@ public class LingUnloadCoordinator {
      * 如果删掉这里仍安全,说明收口成功。
      */
     public void onVersionUnload(String lingId, String version, ClassLoader classLoader) {
+        onVersionUnload(lingId, version, null, classLoader);
+    }
+
+    /**
+     * 实例代次范围的版本清理入口。instanceId 存在时，等待和结果不会与同版本其他代次混用。
+     */
+    public void onVersionUnload(String lingId, String version, String instanceId, ClassLoader classLoader) {
         long startNanos = System.nanoTime();
+        String cleanupKey = instanceId == null ? null : "instance:" + instanceId;
+        CompletableFuture<Void> future = cleanupKey == null ? null : beginCleanup(cleanupKey);
         try {
             cleanupWithHooks(lingId, version, classLoader);
             // 版本级孤儿资源关闭：多版本滚动更新时，旧版本注册的孤儿资源随本版本卸载即时释放，不累积。
@@ -136,6 +145,9 @@ public class LingUnloadCoordinator {
             // 版本卸载即清出，避免对灵元 ClassLoader 的强引用滞留
             ArgumentTypeAdapter.evict(classLoader);
         } finally {
+            if (future != null) {
+                finishCleanup(cleanupKey, future);
+            }
             recordVersionUnloadDuration(startNanos);
         }
     }
@@ -294,6 +306,14 @@ public class LingUnloadCoordinator {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** 等待某个实例代次的版本清理完成。 */
+    public boolean awaitCleanupForInstance(String instanceId, long timeoutMs) {
+        if (instanceId == null || instanceId.trim().isEmpty()) {
+            return true;
+        }
+        return awaitCleanup("instance:" + instanceId, timeoutMs);
     }
 
     public LeakRiskReport checkBeforeVersionUnload(String lingId, String version, ClassLoader classLoader) {

@@ -150,7 +150,7 @@ class DefaultLingLifecycleEngineTest {
             assertEquals(1, result.getReports().size());
 
             verify(unloadCoordinator).checkBeforeVersionUnload("ling1", "1.0.0", targetClassLoader);
-            verify(unloadCoordinator).onVersionUnload("ling1", "1.0.0", targetClassLoader);
+            verify(unloadCoordinator).onVersionUnload("ling1", "1.0.0", instance.getInstanceId(), targetClassLoader);
             verify(unloadCoordinator).detectLeak("ling1", "1.0.0", targetClassLoader);
         } finally {
             runtimeCoordinator.stop();
@@ -508,7 +508,8 @@ class DefaultLingLifecycleEngineTest {
 
         // 完整卸载钩子被调用：onVersionUnload（负责关闭 LingClassLoader + 资源回收）+ detectLeak
         verify(unloadCoordinator).onVersionUnload(
-                ArgumentMatchers.eq("ling1"), ArgumentMatchers.eq("1.0.0"), ArgumentMatchers.same(tracked));
+                ArgumentMatchers.eq("ling1"), ArgumentMatchers.eq("1.0.0"),
+                ArgumentMatchers.eq(v1.getInstanceId()), ArgumentMatchers.same(tracked));
         verify(unloadCoordinator).detectLeak(
                 ArgumentMatchers.eq("ling1"), ArgumentMatchers.eq("1.0.0"), ArgumentMatchers.same(tracked));
 

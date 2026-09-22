@@ -919,7 +919,7 @@ public class DefaultLingLifecycleEngine implements LingFrameRuntime {
         String version = instance.getVersion();
         ClassLoader classLoader = instance.getClassLoader();
         instanceCoordinator.tearDown(instance);
-        unloadCoordinator.onVersionUnload(lingId, version, classLoader);
+        unloadCoordinator.onVersionUnload(lingId, version, instance.getInstanceId(), classLoader);
         closeClassLoader(lingId, version, classLoader);
         unloadCoordinator.detectLeak(lingId, version, classLoader);
     }

@@ -357,6 +357,31 @@ class LingUnloadCoordinatorTest {
     class AwaitCleanup {
 
         @Test
+        @DisplayName("实例代次清理等待不与同版本其他代次混用")
+        void awaitsExactInstanceGeneration() throws Exception {
+            LingUnloadHook blockingHook = mock(LingUnloadHook.class);
+            CountDownLatch started = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            doAnswer(inv -> {
+                started.countDown();
+                release.await();
+                return null;
+            }).when(blockingHook).cleanup(eq("ling-a"), any());
+            LingUnloadCoordinator coord = new LingUnloadCoordinator(
+                    pipelineEngine, Collections.emptyList(), Collections.singletonList(blockingHook),
+                    resourceManager, leakDetector);
+            Thread unload = new Thread(() -> coord.onVersionUnload("ling-a", "v1", "ling-a@v1#1",
+                    mock(ClassLoader.class)));
+            unload.start();
+            assertTrue(started.await(2, TimeUnit.SECONDS));
+            assertFalse(coord.awaitCleanupForInstance("ling-a@v1#1", 10));
+            assertTrue(coord.awaitCleanupForInstance("ling-a@v1#2", 10));
+            release.countDown();
+            unload.join(2_000);
+            assertTrue(coord.awaitCleanupForInstance("ling-a@v1#1", 100));
+        }
+
+        @Test
         @DisplayName("无进行中的清理时直接返回 true")
         void returnsTrueWhenNoCleanupInFlight() {
             assertTrue(coordinator.awaitCleanup("ling-x", 100));
