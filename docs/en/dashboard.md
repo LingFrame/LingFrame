@@ -222,6 +222,8 @@ The publish is rejected when `expectedRevision` is stale. A successful response 
 
 Write responses expose an `operationOutcome` object with separate `runtimeApplied`, `persisted`, `recoveryReady`, and `backupReady` facts. Runtime application does not imply restart recovery; persistence or backup failures are reported through `failureReason`.
 
+Routing and governance mutations write security audit records containing the operator identifier, operation, target, policy revision, and result. Access tokens and business arguments are excluded from audit details.
+
 Routing facts come from real runtime invocations and include version, instance generation, policy revision, routing reason, success/failure counts, and actual share. The policy and facts are read separately and do not form a cross-source transactional view.
 
 ### Governance Rules

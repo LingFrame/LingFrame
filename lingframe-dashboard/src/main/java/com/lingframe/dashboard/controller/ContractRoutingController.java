@@ -7,6 +7,7 @@ import com.lingframe.dashboard.dto.ContractStressStepDTO;
 import com.lingframe.dashboard.dto.DashboardMutationResult;
 import com.lingframe.dashboard.security.DashboardToolProperties;
 import com.lingframe.dashboard.service.ContractRoutingService;
+import com.lingframe.dashboard.service.DashboardAuditRecorder;
 import com.lingframe.dashboard.service.SimulateService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,18 +40,26 @@ public class ContractRoutingController {
     private final ContractRoutingService contractRoutingService;
     private final SimulateService simulateService;
     private final DashboardToolProperties toolProperties;
+    private final DashboardAuditRecorder auditRecorder;
 
     public ContractRoutingController(ContractRoutingService contractRoutingService,
             SimulateService simulateService) {
         this(contractRoutingService, simulateService, DashboardToolProperties.directUseDefaults());
     }
 
-    @Autowired
     public ContractRoutingController(ContractRoutingService contractRoutingService,
             SimulateService simulateService, DashboardToolProperties toolProperties) {
+        this(contractRoutingService, simulateService, toolProperties, new DashboardAuditRecorder(null, null));
+    }
+
+    @Autowired
+    public ContractRoutingController(ContractRoutingService contractRoutingService,
+            SimulateService simulateService, DashboardToolProperties toolProperties,
+            DashboardAuditRecorder auditRecorder) {
         this.contractRoutingService = contractRoutingService;
         this.simulateService = simulateService;
         this.toolProperties = toolProperties;
+        this.auditRecorder = auditRecorder;
     }
 
     /**
@@ -107,11 +116,15 @@ public class ContractRoutingController {
             }
             DashboardMutationResult<ContractRoutingDTO> result = contractRoutingService
                     .setProviderWeightWithOutcome(contractId, providerKey, weight);
+            auditRecorder.recordMutation(contractId, "ROUTE_WEIGHT_UPDATE", result.getOutcome(),
+                    result.getData().getPolicyRevision());
             return ApiResponse.ok("权重已更新", result.getData(), result.getOutcome());
         } catch (NumberFormatException e) {
+            auditRecorder.recordFailure(contractId, "ROUTE_WEIGHT_UPDATE", "weight 格式非法");
             return ApiResponse.error("weight 必须是 0-100 的整数");
         } catch (Exception e) {
             log.error("Failed to set provider weight for: {}", contractId, e);
+            auditRecorder.recordFailure(contractId, "ROUTE_WEIGHT_UPDATE", "权重更新失败");
             return ApiResponse.error("权重更新失败", e);
         }
     }
@@ -131,14 +144,19 @@ public class ContractRoutingController {
             }
             DashboardMutationResult<ContractRoutingDTO> result = contractRoutingService.replaceProviderWeightsWithOutcome(
                     contractId, request.getExpectedRevision(), request.getWeights());
+            auditRecorder.recordMutation(contractId, "ROUTE_POLICY_PUBLISH", result.getOutcome(),
+                    result.getData().getPolicyRevision());
             return ApiResponse.ok("权重策略已原子发布", result.getData(), result.getOutcome());
         } catch (ConcurrentModificationException e) {
             log.info("Weight policy revision conflict for contract: {}", contractId);
+            auditRecorder.recordFailure(contractId, "ROUTE_POLICY_PUBLISH", "权重策略修订已过期");
             return ApiResponse.error("权重策略修订已过期，请重新读取后发布");
         } catch (IllegalArgumentException e) {
+            auditRecorder.recordFailure(contractId, "ROUTE_POLICY_PUBLISH", "权重策略参数非法");
             return ApiResponse.error("权重策略发布失败: " + e.getMessage());
         } catch (Exception e) {
             log.error("Failed to replace provider weights for: {}", contractId, e);
+            auditRecorder.recordFailure(contractId, "ROUTE_POLICY_PUBLISH", "权重策略发布失败");
             return ApiResponse.error("权重策略发布失败，请稍后重试");
         }
     }
@@ -153,9 +171,12 @@ public class ContractRoutingController {
         try {
             DashboardMutationResult<ContractRoutingDTO> result = contractRoutingService
                     .rollbackToCoreWithOutcome(contractId);
+            auditRecorder.recordMutation(contractId, "ROUTE_ROLLBACK", result.getOutcome(),
+                    result.getData().getPolicyRevision());
             return ApiResponse.ok("已回滚到灵核 100%", result.getData(), result.getOutcome());
         } catch (Exception e) {
             log.error("Failed to rollback to core for: {}", contractId, e);
+            auditRecorder.recordFailure(contractId, "ROUTE_ROLLBACK", "回滚失败");
             return ApiResponse.error("回滚失败", e);
         }
     }

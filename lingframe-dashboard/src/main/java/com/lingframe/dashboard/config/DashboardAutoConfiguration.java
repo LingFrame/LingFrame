@@ -31,6 +31,7 @@ import com.lingframe.dashboard.security.ReadOnlyProperties;
 import com.lingframe.dashboard.service.ContractRoutingService;
 import com.lingframe.dashboard.service.ContractRoutingEvidenceService;
 import com.lingframe.dashboard.service.DashboardService;
+import com.lingframe.dashboard.service.DashboardAuditRecorder;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
 import com.lingframe.dashboard.service.LingResourceMetricsCollector;
 import com.lingframe.dashboard.service.LogStreamService;
@@ -219,6 +220,13 @@ public class DashboardAutoConfiguration {
             @Autowired(required = false) AuditStorage auditStorage,
             ObjectMapper objectMapper) {
         return new LogStreamService(eventBus, auditStorage, objectMapper);
+    }
+
+    @Bean
+    public DashboardAuditRecorder dashboardAuditRecorder(
+            @Autowired(required = false) AuditStorage auditStorage,
+            ObjectMapper objectMapper) {
+        return new DashboardAuditRecorder(auditStorage, objectMapper);
     }
 
     /** 兼容独立构造测试与扩展代码的旧签名。 */

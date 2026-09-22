@@ -222,6 +222,8 @@ Token 只走 Header：`X-Access-Token`。
 
 权重写操作响应顶层的 `operationOutcome` 会分别表达 `runtimeApplied`、`persisted`、`recoveryReady` 和 `backupReady`。运行时已生效不代表重启后一定可恢复；持久化或备份失败时会返回明确的 `failureReason`。
 
+路由和治理变更会写入安全审计，记录操作者标识、操作类型、目标、策略修订号和结果；访问令牌及业务参数不会写入审计详情。
+
 命中事实来自运行时真实调用，包含版本、实例代次、策略修订号、选路原因、成功/失败次数和实际占比。它与策略快照分别读取，不能当作跨两者的事务视图。
 
 ### 治理规则
