@@ -245,6 +245,8 @@ public class ContractProviderRoutingFilter implements LingInvocationFilter {
         }
         ctx.setTargetLingId(lingId);
         ctx.setTargetVersion(selected.getVersion());
+        ctx.routing().setPolicyRevision(policy.getRevision());
+        ctx.routing().setRoutingReason(reason);
         ctx.execution().addTrace(EngineTrace.builder().source("ContractProviderRoutingFilter")
                 .action("Scoped version policy " + policy.getRevision() + " selected "
                         + selected.getVersion() + " by " + reason).type("OK").depth(0).build());

@@ -125,6 +125,16 @@ public class InstanceRoutingFilter implements LingInvocationFilter {
         ctx.routing().setTargetInstance(target);
         ctx.setTargetLingId(target.getLingId());
         ctx.setTargetVersion(target.getVersion());
+        String reason = ctx.routing().getRoutingReason() != null
+                ? ctx.routing().getRoutingReason() : "instance-router";
+        String policyRevision = ctx.routing().getPolicyRevision();
+        String instanceId = target.getInstanceId();
+        if (instanceId == null) {
+            // SPI 测试替身可能没有实例身份；真实 LingInstance 始终在构造时生成唯一 ID。
+            instanceId = target.getLingId() + "@" + target.getVersion();
+        }
+        ctx.routing().setRoutingDecision(new RoutingDecision(target.getLingId(), target.getVersion(),
+                instanceId, policyRevision, reason));
         return chain.doFilter(ctx);
     }
 

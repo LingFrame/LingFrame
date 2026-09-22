@@ -85,6 +85,8 @@ class ContractProviderRoutingFilterTest {
             assertSame(expected, invokeScoped());
             assertEquals("v2", context.getTargetVersion());
             assertSame(policyRouter.getLingVersionPolicy(scope), context.routing().getLingVersionPolicy());
+            assertEquals("v2", context.routing().getRoutingDecision().getVersion());
+            assertEquals("weights", context.routing().getRoutingDecision().getReason());
         }
 
         @ParameterizedTest

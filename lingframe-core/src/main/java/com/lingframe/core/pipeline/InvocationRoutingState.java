@@ -4,6 +4,7 @@ import com.lingframe.core.ling.LingInstance;
 import com.lingframe.core.routing.LingVersionPolicy;
 import lombok.Getter;
 import lombok.Setter;
+import com.lingframe.core.routing.RoutingDecision;
 
 /**
  * 路由阶段协议分区。
@@ -28,10 +29,19 @@ public class InvocationRoutingState {
     /** 本次局部版本选路固定使用的策略，不在后续阶段重新读取最新修订。 */
     private LingVersionPolicy lingVersionPolicy;
 
+    /** 本次调用最终可解释的版本与实例选路事实。 */
+    private RoutingDecision routingDecision;
+
+    private String policyRevision;
+    private String routingReason;
+
     void reset() {
         this.targetInstance = null;
         this.preResolved = false;
         this.lingVersionPolicy = null;
+        this.routingDecision = null;
+        this.policyRevision = null;
+        this.routingReason = null;
     }
 
     void copyFrom(InvocationRoutingState source) {
@@ -41,5 +51,8 @@ public class InvocationRoutingState {
         this.targetInstance = source.targetInstance;
         this.preResolved = source.preResolved;
         this.lingVersionPolicy = source.lingVersionPolicy;
+        this.routingDecision = source.routingDecision;
+        this.policyRevision = source.policyRevision;
+        this.routingReason = source.routingReason;
     }
 }
