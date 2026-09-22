@@ -191,6 +191,7 @@ Token is sent via the `X-Access-Token` header only.
 | :-- | :-- | :-- |
 | POST | `/lingframe/dashboard/contract-routing/{contractId}/weight` | Set the weight of a specific provider under a contract |
 | PUT | `/lingframe/dashboard/contract-routing/{contractId}/weights` | Atomically replace the complete weight policy |
+| GET | `/lingframe/dashboard/contract-routing/{contractId}/evidence` | Query the effective policy and actual routing facts |
 
 Example body:
 
@@ -216,6 +217,8 @@ Production canary releases should use the full-policy endpoint to avoid an inter
 ```
 
 The publish is rejected when `expectedRevision` is stale. A successful response returns the new policy revision and the complete effective snapshot. The single-provider endpoint remains for compatibility and low-risk adjustments.
+
+Routing facts come from real runtime invocations and include version, instance generation, policy revision, routing reason, success/failure counts, and actual share. The policy and facts are read separately and do not form a cross-source transactional view.
 
 ### Governance Rules
 

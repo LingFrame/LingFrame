@@ -191,6 +191,7 @@ Token 只走 Header：`X-Access-Token`。
 | :-- | :-- | :-- |
 | POST | `/lingframe/dashboard/contract-routing/{contractId}/weight` | 设置某契约下指定 provider 的权重 |
 | PUT | `/lingframe/dashboard/contract-routing/{contractId}/weights` | 按完整策略快照原子替换权重 |
+| GET | `/lingframe/dashboard/contract-routing/{contractId}/evidence` | 查询生效策略与真实命中事实 |
 
 请求体示例：
 
@@ -216,6 +217,8 @@ Token 只走 Header：`X-Access-Token`。
 ```
 
 `expectedRevision` 不匹配时发布会被拒绝；成功响应返回新的策略修订号和完整生效快照。单项接口保留用于兼容和低风险调整。
+
+命中事实来自运行时真实调用，包含版本、实例代次、策略修订号、选路原因、成功/失败次数和实际占比。它与策略快照分别读取，不能当作跨两者的事务视图。
 
 ### 治理规则
 

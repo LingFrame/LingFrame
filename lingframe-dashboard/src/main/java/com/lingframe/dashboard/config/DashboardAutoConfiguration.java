@@ -29,6 +29,7 @@ import com.lingframe.dashboard.security.RateLimitProperties;
 import com.lingframe.dashboard.security.ReadOnlyInterceptor;
 import com.lingframe.dashboard.security.ReadOnlyProperties;
 import com.lingframe.dashboard.service.ContractRoutingService;
+import com.lingframe.dashboard.service.ContractRoutingEvidenceService;
 import com.lingframe.dashboard.service.DashboardService;
 import com.lingframe.dashboard.service.LeakDetectionCacheService;
 import com.lingframe.dashboard.service.LingResourceMetricsCollector;
@@ -213,6 +214,13 @@ public class DashboardAutoConfiguration {
             service.setObjectMapper(objectMapper);
         }
         return service;
+    }
+
+    @Bean
+    public ContractRoutingEvidenceService contractRoutingEvidenceService(
+            ContractRoutingService contractRoutingService,
+            ProviderMetricsCollector providerMetricsCollector) {
+        return new ContractRoutingEvidenceService(contractRoutingService, providerMetricsCollector);
     }
 
     @Bean
