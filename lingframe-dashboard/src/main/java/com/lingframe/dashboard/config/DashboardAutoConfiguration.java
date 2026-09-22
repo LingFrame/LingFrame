@@ -151,7 +151,8 @@ public class DashboardAutoConfiguration {
             RuntimeCoordinator runtimeCoordinator,
             ObjectMapper objectMapper,
             MigrationStateHolder migrationStateHolder,
-            @Autowired(required = false) GovernanceStorage governanceStorage) {
+            @Autowired(required = false) GovernanceStorage governanceStorage,
+            DashboardPersistenceStatus persistenceStatus) {
         DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository, governanceAdmin,
                 lingInfoConverter,
                 permissionService,
@@ -162,7 +163,25 @@ public class DashboardAutoConfiguration {
         if (governanceStorage != null) {
             service.setGovernanceStorage(governanceStorage);
         }
+        service.setPersistenceStatus(persistenceStatus);
         return service;
+    }
+
+    /** 兼容独立构造测试与扩展代码的旧签名。 */
+    public DashboardService dashboardService(
+            LingFrameConfig lingFrameConfig,
+            LingLifecycleEngine lifecycleEngine,
+            LingRepository lingRepository,
+            GovernanceAdminService governanceAdmin,
+            LingInfoConverter lingInfoConverter,
+            PermissionService permissionService,
+            RuntimeCoordinator runtimeCoordinator,
+            ObjectMapper objectMapper,
+            MigrationStateHolder migrationStateHolder,
+            GovernanceStorage governanceStorage) {
+        return dashboardService(lingFrameConfig, lifecycleEngine, lingRepository, governanceAdmin,
+                lingInfoConverter, permissionService, runtimeCoordinator, objectMapper,
+                migrationStateHolder, governanceStorage, new DashboardPersistenceStatus());
     }
 
     @Bean

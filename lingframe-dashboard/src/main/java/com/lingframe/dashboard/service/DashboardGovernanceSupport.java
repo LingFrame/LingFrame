@@ -7,7 +7,10 @@ import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
+import com.lingframe.dashboard.dto.DashboardMutationResult;
+import com.lingframe.dashboard.dto.DashboardOperationOutcomeDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
+import com.lingframe.dashboard.storage.DashboardPersistenceStatus;
 import com.lingframe.dashboard.storage.GovernanceStorage;
 import lombok.extern.slf4j.Slf4j;
 
@@ -35,9 +38,14 @@ public class DashboardGovernanceSupport {
 
     // 持久化存储（可选，由 DashboardService.setGovernanceStorage 间接注入）
     private GovernanceStorage governanceStorage;
+    private DashboardPersistenceStatus persistenceStatus;
 
     public void setGovernanceStorage(GovernanceStorage governanceStorage) {
         this.governanceStorage = governanceStorage;
+    }
+
+    public void setPersistenceStatus(DashboardPersistenceStatus persistenceStatus) {
+        this.persistenceStatus = persistenceStatus;
     }
 
     public DashboardGovernanceSupport(GovernanceAdminService governanceAdmin,
@@ -61,12 +69,26 @@ public class DashboardGovernanceSupport {
     }
 
     public void updateGovernancePolicy(String lingId, GovernancePolicy policy) {
+        updateGovernancePolicyWithOutcome(lingId, policy);
+    }
+
+    public DashboardMutationResult<GovernancePolicy> updateGovernancePolicyWithOutcome(
+            String lingId, GovernancePolicy policy) {
         GovernancePolicy mergedPatch = GovernancePolicy.merge(getPatchForUpdate(lingId), policy);
         persistPolicyPatch(lingId, mergedPatch);
-        persistToStorage(lingId, mergedPatch);
+        DashboardOperationOutcomeDTO outcome = persistToStorage(lingId, mergedPatch);
+        return DashboardMutationResult.<GovernancePolicy>builder()
+                .data(getPatchForUpdate(lingId))
+                .outcome(outcome)
+                .build();
     }
 
     public void updatePermissions(String lingId, ResourcePermissionDTO dto) {
+        updatePermissionsWithOutcome(lingId, dto);
+    }
+
+    public DashboardMutationResult<ResourcePermissionDTO> updatePermissionsWithOutcome(
+            String lingId, ResourcePermissionDTO dto) {
         GovernancePolicy policy = getPatchForUpdate(lingId);
         Map<String, GovernancePolicy.CapabilityRule> ruleMap = new HashMap<>();
 
@@ -98,10 +120,19 @@ public class DashboardGovernanceSupport {
 
         policy.setCapabilities(new ArrayList<>(ruleMap.values()));
         persistPolicyPatch(lingId, policy);
-        persistToStorage(lingId, policy);
+        DashboardOperationOutcomeDTO outcome = persistToStorage(lingId, policy);
+        return DashboardMutationResult.<ResourcePermissionDTO>builder()
+                .data(dto)
+                .outcome(outcome)
+                .build();
     }
 
     public InvocationGovernanceDTO updateInvocationGovernance(String lingId, InvocationGovernanceDTO dto) {
+        return updateInvocationGovernanceWithOutcome(lingId, dto).getData();
+    }
+
+    public DashboardMutationResult<InvocationGovernanceDTO> updateInvocationGovernanceWithOutcome(
+            String lingId, InvocationGovernanceDTO dto) {
         GovernancePolicy patch = getPatchForUpdate(lingId);
         GovernancePolicy.InvocationPolicy invocation = patch.getInvocation();
         if (invocation == null) {
@@ -118,8 +149,11 @@ public class DashboardGovernanceSupport {
         patch.setInvocation(invocation);
 
         persistPolicyPatch(lingId, patch);
-        persistToStorage(lingId, patch);
-        return getInvocationGovernance(lingId);
+        DashboardOperationOutcomeDTO outcome = persistToStorage(lingId, patch);
+        return DashboardMutationResult.<InvocationGovernanceDTO>builder()
+                .data(getInvocationGovernance(lingId))
+                .outcome(outcome)
+                .build();
     }
 
     public InvocationGovernanceDTO getInvocationGovernance(String lingId) {
@@ -157,14 +191,45 @@ public class DashboardGovernanceSupport {
     /**
      * 将治理策略持久化到 SQLite（异步容错，不影响主流程）
      */
-    private void persistToStorage(String lingId, GovernancePolicy policy) {
+    private DashboardOperationOutcomeDTO persistToStorage(String lingId, GovernancePolicy policy) {
         if (governanceStorage == null) {
-            return;
+            if (persistenceStatus != null) {
+                persistenceStatus.recordPersistenceFailure("治理存储未配置，重启后无法恢复该治理策略");
+                return persistenceStatus.operationOutcome(true, null);
+            }
+            return DashboardOperationOutcomeDTO.builder()
+                    .runtimeApplied(true)
+                    .persisted(false)
+                    .recoveryReady(false)
+                    .backupReady(false)
+                    .failureReason("治理存储未配置，重启后无法恢复该治理策略")
+                    .build();
         }
         try {
             governanceStorage.saveInvocationConfig(lingId, objectMapper.writeValueAsString(policy));
+            if (persistenceStatus != null) {
+                persistenceStatus.recordPersistenceSuccess();
+                return persistenceStatus.operationOutcome(true, null);
+            }
+            return DashboardOperationOutcomeDTO.builder()
+                    .runtimeApplied(true)
+                    .persisted(true)
+                    .recoveryReady(true)
+                    .backupReady(false)
+                    .build();
         } catch (Exception e) {
             log.warn("Failed to persist governance strategy: {}", lingId, e);
+            if (persistenceStatus != null) {
+                persistenceStatus.recordPersistenceFailure("治理策略已在运行时生效，但持久化失败");
+                return persistenceStatus.operationOutcome(true, null);
+            }
+            return DashboardOperationOutcomeDTO.builder()
+                    .runtimeApplied(true)
+                    .persisted(false)
+                    .recoveryReady(false)
+                    .backupReady(false)
+                    .failureReason("治理策略已在运行时生效，但持久化失败")
+                    .build();
         }
     }
 }

@@ -7,7 +7,10 @@ import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
+import com.lingframe.dashboard.dto.DashboardMutationResult;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
+import com.lingframe.dashboard.storage.DashboardPersistenceStatus;
+import com.lingframe.dashboard.storage.GovernanceStorage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -15,13 +18,16 @@ import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 @DisplayName("DashboardGovernanceSupport 测试")
 class DashboardGovernanceSupportTest {
@@ -112,5 +118,29 @@ class DashboardGovernanceSupportTest {
         assertEquals(Integer.valueOf(48), result.getMemoryBudgetMb());
         // 验证委托 GovernanceAdminService 持久化
         verify(governanceAdmin).persistPolicyPatch(eq("ling1"), any(GovernancePolicy.class));
+    }
+
+    @Test
+    @DisplayName("治理更新结果应区分运行时生效与持久化失败")
+    void shouldExposePersistenceOutcome() {
+        GovernanceAdminService governanceAdmin = mock(GovernanceAdminService.class);
+        PermissionService permissionService = mock(PermissionService.class);
+        GovernanceStorage storage = mock(GovernanceStorage.class);
+        DashboardPersistenceStatus status = new DashboardPersistenceStatus();
+        DashboardGovernanceSupport support =
+                new DashboardGovernanceSupport(governanceAdmin, permissionService, SHARED_OBJECT_MAPPER);
+        support.setGovernanceStorage(storage);
+        support.setPersistenceStatus(status);
+        when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(new GovernancePolicy());
+        doThrow(new IllegalStateException("database unavailable"))
+                .when(storage).saveInvocationConfig(eq("ling1"), any(String.class));
+
+        DashboardMutationResult<GovernancePolicy> result = support
+                .updateGovernancePolicyWithOutcome("ling1", new GovernancePolicy());
+
+        assertTrue(result.getOutcome().isRuntimeApplied());
+        assertFalse(result.getOutcome().isPersisted());
+        assertFalse(result.getOutcome().isRecoveryReady());
+        assertNotNull(result.getOutcome().getFailureReason());
     }
 }

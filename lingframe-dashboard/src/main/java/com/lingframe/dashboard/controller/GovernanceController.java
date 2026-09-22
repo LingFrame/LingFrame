@@ -3,6 +3,7 @@ package com.lingframe.dashboard.controller;
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.dashboard.dto.ApiResponse;
+import com.lingframe.dashboard.dto.DashboardMutationResult;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.service.DashboardService;
@@ -58,8 +59,9 @@ public class GovernanceController {
             @PathVariable String lingId,
             @RequestBody GovernancePolicy policy) {
         try {
-            dashboardService.updateGovernancePolicy(lingId, policy);
-            return ApiResponse.ok("策略已更新", governanceAdmin.getPatchForUpdate(lingId));
+            DashboardMutationResult<GovernancePolicy> result = dashboardService
+                    .updateGovernancePolicyWithOutcome(lingId, policy);
+            return ApiResponse.ok("策略已更新", result.getData(), result.getOutcome());
         } catch (Exception e) {
             log.error("Failed to update patch for: {}", lingId, e);
             return ApiResponse.error("策略更新失败", e);
@@ -88,8 +90,9 @@ public class GovernanceController {
             @PathVariable String lingId,
             @RequestBody InvocationGovernanceDTO dto) {
         try {
-            InvocationGovernanceDTO updated = dashboardService.updateInvocationGovernance(lingId, dto);
-            return ApiResponse.ok("调用治理已更新", updated);
+            DashboardMutationResult<InvocationGovernanceDTO> result = dashboardService
+                    .updateInvocationGovernanceWithOutcome(lingId, dto);
+            return ApiResponse.ok("调用治理已更新", result.getData(), result.getOutcome());
         } catch (Exception e) {
             log.error("Failed to update invocation governance for: {}", lingId, e);
             return ApiResponse.error("调用治理更新失败", e);
@@ -105,8 +108,9 @@ public class GovernanceController {
             @PathVariable String lingId,
             @RequestBody ResourcePermissionDTO dto) {
         try {
-            dashboardService.updatePermissions(lingId, dto);
-            return ApiResponse.ok("权限已更新", dto);
+            DashboardMutationResult<ResourcePermissionDTO> result = dashboardService
+                    .updatePermissionsWithOutcome(lingId, dto);
+            return ApiResponse.ok("权限已更新", result.getData(), result.getOutcome());
         } catch (Exception e) {
             log.error("Failed to update permissions for: {}", lingId, e);
             return ApiResponse.error("权限更新失败", e);

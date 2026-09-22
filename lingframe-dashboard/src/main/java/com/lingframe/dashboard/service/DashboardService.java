@@ -20,6 +20,7 @@ import com.lingframe.core.loader.LingManifestLoader;
 import com.lingframe.core.routing.MigrationStateHolder;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
+import com.lingframe.dashboard.dto.DashboardMutationResult;
 import com.lingframe.dashboard.dto.LingInfoDTO;
 import com.lingframe.dashboard.dto.LingInstanceSnapshotDTO;
 import com.lingframe.dashboard.dto.LingPackageDTO;
@@ -28,6 +29,7 @@ import com.lingframe.dashboard.dto.TransitionHistoryDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
 import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.storage.GovernanceStorage;
+import com.lingframe.dashboard.storage.DashboardPersistenceStatus;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
@@ -203,6 +205,12 @@ public class DashboardService {
         return result;
     }
 
+    public void setPersistenceStatus(DashboardPersistenceStatus persistenceStatus) {
+        if (this.governanceSupport != null) {
+            this.governanceSupport.setPersistenceStatus(persistenceStatus);
+        }
+    }
+
     /**
      * 查询某个灵元当前仍由运行时持有的实例代次快照。
      *
@@ -299,17 +307,32 @@ public class DashboardService {
     }
 
     public void updatePermissions(String lingId, ResourcePermissionDTO dto) {
+        updatePermissionsWithOutcome(lingId, dto);
+    }
+
+    public DashboardMutationResult<ResourcePermissionDTO> updatePermissionsWithOutcome(
+            String lingId, ResourcePermissionDTO dto) {
         log.info("Updating permissions for ling {}: dbRead={}, dbWrite={}, cacheRead={}, cacheWrite={}",
                 lingId, dto.isDbRead(), dto.isDbWrite(), dto.isCacheRead(), dto.isCacheWrite());
-        governanceSupport.updatePermissions(lingId, dto);
+        return governanceSupport.updatePermissionsWithOutcome(lingId, dto);
     }
 
     public void updateGovernancePolicy(String lingId, GovernancePolicy policy) {
-        governanceSupport.updateGovernancePolicy(lingId, policy);
+        updateGovernancePolicyWithOutcome(lingId, policy);
+    }
+
+    public DashboardMutationResult<GovernancePolicy> updateGovernancePolicyWithOutcome(
+            String lingId, GovernancePolicy policy) {
+        return governanceSupport.updateGovernancePolicyWithOutcome(lingId, policy);
     }
 
     public InvocationGovernanceDTO updateInvocationGovernance(String lingId, InvocationGovernanceDTO dto) {
-        return governanceSupport.updateInvocationGovernance(lingId, dto);
+        return updateInvocationGovernanceWithOutcome(lingId, dto).getData();
+    }
+
+    public DashboardMutationResult<InvocationGovernanceDTO> updateInvocationGovernanceWithOutcome(
+            String lingId, InvocationGovernanceDTO dto) {
+        return governanceSupport.updateInvocationGovernanceWithOutcome(lingId, dto);
     }
 
     public InvocationGovernanceDTO getInvocationGovernance(String lingId) {

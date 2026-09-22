@@ -2,6 +2,8 @@ package com.lingframe.dashboard.controller;
 
 import com.lingframe.api.config.GovernancePolicy;
 import com.lingframe.dashboard.dto.ApiResponse;
+import com.lingframe.dashboard.dto.DashboardMutationResult;
+import com.lingframe.dashboard.dto.DashboardOperationOutcomeDTO;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.service.DashboardService;
@@ -103,13 +105,15 @@ class GovernanceControllerTest {
         void shouldUpdateAndReturnPatch() {
             GovernancePolicy policy = new GovernancePolicy();
             GovernancePolicy updated = new GovernancePolicy();
-            when(governanceAdmin.getPatchForUpdate("ling1")).thenReturn(updated);
+            when(dashboardService.updateGovernancePolicyWithOutcome("ling1", policy))
+                    .thenReturn(DashboardMutationResult.<GovernancePolicy>builder()
+                            .data(updated).outcome(successfulOutcome()).build());
 
             ApiResponse<GovernancePolicy> response = controller.updatePatch("ling1", policy);
 
             assertTrue(response.isSuccess());
             assertSame(updated, response.getData());
-            verify(dashboardService).updateGovernancePolicy("ling1", policy);
+            verify(dashboardService).updateGovernancePolicyWithOutcome("ling1", policy);
         }
 
         @Test
@@ -117,7 +121,7 @@ class GovernanceControllerTest {
         void shouldReturnErrorOnException() {
             GovernancePolicy policy = new GovernancePolicy();
             doThrow(new RuntimeException("update failed"))
-                    .when(dashboardService).updateGovernancePolicy("ling1", policy);
+                    .when(dashboardService).updateGovernancePolicyWithOutcome("ling1", policy);
 
             ApiResponse<GovernancePolicy> response = controller.updatePatch("ling1", policy);
 
@@ -162,7 +166,9 @@ class GovernanceControllerTest {
         void shouldUpdateAndReturnInvocationGovernance() {
             InvocationGovernanceDTO dto = new InvocationGovernanceDTO();
             InvocationGovernanceDTO updated = new InvocationGovernanceDTO();
-            when(dashboardService.updateInvocationGovernance("ling1", dto)).thenReturn(updated);
+            when(dashboardService.updateInvocationGovernanceWithOutcome("ling1", dto))
+                    .thenReturn(DashboardMutationResult.<InvocationGovernanceDTO>builder()
+                            .data(updated).outcome(successfulOutcome()).build());
 
             ApiResponse<InvocationGovernanceDTO> response = controller.updateInvocationGovernance("ling1", dto);
 
@@ -174,7 +180,7 @@ class GovernanceControllerTest {
         @DisplayName("dashboardService 抛异常时返回 error")
         void shouldReturnErrorOnException() {
             InvocationGovernanceDTO dto = new InvocationGovernanceDTO();
-            when(dashboardService.updateInvocationGovernance("ling1", dto))
+            when(dashboardService.updateInvocationGovernanceWithOutcome("ling1", dto))
                     .thenThrow(new RuntimeException("failed"));
 
             ApiResponse<InvocationGovernanceDTO> response = controller.updateInvocationGovernance("ling1", dto);
@@ -191,12 +197,15 @@ class GovernanceControllerTest {
         @DisplayName("正常更新权限后返回传入的 dto")
         void shouldUpdatePermissions() {
             ResourcePermissionDTO dto = new ResourcePermissionDTO();
+            when(dashboardService.updatePermissionsWithOutcome("ling1", dto))
+                    .thenReturn(DashboardMutationResult.<ResourcePermissionDTO>builder()
+                            .data(dto).outcome(successfulOutcome()).build());
 
             ApiResponse<ResourcePermissionDTO> response = controller.updatePermissions("ling1", dto);
 
             assertTrue(response.isSuccess());
             assertSame(dto, response.getData());
-            verify(dashboardService).updatePermissions("ling1", dto);
+            verify(dashboardService).updatePermissionsWithOutcome("ling1", dto);
         }
 
         @Test
@@ -204,12 +213,21 @@ class GovernanceControllerTest {
         void shouldReturnErrorOnException() {
             ResourcePermissionDTO dto = new ResourcePermissionDTO();
             doThrow(new RuntimeException("denied"))
-                    .when(dashboardService).updatePermissions("ling1", dto);
+                    .when(dashboardService).updatePermissionsWithOutcome("ling1", dto);
 
             ApiResponse<ResourcePermissionDTO> response = controller.updatePermissions("ling1", dto);
 
             assertFalse(response.isSuccess());
             assertTrue(response.getMessage().contains("权限更新失败"));
         }
+    }
+
+    private DashboardOperationOutcomeDTO successfulOutcome() {
+        return DashboardOperationOutcomeDTO.builder()
+                .runtimeApplied(true)
+                .persisted(true)
+                .recoveryReady(true)
+                .backupReady(false)
+                .build();
     }
 }
