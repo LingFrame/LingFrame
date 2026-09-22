@@ -218,6 +218,8 @@ Production canary releases should use the full-policy endpoint to avoid an inter
 
 The publish is rejected when `expectedRevision` is stale. A successful response returns the new policy revision and the complete effective snapshot. The single-provider endpoint remains for compatibility and low-risk adjustments.
 
+Write responses expose an `operationOutcome` object with separate `runtimeApplied`, `persisted`, `recoveryReady`, and `backupReady` facts. Runtime application does not imply restart recovery; persistence or backup failures are reported through `failureReason`.
+
 Routing facts come from real runtime invocations and include version, instance generation, policy revision, routing reason, success/failure counts, and actual share. The policy and facts are read separately and do not form a cross-source transactional view.
 
 ### Governance Rules

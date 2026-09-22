@@ -4,6 +4,7 @@ import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
 import com.lingframe.dashboard.dto.ContractRoutingPublishRequest;
 import com.lingframe.dashboard.dto.ContractStressStepDTO;
+import com.lingframe.dashboard.dto.DashboardMutationResult;
 import com.lingframe.dashboard.security.DashboardToolProperties;
 import com.lingframe.dashboard.service.ContractRoutingService;
 import com.lingframe.dashboard.service.SimulateService;
@@ -104,8 +105,9 @@ public class ContractRoutingController {
             if (weight < 0 || weight > 100) {
                 return ApiResponse.error("weight 必须是 0-100 的整数");
             }
-            contractRoutingService.setProviderWeight(contractId, providerKey, weight);
-            return ApiResponse.ok("权重已更新", contractRoutingService.getContractRouting(contractId));
+            DashboardMutationResult<ContractRoutingDTO> result = contractRoutingService
+                    .setProviderWeightWithOutcome(contractId, providerKey, weight);
+            return ApiResponse.ok("权重已更新", result.getData(), result.getOutcome());
         } catch (NumberFormatException e) {
             return ApiResponse.error("weight 必须是 0-100 的整数");
         } catch (Exception e) {
@@ -127,9 +129,9 @@ public class ContractRoutingController {
             if (request == null) {
                 return ApiResponse.error("权重策略请求不能为空");
             }
-            ContractRoutingDTO result = contractRoutingService.replaceProviderWeights(
+            DashboardMutationResult<ContractRoutingDTO> result = contractRoutingService.replaceProviderWeightsWithOutcome(
                     contractId, request.getExpectedRevision(), request.getWeights());
-            return ApiResponse.ok("权重策略已原子发布", result);
+            return ApiResponse.ok("权重策略已原子发布", result.getData(), result.getOutcome());
         } catch (ConcurrentModificationException e) {
             log.info("Weight policy revision conflict for contract: {}", contractId);
             return ApiResponse.error("权重策略修订已过期，请重新读取后发布");
@@ -149,8 +151,9 @@ public class ContractRoutingController {
     @PostMapping("/{contractId:.+}/rollback")
     public ApiResponse<ContractRoutingDTO> rollbackToCore(@PathVariable String contractId) {
         try {
-            contractRoutingService.rollbackToCore(contractId);
-            return ApiResponse.ok("已回滚到灵核 100%", contractRoutingService.getContractRouting(contractId));
+            DashboardMutationResult<ContractRoutingDTO> result = contractRoutingService
+                    .rollbackToCoreWithOutcome(contractId);
+            return ApiResponse.ok("已回滚到灵核 100%", result.getData(), result.getOutcome());
         } catch (Exception e) {
             log.error("Failed to rollback to core for: {}", contractId, e);
             return ApiResponse.error("回滚失败", e);

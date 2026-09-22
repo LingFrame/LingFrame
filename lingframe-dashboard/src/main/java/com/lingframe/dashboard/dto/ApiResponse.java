@@ -15,6 +15,10 @@ public class ApiResponse<T> {
     private boolean success;
     private String message;
     private T data;
+    /**
+     * 写操作的运行时与持久化事实；查询接口通常为空。
+     */
+    private DashboardOperationOutcomeDTO operationOutcome;
     private long timestamp;
 
     /**
@@ -52,6 +56,17 @@ public class ApiResponse<T> {
                 .success(true)
                 .message(message)
                 .data(data)
+                .timestamp(System.currentTimeMillis())
+                .build();
+    }
+
+    public static <T> ApiResponse<T> ok(String message, T data,
+            DashboardOperationOutcomeDTO operationOutcome) {
+        return ApiResponse.<T>builder()
+                .success(true)
+                .message(message)
+                .data(data)
+                .operationOutcome(operationOutcome)
                 .timestamp(System.currentTimeMillis())
                 .build();
     }

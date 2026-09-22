@@ -4,6 +4,8 @@ import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
 import com.lingframe.dashboard.dto.ContractRoutingPublishRequest;
 import com.lingframe.dashboard.dto.ContractStressStepDTO;
+import com.lingframe.dashboard.dto.DashboardMutationResult;
+import com.lingframe.dashboard.dto.DashboardOperationOutcomeDTO;
 import com.lingframe.dashboard.security.DashboardToolProperties;
 import com.lingframe.dashboard.service.ContractRoutingService;
 import com.lingframe.dashboard.service.SimulateService;
@@ -55,7 +57,9 @@ class ContractRoutingControllerTest {
     @DisplayName("设置权重")
     void setProviderWeight() {
         ContractRoutingDTO dto = ContractRoutingDTO.builder().contractId("svc-a").build();
-        when(service.getContractRouting("svc-a")).thenReturn(dto);
+        when(service.setProviderWeightWithOutcome("svc-a", "user-ling:1.0.0", 60))
+                .thenReturn(DashboardMutationResult.<ContractRoutingDTO>builder()
+                        .data(dto).outcome(successfulOutcome()).build());
 
         Map<String, Object> body = new HashMap<>();
         body.put("providerKey", "user-ling:1.0.0");
@@ -63,7 +67,8 @@ class ContractRoutingControllerTest {
 
         ApiResponse<ContractRoutingDTO> resp = controller.setProviderWeight("svc-a", body);
         assertTrue(resp.isSuccess());
-        verify(service).setProviderWeight("svc-a", "user-ling:1.0.0", 60);
+        assertTrue(resp.getOperationOutcome().isRuntimeApplied());
+        verify(service).setProviderWeightWithOutcome("svc-a", "user-ling:1.0.0", 60);
     }
 
     @Test
@@ -73,8 +78,9 @@ class ContractRoutingControllerTest {
                 .contractId("svc-a")
                 .policyRevision("epoch:2:svc-a")
                 .build();
-        when(service.replaceProviderWeights(eq("svc-a"), eq("epoch:1:svc-a"), anyMap()))
-                .thenReturn(dto);
+        when(service.replaceProviderWeightsWithOutcome(eq("svc-a"), eq("epoch:1:svc-a"), anyMap()))
+                .thenReturn(DashboardMutationResult.<ContractRoutingDTO>builder()
+                        .data(dto).outcome(successfulOutcome()).build());
 
         Map<String, Integer> weights = new LinkedHashMap<>();
         weights.put("lingcore-app", 90);
@@ -84,13 +90,14 @@ class ContractRoutingControllerTest {
 
         assertTrue(response.isSuccess());
         assertEquals("epoch:2:svc-a", response.getData().getPolicyRevision());
-        verify(service).replaceProviderWeights("svc-a", "epoch:1:svc-a", weights);
+        assertTrue(response.getOperationOutcome().isPersisted());
+        verify(service).replaceProviderWeightsWithOutcome("svc-a", "epoch:1:svc-a", weights);
     }
 
     @Test
     @DisplayName("修订号过期时拒绝整次权重发布")
     void replaceProviderWeightsRejectsStaleRevision() {
-        when(service.replaceProviderWeights(anyString(), anyString(), anyMap()))
+        when(service.replaceProviderWeightsWithOutcome(anyString(), anyString(), anyMap()))
                 .thenThrow(new ConcurrentModificationException("stale"));
 
         ApiResponse<ContractRoutingDTO> response = controller.replaceProviderWeights(
@@ -104,11 +111,13 @@ class ContractRoutingControllerTest {
     @DisplayName("一键回滚到灵核")
     void rollbackToCore() {
         ContractRoutingDTO dto = ContractRoutingDTO.builder().contractId("svc-a").build();
-        when(service.getContractRouting("svc-a")).thenReturn(dto);
+        when(service.rollbackToCoreWithOutcome("svc-a"))
+                .thenReturn(DashboardMutationResult.<ContractRoutingDTO>builder()
+                        .data(dto).outcome(successfulOutcome()).build());
 
         ApiResponse<ContractRoutingDTO> resp = controller.rollbackToCore("svc-a");
         assertTrue(resp.isSuccess());
-        verify(service).rollbackToCore("svc-a");
+        verify(service).rollbackToCoreWithOutcome("svc-a");
     }
 
     @Test
@@ -140,5 +149,14 @@ class ContractRoutingControllerTest {
 
         assertFalse(resp.isSuccess());
         assertTrue(resp.getMessage().contains("压测能力未启用"));
+    }
+
+    private DashboardOperationOutcomeDTO successfulOutcome() {
+        return DashboardOperationOutcomeDTO.builder()
+                .runtimeApplied(true)
+                .persisted(true)
+                .recoveryReady(true)
+                .backupReady(false)
+                .build();
     }
 }

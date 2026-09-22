@@ -10,6 +10,8 @@ import com.lingframe.core.routing.ProviderDescriptor;
 import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.core.routing.ProviderWeightSnapshot;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
+import com.lingframe.dashboard.dto.DashboardMutationResult;
+import com.lingframe.dashboard.dto.DashboardOperationOutcomeDTO;
 import com.lingframe.dashboard.dto.ProviderWeightDTO;
 import com.lingframe.dashboard.storage.GovernanceStorage;
 import lombok.Setter;
@@ -153,10 +155,22 @@ public class ContractRoutingService {
      * @param weight      新权重 0-100
      */
     public void setProviderWeight(String contractId, String providerKey, int weight) {
+        setProviderWeightWithOutcome(contractId, providerKey, weight);
+    }
+
+    /**
+     * 设置单个 provider 权重并返回运行时/持久化结果。
+     */
+    public DashboardMutationResult<ContractRoutingDTO> setProviderWeightWithOutcome(
+            String contractId, String providerKey, int weight) {
         providerWeightRouter.setProviderWeight(contractId, providerKey, weight);
         log.info("[ContractRouting] Weight updated: contract=[{}], provider=[{}], weight=[{}]",
                 contractId, providerKey, weight);
-        persistWeights(contractId);
+        DashboardOperationOutcomeDTO outcome = persistWeights(contractId, true);
+        return DashboardMutationResult.<ContractRoutingDTO>builder()
+                .data(getContractRouting(contractId))
+                .outcome(outcome)
+                .build();
     }
 
     /**
@@ -174,6 +188,14 @@ public class ContractRoutingService {
      */
     public ContractRoutingDTO replaceProviderWeights(String contractId, String expectedRevision,
             Map<String, Integer> weights) {
+        return replaceProviderWeightsWithOutcome(contractId, expectedRevision, weights).getData();
+    }
+
+    /**
+     * 按完整快照发布权重并返回运行时/持久化结果。
+     */
+    public DashboardMutationResult<ContractRoutingDTO> replaceProviderWeightsWithOutcome(
+            String contractId, String expectedRevision, Map<String, Integer> weights) {
         if (contractId == null || contractId.trim().isEmpty()) {
             throw new IllegalArgumentException("contractId must not be blank");
         }
@@ -187,8 +209,11 @@ public class ContractRoutingService {
                 contractId, expectedRevision, weights);
         log.info("[ContractRouting] Weight snapshot published: contract=[{}], revision=[{}], providers=[{}]",
                 contractId, published.getRevision(), weights.size());
-        persistWeights(contractId);
-        return getContractRouting(contractId);
+        DashboardOperationOutcomeDTO outcome = persistWeights(contractId, true);
+        return DashboardMutationResult.<ContractRoutingDTO>builder()
+                .data(getContractRouting(contractId))
+                .outcome(outcome)
+                .build();
     }
 
     /**
@@ -204,6 +229,13 @@ public class ContractRoutingService {
      * @param contractId 契约 ID
      */
     public void rollbackToCore(String contractId) {
+        rollbackToCoreWithOutcome(contractId);
+    }
+
+    /**
+     * 回滚到灵核并返回运行时/持久化结果。
+     */
+    public DashboardMutationResult<ContractRoutingDTO> rollbackToCoreWithOutcome(String contractId) {
         ProviderWeightSnapshot current = providerWeightRouter.getWeightSnapshot(contractId);
         List<ProviderDescriptor> providers = lingServiceRegistry.getProvidersByContractId(contractId);
         Map<String, Integer> weights = new HashMap<>();
@@ -222,15 +254,25 @@ public class ContractRoutingService {
         }
         log.info("[ContractRouting] Rollback to core 100%: contract=[{}], providers=[{}]",
                 contractId, providers.size());
-        persistWeights(contractId);
+        DashboardOperationOutcomeDTO outcome = persistWeights(contractId, true);
+        return DashboardMutationResult.<ContractRoutingDTO>builder()
+                .data(getContractRouting(contractId))
+                .outcome(outcome)
+                .build();
     }
 
     /**
      * 持久化指定契约的权重覆盖配置到 GovernanceStorage。
      */
-    private void persistWeights(String contractId) {
+    private DashboardOperationOutcomeDTO persistWeights(String contractId, boolean runtimeApplied) {
         if (governanceStorage == null || contractId == null) {
-            return;
+            return DashboardOperationOutcomeDTO.builder()
+                    .runtimeApplied(runtimeApplied)
+                    .persisted(false)
+                    .recoveryReady(false)
+                    .backupReady(false)
+                    .failureReason("治理存储未配置，重启后无法恢复该路由策略")
+                    .build();
         }
         try {
             Map<String, Integer> weights = providerWeightRouter.getOverrideWeights(contractId);
@@ -240,8 +282,21 @@ public class ContractRoutingService {
                 ObjectMapper mapper = objectMapper != null ? objectMapper : new ObjectMapper();
                 governanceStorage.saveRoutingWeightConfig(contractId, mapper.writeValueAsString(weights));
             }
+            return DashboardOperationOutcomeDTO.builder()
+                    .runtimeApplied(runtimeApplied)
+                    .persisted(true)
+                    .recoveryReady(true)
+                    .backupReady(false)
+                    .build();
         } catch (Exception e) {
             log.warn("Failed to persist routing weights for contract {}: {}", contractId, e.getMessage());
+            return DashboardOperationOutcomeDTO.builder()
+                    .runtimeApplied(runtimeApplied)
+                    .persisted(false)
+                    .recoveryReady(false)
+                    .backupReady(false)
+                    .failureReason("路由策略已在运行时生效，但持久化失败")
+                    .build();
         }
     }
 

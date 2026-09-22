@@ -5,6 +5,7 @@ import com.lingframe.core.ling.LingServiceRegistry;
 import com.lingframe.core.routing.ProviderDescriptor;
 import com.lingframe.core.routing.ProviderWeightRouter;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
+import com.lingframe.dashboard.dto.DashboardMutationResult;
 import com.lingframe.dashboard.dto.ProviderWeightDTO;
 import com.lingframe.dashboard.storage.GovernanceStorage;
 import org.junit.jupiter.api.BeforeEach;
@@ -241,6 +242,37 @@ class ContractRoutingServiceTest {
             service.setProviderWeight("svc-a", "user-ling", 50);
 
             verify(storage).saveRoutingWeightConfig(eq("svc-a"), contains("\"user-ling\":50"));
+        }
+
+        @Test
+        @DisplayName("没有治理存储时明确返回运行时已生效但不可恢复")
+        void outcomeReportsMissingStorage() {
+            DashboardMutationResult<ContractRoutingDTO> result = service
+                    .setProviderWeightWithOutcome("svc-a", "user-ling", 50);
+
+            assertTrue(result.getOutcome().isRuntimeApplied());
+            assertFalse(result.getOutcome().isPersisted());
+            assertFalse(result.getOutcome().isRecoveryReady());
+            assertFalse(result.getOutcome().isBackupReady());
+            assertNotNull(result.getOutcome().getFailureReason());
+        }
+
+        @Test
+        @DisplayName("持久化失败时不掩盖运行时已生效事实")
+        void outcomeReportsPersistenceFailure() {
+            GovernanceStorage storage = mock(GovernanceStorage.class);
+            doThrow(new IllegalStateException("database unavailable"))
+                    .when(storage).saveRoutingWeightConfig(anyString(), anyString());
+            service.setGovernanceStorage(storage);
+            service.setObjectMapper(new ObjectMapper());
+
+            DashboardMutationResult<ContractRoutingDTO> result = service
+                    .setProviderWeightWithOutcome("svc-a", "user-ling", 50);
+
+            assertTrue(result.getOutcome().isRuntimeApplied());
+            assertFalse(result.getOutcome().isPersisted());
+            assertFalse(result.getOutcome().isRecoveryReady());
+            assertTrue(result.getOutcome().getFailureReason().contains("持久化失败"));
         }
     }
 
