@@ -268,6 +268,7 @@ createApp({
         const contractsList = ref([]);
         const selectedContractId = ref(null);
         const routingDetail = ref(null);
+        const routingEvidence = ref(null);
         // 路由详情请求 seq：防止快速切换契约时旧请求覆盖新数据
         let routingDetailSeq = 0;
         // 各 provider 的覆盖权重编辑表单：{ [lingId]: number|null }
@@ -283,6 +284,7 @@ createApp({
                 if (selectedContractId.value && !contractsList.value.includes(selectedContractId.value)) {
                     selectedContractId.value = null;
                     routingDetail.value = null;
+                    routingEvidence.value = null;
                 }
             } catch (e) {
                 showToast(t('toast.fetchContractsFailed') + ': ' + e.message, 'error');
@@ -295,15 +297,20 @@ createApp({
         const fetchRoutingDetail = async (contractId) => {
             if (!contractId) {
                 routingDetail.value = null;
+                routingEvidence.value = null;
                 return;
             }
             // 自增 seq：仅最新请求能回写状态，旧请求返回时 seq 已过期，静默丢弃
             const seq = ++routingDetailSeq;
             loading.contractRouting = true;
             try {
-                const data = await api.get('/contract-routing/' + encodeURIComponent(contractId));
+                const [data, evidence] = await Promise.all([
+                    api.get('/contract-routing/' + encodeURIComponent(contractId)),
+                    api.get('/contract-routing/' + encodeURIComponent(contractId) + '/evidence')
+                ]);
                 if (seq !== routingDetailSeq) return; // 已被后续请求取代
                 routingDetail.value = data;
+                routingEvidence.value = evidence;
                 // 同步权重编辑表单：overrideWeight 为 null 时表单项也置 null（占位提示「未覆盖」）
                 Object.keys(weightEditForm).forEach(k => delete weightEditForm[k]);
                 (data?.providers || []).forEach(p => {
@@ -316,6 +323,7 @@ createApp({
                 if (seq !== routingDetailSeq) return;
                 showToast(t('toast.fetchRoutingFailed') + ': ' + e.message, 'error');
                 routingDetail.value = null;
+                routingEvidence.value = null;
             } finally {
                 if (seq === routingDetailSeq) {
                     loading.contractRouting = false;
@@ -476,16 +484,33 @@ createApp({
             }
             savingWeight[providerKey] = true;
             try {
-                const data = await api.post(
-                    '/contract-routing/' + encodeURIComponent(selectedContractId.value) + '/weight',
-                    { providerKey, weight }
+                const weights = {};
+                (routingDetail.value?.providers || []).forEach(p => {
+                    const key = p.version ? `${p.lingId}:${p.version}` : p.lingId;
+                    if (key === providerKey) {
+                        weights[key] = weight;
+                    } else if (p.overrideWeight !== null && p.overrideWeight !== undefined) {
+                        weights[key] = Number(p.overrideWeight);
+                    }
+                });
+                const response = await api.put(
+                    '/contract-routing/' + encodeURIComponent(selectedContractId.value) + '/weights',
+                    { expectedRevision: routingDetail.value.policyRevision, weights }
                 );
+                const data = response.data;
                 routingDetail.value = data;
+                routingEvidence.value = await api.get('/contract-routing/'
+                    + encodeURIComponent(selectedContractId.value) + '/evidence');
                 // 保存成功后回写表单为生效的 overrideWeight，避免输入框残留旧值
                 const updated = (data?.providers || []).find(p =>
                     (version ? p.lingId === lingId && p.version === version : p.lingId === lingId));
                 weightEditForm[providerKey] = updated ? updated.overrideWeight : weight;
-                showToast(t('toast.weightSaved'), 'success');
+                if (response.operationOutcome && !response.operationOutcome.persisted) {
+                    showToast(response.operationOutcome.failureReason
+                        || t('toast.weightSavedRuntimeOnly'), 'warn');
+                } else {
+                    showToast(t('toast.weightSaved'), 'success');
+                }
             } catch (e) {
                 showToast(t('toast.weightSaveFailed') + ': ' + e.message, 'error');
             } finally {
@@ -1181,6 +1206,22 @@ createApp({
                 const data = await res.json();
                 if (!data.success) throw new Error(data.message);
                 return data.data;
+            },
+            async put(path, body = {}) {
+                const res = await fetch(API_BASE + path, {
+                    method: 'PUT',
+                    headers: withAuthHeaders({ 'Content-Type': 'application/json' }),
+                    credentials: 'same-origin',
+                    body: JSON.stringify(body)
+                });
+                if (res.status === 401) { showLoginPrompt(); throw new Error('Unauthorized'); }
+                if (res.status === 403) { appState.readonly = true; throw new Error(t('toast.readonlyMode', '当前为只读模式')); }
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message);
+                return {
+                    data: data.data !== undefined ? data.data : data,
+                    operationOutcome: data.operationOutcome
+                };
             },
             async delete(path, body = null) {
                 const options = {
@@ -3366,7 +3407,7 @@ createApp({
             governanceTabs, activeGovernanceTab, switchGovernanceTab, jumpToGovernanceConfig,
             GOVERNANCE_PRESETS, selectedPreset, applyPreset,
             governanceMatrix, matrixSortKey, matrixSortAsc, fetchGovernanceMatrix, sortedMatrix, sortMatrix,
-            contractsList, selectedContractId, routingDetail, weightEditForm, savingWeight,
+            contractsList, selectedContractId, routingDetail, routingEvidence, weightEditForm, savingWeight,
             fetchContracts, fetchRoutingDetail, selectContract, saveProviderWeight,
             contractStressMode, contractStressRounds, contractStressActive, contractStressStats, contractStressResult, toggleContractStress, resetContractStressStats, getProviderColor,
             routingHasCore, routingHasLing, routingLingId, routingLingVersion, effectivePhase,

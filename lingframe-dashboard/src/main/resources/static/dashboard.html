@@ -2290,6 +2290,62 @@
                                 </div>
                             </div>
 
+                            <!-- 真实路由命中证据 -->
+                            <div v-if="routingEvidence" class="card">
+                                <div class="card-header">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                                        <h3 class="font-bold text-base t-text">{{ t('contractRouting.evidenceTitle') }}</h3>
+                                    </div>
+                                    <span class="text-xs t-text-muted">{{ t('contractRouting.evidenceHint') }}</span>
+                                </div>
+                                <div class="p-5">
+                                    <div class="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
+                                        <div class="rounded-lg t-bg-faint p-3">
+                                            <div class="text-[11px] t-text-muted">{{ t('contractRouting.totalInvocations') }}</div>
+                                            <div class="mt-1 text-lg font-bold t-text">{{ routingEvidence.totalInvocations || 0 }}</div>
+                                        </div>
+                                        <div class="rounded-lg t-bg-faint p-3 sm:col-span-2">
+                                            <div class="text-[11px] t-text-muted">{{ t('contractRouting.policyRevision') }}</div>
+                                            <div class="mt-1 truncate font-mono text-sm t-text" :title="routingEvidence.effectivePolicy && routingEvidence.effectivePolicy.policyRevision">
+                                                {{ routingEvidence.effectivePolicy && routingEvidence.effectivePolicy.policyRevision || '-' }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div v-if="routingEvidence.routingFacts && routingEvidence.routingFacts.length" class="overflow-x-auto border t-border rounded-lg">
+                                        <table class="w-full text-xs">
+                                            <thead>
+                                            <tr class="t-border-b t-bg-faint t-text-muted">
+                                                <th class="text-left p-2.5">{{ t('contractRouting.lingId') }}</th>
+                                                <th class="text-left p-2.5">{{ t('contractRouting.instanceId') }}</th>
+                                                <th class="text-left p-2.5">{{ t('contractRouting.routingReason') }}</th>
+                                                <th class="text-right p-2.5">{{ t('contractRouting.totalInvocations') }}</th>
+                                                <th class="text-right p-2.5">{{ t('contractRouting.actualPct') }}</th>
+                                                <th class="text-right p-2.5">{{ t('contractRouting.successCount') }}</th>
+                                                <th class="text-right p-2.5">{{ t('contractRouting.failureCount') }}</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            <tr v-for="fact in routingEvidence.routingFacts"
+                                                :key="fact.lingId + ':' + (fact.version || '-') + ':' + (fact.instanceId || '-')"
+                                                class="t-border-b last:border-b-0 hover:t-bg-hover/50 transition-colors">
+                                                <td class="p-2.5 font-mono t-text">
+                                                    {{ fact.lingId || '-' }}<span v-if="fact.version" class="ml-1 t-text-muted">v{{ fact.version }}</span>
+                                                </td>
+                                                <td class="p-2.5 font-mono t-text-sub">{{ fact.instanceId || '-' }}</td>
+                                                <td class="p-2.5 t-text-sub">{{ fact.routingReason || '-' }}</td>
+                                                <td class="p-2.5 text-right font-mono t-text">{{ fact.totalInvocations || 0 }}</td>
+                                                <td class="p-2.5 text-right font-mono font-bold text-emerald-400">{{ (fact.actualPercent || 0).toFixed(1) }}%</td>
+                                                <td class="p-2.5 text-right font-mono text-green-400">{{ fact.successCount || 0 }}</td>
+                                                <td class="p-2.5 text-right font-mono text-red-400">{{ fact.failureCount || 0 }}</td>
+                                            </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <p v-else class="text-sm t-text-muted">{{ t('contractRouting.noEvidence') }}</p>
+                                </div>
+                            </div>
+
                             <!-- 契约流量分发实测与演练 -->
                             <div class="card">
                                 <div class="card-header">
