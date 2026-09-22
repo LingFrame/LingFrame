@@ -79,10 +79,21 @@ class ThreadIsolationTxPropagationTest {
             }
             assertEquals("ok", retryResult);
             assertFalse(LingTransactionContext.hasAnyConnection());
-            isolation.doFilter(ctx, worker -> {
-                assertFalse(LingTransactionContext.hasAnyConnection());
-                return null;
-            });
+            for (int i = 0; i < 100; i++) {
+                try {
+                    isolation.doFilter(ctx, worker -> {
+                        assertFalse(LingTransactionContext.hasAnyConnection());
+                        return null;
+                    });
+                    break;
+                } catch (LingInvocationException e) {
+                    if (e.getKind() != LingInvocationException.ErrorKind.BULKHEAD_FULL || i == 99) {
+                        throw e;
+                    }
+                    // 前一次调用已完成但 worker 仍在归还队列，等待交接完成后再做清理校验。
+                    Thread.sleep(2L);
+                }
+            }
         } finally {
             isolation.evict(LING_ID);
             InvocationContext.detach(null);
