@@ -65,15 +65,16 @@ class ThreadIsolationTxPropagationTest {
             // Future 已完成不代表 worker 已重新回到 SynchronousQueue，准备失败后的立即重试
             // 可能短暂触发 BULKHEAD_FULL；等待有限次数，避免把线程交接竞争误判为事务泄漏。
             Object retryResult = null;
-            for (int i = 0; i < 50; i++) {
+            for (int i = 0; i < 100; i++) {
                 try {
                     retryResult = propagation.doFilter(ctx, chain);
                     break;
                 } catch (LingInvocationException e) {
-                    if (e.getKind() != LingInvocationException.ErrorKind.BULKHEAD_FULL || i == 49) {
+                    if (e.getKind() != LingInvocationException.ErrorKind.BULKHEAD_FULL || i == 99) {
                         throw e;
                     }
-                    Thread.yield();
+                    // 让出调度后等待极短时间，确保 worker 有机会重新进入交接队列。
+                    Thread.sleep(2L);
                 }
             }
             assertEquals("ok", retryResult);
