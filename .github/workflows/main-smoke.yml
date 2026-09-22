@@ -1,0 +1,44 @@
+name: Main Smoke
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: main-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Main post-merge smoke (SB2 / JDK 8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: temurin
+          cache: maven
+
+      - name: Observability closed-loop smoke
+        run: >
+          mvn -B -T 1C
+          -pl lingframe-examples/lingframe-example-lingcore-app -am
+          -Pspring-boot2,integration-check
+          verify
+          -Dit.test=ObservabilityClosedLoopIntegrationTest
+          -Dsurefire.failIfNoSpecifiedTests=false
+
+      - name: Upload smoke results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-smoke-results
+          path: '**/target/failsafe-reports/'
+          retention-days: 14
