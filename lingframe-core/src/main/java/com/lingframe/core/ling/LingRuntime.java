@@ -114,6 +114,14 @@ public class LingRuntime implements RoutableTarget {
                 (instancePool == null || instancePool.hasAvailableInstance());
     }
 
+    /** 返回当前运行时所有实例代次的只读状态事实。 */
+    public List<LingInstanceSnapshot> getInstanceSnapshots() {
+        if (instancePool == null) {
+            return Collections.emptyList();
+        }
+        return instancePool.getInstanceSnapshots();
+    }
+
     /**
      * 替换运行时配置。
      * <p>

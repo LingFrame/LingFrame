@@ -101,6 +101,16 @@ public class InstancePool {
         return all;
     }
 
+    /** 返回活跃及濒死实例的状态事实，不暴露成员池写入口。 */
+    public List<LingInstanceSnapshot> getInstanceSnapshots() {
+        List<LingInstanceSnapshot> snapshots = new ArrayList<>();
+        LingInstance defaultInst = defaultInstance.get();
+        for (LingInstance instance : getAllInstances()) {
+            snapshots.add(instance.snapshot(instance == defaultInst));
+        }
+        return Collections.unmodifiableList(snapshots);
+    }
+
     /**
      * 获取当前默认版本号
      */

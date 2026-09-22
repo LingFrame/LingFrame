@@ -139,6 +139,12 @@ public class LingInstance {
         return activeRequests.get();
     }
 
+    /** 返回该实例当前生命周期、准入和在途计数的只读快照。 */
+    public LingInstanceSnapshot snapshot(boolean defaultInstance) {
+        return new LingInstanceSnapshot(instanceId, getLingId(), getVersion(), currentStatus(),
+                defaultInstance, admissionDisabled, activeRequests.get());
+    }
+
     /**
      * 设置是否允许该具体实例接收新的受管请求，不改变生命周期状态。
      * <p>
