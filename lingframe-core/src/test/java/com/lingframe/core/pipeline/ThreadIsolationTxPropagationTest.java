@@ -62,7 +62,21 @@ class ThreadIsolationTxPropagationTest {
             });
             assertThrows(IllegalStateException.class, () -> propagation.doFilter(ctx, chain));
             assertFalse(LingTransactionContext.hasAnyConnection());
-            assertEquals("ok", propagation.doFilter(ctx, chain));
+            // Future 已完成不代表 worker 已重新回到 SynchronousQueue，准备失败后的立即重试
+            // 可能短暂触发 BULKHEAD_FULL；等待有限次数，避免把线程交接竞争误判为事务泄漏。
+            Object retryResult = null;
+            for (int i = 0; i < 50; i++) {
+                try {
+                    retryResult = propagation.doFilter(ctx, chain);
+                    break;
+                } catch (LingInvocationException e) {
+                    if (e.getKind() != LingInvocationException.ErrorKind.BULKHEAD_FULL || i == 49) {
+                        throw e;
+                    }
+                    Thread.yield();
+                }
+            }
+            assertEquals("ok", retryResult);
             assertFalse(LingTransactionContext.hasAnyConnection());
             isolation.doFilter(ctx, worker -> {
                 assertFalse(LingTransactionContext.hasAnyConnection());
