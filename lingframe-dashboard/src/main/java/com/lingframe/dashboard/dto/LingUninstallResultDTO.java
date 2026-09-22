@@ -16,6 +16,9 @@ public class LingUninstallResultDTO {
     private String lingId;
     private String version;
     private boolean uninstallTriggered;
+    private String operationId;
+    private boolean cleanupCompleted;
+    private boolean classLoaderGcConfirmed;
     private LeakRiskLevel overallRiskLevel;
     private List<LeakRiskReportDTO> reports;
 }

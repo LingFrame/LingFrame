@@ -29,6 +29,9 @@ public class DashboardUninstallResultMapper {
                 .lingId(result.getLingId())
                 .version(result.getVersion())
                 .uninstallTriggered(result.isUninstallTriggered())
+                .operationId(result.getOperationId())
+                .cleanupCompleted(result.isCleanupCompleted())
+                .classLoaderGcConfirmed(result.isClassLoaderGcConfirmed())
                 .overallRiskLevel(result.getOverallRiskLevel())
                 .reports(reports)
                 .build();
