@@ -23,7 +23,10 @@ class LingDataClassesTest {
             LingUninstallResult result = LingUninstallResult.triggered("ling-a", "1.0",
                     Arrays.asList(report));
 
-            assertEquals("ling-a", result.getLingId());
+        assertEquals("ling-a", result.getLingId());
+        assertNotNull(result.getOperationId());
+        assertTrue(result.isCleanupCompleted());
+        assertFalse(result.isClassLoaderGcConfirmed());
             assertEquals("1.0", result.getVersion());
             assertTrue(result.isUninstallTriggered());
             assertEquals(LeakRiskLevel.NO_RISK, result.getOverallRiskLevel());
